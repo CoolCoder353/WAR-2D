@@ -1,3 +1,4 @@
+using System;
 using Org.BouncyCastle.Asn1.Cmp;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -10,23 +11,93 @@ public partial struct MovementSystem : ISystem
         state.RequireForUpdate<MovementComponent>();
     }
 
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
     public void OnUpdate(ref SystemState state)
     {
         foreach (var (movementComp, localTransform, entity) in SystemAPI.Query<RefRW<MovementComponent>, RefRW<LocalTransform>>().WithEntityAccess())
         {
+            DynamicBuffer<PathPoint> pathBuffer = SystemAPI.GetBuffer<PathPoint>(entity);
+
+            if (!pathBuffer.IsEmpty)
+            {
+                int2 goal = pathBuffer[0].position;
+
+                if (!TrySavePosition(ref movementComp.ValueRW, goal))
+                {
+                    continue;
+                }
+
+                if (pathBuffer.Length > 1)
+                {
+                    TrySavePosition(ref movementComp.ValueRW, pathBuffer[1].position, 2);
+                }
 
 
+
+                if (math.distance(localTransform.ValueRO.Position, new float3(goal.x, goal.y, 0)) < 0.1f)
+                {
+                    UnlockNode(goal);
+                    pathBuffer.RemoveAt(0);
+                    movementComp.ValueRW.hasSavedPositionOne = false;
+                    movementComp.ValueRW.hasSavedPositionTwo = false;
+                }
+                else
+                {
+                    MoveTowardsNode(ref movementComp.ValueRW, ref localTransform.ValueRW, goal, ref state);
+                }
+            }
+        }
+    }
+
+    private bool TrySavePosition(ref MovementComponent valueRW, int2 goal, int positionToSave = 1)
+    {
+        if (positionToSave == 1)
+        {
+            //Check if we already saved position
+            if (valueRW.hasSavedPositionOne && valueRW.savedPositionOne.Equals(goal))
+            {
+                return false;
+            }
+
+            //Check if we can save a position
+            if (!WorldStateManager.Instance.IsNodeLocked(goal))
+            {
+                LockNode(goal);
+                valueRW.savedPositionOne = goal;
+                valueRW.hasSavedPositionOne = true;
+                return false;
+            }
+            else
+            {
+                return true;
+            }
+        }
+        else
+        {
+            //Check if we already saved position
+            if (valueRW.hasSavedPositionTwo && valueRW.savedPositionTwo.Equals(goal))
+            {
+                return false;
+            }
+
+            //Check if we can save a position
+            if (!WorldStateManager.Instance.IsNodeLocked(goal))
+            {
+                LockNode(goal);
+                valueRW.savedPositionTwo = goal;
+                valueRW.hasSavedPositionTwo = true;
+                return false;
+            }
+            else
+            {
+                return true;
+            }
         }
     }
 
 
 
     //HELPER FUNCTIONS
-    private void LockNode(int2 position, int entity)
+    private void LockNode(int2 position, int entity = 1)
     {
         WorldStateManager.Instance.LockNode(position, entity);
     }
@@ -65,7 +136,7 @@ public partial struct MovementSystem : ISystem
 
 //Notes for this system
 //This system will in order:
-//1. Check if we need to be anywhere, if we do
-//2. Check if we have a path to follow, if we do
-//3. Check if we are at the end of a path node, if so
-//4. Change to move to the next path node
+//1. Check if we have a path to follow, if we do
+//2. Check if we are at the end of a path node, if so
+//3. Change to move to the next path node
+//4. If we are not at the end of a path node, move towards the current path node

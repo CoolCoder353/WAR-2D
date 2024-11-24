@@ -112,5 +112,11 @@ public class WorldStateManager : MonoBehaviour
 
     }
 
+    public bool IsNodeLocked(int2 position)
+    {
+        TileNode tile = tilemap.GetTile(position);
+        return tile.isUsed;
+    }
+
 
 }
