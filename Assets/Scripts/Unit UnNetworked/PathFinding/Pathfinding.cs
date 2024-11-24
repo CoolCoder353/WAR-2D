@@ -53,7 +53,7 @@ public static class Pathfinding
             PathNode[] neighbours = GetNeighbours(tilemap, currentNode);
             foreach (PathNode pathNode in neighbours)
             {
-                if (closedSet.Contains(pathNode.position))
+                if (closedSet.Contains(pathNode.position) || pathNode.position.Equals(currentNode.position) || pathNode.weight <= 0)
                 {
                     continue;
                 }
