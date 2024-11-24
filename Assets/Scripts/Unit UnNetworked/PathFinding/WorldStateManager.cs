@@ -1,4 +1,5 @@
 using System;
+using Unity.Collections;
 using Unity.Entities.UniversalDelegates;
 using Unity.Mathematics;
 using UnityEngine;
@@ -57,7 +58,7 @@ public class WorldStateManager : MonoBehaviour
         BoundsInt bounds = WalkableTilemap.cellBounds;
         TileBase[] allTiles = WalkableTilemap.GetTilesBlock(bounds);
 
-        (int2, TileNode)[] tiles = new (int2, TileNode)[bounds.size.x * bounds.size.y];
+        NativeHashMap<int2, TileNode> tiles = new NativeHashMap<int2, TileNode>(bounds.size.x * bounds.size.y, Allocator.Temp);
 
 
         for (int x = 0; x < bounds.size.x; x++)
@@ -83,7 +84,7 @@ public class WorldStateManager : MonoBehaviour
                         used = 0
                     };
 
-                    tiles[y * bounds.size.x + x] = (localPlace, tileNode);
+                    tiles[localPlace] = tileNode;
                 }
             }
         }

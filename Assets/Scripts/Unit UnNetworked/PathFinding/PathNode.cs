@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine.Tilemaps;
 
@@ -94,11 +96,11 @@ public struct TileNode
 
 public struct TilemapStruct
 {
-    public (int2, TileNode)[] tiles;
+    public NativeHashMap<int2, TileNode> tiles;
     public int width;
     public int height;
 
-    public TilemapStruct((int2, TileNode)[] tiles, int width, int height)
+    public TilemapStruct(NativeHashMap<int2, TileNode> tiles, int width, int height)
     {
         this.tiles = tiles;
         this.width = width;
@@ -107,11 +109,11 @@ public struct TilemapStruct
 
     public TileNode GetTile(int2 position)
     {
-        return tiles[position.y * width + position.x].Item2;
+        return tiles[position];
     }
 
     public void SetTile(int2 position, TileNode tileNode)
     {
-        tiles[position.y * width + position.x] = (position, tileNode);
+        tiles[position] = tileNode;
     }
 }
