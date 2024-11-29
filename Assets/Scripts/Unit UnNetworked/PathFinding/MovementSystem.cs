@@ -3,6 +3,7 @@ using Org.BouncyCastle.Asn1.Cmp;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
+using UnityEngine;
 
 public partial struct MovementSystem : ISystem
 {
@@ -55,7 +56,7 @@ public partial struct MovementSystem : ISystem
             //Check if we already saved position
             if (valueRW.hasSavedPositionOne && valueRW.savedPositionOne.Equals(goal))
             {
-                return false;
+                return true;
             }
 
             //Check if we can save a position
@@ -64,11 +65,11 @@ public partial struct MovementSystem : ISystem
                 LockNode(goal);
                 valueRW.savedPositionOne = goal;
                 valueRW.hasSavedPositionOne = true;
-                return false;
+                return true;
             }
             else
             {
-                return true;
+                return false;
             }
         }
         else
@@ -76,7 +77,7 @@ public partial struct MovementSystem : ISystem
             //Check if we already saved position
             if (valueRW.hasSavedPositionTwo && valueRW.savedPositionTwo.Equals(goal))
             {
-                return false;
+                return true;
             }
 
             //Check if we can save a position
@@ -85,11 +86,11 @@ public partial struct MovementSystem : ISystem
                 LockNode(goal);
                 valueRW.savedPositionTwo = goal;
                 valueRW.hasSavedPositionTwo = true;
-                return false;
+                return true;
             }
             else
             {
-                return true;
+                return false;
             }
         }
     }
@@ -109,7 +110,7 @@ public partial struct MovementSystem : ISystem
 
     private void MoveTowardsNode(ref MovementComponent movementComp, ref LocalTransform localTransform, int2 goal, ref SystemState state)
     {
-        float3 direction = new float3(goal.x - localTransform.Position.x, 0, goal.y - localTransform.Position.z);
+        float3 direction = new float3(goal.x - localTransform.Position.x, goal.y - localTransform.Position.y, 0);
         float distance = math.length(direction);
         direction = math.normalize(direction);
 
@@ -125,6 +126,11 @@ public partial struct MovementSystem : ISystem
         }
 
         if (movementComp.currentSpeed > movementComp.speed)
+        {
+            movementComp.currentSpeed = movementComp.speed;
+        }
+
+        if (movementComp.acceleration == 0)
         {
             movementComp.currentSpeed = movementComp.speed;
         }

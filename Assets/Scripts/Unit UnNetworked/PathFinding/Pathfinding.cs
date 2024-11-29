@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using Unity.Burst;
+using Unity.Jobs;
 using Unity.Mathematics;
+using UnityEngine;
 
 
 public enum HCostMethod
@@ -16,6 +19,22 @@ public enum HCostMethod
     EuclideanNoSQR,
 }
 
+[BurstCompile]
+public struct PathfindingJob : IJob
+{
+    public TilemapStruct tilemap;
+    public int2 start;
+    public int2 end;
+    public HCostMethod hCostMethod;
+    public int maxIterations;
+    public Path path;
+
+    public void Execute()
+    {
+        path = Pathfinding.FindPath(tilemap, start, end, hCostMethod, maxIterations);
+    }
+}
+
 
 public static class Pathfinding
 {
@@ -25,17 +44,17 @@ public static class Pathfinding
         {
             return new Path(new PathNode[0], 0, 0);
         }
-
-        var openSet = new PriorityQueue<PathNode>(tilemap.width * tilemap.height, (x, y) => x.fcost.CompareTo(y.fcost));
+        //Mulitply by -1 to make it chose the lowest fcost first
+        var openSet = new PriorityQueue<PathNode>(tilemap.width * tilemap.height, (x, y) => (-1 * x.fcost).CompareTo(-1 * y.fcost));
         var closedSet = new HashSet<int2>();
 
-        var startNode = new PathNode
+
+
+        var startNode = new PathNode()
         {
             position = start,
             gcost = 0,
             hcost = 0,
-            parent = new PathNodeLink { parent = null, pathNode = new PathNode { position = start, gcost = 0, hcost = 0 }, depth = 1 }
-
         };
 
         openSet.Enqueue(startNode);
@@ -51,61 +70,75 @@ public static class Pathfinding
             }
 
             PathNode[] neighbours = GetNeighbours(tilemap, currentNode);
-            foreach (PathNode pathNode in neighbours)
+            foreach (PathNode neigbour in neighbours)
             {
-                if (closedSet.Contains(pathNode.position) || pathNode.position.Equals(currentNode.position) || pathNode.weight <= 0)
+                if (closedSet.Contains(neigbour.position) || neigbour.position.Equals(currentNode.position) || neigbour.weight <= 0)
                 {
                     continue;
                 }
 
-                float newHCost = 0;
-                float newGCost = currentNode.gcost + math.distance(currentNode.position, pathNode.position);
-                switch (hCostMethod)
+                float newGCost = currentNode.gcost + math.distance(currentNode.position, neigbour.position);
+                float newHCost = CalculateHCost(neigbour.position, end, hCostMethod);
+
+
+
+                PathNode newPathNode = new PathNode(neigbour)
                 {
-                    case HCostMethod.Manhattan:
-
-                        newHCost = HCostManhattan(pathNode.position, end);
-                        break;
-                    case HCostMethod.Euclidean:
-                        newHCost = HCostEuclidean(pathNode.position, end);
-                        break;
-                    case HCostMethod.Chebyshev:
-                        newHCost = HCostChebyshev(pathNode.position, end);
-                        break;
-                    case HCostMethod.Octile:
-                        newHCost = HCostOctile(pathNode.position, end);
-                        break;
-                    case HCostMethod.Minkowski:
-                        newHCost = HCostMinkowski(pathNode.position, end);
-                        break;
-                    case HCostMethod.Diagonal:
-                        newHCost = HCostDiagonal(pathNode.position, end);
-                        break;
-                    case HCostMethod.DiagonalShort:
-                        newHCost = HCostDiagonalShort(pathNode.position, end);
-                        break;
-                    case HCostMethod.DiagonalLong:
-                        newHCost = HCostDiagonalLong(pathNode.position, end);
-                        break;
-                    case HCostMethod.EuclideanNoSQR:
-                        newHCost = HCostEuclideanNoSQR(pathNode.position, end);
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
-
-                PathNode newPathNode = new PathNode(pathNode);
-                newPathNode.gcost = newGCost;
-                newPathNode.hcost = newHCost;
-                newPathNode.parent = new PathNodeLink { parent = currentNode.parent, pathNode = pathNode, depth = currentNode.parent.depth + 1 };
-
-                //We may have repeats of the same node, but with different costs which doesnt really matter as we are using a priority queue
-                //so the node with the lowest cost will be the first to be dequeued
+                    gcost = newGCost,
+                    hcost = newHCost,
+                    parent = currentNode
+                };
                 openSet.Enqueue(newPathNode);
             }
-
         }
         return new Path(new PathNode[0], 0, 0);
+    }
+
+    private static float CalculateHCost(int2 start, int2 end, HCostMethod hCostMethod)
+    {
+        switch (hCostMethod)
+        {
+            case HCostMethod.Manhattan:
+                return HCostManhattan(start, end);
+            case HCostMethod.Euclidean:
+                return HCostEuclidean(start, end);
+            case HCostMethod.Chebyshev:
+                return HCostChebyshev(start, end);
+            case HCostMethod.Octile:
+                return HCostOctile(start, end);
+            case HCostMethod.Minkowski:
+                return HCostMinkowski(start, end);
+            case HCostMethod.Diagonal:
+                return HCostDiagonal(start, end);
+            case HCostMethod.DiagonalShort:
+                return HCostDiagonalShort(start, end);
+            case HCostMethod.DiagonalLong:
+                return HCostDiagonalLong(start, end);
+            case HCostMethod.EuclideanNoSQR:
+                return HCostEuclideanNoSQR(start, end);
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
+    }
+
+    private static Path RetracePath(PathNode endNode)
+    {
+        List<PathNode> path = new List<PathNode>();
+        PathNode currentNode = endNode;
+
+        Debug.Log($"Retracing path from {endNode.position}");
+        while (currentNode.parent != null)
+        {
+            path.Add(currentNode);
+            currentNode = currentNode.parent;
+        }
+
+        // Add the start node
+        path.Add(currentNode);
+
+        path.Reverse();
+        Debug.Log($"Path retrace complete with a size of {path.Count}");
+        return new Path(path.ToArray(), path.Count, endNode.gcost);
     }
 
     private static float HCostManhattan(int2 start, int2 end)
@@ -187,16 +220,5 @@ public static class Pathfinding
         }
 
         return neighbours.ToArray();
-    }
-
-    private static Path RetracePath(PathNode endNode)
-    {
-        PathNode[] path = new PathNode[endNode.parent.depth];
-        while (endNode.parent.parent != null)
-        {
-            path[endNode.parent.depth - 1] = endNode;
-            endNode = endNode.parent.pathNode;
-        }
-        return new Path(path, path.Length, endNode.gcost);
     }
 }

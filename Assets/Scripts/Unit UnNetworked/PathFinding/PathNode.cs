@@ -4,24 +4,15 @@ using Unity.Mathematics;
 using UnityEngine.Tilemaps;
 
 
-public class PathNodeLink
-{
-    public PathNodeLink parent;
-    public PathNode pathNode;
 
-    public int depth;
-
-
-}
-
-public struct PathNode
+public class PathNode
 {
     public int2 position;
 
     public float gcost;
     public float hcost;
 
-    public PathNodeLink parent;
+    public PathNode parent;
 
     public float weight;
 
@@ -45,6 +36,15 @@ public struct PathNode
         hcost = pathNode.hcost;
         parent = pathNode.parent;
         weight = pathNode.weight;
+    }
+
+    public PathNode()
+    {
+        position = new int2(0, 0);
+        gcost = 0;
+        hcost = 0;
+        parent = null;
+        weight = 1;
     }
 
     //Comparer
@@ -109,6 +109,16 @@ public struct TilemapStruct
 
     public TileNode GetTile(int2 position)
     {
+        if (!tiles.TryGetValue(position, out TileNode tileNode))
+        {
+            return new TileNode
+            {
+                position = position,
+                weight = 0,
+                used = 0
+            };
+        }
+
         return tiles[position];
     }
 

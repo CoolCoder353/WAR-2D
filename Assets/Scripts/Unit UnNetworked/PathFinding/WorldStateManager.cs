@@ -1,5 +1,6 @@
 using System;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities.UniversalDelegates;
 using Unity.Mathematics;
 using UnityEngine;
@@ -32,23 +33,26 @@ public class WorldStateManager : MonoBehaviour
     }
     public void OnDrawGizmos()
     {
-        if (showTileMapweights)
+        //Also check if the game is running
+        if (showTileMapweights && Application.isPlaying)
         {
-            for (int x = 0; x < tilemap.width; x++)
+
+            foreach (KVPair<int2, TileNode> tilepair in tilemap.tiles)
             {
-                for (int y = 0; y < tilemap.height; y++)
+                TileNode tile = tilepair.Value;
+                if (tile.weight == 0 && tile.used == 0)
                 {
-                    TileNode tile = tilemap.GetTile(new int2(x, y));
-                    if (tile.weight == 0)
-                    {
-                        Gizmos.color = Color.red;
-                    }
-                    else
-                    {
-                        Gizmos.color = Color.green;
-                    }
-                    Gizmos.DrawWireCube(new Vector3(tile.position.x + 0.5f, tile.position.y + 0.5f, 0), new Vector3(1, 1, 0));
+                    Gizmos.color = Color.red;
                 }
+                else if (tile.used != 0)
+                {
+                    Gizmos.color = Color.blue;
+                }
+                else
+                {
+                    Gizmos.color = Color.green;
+                }
+                Gizmos.DrawWireCube(new Vector3(tile.position.x + 0.5f, tile.position.y + 0.5f, 0), new Vector3(1, 1, 0));
             }
         }
     }
@@ -58,8 +62,7 @@ public class WorldStateManager : MonoBehaviour
         BoundsInt bounds = WalkableTilemap.cellBounds;
         TileBase[] allTiles = WalkableTilemap.GetTilesBlock(bounds);
 
-        NativeHashMap<int2, TileNode> tiles = new NativeHashMap<int2, TileNode>(bounds.size.x * bounds.size.y, Allocator.Temp);
-
+        NativeHashMap<int2, TileNode> tiles = new NativeHashMap<int2, TileNode>(bounds.size.x * bounds.size.y, Allocator.Persistent);
 
         for (int x = 0; x < bounds.size.x; x++)
         {
@@ -68,23 +71,25 @@ public class WorldStateManager : MonoBehaviour
                 TileBase tile = allTiles[x + y * bounds.size.x];
                 if (tile != null)
                 {
-                    int2 localPlace = new int2(bounds.position.x + x, bounds.position.y + y);
+                    Vector3Int localPlace = new Vector3Int(bounds.position.x + x, bounds.position.y + y, 0);
+                    Vector3 worldPosition = WalkableTilemap.CellToWorld(localPlace);
+                    int2 worldPlace = new int2((int)worldPosition.x, (int)worldPosition.y);
 
                     int weight = 1;
 
-                    if (UnwalkableTilemap.GetTile(new Vector3Int(localPlace.x, localPlace.y, 0)) != null)
+                    if (UnwalkableTilemap.GetTile(localPlace) != null)
                     {
                         weight = 0;
                     }
 
                     TileNode tileNode = new TileNode
                     {
-                        position = localPlace,
+                        position = worldPlace,
                         weight = weight,
                         used = 0
                     };
 
-                    tiles[localPlace] = tileNode;
+                    tiles[worldPlace] = tileNode;
                 }
             }
         }
