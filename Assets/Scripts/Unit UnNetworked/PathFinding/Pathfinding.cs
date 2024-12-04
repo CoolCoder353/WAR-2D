@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Unity.Burst;
-using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -19,21 +17,7 @@ public enum HCostMethod
     EuclideanNoSQR,
 }
 
-[BurstCompile]
-public struct PathfindingJob : IJob
-{
-    public TilemapStruct tilemap;
-    public int2 start;
-    public int2 end;
-    public HCostMethod hCostMethod;
-    public int maxIterations;
-    public Path path;
 
-    public void Execute()
-    {
-        path = Pathfinding.FindPath(tilemap, start, end, hCostMethod, maxIterations);
-    }
-}
 
 
 public static class Pathfinding

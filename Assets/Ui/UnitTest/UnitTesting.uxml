@@ -1,0 +1,11 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/Ui/UnitTest/UnitTestinmg.uss?fileID=7433441132597879392&amp;guid=cd2b10b8a4d296d4e9e5a114a3b9de80&amp;type=3#UnitTestinmg" />
+    <ui:VisualElement style="flex-grow: 1;">
+        <ui:VisualElement name="ButtonGroup" style="align-items: auto; justify-content: flex-end; align-self: center; top: auto; bottom: 0;" />
+    </ui:VisualElement>
+    <ui:GroupBox style="align-self: stretch; justify-content: flex-start; align-items: stretch; width: 250px;">
+        <ui:Button text="Spawn 1 unit" parse-escape-sequences="true" display-tooltip-when-elided="true" name="SpawnOneUnit" class="button" />
+        <ui:Button text="Spawn 1000 unit" parse-escape-sequences="true" display-tooltip-when-elided="true" name="SpawnThousandUnit" class="button" />
+        <ui:Button text="Spawn 10,000 unit" parse-escape-sequences="true" display-tooltip-when-elided="true" name="SpawnTenThousandUnit" class="button" />
+    </ui:GroupBox>
+</ui:UXML>

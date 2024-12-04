@@ -1,0 +1,5 @@
+.button {
+    font-size: 20px;
+    -unity-font: url("project://database/Assets/3rd%20Party/TextMesh%20Pro/Examples%20&%20Extras/Fonts/Roboto-Bold.ttf?fileID=12800000&guid=4beb055f07aaff244873dec698d0363e&type=3#Roboto-Bold");
+    -unity-font-style: bold;
+}
