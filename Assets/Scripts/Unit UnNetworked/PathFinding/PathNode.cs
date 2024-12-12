@@ -127,3 +127,23 @@ public struct TilemapStruct
         tiles[position] = tileNode;
     }
 }
+
+
+public struct WorldChunk
+{
+    public TilemapStruct tilemap;
+    public int2 position;
+
+    public int width => tilemap.width;
+    public int height => tilemap.height;
+
+    public NativeArray<int2> connections;
+
+    public WorldChunk(TilemapStruct tilemap, int2 position, NativeArray<int2> connections)
+    {
+        this.tilemap = tilemap;
+        this.position = position;
+        this.connections = connections;
+    }
+
+}
