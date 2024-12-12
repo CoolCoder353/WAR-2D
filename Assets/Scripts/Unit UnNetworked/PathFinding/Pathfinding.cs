@@ -36,8 +36,12 @@ public static class Pathfinding
 
         var closedSet = new HashSet<int2>();
 
+
+        //Where the key is the current node and the value is the parent node
+        var connections = new NativeHashMap<int2, PathNode>(30, Allocator.TempJob);
+
         //todo: Make this not a dictionary, but a native hashmap
-        var validNeighbours = new Dictionary<int2, PathNode>();
+        var validNeighbours = new NativeHashMap<int2, PathNode>(100, Allocator.TempJob);
         var invalidNeighbours = new HashSet<int2>();
 
 
@@ -61,7 +65,7 @@ public static class Pathfinding
 
             if (currentNode.position.Equals(end))
             {
-                return RetracePath(currentNode);
+                return RetracePath(currentNode, connections);
             }
 
 
@@ -82,8 +86,8 @@ public static class Pathfinding
                 {
                     gcost = newGCost,
                     hcost = newHCost,
-                    parent = currentNode
                 };
+                connections[newPathNode.position] = currentNode;
                 openSet.Enqueue(newPathNode);
             }
             if (visualizer != null)
@@ -138,7 +142,7 @@ public static class Pathfinding
         var rhs = new Dictionary<int2, float>();
         var cameFrom = new Dictionary<int2, int2>();
 
-        var validNeighbours = new Dictionary<int2, PathNode>();
+        var validNeighbours = new NativeHashMap<int2, PathNode>();
         var invalidNeighbours = new HashSet<int2>();
 
 
@@ -173,7 +177,7 @@ public static class Pathfinding
 
             foreach (PathNode neighbor in GetNeighbours(tilemap, current, validNeighbours, invalidNeighbours))
             {
-                if (neighbor == null || closedSet.Contains(neighbor.position))
+                if (closedSet.Contains(neighbor.position))
                 {
                     continue;
                 }
@@ -235,16 +239,16 @@ public static class Pathfinding
             System.Threading.Thread.Sleep(visualizer.delay);
         }
     }
-    private static Path RetracePath(PathNode endNode)
+    private static Path RetracePath(PathNode endNode, NativeHashMap<int2, PathNode> connections)
     {
         List<PathNode> path = new List<PathNode>();
         PathNode currentNode = endNode;
 
         Debug.Log($"Retracing path from {endNode.position}");
-        while (currentNode.parent != null)
+        while (connections.ContainsKey(currentNode.position))
         {
             path.Add(currentNode);
-            currentNode = currentNode.parent;
+            currentNode = connections[currentNode.position];
         }
 
         // Add the start node
@@ -314,7 +318,7 @@ public static class Pathfinding
     }
 
 
-    private static PathNode[] GetNeighbours(TilemapStruct tilemap, PathNode currentNode, Dictionary<int2, PathNode> validNeighbours, HashSet<int2> invalidNeighbours)
+    private static PathNode[] GetNeighbours(TilemapStruct tilemap, PathNode currentNode, NativeHashMap<int2, PathNode> validNeighbours, HashSet<int2> invalidNeighbours)
     {
         var neighbours = new List<PathNode>();
 

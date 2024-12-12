@@ -5,18 +5,16 @@ using UnityEngine.Tilemaps;
 
 
 
-public class PathNode
+public struct PathNode
 {
     public int2 position;
 
     public float gcost;
     public float hcost;
 
-    public PathNode parent;
-
     public float weight;
 
-    public float fcost => (gcost + hcost) * weight;
+    public float fcost => (gcost * 0.01f + hcost) * weight;
 
     public static TileNode PathNodeToTileNode(PathNode pathNode)
     {
@@ -34,18 +32,17 @@ public class PathNode
         position = pathNode.position;
         gcost = pathNode.gcost;
         hcost = pathNode.hcost;
-        parent = pathNode.parent;
         weight = pathNode.weight;
     }
 
-    public PathNode()
+    public PathNode(int2 position, float gcost, float hcost, float weight)
     {
-        position = new int2(0, 0);
-        gcost = 0;
-        hcost = 0;
-        parent = null;
-        weight = 1;
+        this.position = position;
+        this.gcost = gcost;
+        this.hcost = hcost;
+        this.weight = weight;
     }
+
 
     //Comparer
     public bool Equals(PathNode pathNode)
@@ -88,7 +85,6 @@ public struct TileNode
             position = tileNode.position,
             gcost = 0,
             hcost = 0,
-            parent = null,
             weight = tileNode.weight * (tileNode.isUsed ? 0 : 1)
         };
     }

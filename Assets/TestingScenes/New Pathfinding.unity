@@ -236,7 +236,6 @@ GameObject:
   - component: {fileID: 685090172}
   - component: {fileID: 685090174}
   - component: {fileID: 685090175}
-  - component: {fileID: 685090176}
   m_Layer: 0
   m_Name: Grid
   m_TagString: Untagged
@@ -308,21 +307,6 @@ MonoBehaviour:
   DrawResults: 0
   DrawResultsType: 0
   DrawResultsIndex: 0
---- !u!114 &685090176
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 685090170}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2da34f39fd0e4124ebc2dcc8d8b1c3b5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  showTileMapweights: 1
-  visualOffset: {x: 0.5, y: 0.5, z: 0}
-  delay: 10
 --- !u!1 &1141214888
 GameObject:
   m_ObjectHideFlags: 0
