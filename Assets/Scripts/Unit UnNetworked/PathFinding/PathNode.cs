@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Mathematics;
@@ -50,7 +51,28 @@ public struct PathNode
         return position.Equals(pathNode.position);
     }
 
+}
 
+public struct BurstPath : IDisposable
+{
+    public NativeArray<PathNode> path;
+    public int pathLength;
+    public float pathCost;
+
+    public BurstPath(NativeArray<PathNode> path, int pathLength, float pathCost)
+    {
+        this.path = path;
+        this.pathLength = pathLength;
+        this.pathCost = pathCost;
+    }
+
+    public void Dispose()
+    {
+        if (path.IsCreated)
+        {
+            path.Dispose();
+        }
+    }
 }
 
 public struct Path
@@ -64,6 +86,18 @@ public struct Path
         this.path = path;
         this.pathLength = pathLength;
         this.pathCost = pathCost;
+    }
+
+
+    public static Path BurstToPath(BurstPath burstPath)
+    {
+        PathNode[] path = new PathNode[burstPath.path.Length];
+        for (int i = 0; i < burstPath.path.Length; i++)
+        {
+            path[i] = burstPath.path[i];
+        }
+
+        return new Path(path, burstPath.pathLength, burstPath.pathCost);
     }
 }
 

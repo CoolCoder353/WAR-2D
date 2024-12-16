@@ -303,7 +303,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   worldStateManager: {fileID: 685090174}
   start: {x: -18, y: -21}
-  end: {x: -20, y: -70}
+  end: {x: -20, y: -32}
   DrawResults: 0
   DrawResultsType: 0
   DrawResultsIndex: 0

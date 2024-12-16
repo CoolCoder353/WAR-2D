@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System;
 using System.IO;
 using System.Text;
+using Unity.Collections;
 
 [System.Serializable]
 public struct TestResult
@@ -85,7 +86,7 @@ public class PathfinderTester : MonoBehaviour
             try
             {
                 // Run this in a separate thread to avoid freezing the editor
-                TestResult result = TestAStarPathfindingInternal(token);
+                TestResult result = TestAStarPathfindingInternal(token, Allocator.TempJob);
 
                 // Done testing, add the result to the list
                 results[PathfinderType.AStar].Add(result);
@@ -107,7 +108,7 @@ public class PathfinderTester : MonoBehaviour
         Debug.Log("Starting A* Pathfinding test");
         cancellationTokenSource = new CancellationTokenSource();
         CancellationToken token = cancellationTokenSource.Token;
-        TestResult result = TestAStarPathfindingInternal(token);
+        TestResult result = TestAStarPathfindingInternal(token, Allocator.Temp);
         results[PathfinderType.AStar].Add(result);
         Debug.Log("A* Pathfinding test complete");
         Debug.Log($"Result: Time:{result.timeTaken}ms, Path Length:{result.path.pathLength}, Start:{result.start}, End:{result.end}");
@@ -189,19 +190,20 @@ public class PathfinderTester : MonoBehaviour
         Debug.Log($"Results saved to {filePath}");
     }
 
-    private TestResult TestAStarPathfindingInternal(CancellationToken token)
+    private TestResult TestAStarPathfindingInternal(CancellationToken token, Allocator allication = Allocator.TempJob)
     {
         System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
         int2 intstart = new int2(start.x, start.y);
         int2 intend = new int2(end.x, end.y);
 
         stopwatch.Start();
-        Path path = Pathfinding.FindPath(worldStateManager.world, intstart, intend, hCostMethod: HCostMethod.Distance, visualizer: PathfindingVisualizer.Instance);
+        var world = worldStateManager.world;
+        Pathfinding.BurstFindPath(ref world, intstart.x, intstart.y, intend.x, intend.y, out BurstPath burstPath, allocator: allication);
         stopwatch.Stop();
 
         TestResult result = new TestResult();
         result.timeTaken = stopwatch.ElapsedMilliseconds;
-        result.path = path;
+        result.path = Path.BurstToPath(burstPath);
         result.start = start;
         result.end = end;
 

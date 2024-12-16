@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
-
 
 public enum HCostMethod
 {
@@ -20,31 +20,101 @@ public enum HCostMethod
     Distance,
 }
 
-
-
-
+[BurstCompile]
 public static class Pathfinding
 {
+    [BurstCompile]
+    public static void BurstFindPath(ref TilemapStruct tilemap, int startx, int starty, int endx, int endy, out BurstPath path, HCostMethod hCostMethod = HCostMethod.Euclidean, Allocator allocator = Allocator.Temp)
+    {
+        int2 start = new int2(startx, starty);
+        int2 end = new int2(endx, endy);
+        path = new BurstPath(new NativeArray<PathNode>(0, Allocator.Persistent), 0, 0);
+        // Check if the start and end are the same
+        if (start.Equals(end))
+        {
+            return;
+        }
+        //Random starting size for the open set, factor of 2 is a good starting point, closed set should be bigger ... because it should be.
+        NativePriorityQueue openSet = new NativePriorityQueue(32, allocator);
+        NativeHashSet<int2> closedSet = new NativeHashSet<int2>(128, allocator);
+
+        NativeHashMap<int2, PathNode> connections = new NativeHashMap<int2, PathNode>(32, allocator);
+        NativeHashMap<int2, PathNode> validNeighbours = new NativeHashMap<int2, PathNode>(64, allocator);
+
+        PathNode startNode = new PathNode()
+        {
+            position = start,
+            gcost = 0,
+            hcost = 0,
+        };
+        openSet.Enqueue(startNode);
+
+        while (openSet.Length > 0)
+        {
+            PathNode currentNode = openSet.Dequeue();
+            closedSet.Add(currentNode.position);
+
+            if (currentNode.position.Equals(end))
+            {
+                BurstRetracePath(ref currentNode, ref connections, out path, allocator);
+                openSet.Dispose();
+                closedSet.Dispose();
+                connections.Dispose();
+                validNeighbours.Dispose();
+                return;
+            }
+
+            NativeList<PathNode> neighbours = new NativeList<PathNode>(allocator);
+            BurstGetNeighbours(ref tilemap, ref currentNode, ref validNeighbours, ref closedSet, ref neighbours);
+            // NOTE: There is potential for a neighbour to be null, this should be accounted for but hasn't been yet
+
+
+            foreach (PathNode neighbour in neighbours)
+            {
+                if (closedSet.Contains(neighbour.position) || openSet.Contains(neighbour) || neighbour.position.Equals(currentNode.position) || neighbour.weight <= 0)
+                {
+                    continue;
+                }
+
+                float newGCost = currentNode.gcost + math.distance(currentNode.position, neighbour.position);
+                float newHCost = CalculateHCost(neighbour.position, end, hCostMethod);
+
+                PathNode newPathNode = new PathNode(neighbour)
+                {
+                    gcost = newGCost,
+                    hcost = newHCost,
+                };
+                connections[newPathNode.position] = currentNode;
+                openSet.Enqueue(newPathNode);
+            }
+            neighbours.Dispose();
+
+        }
+
+        openSet.Dispose();
+        closedSet.Dispose();
+        connections.Dispose();
+        validNeighbours.Dispose();
+
+        return;
+    }
+
     public static Path FindPath(TilemapStruct tilemap, int2 start, int2 end, HCostMethod hCostMethod = HCostMethod.Euclidean, int maxIterations = 1000, PathfindingVisualizer visualizer = null)
     {
         if (start.Equals(end))
         {
             return new Path(new PathNode[0], 0, 0);
         }
-        //Mulitply by -1 to make it chose the lowest fcost first
+        // Multiply by -1 to make it choose the lowest fcost first
         var openSet = new PriorityQueue<PathNode>(tilemap.width * tilemap.height, (x, y) => (-1 * x.fcost).CompareTo(-1 * y.fcost));
 
         var closedSet = new HashSet<int2>();
 
-
-        //Where the key is the current node and the value is the parent node
+        // Where the key is the current node and the value is the parent node
         var connections = new NativeHashMap<int2, PathNode>(30, Allocator.TempJob);
 
-        //todo: Make this not a dictionary, but a native hashmap
         var validNeighbours = new NativeHashMap<int2, PathNode>(100, Allocator.TempJob);
         var invalidNeighbours = new HashSet<int2>();
-
-
 
         var startNode = new PathNode()
         {
@@ -60,7 +130,7 @@ public static class Pathfinding
             PathNode currentNode = openSet.Dequeue();
             closedSet.Add(currentNode.position);
 
-            //Add the current node to the invalid neighbours list as well so we dont double lookup, this means that we may miss a faster path but it should be fine
+            // Add the current node to the invalid neighbours list as well so we don't double lookup, this means that we may miss a faster path but it should be fine
             invalidNeighbours.Add(currentNode.position);
 
             if (currentNode.position.Equals(end))
@@ -68,21 +138,18 @@ public static class Pathfinding
                 return RetracePath(currentNode, connections);
             }
 
-
             PathNode[] neighbours = GetNeighbours(tilemap, currentNode, validNeighbours, invalidNeighbours);
-            foreach (PathNode neigbour in neighbours)
+            foreach (PathNode neighbour in neighbours)
             {
-                if (closedSet.Contains(neigbour.position) || neigbour.position.Equals(currentNode.position) || neigbour.weight <= 0)
+                if (closedSet.Contains(neighbour.position) || neighbour.position.Equals(currentNode.position) || neighbour.weight <= 0)
                 {
                     continue;
                 }
 
-                float newGCost = currentNode.gcost + math.distance(currentNode.position, neigbour.position);
-                float newHCost = CalculateHCost(neigbour.position, end, hCostMethod);
+                float newGCost = currentNode.gcost + math.distance(currentNode.position, neighbour.position);
+                float newHCost = CalculateHCost(neighbour.position, end, hCostMethod);
 
-
-
-                PathNode newPathNode = new PathNode(neigbour)
+                PathNode newPathNode = new PathNode(neighbour)
                 {
                     gcost = newGCost,
                     hcost = newHCost,
@@ -127,8 +194,8 @@ public static class Pathfinding
         }
     }
 
-    //Calculate path using D* Lite
-    [Obsolete("This method is not working correctly, use FindPath instead")]
+    // Calculate path using D* Lite
+    [Obsolete("This method is not working correctly, use FindPath or BurstFindPath instead")]
     public static Path FindPathDLite(TilemapStruct tilemap, int2 start, int2 end, HCostMethod hCostMethod = HCostMethod.Euclidean, int maxIterations = 100000, PathfindingVisualizer visualizer = null)
     {
         if (start.Equals(end))
@@ -144,7 +211,6 @@ public static class Pathfinding
 
         var validNeighbours = new NativeHashMap<int2, PathNode>();
         var invalidNeighbours = new HashSet<int2>();
-
 
         gScore[start] = float.MaxValue;
         rhs[start] = 0;
@@ -172,8 +238,6 @@ public static class Pathfinding
             }
 
             closedSet.Add(current.position);
-
-
 
             foreach (PathNode neighbor in GetNeighbours(tilemap, current, validNeighbours, invalidNeighbours))
             {
@@ -228,17 +292,54 @@ public static class Pathfinding
         return new Path(path.ToArray(), path.Count, gScore[end]);
     }
 
-
     private static void UseVisualizer(PathfindingVisualizer visualizer, PriorityQueue<PathNode> openSet, HashSet<int2> closedSet)
     {
         if (visualizer != null)
         {
             visualizer.SetOpenMap(openSet);
             visualizer.SetClosedMap(closedSet);
-            // Delay the loop to make it easier to see the pathfinding 
+            // Delay the loop to make it easier to see the pathfinding, Do not use on the main thread 
             System.Threading.Thread.Sleep(visualizer.delay);
         }
     }
+
+    private static void BurstUseVisualizer(ref PathfindingVisualizer visualizer, NativePriorityQueue openSet, NativeHashSet<int2> closedSet)
+    {
+        if (visualizer != null)
+        {
+            visualizer.BurstSetOpenMap(openSet);
+            visualizer.BurstSetClosedMap(closedSet);
+            // Delay the loop to make it easier to see the pathfinding, Do not use on the main thread 
+            System.Threading.Thread.Sleep(visualizer.delay);
+        }
+    }
+
+    [BurstCompile]
+    private static void BurstRetracePath(ref PathNode endNode, ref NativeHashMap<int2, PathNode> connections, out BurstPath path, Allocator allocator = Allocator.Temp)
+    {
+        NativeList<PathNode> pathList = new NativeList<PathNode>(allocator);
+        PathNode currentNode = endNode;
+
+        while (connections.ContainsKey(currentNode.position))
+        {
+            pathList.Add(currentNode);
+            currentNode = connections[currentNode.position];
+        }
+
+        // Add the start node
+        pathList.Add(currentNode);
+
+        // Reverse the path
+        NativeArray<PathNode> reversedPath = new NativeArray<PathNode>(pathList.Length, Allocator.Persistent);
+        for (int i = 0; i < pathList.Length; i++)
+        {
+            reversedPath[i] = pathList[pathList.Length - 1 - i];
+        }
+
+        path = new BurstPath(reversedPath, pathList.Length, endNode.gcost);
+        pathList.Dispose();
+    }
+
     private static Path RetracePath(PathNode endNode, NativeHashMap<int2, PathNode> connections)
     {
         List<PathNode> path = new List<PathNode>();
@@ -317,6 +418,47 @@ public static class Pathfinding
         return math.distance(start, end);
     }
 
+    [BurstCompile]
+    private static void BurstGetNeighbours(ref TilemapStruct tilemap, ref PathNode currentNode, ref NativeHashMap<int2, PathNode> validNeighbours, ref NativeHashSet<int2> invalidNeighbours, ref NativeList<PathNode> neighbours)
+    {
+        neighbours.Clear();
+
+        for (int x = -1; x <= 1; x++)
+        {
+            for (int y = -1; y <= 1; y++)
+            {
+                if (x == 0 && y == 0)
+                {
+                    continue;
+                }
+
+                int2 neighbourPos = currentNode.position + new int2(x, y);
+                if (invalidNeighbours.Contains(neighbourPos))
+                {
+                    continue;
+                }
+
+                if (validNeighbours.TryGetValue(neighbourPos, out PathNode neighbourChecked))
+                {
+                    neighbours.Add(neighbourChecked);
+                }
+                else
+                {
+                    TileNode neighbourTile = tilemap.GetTile(neighbourPos);
+                    if (neighbourTile.isWalkable)
+                    {
+                        PathNode neighbour = TileNode.TileNodeToPathNode(neighbourTile);
+                        validNeighbours.Add(neighbourPos, neighbour);
+                        neighbours.Add(neighbour);
+                    }
+                    else
+                    {
+                        invalidNeighbours.Add(neighbourPos);
+                    }
+                }
+            }
+        }
+    }
 
     private static PathNode[] GetNeighbours(TilemapStruct tilemap, PathNode currentNode, NativeHashMap<int2, PathNode> validNeighbours, HashSet<int2> invalidNeighbours)
     {

@@ -1,6 +1,9 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using NaughtyAttributes;
+using Unity.Collections;
+using Unity.Collections.NotBurstCompatible;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -64,6 +67,8 @@ public class PathfindingVisualizer : MonoBehaviour
         lastOpenSet = openSet;
     }
 
+
+
     public void SetClosedMap(HashSet<int2> closedSet)
     {
         if (closedSet.Count == 0)
@@ -98,5 +103,31 @@ public class PathfindingVisualizer : MonoBehaviour
             openSet.Enqueue(node);
         }
 
+    }
+
+    public void BurstSetOpenMap(NativePriorityQueue openSet)
+    {
+        //Convert to a ordinary priority queue
+        PriorityQueue<PathNode> priorityQueue = new PriorityQueue<PathNode>();
+        while (openSet.Length > 0)
+        {
+            PathNode pathNode = openSet.Dequeue();
+            priorityQueue.Enqueue(pathNode);
+        }
+
+        SetOpenMap(priorityQueue);
+
+    }
+
+    public void BurstSetClosedMap(NativeHashSet<int2> closedSet)
+    {
+        HashSet<int2> closedHashSet = new HashSet<int2>();
+        NativeArray<int2> closedArray = closedSet.ToNativeArray(Allocator.Temp);
+        for (int i = 0; i < closedArray.Length; i++)
+        {
+            closedHashSet.Add(closedArray[i]);
+        }
+
+        SetClosedMap(closedHashSet);
     }
 }
