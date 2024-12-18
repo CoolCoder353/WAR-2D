@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Mathematics;
@@ -23,6 +24,28 @@ public enum HCostMethod
 [BurstCompile]
 public static class Pathfinding
 {
+
+
+    public static BurstPath BurstFindPath(TilemapStruct tilemap, int2 start, int2 end, HCostMethod hCostMethod = HCostMethod.Euclidean, bool doJob = true)
+    {
+        if (doJob)
+        {
+            Task.Run(() =>
+                    {
+                        BurstFindPath(ref tilemap, start.x, start.y, end.x, end.y, out BurstPath path, hCostMethod, Allocator.TempJob);
+                        return path;
+                    });
+
+            return new BurstPath(new NativeArray<PathNode>(0, Allocator.Persistent), 0, 0);
+        }
+        else
+        {
+            BurstFindPath(ref tilemap, start.x, start.y, end.x, end.y, out BurstPath path, hCostMethod, Allocator.Temp);
+            return path;
+        }
+
+    }
+
     [BurstCompile]
     public static void BurstFindPath(ref TilemapStruct tilemap, int startx, int starty, int endx, int endy, out BurstPath path, HCostMethod hCostMethod = HCostMethod.Euclidean, Allocator allocator = Allocator.Temp)
     {

@@ -12,9 +12,8 @@ public class WorldStateManager : MonoBehaviour
 
     [Tooltip("The maximum amount of tiles that can be in a chunk, side length")]
     public int maxChunkSize = 10;
-    public NativeHashMap<int2, WorldChunk> world { get; private set; }
+    public TilemapStruct world { get; private set; }
 
-    public Grid grid;
     public Tilemap WalkableTilemap;
     public Tilemap UnwalkableTilemap;
 
@@ -32,9 +31,6 @@ public class WorldStateManager : MonoBehaviour
     private void Awake()
     {
 
-        int initalWorldSize = WalkableTilemap.cellBounds.size.x * WalkableTilemap.cellBounds.size.y / (maxChunkSize * maxChunkSize);
-
-        world = new NativeHashMap<int2, WorldChunk>(initalWorldSize, Allocator.Persistent);
         if (Instance == null)
         {
             Instance = this;
@@ -50,39 +46,11 @@ public class WorldStateManager : MonoBehaviour
         //Also check if the game is running
         if (showTileMapweights && Application.isPlaying)
         {
-            if (DrawAllChunks)
-            {
-                DrawAllChunksGizmos();
-            }
-            else
-            {
-                DrawChunkGizmos(DrawChunkX, DrawChunkY);
-            }
+            DrawTileMap(world.tiles);
         }
     }
 
-    private void DrawAllChunksGizmos()
-    {
-        foreach (KVPair<int2, WorldChunk> chunkpair in world)
-        {
-            DrawChunkGizmos(chunkpair.Key.x, chunkpair.Key.y);
-        }
-    }
 
-    private void DrawChunkGizmos(int drawChunkX, int drawChunkY)
-    {
-        WorldChunk chunk = world[new int2(drawChunkX, drawChunkY)];
-        if (DrawTiles && Application.isPlaying) DrawTileMap(chunk.tilemap.tiles);
-        float2 worldpos = ChunkToWorld(chunk.position);
-
-
-        Vector3 position = new Vector3(worldpos.x, worldpos.y, 0) + visualOffset;
-        int chunkSize = maxChunkSize + 1;
-
-        //Draw lines on the permemeter instead of a wirecube as these overlap in funny ways
-        Gizmos.color = Color.red;
-        Gizmos.DrawWireCube(position, new Vector3(chunkSize, chunkSize, 0));
-    }
 
     private void DrawTileMap(NativeHashMap<int2, TileNode> tilemap)
     {
@@ -101,71 +69,49 @@ public class WorldStateManager : MonoBehaviour
         tilemapbounds = bounds;
         TileBase[] allTiles = WalkableTilemap.GetTilesBlock(bounds);
 
+        //Add 2 to the size to account for the border of the chunk
+        NativeHashMap<int2, TileNode> tiles = new NativeHashMap<int2, TileNode>((maxChunkSize + 1) * (maxChunkSize + 1), Allocator.Persistent);
 
-        int chunksWidth = Mathf.CeilToInt((float)bounds.size.x / (float)maxChunkSize);
-        int chunksHeight = Mathf.CeilToInt((float)bounds.size.y / (float)maxChunkSize);
-
-        int numberOfChunks = chunksWidth * chunksHeight;
-        for (int x = 0; x < chunksWidth; x++)
+        //Go through all the tiles in the chunk
+        for (int i = 0; i < bounds.size.x + 1; i++)
         {
-            for (int y = 0; y < chunksHeight; y++)
+            for (int j = 0; j < bounds.size.y + 1; j++)
             {
-                int2 chunkPosition = new int2(x, y);
+                int tilex = i + bounds.position.x - 1;
+                int tiley = j + bounds.position.y - 1;
+                Vector3Int localPlace = new Vector3Int(tilex, tiley, 0);
+                Vector3 worldPosition = WalkableTilemap.CellToWorld(localPlace);
+                int2 worldPlace = new int2((int)worldPosition.x, (int)worldPosition.y);
 
-                //Add 2 to the size to account for the border of the chunk
-                NativeHashMap<int2, TileNode> tiles = new NativeHashMap<int2, TileNode>((maxChunkSize + 1) * (maxChunkSize + 1), Allocator.Persistent);
+                int weight = 1;
 
-                //Go through all the tiles in the chunk
-                for (int i = 0; i < maxChunkSize + 1; i++)
+                if (UnwalkableTilemap.GetTile(localPlace) != null)
                 {
-                    for (int j = 0; j < maxChunkSize + 1; j++)
-                    {
-                        int tilex = i + x * maxChunkSize + bounds.position.x - 1;
-                        int tiley = j + y * maxChunkSize + bounds.position.y - 1;
-                        Vector3Int localPlace = new Vector3Int(tilex, tiley, 0);
-                        Vector3 worldPosition = WalkableTilemap.CellToWorld(localPlace);
-                        int2 worldPlace = new int2((int)worldPosition.x, (int)worldPosition.y);
-
-                        int weight = 1;
-
-                        if (UnwalkableTilemap.GetTile(localPlace) != null)
-                        {
-                            weight = 0;
-                        }
-
-                        TileNode tileNode = new TileNode
-                        {
-                            position = worldPlace,
-                            weight = weight,
-                            used = 0
-                        };
-
-                        tiles[worldPlace] = tileNode;
-                    }
+                    weight = 0;
                 }
 
-                TilemapStruct tilemap = new TilemapStruct
+                TileNode tileNode = new TileNode
                 {
-                    tiles = tiles,
-                    width = maxChunkSize + 1,
-                    height = maxChunkSize + 1
+                    position = worldPlace,
+                    weight = weight,
+                    used = 0
                 };
 
-                WorldChunk chunk = new WorldChunk
-                {
-                    position = chunkPosition,
-                    tilemap = tilemap,
-
-                };
-
-                world.Add(chunkPosition, chunk);
+                tiles[worldPlace] = tileNode;
             }
         }
 
+        TilemapStruct tilemap = new TilemapStruct
+        {
+            tiles = tiles,
+            width = maxChunkSize + 1,
+            height = maxChunkSize + 1
+        };
 
 
-
+        world = tilemap;
     }
+
 
     public int2 WorldToChunk(float2 worldPositionFloat)
     {
@@ -182,38 +128,14 @@ public class WorldStateManager : MonoBehaviour
     public TileNode GetTile(int2 position)
     {
         int2 worldToChunk = WorldToChunk(position);
-        return world[worldToChunk].tilemap.GetTile(position);
+        return world.GetTile(position);
     }
     public void SetTile(int2 position, TileNode tile)
     {
         int2 worldToChunk = WorldToChunk(position);
-        world[worldToChunk].tilemap.SetTile(position, tile);
+        world.SetTile(position, tile);
     }
 
-
-    //TODO: Change the entity to a reference to the player id the entity belongs to
-    public void LockNode(int2 position, int entity = 1)
-    {
-        TileNode tile = GetTile(position);
-        tile.used = entity;
-
-        SetTile(position, tile);
-    }
-
-    public void UnlockNode(int2 position)
-    {
-        TileNode tile = GetTile(position);
-        tile.used = 0;
-
-        SetTile(position, tile);
-
-    }
-
-    public bool IsNodeLocked(int2 position)
-    {
-        TileNode tile = GetTile(position);
-        return tile.isUsed;
-    }
 
 
 }

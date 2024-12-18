@@ -153,7 +153,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   prefab: {fileID: 4734092016166687174, guid: 110c15dda9811184d894a818ae9d2411, type: 3}
   position: {x: -25.41, y: -8.22}
-  count: 2
+  count: 10000
 --- !u!4 &873296686
 Transform:
   m_ObjectHideFlags: 0

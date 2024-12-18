@@ -43,6 +43,7 @@ public class UnitTestingSpawner : MonoBehaviour
 
     private void SpawnUnits(int count)
     {
+        Debug.Log($"Spawner '{spawnerData}' spawning {count} units");
         spawnerData.count += count;
     }
 

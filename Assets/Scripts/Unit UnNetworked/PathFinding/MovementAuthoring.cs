@@ -17,10 +17,6 @@ public struct MovementComponent : IComponentData
 
     public float currentRotationSpeed;
 
-    public int2 savedPositionOne;
-    public int2 savedPositionTwo;
-    public bool hasSavedPositionOne;
-    public bool hasSavedPositionTwo;
 
 
 }

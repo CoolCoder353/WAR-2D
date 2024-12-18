@@ -114,21 +114,11 @@ public class UnitCommander : MonoBehaviour
             return;
         }
 
-        Path path = Pathfinding.FindPath(WorldStateManager.Instance.tilemap, startInt, goal);
+        Path path = Path.BurstToPath(Pathfinding.BurstFindPath(WorldStateManager.Instance.world, startInt, goal, doJob: false));
         lastPath = path;
+
         if (path.pathLength > 0)
         {
-
-            //Unlock any nodes the unit has locked so that we dont perma lock them
-            MovementComponent movementComponent = EntityManager.GetComponentData<MovementComponent>(entity);
-            if (movementComponent.hasSavedPositionOne)
-            {
-                WorldStateManager.Instance.UnlockNode(movementComponent.savedPositionOne);
-            }
-            if (movementComponent.hasSavedPositionTwo)
-            {
-                WorldStateManager.Instance.UnlockNode(movementComponent.savedPositionTwo);
-            }
 
             //Save the path to the entity to be used by the movement system
             DynamicBuffer<PathPoint> pathBuffer = EntityManager.GetBuffer<PathPoint>(entity);

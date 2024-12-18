@@ -152256,6 +152256,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1718872245}
+  - component: {fileID: 1718872246}
   m_Layer: 0
   m_Name: Commander
   m_TagString: Untagged
@@ -152279,6 +152280,20 @@ Transform:
   - {fileID: 256588533}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1718872246
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1718872243}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2f958779b2a993b4581ae1ea7f13c4d3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  selectionBox: {fileID: 256588531}
+  DisplayLastPath: 0
 --- !u!1 &1917098531
 GameObject:
   m_ObjectHideFlags: 0
@@ -152310,10 +152325,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   maxChunkSize: 11
-  grid: {fileID: 1917098533}
   WalkableTilemap: {fileID: 1290068782}
   UnwalkableTilemap: {fileID: 468383648}
-  showTileMapweights: 1
+  showTileMapweights: 0
   visualOffset: {x: 0.5, y: 0.5, z: 0}
   DrawAllChunks: 0
   DrawTiles: 0
