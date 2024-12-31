@@ -1,6 +1,7 @@
 using System;
 using Mirror;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 [System.Serializable]
 public class ClientPlayer : NetworkBehaviour
@@ -19,8 +20,13 @@ public class ClientPlayer : NetworkBehaviour
         //Find the lobby system
         lobbySystem = FindObjectOfType<LobbySystem>();
 
+        //Add the hook to the scene change event
+        SceneManager.sceneLoaded += OnSceneChangedEvent;
+
         if (lobbySystem != null) { lobbySystem.AddClientPlayer(this, addNicknameListener: ClientCanEdit(), addStartGameListener: ClientIsServerOwner()); }
     }
+
+
 
     [TargetRpc]
     public void SetServerPlayer(NetworkConnectionToClient connection, string playerData)
@@ -118,5 +124,42 @@ public class ClientPlayer : NetworkBehaviour
         lobbySystem.UpdateClientPlayerNickname(this, newNickname);
 
     }
+
+
+
+    //TODO Hook this to the server changing scenes, I think there is a handle we can connect to somewhere but need to find it. 
+    //TODO Try looking in the GameManger for the scene change event.
+    [Client]
+    public void OnSceneChangedEvent(Scene newScene, LoadSceneMode sceneMode)
+    {
+
+        Debug.Log($"Scene changed to {newScene.name} with mode {sceneMode}");
+        //Setup the hooks to the visable units
+        if (serverPlayer != null && serverPlayer.visuableUnits != null && UnitCommander.Instance != null)
+        {
+            serverPlayer.visuableUnits.OnAdd += (int index) =>
+            {
+                ClientUnit unit = serverPlayer.visuableUnits[index];
+                UnitCommander.Instance.UnitListInsert(index, unit);
+
+            };
+            serverPlayer.visuableUnits.OnInsert += (int index) =>
+            {
+                ClientUnit unit = serverPlayer.visuableUnits[index];
+                UnitCommander.Instance.UnitListInsert(index, unit);
+            };
+            serverPlayer.visuableUnits.OnSet += (int index, ClientUnit old) =>
+            {
+                ClientUnit unit = serverPlayer.visuableUnits[index];
+                UnitCommander.Instance.UnitListSet(index, old, unit);
+            };
+
+            serverPlayer.visuableUnits.OnRemove += UnitCommander.Instance.UnitListRemove;
+
+            serverPlayer.visuableUnits.OnClear += UnitCommander.Instance.UnitListClear;
+        }
+    }
+
+
 
 }

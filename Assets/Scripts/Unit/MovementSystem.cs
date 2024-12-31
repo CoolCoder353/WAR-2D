@@ -1,3 +1,4 @@
+using Mirror;
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -12,7 +13,7 @@ public partial struct MovementSystem : ISystem
         state.RequireForUpdate<MovementComponent>();
     }
 
-    [BurstCompile]
+    [BurstCompile, ServerCallback]
     public void OnUpdate(ref SystemState state)
     {
         foreach (var (movementComp, localTransform, entity) in SystemAPI.Query<RefRW<MovementComponent>, RefRW<LocalTransform>>().WithEntityAccess())

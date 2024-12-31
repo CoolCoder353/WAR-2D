@@ -33,6 +33,8 @@ public class ServerData
 {
     public float resources = 0;
 
+    public readonly SyncList<ClientUnit> visuableUnits = new SyncList<ClientUnit>();
+
     public static string Serialize(ServerData data)
     {
         return JsonConvert.SerializeObject(data);

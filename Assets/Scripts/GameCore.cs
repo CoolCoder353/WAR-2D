@@ -172,9 +172,11 @@ public class GameCore : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void Cmd_StartGame(NetworkConnectionToClient connection = null)
     {
+        Debug.Log("Starting game");
         if (IsServerOwner(connection))
         {
-            GameManager.Instance.ServerChangeScene("Map_1");
+            Debug.Log("Changing scene");
+            GameManager.Instance.ServerChangeScene("Map_2");
         }
     }
 }

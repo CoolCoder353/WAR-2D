@@ -1,6 +1,7 @@
 using UnityEngine;
 using Unity.Entities;
 using Unity.Mathematics;
+using Mirror;
 
 public class SpawnerAuthoring : MonoBehaviour
 {
@@ -23,9 +24,11 @@ public struct SpawnerData : IComponentData
     public int count;
 }
 
+
 public class SpanwerBaker : Baker<SpawnerAuthoring>
 {
 
+    [ServerCallback]
     public override void Bake(SpawnerAuthoring spawnerAuthoring)
     {
         var entity = GetEntity(spawnerAuthoring, TransformUsageFlags.Dynamic);

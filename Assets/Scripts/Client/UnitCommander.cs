@@ -1,23 +1,26 @@
-using Unity.Burst;
+using System;
+using System.Collections.Generic;
+using Mirror;
 using Unity.Collections;
-using Unity.Entities;
-using Unity.Jobs;
 using Unity.Mathematics;
-using Unity.Transforms;
 using UnityEngine;
 
 public class UnitCommander : MonoBehaviour
 {
     public static UnitCommander Instance { get; private set; }
-    public NativeList<Entity> SelectedUnits = new(Allocator.Persistent);
-    private EntityManager EntityManager => World.DefaultGameObjectInjectionWorld.EntityManager;
+
+    public int2 visualAdditionalRange = new int2(5, 5);
+
     private int2 startcorner;
     private int2 endcorner;
 
     public GameObject selectionBox;
 
-    public bool DisplayLastPath = false;
-    private Path lastPath;
+    private List<ClientUnit> unitsVisable = new List<ClientUnit>();
+
+
+    private Dictionary<FixedString64Bytes, GameObject> unitGameObjects = new Dictionary<FixedString64Bytes, GameObject>();
+
 
     private void Awake()
     {
@@ -28,18 +31,6 @@ public class UnitCommander : MonoBehaviour
         else
         {
             Destroy(this);
-        }
-    }
-
-    private void OnDrawGizmos()
-    {
-        if (DisplayLastPath && lastPath.pathLength != 0 && Application.isPlaying)
-        {
-            foreach (PathNode node in lastPath.path)
-            {
-                Gizmos.color = Color.red;
-                Gizmos.DrawWireCube(new Vector3(node.position.x + 0.5f, node.position.y + 0.5f, 0), new Vector3(1, 1, 0));
-            }
         }
     }
 
@@ -54,8 +45,18 @@ public class UnitCommander : MonoBehaviour
         worldPosition.z = 0;
         return worldPosition;
     }
+
+    [ClientCallback]
     public void Update()
     {
+
+        //This stops the client from disconnecting if the worldstatemanager has not loaded yet or the client is not connected, i.e the client is loading in or out
+        if (!NetworkClient.isConnected || WorldStateManager.Instance == null)
+        {
+            return;
+        }
+
+
         //Mouse down, start selection
         if (Input.GetMouseButtonDown(0))
         {
@@ -66,12 +67,15 @@ public class UnitCommander : MonoBehaviour
 
         if (Input.GetMouseButton(0))
         {
+
             Vector3 worldPosition = GetMouseWorldPosition();
             Vector3 startPosition = new Vector3(startcorner.x, startcorner.y, 0);
             Vector3 center = (worldPosition + startPosition) / 2;
             selectionBox.transform.position = center;
             Vector3 size = new Vector3(Mathf.Abs(worldPosition.x - startPosition.x), Mathf.Abs(worldPosition.y - startPosition.y), 1);
             selectionBox.transform.localScale = size;
+
+
 
         }
 
@@ -82,107 +86,85 @@ public class UnitCommander : MonoBehaviour
             Vector3 worldPosition = GetMouseWorldPosition();
             endcorner = new int2((int)worldPosition.x, (int)worldPosition.y);
 
-            SelectedUnits = FindEntitiesInBox(startcorner, endcorner);
         }
 
         if (Input.GetMouseButtonDown(1))
         {
             Vector3 worldPosition = GetMouseWorldPosition();
             int2 goal = new int2((int)worldPosition.x, (int)worldPosition.y);
-            Debug.Log($"Moving {SelectedUnits.Length} units to {goal.x},{goal.y}");
-            foreach (Entity entity in SelectedUnits)
-            {
-                MoveUnit(entity, goal);
-            }
-        }
-    }
-    //This will need to be burst compiled and run through the job system
-    public NativeList<Entity> FindEntitiesInBox(int2 startcorner, int2 endcorner)
-    {
-
-        NativeList<Entity> entitiesInBox = FindEntitiesInBoxJobMethod(startcorner, endcorner);
-        return entitiesInBox;
-    }
-    public void MoveUnit(Entity entity, int2 goal)
-    {
-        LocalTransform localTransform = EntityManager.GetComponentData<LocalTransform>(entity);
-        float2 start = localTransform.Position.xy;
-        int2 startInt = new((int)start.x, (int)start.y);
-
-        if (startInt.Equals(goal))
-        {
-            return;
+            Debug.Log($"Moving units in box {startcorner}, {endcorner} units to {goal.x},{goal.y} -> client side");
+            WorldStateManager.Instance.CmdMoveUnits(goal, startcorner, endcorner);
         }
 
-        Path path = Path.BurstToPath(Pathfinding.BurstFindPath(WorldStateManager.Instance.world, startInt, goal, doJob: false));
-        lastPath = path;
+        //Get where the camera is looking at in the scene
+        Vector3 cameraPosition = Camera.main.transform.position;
+        Vector3 cameraStart = Camera.main.ScreenToWorldPoint(new Vector3(Camera.main.pixelWidth, Camera.main.pixelHeight, Camera.main.transform.position.z));
+        Vector3 cameraPositionEnd = Camera.main.ScreenToWorldPoint(new Vector3(0, 0, Camera.main.transform.position.z));
 
-        if (path.pathLength > 0)
-        {
+        //Get the corners of the camera
+        Vector3 cameraCorner1 = new Vector3(cameraStart.x, cameraStart.y, 0) + new Vector3(-visualAdditionalRange.x, -visualAdditionalRange.y, 0);
+        Vector3 cameraCorner2 = new Vector3(cameraPositionEnd.x, cameraPositionEnd.y, 0) + new Vector3(visualAdditionalRange.x, visualAdditionalRange.y, 0);
 
-            //Save the path to the entity to be used by the movement system
-            DynamicBuffer<PathPoint> pathBuffer = EntityManager.GetBuffer<PathPoint>(entity);
-            pathBuffer.Clear();
-            foreach (PathNode node in path.path)
-            {
-                pathBuffer.Add(new PathPoint { position = node.position });
-            }
-        }
+        int2 corner1 = new int2((int)cameraCorner1.x, (int)cameraCorner1.y);
+        int2 corner2 = new int2((int)cameraCorner2.x, (int)cameraCorner2.y);
 
+        // // Place the selection box at this point to show the box the server thinks the client can see for testing purposes
+
+        // selectionBox.transform.position = (cameraCorner1 + cameraCorner2) / 2;
+        // selectionBox.transform.localScale = new Vector3(Mathf.Abs(corner2.x - corner1.x), Mathf.Abs(corner2.y - corner1.y), 1);
+
+        TIM.Console.Log($"Updating client view to {corner1} {corner2}", TIM.MessageType.Network);
+        TIM.Console.Log($"Using WorldStateManager {WorldStateManager.Instance}", TIM.MessageType.Network);
+
+        WorldStateManager.Instance.UpdateClientView(corner1, corner2);
     }
 
-    [BurstCompile]
-    public struct FindEntitiesInBoxJob : IJob
+    [Client]
+    private void UpdateUnit(ClientUnit unit)
     {
-        [ReadOnly] public NativeArray<Entity> entities;
-        [ReadOnly] public NativeArray<LocalTransform> transforms;
-        public int2 startcorner;
-        public int2 endcorner;
-        public NativeList<Entity> result;
-
-        public void Execute()
-        {
-            int2 minCorner = math.min(startcorner, endcorner);
-            int2 maxCorner = math.max(startcorner, endcorner);
-
-            for (int i = 0; i < entities.Length; i++)
-            {
-                if (transforms[i].Position.x >= minCorner.x && transforms[i].Position.x <= maxCorner.x &&
-                    transforms[i].Position.y >= minCorner.y && transforms[i].Position.y <= maxCorner.y)
-                {
-                    result.Add(entities[i]);
-                }
-            }
-        }
+        Debug.Log($"Updating unit {unit}");
     }
-
-    public NativeList<Entity> FindEntitiesInBoxJobMethod(int2 startcorner, int2 endcorner)
+    [Client]
+    private void AddUnit(ClientUnit unit)
     {
-        NativeList<Entity> entitiesInBox = new(Allocator.TempJob);
-
-        var query = EntityManager.CreateEntityQuery(ComponentType.ReadOnly<MovementComponent>(), ComponentType.ReadOnly<LocalTransform>());
-        NativeArray<Entity> entities = query.ToEntityArray(Allocator.TempJob);
-        NativeArray<LocalTransform> transforms = query.ToComponentDataArray<LocalTransform>(Allocator.TempJob);
-        FindEntitiesInBoxJob job = new()
-        {
-            entities = entities,
-            transforms = transforms,
-            startcorner = startcorner,
-            endcorner = endcorner,
-            result = entitiesInBox
-        };
-
-        JobHandle handle = job.Schedule();
-        handle.Complete();
-
-        entities.Dispose();
-        transforms.Dispose();
-
-        // Ensure the entitiesInBox is disposed of properly
-        NativeList<Entity> result = new NativeList<Entity>(entitiesInBox.Length, Allocator.Persistent);
-        result.AddRange(entitiesInBox.AsArray());
-        entitiesInBox.Dispose();
-
-        return result;
+        Debug.Log($"Adding unit {unit}");
     }
+    [Client]
+    private void RemoveUnit(ClientUnit unit)
+    {
+        Debug.Log($"Removing unit {unit}");
+    }
+
+
+
+    //This is called when a unit is added or inserted into the list, returning the index of the list and the unit itself
+    [Client]
+    public void UnitListInsert(int index, ClientUnit unit)
+    {
+        throw new NotImplementedException();
+    }
+
+    //Called when a unit is removed from the list, returning the index of the list and the old unit itself
+    [Client]
+    public void UnitListRemove(int index, ClientUnit OldUnit)
+    {
+        throw new NotImplementedException();
+    }
+
+    //Called when the enitre list is cleared
+    [Client]
+    public void UnitListClear()
+    {
+        throw new NotImplementedException();
+    }
+
+    //Called when an item in the list is set to a new value
+    //Note: I am not sure whether this will be called if something inside the object is changed, or if the object itself is changed
+    [Client]
+    public void UnitListSet(int index, ClientUnit oldUnit, ClientUnit newUnit)
+    {
+        throw new NotImplementedException();
+    }
+
+
 }

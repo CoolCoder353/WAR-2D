@@ -1,18 +1,24 @@
 using System;
+using System.Collections.Generic;
+using Mirror;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Jobs;
 using Unity.Mathematics;
+using Unity.Transforms;
 using UnityEngine;
 using UnityEngine.Tilemaps;
 
 
-public class WorldStateManager : MonoBehaviour
+public class WorldStateManager : NetworkBehaviour
 {
     public static WorldStateManager Instance { get; private set; }
 
-    [Tooltip("The maximum amount of tiles that can be in a chunk, side length")]
-    public int maxChunkSize = 10;
     public TilemapStruct world { get; private set; }
+
+    private EntityManager EntityManager => World.DefaultGameObjectInjectionWorld.EntityManager;
+
 
     public Tilemap WalkableTilemap;
     public Tilemap UnwalkableTilemap;
@@ -23,16 +29,17 @@ public class WorldStateManager : MonoBehaviour
 
     public Vector3 visualOffset = new Vector3(0.5f, 0.5f, 0);
 
-    public bool DrawAllChunks = false;
-    public bool DrawTiles = false;
-    public int DrawChunkX = 0;
-    public int DrawChunkY = 0;
+    private Dictionary<ClientPlayer, (int2, int2)> playerView = new Dictionary<ClientPlayer, (int2, int2)>();
+
+
+    private Dictionary<FixedString64Bytes, Entity> Units = new Dictionary<FixedString64Bytes, Entity>();
 
     private void Awake()
     {
 
         if (Instance == null)
         {
+            Debug.LogWarning("WorldStateManager is null. Setting ourself as the instance.");
             Instance = this;
             GenerateTileMap();
         }
@@ -41,6 +48,8 @@ public class WorldStateManager : MonoBehaviour
             Destroy(this);
         }
     }
+
+    [ServerCallback]
     public void OnDrawGizmos()
     {
         //Also check if the game is running
@@ -52,6 +61,13 @@ public class WorldStateManager : MonoBehaviour
 
 
 
+    [ServerCallback]
+    public void FixedUpdate()
+    {
+        UpdatePlayerViews();
+    }
+
+    [Server]
     private void DrawTileMap(NativeHashMap<int2, TileNode> tilemap)
     {
         foreach (KVPair<int2, TileNode> tilepair in tilemap)
@@ -63,14 +79,13 @@ public class WorldStateManager : MonoBehaviour
         }
     }
 
+    [ServerCallback]
     private void GenerateTileMap()
     {
         BoundsInt bounds = WalkableTilemap.cellBounds;
         tilemapbounds = bounds;
-        TileBase[] allTiles = WalkableTilemap.GetTilesBlock(bounds);
-
         //Add 2 to the size to account for the border of the chunk
-        NativeHashMap<int2, TileNode> tiles = new NativeHashMap<int2, TileNode>((maxChunkSize + 1) * (maxChunkSize + 1), Allocator.Persistent);
+        NativeHashMap<int2, TileNode> tiles = new NativeHashMap<int2, TileNode>((bounds.size.x + 1) * (bounds.size.y + 1), Allocator.Persistent);
 
         //Go through all the tiles in the chunk
         for (int i = 0; i < bounds.size.x + 1; i++)
@@ -104,8 +119,8 @@ public class WorldStateManager : MonoBehaviour
         TilemapStruct tilemap = new TilemapStruct
         {
             tiles = tiles,
-            width = maxChunkSize + 1,
-            height = maxChunkSize + 1
+            width = bounds.size.x + 1,
+            height = bounds.size.y + 1
         };
 
 
@@ -113,27 +128,185 @@ public class WorldStateManager : MonoBehaviour
     }
 
 
-    public int2 WorldToChunk(float2 worldPositionFloat)
-    {
-        int2 worldPosition = new int2(Mathf.RoundToInt(worldPositionFloat.x), Mathf.RoundToInt(worldPositionFloat.y));
-
-        return new int2(worldPosition.x / maxChunkSize - tilemapbounds.position.x - maxChunkSize / 2, worldPosition.y / maxChunkSize - tilemapbounds.position.y - maxChunkSize / 2);
-    }
-
-    public float2 ChunkToWorld(int2 chunkPosition)
-    {
-        //Remove one to center the chunk, 
-        return new float2(chunkPosition.x * maxChunkSize + tilemapbounds.position.x + maxChunkSize / 2f, chunkPosition.y * maxChunkSize + tilemapbounds.position.y + maxChunkSize / 2f) - new float2(1, 1);
-    }
+    [Server]
     public TileNode GetTile(int2 position)
     {
-        int2 worldToChunk = WorldToChunk(position);
         return world.GetTile(position);
     }
+    [Server]
     public void SetTile(int2 position, TileNode tile)
     {
-        int2 worldToChunk = WorldToChunk(position);
         world.SetTile(position, tile);
+    }
+
+
+    //<section>Units
+
+    [Command(requiresAuthority = false)]
+    public void UpdateClientView(int2 startcorner, int2 endcorner, NetworkConnectionToClient sender = null)
+    {
+        playerView[sender.identity.GetComponent<ClientPlayer>()] = (startcorner, endcorner);
+
+    }
+
+
+    [Server]
+    public void UpdatePlayerViews()
+    {
+        foreach (KeyValuePair<ClientPlayer, (int2, int2)> player in playerView)
+        {
+            int2 startcorner = player.Value.Item1;
+            int2 endcorner = player.Value.Item2;
+
+            NativeList<Entity> entitiesInBox = FindEntitiesInBox(startcorner, endcorner);
+            List<ClientUnit> clientUnits = new List<ClientUnit>();
+            foreach (Entity entity in entitiesInBox)
+            {
+                ClientUnit clientUnit = EntityManager.GetComponentData<ClientUnit>(entity);
+                clientUnit.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
+
+                clientUnits.Add(clientUnit);
+            }
+            entitiesInBox.Dispose();
+
+            Debug.Log($"Found {clientUnits.Count} units in box. Sending back to client.");
+
+            //TODO: This will mean that each unit is added and removed every time the view is updated, this is not optimal
+            //We should instead only add and remove units that are not already in the list
+            player.Key.serverPlayer.visuableUnits.Clear();
+            player.Key.serverPlayer.visuableUnits.AddRange(clientUnits);
+
+        }
+    }
+
+    [Server]
+    public void AddUnit(Entity entity, FixedString64Bytes id)
+    {
+        Units.Add(id, entity);
+    }
+
+
+
+    //TODO: Change this to be more effecient, we are going through all the units TWICE!
+    [Command(requiresAuthority = false)]
+    public void CmdMoveUnits(int2 goal, int2 startcorner, int2 endcorner)
+    {
+        Debug.Log("Moving units at server");
+        List<ClientUnit> units = new List<ClientUnit>();
+
+        NativeList<Entity> entitiesInBox = FindEntitiesInBox(startcorner, endcorner);
+        foreach (Entity entity in entitiesInBox)
+        {
+            ClientUnit clientUnit = EntityManager.GetComponentData<ClientUnit>(entity);
+            clientUnit.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
+
+            units.Add(clientUnit);
+        }
+        foreach (ClientUnit unit in units)
+        {
+            //TODO: Make sure we are not moving units that are not owned by the player
+
+            if (Units.TryGetValue(unit.id, out Entity entity))
+            {
+                MoveUnit(entity, goal);
+            }
+            else
+            {
+                Debug.LogWarning($"Unit with id {unit.id} not found when trying to move units.");
+            }
+        }
+        entitiesInBox.Dispose();
+    }
+
+    //This will need to be burst compiled and run through the job system
+    [Server]
+    private NativeList<Entity> FindEntitiesInBox(int2 startcorner, int2 endcorner)
+    {
+        NativeList<Entity> entitiesInBox = FindEntitiesInBoxJobMethod(startcorner, endcorner);
+        return entitiesInBox;
+    }
+    [Server]
+    private void MoveUnit(Entity entity, int2 goal)
+    {
+        LocalTransform localTransform = EntityManager.GetComponentData<LocalTransform>(entity);
+        float2 start = localTransform.Position.xy;
+        int2 startInt = new((int)start.x, (int)start.y);
+
+        if (startInt.Equals(goal))
+        {
+            return;
+        }
+
+        Path path = Path.BurstToPath(Pathfinding.BurstFindPath(WorldStateManager.Instance.world, startInt, goal, doJob: false));
+
+
+        if (path.pathLength > 0)
+        {
+
+            //Save the path to the entity to be used by the movement system
+            DynamicBuffer<PathPoint> pathBuffer = EntityManager.GetBuffer<PathPoint>(entity);
+            pathBuffer.Clear();
+            foreach (PathNode node in path.path)
+            {
+                pathBuffer.Add(new PathPoint { position = node.position });
+            }
+        }
+
+    }
+
+    [BurstCompile]
+    public struct FindEntitiesInBoxJob : IJob
+    {
+        [Unity.Collections.ReadOnly] public NativeArray<Entity> entities;
+        [Unity.Collections.ReadOnly] public NativeArray<LocalTransform> transforms;
+        public int2 startcorner;
+        public int2 endcorner;
+        public NativeList<Entity> result;
+
+        public void Execute()
+        {
+            int2 minCorner = math.min(startcorner, endcorner);
+            int2 maxCorner = math.max(startcorner, endcorner);
+
+            for (int i = 0; i < entities.Length; i++)
+            {
+                if (transforms[i].Position.x >= minCorner.x && transforms[i].Position.x <= maxCorner.x &&
+                    transforms[i].Position.y >= minCorner.y && transforms[i].Position.y <= maxCorner.y)
+                {
+                    result.Add(entities[i]);
+                }
+            }
+        }
+    }
+    [Server]
+    public NativeList<Entity> FindEntitiesInBoxJobMethod(int2 startcorner, int2 endcorner)
+    {
+        NativeList<Entity> entitiesInBox = new(Allocator.TempJob);
+
+        var query = EntityManager.CreateEntityQuery(ComponentType.ReadOnly<MovementComponent>(), ComponentType.ReadOnly<LocalTransform>());
+        NativeArray<Entity> entities = query.ToEntityArray(Allocator.TempJob);
+        NativeArray<LocalTransform> transforms = query.ToComponentDataArray<LocalTransform>(Allocator.TempJob);
+        FindEntitiesInBoxJob job = new()
+        {
+            entities = entities,
+            transforms = transforms,
+            startcorner = startcorner,
+            endcorner = endcorner,
+            result = entitiesInBox
+        };
+
+        JobHandle handle = job.Schedule();
+        handle.Complete();
+
+        entities.Dispose();
+        transforms.Dispose();
+
+        // Ensure the entitiesInBox is disposed of properly
+        NativeList<Entity> result = new NativeList<Entity>(entitiesInBox.Length, Allocator.Persistent);
+        result.AddRange(entitiesInBox.AsArray());
+        entitiesInBox.Dispose();
+
+        return result;
     }
 
 
