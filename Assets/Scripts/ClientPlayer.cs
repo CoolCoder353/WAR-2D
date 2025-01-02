@@ -11,7 +11,10 @@ public class ClientPlayer : NetworkBehaviour
 
     public LobbySystem lobbySystem;
 
+
+    public readonly SyncList<ClientUnit> visuableUnits = new SyncList<ClientUnit>();
     public ServerData serverPlayer;
+
 
     [Client]
     public override void OnStartClient()
@@ -19,11 +22,20 @@ public class ClientPlayer : NetworkBehaviour
         base.OnStartClient();
         //Find the lobby system
         lobbySystem = FindObjectOfType<LobbySystem>();
+        if (lobbySystem != null) { lobbySystem.AddClientPlayer(this, addNicknameListener: ClientCanEdit(), addStartGameListener: ClientIsServerOwner()); }
 
         //Add the hook to the scene change event
+        if (!isLocalPlayer) return;
         SceneManager.sceneLoaded += OnSceneChangedEvent;
 
-        if (lobbySystem != null) { lobbySystem.AddClientPlayer(this, addNicknameListener: ClientCanEdit(), addStartGameListener: ClientIsServerOwner()); }
+    }
+
+    [Client]
+    public override void OnStopClient()
+    {
+        if (!isLocalPlayer) return;
+        SceneManager.sceneLoaded -= OnSceneChangedEvent;
+        RemoveUnitHandles();
     }
 
 
@@ -127,39 +139,69 @@ public class ClientPlayer : NetworkBehaviour
 
 
 
-    //TODO Hook this to the server changing scenes, I think there is a handle we can connect to somewhere but need to find it. 
-    //TODO Try looking in the GameManger for the scene change event.
     [Client]
     public void OnSceneChangedEvent(Scene newScene, LoadSceneMode sceneMode)
     {
+        if (!isLocalPlayer) return;
 
         Debug.Log($"Scene changed to {newScene.name} with mode {sceneMode}");
         //Setup the hooks to the visable units
-        if (serverPlayer != null && serverPlayer.visuableUnits != null && UnitCommander.Instance != null)
+        if (serverPlayer != null && visuableUnits != null && UnitCommander.Instance != null)
         {
-            serverPlayer.visuableUnits.OnAdd += (int index) =>
+            // Debug.Log($"Debugging hooks state is {visuableUnits.OnChange != null}");
+            Debug.Log("Setting up unit hooks");
+            visuableUnits.OnAdd += (int index) =>
             {
-                ClientUnit unit = serverPlayer.visuableUnits[index];
+                ClientUnit unit = visuableUnits[index];
                 UnitCommander.Instance.UnitListInsert(index, unit);
 
             };
-            serverPlayer.visuableUnits.OnInsert += (int index) =>
+            visuableUnits.OnInsert += (int index) =>
             {
-                ClientUnit unit = serverPlayer.visuableUnits[index];
+                ClientUnit unit = visuableUnits[index];
+                Debug.Log("Inserting unit");
                 UnitCommander.Instance.UnitListInsert(index, unit);
             };
-            serverPlayer.visuableUnits.OnSet += (int index, ClientUnit old) =>
+            visuableUnits.OnSet += (int index, ClientUnit old) =>
             {
-                ClientUnit unit = serverPlayer.visuableUnits[index];
+                ClientUnit unit = visuableUnits[index];
                 UnitCommander.Instance.UnitListSet(index, old, unit);
             };
 
-            serverPlayer.visuableUnits.OnRemove += UnitCommander.Instance.UnitListRemove;
+            visuableUnits.OnRemove += UnitCommander.Instance.UnitListRemove;
 
-            serverPlayer.visuableUnits.OnClear += UnitCommander.Instance.UnitListClear;
+            visuableUnits.OnClear += UnitCommander.Instance.UnitListClear;
+
+            //Register the intial state of the units
+            for (int i = 0; i < visuableUnits.Count; i++)
+            {
+                ClientUnit unit = visuableUnits[i];
+                UnitCommander.Instance.UnitListInsert(i, unit);
+            }
+
+
+            // //For Debugging log all changes in the visuable units
+            // visuableUnits.OnChange += (SyncList<ClientUnit>.Operation operation, int index, ClientUnit unit) =>
+            // {
+            //     Debug.Log($"Operation: {operation} Index: {index} Unit: {unit}");
+            // };
+
+            // Debug.Log($"Debugging hooks state is {visuableUnits.OnChange != null}");
         }
+
     }
 
-
-
+    private void RemoveUnitHandles()
+    {
+        if (serverPlayer != null && visuableUnits != null)
+        {
+            Debug.Log("Removing unit hooks");
+            visuableUnits.OnChange = null;
+            visuableUnits.OnAdd = null;
+            visuableUnits.OnInsert = null;
+            visuableUnits.OnSet = null;
+            visuableUnits.OnRemove = null;
+            visuableUnits.OnClear = null;
+        }
+    }
 }

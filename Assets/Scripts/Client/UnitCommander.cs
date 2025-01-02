@@ -5,7 +5,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 
-public class UnitCommander : MonoBehaviour
+public class UnitCommander : NetworkBehaviour
 {
     public static UnitCommander Instance { get; private set; }
 
@@ -27,6 +27,11 @@ public class UnitCommander : MonoBehaviour
         if (Instance == null)
         {
             Instance = this;
+
+            //Start the selection box as inactive
+            selectionBox.SetActive(false);
+
+
         }
         else
         {
@@ -117,45 +122,78 @@ public class UnitCommander : MonoBehaviour
         TIM.Console.Log($"Using WorldStateManager {WorldStateManager.Instance}", TIM.MessageType.Network);
 
         WorldStateManager.Instance.UpdateClientView(corner1, corner2);
-    }
 
-    [Client]
-    private void UpdateUnit(ClientUnit unit)
-    {
-        Debug.Log($"Updating unit {unit}");
-    }
-    [Client]
-    private void AddUnit(ClientUnit unit)
-    {
-        Debug.Log($"Adding unit {unit}");
-    }
-    [Client]
-    private void RemoveUnit(ClientUnit unit)
-    {
-        Debug.Log($"Removing unit {unit}");
+        MoveUnits();
     }
 
 
+    //Goes through all visible units and makes sure the game objects are in the right place
+    [Client]
+    private void MoveUnits()
+    {
+        ClientPlayer localPlayer = NetworkClient.localPlayer.gameObject.GetComponent<ClientPlayer>();
+        Debug.LogWarning($"Moving the visable units of client '{localPlayer.nickname}', '{localPlayer.visuableUnits.Count}' units");
+        foreach (ClientUnit unit in localPlayer.visuableUnits)
+        {
+            unitGameObjects.TryGetValue(unit.id, out GameObject go);
+            if (go != null)
+            {
+                if (go.transform.position == new Vector3(unit.position.x, unit.position.y, go.transform.position.z))
+                {
+                    Debug.LogWarning($"Unit {unit.id} is already in the right position");
+                    continue;
+                }
+
+                //TODO: Tween move the game object
+                go.transform.position = new Vector3(unit.position.x, unit.position.y, go.transform.position.z);
+            }
+            else
+            {
+                Debug.LogError($"Unit game object not found for unit {unit.id}");
+            }
+        }
+    }
 
     //This is called when a unit is added or inserted into the list, returning the index of the list and the unit itself
     [Client]
     public void UnitListInsert(int index, ClientUnit unit)
     {
-        throw new NotImplementedException();
+        TIM.Console.Log($"UnitListInsert called with unit {unit.id}", TIM.MessageType.Network);
+        if (unitGameObjects.ContainsKey(unit.id))
+        {
+            ////Debug.LogError("UnitListInsert called with unit that already exists in the list");
+            return;
+        }
+
+        //Create a new game object
+        GameObject go = new GameObject();
+        go.transform.position = new Vector3(unit.position.x, unit.position.y, 0);
+        go.AddComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(unit.spriteName.ToString());
+        unitGameObjects.Add(unit.id, go);
     }
 
     //Called when a unit is removed from the list, returning the index of the list and the old unit itself
     [Client]
     public void UnitListRemove(int index, ClientUnit OldUnit)
     {
-        throw new NotImplementedException();
+        //Remove the game object from the list
+        if (unitGameObjects.ContainsKey(OldUnit.id))
+        {
+            Destroy(unitGameObjects[OldUnit.id]);
+            unitGameObjects.Remove(OldUnit.id);
+        }
     }
 
     //Called when the enitre list is cleared
     [Client]
     public void UnitListClear()
     {
-        throw new NotImplementedException();
+        //Destroy all the game objects
+        foreach (var item in unitGameObjects)
+        {
+            Destroy(item.Value);
+        }
+        unitGameObjects.Clear();
     }
 
     //Called when an item in the list is set to a new value
@@ -163,7 +201,39 @@ public class UnitCommander : MonoBehaviour
     [Client]
     public void UnitListSet(int index, ClientUnit oldUnit, ClientUnit newUnit)
     {
-        throw new NotImplementedException();
+
+        if (oldUnit.id != newUnit.id)
+        {
+            Debug.LogError("UnitListSet called with different id for old and new unit");
+            return;
+        }
+
+        //If the unit is not in the list, add it, this should not happen but just in case
+        if (!unitGameObjects.ContainsKey(newUnit.id))
+        {
+            ////UnitListInsert(index, newUnit);
+            return;
+        }
+
+
+        //If only the position is changed, tween move the game object
+        if (oldUnit.position.x != newUnit.position.x || oldUnit.position.y != newUnit.position.y)
+        {
+            //TODO: Tween move the game object
+            if (unitGameObjects.ContainsKey(oldUnit.id))
+            {
+                unitGameObjects[oldUnit.id].transform.position = new Vector3(newUnit.position.x, newUnit.position.y, 0);
+            }
+        }
+        //If the sprite is changed, change the sprite
+        if (oldUnit.spriteName != newUnit.spriteName)
+        {
+            if (unitGameObjects.ContainsKey(oldUnit.id))
+            {
+                unitGameObjects[oldUnit.id].GetComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(newUnit.spriteName.ToString());
+            }
+        }
+
     }
 
 

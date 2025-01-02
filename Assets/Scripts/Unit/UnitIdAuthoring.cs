@@ -6,6 +6,8 @@ using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine;
 
+[System.Serializable]
+
 public struct ClientUnit : IComponentData
 {
     public float2 position;
@@ -19,6 +21,8 @@ public struct ClientUnit : IComponentData
     public FixedString64Bytes id;
 
     public int ownerId;
+
+
 
 
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Mirror;
 using Unity.Burst;
 using Unity.Collections;
@@ -159,23 +160,39 @@ public class WorldStateManager : NetworkBehaviour
             int2 endcorner = player.Value.Item2;
 
             NativeList<Entity> entitiesInBox = FindEntitiesInBox(startcorner, endcorner);
-            List<ClientUnit> clientUnits = new List<ClientUnit>();
+
+            List<FixedString64Bytes> clientUnits = new List<FixedString64Bytes>();
             foreach (Entity entity in entitiesInBox)
             {
                 ClientUnit clientUnit = EntityManager.GetComponentData<ClientUnit>(entity);
                 clientUnit.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
 
-                clientUnits.Add(clientUnit);
+                clientUnits.Add(clientUnit.id);
+
+                if (player.Key.visuableUnits.Any(u => u.id == clientUnit.id))
+                {
+                    //Update the position of the unit
+                    player.Key.visuableUnits[player.Key.visuableUnits.FindIndex(u => u.id == clientUnit.id)] = clientUnit;
+                }
+                else
+                {
+                    player.Key.visuableUnits.Add(clientUnit);
+                }
+
+
+
             }
             entitiesInBox.Dispose();
 
-            Debug.Log($"Found {clientUnits.Count} units in box. Sending back to client.");
-
-            //TODO: This will mean that each unit is added and removed every time the view is updated, this is not optimal
-            //We should instead only add and remove units that are not already in the list
-            player.Key.serverPlayer.visuableUnits.Clear();
-            player.Key.serverPlayer.visuableUnits.AddRange(clientUnits);
-
+            //TODO: This is not the most effecient way to do this
+            //Remove the units that are not in the view anymore
+            for (int i = player.Key.visuableUnits.Count - 1; i >= 0; i--)
+            {
+                if (!clientUnits.Contains(player.Key.visuableUnits[i].id))
+                {
+                    player.Key.visuableUnits.RemoveAt(i);
+                }
+            }
         }
     }
 
