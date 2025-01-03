@@ -1,0 +1,5 @@
+PathType,TimeTaken,PathLength,StartX,StartY,EndX,EndY
+AStar,21,17,-19,-22,-13,-30
+AStar,11,17,-19,-22,-13,-30
+AStar,11,17,-19,-22,-13,-30
+AStar,6,16,-19,-22,-13,-33

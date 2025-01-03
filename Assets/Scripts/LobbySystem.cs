@@ -88,9 +88,6 @@ public class LobbySystem : MonoBehaviour
 
         TMP_InputField input_field = lobbyPlayer.GetComponentInChildren<TMP_InputField>();
 
-        Debug.Log(lobbyPlayer);
-        Debug.Log(input_field);
-
         input_field.gameObject.SetActive(false);
 
         if (addNicknameListener)

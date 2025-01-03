@@ -44,6 +44,25 @@ public class GameManager : NetworkManager
         SceneManager.sceneLoaded += OnSceneLoaded;
     }
 
+    public override void OnDestroy()
+    {
+        // Unsubscribe from the sceneLoaded event
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+
+        //Make sure we disconnect
+        if (NetworkServer.active)
+        {
+            StopServer();
+        }
+        if (NetworkClient.isConnected)
+        {
+            StopClient();
+        }
+
+
+
+    }
+
 
     public override void OnStartServer()
     {

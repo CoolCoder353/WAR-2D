@@ -23,6 +23,8 @@ public class Custom_Commands : MonoBehaviour
     public CmdFormula isGameCoreInstanceNullCommand = new CmdFormula();
     public CmdFormula getPlayersResources = new CmdFormula();
 
+    public CmdFormula GetWorldStateManager = new CmdFormula();
+
 
 
     private void Awake()
@@ -45,7 +47,13 @@ public class Custom_Commands : MonoBehaviour
         Console.RegisterCommand(isClientOnCommand, IsClientOnCommand);
         Console.RegisterCommand(isGameCoreInstanceNullCommand, IsGameCoreInstanceNullCommand);
         Console.RegisterCommand(getPlayersResources, GetPlayersResources);
+        Console.RegisterCommand(GetWorldStateManager, GetWorldStateManagerCommand);
 
+    }
+
+    private void GetWorldStateManagerCommand(CmdInputResult arg0)
+    {
+        Console.Log(WorldStateManager.Instance.ToString());
     }
 
     public void HelpCommand(CmdInputResult result)

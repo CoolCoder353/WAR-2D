@@ -1,6 +1,7 @@
 using System;
 using Mirror;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 [System.Serializable]
 public class ClientPlayer : NetworkBehaviour
@@ -10,17 +11,42 @@ public class ClientPlayer : NetworkBehaviour
 
     public LobbySystem lobbySystem;
 
+
+    public readonly SyncList<ClientUnit> visuableUnits = new SyncList<ClientUnit>();
     public ServerData serverPlayer;
+
 
     [Client]
     public override void OnStartClient()
     {
         base.OnStartClient();
+
+        DontDestroyOnLoad(this);
         //Find the lobby system
         lobbySystem = FindObjectOfType<LobbySystem>();
-
         if (lobbySystem != null) { lobbySystem.AddClientPlayer(this, addNicknameListener: ClientCanEdit(), addStartGameListener: ClientIsServerOwner()); }
+
+        //Add the hook to the scene change event
+        if (!isLocalPlayer) return;
+        SceneManager.sceneLoaded += OnSceneChangedEvent;
+
     }
+
+    [Client]
+    public override void OnStopClient()
+    {
+        if (!isLocalPlayer) return;
+        SceneManager.sceneLoaded -= OnSceneChangedEvent;
+
+        //TODO: Need to make sure we remove handles when the player disconnects, or the scene changes
+
+        // RemoveUnitHandles();
+
+        Destroy(this.gameObject);
+
+    }
+
+
 
     [TargetRpc]
     public void SetServerPlayer(NetworkConnectionToClient connection, string playerData)
@@ -119,32 +145,79 @@ public class ClientPlayer : NetworkBehaviour
 
     }
 
-    [Command]
-    public void CmdMoveUnits(UnitGroup selectedUnits, Vector2 realPoint)
+
+
+    [Client]
+    public void OnSceneChangedEvent(Scene newScene, LoadSceneMode sceneMode)
     {
-        // Check if the player has authority over the selected units
-        Debug.Log("Moving units on server");
+        if (!isLocalPlayer) return;
 
-        selectedUnits.SetGoalPosition(realPoint, 2.0f);
-    }
-
-    [Command]
-    public void CmdSpawnBuilding(string buildingSettings, Vector2 vector2, NetworkConnectionToClient connection = null)
-    {
-
-        // Check if the player is talking with the right clientPlayer
-        if (connection != null && connection.identity != connectionToClient.identity)
+        Debug.Log($"Scene changed to {newScene.name} with mode {sceneMode}");
+        //Setup the hooks to the visable units
+        if (serverPlayer != null && visuableUnits != null && UnitCommander.Instance != null)
         {
-            Debug.LogWarning("Player is trying to spawn a building for another player.");
-            return;
+            // Debug.Log($"Debugging hooks state is {visuableUnits.OnChange != null}");
+            // Debug.Log("Setting up unit hooks");
+            // SetUnitHandles();
+
         }
 
-        if (buildingSettings == null)
-        {
-            return;
-        }
-
-        GameCore.Instance.SpawnBuilding(connectionToClient, buildingSettings, vector2);
     }
 
+    public void SetUnitHandles()
+    {
+
+        Debug.Log("Setting up unit hooks");
+        visuableUnits.OnAdd += (int index) =>
+           {
+               ClientUnit unit = visuableUnits[index];
+               UnitCommander.Instance.UnitListInsert(index, unit);
+
+           };
+        visuableUnits.OnInsert += (int index) =>
+        {
+            ClientUnit unit = visuableUnits[index];
+            Debug.Log("Inserting unit");
+            UnitCommander.Instance.UnitListInsert(index, unit);
+        };
+        visuableUnits.OnSet += (int index, ClientUnit old) =>
+        {
+            ClientUnit unit = visuableUnits[index];
+            UnitCommander.Instance.UnitListSet(index, old, unit);
+        };
+
+        visuableUnits.OnRemove += UnitCommander.Instance.UnitListRemove;
+
+        visuableUnits.OnClear += UnitCommander.Instance.UnitListClear;
+
+        //Register the intial state of the units
+        for (int i = 0; i < visuableUnits.Count; i++)
+        {
+            ClientUnit unit = visuableUnits[i];
+            UnitCommander.Instance.UnitListInsert(i, unit);
+        }
+
+
+        // //For Debugging log all changes in the visuable units
+        // visuableUnits.OnChange += (SyncList<ClientUnit>.Operation operation, int index, ClientUnit unit) =>
+        // {
+        //     Debug.Log($"Operation: {operation} Index: {index} Unit: {unit}");
+        // };
+
+        // Debug.Log($"Debugging hooks state is {visuableUnits.OnChange != null}");
+    }
+
+    public void RemoveUnitHandles()
+    {
+        if (serverPlayer != null && visuableUnits != null)
+        {
+            Debug.Log("Removing unit hooks");
+            visuableUnits.OnChange = null;
+            visuableUnits.OnAdd = null;
+            visuableUnits.OnInsert = null;
+            visuableUnits.OnSet = null;
+            visuableUnits.OnRemove = null;
+            visuableUnits.OnClear = null;
+        }
+    }
 }

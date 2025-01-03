@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 using Mirror;
 using Newtonsoft.Json;
@@ -7,8 +6,7 @@ public class ServerPlayer
 {
     public NetworkConnectionToClient connection;
 
-    public ServerData data
-    { get; protected set; } = new();
+    public ServerData data { get; protected set; } = new();
     public ServerPlayer(NetworkConnectionToClient connection, float resources)
     {
         this.connection = connection;
@@ -33,14 +31,15 @@ public class ServerData
 {
     public float resources = 0;
 
-    List<Unit> units = new List<Unit>();
-
     public static string Serialize(ServerData data)
     {
+
         return JsonConvert.SerializeObject(data);
     }
+
     public string Serialize()
     {
+
         return JsonConvert.SerializeObject(this);
     }
 
