@@ -18,8 +18,6 @@ public struct MovementComponent : IComponentData
 
     public float currentRotationSpeed;
 
-
-
 }
 public class MovementAuthoring : MonoBehaviour
 {

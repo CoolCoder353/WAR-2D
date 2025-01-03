@@ -268,6 +268,8 @@ public class WorldStateManager : NetworkBehaviour
             units.Add(clientUnit);
         }
 
+        // Debug.Log($"Found {units.Count} units in box {startcorner}, {endcorner} -> server");
+
         foreach (ClientUnit unit in units)
         {
             //TODO: Make sure we are not moving units that are not owned by the player
@@ -353,6 +355,7 @@ public class WorldStateManager : NetworkBehaviour
 
         if (startInt.Equals(goal))
         {
+            Debug.LogWarning($"Unit at {startInt} is already at goal {goal}");
             return;
         }
 
@@ -369,6 +372,12 @@ public class WorldStateManager : NetworkBehaviour
             {
                 pathBuffer.Add(new PathPoint { position = node.position });
             }
+
+            Debug.Log($"Moving unit at {startInt} to {goal} in {path.pathLength} steps");
+        }
+        else
+        {
+            Debug.LogWarning($"No path found for unit at {startInt} to {goal}");
         }
 
     }

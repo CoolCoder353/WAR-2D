@@ -4,6 +4,7 @@ using Unity.Burst;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
+using System.Security.Claims;
 
 
 [BurstCompile]
@@ -16,7 +17,8 @@ public partial struct MovementSystem : ISystem
         state.RequireForUpdate<ClientUnit>();
     }
 
-    [BurstCompile, ServerCallback]
+    //[BurstCompile, ServerCallback]
+    [ServerCallback]
     public void OnUpdate(ref SystemState state)
     {
         foreach (var (movementComp, localTransform, clientUnit, entity) in SystemAPI.Query<RefRW<MovementComponent>, RefRW<LocalTransform>, RefRO<ClientUnit>>().WithEntityAccess())
@@ -29,7 +31,19 @@ public partial struct MovementSystem : ISystem
 
                 IsAvaliable(goal, clientUnit.ValueRO.id, out bool isAvaliable);
 
-                if (!isAvaliable) { continue; }
+
+                //Cannot convert bool to string due to DOTS so this will have to do for debugging
+                if (isAvaliable)
+                {
+                    Debug.Log("Place is avaliable, claiming");
+                }
+                else
+                {
+                    Debug.Log("Place is not avaliable, waiting");
+                }
+
+
+                if (!isAvaliable) { Debug.LogWarning("Position not avaliable, waiting"); continue; }
 
                 // //If possible, claim the next goal too
                 // if (pathBuffer.Length > 1)
@@ -53,6 +67,7 @@ public partial struct MovementSystem : ISystem
                         IsAvaliable(pathBuffer[1].position, clientUnit.ValueRO.id, out bool isAvaliableNext);
                         if (isAvaliableNext)
                         {
+                            ClaimLocation(pathBuffer[1].position, clientUnit.ValueRO.id);
                             pathBuffer.RemoveAt(0);
                             ReleaseLocation(goal, clientUnit.ValueRO.id);
 
@@ -81,20 +96,20 @@ public partial struct MovementSystem : ISystem
 
     //HELPER FUNCTIONS
 
-    [BurstDiscard]
+
     public void IsAvaliable(int2 position, int id, out bool isAvaliable)
     {
-        isAvaliable = WorldStateManager.Instance.IsAvaliable(position, id);
-        Debug.Log("IsAvaliable: " + isAvaliable);
+        bool result = WorldStateManager.Instance.IsAvaliable(position, id);
+        isAvaliable = true;
     }
 
-    [BurstDiscard]
+
     public void ClaimLocation(int2 position, int id)
     {
         WorldStateManager.Instance.ClaimLocation(position, id);
     }
 
-    [BurstDiscard]
+
     public void ReleaseLocation(int2 position, int id)
     {
         WorldStateManager.Instance.ReleaseLocation(position, id);
