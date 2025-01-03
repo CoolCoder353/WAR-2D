@@ -33,12 +33,11 @@ public class MovementAuthoring : MonoBehaviour
 
     private class Baker : Baker<MovementAuthoring>
     {
-        [ServerCallback]
+        // [ServerCallback]
         public override void Bake(MovementAuthoring authoring)
         {
             var entity = GetEntity(authoring, TransformUsageFlags.Dynamic);
             AddComponent(entity, new MovementComponent { speed = authoring.speed, acceleration = authoring.acceleration, rotationSpeed = authoring.rotationSpeed, rotationAcceleration = authoring.rotationAcceleration });
-            AddComponent(entity, new ClientUnit { spriteName = "default" });
             AddBuffer<PathPoint>(entity);
         }
     }

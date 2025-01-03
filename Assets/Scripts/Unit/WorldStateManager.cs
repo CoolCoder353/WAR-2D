@@ -11,7 +11,7 @@ using Unity.Transforms;
 using UnityEngine;
 using UnityEngine.Tilemaps;
 
-
+[BurstCompile]
 public class WorldStateManager : NetworkBehaviour
 {
     public static WorldStateManager Instance { get; private set; }
@@ -33,7 +33,7 @@ public class WorldStateManager : NetworkBehaviour
     private Dictionary<ClientPlayer, (int2, int2)> playerView = new Dictionary<ClientPlayer, (int2, int2)>();
 
 
-    private Dictionary<FixedString64Bytes, Entity> Units = new Dictionary<FixedString64Bytes, Entity>();
+    private Dictionary<int, Entity> Units = new Dictionary<int, Entity>();
 
     private void Awake()
     {
@@ -151,7 +151,7 @@ public class WorldStateManager : NetworkBehaviour
     }
 
 
-    [Server]
+    [Server, BurstCompile]
     public void UpdatePlayerViews()
     {
         foreach (KeyValuePair<ClientPlayer, (int2, int2)> player in playerView)
@@ -161,7 +161,9 @@ public class WorldStateManager : NetworkBehaviour
 
             NativeList<Entity> entitiesInBox = FindEntitiesInBox(startcorner, endcorner);
 
-            List<FixedString64Bytes> clientUnits = new List<FixedString64Bytes>();
+
+            // Debug.Log($"For player {player.Key.nickname} found {entitiesInBox.Length} entities in box {startcorner}, {endcorner}");
+            List<int> clientUnits = new List<int>();
             foreach (Entity entity in entitiesInBox)
             {
                 ClientUnit clientUnit = EntityManager.GetComponentData<ClientUnit>(entity);
@@ -172,6 +174,9 @@ public class WorldStateManager : NetworkBehaviour
                 if (player.Key.visuableUnits.Any(u => u.id == clientUnit.id))
                 {
                     //Update the position of the unit
+
+                    // Debug.Log($"Sending the following unit to the client: '{player.Key.nickname}' with unit: id '{clientUnit.id}', position '{clientUnit.position}' and sprite '{clientUnit.spriteName}'");
+
                     player.Key.visuableUnits[player.Key.visuableUnits.FindIndex(u => u.id == clientUnit.id)] = clientUnit;
                 }
                 else
@@ -197,7 +202,7 @@ public class WorldStateManager : NetworkBehaviour
     }
 
     [Server]
-    public void AddUnit(Entity entity, FixedString64Bytes id)
+    public void AddUnit(Entity entity, int id)
     {
         Units.Add(id, entity);
     }
@@ -208,7 +213,7 @@ public class WorldStateManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdMoveUnits(int2 goal, int2 startcorner, int2 endcorner)
     {
-        Debug.Log("Moving units at server");
+        // Debug.Log("Moving units at server");
         List<ClientUnit> units = new List<ClientUnit>();
 
         NativeList<Entity> entitiesInBox = FindEntitiesInBox(startcorner, endcorner);
@@ -282,6 +287,8 @@ public class WorldStateManager : NetworkBehaviour
 
         public void Execute()
         {
+
+            // Debug.Log($"Checking '{entities.Length}' entities in box {startcorner}, {endcorner}");
             int2 minCorner = math.min(startcorner, endcorner);
             int2 maxCorner = math.max(startcorner, endcorner);
 
@@ -303,6 +310,9 @@ public class WorldStateManager : NetworkBehaviour
         var query = EntityManager.CreateEntityQuery(ComponentType.ReadOnly<MovementComponent>(), ComponentType.ReadOnly<LocalTransform>());
         NativeArray<Entity> entities = query.ToEntityArray(Allocator.TempJob);
         NativeArray<LocalTransform> transforms = query.ToComponentDataArray<LocalTransform>(Allocator.TempJob);
+
+        // Debug.Log($"Checking '{entities.Length}' entities in box {startcorner}, {endcorner}");
+
         FindEntitiesInBoxJob job = new()
         {
             entities = entities,

@@ -14,25 +14,26 @@ public struct ClientUnit : IComponentData
     /// <summary>
     /// public NetworkIdentity owner;
     /// </summary>
-    public FixedString64Bytes spriteName;
+    public UnitSprites spriteName;
 
     //NOTE: THIS COULD BE A ulong if we need more characters
     //See https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/integral-numeric-types for comparison
-    public FixedString64Bytes id;
+    public int id;
 
     public int ownerId;
+}
 
-
-
-
-
+public enum UnitSprites
+{
+    None,
+    Tank
 }
 
 
 public class UnitIdAuthoring : MonoBehaviour
 {
-    public string id;
-    public string spriteName;
+    public int id;
+    public UnitSprites spriteName;
 
     private class Baker : Baker<UnitIdAuthoring>
     {
@@ -41,8 +42,8 @@ public class UnitIdAuthoring : MonoBehaviour
             var entity = GetEntity(authoring, TransformUsageFlags.Dynamic);
             AddComponent(entity, new ClientUnit
             {
-                id = new FixedString64Bytes(authoring.id),
-                spriteName = new FixedString64Bytes(authoring.spriteName)
+                id = authoring.id,
+                spriteName = authoring.spriteName
             });
         }
     }

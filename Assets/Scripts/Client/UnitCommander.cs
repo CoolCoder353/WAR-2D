@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using DG.Tweening;
 using Mirror;
 using Unity.Collections;
 using Unity.Mathematics;
@@ -18,10 +19,11 @@ public class UnitCommander : NetworkBehaviour
 
     private List<ClientUnit> unitsVisable = new List<ClientUnit>();
 
+    private ClientPlayer localPlayer;
 
-    private Dictionary<FixedString64Bytes, GameObject> unitGameObjects = new Dictionary<FixedString64Bytes, GameObject>();
+    private Dictionary<int, GameObject> unitGameObjects = new Dictionary<int, GameObject>();
 
-
+    [ClientCallback]
     private void Awake()
     {
         if (Instance == null)
@@ -31,12 +33,24 @@ public class UnitCommander : NetworkBehaviour
             //Start the selection box as inactive
             selectionBox.SetActive(false);
 
+            localPlayer = NetworkClient.connection.identity.GetComponent<ClientPlayer>();
+            localPlayer.SetUnitHandles();
 
         }
         else
         {
             Destroy(this);
         }
+    }
+
+    [ClientCallback]
+    private void OnDestroy()
+    {
+        if (Instance == this)
+        {
+            Instance = null;
+        }
+        localPlayer.RemoveUnitHandles();
     }
 
     private Vector3 GetMouseWorldPosition()
@@ -97,12 +111,11 @@ public class UnitCommander : NetworkBehaviour
         {
             Vector3 worldPosition = GetMouseWorldPosition();
             int2 goal = new int2((int)worldPosition.x, (int)worldPosition.y);
-            Debug.Log($"Moving units in box {startcorner}, {endcorner} units to {goal.x},{goal.y} -> client side");
+            // Debug.Log($"Moving units in box {startcorner}, {endcorner} units to {goal.x},{goal.y} -> client side");
             WorldStateManager.Instance.CmdMoveUnits(goal, startcorner, endcorner);
         }
 
         //Get where the camera is looking at in the scene
-        Vector3 cameraPosition = Camera.main.transform.position;
         Vector3 cameraStart = Camera.main.ScreenToWorldPoint(new Vector3(Camera.main.pixelWidth, Camera.main.pixelHeight, Camera.main.transform.position.z));
         Vector3 cameraPositionEnd = Camera.main.ScreenToWorldPoint(new Vector3(0, 0, Camera.main.transform.position.z));
 
@@ -118,8 +131,8 @@ public class UnitCommander : NetworkBehaviour
         // selectionBox.transform.position = (cameraCorner1 + cameraCorner2) / 2;
         // selectionBox.transform.localScale = new Vector3(Mathf.Abs(corner2.x - corner1.x), Mathf.Abs(corner2.y - corner1.y), 1);
 
-        TIM.Console.Log($"Updating client view to {corner1} {corner2}", TIM.MessageType.Network);
-        TIM.Console.Log($"Using WorldStateManager {WorldStateManager.Instance}", TIM.MessageType.Network);
+        // TIM.Console.Log($"Updating client view to {corner1} {corner2}", TIM.MessageType.Network);
+        // TIM.Console.Log($"Using WorldStateManager {WorldStateManager.Instance}", TIM.MessageType.Network);
 
         WorldStateManager.Instance.UpdateClientView(corner1, corner2);
 
@@ -131,8 +144,8 @@ public class UnitCommander : NetworkBehaviour
     [Client]
     private void MoveUnits()
     {
-        ClientPlayer localPlayer = NetworkClient.localPlayer.gameObject.GetComponent<ClientPlayer>();
-        Debug.LogWarning($"Moving the visable units of client '{localPlayer.nickname}', '{localPlayer.visuableUnits.Count}' units");
+
+        // Debug.LogWarning($"Moving the visable units of client '{localPlayer.nickname}', '{localPlayer.visuableUnits.Count}' units");
         foreach (ClientUnit unit in localPlayer.visuableUnits)
         {
             unitGameObjects.TryGetValue(unit.id, out GameObject go);
@@ -140,16 +153,17 @@ public class UnitCommander : NetworkBehaviour
             {
                 if (go.transform.position == new Vector3(unit.position.x, unit.position.y, go.transform.position.z))
                 {
-                    Debug.LogWarning($"Unit {unit.id} is already in the right position");
+                    // Debug.LogWarning($"Unit {unit.id} is already in the right position");
                     continue;
                 }
 
                 //TODO: Tween move the game object
-                go.transform.position = new Vector3(unit.position.x, unit.position.y, go.transform.position.z);
+                DOTween.To(() => go.transform.position, x => go.transform.position = x, new Vector3(unit.position.x, unit.position.y, go.transform.position.z), 0.5f);
+                // go.transform.position = new Vector3(unit.position.x, unit.position.y, go.transform.position.z);
             }
             else
             {
-                Debug.LogError($"Unit game object not found for unit {unit.id}");
+                Debug.LogError($"Unit game object not found for unit {unit.id}. When checking the insert hook it returned Add: '{localPlayer.visuableUnits.OnAdd != null}', Insert: '{localPlayer.visuableUnits.OnInsert != null}', Set: '{localPlayer.visuableUnits.OnSet != null}', Remove: '{localPlayer.visuableUnits.OnRemove != null}', Clear: '{localPlayer.visuableUnits.OnClear != null}'");
             }
         }
     }
@@ -158,10 +172,10 @@ public class UnitCommander : NetworkBehaviour
     [Client]
     public void UnitListInsert(int index, ClientUnit unit)
     {
-        TIM.Console.Log($"UnitListInsert called with unit {unit.id}", TIM.MessageType.Network);
+        // Debug.Log($"UnitListInsert called with unit id: '{unit.id}', sprite:  '{unit.spriteName}', position : '{unit.position}'");
         if (unitGameObjects.ContainsKey(unit.id))
         {
-            ////Debug.LogError("UnitListInsert called with unit that already exists in the list");
+            Debug.LogError("UnitListInsert called with unit that already exists in the list. Unit id: " + unit.id);
             return;
         }
 

@@ -28,18 +28,18 @@ public struct SpawnerData : IComponentData
 public class SpanwerBaker : Baker<SpawnerAuthoring>
 {
 
-    [ServerCallback]
+    // [ServerCallback]
     public override void Bake(SpawnerAuthoring spawnerAuthoring)
     {
         var entity = GetEntity(spawnerAuthoring, TransformUsageFlags.Dynamic);
-        SpawnerData spawnerData = new SpawnerData
+
+
+        AddComponent(entity, new SpawnerData
         {
             prefab = GetEntity(spawnerAuthoring.prefab, TransformUsageFlags.Dynamic),
-            count = spawnerAuthoring.count,
+            count = 10, //Default to 10 units for debugging purposes
             position = new float2(spawnerAuthoring.position.x, spawnerAuthoring.position.y)
-        };
-
-        AddComponent(entity, spawnerData);
+        });
 
     }
 }

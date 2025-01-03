@@ -20,6 +20,8 @@ public class ClientPlayer : NetworkBehaviour
     public override void OnStartClient()
     {
         base.OnStartClient();
+
+        DontDestroyOnLoad(this);
         //Find the lobby system
         lobbySystem = FindObjectOfType<LobbySystem>();
         if (lobbySystem != null) { lobbySystem.AddClientPlayer(this, addNicknameListener: ClientCanEdit(), addStartGameListener: ClientIsServerOwner()); }
@@ -35,7 +37,13 @@ public class ClientPlayer : NetworkBehaviour
     {
         if (!isLocalPlayer) return;
         SceneManager.sceneLoaded -= OnSceneChangedEvent;
-        RemoveUnitHandles();
+
+        //TODO: Need to make sure we remove handles when the player disconnects, or the scene changes
+
+        // RemoveUnitHandles();
+
+        Destroy(this.gameObject);
+
     }
 
 
@@ -149,49 +157,57 @@ public class ClientPlayer : NetworkBehaviour
         if (serverPlayer != null && visuableUnits != null && UnitCommander.Instance != null)
         {
             // Debug.Log($"Debugging hooks state is {visuableUnits.OnChange != null}");
-            Debug.Log("Setting up unit hooks");
-            visuableUnits.OnAdd += (int index) =>
-            {
-                ClientUnit unit = visuableUnits[index];
-                UnitCommander.Instance.UnitListInsert(index, unit);
+            // Debug.Log("Setting up unit hooks");
+            // SetUnitHandles();
 
-            };
-            visuableUnits.OnInsert += (int index) =>
-            {
-                ClientUnit unit = visuableUnits[index];
-                Debug.Log("Inserting unit");
-                UnitCommander.Instance.UnitListInsert(index, unit);
-            };
-            visuableUnits.OnSet += (int index, ClientUnit old) =>
-            {
-                ClientUnit unit = visuableUnits[index];
-                UnitCommander.Instance.UnitListSet(index, old, unit);
-            };
-
-            visuableUnits.OnRemove += UnitCommander.Instance.UnitListRemove;
-
-            visuableUnits.OnClear += UnitCommander.Instance.UnitListClear;
-
-            //Register the intial state of the units
-            for (int i = 0; i < visuableUnits.Count; i++)
-            {
-                ClientUnit unit = visuableUnits[i];
-                UnitCommander.Instance.UnitListInsert(i, unit);
-            }
-
-
-            // //For Debugging log all changes in the visuable units
-            // visuableUnits.OnChange += (SyncList<ClientUnit>.Operation operation, int index, ClientUnit unit) =>
-            // {
-            //     Debug.Log($"Operation: {operation} Index: {index} Unit: {unit}");
-            // };
-
-            // Debug.Log($"Debugging hooks state is {visuableUnits.OnChange != null}");
         }
 
     }
 
-    private void RemoveUnitHandles()
+    public void SetUnitHandles()
+    {
+
+        Debug.Log("Setting up unit hooks");
+        visuableUnits.OnAdd += (int index) =>
+           {
+               ClientUnit unit = visuableUnits[index];
+               UnitCommander.Instance.UnitListInsert(index, unit);
+
+           };
+        visuableUnits.OnInsert += (int index) =>
+        {
+            ClientUnit unit = visuableUnits[index];
+            Debug.Log("Inserting unit");
+            UnitCommander.Instance.UnitListInsert(index, unit);
+        };
+        visuableUnits.OnSet += (int index, ClientUnit old) =>
+        {
+            ClientUnit unit = visuableUnits[index];
+            UnitCommander.Instance.UnitListSet(index, old, unit);
+        };
+
+        visuableUnits.OnRemove += UnitCommander.Instance.UnitListRemove;
+
+        visuableUnits.OnClear += UnitCommander.Instance.UnitListClear;
+
+        //Register the intial state of the units
+        for (int i = 0; i < visuableUnits.Count; i++)
+        {
+            ClientUnit unit = visuableUnits[i];
+            UnitCommander.Instance.UnitListInsert(i, unit);
+        }
+
+
+        // //For Debugging log all changes in the visuable units
+        // visuableUnits.OnChange += (SyncList<ClientUnit>.Operation operation, int index, ClientUnit unit) =>
+        // {
+        //     Debug.Log($"Operation: {operation} Index: {index} Unit: {unit}");
+        // };
+
+        // Debug.Log($"Debugging hooks state is {visuableUnits.OnChange != null}");
+    }
+
+    public void RemoveUnitHandles()
     {
         if (serverPlayer != null && visuableUnits != null)
         {
