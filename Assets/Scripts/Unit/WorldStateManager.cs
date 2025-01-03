@@ -24,13 +24,13 @@ public class WorldStateManager : NetworkBehaviour
     public Tilemap WalkableTilemap;
     public Tilemap UnwalkableTilemap;
 
-    private BoundsInt tilemapbounds;
-
     public bool showTileMapweights = false;
 
     public Vector3 visualOffset = new Vector3(0.5f, 0.5f, 0);
 
     private Dictionary<ClientPlayer, (int2, int2)> playerView = new Dictionary<ClientPlayer, (int2, int2)>();
+
+    private List<(int, int2)> unitPositions = new List<(int, int2)>();
 
 
     private Dictionary<int, Entity> Units = new Dictionary<int, Entity>();
@@ -84,7 +84,6 @@ public class WorldStateManager : NetworkBehaviour
     private void GenerateTileMap()
     {
         BoundsInt bounds = WalkableTilemap.cellBounds;
-        tilemapbounds = bounds;
         //Add 2 to the size to account for the border of the chunk
         NativeHashMap<int2, TileNode> tiles = new NativeHashMap<int2, TileNode>((bounds.size.x + 1) * (bounds.size.y + 1), Allocator.Persistent);
 
@@ -207,7 +206,50 @@ public class WorldStateManager : NetworkBehaviour
         Units.Add(id, entity);
     }
 
+    [Server]
+    public bool IsAvaliable(int2 position, int id)
+    {
+        if (unitPositions.Any(u => u.Item2.Equals(position) && u.Item1 != id))
+        {
+            return false;
+        }
+        return true;
+    }
 
+    [Server]
+    public void ClaimLocation(int2 position, int id)
+    {
+        Debug.Log($"Claiming location {position} for unit {id}");
+        if (!IsAvaliable(position, id))
+        {
+            Debug.LogWarning($"Unit with id {id} tried to claim a location that is already taken.");
+            return;
+        }
+        //Ignore if it is already claimed
+        if (unitPositions.Any(u => u.Item2.Equals(position) && u.Item1 == id))
+        {
+            return;
+        }
+        unitPositions.Add((id, position));
+    }
+
+    [Server]
+    public void ReleaseLocation(int2 position, int id)
+    {
+        Debug.Log($"Releasing location {position} for unit {id}");
+        if (!unitPositions.Any(u => u.Item2.Equals(position) && u.Item1 == id))
+        {
+            Debug.LogWarning($"Unit with id {id} tried to release a location that is not taken or owned by that unit.");
+            return;
+        }
+        unitPositions.Remove((id, position));
+    }
+
+    [Server]
+    public void ReleaseAllLocations(int id)
+    {
+        unitPositions.RemoveAll(u => u.Item1 == id);
+    }
 
     //TODO: Change this to be more effecient, we are going through all the units TWICE!
     [Command(requiresAuthority = false)]
@@ -215,6 +257,7 @@ public class WorldStateManager : NetworkBehaviour
     {
         // Debug.Log("Moving units at server");
         List<ClientUnit> units = new List<ClientUnit>();
+        List<int2> setGoals = new List<int2>();
 
         NativeList<Entity> entitiesInBox = FindEntitiesInBox(startcorner, endcorner);
         foreach (Entity entity in entitiesInBox)
@@ -224,13 +267,23 @@ public class WorldStateManager : NetworkBehaviour
 
             units.Add(clientUnit);
         }
+
         foreach (ClientUnit unit in units)
         {
             //TODO: Make sure we are not moving units that are not owned by the player
 
             if (Units.TryGetValue(unit.id, out Entity entity))
             {
-                MoveUnit(entity, goal);
+                //TODO: Set the goal to the closest walkable tile we havent claimed yet.
+                //We can do this through a bredth first search from the goal to the unit, stopping at the first walkable tile that is not claimed
+
+                int2 specificgoal = FindBestGoalLocation(goal, unit.id, setGoals);
+                setGoals.Add(specificgoal);
+
+                //Make sure the unit doesnt own any location
+                ReleaseAllLocations(unit.id);
+
+                MoveUnit(entity, specificgoal);
             }
             else
             {
@@ -238,6 +291,50 @@ public class WorldStateManager : NetworkBehaviour
             }
         }
         entitiesInBox.Dispose();
+    }
+
+
+    [Server]
+    private int2 FindBestGoalLocation(int2 goal, int id, List<int2> setGoals)
+    {
+
+        int2 bestGoal = goal;
+
+        // Perform a breadth-first search to find the closest walkable tile that is not claimed
+        Queue<int2> queue = new Queue<int2>();
+        HashSet<int2> visited = new HashSet<int2>();
+        queue.Enqueue(goal);
+        visited.Add(goal);
+
+        while (queue.Count > 0)
+        {
+            int2 current = queue.Dequeue();
+            visited.Add(current);
+            // Check if the current location is available and not already set as a goal
+            if (!setGoals.Contains(current) && world.GetTile(current).isWalkable && IsAvaliable(current, id))
+            {
+                bestGoal = current;
+                break;
+            }
+
+            // Add neighboring tiles to the queue
+            for (int x = -1; x <= 1; x++)
+            {
+                for (int y = -1; y <= 1; y++)
+                {
+                    if (x == 0 && y == 0) continue;
+
+                    int2 neighbor = new int2(current.x + x, current.y + y);
+                    if (!visited.Contains(neighbor) && world.GetTile(neighbor).isWalkable)
+                    {
+                        queue.Enqueue(neighbor);
+
+                    }
+                }
+            }
+        }
+
+        return bestGoal;
     }
 
     //This will need to be burst compiled and run through the job system

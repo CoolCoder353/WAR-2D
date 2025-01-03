@@ -1,3 +1,4 @@
+using UnityEngine;
 using Mirror;
 using Unity.Burst;
 using Unity.Entities;
@@ -11,12 +12,14 @@ public partial struct MovementSystem : ISystem
     public void OnCreate(ref SystemState state)
     {
         state.RequireForUpdate<MovementComponent>();
+        state.RequireForUpdate<LocalTransform>();
+        state.RequireForUpdate<ClientUnit>();
     }
 
     [BurstCompile, ServerCallback]
     public void OnUpdate(ref SystemState state)
     {
-        foreach (var (movementComp, localTransform, entity) in SystemAPI.Query<RefRW<MovementComponent>, RefRW<LocalTransform>>().WithEntityAccess())
+        foreach (var (movementComp, localTransform, clientUnit, entity) in SystemAPI.Query<RefRW<MovementComponent>, RefRW<LocalTransform>, RefRO<ClientUnit>>().WithEntityAccess())
         {
             DynamicBuffer<PathPoint> pathBuffer = SystemAPI.GetBuffer<PathPoint>(entity);
 
@@ -24,11 +27,47 @@ public partial struct MovementSystem : ISystem
             {
                 int2 goal = pathBuffer[0].position;
 
+                IsAvaliable(goal, clientUnit.ValueRO.id, out bool isAvaliable);
+
+                if (!isAvaliable) { continue; }
+
+                // //If possible, claim the next goal too
+                // if (pathBuffer.Length > 1)
+                // {
+                //     IsAvaliable(pathBuffer[1].position, clientUnit.ValueRO.id, out bool isAvaliableNext);
+                //     if (isAvaliableNext)
+                //     {
+                //         ClaimLocation(pathBuffer[1].position, clientUnit.ValueRO.id);
+                //     }
+                // }
 
 
+                //PROBLEM: There are some edge cases where we release our current location before we can claim the next location. This causes units to collide.
+                //FIX: Only release the current location if we can move to the next location
                 if (math.distance(localTransform.ValueRO.Position, new float3(goal.x, goal.y, 0)) < 0.1f)
                 {
-                    pathBuffer.RemoveAt(0);
+                    //Not at end of path
+                    if (pathBuffer.Length > 1)
+                    {
+                        //Check if next location is avaliable, if so, release current location and move to next location
+                        IsAvaliable(pathBuffer[1].position, clientUnit.ValueRO.id, out bool isAvaliableNext);
+                        if (isAvaliableNext)
+                        {
+                            pathBuffer.RemoveAt(0);
+                            ReleaseLocation(goal, clientUnit.ValueRO.id);
+
+                        }
+                    }
+
+
+
+                    // pathBuffer.RemoveAt(0);
+
+                    // //Only release the location if we can move to the next location
+                    // if (pathBuffer.Length > 0)
+                    // {
+                    //     ReleaseLocation(goal, clientUnit.ValueRO.id);
+                    // }
                 }
                 else
                 {
@@ -36,13 +75,32 @@ public partial struct MovementSystem : ISystem
                 }
             }
         }
-
-
     }
 
 
 
     //HELPER FUNCTIONS
+
+    [BurstDiscard]
+    public void IsAvaliable(int2 position, int id, out bool isAvaliable)
+    {
+        isAvaliable = WorldStateManager.Instance.IsAvaliable(position, id);
+        Debug.Log("IsAvaliable: " + isAvaliable);
+    }
+
+    [BurstDiscard]
+    public void ClaimLocation(int2 position, int id)
+    {
+        WorldStateManager.Instance.ClaimLocation(position, id);
+    }
+
+    [BurstDiscard]
+    public void ReleaseLocation(int2 position, int id)
+    {
+        WorldStateManager.Instance.ReleaseLocation(position, id);
+    }
+
+
     [BurstCompile]
     private void MoveTowardsNode(ref MovementComponent movementComp, ref LocalTransform localTransform, int goalx, int goaly, ref SystemState state)
     {
