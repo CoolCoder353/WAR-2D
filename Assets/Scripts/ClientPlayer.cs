@@ -13,6 +13,7 @@ public class ClientPlayer : NetworkBehaviour
 
 
     public readonly SyncList<ClientUnit> visuableUnits = new SyncList<ClientUnit>();
+    public readonly SyncList<BuildingData> visuableBuildings = new SyncList<BuildingData>();
     public ServerData serverPlayer;
 
 
@@ -28,7 +29,7 @@ public class ClientPlayer : NetworkBehaviour
 
         //Add the hook to the scene change event
         if (!isLocalPlayer) return;
-        SceneManager.sceneLoaded += OnSceneChangedEvent;
+        // SceneManager.sceneLoaded += OnSceneChangedEvent;
 
     }
 
@@ -36,7 +37,7 @@ public class ClientPlayer : NetworkBehaviour
     public override void OnStopClient()
     {
         if (!isLocalPlayer) return;
-        SceneManager.sceneLoaded -= OnSceneChangedEvent;
+        // SceneManager.sceneLoaded -= OnSceneChangedEvent;
 
         //TODO: Need to make sure we remove handles when the player disconnects, or the scene changes
 
@@ -147,22 +148,22 @@ public class ClientPlayer : NetworkBehaviour
 
 
 
-    [Client]
-    public void OnSceneChangedEvent(Scene newScene, LoadSceneMode sceneMode)
-    {
-        if (!isLocalPlayer) return;
+    // [Client]
+    // public void OnSceneChangedEvent(Scene newScene, LoadSceneMode sceneMode)
+    // {
+    //     if (!isLocalPlayer) return;
 
-        Debug.Log($"Scene changed to {newScene.name} with mode {sceneMode}");
-        //Setup the hooks to the visable units
-        if (serverPlayer != null && visuableUnits != null && UnitCommander.Instance != null)
-        {
-            // Debug.Log($"Debugging hooks state is {visuableUnits.OnChange != null}");
-            // Debug.Log("Setting up unit hooks");
-            // SetUnitHandles();
+    //     Debug.Log($"Scene changed to {newScene.name} with mode {sceneMode}");
+    //     //Setup the hooks to the visable units
+    //     if (serverPlayer != null && visuableUnits != null && UnitCommander.Instance != null)
+    //     {
+    //         // Debug.Log($"Debugging hooks state is {visuableUnits.OnChange != null}");
+    //         // Debug.Log("Setting up unit hooks");
+    //         // SetUnitHandles();
 
-        }
+    //     }
 
-    }
+    // }
 
     public void SetUnitHandles()
     {
@@ -177,7 +178,6 @@ public class ClientPlayer : NetworkBehaviour
         visuableUnits.OnInsert += (int index) =>
         {
             ClientUnit unit = visuableUnits[index];
-            Debug.Log("Inserting unit");
             UnitCommander.Instance.UnitListInsert(index, unit);
         };
         visuableUnits.OnSet += (int index, ClientUnit old) =>
@@ -220,4 +220,52 @@ public class ClientPlayer : NetworkBehaviour
             visuableUnits.OnClear = null;
         }
     }
+
+    public void SetBuildingHandles()
+    {
+
+        Debug.Log("Setting up building hooks");
+        visuableBuildings.OnAdd += (int index) =>
+           {
+               BuildingData unit = visuableBuildings[index];
+               UnitCommander.Instance.BuildingListInsert(index, unit);
+
+           };
+        visuableBuildings.OnInsert += (int index) =>
+        {
+            BuildingData unit = visuableBuildings[index];
+            UnitCommander.Instance.BuildingListInsert(index, unit);
+        };
+        visuableBuildings.OnSet += (int index, BuildingData old) =>
+        {
+            BuildingData unit = visuableBuildings[index];
+            UnitCommander.Instance.BuildingListSet(index, old, unit);
+        };
+
+        visuableBuildings.OnRemove += UnitCommander.Instance.BuildingListRemove;
+
+        visuableBuildings.OnClear += UnitCommander.Instance.BuildingListClear;
+
+        //Register the intial state of the units
+        for (int i = 0; i < visuableBuildings.Count; i++)
+        {
+            BuildingData unit = visuableBuildings[i];
+            UnitCommander.Instance.BuildingListInsert(i, unit);
+        }
+    }
+
+    public void RemoveBuildingHandles()
+    {
+        if (serverPlayer != null && visuableBuildings != null)
+        {
+            Debug.Log("Removing Building hooks");
+            visuableBuildings.OnChange = null;
+            visuableBuildings.OnAdd = null;
+            visuableBuildings.OnInsert = null;
+            visuableBuildings.OnSet = null;
+            visuableBuildings.OnRemove = null;
+            visuableBuildings.OnClear = null;
+        }
+    }
+
 }

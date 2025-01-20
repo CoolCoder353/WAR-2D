@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mirror;
+using Mirror.BouncyCastle.Asn1.Misc;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
@@ -35,6 +36,12 @@ public class WorldStateManager : NetworkBehaviour
 
     private Dictionary<int, Entity> Units = new Dictionary<int, Entity>();
 
+    private Dictionary<int, Entity> Buildings = new Dictionary<int, Entity>();
+
+    private EntityManager entityManager;
+
+
+
     private void Awake()
     {
 
@@ -48,6 +55,12 @@ public class WorldStateManager : NetworkBehaviour
         {
             Destroy(this);
         }
+    }
+
+    [Server]
+    public override void OnStartServer()
+    {
+        entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
     }
 
     [ServerCallback]
@@ -66,6 +79,10 @@ public class WorldStateManager : NetworkBehaviour
     public void FixedUpdate()
     {
         UpdatePlayerViews();
+
+        //TODO: THis is for debugging only
+        int numOfBuildings = entityManager.CreateEntityQuery(typeof(BuildingData)).CalculateEntityCount();
+        Debug.Log($"Found {numOfBuildings} buildings spawned on server via entities");
     }
 
     [Server]
@@ -140,7 +157,7 @@ public class WorldStateManager : NetworkBehaviour
     }
 
 
-    //<section>Units
+    #region Units
 
     [Command(requiresAuthority = false)]
     public void UpdateClientView(int2 startcorner, int2 endcorner, NetworkConnectionToClient sender = null)
@@ -163,8 +180,33 @@ public class WorldStateManager : NetworkBehaviour
 
             // Debug.Log($"For player {player.Key.nickname} found {entitiesInBox.Length} entities in box {startcorner}, {endcorner}");
             List<int> clientUnits = new List<int>();
+            List<int> clientBuildings = new List<int>();
             foreach (Entity entity in entitiesInBox)
             {
+
+                //If its a unit, do the below
+                if (!EntityManager.HasComponent<ClientUnit>(entity))
+                {
+                    //At this point, its a building so do almost the same thing but in a different list
+                    if (EntityManager.HasComponent<BuildingData>(entity))
+                    {
+                        BuildingData buildingData = EntityManager.GetComponentData<BuildingData>(entity);
+                        buildingData.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
+
+                        clientBuildings.Add(buildingData.id);
+
+                        if (player.Key.visuableBuildings.Any(b => b.id == buildingData.id))
+                        {
+                            player.Key.visuableBuildings[player.Key.visuableBuildings.FindIndex(b => b.id == buildingData.id)] = buildingData;
+                        }
+                        else
+                        {
+                            player.Key.visuableBuildings.Add(buildingData);
+                        }
+                    }
+                    continue;
+                }
+
                 ClientUnit clientUnit = EntityManager.GetComponentData<ClientUnit>(entity);
                 clientUnit.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
 
@@ -197,6 +239,15 @@ public class WorldStateManager : NetworkBehaviour
                     player.Key.visuableUnits.RemoveAt(i);
                 }
             }
+
+            //Remove the buildings that are not in the view anymore
+            for (int i = player.Key.visuableBuildings.Count - 1; i >= 0; i--)
+            {
+                if (!clientBuildings.Contains(player.Key.visuableBuildings[i].id))
+                {
+                    player.Key.visuableBuildings.RemoveAt(i);
+                }
+            }
         }
     }
 
@@ -204,6 +255,12 @@ public class WorldStateManager : NetworkBehaviour
     public void AddUnit(Entity entity, int id)
     {
         Units.Add(id, entity);
+    }
+
+    [Server]
+    public void AddBuilding(Entity entity, int id)
+    {
+        Buildings.Add(id, entity);
     }
 
     [Server]
@@ -294,6 +351,8 @@ public class WorldStateManager : NetworkBehaviour
         }
         entitiesInBox.Dispose();
     }
+
+
 
 
     [Server]
@@ -413,16 +472,33 @@ public class WorldStateManager : NetworkBehaviour
     {
         NativeList<Entity> entitiesInBox = new(Allocator.TempJob);
 
+        //UNITS
         var query = EntityManager.CreateEntityQuery(ComponentType.ReadOnly<MovementComponent>(), ComponentType.ReadOnly<LocalTransform>());
         NativeArray<Entity> entities = query.ToEntityArray(Allocator.TempJob);
         NativeArray<LocalTransform> transforms = query.ToComponentDataArray<LocalTransform>(Allocator.TempJob);
+
+        //BUILDINGS
+        var buildingQuery = EntityManager.CreateEntityQuery(ComponentType.ReadOnly<BuildingData>(), ComponentType.ReadOnly<LocalTransform>());
+        NativeArray<Entity> buildingEntities = buildingQuery.ToEntityArray(Allocator.TempJob);
+        NativeArray<LocalTransform> buildingTransforms = buildingQuery.ToComponentDataArray<LocalTransform>(Allocator.TempJob);
+
+
+        //EVERYTHING
+        NativeArray<Entity> allEntities = new NativeArray<Entity>(entities.Length + buildingEntities.Length, Allocator.TempJob);
+        NativeArray<LocalTransform> allTransforms = new NativeArray<LocalTransform>(transforms.Length + buildingTransforms.Length, Allocator.TempJob);
+
+        allEntities.Slice(0, entities.Length).CopyFrom(entities);
+        allEntities.Slice(entities.Length, buildingEntities.Length).CopyFrom(buildingEntities);
+
+        allTransforms.Slice(0, transforms.Length).CopyFrom(transforms);
+        allTransforms.Slice(transforms.Length, buildingTransforms.Length).CopyFrom(buildingTransforms);
 
         // Debug.Log($"Checking '{entities.Length}' entities in box {startcorner}, {endcorner}");
 
         FindEntitiesInBoxJob job = new()
         {
-            entities = entities,
-            transforms = transforms,
+            entities = allEntities,
+            transforms = allTransforms,
             startcorner = startcorner,
             endcorner = endcorner,
             result = entitiesInBox
@@ -434,6 +510,12 @@ public class WorldStateManager : NetworkBehaviour
         entities.Dispose();
         transforms.Dispose();
 
+        buildingEntities.Dispose();
+        buildingTransforms.Dispose();
+
+        allEntities.Dispose();
+        allTransforms.Dispose();
+
         // Ensure the entitiesInBox is disposed of properly
         NativeList<Entity> result = new NativeList<Entity>(entitiesInBox.Length, Allocator.Persistent);
         result.AddRange(entitiesInBox.AsArray());
@@ -442,6 +524,100 @@ public class WorldStateManager : NetworkBehaviour
         return result;
     }
 
+    #endregion
+    #region Buildings
 
+    [Command(requiresAuthority = false)]
+    public void TryAddBuilding(int2 positon, BuildingType type, NetworkConnectionToClient sender = null)
+    {
+        Debug.Log("Trying to place building -> server");
+        if (CanBuildBuilding(positon, type))
+        {
+            Debug.Log("Building can be placed -> server");
+
+            BuildingData buildingData = new BuildingData
+            {
+                position = new float2(positon.x, positon.y),
+                id = UnityEngine.Random.Range(0, int.MaxValue),
+                buildingType = type,
+                ownerId = BuildingData.UIntToInt(sender.identity.GetComponent<ClientPlayer>().netId)
+            };
+
+            EntityCommandBuffer commandBuffer = new EntityCommandBuffer(Allocator.Temp);
+
+            Entity building = commandBuffer.CreateEntity();
+            commandBuffer.AddComponent(building, buildingData);
+
+            commandBuffer.AddComponent(building, new LocalTransform { Position = new float3(buildingData.position.x, buildingData.position.y, 0) });
+
+            commandBuffer.Playback(entityManager);
+
+            Debug.Log("Building placed -> server");
+        }
+    }
+
+    [Server]
+    private bool CanBuildBuilding(int2 position, BuildingType type)
+    {
+        List<int2> tiles = GetTilesBuildingWillCover(position, type);
+
+        Debug.Log($"Check if the building can be placed at {position} which will cover {tiles.Count} tiles");
+        foreach (int2 tile in tiles)
+        {
+            if (!world.GetTile(tile).isWalkable || !IsAvaliable(tile, -1) || world.GetTile(tile).isUsed)
+            {
+                Debug.LogWarning($"Cannot build building at {position} because tile {tile} is not walkable ({!world.GetTile(tile).isWalkable}), is used ({world.GetTile(tile).isUsed}) or is not avaliable ({!IsAvaliable(tile, -1)}).");
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    //HELPER FUNCTIONS
+
+    [Server]
+    //Gets the tiles on the tilemap that the building will cover
+    public List<int2> GetTilesBuildingWillCover(int2 center, BuildingType type)
+    {
+        List<int2> tiles = new List<int2>();
+
+        int2 size = GetBuildingSize(type);
+
+        int2 tilesize = new int2(Mathf.CeilToInt(WalkableTilemap.cellSize.x), Mathf.CeilToInt(WalkableTilemap.cellSize.y));
+
+        int numberOfTilesX = size.x / tilesize.x;
+        int numberOfTilesY = size.y / tilesize.y;
+
+        int2 start = center - new int2(numberOfTilesX / 2, numberOfTilesY / 2);
+
+        for (int x = 0; x < numberOfTilesX; x++)
+        {
+            for (int y = 0; y < numberOfTilesY; y++)
+            {
+                tiles.Add(start + new int2(x, y));
+            }
+        }
+
+        return tiles;
+    }
+
+    [Server]
+    public int2 GetBuildingSize(BuildingType type)
+    {
+        //Load the building sprite from the resources
+        Sprite sprite = Resources.Load<Sprite>($"{type.ToString()}");
+        if (sprite == null)
+        {
+            Debug.LogError($"Could not find sprite for building type {type}");
+            return new int2(1, 1);
+        }
+        //Get the size of the sprite
+        return new int2(Mathf.CeilToInt(sprite.rect.width / sprite.pixelsPerUnit), Mathf.CeilToInt(sprite.rect.height / sprite.pixelsPerUnit));
+
+
+    }
+
+    #endregion
 
 }

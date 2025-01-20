@@ -17,11 +17,11 @@ public class UnitCommander : NetworkBehaviour
 
     public GameObject selectionBox;
 
-    private List<ClientUnit> unitsVisable = new List<ClientUnit>();
-
     private ClientPlayer localPlayer;
 
     private Dictionary<int, GameObject> unitGameObjects = new Dictionary<int, GameObject>();
+
+    private Dictionary<int, GameObject> buildingGameObjects = new Dictionary<int, GameObject>();
 
     [ClientCallback]
     private void Awake()
@@ -35,6 +35,7 @@ public class UnitCommander : NetworkBehaviour
 
             localPlayer = NetworkClient.connection.identity.GetComponent<ClientPlayer>();
             localPlayer.SetUnitHandles();
+            localPlayer.SetBuildingHandles();
 
         }
         else
@@ -53,7 +54,7 @@ public class UnitCommander : NetworkBehaviour
         localPlayer.RemoveUnitHandles();
     }
 
-    private Vector3 GetMouseWorldPosition()
+    public static Vector3 GetMouseWorldPosition()
     {
         Vector3 mousePosition = Input.mousePosition;
 
@@ -251,4 +252,88 @@ public class UnitCommander : NetworkBehaviour
     }
 
 
+    #region Buildings
+    //This is called when a unit is added or inserted into the list, returning the index of the list and the unit itself
+    [Client]
+    public void BuildingListInsert(int index, BuildingData unit)
+    {
+        // Debug.Log($"UnitListInsert called with unit id: '{unit.id}', sprite:  '{unit.spriteName}', position : '{unit.position}'");
+        if (buildingGameObjects.ContainsKey(unit.id))
+        {
+            Debug.LogError("BuildingListInsert called with building that already exists in the list. Building id: " + unit.id);
+            return;
+        }
+
+        //Create a new game object
+        GameObject go = new GameObject();
+        go.transform.position = new Vector3(unit.position.x, unit.position.y, 0);
+        go.AddComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(unit.buildingType.ToString());
+        buildingGameObjects.Add(unit.id, go);
+    }
+
+    //Called when a unit is removed from the list, returning the index of the list and the old unit itself
+    [Client]
+    public void BuildingListRemove(int index, BuildingData OldUnit)
+    {
+        //Remove the game object from the list
+        if (buildingGameObjects.ContainsKey(OldUnit.id))
+        {
+            Destroy(buildingGameObjects[OldUnit.id]);
+            buildingGameObjects.Remove(OldUnit.id);
+        }
+    }
+
+    //Called when the enitre list is cleared
+    [Client]
+    public void BuildingListClear()
+    {
+        //Destroy all the game objects
+        foreach (var item in buildingGameObjects)
+        {
+            Destroy(item.Value);
+        }
+        buildingGameObjects.Clear();
+    }
+
+    //Called when an item in the list is set to a new value
+    //Note: I am not sure whether this will be called if something inside the object is changed, or if the object itself is changed
+    [Client]
+    public void BuildingListSet(int index, BuildingData oldUnit, BuildingData newUnit)
+    {
+
+        if (oldUnit.id != newUnit.id)
+        {
+            Debug.LogError("BuildingListSet called with different id for old and new building");
+            return;
+        }
+
+        //If the unit is not in the list, add it, this should not happen but just in case
+        if (!buildingGameObjects.ContainsKey(newUnit.id))
+        {
+            ////UnitListInsert(index, newUnit);
+            return;
+        }
+
+
+        //If only the position is changed, tween move the game object
+        if (oldUnit.position.x != newUnit.position.x || oldUnit.position.y != newUnit.position.y)
+        {
+            //TODO: Tween move the game object
+            if (buildingGameObjects.ContainsKey(oldUnit.id))
+            {
+                buildingGameObjects[oldUnit.id].transform.position = new Vector3(newUnit.position.x, newUnit.position.y, 0);
+            }
+        }
+        //If the sprite is changed, change the sprite
+        if (oldUnit.buildingType != newUnit.buildingType)
+        {
+            if (buildingGameObjects.ContainsKey(oldUnit.id))
+            {
+                buildingGameObjects[oldUnit.id].GetComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(newUnit.buildingType.ToString());
+            }
+        }
+
+    }
+
+    #endregion
 }

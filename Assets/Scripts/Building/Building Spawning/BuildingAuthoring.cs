@@ -18,8 +18,20 @@ public struct BuildingData : IComponentData
 
     public BuildingType buildingType;
 
+    public int ownerId;
 
+
+    public static uint IntToUInt(int value)
+    {
+        return unchecked((uint)value);
+    }
+
+    public static int UIntToInt(uint value)
+    {
+        return unchecked((int)value);
+    }
 }
+
 
 public enum BuildingType
 {

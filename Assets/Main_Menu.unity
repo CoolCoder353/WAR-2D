@@ -2369,7 +2369,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6b0fecffa3f624585964b0d0eb21b18e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  port: 7777
+  port: 7787
   DualMode: 1
   NoDelay: 1
   Interval: 10
@@ -2408,7 +2408,7 @@ MonoBehaviour:
   sslEnabled: 0
   sslProtocols: 3072
   sslCertJson: ./cert.json
-  port: 7778
+  port: 7788
   batchSend: 1
   waitBeforeSend: 1
   clientUseWss: 0
@@ -2448,10 +2448,9 @@ MonoBehaviour:
   headlessStartMode: 1
   editorAutoStart: 0
   sendRate: 60
-  autoStartServerBuild: 0
-  autoConnectClientBuild: 0
   offlineScene: Assets/Main_Menu.unity
   onlineScene: 
+  offlineSceneLoadDelay: 0
   transport: {fileID: 1257436563}
   networkAddress: localhost
   maxConnections: 100

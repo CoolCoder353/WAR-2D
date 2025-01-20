@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine.Tilemaps;
-
+using UnityEngine;
 
 
 public struct PathNode
@@ -141,6 +141,7 @@ public struct TilemapStruct
     {
         if (!tiles.TryGetValue(position, out TileNode tileNode))
         {
+            Debug.LogError($"Tile at {position} not found, returning blank tile.");
             return new TileNode
             {
                 position = position,
