@@ -2369,7 +2369,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6b0fecffa3f624585964b0d0eb21b18e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  port: 7787
+  port: 7777
   DualMode: 1
   NoDelay: 1
   Interval: 10
@@ -2408,7 +2408,7 @@ MonoBehaviour:
   sslEnabled: 0
   sslProtocols: 3072
   sslCertJson: ./cert.json
-  port: 7788
+  port: 7778
   batchSend: 1
   waitBeforeSend: 1
   clientUseWss: 0

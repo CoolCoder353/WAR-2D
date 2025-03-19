@@ -569,6 +569,15 @@ public class WorldStateManager : NetworkBehaviour
 
             commandBuffer.Playback(entityManager);
 
+            //Set the tiles the building will cover to be used
+            List<int2> tiles = GetTilesBuildingWillCover(positon, type);
+            foreach (int2 tile in tiles)
+            {
+                TileNode tileNode = world.GetTile(tile);
+                tileNode.used = 1;
+                world.SetTile(tile, tileNode);
+            }
+
             AddBuilding(building, buildingData.id);
         }
     }
@@ -632,7 +641,7 @@ public class WorldStateManager : NetworkBehaviour
                 tiles.Add(start + new int2(x, y));
             }
         }
-
+        Debug.Log($"Building will cover {tiles.Count} tiles");
         return tiles;
     }
 
