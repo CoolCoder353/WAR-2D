@@ -37,7 +37,7 @@ public enum BuildingType
 {
     None,
     Miner,
-    Factory
+    SmallUnitSpawner
 }
 
 

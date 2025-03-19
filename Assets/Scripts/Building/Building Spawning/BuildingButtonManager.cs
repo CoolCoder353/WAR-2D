@@ -22,6 +22,8 @@ public class BuildingButtonManager : MonoBehaviour
         foreach (var button in buttons)
         {
             button.onClick.AddListener(() => OnButtonClicked(button));
+
+            button.GetComponentInChildren<Image>().sprite = Resources.Load<Sprite>(buildingTypes[buttons.IndexOf(button)].ToString());
         }
 
         if (buildingTypes.Count != buttons.Count)
@@ -40,17 +42,18 @@ public class BuildingButtonManager : MonoBehaviour
         }
         if (Input.GetMouseButtonDown(0) && previewBuilding.activeInHierarchy)
         {
+            TrySpawnBuilding();
             previewBuilding.SetActive(false);
             previewBuilding.transform.position = new Vector3(0, 0, 0);
             previewBuilding.GetComponent<SpriteRenderer>().sprite = null;
-            TrySpawnBuilding();
+
         }
     }
 
     [Client]
     private void TrySpawnBuilding()
     {
-        Vector3 position = RoundVector3(Camera.main.ScreenToWorldPoint(Input.mousePosition));
+        Vector3 position = RoundVector3(UnitCommander.GetMouseWorldPosition());
         int2 convertedPosition = new int2((int)position.x, (int)position.y);
 
         Debug.Log($"Trying to spawn building at {convertedPosition} of type {selectedBuildingType} where the preview building is at {previewBuilding.transform.position} -> client");

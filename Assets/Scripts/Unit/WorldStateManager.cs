@@ -47,7 +47,6 @@ public class WorldStateManager : NetworkBehaviour
 
         if (Instance == null)
         {
-            Debug.LogWarning("WorldStateManager is null. Setting ourself as the instance.");
             Instance = this;
             GenerateTileMap();
         }
@@ -80,9 +79,9 @@ public class WorldStateManager : NetworkBehaviour
     {
         UpdatePlayerViews();
 
-        //TODO: THis is for debugging only
-        int numOfBuildings = entityManager.CreateEntityQuery(typeof(BuildingData)).CalculateEntityCount();
-        Debug.Log($"Found {numOfBuildings} buildings spawned on server via entities");
+        // //TODO: THis is for debugging only
+        // int numOfBuildings = entityManager.CreateEntityQuery(typeof(BuildingData)).CalculateEntityCount();
+        // Debug.Log($"Found {numOfBuildings} buildings spawned on server via entities");
     }
 
     [Server]
@@ -530,10 +529,8 @@ public class WorldStateManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void TryAddBuilding(int2 positon, BuildingType type, NetworkConnectionToClient sender = null)
     {
-        Debug.Log("Trying to place building -> server");
         if (CanBuildBuilding(positon, type))
         {
-            Debug.Log("Building can be placed -> server");
 
             BuildingData buildingData = new BuildingData
             {
@@ -550,18 +547,38 @@ public class WorldStateManager : NetworkBehaviour
 
             commandBuffer.AddComponent(building, new LocalTransform { Position = new float3(buildingData.position.x, buildingData.position.y, 0) });
 
+            switch (type)
+            {
+                case BuildingType.Miner:
+                    ///commandBuffer.AddComponent(building, new Miner { });
+                    break;
+                case BuildingType.SmallUnitSpawner:
+                    commandBuffer.AddComponent(building,
+                    new SpawnerData
+                    {
+                        count = 0,
+                        ownerId = buildingData.ownerId,
+                        position = buildingData.position,
+                        unitType = UnitType.Tank
+                    });
+                    break;
+                default:
+                    Debug.LogError("BuildingType not found in WorldStateManager");
+                    break;
+            }
+
             commandBuffer.Playback(entityManager);
 
-            Debug.Log("Building placed -> server");
+            AddBuilding(building, buildingData.id);
         }
     }
+
 
     [Server]
     private bool CanBuildBuilding(int2 position, BuildingType type)
     {
         List<int2> tiles = GetTilesBuildingWillCover(position, type);
 
-        Debug.Log($"Check if the building can be placed at {position} which will cover {tiles.Count} tiles");
         foreach (int2 tile in tiles)
         {
             if (!world.GetTile(tile).isWalkable || !IsAvaliable(tile, -1) || world.GetTile(tile).isUsed)
@@ -573,6 +590,23 @@ public class WorldStateManager : NetworkBehaviour
 
         return true;
     }
+
+
+    [Command(requiresAuthority = false)]
+    public void RequestSpawnUnit(int spawnerId, NetworkConnectionToClient sender = null)
+    {
+        if (Buildings.TryGetValue(spawnerId, out Entity spawner))
+        {
+            SpawnerData spawnerData = EntityManager.GetComponentData<SpawnerData>(spawner);
+            spawnerData.count++;
+            EntityManager.SetComponentData(spawner, spawnerData);
+        }
+        else
+        {
+            Debug.LogWarning($"Spawner with id {spawnerId} not found when trying to spawn unit.");
+        }
+    }
+
 
     //HELPER FUNCTIONS
 

@@ -14,7 +14,7 @@ public struct ClientUnit : IComponentData
     /// <summary>
     /// public NetworkIdentity owner;
     /// </summary>
-    public UnitSprites spriteName;
+    public UnitType spriteName;
 
     //NOTE: THIS COULD BE A ulong if we need more characters
     //See https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/integral-numeric-types for comparison
@@ -23,7 +23,7 @@ public struct ClientUnit : IComponentData
     public int ownerId;
 }
 
-public enum UnitSprites
+public enum UnitType
 {
     None,
     Tank
@@ -33,7 +33,7 @@ public enum UnitSprites
 public class UnitIdAuthoring : MonoBehaviour
 {
     public int id;
-    public UnitSprites spriteName;
+    public UnitType spriteName;
 
     private class Baker : Baker<UnitIdAuthoring>
     {
