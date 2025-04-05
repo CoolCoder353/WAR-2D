@@ -592,13 +592,14 @@ public class WorldStateManager : NetworkBehaviour
         {
             if (!world.GetTile(tile).isWalkable || !IsAvaliable(tile, -1) || world.GetTile(tile).isUsed)
             {
-                Debug.LogWarning($"Cannot build building at {position} because tile {tile} is not walkable ({!world.GetTile(tile).isWalkable}), is used ({world.GetTile(tile).isUsed}) or is not avaliable ({!IsAvaliable(tile, -1)}).");
+                //Debug.LogWarning($"Cannot build building at {position} because tile {tile} is not walkable ({!world.GetTile(tile).isWalkable}), is used ({world.GetTile(tile).isUsed}) or is not avaliable ({!IsAvaliable(tile, -1)}).");
                 return false;
             }
         }
 
         return true;
     }
+
 
 
     [Command(requiresAuthority = false)]
@@ -645,8 +646,7 @@ public class WorldStateManager : NetworkBehaviour
         return tiles;
     }
 
-    [Server]
-    public int2 GetBuildingSize(BuildingType type)
+    public static int2 GetBuildingSize(BuildingType type)
     {
         //Load the building sprite from the resources
         Sprite sprite = Resources.Load<Sprite>($"{type.ToString()}");

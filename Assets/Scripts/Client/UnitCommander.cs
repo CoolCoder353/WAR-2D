@@ -21,7 +21,7 @@ public class UnitCommander : NetworkBehaviour
 
     private Dictionary<int, GameObject> unitGameObjects = new Dictionary<int, GameObject>();
 
-    private Dictionary<int, GameObject> buildingGameObjects = new Dictionary<int, GameObject>();
+    public Dictionary<int, GameObject> buildingGameObjects = new Dictionary<int, GameObject>();
 
     [ClientCallback]
     private void Awake()
