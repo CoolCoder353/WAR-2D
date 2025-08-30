@@ -268,6 +268,28 @@ public class UnitCommander : NetworkBehaviour
         GameObject go = new GameObject();
         go.transform.position = new Vector3(unit.position.x, unit.position.y, 0);
         go.AddComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(unit.buildingType.ToString());
+
+        //Check if there is a client script for the building type
+        Type buildingType = Type.GetType("Assets.Scripts.Client." + unit.buildingType.ToString() + "Client");
+        if (buildingType != null)
+        {
+            //Add the component to the game object
+            var clientcomponent = go.AddComponent(buildingType);
+            var field = clientcomponent.GetType().GetField("buildingData");
+            if (field != null)
+            {
+                field.SetValue(clientcomponent, unit);
+            }
+            else
+            {
+                Debug.LogWarning($"Client script '{buildingType.Name}' does not contain a 'buildingData' field. Or it is spelled incorrectly. Most likely the ladder.");
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"No client script found for building type {unit.buildingType}");
+        }
+
         buildingGameObjects.Add(unit.id, go);
     }
 
