@@ -561,6 +561,7 @@ public class WorldStateManager : NetworkBehaviour
                         position = buildingData.position,
                         unitType = UnitType.Tank
                     });
+                    Debug.Log($"SmallUnitSpawner created at {buildingData.position}");
                     break;
                 default:
                     Debug.LogError("BuildingType not found in WorldStateManager");

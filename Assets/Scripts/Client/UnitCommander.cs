@@ -270,7 +270,20 @@ public class UnitCommander : NetworkBehaviour
         go.AddComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(unit.buildingType.ToString());
 
         //Check if there is a client script for the building type
-        Type buildingType = Type.GetType("Assets.Scripts.Client." + unit.buildingType.ToString() + "Client");
+        Type buildingType = null;
+        
+        // Map building types to their corresponding client class names
+        switch (unit.buildingType)
+        {
+            case BuildingType.SmallUnitSpawner:
+                buildingType = typeof(SpawnerClientManager);
+                break;
+            // Add other building types as needed
+            default:
+                Debug.LogWarning($"No client script mapping found for building type {unit.buildingType}");
+                break;
+        }
+        
         if (buildingType != null)
         {
             //Add the component to the game object
