@@ -17,6 +17,9 @@ public class ClientPlayer : NetworkBehaviour
     public ServerData serverPlayer;
 
 
+    public UnityEngine.Events.UnityEvent<bool> onResponseFromCanBuildBuilding = new UnityEngine.Events.UnityEvent<bool>();
+
+
     [Client]
     public override void OnStartClient()
     {
@@ -54,6 +57,12 @@ public class ClientPlayer : NetworkBehaviour
     {
         serverPlayer = ServerData.Deserialize(playerData);
 
+    }
+
+    [TargetRpc]
+    public void TargetReceiveCanBuildBuildingResponse(NetworkConnection target, bool result)
+    {
+        onResponseFromCanBuildBuilding?.Invoke(result);
     }
 
 

@@ -25,6 +25,7 @@ public class WorldStateManager : NetworkBehaviour
 
     public bool showTileMapweights = false;
 
+
     public Vector3 visualOffset = new Vector3(0.5f, 0.5f, 0);
 
     private Dictionary<ClientPlayer, (int2, int2)> playerView = new Dictionary<ClientPlayer, (int2, int2)>();
@@ -68,6 +69,7 @@ public class WorldStateManager : NetworkBehaviour
         {
             DrawTileMap(world.tiles);
         }
+
     }
 
 
@@ -89,12 +91,19 @@ public class WorldStateManager : NetworkBehaviour
         {
             TileNode tile = tilepair.Value;
             Vector3 position = new Vector3(tile.position.x, tile.position.y, 0) + visualOffset;
-            Gizmos.color = Color.Lerp(Color.white, Color.black, tile.weight / 10f);
+            if (tile.isWalkable)
+            {
+                Gizmos.color = Color.Lerp(Color.white, Color.black, tile.weight / 10f);
+            }
+            else
+            {
+                Gizmos.color = Color.red;
+            }
             Gizmos.DrawCube(position, Vector3.one);
         }
     }
 
-    [ServerCallback]
+    //Called on the client and server when the game starts
     private void GenerateTileMap()
     {
         BoundsInt bounds = WalkableTilemap.cellBounds;
@@ -147,6 +156,14 @@ public class WorldStateManager : NetworkBehaviour
     {
         return world.GetTile(position);
     }
+
+    [Client]
+    public TileNode GetTileCommand(int2 position)
+    {
+        return world.GetTile(position);
+    }
+
+
     [Server]
     public void SetTile(int2 position, TileNode tile)
     {
@@ -276,7 +293,7 @@ public class WorldStateManager : NetworkBehaviour
         ////Debug.Log($"Claiming location {position} for unit {id}");
         if (!IsAvaliable(position, id))
         {
-            Debug.LogWarning($"Unit with id {id} tried to claim a location that is already taken.");
+            /////Debug.LogWarning($"Unit with id {id} tried to claim a location that is already taken.");
             return;
         }
         //Ignore if it is already claimed
@@ -293,7 +310,7 @@ public class WorldStateManager : NetworkBehaviour
         ////Debug.Log($"Releasing location {position} for unit {id}");
         if (!unitPositions.Any(u => u.Item2.Equals(position) && u.Item1 == id))
         {
-            Debug.LogWarning($"Unit with id {id} tried to release a location that is not taken or owned by that unit.");
+            ////            Debug.LogWarning($"Unit with id {id} tried to release a location that is not taken or owned by that unit.");
             return;
         }
         unitPositions.Remove((id, position));
@@ -604,6 +621,13 @@ public class WorldStateManager : NetworkBehaviour
         }
 
         return true;
+    }
+    [Command(requiresAuthority = false)]
+
+    public void CanBuildBuildingCommand(int2 position, BuildingType type, NetworkConnectionToClient sender = null)
+    {
+        bool canBuild = CanBuildBuilding(position, type);
+        sender.identity.GetComponent<ClientPlayer>().TargetReceiveCanBuildBuildingResponse(sender, canBuild);
     }
 
 

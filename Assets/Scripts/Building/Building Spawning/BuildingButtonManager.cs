@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Mirror;
+using Telepathy;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Tilemaps;
@@ -22,6 +23,12 @@ public class BuildingButtonManager : MonoBehaviour
     [ClientCallback]
     public void Start()
     {
+
+        ClientPlayer localPlayer = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+
+        localPlayer.onResponseFromCanBuildBuilding.AddListener(ResultFromCommand);
+
+
         foreach (var button in buttons)
         {
             button.onClick.AddListener(() => OnButtonClicked(button));
@@ -54,47 +61,60 @@ public class BuildingButtonManager : MonoBehaviour
 
         }
     }
-
+    [Client]
     private void SetBuildingPreviewColour(Vector3 position)
     {
         //We can guess if the building will be valid or not based on the positions we know of from the ClientPlayer thing
 
         ClientPlayer clientPlayer = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
 
+        WorldStateManager.Instance.CanBuildBuildingCommand(new int2((int)position.x, (int)position.y), selectedBuildingType);
+        // if (clientPlayer != null)
+        // {
+        //     foreach (BuildingData building in clientPlayer.visuableBuildings)
+        //     {
 
-        if (clientPlayer != null)
+        //         float2 size = GetBuildingSizeInUnits(building.buildingType, buildingSizes);
+
+        //         if (!buildingSizes.ContainsKey(building.buildingType))
+        //         {
+        //             buildingSizes.Add(building.buildingType, size);
+        //         }
+
+        //         float2 lowerBounds = new float2(building.position.x - size.x / 2, building.position.y - size.y / 2);
+        //         float2 upperBounds = new float2(building.position.x + size.x / 2, building.position.y + size.y / 2);
+
+        //         bool isBuildinginWall = CheckIfBuildingInWall(building.buildingType, position, size);
+
+        //         if (isBuildinginWall || (position.x >= lowerBounds.x && position.x <= upperBounds.x && position.y >= lowerBounds.y && position.y <= upperBounds.y))
+        //         {
+        //             Debug.Log($"Building {building.buildingType} is in the way of the preview building at {position} (IsBuildingInWall: {isBuildinginWall})");
+        //             previewBuilding.GetComponent<SpriteRenderer>().color = new Color(1, 0, 0, 0.75f);
+        //             return;
+        //         }
+
+        //     }
+        //     previewBuilding.GetComponent<SpriteRenderer>().color = new Color(0.8f, 0.8f, 0.8f, 0.75f);
+        // }
+        // else
+        // {
+        //     Debug.LogError("ClientPlayer is null");
+        // }
+    }
+
+    public void ResultFromCommand(bool result)
+    {
+        if (result)
         {
-            foreach (BuildingData building in clientPlayer.visuableBuildings)
-            {
-
-                float2 size = GetBuildingSizeInUnits(building.buildingType, buildingSizes);
-
-                if (!buildingSizes.ContainsKey(building.buildingType))
-                {
-                    buildingSizes.Add(building.buildingType, size);
-                }
-
-                float2 lowerBounds = new float2(building.position.x - size.x / 2, building.position.y - size.y / 2);
-                float2 upperBounds = new float2(building.position.x + size.x / 2, building.position.y + size.y / 2);
-
-                bool isBuildinginWall = CheckIfBuildingInWall(building.buildingType, position, size);
-
-                if (isBuildinginWall || (position.x >= lowerBounds.x && position.x <= upperBounds.x && position.y >= lowerBounds.y && position.y <= upperBounds.y))
-                {
-                    Debug.Log($"Building {building.buildingType} is in the way of the preview building at {position} (IsBuildingInWall: {isBuildinginWall})");
-                    previewBuilding.GetComponent<SpriteRenderer>().color = new Color(1, 0, 0, 0.75f);
-                    return;
-                }
-
-            }
             previewBuilding.GetComponent<SpriteRenderer>().color = new Color(0.8f, 0.8f, 0.8f, 0.75f);
         }
         else
         {
-            Debug.LogError("ClientPlayer is null");
+            previewBuilding.GetComponent<SpriteRenderer>().color = new Color(1, 0, 0, 0.75f);
         }
     }
 
+    [Client]
     private bool CheckIfBuildingInWall(BuildingType buildingType, Vector3 position, float2 size)
     {
         Tilemap WalkableTilemap = WorldStateManager.Instance.WalkableTilemap;
@@ -111,16 +131,16 @@ public class BuildingButtonManager : MonoBehaviour
             {
                 int2 checkPosition = new int2(Mathf.RoundToInt(startPos.x + i), Mathf.RoundToInt(startPos.y + j));
                 Debug.Log($"Checking tile at {checkPosition} for building {buildingType}");
-                if (!WorldStateManager.Instance.GetTile(checkPosition).isWalkable || WorldStateManager.Instance.GetTile(checkPosition).isUsed)
+                if (!WorldStateManager.Instance.GetTileCommand(checkPosition).isWalkable || WorldStateManager.Instance.GetTileCommand(checkPosition).isUsed)
                 {
-                    Debug.LogWarning($"Tile at {checkPosition} is not walkable or is used for building {buildingType}, iswalkable: {WorldStateManager.Instance.GetTile(checkPosition).isWalkable}, isused: {WorldStateManager.Instance.GetTile(checkPosition).isUsed}");
+                    Debug.LogWarning($"Tile at {checkPosition} is not walkable or is used for building {buildingType}, iswalkable: {WorldStateManager.Instance.GetTileCommand(checkPosition).isWalkable}, isused: {WorldStateManager.Instance.GetTileCommand(checkPosition).isUsed}");
                     return true;
                 }
             }
         }
         return false;
     }
-
+    [Client]
     private static float2 GetBuildingSizeInUnits(BuildingType buildingType, Dictionary<BuildingType, float2> cachedBuildingSizes = null)
     {
         if (cachedBuildingSizes != null && cachedBuildingSizes.TryGetValue(buildingType, out float2 size))
@@ -148,7 +168,7 @@ public class BuildingButtonManager : MonoBehaviour
 
         WorldStateManager.Instance.TryAddBuilding(convertedPosition, selectedBuildingType);
     }
-
+    [Client]
     private static Vector3 RoundVector3(Vector3 vector)
     {
         return new Vector3(Mathf.Round(vector.x), Mathf.Round(vector.y), Mathf.Round(vector.z));
