@@ -27,7 +27,7 @@ public class ClientPlayer : NetworkBehaviour
 
         DontDestroyOnLoad(this);
         //Find the lobby system
-        lobbySystem = FindObjectOfType<LobbySystem>();
+        lobbySystem = FindAnyObjectByType<LobbySystem>();
         if (lobbySystem != null) { lobbySystem.AddClientPlayer(this, addNicknameListener: ClientCanEdit(), addStartGameListener: ClientIsServerOwner()); }
 
         //Add the hook to the scene change event
