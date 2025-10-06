@@ -147,7 +147,10 @@ public class WorldStateManager : NetworkBehaviour
         };
 
 
+
         world = tilemap;
+
+        ////tiles.Dispose();
     }
 
 

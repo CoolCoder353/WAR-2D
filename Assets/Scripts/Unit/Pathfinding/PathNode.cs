@@ -15,6 +15,8 @@ public struct PathNode
 
     public float weight;
 
+    public TileType tileType;
+
     public float fcost => (gcost * 0.01f + hcost) * weight;
 
     public static TileNode PathNodeToTileNode(PathNode pathNode)
@@ -24,6 +26,7 @@ public struct PathNode
             position = pathNode.position,
             weight = 1,
             used = 0,
+            tileType = pathNode.tileType
         };
     }
 
@@ -34,14 +37,16 @@ public struct PathNode
         gcost = pathNode.gcost;
         hcost = pathNode.hcost;
         weight = pathNode.weight;
+        tileType = pathNode.tileType;
     }
 
-    public PathNode(int2 position, float gcost, float hcost, float weight)
+    public PathNode(int2 position, float gcost, float hcost, float weight, TileType tileType)
     {
         this.position = position;
         this.gcost = gcost;
         this.hcost = hcost;
         this.weight = weight;
+        this.tileType = tileType;
     }
 
 
@@ -111,6 +116,8 @@ public struct TileNode
 
     public bool isWalkable => weight > 0;
 
+    public TileType tileType;
+
 
     public static PathNode TileNodeToPathNode(TileNode tileNode)
     {
@@ -119,7 +126,8 @@ public struct TileNode
             position = tileNode.position,
             gcost = 0,
             hcost = 0,
-            weight = tileNode.weight * (tileNode.isUsed ? 0 : 1)
+            weight = tileNode.weight * (tileNode.isUsed ? 0 : 1),
+            tileType = tileNode.tileType
         };
     }
 }
@@ -146,7 +154,8 @@ public struct TilemapStruct
             {
                 position = position,
                 weight = 0,
-                used = 0
+                used = 0,
+                tileType = TileType.Wall
             };
         }
 
@@ -157,4 +166,11 @@ public struct TilemapStruct
     {
         tiles[position] = tileNode;
     }
+}
+
+public enum TileType
+{
+    Ground,
+    Wall,
+    Gem
 }
