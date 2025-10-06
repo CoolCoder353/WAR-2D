@@ -91,7 +91,11 @@ public class WorldStateManager : NetworkBehaviour
         {
             TileNode tile = tilepair.Value;
             Vector3 position = new Vector3(tile.position.x, tile.position.y, 0) + visualOffset;
-            if (tile.isWalkable)
+            if (tile.tileType == TileType.Gem)
+            {
+                Gizmos.color = Color.cyan;
+            }
+            else if (tile.isWalkable)
             {
                 Gizmos.color = Color.Lerp(Color.white, Color.black, tile.weight / 10f);
             }
@@ -120,19 +124,26 @@ public class WorldStateManager : NetworkBehaviour
                 Vector3Int localPlace = new Vector3Int(tilex, tiley, 0);
                 Vector3 worldPosition = WalkableTilemap.CellToWorld(localPlace);
                 int2 worldPlace = new int2((int)worldPosition.x, (int)worldPosition.y);
-
+                TileType tileType = TileType.Ground;
                 int weight = 1;
+
+
 
                 if (UnwalkableTilemap.GetTile(localPlace) != null)
                 {
                     weight = 0;
+
+                    tileType = UnwalkableTilemap.GetTile(localPlace).name.Contains("Gems") ? TileType.Gem : TileType.Wall;
+                    Debug.Log($"Found unwalkable tile at {localPlace} with name {UnwalkableTilemap.GetTile(localPlace).name} setting type to {tileType}");
+
                 }
 
                 TileNode tileNode = new TileNode
                 {
                     position = worldPlace,
                     weight = weight,
-                    used = 0
+                    used = 0,
+                    tileType = tileType
                 };
 
                 tiles[worldPlace] = tileNode;
@@ -149,8 +160,6 @@ public class WorldStateManager : NetworkBehaviour
 
 
         world = tilemap;
-
-        ////tiles.Dispose();
     }
 
 

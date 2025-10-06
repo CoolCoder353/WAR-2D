@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6d2f9936fa800584cbd647fa195487a0, type: 3}
   m_Name: GemsSIB
   m_EditorClassIdentifier: 
-  m_DefaultSprite: {fileID: -1375421176, guid: 669434db750756e4f80d8f27dabbc17d, type: 3}
+  m_DefaultSprite: {fileID: 21300000, guid: d8e64177ba49ca240ad50fd9346b34f5, type: 3}
   m_DefaultGameObject: {fileID: 0}
   m_DefaultColliderType: 1
   m_TilingRules:
