@@ -1,8 +1,6 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mirror;
-using Mirror.BouncyCastle.Asn1.Misc;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
@@ -318,6 +316,11 @@ public class WorldStateManager : NetworkBehaviour
         NativeList<Entity> entitiesInBox = FindEntitiesInBox(startcorner, endcorner);
         foreach (Entity entity in entitiesInBox)
         {
+            if (!EntityManager.HasComponent<ClientUnit>(entity))
+            {
+                Debug.LogWarning("Entity in box is not a unit. Ignoring it.");
+                continue;
+            }
             ClientUnit clientUnit = EntityManager.GetComponentData<ClientUnit>(entity);
             clientUnit.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
 
@@ -599,6 +602,35 @@ public class WorldStateManager : NetworkBehaviour
         }
 
         return true;
+    }
+
+
+    [Command(requiresAuthority = false)]
+    public void BuildingClicked(int buildingId, NetworkConnectionToClient sender = null)
+    {
+        if (Buildings.TryGetValue(buildingId, out Entity building))
+        {
+            BuildingData buildingData = EntityManager.GetComponentData<BuildingData>(building);
+            ClientPlayer senderPlayer = sender.identity.GetComponent<ClientPlayer>();
+            if (buildingData.ownerId != BuildingData.UIntToInt(senderPlayer.netId))
+            {
+                Debug.LogWarning($"Player {senderPlayer.nickname} tried to click on a building they do not own.");
+                return;
+            }
+
+            Entity buildingEntity = Buildings[buildingId];
+            if (EntityManager.HasComponent<SpawnerData>(buildingEntity))
+            {
+                SpawnerData spawnerData = EntityManager.GetComponentData<SpawnerData>(buildingEntity);
+                spawnerData.count++;
+                EntityManager.SetComponentData(buildingEntity, spawnerData);
+                Debug.Log($"Player {senderPlayer.nickname} clicked on building {buildingId} and increased spawn count to {spawnerData.count}");
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"Building with id {buildingId} not found when trying to click on building.");
+        }
     }
 
 

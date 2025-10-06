@@ -19,8 +19,8 @@ namespace Demo
 
         private void FixedUpdate()
         {
-            float y = _rigidbody.velocity.y;
-            _rigidbody.velocity = new Vector2(Input.GetAxis("Horizontal") * Speed, y);
+            float y = _rigidbody.linearVelocity.y;
+            _rigidbody.linearVelocity = new Vector2(Input.GetAxis("Horizontal") * Speed, y);
         }
 
         public void ChangeColor(int colorIndex)
