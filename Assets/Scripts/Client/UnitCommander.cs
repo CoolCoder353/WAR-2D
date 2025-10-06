@@ -83,6 +83,9 @@ public class UnitCommander : NetworkBehaviour
             selectionBox.SetActive(true);
             Vector3 worldPosition = GetMouseWorldPosition();
             startcorner = new int2((int)worldPosition.x, (int)worldPosition.y);
+            endcorner = startcorner;
+            selectionBox.transform.position = new Vector3(startcorner.x, startcorner.y, 0);
+            selectionBox.transform.localScale = new Vector3(0, 0, 1);
         }
 
         if (Input.GetMouseButton(0))
@@ -90,10 +93,17 @@ public class UnitCommander : NetworkBehaviour
 
             Vector3 worldPosition = GetMouseWorldPosition();
             Vector3 startPosition = new Vector3(startcorner.x, startcorner.y, 0);
-            Vector3 center = (worldPosition + startPosition) / 2;
-            selectionBox.transform.position = center;
-            Vector3 size = new Vector3(Mathf.Abs(worldPosition.x - startPosition.x), Mathf.Abs(worldPosition.y - startPosition.y), 1);
-            selectionBox.transform.localScale = size;
+            float sqrdistance = (worldPosition - startPosition).sqrMagnitude;
+            if (sqrdistance < 1000 && sqrdistance > 1) // Only update if the mouse is within 100 units from the origin and more than 1 unit away
+            {
+
+                Vector3 center = (worldPosition + startPosition) / 2;
+                selectionBox.transform.position = center;
+                Vector3 size = new Vector3(Mathf.Abs(worldPosition.x - startPosition.x), Mathf.Abs(worldPosition.y - startPosition.y), 1);
+                selectionBox.transform.localScale = size;
+
+            }
+
 
 
 
@@ -271,7 +281,7 @@ public class UnitCommander : NetworkBehaviour
 
         //Check if there is a client script for the building type
         Type buildingType = null;
-        
+
         // Map building types to their corresponding client class names
         switch (unit.buildingType)
         {
@@ -283,7 +293,7 @@ public class UnitCommander : NetworkBehaviour
                 Debug.LogWarning($"No client script mapping found for building type {unit.buildingType}");
                 break;
         }
-        
+
         if (buildingType != null)
         {
             //Add the component to the game object
