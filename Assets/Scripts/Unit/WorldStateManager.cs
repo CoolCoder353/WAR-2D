@@ -251,6 +251,7 @@ public class WorldStateManager : NetworkBehaviour
     [Server]
     public void AddUnit(Entity entity, int id)
     {
+        Debug.Log($"Adding unit with id {id}, entity {entity}");
         Units.Add(id, entity);
     }
 
@@ -273,7 +274,7 @@ public class WorldStateManager : NetworkBehaviour
     [Server]
     public void ClaimLocation(int2 position, int id)
     {
-        Debug.Log($"Claiming location {position} for unit {id}");
+        ////Debug.Log($"Claiming location {position} for unit {id}");
         if (!IsAvaliable(position, id))
         {
             Debug.LogWarning($"Unit with id {id} tried to claim a location that is already taken.");
@@ -290,7 +291,7 @@ public class WorldStateManager : NetworkBehaviour
     [Server]
     public void ReleaseLocation(int2 position, int id)
     {
-        Debug.Log($"Releasing location {position} for unit {id}");
+        ////Debug.Log($"Releasing location {position} for unit {id}");
         if (!unitPositions.Any(u => u.Item2.Equals(position) && u.Item1 == id))
         {
             Debug.LogWarning($"Unit with id {id} tried to release a location that is not taken or owned by that unit.");
@@ -543,12 +544,10 @@ public class WorldStateManager : NetworkBehaviour
                 ownerId = BuildingData.UIntToInt(sender.identity.GetComponent<ClientPlayer>().netId)
             };
 
-            EntityCommandBuffer commandBuffer = new EntityCommandBuffer(Allocator.Temp);
+            Entity building = EntityManager.CreateEntity();
+            EntityManager.AddComponentData<BuildingData>(building, buildingData);
 
-            Entity building = commandBuffer.CreateEntity();
-            commandBuffer.AddComponent(building, buildingData);
-
-            commandBuffer.AddComponent(building, new LocalTransform { Position = new float3(buildingData.position.x, buildingData.position.y, 0) });
+            EntityManager.AddComponentData<LocalTransform>(building, new LocalTransform { Position = new float3(buildingData.position.x, buildingData.position.y, 0) });
 
             switch (type)
             {
@@ -556,7 +555,7 @@ public class WorldStateManager : NetworkBehaviour
                     ///commandBuffer.AddComponent(building, new Miner { });
                     break;
                 case BuildingType.SmallUnitSpawner:
-                    commandBuffer.AddComponent(building,
+                    EntityManager.AddComponentData(building,
                     new SpawnerData
                     {
                         count = 0,
@@ -564,15 +563,12 @@ public class WorldStateManager : NetworkBehaviour
                         position = buildingData.position,
                         unitType = UnitType.Tank
                     });
-                    Debug.Log($"SmallUnitSpawner created at {buildingData.position}");
+                    ////Debug.Log($"SmallUnitSpawner created at {buildingData.position}");
                     break;
                 default:
                     Debug.LogError("BuildingType not found in WorldStateManager");
                     break;
             }
-
-            commandBuffer.Playback(entityManager);
-            commandBuffer.Dispose();
 
             //Set the tiles the building will cover to be used
             List<int2> tiles = GetTilesBuildingWillCover(positon, type);
@@ -622,9 +618,15 @@ public class WorldStateManager : NetworkBehaviour
 
             if (EntityManager.HasComponent<SpawnerData>(building))
             {
+
                 SpawnerData spawnerData = EntityManager.GetComponentData<SpawnerData>(building);
                 spawnerData.count += 1;
-                EntityManager.SetComponentData(building, spawnerData);
+
+                EntityCommandBuffer commandBuffer = new EntityCommandBuffer(Allocator.Temp);
+                commandBuffer.SetComponent(building, spawnerData);
+                commandBuffer.Playback(EntityManager);
+                commandBuffer.Dispose();
+
                 Debug.Log($"Player {player.nickname} clicked on building {buildingId}. Spawner count is now {spawnerData.count}");
 
             }
@@ -661,7 +663,7 @@ public class WorldStateManager : NetworkBehaviour
                 tiles.Add(start + new int2(x, y));
             }
         }
-        Debug.Log($"Building will cover {tiles.Count} tiles");
+        ////Debug.Log($"Building will cover {tiles.Count} tiles");
         return tiles;
     }
 

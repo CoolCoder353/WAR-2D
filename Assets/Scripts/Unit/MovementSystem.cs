@@ -34,15 +34,19 @@ public partial struct MovementSystem : ISystem
                 //Cannot convert bool to string due to DOTS so this will have to do for debugging
                 if (isAvaliable)
                 {
-                    Debug.Log("Place is avaliable, claiming");
+                    ////Debug.Log("Place is avaliable, claiming");
                 }
                 else
                 {
-                    Debug.Log("Place is not avaliable, waiting");
+                    ////Debug.Log("Place is not avaliable, waiting");
                 }
 
 
-                if (!isAvaliable) { Debug.LogWarning("Position not avaliable, waiting"); continue; }
+                if (!isAvaliable)
+                {
+                    ////Debug.LogWarning("Position not avaliable, waiting");
+                    continue;
+                }
 
                 // //If possible, claim the next goal too
                 // if (pathBuffer.Length > 1)
