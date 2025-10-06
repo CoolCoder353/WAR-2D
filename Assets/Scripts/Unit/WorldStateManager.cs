@@ -251,7 +251,6 @@ public class WorldStateManager : NetworkBehaviour
     [Server]
     public void AddUnit(Entity entity, int id)
     {
-        Debug.Log($"Adding unit with id {id}, entity {entity}");
         Units.Add(id, entity);
     }
 
@@ -308,7 +307,7 @@ public class WorldStateManager : NetworkBehaviour
 
     //TODO: Change this to be more effecient, we are going through all the units TWICE!
     [Command(requiresAuthority = false)]
-    public void CmdMoveUnits(int2 goal, int2 startcorner, int2 endcorner)
+    public void CmdMoveUnits(int2 goal, int2 startcorner, int2 endcorner, NetworkConnectionToClient sender = null)
     {
         // Debug.Log("Moving units at server");
         List<ClientUnit> units = new List<ClientUnit>();
@@ -324,6 +323,12 @@ public class WorldStateManager : NetworkBehaviour
             }
             ClientUnit clientUnit = EntityManager.GetComponentData<ClientUnit>(entity);
             clientUnit.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
+
+            if (clientUnit.ownerId != sender.identity.GetComponent<ClientPlayer>().netId)
+            {
+                // Debug.LogWarning($"Unit with id {clientUnit.id} does not belong to player {sender.identity.GetComponent<ClientPlayer>().nickname}. Ignoring it.");
+                continue;
+            }
 
             units.Add(clientUnit);
         }
@@ -435,7 +440,7 @@ public class WorldStateManager : NetworkBehaviour
                 pathBuffer.Add(new PathPoint { position = node.position });
             }
 
-            Debug.Log($"Moving unit at {startInt} to {goal} in {path.pathLength} steps");
+            ////Debug.Log($"Moving unit at {startInt} to {goal} in {path.pathLength} steps");
         }
         else
         {

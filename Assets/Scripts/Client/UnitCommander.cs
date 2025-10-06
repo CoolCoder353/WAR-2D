@@ -174,7 +174,7 @@ public class UnitCommander : NetworkBehaviour
             }
             else
             {
-                Debug.LogError($"Unit game object not found for unit {unit.id}. When checking the insert hook it returned Add: '{localPlayer.visuableUnits.OnAdd != null}', Insert: '{localPlayer.visuableUnits.OnInsert != null}', Set: '{localPlayer.visuableUnits.OnSet != null}', Remove: '{localPlayer.visuableUnits.OnRemove != null}', Clear: '{localPlayer.visuableUnits.OnClear != null}'");
+                Debug.LogError($"Unit game object not found for unit {unit.id}. When checking the insert hook it returned; Add: '{localPlayer.visuableUnits.OnAdd != null}', Insert: '{localPlayer.visuableUnits.OnInsert != null}', Set: '{localPlayer.visuableUnits.OnSet != null}', Remove: '{localPlayer.visuableUnits.OnRemove != null}', Clear: '{localPlayer.visuableUnits.OnClear != null}'");
             }
         }
     }
