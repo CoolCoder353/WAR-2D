@@ -572,6 +572,7 @@ public class WorldStateManager : NetworkBehaviour
             }
 
             commandBuffer.Playback(entityManager);
+            commandBuffer.Dispose();
 
             //Set the tiles the building will cover to be used
             List<int2> tiles = GetTilesBuildingWillCover(positon, type);
@@ -611,43 +612,28 @@ public class WorldStateManager : NetworkBehaviour
         if (Buildings.TryGetValue(buildingId, out Entity building))
         {
             BuildingData buildingData = EntityManager.GetComponentData<BuildingData>(building);
-            ClientPlayer senderPlayer = sender.identity.GetComponent<ClientPlayer>();
-            if (buildingData.ownerId != BuildingData.UIntToInt(senderPlayer.netId))
+            ClientPlayer player = sender.identity.GetComponent<ClientPlayer>();
+
+            if (buildingData.ownerId != BuildingData.UIntToInt(player.netId))
             {
-                Debug.LogWarning($"Player {senderPlayer.nickname} tried to click on a building they do not own.");
+                Debug.LogWarning($"Player {player.nickname} tried to click on building {buildingId} that they do not own.");
                 return;
             }
 
-            Entity buildingEntity = Buildings[buildingId];
-            if (EntityManager.HasComponent<SpawnerData>(buildingEntity))
+            if (EntityManager.HasComponent<SpawnerData>(building))
             {
-                SpawnerData spawnerData = EntityManager.GetComponentData<SpawnerData>(buildingEntity);
-                spawnerData.count++;
-                EntityManager.SetComponentData(buildingEntity, spawnerData);
-                Debug.Log($"Player {senderPlayer.nickname} clicked on building {buildingId} and increased spawn count to {spawnerData.count}");
+                SpawnerData spawnerData = EntityManager.GetComponentData<SpawnerData>(building);
+                spawnerData.count += 1;
+                EntityManager.SetComponentData(building, spawnerData);
+                Debug.Log($"Player {player.nickname} clicked on building {buildingId}. Spawner count is now {spawnerData.count}");
+
             }
         }
         else
         {
             Debug.LogWarning($"Building with id {buildingId} not found when trying to click on building.");
         }
-    }
 
-
-
-    [Command(requiresAuthority = false)]
-    public void RequestSpawnUnit(int spawnerId, NetworkConnectionToClient sender = null)
-    {
-        if (Buildings.TryGetValue(spawnerId, out Entity spawner))
-        {
-            SpawnerData spawnerData = EntityManager.GetComponentData<SpawnerData>(spawner);
-            spawnerData.count++;
-            EntityManager.SetComponentData(spawner, spawnerData);
-        }
-        else
-        {
-            Debug.LogWarning($"Spawner with id {spawnerId} not found when trying to spawn unit.");
-        }
     }
 
 

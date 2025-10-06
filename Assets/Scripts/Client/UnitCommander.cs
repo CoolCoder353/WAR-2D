@@ -278,7 +278,8 @@ public class UnitCommander : NetworkBehaviour
         GameObject go = new GameObject();
         go.transform.position = new Vector3(unit.position.x, unit.position.y, 0);
         go.AddComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(unit.buildingType.ToString());
-
+        go.AddComponent<BoxCollider2D>().isTrigger = true;
+        go.name = $"Building_{unit.buildingType}_{unit.id}";
         //Check if there is a client script for the building type
         Type buildingType = null;
 
