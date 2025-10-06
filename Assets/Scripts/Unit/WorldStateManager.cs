@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Mirror;
+using NaughtyAttributes;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
@@ -95,20 +96,25 @@ public class WorldStateManager : NetworkBehaviour
             {
                 Gizmos.color = Color.cyan;
             }
-            else if (tile.isWalkable)
+            else if (!tile.isWalkable)
             {
-                Gizmos.color = Color.Lerp(Color.white, Color.black, tile.weight / 10f);
+                Gizmos.color = Color.red;
+            }
+            else if (tile.isUsed)
+            {
+                Gizmos.color = Color.yellow;
             }
             else
             {
-                Gizmos.color = Color.red;
+                Gizmos.color = Color.Lerp(Color.white, Color.black, tile.weight / 10f);
             }
             Gizmos.DrawCube(position, Vector3.one);
         }
     }
 
+
     //Called on the client and server when the game starts
-    private void GenerateTileMap()
+    public void GenerateTileMap()
     {
         BoundsInt bounds = WalkableTilemap.cellBounds;
         //Add 2 to the size to account for the border of the chunk
@@ -134,7 +140,7 @@ public class WorldStateManager : NetworkBehaviour
                     weight = 0;
 
                     tileType = UnwalkableTilemap.GetTile(localPlace).name.Contains("Gems") ? TileType.Gem : TileType.Wall;
-                    Debug.Log($"Found unwalkable tile at {localPlace} with name {UnwalkableTilemap.GetTile(localPlace).name} setting type to {tileType}");
+                    ////Debug.Log($"Found unwalkable tile at {localPlace} with name {UnwalkableTilemap.GetTile(localPlace).name} setting type to {tileType}");
 
                 }
 
@@ -631,9 +637,32 @@ public class WorldStateManager : NetworkBehaviour
                 return false;
             }
         }
+        if (type == BuildingType.Miner)
+        {
+            //Make sure at least one neighbouring tile is a gem
+            bool foundGem = false;
+
+            for (int x = -1; x <= 1; x++)
+            {
+                for (int y = -1; y <= 1; y++)
+                {
+                    if (x == 0 && y == 0) continue;
+
+                    int2 neighbor = new int2(position.x + x, position.y + y);
+                    if (world.GetTile(neighbor).tileType == TileType.Gem)
+                    {
+                        foundGem = true;
+                        break;
+                    }
+                }
+                if (!foundGem) return false;
+            }
+        }
 
         return true;
     }
+
+
     [Command(requiresAuthority = false)]
 
     public void CanBuildBuildingCommand(int2 position, BuildingType type, NetworkConnectionToClient sender = null)
@@ -706,6 +735,13 @@ public class WorldStateManager : NetworkBehaviour
         }
         ////Debug.Log($"Building will cover {tiles.Count} tiles");
         return tiles;
+    }
+
+    [Command(requiresAuthority = false)]
+    public void GetTilesBuildingWillCoverCommand(int2 center, BuildingType type, NetworkConnectionToClient sender = null)
+    {
+        List<int2> tiles = GetTilesBuildingWillCover(center, type);
+        sender.identity.GetComponent<ClientPlayer>().TargetReceiveTilesCoveredResponse(sender, tiles.Count);
     }
 
     public static int2 GetBuildingSize(BuildingType type)

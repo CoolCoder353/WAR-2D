@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using Mirror;
 using Telepathy;
@@ -18,6 +17,8 @@ public class BuildingButtonManager : MonoBehaviour
 
     public BuildingType selectedBuildingType;
 
+    public int tilesBuildingWillCover = 1;
+
     public Dictionary<BuildingType, float2> buildingSizes = new Dictionary<BuildingType, float2>();
 
     [ClientCallback]
@@ -27,6 +28,8 @@ public class BuildingButtonManager : MonoBehaviour
         ClientPlayer localPlayer = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
 
         localPlayer.onResponseFromCanBuildBuilding.AddListener(ResultFromCommand);
+
+        localPlayer.onResponseFromTilesCovered.AddListener(ResponseFromTilesCovered);
 
 
         foreach (var button in buttons)
@@ -49,6 +52,10 @@ public class BuildingButtonManager : MonoBehaviour
             Vector3 position = RoundVector3(UnitCommander.GetMouseWorldPosition());
 
             previewBuilding.transform.position = new Vector3((int)position.x, (int)position.y, 0);
+            if (tilesBuildingWillCover % 2 == 1) //if 1^2 or 3^2 or 5^2 (odd number of tiles squared)
+            {
+                previewBuilding.transform.position += new Vector3(0.5f, 0.5f, 0);
+            }
 
             SetBuildingPreviewColour(position);
         }
@@ -102,6 +109,8 @@ public class BuildingButtonManager : MonoBehaviour
         // }
     }
 
+    [Client]
+
     public void ResultFromCommand(bool result)
     {
         if (result)
@@ -112,6 +121,12 @@ public class BuildingButtonManager : MonoBehaviour
         {
             previewBuilding.GetComponent<SpriteRenderer>().color = new Color(1, 0, 0, 0.75f);
         }
+    }
+
+    [Client]
+    public void ResponseFromTilesCovered(int tiles)
+    {
+        tilesBuildingWillCover = tiles;
     }
 
     [Client]
@@ -162,6 +177,7 @@ public class BuildingButtonManager : MonoBehaviour
     private void TrySpawnBuilding()
     {
         Vector3 position = RoundVector3(UnitCommander.GetMouseWorldPosition());
+
         int2 convertedPosition = new int2((int)position.x, (int)position.y);
 
         //        Debug.Log($"Trying to spawn building at {convertedPosition} of type {selectedBuildingType} where the preview building is at {previewBuilding.transform.position} -> client");
@@ -169,8 +185,12 @@ public class BuildingButtonManager : MonoBehaviour
         WorldStateManager.Instance.TryAddBuilding(convertedPosition, selectedBuildingType);
     }
     [Client]
-    private static Vector3 RoundVector3(Vector3 vector)
+    private Vector3 RoundVector3(Vector3 vector)
     {
+        if (tilesBuildingWillCover % 2 == 1) //if 1^2 or 3^2 or 5^2 (odd number of tiles squared)
+        {
+            vector -= new Vector3(0.5f, 0.5f, 0);
+        }
         return new Vector3(Mathf.Round(vector.x), Mathf.Round(vector.y), Mathf.Round(vector.z));
     }
 
@@ -178,6 +198,7 @@ public class BuildingButtonManager : MonoBehaviour
     public void OnButtonClicked(Button button)
     {
         selectedBuildingType = buildingTypes[buttons.IndexOf(button)];
+        WorldStateManager.Instance.GetTilesBuildingWillCoverCommand(new int2(0, 0), selectedBuildingType);
         SetupBuildingPreview();
     }
 

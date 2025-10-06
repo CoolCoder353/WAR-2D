@@ -23,6 +23,9 @@ public class UnitCommander : NetworkBehaviour
 
     public Dictionary<int, GameObject> buildingGameObjects = new Dictionary<int, GameObject>();
 
+
+    public int tilesBuildingWillCover = 1;
+
     [ClientCallback]
     private void Awake()
     {
@@ -36,12 +39,19 @@ public class UnitCommander : NetworkBehaviour
             localPlayer = NetworkClient.connection.identity.GetComponent<ClientPlayer>();
             localPlayer.SetUnitHandles();
             localPlayer.SetBuildingHandles();
+            localPlayer.onResponseFromTilesCovered.AddListener(ResponseFromTilesCovered);
 
         }
         else
         {
             Destroy(this);
         }
+    }
+
+    [Client]
+    public void ResponseFromTilesCovered(int tiles)
+    {
+        tilesBuildingWillCover = tiles;
     }
 
     [ClientCallback]
@@ -262,11 +272,14 @@ public class UnitCommander : NetworkBehaviour
     }
 
 
+
+
     #region Buildings
     //This is called when a unit is added or inserted into the list, returning the index of the list and the unit itself
     [Client]
     public void BuildingListInsert(int index, BuildingData unit)
     {
+        WorldStateManager.Instance.GetTilesBuildingWillCoverCommand(new int2(0, 0), unit.buildingType);
         // Debug.Log($"UnitListInsert called with unit id: '{unit.id}', sprite:  '{unit.spriteName}', position : '{unit.position}'");
         if (buildingGameObjects.ContainsKey(unit.id))
         {
@@ -277,6 +290,13 @@ public class UnitCommander : NetworkBehaviour
         //Create a new game object
         GameObject go = new GameObject();
         go.transform.position = new Vector3(unit.position.x, unit.position.y, 0);
+
+        if (tilesBuildingWillCover % 2 == 1) //if 1^2 or 3^2 or 5^2 (odd number of tiles squared)
+        {
+            go.transform.position += new Vector3(0.5f, 0.5f, 0);
+        }
+
+
         go.AddComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(unit.buildingType.ToString());
         go.AddComponent<BoxCollider2D>().isTrigger = true;
         go.name = $"Building_{unit.buildingType}_{unit.id}";
