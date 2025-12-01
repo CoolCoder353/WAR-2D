@@ -72,6 +72,22 @@ public class ClientPlayer : NetworkBehaviour
         onResponseFromTilesCovered?.Invoke(tiles);
     }
 
+    /// <summary>
+    /// Current resources for this player (only updated for local player)
+    /// </summary>
+    public float currentResources { get; private set; } = 0f;
+
+    /// <summary>
+    /// TargetRpc to update the local player's resource count
+    /// </summary>
+    [TargetRpc]
+    public void TargetUpdateResources(NetworkConnection target, float newResources)
+    {
+        currentResources = newResources;
+        // You can add UI update logic here or use an event
+        // For example: onResourcesChanged?.Invoke(newResources);
+    }
+
 
 
     [Server]

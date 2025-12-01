@@ -45,8 +45,8 @@ public partial struct CombatSystem : ISystem
                 // Skip self
                 if (targetEntities[i] == entity) continue;
 
-                // Skip friendly units (ignore for testing purposes)
-                //if (targetClientUnits[i].ownerId == clientUnit.ValueRO.ownerId) continue;
+                // Skip friendly units
+                if (targetClientUnits[i].ownerId == clientUnit.ValueRO.ownerId) continue;
 
                 float distance = math.distance(localTransform.ValueRO.Position, targetTransforms[i].Position);
 

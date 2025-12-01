@@ -21,6 +21,8 @@ public class BuildingButtonManager : MonoBehaviour
 
     public Dictionary<BuildingType, float2> buildingSizes = new Dictionary<BuildingType, float2>();
 
+    private float currentRotation = 0f; // Current rotation in degrees (0, 90, 180, 270)
+
     [ClientCallback]
     public void Start()
     {
@@ -58,6 +60,15 @@ public class BuildingButtonManager : MonoBehaviour
             }
 
             SetBuildingPreviewColour(position);
+            
+            // Rotate building with R key
+            if (Input.GetKeyDown(KeyCode.R))
+            {
+                currentRotation = (currentRotation + 90f) % 360f;
+                previewBuilding.transform.rotation = Quaternion.Euler(0, 0, currentRotation);
+                // Re-validate with new rotation
+                SetBuildingPreviewColour(position);
+            }
         }
         if (Input.GetMouseButtonDown(0) && previewBuilding.activeInHierarchy)
         {
@@ -75,7 +86,7 @@ public class BuildingButtonManager : MonoBehaviour
 
         ClientPlayer clientPlayer = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
 
-        WorldStateManager.Instance.CanBuildBuildingCommand(new int2((int)position.x, (int)position.y), selectedBuildingType);
+        WorldStateManager.Instance.CanBuildBuildingCommand(new int2((int)position.x, (int)position.y), selectedBuildingType, currentRotation);
         // if (clientPlayer != null)
         // {
         //     foreach (BuildingData building in clientPlayer.visuableBuildings)
@@ -182,7 +193,7 @@ public class BuildingButtonManager : MonoBehaviour
 
         //        Debug.Log($"Trying to spawn building at {convertedPosition} of type {selectedBuildingType} where the preview building is at {previewBuilding.transform.position} -> client");
 
-        WorldStateManager.Instance.TryAddBuilding(convertedPosition, selectedBuildingType);
+        WorldStateManager.Instance.TryAddBuilding(convertedPosition, selectedBuildingType, currentRotation);
     }
     [Client]
     private Vector3 RoundVector3(Vector3 vector)
@@ -207,5 +218,7 @@ public class BuildingButtonManager : MonoBehaviour
     {
         previewBuilding.GetComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(selectedBuildingType.ToString());
         previewBuilding.SetActive(true);
+        currentRotation = 0f; // Reset rotation when selecting new building
+        previewBuilding.transform.rotation = Quaternion.identity;
     }
 }

@@ -39,10 +39,19 @@ public partial struct SpawnerSystem : ISystem
                 //TODO: This is a placeholder for the owner of the unit
                 int idOfOwner = spawnerData.ValueRO.ownerId;
 
-                CreateUnit(commandBuffer, id, idOfOwner, spawnerData.ValueRO.position, spawnerData.ValueRO.unitType);
+                Entity createdEntity = CreateUnit(commandBuffer, id, idOfOwner, spawnerData.ValueRO.position, spawnerData.ValueRO.unitType);
 
-                // Store the unit ID to find the entity after playback
-                spawnedUnitIds.Add(id);
+                // Only add to list if entity was successfully created (had sufficient resources)
+                if (createdEntity != Entity.Null)
+                {
+                    // Store the unit ID to find the entity after playback
+                    spawnedUnitIds.Add(id);
+                }
+                else
+                {
+                    // Restore count if spawn failed due to insufficient resources
+                    spawnerData.ValueRW.count++;
+                }
             }
         }
 
@@ -75,12 +84,41 @@ public partial struct SpawnerSystem : ISystem
     [Server]
     public Entity CreateUnit(EntityCommandBuffer commandBuffer, int id, int idOfOwner, float2 position, UnitType unitType)
     {
+        // Check if owner has sufficient resources
+        if (GameCore.Instance != null)
+        {
+            ServerPlayer owner = GameCore.Instance.GetServerPlayerById(idOfOwner);
+            if (owner != null)
+            {
+                ResourceCost cost = ResourceConfigLoader.GetUnitCost(unitType);
+                
+                if (owner.data.resources < cost.upfrontCost)
+                {
+                    return Entity.Null;
+                }
+                
+                // Deduct upfront cost
+                owner.RemoveResources(cost.upfrontCost);
+                
+                // Update client display
+                if (owner.connection != null && owner.connection.identity != null)
+                {
+                    ClientPlayer clientPlayer = owner.connection.identity.GetComponent<ClientPlayer>();
+                    if (clientPlayer != null)
+                    {
+                        clientPlayer.TargetUpdateResources(owner.connection, owner.data.resources);
+                    }
+                }
+            }
+        }
+
         Entity newEntity = commandBuffer.CreateEntity();
 
         commandBuffer.AddComponent(newEntity, new LocalTransform { Position = new float3(position.x, position.y, 0) });
         commandBuffer.AddComponent(newEntity, new HealthComponent { currentHealth = 100, maxHealth = 100 });
         commandBuffer.AddComponent(newEntity, new DamageComponent { damageAmount = 10, range = 5, attackSpeed = 1 });
         commandBuffer.AddBuffer<PathPoint>(newEntity);
+        
         float speed = 5;
         float acceleration = 5;
         float rotationSpeed = 5;
@@ -99,8 +137,18 @@ public partial struct SpawnerSystem : ISystem
                 Debug.LogError("UnitType not found in SpawnerSystem");
                 break;
         }
+        
         commandBuffer.AddComponent(newEntity, new ClientUnit { id = id, ownerId = idOfOwner, spriteName = unitType });
         commandBuffer.AddComponent(newEntity, new MovementComponent { speed = speed, acceleration = acceleration, rotationSpeed = rotationSpeed, rotationAcceleration = rotationAcceleration });
+        
+        // Add resource cost component
+        ResourceCost unitCost = ResourceConfigLoader.GetUnitCost(unitType);
+        commandBuffer.AddComponent(newEntity, new ResourceCostComponent 
+        { 
+            upfrontCost = unitCost.upfrontCost,
+            runningCostPerSecond = unitCost.runningCost,
+            timeSinceLastCost = 0f
+        });
 
         return newEntity;
     }

@@ -348,6 +348,9 @@ public class UnitCommander : NetworkBehaviour
         go.AddComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(unit.buildingType.ToString());
         go.AddComponent<BoxCollider2D>().isTrigger = true;
         go.name = $"Building_{unit.buildingType}_{unit.id}";
+        
+        // Apply rotation from server
+        go.transform.rotation = Quaternion.Euler(0, 0, unit.rotation);
         //Check if there is a client script for the building type
         Type buildingType = null;
 

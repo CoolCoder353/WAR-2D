@@ -166,6 +166,27 @@ public class GameCore : NetworkBehaviour
     }
 
     /// <summary>
+    /// Gets a ServerPlayer by their owner ID (netId).
+    /// </summary>
+    [Server]
+    public ServerPlayer GetServerPlayerById(int ownerId)
+    {
+        foreach (var kvp in ServerPlayers)
+        {
+            if (kvp.Key.netId == (uint)ownerId)
+            {
+                return kvp.Value;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Public property to access server players for ECS systems.
+    /// </summary>
+    public IEnumerable<ServerPlayer> serverPlayers => ServerPlayers.Values;
+
+    /// <summary>
     /// Command sent to the server to start the game.
     /// If the connection is the server owner, it changes the scene to the game scene.
     /// </summary>

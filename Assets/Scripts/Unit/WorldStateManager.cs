@@ -224,6 +224,15 @@ public class WorldStateManager : NetworkBehaviour
                     {
                         BuildingData buildingData = EntityManager.GetComponentData<BuildingData>(entity);
                         buildingData.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
+                        
+                        // Extract rotation from LocalTransform and convert to degrees
+                        LocalTransform transform = EntityManager.GetComponentData<LocalTransform>(entity);
+                        quaternion rotation = transform.Rotation;
+                        float zRotationRadians = math.atan2(
+                            2.0f * (rotation.value.w * rotation.value.z + rotation.value.x * rotation.value.y),
+                            1.0f - 2.0f * (rotation.value.y * rotation.value.y + rotation.value.z * rotation.value.z)
+                        );
+                        buildingData.rotation = math.degrees(zRotationRadians);
 
                         clientBuildings.Add(buildingData.id);
 
@@ -571,61 +580,109 @@ public class WorldStateManager : NetworkBehaviour
     #region Buildings
 
     [Command(requiresAuthority = false)]
-    public void TryAddBuilding(int2 positon, BuildingType type, NetworkConnectionToClient sender = null)
+    public void TryAddBuilding(int2 positon, BuildingType type, float rotation, NetworkConnectionToClient sender = null)
     {
-        if (CanBuildBuilding(positon, type))
+        if (!CanBuildBuilding(positon, type, rotation))
         {
-
-            BuildingData buildingData = new BuildingData
-            {
-                position = new float2(positon.x, positon.y),
-                id = UnityEngine.Random.Range(0, int.MaxValue),
-                buildingType = type,
-                ownerId = BuildingData.UIntToInt(sender.identity.GetComponent<ClientPlayer>().netId)
-            };
-
-            Entity building = EntityManager.CreateEntity();
-            EntityManager.AddComponentData<BuildingData>(building, buildingData);
-
-            EntityManager.AddComponentData<LocalTransform>(building, new LocalTransform { Position = new float3(buildingData.position.x, buildingData.position.y, 0) });
-
-            switch (type)
-            {
-                case BuildingType.Miner:
-                    ///commandBuffer.AddComponent(building, new Miner { });
-                    break;
-                case BuildingType.SmallUnitSpawner:
-                    EntityManager.AddComponentData(building,
-                    new SpawnerData
-                    {
-                        count = 0,
-                        ownerId = buildingData.ownerId,
-                        position = buildingData.position,
-                        unitType = UnitType.Tank
-                    });
-                    ////Debug.Log($"SmallUnitSpawner created at {buildingData.position}");
-                    break;
-                default:
-                    Debug.LogError("BuildingType not found in WorldStateManager");
-                    break;
-            }
-
-            //Set the tiles the building will cover to be used
-            List<int2> tiles = GetTilesBuildingWillCover(positon, type);
-            foreach (int2 tile in tiles)
-            {
-                TileNode tileNode = world.GetTile(tile);
-                tileNode.used = 1;
-                world.SetTile(tile, tileNode);
-            }
-
-            AddBuilding(building, buildingData.id);
+            return;
         }
+
+        // Check if owner has sufficient resources
+        ServerPlayer owner = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(sender.identity.GetComponent<ClientPlayer>().netId));
+        if (owner != null)
+        {
+            ResourceCost cost = ResourceConfigLoader.GetBuildingCost(type);
+            
+            if (owner.data.resources < cost.upfrontCost)
+            {
+                return;
+            }
+            
+            // Deduct upfront cost
+            owner.RemoveResources(cost.upfrontCost);
+            
+            // Update client display
+            if (owner.connection != null && owner.connection.identity != null)
+            {
+                ClientPlayer clientPlayer = owner.connection.identity.GetComponent<ClientPlayer>();
+                if (clientPlayer != null)
+                {
+                    clientPlayer.TargetUpdateResources(owner.connection, owner.data.resources);
+                }
+            }
+        }
+
+        BuildingData buildingData = new BuildingData
+        {
+            position = new float2(positon.x, positon.y),
+            id = UnityEngine.Random.Range(0, int.MaxValue),
+            buildingType = type,
+            ownerId = BuildingData.UIntToInt(sender.identity.GetComponent<ClientPlayer>().netId),
+            rotation = rotation
+        };
+
+        Entity building = EntityManager.CreateEntity();
+        EntityManager.AddComponentData<BuildingData>(building, buildingData);
+
+        EntityManager.AddComponentData<LocalTransform>(building, new LocalTransform 
+        { 
+            Position = new float3(buildingData.position.x, buildingData.position.y, 0),
+            Rotation = quaternion.Euler(0, 0, math.radians(rotation)),
+            Scale = 1f
+        });
+
+        // Add resource cost component to all buildings
+        ResourceCost buildingCost = ResourceConfigLoader.GetBuildingCost(type);
+        EntityManager.AddComponentData(building, new BuildingResourceComponent 
+        { 
+            upfrontCost = buildingCost.upfrontCost,
+            runningCostPerSecond = buildingCost.runningCost,
+            timeSinceLastCost = 0f
+        });
+
+        switch (type)
+        {
+            case BuildingType.Miner:
+                // Add mining component to miner buildings
+                ResourceConfigData config = ResourceConfigLoader.LoadConfig();
+                EntityManager.AddComponentData(building, new MiningComponent
+                {
+                    miningRate = config.miningRate,
+                    timeSinceLastMining = 0f,
+                    isActive = false
+                });
+                break;
+            case BuildingType.SmallUnitSpawner:
+                EntityManager.AddComponentData(building,
+                new SpawnerData
+                {
+                    count = 0,
+                    ownerId = buildingData.ownerId,
+                    position = buildingData.position,
+                    unitType = UnitType.Tank
+                });
+                ////Debug.Log($"SmallUnitSpawner created at {buildingData.position}");
+                break;
+            default:
+                Debug.LogError("BuildingType not found in WorldStateManager");
+                break;
+        }
+
+        //Set the tiles the building will cover to be used
+        List<int2> tiles = GetTilesBuildingWillCover(positon, type);
+        foreach (int2 tile in tiles)
+        {
+            TileNode tileNode = world.GetTile(tile);
+            tileNode.used = 1;
+            world.SetTile(tile, tileNode);
+        }
+
+        AddBuilding(building, buildingData.id);
     }
 
 
     [Server]
-    private bool CanBuildBuilding(int2 position, BuildingType type)
+    private bool CanBuildBuilding(int2 position, BuildingType type, float rotation = 0f)
     {
         List<int2> tiles = GetTilesBuildingWillCover(position, type);
 
@@ -637,25 +694,32 @@ public class WorldStateManager : NetworkBehaviour
                 return false;
             }
         }
+        
         if (type == BuildingType.Miner)
         {
-            //Make sure at least one neighbouring tile is a gem
-            bool foundGem = false;
-
-            for (int x = -1; x <= 1; x++)
+            // Calculate direction based on rotation (same logic as MiningSystem)
+            // Normalize to 0-360 range
+            float zRotation = (rotation % 360 + 360) % 360;
+            
+            // Round to nearest 90 degrees
+            int rotationIndex = Mathf.RoundToInt(zRotation / 90f) % 4;
+            
+            int2 direction = rotationIndex switch
             {
-                for (int y = -1; y <= 1; y++)
-                {
-                    if (x == 0 && y == 0) continue;
-
-                    int2 neighbor = new int2(position.x + x, position.y + y);
-                    if (world.GetTile(neighbor).tileType == TileType.Gem)
-                    {
-                        foundGem = true;
-                        break;
-                    }
-                }
-                if (!foundGem) return false;
+                0 => new int2(1, 0),   // 0° - Right
+                1 => new int2(0, 1),   // 90° - Up
+                2 => new int2(-1, 0),  // 180° - Left
+                3 => new int2(0, -1),  // 270° - Down
+                _ => new int2(1, 0)
+            };
+            
+            // Check if the tile in the facing direction is a gem
+            int2 checkPos = position + direction;
+            TileNode tile = world.GetTile(checkPos);
+            
+            if (tile.tileType != TileType.Gem)
+            {
+                return false;
             }
         }
 
@@ -665,9 +729,9 @@ public class WorldStateManager : NetworkBehaviour
 
     [Command(requiresAuthority = false)]
 
-    public void CanBuildBuildingCommand(int2 position, BuildingType type, NetworkConnectionToClient sender = null)
+    public void CanBuildBuildingCommand(int2 position, BuildingType type, float rotation, NetworkConnectionToClient sender = null)
     {
-        bool canBuild = CanBuildBuilding(position, type);
+        bool canBuild = CanBuildBuilding(position, type, rotation);
         sender.identity.GetComponent<ClientPlayer>().TargetReceiveCanBuildBuildingResponse(sender, canBuild);
     }
 

@@ -20,6 +20,8 @@ public struct BuildingData : IComponentData
 
     public int ownerId;
 
+    public float rotation; // Rotation in degrees (0, 90, 180, 270)
+
 
     public static uint IntToUInt(int value)
     {

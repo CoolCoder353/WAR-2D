@@ -20,7 +20,7 @@ public class ServerPlayer
 
     public void RemoveResources(float amount)
     {
-        Debug.Log($"Removing {amount} resources from player {connection.identity.netId}");
+        //Debug.Log($"Removing {amount} resources from player {connection.identity.netId}");
         data.resources -= amount;
     }
 
