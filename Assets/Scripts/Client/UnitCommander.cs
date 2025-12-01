@@ -20,6 +20,7 @@ public class UnitCommander : NetworkBehaviour
     private ClientPlayer localPlayer;
 
     private Dictionary<int, GameObject> unitGameObjects = new Dictionary<int, GameObject>();
+    private Dictionary<int, double> lastUnitAttackTimes = new Dictionary<int, double>();
 
     public Dictionary<int, GameObject> buildingGameObjects = new Dictionary<int, GameObject>();
 
@@ -106,7 +107,6 @@ public class UnitCommander : NetworkBehaviour
             float sqrdistance = (worldPosition - startPosition).sqrMagnitude;
             if (sqrdistance < 1000 && sqrdistance > 1) // Only update if the mouse is within 100 units from the origin and more than 1 unit away
             {
-
                 Vector3 center = (worldPosition + startPosition) / 2;
                 selectionBox.transform.position = center;
                 Vector3 size = new Vector3(Mathf.Abs(worldPosition.x - startPosition.x), Mathf.Abs(worldPosition.y - startPosition.y), 1);
@@ -155,9 +155,52 @@ public class UnitCommander : NetworkBehaviour
         // TIM.Console.Log($"Updating client view to {corner1} {corner2}", TIM.MessageType.Network);
         // TIM.Console.Log($"Using WorldStateManager {WorldStateManager.Instance}", TIM.MessageType.Network);
 
+
+        //Request from the server to update what the client can see for the next frame
         WorldStateManager.Instance.UpdateClientView(corner1, corner2);
 
         MoveUnits();
+        VisualizeAttackingUnits();
+    }
+
+
+    [Client]
+    private void VisualizeAttackingUnits()
+    {
+        foreach (ClientUnit unit in localPlayer.visuableUnits)
+        {
+            if (!lastUnitAttackTimes.ContainsKey(unit.id))
+            {
+                lastUnitAttackTimes[unit.id] = unit.lastAttackTime;
+            }
+
+            if (unit.targetId != -1 && unit.lastAttackTime > lastUnitAttackTimes[unit.id])
+            {
+                lastUnitAttackTimes[unit.id] = unit.lastAttackTime;
+
+                unitGameObjects.TryGetValue(unit.id, out GameObject attackerObject);
+                unitGameObjects.TryGetValue(unit.targetId, out GameObject enemyObject);
+
+                if (attackerObject != null && enemyObject != null)
+                {
+                    GameObject bullet = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                    Destroy(bullet.GetComponent<Collider>());
+                    
+                    Vector3 startPos = attackerObject.transform.position;
+                    Vector3 endPos = enemyObject.transform.position;
+                    
+                    bullet.transform.position = startPos;
+                    bullet.transform.localScale = new Vector3(0.5f, 0.1f, 1); 
+                    bullet.GetComponent<Renderer>().material.color = Color.yellow;
+                    bullet.GetComponent<Renderer>().material.renderQueue = 3000;
+
+                    Vector3 direction = (endPos - startPos).normalized;
+                    bullet.transform.right = direction;
+
+                    bullet.transform.DOMove(endPos, 0.2f).SetEase(Ease.Linear).OnComplete(() => Destroy(bullet));
+                }
+            }   
+        }
     }
 
 
@@ -217,6 +260,10 @@ public class UnitCommander : NetworkBehaviour
             Destroy(unitGameObjects[OldUnit.id]);
             unitGameObjects.Remove(OldUnit.id);
         }
+        if (lastUnitAttackTimes.ContainsKey(OldUnit.id))
+        {
+            lastUnitAttackTimes.Remove(OldUnit.id);
+        }
     }
 
     //Called when the enitre list is cleared
@@ -229,6 +276,7 @@ public class UnitCommander : NetworkBehaviour
             Destroy(item.Value);
         }
         unitGameObjects.Clear();
+        lastUnitAttackTimes.Clear();
     }
 
     //Called when an item in the list is set to a new value

@@ -21,6 +21,9 @@ public struct ClientUnit : IComponentData
     public int id;
 
     public int ownerId;
+
+    public int targetId;
+    public double lastAttackTime;
 }
 
 public enum UnitType
@@ -43,7 +46,9 @@ public class UnitIdAuthoring : MonoBehaviour
             AddComponent(entity, new ClientUnit
             {
                 id = authoring.id,
-                spriteName = authoring.spriteName
+                spriteName = authoring.spriteName,
+                targetId = -1,
+                lastAttackTime = 0
             });
         }
     }
