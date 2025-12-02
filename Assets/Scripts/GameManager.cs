@@ -42,6 +42,9 @@ public class GameManager : NetworkManager
 
         // Subscribe to the sceneLoaded event
         SceneManager.sceneLoaded += OnSceneLoaded;
+
+        // Load Game Config
+        Config.ConfigLoader.LoadConfig();
     }
 
     public override void OnDestroy()
@@ -85,7 +88,8 @@ public class GameManager : NetworkManager
         if (settings == null) { Debug.LogError("settings is null. Did you forget to attach the settings object? (ツ)_/¯"); }
 
         // Add the new player to the list of players
-        GameCore.Instance.ServerPlayers.Add(conn.identity, new ServerPlayer(conn, settings.initalResources));
+        var config = Config.ConfigLoader.LoadConfig();
+        GameCore.Instance.ServerPlayers.Add(conn.identity, new ServerPlayer(conn, config.Resources.StartingResources));
 
         // Log the connection
         Debug.Log($"Player {conn.connectionId} has connected");

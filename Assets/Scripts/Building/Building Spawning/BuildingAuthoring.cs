@@ -39,7 +39,8 @@ public enum BuildingType
 {
     None,
     Miner,
-    SmallUnitSpawner
+    SmallUnitSpawner,
+    Base
 }
 
 

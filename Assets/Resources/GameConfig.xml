@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<GameConfig>
+  <Resources>
+    <PassiveGenerationRate>5.0</PassiveGenerationRate>
+    <StartingResources>100.0</StartingResources>
+    <MiningRate>10.0</MiningRate>
+  </Resources>
+
+  <Units>
+    <Unit type="Tank">
+      <Health>100</Health>
+      <Damage>10</Damage>
+      <MoveSpeed>5.0</MoveSpeed>
+      <UpfrontCost>50.0</UpfrontCost>
+      <RunningCost>2.0</RunningCost>
+    </Unit>
+    <Unit type="Soldier">
+      <Health>50</Health>
+      <Damage>5</Damage>
+      <MoveSpeed>3.0</MoveSpeed>
+      <UpfrontCost>20.0</UpfrontCost>
+      <RunningCost>1.0</RunningCost>
+    </Unit>
+  </Units>
+
+  <Buildings>
+    <Building type="Miner">
+      <Health>200</Health>
+      <UpfrontCost>150.0</UpfrontCost>
+      <RunningCost>3.0</RunningCost>
+      <MiningRate>10.0</MiningRate>
+    </Building>
+    <Building type="SmallUnitSpawner">
+      <Health>300</Health>
+      <UpfrontCost>200.0</UpfrontCost>
+      <RunningCost>5.0</RunningCost>
+      <SpawnRate>1.0</SpawnRate>
+    </Building>
+    <Building type="Base">
+      <Health>1000</Health>
+      <UpfrontCost>0.0</UpfrontCost>
+      <RunningCost>0.0</RunningCost>
+    </Building>
+  </Buildings>
+</GameConfig>

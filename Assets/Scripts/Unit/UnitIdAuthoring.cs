@@ -29,7 +29,8 @@ public struct ClientUnit : IComponentData
 public enum UnitType
 {
     None,
-    Tank
+    Tank,
+    Soldier
 }
 
 
