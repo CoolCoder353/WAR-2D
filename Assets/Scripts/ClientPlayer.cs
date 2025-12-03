@@ -19,6 +19,7 @@ public class ClientPlayer : NetworkBehaviour
 
     public UnityEngine.Events.UnityEvent<bool> onResponseFromCanBuildBuilding = new UnityEngine.Events.UnityEvent<bool>();
     public UnityEngine.Events.UnityEvent<int> onResponseFromTilesCovered = new UnityEngine.Events.UnityEvent<int>();
+    public UnityEngine.Events.UnityEvent onHQPlaced = new UnityEngine.Events.UnityEvent();
 
 
     [Client]
@@ -70,6 +71,12 @@ public class ClientPlayer : NetworkBehaviour
     public void TargetReceiveTilesCoveredResponse(NetworkConnection target, int tiles)
     {
         onResponseFromTilesCovered?.Invoke(tiles);
+    }
+
+    [TargetRpc]
+    public void TargetHQPlaced(NetworkConnection target)
+    {
+        onHQPlaced?.Invoke();
     }
 
     /// <summary>

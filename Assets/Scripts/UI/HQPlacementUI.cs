@@ -17,6 +17,7 @@ public class HQPlacementUI : MonoBehaviour
     private bool hasPlacedHQ = false;
     private bool isInPlacementMode = false;
     private int previousBuildingCount = 0;
+    private bool subscribedToHQEvent = false;
 
     [Client]
     private void OnEnable()
@@ -46,6 +47,16 @@ public class HQPlacementUI : MonoBehaviour
     {
         if (GameCore.Instance == null || placementPromptPanel == null)
             return;
+
+        if (!subscribedToHQEvent && NetworkClient.localPlayer != null)
+        {
+            ClientPlayer localPlayer = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+            if (localPlayer != null)
+            {
+                localPlayer.onHQPlaced.AddListener(OnHQPlacementConfirmed);
+                subscribedToHQEvent = true;
+            }
+        }
 
         // Check if a building was placed while in placement mode
         if (isInPlacementMode && buildingButtonManager != null)

@@ -16,6 +16,8 @@ public partial struct ResourceSystem : ISystem
     {
         if (GameCore.Instance == null || WorldStateManager.Instance == null) return;
 
+        if (GameCore.Instance.CurrentState != GameState.Playing) return;
+
         float deltaTime = SystemAPI.Time.DeltaTime;
         GameConfigData config = ConfigLoader.LoadConfig();
 

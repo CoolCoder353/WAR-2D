@@ -836,6 +836,10 @@ public class WorldStateManager : NetworkBehaviour
 
     public static int2 GetBuildingSize(BuildingType type)
     {
+        if (type == BuildingType.Base)
+        {
+            return new int2(3, 3);
+        }
         //Load the building sprite from the resources
         Sprite sprite = Resources.Load<Sprite>($"{type.ToString()}");
         if (sprite == null)

@@ -143,14 +143,16 @@ public class ResourceConfigLoader
         ResourceConfigData config = LoadConfig();
         if (config.buildingCosts.TryGetValue(buildingType, out ResourceCost cost))
         {
+            if (buildingType == BuildingType.Base) cost.runningCost = 0;
             return cost;
         }
         return new ResourceCost
         {
             upfrontCost = config.defaultBuildingUpfrontCost,
-            runningCost = config.defaultBuildingRunningCost
+            runningCost = buildingType == BuildingType.Base ? 0 : config.defaultBuildingRunningCost
         };
     }
+    
 }
 
 [System.Serializable]

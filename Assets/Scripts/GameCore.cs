@@ -9,6 +9,7 @@ public enum GameState
 {
     Lobby,
     PlacingHQ,
+    Countdown,
     Playing,
     GameOver
 }
@@ -42,6 +43,8 @@ public class GameCore : NetworkBehaviour
     /// NetworkConnection object representing the owner of the server.
     /// </summary>
     private NetworkConnection serverOwner;
+
+    private float countdownTimer = 0f;
 
     /// <summary>
     /// Awake is called when the script instance is being loaded.
@@ -267,6 +270,13 @@ public class GameCore : NetworkBehaviour
         {
             player.state = PlayerState.Playing;
             
+            // Notify client that HQ is placed
+            ClientPlayer clientPlayer = conn.identity.GetComponent<ClientPlayer>();
+            if (clientPlayer != null)
+            {
+                clientPlayer.TargetHQPlaced(conn);
+            }
+
             // Check if all players have placed HQ
             bool allPlaced = true;
             foreach (var p in ServerPlayers.Values)
@@ -279,6 +289,20 @@ public class GameCore : NetworkBehaviour
             }
             
             if (allPlaced)
+            {
+                CurrentState = GameState.Countdown;
+                countdownTimer = 3f;
+            }
+        }
+    }
+
+    [ServerCallback]
+    public void Update()
+    {
+        if (CurrentState == GameState.Countdown)
+        {
+            countdownTimer -= Time.deltaTime;
+            if (countdownTimer <= 0)
             {
                 CurrentState = GameState.Playing;
             }
