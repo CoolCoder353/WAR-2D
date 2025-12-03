@@ -13,6 +13,8 @@ public class ServerPlayer
         this.data.resources = resources;
     }
 
+    public PlayerState state = PlayerState.PlacingHQ;
+
     public void AddResources(float amount)
     {
         data.resources += amount;
@@ -24,6 +26,14 @@ public class ServerPlayer
         data.resources -= amount;
     }
 
+}
+
+public enum PlayerState
+{
+    PlacingHQ,
+    Playing,
+    Eliminated,
+    Spectating
 }
 
 [System.Serializable]

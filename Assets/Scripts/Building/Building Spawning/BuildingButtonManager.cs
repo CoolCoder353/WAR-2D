@@ -22,6 +22,7 @@ public class BuildingButtonManager : MonoBehaviour
     public Dictionary<BuildingType, float2> buildingSizes = new Dictionary<BuildingType, float2>();
 
     private float currentRotation = 0f; // Current rotation in degrees (0, 90, 180, 270)
+    private bool isPlacing = false;
 
     [ClientCallback]
     public void Start()
@@ -38,7 +39,19 @@ public class BuildingButtonManager : MonoBehaviour
         {
             button.onClick.AddListener(() => OnButtonClicked(button));
 
-            button.GetComponentInChildren<Image>().sprite = Resources.Load<Sprite>(buildingTypes[buttons.IndexOf(button)].ToString());
+            BuildingType buildingType = buildingTypes[buttons.IndexOf(button)];
+            if (buildingType != BuildingType.None)
+            {
+                Sprite sprite = Resources.Load<Sprite>(buildingType.ToString());
+                if (sprite != null)
+                {
+                    button.GetComponentInChildren<Image>().sprite = sprite;
+                }
+                else
+                {
+                    Debug.LogWarning($"Could not find sprite for building type {buildingType}");
+                }
+            }
         }
 
         if (buildingTypes.Count != buttons.Count)
@@ -49,6 +62,8 @@ public class BuildingButtonManager : MonoBehaviour
     [ClientCallback]
     public void Update()
     {
+        if (!isPlacing) return;
+
         if (previewBuilding.activeInHierarchy)
         {
             Vector3 position = RoundVector3(UnitCommander.GetMouseWorldPosition());
@@ -76,7 +91,8 @@ public class BuildingButtonManager : MonoBehaviour
             previewBuilding.SetActive(false);
             previewBuilding.transform.position = new Vector3(0, 0, 0);
             previewBuilding.GetComponent<SpriteRenderer>().sprite = null;
-
+            currentRotation = 0f;
+            isPlacing = false;
         }
     }
     [Client]
@@ -91,26 +107,20 @@ public class BuildingButtonManager : MonoBehaviour
         // {
         //     foreach (BuildingData building in clientPlayer.visuableBuildings)
         //     {
-
         //         float2 size = GetBuildingSizeInUnits(building.buildingType, buildingSizes);
-
         //         if (!buildingSizes.ContainsKey(building.buildingType))
         //         {
         //             buildingSizes.Add(building.buildingType, size);
         //         }
-
         //         float2 lowerBounds = new float2(building.position.x - size.x / 2, building.position.y - size.y / 2);
         //         float2 upperBounds = new float2(building.position.x + size.x / 2, building.position.y + size.y / 2);
-
         //         bool isBuildinginWall = CheckIfBuildingInWall(building.buildingType, position, size);
-
         //         if (isBuildinginWall || (position.x >= lowerBounds.x && position.x <= upperBounds.x && position.y >= lowerBounds.y && position.y <= upperBounds.y))
         //         {
         //             Debug.Log($"Building {building.buildingType} is in the way of the preview building at {position} (IsBuildingInWall: {isBuildinginWall})");
         //             previewBuilding.GetComponent<SpriteRenderer>().color = new Color(1, 0, 0, 0.75f);
         //             return;
         //         }
-
         //     }
         //     previewBuilding.GetComponent<SpriteRenderer>().color = new Color(0.8f, 0.8f, 0.8f, 0.75f);
         // }
@@ -167,7 +177,7 @@ public class BuildingButtonManager : MonoBehaviour
         return false;
     }
     [Client]
-    private static float2 GetBuildingSizeInUnits(BuildingType buildingType, Dictionary<BuildingType, float2> cachedBuildingSizes = null)
+    private float2 GetBuildingSizeInUnits(BuildingType buildingType, Dictionary<BuildingType, float2> cachedBuildingSizes = null)
     {
         if (cachedBuildingSizes != null && cachedBuildingSizes.TryGetValue(buildingType, out float2 size))
         {
@@ -191,7 +201,11 @@ public class BuildingButtonManager : MonoBehaviour
 
         int2 convertedPosition = new int2((int)position.x, (int)position.y);
 
-        //        Debug.Log($"Trying to spawn building at {convertedPosition} of type {selectedBuildingType} where the preview building is at {previewBuilding.transform.position} -> client");
+        if (selectedBuildingType == BuildingType.None)
+        {
+            Debug.LogError("Cannot place building - selectedBuildingType is None!");
+            return;
+        }
 
         WorldStateManager.Instance.TryAddBuilding(convertedPosition, selectedBuildingType, currentRotation);
     }
@@ -208,9 +222,26 @@ public class BuildingButtonManager : MonoBehaviour
     [Client]
     public void OnButtonClicked(Button button)
     {
-        selectedBuildingType = buildingTypes[buttons.IndexOf(button)];
+        int index = buttons.IndexOf(button);
+        
+        if (index < 0 || index >= buildingTypes.Count)
+        {
+            Debug.LogError($"Button not found in buttons list or index out of range. Index: {index}, BuildingTypes count: {buildingTypes.Count}");
+            return;
+        }
+        
+        selectedBuildingType = buildingTypes[index];
+        
+        if (selectedBuildingType == BuildingType.None)
+        {
+            Debug.LogError($"Selected building type is None! Index: {index}, Button: {button.name}");
+            return;
+        }
+        
+        Debug.Log($"Building button clicked: {selectedBuildingType} (index: {index})");
         WorldStateManager.Instance.GetTilesBuildingWillCoverCommand(new int2(0, 0), selectedBuildingType);
         SetupBuildingPreview();
+        isPlacing = true;
     }
 
     [Client]

@@ -2157,7 +2157,7 @@ MonoBehaviour:
   joinIPPrefab: {fileID: 1351502785}
   joinIPButton: {fileID: 1369411097}
   joinIPInputField: {fileID: 1597564477}
-  core: {fileID: 0}
+  core: {fileID: 1223553109}
 --- !u!1 &1204165484
 GameObject:
   m_ObjectHideFlags: 0
@@ -2359,6 +2359,7 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  CurrentState: 0
 --- !u!1 &1257436558
 GameObject:
   m_ObjectHideFlags: 0
@@ -2499,8 +2500,7 @@ MonoBehaviour:
     type: 3}
   autoCreatePlayer: 1
   playerSpawnMethod: 0
-  spawnPrefabs:
-  - {fileID: 7979010904455679390, guid: 93a2a711c8fb7f34088637e6d5247e90, type: 3}
+  spawnPrefabs: []
   exceptionsDisconnect: 1
   snapshotSettings:
     bufferTimeMultiplier: 2

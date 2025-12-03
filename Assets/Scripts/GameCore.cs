@@ -4,6 +4,15 @@ using System.Linq;
 using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.Tilemaps;
+
+public enum GameState
+{
+    Lobby,
+    PlacingHQ,
+    Playing,
+    GameOver
+}
+
 /// <summary>
 /// The GameCore class is responsible for managing the server's game state.
 /// It inherits from Mirror's NetworkBehaviour class.
@@ -15,6 +24,14 @@ public class GameCore : NetworkBehaviour
     /// Ensures that only one GameCore exists in the scene at any time.
     /// </summary>
     public static GameCore Instance { get; private set; }
+
+    [SyncVar]
+    public GameState CurrentState = GameState.Lobby;
+
+    // Events for UI
+    public event System.Action OnLocalPlayerWon;
+    public event System.Action OnLocalPlayerLost;
+    public event System.Action<GameState> OnGameStateChanged;
 
     /// <summary>
     /// List of ServerPlayer objects representing the players on the server.
@@ -197,7 +214,74 @@ public class GameCore : NetworkBehaviour
         if (IsServerOwner(connection))
         {
             Debug.Log("Changing scene");
+            CurrentState = GameState.PlacingHQ;
             GameManager.Instance.ServerChangeScene("Map_2");
+        }
+    }
+
+    [Server]
+    public void EliminatePlayer(NetworkConnectionToClient conn)
+    {
+        if (ServerPlayers.TryGetValue(conn.identity, out ServerPlayer player))
+        {
+            player.state = PlayerState.Eliminated;
+            RpcOnPlayerLost(conn.identity);
+            Debug.Log($"Player {conn.connectionId} eliminated.");
+        }
+    }
+
+    [Server]
+    public void DeclareWinner(NetworkConnectionToClient conn)
+    {
+        CurrentState = GameState.GameOver;
+        RpcOnPlayerWon(conn.identity);
+        Debug.Log($"Player {conn.connectionId} won!");
+    }
+
+    [ClientRpc]
+    public void RpcOnPlayerWon(NetworkIdentity winner)
+    {
+        // UI Implementation to handle this
+        if (winner.isLocalPlayer)
+        {
+            Debug.Log("Victory!");
+            OnLocalPlayerWon?.Invoke();
+        }
+    }
+
+    [ClientRpc]
+    public void RpcOnPlayerLost(NetworkIdentity loser)
+    {
+        // UI Implementation to handle this
+        if (loser.isLocalPlayer)
+        {
+            Debug.Log("Defeat!");
+            OnLocalPlayerLost?.Invoke();
+        }
+    }
+    
+    [Server]
+    public void PlayerPlacedHQ(NetworkConnectionToClient conn)
+    {
+        if (ServerPlayers.TryGetValue(conn.identity, out ServerPlayer player))
+        {
+            player.state = PlayerState.Playing;
+            
+            // Check if all players have placed HQ
+            bool allPlaced = true;
+            foreach (var p in ServerPlayers.Values)
+            {
+                if (p.state == PlayerState.PlacingHQ)
+                {
+                    allPlaced = false;
+                    break;
+                }
+            }
+            
+            if (allPlaced)
+            {
+                CurrentState = GameState.Playing;
+            }
         }
     }
 }

@@ -10,6 +10,7 @@ using Unity.Mathematics;
 using Unity.Transforms;
 using UnityEngine;
 using UnityEngine.Tilemaps;
+using Config;
 
 [BurstCompile]
 public class WorldStateManager : NetworkBehaviour
@@ -640,14 +641,39 @@ public class WorldStateManager : NetworkBehaviour
             timeSinceLastCost = 0f
         });
 
+        // Add Health Component
+        BuildingConfig buildingConfig = null;
+        GameConfigData config = ConfigLoader.LoadConfig();
+        if (config.Buildings.TryGetValue(type.ToString(), out buildingConfig))
+        {
+            EntityManager.AddComponentData(building, new HealthComponent
+            {
+                currentHealth = buildingConfig.Health,
+                maxHealth = buildingConfig.Health
+            });
+        }
+        else
+        {
+             // Fallback if config missing
+            EntityManager.AddComponentData(building, new HealthComponent
+            {
+                currentHealth = 100,
+                maxHealth = 100
+            });
+        }
+
         switch (type)
         {
+            case BuildingType.Base:
+                EntityManager.AddComponentData(building, new HQComponent());
+                GameCore.Instance.PlayerPlacedHQ(sender);
+                break;
             case BuildingType.Miner:
                 // Add mining component to miner buildings
-                ResourceConfigData config = ResourceConfigLoader.LoadConfig();
+                ResourceConfigData resourceConfig = ResourceConfigLoader.LoadConfig();
                 EntityManager.AddComponentData(building, new MiningComponent
                 {
-                    miningRate = config.miningRate,
+                    miningRate = resourceConfig.miningRate,
                     timeSinceLastMining = 0f,
                     isActive = false
                 });

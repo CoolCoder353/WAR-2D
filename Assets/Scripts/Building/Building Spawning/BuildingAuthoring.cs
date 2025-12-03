@@ -58,6 +58,13 @@ public class BuildingBaker : Baker<BuildingAuthoring>
             id = buildingAuthoring.id,
             buildingType = buildingAuthoring.buildingType
         });
+        
+        // Add default health component, will be overwritten by config at runtime if needed
+        AddComponent(entity, new HealthComponent
+        {
+            currentHealth = 100,
+            maxHealth = 100
+        });
 
     }
 }
