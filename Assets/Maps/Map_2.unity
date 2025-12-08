@@ -18829,7 +18829,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HQPlacementUI
   placementPromptPanel: {fileID: 1819915076}
-  normalBuildingPanel: {fileID: 0}
+  normalBuildingPanel: {fileID: 297796825}
   placeHQButton: {fileID: 157064721}
   instructionText: {fileID: 1523056372}
   buildingButtonManager: {fileID: 1819915077}

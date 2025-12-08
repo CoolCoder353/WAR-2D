@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using Mirror;
 using TMPro;
+using System.Collections;
 
 public class LossScreenUI : MonoBehaviour
 {
@@ -89,10 +90,18 @@ public class LossScreenUI : MonoBehaviour
     [Client]
     private void OnLeaveMatchClicked()
     {
-        // Disconnect from server and return to main menu
+        // Disconnect from server and return to main menu with a delay to ensure cleanup
+        StartCoroutine(DisconnectAndLoadLobby());
+    }
+
+    [Client]
+    private IEnumerator DisconnectAndLoadLobby()
+    {
         if (NetworkClient.isConnected)
         {
             NetworkClient.Shutdown();
+            // Wait a frame to ensure network cleanup completes
+            yield return new WaitForSeconds(0.5f);
         }
 
         // Load lobby scene (adjust scene name as needed)

@@ -1,7 +1,7 @@
 ﻿<Solution>
   <Project Path="NaughtyAttributes.Editor.csproj" />
-  <Project Path="Unity.Mirror.CodeGen.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
+  <Project Path="Unity.Mirror.CodeGen.csproj" />
   <Project Path="Edgegap.csproj" />
   <Project Path="Mirror.Components.csproj" />
   <Project Path="Mirror.Editor.csproj" />

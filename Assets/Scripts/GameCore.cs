@@ -303,7 +303,7 @@ public class GameCore : NetworkBehaviour
             OnLocalPlayerLost?.Invoke();
         }
     }
-    
+
     /// <summary>
     /// Called when a player places their HQ.
     /// Checks if all players have placed their HQ to start the countdown.
@@ -315,13 +315,9 @@ public class GameCore : NetworkBehaviour
         if (ServerPlayers.TryGetValue(conn.identity, out ServerPlayer player))
         {
             player.state = PlayerState.Playing;
-            
-            // Notify client that HQ is placed
-            ClientPlayer clientPlayer = conn.identity.GetComponent<ClientPlayer>();
-            if (clientPlayer != null)
-            {
-                clientPlayer.TargetHQPlaced(conn);
-            }
+
+            // Notify ALL clients that this player has placed their HQ
+            RpcPlayerPlacedHQ(conn.identity.netId);
 
             // Check if all players have placed HQ
             bool allPlaced = true;
@@ -333,11 +329,29 @@ public class GameCore : NetworkBehaviour
                     break;
                 }
             }
-            
+
             if (allPlaced)
             {
                 CurrentState = GameState.Countdown;
                 countdownTimer = 3f;
+            }
+        }
+    }
+
+    /// <summary>
+    /// ClientRpc that notifies all clients when a player has placed their HQ.
+    /// </summary>
+    /// <param name="playerId">The netId of the player who placed the HQ.</param>
+    [ClientRpc]
+    public void RpcPlayerPlacedHQ(uint playerId)
+    {
+        // Notify the local player if they are the one who placed the HQ
+        if (NetworkClient.localPlayer != null)
+        {
+            ClientPlayer localPlayer = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+            if (localPlayer != null && localPlayer.netId == playerId)
+            {
+                localPlayer.onHQPlaced?.Invoke();
             }
         }
     }
