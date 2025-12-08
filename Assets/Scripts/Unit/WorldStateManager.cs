@@ -12,40 +12,66 @@ using UnityEngine;
 using UnityEngine.Tilemaps;
 using Config;
 
+/// <summary>
+/// Manages the state of the game world, including the tilemap, units, and buildings.
+/// Handles server-side logic for movement, building placement, and visibility.
+/// </summary>
 [BurstCompile]
 public class WorldStateManager : NetworkBehaviour
 {
+    /// <summary>
+    /// Singleton instance of the WorldStateManager.
+    /// </summary>
     public static WorldStateManager Instance { get; private set; }
 
+    /// <summary>
+    /// The internal representation of the tilemap.
+    /// </summary>
     public TilemapStruct world { get; private set; }
 
     private EntityManager EntityManager => World.DefaultGameObjectInjectionWorld.EntityManager;
 
-
+    [Header("Tilemaps")]
+    /// <summary>The tilemap defining walkable areas.</summary>
     public Tilemap WalkableTilemap;
+    /// <summary>The tilemap defining unwalkable areas (walls, gems).</summary>
     public Tilemap UnwalkableTilemap;
 
+    [Header("Debug")]
+    /// <summary>Whether to visualize the tilemap weights in the editor.</summary>
     public bool showTileMapweights = false;
 
-
+    /// <summary>Offset for visualizing tiles to center them.</summary>
     public Vector3 visualOffset = new Vector3(0.5f, 0.5f, 0);
 
+    /// <summary>
+    /// Tracks the view area for each client player.
+    /// Key: ClientPlayer, Value: (StartCorner, EndCorner) of the view box.
+    /// </summary>
     private Dictionary<ClientPlayer, (int2, int2)> playerView = new Dictionary<ClientPlayer, (int2, int2)>();
 
+    /// <summary>
+    /// Tracks occupied positions by units.
+    /// Item1: Unit ID, Item2: Position.
+    /// </summary>
     private List<(int, int2)> unitPositions = new List<(int, int2)>();
 
-
+    /// <summary>
+    /// Dictionary of all units in the game. Key: Unit ID, Value: Entity.
+    /// </summary>
     private Dictionary<int, Entity> Units = new Dictionary<int, Entity>();
 
+    /// <summary>
+    /// Dictionary of all buildings in the game. Key: Building ID, Value: Entity.
+    /// </summary>
     private Dictionary<int, Entity> Buildings = new Dictionary<int, Entity>();
 
     private EntityManager entityManager;
 
-
+    #region Lifecycle Methods
 
     private void Awake()
     {
-
         if (Instance == null)
         {
             Instance = this;
@@ -71,21 +97,21 @@ public class WorldStateManager : NetworkBehaviour
         {
             DrawTileMap(world.tiles);
         }
-
     }
-
-
 
     [ServerCallback]
     public void FixedUpdate()
     {
         UpdatePlayerViews();
-
-        // //TODO: THis is for debugging only
-        // int numOfBuildings = entityManager.CreateEntityQuery(typeof(BuildingData)).CalculateEntityCount();
-        // Debug.Log($"Found {numOfBuildings} buildings spawned on server via entities");
     }
 
+    #endregion
+
+    #region Tilemap Management
+
+    /// <summary>
+    /// Draws the tilemap gizmos for debugging.
+    /// </summary>
     [Server]
     private void DrawTileMap(NativeHashMap<int2, TileNode> tilemap)
     {
@@ -113,8 +139,9 @@ public class WorldStateManager : NetworkBehaviour
         }
     }
 
-
-    //Called on the client and server when the game starts
+    /// <summary>
+    /// Generates the internal tilemap structure from the Unity Tilemaps.
+    /// </summary>
     public void GenerateTileMap()
     {
         BoundsInt bounds = WalkableTilemap.cellBounds;
@@ -134,15 +161,10 @@ public class WorldStateManager : NetworkBehaviour
                 TileType tileType = TileType.Ground;
                 int weight = 1;
 
-
-
                 if (UnwalkableTilemap.GetTile(localPlace) != null)
                 {
                     weight = 0;
-
                     tileType = UnwalkableTilemap.GetTile(localPlace).name.Contains("Gems") ? TileType.Gem : TileType.Wall;
-                    ////Debug.Log($"Found unwalkable tile at {localPlace} with name {UnwalkableTilemap.GetTile(localPlace).name} setting type to {tileType}");
-
                 }
 
                 TileNode tileNode = new TileNode
@@ -164,42 +186,52 @@ public class WorldStateManager : NetworkBehaviour
             height = bounds.size.y + 1
         };
 
-
-
         world = tilemap;
     }
 
-
+    /// <summary>
+    /// Gets a tile at a specific position (Server side).
+    /// </summary>
     [Server]
     public TileNode GetTile(int2 position)
     {
         return world.GetTile(position);
     }
 
+    /// <summary>
+    /// Gets a tile at a specific position (Client side command).
+    /// </summary>
     [Client]
     public TileNode GetTileCommand(int2 position)
     {
         return world.GetTile(position);
     }
 
-
+    /// <summary>
+    /// Sets a tile at a specific position.
+    /// </summary>
     [Server]
     public void SetTile(int2 position, TileNode tile)
     {
         world.SetTile(position, tile);
     }
 
+    #endregion
 
-    #region Units
+    #region Unit Management
 
+    /// <summary>
+    /// Updates the view area for a client.
+    /// </summary>
     [Command(requiresAuthority = false)]
     public void UpdateClientView(int2 startcorner, int2 endcorner, NetworkConnectionToClient sender = null)
     {
         playerView[sender.identity.GetComponent<ClientPlayer>()] = (startcorner, endcorner);
-
     }
 
-
+    /// <summary>
+    /// Updates which units and buildings are visible to each player based on their view area.
+    /// </summary>
     [Server, BurstCompile]
     public void UpdatePlayerViews()
     {
@@ -210,17 +242,14 @@ public class WorldStateManager : NetworkBehaviour
 
             NativeList<Entity> entitiesInBox = FindEntitiesInBox(startcorner, endcorner);
 
-
-            // Debug.Log($"For player {player.Key.nickname} found {entitiesInBox.Length} entities in box {startcorner}, {endcorner}");
             List<int> clientUnits = new List<int>();
             List<int> clientBuildings = new List<int>();
+
             foreach (Entity entity in entitiesInBox)
             {
-
-                //If its a unit, do the below
+                // Handle Buildings
                 if (!EntityManager.HasComponent<ClientUnit>(entity))
                 {
-                    //At this point, its a building so do almost the same thing but in a different list
                     if (EntityManager.HasComponent<BuildingData>(entity))
                     {
                         BuildingData buildingData = EntityManager.GetComponentData<BuildingData>(entity);
@@ -229,6 +258,7 @@ public class WorldStateManager : NetworkBehaviour
                         // Extract rotation from LocalTransform and convert to degrees
                         LocalTransform transform = EntityManager.GetComponentData<LocalTransform>(entity);
                         quaternion rotation = transform.Rotation;
+                        // Math to convert quaternion to Z-axis rotation in degrees
                         float zRotationRadians = math.atan2(
                             2.0f * (rotation.value.w * rotation.value.z + rotation.value.x * rotation.value.y),
                             1.0f - 2.0f * (rotation.value.y * rotation.value.y + rotation.value.z * rotation.value.z)
@@ -249,6 +279,7 @@ public class WorldStateManager : NetworkBehaviour
                     continue;
                 }
 
+                // Handle Units
                 ClientUnit clientUnit = EntityManager.GetComponentData<ClientUnit>(entity);
                 clientUnit.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
 
@@ -256,24 +287,16 @@ public class WorldStateManager : NetworkBehaviour
 
                 if (player.Key.visuableUnits.Any(u => u.id == clientUnit.id))
                 {
-                    //Update the position of the unit
-
-                    // Debug.Log($"Sending the following unit to the client: '{player.Key.nickname}' with unit: id '{clientUnit.id}', position '{clientUnit.position}' and sprite '{clientUnit.spriteName}'");
-
                     player.Key.visuableUnits[player.Key.visuableUnits.FindIndex(u => u.id == clientUnit.id)] = clientUnit;
                 }
                 else
                 {
                     player.Key.visuableUnits.Add(clientUnit);
                 }
-
-
-
             }
             entitiesInBox.Dispose();
 
-            //TODO: This is not the most effecient way to do this
-            //Remove the units that are not in the view anymore
+            // Cleanup invisible units
             for (int i = player.Key.visuableUnits.Count - 1; i >= 0; i--)
             {
                 if (!clientUnits.Contains(player.Key.visuableUnits[i].id))
@@ -282,7 +305,7 @@ public class WorldStateManager : NetworkBehaviour
                 }
             }
 
-            //Remove the buildings that are not in the view anymore
+            // Cleanup invisible buildings
             for (int i = player.Key.visuableBuildings.Count - 1; i >= 0; i--)
             {
                 if (!clientBuildings.Contains(player.Key.visuableBuildings[i].id))
@@ -293,18 +316,27 @@ public class WorldStateManager : NetworkBehaviour
         }
     }
 
+    /// <summary>
+    /// Registers a unit entity.
+    /// </summary>
     [Server]
     public void AddUnit(Entity entity, int id)
     {
         Units.Add(id, entity);
     }
 
+    /// <summary>
+    /// Registers a building entity.
+    /// </summary>
     [Server]
     public void AddBuilding(Entity entity, int id)
     {
         Buildings.Add(id, entity);
     }
 
+    /// <summary>
+    /// Checks if a position is available for a unit.
+    /// </summary>
     [Server]
     public bool IsAvaliable(int2 position, int id)
     {
@@ -315,13 +347,14 @@ public class WorldStateManager : NetworkBehaviour
         return true;
     }
 
+    /// <summary>
+    /// Claims a position for a unit.
+    /// </summary>
     [Server]
     public void ClaimLocation(int2 position, int id)
     {
-        ////Debug.Log($"Claiming location {position} for unit {id}");
         if (!IsAvaliable(position, id))
         {
-            /////Debug.LogWarning($"Unit with id {id} tried to claim a location that is already taken.");
             return;
         }
         //Ignore if it is already claimed
@@ -332,29 +365,34 @@ public class WorldStateManager : NetworkBehaviour
         unitPositions.Add((id, position));
     }
 
+    /// <summary>
+    /// Releases a position claimed by a unit.
+    /// </summary>
     [Server]
     public void ReleaseLocation(int2 position, int id)
     {
-        ////Debug.Log($"Releasing location {position} for unit {id}");
         if (!unitPositions.Any(u => u.Item2.Equals(position) && u.Item1 == id))
         {
-            ////            Debug.LogWarning($"Unit with id {id} tried to release a location that is not taken or owned by that unit.");
             return;
         }
         unitPositions.Remove((id, position));
     }
 
+    /// <summary>
+    /// Releases all locations claimed by a unit.
+    /// </summary>
     [Server]
     public void ReleaseAllLocations(int id)
     {
         unitPositions.RemoveAll(u => u.Item1 == id);
     }
 
-    //TODO: Change this to be more effecient, we are going through all the units TWICE!
+    /// <summary>
+    /// Commands units to move to a goal.
+    /// </summary>
     [Command(requiresAuthority = false)]
     public void CmdMoveUnits(int2 goal, int2 startcorner, int2 endcorner, NetworkConnectionToClient sender = null)
     {
-        // Debug.Log("Moving units at server");
         List<ClientUnit> units = new List<ClientUnit>();
         List<int2> setGoals = new List<int2>();
 
@@ -363,7 +401,6 @@ public class WorldStateManager : NetworkBehaviour
         {
             if (!EntityManager.HasComponent<ClientUnit>(entity))
             {
-                Debug.LogWarning("Entity in box is not a unit. Ignoring it.");
                 continue;
             }
             ClientUnit clientUnit = EntityManager.GetComponentData<ClientUnit>(entity);
@@ -371,24 +408,16 @@ public class WorldStateManager : NetworkBehaviour
 
             if (clientUnit.ownerId != sender.identity.GetComponent<ClientPlayer>().netId)
             {
-                // Debug.LogWarning($"Unit with id {clientUnit.id} does not belong to player {sender.identity.GetComponent<ClientPlayer>().nickname}. Ignoring it.");
                 continue;
             }
 
             units.Add(clientUnit);
         }
 
-        // Debug.Log($"Found {units.Count} units in box {startcorner}, {endcorner} -> server");
-
         foreach (ClientUnit unit in units)
         {
-            //TODO: Make sure we are not moving units that are not owned by the player
-
             if (Units.TryGetValue(unit.id, out Entity entity))
             {
-                //TODO: Set the goal to the closest walkable tile we havent claimed yet.
-                //We can do this through a bredth first search from the goal to the unit, stopping at the first walkable tile that is not claimed
-
                 int2 specificgoal = FindBestGoalLocation(goal, unit.id, setGoals);
                 setGoals.Add(specificgoal);
 
@@ -405,13 +434,13 @@ public class WorldStateManager : NetworkBehaviour
         entitiesInBox.Dispose();
     }
 
-
-
-
+    /// <summary>
+    /// Finds the best available goal location near the target, avoiding collisions.
+    /// Uses BFS to find the nearest valid tile.
+    /// </summary>
     [Server]
     private int2 FindBestGoalLocation(int2 goal, int id, List<int2> setGoals)
     {
-
         int2 bestGoal = goal;
 
         // Perform a breadth-first search to find the closest walkable tile that is not claimed
@@ -451,13 +480,18 @@ public class WorldStateManager : NetworkBehaviour
         return bestGoal;
     }
 
-    //This will need to be burst compiled and run through the job system
+    /// <summary>
+    /// Finds all entities within a specified rectangular area.
+    /// </summary>
     [Server]
     private NativeList<Entity> FindEntitiesInBox(int2 startcorner, int2 endcorner)
     {
-        NativeList<Entity> entitiesInBox = FindEntitiesInBoxJobMethod(startcorner, endcorner);
-        return entitiesInBox;
+        return FindEntitiesInBoxJobMethod(startcorner, endcorner);
     }
+
+    /// <summary>
+    /// Moves a unit entity to a goal position using pathfinding.
+    /// </summary>
     [Server]
     private void MoveUnit(Entity entity, int2 goal)
     {
@@ -473,10 +507,8 @@ public class WorldStateManager : NetworkBehaviour
 
         Path path = Path.BurstToPath(Pathfinding.BurstFindPath(WorldStateManager.Instance.world, startInt, goal, doJob: false));
 
-
         if (path.pathLength > 0)
         {
-
             //Save the path to the entity to be used by the movement system
             DynamicBuffer<PathPoint> pathBuffer = EntityManager.GetBuffer<PathPoint>(entity);
             pathBuffer.Clear();
@@ -484,16 +516,16 @@ public class WorldStateManager : NetworkBehaviour
             {
                 pathBuffer.Add(new PathPoint { position = node.position });
             }
-
-            ////Debug.Log($"Moving unit at {startInt} to {goal} in {path.pathLength} steps");
         }
         else
         {
             Debug.LogWarning($"No path found for unit at {startInt} to {goal}");
         }
-
     }
 
+    /// <summary>
+    /// Job to filter entities within a bounding box.
+    /// </summary>
     [BurstCompile]
     public struct FindEntitiesInBoxJob : IJob
     {
@@ -505,8 +537,6 @@ public class WorldStateManager : NetworkBehaviour
 
         public void Execute()
         {
-
-            // Debug.Log($"Checking '{entities.Length}' entities in box {startcorner}, {endcorner}");
             int2 minCorner = math.min(startcorner, endcorner);
             int2 maxCorner = math.max(startcorner, endcorner);
 
@@ -520,6 +550,10 @@ public class WorldStateManager : NetworkBehaviour
             }
         }
     }
+
+    /// <summary>
+    /// Executes the FindEntitiesInBoxJob.
+    /// </summary>
     [Server]
     public NativeList<Entity> FindEntitiesInBoxJobMethod(int2 startcorner, int2 endcorner)
     {
@@ -545,8 +579,6 @@ public class WorldStateManager : NetworkBehaviour
 
         allTransforms.Slice(0, transforms.Length).CopyFrom(transforms);
         allTransforms.Slice(transforms.Length, buildingTransforms.Length).CopyFrom(buildingTransforms);
-
-        // Debug.Log($"Checking '{entities.Length}' entities in box {startcorner}, {endcorner}");
 
         FindEntitiesInBoxJob job = new()
         {
@@ -578,8 +610,12 @@ public class WorldStateManager : NetworkBehaviour
     }
 
     #endregion
-    #region Buildings
 
+    #region Building Management
+
+    /// <summary>
+    /// Attempts to add a building at the specified position.
+    /// </summary>
     [Command(requiresAuthority = false)]
     public void TryAddBuilding(int2 positon, BuildingType type, float rotation, NetworkConnectionToClient sender = null)
     {
@@ -687,7 +723,6 @@ public class WorldStateManager : NetworkBehaviour
                     position = buildingData.position,
                     unitType = UnitType.Tank
                 });
-                ////Debug.Log($"SmallUnitSpawner created at {buildingData.position}");
                 break;
             default:
                 Debug.LogError("BuildingType not found in WorldStateManager");
@@ -706,7 +741,9 @@ public class WorldStateManager : NetworkBehaviour
         AddBuilding(building, buildingData.id);
     }
 
-
+    /// <summary>
+    /// Checks if a building can be built at a specific position.
+    /// </summary>
     [Server]
     private bool CanBuildBuilding(int2 position, BuildingType type, float rotation = 0f)
     {
@@ -716,7 +753,6 @@ public class WorldStateManager : NetworkBehaviour
         {
             if (!world.GetTile(tile).isWalkable || !IsAvaliable(tile, -1) || world.GetTile(tile).isUsed)
             {
-                //Debug.LogWarning($"Cannot build building at {position} because tile {tile} is not walkable ({!world.GetTile(tile).isWalkable}), is used ({world.GetTile(tile).isUsed}) or is not avaliable ({!IsAvaliable(tile, -1)}).");
                 return false;
             }
         }
@@ -752,16 +788,19 @@ public class WorldStateManager : NetworkBehaviour
         return true;
     }
 
-
+    /// <summary>
+    /// Command to check if a building can be built (for client prediction/UI).
+    /// </summary>
     [Command(requiresAuthority = false)]
-
     public void CanBuildBuildingCommand(int2 position, BuildingType type, float rotation, NetworkConnectionToClient sender = null)
     {
         bool canBuild = CanBuildBuilding(position, type, rotation);
         sender.identity.GetComponent<ClientPlayer>().TargetReceiveCanBuildBuildingResponse(sender, canBuild);
     }
 
-
+    /// <summary>
+    /// Handles a click on a building (e.g., to spawn units).
+    /// </summary>
     [Command(requiresAuthority = false)]
     public void BuildingClicked(int buildingId, NetworkConnectionToClient sender = null)
     {
@@ -795,10 +834,11 @@ public class WorldStateManager : NetworkBehaviour
         {
             Debug.LogWarning($"Building with id {buildingId} not found when trying to click on building.");
         }
-
     }
 
-
+    /// <summary>
+    /// Helper to get the tiles a building will cover.
+    /// </summary>
     //HELPER FUNCTIONS
 
     [Server]

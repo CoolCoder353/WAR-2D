@@ -5,12 +5,20 @@ using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.Tilemaps;
 
+/// <summary>
+/// Represents the various states of the game.
+/// </summary>
 public enum GameState
 {
+    /// <summary>Players are in the lobby waiting for the game to start.</summary>
     Lobby,
+    /// <summary>Players are placing their Headquarters (HQ).</summary>
     PlacingHQ,
+    /// <summary>Countdown before the game officially starts.</summary>
     Countdown,
+    /// <summary>The main gameplay loop is active.</summary>
     Playing,
+    /// <summary>The game has ended.</summary>
     GameOver
 }
 
@@ -26,16 +34,23 @@ public class GameCore : NetworkBehaviour
     /// </summary>
     public static GameCore Instance { get; private set; }
 
+    /// <summary>
+    /// The current state of the game, synchronized across the network.
+    /// </summary>
     [SyncVar]
     public GameState CurrentState = GameState.Lobby;
 
     // Events for UI
+    /// <summary>Event triggered when the local player wins.</summary>
     public event System.Action OnLocalPlayerWon;
+    /// <summary>Event triggered when the local player loses.</summary>
     public event System.Action OnLocalPlayerLost;
+    /// <summary>Event triggered when the game state changes.</summary>
     public event System.Action<GameState> OnGameStateChanged;
 
     /// <summary>
     /// List of ServerPlayer objects representing the players on the server.
+    /// Key is the NetworkIdentity of the player's connection.
     /// </summary>
     public Dictionary<NetworkIdentity, ServerPlayer> ServerPlayers = new Dictionary<NetworkIdentity, ServerPlayer>();
 
@@ -66,16 +81,19 @@ public class GameCore : NetworkBehaviour
 
     }
 
+    /// <summary>
+    /// Called on the server when it starts.
+    /// </summary>
     [Server]
     public override void OnStartServer()
     {
         base.OnStartServer();
     }
 
-
-
-    //<summary>
-    //Sends the individual player's server player object to each client
+    /// <summary>
+    /// Sends the individual player's server player object to each client.
+    /// This ensures clients have up-to-date information about their own resources and state.
+    /// </summary>
     [Server]
     private void UpdateClientsPrivateData()
     {
@@ -88,8 +106,10 @@ public class GameCore : NetworkBehaviour
         }
     }
 
-
-
+    /// <summary>
+    /// Called every frame on the server after Update.
+    /// Used to synchronize private data to clients.
+    /// </summary>
     [ServerCallback]
     public void LateUpdate()
     {
@@ -101,13 +121,11 @@ public class GameCore : NetworkBehaviour
 
     }
 
-
-
-
-
-
-
-
+    /// <summary>
+    /// Handles a player disconnecting from the server.
+    /// Removes the player from the list and handles server ownership transfer if necessary.
+    /// </summary>
+    /// <param name="conn">The connection of the player who left.</param>
     [Server]
     public void OnPlayerLeave(NetworkConnectionToClient conn)
     {
@@ -126,8 +144,6 @@ public class GameCore : NetworkBehaviour
                 client.RPC_RemoveClientLobbyUI();
             }
         }
-
-
 
         // If the disconnected player was the server owner, set a new server owner
         if (IsServerOwner(conn))
@@ -148,11 +164,10 @@ public class GameCore : NetworkBehaviour
         }
     }
 
-
-
     /// <summary>
     /// Sets the owner of the server.
     /// </summary>
+    /// <param name="conn">The connection to set as the new owner.</param>
     [Server]
     public void SetServerOwner(NetworkConnectionToClient conn)
     {
@@ -173,12 +188,19 @@ public class GameCore : NetworkBehaviour
     /// <summary>
     /// Checks if a NetworkConnection object is the owner of the server.
     /// </summary>
+    /// <param name="conn">The connection to check.</param>
+    /// <returns>True if the connection is the server owner, false otherwise.</returns>
     [Server]
     public bool IsServerOwner(NetworkConnectionToClient conn)
     {
         return conn.identity == serverOwner.identity;
     }
 
+    /// <summary>
+    /// Adds resources to a specific player.
+    /// </summary>
+    /// <param name="conn">The connection of the player.</param>
+    /// <param name="amount">The amount of resources to add.</param>
     [Server]
     public void AddResourcesToPlayer(NetworkConnectionToClient conn, float amount)
     {
@@ -188,6 +210,8 @@ public class GameCore : NetworkBehaviour
     /// <summary>
     /// Gets a ServerPlayer by their owner ID (netId).
     /// </summary>
+    /// <param name="ownerId">The netId of the player.</param>
+    /// <returns>The ServerPlayer object, or null if not found.</returns>
     [Server]
     public ServerPlayer GetServerPlayerById(int ownerId)
     {
@@ -210,6 +234,7 @@ public class GameCore : NetworkBehaviour
     /// Command sent to the server to start the game.
     /// If the connection is the server owner, it changes the scene to the game scene.
     /// </summary>
+    /// <param name="connection">The connection sending the command (automatically filled by Mirror).</param>
     [Command(requiresAuthority = false)]
     public void Cmd_StartGame(NetworkConnectionToClient connection = null)
     {
@@ -222,6 +247,10 @@ public class GameCore : NetworkBehaviour
         }
     }
 
+    /// <summary>
+    /// Eliminates a player from the game.
+    /// </summary>
+    /// <param name="conn">The connection of the player to eliminate.</param>
     [Server]
     public void EliminatePlayer(NetworkConnectionToClient conn)
     {
@@ -233,6 +262,10 @@ public class GameCore : NetworkBehaviour
         }
     }
 
+    /// <summary>
+    /// Declares a winner for the game.
+    /// </summary>
+    /// <param name="conn">The connection of the winning player.</param>
     [Server]
     public void DeclareWinner(NetworkConnectionToClient conn)
     {
@@ -241,6 +274,10 @@ public class GameCore : NetworkBehaviour
         Debug.Log($"Player {conn.connectionId} won!");
     }
 
+    /// <summary>
+    /// ClientRpc called when a player wins.
+    /// </summary>
+    /// <param name="winner">The NetworkIdentity of the winner.</param>
     [ClientRpc]
     public void RpcOnPlayerWon(NetworkIdentity winner)
     {
@@ -252,6 +289,10 @@ public class GameCore : NetworkBehaviour
         }
     }
 
+    /// <summary>
+    /// ClientRpc called when a player loses.
+    /// </summary>
+    /// <param name="loser">The NetworkIdentity of the loser.</param>
     [ClientRpc]
     public void RpcOnPlayerLost(NetworkIdentity loser)
     {
@@ -263,6 +304,11 @@ public class GameCore : NetworkBehaviour
         }
     }
     
+    /// <summary>
+    /// Called when a player places their HQ.
+    /// Checks if all players have placed their HQ to start the countdown.
+    /// </summary>
+    /// <param name="conn">The connection of the player who placed the HQ.</param>
     [Server]
     public void PlayerPlacedHQ(NetworkConnectionToClient conn)
     {
@@ -296,6 +342,9 @@ public class GameCore : NetworkBehaviour
         }
     }
 
+    /// <summary>
+    /// Update loop for managing game state transitions (e.g., countdown).
+    /// </summary>
     [ServerCallback]
     public void Update()
     {

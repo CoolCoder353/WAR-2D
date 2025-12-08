@@ -5,9 +5,17 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
 
+/// <summary>
+/// System responsible for moving units along their path.
+/// Handles path following, collision avoidance (basic), and movement physics.
+/// </summary>
 [BurstCompile]
 public partial struct MovementSystem : ISystem
 {
+    /// <summary>
+    /// Called when the system is created.
+    /// Sets up requirements for the system to run.
+    /// </summary>
     public void OnCreate(ref SystemState state)
     {
         state.RequireForUpdate<MovementComponent>();
@@ -15,6 +23,9 @@ public partial struct MovementSystem : ISystem
         state.RequireForUpdate<ClientUnit>();
     }
 
+    /// <summary>
+    /// Called every frame on the server to update unit positions.
+    /// </summary>
     [ServerCallback]
     public void OnUpdate(ref SystemState state)
     {
@@ -59,6 +70,9 @@ public partial struct MovementSystem : ISystem
     }
 
     //HELPER FUNCTIONS
+    /// <summary>
+    /// Checks if a position is available for the unit.
+    /// </summary>
     public void IsAvaliable(int2 position, int id, out bool isAvaliable)
     {
         // Note: WorldStateManager is a MonoBehaviour, so accessing it from a Burst compiled job (if this was one) would be an issue.
@@ -68,16 +82,25 @@ public partial struct MovementSystem : ISystem
         isAvaliable = true; // This seems to always return true in the original code?
     }
 
+    /// <summary>
+    /// Claims a location for the unit.
+    /// </summary>
     public void ClaimLocation(int2 position, int id)
     {
         WorldStateManager.Instance.ClaimLocation(position, id);
     }
 
+    /// <summary>
+    /// Releases a location for the unit.
+    /// </summary>
     public void ReleaseLocation(int2 position, int id)
     {
         WorldStateManager.Instance.ReleaseLocation(position, id);
     }
 
+    /// <summary>
+    /// Moves the unit towards a target node.
+    /// </summary>
     [BurstCompile]
     private void MoveTowardsNode(ref MovementComponent movementComp, ref LocalTransform localTransform, int goalx, int goaly, ref SystemState state)
     {

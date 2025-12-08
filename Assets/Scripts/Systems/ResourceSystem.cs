@@ -6,11 +6,17 @@ using Mirror;
 using UnityEngine;
 using Config;
 
+/// <summary>
+/// System responsible for managing resource generation, mining, and consumption.
+/// </summary>
 [BurstCompile]
 public partial struct ResourceSystem : ISystem
 {
     private float timeSinceLastPassiveGeneration;
 
+    /// <summary>
+    /// Called every frame on the server to handle resource logic.
+    /// </summary>
     [ServerCallback]
     public void OnUpdate(ref SystemState state)
     {
@@ -31,6 +37,9 @@ public partial struct ResourceSystem : ISystem
         HandleConsumption(ref state, deltaTime, config);
     }
 
+    /// <summary>
+    /// Handles passive resource generation for all players.
+    /// </summary>
     private void HandlePassiveGeneration(ref SystemState state, float deltaTime, GameConfigData config)
     {
         timeSinceLastPassiveGeneration += deltaTime;
@@ -52,6 +61,10 @@ public partial struct ResourceSystem : ISystem
         timeSinceLastPassiveGeneration = 0f;
     }
 
+    /// <summary>
+    /// Handles mining logic for miners.
+    /// Checks if miners are facing gems and adds resources if they are.
+    /// </summary>
     private void HandleMining(ref SystemState state, float deltaTime, GameConfigData config)
     {
         foreach (var (miningComponent, buildingData, transform) in 
@@ -108,6 +121,10 @@ public partial struct ResourceSystem : ISystem
         }
     }
 
+    /// <summary>
+    /// Handles resource consumption for units and buildings.
+    /// Deducts running costs from the owner's resources.
+    /// </summary>
     private void HandleConsumption(ref SystemState state, float deltaTime, GameConfigData config)
     {
         // Unit Consumption
@@ -137,6 +154,9 @@ public partial struct ResourceSystem : ISystem
         }
     }
 
+    /// <summary>
+    /// Helper to deduct resources from a player.
+    /// </summary>
     private void ProcessDeduction(int ownerId, float amount)
     {
         ServerPlayer owner = GameCore.Instance.GetServerPlayerById(ownerId);
@@ -150,6 +170,9 @@ public partial struct ResourceSystem : ISystem
         }
     }
 
+    /// <summary>
+    /// Helper to update the client's resource display.
+    /// </summary>
     private void UpdateClientDisplay(ServerPlayer player)
     {
         if (player.connection != null && player.connection.identity != null)

@@ -7,9 +7,16 @@ using Unity.Collections;
 using Mirror;
 using Config;
 
+/// <summary>
+/// System responsible for spawning units from spawners.
+/// Handles resource checking, entity creation, and component initialization.
+/// </summary>
 [BurstCompile]
 public partial struct SpawnerSystem : ISystem
 {
+    /// <summary>
+    /// Called every frame on the server to handle spawning logic.
+    /// </summary>
     [ServerCallback]
     public void OnUpdate(ref SystemState state)
     {
@@ -69,6 +76,17 @@ public partial struct SpawnerSystem : ISystem
         spawnedUnitIds.Dispose();
     }
 
+    /// <summary>
+    /// Creates a unit entity with the specified parameters.
+    /// Checks for sufficient resources before creation.
+    /// </summary>
+    /// <param name="commandBuffer">The command buffer to record the creation commands.</param>
+    /// <param name="id">The unique ID of the unit.</param>
+    /// <param name="idOfOwner">The ID of the unit's owner.</param>
+    /// <param name="position">The spawn position.</param>
+    /// <param name="unitType">The type of unit to spawn.</param>
+    /// <param name="config">The game configuration data.</param>
+    /// <returns>The created Entity, or Entity.Null if creation failed (e.g., insufficient resources).</returns>
     [Server]
     public Entity CreateUnit(EntityCommandBuffer commandBuffer, int id, int idOfOwner, float2 position, UnitType unitType, GameConfigData config)
     {

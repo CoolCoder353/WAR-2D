@@ -16,6 +16,9 @@ public class GameManager : NetworkManager
     /// </summary>
     public static GameManager Instance { get; private set; }
 
+    /// <summary>
+    /// Configuration settings for the game manager.
+    /// </summary>
     public GameManagerSettings settings;
 
 
@@ -47,6 +50,10 @@ public class GameManager : NetworkManager
         Config.ConfigLoader.LoadConfig();
     }
 
+    /// <summary>
+    /// Called when the script instance is being destroyed.
+    /// Cleans up event subscriptions and stops client/server if active.
+    /// </summary>
     public override void OnDestroy()
     {
         // Unsubscribe from the sceneLoaded event
@@ -61,12 +68,12 @@ public class GameManager : NetworkManager
         {
             StopClient();
         }
-
-
-
     }
 
 
+    /// <summary>
+    /// Called on the server when it starts.
+    /// </summary>
     public override void OnStartServer()
     {
         base.OnStartServer();
@@ -77,6 +84,7 @@ public class GameManager : NetworkManager
     /// Called on the server when a new player has connected.
     /// Adds the player to the list of players if they are not already in it.
     /// </summary>
+    /// <param name="conn">The connection of the new player.</param>
     [Server]
     public override void OnServerAddPlayer(NetworkConnectionToClient conn)
     {
@@ -100,14 +108,13 @@ public class GameManager : NetworkManager
         {
             GameCore.Instance.SetServerOwner(conn);
         }
-
-
     }
 
     /// <summary>
     /// Called on the server when a player has disconnected.
     /// Removes the player from the list of players.
     /// </summary>
+    /// <param name="conn">The connection of the player who disconnected.</param>
     [Server]
     public override void OnServerDisconnect(NetworkConnectionToClient conn)
     {
@@ -128,6 +135,8 @@ public class GameManager : NetworkManager
     /// Called on the client when an error occurs.
     /// Logs the error reason.
     /// </summary>
+    /// <param name="error">The transport error.</param>
+    /// <param name="reason">The reason for the error.</param>
     [Client]
     public override void OnClientError(TransportError error, string reason)
     {
@@ -170,6 +179,7 @@ public class GameManager : NetworkManager
 
     /// <summary>
     /// Stops the host if the local player is the server, otherwise stops the client.
+    /// Resets the GameCore and reloads the main menu.
     /// </summary>
     public void LeaveLobby()
     {
@@ -225,6 +235,7 @@ public class GameManager : NetworkManager
     /// <summary>
     /// Connects to a server at the specified address.
     /// </summary>
+    /// <param name="address">The IP address to connect to.</param>
     public void ConnectToServer(string address)
     {
         if (!NetworkClient.active)
@@ -235,6 +246,9 @@ public class GameManager : NetworkManager
 
     }
 
+    /// <summary>
+    /// Connects to a server using the IP address from the UI input field.
+    /// </summary>
     public void ConnectToServerThroughUI()
     {
         if (!NetworkClient.active)
@@ -261,6 +275,8 @@ public class GameManager : NetworkManager
     /// Called when a scene is loaded.
     /// Sets up button listeners for the host, join, leave, and quit buttons.
     /// </summary>
+    /// <param name="scene">The loaded scene.</param>
+    /// <param name="loadSceneMode">The mode in which the scene was loaded.</param>
     public void OnSceneLoaded(Scene scene, LoadSceneMode loadSceneMode)
     {
         if (Instance == null)
