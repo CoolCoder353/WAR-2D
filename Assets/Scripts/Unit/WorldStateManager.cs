@@ -254,7 +254,7 @@ public class WorldStateManager : NetworkBehaviour
                     {
                         BuildingData buildingData = EntityManager.GetComponentData<BuildingData>(entity);
                         buildingData.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
-                        
+
                         // Extract rotation from LocalTransform and convert to degrees
                         LocalTransform transform = EntityManager.GetComponentData<LocalTransform>(entity);
                         quaternion rotation = transform.Rotation;
@@ -629,15 +629,15 @@ public class WorldStateManager : NetworkBehaviour
         if (owner != null)
         {
             ResourceCost cost = ResourceConfigLoader.GetBuildingCost(type);
-            
+
             if (owner.data.resources < cost.upfrontCost)
             {
                 return;
             }
-            
+
             // Deduct upfront cost
             owner.RemoveResources(cost.upfrontCost);
-            
+
             // Update client display
             if (owner.connection != null && owner.connection.identity != null)
             {
@@ -661,8 +661,8 @@ public class WorldStateManager : NetworkBehaviour
         Entity building = EntityManager.CreateEntity();
         EntityManager.AddComponentData<BuildingData>(building, buildingData);
 
-        EntityManager.AddComponentData<LocalTransform>(building, new LocalTransform 
-        { 
+        EntityManager.AddComponentData<LocalTransform>(building, new LocalTransform
+        {
             Position = new float3(buildingData.position.x, buildingData.position.y, 0),
             Rotation = quaternion.Euler(0, 0, math.radians(rotation)),
             Scale = 1f
@@ -670,8 +670,8 @@ public class WorldStateManager : NetworkBehaviour
 
         // Add resource cost component to all buildings
         ResourceCost buildingCost = ResourceConfigLoader.GetBuildingCost(type);
-        EntityManager.AddComponentData(building, new BuildingResourceComponent 
-        { 
+        EntityManager.AddComponentData(building, new BuildingResourceComponent
+        {
             upfrontCost = buildingCost.upfrontCost,
             runningCostPerSecond = buildingCost.runningCost,
             timeSinceLastCost = 0f
@@ -690,7 +690,7 @@ public class WorldStateManager : NetworkBehaviour
         }
         else
         {
-             // Fallback if config missing
+            // Fallback if config missing
             EntityManager.AddComponentData(building, new HealthComponent
             {
                 currentHealth = 100,
@@ -701,8 +701,10 @@ public class WorldStateManager : NetworkBehaviour
         switch (type)
         {
             case BuildingType.Base:
-                EntityManager.AddComponentData(building, new HQComponent());
-                GameCore.Instance.PlayerPlacedHQ(sender);
+                EntityManager.AddComponentData(building, new HQComponent { ownerId = buildingData.ownerId });
+                sender.identity.GetComponent<ClientPlayer>().hasPlacedHQ = true;
+                // Notify GameCore to check if all players have placed HQ
+                GameCore.Instance.CheckHQPlacementProgress();
                 break;
             case BuildingType.Miner:
                 // Add mining component to miner buildings
@@ -756,16 +758,16 @@ public class WorldStateManager : NetworkBehaviour
                 return false;
             }
         }
-        
+
         if (type == BuildingType.Miner)
         {
             // Calculate direction based on rotation (same logic as MiningSystem)
             // Normalize to 0-360 range
             float zRotation = (rotation % 360 + 360) % 360;
-            
+
             // Round to nearest 90 degrees
             int rotationIndex = Mathf.RoundToInt(zRotation / 90f) % 4;
-            
+
             int2 direction = rotationIndex switch
             {
                 0 => new int2(1, 0),   // 0° - Right
@@ -774,11 +776,11 @@ public class WorldStateManager : NetworkBehaviour
                 3 => new int2(0, -1),  // 270° - Down
                 _ => new int2(1, 0)
             };
-            
+
             // Check if the tile in the facing direction is a gem
             int2 checkPos = position + direction;
             TileNode tile = world.GetTile(checkPos);
-            
+
             if (tile.tileType != TileType.Gem)
             {
                 return false;

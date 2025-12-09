@@ -75,7 +75,7 @@ public class BuildingButtonManager : MonoBehaviour
             }
 
             SetBuildingPreviewColour(position);
-            
+
             // Rotate building with R key
             if (Input.GetKeyDown(KeyCode.R))
             {
@@ -207,6 +207,18 @@ public class BuildingButtonManager : MonoBehaviour
             return;
         }
 
+        // Special handling for HQ placement
+        if (selectedBuildingType == BuildingType.Base)
+        {
+            // Only allow HQ placement during PlacingHQ state
+            if (GameCore.Instance.CurrentState != GameState.PlacingHQ)
+            {
+                Debug.LogWarning("HQ can only be placed during the PlacingHQ phase!");
+                return;
+            }
+        }
+
+        // Place building through WorldStateManager (works for both HQ and regular buildings)
         WorldStateManager.Instance.TryAddBuilding(convertedPosition, selectedBuildingType, currentRotation);
     }
     [Client]
@@ -223,21 +235,21 @@ public class BuildingButtonManager : MonoBehaviour
     public void OnButtonClicked(Button button)
     {
         int index = buttons.IndexOf(button);
-        
+
         if (index < 0 || index >= buildingTypes.Count)
         {
             Debug.LogError($"Button not found in buttons list or index out of range. Index: {index}, BuildingTypes count: {buildingTypes.Count}");
             return;
         }
-        
+
         selectedBuildingType = buildingTypes[index];
-        
+
         if (selectedBuildingType == BuildingType.None)
         {
             Debug.LogError($"Selected building type is None! Index: {index}, Button: {button.name}");
             return;
         }
-        
+
         Debug.Log($"Building button clicked: {selectedBuildingType} (index: {index})");
         WorldStateManager.Instance.GetTilesBuildingWillCoverCommand(new int2(0, 0), selectedBuildingType);
         SetupBuildingPreview();

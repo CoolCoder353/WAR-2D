@@ -2,6 +2,7 @@ using System;
 using Mirror;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Unity.Mathematics;
 
 [System.Serializable]
 public class ClientPlayer : NetworkBehaviour
@@ -16,10 +17,11 @@ public class ClientPlayer : NetworkBehaviour
     public readonly SyncList<BuildingData> visuableBuildings = new SyncList<BuildingData>();
     public ServerData serverPlayer;
 
+    [SyncVar]
+    public bool hasPlacedHQ = false;
 
     public UnityEngine.Events.UnityEvent<bool> onResponseFromCanBuildBuilding = new UnityEngine.Events.UnityEvent<bool>();
     public UnityEngine.Events.UnityEvent<int> onResponseFromTilesCovered = new UnityEngine.Events.UnityEvent<int>();
-    public UnityEngine.Events.UnityEvent onHQPlaced = new UnityEngine.Events.UnityEvent();
 
 
     [Client]
@@ -71,12 +73,6 @@ public class ClientPlayer : NetworkBehaviour
     public void TargetReceiveTilesCoveredResponse(NetworkConnection target, int tiles)
     {
         onResponseFromTilesCovered?.Invoke(tiles);
-    }
-
-    [TargetRpc]
-    public void TargetHQPlaced(NetworkConnection target)
-    {
-        onHQPlaced?.Invoke();
     }
 
     /// <summary>

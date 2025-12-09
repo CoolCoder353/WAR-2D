@@ -7,13 +7,13 @@ public class ServerPlayer
     public NetworkConnectionToClient connection;
 
     public ServerData data { get; protected set; } = new();
+
+    public PlayerState state = PlayerState.Playing;
     public ServerPlayer(NetworkConnectionToClient connection, float resources)
     {
         this.connection = connection;
         this.data.resources = resources;
     }
-
-    public PlayerState state = PlayerState.PlacingHQ;
 
     public void AddResources(float amount)
     {
@@ -27,15 +27,12 @@ public class ServerPlayer
     }
 
 }
-
 public enum PlayerState
 {
-    PlacingHQ,
     Playing,
     Eliminated,
     Spectating
 }
-
 [System.Serializable]
 public class ServerData
 {

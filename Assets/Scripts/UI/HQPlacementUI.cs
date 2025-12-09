@@ -2,20 +2,22 @@ using UnityEngine;
 using UnityEngine.UI;
 using Mirror;
 using TMPro;
+using System.Collections;
 
 public class HQPlacementUI : MonoBehaviour
 {
     [Header("UI References")]
     public GameObject placementPromptPanel;
     public GameObject normalBuildingPanel;
-    public Button placeHQButton;
     public TMP_Text instructionText;
+    public TMP_Text progressText; // Shows "X players still placing HQ"
 
     [Header("Building Placement")]
     public BuildingButtonManager buildingButtonManager;
 
-    private bool hasPlacedHQ = false;
-    private bool subscribedToHQEvent = false;
+    private ClientPlayer localPlayer;
+
+    public bool hideScreen = false;
 
     [Client]
     private void OnEnable()
@@ -24,12 +26,8 @@ public class HQPlacementUI : MonoBehaviour
         {
             normalBuildingPanel.SetActive(false);
         }
-    }
 
-    [Client]
-    private void OnDisable()
-    {
-        UnsubscribeFromHQEvent();
+        localPlayer = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
     }
 
 
@@ -40,14 +38,17 @@ public class HQPlacementUI : MonoBehaviour
         if (GameCore.Instance == null || placementPromptPanel == null)
             return;
 
-        // Subscribe to HQ event only once and only when needed
-        if (!subscribedToHQEvent && NetworkClient.localPlayer != null)
+        // Get local player reference
+        if (localPlayer == null && NetworkClient.localPlayer != null)
         {
-            SubscribeToHQEvent();
+            localPlayer = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
         }
 
+        if (localPlayer == null)
+            return;
+
         // Show UI when in PlacingHQ state and haven't placed yet
-        bool shouldShow = GameCore.Instance.CurrentState == GameState.PlacingHQ && !hasPlacedHQ;
+        bool shouldShow = !hideScreen;
 
         if (placementPromptPanel.activeSelf != shouldShow)
         {
@@ -59,47 +60,95 @@ public class HQPlacementUI : MonoBehaviour
             normalBuildingPanel.SetActive(!shouldShow);
         }
 
+
+        //Set the building buttons interactable state
+        if (localPlayer.hasPlacedHQ && buildingButtonManager != null)
+        {
+            foreach (Button btn in buildingButtonManager.buttons)
+            {
+                btn.interactable = false;
+            }
+        }
+        else
+        {
+            if (buildingButtonManager != null)
+            {
+                foreach (Button btn in buildingButtonManager.buttons)
+                {
+                    btn.interactable = true;
+                }
+            }
+        }
+
         // Update instruction text
         if (instructionText != null && shouldShow)
         {
-            instructionText.text = "Place your Headquarters (HQ) to begin the game!";
+            instructionText.text = "Place your Headquarters (HQ) to begin the game!\n";
         }
-    }
 
-    [Client]
-    private void SubscribeToHQEvent()
-    {
-        ClientPlayer localPlayer = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
-        if (localPlayer != null)
+        // Update progress text (count remaining players)
+        if (progressText != null && localPlayer.hasPlacedHQ)
         {
-            Debug.Log("Subscribing to OnHQPlaced event for our local player");
-            localPlayer.onHQPlaced.AddListener(OnHQPlacementConfirmed);
-            subscribedToHQEvent = true;
-        }
-    }
-
-    [Client]
-    private void UnsubscribeFromHQEvent()
-    {
-        if (subscribedToHQEvent && NetworkClient.localPlayer != null)
-        {
-            ClientPlayer localPlayer = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
-            if (localPlayer != null)
+            int remainingPlayers = CountRemainingPlayersPlacingHQ();
+            if (remainingPlayers > 0)
             {
-                localPlayer.onHQPlaced.RemoveListener(OnHQPlacementConfirmed);
-                subscribedToHQEvent = false;
+                progressText.text = $"Waiting for {remainingPlayers} player(s) to place their HQ...";
+            }
+            else
+            {
+                progressText.text = "All players have placed HQ! Starting countdown...";
+                StartCoroutine(StartCountdownToStartGame(5f));
+
             }
         }
     }
 
+
     [Client]
-    public void OnHQPlacementConfirmed()
+    private IEnumerator StartCountdownToStartGame(float countdownTime)
     {
-        // Called externally when HQ placement is confirmed by server
-        hasPlacedHQ = true;
-        if (placementPromptPanel != null)
+        float timer = countdownTime;
+
+        while (timer > 0)
         {
-            placementPromptPanel.SetActive(false);
+            if (progressText != null)
+            {
+                progressText.text = $"All players have placed HQ! Starting game in {Mathf.CeilToInt(timer)} seconds...";
+            }
+
+            yield return new WaitForSeconds(1f);
+            timer -= 1f;
+        }
+
+        // Notify server to start the game
+        if (localPlayer != null)
+        {
+            GameCore.Instance.Cmd_ReadyToStartGame();
+            hideScreen = true;
         }
     }
+
+    /// <summary>
+    /// Counts how many players still need to place their HQ.
+    /// Only works on clients that have access to the local player.
+    /// </summary>
+    [Client]
+    private int CountRemainingPlayersPlacingHQ()
+    {
+        int remaining = 0;
+
+        // Iterate through all players in ServerPlayers
+        foreach (var clientPlayer in FindObjectsByType<ClientPlayer>(FindObjectsSortMode.None))
+        {
+            if (clientPlayer != null && !clientPlayer.hasPlacedHQ)
+            {
+                remaining++;
+            }
+        }
+
+        Debug.Log($"Players remaining to place HQ: {remaining}");
+
+        return remaining;
+    }
 }
+

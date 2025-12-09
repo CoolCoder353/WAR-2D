@@ -45,14 +45,14 @@ public class GameCore : NetworkBehaviour
     public event System.Action OnLocalPlayerWon;
     /// <summary>Event triggered when the local player loses.</summary>
     public event System.Action OnLocalPlayerLost;
-    /// <summary>Event triggered when the game state changes.</summary>
-    public event System.Action<GameState> OnGameStateChanged;
 
     /// <summary>
     /// List of ServerPlayer objects representing the players on the server.
     /// Key is the NetworkIdentity of the player's connection.
     /// </summary>
     public Dictionary<NetworkIdentity, ServerPlayer> ServerPlayers = new Dictionary<NetworkIdentity, ServerPlayer>();
+
+    public int playersReadyToStart = 0;
 
     /// <summary>
     /// NetworkConnection object representing the owner of the server.
@@ -275,6 +275,31 @@ public class GameCore : NetworkBehaviour
     }
 
     /// <summary>
+    /// Ends the game in a draw (all players eliminated).
+    /// </summary>
+    [Server]
+    public void EndGameDraw()
+    {
+        CurrentState = GameState.GameOver;
+        RpcGameDraw();
+        Debug.Log("Game ended in a draw!");
+    }
+
+    [Command(requiresAuthority = false)]
+    public void Cmd_ReadyToStartGame(NetworkConnectionToClient connection = null)
+    {
+        Debug.Log($"Player {connection.connectionId} is ready to start the game.");
+        playersReadyToStart++;
+
+        if (playersReadyToStart >= ServerPlayers.Count)
+        {
+            Debug.Log("All players are ready. Starting the game.");
+            CurrentState = GameState.Playing;
+        }
+    }
+
+
+    /// <summary>
     /// ClientRpc called when a player wins.
     /// </summary>
     /// <param name="winner">The NetworkIdentity of the winner.</param>
@@ -305,54 +330,59 @@ public class GameCore : NetworkBehaviour
     }
 
     /// <summary>
-    /// Called when a player places their HQ.
-    /// Checks if all players have placed their HQ to start the countdown.
+    /// ClientRpc called when the game ends in a draw.
     /// </summary>
-    /// <param name="conn">The connection of the player who placed the HQ.</param>
-    [Server]
-    public void PlayerPlacedHQ(NetworkConnectionToClient conn)
+    [ClientRpc]
+    public void RpcGameDraw()
     {
-        if (ServerPlayers.TryGetValue(conn.identity, out ServerPlayer player))
+        Debug.Log("Game ended in a draw - all players were eliminated!");
+        // Could add UI event here if needed
+    }
+
+    /// <summary>
+    /// Called from WorldStateManager after an HQ is successfully placed.
+    /// Checks if all players have placed their HQ and transitions to Countdown state if so.
+    /// </summary>
+    [Server]
+    public void CheckHQPlacementProgress()
+    {
+        // Count how many players still need to place HQ
+        int remainingPlayers = 0;
+        foreach (var player in ServerPlayers)
         {
-            player.state = PlayerState.Playing;
-
-            // Notify ALL clients that this player has placed their HQ
-            RpcPlayerPlacedHQ(conn.identity.netId);
-
-            // Check if all players have placed HQ
-            bool allPlaced = true;
-            foreach (var p in ServerPlayers.Values)
+            ClientPlayer clientPlayer = player.Key.GetComponent<ClientPlayer>();
+            if (clientPlayer != null && !clientPlayer.hasPlacedHQ)
             {
-                if (p.state == PlayerState.PlacingHQ)
-                {
-                    allPlaced = false;
-                    break;
-                }
+                remainingPlayers++;
             }
+        }
 
-            if (allPlaced)
-            {
-                CurrentState = GameState.Countdown;
-                countdownTimer = 3f;
-            }
+        Debug.Log($"HQ Placement Progress: {remainingPlayers} player(s) still need to place HQ.");
+
+        // Notify all clients about the progress
+        RpcUpdateHQPlacementProgress(remainingPlayers);
+
+        // Check if all players have placed HQ
+        if (remainingPlayers == 0)
+        {
+            Debug.Log("All players have placed HQ! Starting countdown.");
+            CurrentState = GameState.Countdown;
+            countdownTimer = 3f;
         }
     }
 
     /// <summary>
-    /// ClientRpc that notifies all clients when a player has placed their HQ.
+    /// ClientRpc that updates all clients on HQ placement progress.
     /// </summary>
-    /// <param name="playerId">The netId of the player who placed the HQ.</param>
+    /// <param name="remainingPlayersCount">Number of players still needing to place HQ.</param>
     [ClientRpc]
-    public void RpcPlayerPlacedHQ(uint playerId)
+    public void RpcUpdateHQPlacementProgress(int remainingPlayersCount)
     {
-        // Notify the local player if they are the one who placed the HQ
-        if (NetworkClient.localPlayer != null)
+        // This RPC is called to keep clients in sync with progress
+        // Clients can use this to update UI if needed
+        if (remainingPlayersCount > 0)
         {
-            ClientPlayer localPlayer = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
-            if (localPlayer != null && localPlayer.netId == playerId)
-            {
-                localPlayer.onHQPlaced?.Invoke();
-            }
+            Debug.Log($"[Client] {remainingPlayersCount} player(s) still placing HQ");
         }
     }
 
