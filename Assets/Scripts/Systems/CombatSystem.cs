@@ -18,14 +18,13 @@ public partial struct CombatSystem : ISystem
     [Server]
     public void OnUpdate(ref SystemState state)
     {
-        // Query for potential targets
+        // Query for all potential targets with health (units or buildings)
         var targetQuery = SystemAPI.QueryBuilder()
-            .WithAll<HealthComponent, ClientUnit, LocalTransform>()
+            .WithAll<HealthComponent, LocalTransform>()
             .Build();
 
         var targetEntities = targetQuery.ToEntityArray(state.WorldUpdateAllocator);
         var targetHealths = targetQuery.ToComponentDataArray<HealthComponent>(state.WorldUpdateAllocator);
-        var targetClientUnits = targetQuery.ToComponentDataArray<ClientUnit>(state.WorldUpdateAllocator);
         var targetTransforms = targetQuery.ToComponentDataArray<LocalTransform>(state.WorldUpdateAllocator);
 
         foreach (var (damageComp, localTransform, clientUnit, entity) in SystemAPI.Query<RefRO<DamageComponent>, RefRO<LocalTransform>, RefRW<ClientUnit>>().WithEntityAccess())
@@ -34,13 +33,22 @@ public partial struct CombatSystem : ISystem
             float minDistance = damageComp.ValueRO.range;
             int currentTargetIndex = -1;
 
+            Debug.Log($"Unit {entity} (Owner {clientUnit.ValueRO.ownerId}) is searching for targets...");
             for (int i = 0; i < targetEntities.Length; i++)
             {
-                // Skip self
+                // Skip self    
                 if (targetEntities[i] == entity) continue;
+                // Check ownership - skip if we own this target
+                int targetOwnerId = GetTargetOwnerId(targetEntities[i], ref state);
 
-                // Skip friendly units
-                if (targetClientUnits[i].ownerId == clientUnit.ValueRO.ownerId) continue;
+                Debug.Log($"Evaluating target entity {targetEntities[i]}, owned by player {targetOwnerId}");
+
+                if (targetOwnerId == clientUnit.ValueRO.ownerId)
+                {
+                    Debug.Log($"Skipping own target with ID {targetOwnerId}");
+                    continue;
+                }
+
 
                 float distance = math.distance(localTransform.ValueRO.Position, targetTransforms[i].Position);
 
@@ -48,7 +56,7 @@ public partial struct CombatSystem : ISystem
                 {
                     // Found a valid target in range
                     minDistance = distance;
-                    bestTargetId = targetClientUnits[i].id;
+                    bestTargetId = i; // Store index instead of unit ID
                     currentTargetIndex = i;
                 }
             }
@@ -67,7 +75,7 @@ public partial struct CombatSystem : ISystem
                     // Apply damage
                     var targetHealth = targetHealths[currentTargetIndex];
                     targetHealth.currentHealth -= damageComp.ValueRO.damageAmount;
-                    
+
                     SystemAPI.SetComponent(targetEntities[currentTargetIndex], targetHealth);
 
                     // Handle death
@@ -79,5 +87,29 @@ public partial struct CombatSystem : ISystem
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Gets the owner ID of a target entity by checking for ClientUnit or BuildingData components.
+    /// Returns -1 if the entity has no owner.
+    /// </summary>
+    private int GetTargetOwnerId(Entity targetEntity, ref SystemState state)
+    {
+        var ecb = state.EntityManager;
+
+        // Try to get owner from ClientUnit
+        if (ecb.HasComponent<ClientUnit>(targetEntity))
+        {
+            return ecb.GetComponentData<ClientUnit>(targetEntity).ownerId;
+        }
+
+        // Try to get owner from BuildingData
+        if (ecb.HasComponent<BuildingData>(targetEntity))
+        {
+            return ecb.GetComponentData<BuildingData>(targetEntity).ownerId;
+        }
+
+        // No owner found
+        return -1;
     }
 }

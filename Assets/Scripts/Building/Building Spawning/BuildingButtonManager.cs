@@ -207,17 +207,6 @@ public class BuildingButtonManager : MonoBehaviour
             return;
         }
 
-        // Special handling for HQ placement
-        if (selectedBuildingType == BuildingType.Base)
-        {
-            // Only allow HQ placement during PlacingHQ state
-            if (GameCore.Instance.CurrentState != GameState.PlacingHQ)
-            {
-                Debug.LogWarning("HQ can only be placed during the PlacingHQ phase!");
-                return;
-            }
-        }
-
         // Place building through WorldStateManager (works for both HQ and regular buildings)
         WorldStateManager.Instance.TryAddBuilding(convertedPosition, selectedBuildingType, currentRotation);
     }

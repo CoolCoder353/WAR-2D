@@ -105,6 +105,9 @@ public class WorldStateManager : NetworkBehaviour
         UpdatePlayerViews();
     }
 
+
+
+
     #endregion
 
     #region Tilemap Management
@@ -635,6 +638,12 @@ public class WorldStateManager : NetworkBehaviour
                 return;
             }
 
+            if (type == BuildingType.Base && sender.identity.GetComponent<ClientPlayer>().hasPlacedHQ)
+            {
+                // Prevent multiple HQ placements
+                return;
+            }
+
             // Deduct upfront cost
             owner.RemoveResources(cost.upfrontCost);
 
@@ -657,6 +666,9 @@ public class WorldStateManager : NetworkBehaviour
             ownerId = BuildingData.UIntToInt(sender.identity.GetComponent<ClientPlayer>().netId),
             rotation = rotation
         };
+
+
+        Debug.Log($"Placing building of type {type} at position {positon} with rotation {rotation}, owned by player {buildingData.ownerId}");
 
         Entity building = EntityManager.CreateEntity();
         EntityManager.AddComponentData<BuildingData>(building, buildingData);
@@ -797,6 +809,12 @@ public class WorldStateManager : NetworkBehaviour
     public void CanBuildBuildingCommand(int2 position, BuildingType type, float rotation, NetworkConnectionToClient sender = null)
     {
         bool canBuild = CanBuildBuilding(position, type, rotation);
+
+        if (type == BuildingType.Base && sender.identity.GetComponent<ClientPlayer>().hasPlacedHQ)
+        {
+            canBuild = false;
+        }
+
         sender.identity.GetComponent<ClientPlayer>().TargetReceiveCanBuildBuildingResponse(sender, canBuild);
     }
 

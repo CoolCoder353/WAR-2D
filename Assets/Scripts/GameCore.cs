@@ -159,10 +159,15 @@ public class GameCore : NetworkBehaviour
             {
                 SetServerOwner(ServerPlayers.First().Key.connectionToClient);
             }
+        }
 
-
+        if (ServerPlayers.Count == 1)
+        {
+            //If only one player remains, declare them the winner
+            DeclareWinner(ServerPlayers.First().Key.connectionToClient);
         }
     }
+
 
     /// <summary>
     /// Sets the owner of the server.

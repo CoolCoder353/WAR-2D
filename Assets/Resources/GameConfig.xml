@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <GameConfig>
+  <!-- Resource configuration -->
   <Resources>
     <PassiveGenerationRate>5.0</PassiveGenerationRate>
-    <StartingResources>100.0</StartingResources>
+    <StartingResources>1000.0</StartingResources>
     <MiningRate>10.0</MiningRate>
   </Resources>
-
+  
+  <!-- Unit-specific configs -->
   <Units>
     <Unit type="Tank">
       <Health>100</Health>
@@ -14,32 +16,30 @@
       <UpfrontCost>50.0</UpfrontCost>
       <RunningCost>2.0</RunningCost>
     </Unit>
-    <Unit type="Soldier">
-      <Health>50</Health>
-      <Damage>5</Damage>
-      <MoveSpeed>3.0</MoveSpeed>
-      <UpfrontCost>20.0</UpfrontCost>
-      <RunningCost>1.0</RunningCost>
-    </Unit>
   </Units>
-
+  
+  <!-- Building-specific configs -->
   <Buildings>
+    <Building type="Base">
+      <Health>500</Health>
+      <UpfrontCost>0.0</UpfrontCost>
+      <RunningCost>0.0</RunningCost>
+      <MiningRate>0.0</MiningRate>
+      <SpawnRate>0.0</SpawnRate>
+    </Building>
     <Building type="Miner">
       <Health>200</Health>
-      <UpfrontCost>150.0</UpfrontCost>
-      <RunningCost>3.0</RunningCost>
+      <UpfrontCost>50.0</UpfrontCost>
+      <RunningCost>0.0</RunningCost>
       <MiningRate>10.0</MiningRate>
+      <SpawnRate>0.0</SpawnRate>
     </Building>
     <Building type="SmallUnitSpawner">
       <Health>300</Health>
       <UpfrontCost>200.0</UpfrontCost>
       <RunningCost>5.0</RunningCost>
+      <MiningRate>0.0</MiningRate>
       <SpawnRate>1.0</SpawnRate>
-    </Building>
-    <Building type="Base">
-      <Health>1000</Health>
-      <UpfrontCost>0.0</UpfrontCost>
-      <RunningCost>0.0</RunningCost>
     </Building>
   </Buildings>
 </GameConfig>

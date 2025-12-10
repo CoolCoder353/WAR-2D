@@ -19,6 +19,8 @@ public class HQPlacementUI : MonoBehaviour
 
     public bool hideScreen = false;
 
+    private bool countdownStarted = false;
+
     [Client]
     private void OnEnable()
     {
@@ -35,7 +37,8 @@ public class HQPlacementUI : MonoBehaviour
     [Client]
     private void Update()
     {
-        if (GameCore.Instance == null || placementPromptPanel == null)
+
+        if (hideScreen && !placementPromptPanel.activeSelf)
             return;
 
         // Get local player reference
@@ -43,6 +46,8 @@ public class HQPlacementUI : MonoBehaviour
         {
             localPlayer = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
         }
+
+
 
         if (localPlayer == null)
             return;
@@ -80,11 +85,15 @@ public class HQPlacementUI : MonoBehaviour
             }
         }
 
+        if (countdownStarted)
+            return;
+
         // Update instruction text
         if (instructionText != null && shouldShow)
         {
             instructionText.text = "Place your Headquarters (HQ) to begin the game!\n";
         }
+
 
         // Update progress text (count remaining players)
         if (progressText != null && localPlayer.hasPlacedHQ)
@@ -107,6 +116,7 @@ public class HQPlacementUI : MonoBehaviour
     [Client]
     private IEnumerator StartCountdownToStartGame(float countdownTime)
     {
+        countdownStarted = true;
         float timer = countdownTime;
 
         while (timer > 0)
@@ -123,7 +133,9 @@ public class HQPlacementUI : MonoBehaviour
         // Notify server to start the game
         if (localPlayer != null)
         {
-            GameCore.Instance.Cmd_ReadyToStartGame();
+            if (GameCore.Instance != null)
+                GameCore.Instance.Cmd_ReadyToStartGame();
+
             hideScreen = true;
         }
     }
