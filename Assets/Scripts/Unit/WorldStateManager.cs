@@ -258,6 +258,8 @@ public class WorldStateManager : NetworkBehaviour
                         BuildingData buildingData = EntityManager.GetComponentData<BuildingData>(entity);
                         buildingData.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
 
+                        HealthComponent health = EntityManager.GetComponentData<HealthComponent>(entity);
+
                         // Extract rotation from LocalTransform and convert to degrees
                         LocalTransform transform = EntityManager.GetComponentData<LocalTransform>(entity);
                         quaternion rotation = transform.Rotation;
@@ -277,6 +279,16 @@ public class WorldStateManager : NetworkBehaviour
                         else
                         {
                             player.Key.visuableBuildings.Add(buildingData);
+                        }
+
+                        // Update HealthComponent list
+                        if (player.Key.entityHealth.Any(h => h.entityId == health.entityId))
+                        {
+                            player.Key.entityHealth[player.Key.entityHealth.FindIndex(h => h.entityId == health.entityId)] = health;
+                        }
+                        else
+                        {
+                            player.Key.entityHealth.Add(health);
                         }
                     }
                     continue;

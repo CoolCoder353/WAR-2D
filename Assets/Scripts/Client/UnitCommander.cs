@@ -356,8 +356,6 @@ public class UnitCommander : NetworkBehaviour
 
         var buildingDataClient = go.AddComponent<BuildingDataClient>();
         buildingDataClient.buildingData = unit;
-        buildingDataClient.healthComponent = null; // HealthComponent will be set later when health data is received
-
         // Map building types to their corresponding client class names
         switch (unit.buildingType)
         {
@@ -455,6 +453,8 @@ public class UnitCommander : NetworkBehaviour
         }
 
     }
+
+
 
     #endregion
 }

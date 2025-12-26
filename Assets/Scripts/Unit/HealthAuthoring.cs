@@ -3,6 +3,8 @@ using UnityEngine;
 
 public struct HealthComponent : IComponentData
 {
+    public int entityId;
+
     public float currentHealth;
     public float maxHealth;
 }
@@ -18,6 +20,7 @@ public class HealthAuthoring : MonoBehaviour
             var entity = GetEntity(authoring, TransformUsageFlags.Dynamic);
             AddComponent(entity, new HealthComponent
             {
+                entityId = entity.Index,
                 currentHealth = authoring.maxHealth,
                 maxHealth = authoring.maxHealth
             });

@@ -15,6 +15,8 @@ public class ClientPlayer : NetworkBehaviour
 
     public readonly SyncList<ClientUnit> visuableUnits = new SyncList<ClientUnit>();
     public readonly SyncList<BuildingData> visuableBuildings = new SyncList<BuildingData>();
+
+    public readonly SyncList<HealthComponent> entityHealth = new SyncList<HealthComponent>();
     public ServerData serverPlayer;
 
     [SyncVar]
@@ -289,6 +291,33 @@ public class ClientPlayer : NetworkBehaviour
             BuildingData unit = visuableBuildings[i];
             UnitCommander.Instance.BuildingListInsert(i, unit);
         }
+
+        // Do the same for the health component
+        entityHealth.OnAdd += (int index) =>
+        {
+            HealthComponent health = entityHealth[index];
+            UnitCommander.Instance.HealthListInsert(index, health);
+
+        };
+        entityHealth.OnInsert += (int index) =>
+        {
+            HealthComponent health = entityHealth[index];
+            UnitCommander.Instance.HealthListInsert(index, health);
+        };
+        entityHealth.OnSet += (int index, HealthComponent old) =>
+        {
+            HealthComponent health = entityHealth[index];
+            UnitCommander.Instance.HealthListSet(index, old, health);
+        };
+        entityHealth.OnRemove += UnitCommander.Instance.HealthListRemove;
+        entityHealth.OnClear += UnitCommander.Instance.HealthListClear;
+        //Register the intial state of the health components
+        for (int i = 0; i < entityHealth.Count; i++)
+        {
+            HealthComponent health = entityHealth[i];
+            UnitCommander.Instance.HealthListInsert(i, health);
+        }
+
     }
 
     public void RemoveBuildingHandles()
