@@ -4,6 +4,8 @@ using Unity.Mathematics;
 using Unity.Transforms;
 using UnityEngine;
 using Mirror;
+using System;
+using Unity.Collections;
 
 [BurstCompile]
 public partial struct CombatSystem : ISystem
@@ -29,65 +31,39 @@ public partial struct CombatSystem : ISystem
 
         foreach (var (damageComp, localTransform, clientUnit, entity) in SystemAPI.Query<RefRO<DamageComponent>, RefRO<LocalTransform>, RefRW<ClientUnit>>().WithEntityAccess())
         {
-            int bestTargetId = -1;
-            float minDistance = damageComp.ValueRO.range;
-            int currentTargetIndex = -1;
 
-            Debug.Log($"Unit {entity} (Owner {clientUnit.ValueRO.ownerId}) is searching for targets...");
-            for (int i = 0; i < targetEntities.Length; i++)
+            if (clientUnit.ValueRO.targetId != -1)
             {
-                // Skip self    
-                if (targetEntities[i] == entity) continue;
-                // Check ownership - skip if we own this target
-                int targetOwnerId = GetTargetOwnerId(targetEntities[i], ref state);
+                // If we have a target, we need to check if it's still valid
+                int targetIndex = TryFindIndex(targetEntities, clientUnit.ValueRO.targetId);
 
-                Debug.Log($"Evaluating target entity {targetEntities[i]}, owned by player {targetOwnerId}");
-
-                if (targetOwnerId == clientUnit.ValueRO.ownerId)
+                if (targetIndex != -1)
                 {
-                    Debug.Log($"Skipping own target with ID {targetOwnerId}");
-                    continue;
-                }
+                    var targetHealth = targetHealths[targetIndex];
+                    var targetPosition = targetTransforms[targetIndex].Position;
+                    float distanceSq = math.distancesq(localTransform.ValueRO.Position, targetPosition);
 
-
-                float distance = math.distance(localTransform.ValueRO.Position, targetTransforms[i].Position);
-
-                if (distance <= minDistance)
-                {
-                    // Found a valid target in range
-                    minDistance = distance;
-                    bestTargetId = i; // Store index instead of unit ID
-                    currentTargetIndex = i;
-                }
-            }
-
-            // Update target ID
-            clientUnit.ValueRW.targetId = bestTargetId;
-
-            // Attack logic
-            if (bestTargetId != -1 && currentTargetIndex != -1)
-            {
-                if (SystemAPI.Time.ElapsedTime > clientUnit.ValueRO.lastAttackTime + damageComp.ValueRO.attackSpeed)
-                {
-                    // Perform attack
-                    clientUnit.ValueRW.lastAttackTime = SystemAPI.Time.ElapsedTime;
-
-                    // Apply damage
-                    var targetHealth = targetHealths[currentTargetIndex];
-                    targetHealth.currentHealth -= damageComp.ValueRO.damageAmount;
-
-                    SystemAPI.SetComponent(targetEntities[currentTargetIndex], targetHealth);
-
-                    // Handle death
-                    if (targetHealth.currentHealth <= 0)
+                    // Check if target is still alive and within range
+                    if (targetHealth.currentHealth > 0 && distanceSq <= damageComp.ValueRO.range * damageComp.ValueRO.range)
                     {
-                        var ecb = SystemAPI.GetSingleton<BeginSimulationEntityCommandBufferSystem.Singleton>().CreateCommandBuffer(state.WorldUnmanaged);
-                        ecb.DestroyEntity(targetEntities[currentTargetIndex]);
+                        // Attack the target
+                        AttackTarget(targetIndex, ref state, clientUnit, damageComp, targetEntities, targetHealths);
+                        continue; // Continue to next attacker
                     }
                 }
             }
+            // Either no target or target is invalid, find a new target
+            int attackerOwnerId = clientUnit.ValueRO.ownerId;
+            int newTargetIndex = FindNewTarget(entity, localTransform.ValueRO.Position, damageComp.ValueRO.range, attackerOwnerId, targetEntities, targetHealths, targetTransforms, ref state);
+
+            Debug.Log($"Entity {entity.Index} found new target index: {newTargetIndex}");
+
+            clientUnit.ValueRW.targetId = newTargetIndex != -1 ? targetEntities[newTargetIndex].Index : -1;
+            clientUnit.ValueRW.lastAttackTime = SystemAPI.Time.ElapsedTime;
+
         }
     }
+
 
     /// <summary>
     /// Gets the owner ID of a target entity by checking for ClientUnit or BuildingData components.
@@ -111,5 +87,71 @@ public partial struct CombatSystem : ISystem
 
         // No owner found
         return -1;
+    }
+
+    private static int TryFindIndex(NativeArray<Entity> entities, int targetEntityId)
+    {
+        for (int i = 0; i < entities.Length; i++)
+        {
+            if (entities[i].Index == targetEntityId)
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int FindNewTarget(Entity attackerEntity, float3 attackerPosition, float range, int attackerOwnerId, NativeArray<Entity> targetEntities, NativeArray<HealthComponent> targetHealths, NativeArray<LocalTransform> targetTransforms, ref SystemState state)
+    {
+        int closestTargetIndex = -1;
+        float closestDistanceSq = float.MaxValue;
+
+        for (int i = 0; i < targetEntities.Length; i++)
+        {
+            // Skip dead targets
+            if (targetHealths[i].currentHealth <= 0)
+                continue;
+
+            // Skip targets owned by the same player
+            int targetOwnerId = GetTargetOwnerId(targetEntities[i], ref state);
+            if (targetOwnerId == attackerOwnerId)
+                continue;
+
+            float3 targetPosition = targetTransforms[i].Position;
+            float distanceSq = math.distancesq(attackerPosition, targetPosition);
+
+            if (distanceSq <= range * range && distanceSq < closestDistanceSq)
+            {
+                closestDistanceSq = distanceSq;
+                closestTargetIndex = i;
+            }
+        }
+
+        return closestTargetIndex;
+    }
+
+
+    private void AttackTarget(int targetIndex, ref SystemState state, RefRW<ClientUnit> clientUnit, RefRO<DamageComponent> damageComp, NativeArray<Entity> targetEntities, NativeArray<HealthComponent> targetHealths)
+    {
+
+        if (SystemAPI.Time.ElapsedTime > clientUnit.ValueRO.lastAttackTime + damageComp.ValueRO.attackSpeed)
+        {
+            // Perform attack
+            clientUnit.ValueRW.lastAttackTime = SystemAPI.Time.ElapsedTime;
+
+            // Apply damage
+            var targetHealth = targetHealths[targetIndex];
+            targetHealth.currentHealth -= damageComp.ValueRO.damageAmount;
+
+            SystemAPI.SetComponent(targetEntities[targetIndex], targetHealth);
+
+            // Handle death
+            if (targetHealth.currentHealth <= 0)
+            {
+                var ecb = SystemAPI.GetSingleton<BeginSimulationEntityCommandBufferSystem.Singleton>().CreateCommandBuffer(state.WorldUnmanaged);
+                ecb.DestroyEntity(targetEntities[targetIndex]);
+            }
+        }
+
     }
 }

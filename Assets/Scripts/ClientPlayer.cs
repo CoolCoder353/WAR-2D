@@ -23,6 +23,8 @@ public class ClientPlayer : NetworkBehaviour
     public UnityEngine.Events.UnityEvent<bool> onResponseFromCanBuildBuilding = new UnityEngine.Events.UnityEvent<bool>();
     public UnityEngine.Events.UnityEvent<int> onResponseFromTilesCovered = new UnityEngine.Events.UnityEvent<int>();
 
+    public UnityEngine.Events.UnityEvent<int> onGameEnded = new UnityEngine.Events.UnityEvent<int>();
+
 
     [Client]
     public override void OnStartClient()

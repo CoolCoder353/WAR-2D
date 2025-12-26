@@ -185,12 +185,12 @@ public class UnitCommander : NetworkBehaviour
                 {
                     GameObject bullet = GameObject.CreatePrimitive(PrimitiveType.Quad);
                     Destroy(bullet.GetComponent<Collider>());
-                    
+
                     Vector3 startPos = attackerObject.transform.position;
                     Vector3 endPos = enemyObject.transform.position;
-                    
+
                     bullet.transform.position = startPos;
-                    bullet.transform.localScale = new Vector3(0.5f, 0.1f, 1); 
+                    bullet.transform.localScale = new Vector3(0.5f, 0.1f, 1);
                     bullet.GetComponent<Renderer>().material.color = Color.yellow;
                     bullet.GetComponent<Renderer>().material.renderQueue = 3000;
 
@@ -199,7 +199,7 @@ public class UnitCommander : NetworkBehaviour
 
                     bullet.transform.DOMove(endPos, 0.2f).SetEase(Ease.Linear).OnComplete(() => Destroy(bullet));
                 }
-            }   
+            }
         }
     }
 
@@ -348,11 +348,15 @@ public class UnitCommander : NetworkBehaviour
         go.AddComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(unit.buildingType.ToString());
         go.AddComponent<BoxCollider2D>().isTrigger = true;
         go.name = $"Building_{unit.buildingType}_{unit.id}";
-        
+
         // Apply rotation from server
         go.transform.rotation = Quaternion.Euler(0, 0, unit.rotation);
         //Check if there is a client script for the building type
         Type buildingType = null;
+
+        var buildingDataClient = go.AddComponent<BuildingDataClient>();
+        buildingDataClient.buildingData = unit;
+        buildingDataClient.healthComponent = null; // HealthComponent will be set later when health data is received
 
         // Map building types to their corresponding client class names
         switch (unit.buildingType)
