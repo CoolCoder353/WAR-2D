@@ -4,6 +4,7 @@ using DG.Tweening;
 using Mirror;
 using Unity.Collections;
 using Unity.Mathematics;
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class UnitCommander : NetworkBehaviour
@@ -167,6 +168,7 @@ public class UnitCommander : NetworkBehaviour
     [Client]
     private void VisualizeAttackingUnits()
     {
+        GameObject bulletPrefab = Resources.Load<GameObject>("Prefabs/Bullet");
         foreach (ClientUnit unit in localPlayer.visuableUnits)
         {
             if (!lastUnitAttackTimes.ContainsKey(unit.id))
@@ -183,7 +185,7 @@ public class UnitCommander : NetworkBehaviour
 
                 if (attackerObject != null && enemyObject != null)
                 {
-                    GameObject bullet = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                    GameObject bullet = GameObject.Instantiate(bulletPrefab);
                     Destroy(bullet.GetComponent<Collider>());
 
                     Vector3 startPos = attackerObject.transform.position;
@@ -247,6 +249,9 @@ public class UnitCommander : NetworkBehaviour
         GameObject go = new GameObject();
         go.transform.position = new Vector3(unit.position.x, unit.position.y, 0);
         go.AddComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(unit.spriteName.ToString());
+        UnitDataClient data = go.AddComponent<UnitDataClient>();
+        data.unitData = unit;
+
         unitGameObjects.Add(unit.id, go);
     }
 
@@ -452,6 +457,69 @@ public class UnitCommander : NetworkBehaviour
             }
         }
 
+    }
+
+    [Client]
+    public void HealthListInsert(int index, HealthComponent health)
+    {
+        AddHealthComponent(health);
+    }
+    [Client]
+    public void HealthListSet(int index, HealthComponent old, HealthComponent health)
+    {
+        AddHealthComponent(health);
+    }
+    [Client]
+    public void HealthListRemove(int index, HealthComponent health)
+    {
+        AddHealthComponent(health, remove: true);
+    }
+    [Client]
+    public void HealthListClear()
+    {
+        throw new NotImplementedException();
+    }
+    [Client]
+    private void AddHealthComponent(HealthComponent health, bool remove = false)
+    {
+        if (buildingGameObjects.ContainsKey(health.entityId))
+        {
+            var buildingGO = buildingGameObjects[health.entityId];
+            var healthComponent = buildingGO.GetComponent<BuildingDataClient>();
+            if (healthComponent == null && !remove)
+            {
+                healthComponent = buildingGO.AddComponent<BuildingDataClient>();
+            }
+            if (!remove)
+            {
+                healthComponent.healthComponent = health;
+            }
+            else
+            {
+                Destroy(healthComponent);
+            }
+        }
+        else if (unitGameObjects.ContainsKey(health.entityId))
+        {
+            var unitGO = unitGameObjects[health.entityId];
+            var healthComponent = unitGO.GetComponent<UnitDataClient>();
+            if (healthComponent == null && !remove)
+            {
+                healthComponent = unitGO.AddComponent<UnitDataClient>();
+            }
+            if (!remove)
+            {
+                healthComponent.healthComponent = health;
+            }
+            else
+            {
+                Destroy(healthComponent);
+            }
+        }
+        else
+        {
+            Debug.LogError($"No game object found for entity id {health.entityId} to {(remove ? "remove" : "add")} HealthComponent");
+        }
     }
 
 

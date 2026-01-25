@@ -2360,6 +2360,7 @@ MonoBehaviour:
   syncMode: 0
   syncInterval: 0
   CurrentState: 0
+  playersReadyToStart: 0
 --- !u!1 &1257436558
 GameObject:
   m_ObjectHideFlags: 0

@@ -56,7 +56,7 @@ public partial struct CombatSystem : ISystem
             int attackerOwnerId = clientUnit.ValueRO.ownerId;
             int newTargetIndex = FindNewTarget(entity, localTransform.ValueRO.Position, damageComp.ValueRO.range, attackerOwnerId, targetEntities, targetHealths, targetTransforms, ref state);
 
-            Debug.Log($"Entity {entity.Index} found new target index: {newTargetIndex}");
+            if (newTargetIndex != -1) Debug.Log($"Entity {entity.Index} found new target index: {newTargetIndex}");
 
             clientUnit.ValueRW.targetId = newTargetIndex != -1 ? targetEntities[newTargetIndex].Index : -1;
             clientUnit.ValueRW.lastAttackTime = SystemAPI.Time.ElapsedTime;
