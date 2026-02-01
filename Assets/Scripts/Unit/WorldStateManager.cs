@@ -259,6 +259,7 @@ public class WorldStateManager : NetworkBehaviour
                         buildingData.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
 
                         HealthComponent health = EntityManager.GetComponentData<HealthComponent>(entity);
+                        health.entityId = buildingData.id;
 
                         // Extract rotation from LocalTransform and convert to degrees
                         LocalTransform transform = EntityManager.GetComponentData<LocalTransform>(entity);
@@ -280,7 +281,7 @@ public class WorldStateManager : NetworkBehaviour
                         {
                             player.Key.visuableBuildings.Add(buildingData);
                         }
-
+                        ////Debug.Log($"Player {player.Key.nickname} can see building {buildingData.id}. Health: {health.currentHealth}/{health.maxHealth}");
                         // Update HealthComponent list
                         if (player.Key.entityHealth.Any(h => h.entityId == health.entityId))
                         {
@@ -297,6 +298,8 @@ public class WorldStateManager : NetworkBehaviour
                 // Handle Units
                 ClientUnit clientUnit = EntityManager.GetComponentData<ClientUnit>(entity);
                 clientUnit.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
+                HealthComponent unitHealth = EntityManager.GetComponentData<HealthComponent>(entity);
+                unitHealth.entityId = clientUnit.id;
 
                 clientUnits.Add(clientUnit.id);
 
@@ -307,6 +310,16 @@ public class WorldStateManager : NetworkBehaviour
                 else
                 {
                     player.Key.visuableUnits.Add(clientUnit);
+                }
+
+                ////Debug.Log($"Player {player.Key.nickname} can see unit {clientUnit.id}. Health: {unitHealth.currentHealth}/{unitHealth.maxHealth}");
+                if (player.Key.entityHealth.Any(h => h.entityId == unitHealth.entityId))
+                {
+                    player.Key.entityHealth[player.Key.entityHealth.FindIndex(h => h.entityId == unitHealth.entityId)] = unitHealth;
+                }
+                else
+                {
+                    player.Key.entityHealth.Add(unitHealth);
                 }
             }
             entitiesInBox.Dispose();

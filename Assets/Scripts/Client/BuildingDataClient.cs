@@ -1,9 +1,8 @@
 using UnityEngine;
 using NaughtyAttributes;
-public class BuildingDataClient : MonoBehaviour
+public class BuildingDataClient : DataClient
 {
     public BuildingData buildingData;
-    public HealthComponent healthComponent;
 
 
     [Button]

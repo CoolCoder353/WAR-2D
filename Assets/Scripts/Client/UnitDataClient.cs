@@ -1,11 +1,9 @@
 using UnityEngine;
 using NaughtyAttributes;
 using Mirror;
-public class UnitDataClient : MonoBehaviour
+public class UnitDataClient : DataClient
 {
     public ClientUnit unitData;
-    public HealthComponent healthComponent;
-
     public DamageComponent damageComponent;
 
 
