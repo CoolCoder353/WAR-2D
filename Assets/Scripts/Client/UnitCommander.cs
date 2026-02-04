@@ -477,7 +477,22 @@ public class UnitCommander : NetworkBehaviour
     [Client]
     public void HealthListClear()
     {
-        throw new NotImplementedException();
+        foreach (var buildingGO in buildingGameObjects.Values)
+        {
+            var healthComponent = buildingGO.GetComponent<BuildingDataClient>();
+            if (healthComponent != null)
+            {
+                Destroy(healthComponent);
+            }
+        }
+        foreach (var unitGO in unitGameObjects.Values)
+        {
+            var healthComponent = unitGO.GetComponent<UnitDataClient>();
+            if (healthComponent != null)
+            {
+                Destroy(healthComponent);
+            }
+        }
     }
     [Client]
     private void AddHealthComponent(HealthComponent health, bool remove = false)
@@ -518,7 +533,7 @@ public class UnitCommander : NetworkBehaviour
         }
         else
         {
-            Debug.LogError($"No game object found for entity id {health.entityId} to {(remove ? "remove" : "add")} HealthComponent");
+            Debug.LogWarning($"No game object found for entity id {health.entityId} to {(remove ? "remove" : "add")} HealthComponent.This is normal when entitys are being cleaned up.");
         }
     }
 

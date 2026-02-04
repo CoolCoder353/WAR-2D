@@ -341,6 +341,16 @@ public class WorldStateManager : NetworkBehaviour
                     player.Key.visuableBuildings.RemoveAt(i);
                 }
             }
+
+            //Cleanup invisible health components
+            for (int i = player.Key.entityHealth.Count - 1; i >= 0; i--)
+            {
+                if (!clientUnits.Contains(player.Key.entityHealth[i].entityId) &&
+                    !clientBuildings.Contains(player.Key.entityHealth[i].entityId))
+                {
+                    player.Key.entityHealth.RemoveAt(i);
+                }
+            }
         }
     }
 
