@@ -331,6 +331,14 @@ public class ClientPlayer : NetworkBehaviour
             visuableBuildings.OnSet = null;
             visuableBuildings.OnRemove = null;
             visuableBuildings.OnClear = null;
+
+            Debug.Log("Removing health hooks");
+            entityHealth.OnChange = null;
+            entityHealth.OnAdd = null;
+            entityHealth.OnInsert = null;
+            entityHealth.OnSet = null;
+            entityHealth.OnRemove = null;
+            entityHealth.OnClear = null;
         }
     }
 

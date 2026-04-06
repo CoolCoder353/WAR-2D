@@ -22,8 +22,11 @@ MonoBehaviour:
   m_Scenes:
   - m_enabled: 1
     m_path: Assets/Main_Menu.unity
+    m_guid: 89ed0b2cb7a7059469092612e18b8b77
   - m_enabled: 1
     m_path: Assets/Maps/Map_2.unity
+    m_guid: a2cbde7f0cace2744a2c77dde7ac3970
+  m_HasScriptingDefines: 0
   m_ScriptingDefines: []
   m_PlayerSettingsYaml:
     m_Settings: []
@@ -33,7 +36,7 @@ MonoBehaviour:
     - rid: 5605572663556964352
       type: {class: LinuxPlatformSettings, ns: UnityEditor.LinuxStandalone, asm: UnityEditor.LinuxStandalone.Extensions}
       data:
-        m_Development: 0
+        m_Development: 1
         m_ConnectProfiler: 0
         m_BuildWithDeepProfilingSupport: 0
         m_AllowDebugging: 0
@@ -46,3 +49,11 @@ MonoBehaviour:
         m_InstallInBuildFolder: 0
         m_InsightsSettingsContainer:
           m_BuildProfileEngineDiagnosticsState: 2
+        m_AdaptivePerformanceEnabled: 0
+        m_Architecture: 0
+        m_RemoteDeviceSectionFoldoutOpen: 0
+        m_DeployTarget: 0
+        m_RemoteDeviceAddress: 
+        m_RemoteDeviceUsername: 
+        m_RemoteDeviceExports: 
+        m_PathOnRemoteDevice: 
