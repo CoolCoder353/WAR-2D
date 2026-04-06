@@ -4,6 +4,7 @@ using DG.Tweening;
 using Mirror;
 using Unity.Collections;
 using Unity.Mathematics;
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class UnitCommander : NetworkBehaviour
@@ -17,11 +18,15 @@ public class UnitCommander : NetworkBehaviour
 
     public GameObject selectionBox;
 
-    private List<ClientUnit> unitsVisable = new List<ClientUnit>();
-
     private ClientPlayer localPlayer;
 
     private Dictionary<int, GameObject> unitGameObjects = new Dictionary<int, GameObject>();
+    private Dictionary<int, double> lastUnitAttackTimes = new Dictionary<int, double>();
+
+    public Dictionary<int, GameObject> buildingGameObjects = new Dictionary<int, GameObject>();
+
+
+    public int tilesBuildingWillCover = 1;
 
     [ClientCallback]
     private void Awake()
@@ -35,12 +40,20 @@ public class UnitCommander : NetworkBehaviour
 
             localPlayer = NetworkClient.connection.identity.GetComponent<ClientPlayer>();
             localPlayer.SetUnitHandles();
+            localPlayer.SetBuildingHandles();
+            localPlayer.onResponseFromTilesCovered.AddListener(ResponseFromTilesCovered);
 
         }
         else
         {
             Destroy(this);
         }
+    }
+
+    [Client]
+    public void ResponseFromTilesCovered(int tiles)
+    {
+        tilesBuildingWillCover = tiles;
     }
 
     [ClientCallback]
@@ -53,7 +66,7 @@ public class UnitCommander : NetworkBehaviour
         localPlayer.RemoveUnitHandles();
     }
 
-    private Vector3 GetMouseWorldPosition()
+    public static Vector3 GetMouseWorldPosition()
     {
         Vector3 mousePosition = Input.mousePosition;
 
@@ -82,6 +95,9 @@ public class UnitCommander : NetworkBehaviour
             selectionBox.SetActive(true);
             Vector3 worldPosition = GetMouseWorldPosition();
             startcorner = new int2((int)worldPosition.x, (int)worldPosition.y);
+            endcorner = startcorner;
+            selectionBox.transform.position = new Vector3(startcorner.x, startcorner.y, 0);
+            selectionBox.transform.localScale = new Vector3(0, 0, 1);
         }
 
         if (Input.GetMouseButton(0))
@@ -89,10 +105,16 @@ public class UnitCommander : NetworkBehaviour
 
             Vector3 worldPosition = GetMouseWorldPosition();
             Vector3 startPosition = new Vector3(startcorner.x, startcorner.y, 0);
-            Vector3 center = (worldPosition + startPosition) / 2;
-            selectionBox.transform.position = center;
-            Vector3 size = new Vector3(Mathf.Abs(worldPosition.x - startPosition.x), Mathf.Abs(worldPosition.y - startPosition.y), 1);
-            selectionBox.transform.localScale = size;
+            float sqrdistance = (worldPosition - startPosition).sqrMagnitude;
+            if (sqrdistance < 1000 && sqrdistance > 1) // Only update if the mouse is within 100 units from the origin and more than 1 unit away
+            {
+                Vector3 center = (worldPosition + startPosition) / 2;
+                selectionBox.transform.position = center;
+                Vector3 size = new Vector3(Mathf.Abs(worldPosition.x - startPosition.x), Mathf.Abs(worldPosition.y - startPosition.y), 1);
+                selectionBox.transform.localScale = size;
+
+            }
+
 
 
 
@@ -134,9 +156,53 @@ public class UnitCommander : NetworkBehaviour
         // TIM.Console.Log($"Updating client view to {corner1} {corner2}", TIM.MessageType.Network);
         // TIM.Console.Log($"Using WorldStateManager {WorldStateManager.Instance}", TIM.MessageType.Network);
 
+
+        //Request from the server to update what the client can see for the next frame
         WorldStateManager.Instance.UpdateClientView(corner1, corner2);
 
         MoveUnits();
+        VisualizeAttackingUnits();
+    }
+
+
+    [Client]
+    private void VisualizeAttackingUnits()
+    {
+        GameObject bulletPrefab = Resources.Load<GameObject>("Prefabs/Bullet");
+        foreach (ClientUnit unit in localPlayer.visuableUnits)
+        {
+            if (!lastUnitAttackTimes.ContainsKey(unit.id))
+            {
+                lastUnitAttackTimes[unit.id] = unit.lastAttackTime;
+            }
+
+            if (unit.targetId != -1 && unit.lastAttackTime > lastUnitAttackTimes[unit.id])
+            {
+                lastUnitAttackTimes[unit.id] = unit.lastAttackTime;
+
+                unitGameObjects.TryGetValue(unit.id, out GameObject attackerObject);
+                unitGameObjects.TryGetValue(unit.targetId, out GameObject enemyObject);
+
+                if (attackerObject != null && enemyObject != null)
+                {
+                    GameObject bullet = GameObject.Instantiate(bulletPrefab);
+                    Destroy(bullet.GetComponent<Collider>());
+
+                    Vector3 startPos = attackerObject.transform.position;
+                    Vector3 endPos = enemyObject.transform.position;
+
+                    bullet.transform.position = startPos;
+                    bullet.transform.localScale = new Vector3(0.5f, 0.1f, 1);
+                    bullet.GetComponent<Renderer>().material.color = Color.yellow;
+                    bullet.GetComponent<Renderer>().material.renderQueue = 3000;
+
+                    Vector3 direction = (endPos - startPos).normalized;
+                    bullet.transform.right = direction;
+
+                    bullet.transform.DOMove(endPos, 0.2f).SetEase(Ease.Linear).OnComplete(() => Destroy(bullet));
+                }
+            }
+        }
     }
 
 
@@ -163,7 +229,7 @@ public class UnitCommander : NetworkBehaviour
             }
             else
             {
-                Debug.LogError($"Unit game object not found for unit {unit.id}. When checking the insert hook it returned Add: '{localPlayer.visuableUnits.OnAdd != null}', Insert: '{localPlayer.visuableUnits.OnInsert != null}', Set: '{localPlayer.visuableUnits.OnSet != null}', Remove: '{localPlayer.visuableUnits.OnRemove != null}', Clear: '{localPlayer.visuableUnits.OnClear != null}'");
+                Debug.LogError($"Unit game object not found for unit {unit.id}. When checking the insert hook it returned; Add: '{localPlayer.visuableUnits.OnAdd != null}', Insert: '{localPlayer.visuableUnits.OnInsert != null}', Set: '{localPlayer.visuableUnits.OnSet != null}', Remove: '{localPlayer.visuableUnits.OnRemove != null}', Clear: '{localPlayer.visuableUnits.OnClear != null}'");
             }
         }
     }
@@ -183,6 +249,9 @@ public class UnitCommander : NetworkBehaviour
         GameObject go = new GameObject();
         go.transform.position = new Vector3(unit.position.x, unit.position.y, 0);
         go.AddComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(unit.spriteName.ToString());
+        UnitDataClient data = go.AddComponent<UnitDataClient>();
+        data.unitData = unit;
+
         unitGameObjects.Add(unit.id, go);
     }
 
@@ -196,6 +265,10 @@ public class UnitCommander : NetworkBehaviour
             Destroy(unitGameObjects[OldUnit.id]);
             unitGameObjects.Remove(OldUnit.id);
         }
+        if (lastUnitAttackTimes.ContainsKey(OldUnit.id))
+        {
+            lastUnitAttackTimes.Remove(OldUnit.id);
+        }
     }
 
     //Called when the enitre list is cleared
@@ -208,6 +281,7 @@ public class UnitCommander : NetworkBehaviour
             Destroy(item.Value);
         }
         unitGameObjects.Clear();
+        lastUnitAttackTimes.Clear();
     }
 
     //Called when an item in the list is set to a new value
@@ -251,4 +325,219 @@ public class UnitCommander : NetworkBehaviour
     }
 
 
+
+
+    #region Buildings
+    //This is called when a unit is added or inserted into the list, returning the index of the list and the unit itself
+    [Client]
+    public void BuildingListInsert(int index, BuildingData unit)
+    {
+        WorldStateManager.Instance.GetTilesBuildingWillCoverCommand(new int2(0, 0), unit.buildingType);
+        // Debug.Log($"UnitListInsert called with unit id: '{unit.id}', sprite:  '{unit.spriteName}', position : '{unit.position}'");
+        if (buildingGameObjects.ContainsKey(unit.id))
+        {
+            Debug.LogError("BuildingListInsert called with building that already exists in the list. Building id: " + unit.id);
+            return;
+        }
+
+        //Create a new game object
+        GameObject go = new GameObject();
+        go.transform.position = new Vector3(unit.position.x, unit.position.y, 0);
+
+        if (tilesBuildingWillCover % 2 == 1) //if 1^2 or 3^2 or 5^2 (odd number of tiles squared)
+        {
+            go.transform.position += new Vector3(0.5f, 0.5f, 0);
+        }
+
+
+        go.AddComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(unit.buildingType.ToString());
+        go.AddComponent<BoxCollider2D>().isTrigger = true;
+        go.name = $"Building_{unit.buildingType}_{unit.id}";
+
+        // Apply rotation from server
+        go.transform.rotation = Quaternion.Euler(0, 0, unit.rotation);
+        //Check if there is a client script for the building type
+        Type buildingType = null;
+
+        var buildingDataClient = go.AddComponent<BuildingDataClient>();
+        buildingDataClient.buildingData = unit;
+        // Map building types to their corresponding client class names
+        switch (unit.buildingType)
+        {
+            case BuildingType.SmallUnitSpawner:
+                buildingType = typeof(SpawnerClientManager);
+                break;
+            // Add other building types as needed
+            default:
+                Debug.LogWarning($"No client script mapping found for building type {unit.buildingType}");
+                break;
+        }
+
+        if (buildingType != null)
+        {
+            //Add the component to the game object
+            var clientcomponent = go.AddComponent(buildingType);
+            var field = clientcomponent.GetType().GetField("buildingData");
+            if (field != null)
+            {
+                field.SetValue(clientcomponent, unit);
+            }
+            else
+            {
+                Debug.LogWarning($"Client script '{buildingType.Name}' does not contain a 'buildingData' field. Or it is spelled incorrectly. Most likely the ladder.");
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"No client script found for building type {unit.buildingType}");
+        }
+
+        buildingGameObjects.Add(unit.id, go);
+    }
+
+    //Called when a unit is removed from the list, returning the index of the list and the old unit itself
+    [Client]
+    public void BuildingListRemove(int index, BuildingData OldUnit)
+    {
+        //Remove the game object from the list
+        if (buildingGameObjects.ContainsKey(OldUnit.id))
+        {
+            Destroy(buildingGameObjects[OldUnit.id]);
+            buildingGameObjects.Remove(OldUnit.id);
+        }
+    }
+
+    //Called when the enitre list is cleared
+    [Client]
+    public void BuildingListClear()
+    {
+        //Destroy all the game objects
+        foreach (var item in buildingGameObjects)
+        {
+            Destroy(item.Value);
+        }
+        buildingGameObjects.Clear();
+    }
+
+    //Called when an item in the list is set to a new value
+    //Note: I am not sure whether this will be called if something inside the object is changed, or if the object itself is changed
+    [Client]
+    public void BuildingListSet(int index, BuildingData oldUnit, BuildingData newUnit)
+    {
+
+        if (oldUnit.id != newUnit.id)
+        {
+            Debug.LogError("BuildingListSet called with different id for old and new building");
+            return;
+        }
+
+        //If the unit is not in the list, add it, this should not happen but just in case
+        if (!buildingGameObjects.ContainsKey(newUnit.id))
+        {
+            ////UnitListInsert(index, newUnit);
+            return;
+        }
+
+
+        //If only the position is changed, tween move the game object
+        if (oldUnit.position.x != newUnit.position.x || oldUnit.position.y != newUnit.position.y)
+        {
+            //TODO: Tween move the game object
+            if (buildingGameObjects.ContainsKey(oldUnit.id))
+            {
+                buildingGameObjects[oldUnit.id].transform.position = new Vector3(newUnit.position.x, newUnit.position.y, 0);
+            }
+        }
+        //If the sprite is changed, change the sprite
+        if (oldUnit.buildingType != newUnit.buildingType)
+        {
+            if (buildingGameObjects.ContainsKey(oldUnit.id))
+            {
+                buildingGameObjects[oldUnit.id].GetComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(newUnit.buildingType.ToString());
+            }
+        }
+
+    }
+
+    [Client]
+    public void HealthListInsert(int index, HealthComponent health)
+    {
+        AddHealthComponent(health);
+    }
+    [Client]
+    public void HealthListSet(int index, HealthComponent old, HealthComponent health)
+    {
+        AddHealthComponent(health);
+    }
+    [Client]
+    public void HealthListRemove(int index, HealthComponent health)
+    {
+        AddHealthComponent(health, remove: true);
+    }
+    [Client]
+    public void HealthListClear()
+    {
+        foreach (var buildingGO in buildingGameObjects.Values)
+        {
+            var healthComponent = buildingGO.GetComponent<BuildingDataClient>();
+            if (healthComponent != null)
+            {
+                Destroy(healthComponent);
+            }
+        }
+        foreach (var unitGO in unitGameObjects.Values)
+        {
+            var healthComponent = unitGO.GetComponent<UnitDataClient>();
+            if (healthComponent != null)
+            {
+                Destroy(healthComponent);
+            }
+        }
+    }
+    [Client]
+    private void AddHealthComponent(HealthComponent health, bool remove = false)
+    {
+        if (buildingGameObjects.ContainsKey(health.entityId))
+        {
+            var buildingGO = buildingGameObjects[health.entityId];
+            var healthComponent = buildingGO.GetComponent<BuildingDataClient>();
+            if (healthComponent == null && !remove)
+            {
+                healthComponent = buildingGO.AddComponent<BuildingDataClient>();
+            }
+            if (!remove)
+            {
+                healthComponent.healthComponent = health;
+            }
+            else
+            {
+                Destroy(healthComponent);
+            }
+        }
+        else if (unitGameObjects.ContainsKey(health.entityId))
+        {
+            var unitGO = unitGameObjects[health.entityId];
+            var healthComponent = unitGO.GetComponent<UnitDataClient>();
+            if (healthComponent == null && !remove)
+            {
+                healthComponent = unitGO.AddComponent<UnitDataClient>();
+            }
+            if (!remove)
+            {
+                healthComponent.healthComponent = health;
+            }
+            else
+            {
+                Destroy(healthComponent);
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"No game object found for entity id {health.entityId} to {(remove ? "remove" : "add")} HealthComponent.This is normal when entitys are being cleaned up.");
+        }
+    }
+
+
+
+    #endregion
 }

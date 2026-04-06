@@ -7,6 +7,8 @@ public class ServerPlayer
     public NetworkConnectionToClient connection;
 
     public ServerData data { get; protected set; } = new();
+
+    public PlayerState state = PlayerState.Playing;
     public ServerPlayer(NetworkConnectionToClient connection, float resources)
     {
         this.connection = connection;
@@ -20,12 +22,17 @@ public class ServerPlayer
 
     public void RemoveResources(float amount)
     {
-        Debug.Log($"Removing {amount} resources from player {connection.identity.netId}");
+        //Debug.Log($"Removing {amount} resources from player {connection.identity.netId}");
         data.resources -= amount;
     }
 
 }
-
+public enum PlayerState
+{
+    Playing,
+    Eliminated,
+    Spectating
+}
 [System.Serializable]
 public class ServerData
 {
