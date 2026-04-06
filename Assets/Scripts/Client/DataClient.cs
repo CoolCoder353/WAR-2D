@@ -9,6 +9,11 @@ public class DataClient : MonoBehaviour
 
     public GameObject healthBarObject;
 
+    private float lastHealthPercent = 1f;
+
+    private Color originalColor;
+
+
     public float testVaule = 1f;
 
     public void Awake()
@@ -41,10 +46,12 @@ public class DataClient : MonoBehaviour
         }
 
         Slider healthBarSlider = healthBarObject.GetComponent<Slider>();
+        SpriteRenderer sprite = this.GetComponent<SpriteRenderer>();
+        originalColor = sprite.color;
         //Scale the red health bar according to health
         while (true)
         {
-
+            sprite.color = originalColor;
             if (healthBarSlider == null)
             {
                 Debug.LogError("Health bar slider component not found for " + this.name);
@@ -52,8 +59,16 @@ public class DataClient : MonoBehaviour
             }
 
             float healthPercent = (float)healthComponent.currentHealth / (float)healthComponent.maxHealth;
-            healthBarSlider.value = healthPercent;
 
+            if (lastHealthPercent > healthPercent && sprite != null)
+            {
+                //Flash red to show damage taken
+
+                sprite.color = Color.red;
+                lastHealthPercent = healthPercent;
+            }
+
+            healthBarSlider.value = healthPercent;
             ////Debug.Log("Health percent for " + this.name + ": " + healthPercent + "(Slider value: " + healthBarSlider.value + ")");
 
             yield return new WaitForSeconds(0.3f); //Update every x frames

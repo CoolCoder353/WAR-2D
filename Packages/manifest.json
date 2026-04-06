@@ -1,8 +1,8 @@
 {
   "dependencies": {
     "com.antigravity.ide": "https://github.com/prithvi-bharadwaj/Antigravity-IDE.git",
-    "com.unity.ai.navigation": "2.0.11",
-    "com.unity.cinemachine": "3.1.5",
+    "com.unity.ai.navigation": "2.0.12",
+    "com.unity.cinemachine": "3.1.6",
     "com.unity.collab-proxy": "2.11.4",
     "com.unity.entities": "6.4.0",
     "com.unity.entities.graphics": "6.4.0",
@@ -13,7 +13,7 @@
     "com.unity.nuget.newtonsoft-json": "3.2.2",
     "com.unity.sdk.linux-x86_64": "1.0.2",
     "com.unity.test-framework": "1.6.0",
-    "com.unity.timeline": "1.8.11",
+    "com.unity.timeline": "1.8.12",
     "com.unity.toolchain.linux-x86_64-linux": "1.0.2",
     "com.unity.ugui": "2.0.0",
     "com.unity.visualscripting": "1.9.11",
