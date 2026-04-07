@@ -25,8 +25,6 @@ public class ClientPlayer : NetworkBehaviour
     public UnityEngine.Events.UnityEvent<bool> onResponseFromCanBuildBuilding = new UnityEngine.Events.UnityEvent<bool>();
     public UnityEngine.Events.UnityEvent<int> onResponseFromTilesCovered = new UnityEngine.Events.UnityEvent<int>();
 
-    public UnityEngine.Events.UnityEvent<int> onGameEnded = new UnityEngine.Events.UnityEvent<int>();
-
 
     [Client]
     public override void OnStartClient()
@@ -340,6 +338,45 @@ public class ClientPlayer : NetworkBehaviour
             entityHealth.OnRemove = null;
             entityHealth.OnClear = null;
         }
+    }
+
+
+
+    public void SetGameStateHandles()
+    {
+        GameCore.Instance.OnLocalPlayerLost += () =>
+        {
+            Debug.Log("Local player lost, showing lose screen");
+            // Show lose screen
+
+            GameObject lossScreenPrefab = Resources.Load<GameObject>("UI/LoseScreenUI");
+            if (lossScreenPrefab != null)
+            {
+                Instantiate(lossScreenPrefab);
+            }
+            else
+            {
+                Debug.LogError("Loss screen prefab not found in Resources/UI/LoseScreenUI");
+            }
+        };
+
+        GameCore.Instance.OnLocalPlayerWon += () =>
+        {
+            Debug.Log("Local player won, showing win screen");
+            // Show win screen
+            GameObject winScreenPrefab = Resources.Load<GameObject>("UI/WinScreenUI");
+            if (winScreenPrefab != null)
+            {
+                Instantiate(winScreenPrefab);
+            }
+            else
+            {
+                Debug.LogError("Win screen prefab not found in Resources/UI/WinScreenUI");
+            }
+        };
+
+
+
     }
 
 }

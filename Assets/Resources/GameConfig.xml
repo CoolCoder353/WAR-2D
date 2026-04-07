@@ -28,7 +28,7 @@
       <SpawnRate>0.0</SpawnRate>
     </Building>
     <Building type="Miner">
-      <Health>200</Health>
+      <Health>50</Health>
       <UpfrontCost>50.0</UpfrontCost>
       <RunningCost>0.0</RunningCost>
       <MiningRate>10.0</MiningRate>
@@ -37,7 +37,7 @@
     <Building type="SmallUnitSpawner">
       <Health>300</Health>
       <UpfrontCost>200.0</UpfrontCost>
-      <RunningCost>5.0</RunningCost>
+      <RunningCost>20.0</RunningCost>
       <MiningRate>0.0</MiningRate>
       <SpawnRate>1.0</SpawnRate>
     </Building>

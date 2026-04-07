@@ -79,6 +79,17 @@ public class GameCore : NetworkBehaviour
 
         DontDestroyOnLoad(this);
 
+        ClientPlayer localPlayer = NetworkClient.connection?.identity?.GetComponent<ClientPlayer>();
+        if (localPlayer == null)
+        {
+            Debug.LogWarning("Local player not found during GameCore Awake. This may cause issues with event handling.");
+            return;
+        }
+
+        localPlayer.SetGameStateHandles();
+
+
+
     }
 
     /// <summary>
@@ -312,11 +323,10 @@ public class GameCore : NetworkBehaviour
     public void RpcOnPlayerWon(NetworkIdentity winner)
     {
         // UI Implementation to handle this
-        if (winner.isLocalPlayer)
-        {
-            Debug.Log("Victory!");
-            OnLocalPlayerWon?.Invoke();
-        }
+
+        Debug.Log("Victory!");
+        OnLocalPlayerWon?.Invoke();
+
     }
 
     /// <summary>
@@ -327,11 +337,10 @@ public class GameCore : NetworkBehaviour
     public void RpcOnPlayerLost(NetworkIdentity loser)
     {
         // UI Implementation to handle this
-        if (loser.isLocalPlayer)
-        {
-            Debug.Log("Defeat!");
-            OnLocalPlayerLost?.Invoke();
-        }
+
+        Debug.Log("Defeat!");
+        OnLocalPlayerLost?.Invoke();
+
     }
 
     /// <summary>
