@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using Mirror;
-using NaughtyAttributes;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
@@ -106,7 +105,47 @@ public class WorldStateManager : NetworkBehaviour
     }
 
 
+    [Server]
+    public void DestroyAllEntitiesOwnedByPlayer(int playerId)
+    {
 
+        //Note: This is not the most efficient way to do this, but it is the most straightforward. 
+        // Might need to optimize this later if performance becomes an issue, but it only needs to run once per player elimination so it should be fine for now.
+
+        Dictionary<int, Entity> UnitsCopy = Units.ToDictionary(entry => entry.Key, entry => entry.Value);
+
+
+        Dictionary<int, Entity> BuildingsCopy = Buildings.ToDictionary(entry => entry.Key, entry => entry.Value);
+
+        foreach ((int buildingId, Entity building) in Buildings)
+        {
+            if (EntityManager.HasComponent<BuildingData>(building))
+            {
+                BuildingData buildingData = EntityManager.GetComponentData<BuildingData>(building);
+                if (buildingData.ownerId == playerId)
+                {
+                    EntityManager.DestroyEntity(building);
+                    BuildingsCopy.Remove(buildingId);
+                }
+            }
+        }
+
+        foreach ((int unitId, Entity unit) in Units)
+        {
+            if (EntityManager.HasComponent<ClientUnit>(unit))
+            {
+                ClientUnit clientUnit = EntityManager.GetComponentData<ClientUnit>(unit);
+                if (clientUnit.ownerId == playerId)
+                {
+                    EntityManager.DestroyEntity(unit);
+                    UnitsCopy.Remove(unitId);
+                }
+            }
+        }
+
+        Units = UnitsCopy;
+        Buildings = BuildingsCopy;
+    }
 
     #endregion
 

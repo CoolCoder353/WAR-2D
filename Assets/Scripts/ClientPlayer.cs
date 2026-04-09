@@ -1,9 +1,6 @@
-using System;
 using Mirror;
 using UnityEngine;
-using UnityEngine.SceneManagement;
-using Unity.Mathematics;
-using UnityEngine.UIElements;
+
 
 [System.Serializable]
 public class ClientPlayer : NetworkBehaviour
@@ -26,6 +23,7 @@ public class ClientPlayer : NetworkBehaviour
     public UnityEngine.Events.UnityEvent<bool> onResponseFromCanBuildBuilding = new UnityEngine.Events.UnityEvent<bool>();
     public UnityEngine.Events.UnityEvent<int> onResponseFromTilesCovered = new UnityEngine.Events.UnityEvent<int>();
 
+    private bool gameOverDeclared = false; // Flag to ensure game over is only declared once
 
     [Client]
     public override void OnStartClient()
@@ -41,8 +39,6 @@ public class ClientPlayer : NetworkBehaviour
         if (!isLocalPlayer) return;
         // SceneManager.sceneLoaded += OnSceneChangedEvent;
 
-        //Setup event hooks
-        SetGameStateHandles();
 
     }
 
@@ -344,45 +340,60 @@ public class ClientPlayer : NetworkBehaviour
         }
     }
 
-
-
-    public void SetGameStateHandles()
+    /// <summary>
+    /// ClientRpc called when a player wins.
+    /// </summary>
+    /// <param name="winner">The NetworkIdentity of the winner.</param>
+    [TargetRpc]
+    public void RpcOnPlayerWon(NetworkConnectionToClient winner)
     {
-        Debug.Log("Setting up game state hooks");
+        // UI Implementation to handle this
 
-        GameCore.Instance.OnLocalPlayerLost += () =>
+        Debug.Log("Victory!");
+
+        if (gameOverDeclared) return; // Prevent multiple win screens if multiple players are declared winners (shouldn't happen but just in case)
+
+
+
+        GameObject winScreenPrefab = Resources.Load<GameObject>("UI/WinScreenUI");
+        FindAnyObjectByType<Canvas>().enabled = false; // Disable the main game canvas to prevent interaction with it after losing
+        if (winScreenPrefab != null)
         {
-            Debug.Log("Local player lost, showing lose screen");
-            // Show lose screen
-
-            GameObject lossScreenPrefab = Resources.Load<GameObject>("UI/LoseScreenUI");
-            if (lossScreenPrefab != null)
-            {
-                Instantiate(lossScreenPrefab);
-            }
-            else
-            {
-                Debug.LogError("Loss screen prefab not found in Resources/UI/LoseScreenUI");
-            }
-        };
-
-        GameCore.Instance.OnLocalPlayerWon += () =>
+            Instantiate(winScreenPrefab);
+        }
+        else
         {
-            Debug.Log("Local player won, showing win screen");
-            // Show win screen
-            GameObject winScreenPrefab = Resources.Load<GameObject>("UI/WinScreenUI");
-            if (winScreenPrefab != null)
-            {
-                Instantiate(winScreenPrefab);
-            }
-            else
-            {
-                Debug.LogError("Win screen prefab not found in Resources/UI/WinScreenUI");
-            }
-        };
+            Debug.LogError("Win screen prefab not found in Resources/UI/WinScreenUI");
+        }
+        gameOverDeclared = true;
 
+    }
 
+    /// <summary>
+    /// ClientRpc called when a player loses.
+    /// </summary>
+    /// <param name="loser">The NetworkIdentity of the loser.</param>
+    [TargetRpc]
+    public void RpcOnPlayerLost(NetworkConnectionToClient loser)
+    {
+        // UI Implementation to handle this
 
+        Debug.Log("Defeat!");
+
+        if (gameOverDeclared) return; // Prevent multiple loss screens if multiple players are declared losers (shouldn't happen but just in case)
+
+        GameObject lossScreenPrefab = Resources.Load<GameObject>("UI/LoseScreenUI");
+
+        FindAnyObjectByType<Canvas>().enabled = false; // Disable the main game canvas to prevent interaction with it after losing
+        if (lossScreenPrefab != null)
+        {
+            Instantiate(lossScreenPrefab);
+        }
+        else
+        {
+            Debug.LogError("Loss screen prefab not found in Resources/UI/LoseScreenUI");
+        }
+        gameOverDeclared = true;
     }
 
 }

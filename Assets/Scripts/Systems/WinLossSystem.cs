@@ -1,9 +1,8 @@
 using Unity.Entities;
 using Unity.Burst;
-using Unity.Collections;
 using UnityEngine;
 using Mirror;
-using System.Linq;
+
 
 [BurstCompile]
 public partial struct WinLossSystem : ISystem
@@ -63,7 +62,7 @@ public partial struct WinLossSystem : ISystem
                 if (player.state != PlayerState.Eliminated)
                 {
                     Debug.Log($"Player {playerId} eliminated - HQ destroyed!");
-                    GameCore.Instance.EliminatePlayer(player.connection);
+                    GameCore.Instance.EliminatePlayer(playerId);
                 }
             }
         }
@@ -73,28 +72,28 @@ public partial struct WinLossSystem : ISystem
         if (playersWithHQ == 1) //&& GameCore.Instance.ServerPlayers.Count > 1)
         {
             // Find the winning player
-            ServerPlayer winner = null;
+            int winner = -1;
             foreach (var kvp in GameCore.Instance.ServerPlayers)
             {
                 if ((int)kvp.Key.netId == lastPlayerWithHQ)
                 {
-                    winner = kvp.Value;
+                    winner = (int)kvp.Key.netId;
                     break;
                 }
             }
 
-            if (winner != null)
+            if (winner != -1)
             {
                 Debug.Log($"Player {lastPlayerWithHQ} won the game!");
-                Debug.Log($"Calling DeclareWinner for player {lastPlayerWithHQ}, connection: {winner.connection}");
-                GameCore.Instance.DeclareWinner(winner.connection);
+                Debug.Log($"Calling DeclareWinner for player {lastPlayerWithHQ}, connection: {winner}");
+                GameCore.Instance.DeclareWinner(winner);
             }
         }
         else if (playersWithHQ == 0 && GameCore.Instance.ServerPlayers.Count > 0)
         {
             // Draw - everyone lost
             Debug.Log("Draw - all players eliminated!");
-            GameCore.Instance.EndGameDraw();
+            GameCore.Instance.DeclareDraw();
         }
     }
 }

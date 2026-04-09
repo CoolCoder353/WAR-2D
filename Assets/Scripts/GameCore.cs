@@ -1,9 +1,7 @@
 using Mirror;
 using System.Collections.Generic;
 using System.Linq;
-using Unity.VisualScripting;
 using UnityEngine;
-using UnityEngine.Tilemaps;
 
 /// <summary>
 /// Represents the various states of the game.
@@ -40,11 +38,7 @@ public class GameCore : NetworkBehaviour
     [SyncVar]
     public GameState CurrentState = GameState.Lobby;
 
-    // Events for UI
-    /// <summary>Event triggered when the local player wins.</summary>
-    public event System.Action OnLocalPlayerWon;
-    /// <summary>Event triggered when the local player loses.</summary>
-    public event System.Action OnLocalPlayerLost;
+
 
     /// <summary>
     /// List of ServerPlayer objects representing the players on the server.
@@ -80,6 +74,8 @@ public class GameCore : NetworkBehaviour
         DontDestroyOnLoad(this);
 
     }
+
+
 
     /// <summary>
     /// Called on the server when it starts.
@@ -132,9 +128,7 @@ public class GameCore : NetworkBehaviour
         //        Debug.Log($"Player {conn.connectionId} has disconnected");
 
 
-        ServerPlayers.Remove(conn.identity);
-        ServerPlayers.TrimExcess();
-
+        ServerPlayers[conn.identity].state = PlayerState.Eliminated;
         //For each player still in the game, call the RPC_RemoveClientLobbyUI method
         foreach (var player in ServerPlayers)
         {
@@ -161,11 +155,16 @@ public class GameCore : NetworkBehaviour
             }
         }
 
-        if (ServerPlayers.Count == 1)
-        {
-            //If only one player remains, declare them the winner
-            DeclareWinner(ServerPlayers.First().Key.connectionToClient);
-        }
+        //Get all entities that belong to the disconnected player and destroy them
+        WorldStateManager.Instance.DestroyAllEntitiesOwnedByPlayer((int)conn.identity.netId);
+
+    }
+
+    [Server]
+    public override void OnStopServer()
+    {
+        base.OnStopServer();
+        ServerPlayers.Clear();
     }
 
 
@@ -252,52 +251,7 @@ public class GameCore : NetworkBehaviour
         }
     }
 
-    /// <summary>
-    /// Eliminates a player from the game.
-    /// </summary>
-    /// <param name="conn">The connection of the player to eliminate.</param>
-    [Server]
-    public void EliminatePlayer(NetworkConnectionToClient conn)
-    {
-        if (ServerPlayers.TryGetValue(conn.identity, out ServerPlayer player))
-        {
-            player.state = PlayerState.Eliminated;
-            RpcOnPlayerLost(conn);
-            Debug.Log($"Player {conn.connectionId} eliminated.");
-        }
-    }
 
-    /// <summary>
-    /// Declares a winner for the game.
-    /// </summary>
-    /// <param name="conn">The connection of the winning player.</param>
-    [Server]
-    public void DeclareWinner(NetworkConnectionToClient conn)
-    {
-        CurrentState = GameState.GameOver;
-        RpcOnPlayerWon(conn);
-        Debug.Log($"Player {conn.connectionId} won!");
-
-        foreach (var kvp in ServerPlayers)
-        {
-            if (kvp.Key.connectionToClient != conn)
-            {
-                RpcOnPlayerLost(kvp.Key.connectionToClient);
-                Debug.Log($"Player {kvp.Key.netId} lost.");
-            }
-        }
-    }
-
-    /// <summary>
-    /// Ends the game in a draw (all players eliminated).
-    /// </summary>
-    [Server]
-    public void EndGameDraw()
-    {
-        CurrentState = GameState.GameOver;
-        RpcGameDraw();
-        Debug.Log("Game ended in a draw!");
-    }
 
     [Command(requiresAuthority = false)]
     public void Cmd_ReadyToStartGame(NetworkConnectionToClient connection = null)
@@ -313,34 +267,65 @@ public class GameCore : NetworkBehaviour
     }
 
 
-    /// <summary>
-    /// ClientRpc called when a player wins.
-    /// </summary>
-    /// <param name="winner">The NetworkIdentity of the winner.</param>
-    [TargetRpc]
-    public void RpcOnPlayerWon(NetworkConnectionToClient winner)
+
+
+    [Server]
+    public void DeclareDraw()
     {
-        // UI Implementation to handle this
+        Debug.Log("Game ended in a draw - all players were eliminated!");
 
-        Debug.Log("Victory!, postinng event with " + OnLocalPlayerWon.GetInvocationList().Length + "Listenters");
-        OnLocalPlayerWon?.Invoke();
-
+        DeclareWinner(-1); // Using -1 to indicate a draw since no player will have an id of -1
     }
 
-    /// <summary>
-    /// ClientRpc called when a player loses.
-    /// </summary>
-    /// <param name="loser">The NetworkIdentity of the loser.</param>
-    [TargetRpc]
-    public void RpcOnPlayerLost(NetworkConnectionToClient loser)
+    [Server]
+    public void DeclareWinner(int playerId)
     {
-        // UI Implementation to handle this
+        Debug.Log($"Player {playerId} has won the game!");
 
-        Debug.Log("Defeat!, postinng event with " + OnLocalPlayerLost.GetInvocationList().Length + "Listenters");
-        OnLocalPlayerLost?.Invoke();
+        // Notify all clients about the winner
+        foreach (var player in ServerPlayers)
+        {
+            ClientPlayer clientPlayer = player.Key.GetComponent<ClientPlayer>();
+            if (clientPlayer != null)
+            {
+                if (player.Key.netId == (uint)playerId)
+                {
+                    Debug.Log($"Notifying player {playerId} of their victory!");
+                    clientPlayer.RpcOnPlayerWon(player.Key.connectionToClient);
+                }
+                else
+                {
+                    Debug.Log($"Notifying player {playerId} of their defeat!");
+                    player.Value.state = PlayerState.Eliminated;
+                    clientPlayer.RpcOnPlayerLost(player.Key.connectionToClient);
+                }
+            }
+        }
 
+        CurrentState = GameState.GameOver;
     }
 
+    [Server]
+    public void EliminatePlayer(int playerId)
+    {
+        Debug.Log($"Player {playerId} has been eliminated!");
+
+        // Notify the eliminated player
+        foreach (var player in ServerPlayers)
+        {
+            if (player.Key.netId == (uint)playerId)
+            {
+                ClientPlayer clientPlayer = player.Key.GetComponent<ClientPlayer>();
+                if (clientPlayer != null)
+                {
+                    player.Value.state = PlayerState.Eliminated;
+                    Debug.Log($"Notifying player {playerId} of their elimination!");
+                    clientPlayer.RpcOnPlayerLost(player.Key.connectionToClient);
+                }
+                break;
+            }
+        }
+    }
     /// <summary>
     /// ClientRpc called when the game ends in a draw.
     /// </summary>
