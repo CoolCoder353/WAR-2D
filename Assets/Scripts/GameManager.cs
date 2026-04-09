@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using System.Collections.Generic;
+using Unity.Entities;
 
 /// <summary>
 /// The GameManager class is responsible for managing the server's connections and disconnections.
@@ -198,6 +199,12 @@ public class GameManager : NetworkManager
         {
             //Reset the game core
             Destroy(GameCore.Instance.gameObject);
+        }
+
+        if (WorldStateManager.Instance != null)
+        {
+            //Reset the world state manager
+            Destroy(WorldStateManager.Instance.gameObject);
         }
 
         //Reset the scene by reloading it

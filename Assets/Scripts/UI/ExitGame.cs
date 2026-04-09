@@ -19,7 +19,7 @@ public class ExitGame : MonoBehaviour
 
     public void ReturnToMainMenu()
     {
-        // Load the main menu scene
-        UnityEngine.SceneManagement.SceneManager.LoadScene("MainMenu");
+
+        GameManager.Instance.LeaveLobby();
     }
 }

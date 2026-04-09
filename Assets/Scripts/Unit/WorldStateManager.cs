@@ -147,6 +147,22 @@ public class WorldStateManager : NetworkBehaviour
         Buildings = BuildingsCopy;
     }
 
+
+    public void DestroyAllEntities()
+    {
+        foreach ((int buildingId, Entity building) in Buildings)
+        {
+            EntityManager.DestroyEntity(building);
+        }
+
+        foreach ((int unitId, Entity unit) in Units)
+        {
+            EntityManager.DestroyEntity(unit);
+        }
+
+        Units.Clear();
+        Buildings.Clear();
+    }
     #endregion
 
     #region Tilemap Management

@@ -282,6 +282,9 @@ public class GameCore : NetworkBehaviour
     {
         Debug.Log($"Player {playerId} has won the game!");
 
+        //Clear all entities from the world to prepare for end game state
+        WorldStateManager.Instance.DestroyAllEntities();
+
         // Notify all clients about the winner
         foreach (var player in ServerPlayers)
         {
