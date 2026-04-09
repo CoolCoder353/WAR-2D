@@ -69,7 +69,7 @@ public partial struct WinLossSystem : ISystem
 
         // Check for Win Condition
         // If only 1 player has HQ and there was more than 1 player initially
-        if (playersWithHQ == 1) //&& GameCore.Instance.ServerPlayers.Count > 1)
+        if (playersWithHQ == 1 && GameCore.Instance.ServerPlayers.Count > 1)
         {
             // Find the winning player
             int winner = -1;
