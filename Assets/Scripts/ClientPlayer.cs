@@ -3,6 +3,7 @@ using Mirror;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Unity.Mathematics;
+using UnityEngine.UIElements;
 
 [System.Serializable]
 public class ClientPlayer : NetworkBehaviour
@@ -39,6 +40,9 @@ public class ClientPlayer : NetworkBehaviour
         //Add the hook to the scene change event
         if (!isLocalPlayer) return;
         // SceneManager.sceneLoaded += OnSceneChangedEvent;
+
+        //Setup event hooks
+        SetGameStateHandles();
 
     }
 
@@ -344,6 +348,8 @@ public class ClientPlayer : NetworkBehaviour
 
     public void SetGameStateHandles()
     {
+        Debug.Log("Setting up game state hooks");
+
         GameCore.Instance.OnLocalPlayerLost += () =>
         {
             Debug.Log("Local player lost, showing lose screen");

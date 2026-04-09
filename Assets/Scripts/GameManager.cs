@@ -153,12 +153,11 @@ public class GameManager : NetworkManager
     public override void OnClientConnect()
     {
         base.OnClientConnect();
-        NetworkClient.AddPlayer();
+        ///NetworkClient.AddPlayer();
         localPlayer = NetworkClient.localPlayer;
 
-
         //CreatePlayerMessage characterMessage = new CreatePlayerMessage();
-        //NetworkClient.Send(characterMessage);
+        //
     }
 
     /// <summary>

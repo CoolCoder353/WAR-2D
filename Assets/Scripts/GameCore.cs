@@ -79,17 +79,6 @@ public class GameCore : NetworkBehaviour
 
         DontDestroyOnLoad(this);
 
-        ClientPlayer localPlayer = NetworkClient.connection?.identity?.GetComponent<ClientPlayer>();
-        if (localPlayer == null)
-        {
-            Debug.LogWarning("Local player not found during GameCore Awake. This may cause issues with event handling.");
-            return;
-        }
-
-        localPlayer.SetGameStateHandles();
-
-
-
     }
 
     /// <summary>
@@ -273,7 +262,7 @@ public class GameCore : NetworkBehaviour
         if (ServerPlayers.TryGetValue(conn.identity, out ServerPlayer player))
         {
             player.state = PlayerState.Eliminated;
-            RpcOnPlayerLost(conn.identity);
+            RpcOnPlayerLost(conn);
             Debug.Log($"Player {conn.connectionId} eliminated.");
         }
     }
@@ -286,8 +275,17 @@ public class GameCore : NetworkBehaviour
     public void DeclareWinner(NetworkConnectionToClient conn)
     {
         CurrentState = GameState.GameOver;
-        RpcOnPlayerWon(conn.identity);
+        RpcOnPlayerWon(conn);
         Debug.Log($"Player {conn.connectionId} won!");
+
+        foreach (var kvp in ServerPlayers)
+        {
+            if (kvp.Key.connectionToClient != conn)
+            {
+                RpcOnPlayerLost(kvp.Key.connectionToClient);
+                Debug.Log($"Player {kvp.Key.netId} lost.");
+            }
+        }
     }
 
     /// <summary>
@@ -319,12 +317,12 @@ public class GameCore : NetworkBehaviour
     /// ClientRpc called when a player wins.
     /// </summary>
     /// <param name="winner">The NetworkIdentity of the winner.</param>
-    [ClientRpc]
-    public void RpcOnPlayerWon(NetworkIdentity winner)
+    [TargetRpc]
+    public void RpcOnPlayerWon(NetworkConnectionToClient winner)
     {
         // UI Implementation to handle this
 
-        Debug.Log("Victory!");
+        Debug.Log("Victory!, postinng event with " + OnLocalPlayerWon.GetInvocationList().Length + "Listenters");
         OnLocalPlayerWon?.Invoke();
 
     }
@@ -333,12 +331,12 @@ public class GameCore : NetworkBehaviour
     /// ClientRpc called when a player loses.
     /// </summary>
     /// <param name="loser">The NetworkIdentity of the loser.</param>
-    [ClientRpc]
-    public void RpcOnPlayerLost(NetworkIdentity loser)
+    [TargetRpc]
+    public void RpcOnPlayerLost(NetworkConnectionToClient loser)
     {
         // UI Implementation to handle this
 
-        Debug.Log("Defeat!");
+        Debug.Log("Defeat!, postinng event with " + OnLocalPlayerLost.GetInvocationList().Length + "Listenters");
         OnLocalPlayerLost?.Invoke();
 
     }

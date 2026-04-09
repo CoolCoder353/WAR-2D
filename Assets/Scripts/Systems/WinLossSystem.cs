@@ -26,6 +26,15 @@ public partial struct WinLossSystem : ISystem
         int playersWithHQ = 0;
         int lastPlayerWithHQ = -1;
 
+        if (GameCore.Instance.ServerPlayers.Count == 0)
+        {
+            // No players connected, end game as draw
+            Debug.LogWarning("No players connected, this should not happen.");
+
+            return;
+        }
+
+
         // Iterate through all connected players
         foreach (var kvp in GameCore.Instance.ServerPlayers)
         {
@@ -61,7 +70,7 @@ public partial struct WinLossSystem : ISystem
 
         // Check for Win Condition
         // If only 1 player has HQ and there was more than 1 player initially
-        if (playersWithHQ == 1 && GameCore.Instance.ServerPlayers.Count > 1)
+        if (playersWithHQ == 1) //&& GameCore.Instance.ServerPlayers.Count > 1)
         {
             // Find the winning player
             ServerPlayer winner = null;
@@ -77,6 +86,7 @@ public partial struct WinLossSystem : ISystem
             if (winner != null)
             {
                 Debug.Log($"Player {lastPlayerWithHQ} won the game!");
+                Debug.Log($"Calling DeclareWinner for player {lastPlayerWithHQ}, connection: {winner.connection}");
                 GameCore.Instance.DeclareWinner(winner.connection);
             }
         }
