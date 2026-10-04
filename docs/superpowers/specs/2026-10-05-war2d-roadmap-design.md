@@ -38,6 +38,13 @@ Also planned: a full UI/UX overhaul, upgraded pixel art and audio, and Steam int
 | Team | Project owner + Claude. Small, shippable updates. |
 | Commits | **No co-author attribution**, ever (see `CLAUDE.md`). |
 | Perf reference machine | Ryzen 5 5600GT (6C/12T), 32 GB RAM, Radeon RX 6600, Linux. |
+| Unpaid upkeep | Entities whose upkeep can't be paid **decay**: they lose `DecayPercentPerSecond` of max health per second until paid. Resources never go negative. |
+| Spawn rate | `SpawnRate` is used: a spawner produces at most `SpawnRate` units per second from its queue. |
+| Elimination / leaving | When a player is eliminated or disconnects, **all their units and buildings are destroyed, each with an explosion**. |
+| Death explosions | Every entity death (combat, decay, elimination) plays an explosion. The server sends each client only the explosions inside that client's view. |
+| Legacy code | Deleted in v0.2 (git history keeps it). The lobby row prefab is in use, so it is renamed, not deleted. |
+| Windows verification | Deferred out of v0.2. The Windows build profile is still added. |
+| Editor automation | The Unity Pipeline package (`com.unity.pipeline`) is installed. Scene and asset edits and test runs go through the live editor (`unity command ...`). |
 
 ## 3. Roadmap
 
@@ -45,13 +52,13 @@ Each update ships a playable, tested build, except v0.3, which is an internal pr
 
 | Update | Name | Scope | Exit criteria |
 |---|---|---|---|
-| v0.2 | **Solid Ground** | Fix every item in `known-issues.md`. Merge all config into `GameConfig.xml` with load-time validation. Validate every client command on the server and rate-limit it. HDRP → URP 2D. New Input System only. Remove unused packages. Add a Windows build profile. Add test assemblies, a batch-mode test script and the first edit-mode and play-mode tests. | Known-issues list is empty. Tests pass. A 2-player match plays start to finish on Linux and Windows. |
+| v0.2 | **Solid Ground** | Fix every item in `known-issues.md` (plus the path-memory leak and spawn-trap bugs found during planning). Merge all config into `GameConfig.xml` with load-time validation. Validate every client command on the server and rate-limit it. HDRP → URP 2D. New Input System only. Remove unused packages. Add a Windows build profile. Add test assemblies, a test script and the first edit-mode and play-mode tests. | Known-issues list is empty. Tests pass. A 2-player match plays start to finish on **Linux** (Windows verification deferred). |
 | v0.3 | **Scale Spike** *(throwaway)* | Prototype scene: 80k-unit simulation, flow fields, spatial hash combat, team line-of-sight fog, instanced rendering, replication bandwidth with 8 simulated clients. | A measured go/no-go for each technique, written back into this spec (§4.6). |
 | v0.4 | **Legion** | Core rebuild using what the spike proved: fixed-tick Burst simulation, tile map as an ECS singleton, flow fields, spatial hash, damage table, stable network IDs, instanced unit rendering, unlimited box select, squads. | 10,000 units per player meet the §4.1 tick and FPS targets on a local host. |
 | v0.5 | **Fog & Wire** | New replication (paths plus corrections) replaces the SyncLists. Team line-of-sight fog of war. Teams in the data model, with allied vision and no friendly fire. | 8 clients × 10k units stay within the bandwidth budget. Leak tests pass. |
 | v0.6 | **Command** | UI/UX overhaul (§6): HUD, menus, lobby with teams/FFA, map choice and ready-up, settings, end-of-match stats, resource gifting (validated server command plus UI). | Every UI flow has play-mode test coverage. No debug UI in builds. |
 | v0.7 | **Siege** | Builder (with repair), construction over time, buildable walls, Digger, hidden bombs (§5). | Rules tests for each feature. Leak tests for bombs. |
-| v0.8 | **New Paint** | Art-method prototype and decision, style guide, full sprite set, UI skin, SFX generator, chiptune music generator. | All placeholder art and audio replaced. |
+| v0.8 | **New Paint** | Art-method prototype and decision, one pixels-per-unit for all art plus a Pixel Perfect Camera (moved here from v0.2), style guide, full sprite set, UI skin, SFX generator, chiptune music generator. | All placeholder art and audio replaced. |
 | v0.9 | **Steam** | Steamworks, FizzySteamworks transport, lobbies and invites, relay, auth tickets, headless dedicated server, server browser, store and content-survey prep (AI-content disclosure). | A friends-only Steam playtest on Linux and Windows. |
 
 ### 3.1 v0.2 scope detail (from `known-issues.md`)
@@ -71,6 +78,11 @@ Each update ships a playable, tested build, except v0.3, which is an internal pr
   - Decide what happens when upkeep can't be paid.
 - **Networking:** a dedicated server can start a match (the server owner is the first client). Send camera view updates only when they change and at a capped rate. Remove the per-frame `SetServerPlayer` JSON (resources are sent once, on change). Replace random IDs with an allocator. Make the match scene configurable.
 - **Security:** a central command validator (ownership, `GameState`, value ranges, NaN/out-of-map), per-connection token-bucket rate limits, and a maximum message size.
+- **Economy:** passive income only for players still in the game. Unpaid upkeep causes decay (see the decisions log). Spawners honour `SpawnRate`.
+- **Elimination:** eliminated or disconnected players lose all their entities, with death explosions sent per client view.
+- **Pathfinding and spawning:** dispose path buffers (memory leak), spawn units on the nearest free tile outside the spawner footprint, keep only the Octile heuristic and remove the broken alternatives.
+- **Building footprints:** move them into `GameConfig.xml` (`Width`/`Height`) instead of deriving them from sprite size. This removes the client round-trip `GetTilesBuildingWillCoverCommand`.
+- **Camera:** switch to an orthographic camera (zoom via `orthographicSize`). The Pixel Perfect Camera waits until v0.8, when all art shares one pixels-per-unit.
 - **Hygiene:** URP 2D, new Input System only, remove unused packages (`ai.navigation`, `cinemachine`, `timeline`, `visualscripting`), Windows build profile, remove legacy/WIP code (or mark it clearly as kept), replace tag-based menu wiring with serialized references.
 
 ## 4. Target architecture
