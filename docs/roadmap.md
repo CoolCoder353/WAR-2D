@@ -8,7 +8,7 @@ This is the overarching development plan for WAR-2D. It explains **what** each u
 
 | Update | Name | Status | Detailed plan |
 |---|---|---|---|
-| v0.2 | Solid Ground | **In progress:** tasks 1–13 of 17 done (branch `release/v0.2`); URP 2D, match tests, Windows profile and release remain | [2026-10-05-v0.2-solid-ground.md](superpowers/plans/2026-10-05-v0.2-solid-ground.md) |
+| v0.2 | Solid Ground | **Implementation complete on `release/v0.2`:** URP 2D, Input System, match tests and docs done; Windows build profile deferred by the owner; manual 2-player match and PR pending | [2026-10-05-v0.2-solid-ground.md](superpowers/plans/2026-10-05-v0.2-solid-ground.md) |
 | v0.3 | Scale Spike | Not started | Written when v0.2 ships |
 | v0.4 | Legion | Not started | Written after v0.3 results |
 | v0.5 | Fog & Wire | Not started | — |

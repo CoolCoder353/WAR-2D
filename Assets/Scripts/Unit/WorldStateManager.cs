@@ -342,6 +342,13 @@ public class WorldStateManager : NetworkBehaviour
     public void UpdateClientView(int2 startcorner, int2 endcorner, NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(UpdateClientView)) || !CommandValidator.IsBoxValid(startcorner, endcorner)) return;
+
+        BoundsInt mapBounds = WalkableTilemap.cellBounds;
+        int2 mapMin = new int2(mapBounds.xMin, mapBounds.yMin);
+        int2 mapMax = new int2(mapBounds.xMax - 1, mapBounds.yMax - 1);
+        startcorner = math.clamp(startcorner, mapMin, mapMax);
+        endcorner = math.clamp(endcorner, mapMin, mapMax);
+
         playerView[sender.identity.GetComponent<ClientPlayer>()] = (startcorner, endcorner);
     }
 
@@ -530,6 +537,14 @@ public class WorldStateManager : NetworkBehaviour
     {
         if (!CommandGate.Allow(sender, nameof(CmdMoveUnits)) || !CommandValidator.IsBoxValid(startcorner, endcorner)) return;
         if (GameCore.Instance.CurrentState != GameState.Playing) return;
+        ServerPlayer acting = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(sender.identity.netId));
+        if (acting == null || acting.state != PlayerState.Playing) return;
+
+        BoundsInt mapBounds = WalkableTilemap.cellBounds;
+        int2 mapMin = new int2(mapBounds.xMin, mapBounds.yMin);
+        int2 mapMax = new int2(mapBounds.xMax - 1, mapBounds.yMax - 1);
+        startcorner = math.clamp(startcorner, mapMin, mapMax);
+        endcorner = math.clamp(endcorner, mapMin, mapMax);
 
         List<ClientUnit> units = new List<ClientUnit>();
         List<int2> setGoals = new List<int2>();
@@ -734,6 +749,10 @@ public class WorldStateManager : NetworkBehaviour
     public PlacementResult CheckPlacement(BuildingType type, int2 anchor, float rotation, ClientPlayer player)
     {
         if (type == BuildingType.None || !System.Enum.IsDefined(typeof(BuildingType), type)) return PlacementResult.InvalidType;
+
+        ServerPlayer acting = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(player.netId));
+        if (acting == null || acting.state != PlayerState.Playing) return PlacementResult.WrongGameState;
+
         return PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
             player.hasPlacedHQ, world.GetTile, tile => !IsAvaliable(tile, -1));
     }
@@ -875,6 +894,8 @@ public class WorldStateManager : NetworkBehaviour
     public void BuildingClicked(int buildingId, NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(BuildingClicked))) return;
+        ServerPlayer acting = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(sender.identity.netId));
+        if (acting == null || acting.state != PlayerState.Playing) return;
         // Queuing units is only allowed while the game is actually being played.
         if (GameCore.Instance.CurrentState != GameState.Playing) return;
 

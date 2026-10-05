@@ -90,6 +90,7 @@ public class MatchFlowTests
         WorldStateManager.Instance.KillAllEntitiesOwnedBy((int)NetworkClient.localPlayer.netId);
 
         yield return WaitUntil(() => GameCore.Instance.CurrentState == GameState.GameOver, 10f);
+        Assert.That(NetworkClient.localPlayer.GetComponent<ClientPlayer>().drawDeclared, Is.True, "draw screen RPC must reach the client");
         Assert.That(CountUnits(), Is.EqualTo(0));
     }
 

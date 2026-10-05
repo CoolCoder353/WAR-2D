@@ -26,6 +26,7 @@ public class ClientPlayer : NetworkBehaviour
     public UnityEngine.Events.UnityEvent<bool> onResponseFromCanBuildBuilding = new UnityEngine.Events.UnityEvent<bool>();
 
     private bool gameOverDeclared = false; // Flag to ensure game over is only declared once
+    public bool drawDeclared = false; // Flag set when the draw screen RPC is received
 
     [Client]
     public override void OnStartClient()
@@ -109,6 +110,7 @@ public class ClientPlayer : NetworkBehaviour
     public void RpcOnMatchDraw(NetworkConnectionToClient target)
     {
         if (gameOverDeclared) return;
+        drawDeclared = true;
         GameObject prefab = Resources.Load<GameObject>("UI/LoseScreenUI");
         Canvas hud = FindAnyObjectByType<Canvas>();
         if (hud != null) hud.enabled = false;

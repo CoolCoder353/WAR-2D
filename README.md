@@ -51,7 +51,7 @@ The scenes in the build are `Assets/Main_Menu.unity` (index 0) and `Assets/Maps/
 - **Linux:** a build profile is checked in at `Assets/Settings/Build Profiles/Linux.asset`. Open it under *File → Build Profiles* and build.
 - **Windows:** no profile is checked in — the owner deferred Windows to a later release. To build one yourself, create a Windows build profile with the same two scenes.
 
-Headless/dedicated server hosting is not configured yet; it is planned in the [roadmap](docs/roadmap.md).
+Headless/dedicated auto-start works: the `GameManager` in `Main_Menu` uses `headlessStartMode: AutoStartServer`, so a headless build starts a dedicated server, and the first client to connect becomes the server owner (`GameCore.AddPlayer`). Verification on both platforms is deferred to a later release; see the [roadmap](docs/roadmap.md).
 
 ## Tests
 

@@ -303,4 +303,3 @@ Sprites are loaded by enum name from the root of `Resources/`, e.g. `Resources.L
 
 - **TIM Console** (`` ` `` to toggle). Custom commands live in `Assets/3rd Party/Console/Custom Commands/Custom_Commands.cs`: help, server player count, server/client active, GameCore null check, players' resources, WorldStateManager.
 - **NaughtyAttributes** `[Button]`s on `UnitDataClient` / `BuildingDataClient` print a clicked object's synced data in the inspector.
-- `FPSViewer` (`Scripts/Optimisations/FPS Viewer.cs`) shows a simple FPS readout.

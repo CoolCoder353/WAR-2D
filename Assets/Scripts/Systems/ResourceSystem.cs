@@ -44,7 +44,11 @@ public partial struct ResourceSystem : ISystem
             mining.ValueRW.isActive = active;
             if (active)
             {
-                core.GetServerPlayerById(building.ValueRO.ownerId)?.Add(config.Resources.MiningRate * mining.ValueRO.timeSinceLastMining);
+                ServerPlayer owner = core.GetServerPlayerById(building.ValueRO.ownerId);
+                if (owner != null && owner.state == PlayerState.Playing)
+                {
+                    owner.Add(config.Resources.MiningRate * mining.ValueRO.timeSinceLastMining);
+                }
             }
             mining.ValueRW.timeSinceLastMining = 0f;
         }

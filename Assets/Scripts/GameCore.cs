@@ -207,10 +207,31 @@ public class GameCore : NetworkBehaviour
     [Server]
     public void ApplyOutcome(MatchOutcome outcome)
     {
-        foreach (int id in outcome.NewlyEliminated) EliminatePlayer(id);
+        if (outcome.Kind == OutcomeKind.Draw)
+        {
+            // A draw must not send the per-player loss screen: every draw participant is in
+            // NewlyEliminated, and RpcOnPlayerLost latches gameOverDeclared on the client,
+            // making RpcOnMatchDraw a no-op (the pre-v0.2 draw bug). DeclareDraw wipes the world.
+            foreach (int id in outcome.NewlyEliminated) SetEliminatedState(id);
+            DeclareDraw();
+            return;
+        }
 
+        foreach (int id in outcome.NewlyEliminated) EliminatePlayer(id);
         if (outcome.Kind == OutcomeKind.Winner) DeclareWinner(outcome.WinnerId);
-        else if (outcome.Kind == OutcomeKind.Draw) DeclareDraw();
+    }
+
+    [Server]
+    private void SetEliminatedState(int playerId)
+    {
+        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
+        {
+            if (entry.Key != null && entry.Key.netId == (uint)playerId && entry.Value.state != PlayerState.Eliminated)
+            {
+                entry.Value.state = PlayerState.Eliminated;
+                return;
+            }
+        }
     }
 
     [Server]
@@ -221,7 +242,9 @@ public class GameCore : NetworkBehaviour
             if (entry.Key.netId != (uint)playerId || entry.Value.state == PlayerState.Eliminated) continue;
             entry.Value.state = PlayerState.Eliminated;
             WorldStateManager.Instance?.KillAllEntitiesOwnedBy(playerId);
-            entry.Key.GetComponent<ClientPlayer>().RpcOnPlayerLost(entry.Value.connection);
+            ClientPlayer client = entry.Key.GetComponent<ClientPlayer>();
+            client.hasPlacedHQ = false;
+            client.RpcOnPlayerLost(entry.Value.connection);
             return;
         }
     }
