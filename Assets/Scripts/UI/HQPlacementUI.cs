@@ -1,166 +1,57 @@
-using UnityEngine;
-using UnityEngine.UI;
 using Mirror;
 using TMPro;
-using System.Collections;
+using UnityEngine;
+using UnityEngine.UI;
 
+/// <summary>Shows the HQ placement prompt, placement progress and the server-owned countdown.</summary>
 public class HQPlacementUI : MonoBehaviour
 {
     [Header("UI References")]
     public GameObject placementPromptPanel;
     public GameObject normalBuildingPanel;
     public TMP_Text instructionText;
-    public TMP_Text progressText; // Shows "X players still placing HQ"
+    public TMP_Text progressText;
 
     [Header("Building Placement")]
     public BuildingButtonManager buildingButtonManager;
 
-    private ClientPlayer localPlayer;
-
-    public bool hideScreen = false;
-
-    private bool countdownStarted = false;
-
-    [Client]
-    private void OnEnable()
-    {
-        if (normalBuildingPanel != null)
-        {
-            normalBuildingPanel.SetActive(false);
-        }
-
-        localPlayer = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
-    }
-
-
-
-    [Client]
     private void Update()
     {
+        GameCore core = GameCore.Instance;
+        ClientPlayer local = NetworkClient.localPlayer != null ? NetworkClient.localPlayer.GetComponent<ClientPlayer>() : null;
+        if (core == null || local == null) return;
 
-        if (hideScreen && !placementPromptPanel.activeSelf)
-            return;
+        bool showPrompt = core.CurrentState == GameState.PlacingHQ || core.CurrentState == GameState.Countdown;
+        if (placementPromptPanel.activeSelf != showPrompt) placementPromptPanel.SetActive(showPrompt);
+        if (normalBuildingPanel != null && normalBuildingPanel.activeSelf == showPrompt) normalBuildingPanel.SetActive(!showPrompt);
+        if (!showPrompt) return;
 
-        // Get local player reference
-        if (localPlayer == null && NetworkClient.localPlayer != null)
+        if (buildingButtonManager != null)
         {
-            localPlayer = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+            bool canPlace = core.CurrentState == GameState.PlacingHQ && !local.hasPlacedHQ;
+            foreach (Button button in buildingButtonManager.buttons) button.interactable = canPlace;
         }
 
+        if (instructionText != null) instructionText.text = "Place your Headquarters (HQ) to begin the game!";
+        if (progressText == null) return;
 
-
-        if (localPlayer == null)
-            return;
-
-        // Show UI when in PlacingHQ state and haven't placed yet
-        bool shouldShow = !hideScreen;
-
-        if (placementPromptPanel.activeSelf != shouldShow)
+        if (core.CurrentState == GameState.Countdown)
         {
-            placementPromptPanel.SetActive(shouldShow);
+            int seconds = Mathf.Max(0, Mathf.CeilToInt((float)(core.CountdownEndTime - NetworkTime.time)));
+            progressText.text = $"All players have placed their HQ! Starting in {seconds}...";
         }
-
-        if (normalBuildingPanel != null)
+        else if (local.hasPlacedHQ)
         {
-            normalBuildingPanel.SetActive(!shouldShow);
-        }
-
-
-        //Set the building buttons interactable state
-        if (localPlayer.hasPlacedHQ && buildingButtonManager != null)
-        {
-            foreach (Button btn in buildingButtonManager.buttons)
+            int remaining = 0;
+            foreach (ClientPlayer p in FindObjectsByType<ClientPlayer>(FindObjectsSortMode.None))
             {
-                btn.interactable = false;
+                if (!p.hasPlacedHQ) remaining++;
             }
+            progressText.text = $"Waiting for {remaining} player(s) to place their HQ...";
         }
         else
         {
-            if (buildingButtonManager != null)
-            {
-                foreach (Button btn in buildingButtonManager.buttons)
-                {
-                    btn.interactable = true;
-                }
-            }
+            progressText.text = string.Empty;
         }
-
-        if (countdownStarted)
-            return;
-
-        // Update instruction text
-        if (instructionText != null && shouldShow)
-        {
-            instructionText.text = "Place your Headquarters (HQ) to begin the game!\n";
-        }
-
-
-        // Update progress text (count remaining players)
-        if (progressText != null && localPlayer.hasPlacedHQ)
-        {
-            int remainingPlayers = CountRemainingPlayersPlacingHQ();
-            if (remainingPlayers > 0)
-            {
-                progressText.text = $"Waiting for {remainingPlayers} player(s) to place their HQ...";
-            }
-            else
-            {
-                progressText.text = "All players have placed HQ! Starting countdown...";
-                StartCoroutine(StartCountdownToStartGame(5f));
-
-            }
-        }
-    }
-
-
-    [Client]
-    private IEnumerator StartCountdownToStartGame(float countdownTime)
-    {
-        countdownStarted = true;
-        float timer = countdownTime;
-
-        while (timer > 0)
-        {
-            if (progressText != null)
-            {
-                progressText.text = $"All players have placed HQ! Starting game in {Mathf.CeilToInt(timer)} seconds...";
-            }
-
-            yield return new WaitForSeconds(1f);
-            timer -= 1f;
-        }
-
-        // Notify server to start the game
-        if (localPlayer != null)
-        {
-            if (GameCore.Instance != null)
-                GameCore.Instance.Cmd_ReadyToStartGame();
-
-            hideScreen = true;
-        }
-    }
-
-    /// <summary>
-    /// Counts how many players still need to place their HQ.
-    /// Only works on clients that have access to the local player.
-    /// </summary>
-    [Client]
-    private int CountRemainingPlayersPlacingHQ()
-    {
-        int remaining = 0;
-
-        // Iterate through all players in ServerPlayers
-        foreach (var clientPlayer in FindObjectsByType<ClientPlayer>(FindObjectsSortMode.None))
-        {
-            if (clientPlayer != null && !clientPlayer.hasPlacedHQ)
-            {
-                remaining++;
-            }
-        }
-
-        Debug.Log($"Players remaining to place HQ: {remaining}");
-
-        return remaining;
     }
 }
-

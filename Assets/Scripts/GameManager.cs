@@ -90,23 +90,11 @@ public class GameManager : NetworkManager
     {
         base.OnServerAddPlayer(conn);
 
-        if (GameCore.Instance == null) { Debug.LogError("GameCore is null"); }
-        if (GameCore.Instance.ServerPlayers == null) { Debug.LogError("ServerPlayers is null"); }
-        if (conn.identity == null) { Debug.LogError("conn.identity is null"); }
-
-        // Add the new player to the list of players
-        var config = Config.ConfigLoader.LoadConfig();
-        GameCore.Instance.ServerPlayers.Add(conn.identity, new ServerPlayer(conn, config.Resources.StartingResources));
+        GameCore.Instance.AddPlayer(conn, Config.ConfigLoader.LoadConfig().Resources.StartingResources);
 
         // Log the connection
         Debug.Log($"Player {conn.connectionId} has connected");
         Debug.Log($"There are now {GameCore.Instance.ServerPlayers.Count} players connected");
-
-        // If this is the first player to connect, set them as the server owner
-        if (GameCore.Instance.ServerPlayers.Count == 1)
-        {
-            GameCore.Instance.SetServerOwner(conn);
-        }
     }
 
     /// <summary>

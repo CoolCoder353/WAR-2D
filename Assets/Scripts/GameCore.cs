@@ -1,11 +1,10 @@
-using Mirror;
 using System.Collections.Generic;
 using System.Linq;
+using Config;
+using Mirror;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
-/// <summary>
-/// Represents the various states of the game.
-/// </summary>
 public enum GameState
 {
     /// <summary>Players are in the lobby waiting for the game to start.</summary>
@@ -21,79 +20,54 @@ public enum GameState
 }
 
 /// <summary>
-/// The GameCore class is responsible for managing the server's game state.
-/// It inherits from Mirror's NetworkBehaviour class.
+/// Server-authoritative match state: players, ownership, the state machine and outcomes.
 /// </summary>
 public class GameCore : NetworkBehaviour
 {
-    /// <summary>
-    /// Singleton instance of the GameCore. 
-    /// Ensures that only one GameCore exists in the scene at any time.
-    /// </summary>
     public static GameCore Instance { get; private set; }
 
-    /// <summary>
-    /// The current state of the game, synchronized across the network.
-    /// </summary>
     [SyncVar]
     public GameState CurrentState = GameState.Lobby;
 
+    /// <summary>NetworkTime.time at which Countdown ends (valid while CurrentState == Countdown).</summary>
+    [SyncVar]
+    public double CountdownEndTime;
 
-
-    /// <summary>
-    /// List of ServerPlayer objects representing the players on the server.
-    /// Key is the NetworkIdentity of the player's connection.
-    /// </summary>
+    /// <summary>Server-only player records, keyed by player object identity.</summary>
     public Dictionary<NetworkIdentity, ServerPlayer> ServerPlayers = new Dictionary<NetworkIdentity, ServerPlayer>();
 
-    public int playersReadyToStart = 0;
+    public IEnumerable<ServerPlayer> serverPlayers => ServerPlayers.Values;
 
-    /// <summary>
-    /// NetworkConnection object representing the owner of the server.
-    /// </summary>
-    private NetworkConnection serverOwner;
+    /// <summary>Players present when Playing began (used for the win rule).</summary>
+    public int MatchStartPlayerCount { get; private set; }
 
-    private float countdownTimer = 0f;
+    private NetworkConnectionToClient serverOwner;
 
-    /// <summary>
-    /// Awake is called when the script instance is being loaded.
-    /// It initializes the singleton instance.
-    /// </summary>
+    private const string LobbyScene = "Main_Menu";
+    private const float ResourceSyncInterval = 0.1f;
+    private float resourceSyncTimer;
+
     public void Awake()
     {
-        TIM.Console.Log($"GameCore Awake", TIM.MessageType.Network);
-
         if (Instance != null)
         {
             Destroy(this);
             return;
         }
-
         Instance = this;
-
         DontDestroyOnLoad(this);
-
     }
 
-
-
-    /// <summary>
-    /// Called on the server when it starts.
-    /// </summary>
     [Server]
-    public override void OnStartServer()
+    public override void OnStopServer()
     {
-        base.OnStartServer();
+        base.OnStopServer();
+        ServerPlayers.Clear();
+        serverOwner = null;
+        CurrentState = GameState.Lobby;
+        MatchStartPlayerCount = 0;
     }
 
-    /// <summary>How often a changed resource count is pushed to its client.</summary>
-    private const float ResourceSyncInterval = 0.1f;
-    private float resourceSyncTimer;
-
-    /// <summary>
-    /// Called every frame on the server after Update. Sends each player's resources to their own
-    /// client at 10 Hz, and only when they changed since the last send.
-    /// </summary>
     [ServerCallback]
     public void LateUpdate()
     {
@@ -110,277 +84,186 @@ public class GameCore : NetworkBehaviour
         }
     }
 
-    /// <summary>
-    /// Handles a player disconnecting from the server.
-    /// Removes the player from the list and handles server ownership transfer if necessary.
-    /// </summary>
-    /// <param name="conn">The connection of the player who left.</param>
+    [ServerCallback]
+    public void Update()
+    {
+        if (CurrentState == GameState.Countdown && NetworkTime.time >= CountdownEndTime)
+        {
+            CurrentState = GameState.Playing;
+            MatchStartPlayerCount = ServerPlayers.Count;
+        }
+    }
+
+    // ---------- Players and ownership ----------
+
+    [Server]
+    public void AddPlayer(NetworkConnectionToClient conn, float startingResources)
+    {
+        ServerPlayers[conn.identity] = new ServerPlayer(conn, startingResources);
+        if (serverOwner == null) SetServerOwner(conn);
+    }
+
     [Server]
     public void OnPlayerLeave(NetworkConnectionToClient conn)
     {
-        //        Debug.Log($"Player {conn.connectionId} has disconnected");
+        if (conn.identity == null || !ServerPlayers.Remove(conn.identity)) return;
+        CommandGate.Forget(conn.connectionId);
 
-
-        ServerPlayers[conn.identity].state = PlayerState.Eliminated;
-        //For each player still in the game, call the RPC_RemoveClientLobbyUI method
-        foreach (var player in ServerPlayers)
+        ClientPlayer leaving = conn.identity.GetComponent<ClientPlayer>();
+        if (WorldStateManager.Instance != null)
         {
-            ClientPlayer client = player.Key.GetComponent<ClientPlayer>();
-            if (client.lobbySystem != null)
-            {
-                client.RPC_RemoveClientLobbyUI();
-            }
+            WorldStateManager.Instance.RemovePlayerView(leaving);
+            WorldStateManager.Instance.KillAllEntitiesOwnedBy((int)conn.identity.netId);
         }
 
-        // If the disconnected player was the server owner, set a new server owner
-        if (IsServerOwner(conn))
+        foreach (NetworkIdentity remaining in ServerPlayers.Keys)
         {
-
-            //If the server owner was also the server -> kick all clients
-
-            if (serverOwner.identity.isServer)
-            {
-                NetworkServer.Shutdown();
-            }
-            else
-            {
-                SetServerOwner(ServerPlayers.First().Key.connectionToClient);
-            }
+            remaining.GetComponent<ClientPlayer>().RPC_RemoveClientLobbyUI();
         }
 
-        //Get all entities that belong to the disconnected player and destroy them
-        WorldStateManager.Instance?.KillAllEntitiesOwnedBy((int)conn.identity.netId);
+        if (serverOwner == conn)
+        {
+            serverOwner = null;
+            if (conn is LocalConnectionToClient)
+            {
+                // The host is leaving: the server goes with it.
+                return;
+            }
+            if (ServerPlayers.Count > 0) SetServerOwner(ServerPlayers.Values.First().connection);
+        }
 
+        if (ServerPlayers.Count == 0)
+        {
+            ResetToLobby();
+        }
+        else if (CurrentState == GameState.PlacingHQ)
+        {
+            CheckHQPlacementProgress();
+        }
     }
 
-    [Server]
-    public override void OnStopServer()
-    {
-        base.OnStopServer();
-        ServerPlayers.Clear();
-    }
-
-
-    /// <summary>
-    /// Sets the owner of the server.
-    /// </summary>
-    /// <param name="conn">The connection to set as the new owner.</param>
     [Server]
     public void SetServerOwner(NetworkConnectionToClient conn)
     {
-        if (serverOwner != null)
+        if (serverOwner != null && serverOwner.identity != null)
         {
-            serverOwner.identity.RemoveClientAuthority();
+            serverOwner.identity.GetComponent<ClientPlayer>().isServerOwner = false;
         }
-
-        Debug.Log($"Player {conn.identity.netId} is now the server owner");
         serverOwner = conn;
-
-        // Assign client authority to the new server owner
-        conn.identity.AssignClientAuthority(conn);
-
-        Debug.Log($"Server owner is now {conn.identity.netId}");
+        conn.identity.GetComponent<ClientPlayer>().isServerOwner = true;
+        Debug.Log($"Player {conn.identity.netId} is now the server owner");
     }
 
-    /// <summary>
-    /// Checks if a NetworkConnection object is the owner of the server.
-    /// </summary>
-    /// <param name="conn">The connection to check.</param>
-    /// <returns>True if the connection is the server owner, false otherwise.</returns>
     [Server]
-    public bool IsServerOwner(NetworkConnectionToClient conn)
-    {
-        return conn.identity == serverOwner.identity;
-    }
+    public bool IsServerOwner(NetworkConnectionToClient conn) => conn != null && serverOwner == conn;
 
-    /// <summary>
-    /// Gets a ServerPlayer by their owner ID (netId).
-    /// </summary>
-    /// <param name="ownerId">The netId of the player.</param>
-    /// <returns>The ServerPlayer object, or null if not found.</returns>
     [Server]
     public ServerPlayer GetServerPlayerById(int ownerId)
     {
-        foreach (var kvp in ServerPlayers)
+        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
-            if (kvp.Key.netId == (uint)ownerId)
-            {
-                return kvp.Value;
-            }
+            if (entry.Key != null && entry.Key.netId == (uint)ownerId) return entry.Value;
         }
         return null;
     }
 
-    /// <summary>
-    /// Public property to access server players for ECS systems.
-    /// </summary>
-    public IEnumerable<ServerPlayer> serverPlayers => ServerPlayers.Values;
-
-    /// <summary>
-    /// Command sent to the server to start the game.
-    /// If the connection is the server owner, it changes the scene to the game scene.
-    /// </summary>
-    /// <param name="connection">The connection sending the command (automatically filled by Mirror).</param>
-    [Command(requiresAuthority = false)]
-    public void Cmd_StartGame(NetworkConnectionToClient connection = null)
-    {
-        Debug.Log("Starting game");
-        if (IsServerOwner(connection))
-        {
-            Debug.Log("Changing scene");
-            CurrentState = GameState.PlacingHQ;
-            GameManager.Instance.ServerChangeScene("Map_2");
-        }
-    }
-
-
+    // ---------- State machine ----------
 
     [Command(requiresAuthority = false)]
-    public void Cmd_ReadyToStartGame(NetworkConnectionToClient connection = null)
+    public void Cmd_StartGame(NetworkConnectionToClient sender = null)
     {
-        Debug.Log($"Player {connection.connectionId} is ready to start the game.");
-        playersReadyToStart++;
+        if (!CommandGate.Allow(sender, nameof(Cmd_StartGame))) return;
+        if (!IsServerOwner(sender) || CurrentState != GameState.Lobby || !ConfigLoader.IsValid) return;
 
-        if (playersReadyToStart >= ServerPlayers.Count)
+        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
-            Debug.Log("All players are ready. Starting the game.");
-            CurrentState = GameState.Playing;
+            entry.Value.state = PlayerState.Playing;
+            entry.Key.GetComponent<ClientPlayer>().hasPlacedHQ = false;
         }
-    }
-
-
-
-
-    [Server]
-    public void DeclareDraw()
-    {
-        Debug.Log("Game ended in a draw - all players were eliminated!");
-
-        DeclareWinner(-1); // Using -1 to indicate a draw since no player will have an id of -1
+        CurrentState = GameState.PlacingHQ;
+        GameManager.Instance.ServerChangeScene(ConfigLoader.LoadConfig().Match.Scene);
     }
 
     [Server]
-    public void DeclareWinner(int playerId)
+    public void CheckHQPlacementProgress()
     {
-        Debug.Log($"Player {playerId} has won the game!");
+        int remaining = ServerPlayers.Keys.Count(id => !id.GetComponent<ClientPlayer>().hasPlacedHQ);
+        RpcUpdateHQPlacementProgress(remaining);
 
-        //Clear all entities from the world to prepare for end game state
-        WorldStateManager.Instance.DestroyAllEntities();
-
-        // Notify all clients about the winner
-        foreach (var player in ServerPlayers)
+        if (remaining == 0 && CurrentState == GameState.PlacingHQ)
         {
-            ClientPlayer clientPlayer = player.Key.GetComponent<ClientPlayer>();
-            if (clientPlayer != null)
-            {
-                if (player.Key.netId == (uint)playerId)
-                {
-                    Debug.Log($"Notifying player {playerId} of their victory!");
-                    clientPlayer.RpcOnPlayerWon(player.Key.connectionToClient);
-                }
-                else
-                {
-                    Debug.Log($"Notifying player {playerId} of their defeat!");
-                    player.Value.state = PlayerState.Eliminated;
-                    clientPlayer.RpcOnPlayerLost(player.Key.connectionToClient);
-                }
-            }
+            CurrentState = GameState.Countdown;
+            CountdownEndTime = NetworkTime.time + ConfigLoader.LoadConfig().Match.CountdownSeconds;
         }
+    }
 
-        CurrentState = GameState.GameOver;
+    [ClientRpc]
+    public void RpcUpdateHQPlacementProgress(int remainingPlayersCount)
+    {
+        // Clients compute their own progress text from ClientPlayer.hasPlacedHQ; kept for future UI events.
+    }
+
+    [Server]
+    public void ApplyOutcome(MatchOutcome outcome)
+    {
+        foreach (int id in outcome.NewlyEliminated) EliminatePlayer(id);
+
+        if (outcome.Kind == OutcomeKind.Winner) DeclareWinner(outcome.WinnerId);
+        else if (outcome.Kind == OutcomeKind.Draw) DeclareDraw();
     }
 
     [Server]
     public void EliminatePlayer(int playerId)
     {
-        Debug.Log($"Player {playerId} has been eliminated!");
-
-        // Notify the eliminated player
-        foreach (var player in ServerPlayers)
+        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
-            if (player.Key.netId == (uint)playerId)
-            {
-                ClientPlayer clientPlayer = player.Key.GetComponent<ClientPlayer>();
-                if (clientPlayer != null)
-                {
-                    player.Value.state = PlayerState.Eliminated;
-                    Debug.Log($"Notifying player {playerId} of their elimination!");
-                    clientPlayer.RpcOnPlayerLost(player.Key.connectionToClient);
-                }
-                break;
-            }
+            if (entry.Key.netId != (uint)playerId || entry.Value.state == PlayerState.Eliminated) continue;
+            entry.Value.state = PlayerState.Eliminated;
+            WorldStateManager.Instance?.KillAllEntitiesOwnedBy(playerId);
+            entry.Key.GetComponent<ClientPlayer>().RpcOnPlayerLost(entry.Value.connection);
+            return;
         }
     }
-    /// <summary>
-    /// ClientRpc called when the game ends in a draw.
-    /// </summary>
-    [ClientRpc]
-    public void RpcGameDraw()
-    {
-        Debug.Log("Game ended in a draw - all players were eliminated!");
-        // Could add UI event here if needed
-    }
 
-    /// <summary>
-    /// Called from WorldStateManager after an HQ is successfully placed.
-    /// Checks if all players have placed their HQ and transitions to Countdown state if so.
-    /// </summary>
     [Server]
-    public void CheckHQPlacementProgress()
+    public void DeclareWinner(int playerId)
     {
-        // Count how many players still need to place HQ
-        int remainingPlayers = 0;
-        foreach (var player in ServerPlayers)
+        CurrentState = GameState.GameOver;
+        WorldStateManager.Instance?.DestroyAllEntities();
+        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
-            ClientPlayer clientPlayer = player.Key.GetComponent<ClientPlayer>();
-            if (clientPlayer != null && !clientPlayer.hasPlacedHQ)
+            ClientPlayer client = entry.Key.GetComponent<ClientPlayer>();
+            if (entry.Key.netId == (uint)playerId) client.RpcOnPlayerWon(entry.Value.connection);
+            else
             {
-                remainingPlayers++;
+                entry.Value.state = PlayerState.Eliminated;
+                client.RpcOnPlayerLost(entry.Value.connection);
             }
-        }
-
-        Debug.Log($"HQ Placement Progress: {remainingPlayers} player(s) still need to place HQ.");
-
-        // Notify all clients about the progress
-        RpcUpdateHQPlacementProgress(remainingPlayers);
-
-        // Check if all players have placed HQ
-        if (remainingPlayers == 0)
-        {
-            Debug.Log("All players have placed HQ! Starting countdown.");
-            CurrentState = GameState.Countdown;
-            countdownTimer = 3f;
         }
     }
 
-    /// <summary>
-    /// ClientRpc that updates all clients on HQ placement progress.
-    /// </summary>
-    /// <param name="remainingPlayersCount">Number of players still needing to place HQ.</param>
-    [ClientRpc]
-    public void RpcUpdateHQPlacementProgress(int remainingPlayersCount)
+    [Server]
+    public void DeclareDraw()
     {
-        // This RPC is called to keep clients in sync with progress
-        // Clients can use this to update UI if needed
-        if (remainingPlayersCount > 0)
+        CurrentState = GameState.GameOver;
+        WorldStateManager.Instance?.DestroyAllEntities();
+        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
-            Debug.Log($"[Client] {remainingPlayersCount} player(s) still placing HQ");
+            entry.Value.state = PlayerState.Eliminated;
+            entry.Key.GetComponent<ClientPlayer>().RpcOnMatchDraw(entry.Value.connection);
         }
     }
 
-    /// <summary>
-    /// Update loop for managing game state transitions (e.g., countdown).
-    /// </summary>
-    [ServerCallback]
-    public void Update()
+    /// <summary>Returns an empty server (e.g. a dedicated server whose players all left) to the lobby.</summary>
+    [Server]
+    private void ResetToLobby()
     {
-        if (CurrentState == GameState.Countdown)
+        CurrentState = GameState.Lobby;
+        CountdownEndTime = 0;
+        MatchStartPlayerCount = 0;
+        if (SceneManager.GetActiveScene().name != LobbyScene && NetworkServer.active)
         {
-            countdownTimer -= Time.deltaTime;
-            if (countdownTimer <= 0)
-            {
-                CurrentState = GameState.Playing;
-            }
+            GameManager.Instance.ServerChangeScene(LobbyScene);
         }
     }
 }

@@ -34,6 +34,12 @@ public class LobbySystem : MonoBehaviour
     public void Awake()
     {
         startGameButton.SetActive(false);
+        startGameButton.GetComponent<Button>().onClick.AddListener(StartGame);
+    }
+
+    public void SetStartButtonVisible(bool visible)
+    {
+        startGameButton.SetActive(visible);
     }
 
     [Client]
@@ -70,7 +76,7 @@ public class LobbySystem : MonoBehaviour
     }
 
     [Client]
-    public void AddClientPlayer(ClientPlayer player, bool addNicknameListener = false, bool addStartGameListener = false)
+    public void AddClientPlayer(ClientPlayer player, bool addNicknameListener = false)
     {
         if (core == null)
         {
@@ -100,16 +106,6 @@ public class LobbySystem : MonoBehaviour
             input_field.text = player.nickname;
             lobbyPlayer.GetComponentInChildren<TMP_Text>().gameObject.SetActive(false);
             input_field.gameObject.SetActive(true);
-        }
-        if (addStartGameListener)
-        {
-            // Add a listener to the start game button to start the game when it is clicked
-            startGameButton.GetComponent<Button>().onClick.AddListener(() =>
-            {
-                StartGame();
-            });
-
-            startGameButton.SetActive(true);
         }
         input_field.gameObject.SetActive(addNicknameListener);
 
@@ -148,7 +144,7 @@ public class LobbySystem : MonoBehaviour
             Debug.LogError("New nickname is null");
             return;
         }
-        if (player.ClientCanEdit())
+        if (player.isLocalPlayer)
         {
             ////Debug.LogWarning("Dont set the text of yourself");
             return;

@@ -19,6 +19,10 @@ public class ClientPlayer : NetworkBehaviour
     [SyncVar]
     public bool hasPlacedHQ = false;
 
+    /// <summary>True on the client whose player is the current server owner (lobby start button).</summary>
+    [SyncVar(hook = nameof(OnServerOwnerChanged))]
+    public bool isServerOwner;
+
     public UnityEngine.Events.UnityEvent<bool> onResponseFromCanBuildBuilding = new UnityEngine.Events.UnityEvent<bool>();
 
     private bool gameOverDeclared = false; // Flag to ensure game over is only declared once
@@ -31,7 +35,11 @@ public class ClientPlayer : NetworkBehaviour
         DontDestroyOnLoad(this);
         //Find the lobby system
         lobbySystem = FindAnyObjectByType<LobbySystem>();
-        if (lobbySystem != null) { lobbySystem.AddClientPlayer(this, addNicknameListener: ClientCanEdit(), addStartGameListener: ClientIsServerOwner()); }
+        if (lobbySystem != null)
+        {
+            lobbySystem.AddClientPlayer(this, addNicknameListener: isLocalPlayer);
+            lobbySystem.SetStartButtonVisible(isLocalPlayer && isServerOwner);
+        }
 
         //Add the hook to the scene change event
         if (!isLocalPlayer) return;
@@ -89,10 +97,30 @@ public class ClientPlayer : NetworkBehaviour
     {
         return connectionToClient;
     }
-    [Client]
-    public NetworkConnection GetConnectionToServer()
+
+    /// <summary>Enables or hides the start button on the owning client when ownership moves.</summary>
+    private void OnServerOwnerChanged(bool oldValue, bool newValue)
     {
-        return connectionToServer;
+        if (isLocalPlayer && lobbySystem != null) lobbySystem.SetStartButtonVisible(newValue);
+    }
+
+    /// <summary>Shown to every player when all HQs were destroyed at the same time.</summary>
+    [TargetRpc]
+    public void RpcOnMatchDraw(NetworkConnectionToClient target)
+    {
+        if (gameOverDeclared) return;
+        GameObject prefab = Resources.Load<GameObject>("UI/LoseScreenUI");
+        Canvas hud = FindAnyObjectByType<Canvas>();
+        if (hud != null) hud.enabled = false;
+        if (prefab != null)
+        {
+            GameObject screen = Instantiate(prefab);
+            foreach (TMPro.TMP_Text text in screen.GetComponentsInChildren<TMPro.TMP_Text>(true))
+            {
+                if (text.gameObject.name == "You Lost") text.text = "Draw";
+            }
+        }
+        gameOverDeclared = true;
     }
 
     [ClientRpc]
@@ -128,30 +156,6 @@ public class ClientPlayer : NetworkBehaviour
 
         this.nickname = nickname;
 
-    }
-
-    [Server]
-    public bool CanEdit()
-    {
-        return connectionToClient.identity == NetworkClient.connection.identity;
-    }
-
-    [Server]
-    public bool IsServerOwner()
-    {
-        return GameCore.Instance.IsServerOwner(connectionToClient);
-    }
-
-    [Client]
-    public bool ClientIsServerOwner()
-    {
-        return isServer && isLocalPlayer;
-    }
-
-    [Client]
-    public bool ClientCanEdit()
-    {
-        return isLocalPlayer;
     }
 
     [Client]

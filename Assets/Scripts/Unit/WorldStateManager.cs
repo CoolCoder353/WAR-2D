@@ -344,12 +344,21 @@ public class WorldStateManager : NetworkBehaviour
         playerView[sender.identity.GetComponent<ClientPlayer>()] = (startcorner, endcorner);
     }
 
+    /// <summary>Drops a leaving player's view box so their entities stop being synced.</summary>
+    [Server]
+    public void RemovePlayerView(ClientPlayer player)
+    {
+        if (player != null) playerView.Remove(player);
+    }
+
     /// <summary>
     /// Updates which units and buildings are visible to each player based on their view area.
     /// </summary>
     [Server, BurstCompile]
     public void UpdatePlayerViews()
     {
+        foreach (ClientPlayer dead in playerView.Keys.Where(p => p == null).ToList()) playerView.Remove(dead);
+
         foreach (KeyValuePair<ClientPlayer, (int2, int2)> player in playerView)
         {
             int2 startcorner = player.Value.Item1;
