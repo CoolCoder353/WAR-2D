@@ -21,6 +21,8 @@ public partial struct SpawnerSystem : ISystem
     [ServerCallback]
     public void OnUpdate(ref SystemState state)
     {
+        if (!NetworkServer.active) return;
+
         // Create a single command buffer for all spawning operations
         EntityCommandBuffer commandBuffer = new EntityCommandBuffer(Allocator.Temp);
         List<(int id, int2 tile)> spawnedUnits = new List<(int id, int2 tile)>();
