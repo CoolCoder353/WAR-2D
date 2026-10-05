@@ -31,14 +31,30 @@ namespace WAR2D.Spike.Editor
                 Debug.LogError($"[Spike] Build aborted: {ScenePath} does not exist.");
                 return;
             }
-            BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+            // The render benchmarks read main-thread and GPU frame times from FrameTimingManager, which
+            // a player only fills when Frame Timing Stats was on at build time. The project setting is
+            // turned on for this build and put back afterwards, so the spike player carries the timings
+            // without the project changing.
+            bool frameTimingStats = PlayerSettings.enableFrameTimingStats;
+            BuildReport report;
+            try
             {
-                scenes = new[] { ScenePath },
-                locationPathName = PlayerPath,
-                target = BuildTarget.StandaloneLinux64,
-                options = BuildOptions.None,
-            });
-            Debug.Log($"[Spike] Build {report.summary.result}, {report.summary.totalSize / (1024 * 1024)} MB, {report.summary.totalTime}");
+                PlayerSettings.enableFrameTimingStats = true;
+                report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+                {
+                    scenes = new[] { ScenePath },
+                    locationPathName = PlayerPath,
+                    target = BuildTarget.StandaloneLinux64,
+                    options = BuildOptions.None,
+                });
+            }
+            finally
+            {
+                PlayerSettings.enableFrameTimingStats = frameTimingStats;
+                AssetDatabase.SaveAssets(); // writes ProjectSettings.asset back, so the project keeps its setting
+            }
+            Debug.Log($"[Spike] Build {report.summary.result}, {report.summary.totalSize / (1024 * 1024)} MB, {report.summary.totalTime}, " +
+                      $"frame timing stats {frameTimingStats} -> true -> {PlayerSettings.enableFrameTimingStats}");
         }
 
         /// <summary>

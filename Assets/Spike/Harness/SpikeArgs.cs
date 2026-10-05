@@ -23,6 +23,14 @@ namespace WAR2D.Spike
         /// <summary>Fields a tick may rebuild (flow only); 2 is the plan's reference load.</summary>
         public int RebuildCap;
         public int Units, MapSize, Teams, Seed, Ticks, Warmup, VisionRadius, BuildingVision, SliceTicks, CellSize, Clients;
+        /// <summary>Render: sampled frames after the warm-up (the plan's protocol is 1,800).</summary>
+        public int Frames;
+        /// <summary>Render: frames discarded before the sample window (the plan's protocol is 300).</summary>
+        public int FrameWarmup;
+        /// <summary>Render: own units per scene; the plan's row is 10,000 (mixed adds as many enemies).</summary>
+        public int RenderUnits;
+        /// <summary>Render scene set: <c>own10k</c>, <c>mixed</c> or <c>both</c>.</summary>
+        public string RenderScene;
         /// <summary>Percentage of units in the large size class (radius 0.7).</summary>
         public int LargePercent;
         public bool Quit, Async, Clump;
@@ -44,6 +52,7 @@ namespace WAR2D.Spike
             Bench = "", OutDir = "SpikeResults", Tag = "", Design = "both", RebuildCap = 2,
             Units = 80000, MapSize = 512, Teams = 8, Seed = 1, Ticks = 600, Warmup = 100,
             VisionRadius = 8, BuildingVision = 10, SliceTicks = 4, CellSize = 5, Clients = 8, LargePercent = 10,
+            Frames = 1800, FrameWarmup = 300, RenderUnits = 10000, RenderScene = "both",
             SepInterval = 1, SepStrength = (int)SpikeSimRules.SeparationStrength, SepIterations = SpikeSimRules.SeparationIterations,
         };
 
@@ -72,6 +81,10 @@ namespace WAR2D.Spike
                     case "-slice": a.SliceTicks = Int(next); break;
                     case "-cell": a.CellSize = Int(next); break;
                     case "-clients": a.Clients = Int(next); break;
+                    case "-frames": a.Frames = Int(next); break;
+                    case "-fwarmup": a.FrameWarmup = Int(next); break;
+                    case "-own": a.RenderUnits = Int(next); break;
+                    case "-scene": a.RenderScene = next; break;
                     case "-quit": a.Quit = true; break;
                     case "-async": a.Async = true; break;
                     case "-clump": a.Clump = true; break;
