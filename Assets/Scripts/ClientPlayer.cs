@@ -21,7 +21,6 @@ public class ClientPlayer : NetworkBehaviour
     public bool hasPlacedHQ = false;
 
     public UnityEngine.Events.UnityEvent<bool> onResponseFromCanBuildBuilding = new UnityEngine.Events.UnityEvent<bool>();
-    public UnityEngine.Events.UnityEvent<int> onResponseFromTilesCovered = new UnityEngine.Events.UnityEvent<int>();
 
     private bool gameOverDeclared = false; // Flag to ensure game over is only declared once
 
@@ -66,12 +65,6 @@ public class ClientPlayer : NetworkBehaviour
     public void TargetReceiveCanBuildBuildingResponse(NetworkConnection target, bool result)
     {
         onResponseFromCanBuildBuilding?.Invoke(result);
-    }
-
-    [TargetRpc]
-    public void TargetReceiveTilesCoveredResponse(NetworkConnection target, int tiles)
-    {
-        onResponseFromTilesCovered?.Invoke(tiles);
     }
 
     /// <summary>

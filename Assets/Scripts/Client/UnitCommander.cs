@@ -25,8 +25,6 @@ public class UnitCommander : NetworkBehaviour
     public Dictionary<int, GameObject> buildingGameObjects = new Dictionary<int, GameObject>();
 
 
-    public int tilesBuildingWillCover = 1;
-
     [ClientCallback]
     private void Awake()
     {
@@ -40,19 +38,11 @@ public class UnitCommander : NetworkBehaviour
             localPlayer = NetworkClient.connection.identity.GetComponent<ClientPlayer>();
             localPlayer.SetUnitHandles();
             localPlayer.SetBuildingHandles();
-            localPlayer.onResponseFromTilesCovered.AddListener(ResponseFromTilesCovered);
-
         }
         else
         {
             Destroy(this);
         }
-    }
-
-    [Client]
-    public void ResponseFromTilesCovered(int tiles)
-    {
-        tilesBuildingWillCover = tiles;
     }
 
     [ClientCallback]
@@ -331,7 +321,6 @@ public class UnitCommander : NetworkBehaviour
     [Client]
     public void BuildingListInsert(int index, BuildingData unit)
     {
-        WorldStateManager.Instance.GetTilesBuildingWillCoverCommand(new int2(0, 0), unit.buildingType);
         // Debug.Log($"UnitListInsert called with unit id: '{unit.id}', sprite:  '{unit.spriteName}', position : '{unit.position}'");
         if (buildingGameObjects.ContainsKey(unit.id))
         {
@@ -341,13 +330,9 @@ public class UnitCommander : NetworkBehaviour
 
         //Create a new game object
         GameObject go = new GameObject();
-        go.transform.position = new Vector3(unit.position.x, unit.position.y, 0);
-
-        if (tilesBuildingWillCover % 2 == 1) //if 1^2 or 3^2 or 5^2 (odd number of tiles squared)
-        {
-            go.transform.position += new Vector3(0.5f, 0.5f, 0);
-        }
-
+        int2 anchor = (int2)math.round(unit.position);
+        float2 centre = Footprint.VisualCenter(anchor, WorldStateManager.GetBuildingSize(unit.buildingType));
+        go.transform.position = new Vector3(centre.x, centre.y, 0);
 
         go.AddComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(unit.buildingType.ToString());
         go.AddComponent<BoxCollider2D>().isTrigger = true;
@@ -444,7 +429,9 @@ public class UnitCommander : NetworkBehaviour
             //TODO: Tween move the game object
             if (buildingGameObjects.ContainsKey(oldUnit.id))
             {
-                buildingGameObjects[oldUnit.id].transform.position = new Vector3(newUnit.position.x, newUnit.position.y, 0);
+                int2 anchor = (int2)math.round(newUnit.position);
+                float2 centre = Footprint.VisualCenter(anchor, WorldStateManager.GetBuildingSize(newUnit.buildingType));
+                buildingGameObjects[oldUnit.id].transform.position = new Vector3(centre.x, centre.y, 0);
             }
         }
         //If the sprite is changed, change the sprite

@@ -16,7 +16,7 @@ public class BuildingButtonManager : MonoBehaviour
 
     public BuildingType selectedBuildingType;
 
-    public int tilesBuildingWillCover = 1;
+    private int2 currentAnchor;
 
     private float currentRotation = 0f; // Current rotation in degrees (0, 90, 180, 270)
     private bool isPlacing = false;
@@ -28,8 +28,6 @@ public class BuildingButtonManager : MonoBehaviour
         ClientPlayer localPlayer = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
 
         localPlayer.onResponseFromCanBuildBuilding.AddListener(ResultFromCommand);
-
-        localPlayer.onResponseFromTilesCovered.AddListener(ResponseFromTilesCovered);
 
 
         foreach (var button in buttons)
@@ -63,15 +61,12 @@ public class BuildingButtonManager : MonoBehaviour
 
         if (previewBuilding.activeInHierarchy)
         {
-            Vector3 position = RoundVector3(UnitCommander.GetMouseWorldPosition());
-
-            previewBuilding.transform.position = new Vector3((int)position.x, (int)position.y, 0);
-            if (tilesBuildingWillCover % 2 == 1) //if 1^2 or 3^2 or 5^2 (odd number of tiles squared)
-            {
-                previewBuilding.transform.position += new Vector3(0.5f, 0.5f, 0);
-            }
-
-            SetBuildingPreviewColour(position);
+            int2 size = WorldStateManager.GetBuildingSize(selectedBuildingType);
+            Vector3 mouse = UnitCommander.GetMouseWorldPosition();
+            currentAnchor = Footprint.SnapAnchor(new float2(mouse.x, mouse.y), size);
+            float2 centre = Footprint.VisualCenter(currentAnchor, size);
+            previewBuilding.transform.position = new Vector3(centre.x, centre.y, 0);
+            SetBuildingPreviewColour();
 
             // Rotate building with R key
             if (Input.GetKeyDown(KeyCode.R))
@@ -79,7 +74,7 @@ public class BuildingButtonManager : MonoBehaviour
                 currentRotation = (currentRotation + 90f) % 360f;
                 previewBuilding.transform.rotation = Quaternion.Euler(0, 0, currentRotation);
                 // Re-validate with new rotation
-                SetBuildingPreviewColour(position);
+                SetBuildingPreviewColour();
             }
         }
         if (Input.GetMouseButtonDown(0) && previewBuilding.activeInHierarchy)
@@ -93,11 +88,11 @@ public class BuildingButtonManager : MonoBehaviour
         }
     }
     [Client]
-    private void SetBuildingPreviewColour(Vector3 position)
+    private void SetBuildingPreviewColour()
     {
         //We can guess if the building will be valid or not based on the positions we know of from the ClientPlayer thing
 
-        WorldStateManager.Instance.CanBuildBuildingCommand(new int2((int)position.x, (int)position.y), selectedBuildingType, currentRotation);
+        WorldStateManager.Instance.CanBuildBuildingCommand(currentAnchor, selectedBuildingType, currentRotation);
     }
 
     [Client]
@@ -115,18 +110,8 @@ public class BuildingButtonManager : MonoBehaviour
     }
 
     [Client]
-    public void ResponseFromTilesCovered(int tiles)
-    {
-        tilesBuildingWillCover = tiles;
-    }
-
-    [Client]
     private void TrySpawnBuilding()
     {
-        Vector3 position = RoundVector3(UnitCommander.GetMouseWorldPosition());
-
-        int2 convertedPosition = new int2((int)position.x, (int)position.y);
-
         if (selectedBuildingType == BuildingType.None)
         {
             Debug.LogError("Cannot place building - selectedBuildingType is None!");
@@ -134,16 +119,7 @@ public class BuildingButtonManager : MonoBehaviour
         }
 
         // Place building through WorldStateManager (works for both HQ and regular buildings)
-        WorldStateManager.Instance.TryAddBuilding(convertedPosition, selectedBuildingType, currentRotation);
-    }
-    [Client]
-    private Vector3 RoundVector3(Vector3 vector)
-    {
-        if (tilesBuildingWillCover % 2 == 1) //if 1^2 or 3^2 or 5^2 (odd number of tiles squared)
-        {
-            vector -= new Vector3(0.5f, 0.5f, 0);
-        }
-        return new Vector3(Mathf.Round(vector.x), Mathf.Round(vector.y), Mathf.Round(vector.z));
+        WorldStateManager.Instance.TryAddBuilding(currentAnchor, selectedBuildingType, currentRotation);
     }
 
     [Client]
@@ -166,7 +142,6 @@ public class BuildingButtonManager : MonoBehaviour
         }
 
         Debug.Log($"Building button clicked: {selectedBuildingType} (index: {index})");
-        WorldStateManager.Instance.GetTilesBuildingWillCoverCommand(new int2(0, 0), selectedBuildingType);
         SetupBuildingPreview();
         isPlacing = true;
     }

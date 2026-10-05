@@ -307,15 +307,7 @@ public class WorldStateManager : NetworkBehaviour
                         HealthComponent health = EntityManager.GetComponentData<HealthComponent>(entity);
                         health.entityId = buildingData.id;
 
-                        // Extract rotation from LocalTransform and convert to degrees
-                        LocalTransform transform = EntityManager.GetComponentData<LocalTransform>(entity);
-                        quaternion rotation = transform.Rotation;
-                        // Math to convert quaternion to Z-axis rotation in degrees
-                        float zRotationRadians = math.atan2(
-                            2.0f * (rotation.value.w * rotation.value.z + rotation.value.x * rotation.value.y),
-                            1.0f - 2.0f * (rotation.value.y * rotation.value.y + rotation.value.z * rotation.value.z)
-                        );
-                        buildingData.rotation = math.degrees(zRotationRadians);
+                        buildingData.rotation = MinerRules.ZDegrees(EntityManager.GetComponentData<LocalTransform>(entity).Rotation);
 
                         clientBuildings.Add(buildingData.id);
 
@@ -697,13 +689,23 @@ public class WorldStateManager : NetworkBehaviour
 
     #region Building Management
 
+    /// <summary>Server-side placement check for a player (used by commands and tests).</summary>
+    [Server]
+    public PlacementResult CheckPlacement(BuildingType type, int2 anchor, float rotation, ClientPlayer player)
+    {
+        if (type == BuildingType.None || !System.Enum.IsDefined(typeof(BuildingType), type)) return PlacementResult.InvalidType;
+        return PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
+            player.hasPlacedHQ, world.GetTile, tile => !IsAvaliable(tile, -1));
+    }
+
     /// <summary>
     /// Attempts to add a building at the specified position.
     /// </summary>
     [Command(requiresAuthority = false)]
     public void TryAddBuilding(int2 positon, BuildingType type, float rotation, NetworkConnectionToClient sender = null)
     {
-        if (!CanBuildBuilding(positon, type, rotation))
+        ClientPlayer placer = sender.identity.GetComponent<ClientPlayer>();
+        if (CheckPlacement(type, positon, rotation, placer) != PlacementResult.Ok)
         {
             return;
         }
@@ -716,12 +718,6 @@ public class WorldStateManager : NetworkBehaviour
         {
             if (owner.data.resources < buildingConfig.UpfrontCost)
             {
-                return;
-            }
-
-            if (type == BuildingType.Base && sender.identity.GetComponent<ClientPlayer>().hasPlacedHQ)
-            {
-                // Prevent multiple HQ placements
                 return;
             }
 
@@ -809,7 +805,7 @@ public class WorldStateManager : NetworkBehaviour
         }
 
         //Set the tiles the building will cover to be used
-        List<int2> tiles = GetTilesBuildingWillCover(positon, type);
+        List<int2> tiles = Footprint.Tiles(positon, GetBuildingSize(type));
         foreach (int2 tile in tiles)
         {
             TileNode tileNode = world.GetTile(tile);
@@ -821,66 +817,13 @@ public class WorldStateManager : NetworkBehaviour
     }
 
     /// <summary>
-    /// Checks if a building can be built at a specific position.
-    /// </summary>
-    [Server]
-    private bool CanBuildBuilding(int2 position, BuildingType type, float rotation = 0f)
-    {
-        List<int2> tiles = GetTilesBuildingWillCover(position, type);
-
-        foreach (int2 tile in tiles)
-        {
-            if (!world.GetTile(tile).isWalkable || !IsAvaliable(tile, -1) || world.GetTile(tile).isUsed)
-            {
-                return false;
-            }
-        }
-
-        if (type == BuildingType.Miner)
-        {
-            // Calculate direction based on rotation (same logic as MiningSystem)
-            // Normalize to 0-360 range
-            float zRotation = (rotation % 360 + 360) % 360;
-
-            // Round to nearest 90 degrees
-            int rotationIndex = Mathf.RoundToInt(zRotation / 90f) % 4;
-
-            int2 direction = rotationIndex switch
-            {
-                0 => new int2(1, 0),   // 0° - Right
-                1 => new int2(0, 1),   // 90° - Up
-                2 => new int2(-1, 0),  // 180° - Left
-                3 => new int2(0, -1),  // 270° - Down
-                _ => new int2(1, 0)
-            };
-
-            // Check if the tile in the facing direction is a gem
-            int2 checkPos = position + direction;
-            TileNode tile = world.GetTile(checkPos);
-
-            if (tile.tileType != TileType.Gem)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /// <summary>
     /// Command to check if a building can be built (for client prediction/UI).
     /// </summary>
     [Command(requiresAuthority = false)]
     public void CanBuildBuildingCommand(int2 position, BuildingType type, float rotation, NetworkConnectionToClient sender = null)
     {
-        bool canBuild = CanBuildBuilding(position, type, rotation);
-
-        if (type == BuildingType.Base && sender.identity.GetComponent<ClientPlayer>().hasPlacedHQ)
-        {
-            canBuild = false;
-        }
-
-        sender.identity.GetComponent<ClientPlayer>().TargetReceiveCanBuildBuildingResponse(sender, canBuild);
+        ClientPlayer player = sender.identity.GetComponent<ClientPlayer>();
+        player.TargetReceiveCanBuildBuildingResponse(sender, CheckPlacement(type, position, rotation, player) == PlacementResult.Ok);
     }
 
     /// <summary>
@@ -921,43 +864,7 @@ public class WorldStateManager : NetworkBehaviour
         }
     }
 
-    /// <summary>
-    /// Helper to get the tiles a building will cover.
-    /// </summary>
     //HELPER FUNCTIONS
-
-    [Server]
-    //Gets the tiles on the tilemap that the building will cover
-    public List<int2> GetTilesBuildingWillCover(int2 center, BuildingType type)
-    {
-        List<int2> tiles = new List<int2>();
-
-        int2 size = GetBuildingSize(type);
-
-        int2 tilesize = new int2(Mathf.CeilToInt(WalkableTilemap.cellSize.x), Mathf.CeilToInt(WalkableTilemap.cellSize.y));
-
-        int numberOfTilesX = size.x / tilesize.x;
-        int numberOfTilesY = size.y / tilesize.y;
-
-        int2 start = center - new int2(numberOfTilesX / 2, numberOfTilesY / 2);
-
-        for (int x = 0; x < numberOfTilesX; x++)
-        {
-            for (int y = 0; y < numberOfTilesY; y++)
-            {
-                tiles.Add(start + new int2(x, y));
-            }
-        }
-        ////Debug.Log($"Building will cover {tiles.Count} tiles");
-        return tiles;
-    }
-
-    [Command(requiresAuthority = false)]
-    public void GetTilesBuildingWillCoverCommand(int2 center, BuildingType type, NetworkConnectionToClient sender = null)
-    {
-        List<int2> tiles = GetTilesBuildingWillCover(center, type);
-        sender.identity.GetComponent<ClientPlayer>().TargetReceiveTilesCoveredResponse(sender, tiles.Count);
-    }
 
     public static int2 GetBuildingSize(BuildingType type)
     {

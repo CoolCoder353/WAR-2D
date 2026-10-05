@@ -75,29 +75,8 @@ public partial struct ResourceSystem : ISystem
             // Mine resources every second
             if (miningComponent.ValueRO.timeSinceLastMining >= 1.0f)
             {
-                // Calculate direction based on rotation
-                quaternion rotation = transform.ValueRO.Rotation;
-                float zRotationRadians = math.atan2(
-                    2.0f * (rotation.value.w * rotation.value.z + rotation.value.x * rotation.value.y),
-                    1.0f - 2.0f * (rotation.value.y * rotation.value.y + rotation.value.z * rotation.value.z)
-                );
-                
-                float zRotation = math.degrees(zRotationRadians);
-                zRotation = (zRotation % 360 + 360) % 360;
-                int rotationIndex = Mathf.RoundToInt(zRotation / 90f) % 4;
-                
-                int2 direction = rotationIndex switch
-                {
-                    0 => new int2(1, 0),   // 0° - Right
-                    1 => new int2(0, 1),   // 90° - Up
-                    2 => new int2(-1, 0),  // 180° - Left
-                    3 => new int2(0, -1),  // 270° - Down
-                    _ => new int2(1, 0)
-                };
-
-                int2 buildingPos = new int2((int)math.floor(transform.ValueRO.Position.x), 
-                                           (int)math.floor(transform.ValueRO.Position.y));
-                int2 checkPos = buildingPos + direction;
+                int2 buildingPos = (int2)math.floor(transform.ValueRO.Position.xy);
+                int2 checkPos = buildingPos + MinerRules.FacingOffset(MinerRules.ZDegrees(transform.ValueRO.Rotation));
 
                 TileNode tile = WorldStateManager.Instance.GetTile(checkPos);
                 bool isGemTile = tile.tileType == TileType.Gem;

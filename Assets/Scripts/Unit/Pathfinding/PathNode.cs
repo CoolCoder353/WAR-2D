@@ -147,21 +147,13 @@ public struct TilemapStruct
         this.height = height;
     }
 
+    public bool Contains(int2 position) => tiles.ContainsKey(position);
+
+    /// <summary>Returns the tile, or an unwalkable wall for positions outside the map.</summary>
     public TileNode GetTile(int2 position)
     {
-        if (!tiles.TryGetValue(position, out TileNode tileNode))
-        {
-            Debug.LogError($"Tile at {position} not found, returning blank tile.");
-            return new TileNode
-            {
-                position = position,
-                weight = 0,
-                used = 0,
-                tileType = TileType.Wall
-            };
-        }
-
-        return tiles[position];
+        if (tiles.TryGetValue(position, out TileNode tileNode)) return tileNode;
+        return new TileNode { position = position, weight = 0, used = 0, tileType = TileType.Wall };
     }
 
     public void SetTile(int2 position, TileNode tileNode)
