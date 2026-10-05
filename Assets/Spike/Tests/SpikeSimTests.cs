@@ -183,8 +183,8 @@ public class SpikeSimTests
     /// <summary>
     /// Five hundred units ordered at an open area arrive within 1.5x the straight-line travel time -
     /// the bulk inside a ten-tile goal radius, the whole army (queue included) inside the destination
-    /// area - and none is left oscillating: over the last two seconds no unit drifts more than 1.5
-    /// tiles back from its closest approach.
+    /// area - and none is left oscillating: over the last two seconds no unit drifts more than a tile
+    /// back from its closest approach.
     /// </summary>
     [Test]
     public void OrdersArrive()

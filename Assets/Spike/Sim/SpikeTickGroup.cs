@@ -170,7 +170,6 @@ namespace WAR2D.Spike
                 SpawnCount = new NativeArray<int>(players, allocator),
                 SpawnTiles = new NativeArray<int2>(players * SpawnTileCount, allocator),
                 NextId = Filled(1, 1),
-                Damage = new NativeQueue<int2>(allocator),
             };
             data.OrderCount = 0;
             for (int i = 0; i < capacity; i++) data.RangeSq[i] = data.AttackRangeSq;
@@ -404,6 +403,10 @@ namespace WAR2D.Spike
             if (disposed) return;
             disposed = true;
 
+            // No job may still be reading the SoA arrays or recording into a pending command buffer
+            // when we release the world, the fields and the arrays.
+            Complete();
+
             if (fieldCache != null)
             {
                 for (int slot = 0; slot < orderHandles.Length; slot++)
@@ -439,7 +442,6 @@ namespace WAR2D.Spike
             data.SpawnCount.Dispose();
             data.SpawnTiles.Dispose();
             data.NextId.Dispose();
-            data.Damage.Dispose();
         }
 
         /// <summary>A persistent array of <paramref name="count"/> copies of <paramref name="value"/>.</summary>

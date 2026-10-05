@@ -40,7 +40,13 @@ namespace WAR2D.Spike
         /// <summary>Extra unit slots above the starting army, for the churn's transient overshoot.</summary>
         private const int CapacitySlack = 2048;
 
-        private const float SeparationThreshold = 0.9f; // more than 10% of r_i + r_j is an overlap
+        /// <summary>
+        /// Overlap is measured over *touching* pairs (distance below r_i + r_j, the pairs separation
+        /// works on): a pair "overlaps" when it penetrates more than 10 % of r_i + r_j, so
+        /// <c>sim.overlap</c> is the conditional share of touching pairs that are too deep, not a share
+        /// of the population.
+        /// </summary>
+        private const float SeparationThreshold = 0.9f;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void Register() => SpikeDriver.Benches["sim"] = Run;
@@ -265,7 +271,7 @@ namespace WAR2D.Spike
                         for (int dy = -1; dy <= 1; dy++)
                         for (int dx = -1; dx <= 1; dx++)
                         {
-                            // The six cells right of and below this one: pairs across cells are
+                            // The four cells above and right of this one: pairs across cells are
                             // counted once, by the cell that comes first.
                             if (dx == 0 && dy == 0) continue;
                             if (dy < 0 || (dy == 0 && dx < 0)) continue;
@@ -295,13 +301,16 @@ namespace WAR2D.Spike
 
         /// <summary>
         /// The two-second position history the stuck metric needs: each unit's position and whether it
-        /// had an order, one sample back and two samples back, keyed by id so churn does not confuse it.
+        /// had an order, one sample back and two samples back, keyed by id. Each id also carries the
+        /// sample it was last seen live in, so a unit that dies leaves the metric instead of sitting
+        /// there frozen - otherwise every dead unit with an order would count as stuck forever.
         /// </summary>
         private sealed class StuckHistory
         {
             private NativeArray<float2> previous, older;
             private NativeArray<byte> previousOrdered, olderOrdered;
-            private bool full;
+            private NativeArray<int> seenPrevious, seenOlder;
+            private int sample;
 
             public StuckHistory(int idCapacity, Allocator allocator)
             {
@@ -309,34 +318,43 @@ namespace WAR2D.Spike
                 older = new NativeArray<float2>(idCapacity, allocator);
                 previousOrdered = new NativeArray<byte>(idCapacity, allocator);
                 olderOrdered = new NativeArray<byte>(idCapacity, allocator);
+                seenPrevious = new NativeArray<int>(idCapacity, allocator);
+                seenOlder = new NativeArray<int>(idCapacity, allocator);
             }
 
             public void Add(NativeArray<float2> positions, NativeArray<int> fieldGoal, NativeArray<float> health,
                 NativeArray<int> idOf, int capacity)
             {
+                sample++;
                 for (int i = 0; i < capacity; i++)
                 {
                     if (health[i] <= 0f) continue;
                     int id = idOf[i];
                     if ((uint)id >= (uint)previous.Length) continue;
-                    if (full)
+                    if (sample > 1)
                     {
                         older[id] = previous[id];
                         olderOrdered[id] = previousOrdered[id];
+                        seenOlder[id] = seenPrevious[id];
                     }
                     previous[id] = positions[i];
                     previousOrdered[id] = fieldGoal[i] >= 0 ? (byte)1 : (byte)0;
+                    seenPrevious[id] = sample;
                 }
-                full = true;
             }
 
-            /// <summary>The share of units ordered throughout the window that moved under 0.5 tiles.</summary>
+            /// <summary>
+            /// The share of the units that were alive and ordered at both ends of the two-second window
+            /// that moved under 0.5 tiles. Dead units, units that spawned inside the window and units
+            /// that lost their order are not part of the denominator or the numerator.
+            /// </summary>
             public float Stuck()
             {
-                if (!full) return 0f;
+                if (sample < 2) return 0f;
                 int ordered = 0, stuck = 0;
                 for (int id = 0; id < olderOrdered.Length; id++)
                 {
+                    if (seenPrevious[id] != sample || seenOlder[id] != sample - 1) continue; // live at both ends
                     if (olderOrdered[id] == 0 || previousOrdered[id] == 0) continue;
                     ordered++;
                     if (math.distance(older[id], previous[id]) < StuckDistance) stuck++;
@@ -350,6 +368,8 @@ namespace WAR2D.Spike
                 older.Dispose();
                 previousOrdered.Dispose();
                 olderOrdered.Dispose();
+                seenPrevious.Dispose();
+                seenOlder.Dispose();
             }
         }
     }

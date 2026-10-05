@@ -80,9 +80,9 @@ namespace WAR2D.Spike
         public const int SpawnPerTick = 20;
 
         /// <summary>
-        /// Separation strength k. It scales the per-tick push, so k = 2 moves a pair apart by its
-        /// whole overlap each tick (each side takes its radius-squared share of it) and the crowd
-        /// settles with the overlap the 10 % tolerance allows.
+        /// Separation strength k. It scales the per-tick push: each side takes
+        /// <c>k * share * overlap</c> of it, so two equal units at k = 1 separate by exactly their
+        /// overlap in one tick and the crowd settles with the overlap the 10 % tolerance allows.
         /// </summary>
         public const float SeparationStrength = 1f;
 
@@ -250,8 +250,6 @@ namespace WAR2D.Spike
         public NativeArray<int2> SpawnTiles;
         /// <summary>The monotonic id counter, at index 0; the spawn job is its only writer.</summary>
         public NativeArray<int> NextId;
-        /// <summary>Attackers' (target slot, damage x100) pairs for this tick; drained by the apply job.</summary>
-        public NativeQueue<int2> Damage;
     }
 
     /// <summary>Inputs for <see cref="SpikeSim.Create"/>: how big the run is and which knobs the bench sweeps.</summary>
