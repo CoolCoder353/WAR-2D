@@ -105,10 +105,34 @@ public class WorldStateManager : NetworkBehaviour
     public void FixedUpdate()
     {
         UpdatePlayerViews();
+        FlushDeathEvents();
     }
 
 
     private readonly List<float2> pendingDeathPositions = new List<float2>();
+
+    private const int MaxExplosionsPerMessage = 256;
+
+    /// <summary>
+    /// Sends the deaths recorded since the last tick to each client whose view contains them.
+    /// </summary>
+    [Server]
+    private void FlushDeathEvents()
+    {
+        List<float2> deaths = TakeDeathPositions();
+        if (deaths.Count == 0) return;
+
+        foreach (KeyValuePair<ClientPlayer, (int2, int2)> view in playerView)
+        {
+            if (view.Key == null || view.Key.connectionToClient == null) continue;
+            List<Vector2> visible = VisibilityRules.Filter(deaths, view.Value.Item1, view.Value.Item2);
+            for (int i = 0; i < visible.Count; i += MaxExplosionsPerMessage)
+            {
+                int n = Mathf.Min(MaxExplosionsPerMessage, visible.Count - i);
+                view.Key.TargetPlayExplosions(view.Key.connectionToClient, visible.GetRange(i, n).ToArray());
+            }
+        }
+    }
 
     /// <summary>Called by DestructionSystem just before an entity is destroyed.</summary>
     [Server]
@@ -175,8 +199,11 @@ public class WorldStateManager : NetworkBehaviour
     [Server]
     public void DestroyAllEntities()
     {
-        foreach (Entity e in Buildings.Values) if (EntityManager.Exists(e)) EntityManager.DestroyEntity(e);
-        foreach (Entity e in Units.Values) if (EntityManager.Exists(e)) EntityManager.DestroyEntity(e);
+        // Each entity records its position as it goes, so the match-end wipe still reaches
+        // clients as explosions instead of dying silently. pendingDeathPositions is deliberately
+        // NOT cleared here: FlushDeathEvents drains it via TakeDeathPositions next FixedUpdate.
+        foreach (Entity e in Buildings.Values) DestroyWithDeathPosition(e);
+        foreach (Entity e in Units.Values) DestroyWithDeathPosition(e);
         foreach (List<int2> footprint in buildingFootprints.Values)
         {
             foreach (int2 tile in footprint)
@@ -190,7 +217,17 @@ public class WorldStateManager : NetworkBehaviour
         Buildings.Clear();
         buildingFootprints.Clear();
         Occupancy.Clear();
-        pendingDeathPositions.Clear();
+    }
+
+    /// <summary>Records the entity's death position (when it has one), then destroys it.</summary>
+    private void DestroyWithDeathPosition(Entity entity)
+    {
+        if (!EntityManager.Exists(entity)) return;
+        if (EntityManager.HasComponent<LocalTransform>(entity))
+        {
+            pendingDeathPositions.Add(EntityManager.GetComponentData<LocalTransform>(entity).Position.xy);
+        }
+        EntityManager.DestroyEntity(entity);
     }
     #endregion
 

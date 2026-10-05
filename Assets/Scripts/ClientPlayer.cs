@@ -83,6 +83,13 @@ public class ClientPlayer : NetworkBehaviour
         // For example: onResourcesChanged?.Invoke(newResources);
     }
 
+    /// <summary>Plays death explosions the server has filtered to this player's view.</summary>
+    [TargetRpc]
+    public void TargetPlayExplosions(NetworkConnection target, Vector2[] positions)
+    {
+        foreach (Vector2 p in positions) Effects.Explosion(p);
+    }
+
 
 
     [Server]
