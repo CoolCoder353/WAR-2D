@@ -1,0 +1,16 @@
+{
+    "name": "WAR2D.Spike.Editor",
+    "rootNamespace": "WAR2D.Spike.Editor",
+    "references": [
+        "WAR2D.Spike"
+    ],
+    "includePlatforms": ["Editor"],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

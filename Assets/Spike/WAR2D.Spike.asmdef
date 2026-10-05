@@ -1,0 +1,15 @@
+{
+    "name": "WAR2D.Spike",
+    "rootNamespace": "WAR2D.Spike",
+    "references": [
+        "Unity.Entities", "Unity.Burst", "Unity.Collections", "Unity.Mathematics",
+        "Mirror", "kcp2k", "Unity.RenderPipelines.Core.Runtime", "Unity.RenderPipelines.Universal.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "noEngineReferences": false
+}
