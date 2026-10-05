@@ -1,0 +1,14 @@
+{
+    "name": "TIM.Console.Editor",
+    "rootNamespace": "",
+    "references": ["TIM.Console", "NaughtyAttributes.Core", "NaughtyAttributes.Editor", "Unity.TextMeshPro"],
+    "includePlatforms": ["Editor"],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

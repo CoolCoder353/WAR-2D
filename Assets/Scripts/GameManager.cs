@@ -1,6 +1,5 @@
 using Mirror;
 using UnityEngine;
-using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using System.Collections.Generic;
 using Unity.Entities;
@@ -16,14 +15,6 @@ public class GameManager : NetworkManager
     /// Ensures that only one GameManager exists in the scene at any time.
     /// </summary>
     public static GameManager Instance { get; private set; }
-
-    /// <summary>
-    /// Configuration settings for the game manager.
-    /// </summary>
-    public GameManagerSettings settings;
-
-
-    private NetworkIdentity localPlayer;
 
     /// <summary>
     /// Awake is called when the script instance is being loaded.
@@ -44,9 +35,6 @@ public class GameManager : NetworkManager
         // Ensure this GameManager persists across scene loads
         DontDestroyOnLoad(this);
 
-        // Subscribe to the sceneLoaded event
-        SceneManager.sceneLoaded += OnSceneLoaded;
-
         // Load Game Config
         Config.ConfigLoader.LoadConfig();
     }
@@ -57,9 +45,6 @@ public class GameManager : NetworkManager
     /// </summary>
     public override void OnDestroy()
     {
-        // Unsubscribe from the sceneLoaded event
-        SceneManager.sceneLoaded -= OnSceneLoaded;
-
         //Make sure we disconnect
         if (NetworkServer.active)
         {
@@ -78,6 +63,13 @@ public class GameManager : NetworkManager
     public override void OnStartServer()
     {
         base.OnStartServer();
+        if (!Config.ConfigLoader.IsValid)
+        {
+            Debug.LogError("Stopping server: GameConfig.xml is invalid.");
+            StopServer();
+            if (Application.isBatchMode) Application.Quit(1);
+            return;
+        }
         Debug.Log("Server has started");
     }
 
@@ -91,24 +83,11 @@ public class GameManager : NetworkManager
     {
         base.OnServerAddPlayer(conn);
 
-        if (GameCore.Instance == null) { Debug.LogError("GameCore is null"); }
-        if (GameCore.Instance.ServerPlayers == null) { Debug.LogError("ServerPlayers is null"); }
-        if (conn.identity == null) { Debug.LogError("conn.identity is null"); }
-        if (settings == null) { Debug.LogError("settings is null. Did you forget to attach the settings object? (ツ)_/¯"); }
-
-        // Add the new player to the list of players
-        var config = Config.ConfigLoader.LoadConfig();
-        GameCore.Instance.ServerPlayers.Add(conn.identity, new ServerPlayer(conn, config.Resources.StartingResources));
+        GameCore.Instance.AddPlayer(conn, Config.ConfigLoader.LoadConfig().Resources.StartingResources);
 
         // Log the connection
         Debug.Log($"Player {conn.connectionId} has connected");
         Debug.Log($"There are now {GameCore.Instance.ServerPlayers.Count} players connected");
-
-        // If this is the first player to connect, set them as the server owner
-        if (GameCore.Instance.ServerPlayers.Count == 1)
-        {
-            GameCore.Instance.SetServerOwner(conn);
-        }
     }
 
     /// <summary>
@@ -154,11 +133,6 @@ public class GameManager : NetworkManager
     public override void OnClientConnect()
     {
         base.OnClientConnect();
-        ///NetworkClient.AddPlayer();
-        localPlayer = NetworkClient.localPlayer;
-
-        //CreatePlayerMessage characterMessage = new CreatePlayerMessage();
-        //
     }
 
     /// <summary>
@@ -231,11 +205,15 @@ public class GameManager : NetworkManager
     /// </summary>
     public void HostServer()
     {
+        if (!Config.ConfigLoader.IsValid)
+        {
+            Debug.LogError("Refusing to host: GameConfig.xml is invalid. See [GameConfig] errors above.");
+            return;
+        }
         if (!NetworkClient.active)
         {
             StartHost();
         }
-
     }
 
     /// <summary>
@@ -244,123 +222,16 @@ public class GameManager : NetworkManager
     /// <param name="address">The IP address to connect to.</param>
     public void ConnectToServer(string address)
     {
+        address = address?.Trim();
+        if (string.IsNullOrEmpty(address) || address.Length > 253)
+        {
+            Debug.LogWarning("Enter a server address to join.");
+            return;
+        }
         if (!NetworkClient.active)
         {
             networkAddress = address;
             StartClient();
         }
-
     }
-
-    /// <summary>
-    /// Connects to a server using the IP address from the UI input field.
-    /// </summary>
-    public void ConnectToServerThroughUI()
-    {
-        if (!NetworkClient.active)
-        {
-            networkAddress = GameObject.FindWithTag("LobbyManager").GetComponent<LobbySystem>().joinIPInputField.text;
-            StartClient();
-        }
-    }
-
-    /// <summary>
-    /// Connects to a server at localhost for debugging purposes.
-    /// </summary>
-    public void ConnectToServerDebug()
-    {
-        if (!NetworkClient.active)
-        {
-            networkAddress = "localhost";
-            StartClient();
-        }
-
-    }
-
-    /// <summary>
-    /// Called when a scene is loaded.
-    /// Sets up button listeners for the host, join, leave, and quit buttons.
-    /// </summary>
-    /// <param name="scene">The loaded scene.</param>
-    /// <param name="loadSceneMode">The mode in which the scene was loaded.</param>
-    public void OnSceneLoaded(Scene scene, LoadSceneMode loadSceneMode)
-    {
-        if (Instance == null)
-        {
-            Instance = this;
-        }
-
-        //TODO: Add a check to see if this is the server, and not bother with this if it is.
-
-        // If we can find network spawn spots, set client players position to one of them, in a random order
-        //Note: This causes a warning because clients are not ready, this is fine as we want the bases to enter the world as the clients spawn in
-        if (GameObject.FindGameObjectsWithTag("SpawnSpot").Length > 0)
-        {
-            List<GameObject> spawnSpots = new List<GameObject>(GameObject.FindGameObjectsWithTag("SpawnSpot"));
-            int randomSpot = Random.Range(0, spawnSpots.Count);
-            Vector3 spawnPosition = spawnSpots[randomSpot].transform.position;
-
-
-            // Get the local player
-
-            Debug.Log("Local player: " + localPlayer);
-
-            if (localPlayer != null)
-            {
-                // Get the ClientPlayer component
-                ClientPlayer clientPlayer = localPlayer.gameObject.GetComponent<ClientPlayer>();
-                Debug.Log("ClientPlayer component: " + clientPlayer);
-
-                if (clientPlayer != null)
-                {
-                    // Spawn the primary base
-
-                }
-            }
-            // Remove the used spawn spot from the list
-            spawnSpots.RemoveAt(randomSpot);
-        }
-
-
-        // If we can find any object with the tag 'Host'
-        if (GameObject.FindWithTag("Host"))
-        {
-            ////Debug.Log("Found host");
-            // Set the host button to be interactable
-            GameObject.FindWithTag("Host").GetComponent<Button>().onClick.AddListener(HostServer);
-        }
-        // If we can find any object with the tag 'Join'
-        if (GameObject.FindWithTag("Join"))
-        {
-            Debug.Log("Found join");
-            // Set the join button to be interactable
-            GameObject.FindWithTag("Join").GetComponent<Button>().onClick.AddListener(ConnectToServerThroughUI);
-        }
-        // If we can find any object with the tag 'LobbyManager'
-        if (GameObject.FindWithTag("LobbyManager"))
-        {
-            Debug.Log("Found LobbyManager");
-            // Set the join button to be interactable
-            Button button = GameObject.FindWithTag("LobbyManager").GetComponent<LobbySystem>().joinIPButton.GetComponent<Button>();
-            button.gameObject.transform.parent.gameObject.SetActive(true);
-            button.onClick.AddListener(ConnectToServerThroughUI);
-            button.gameObject.transform.parent.gameObject.SetActive(false);
-        }
-        // If we can find any object with the tag 'Leave'
-        if (GameObject.FindWithTag("Leave"))
-        {
-            // Set the leave button to be interactable
-            GameObject.FindWithTag("Leave").GetComponent<Button>().onClick.AddListener(LeaveLobby);
-        }
-
-        // If we can find any object with the tag 'Quit'
-        if (GameObject.FindWithTag("Quit"))
-        {
-            // Set the quit button to be interactable
-            GameObject.FindWithTag("Quit").GetComponent<Button>().onClick.AddListener(QuitGame);
-        }
-    }
-
-
-
 }

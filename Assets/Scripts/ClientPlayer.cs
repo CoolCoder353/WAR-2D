@@ -15,15 +15,18 @@ public class ClientPlayer : NetworkBehaviour
     public readonly SyncList<BuildingData> visuableBuildings = new SyncList<BuildingData>();
 
     public readonly SyncList<HealthComponent> entityHealth = new SyncList<HealthComponent>();
-    public ServerData serverPlayer;
 
     [SyncVar]
     public bool hasPlacedHQ = false;
 
+    /// <summary>True on the client whose player is the current server owner (lobby start button).</summary>
+    [SyncVar(hook = nameof(OnServerOwnerChanged))]
+    public bool isServerOwner;
+
     public UnityEngine.Events.UnityEvent<bool> onResponseFromCanBuildBuilding = new UnityEngine.Events.UnityEvent<bool>();
-    public UnityEngine.Events.UnityEvent<int> onResponseFromTilesCovered = new UnityEngine.Events.UnityEvent<int>();
 
     private bool gameOverDeclared = false; // Flag to ensure game over is only declared once
+    public bool drawDeclared = false; // Flag set when the draw screen RPC is received
 
     [Client]
     public override void OnStartClient()
@@ -33,12 +36,14 @@ public class ClientPlayer : NetworkBehaviour
         DontDestroyOnLoad(this);
         //Find the lobby system
         lobbySystem = FindAnyObjectByType<LobbySystem>();
-        if (lobbySystem != null) { lobbySystem.AddClientPlayer(this, addNicknameListener: ClientCanEdit(), addStartGameListener: ClientIsServerOwner()); }
+        if (lobbySystem != null)
+        {
+            lobbySystem.AddClientPlayer(this, addNicknameListener: isLocalPlayer);
+            if (isLocalPlayer) lobbySystem.SetStartButtonVisible(isServerOwner);
+        }
 
         //Add the hook to the scene change event
         if (!isLocalPlayer) return;
-        // SceneManager.sceneLoaded += OnSceneChangedEvent;
-
 
     }
 
@@ -46,7 +51,6 @@ public class ClientPlayer : NetworkBehaviour
     public override void OnStopClient()
     {
         if (!isLocalPlayer) return;
-        // SceneManager.sceneLoaded -= OnSceneChangedEvent;
 
         //TODO: Need to make sure we remove handles when the player disconnects, or the scene changes
 
@@ -59,22 +63,9 @@ public class ClientPlayer : NetworkBehaviour
 
 
     [TargetRpc]
-    public void SetServerPlayer(NetworkConnectionToClient connection, string playerData)
-    {
-        serverPlayer = ServerData.Deserialize(playerData);
-
-    }
-
-    [TargetRpc]
     public void TargetReceiveCanBuildBuildingResponse(NetworkConnection target, bool result)
     {
         onResponseFromCanBuildBuilding?.Invoke(result);
-    }
-
-    [TargetRpc]
-    public void TargetReceiveTilesCoveredResponse(NetworkConnection target, int tiles)
-    {
-        onResponseFromTilesCovered?.Invoke(tiles);
     }
 
     /// <summary>
@@ -93,6 +84,13 @@ public class ClientPlayer : NetworkBehaviour
         // For example: onResourcesChanged?.Invoke(newResources);
     }
 
+    /// <summary>Plays death explosions the server has filtered to this player's view.</summary>
+    [TargetRpc]
+    public void TargetPlayExplosions(NetworkConnection target, Vector2[] positions)
+    {
+        foreach (Vector2 p in positions) Effects.Explosion(p);
+    }
+
 
 
     [Server]
@@ -100,10 +98,31 @@ public class ClientPlayer : NetworkBehaviour
     {
         return connectionToClient;
     }
-    [Client]
-    public NetworkConnection GetConnectionToServer()
+
+    /// <summary>Enables or hides the start button on the owning client when ownership moves.</summary>
+    private void OnServerOwnerChanged(bool oldValue, bool newValue)
     {
-        return connectionToServer;
+        if (isLocalPlayer && lobbySystem != null) lobbySystem.SetStartButtonVisible(newValue);
+    }
+
+    /// <summary>Shown to every player when all HQs were destroyed at the same time.</summary>
+    [TargetRpc]
+    public void RpcOnMatchDraw(NetworkConnectionToClient target)
+    {
+        if (gameOverDeclared) return;
+        drawDeclared = true;
+        GameObject prefab = Resources.Load<GameObject>("UI/LoseScreenUI");
+        Canvas hud = FindAnyObjectByType<Canvas>();
+        if (hud != null) hud.enabled = false;
+        if (prefab != null)
+        {
+            GameObject screen = Instantiate(prefab);
+            foreach (TMPro.TMP_Text text in screen.GetComponentsInChildren<TMPro.TMP_Text>(true))
+            {
+                if (text.gameObject.name == "You Lost") text.text = "Draw";
+            }
+        }
+        gameOverDeclared = true;
     }
 
     [ClientRpc]
@@ -130,39 +149,12 @@ public class ClientPlayer : NetworkBehaviour
     }
 
     [Command]
-    public void CmdSetNickname(string nickname)
+    public void CmdSetNickname(string requested)
     {
-        if (string.IsNullOrEmpty(nickname))
-        {
-            return;
-        }
-
-        this.nickname = nickname;
-
-    }
-
-    [Server]
-    public bool CanEdit()
-    {
-        return connectionToClient.identity == NetworkClient.connection.identity;
-    }
-
-    [Server]
-    public bool IsServerOwner()
-    {
-        return GameCore.Instance.IsServerOwner(connectionToClient);
-    }
-
-    [Client]
-    public bool ClientIsServerOwner()
-    {
-        return isServer && isLocalPlayer;
-    }
-
-    [Client]
-    public bool ClientCanEdit()
-    {
-        return isLocalPlayer;
+        if (!CommandGate.Allow(connectionToClient, nameof(CmdSetNickname))) return;
+        if (GameCore.Instance == null || GameCore.Instance.CurrentState != GameState.Lobby) return;
+        if (!CommandValidator.TrySanitizeNickname(requested, out string clean)) return;
+        nickname = clean;
     }
 
     [Client]
@@ -184,23 +176,6 @@ public class ClientPlayer : NetworkBehaviour
     }
 
 
-
-    // [Client]
-    // public void OnSceneChangedEvent(Scene newScene, LoadSceneMode sceneMode)
-    // {
-    //     if (!isLocalPlayer) return;
-
-    //     Debug.Log($"Scene changed to {newScene.name} with mode {sceneMode}");
-    //     //Setup the hooks to the visable units
-    //     if (serverPlayer != null && visuableUnits != null && UnitCommander.Instance != null)
-    //     {
-    //         // Debug.Log($"Debugging hooks state is {visuableUnits.OnChange != null}");
-    //         // Debug.Log("Setting up unit hooks");
-    //         // SetUnitHandles();
-
-    //     }
-
-    // }
 
     public void SetUnitHandles()
     {
@@ -246,7 +221,7 @@ public class ClientPlayer : NetworkBehaviour
 
     public void RemoveUnitHandles()
     {
-        if (serverPlayer != null && visuableUnits != null)
+        if (visuableUnits != null)
         {
             Debug.Log("Removing unit hooks");
             visuableUnits.OnChange = null;
@@ -320,7 +295,7 @@ public class ClientPlayer : NetworkBehaviour
 
     public void RemoveBuildingHandles()
     {
-        if (serverPlayer != null && visuableBuildings != null)
+        if (visuableBuildings != null)
         {
             Debug.Log("Removing Building hooks");
             visuableBuildings.OnChange = null;

@@ -80,32 +80,6 @@ public struct BurstPath : IDisposable
     }
 }
 
-public struct Path
-{
-    public PathNode[] path;
-    public int pathLength;
-    public float pathCost;
-
-    public Path(PathNode[] path, int pathLength, float pathCost)
-    {
-        this.path = path;
-        this.pathLength = pathLength;
-        this.pathCost = pathCost;
-    }
-
-
-    public static Path BurstToPath(BurstPath burstPath)
-    {
-        PathNode[] path = new PathNode[burstPath.path.Length];
-        for (int i = 0; i < burstPath.path.Length; i++)
-        {
-            path[i] = burstPath.path[i];
-        }
-
-        return new Path(path, burstPath.pathLength, burstPath.pathCost);
-    }
-}
-
 public struct TileNode
 {
     public int2 position;
@@ -145,21 +119,13 @@ public struct TilemapStruct
         this.height = height;
     }
 
+    public bool Contains(int2 position) => tiles.ContainsKey(position);
+
+    /// <summary>Returns the tile, or an unwalkable wall for positions outside the map.</summary>
     public TileNode GetTile(int2 position)
     {
-        if (!tiles.TryGetValue(position, out TileNode tileNode))
-        {
-            Debug.LogError($"Tile at {position} not found, returning blank tile.");
-            return new TileNode
-            {
-                position = position,
-                weight = 0,
-                used = 0,
-                tileType = TileType.Wall
-            };
-        }
-
-        return tiles[position];
+        if (tiles.TryGetValue(position, out TileNode tileNode)) return tileNode;
+        return new TileNode { position = position, weight = 0, used = 0, tileType = TileType.Wall };
     }
 
     public void SetTile(int2 position, TileNode tileNode)

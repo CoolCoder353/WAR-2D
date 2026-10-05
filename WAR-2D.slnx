@@ -1,10 +1,11 @@
 ﻿<Solution>
   <Project Path="NaughtyAttributes.Editor.csproj" />
-  <Project Path="Assembly-CSharp.csproj" />
+  <Project Path="WAR2D.csproj" />
   <Project Path="Unity.Mirror.CodeGen.csproj" />
   <Project Path="Edgegap.csproj" />
   <Project Path="Mirror.Components.csproj" />
   <Project Path="Mirror.Editor.csproj" />
+  <Project Path="WAR2D.DevConsole.csproj" />
   <Project Path="NaughtyAttributes.Test.csproj" />
   <Project Path="NaughtyAttributes.Core.csproj" />
   <Project Path="kcp2k.csproj" />
@@ -14,7 +15,12 @@
   <Project Path="Mirror.Transports.csproj" />
   <Project Path="EncryptionTransportEditor.csproj" />
   <Project Path="Assembly-CSharp-firstpass.csproj" />
+  <Project Path="TIM.Console.csproj" />
   <Project Path="Telepathy.csproj" />
-  <Project Path="Assembly-CSharp-Editor.csproj" />
+  <Project Path="TIM.Console.Editor.csproj" />
   <Project Path="Mirror.CompilerSymbols.csproj" />
+  <Project Path="Assembly-CSharp.csproj" />
+  <Project Path="WAR2D.Tests.EditMode.csproj" />
+  <Project Path="Assembly-CSharp-Editor.csproj" />
+  <Project Path="WAR2D.Tests.PlayMode.csproj" />
 </Solution>

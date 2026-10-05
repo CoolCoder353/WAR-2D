@@ -1,0 +1,17 @@
+{
+    "name": "WAR2D.Tests.PlayMode",
+    "rootNamespace": "",
+    "references": [
+        "WAR2D", "Mirror", "Unity.Entities", "Unity.Collections", "Unity.Mathematics", "Unity.Transforms",
+        "UnityEngine.TestRunner"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": ["nunit.framework.dll"],
+    "autoReferenced": false,
+    "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

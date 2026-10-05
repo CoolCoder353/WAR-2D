@@ -49,11 +49,11 @@ public class WorldStateManager : NetworkBehaviour
     /// </summary>
     private Dictionary<ClientPlayer, (int2, int2)> playerView = new Dictionary<ClientPlayer, (int2, int2)>();
 
-    /// <summary>
-    /// Tracks occupied positions by units.
-    /// Item1: Unit ID, Item2: Position.
-    /// </summary>
-    private List<(int, int2)> unitPositions = new List<(int, int2)>();
+    /// <summary>Server-side unit tile claims.</summary>
+    public TileOccupancy Occupancy { get; } = new TileOccupancy();
+
+    /// <summary>Server-side id source for units and buildings in this match.</summary>
+    public NetIdAllocator Ids { get; } = new NetIdAllocator();
 
     /// <summary>
     /// Dictionary of all units in the game. Key: Unit ID, Value: Entity.
@@ -64,6 +64,9 @@ public class WorldStateManager : NetworkBehaviour
     /// Dictionary of all buildings in the game. Key: Building ID, Value: Entity.
     /// </summary>
     private Dictionary<int, Entity> Buildings = new Dictionary<int, Entity>();
+
+    /// <summary>Footprint tiles each building marked used, so they can be freed when it dies.</summary>
+    private readonly Dictionary<int, List<int2>> buildingFootprints = new Dictionary<int, List<int2>>();
 
     private EntityManager entityManager;
 
@@ -102,66 +105,129 @@ public class WorldStateManager : NetworkBehaviour
     public void FixedUpdate()
     {
         UpdatePlayerViews();
+        FlushDeathEvents();
+    }
+
+
+    private readonly List<float2> pendingDeathPositions = new List<float2>();
+
+    private const int MaxExplosionsPerMessage = 256;
+
+    /// <summary>
+    /// Sends the deaths recorded since the last tick to each client whose view contains them.
+    /// </summary>
+    [Server]
+    private void FlushDeathEvents()
+    {
+        List<float2> deaths = TakeDeathPositions();
+        if (deaths.Count == 0) return;
+
+        foreach (KeyValuePair<ClientPlayer, (int2, int2)> view in playerView)
+        {
+            if (view.Key == null || view.Key.connectionToClient == null) continue;
+            List<Vector2> visible = VisibilityRules.Filter(deaths, view.Value.Item1, view.Value.Item2);
+            for (int i = 0; i < visible.Count; i += MaxExplosionsPerMessage)
+            {
+                int n = Mathf.Min(MaxExplosionsPerMessage, visible.Count - i);
+                view.Key.TargetPlayExplosions(view.Key.connectionToClient, visible.GetRange(i, n).ToArray());
+            }
+        }
+    }
+
+    /// <summary>Called by DestructionSystem just before an entity is destroyed.</summary>
+    [Server]
+    public void OnEntityDestroyed(Entity entity)
+    {
+        if (!EntityManager.Exists(entity)) return;
+        if (EntityManager.HasComponent<LocalTransform>(entity))
+        {
+            pendingDeathPositions.Add(EntityManager.GetComponentData<LocalTransform>(entity).Position.xy);
+        }
+
+        if (EntityManager.HasComponent<ClientUnit>(entity))
+        {
+            int id = EntityManager.GetComponentData<ClientUnit>(entity).id;
+            Units.Remove(id);
+            Occupancy.ReleaseAll(id);
+        }
+        else if (EntityManager.HasComponent<BuildingData>(entity))
+        {
+            int id = EntityManager.GetComponentData<BuildingData>(entity).id;
+            Buildings.Remove(id);
+            if (buildingFootprints.Remove(id, out List<int2> footprint))
+            {
+                foreach (int2 tile in footprint)
+                {
+                    TileNode node = world.GetTile(tile);
+                    node.used = 0;
+                    world.SetTile(tile, node);
+                }
+            }
+        }
+    }
+
+    /// <summary>Sets every entity owned by the player to 0 health; DestructionSystem removes them (with explosions).</summary>
+    [Server]
+    public void KillAllEntitiesOwnedBy(int ownerId)
+    {
+        foreach (Entity e in Units.Values) Kill(e, ownerId);
+        foreach (Entity e in Buildings.Values) Kill(e, ownerId);
+    }
+
+    private void Kill(Entity entity, int ownerId)
+    {
+        if (!EntityManager.Exists(entity) || !EntityManager.HasComponent<HealthComponent>(entity)) return;
+        int owner = EntityManager.HasComponent<ClientUnit>(entity)
+            ? EntityManager.GetComponentData<ClientUnit>(entity).ownerId
+            : EntityManager.GetComponentData<BuildingData>(entity).ownerId;
+        if (owner != ownerId) return;
+        HealthComponent hp = EntityManager.GetComponentData<HealthComponent>(entity);
+        hp.currentHealth = 0f;
+        EntityManager.SetComponentData(entity, hp);
+    }
+
+    /// <summary>Returns and clears the death positions recorded since the last call.</summary>
+    [Server]
+    public List<float2> TakeDeathPositions()
+    {
+        var copy = new List<float2>(pendingDeathPositions);
+        pendingDeathPositions.Clear();
+        return copy;
     }
 
 
     [Server]
-    public void DestroyAllEntitiesOwnedByPlayer(int playerId)
-    {
-
-        //Note: This is not the most efficient way to do this, but it is the most straightforward. 
-        // Might need to optimize this later if performance becomes an issue, but it only needs to run once per player elimination so it should be fine for now.
-
-        Dictionary<int, Entity> UnitsCopy = Units.ToDictionary(entry => entry.Key, entry => entry.Value);
-
-
-        Dictionary<int, Entity> BuildingsCopy = Buildings.ToDictionary(entry => entry.Key, entry => entry.Value);
-
-        foreach ((int buildingId, Entity building) in Buildings)
-        {
-            if (EntityManager.HasComponent<BuildingData>(building))
-            {
-                BuildingData buildingData = EntityManager.GetComponentData<BuildingData>(building);
-                if (buildingData.ownerId == playerId)
-                {
-                    EntityManager.DestroyEntity(building);
-                    BuildingsCopy.Remove(buildingId);
-                }
-            }
-        }
-
-        foreach ((int unitId, Entity unit) in Units)
-        {
-            if (EntityManager.HasComponent<ClientUnit>(unit))
-            {
-                ClientUnit clientUnit = EntityManager.GetComponentData<ClientUnit>(unit);
-                if (clientUnit.ownerId == playerId)
-                {
-                    EntityManager.DestroyEntity(unit);
-                    UnitsCopy.Remove(unitId);
-                }
-            }
-        }
-
-        Units = UnitsCopy;
-        Buildings = BuildingsCopy;
-    }
-
-
     public void DestroyAllEntities()
     {
-        foreach ((int buildingId, Entity building) in Buildings)
+        // Each entity records its position as it goes, so the match-end wipe still reaches
+        // clients as explosions instead of dying silently. pendingDeathPositions is deliberately
+        // NOT cleared here: FlushDeathEvents drains it via TakeDeathPositions next FixedUpdate.
+        foreach (Entity e in Buildings.Values) DestroyWithDeathPosition(e);
+        foreach (Entity e in Units.Values) DestroyWithDeathPosition(e);
+        foreach (List<int2> footprint in buildingFootprints.Values)
         {
-            EntityManager.DestroyEntity(building);
+            foreach (int2 tile in footprint)
+            {
+                TileNode node = world.GetTile(tile);
+                node.used = 0;
+                world.SetTile(tile, node);
+            }
         }
-
-        foreach ((int unitId, Entity unit) in Units)
-        {
-            EntityManager.DestroyEntity(unit);
-        }
-
         Units.Clear();
         Buildings.Clear();
+        buildingFootprints.Clear();
+        Occupancy.Clear();
+    }
+
+    /// <summary>Records the entity's death position (when it has one), then destroys it.</summary>
+    private void DestroyWithDeathPosition(Entity entity)
+    {
+        if (!EntityManager.Exists(entity)) return;
+        if (EntityManager.HasComponent<LocalTransform>(entity))
+        {
+            pendingDeathPositions.Add(EntityManager.GetComponentData<LocalTransform>(entity).Position.xy);
+        }
+        EntityManager.DestroyEntity(entity);
     }
     #endregion
 
@@ -257,15 +323,6 @@ public class WorldStateManager : NetworkBehaviour
     }
 
     /// <summary>
-    /// Gets a tile at a specific position (Client side command).
-    /// </summary>
-    [Client]
-    public TileNode GetTileCommand(int2 position)
-    {
-        return world.GetTile(position);
-    }
-
-    /// <summary>
     /// Sets a tile at a specific position.
     /// </summary>
     [Server]
@@ -284,7 +341,22 @@ public class WorldStateManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void UpdateClientView(int2 startcorner, int2 endcorner, NetworkConnectionToClient sender = null)
     {
+        if (!CommandGate.Allow(sender, nameof(UpdateClientView)) || !CommandValidator.IsBoxValid(startcorner, endcorner)) return;
+
+        BoundsInt mapBounds = WalkableTilemap.cellBounds;
+        int2 mapMin = new int2(mapBounds.xMin, mapBounds.yMin);
+        int2 mapMax = new int2(mapBounds.xMax - 1, mapBounds.yMax - 1);
+        startcorner = math.clamp(startcorner, mapMin, mapMax);
+        endcorner = math.clamp(endcorner, mapMin, mapMax);
+
         playerView[sender.identity.GetComponent<ClientPlayer>()] = (startcorner, endcorner);
+    }
+
+    /// <summary>Drops a leaving player's view box so their entities stop being synced.</summary>
+    [Server]
+    public void RemovePlayerView(ClientPlayer player)
+    {
+        if (player != null) playerView.Remove(player);
     }
 
     /// <summary>
@@ -293,6 +365,8 @@ public class WorldStateManager : NetworkBehaviour
     [Server, BurstCompile]
     public void UpdatePlayerViews()
     {
+        foreach (ClientPlayer dead in playerView.Keys.Where(p => p == null).ToList()) playerView.Remove(dead);
+
         foreach (KeyValuePair<ClientPlayer, (int2, int2)> player in playerView)
         {
             int2 startcorner = player.Value.Item1;
@@ -316,15 +390,7 @@ public class WorldStateManager : NetworkBehaviour
                         HealthComponent health = EntityManager.GetComponentData<HealthComponent>(entity);
                         health.entityId = buildingData.id;
 
-                        // Extract rotation from LocalTransform and convert to degrees
-                        LocalTransform transform = EntityManager.GetComponentData<LocalTransform>(entity);
-                        quaternion rotation = transform.Rotation;
-                        // Math to convert quaternion to Z-axis rotation in degrees
-                        float zRotationRadians = math.atan2(
-                            2.0f * (rotation.value.w * rotation.value.z + rotation.value.x * rotation.value.y),
-                            1.0f - 2.0f * (rotation.value.y * rotation.value.y + rotation.value.z * rotation.value.z)
-                        );
-                        buildingData.rotation = math.degrees(zRotationRadians);
+                        buildingData.rotation = MinerRules.ZDegrees(EntityManager.GetComponentData<LocalTransform>(entity).Rotation);
 
                         clientBuildings.Add(buildingData.id);
 
@@ -433,29 +499,16 @@ public class WorldStateManager : NetworkBehaviour
     [Server]
     public bool IsAvaliable(int2 position, int id)
     {
-        if (unitPositions.Any(u => u.Item2.Equals(position) && u.Item1 != id))
-        {
-            return false;
-        }
-        return true;
+        return Occupancy.IsAvailable(position, id);
     }
 
     /// <summary>
     /// Claims a position for a unit.
     /// </summary>
     [Server]
-    public void ClaimLocation(int2 position, int id)
+    public bool ClaimLocation(int2 position, int id)
     {
-        if (!IsAvaliable(position, id))
-        {
-            return;
-        }
-        //Ignore if it is already claimed
-        if (unitPositions.Any(u => u.Item2.Equals(position) && u.Item1 == id))
-        {
-            return;
-        }
-        unitPositions.Add((id, position));
+        return Occupancy.TryClaim(position, id);
     }
 
     /// <summary>
@@ -464,11 +517,7 @@ public class WorldStateManager : NetworkBehaviour
     [Server]
     public void ReleaseLocation(int2 position, int id)
     {
-        if (!unitPositions.Any(u => u.Item2.Equals(position) && u.Item1 == id))
-        {
-            return;
-        }
-        unitPositions.Remove((id, position));
+        Occupancy.Release(position, id);
     }
 
     /// <summary>
@@ -477,7 +526,7 @@ public class WorldStateManager : NetworkBehaviour
     [Server]
     public void ReleaseAllLocations(int id)
     {
-        unitPositions.RemoveAll(u => u.Item1 == id);
+        Occupancy.ReleaseAll(id);
     }
 
     /// <summary>
@@ -486,6 +535,17 @@ public class WorldStateManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdMoveUnits(int2 goal, int2 startcorner, int2 endcorner, NetworkConnectionToClient sender = null)
     {
+        if (!CommandGate.Allow(sender, nameof(CmdMoveUnits)) || !CommandValidator.IsBoxValid(startcorner, endcorner)) return;
+        if (GameCore.Instance.CurrentState != GameState.Playing) return;
+        ServerPlayer acting = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(sender.identity.netId));
+        if (acting == null || acting.state != PlayerState.Playing) return;
+
+        BoundsInt mapBounds = WalkableTilemap.cellBounds;
+        int2 mapMin = new int2(mapBounds.xMin, mapBounds.yMin);
+        int2 mapMax = new int2(mapBounds.xMax - 1, mapBounds.yMax - 1);
+        startcorner = math.clamp(startcorner, mapMin, mapMax);
+        endcorner = math.clamp(endcorner, mapMin, mapMax);
+
         List<ClientUnit> units = new List<ClientUnit>();
         List<int2> setGoals = new List<int2>();
 
@@ -499,7 +559,7 @@ public class WorldStateManager : NetworkBehaviour
             ClientUnit clientUnit = EntityManager.GetComponentData<ClientUnit>(entity);
             clientUnit.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
 
-            if (clientUnit.ownerId != sender.identity.GetComponent<ClientPlayer>().netId)
+            if (clientUnit.ownerId != BuildingData.UIntToInt(sender.identity.netId))
             {
                 continue;
             }
@@ -527,50 +587,36 @@ public class WorldStateManager : NetworkBehaviour
         entitiesInBox.Dispose();
     }
 
+    private const int MaxGoalSearchTiles = 4096;
+
     /// <summary>
     /// Finds the best available goal location near the target, avoiding collisions.
-    /// Uses BFS to find the nearest valid tile.
+    /// Uses a bounded BFS to find the nearest valid tile.
     /// </summary>
     [Server]
     private int2 FindBestGoalLocation(int2 goal, int id, List<int2> setGoals)
     {
-        int2 bestGoal = goal;
+        bool found = TileSearch.FindNearest(goal,
+            t => !setGoals.Contains(t) && IsFreeGround(t) && Occupancy.IsAvailable(t, id),
+            t => world.GetTile(t).isWalkable,
+            MaxGoalSearchTiles, out int2 best);
+        return found ? best : goal;
+    }
 
-        // Perform a breadth-first search to find the closest walkable tile that is not claimed
-        Queue<int2> queue = new Queue<int2>();
-        HashSet<int2> visited = new HashSet<int2>();
-        queue.Enqueue(goal);
-        visited.Add(goal);
+    private bool IsFreeGround(int2 tile)
+    {
+        TileNode node = world.GetTile(tile);
+        return node.isWalkable && !node.isUsed;
+    }
 
-        while (queue.Count > 0)
-        {
-            int2 current = queue.Dequeue();
-            visited.Add(current);
-            // Check if the current location is available and not already set as a goal
-            if (!setGoals.Contains(current) && world.GetTile(current).isWalkable && IsAvaliable(current, id))
-            {
-                bestGoal = current;
-                break;
-            }
-
-            // Add neighboring tiles to the queue
-            for (int x = -1; x <= 1; x++)
-            {
-                for (int y = -1; y <= 1; y++)
-                {
-                    if (x == 0 && y == 0) continue;
-
-                    int2 neighbor = new int2(current.x + x, current.y + y);
-                    if (!visited.Contains(neighbor) && world.GetTile(neighbor).isWalkable)
-                    {
-                        queue.Enqueue(neighbor);
-
-                    }
-                }
-            }
-        }
-
-        return bestGoal;
+    /// <summary>Nearest free, unclaimed ground tile to <paramref name="origin"/> (e.g. outside a spawner).</summary>
+    [Server]
+    public bool TryFindFreeTileNear(int2 origin, int unitId, out int2 tile)
+    {
+        return TileSearch.FindNearest(origin,
+            t => IsFreeGround(t) && Occupancy.IsAvailable(t, unitId),
+            t => world.GetTile(t).isWalkable,
+            MaxGoalSearchTiles, out tile);
     }
 
     /// <summary>
@@ -589,8 +635,7 @@ public class WorldStateManager : NetworkBehaviour
     private void MoveUnit(Entity entity, int2 goal)
     {
         LocalTransform localTransform = EntityManager.GetComponentData<LocalTransform>(entity);
-        float2 start = localTransform.Position.xy;
-        int2 startInt = new((int)start.x, (int)start.y);
+        int2 startInt = (int2)math.round(localTransform.Position.xy);
 
         if (startInt.Equals(goal))
         {
@@ -598,22 +643,15 @@ public class WorldStateManager : NetworkBehaviour
             return;
         }
 
-        Path path = Path.BurstToPath(Pathfinding.BurstFindPath(WorldStateManager.Instance.world, startInt, goal, doJob: false));
-
-        if (path.pathLength > 0)
-        {
-            //Save the path to the entity to be used by the movement system
-            DynamicBuffer<PathPoint> pathBuffer = EntityManager.GetBuffer<PathPoint>(entity);
-            pathBuffer.Clear();
-            foreach (PathNode node in path.path)
-            {
-                pathBuffer.Add(new PathPoint { position = node.position });
-            }
-        }
-        else
+        List<int2> path = Pathfinding.FindPath(world, startInt, goal);
+        if (path.Count == 0)
         {
             Debug.LogWarning($"No path found for unit at {startInt} to {goal}");
+            return;
         }
+        DynamicBuffer<PathPoint> pathBuffer = EntityManager.GetBuffer<PathPoint>(entity);
+        pathBuffer.Clear();
+        foreach (int2 node in path) pathBuffer.Add(new PathPoint { position = node });
     }
 
     /// <summary>
@@ -706,52 +744,60 @@ public class WorldStateManager : NetworkBehaviour
 
     #region Building Management
 
+    /// <summary>Server-side placement check for a player (used by commands and tests).</summary>
+    [Server]
+    public PlacementResult CheckPlacement(BuildingType type, int2 anchor, float rotation, ClientPlayer player)
+    {
+        if (type == BuildingType.None || !System.Enum.IsDefined(typeof(BuildingType), type)) return PlacementResult.InvalidType;
+
+        ServerPlayer acting = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(player.netId));
+        if (acting == null || acting.state != PlayerState.Playing) return PlacementResult.WrongGameState;
+
+        return PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
+            player.hasPlacedHQ, world.GetTile, tile => !IsAvaliable(tile, -1));
+    }
+
+    /// <summary>Test helper: first anchor (scanning the map) where the player may place this building.</summary>
+    internal bool TryFindBuildableAnchor(BuildingType type, float rotation, ClientPlayer player, out int2 anchor)
+    {
+        foreach (KVPair<int2, TileNode> pair in world.tiles)
+        {
+            if (CheckPlacement(type, pair.Key, rotation, player) == PlacementResult.Ok)
+            {
+                anchor = pair.Key;
+                return true;
+            }
+        }
+        anchor = default;
+        return false;
+    }
+
     /// <summary>
     /// Attempts to add a building at the specified position.
     /// </summary>
     [Command(requiresAuthority = false)]
     public void TryAddBuilding(int2 positon, BuildingType type, float rotation, NetworkConnectionToClient sender = null)
     {
-        if (!CanBuildBuilding(positon, type, rotation))
+        if (!CommandGate.Allow(sender, nameof(TryAddBuilding))) return;
+        ClientPlayer placer = sender.identity.GetComponent<ClientPlayer>();
+        if (CheckPlacement(type, positon, rotation, placer) != PlacementResult.Ok)
         {
             return;
         }
 
-        // Check if owner has sufficient resources
+        BuildingConfig buildingConfig = ConfigLoader.LoadConfig().GetBuilding(type);
+
+        // Check the owner can afford the building before it is placed.
         ServerPlayer owner = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(sender.identity.GetComponent<ClientPlayer>().netId));
-        if (owner != null)
+        if (owner == null || !owner.TrySpend(buildingConfig.UpfrontCost))
         {
-            ResourceCost cost = ResourceConfigLoader.GetBuildingCost(type);
-
-            if (owner.data.resources < cost.upfrontCost)
-            {
-                return;
-            }
-
-            if (type == BuildingType.Base && sender.identity.GetComponent<ClientPlayer>().hasPlacedHQ)
-            {
-                // Prevent multiple HQ placements
-                return;
-            }
-
-            // Deduct upfront cost
-            owner.RemoveResources(cost.upfrontCost);
-
-            // Update client display
-            if (owner.connection != null && owner.connection.identity != null)
-            {
-                ClientPlayer clientPlayer = owner.connection.identity.GetComponent<ClientPlayer>();
-                if (clientPlayer != null)
-                {
-                    clientPlayer.TargetUpdateResources(owner.connection, owner.data.resources);
-                }
-            }
+            return;
         }
 
         BuildingData buildingData = new BuildingData
         {
             position = new float2(positon.x, positon.y),
-            id = UnityEngine.Random.Range(0, int.MaxValue),
+            id = Ids.Allocate(),
             buildingType = type,
             ownerId = BuildingData.UIntToInt(sender.identity.GetComponent<ClientPlayer>().netId),
             rotation = rotation
@@ -770,35 +816,20 @@ public class WorldStateManager : NetworkBehaviour
             Scale = 1f
         });
 
-        // Add resource cost component to all buildings
-        ResourceCost buildingCost = ResourceConfigLoader.GetBuildingCost(type);
-        EntityManager.AddComponentData(building, new BuildingResourceComponent
+        // Every building pays its running cost; unpaid buildings decay.
+        EntityManager.AddComponentData(building, new UpkeepComponent
         {
-            upfrontCost = buildingCost.upfrontCost,
-            runningCostPerSecond = buildingCost.runningCost,
-            timeSinceLastCost = 0f
+            ownerId = buildingData.ownerId,
+            runningCostPerSecond = buildingConfig.RunningCost,
         });
 
         // Add Health Component
-        BuildingConfig buildingConfig = null;
-        GameConfigData config = ConfigLoader.LoadConfig();
-        if (config.Buildings.TryGetValue(type.ToString(), out buildingConfig))
+        EntityManager.AddComponentData(building, new HealthComponent
         {
-            EntityManager.AddComponentData(building, new HealthComponent
-            {
-                currentHealth = buildingConfig.Health,
-                maxHealth = buildingConfig.Health
-            });
-        }
-        else
-        {
-            // Fallback if config missing
-            EntityManager.AddComponentData(building, new HealthComponent
-            {
-                currentHealth = 100,
-                maxHealth = 100
-            });
-        }
+            entityId = buildingData.id,
+            currentHealth = buildingConfig.Health,
+            maxHealth = buildingConfig.Health
+        });
 
         switch (type)
         {
@@ -810,10 +841,8 @@ public class WorldStateManager : NetworkBehaviour
                 break;
             case BuildingType.Miner:
                 // Add mining component to miner buildings
-                ResourceConfigData resourceConfig = ResourceConfigLoader.LoadConfig();
                 EntityManager.AddComponentData(building, new MiningComponent
                 {
-                    miningRate = resourceConfig.miningRate,
                     timeSinceLastMining = 0f,
                     isActive = false
                 });
@@ -825,7 +854,8 @@ public class WorldStateManager : NetworkBehaviour
                     count = 0,
                     ownerId = buildingData.ownerId,
                     position = buildingData.position,
-                    unitType = UnitType.Tank
+                    unitType = UnitType.Tank,
+                    spawnRate = buildingConfig.SpawnRate
                 });
                 break;
             default:
@@ -834,62 +864,16 @@ public class WorldStateManager : NetworkBehaviour
         }
 
         //Set the tiles the building will cover to be used
-        List<int2> tiles = GetTilesBuildingWillCover(positon, type);
+        List<int2> tiles = Footprint.Tiles(positon, GetBuildingSize(type));
         foreach (int2 tile in tiles)
         {
             TileNode tileNode = world.GetTile(tile);
             tileNode.used = 1;
             world.SetTile(tile, tileNode);
         }
+        buildingFootprints[buildingData.id] = tiles;
 
         AddBuilding(building, buildingData.id);
-    }
-
-    /// <summary>
-    /// Checks if a building can be built at a specific position.
-    /// </summary>
-    [Server]
-    private bool CanBuildBuilding(int2 position, BuildingType type, float rotation = 0f)
-    {
-        List<int2> tiles = GetTilesBuildingWillCover(position, type);
-
-        foreach (int2 tile in tiles)
-        {
-            if (!world.GetTile(tile).isWalkable || !IsAvaliable(tile, -1) || world.GetTile(tile).isUsed)
-            {
-                return false;
-            }
-        }
-
-        if (type == BuildingType.Miner)
-        {
-            // Calculate direction based on rotation (same logic as MiningSystem)
-            // Normalize to 0-360 range
-            float zRotation = (rotation % 360 + 360) % 360;
-
-            // Round to nearest 90 degrees
-            int rotationIndex = Mathf.RoundToInt(zRotation / 90f) % 4;
-
-            int2 direction = rotationIndex switch
-            {
-                0 => new int2(1, 0),   // 0° - Right
-                1 => new int2(0, 1),   // 90° - Up
-                2 => new int2(-1, 0),  // 180° - Left
-                3 => new int2(0, -1),  // 270° - Down
-                _ => new int2(1, 0)
-            };
-
-            // Check if the tile in the facing direction is a gem
-            int2 checkPos = position + direction;
-            TileNode tile = world.GetTile(checkPos);
-
-            if (tile.tileType != TileType.Gem)
-            {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     /// <summary>
@@ -898,14 +882,9 @@ public class WorldStateManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CanBuildBuildingCommand(int2 position, BuildingType type, float rotation, NetworkConnectionToClient sender = null)
     {
-        bool canBuild = CanBuildBuilding(position, type, rotation);
-
-        if (type == BuildingType.Base && sender.identity.GetComponent<ClientPlayer>().hasPlacedHQ)
-        {
-            canBuild = false;
-        }
-
-        sender.identity.GetComponent<ClientPlayer>().TargetReceiveCanBuildBuildingResponse(sender, canBuild);
+        if (!CommandGate.Allow(sender, nameof(CanBuildBuildingCommand))) return;
+        ClientPlayer player = sender.identity.GetComponent<ClientPlayer>();
+        player.TargetReceiveCanBuildBuildingResponse(sender, CheckPlacement(type, position, rotation, player) == PlacementResult.Ok);
     }
 
     /// <summary>
@@ -914,6 +893,12 @@ public class WorldStateManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void BuildingClicked(int buildingId, NetworkConnectionToClient sender = null)
     {
+        if (!CommandGate.Allow(sender, nameof(BuildingClicked))) return;
+        ServerPlayer acting = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(sender.identity.netId));
+        if (acting == null || acting.state != PlayerState.Playing) return;
+        // Queuing units is only allowed while the game is actually being played.
+        if (GameCore.Instance.CurrentState != GameState.Playing) return;
+
         if (Buildings.TryGetValue(buildingId, out Entity building))
         {
             BuildingData buildingData = EntityManager.GetComponentData<BuildingData>(building);
@@ -929,12 +914,19 @@ public class WorldStateManager : NetworkBehaviour
             {
 
                 SpawnerData spawnerData = EntityManager.GetComponentData<SpawnerData>(building);
-                spawnerData.count += 1;
+                if (spawnerData.count < SpawnerRules.MaxQueue)
+                {
+                    spawnerData.count += 1;
 
-                EntityCommandBuffer commandBuffer = new EntityCommandBuffer(Allocator.Temp);
-                commandBuffer.SetComponent(building, spawnerData);
-                commandBuffer.Playback(EntityManager);
-                commandBuffer.Dispose();
+                    EntityCommandBuffer commandBuffer = new EntityCommandBuffer(Allocator.Temp);
+                    commandBuffer.SetComponent(building, spawnerData);
+                    commandBuffer.Playback(EntityManager);
+                    commandBuffer.Dispose();
+                }
+                else
+                {
+                    Debug.LogWarning($"Player {player.nickname} tried to queue more than {SpawnerRules.MaxQueue} units on building {buildingId}.");
+                }
 
                 Debug.Log($"Player {player.nickname} clicked on building {buildingId}. Spawner count is now {spawnerData.count}");
 
@@ -946,61 +938,11 @@ public class WorldStateManager : NetworkBehaviour
         }
     }
 
-    /// <summary>
-    /// Helper to get the tiles a building will cover.
-    /// </summary>
     //HELPER FUNCTIONS
-
-    [Server]
-    //Gets the tiles on the tilemap that the building will cover
-    public List<int2> GetTilesBuildingWillCover(int2 center, BuildingType type)
-    {
-        List<int2> tiles = new List<int2>();
-
-        int2 size = GetBuildingSize(type);
-
-        int2 tilesize = new int2(Mathf.CeilToInt(WalkableTilemap.cellSize.x), Mathf.CeilToInt(WalkableTilemap.cellSize.y));
-
-        int numberOfTilesX = size.x / tilesize.x;
-        int numberOfTilesY = size.y / tilesize.y;
-
-        int2 start = center - new int2(numberOfTilesX / 2, numberOfTilesY / 2);
-
-        for (int x = 0; x < numberOfTilesX; x++)
-        {
-            for (int y = 0; y < numberOfTilesY; y++)
-            {
-                tiles.Add(start + new int2(x, y));
-            }
-        }
-        ////Debug.Log($"Building will cover {tiles.Count} tiles");
-        return tiles;
-    }
-
-    [Command(requiresAuthority = false)]
-    public void GetTilesBuildingWillCoverCommand(int2 center, BuildingType type, NetworkConnectionToClient sender = null)
-    {
-        List<int2> tiles = GetTilesBuildingWillCover(center, type);
-        sender.identity.GetComponent<ClientPlayer>().TargetReceiveTilesCoveredResponse(sender, tiles.Count);
-    }
 
     public static int2 GetBuildingSize(BuildingType type)
     {
-        if (type == BuildingType.Base)
-        {
-            return new int2(3, 3);
-        }
-        //Load the building sprite from the resources
-        Sprite sprite = Resources.Load<Sprite>($"{type.ToString()}");
-        if (sprite == null)
-        {
-            Debug.LogError($"Could not find sprite for building type {type}");
-            return new int2(1, 1);
-        }
-        //Get the size of the sprite
-        return new int2(Mathf.CeilToInt(sprite.rect.width / sprite.pixelsPerUnit), Mathf.CeilToInt(sprite.rect.height / sprite.pixelsPerUnit));
-
-
+        return ConfigLoader.LoadConfig().GetBuilding(type).Size;
     }
 
     #endregion

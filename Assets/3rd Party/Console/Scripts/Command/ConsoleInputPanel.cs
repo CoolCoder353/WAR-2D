@@ -88,12 +88,12 @@ namespace TIM
         {
             if (InputField.IsActive())
             {
-                if (Input.GetKeyDown(KeyCode.UpArrow))
+                if ((UnityEngine.InputSystem.Keyboard.current?.upArrowKey.wasPressedThisFrame ?? false))
                 {
                     InputField.caretPosition = InputField.text.Length;
                     TipMaster.HighlightNextElement();
                 }
-                else if (Input.GetKeyDown(KeyCode.DownArrow))
+                else if ((UnityEngine.InputSystem.Keyboard.current?.downArrowKey.wasPressedThisFrame ?? false))
                 {
                     InputField.caretPosition = InputField.text.Length;
 

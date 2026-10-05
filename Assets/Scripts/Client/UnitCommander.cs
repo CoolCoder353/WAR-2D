@@ -4,7 +4,6 @@ using DG.Tweening;
 using Mirror;
 using Unity.Collections;
 using Unity.Mathematics;
-using Unity.VisualScripting;
 using UnityEngine;
 
 public class UnitCommander : NetworkBehaviour
@@ -15,6 +14,11 @@ public class UnitCommander : NetworkBehaviour
 
     private int2 startcorner;
     private int2 endcorner;
+    private bool selecting;
+
+    private int2 lastSentCorner1 = new int2(int.MinValue, int.MinValue);
+    private int2 lastSentCorner2 = new int2(int.MinValue, int.MinValue);
+    private float viewSendTimer;
 
     public GameObject selectionBox;
 
@@ -25,8 +29,6 @@ public class UnitCommander : NetworkBehaviour
 
     public Dictionary<int, GameObject> buildingGameObjects = new Dictionary<int, GameObject>();
 
-
-    public int tilesBuildingWillCover = 1;
 
     [ClientCallback]
     private void Awake()
@@ -41,19 +43,11 @@ public class UnitCommander : NetworkBehaviour
             localPlayer = NetworkClient.connection.identity.GetComponent<ClientPlayer>();
             localPlayer.SetUnitHandles();
             localPlayer.SetBuildingHandles();
-            localPlayer.onResponseFromTilesCovered.AddListener(ResponseFromTilesCovered);
-
         }
         else
         {
             Destroy(this);
         }
-    }
-
-    [Client]
-    public void ResponseFromTilesCovered(int tiles)
-    {
-        tilesBuildingWillCover = tiles;
     }
 
     [ClientCallback]
@@ -68,14 +62,7 @@ public class UnitCommander : NetworkBehaviour
 
     public static Vector3 GetMouseWorldPosition()
     {
-        Vector3 mousePosition = Input.mousePosition;
-
-        Vector3 truePosition = new Vector3(Camera.main.pixelWidth - mousePosition.x, Camera.main.pixelHeight - mousePosition.y, Camera.main.transform.position.z);
-
-        Vector3 worldPosition = Camera.main.ScreenToWorldPoint(truePosition);
-
-        worldPosition.z = 0;
-        return worldPosition;
+        return GameInput.PointerWorld();
     }
 
     [ClientCallback]
@@ -90,8 +77,9 @@ public class UnitCommander : NetworkBehaviour
 
 
         //Mouse down, start selection
-        if (Input.GetMouseButtonDown(0))
+        if (GameInput.Select.WasPressedThisFrame() && !GameInput.PointerOverUI)
         {
+            selecting = true;
             selectionBox.SetActive(true);
             Vector3 worldPosition = GetMouseWorldPosition();
             startcorner = new int2((int)worldPosition.x, (int)worldPosition.y);
@@ -100,7 +88,7 @@ public class UnitCommander : NetworkBehaviour
             selectionBox.transform.localScale = new Vector3(0, 0, 1);
         }
 
-        if (Input.GetMouseButton(0))
+        if (selecting && GameInput.Select.IsPressed())
         {
 
             Vector3 worldPosition = GetMouseWorldPosition();
@@ -121,15 +109,16 @@ public class UnitCommander : NetworkBehaviour
         }
 
         //Mouse up, end selection 
-        if (Input.GetMouseButtonUp(0))
+        if (selecting && GameInput.Select.WasReleasedThisFrame())
         {
             selectionBox.SetActive(false);
             Vector3 worldPosition = GetMouseWorldPosition();
             endcorner = new int2((int)worldPosition.x, (int)worldPosition.y);
+            selecting = false;
 
         }
 
-        if (Input.GetMouseButtonDown(1))
+        if (GameInput.Command.WasPressedThisFrame() && !GameInput.PointerOverUI)
         {
             Vector3 worldPosition = GetMouseWorldPosition();
             int2 goal = new int2((int)worldPosition.x, (int)worldPosition.y);
@@ -137,16 +126,13 @@ public class UnitCommander : NetworkBehaviour
             WorldStateManager.Instance.CmdMoveUnits(goal, startcorner, endcorner);
         }
 
-        //Get where the camera is looking at in the scene
-        Vector3 cameraStart = Camera.main.ScreenToWorldPoint(new Vector3(Camera.main.pixelWidth, Camera.main.pixelHeight, Camera.main.transform.position.z));
-        Vector3 cameraPositionEnd = Camera.main.ScreenToWorldPoint(new Vector3(0, 0, Camera.main.transform.position.z));
-
-        //Get the corners of the camera
-        Vector3 cameraCorner1 = new Vector3(cameraStart.x, cameraStart.y, 0) + new Vector3(-visualAdditionalRange.x, -visualAdditionalRange.y, 0);
-        Vector3 cameraCorner2 = new Vector3(cameraPositionEnd.x, cameraPositionEnd.y, 0) + new Vector3(visualAdditionalRange.x, visualAdditionalRange.y, 0);
-
-        int2 corner1 = new int2((int)cameraCorner1.x, (int)cameraCorner1.y);
-        int2 corner2 = new int2((int)cameraCorner2.x, (int)cameraCorner2.y);
+        //Get the corners of the camera (orthographic bounds)
+        Camera cam = Camera.main;
+        float halfH = cam.orthographicSize;
+        float halfW = halfH * cam.aspect;
+        Vector3 c = cam.transform.position;
+        int2 corner1 = new int2((int)math.floor(c.x - halfW) - visualAdditionalRange.x, (int)math.floor(c.y - halfH) - visualAdditionalRange.y);
+        int2 corner2 = new int2((int)math.ceil(c.x + halfW) + visualAdditionalRange.x, (int)math.ceil(c.y + halfH) + visualAdditionalRange.y);
 
         // // Place the selection box at this point to show the box the server thinks the client can see for testing purposes
 
@@ -158,7 +144,14 @@ public class UnitCommander : NetworkBehaviour
 
 
         //Request from the server to update what the client can see for the next frame
-        WorldStateManager.Instance.UpdateClientView(corner1, corner2);
+        viewSendTimer += Time.unscaledDeltaTime;
+        if ((!corner1.Equals(lastSentCorner1) || !corner2.Equals(lastSentCorner2)) && viewSendTimer >= 0.1f)
+        {
+            WorldStateManager.Instance.UpdateClientView(corner1, corner2);
+            lastSentCorner1 = corner1;
+            lastSentCorner2 = corner2;
+            viewSendTimer = 0f;
+        }
 
         MoveUnits();
         VisualizeAttackingUnits();
@@ -168,7 +161,6 @@ public class UnitCommander : NetworkBehaviour
     [Client]
     private void VisualizeAttackingUnits()
     {
-        GameObject bulletPrefab = Resources.Load<GameObject>("Prefabs/Bullet");
         foreach (ClientUnit unit in localPlayer.visuableUnits)
         {
             if (!lastUnitAttackTimes.ContainsKey(unit.id))
@@ -181,25 +173,14 @@ public class UnitCommander : NetworkBehaviour
                 lastUnitAttackTimes[unit.id] = unit.lastAttackTime;
 
                 unitGameObjects.TryGetValue(unit.id, out GameObject attackerObject);
-                unitGameObjects.TryGetValue(unit.targetId, out GameObject enemyObject);
+                if (!unitGameObjects.TryGetValue(unit.targetId, out GameObject enemyObject))
+                {
+                    buildingGameObjects.TryGetValue(unit.targetId, out enemyObject);
+                }
 
                 if (attackerObject != null && enemyObject != null)
                 {
-                    GameObject bullet = GameObject.Instantiate(bulletPrefab);
-                    Destroy(bullet.GetComponent<Collider>());
-
-                    Vector3 startPos = attackerObject.transform.position;
-                    Vector3 endPos = enemyObject.transform.position;
-
-                    bullet.transform.position = startPos;
-                    bullet.transform.localScale = new Vector3(0.5f, 0.1f, 1);
-                    bullet.GetComponent<Renderer>().material.color = Color.yellow;
-                    bullet.GetComponent<Renderer>().material.renderQueue = 3000;
-
-                    Vector3 direction = (endPos - startPos).normalized;
-                    bullet.transform.right = direction;
-
-                    bullet.transform.DOMove(endPos, 0.2f).SetEase(Ease.Linear).OnComplete(() => Destroy(bullet));
+                    Effects.Tracer(attackerObject.transform.position, enemyObject.transform.position);
                 }
             }
         }
@@ -332,7 +313,6 @@ public class UnitCommander : NetworkBehaviour
     [Client]
     public void BuildingListInsert(int index, BuildingData unit)
     {
-        WorldStateManager.Instance.GetTilesBuildingWillCoverCommand(new int2(0, 0), unit.buildingType);
         // Debug.Log($"UnitListInsert called with unit id: '{unit.id}', sprite:  '{unit.spriteName}', position : '{unit.position}'");
         if (buildingGameObjects.ContainsKey(unit.id))
         {
@@ -342,13 +322,9 @@ public class UnitCommander : NetworkBehaviour
 
         //Create a new game object
         GameObject go = new GameObject();
-        go.transform.position = new Vector3(unit.position.x, unit.position.y, 0);
-
-        if (tilesBuildingWillCover % 2 == 1) //if 1^2 or 3^2 or 5^2 (odd number of tiles squared)
-        {
-            go.transform.position += new Vector3(0.5f, 0.5f, 0);
-        }
-
+        int2 anchor = (int2)math.round(unit.position);
+        float2 centre = Footprint.VisualCenter(anchor, WorldStateManager.GetBuildingSize(unit.buildingType));
+        go.transform.position = new Vector3(centre.x, centre.y, 0);
 
         go.AddComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(unit.buildingType.ToString());
         go.AddComponent<BoxCollider2D>().isTrigger = true;
@@ -445,7 +421,9 @@ public class UnitCommander : NetworkBehaviour
             //TODO: Tween move the game object
             if (buildingGameObjects.ContainsKey(oldUnit.id))
             {
-                buildingGameObjects[oldUnit.id].transform.position = new Vector3(newUnit.position.x, newUnit.position.y, 0);
+                int2 anchor = (int2)math.round(newUnit.position);
+                float2 centre = Footprint.VisualCenter(anchor, WorldStateManager.GetBuildingSize(newUnit.buildingType));
+                buildingGameObjects[oldUnit.id].transform.position = new Vector3(centre.x, centre.y, 0);
             }
         }
         //If the sprite is changed, change the sprite

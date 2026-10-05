@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using Mirror;
-using Telepathy;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Tilemaps;
@@ -17,12 +16,14 @@ public class BuildingButtonManager : MonoBehaviour
 
     public BuildingType selectedBuildingType;
 
-    public int tilesBuildingWillCover = 1;
-
-    public Dictionary<BuildingType, float2> buildingSizes = new Dictionary<BuildingType, float2>();
+    private int2 currentAnchor;
 
     private float currentRotation = 0f; // Current rotation in degrees (0, 90, 180, 270)
     private bool isPlacing = false;
+
+    private int2 lastQueriedAnchor = new int2(int.MinValue, int.MinValue);
+    private float lastQueriedRotation = float.MinValue;
+    private float queryTimer;
 
     [ClientCallback]
     public void Start()
@@ -31,8 +32,6 @@ public class BuildingButtonManager : MonoBehaviour
         ClientPlayer localPlayer = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
 
         localPlayer.onResponseFromCanBuildBuilding.AddListener(ResultFromCommand);
-
-        localPlayer.onResponseFromTilesCovered.AddListener(ResponseFromTilesCovered);
 
 
         foreach (var button in buttons)
@@ -66,26 +65,23 @@ public class BuildingButtonManager : MonoBehaviour
 
         if (previewBuilding.activeInHierarchy)
         {
-            Vector3 position = RoundVector3(UnitCommander.GetMouseWorldPosition());
-
-            previewBuilding.transform.position = new Vector3((int)position.x, (int)position.y, 0);
-            if (tilesBuildingWillCover % 2 == 1) //if 1^2 or 3^2 or 5^2 (odd number of tiles squared)
-            {
-                previewBuilding.transform.position += new Vector3(0.5f, 0.5f, 0);
-            }
-
-            SetBuildingPreviewColour(position);
+            int2 size = WorldStateManager.GetBuildingSize(selectedBuildingType);
+            Vector3 mouse = UnitCommander.GetMouseWorldPosition();
+            currentAnchor = Footprint.SnapAnchor(new float2(mouse.x, mouse.y), size);
+            float2 centre = Footprint.VisualCenter(currentAnchor, size);
+            previewBuilding.transform.position = new Vector3(centre.x, centre.y, 0);
+            SetBuildingPreviewColour();
 
             // Rotate building with R key
-            if (Input.GetKeyDown(KeyCode.R))
+            if (GameInput.Rotate.WasPressedThisFrame())
             {
                 currentRotation = (currentRotation + 90f) % 360f;
                 previewBuilding.transform.rotation = Quaternion.Euler(0, 0, currentRotation);
                 // Re-validate with new rotation
-                SetBuildingPreviewColour(position);
+                SetBuildingPreviewColour();
             }
         }
-        if (Input.GetMouseButtonDown(0) && previewBuilding.activeInHierarchy)
+        if (GameInput.Select.WasPressedThisFrame() && !GameInput.PointerOverUI && previewBuilding.activeInHierarchy)
         {
             TrySpawnBuilding();
             previewBuilding.SetActive(false);
@@ -96,38 +92,21 @@ public class BuildingButtonManager : MonoBehaviour
         }
     }
     [Client]
-    private void SetBuildingPreviewColour(Vector3 position)
+    private void SetBuildingPreviewColour()
     {
         //We can guess if the building will be valid or not based on the positions we know of from the ClientPlayer thing
 
-        ClientPlayer clientPlayer = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
-
-        WorldStateManager.Instance.CanBuildBuildingCommand(new int2((int)position.x, (int)position.y), selectedBuildingType, currentRotation);
-        // if (clientPlayer != null)
-        // {
-        //     foreach (BuildingData building in clientPlayer.visuableBuildings)
-        //     {
-        //         float2 size = GetBuildingSizeInUnits(building.buildingType, buildingSizes);
-        //         if (!buildingSizes.ContainsKey(building.buildingType))
-        //         {
-        //             buildingSizes.Add(building.buildingType, size);
-        //         }
-        //         float2 lowerBounds = new float2(building.position.x - size.x / 2, building.position.y - size.y / 2);
-        //         float2 upperBounds = new float2(building.position.x + size.x / 2, building.position.y + size.y / 2);
-        //         bool isBuildinginWall = CheckIfBuildingInWall(building.buildingType, position, size);
-        //         if (isBuildinginWall || (position.x >= lowerBounds.x && position.x <= upperBounds.x && position.y >= lowerBounds.y && position.y <= upperBounds.y))
-        //         {
-        //             Debug.Log($"Building {building.buildingType} is in the way of the preview building at {position} (IsBuildingInWall: {isBuildinginWall})");
-        //             previewBuilding.GetComponent<SpriteRenderer>().color = new Color(1, 0, 0, 0.75f);
-        //             return;
-        //         }
-        //     }
-        //     previewBuilding.GetComponent<SpriteRenderer>().color = new Color(0.8f, 0.8f, 0.8f, 0.75f);
-        // }
-        // else
-        // {
-        //     Debug.LogError("ClientPlayer is null");
-        // }
+        // Change-gated and throttled: 10 Hz keeps an honest client below the server's 15/s refill,
+        // so cursor-speed motion can never trip the command rate-limit kick.
+        queryTimer += Time.unscaledDeltaTime;
+        // int2's != yields bool2, so reduce it with math.any.
+        if ((math.any(currentAnchor != lastQueriedAnchor) || currentRotation != lastQueriedRotation) && queryTimer >= 0.1f)
+        {
+            WorldStateManager.Instance.CanBuildBuildingCommand(currentAnchor, selectedBuildingType, currentRotation);
+            lastQueriedAnchor = currentAnchor;
+            lastQueriedRotation = currentRotation;
+            queryTimer = 0f;
+        }
     }
 
     [Client]
@@ -145,62 +124,8 @@ public class BuildingButtonManager : MonoBehaviour
     }
 
     [Client]
-    public void ResponseFromTilesCovered(int tiles)
-    {
-        tilesBuildingWillCover = tiles;
-    }
-
-    [Client]
-    private bool CheckIfBuildingInWall(BuildingType buildingType, Vector3 position, float2 size)
-    {
-        Tilemap WalkableTilemap = WorldStateManager.Instance.WalkableTilemap;
-
-        int2 tilesize = new int2(Mathf.CeilToInt(WalkableTilemap.cellSize.x), Mathf.CeilToInt(WalkableTilemap.cellSize.y));
-
-        int2 realSize = new int2(Mathf.CeilToInt(size.x) / tilesize.x, Mathf.CeilToInt(size.y) / tilesize.y);
-
-        int2 realPos = new int2(Mathf.RoundToInt(position.x), Mathf.RoundToInt(position.y));
-        int2 startPos = realPos - new int2(Mathf.FloorToInt(realSize.x / 2), Mathf.FloorToInt(realSize.y / 2));
-        for (int i = 0; i < realSize.x; i++)
-        {
-            for (int j = 0; j < realSize.y; j++)
-            {
-                int2 checkPosition = new int2(Mathf.RoundToInt(startPos.x + i), Mathf.RoundToInt(startPos.y + j));
-                Debug.Log($"Checking tile at {checkPosition} for building {buildingType}");
-                if (!WorldStateManager.Instance.GetTileCommand(checkPosition).isWalkable || WorldStateManager.Instance.GetTileCommand(checkPosition).isUsed)
-                {
-                    Debug.LogWarning($"Tile at {checkPosition} is not walkable or is used for building {buildingType}, iswalkable: {WorldStateManager.Instance.GetTileCommand(checkPosition).isWalkable}, isused: {WorldStateManager.Instance.GetTileCommand(checkPosition).isUsed}");
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-    [Client]
-    private float2 GetBuildingSizeInUnits(BuildingType buildingType, Dictionary<BuildingType, float2> cachedBuildingSizes = null)
-    {
-        if (cachedBuildingSizes != null && cachedBuildingSizes.TryGetValue(buildingType, out float2 size))
-        {
-            return size;
-        }
-        Sprite sprite = Resources.Load<Sprite>(buildingType.ToString());
-        if (sprite == null)
-        {
-            Debug.LogError($"Could not find sprite for building type {buildingType}");
-            return new float2(1, 1);
-        }
-        return new float2(sprite.rect.width / sprite.pixelsPerUnit, sprite.rect.height / sprite.pixelsPerUnit);
-
-    }
-
-
-    [Client]
     private void TrySpawnBuilding()
     {
-        Vector3 position = RoundVector3(UnitCommander.GetMouseWorldPosition());
-
-        int2 convertedPosition = new int2((int)position.x, (int)position.y);
-
         if (selectedBuildingType == BuildingType.None)
         {
             Debug.LogError("Cannot place building - selectedBuildingType is None!");
@@ -208,16 +133,7 @@ public class BuildingButtonManager : MonoBehaviour
         }
 
         // Place building through WorldStateManager (works for both HQ and regular buildings)
-        WorldStateManager.Instance.TryAddBuilding(convertedPosition, selectedBuildingType, currentRotation);
-    }
-    [Client]
-    private Vector3 RoundVector3(Vector3 vector)
-    {
-        if (tilesBuildingWillCover % 2 == 1) //if 1^2 or 3^2 or 5^2 (odd number of tiles squared)
-        {
-            vector -= new Vector3(0.5f, 0.5f, 0);
-        }
-        return new Vector3(Mathf.Round(vector.x), Mathf.Round(vector.y), Mathf.Round(vector.z));
+        WorldStateManager.Instance.TryAddBuilding(currentAnchor, selectedBuildingType, currentRotation);
     }
 
     [Client]
@@ -240,7 +156,6 @@ public class BuildingButtonManager : MonoBehaviour
         }
 
         Debug.Log($"Building button clicked: {selectedBuildingType} (index: {index})");
-        WorldStateManager.Instance.GetTilesBuildingWillCoverCommand(new int2(0, 0), selectedBuildingType);
         SetupBuildingPreview();
         isPlacing = true;
     }
@@ -252,5 +167,8 @@ public class BuildingButtonManager : MonoBehaviour
         previewBuilding.SetActive(true);
         currentRotation = 0f; // Reset rotation when selecting new building
         previewBuilding.transform.rotation = Quaternion.identity;
+        lastQueriedAnchor = new int2(int.MinValue, int.MinValue);
+        lastQueriedRotation = float.MinValue; // Sentinels guarantee the next change check differs.
+        queryTimer = 1f; // Mature timer, so the first frame after selecting a building asks immediately.
     }
 }

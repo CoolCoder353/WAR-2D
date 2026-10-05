@@ -17,7 +17,7 @@ MonoBehaviour:
   CopyDebugLogs: 1
   AudioEnabled: 1
   EventSystemEnabled: 0
-  ToggleKey: 96
+  ToggleKey: 4
   MaxTitleLength: 3000
   MaxStacktraceLength: 3000
   StacktraceHighlight: 1

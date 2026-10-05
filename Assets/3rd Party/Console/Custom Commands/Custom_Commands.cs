@@ -70,7 +70,7 @@ public class Custom_Commands : MonoBehaviour
     {
         foreach (var player in GameCore.Instance.ServerPlayers)
         {
-            Console.Log(player.Value.connection.identity.GetComponent<NetworkIdentity>().netId + " " + player.Value.data.resources);
+            Console.Log(player.Value.connection.identity.GetComponent<NetworkIdentity>().netId + " " + player.Value.Resources);
         }
     }
 

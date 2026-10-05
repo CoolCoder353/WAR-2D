@@ -1,61 +1,30 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
-using Mirror;
+
 namespace Character
 {
-
-
+    /// <summary>RTS camera: pan with WASD/arrows (Shift = faster), zoom with the mouse wheel.</summary>
     public class Character_Controler : MonoBehaviour
     {
-
         public Character_Settings settings;
         public Camera playerCamera;
 
+        private const float ReferenceSize = 5f;
 
-        private Vector3 movement;
-        private float scroll;
-
-
-        [ClientCallback]
-        // Update is called once per frame
-        void Update()
+        private void Update()
         {
+            if (playerCamera == null || settings == null) return;
 
-            float CameraSize = gameObject.transform.position.z;
-            //    SHIFT     \\
-            float shiftMultiply = 1;
-            if (Input.GetKeyDown(KeyCode.LeftShift) || Input.GetKeyDown(KeyCode.RightShift))
+            float scroll = GameInput.Zoom.ReadValue<float>();
+            if (scroll != 0f && !GameInput.PointerOverUI)
             {
-                shiftMultiply = settings.shiftSpeedMultiplyer;
-            }
-            //     SCROLL     \\
-            scroll = settings.scrollSpeed * Input.GetAxis("Mouse ScrollWheel") * Time.deltaTime;
-            float percentageScroll = Mathf.Clamp(CameraSize / settings.zoomScale.y, settings.zoomSpeedScale.x, settings.zoomSpeedScale.y);
-
-            //     MOVEMENT    \\
-            movement.x = Input.GetAxis("Horizontal") * settings.speed * shiftMultiply * percentageScroll * Time.deltaTime;
-            movement.y = Input.GetAxis("Vertical") * settings.speed * shiftMultiply * percentageScroll * Time.deltaTime;
-
-
-            //     DEBUG     \\
-            if (settings.debug)
-            {
-                Debug.Log("Movement: " + movement);
-                Debug.Log("Scroll: " + scroll);
-                Debug.Log("% Scroll: " + percentageScroll);
+                float size = playerCamera.orthographicSize - Mathf.Sign(scroll) * settings.zoomStep;
+                playerCamera.orthographicSize = Mathf.Clamp(size, settings.zoomScale.x, settings.zoomScale.y);
             }
 
-        }
-
-        [ClientCallback]
-        private void LateUpdate()
-        {
-            float CameraSize = gameObject.transform.position.z;
-
-            gameObject.transform.position += movement;
-            gameObject.transform.position = new Vector3(gameObject.transform.position.x, gameObject.transform.position.y, Mathf.Clamp(CameraSize - scroll, settings.zoomScale.x, settings.zoomScale.y));
-
+            Vector2 pan = GameInput.Pan.ReadValue<Vector2>();
+            float multiplier = GameInput.FastPan.IsPressed() ? settings.shiftSpeedMultiplyer : 1f;
+            float zoomFactor = playerCamera.orthographicSize / ReferenceSize;
+            transform.position += (Vector3)(pan * settings.speed * multiplier * zoomFactor * Time.unscaledDeltaTime);
         }
     }
 }

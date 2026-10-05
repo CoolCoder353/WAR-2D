@@ -17,7 +17,7 @@ namespace TIM
         [Tooltip("If you don't need Console's EventSystem, if you have yours, you can disable it.")]
         [BoxGroup("0"), ShowIf(nameof(Enabled))] public bool EventSystemEnabled = true;
 
-        [BoxGroup("Parameters")] public KeyCode ToggleKey = KeyCode.BackQuote;
+        [BoxGroup("Parameters")] public UnityEngine.InputSystem.Key ToggleKey = UnityEngine.InputSystem.Key.Backquote;
         [BoxGroup("Parameters")] public int MaxTitleLength = 3000;
         [BoxGroup("Parameters")] public int MaxStacktraceLength = 3000;
 
