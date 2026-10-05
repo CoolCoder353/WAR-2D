@@ -21,16 +21,22 @@ public partial struct SpawnerSystem : ISystem
     [ServerCallback]
     public void OnUpdate(ref SystemState state)
     {
-        if (!NetworkServer.active) return;
+        if (!NetworkServer.active || WorldStateManager.Instance == null || GameCore.Instance == null || GameCore.Instance.CurrentState != GameState.Playing) return;
 
         // Create a single command buffer for all spawning operations
         EntityCommandBuffer commandBuffer = new EntityCommandBuffer(Allocator.Temp);
         List<(int id, int2 tile)> spawnedUnits = new List<(int id, int2 tile)>();
         GameConfigData config = ConfigLoader.LoadConfig();
+        float dt = SystemAPI.Time.DeltaTime;
 
         foreach (var spawnerData in SystemAPI.Query<RefRW<SpawnerData>>())
         {
-            if (spawnerData.ValueRW.count > 0 && WorldStateManager.Instance != null)
+            float spawnRate = spawnerData.ValueRO.spawnRate;
+            // Clamp the timer to one unit's worth so a spawner that sat idle does not burst out its whole queue.
+            float elapsed = spawnerData.ValueRO.timeSinceLastSpawn + dt;
+            spawnerData.ValueRW.timeSinceLastSpawn = math.min(elapsed, 1f / spawnRate);
+
+            if (spawnerData.ValueRW.count > 0 && SpawnerRules.CanSpawn(spawnerData.ValueRO.timeSinceLastSpawn, spawnRate))
             {
                 int2 anchor = (int2)math.round(spawnerData.ValueRO.position);
                 if (!WorldStateManager.Instance.TryFindFreeTileNear(anchor, -1, out int2 spawnTile))
@@ -40,6 +46,7 @@ public partial struct SpawnerSystem : ISystem
 
                 Debug.Log("SpawnerSystem: Spawning unit");
                 spawnerData.ValueRW.count--;
+                spawnerData.ValueRW.timeSinceLastSpawn = 0f;
 
                 // Set the ClientUnit component to the new entity.
                 int id = WorldStateManager.Instance.Ids.Allocate();
@@ -106,48 +113,28 @@ public partial struct SpawnerSystem : ISystem
         if (GameCore.Instance != null)
         {
             ServerPlayer owner = GameCore.Instance.GetServerPlayerById(idOfOwner);
-            if (owner != null)
+            UnitConfig unitConfig = config.GetUnit(unitType);
+
+            if (owner == null || !owner.TrySpend(unitConfig.UpfrontCost)) return Entity.Null;
+
+            Entity newEntity = commandBuffer.CreateEntity();
+
+            commandBuffer.AddComponent(newEntity, new LocalTransform { Position = new float3(position.x, position.y, 0) });
+            commandBuffer.AddComponent(newEntity, new HealthComponent { entityId = id, currentHealth = unitConfig.Health, maxHealth = unitConfig.Health });
+            commandBuffer.AddComponent(newEntity, new DamageComponent { damageAmount = unitConfig.Damage, range = unitConfig.Range, attackSpeed = unitConfig.AttackInterval });
+            commandBuffer.AddBuffer<PathPoint>(newEntity);
+
+            commandBuffer.AddComponent(newEntity, new ClientUnit { id = id, ownerId = idOfOwner, spriteName = unitType });
+            commandBuffer.AddComponent(newEntity, new MovementComponent { speed = unitConfig.MoveSpeed, acceleration = unitConfig.Acceleration });
+
+            // Every unit pays its running cost; unpaid units decay.
+            commandBuffer.AddComponent(newEntity, new UpkeepComponent
             {
-                UnitConfig unitConfig = config.GetUnit(unitType);
+                ownerId = idOfOwner,
+                runningCostPerSecond = unitConfig.RunningCost,
+            });
 
-                if (owner.data.resources < unitConfig.UpfrontCost)
-                {
-                    return Entity.Null;
-                }
-                
-                // Deduct upfront cost
-                owner.RemoveResources(unitConfig.UpfrontCost);
-                
-                // Update client display
-                if (owner.connection != null && owner.connection.identity != null)
-                {
-                    ClientPlayer clientPlayer = owner.connection.identity.GetComponent<ClientPlayer>();
-                    if (clientPlayer != null)
-                    {
-                        clientPlayer.TargetUpdateResources(owner.connection, owner.data.resources);
-                    }
-                }
-
-                Entity newEntity = commandBuffer.CreateEntity();
-
-                commandBuffer.AddComponent(newEntity, new LocalTransform { Position = new float3(position.x, position.y, 0) });
-                commandBuffer.AddComponent(newEntity, new HealthComponent { entityId = id, currentHealth = unitConfig.Health, maxHealth = unitConfig.Health });
-                commandBuffer.AddComponent(newEntity, new DamageComponent { damageAmount = unitConfig.Damage, range = unitConfig.Range, attackSpeed = unitConfig.AttackInterval });
-                commandBuffer.AddBuffer<PathPoint>(newEntity);
-
-                commandBuffer.AddComponent(newEntity, new ClientUnit { id = id, ownerId = idOfOwner, spriteName = unitType });
-                commandBuffer.AddComponent(newEntity, new MovementComponent { speed = unitConfig.MoveSpeed, acceleration = unitConfig.Acceleration });
-                
-                // Add resource cost component
-                commandBuffer.AddComponent(newEntity, new ResourceCostComponent 
-                { 
-                    upfrontCost = unitConfig.UpfrontCost,
-                    runningCostPerSecond = unitConfig.RunningCost,
-                    timeSinceLastCost = 0f
-                });
-
-                return newEntity;
-            }
+            return newEntity;
         }
 
         return Entity.Null;

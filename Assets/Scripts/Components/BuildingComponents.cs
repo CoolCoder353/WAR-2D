@@ -42,4 +42,7 @@ public struct SpawnerData : IComponentData
     public int count;
     public UnitType unitType;
     public int ownerId;
+    /// <summary>Units per second (from BuildingConfig.SpawnRate).</summary>
+    public float spawnRate;
+    public float timeSinceLastSpawn;
 }

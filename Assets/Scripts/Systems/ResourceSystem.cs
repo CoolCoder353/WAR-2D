@@ -1,166 +1,68 @@
-using Unity.Entities;
-using Unity.Burst;
-using Unity.Transforms;
-using Unity.Mathematics;
-using Mirror;
-using UnityEngine;
 using Config;
+using Mirror;
+using Unity.Entities;
+using Unity.Mathematics;
+using Unity.Transforms;
 
 /// <summary>
-/// System responsible for managing resource generation, mining, and consumption.
+/// Passive income, Miner income, and upkeep for units and buildings. Unpaid entities lose
+/// DecayPercentPerSecond of max health per second until paid. Server only, Playing state only.
 /// </summary>
-[BurstCompile]
 public partial struct ResourceSystem : ISystem
 {
-    private float timeSinceLastPassiveGeneration;
+    private const float PassiveTickSeconds = 0.1f;
+    private float passiveTimer;
 
-    /// <summary>
-    /// Called every frame on the server to handle resource logic.
-    /// </summary>
-    [ServerCallback]
     public void OnUpdate(ref SystemState state)
     {
-        if (GameCore.Instance == null || WorldStateManager.Instance == null) return;
-
+        if (!NetworkServer.active || GameCore.Instance == null || WorldStateManager.Instance == null) return;
         if (GameCore.Instance.CurrentState != GameState.Playing) return;
 
-        float deltaTime = SystemAPI.Time.DeltaTime;
+        GameCore core = GameCore.Instance;
         GameConfigData config = ConfigLoader.LoadConfig();
+        float dt = SystemAPI.Time.DeltaTime;
 
-        // 1. Passive Resource Generation
-        HandlePassiveGeneration(ref state, deltaTime, config);
-
-        // 2. Mining Logic
-        HandleMining(ref state, deltaTime, config);
-
-        // 3. Resource Consumption (Units & Buildings)
-        HandleConsumption(ref state, deltaTime, config);
-    }
-
-    /// <summary>
-    /// Handles passive resource generation for all players.
-    /// </summary>
-    private void HandlePassiveGeneration(ref SystemState state, float deltaTime, GameConfigData config)
-    {
-        timeSinceLastPassiveGeneration += deltaTime;
-
-        // Update every 0.1 seconds to reduce network traffic
-        if (timeSinceLastPassiveGeneration < 0.1f) return;
-
-        float resourcesThisUpdate = config.Resources.PassiveGenerationRate * timeSinceLastPassiveGeneration;
-
-        foreach (var serverPlayer in GameCore.Instance.serverPlayers)
+        passiveTimer += dt;
+        if (passiveTimer >= PassiveTickSeconds)
         {
-            if (serverPlayer != null)
+            float income = config.Resources.PassiveGenerationRate * passiveTimer;
+            foreach (ServerPlayer player in core.serverPlayers)
             {
-                serverPlayer.AddResources(resourcesThisUpdate);
-                UpdateClientDisplay(serverPlayer);
+                if (player.state == PlayerState.Playing) player.Add(income);
             }
+            passiveTimer = 0f;
         }
 
-        timeSinceLastPassiveGeneration = 0f;
-    }
-
-    /// <summary>
-    /// Handles mining logic for miners.
-    /// Checks if miners are facing gems and adds resources if they are.
-    /// </summary>
-    private void HandleMining(ref SystemState state, float deltaTime, GameConfigData config)
-    {
-        foreach (var (miningComponent, buildingData, transform) in 
-                 SystemAPI.Query<RefRW<MiningComponent>, RefRO<BuildingData>, RefRO<LocalTransform>>())
+        foreach (var (mining, building, transform) in SystemAPI.Query<RefRW<MiningComponent>, RefRO<BuildingData>, RefRO<LocalTransform>>())
         {
-            miningComponent.ValueRW.timeSinceLastMining += deltaTime;
+            mining.ValueRW.timeSinceLastMining += dt;
+            if (mining.ValueRO.timeSinceLastMining < 1f) continue;
 
-            // Mine resources every second
-            if (miningComponent.ValueRO.timeSinceLastMining >= 1.0f)
+            int2 anchor = (int2)math.round(transform.ValueRO.Position.xy);
+            int2 faced = anchor + MinerRules.FacingOffset(MinerRules.ZDegrees(transform.ValueRO.Rotation));
+            bool active = WorldStateManager.Instance.GetTile(faced).tileType == TileType.Gem;
+            mining.ValueRW.isActive = active;
+            if (active)
             {
-                int2 buildingPos = (int2)math.floor(transform.ValueRO.Position.xy);
-                int2 checkPos = buildingPos + MinerRules.FacingOffset(MinerRules.ZDegrees(transform.ValueRO.Rotation));
-
-                TileNode tile = WorldStateManager.Instance.GetTile(checkPos);
-                bool isGemTile = tile.tileType == TileType.Gem;
-
-                miningComponent.ValueRW.isActive = isGemTile;
-
-                if (isGemTile)
-                {
-                    float resourcesToAdd = config.Resources.MiningRate * miningComponent.ValueRO.timeSinceLastMining;
-                    
-                    ServerPlayer owner = GameCore.Instance.GetServerPlayerById(buildingData.ValueRO.ownerId);
-                    if (owner != null)
-                    {
-                        owner.AddResources(resourcesToAdd);
-                        UpdateClientDisplay(owner);
-                    }
-                }
-
-                miningComponent.ValueRW.timeSinceLastMining = 0f;
+                core.GetServerPlayerById(building.ValueRO.ownerId)?.Add(config.Resources.MiningRate * mining.ValueRO.timeSinceLastMining);
             }
-        }
-    }
-
-    /// <summary>
-    /// Handles resource consumption for units and buildings.
-    /// Deducts running costs from the owner's resources.
-    /// </summary>
-    private void HandleConsumption(ref SystemState state, float deltaTime, GameConfigData config)
-    {
-        // Unit Consumption
-        foreach (var (resourceCost, clientUnit) in SystemAPI.Query<RefRW<ResourceCostComponent>, RefRO<ClientUnit>>())
-        {
-            resourceCost.ValueRW.timeSinceLastCost += deltaTime;
-
-            if (resourceCost.ValueRO.timeSinceLastCost >= 1.0f)
-            {
-                float costToDeduct = resourceCost.ValueRO.runningCostPerSecond * resourceCost.ValueRO.timeSinceLastCost;
-                ProcessDeduction(clientUnit.ValueRO.ownerId, costToDeduct);
-                resourceCost.ValueRW.timeSinceLastCost = 0f;
-            }
+            mining.ValueRW.timeSinceLastMining = 0f;
         }
 
-        // Building Consumption
-        foreach (var (buildingResource, buildingData) in SystemAPI.Query<RefRW<BuildingResourceComponent>, RefRO<BuildingData>>())
+        foreach (var (upkeep, health) in SystemAPI.Query<RefRW<UpkeepComponent>, RefRW<HealthComponent>>())
         {
-            buildingResource.ValueRW.timeSinceLastCost += deltaTime;
-
-            if (buildingResource.ValueRO.timeSinceLastCost >= 1.0f)
+            if (upkeep.ValueRO.unpaid)
             {
-                float costToDeduct = buildingResource.ValueRO.runningCostPerSecond * buildingResource.ValueRO.timeSinceLastCost;
-                ProcessDeduction(buildingData.ValueRO.ownerId, costToDeduct);
-                buildingResource.ValueRW.timeSinceLastCost = 0f;
+                health.ValueRW.currentHealth -= UpkeepRules.DecayDamage(health.ValueRO.maxHealth, config.Resources.DecayPercentPerSecond, dt);
             }
-        }
-    }
 
-    /// <summary>
-    /// Helper to deduct resources from a player.
-    /// </summary>
-    private void ProcessDeduction(int ownerId, float amount)
-    {
-        ServerPlayer owner = GameCore.Instance.GetServerPlayerById(ownerId);
-        if (owner != null)
-        {
-            if (owner.data.resources >= amount)
-            {
-                owner.RemoveResources(amount);
-                UpdateClientDisplay(owner);
-            }
-        }
-    }
+            upkeep.ValueRW.timeSinceLastCharge += dt;
+            if (upkeep.ValueRO.timeSinceLastCharge < 1f) continue;
 
-    /// <summary>
-    /// Helper to update the client's resource display.
-    /// </summary>
-    private void UpdateClientDisplay(ServerPlayer player)
-    {
-        if (player.connection != null && player.connection.identity != null)
-        {
-            ClientPlayer clientPlayer = player.connection.identity.GetComponent<ClientPlayer>();
-            if (clientPlayer != null)
-            {
-                clientPlayer.TargetUpdateResources(player.connection, player.data.resources);
-            }
+            float cost = upkeep.ValueRO.runningCostPerSecond * upkeep.ValueRO.timeSinceLastCharge;
+            ServerPlayer owner = core.GetServerPlayerById(upkeep.ValueRO.ownerId);
+            upkeep.ValueRW.unpaid = owner == null || !owner.TrySpend(cost);
+            upkeep.ValueRW.timeSinceLastCharge = 0f;
         }
     }
 }

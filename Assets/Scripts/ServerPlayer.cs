@@ -1,57 +1,50 @@
-using UnityEngine;
 using Mirror;
-using Newtonsoft.Json;
 
+/// <summary>Server-only state for one connected player.</summary>
 public class ServerPlayer
 {
     public NetworkConnectionToClient connection;
-
-    public ServerData data { get; protected set; } = new();
-
     public PlayerState state = PlayerState.Playing;
-    public ServerPlayer(NetworkConnectionToClient connection, float resources)
+
+    public float Resources { get; private set; }
+
+    /// <summary>True when Resources changed since the last sync to the client.</summary>
+    public bool ResourcesDirty { get; private set; } = true;
+
+    public ServerPlayer(NetworkConnectionToClient connection, float startingResources)
     {
         this.connection = connection;
-        this.data.resources = resources;
+        Resources = startingResources;
     }
 
-    public void AddResources(float amount)
+    public void Add(float amount)
     {
-        data.resources += amount;
+        if (!(amount > 0f)) return; // also rejects NaN
+        Resources += amount;
+        ResourcesDirty = true;
     }
 
-    public void RemoveResources(float amount)
+    public bool TrySpend(float amount)
     {
-        //Debug.Log($"Removing {amount} resources from player {connection.identity.netId}");
-        data.resources -= amount;
+        float balance = Resources;
+        if (!UpkeepRules.TryCharge(ref balance, amount)) return false;
+        if (balance != Resources)
+        {
+            Resources = balance;
+            ResourcesDirty = true;
+        }
+        return true;
     }
 
+    public void MarkSynced()
+    {
+        ResourcesDirty = false;
+    }
 }
+
 public enum PlayerState
 {
     Playing,
     Eliminated,
     Spectating
-}
-[System.Serializable]
-public class ServerData
-{
-    public float resources = 0;
-
-    public static string Serialize(ServerData data)
-    {
-
-        return JsonConvert.SerializeObject(data);
-    }
-
-    public string Serialize()
-    {
-
-        return JsonConvert.SerializeObject(this);
-    }
-
-    public static ServerData Deserialize(string data)
-    {
-        return JsonConvert.DeserializeObject<ServerData>(data);
-    }
 }

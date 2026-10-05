@@ -18,7 +18,7 @@
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,
-    "precompiledReferences": ["DOTween.dll", "Newtonsoft.Json.dll"],
+    "precompiledReferences": ["DOTween.dll"],
     "autoReferenced": true,
     "defineConstraints": [],
     "versionDefines": [],

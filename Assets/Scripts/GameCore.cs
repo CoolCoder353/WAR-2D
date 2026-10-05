@@ -86,35 +86,28 @@ public class GameCore : NetworkBehaviour
         base.OnStartServer();
     }
 
-    /// <summary>
-    /// Sends the individual player's server player object to each client.
-    /// This ensures clients have up-to-date information about their own resources and state.
-    /// </summary>
-    [Server]
-    private void UpdateClientsPrivateData()
-    {
-        foreach (var player in ServerPlayers)
-        {
-            ClientPlayer clientPlayer = player.Key.GetComponent<ClientPlayer>();
-            ////Debug.Log($"Server sending private data to {clientPlayer.GetConnectionToClient().connectionId} ({player.Value.data.Serialize()}, R:{player.Value.data.resources})");
-
-            clientPlayer.SetServerPlayer(clientPlayer.GetConnectionToClient(), player.Value.data.Serialize());
-        }
-    }
+    /// <summary>How often a changed resource count is pushed to its client.</summary>
+    private const float ResourceSyncInterval = 0.1f;
+    private float resourceSyncTimer;
 
     /// <summary>
-    /// Called every frame on the server after Update.
-    /// Used to synchronize private data to clients.
+    /// Called every frame on the server after Update. Sends each player's resources to their own
+    /// client at 10 Hz, and only when they changed since the last send.
     /// </summary>
     [ServerCallback]
     public void LateUpdate()
     {
-        //TODO: Change this to 1 as a safe guard. For testing purposes it is set to 0
-        if (ServerPlayers.Count > 0)
-        {
-            UpdateClientsPrivateData();
-        }
+        resourceSyncTimer += Time.deltaTime;
+        if (resourceSyncTimer < ResourceSyncInterval) return;
+        resourceSyncTimer = 0f;
 
+        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
+        {
+            ServerPlayer player = entry.Value;
+            if (!player.ResourcesDirty || entry.Key == null) continue;
+            entry.Key.GetComponent<ClientPlayer>().TargetUpdateResources(player.connection, player.Resources);
+            player.MarkSynced();
+        }
     }
 
     /// <summary>
@@ -198,17 +191,6 @@ public class GameCore : NetworkBehaviour
     public bool IsServerOwner(NetworkConnectionToClient conn)
     {
         return conn.identity == serverOwner.identity;
-    }
-
-    /// <summary>
-    /// Adds resources to a specific player.
-    /// </summary>
-    /// <param name="conn">The connection of the player.</param>
-    /// <param name="amount">The amount of resources to add.</param>
-    [Server]
-    public void AddResourcesToPlayer(NetworkConnectionToClient conn, float amount)
-    {
-        ServerPlayers[conn.identity].AddResources(amount);
     }
 
     /// <summary>

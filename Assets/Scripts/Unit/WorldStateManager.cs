@@ -739,27 +739,11 @@ public class WorldStateManager : NetworkBehaviour
 
         BuildingConfig buildingConfig = ConfigLoader.LoadConfig().GetBuilding(type);
 
-        // Check if owner has sufficient resources
+        // Check the owner can afford the building before it is placed.
         ServerPlayer owner = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(sender.identity.GetComponent<ClientPlayer>().netId));
-        if (owner != null)
+        if (owner == null || !owner.TrySpend(buildingConfig.UpfrontCost))
         {
-            if (owner.data.resources < buildingConfig.UpfrontCost)
-            {
-                return;
-            }
-
-            // Deduct upfront cost
-            owner.RemoveResources(buildingConfig.UpfrontCost);
-
-            // Update client display
-            if (owner.connection != null && owner.connection.identity != null)
-            {
-                ClientPlayer clientPlayer = owner.connection.identity.GetComponent<ClientPlayer>();
-                if (clientPlayer != null)
-                {
-                    clientPlayer.TargetUpdateResources(owner.connection, owner.data.resources);
-                }
-            }
+            return;
         }
 
         BuildingData buildingData = new BuildingData
@@ -784,12 +768,11 @@ public class WorldStateManager : NetworkBehaviour
             Scale = 1f
         });
 
-        // Add resource cost component to all buildings
-        EntityManager.AddComponentData(building, new BuildingResourceComponent
+        // Every building pays its running cost; unpaid buildings decay.
+        EntityManager.AddComponentData(building, new UpkeepComponent
         {
-            upfrontCost = buildingConfig.UpfrontCost,
+            ownerId = buildingData.ownerId,
             runningCostPerSecond = buildingConfig.RunningCost,
-            timeSinceLastCost = 0f
         });
 
         // Add Health Component
@@ -812,7 +795,6 @@ public class WorldStateManager : NetworkBehaviour
                 // Add mining component to miner buildings
                 EntityManager.AddComponentData(building, new MiningComponent
                 {
-                    miningRate = ConfigLoader.LoadConfig().Resources.MiningRate,
                     timeSinceLastMining = 0f,
                     isActive = false
                 });
@@ -824,7 +806,8 @@ public class WorldStateManager : NetworkBehaviour
                     count = 0,
                     ownerId = buildingData.ownerId,
                     position = buildingData.position,
-                    unitType = UnitType.Tank
+                    unitType = UnitType.Tank,
+                    spawnRate = buildingConfig.SpawnRate
                 });
                 break;
             default:
@@ -861,6 +844,9 @@ public class WorldStateManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void BuildingClicked(int buildingId, NetworkConnectionToClient sender = null)
     {
+        // Queuing units is only allowed while the game is actually being played.
+        if (GameCore.Instance.CurrentState != GameState.Playing) return;
+
         if (Buildings.TryGetValue(buildingId, out Entity building))
         {
             BuildingData buildingData = EntityManager.GetComponentData<BuildingData>(building);
@@ -876,12 +862,19 @@ public class WorldStateManager : NetworkBehaviour
             {
 
                 SpawnerData spawnerData = EntityManager.GetComponentData<SpawnerData>(building);
-                spawnerData.count += 1;
+                if (spawnerData.count < SpawnerRules.MaxQueue)
+                {
+                    spawnerData.count += 1;
 
-                EntityCommandBuffer commandBuffer = new EntityCommandBuffer(Allocator.Temp);
-                commandBuffer.SetComponent(building, spawnerData);
-                commandBuffer.Playback(EntityManager);
-                commandBuffer.Dispose();
+                    EntityCommandBuffer commandBuffer = new EntityCommandBuffer(Allocator.Temp);
+                    commandBuffer.SetComponent(building, spawnerData);
+                    commandBuffer.Playback(EntityManager);
+                    commandBuffer.Dispose();
+                }
+                else
+                {
+                    Debug.LogWarning($"Player {player.nickname} tried to queue more than {SpawnerRules.MaxQueue} units on building {buildingId}.");
+                }
 
                 Debug.Log($"Player {player.nickname} clicked on building {buildingId}. Spawner count is now {spawnerData.count}");
 

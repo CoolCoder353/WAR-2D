@@ -15,7 +15,6 @@ public class ClientPlayer : NetworkBehaviour
     public readonly SyncList<BuildingData> visuableBuildings = new SyncList<BuildingData>();
 
     public readonly SyncList<HealthComponent> entityHealth = new SyncList<HealthComponent>();
-    public ServerData serverPlayer;
 
     [SyncVar]
     public bool hasPlacedHQ = false;
@@ -53,13 +52,6 @@ public class ClientPlayer : NetworkBehaviour
     }
 
 
-
-    [TargetRpc]
-    public void SetServerPlayer(NetworkConnectionToClient connection, string playerData)
-    {
-        serverPlayer = ServerData.Deserialize(playerData);
-
-    }
 
     [TargetRpc]
     public void TargetReceiveCanBuildBuildingResponse(NetworkConnection target, bool result)
@@ -226,7 +218,7 @@ public class ClientPlayer : NetworkBehaviour
 
     public void RemoveUnitHandles()
     {
-        if (serverPlayer != null && visuableUnits != null)
+        if (visuableUnits != null)
         {
             Debug.Log("Removing unit hooks");
             visuableUnits.OnChange = null;
@@ -300,7 +292,7 @@ public class ClientPlayer : NetworkBehaviour
 
     public void RemoveBuildingHandles()
     {
-        if (serverPlayer != null && visuableBuildings != null)
+        if (visuableBuildings != null)
         {
             Debug.Log("Removing Building hooks");
             visuableBuildings.OnChange = null;
