@@ -341,6 +341,7 @@ public class WorldStateManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void UpdateClientView(int2 startcorner, int2 endcorner, NetworkConnectionToClient sender = null)
     {
+        if (!CommandGate.Allow(sender, nameof(UpdateClientView)) || !CommandValidator.IsBoxValid(startcorner, endcorner)) return;
         playerView[sender.identity.GetComponent<ClientPlayer>()] = (startcorner, endcorner);
     }
 
@@ -527,6 +528,9 @@ public class WorldStateManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdMoveUnits(int2 goal, int2 startcorner, int2 endcorner, NetworkConnectionToClient sender = null)
     {
+        if (!CommandGate.Allow(sender, nameof(CmdMoveUnits)) || !CommandValidator.IsBoxValid(startcorner, endcorner)) return;
+        if (GameCore.Instance.CurrentState != GameState.Playing) return;
+
         List<ClientUnit> units = new List<ClientUnit>();
         List<int2> setGoals = new List<int2>();
 
@@ -540,7 +544,7 @@ public class WorldStateManager : NetworkBehaviour
             ClientUnit clientUnit = EntityManager.GetComponentData<ClientUnit>(entity);
             clientUnit.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
 
-            if (clientUnit.ownerId != sender.identity.GetComponent<ClientPlayer>().netId)
+            if (clientUnit.ownerId != BuildingData.UIntToInt(sender.identity.netId))
             {
                 continue;
             }
@@ -740,6 +744,7 @@ public class WorldStateManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void TryAddBuilding(int2 positon, BuildingType type, float rotation, NetworkConnectionToClient sender = null)
     {
+        if (!CommandGate.Allow(sender, nameof(TryAddBuilding))) return;
         ClientPlayer placer = sender.identity.GetComponent<ClientPlayer>();
         if (CheckPlacement(type, positon, rotation, placer) != PlacementResult.Ok)
         {
@@ -843,6 +848,7 @@ public class WorldStateManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CanBuildBuildingCommand(int2 position, BuildingType type, float rotation, NetworkConnectionToClient sender = null)
     {
+        if (!CommandGate.Allow(sender, nameof(CanBuildBuildingCommand))) return;
         ClientPlayer player = sender.identity.GetComponent<ClientPlayer>();
         player.TargetReceiveCanBuildBuildingResponse(sender, CheckPlacement(type, position, rotation, player) == PlacementResult.Ok);
     }
@@ -853,6 +859,7 @@ public class WorldStateManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void BuildingClicked(int buildingId, NetworkConnectionToClient sender = null)
     {
+        if (!CommandGate.Allow(sender, nameof(BuildingClicked))) return;
         // Queuing units is only allowed while the game is actually being played.
         if (GameCore.Instance.CurrentState != GameState.Playing) return;
 

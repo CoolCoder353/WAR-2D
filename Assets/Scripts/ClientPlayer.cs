@@ -147,15 +147,12 @@ public class ClientPlayer : NetworkBehaviour
     }
 
     [Command]
-    public void CmdSetNickname(string nickname)
+    public void CmdSetNickname(string requested)
     {
-        if (string.IsNullOrEmpty(nickname))
-        {
-            return;
-        }
-
-        this.nickname = nickname;
-
+        if (!CommandGate.Allow(connectionToClient, nameof(CmdSetNickname))) return;
+        if (GameCore.Instance == null || GameCore.Instance.CurrentState != GameState.Lobby) return;
+        if (!CommandValidator.TrySanitizeNickname(requested, out string clean)) return;
+        nickname = clean;
     }
 
     [Client]

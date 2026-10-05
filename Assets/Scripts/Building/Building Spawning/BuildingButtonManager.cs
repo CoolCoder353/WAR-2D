@@ -21,6 +21,9 @@ public class BuildingButtonManager : MonoBehaviour
     private float currentRotation = 0f; // Current rotation in degrees (0, 90, 180, 270)
     private bool isPlacing = false;
 
+    private int2 lastQueriedAnchor = new int2(int.MinValue, int.MinValue);
+    private float lastQueriedRotation = float.NaN;
+
     [ClientCallback]
     public void Start()
     {
@@ -92,6 +95,11 @@ public class BuildingButtonManager : MonoBehaviour
     {
         //We can guess if the building will be valid or not based on the positions we know of from the ClientPlayer thing
 
+        // Only ask the server when the anchor or rotation actually changed since the last query.
+        if (currentAnchor.Equals(lastQueriedAnchor) && currentRotation == lastQueriedRotation) return;
+
+        lastQueriedAnchor = currentAnchor;
+        lastQueriedRotation = currentRotation;
         WorldStateManager.Instance.CanBuildBuildingCommand(currentAnchor, selectedBuildingType, currentRotation);
     }
 
@@ -153,5 +161,7 @@ public class BuildingButtonManager : MonoBehaviour
         previewBuilding.SetActive(true);
         currentRotation = 0f; // Reset rotation when selecting new building
         previewBuilding.transform.rotation = Quaternion.identity;
+        lastQueriedAnchor = new int2(int.MinValue, int.MinValue);
+        lastQueriedRotation = float.NaN; // Forces the first frame after selecting a building to ask.
     }
 }

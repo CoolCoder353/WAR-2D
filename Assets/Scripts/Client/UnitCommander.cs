@@ -15,6 +15,10 @@ public class UnitCommander : NetworkBehaviour
     private int2 startcorner;
     private int2 endcorner;
 
+    private int2 lastSentCorner1 = new int2(int.MinValue, int.MinValue);
+    private int2 lastSentCorner2 = new int2(int.MinValue, int.MinValue);
+    private float viewSendTimer;
+
     public GameObject selectionBox;
 
     private ClientPlayer localPlayer;
@@ -151,7 +155,14 @@ public class UnitCommander : NetworkBehaviour
 
 
         //Request from the server to update what the client can see for the next frame
-        WorldStateManager.Instance.UpdateClientView(corner1, corner2);
+        viewSendTimer += Time.unscaledDeltaTime;
+        if ((!corner1.Equals(lastSentCorner1) || !corner2.Equals(lastSentCorner2)) && viewSendTimer >= 0.1f)
+        {
+            WorldStateManager.Instance.UpdateClientView(corner1, corner2);
+            lastSentCorner1 = corner1;
+            lastSentCorner2 = corner2;
+            viewSendTimer = 0f;
+        }
 
         MoveUnits();
         VisualizeAttackingUnits();
