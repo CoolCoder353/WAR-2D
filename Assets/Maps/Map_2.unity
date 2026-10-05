@@ -316,59 +316,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 41280722}
   m_CullTransparentMesh: 1
---- !u!1 &55759160
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 55759162}
-  - component: {fileID: 55759161}
-  m_Layer: 0
-  m_Name: GameObject
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &55759161
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 55759160}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 45a335734b1572644a6a5d09d87adc65, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  _SceneAsset: {fileID: 102900000, guid: bcf4dd41e8bfd304f8b1e6513cb48f10, type: 3}
-  _HierarchyColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
-  AutoLoadScene: 1
-  _SceneGUID:
-    Value:
-      x: 350048203
-      y: 1077803918
-      z: 359537551
-      w: 33049539
---- !u!4 &55759162
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 55759160}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &157064717
 GameObject:
   m_ObjectHideFlags: 0
@@ -17921,8 +17868,6 @@ GameObject:
   - component: {fileID: 1333966504}
   - component: {fileID: 1333966503}
   - component: {fileID: 1333966502}
-  - component: {fileID: 1333966508}
-  - component: {fileID: 1333966507}
   - component: {fileID: 1333966506}
   m_Layer: 5
   m_Name: Canvas
@@ -18037,30 +17982,6 @@ MonoBehaviour:
   progressText: {fileID: 1523056372}
   buildingButtonManager: {fileID: 1819915077}
   hideScreen: 0
---- !u!114 &1333966507
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1333966501}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 718acad61b8c8463b85d9d40e3dc8397, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::LossScreenUI
---- !u!114 &1333966508
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1333966501}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e1e3cd174dd71a106a78c1bc6c2f2f47, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::WinScreenUI
 --- !u!1 &1523056371
 GameObject:
   m_ObjectHideFlags: 0
@@ -33627,5 +33548,4 @@ SceneRoots:
   - {fileID: 1970157632}
   - {fileID: 1985331743}
   - {fileID: 1288745586}
-  - {fileID: 55759162}
   - {fileID: 1333966505}

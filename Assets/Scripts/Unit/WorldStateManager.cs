@@ -257,15 +257,6 @@ public class WorldStateManager : NetworkBehaviour
     }
 
     /// <summary>
-    /// Gets a tile at a specific position (Client side command).
-    /// </summary>
-    [Client]
-    public TileNode GetTileCommand(int2 position)
-    {
-        return world.GetTile(position);
-    }
-
-    /// <summary>
     /// Sets a tile at a specific position.
     /// </summary>
     [Server]
@@ -598,7 +589,7 @@ public class WorldStateManager : NetworkBehaviour
             return;
         }
 
-        Path path = Path.BurstToPath(Pathfinding.BurstFindPath(WorldStateManager.Instance.world, startInt, goal, doJob: false));
+        Path path = Path.BurstToPath(Pathfinding.BurstFindPath(WorldStateManager.Instance.world, startInt, goal));
 
         if (path.pathLength > 0)
         {

@@ -37,8 +37,6 @@ public class ClientPlayer : NetworkBehaviour
 
         //Add the hook to the scene change event
         if (!isLocalPlayer) return;
-        // SceneManager.sceneLoaded += OnSceneChangedEvent;
-
 
     }
 
@@ -46,7 +44,6 @@ public class ClientPlayer : NetworkBehaviour
     public override void OnStopClient()
     {
         if (!isLocalPlayer) return;
-        // SceneManager.sceneLoaded -= OnSceneChangedEvent;
 
         //TODO: Need to make sure we remove handles when the player disconnects, or the scene changes
 
@@ -184,23 +181,6 @@ public class ClientPlayer : NetworkBehaviour
     }
 
 
-
-    // [Client]
-    // public void OnSceneChangedEvent(Scene newScene, LoadSceneMode sceneMode)
-    // {
-    //     if (!isLocalPlayer) return;
-
-    //     Debug.Log($"Scene changed to {newScene.name} with mode {sceneMode}");
-    //     //Setup the hooks to the visable units
-    //     if (serverPlayer != null && visuableUnits != null && UnitCommander.Instance != null)
-    //     {
-    //         // Debug.Log($"Debugging hooks state is {visuableUnits.OnChange != null}");
-    //         // Debug.Log("Setting up unit hooks");
-    //         // SetUnitHandles();
-
-    //     }
-
-    // }
 
     public void SetUnitHandles()
     {

@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Mathematics;
@@ -26,24 +24,10 @@ public static class Pathfinding
 {
 
 
-    public static BurstPath BurstFindPath(TilemapStruct tilemap, int2 start, int2 end, HCostMethod hCostMethod = HCostMethod.Euclidean, bool doJob = true)
+    public static BurstPath BurstFindPath(TilemapStruct tilemap, int2 start, int2 end, HCostMethod hCostMethod = HCostMethod.Euclidean)
     {
-        if (doJob)
-        {
-            Task.Run(() =>
-                    {
-                        BurstFindPath(ref tilemap, start.x, start.y, end.x, end.y, out BurstPath path, hCostMethod, Allocator.TempJob);
-                        return path;
-                    });
-
-            return new BurstPath(new NativeArray<PathNode>(0, Allocator.Persistent), 0, 0);
-        }
-        else
-        {
-            BurstFindPath(ref tilemap, start.x, start.y, end.x, end.y, out BurstPath path, hCostMethod, Allocator.Temp);
-            return path;
-        }
-
+        BurstFindPath(ref tilemap, start.x, start.y, end.x, end.y, out BurstPath path, hCostMethod, Allocator.Temp);
+        return path;
     }
 
     [BurstCompile]
@@ -122,68 +106,6 @@ public static class Pathfinding
         return;
     }
 
-    public static Path FindPath(TilemapStruct tilemap, int2 start, int2 end, HCostMethod hCostMethod = HCostMethod.Euclidean, int maxIterations = 1000)
-    {
-        if (start.Equals(end))
-        {
-            return new Path(new PathNode[0], 0, 0);
-        }
-        // Multiply by -1 to make it choose the lowest fcost first
-        var openSet = new PriorityQueue<PathNode>(tilemap.width * tilemap.height, (x, y) => (-1 * x.fcost).CompareTo(-1 * y.fcost));
-
-        var closedSet = new HashSet<int2>();
-
-        // Where the key is the current node and the value is the parent node
-        var connections = new NativeHashMap<int2, PathNode>(30, Allocator.TempJob);
-
-        var validNeighbours = new NativeHashMap<int2, PathNode>(100, Allocator.TempJob);
-        var invalidNeighbours = new HashSet<int2>();
-
-        var startNode = new PathNode()
-        {
-            position = start,
-            gcost = 0,
-            hcost = 0,
-        };
-
-        openSet.Enqueue(startNode);
-
-        while (openSet.Count > 0)
-        {
-            PathNode currentNode = openSet.Dequeue();
-            closedSet.Add(currentNode.position);
-
-            // Add the current node to the invalid neighbours list as well so we don't double lookup, this means that we may miss a faster path but it should be fine
-            invalidNeighbours.Add(currentNode.position);
-
-            if (currentNode.position.Equals(end))
-            {
-                return RetracePath(currentNode, connections);
-            }
-
-            PathNode[] neighbours = GetNeighbours(tilemap, currentNode, validNeighbours, invalidNeighbours);
-            foreach (PathNode neighbour in neighbours)
-            {
-                if (closedSet.Contains(neighbour.position) || neighbour.position.Equals(currentNode.position) || neighbour.weight <= 0)
-                {
-                    continue;
-                }
-
-                float newGCost = currentNode.gcost + math.distance(currentNode.position, neighbour.position);
-                float newHCost = CalculateHCost(neighbour.position, end, hCostMethod);
-
-                PathNode newPathNode = new PathNode(neighbour)
-                {
-                    gcost = newGCost,
-                    hcost = newHCost,
-                };
-                connections[newPathNode.position] = currentNode;
-                openSet.Enqueue(newPathNode);
-            }
-        }
-        return new Path(new PathNode[0], 0, 0);
-    }
-
     private static float CalculateHCost(int2 start, int2 end, HCostMethod hCostMethod)
     {
         switch (hCostMethod)
@@ -236,26 +158,6 @@ public static class Pathfinding
 
         path = new BurstPath(reversedPath, pathList.Length, endNode.gcost);
         pathList.Dispose();
-    }
-
-    private static Path RetracePath(PathNode endNode, NativeHashMap<int2, PathNode> connections)
-    {
-        List<PathNode> path = new List<PathNode>();
-        PathNode currentNode = endNode;
-
-        Debug.Log($"Retracing path from {endNode.position}");
-        while (connections.ContainsKey(currentNode.position))
-        {
-            path.Add(currentNode);
-            currentNode = connections[currentNode.position];
-        }
-
-        // Add the start node
-        path.Add(currentNode);
-
-        path.Reverse();
-        Debug.Log($"Path retrace complete with a size of {path.Count}");
-        return new Path(path.ToArray(), path.Count, endNode.gcost);
     }
 
     private static float HCostManhattan(int2 start, int2 end)
@@ -358,45 +260,4 @@ public static class Pathfinding
         }
     }
 
-    private static PathNode[] GetNeighbours(TilemapStruct tilemap, PathNode currentNode, NativeHashMap<int2, PathNode> validNeighbours, HashSet<int2> invalidNeighbours)
-    {
-        var neighbours = new List<PathNode>();
-
-        for (int x = -1; x <= 1; x++)
-        {
-            for (int y = -1; y <= 1; y++)
-            {
-                if (x == 0 && y == 0)
-                {
-                    continue;
-                }
-
-                int2 neighbourPos = currentNode.position + new int2(x, y);
-                if (invalidNeighbours.Contains(neighbourPos))
-                {
-                    continue;
-                }
-
-                else if (validNeighbours.TryGetValue(neighbourPos, out PathNode neighbourChecked))
-                {
-                    neighbours.Add(neighbourChecked);
-                }
-                else
-                {
-                    TileNode neighbourTile = tilemap.GetTile(neighbourPos);
-                    if (neighbourTile.isWalkable)
-                    {
-                        PathNode neighbour = TileNode.TileNodeToPathNode(neighbourTile);
-                        validNeighbours.Add(neighbourPos, neighbour);
-                        neighbours.Add(neighbour);
-                    }
-                    else
-                    {
-                        invalidNeighbours.Add(neighbourPos);
-                    }
-                }
-            }
-        }
-        return neighbours.ToArray();
-    }
 }

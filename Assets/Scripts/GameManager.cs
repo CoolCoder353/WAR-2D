@@ -22,9 +22,6 @@ public class GameManager : NetworkManager
     /// </summary>
     public GameManagerSettings settings;
 
-
-    private NetworkIdentity localPlayer;
-
     /// <summary>
     /// Awake is called when the script instance is being loaded.
     /// It initializes the singleton instance and ensures it persists across scene loads.
@@ -154,11 +151,6 @@ public class GameManager : NetworkManager
     public override void OnClientConnect()
     {
         base.OnClientConnect();
-        ///NetworkClient.AddPlayer();
-        localPlayer = NetworkClient.localPlayer;
-
-        //CreatePlayerMessage characterMessage = new CreatePlayerMessage();
-        //
     }
 
     /// <summary>
@@ -265,19 +257,6 @@ public class GameManager : NetworkManager
     }
 
     /// <summary>
-    /// Connects to a server at localhost for debugging purposes.
-    /// </summary>
-    public void ConnectToServerDebug()
-    {
-        if (!NetworkClient.active)
-        {
-            networkAddress = "localhost";
-            StartClient();
-        }
-
-    }
-
-    /// <summary>
     /// Called when a scene is loaded.
     /// Sets up button listeners for the host, join, leave, and quit buttons.
     /// </summary>
@@ -291,36 +270,6 @@ public class GameManager : NetworkManager
         }
 
         //TODO: Add a check to see if this is the server, and not bother with this if it is.
-
-        // If we can find network spawn spots, set client players position to one of them, in a random order
-        //Note: This causes a warning because clients are not ready, this is fine as we want the bases to enter the world as the clients spawn in
-        if (GameObject.FindGameObjectsWithTag("SpawnSpot").Length > 0)
-        {
-            List<GameObject> spawnSpots = new List<GameObject>(GameObject.FindGameObjectsWithTag("SpawnSpot"));
-            int randomSpot = Random.Range(0, spawnSpots.Count);
-            Vector3 spawnPosition = spawnSpots[randomSpot].transform.position;
-
-
-            // Get the local player
-
-            Debug.Log("Local player: " + localPlayer);
-
-            if (localPlayer != null)
-            {
-                // Get the ClientPlayer component
-                ClientPlayer clientPlayer = localPlayer.gameObject.GetComponent<ClientPlayer>();
-                Debug.Log("ClientPlayer component: " + clientPlayer);
-
-                if (clientPlayer != null)
-                {
-                    // Spawn the primary base
-
-                }
-            }
-            // Remove the used spawn spot from the list
-            spawnSpots.RemoveAt(randomSpot);
-        }
-
 
         // If we can find any object with the tag 'Host'
         if (GameObject.FindWithTag("Host"))
