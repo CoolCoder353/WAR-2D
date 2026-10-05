@@ -708,13 +708,13 @@ public class WorldStateManager : NetworkBehaviour
             return;
         }
 
+        BuildingConfig buildingConfig = ConfigLoader.LoadConfig().GetBuilding(type);
+
         // Check if owner has sufficient resources
         ServerPlayer owner = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(sender.identity.GetComponent<ClientPlayer>().netId));
         if (owner != null)
         {
-            ResourceCost cost = ResourceConfigLoader.GetBuildingCost(type);
-
-            if (owner.data.resources < cost.upfrontCost)
+            if (owner.data.resources < buildingConfig.UpfrontCost)
             {
                 return;
             }
@@ -726,7 +726,7 @@ public class WorldStateManager : NetworkBehaviour
             }
 
             // Deduct upfront cost
-            owner.RemoveResources(cost.upfrontCost);
+            owner.RemoveResources(buildingConfig.UpfrontCost);
 
             // Update client display
             if (owner.connection != null && owner.connection.identity != null)
@@ -762,34 +762,19 @@ public class WorldStateManager : NetworkBehaviour
         });
 
         // Add resource cost component to all buildings
-        ResourceCost buildingCost = ResourceConfigLoader.GetBuildingCost(type);
         EntityManager.AddComponentData(building, new BuildingResourceComponent
         {
-            upfrontCost = buildingCost.upfrontCost,
-            runningCostPerSecond = buildingCost.runningCost,
+            upfrontCost = buildingConfig.UpfrontCost,
+            runningCostPerSecond = buildingConfig.RunningCost,
             timeSinceLastCost = 0f
         });
 
         // Add Health Component
-        BuildingConfig buildingConfig = null;
-        GameConfigData config = ConfigLoader.LoadConfig();
-        if (config.Buildings.TryGetValue(type.ToString(), out buildingConfig))
+        EntityManager.AddComponentData(building, new HealthComponent
         {
-            EntityManager.AddComponentData(building, new HealthComponent
-            {
-                currentHealth = buildingConfig.Health,
-                maxHealth = buildingConfig.Health
-            });
-        }
-        else
-        {
-            // Fallback if config missing
-            EntityManager.AddComponentData(building, new HealthComponent
-            {
-                currentHealth = 100,
-                maxHealth = 100
-            });
-        }
+            currentHealth = buildingConfig.Health,
+            maxHealth = buildingConfig.Health
+        });
 
         switch (type)
         {
@@ -801,10 +786,9 @@ public class WorldStateManager : NetworkBehaviour
                 break;
             case BuildingType.Miner:
                 // Add mining component to miner buildings
-                ResourceConfigData resourceConfig = ResourceConfigLoader.LoadConfig();
                 EntityManager.AddComponentData(building, new MiningComponent
                 {
-                    miningRate = resourceConfig.miningRate,
+                    miningRate = ConfigLoader.LoadConfig().Resources.MiningRate,
                     timeSinceLastMining = 0f,
                     isActive = false
                 });
@@ -977,21 +961,7 @@ public class WorldStateManager : NetworkBehaviour
 
     public static int2 GetBuildingSize(BuildingType type)
     {
-        if (type == BuildingType.Base)
-        {
-            return new int2(3, 3);
-        }
-        //Load the building sprite from the resources
-        Sprite sprite = Resources.Load<Sprite>($"{type.ToString()}");
-        if (sprite == null)
-        {
-            Debug.LogError($"Could not find sprite for building type {type}");
-            return new int2(1, 1);
-        }
-        //Get the size of the sprite
-        return new int2(Mathf.CeilToInt(sprite.rect.width / sprite.pixelsPerUnit), Mathf.CeilToInt(sprite.rect.height / sprite.pixelsPerUnit));
-
-
+        return ConfigLoader.LoadConfig().GetBuilding(type).Size;
     }
 
     #endregion

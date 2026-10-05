@@ -18,11 +18,6 @@ public class GameManager : NetworkManager
     public static GameManager Instance { get; private set; }
 
     /// <summary>
-    /// Configuration settings for the game manager.
-    /// </summary>
-    public GameManagerSettings settings;
-
-    /// <summary>
     /// Awake is called when the script instance is being loaded.
     /// It initializes the singleton instance and ensures it persists across scene loads.
     /// </summary>
@@ -75,6 +70,13 @@ public class GameManager : NetworkManager
     public override void OnStartServer()
     {
         base.OnStartServer();
+        if (!Config.ConfigLoader.IsValid)
+        {
+            Debug.LogError("Stopping server: GameConfig.xml is invalid.");
+            StopServer();
+            if (Application.isBatchMode) Application.Quit(1);
+            return;
+        }
         Debug.Log("Server has started");
     }
 
@@ -91,7 +93,6 @@ public class GameManager : NetworkManager
         if (GameCore.Instance == null) { Debug.LogError("GameCore is null"); }
         if (GameCore.Instance.ServerPlayers == null) { Debug.LogError("ServerPlayers is null"); }
         if (conn.identity == null) { Debug.LogError("conn.identity is null"); }
-        if (settings == null) { Debug.LogError("settings is null. Did you forget to attach the settings object? (ツ)_/¯"); }
 
         // Add the new player to the list of players
         var config = Config.ConfigLoader.LoadConfig();
@@ -223,11 +224,15 @@ public class GameManager : NetworkManager
     /// </summary>
     public void HostServer()
     {
+        if (!Config.ConfigLoader.IsValid)
+        {
+            Debug.LogError("Refusing to host: GameConfig.xml is invalid. See [GameConfig] errors above.");
+            return;
+        }
         if (!NetworkClient.active)
         {
             StartHost();
         }
-
     }
 
     /// <summary>

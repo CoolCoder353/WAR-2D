@@ -1,121 +1,55 @@
 using System;
 using System.Collections.Generic;
-using System.Xml;
 using UnityEngine;
 
 namespace Config
 {
+    /// <summary>
+    /// Loads and caches Resources/GameConfig.xml. Check <see cref="IsValid"/> before starting a server.
+    /// </summary>
     public static class ConfigLoader
     {
-        private static GameConfigData _cachedConfig;
-        private static bool _isLoaded = false;
+        private static GameConfigData _cached;
+
+        /// <summary>Validation errors from the last load. Empty when the config is valid.</summary>
+        public static IReadOnlyList<string> Errors { get; private set; } = Array.Empty<string>();
+
+        public static bool IsValid => Errors.Count == 0;
 
         public static GameConfigData LoadConfig()
         {
-            if (_isLoaded)
+            if (_cached != null) return _cached;
+
+            var errors = new List<string>();
+            TextAsset xml = UnityEngine.Resources.Load<TextAsset>("GameConfig");
+            if (xml == null)
             {
-                return _cachedConfig;
+                errors.Add("Resources/GameConfig.xml not found.");
+                _cached = new GameConfigData();
+            }
+            else
+            {
+                _cached = ConfigParser.Parse(xml.text, errors);
             }
 
-            _cachedConfig = new GameConfigData();
-
-            try
+            Errors = errors;
+            foreach (string error in errors)
             {
-                TextAsset xmlAsset = Resources.Load<TextAsset>("GameConfig");
-                if (xmlAsset == null)
-                {
-                    Debug.LogError("GameConfig.xml not found in Resources folder. Using default values.");
-                    return _cachedConfig;
-                }
-
-                XmlDocument xmlDoc = new XmlDocument();
-                xmlDoc.LoadXml(xmlAsset.text);
-
-                XmlNode root = xmlDoc.SelectSingleNode("GameConfig");
-                if (root == null)
-                {
-                    Debug.LogError("Invalid GameConfig.xml format.");
-                    return _cachedConfig;
-                }
-
-                // Load Resources
-                XmlNode resourcesNode = root.SelectSingleNode("Resources");
-                if (resourcesNode != null)
-                {
-                    _cachedConfig.Resources.PassiveGenerationRate = ParseFloat(resourcesNode, "PassiveGenerationRate", 5.0f);
-                    _cachedConfig.Resources.StartingResources = ParseFloat(resourcesNode, "StartingResources", 100.0f);
-                    _cachedConfig.Resources.MiningRate = ParseFloat(resourcesNode, "MiningRate", 10.0f);
-                }
-
-                // Load Units
-                XmlNode unitsNode = root.SelectSingleNode("Units");
-                if (unitsNode != null)
-                {
-                    foreach (XmlNode unitNode in unitsNode.SelectNodes("Unit"))
-                    {
-                        string type = unitNode.Attributes["type"]?.Value;
-                        if (!string.IsNullOrEmpty(type))
-                        {
-                            UnitConfig unitConfig = new UnitConfig();
-                            unitConfig.Health = ParseInt(unitNode, "Health", 100);
-                            unitConfig.Damage = ParseInt(unitNode, "Damage", 10);
-                            unitConfig.MoveSpeed = ParseFloat(unitNode, "MoveSpeed", 5.0f);
-                            unitConfig.UpfrontCost = ParseFloat(unitNode, "UpfrontCost", 50.0f);
-                            unitConfig.RunningCost = ParseFloat(unitNode, "RunningCost", 2.0f);
-                            _cachedConfig.Units[type] = unitConfig;
-                        }
-                    }
-                }
-
-                // Load Buildings
-                XmlNode buildingsNode = root.SelectSingleNode("Buildings");
-                if (buildingsNode != null)
-                {
-                    foreach (XmlNode buildingNode in buildingsNode.SelectNodes("Building"))
-                    {
-                        string type = buildingNode.Attributes["type"]?.Value;
-                        if (!string.IsNullOrEmpty(type))
-                        {
-                            BuildingConfig buildingConfig = new BuildingConfig();
-                            buildingConfig.Health = ParseInt(buildingNode, "Health", 200);
-                            buildingConfig.UpfrontCost = ParseFloat(buildingNode, "UpfrontCost", 100.0f);
-                            buildingConfig.RunningCost = ParseFloat(buildingNode, "RunningCost", 5.0f);
-                            buildingConfig.MiningRate = ParseFloat(buildingNode, "MiningRate", 0.0f);
-                            buildingConfig.SpawnRate = ParseFloat(buildingNode, "SpawnRate", 0.0f);
-                            _cachedConfig.Buildings[type] = buildingConfig;
-                        }
-                    }
-                }
-
-                Debug.Log("GameConfig loaded successfully.");
+                Debug.LogError($"[GameConfig] {error}");
             }
-            catch (Exception e)
-            {
-                Debug.LogError($"Error loading GameConfig.xml: {e.Message}");
-            }
-
-            _isLoaded = true;
-            return _cachedConfig;
+            return _cached;
         }
 
-        private static float ParseFloat(XmlNode parent, string childName, float defaultValue)
+        internal static void OverrideForTests(GameConfigData config)
         {
-            XmlNode node = parent.SelectSingleNode(childName);
-            if (node != null && float.TryParse(node.InnerText, out float result))
-            {
-                return result;
-            }
-            return defaultValue;
+            _cached = config;
+            Errors = Array.Empty<string>();
         }
 
-        private static int ParseInt(XmlNode parent, string childName, int defaultValue)
+        internal static void ResetForTests()
         {
-            XmlNode node = parent.SelectSingleNode(childName);
-            if (node != null && int.TryParse(node.InnerText, out int result))
-            {
-                return result;
-            }
-            return defaultValue;
+            _cached = null;
+            Errors = Array.Empty<string>();
         }
     }
 }

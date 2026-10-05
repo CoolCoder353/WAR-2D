@@ -96,13 +96,8 @@ public partial struct SpawnerSystem : ISystem
             ServerPlayer owner = GameCore.Instance.GetServerPlayerById(idOfOwner);
             if (owner != null)
             {
-                string typeStr = unitType.ToString();
-                if (!config.Units.TryGetValue(typeStr, out UnitConfig unitConfig))
-                {
-                    Debug.LogError($"Unit type {typeStr} not found in config.");
-                    return Entity.Null;
-                }
-                
+                UnitConfig unitConfig = config.GetUnit(unitType);
+
                 if (owner.data.resources < unitConfig.UpfrontCost)
                 {
                     return Entity.Null;
@@ -125,16 +120,11 @@ public partial struct SpawnerSystem : ISystem
 
                 commandBuffer.AddComponent(newEntity, new LocalTransform { Position = new float3(position.x, position.y, 0) });
                 commandBuffer.AddComponent(newEntity, new HealthComponent { currentHealth = unitConfig.Health, maxHealth = unitConfig.Health });
-                commandBuffer.AddComponent(newEntity, new DamageComponent { damageAmount = unitConfig.Damage, range = 5, attackSpeed = 1 }); // Range and AttackSpeed could also be in config
+                commandBuffer.AddComponent(newEntity, new DamageComponent { damageAmount = unitConfig.Damage, range = unitConfig.Range, attackSpeed = unitConfig.AttackInterval });
                 commandBuffer.AddBuffer<PathPoint>(newEntity);
-                
-                float speed = unitConfig.MoveSpeed;
-                float acceleration = 5; // Could be in config
-                float rotationSpeed = 5; // Could be in config
-                float rotationAcceleration = 5; // Could be in config
 
                 commandBuffer.AddComponent(newEntity, new ClientUnit { id = id, ownerId = idOfOwner, spriteName = unitType });
-                commandBuffer.AddComponent(newEntity, new MovementComponent { speed = speed, acceleration = acceleration, rotationSpeed = rotationSpeed, rotationAcceleration = rotationAcceleration });
+                commandBuffer.AddComponent(newEntity, new MovementComponent { speed = unitConfig.MoveSpeed, acceleration = unitConfig.Acceleration });
                 
                 // Add resource cost component
                 commandBuffer.AddComponent(newEntity, new ResourceCostComponent 
