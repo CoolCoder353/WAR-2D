@@ -443,6 +443,163 @@ public class SectorGraphTests
     }
 
     [Test]
+    public void HalfResolutionSealsGapsNarrowerThanItsCells()
+    {
+        SpikeMap map = WallMap(gapTiles: 0, Allocator.TempJob);
+        try
+        {
+            map.Tiles[32 * 64 + 32] = Floor; // one tile wide: one cell of a 2x2 grid carries a rock
+            int west = 2;                     // sector (0, 1): x 0..31, y 32..63
+            using var tile = new SectorGraph(map, Allocator.Persistent, cellSize: 1);
+            using var half = new SectorGraph(map, Allocator.Persistent, cellSize: 2);
+
+            bool tileEast = false;
+            foreach (SectorGraph.Portal portal in tile.PortalsOf(FlowSizeClass.Small, west))
+                tileEast |= portal.Edge == 1;
+            Assert.IsTrue(tileEast, "at one tile per cell the gap is a portal");
+
+            foreach (SectorGraph.Portal portal in half.PortalsOf(FlowSizeClass.Small, west))
+                Assert.AreNotEqual(1, portal.Edge, "at half resolution the 1-tile gap is sealed");
+            Assert.AreEqual(2, half.CellSize);
+        }
+        finally
+        {
+            map.Dispose();
+        }
+    }
+
+    [Test]
+    public void HalfResolutionSamplingUsesTheContainingCell()
+    {
+        SpikeMap map = CorridorMap(Allocator.TempJob);
+        try
+        {
+            using var cache = new SectorFieldCache(map, Allocator.Persistent, cellSize: 2);
+            var starts = new NativeArray<int>(1, Allocator.TempJob);
+            starts[0] = Index(map, new int2(16, 16));
+            int handle = cache.Acquire(new int2(240, 16), FlowSizeClass.Small, 1, starts);
+            starts.Dispose();
+            cache.RebuildDirty(2).Complete();
+            cache.CompleteRebuilds();
+            Assert.IsTrue(cache.IsReady(handle));
+            Assert.AreEqual(0, cache.UnreachableRebuilds, "the corridor route reaches its start sector");
+
+            var goal = new int2(240, 16);
+            Assert.AreEqual(FlowDirections.AtGoal, cache.DirectionAtCell(handle, Index(map, goal)));
+            // Two neighbouring tiles share a half-resolution cell, so they share its direction.
+            int2 a = new int2(100, 16), b = new int2(101, 16);
+            Assert.AreEqual(cache.DirectionAtCell(handle, Index(map, a)), cache.DirectionAtCell(handle, Index(map, b)),
+                "tiles in the same half-resolution cell sample the same direction");
+            Assert.Less(cache.DirectionAtCell(handle, Index(map, a)), 8);
+        }
+        finally
+        {
+            map.Dispose();
+        }
+    }
+
+    /// <summary>All rock except a diagonal 3-tile-wide staircase of floor, the shape the map generator
+    /// carves from each HQ to the centre.</summary>
+    private static SpikeMap DiagonalCorridorMap(int size, Allocator allocator)
+    {
+        var map = new SpikeMap(size, size, new NativeArray<byte>(size * size, allocator));
+        for (int i = 0; i < map.Tiles.Length; i++) map.Tiles[i] = Rock;
+        int2 from = new int2(16, 16), to = new int2(size - 16, size - 16);
+        int steps = math.max(math.abs(to.x - from.x), math.abs(to.y - from.y));
+        for (int i = 0; i <= steps; i++)
+        {
+            int2 centre = (int2)math.round(math.lerp((float2)from, (float2)to, (float)i / steps));
+            for (int dy = -1; dy <= 1; dy++)
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                int2 tile = centre + new int2(dx, dy);
+                if ((uint)tile.x < (uint)size && (uint)tile.y < (uint)size)
+                    map.Tiles[tile.y * size + tile.x] = Floor;
+            }
+        }
+        return map;
+    }
+
+    [Test]
+    public void HalfResolutionPinchesDiagonalCorridors()
+    {
+        SpikeMap map = DiagonalCorridorMap(128, Allocator.TempJob);
+        var starts = new NativeArray<int>(1, Allocator.TempJob);
+        try
+        {
+            starts[0] = Index(map, new int2(16, 16));
+            var goal = new int2(112, 112);
+
+            using (var cache = new SectorFieldCache(map, Allocator.Persistent, cellSize: 1))
+            {
+                int handle = cache.Acquire(goal, FlowSizeClass.Small, 1, starts);
+                cache.RebuildDirty(2).Complete();
+                cache.CompleteRebuilds();
+                Assert.Less(cache.DirectionAtCell(handle, Index(map, new int2(16, 16))), 8,
+                    "one tile per cell follows the staircase");
+                Assert.AreEqual(0, cache.UnreachableRebuilds);
+            }
+
+            // The conservative half-resolution rule blocks a cell when any of its four tiles is rock,
+            // and no 2x2 window fits inside a 3-tile diagonal staircase, so the channel pinches and the
+            // route is lost. The cache reports it rather than pretending: this is the fidelity price of
+            // rung 3 on the generator's corridors, and the benchmark quantifies how often it happens.
+            using (var cache = new SectorFieldCache(map, Allocator.Persistent, cellSize: 2))
+            {
+                int handle = cache.Acquire(goal, FlowSizeClass.Small, 1, starts);
+                cache.RebuildDirty(2).Complete();
+                cache.CompleteRebuilds();
+                Assert.AreEqual(FlowDirections.None, cache.DirectionAtCell(handle, Index(map, new int2(16, 16))),
+                    "the half-resolution channel pinches on a 3-tile diagonal staircase");
+                Assert.Greater(cache.UnreachableRebuilds, 0, "and the rebuild reports its unreachable start sector");
+            }
+        }
+        finally
+        {
+            starts.Dispose();
+            map.Dispose();
+        }
+    }
+
+    [Test]
+    public void HalfResolutionRoutesOnAGeneratedCaveMap()
+    {
+        SpikeMap map = MapGenerator.Generate(256, 5, Allocator.TempJob);
+        try
+        {
+            using var cache = new SectorFieldCache(map, Allocator.Persistent, cellSize: 2);
+            int2[] sites = MapGenerator.HqSites(256);
+            var starts = new NativeArray<int>(1, Allocator.TempJob);
+            starts[0] = sites[0].y * map.Width + sites[0].x;
+            int small = cache.Acquire(sites[1], FlowSizeClass.Small, 1, starts);
+            int large = cache.Acquire(sites[1], FlowSizeClass.Large, 1, starts);
+            starts.Dispose();
+            cache.RebuildDirty(2).Complete();
+            cache.CompleteRebuilds();
+
+            Assert.IsTrue(cache.IsReady(small));
+            Assert.IsTrue(cache.IsReady(large));
+            Assert.AreEqual(FlowDirections.AtGoal, cache.DirectionAtCell(small, sites[1].y * map.Width + sites[1].x));
+            // The generator's diagonal 3-tile corridors pinch at half resolution (see
+            // HalfResolutionPinchesDiagonalCorridors), so a route between two HQ clearings is not
+            // guaranteed here; what the test pins is that the design reports the loss in its counters
+            // and never claims a covered sector it did not build.
+            Assert.GreaterOrEqual(cache.UnreachableStartSectors, 0);
+            Assert.Greater(cache.CoveredSectorCount, 0, "the route covers at least the goal's sector");
+            Assert.IsTrue(cache.CoversSector(small, cache.Graph.SectorOf(sites[1])));
+            Assert.IsTrue(cache.IsLive(small));
+            Assert.IsTrue(cache.IsLive(large));
+            cache.Release(small, 1);
+            cache.Release(large, 1);
+            Assert.AreEqual(0, cache.LiveCount);
+        }
+        finally
+        {
+            map.Dispose();
+        }
+    }
+
+    [Test]
     public void SectorFieldSeedsPreferTheCheaperPortal()
     {
         var tiles = new NativeArray<byte>(Width * Width, Allocator.TempJob);

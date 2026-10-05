@@ -11,8 +11,15 @@ namespace WAR2D.Spike
     public struct SpikeArgs
     {
         public string Bench, OutDir, Tag;
-        /// <summary>Flow-field design to benchmark: <c>full</c>, <c>hier</c> or <c>both</c> (flow only).</summary>
+        /// <summary>
+        /// Flow-field design to benchmark (flow only): <c>full</c>, <c>hier</c> (hierarchical, one tile
+        /// per cell), <c>hier2</c> (hierarchical, 2x2 tiles per cell), <c>both</c> (full + hier) or
+        /// <c>all</c>.
+        /// </summary>
         public string Design;
+
+        /// <summary>Fields a tick may rebuild (flow only); 2 is the plan's reference load.</summary>
+        public int RebuildCap;
         public int Units, MapSize, Teams, Seed, Ticks, Warmup, VisionRadius, BuildingVision, SliceTicks, CellSize, Clients;
         /// <summary>Percentage of units in the large size class (radius 0.7).</summary>
         public int LargePercent;
@@ -21,7 +28,7 @@ namespace WAR2D.Spike
         /// <summary>Defaults from the reference scenario table in the v0.3 plan.</summary>
         public static SpikeArgs Defaults => new SpikeArgs
         {
-            Bench = "", OutDir = "SpikeResults", Tag = "", Design = "both",
+            Bench = "", OutDir = "SpikeResults", Tag = "", Design = "both", RebuildCap = 2,
             Units = 80000, MapSize = 512, Teams = 8, Seed = 1, Ticks = 600, Warmup = 100,
             VisionRadius = 8, BuildingVision = 10, SliceTicks = 4, CellSize = 5, Clients = 8, LargePercent = 10,
         };
@@ -38,6 +45,7 @@ namespace WAR2D.Spike
                     case "-out": a.OutDir = next; break;
                     case "-tag": a.Tag = next; break;
                     case "-design": a.Design = next; break;
+                    case "-rebuild": a.RebuildCap = Int(next); break;
                     case "-units": a.Units = Int(next); break;
                     case "-map": a.MapSize = Int(next); break;
                     case "-teams": a.Teams = Int(next); break;

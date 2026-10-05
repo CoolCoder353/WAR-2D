@@ -71,8 +71,9 @@ namespace WAR2D.Spike
             SpikeMap map = MapGenerator.Generate(a.MapSize, (uint)a.Seed, Allocator.Persistent);
             try
             {
-                bool full = a.Design != "hier";
-                bool hierarchical = a.Design != "full";
+                bool full = a.Design == "full" || a.Design == "both" || a.Design == "all";
+                bool hierarchical = a.Design == "hier" || a.Design == "both" || a.Design == "all";
+                bool half = a.Design == "hier2" || a.Design == "all";
                 yield return null;
                 if (full)
                 {
@@ -81,7 +82,8 @@ namespace WAR2D.Spike
                     MeasureParallelBuilds(a, map);
                     yield return null;
                 }
-                if (hierarchical) MeasureHierarchicalBuilds(a, map);
+                if (hierarchical) MeasureHierarchicalBuilds(a, map, cellSize: 1, "flow.hier");
+                if (half) MeasureHierarchicalBuilds(a, map, cellSize: 2, "flow.hier2");
                 yield return null;
                 MeasureClearance(a, map);
                 yield return null;
@@ -100,12 +102,17 @@ namespace WAR2D.Spike
 
                 if (full)
                 {
-                    MeasureReferenceLoad(a, map, scenario, hierarchical: false, "flow.refload");
+                    MeasureReferenceLoad(a, map, scenario, cellSize: 0, "flow.refload");
                     yield return null;
                 }
                 if (hierarchical)
                 {
-                    MeasureReferenceLoad(a, map, scenario, hierarchical: true, "flow.hier.refload");
+                    MeasureReferenceLoad(a, map, scenario, cellSize: 1, "flow.hier.refload");
+                    yield return null;
+                }
+                if (half)
+                {
+                    MeasureReferenceLoad(a, map, scenario, cellSize: 2, "flow.hier2.refload");
                 }
             }
             finally
@@ -120,10 +127,10 @@ namespace WAR2D.Spike
         /// (<see cref="SectorFieldCache.RebuildDirty"/>), so it is directly comparable with the full
         /// design's per-order cost.
         /// </summary>
-        private static void MeasureHierarchicalBuilds(SpikeArgs a, SpikeMap map)
+        private static void MeasureHierarchicalBuilds(SpikeArgs a, SpikeMap map, int cellSize, string prefix)
         {
             var rng = new Random((uint)a.Seed + 55u);
-            using var cache = new SectorFieldCache(map, Allocator.Persistent);
+            using var cache = new SectorFieldCache(map, Allocator.Persistent, cellSize);
             var starts = new NativeArray<int>(1, Allocator.Persistent);
             var single = new SpikeStats();
             var eight = new SpikeStats();
@@ -160,10 +167,10 @@ namespace WAR2D.Spike
                 if (sample >= ParallelWarmup) eight.Add(sw.Elapsed.TotalMilliseconds);
             }
 
-            SpikeResults.Write(a, "flow.hier.build", "ms", single);
-            SpikeResults.Write(a, "flow.hier.parallel8", "ms", eight);
-            SpikeResults.Write(a, "flow.hier.materialized", "sectors", Single(cache.Graph.MaterializedSectors));
-            Debug.Log($"[Flow] hier build: {BuildSamples} routes, {ParallelFields} at once; " +
+            SpikeResults.Write(a, $"{prefix}.build", "ms", single);
+            SpikeResults.Write(a, $"{prefix}.parallel8", "ms", eight);
+            SpikeResults.Write(a, $"{prefix}.materialized", "sectors", Single(cache.Graph.MaterializedSectors));
+            Debug.Log($"[Flow] {prefix} build: {BuildSamples} routes, {ParallelFields} at once; " +
                       $"{cache.Graph.MaterializedSectors} sectors materialized, graph {cache.GraphBytes / (1024.0 * 1024.0):F2} MB");
         }
 
@@ -317,10 +324,11 @@ namespace WAR2D.Spike
         /// the large-class twin of every order that includes large units, and RebuildDirty(2).
         /// </summary>
         private static void MeasureReferenceLoad(
-            SpikeArgs a, SpikeMap map, in SpikeScenario scenario, bool hierarchical, string prefix)
+            SpikeArgs a, SpikeMap map, in SpikeScenario scenario, int cellSize, string prefix)
         {
+            bool hierarchical = cellSize > 0;
             using IFlowFieldCache cache = hierarchical
-                ? new SectorFieldCache(map, Allocator.Persistent)
+                ? new SectorFieldCache(map, Allocator.Persistent, cellSize)
                 : new FlowFieldCache(map, Allocator.Persistent);
             var rng = new Random((uint)a.Seed + 44u);
             var terrain = new NativeList<int2>(8, Allocator.Persistent);
@@ -338,6 +346,7 @@ namespace WAR2D.Spike
 
             int ticks = math.max(1, a.Ticks);
             int warmup = math.min(a.Warmup, ticks - 1);
+            int rebuildCap = math.max(1, a.RebuildCap);
             int totalOrders = 0, totalTerrain = 0, neverReady = 0;
             var sw = Stopwatch.StartNew();
 
@@ -397,7 +406,7 @@ namespace WAR2D.Spike
                 }
 
                 // The fallback's rebuild budget, scheduled in parallel and completed this tick.
-                cache.RebuildDirty(ReferenceMaxRebuildsPerTick).Complete();
+                cache.RebuildDirty(rebuildCap).Complete();
                 cache.CompleteRebuilds();
 
                 sw.Stop();
@@ -442,6 +451,8 @@ namespace WAR2D.Spike
             if (hierarchical)
             {
                 var graph = (SectorFieldCache)cache;
+                SpikeResults.Write(a, $"{prefix}.unreachable", "rebuilds", Single(graph.UnreachableRebuilds));
+                SpikeResults.Write(a, $"{prefix}.unreachable.sectors", "sectors", Single(graph.UnreachableStartSectors));
                 SpikeResults.Write(a, $"{prefix}.newroutes", "routes", Single(graph.NewRoutes));
                 SpikeResults.Write(a, $"{prefix}.reroutes", "routes", Single(graph.ReRoutes));
                 SpikeResults.Write(a, $"{prefix}.newsectors", "fields", Single(graph.NewSectorFields));
@@ -451,7 +462,7 @@ namespace WAR2D.Spike
                 SpikeResults.Write(a, $"{prefix}.materialized", "sectors", Single(graph.Graph.MaterializedSectors));
             }
 
-            Debug.Log($"[Flow] refload {prefix} {map.Width}^2: {ticks} ticks ({warmup} warm-up), {totalOrders} orders, " +
+            Debug.Log($"[Flow] refload {prefix} {map.Width}^2 (rebuild cap {rebuildCap}): {ticks} ticks ({warmup} warm-up), {totalOrders} orders, " +
                       $"{totalTerrain} terrain changes, {cache.RebuildCount} field rebuilds, {neverReady} orders never ready, " +
                       $"ends with {cache.LiveCount} live fields ({cache.LiveBytes / (1024.0 * 1024.0):F1} MB) " +
                       $"and {cache.DirtyCount} dirty");

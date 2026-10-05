@@ -41,8 +41,8 @@ namespace WAR2D.Spike
         /// <summary>Tiles a sector spans on each side.</summary>
         public const int SectorSize = 32;
 
-        /// <summary>Cells in a sector.</summary>
-        public const int SectorCells = SectorSize * SectorSize;
+        /// <summary>Cells a sector spans on each side.</summary>
+        public const int SectorCellsPerSide = 32; // at one tile per cell
 
         /// <summary>Portal slots a sector can hold; a 32-cell edge has at most 16 alternating runs.</summary>
         public const int MaxPortals = 64;
@@ -95,9 +95,11 @@ namespace WAR2D.Spike
         }
 
         private readonly int width, height, sectorsX, sectorsY, sectorCount;
+        private readonly int cellSize, cellWidth, cellHeight, sectorCells;
         private readonly Allocator allocator;
-        private readonly NativeArray<byte> tiles;      // the map's grid, not owned
-        private readonly NativeArray<byte> largeGrid;  // the large class's filtered grid, owned
+        private readonly NativeArray<byte> tiles;      // the map's tile grid, not owned
+        private readonly NativeArray<byte> smallCells; // the small class's cell grid, owned
+        private readonly NativeArray<byte> largeCells; // the large class's cell grid, owned
         private readonly NativeArray<byte> clearance;
         private readonly Layer[] layers = new Layer[FlowSizeClass.Count];
 
@@ -108,34 +110,99 @@ namespace WAR2D.Spike
         /// caller flips tiles in it and calls <see cref="Invalidate"/>, which also refreshes the
         /// clearance window and the large class's filtered grid.
         /// </summary>
-        public SectorGraph(in SpikeMap map, Allocator allocator)
+        public SectorGraph(in SpikeMap map, Allocator allocator, int cellSize = 1)
         {
+            if (cellSize < 1 || SectorSize % cellSize != 0)
+                throw new ArgumentOutOfRangeException(nameof(cellSize), cellSize, $"cell size must divide {SectorSize}");
             width = map.Width;
             height = map.Height;
             sectorsX = (width + SectorSize - 1) / SectorSize;
             sectorsY = (height + SectorSize - 1) / SectorSize;
             sectorCount = sectorsX * sectorsY;
+            this.cellSize = cellSize;
+            cellWidth = (width + cellSize - 1) / cellSize;
+            cellHeight = (height + cellSize - 1) / cellSize;
+            sectorCells = SectorSize / cellSize;
             this.allocator = allocator;
             tiles = map.Tiles;
 
             clearance = new NativeArray<byte>(width * height, allocator);
-            largeGrid = new NativeArray<byte>(width * height, allocator);
+            smallCells = new NativeArray<byte>(cellWidth * cellHeight, allocator);
+            largeCells = new NativeArray<byte>(cellWidth * cellHeight, allocator);
             new ClearanceJob { Width = width, Height = height, Tiles = tiles, Clearance = clearance }.Run();
-            new FilterTilesJob
-            {
-                Width = width, Height = height, Tiles = tiles, Clearance = clearance,
-                MinClearance = FlowSizeClass.MinClearance(FlowSizeClass.Large), Filtered = largeGrid,
-            }.Run(width * height);
+            FillCells(smallCells, tiles, 1, false, int2.zero, new int2(cellWidth - 1, cellHeight - 1));
+            FillCells(largeCells, tiles, FlowSizeClass.MinClearance(FlowSizeClass.Large), true,
+                int2.zero, new int2(cellWidth - 1, cellHeight - 1));
 
-            layers[FlowSizeClass.Small] = NewLayer(tiles);
-            layers[FlowSizeClass.Large] = NewLayer(largeGrid);
+            layers[FlowSizeClass.Small] = NewLayer(smallCells);
+            layers[FlowSizeClass.Large] = NewLayer(largeCells);
         }
+
+        /// <summary>
+        /// Writes the cell grid over a cell-coordinate rect: a cell is blocked when any tile it covers
+        /// blocks for the class (or falls outside the map), which is the conservative half-resolution
+        /// rule. With one tile per cell this is the tile grid itself.
+        /// </summary>
+        private void FillCells(
+            NativeArray<byte> into, NativeArray<byte> tileGrid, byte minClearance, bool large,
+            int2 from, int2 to)
+        {
+            int x0 = math.max(0, from.x), y0 = math.max(0, from.y);
+            int x1 = math.min(cellWidth - 1, to.x), y1 = math.min(cellHeight - 1, to.y);
+            for (int cy = y0; cy <= y1; cy++)
+            for (int cx = x0; cx <= x1; cx++)
+            {
+                byte value = SpikeMap.Floor;
+                for (int ty = 0; ty < cellSize && value == SpikeMap.Floor; ty++)
+                for (int tx = 0; tx < cellSize; tx++)
+                {
+                    int x = cx * cellSize + tx, y = cy * cellSize + ty;
+                    if (x >= width || y >= height) { value = SpikeMap.Rock; break; }
+                    int tile = y * width + x;
+                    if (tileGrid[tile] != SpikeMap.Floor) { value = SpikeMap.Rock; break; }
+                    if (large && clearance[tile] < minClearance) { value = SpikeMap.Rock; break; }
+                }
+                into[cy * cellWidth + cx] = value;
+            }
+        }
+
+        /// <summary>
+        /// Start sectors the last <see cref="BuildRoute"/> could not reach: their portals never settled,
+        /// so their units get no direction from that route. Non-zero means the class grid severed them,
+        /// which half-resolution cells do more readily than tiles.
+        /// </summary>
+        public int UnreachableStartSectors { get; private set; }
 
         /// <summary>Clearance per tile, capped at <see cref="ClearanceJob.MaxClearance"/>.</summary>
         public NativeArray<byte> Clearance => clearance;
 
-        /// <summary>The large size class's filtered grid.</summary>
-        public NativeArray<byte> LargeGrid => largeGrid;
+        /// <summary>Tiles per cell: 1, or 2 for the half-resolution design.</summary>
+        public int CellSize => cellSize;
+
+        /// <summary>Cells across the cell grid.</summary>
+        public int CellWidth => cellWidth;
+
+        /// <summary>Cells down the cell grid.</summary>
+        public int CellHeight => cellHeight;
+
+        /// <summary>Cells on a side of a sector.</summary>
+        public int SectorCellsSide => sectorCells;
+
+        /// <summary>Cells in a sector's local field.</summary>
+        public int SectorCells => sectorCells * sectorCells;
+
+        /// <summary>Cell index of a tile: the cell that covers it.</summary>
+        public int CellOf(int2 tile) => tile.y / cellSize * cellWidth + tile.x / cellSize;
+
+        /// <summary>The top-left tile of a cell, as a map cell index.</summary>
+        public int TileOfCell(int cell) =>
+            cell / cellWidth * cellSize * width + cell % cellWidth * cellSize;
+
+        /// <summary>The small size class's cell grid.</summary>
+        public NativeArray<byte> SmallCells => smallCells;
+
+        /// <summary>The large size class's cell grid.</summary>
+        public NativeArray<byte> LargeCells => largeCells;
 
         /// <summary>The map's width in tiles.</summary>
         public int Width => width;
@@ -143,10 +210,10 @@ namespace WAR2D.Spike
         /// <summary>The map's height in tiles.</summary>
         public int Height => height;
 
-        /// <summary>The map's own tile grid, the small class's grid.</summary>
+        /// <summary>The map's own tile grid.</summary>
         public NativeArray<byte> Tiles => tiles;
 
-        /// <summary>The grid a size class paths on: the map's tiles, or the large class's filtered copy.</summary>
+        /// <summary>The cell grid a size class paths on.</summary>
         public NativeArray<byte> GridOf(int sizeClass) => layers[sizeClass].Grid;
 
         /// <summary>A sector's tile crop, materializing it if needed. The graph owns it.</summary>
@@ -165,15 +232,16 @@ namespace WAR2D.Spike
         /// <summary>Sector index of a tile: <c>(y / 32) * SectorsX + x / 32</c>.</summary>
         public int SectorOf(int2 tile) => tile.y / SectorSize * sectorsX + tile.x / SectorSize;
 
-        /// <summary>Sector index of a cell index.</summary>
-        public int SectorOfCell(int cell) => cell / width / SectorSize * sectorsX + cell % width / SectorSize;
+        /// <summary>Sector index of a cell of the cell grid.</summary>
+        public int SectorOfCell(int cell) =>
+            cell / cellWidth / sectorCells * sectorsX + cell % cellWidth / sectorCells;
 
         /// <summary>Bytes the graph itself holds: the large grid, the sector crops and cost tables.</summary>
         public long GraphBytes
         {
             get
             {
-                long bytes = width * height * 2L; // clearance + large grid
+                long bytes = width * height + cellWidth * cellHeight * 2L; // tiles, clearance, both cell grids
                 foreach (Layer layer in layers)
                 {
                     if (layer == null) continue;
@@ -250,7 +318,8 @@ namespace WAR2D.Spike
             var goalCellsBySector = new Dictionary<int, List<int>>();
             for (int i = 0; i < goalCells.Length; i++)
             {
-                int cell = goalCells[i];
+                // The caller passes map cell indices (tiles); routes live in cell-grid coordinates.
+                int cell = CellOf(new int2(goalCells[i] % width, goalCells[i] / width));
                 int sector = SectorOfCell(cell);
                 if (!goalCellsBySector.TryGetValue(sector, out List<int> list))
                 {
@@ -287,6 +356,9 @@ namespace WAR2D.Spike
             //    sector's route to a goal sector, collecting the fields that route needs.
             int[] startSectors = StartSectors(startCells);
             ExpandUntilSettled(layer, startSectors);
+            UnreachableStartSectors = 0;
+            foreach (int start in startSectors)
+                if (!HasSettledPortal(layer, start)) UnreachableStartSectors++;
             foreach (int start in startSectors)
             {
                 int sector = start;
@@ -328,12 +400,12 @@ namespace WAR2D.Spike
                 Width = width, Height = height, Tiles = tiles,
                 WindowOrigin = origin, WindowSize = size, Clearance = clearance,
             }.Run();
-            new FilterTilesJob
-            {
-                Width = width, Height = height, Origin = origin, Size = size, Tiles = tiles,
-                Clearance = clearance, MinClearance = FlowSizeClass.MinClearance(FlowSizeClass.Large),
-                Filtered = largeGrid,
-            }.Run(size.x * size.y);
+            // A cell covers cellSize tiles, so the cells that may have changed are the window's own
+            // cells plus one on each side of them.
+            int2 cellFrom = new int2(origin.x / cellSize - 1, origin.y / cellSize - 1);
+            int2 cellTo = new int2((origin.x + size.x - 1) / cellSize + 1, (origin.y + size.y - 1) / cellSize + 1);
+            FillCells(smallCells, tiles, 1, false, cellFrom, cellTo);
+            FillCells(largeCells, tiles, FlowSizeClass.MinClearance(FlowSizeClass.Large), true, cellFrom, cellTo);
 
             int sx = changedTile.x / SectorSize, sy = changedTile.y / SectorSize;
             for (int dy = -1; dy <= 1; dy++)
@@ -358,7 +430,8 @@ namespace WAR2D.Spike
                     if (state != null && state.Crop.IsCreated) state.Crop.Dispose();
             }
             clearance.Dispose();
-            largeGrid.Dispose();
+            smallCells.Dispose();
+            largeCells.Dispose();
         }
 
         // ---- sector state --------------------------------------------------------------------
@@ -396,22 +469,22 @@ namespace WAR2D.Spike
             if (layer.Sectors[sector] != null) return;
 
             int sx = sector % sectorsX, sy = sector / sectorsX;
-            int x0 = sx * SectorSize, y0 = sy * SectorSize;
-            int x1 = math.min(x0 + SectorSize - 1, width - 1), y1 = math.min(y0 + SectorSize - 1, height - 1);
+            int x0 = sx * sectorCells, y0 = sy * sectorCells;
+            int x1 = math.min(x0 + sectorCells - 1, cellWidth - 1), y1 = math.min(y0 + sectorCells - 1, cellHeight - 1);
 
             var crop = new NativeArray<byte>(SectorCells, Allocator.Persistent);
             for (int i = 0; i < SectorCells; i++) crop[i] = SpikeMap.Rock; // outside a partial sector: blocked
             for (int y = y0; y <= y1; y++)
             for (int x = x0; x <= x1; x++)
-                crop[(y - y0) * SectorSize + (x - x0)] = layer.Grid[y * width + x];
+                crop[(y - y0) * sectorCells + (x - x0)] = layer.Grid[y * cellWidth + x];
 
             var portals = new List<Portal>(8);
-            var cells = new List<int>(SectorSize * 4);
+            var cells = new List<int>(sectorCells * 4);
             var offsets = new List<int>(9) { 0 };
             if (x0 > 0) AddRuns(layer.Grid, portals, cells, offsets, West, x0, x0 - 1, y0, y1, alongY: true, x0, y0);
-            if (x1 + 1 < width) AddRuns(layer.Grid, portals, cells, offsets, East, x1, x1 + 1, y0, y1, alongY: true, x0, y0);
+            if (x1 + 1 < cellWidth) AddRuns(layer.Grid, portals, cells, offsets, East, x1, x1 + 1, y0, y1, alongY: true, x0, y0);
             if (y0 > 0) AddRuns(layer.Grid, portals, cells, offsets, South, y0, y0 - 1, x0, x1, alongY: false, x0, y0);
-            if (y1 + 1 < height) AddRuns(layer.Grid, portals, cells, offsets, North, y1, y1 + 1, x0, x1, alongY: false, x0, y0);
+            if (y1 + 1 < cellHeight) AddRuns(layer.Grid, portals, cells, offsets, North, y1, y1 + 1, x0, x1, alongY: false, x0, y0);
 
             var matching = new int[portals.Count];
             for (int i = 0; i < matching.Length; i++) matching[i] = NotLookedUp;
@@ -441,8 +514,8 @@ namespace WAR2D.Spike
                 bool open = false;
                 if (along <= to)
                 {
-                    int edgeCell = alongY ? along * width + edgeLine : edgeLine * width + along;
-                    int acrossCell = alongY ? along * width + acrossLine : acrossLine * width + along;
+                    int edgeCell = alongY ? along * cellWidth + edgeLine : edgeLine * cellWidth + along;
+                    int acrossCell = alongY ? along * cellWidth + acrossLine : acrossLine * cellWidth + along;
                     open = grid[edgeCell] == SpikeMap.Floor && grid[acrossCell] == SpikeMap.Floor;
                 }
                 if (open)
@@ -459,7 +532,7 @@ namespace WAR2D.Spike
                         int value = runStart + i;
                         int px = alongY ? edgeLine : value;
                         int py = alongY ? value : edgeLine;
-                        cells.Add((py - y0) * SectorSize + (px - x0));
+                        cells.Add((py - y0) * sectorCells + (px - x0));
                     }
                     offsets.Add(cells.Count);
                 }
@@ -473,6 +546,7 @@ namespace WAR2D.Spike
             Materialize(layer, sector);
             SectorState state = layer.Sectors[sector];
             if (state.CostsReady) return;
+
 
             int n = state.Portals.Length;
             state.Costs = new ushort[math.max(1, n * n)];
@@ -489,7 +563,7 @@ namespace WAR2D.Spike
                     goals[p] = GoalsOf(state, p);
                     handles[p] = new BuildIntegrationFieldJob
                     {
-                        Width = SectorSize, Height = SectorSize, Tiles = state.Crop,
+                        Width = sectorCells, Height = sectorCells, Tiles = state.Crop,
                         Goals = goals[p], Cost = fields[p],
                     }.Schedule();
                 }
@@ -535,7 +609,7 @@ namespace WAR2D.Spike
             var field = new NativeArray<ushort>(SectorCells, Allocator.TempJob);
             new BuildIntegrationFieldJob
             {
-                Width = SectorSize, Height = SectorSize, Tiles = state.Crop, Goals = goalArray, Cost = field,
+                Width = sectorCells, Height = sectorCells, Tiles = state.Crop, Goals = goalArray, Cost = field,
             }.Run();
             goalArray.Dispose();
 
@@ -571,7 +645,7 @@ namespace WAR2D.Spike
             var seen = new HashSet<int>();
             for (int i = 0; i < startCells.Length && sectors.Count < 64; i++)
             {
-                int sector = SectorOfCell(startCells[i]);
+                int sector = SectorOf(new int2(startCells[i] % width, startCells[i] / width));
                 if (seen.Add(sector)) sectors.Add(sector);
             }
             return sectors.ToArray();
@@ -755,13 +829,13 @@ namespace WAR2D.Spike
             return spec;
         }
 
-        /// <summary>Crop-local index of a cell in a sector.</summary>
+        /// <summary>Crop-local index of a cell of the cell grid in a sector.</summary>
         private int LocalCell(int cell, int sector)
         {
             int sx = sector % sectorsX, sy = sector / sectorsX;
-            int x = cell % width - sx * SectorSize;
-            int y = cell / width - sy * SectorSize;
-            return y * SectorSize + x;
+            int x = cell % cellWidth - sx * sectorCells;
+            int y = cell / cellWidth - sy * sectorCells;
+            return y * sectorCells + x;
         }
 
         private void ThrowIfDisposed()

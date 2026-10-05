@@ -53,12 +53,13 @@ namespace WAR2D.Spike
         private int inFlight;
         private long rebuilds;
         private long newRoutes, reRoutes, newSectorFields, reSectorFields;
+        private long unreachableRebuilds, unreachableStartSectors;
         private bool disposed;
 
         /// <summary>Builds a cache whose routes are sector-scoped. <paramref name="map"/> is shared, not owned.</summary>
-        public SectorFieldCache(in SpikeMap map, Allocator allocator)
+        public SectorFieldCache(in SpikeMap map, Allocator allocator, int cellSize = 1)
         {
-            graph = new SectorGraph(map, allocator);
+            graph = new SectorGraph(map, allocator, cellSize);
             this.allocator = allocator;
         }
 
@@ -107,7 +108,7 @@ namespace WAR2D.Spike
             get
             {
                 long bytes = 0;
-                foreach (Order order in orders) if (Live(order)) bytes += order.CoveredCount * SectorGraph.SectorCells * 3L;
+                foreach (Order order in orders) if (Live(order)) bytes += order.CoveredCount * graph.SectorCells * 3L;
                 return bytes;
             }
         }
@@ -132,6 +133,12 @@ namespace WAR2D.Spike
 
         /// <summary>Sector fields rebuilt because of a terrain change.</summary>
         public long ReSectorFields => reSectorFields;
+
+        /// <summary>Rebuilds whose search left at least one of the order's start sectors unreachable.</summary>
+        public long UnreachableRebuilds => unreachableRebuilds;
+
+        /// <summary>Start sectors left unreachable, summed over rebuilds.</summary>
+        public long UnreachableStartSectors => unreachableStartSectors;
 
         /// <summary>Live fields whose route predates the latest terrain change.</summary>
         public int DirtyCount
@@ -208,10 +215,14 @@ namespace WAR2D.Spike
             if (order == null || order.Covered == null) return FlowDirections.None;
             int width = graph.Width;
             if (cellIndex < 0 || cellIndex >= width * graph.Height) return FlowDirections.None;
-            int sector = graph.SectorOfCell(cellIndex);
+            // A unit samples the (half-resolution) cell that covers its tile.
+            var tile = new int2(cellIndex % width, cellIndex / width);
+            int sector = graph.SectorOf(tile);
             if (!order.Covered[sector]) return FlowDirections.None;
-            int x = cellIndex % width, y = cellIndex / width;
-            return order.Directions[sector][y % SectorGraph.SectorSize * SectorGraph.SectorSize + x % SectorGraph.SectorSize];
+            int cell = graph.CellOf(tile);
+            int side = graph.SectorCellsSide;
+            int x = cell % graph.CellWidth % side, y = cell / graph.CellWidth % side;
+            return order.Directions[sector][y * side + x];
         }
 
         /// <summary>
@@ -372,11 +383,18 @@ namespace WAR2D.Spike
             var starts = new NativeArray<int>(count, Allocator.Persistent);
             for (int i = 0; i < count; i++) starts[i] = startCells[i];
 
+            // The goal spread is a set of free cells, so it is laid out on the cell grid (half-resolution
+            // cells at cellSize 2) and reported back as map cell indices for the route search.
+            NativeArray<int> spread = FlowGoals.Around(
+                new int2(goal.x / graph.CellSize, goal.y / graph.CellSize), grid,
+                graph.CellWidth, graph.CellHeight, Allocator.Persistent);
+            for (int i = 0; i < spread.Length; i++) spread[i] = graph.TileOfCell(spread[i]);
+
             var order = new Order
             {
                 Goal = goal,
                 SizeClass = sizeClass,
-                Goals = FlowGoals.Around(goal, grid, graph.Width, graph.Height, Allocator.Persistent),
+                Goals = spread,
                 StartCells = starts,
                 DirtySeq = 1,
                 Dirty = true,
@@ -444,6 +462,11 @@ namespace WAR2D.Spike
             }
 
             SectorFieldSpec[] specs = graph.BuildRoute(order.SizeClass, order.Goals, order.StartCells, out int covered);
+            if (graph.UnreachableStartSectors > 0)
+            {
+                unreachableRebuilds++;
+                unreachableStartSectors += graph.UnreachableStartSectors;
+            }
             DisposeFields(order);
             int sectors = graph.SectorsX * graph.SectorsY;
             order.Costs = new NativeArray<ushort>[sectors];
@@ -457,15 +480,15 @@ namespace WAR2D.Spike
             var handles = new List<JobHandle>(specs.Length);
             foreach (SectorFieldSpec spec in specs)
             {
-                var cost = new NativeArray<ushort>(SectorGraph.SectorCells, Allocator.Persistent);
-                var direction = new NativeArray<byte>(SectorGraph.SectorCells, Allocator.Persistent);
+                var cost = new NativeArray<ushort>(graph.SectorCells, Allocator.Persistent);
+                var direction = new NativeArray<byte>(graph.SectorCells, Allocator.Persistent);
                 order.Costs[spec.Sector] = cost;
                 order.Directions[spec.Sector] = direction;
                 order.Covered[spec.Sector] = true;
 
                 var job = new BuildSectorFieldJob
                 {
-                    Width = SectorGraph.SectorSize, Height = SectorGraph.SectorSize,
+                    Width = graph.SectorCellsSide, Height = graph.SectorCellsSide,
                     Tiles = graph.CropOf(order.SizeClass, spec.Sector), WriteDirection = true,
                     Goals = spec.GoalCells, GoalCosts = spec.GoalCosts,
                     ExitCells = spec.ExitCells, ExitDirection = spec.ExitDirection,
