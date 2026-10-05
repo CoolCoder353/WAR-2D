@@ -738,6 +738,21 @@ public class WorldStateManager : NetworkBehaviour
             player.hasPlacedHQ, world.GetTile, tile => !IsAvaliable(tile, -1));
     }
 
+    /// <summary>Test helper: first anchor (scanning the map) where the player may place this building.</summary>
+    internal bool TryFindBuildableAnchor(BuildingType type, float rotation, ClientPlayer player, out int2 anchor)
+    {
+        foreach (KVPair<int2, TileNode> pair in world.tiles)
+        {
+            if (CheckPlacement(type, pair.Key, rotation, player) == PlacementResult.Ok)
+            {
+                anchor = pair.Key;
+                return true;
+            }
+        }
+        anchor = default;
+        return false;
+    }
+
     /// <summary>
     /// Attempts to add a building at the specified position.
     /// </summary>
