@@ -6,6 +6,8 @@ namespace WAR2D.Spike
     /// <summary>
     /// Options for one spike run, read from the command line, e.g.
     /// <c>-spike sim -units 80000 -map 512 -teams 8 -seed 1 -ticks 600 -out SpikeResults -tag sim-80k -quit</c>.
+    /// The sim's own knobs are <c>-fronts</c>, <c>-clump</c>, <c>-async</c>, <c>-sep</c>,
+    /// <c>-sepk</c>, <c>-sepiter</c> and <c>-halves</c>.
     /// </summary>
     [Serializable]
     public struct SpikeArgs
@@ -25,12 +27,24 @@ namespace WAR2D.Spike
         public int LargePercent;
         public bool Quit, Async, Clump;
 
+        /// <summary>Start the simulation's armies already engaged at their shared fronts (sim only).</summary>
+        public bool Fronts;
+        /// <summary>Ticks between separation passes; 2 is the sim ladder's step 2 (sim only).</summary>
+        public int SepInterval;
+        /// <summary>Separation strength k, 1 to 4 (sim only).</summary>
+        public int SepStrength;
+        /// <summary>Separation passes a tick, 1 or 2 (sim only).</summary>
+        public int SepIterations;
+        /// <summary>Integrate half the units on alternating ticks, the sim ladder's step 3 (sim only).</summary>
+        public bool MoveHalves;
+
         /// <summary>Defaults from the reference scenario table in the v0.3 plan.</summary>
         public static SpikeArgs Defaults => new SpikeArgs
         {
             Bench = "", OutDir = "SpikeResults", Tag = "", Design = "both", RebuildCap = 2,
             Units = 80000, MapSize = 512, Teams = 8, Seed = 1, Ticks = 600, Warmup = 100,
             VisionRadius = 8, BuildingVision = 10, SliceTicks = 4, CellSize = 5, Clients = 8, LargePercent = 10,
+            SepInterval = 1, SepStrength = (int)SpikeSimRules.SeparationStrength, SepIterations = SpikeSimRules.SeparationIterations,
         };
 
         public static SpikeArgs Parse(string[] args)
@@ -61,6 +75,11 @@ namespace WAR2D.Spike
                     case "-quit": a.Quit = true; break;
                     case "-async": a.Async = true; break;
                     case "-clump": a.Clump = true; break;
+                    case "-fronts": a.Fronts = true; break;
+                    case "-sep": a.SepInterval = Int(next); break;
+                    case "-sepk": a.SepStrength = Int(next); break;
+                    case "-sepiter": a.SepIterations = Int(next); break;
+                    case "-halves": a.MoveHalves = true; break;
                 }
             }
             return a;
