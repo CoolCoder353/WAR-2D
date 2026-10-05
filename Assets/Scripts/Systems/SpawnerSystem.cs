@@ -33,7 +33,7 @@ public partial struct SpawnerSystem : ISystem
                 spawnerData.ValueRW.count--;
 
                 // Set the ClientUnit component to the new entity.
-                int id = UnityEngine.Random.Range(0, int.MaxValue);
+                int id = WorldStateManager.Instance.Ids.Allocate();
                 int idOfOwner = spawnerData.ValueRO.ownerId;
 
                 Entity createdEntity = CreateUnit(commandBuffer, id, idOfOwner, spawnerData.ValueRO.position, spawnerData.ValueRO.unitType, config);

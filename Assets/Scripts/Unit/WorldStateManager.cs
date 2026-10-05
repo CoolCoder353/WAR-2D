@@ -49,11 +49,11 @@ public class WorldStateManager : NetworkBehaviour
     /// </summary>
     private Dictionary<ClientPlayer, (int2, int2)> playerView = new Dictionary<ClientPlayer, (int2, int2)>();
 
-    /// <summary>
-    /// Tracks occupied positions by units.
-    /// Item1: Unit ID, Item2: Position.
-    /// </summary>
-    private List<(int, int2)> unitPositions = new List<(int, int2)>();
+    /// <summary>Server-side unit tile claims.</summary>
+    public TileOccupancy Occupancy { get; } = new TileOccupancy();
+
+    /// <summary>Server-side id source for units and buildings in this match.</summary>
+    public NetIdAllocator Ids { get; } = new NetIdAllocator();
 
     /// <summary>
     /// Dictionary of all units in the game. Key: Unit ID, Value: Entity.
@@ -416,29 +416,16 @@ public class WorldStateManager : NetworkBehaviour
     [Server]
     public bool IsAvaliable(int2 position, int id)
     {
-        if (unitPositions.Any(u => u.Item2.Equals(position) && u.Item1 != id))
-        {
-            return false;
-        }
-        return true;
+        return Occupancy.IsAvailable(position, id);
     }
 
     /// <summary>
     /// Claims a position for a unit.
     /// </summary>
     [Server]
-    public void ClaimLocation(int2 position, int id)
+    public bool ClaimLocation(int2 position, int id)
     {
-        if (!IsAvaliable(position, id))
-        {
-            return;
-        }
-        //Ignore if it is already claimed
-        if (unitPositions.Any(u => u.Item2.Equals(position) && u.Item1 == id))
-        {
-            return;
-        }
-        unitPositions.Add((id, position));
+        return Occupancy.TryClaim(position, id);
     }
 
     /// <summary>
@@ -447,11 +434,7 @@ public class WorldStateManager : NetworkBehaviour
     [Server]
     public void ReleaseLocation(int2 position, int id)
     {
-        if (!unitPositions.Any(u => u.Item2.Equals(position) && u.Item1 == id))
-        {
-            return;
-        }
-        unitPositions.Remove((id, position));
+        Occupancy.Release(position, id);
     }
 
     /// <summary>
@@ -460,7 +443,7 @@ public class WorldStateManager : NetworkBehaviour
     [Server]
     public void ReleaseAllLocations(int id)
     {
-        unitPositions.RemoveAll(u => u.Item1 == id);
+        Occupancy.ReleaseAll(id);
     }
 
     /// <summary>
@@ -738,7 +721,7 @@ public class WorldStateManager : NetworkBehaviour
         BuildingData buildingData = new BuildingData
         {
             position = new float2(positon.x, positon.y),
-            id = UnityEngine.Random.Range(0, int.MaxValue),
+            id = Ids.Allocate(),
             buildingType = type,
             ownerId = BuildingData.UIntToInt(sender.identity.GetComponent<ClientPlayer>().netId),
             rotation = rotation

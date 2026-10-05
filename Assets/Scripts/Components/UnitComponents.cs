@@ -53,4 +53,6 @@ public struct MovementComponent : IComponentData
     public float rotationAcceleration;
     public float currentSpeed;
     public float currentRotationSpeed;
+    /// <summary>Seconds the unit has been waiting for a tile claimed by another unit.</summary>
+    public float blockedSeconds;
 }
