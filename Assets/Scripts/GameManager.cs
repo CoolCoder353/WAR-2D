@@ -1,6 +1,5 @@
 using Mirror;
 using UnityEngine;
-using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using System.Collections.Generic;
 using Unity.Entities;
@@ -36,9 +35,6 @@ public class GameManager : NetworkManager
         // Ensure this GameManager persists across scene loads
         DontDestroyOnLoad(this);
 
-        // Subscribe to the sceneLoaded event
-        SceneManager.sceneLoaded += OnSceneLoaded;
-
         // Load Game Config
         Config.ConfigLoader.LoadConfig();
     }
@@ -49,9 +45,6 @@ public class GameManager : NetworkManager
     /// </summary>
     public override void OnDestroy()
     {
-        // Unsubscribe from the sceneLoaded event
-        SceneManager.sceneLoaded -= OnSceneLoaded;
-
         //Make sure we disconnect
         if (NetworkServer.active)
         {
@@ -229,80 +222,16 @@ public class GameManager : NetworkManager
     /// <param name="address">The IP address to connect to.</param>
     public void ConnectToServer(string address)
     {
+        address = address?.Trim();
+        if (string.IsNullOrEmpty(address) || address.Length > 253)
+        {
+            Debug.LogWarning("Enter a server address to join.");
+            return;
+        }
         if (!NetworkClient.active)
         {
             networkAddress = address;
             StartClient();
         }
-
     }
-
-    /// <summary>
-    /// Connects to a server using the IP address from the UI input field.
-    /// </summary>
-    public void ConnectToServerThroughUI()
-    {
-        if (!NetworkClient.active)
-        {
-            networkAddress = GameObject.FindWithTag("LobbyManager").GetComponent<LobbySystem>().joinIPInputField.text;
-            StartClient();
-        }
-    }
-
-    /// <summary>
-    /// Called when a scene is loaded.
-    /// Sets up button listeners for the host, join, leave, and quit buttons.
-    /// </summary>
-    /// <param name="scene">The loaded scene.</param>
-    /// <param name="loadSceneMode">The mode in which the scene was loaded.</param>
-    public void OnSceneLoaded(Scene scene, LoadSceneMode loadSceneMode)
-    {
-        if (Instance == null)
-        {
-            Instance = this;
-        }
-
-        //TODO: Add a check to see if this is the server, and not bother with this if it is.
-
-        // If we can find any object with the tag 'Host'
-        if (GameObject.FindWithTag("Host"))
-        {
-            ////Debug.Log("Found host");
-            // Set the host button to be interactable
-            GameObject.FindWithTag("Host").GetComponent<Button>().onClick.AddListener(HostServer);
-        }
-        // If we can find any object with the tag 'Join'
-        if (GameObject.FindWithTag("Join"))
-        {
-            Debug.Log("Found join");
-            // Set the join button to be interactable
-            GameObject.FindWithTag("Join").GetComponent<Button>().onClick.AddListener(ConnectToServerThroughUI);
-        }
-        // If we can find any object with the tag 'LobbyManager'
-        if (GameObject.FindWithTag("LobbyManager"))
-        {
-            Debug.Log("Found LobbyManager");
-            // Set the join button to be interactable
-            Button button = GameObject.FindWithTag("LobbyManager").GetComponent<LobbySystem>().joinIPButton.GetComponent<Button>();
-            button.gameObject.transform.parent.gameObject.SetActive(true);
-            button.onClick.AddListener(ConnectToServerThroughUI);
-            button.gameObject.transform.parent.gameObject.SetActive(false);
-        }
-        // If we can find any object with the tag 'Leave'
-        if (GameObject.FindWithTag("Leave"))
-        {
-            // Set the leave button to be interactable
-            GameObject.FindWithTag("Leave").GetComponent<Button>().onClick.AddListener(LeaveLobby);
-        }
-
-        // If we can find any object with the tag 'Quit'
-        if (GameObject.FindWithTag("Quit"))
-        {
-            // Set the quit button to be interactable
-            GameObject.FindWithTag("Quit").GetComponent<Button>().onClick.AddListener(QuitGame);
-        }
-    }
-
-
-
 }

@@ -98,8 +98,8 @@ public class LobbySystem : MonoBehaviour
 
         if (addNicknameListener)
         {
-            // Add a listener to the nickname input field to update the player's nickname when it changes
-            input_field.onValueChanged.AddListener((string newNickname) =>
+            // Add a listener to the nickname input field to update the player's nickname when editing ends
+            input_field.onEndEdit.AddListener((string newNickname) =>
              {
                  player.CmdSetNickname(newNickname);
              });
