@@ -288,6 +288,49 @@ public class FlowFieldTests
     }
 
     [Test]
+    public void LazyRebuildOnlyRebuildsFieldsWithFollowers()
+    {
+        SpikeMap map = FlatMap(64, Allocator.TempJob);
+        try
+        {
+            using var cache = new FlowFieldCache(map, Allocator.Persistent);
+            int followed = cache.Acquire(new int2(10, 10));
+            int dropped = cache.Acquire(new int2(50, 50));
+            cache.RebuildDirty(8).Complete();
+            cache.CompleteRebuilds();
+            Assert.IsTrue(cache.IsReady(followed));
+            Assert.IsTrue(cache.IsReady(dropped));
+            long rebuilds = cache.RebuildCount;
+
+            // A field nobody follows is released, so a terrain change must not spend a rebuild on it.
+            cache.Release(dropped);
+            map.Tiles[Index(map, new int2(32, 32))] = Rock;
+            cache.Invalidate(new int2(32, 32));
+            cache.RebuildDirty(8).Complete();
+            cache.CompleteRebuilds();
+            Assert.AreEqual(1, cache.LiveCount);
+            Assert.AreEqual(rebuilds + 1, cache.RebuildCount, "only the followed field is rebuilt");
+            Assert.IsTrue(cache.IsReady(followed), "the followed field is rebuilt");
+
+            // A field released while its rebuild is in flight is freed by that rebuild, not rebuilt again.
+            long beforeRelease = cache.RebuildCount;
+            int inFlight = cache.Acquire(new int2(20, 20));
+            map.Tiles[Index(map, new int2(40, 40))] = Rock;
+            cache.Invalidate(new int2(40, 40));
+            cache.RebuildDirty(8);
+            cache.Release(inFlight);
+            cache.CompleteRebuilds();
+            Assert.AreEqual(1, cache.LiveCount, "the released field is gone, not left live");
+            Assert.AreEqual(beforeRelease + 2, cache.RebuildCount,
+                "the two dirty fields are rebuilt once each; the released one is not rebuilt again");
+        }
+        finally
+        {
+            map.Dispose();
+        }
+    }
+
+    [Test]
     public void CacheRebuildsFieldsAfterTerrainChanges()
     {
         SpikeMap map = FlatMap(64, Allocator.TempJob);

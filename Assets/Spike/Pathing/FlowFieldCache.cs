@@ -331,8 +331,10 @@ namespace WAR2D.Spike
 
         /// <summary>
         /// Schedules up to <paramref name="maxPerTick"/> dirty fields for rebuild, orders that have no
-        /// field yet first (their units are waiting), then rebuilds in creation order. Returns the
-        /// combined handle of everything in flight; <see cref="CompleteRebuilds"/> finishes it.
+        /// field yet first (their units are waiting), then rebuilds in creation order. This is the
+        /// plan's fallback 1: a field is only ever rebuilt while units are still following it — a field
+        /// whose last follower left is freed, never rebuilt. Returns the combined handle of everything in flight;
+        /// <see cref="CompleteRebuilds"/> finishes it.
         /// </summary>
         public JobHandle RebuildDirty(int maxPerTick)
         {
@@ -503,7 +505,11 @@ namespace WAR2D.Spike
             foreach (Entry e in entries)
             {
                 if (into.Length >= maxPerTick) return;
-                if (!Live(e) || !e.Dirty || e.InFlight) continue;
+                if (e == null || !e.Dirty || e.InFlight) continue;
+                // Fallback 1, spelled out: only a field units still follow is rebuilt. A released
+                // field is freed (right away, or when its in-flight job lands), so nothing stale is
+                // ever rebuilt; this guard keeps that true if an entry ever outlives its followers.
+                if (!Live(e)) continue;
                 if (newFieldsOnly == e.EverBuilt) continue;
                 into.Add(Schedule(e));
             }
