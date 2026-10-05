@@ -1,0 +1,14 @@
+{
+    "name": "WAR2D.DevConsole",
+    "rootNamespace": "",
+    "references": ["WAR2D", "TIM.Console", "Mirror"],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

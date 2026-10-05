@@ -589,7 +589,7 @@ public class WorldStateManager : NetworkBehaviour
             return;
         }
 
-        Path path = Path.BurstToPath(Pathfinding.BurstFindPath(WorldStateManager.Instance.world, startInt, goal));
+        PathResult path = PathResult.BurstToPath(Pathfinding.BurstFindPath(WorldStateManager.Instance.world, startInt, goal));
 
         if (path.pathLength > 0)
         {
