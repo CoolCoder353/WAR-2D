@@ -19,7 +19,6 @@ These were found by reading the code (October 2026). Most haven't been reproduce
 | `ClientUnit.targetId` is set to the target's **ECS `Entity.Index`**, but the client looks it up in `unitGameObjects`, which is keyed by unit **`id`**. | `CombatSystem.cs` vs `UnitCommander.VisualizeAttackingUnits` | Attack tracers rarely or never render, and never for building targets. |
 | Entities destroyed by combat aren't removed from `WorldStateManager.Units/Buildings`, and a destroyed building's tiles stay `used`. | `CombatSystem`, `DestructionSystem`, `WorldStateManager` | Stale registry entries. You can't build again where a building died. |
 | Disconnected players are marked `Eliminated` but **never removed** from `GameCore.ServerPlayers`. | `GameCore.OnPlayerLeave` | `UpdateClientsPrivateData` and others call `GetComponent` on the destroyed player object. Player counts used for win checks include players who have left. |
-| Shift-to-pan-faster uses `Input.GetKeyDown`, so it applies for one frame only. | `Client/Character_Controler.cs` | Holding Shift has no visible effect. |
 | The server's Countdown lasts 3 s, but the client UI counts down 5 s and then sends `Cmd_ReadyToStartGame`. | `GameCore.CheckHQPlacementProgress`, `UI/HQPlacementUI.cs` | The game becomes *Playing* about 2 s before the UI says so. `Cmd_ReadyToStartGame` is effectively redundant. |
 | `playersReadyToStart` is never reset. | `GameCore` | A second match in the same session may skip its ready gate. |
 | A draw is `DeclareWinner(-1)`. `RpcGameDraw` is never called. | `GameCore.DeclareDraw` | A draw shows every player the Lose screen. |
@@ -41,7 +40,7 @@ These were found by reading the code (October 2026). Most haven't been reproduce
 ## Project and config hygiene
 
 - **HDRP is the active render pipeline** (`Assets/Settings/HDRP*.asset`, `GraphicsSettings`) for a 2D sprite game. URP 2D is the usual choice. Worth confirming this is deliberate.
-- **Both input systems are enabled** (`activeInputHandler: 2`). Gameplay uses the legacy `Input` API, while `InputSystem_Actions.inputactions` exists but isn't used by game code.
+- **Input System only** (`activeInputHandler: 1`) since v0.2. Gameplay input comes from the code-defined `GameInput` action map (`Assets/Scripts/Client/GameInput.cs`), and the legacy `Input` API is no longer used by game code. The `InputSystem_Actions.inputactions` asset still isn't referenced by game code (rebinding UI is planned).
 - **Packages that appear unused:** `com.unity.ai.navigation`, `com.unity.cinemachine`, `com.unity.timeline`, `com.unity.visualscripting` (only an unused `using` in `UnitCommander.cs`).
 - **No Windows build profile** is checked in. Only `Assets/Settings/Build Profiles/Linux.asset` is.
 - **No automated tests.** `com.unity.test-framework` is installed but there are no test assemblies for game code.

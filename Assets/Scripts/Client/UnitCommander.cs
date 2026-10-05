@@ -14,6 +14,7 @@ public class UnitCommander : NetworkBehaviour
 
     private int2 startcorner;
     private int2 endcorner;
+    private bool selecting;
 
     private int2 lastSentCorner1 = new int2(int.MinValue, int.MinValue);
     private int2 lastSentCorner2 = new int2(int.MinValue, int.MinValue);
@@ -82,6 +83,7 @@ public class UnitCommander : NetworkBehaviour
         //Mouse down, start selection
         if (GameInput.Select.WasPressedThisFrame() && !GameInput.PointerOverUI)
         {
+            selecting = true;
             selectionBox.SetActive(true);
             Vector3 worldPosition = GetMouseWorldPosition();
             startcorner = new int2((int)worldPosition.x, (int)worldPosition.y);
@@ -90,7 +92,7 @@ public class UnitCommander : NetworkBehaviour
             selectionBox.transform.localScale = new Vector3(0, 0, 1);
         }
 
-        if (GameInput.Select.IsPressed())
+        if (selecting && GameInput.Select.IsPressed())
         {
 
             Vector3 worldPosition = GetMouseWorldPosition();
@@ -111,11 +113,12 @@ public class UnitCommander : NetworkBehaviour
         }
 
         //Mouse up, end selection 
-        if (GameInput.Select.WasReleasedThisFrame())
+        if (selecting && GameInput.Select.WasReleasedThisFrame())
         {
             selectionBox.SetActive(false);
             Vector3 worldPosition = GetMouseWorldPosition();
             endcorner = new int2((int)worldPosition.x, (int)worldPosition.y);
+            selecting = false;
 
         }
 

@@ -32,7 +32,7 @@ Before *Playing*, the economy and the win/loss checks are paused. Passive income
 |---|---|
 | `W A S D` / arrow keys | Pan the camera |
 | Mouse wheel | Zoom (pan speed scales with zoom) |
-| Hold `Shift` | Faster pan (currently broken, see known issues) |
+| Hold `Shift` | Faster pan |
 | Left-click + drag | Draw a selection box |
 | Right-click | Order all **your** units inside the last selection box to move to the cursor |
 | Building button (HUD) | Pick a building; a preview follows the cursor |
