@@ -71,20 +71,103 @@ namespace WAR2D.Spike
             SpikeMap map = MapGenerator.Generate(a.MapSize, (uint)a.Seed, Allocator.Persistent);
             try
             {
+                bool full = a.Design != "hier";
+                bool hierarchical = a.Design != "full";
                 yield return null;
-                MeasureBuild(a, map);
-                yield return null;
-                MeasureParallelBuilds(a, map);
+                if (full)
+                {
+                    MeasureBuild(a, map);
+                    yield return null;
+                    MeasureParallelBuilds(a, map);
+                    yield return null;
+                }
+                if (hierarchical) MeasureHierarchicalBuilds(a, map);
                 yield return null;
                 MeasureClearance(a, map);
                 yield return null;
-                if (a.MapSize >= ReferenceMinMapSize) MeasureReferenceLoad(a, map);
+                if (a.MapSize < ReferenceMinMapSize) yield break;
+
+                int players = math.min(a.Teams, MapGenerator.HqCount);
+                var config = SpikeScenarioConfig.Defaults;
+                config.Players = players;
+                config.UnitsPerPlayer = math.max(1, a.Units / players);
+                config.LargePercent = a.LargePercent;
+                config.Placement = SpikePlacement.Hqs;
+                config.Clump = false;
+                config.OrderIntervalTicks = ReferenceOrderIntervalTicks;
+                config.ScriptTicks = 0; // unlimited: the bench decides how long the match is
+                using var scenario = SpikeScenario.Create(config, map, Allocator.Persistent);
+
+                if (full)
+                {
+                    MeasureReferenceLoad(a, map, scenario, hierarchical: false, "flow.refload");
+                    yield return null;
+                }
+                if (hierarchical)
+                {
+                    MeasureReferenceLoad(a, map, scenario, hierarchical: true, "flow.hier.refload");
+                }
             }
             finally
             {
                 map.Dispose();
             }
         }
+
+        /// <summary>
+        /// The hierarchical design's own build metrics. A "field" here is one order's route: the abstract
+        /// search plus a sector field per covered sector, built through the cache's production path
+        /// (<see cref="SectorFieldCache.RebuildDirty"/>), so it is directly comparable with the full
+        /// design's per-order cost.
+        /// </summary>
+        private static void MeasureHierarchicalBuilds(SpikeArgs a, SpikeMap map)
+        {
+            var rng = new Random((uint)a.Seed + 55u);
+            using var cache = new SectorFieldCache(map, Allocator.Persistent);
+            var starts = new NativeArray<int>(1, Allocator.Persistent);
+            var single = new SpikeStats();
+            var eight = new SpikeStats();
+            var sw = Stopwatch.StartNew();
+
+            for (int sample = 0; sample < BuildSamples + BuildWarmup; sample++)
+            {
+                int start = RandomFloor(map, ref rng);
+                int2 goal = TileOf(map, RandomFloor(map, ref rng));
+                starts[0] = start;
+                int handle = cache.Acquire(goal, FlowSizeClass.Small, 1, starts);
+                sw.Restart();
+                cache.RebuildDirty(1).Complete();
+                cache.CompleteRebuilds();
+                sw.Stop();
+                cache.Release(handle, 1);
+                if (sample >= BuildWarmup) single.Add(sw.Elapsed.TotalMilliseconds);
+            }
+
+            for (int sample = 0; sample < ParallelSamples + ParallelWarmup; sample++)
+            {
+                var handles = new int[ParallelFields];
+                starts[0] = RandomFloor(map, ref rng);
+                for (int field = 0; field < ParallelFields; field++)
+                {
+                    int2 goal = TileOf(map, RandomFloor(map, ref rng));
+                    handles[field] = cache.Acquire(goal, FlowSizeClass.Small, 1, starts);
+                }
+                sw.Restart();
+                cache.RebuildDirty(ParallelFields).Complete();
+                cache.CompleteRebuilds();
+                sw.Stop();
+                foreach (int handle in handles) cache.Release(handle, 1);
+                if (sample >= ParallelWarmup) eight.Add(sw.Elapsed.TotalMilliseconds);
+            }
+
+            SpikeResults.Write(a, "flow.hier.build", "ms", single);
+            SpikeResults.Write(a, "flow.hier.parallel8", "ms", eight);
+            SpikeResults.Write(a, "flow.hier.materialized", "sectors", Single(cache.Graph.MaterializedSectors));
+            Debug.Log($"[Flow] hier build: {BuildSamples} routes, {ParallelFields} at once; " +
+                      $"{cache.Graph.MaterializedSectors} sectors materialized, graph {cache.GraphBytes / (1024.0 * 1024.0):F2} MB");
+        }
+
+        private static int2 TileOf(in SpikeMap map, int cell) => new int2(cell % map.Width, cell / map.Width);
 
         /// <summary>One integration plus direction build, on fields with random floor goals.</summary>
         private static void MeasureBuild(SpikeArgs a, in SpikeMap map)
@@ -233,20 +316,12 @@ namespace WAR2D.Spike
         /// The reference load: the scenario's 16 orders/s and 4 terrain changes/s, 64 live orders plus
         /// the large-class twin of every order that includes large units, and RebuildDirty(2).
         /// </summary>
-        private static void MeasureReferenceLoad(SpikeArgs a, SpikeMap map)
+        private static void MeasureReferenceLoad(
+            SpikeArgs a, SpikeMap map, in SpikeScenario scenario, bool hierarchical, string prefix)
         {
-            int players = math.min(a.Teams, MapGenerator.HqCount);
-            var config = SpikeScenarioConfig.Defaults;
-            config.Players = players;
-            config.UnitsPerPlayer = math.max(1, a.Units / players);
-            config.LargePercent = a.LargePercent;
-            config.Placement = SpikePlacement.Hqs;
-            config.Clump = false;
-            config.OrderIntervalTicks = ReferenceOrderIntervalTicks;
-            config.ScriptTicks = 0; // unlimited: the bench decides how long the match is
-
-            using var scenario = SpikeScenario.Create(config, map, Allocator.Persistent);
-            using var cache = new FlowFieldCache(map, Allocator.Persistent);
+            using IFlowFieldCache cache = hierarchical
+                ? new SectorFieldCache(map, Allocator.Persistent)
+                : new FlowFieldCache(map, Allocator.Persistent);
             var rng = new Random((uint)a.Seed + 44u);
             var terrain = new NativeList<int2>(8, Allocator.Persistent);
             var orders = new List<LiveOrder>();
@@ -259,6 +334,7 @@ namespace WAR2D.Spike
             var largeStats = new SpikeStats();
             var memStats = new SpikeStats();
             var poolStats = new SpikeStats();
+            var sectorStats = new SpikeStats();
 
             int ticks = math.max(1, a.Ticks);
             int warmup = math.min(a.Warmup, ticks - 1);
@@ -293,12 +369,18 @@ namespace WAR2D.Spike
                         AcquireTick = tick,
                         ReleaseTick = tick + ReferenceFollowTicks,
                     };
-                    order.Small = cache.Acquire(click, FlowSizeClass.Small, order.SmallFollowers);
+                    // The hierarchical design routes from the sectors its units stand in, so it needs
+                    // some of their cells; the full-field design ignores them.
+                    NativeArray<int> startCells = hierarchical
+                        ? StartCells(map, scenario, player, units)
+                        : default;
+                    order.Small = cache.Acquire(click, FlowSizeClass.Small, order.SmallFollowers, startCells);
                     if (large > 0)
                     {
                         order.LargeFollowers = large;
-                        order.Large = cache.Acquire(click, FlowSizeClass.Large, large);
+                        order.Large = cache.Acquire(click, FlowSizeClass.Large, large, startCells);
                     }
+                    if (startCells.IsCreated) startCells.Dispose();
                     orders.Add(order);
                     totalOrders++;
                 }
@@ -340,24 +422,32 @@ namespace WAR2D.Spike
                 largeStats.Add(cache.LiveCountOfClass(FlowSizeClass.Large));
                 memStats.Add(cache.LiveBytes / (1024.0 * 1024.0));
                 poolStats.Add(cache.PooledBytes / (1024.0 * 1024.0));
+                if (hierarchical) sectorStats.Add(((SectorFieldCache)cache).CoveredSectorCount);
             }
 
             foreach (LiveOrder order in orders) if (order.ReadyTick < 0) neverReady++;
 
-            SpikeResults.Write(a, "flow.refload.tick", "ms", tickStats);
-            SpikeResults.Write(a, "flow.refload.latency", "ms", latencyStats);
-            SpikeResults.Write(a, "flow.refload.backlog", "fields", backlogStats);
-            SpikeResults.Write(a, "flow.refload.fields", "fields", fieldStats);
-            SpikeResults.Write(a, "flow.refload.small", "fields", smallStats);
-            SpikeResults.Write(a, "flow.refload.large", "fields", largeStats);
-            SpikeResults.Write(a, "flow.refload.mem", "MB", memStats);
-            SpikeResults.Write(a, "flow.refload.pool", "MB", poolStats);
-            SpikeResults.Write(a, "flow.refload.orders", "orders", Single(totalOrders));
-            SpikeResults.Write(a, "flow.refload.terrain", "changes", Single(totalTerrain));
-            SpikeResults.Write(a, "flow.refload.rebuilds", "fields", Single(cache.RebuildCount));
-            SpikeResults.Write(a, "flow.refload.neverready", "orders", Single(neverReady));
+            SpikeResults.Write(a, $"{prefix}.tick", "ms", tickStats);
+            SpikeResults.Write(a, $"{prefix}.latency", "ms", latencyStats);
+            SpikeResults.Write(a, $"{prefix}.backlog", "fields", backlogStats);
+            SpikeResults.Write(a, $"{prefix}.fields", "fields", fieldStats);
+            SpikeResults.Write(a, $"{prefix}.small", "fields", smallStats);
+            SpikeResults.Write(a, $"{prefix}.large", "fields", largeStats);
+            SpikeResults.Write(a, $"{prefix}.mem", "MB", memStats);
+            SpikeResults.Write(a, $"{prefix}.pool", "MB", poolStats);
+            SpikeResults.Write(a, $"{prefix}.orders", "orders", Single(totalOrders));
+            SpikeResults.Write(a, $"{prefix}.terrain", "changes", Single(totalTerrain));
+            SpikeResults.Write(a, $"{prefix}.rebuilds", "fields", Single(cache.RebuildCount));
+            SpikeResults.Write(a, $"{prefix}.neverready", "orders", Single(neverReady));
+            if (hierarchical)
+            {
+                var graph = (SectorFieldCache)cache;
+                SpikeResults.Write(a, $"{prefix}.sectors", "sectors", sectorStats);
+                SpikeResults.Write(a, $"{prefix}.graph", "MB", Single(graph.GraphBytes / (1024.0 * 1024.0)));
+                SpikeResults.Write(a, $"{prefix}.materialized", "sectors", Single(graph.Graph.MaterializedSectors));
+            }
 
-            Debug.Log($"[Flow] refload {map.Width}^2: {ticks} ticks ({warmup} warm-up), {totalOrders} orders, " +
+            Debug.Log($"[Flow] refload {prefix} {map.Width}^2: {ticks} ticks ({warmup} warm-up), {totalOrders} orders, " +
                       $"{totalTerrain} terrain changes, {cache.RebuildCount} field rebuilds, {neverReady} orders never ready, " +
                       $"ends with {cache.LiveCount} live fields ({cache.LiveBytes / (1024.0 * 1024.0):F1} MB) " +
                       $"and {cache.DirtyCount} dirty");
@@ -401,6 +491,25 @@ namespace WAR2D.Spike
                 }
             }
             return centre;
+        }
+
+        /// <summary>
+        /// Up to 64 of the ordered units' cells, one per stride, which is what the hierarchical cache
+        /// turns into the sectors its route must cover.
+        /// </summary>
+        private static NativeArray<int> StartCells(in SpikeMap map, in SpikeScenario scenario, int player, int units)
+        {
+            int stride = math.max(1, units / 64);
+            int count = units <= 0 ? 0 : (units + stride - 1) / stride;
+            var cells = new NativeArray<int>(count, Allocator.TempJob);
+            int baseIndex = player * scenario.UnitsPerPlayer;
+            int written = 0;
+            for (int i = 0; i < units && written < count; i += stride)
+            {
+                int2 tile = (int2)math.floor(scenario.UnitPositions[baseIndex + i]);
+                cells[written++] = math.clamp(tile.y, 0, map.Height - 1) * map.Width + math.clamp(tile.x, 0, map.Width - 1);
+            }
+            return cells;
         }
 
         /// <summary>

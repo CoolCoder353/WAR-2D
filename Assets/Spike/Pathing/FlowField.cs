@@ -295,6 +295,54 @@ namespace WAR2D.Spike
         }
     }
 
+    /// <summary>
+    /// The free cells a goal spreads over, so a group does not funnel into one tile: the clicked cell
+    /// when the class can stand there, then free cells in rings around it, up to <see cref="Spread"/>.
+    /// </summary>
+    public static class FlowGoals
+    {
+        /// <summary>Cells a goal spreads over (the clicked cell first).</summary>
+        public const int Spread = 64;
+
+        /// <summary>A goal cell list for <paramref name="click"/> on a class grid.</summary>
+        public static NativeArray<int> Around(
+            int2 click, NativeArray<byte> classGrid, int width, int height, Allocator allocator)
+        {
+            var picked = new System.Collections.Generic.List<int>(Spread);
+            if (classGrid[click.y * width + click.x] == SpikeMap.Floor) picked.Add(click.y * width + click.x);
+            for (int ring = 1; ring <= 8 && picked.Count < Spread; ring++)
+            for (int i = 0; i < 8 * ring && picked.Count < Spread; i++)
+            {
+                int2 tile = RingTile(click, ring, i);
+                if ((uint)tile.x >= (uint)width || (uint)tile.y >= (uint)height) continue;
+                if (classGrid[tile.y * width + tile.x] != SpikeMap.Floor) continue;
+                picked.Add(tile.y * width + tile.x);
+            }
+
+            var goals = new NativeArray<int>(picked.Count, allocator);
+            for (int i = 0; i < picked.Count; i++) goals[i] = picked[i];
+            return goals;
+        }
+
+        /// <summary>
+        /// The i-th tile of the ring at Chebyshev distance <paramref name="ring"/> from the origin, top
+        /// edge left to right and then clockwise: the same deterministic walk the scenario's placement
+        /// spiral uses.
+        /// </summary>
+        public static int2 RingTile(int2 origin, int ring, int i)
+        {
+            if (ring == 0) return origin;
+            int side = 2 * ring;
+            if (i < side) return new int2(origin.x - ring + i, origin.y - ring);
+            i -= side;
+            if (i < side) return new int2(origin.x + ring, origin.y - ring + i);
+            i -= side;
+            if (i < side) return new int2(origin.x + ring - i, origin.y + ring);
+            i -= side;
+            return new int2(origin.x - ring, origin.y + ring - i);
+        }
+    }
+
     /// <summary>The spike's two unit size classes and the grid each one paths on.</summary>
     public static class FlowSizeClass
     {

@@ -7,6 +7,55 @@ using Unity.Mathematics;
 namespace WAR2D.Spike
 {
     /// <summary>
+    /// The shape both flow-field designs expose, so one load model can drive either: the full-field
+    /// cache (<see cref="FlowFieldCache"/>) and the hierarchical one (<see cref="SectorFieldCache"/>).
+    /// </summary>
+    public interface IFlowFieldCache : IDisposable
+    {
+        /// <summary>Adds followers to the field for a goal, creating it when needed, and returns a handle.</summary>
+        int Acquire(int2 goal, int sizeClass, int followers, NativeArray<int> startCells);
+
+        /// <summary>Drops followers; the last one frees the field.</summary>
+        void Release(int handle, int followers);
+
+        /// <summary>Marks the fields a terrain change can affect stale.</summary>
+        void Invalidate(int2 changedTile);
+
+        /// <summary>Schedules up to <paramref name="maxPerTick"/> rebuilds and returns their handle.</summary>
+        JobHandle RebuildDirty(int maxPerTick);
+
+        /// <summary>Completes the scheduled rebuilds and marks the fields ready.</summary>
+        void CompleteRebuilds();
+
+        /// <summary>True when the handle's field has been built since the last terrain change.</summary>
+        bool IsReady(int handle);
+
+        /// <summary>
+        /// The direction byte at a cell of a live field, or <see cref="FlowDirections.None"/> when the
+        /// field does not cover the cell (the hierarchical design's route sectors).
+        /// </summary>
+        byte DirectionAtCell(int handle, int cellIndex);
+
+        /// <summary>Live fields.</summary>
+        int LiveCount { get; }
+
+        /// <summary>Live fields of one size class.</summary>
+        int LiveCountOfClass(int sizeClass);
+
+        /// <summary>Bytes the live fields hold.</summary>
+        long LiveBytes { get; }
+
+        /// <summary>Bytes parked for reuse rather than held by a live field.</summary>
+        long PooledBytes { get; }
+
+        /// <summary>Field rebuilds scheduled.</summary>
+        long RebuildCount { get; }
+
+        /// <summary>Live fields whose cells are stale.</summary>
+        int DirtyCount { get; }
+    }
+
+    /// <summary>
     /// A live flow field: the integration cost and the direction byte per cell, plus whether a
     /// terrain change has left those cells stale. A <see cref="FlowFieldCache"/> owns the arrays;
     /// the struct is a view that stays valid until the field is released.
@@ -57,7 +106,7 @@ namespace WAR2D.Spike
     /// drops the last follower; a released handle's slot may be reused, so callers must not hold one
     /// past their release.</para>
     /// </summary>
-    public sealed class FlowFieldCache : IDisposable
+    public sealed class FlowFieldCache : IFlowFieldCache
     {
         /// <summary>Free cells around the clicked tile a field spreads its goals over (the click first).</summary>
         public const int GoalSpread = 64;
@@ -213,7 +262,7 @@ namespace WAR2D.Spike
         /// creating it dirty when no live field matches, and returns its handle. A new field is built
         /// by the next <see cref="RebuildDirty"/> that has room for it.
         /// </summary>
-        public int Acquire(int2 goal, int sizeClass = FlowSizeClass.Small, int followers = 1)
+        public int Acquire(int2 goal, int sizeClass = FlowSizeClass.Small, int followers = 1, NativeArray<int> startCells = default)
         {
             ThrowIfDisposed();
             if (sizeClass < 0 || sizeClass >= FlowSizeClass.Count)
@@ -536,44 +585,13 @@ namespace WAR2D.Spike
         }
 
         /// <summary>
-        /// The field's goals: the clicked cell when the class can stand there, then free cells in
-        /// rings around it, up to <see cref="GoalSpread"/>. A goal that a later terrain change blocks
-        /// is skipped by the integration job, so the list needs no maintenance.
+        /// The field's goals: the clicked cell plus its spread (see <see cref="FlowGoals"/>). A goal a
+        /// later terrain change blocks is skipped by the integration job, so the list needs no upkeep.
         /// </summary>
         private NativeArray<int> SpreadGoals(int2 click, int sizeClass)
         {
             NativeArray<byte> grid = sizeClass == FlowSizeClass.Large ? filteredLarge : tiles;
-            var picked = new List<int>(GoalSpread);
-            if (grid[click.y * width + click.x] == SpikeMap.Floor) picked.Add(click.y * width + click.x);
-            for (int ring = 1; ring <= 8 && picked.Count < GoalSpread; ring++)
-            for (int i = 0; i < 8 * ring && picked.Count < GoalSpread; i++)
-            {
-                int2 tile = RingTile(click, ring, i);
-                if ((uint)tile.x >= (uint)width || (uint)tile.y >= (uint)height) continue;
-                if (grid[tile.y * width + tile.x] != SpikeMap.Floor) continue;
-                picked.Add(tile.y * width + tile.x);
-            }
-
-            var goals = new NativeArray<int>(picked.Count, Allocator.Persistent);
-            for (int i = 0; i < picked.Count; i++) goals[i] = picked[i];
-            return goals;
-        }
-
-        /// <summary>
-        /// The i-th tile of the square ring at Chebyshev distance <paramref name="ring"/> from the
-        /// origin, top edge left to right and then clockwise. Same order as the scenario's placement
-        /// spiral, so a goal's spread is deterministic.
-        /// </summary>
-        private static int2 RingTile(int2 origin, int ring, int i)
-        {
-            int side = 2 * ring;
-            if (i < side) return new int2(origin.x - ring + i, origin.y - ring);
-            i -= side;
-            if (i < side) return new int2(origin.x + ring, origin.y - ring + i);
-            i -= side;
-            if (i < side) return new int2(origin.x + ring - i, origin.y + ring);
-            i -= side;
-            return new int2(origin.x - ring, origin.y + ring - i);
+            return FlowGoals.Around(click, grid, width, height, Allocator.Persistent);
         }
 
         private void ThrowIfDisposed()

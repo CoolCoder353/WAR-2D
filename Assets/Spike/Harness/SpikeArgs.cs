@@ -11,6 +11,8 @@ namespace WAR2D.Spike
     public struct SpikeArgs
     {
         public string Bench, OutDir, Tag;
+        /// <summary>Flow-field design to benchmark: <c>full</c>, <c>hier</c> or <c>both</c> (flow only).</summary>
+        public string Design;
         public int Units, MapSize, Teams, Seed, Ticks, Warmup, VisionRadius, BuildingVision, SliceTicks, CellSize, Clients;
         /// <summary>Percentage of units in the large size class (radius 0.7).</summary>
         public int LargePercent;
@@ -19,7 +21,7 @@ namespace WAR2D.Spike
         /// <summary>Defaults from the reference scenario table in the v0.3 plan.</summary>
         public static SpikeArgs Defaults => new SpikeArgs
         {
-            Bench = "", OutDir = "SpikeResults", Tag = "",
+            Bench = "", OutDir = "SpikeResults", Tag = "", Design = "both",
             Units = 80000, MapSize = 512, Teams = 8, Seed = 1, Ticks = 600, Warmup = 100,
             VisionRadius = 8, BuildingVision = 10, SliceTicks = 4, CellSize = 5, Clients = 8, LargePercent = 10,
         };
@@ -35,6 +37,7 @@ namespace WAR2D.Spike
                     case "-spike": a.Bench = next; break;
                     case "-out": a.OutDir = next; break;
                     case "-tag": a.Tag = next; break;
+                    case "-design": a.Design = next; break;
                     case "-units": a.Units = Int(next); break;
                     case "-map": a.MapSize = Int(next); break;
                     case "-teams": a.Teams = Int(next); break;

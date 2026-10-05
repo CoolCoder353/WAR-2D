@@ -65,7 +65,7 @@ namespace WAR2D.Spike
             Debug.Log($"[Spike] start bench={args.Bench} units={args.Units} map={args.MapSize} teams={args.Teams} " +
                       $"seed={args.Seed} ticks={args.Ticks} warmup={args.Warmup} vision={args.VisionRadius} " +
                       $"bvision={args.BuildingVision} large={args.LargePercent} slice={args.SliceTicks} " +
-                      $"cell={args.CellSize} clients={args.Clients} async={args.Async} clump={args.Clump} " +
+                      $"cell={args.CellSize} clients={args.Clients} async={args.Async} clump={args.Clump} design={args.Design} " +
                       $"out={args.OutDir} tag={args.Tag} quit={args.Quit}");
             StartCoroutine(RunBench());
         }
