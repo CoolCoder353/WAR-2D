@@ -22,7 +22,8 @@ public class BuildingButtonManager : MonoBehaviour
     private bool isPlacing = false;
 
     private int2 lastQueriedAnchor = new int2(int.MinValue, int.MinValue);
-    private float lastQueriedRotation = float.NaN;
+    private float lastQueriedRotation = float.MinValue;
+    private float queryTimer;
 
     [ClientCallback]
     public void Start()
@@ -95,12 +96,17 @@ public class BuildingButtonManager : MonoBehaviour
     {
         //We can guess if the building will be valid or not based on the positions we know of from the ClientPlayer thing
 
-        // Only ask the server when the anchor or rotation actually changed since the last query.
-        if (currentAnchor.Equals(lastQueriedAnchor) && currentRotation == lastQueriedRotation) return;
-
-        lastQueriedAnchor = currentAnchor;
-        lastQueriedRotation = currentRotation;
-        WorldStateManager.Instance.CanBuildBuildingCommand(currentAnchor, selectedBuildingType, currentRotation);
+        // Change-gated and throttled: 10 Hz keeps an honest client below the server's 15/s refill,
+        // so cursor-speed motion can never trip the command rate-limit kick.
+        queryTimer += Time.unscaledDeltaTime;
+        // int2's != yields bool2, so reduce it with math.any.
+        if ((math.any(currentAnchor != lastQueriedAnchor) || currentRotation != lastQueriedRotation) && queryTimer >= 0.1f)
+        {
+            WorldStateManager.Instance.CanBuildBuildingCommand(currentAnchor, selectedBuildingType, currentRotation);
+            lastQueriedAnchor = currentAnchor;
+            lastQueriedRotation = currentRotation;
+            queryTimer = 0f;
+        }
     }
 
     [Client]
@@ -162,6 +168,7 @@ public class BuildingButtonManager : MonoBehaviour
         currentRotation = 0f; // Reset rotation when selecting new building
         previewBuilding.transform.rotation = Quaternion.identity;
         lastQueriedAnchor = new int2(int.MinValue, int.MinValue);
-        lastQueriedRotation = float.NaN; // Forces the first frame after selecting a building to ask.
+        lastQueriedRotation = float.MinValue; // Sentinels guarantee the next change check differs.
+        queryTimer = 1f; // Mature timer, so the first frame after selecting a building asks immediately.
     }
 }
