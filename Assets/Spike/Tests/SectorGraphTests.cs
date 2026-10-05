@@ -375,6 +375,73 @@ public class SectorGraphTests
         }
     }
 
+    /// <summary>A 256 map that is all rock except a 16-tile-tall corridor, so a route west to east lies
+    /// inside the first row of sectors and nowhere else.</summary>
+    private static SpikeMap CorridorMap(Allocator allocator)
+    {
+        var map = new SpikeMap(256, 256, new NativeArray<byte>(256 * 256, allocator));
+        for (int i = 0; i < map.Tiles.Length; i++) map.Tiles[i] = Rock;
+        for (int y = 8; y <= 23; y++)
+        for (int x = 0; x < 256; x++)
+            map.Tiles[y * 256 + x] = Floor;
+        return map;
+    }
+
+    [Test]
+    public void TerrainChangesAwayFromARouteKeepItReady()
+    {
+        SpikeMap map = CorridorMap(Allocator.TempJob);
+        try
+        {
+            using var cache = new SectorFieldCache(map, Allocator.Persistent);
+            var starts = new NativeArray<int>(1, Allocator.TempJob);
+            starts[0] = Index(map, new int2(16, 16));
+            int handle = cache.Acquire(new int2(240, 16), FlowSizeClass.Small, 1, starts);
+            starts.Dispose();
+            cache.RebuildDirty(2).Complete();
+            cache.CompleteRebuilds();
+            Assert.IsTrue(cache.IsReady(handle));
+            // The corridor keeps the route in the sector row y 0..31: sectors 0, 1, ... 7.
+            Assert.IsTrue(cache.CoversSector(handle, 3));
+            Assert.IsFalse(cache.CoversSector(handle, 3 + 8), "the row below is not on the route");
+
+            // A change seven sector rows away cannot touch the route: the order stays ready.
+            long before = cache.ReRoutes;
+            int2 far = new int2(16, 200);
+            map.Tiles[Index(map, far)] = Floor;
+            cache.Invalidate(far);
+            Assert.IsTrue(cache.IsReady(handle), "a change far from the route must not stale it");
+            Assert.AreEqual(before, cache.ReRoutes);
+
+            // A change one sector row from the route (its neighbour ring) does stale it.
+            int2 near = new int2(16, 40);
+            map.Tiles[Index(map, near)] = Floor;
+            cache.Invalidate(near);
+            Assert.IsFalse(cache.IsReady(handle), "a change next to the route stales it");
+            cache.RebuildDirty(2).Complete();
+            cache.CompleteRebuilds();
+            Assert.IsTrue(cache.IsReady(handle));
+            Assert.AreEqual(before + 1, cache.ReRoutes);
+
+            // A change inside the route stales it too.
+            int2 onRoute = new int2(100, 16);
+            map.Tiles[Index(map, onRoute)] = Rock;
+            cache.Invalidate(onRoute);
+            Assert.IsFalse(cache.IsReady(handle), "a change on the route stales it");
+            cache.RebuildDirty(2).Complete();
+            cache.CompleteRebuilds();
+            Assert.IsTrue(cache.IsReady(handle));
+            Assert.AreEqual(1, cache.NewRoutes, "the order was routed once; the rest are re-routes");
+            Assert.AreEqual(2, cache.ReRoutes);
+            Assert.Greater(cache.NewSectorFields, 0);
+            Assert.Greater(cache.ReSectorFields, 0);
+        }
+        finally
+        {
+            map.Dispose();
+        }
+    }
+
     [Test]
     public void SectorFieldSeedsPreferTheCheaperPortal()
     {

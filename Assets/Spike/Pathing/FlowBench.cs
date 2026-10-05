@@ -442,6 +442,10 @@ namespace WAR2D.Spike
             if (hierarchical)
             {
                 var graph = (SectorFieldCache)cache;
+                SpikeResults.Write(a, $"{prefix}.newroutes", "routes", Single(graph.NewRoutes));
+                SpikeResults.Write(a, $"{prefix}.reroutes", "routes", Single(graph.ReRoutes));
+                SpikeResults.Write(a, $"{prefix}.newsectors", "fields", Single(graph.NewSectorFields));
+                SpikeResults.Write(a, $"{prefix}.resectors", "fields", Single(graph.ReSectorFields));
                 SpikeResults.Write(a, $"{prefix}.sectors", "sectors", sectorStats);
                 SpikeResults.Write(a, $"{prefix}.graph", "MB", Single(graph.GraphBytes / (1024.0 * 1024.0)));
                 SpikeResults.Write(a, $"{prefix}.materialized", "sectors", Single(graph.Graph.MaterializedSectors));

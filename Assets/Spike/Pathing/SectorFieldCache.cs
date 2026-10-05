@@ -52,6 +52,7 @@ namespace WAR2D.Spike
         private bool hasPending;
         private int inFlight;
         private long rebuilds;
+        private long newRoutes, reRoutes, newSectorFields, reSectorFields;
         private bool disposed;
 
         /// <summary>Builds a cache whose routes are sector-scoped. <paramref name="map"/> is shared, not owned.</summary>
@@ -119,6 +120,18 @@ namespace WAR2D.Spike
 
         /// <summary>Order rebuilds scheduled.</summary>
         public long RebuildCount => rebuilds;
+
+        /// <summary>Rebuilds that materialise a brand new route.</summary>
+        public long NewRoutes => newRoutes;
+
+        /// <summary>Rebuilds that re-materialise a route a terrain change made stale.</summary>
+        public long ReRoutes => reRoutes;
+
+        /// <summary>Sector fields built for new routes.</summary>
+        public long NewSectorFields => newSectorFields;
+
+        /// <summary>Sector fields rebuilt because of a terrain change.</summary>
+        public long ReSectorFields => reSectorFields;
 
         /// <summary>Live fields whose route predates the latest terrain change.</summary>
         public int DirtyCount
@@ -210,13 +223,37 @@ namespace WAR2D.Spike
         {
             ThrowIfDisposed();
             graph.Invalidate(changedTile);
+
+            // Selectivity: the change can only alter a route that runs through the changed sector, one
+            // of its neighbours, or the crossings between them, so an order whose covered sectors all
+            // sit at least two sectors away keeps its materialised fields (and stays ready). A route
+            // that passes further away cannot cross the changed portals; the one approximation is that
+            // a far-away change that would have offered a cheaper route is only picked up when that
+            // order is next rebuilt.
+            int sector = graph.SectorOf(changedTile);
+            int sx = sector % graph.SectorsX, sy = sector / graph.SectorsX;
             foreach (Order order in orders)
             {
                 if (!Live(order)) continue;
+                if (!Touches(order, sx, sy)) continue;
                 order.DirtySeq++;
                 order.Dirty = true;
                 order.Ready = false;
             }
+        }
+
+        /// <summary>True when the order's route enters the changed sector or one of its eight neighbours.</summary>
+        private bool Touches(Order order, int sx, int sy)
+        {
+            if (order.Covered == null) return true; // never routed: it has to be built anyway
+            for (int dy = -1; dy <= 1; dy++)
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                int x = sx + dx, y = sy + dy;
+                if ((uint)x >= (uint)graph.SectorsX || (uint)y >= (uint)graph.SectorsY) continue;
+                if (order.Covered[y * graph.SectorsX + x]) return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -397,6 +434,14 @@ namespace WAR2D.Spike
             order.BuiltSeq = order.DirtySeq;
             inFlight++;
             rebuilds++;
+            if (order.EverBuilt)
+            {
+                reRoutes++;
+            }
+            else
+            {
+                newRoutes++;
+            }
 
             SectorFieldSpec[] specs = graph.BuildRoute(order.SizeClass, order.Goals, order.StartCells, out int covered);
             DisposeFields(order);
@@ -407,6 +452,8 @@ namespace WAR2D.Spike
             order.CoveredCount = covered;
 
             NativeArray<byte> grid = graph.GridOf(order.SizeClass);
+            if (order.EverBuilt) reSectorFields += specs.Length;
+            else newSectorFields += specs.Length;
             var handles = new List<JobHandle>(specs.Length);
             foreach (SectorFieldSpec spec in specs)
             {
