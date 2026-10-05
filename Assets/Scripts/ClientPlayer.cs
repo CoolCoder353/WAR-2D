@@ -38,7 +38,7 @@ public class ClientPlayer : NetworkBehaviour
         if (lobbySystem != null)
         {
             lobbySystem.AddClientPlayer(this, addNicknameListener: isLocalPlayer);
-            lobbySystem.SetStartButtonVisible(isLocalPlayer && isServerOwner);
+            if (isLocalPlayer) lobbySystem.SetStartButtonVisible(isServerOwner);
         }
 
         //Add the hook to the scene change event

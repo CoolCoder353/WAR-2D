@@ -90,7 +90,6 @@ public class GameCore : NetworkBehaviour
         if (CurrentState == GameState.Countdown && NetworkTime.time >= CountdownEndTime)
         {
             CurrentState = GameState.Playing;
-            MatchStartPlayerCount = ServerPlayers.Count;
         }
     }
 
@@ -180,6 +179,8 @@ public class GameCore : NetworkBehaviour
             entry.Value.state = PlayerState.Playing;
             entry.Key.GetComponent<ClientPlayer>().hasPlacedHQ = false;
         }
+        // Captured at launch so a departure before Playing can't stop the survivor from winning.
+        MatchStartPlayerCount = ServerPlayers.Count;
         CurrentState = GameState.PlacingHQ;
         GameManager.Instance.ServerChangeScene(ConfigLoader.LoadConfig().Match.Scene);
     }
