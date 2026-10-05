@@ -1,29 +1,19 @@
-using UnityEngine;
 using NaughtyAttributes;
+using UnityEngine;
 
 namespace Character
 {
     [CreateAssetMenu]
     public class Character_Settings : ScriptableObject
     {
-        [Foldout("Main")]
-        public float speed;
-        [Foldout("Main")]
-        public float scrollSpeed;
+        [Foldout("Pan"), Tooltip("World units per second at orthographic size 5.")]
+        public float speed = 5f;
+        [Foldout("Pan")]
+        public float shiftSpeedMultiplyer = 2.5f;
 
-        [Foldout("Movement")]
-        public float shiftSpeedMultiplyer;
-
-        [Foldout("Movement")]
-        public Vector2 zoomScale;
-
-        [Foldout("Movement"), Tooltip("The min and max values that the scroll amount should affect the speed of the camera")]
-        public Vector2 zoomSpeedScale;
-
-        [Foldout("Debug")]
-        public bool debug;
-
+        [Foldout("Zoom"), Tooltip("Orthographic size change per mouse-wheel notch.")]
+        public float zoomStep = 1.5f;
+        [Foldout("Zoom"), Tooltip("Min and max orthographic size.")]
+        public Vector2 zoomScale = new Vector2(3f, 30f);
     }
-
-
 }

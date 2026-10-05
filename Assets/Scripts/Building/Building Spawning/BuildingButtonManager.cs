@@ -73,7 +73,7 @@ public class BuildingButtonManager : MonoBehaviour
             SetBuildingPreviewColour();
 
             // Rotate building with R key
-            if (Input.GetKeyDown(KeyCode.R))
+            if (GameInput.Rotate.WasPressedThisFrame())
             {
                 currentRotation = (currentRotation + 90f) % 360f;
                 previewBuilding.transform.rotation = Quaternion.Euler(0, 0, currentRotation);
@@ -81,7 +81,7 @@ public class BuildingButtonManager : MonoBehaviour
                 SetBuildingPreviewColour();
             }
         }
-        if (Input.GetMouseButtonDown(0) && previewBuilding.activeInHierarchy)
+        if (GameInput.Select.WasPressedThisFrame() && !GameInput.PointerOverUI && previewBuilding.activeInHierarchy)
         {
             TrySpawnBuilding();
             previewBuilding.SetActive(false);

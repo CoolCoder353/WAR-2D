@@ -13,8 +13,6 @@ MonoBehaviour:
   m_Name: Character_Settings
   m_EditorClassIdentifier: 
   speed: 5
-  scrollSpeed: 250
   shiftSpeedMultiplyer: 2.5
-  zoomScale: {x: -13, y: -1}
-  zoomSpeedScale: {x: 1, y: 25}
-  debug: 0
+  zoomStep: 1.5
+  zoomScale: {x: 3, y: 30}

@@ -1,7 +1,7 @@
 {
     "name": "TIM.Console",
     "rootNamespace": "",
-    "references": ["Unity.TextMeshPro", "UnityEngine.UI", "NaughtyAttributes.Core"],
+    "references": ["Unity.TextMeshPro", "UnityEngine.UI", "NaughtyAttributes.Core", "Unity.InputSystem"],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

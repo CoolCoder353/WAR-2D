@@ -62,11 +62,11 @@ namespace TIM
 
         private void Update()
         {
-            if (Input.GetKeyDown(ConsoleSetting.Instance.ToggleKey))
+            if ((UnityEngine.InputSystem.Keyboard.current?[ConsoleSetting.Instance.ToggleKey].wasPressedThisFrame ?? false))
             {
                 ToggleConsole();
             }
-            else if (Opened && Input.GetKeyDown(KeyCode.Return))
+            else if (Opened && (UnityEngine.InputSystem.Keyboard.current?.enterKey.wasPressedThisFrame ?? false))
             {
                 InputPanel.OnEnterPressed();
             }

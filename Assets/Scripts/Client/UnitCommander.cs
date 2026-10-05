@@ -65,14 +65,7 @@ public class UnitCommander : NetworkBehaviour
 
     public static Vector3 GetMouseWorldPosition()
     {
-        Vector3 mousePosition = Input.mousePosition;
-
-        Vector3 truePosition = new Vector3(Camera.main.pixelWidth - mousePosition.x, Camera.main.pixelHeight - mousePosition.y, Camera.main.transform.position.z);
-
-        Vector3 worldPosition = Camera.main.ScreenToWorldPoint(truePosition);
-
-        worldPosition.z = 0;
-        return worldPosition;
+        return GameInput.PointerWorld();
     }
 
     [ClientCallback]
@@ -87,7 +80,7 @@ public class UnitCommander : NetworkBehaviour
 
 
         //Mouse down, start selection
-        if (Input.GetMouseButtonDown(0))
+        if (GameInput.Select.WasPressedThisFrame() && !GameInput.PointerOverUI)
         {
             selectionBox.SetActive(true);
             Vector3 worldPosition = GetMouseWorldPosition();
@@ -97,7 +90,7 @@ public class UnitCommander : NetworkBehaviour
             selectionBox.transform.localScale = new Vector3(0, 0, 1);
         }
 
-        if (Input.GetMouseButton(0))
+        if (GameInput.Select.IsPressed())
         {
 
             Vector3 worldPosition = GetMouseWorldPosition();
@@ -118,7 +111,7 @@ public class UnitCommander : NetworkBehaviour
         }
 
         //Mouse up, end selection 
-        if (Input.GetMouseButtonUp(0))
+        if (GameInput.Select.WasReleasedThisFrame())
         {
             selectionBox.SetActive(false);
             Vector3 worldPosition = GetMouseWorldPosition();
@@ -126,7 +119,7 @@ public class UnitCommander : NetworkBehaviour
 
         }
 
-        if (Input.GetMouseButtonDown(1))
+        if (GameInput.Command.WasPressedThisFrame() && !GameInput.PointerOverUI)
         {
             Vector3 worldPosition = GetMouseWorldPosition();
             int2 goal = new int2((int)worldPosition.x, (int)worldPosition.y);
@@ -134,16 +127,13 @@ public class UnitCommander : NetworkBehaviour
             WorldStateManager.Instance.CmdMoveUnits(goal, startcorner, endcorner);
         }
 
-        //Get where the camera is looking at in the scene
-        Vector3 cameraStart = Camera.main.ScreenToWorldPoint(new Vector3(Camera.main.pixelWidth, Camera.main.pixelHeight, Camera.main.transform.position.z));
-        Vector3 cameraPositionEnd = Camera.main.ScreenToWorldPoint(new Vector3(0, 0, Camera.main.transform.position.z));
-
-        //Get the corners of the camera
-        Vector3 cameraCorner1 = new Vector3(cameraStart.x, cameraStart.y, 0) + new Vector3(-visualAdditionalRange.x, -visualAdditionalRange.y, 0);
-        Vector3 cameraCorner2 = new Vector3(cameraPositionEnd.x, cameraPositionEnd.y, 0) + new Vector3(visualAdditionalRange.x, visualAdditionalRange.y, 0);
-
-        int2 corner1 = new int2((int)cameraCorner1.x, (int)cameraCorner1.y);
-        int2 corner2 = new int2((int)cameraCorner2.x, (int)cameraCorner2.y);
+        //Get the corners of the camera (orthographic bounds)
+        Camera cam = Camera.main;
+        float halfH = cam.orthographicSize;
+        float halfW = halfH * cam.aspect;
+        Vector3 c = cam.transform.position;
+        int2 corner1 = new int2((int)math.floor(c.x - halfW) - visualAdditionalRange.x, (int)math.floor(c.y - halfH) - visualAdditionalRange.y);
+        int2 corner2 = new int2((int)math.ceil(c.x + halfW) + visualAdditionalRange.x, (int)math.ceil(c.y + halfH) + visualAdditionalRange.y);
 
         // // Place the selection box at this point to show the box the server thinks the client can see for testing purposes
 
