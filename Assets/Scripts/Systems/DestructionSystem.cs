@@ -1,27 +1,28 @@
-using Unity.Entities;
-using Unity.Burst;
-using Unity.Collections;
-using UnityEngine;
 using Mirror;
+using Unity.Collections;
+using Unity.Entities;
 
-[BurstCompile]
+/// <summary>
+/// Destroys every entity at or below 0 health, after telling WorldStateManager so it can
+/// unregister the entity, free its tiles and record a death explosion. Server only.
+/// </summary>
 public partial struct DestructionSystem : ISystem
 {
-    [ServerCallback]
     public void OnUpdate(ref SystemState state)
     {
-        var ecb = new EntityCommandBuffer(Allocator.Temp);
+        if (!NetworkServer.active || WorldStateManager.Instance == null) return;
 
+        var dead = new NativeList<Entity>(Allocator.Temp);
         foreach (var (health, entity) in SystemAPI.Query<RefRO<HealthComponent>>().WithEntityAccess())
         {
-            if (health.ValueRO.currentHealth <= 0)
-            {
-                // Debug.Log($"Entity {entity.Index} destroyed due to zero health.");
-                ecb.DestroyEntity(entity);
-            }
+            if (health.ValueRO.currentHealth <= 0f) dead.Add(entity);
         }
 
-        ecb.Playback(state.EntityManager);
-        ecb.Dispose();
+        foreach (Entity entity in dead)
+        {
+            WorldStateManager.Instance.OnEntityDestroyed(entity);
+            state.EntityManager.DestroyEntity(entity);
+        }
+        dead.Dispose();
     }
 }

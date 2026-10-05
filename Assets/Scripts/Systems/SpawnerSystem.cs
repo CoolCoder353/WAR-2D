@@ -131,7 +131,7 @@ public partial struct SpawnerSystem : ISystem
                 Entity newEntity = commandBuffer.CreateEntity();
 
                 commandBuffer.AddComponent(newEntity, new LocalTransform { Position = new float3(position.x, position.y, 0) });
-                commandBuffer.AddComponent(newEntity, new HealthComponent { currentHealth = unitConfig.Health, maxHealth = unitConfig.Health });
+                commandBuffer.AddComponent(newEntity, new HealthComponent { entityId = id, currentHealth = unitConfig.Health, maxHealth = unitConfig.Health });
                 commandBuffer.AddComponent(newEntity, new DamageComponent { damageAmount = unitConfig.Damage, range = unitConfig.Range, attackSpeed = unitConfig.AttackInterval });
                 commandBuffer.AddBuffer<PathPoint>(newEntity);
 

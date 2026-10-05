@@ -156,7 +156,7 @@ public class GameCore : NetworkBehaviour
         }
 
         //Get all entities that belong to the disconnected player and destroy them
-        WorldStateManager.Instance.DestroyAllEntitiesOwnedByPlayer((int)conn.identity.netId);
+        WorldStateManager.Instance?.KillAllEntitiesOwnedBy((int)conn.identity.netId);
 
     }
 

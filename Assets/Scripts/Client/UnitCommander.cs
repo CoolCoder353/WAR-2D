@@ -22,6 +22,8 @@ public class UnitCommander : NetworkBehaviour
     private Dictionary<int, GameObject> unitGameObjects = new Dictionary<int, GameObject>();
     private Dictionary<int, double> lastUnitAttackTimes = new Dictionary<int, double>();
 
+    private GameObject bulletPrefab;
+
     public Dictionary<int, GameObject> buildingGameObjects = new Dictionary<int, GameObject>();
 
 
@@ -31,6 +33,8 @@ public class UnitCommander : NetworkBehaviour
         if (Instance == null)
         {
             Instance = this;
+
+            bulletPrefab = Resources.Load<GameObject>("Prefabs/Bullet");
 
             //Start the selection box as inactive
             selectionBox.SetActive(false);
@@ -157,7 +161,6 @@ public class UnitCommander : NetworkBehaviour
     [Client]
     private void VisualizeAttackingUnits()
     {
-        GameObject bulletPrefab = Resources.Load<GameObject>("Prefabs/Bullet");
         foreach (ClientUnit unit in localPlayer.visuableUnits)
         {
             if (!lastUnitAttackTimes.ContainsKey(unit.id))
@@ -170,7 +173,10 @@ public class UnitCommander : NetworkBehaviour
                 lastUnitAttackTimes[unit.id] = unit.lastAttackTime;
 
                 unitGameObjects.TryGetValue(unit.id, out GameObject attackerObject);
-                unitGameObjects.TryGetValue(unit.targetId, out GameObject enemyObject);
+                if (!unitGameObjects.TryGetValue(unit.targetId, out GameObject enemyObject))
+                {
+                    buildingGameObjects.TryGetValue(unit.targetId, out enemyObject);
+                }
 
                 if (attackerObject != null && enemyObject != null)
                 {

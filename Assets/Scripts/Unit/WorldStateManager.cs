@@ -65,6 +65,9 @@ public class WorldStateManager : NetworkBehaviour
     /// </summary>
     private Dictionary<int, Entity> Buildings = new Dictionary<int, Entity>();
 
+    /// <summary>Footprint tiles each building marked used, so they can be freed when it dies.</summary>
+    private readonly Dictionary<int, List<int2>> buildingFootprints = new Dictionary<int, List<int2>>();
+
     private EntityManager entityManager;
 
     #region Lifecycle Methods
@@ -105,63 +108,89 @@ public class WorldStateManager : NetworkBehaviour
     }
 
 
+    private readonly List<float2> pendingDeathPositions = new List<float2>();
+
+    /// <summary>Called by DestructionSystem just before an entity is destroyed.</summary>
     [Server]
-    public void DestroyAllEntitiesOwnedByPlayer(int playerId)
+    public void OnEntityDestroyed(Entity entity)
     {
-
-        //Note: This is not the most efficient way to do this, but it is the most straightforward. 
-        // Might need to optimize this later if performance becomes an issue, but it only needs to run once per player elimination so it should be fine for now.
-
-        Dictionary<int, Entity> UnitsCopy = Units.ToDictionary(entry => entry.Key, entry => entry.Value);
-
-
-        Dictionary<int, Entity> BuildingsCopy = Buildings.ToDictionary(entry => entry.Key, entry => entry.Value);
-
-        foreach ((int buildingId, Entity building) in Buildings)
+        if (!EntityManager.Exists(entity)) return;
+        if (EntityManager.HasComponent<LocalTransform>(entity))
         {
-            if (EntityManager.HasComponent<BuildingData>(building))
+            pendingDeathPositions.Add(EntityManager.GetComponentData<LocalTransform>(entity).Position.xy);
+        }
+
+        if (EntityManager.HasComponent<ClientUnit>(entity))
+        {
+            int id = EntityManager.GetComponentData<ClientUnit>(entity).id;
+            Units.Remove(id);
+            Occupancy.ReleaseAll(id);
+        }
+        else if (EntityManager.HasComponent<BuildingData>(entity))
+        {
+            int id = EntityManager.GetComponentData<BuildingData>(entity).id;
+            Buildings.Remove(id);
+            if (buildingFootprints.Remove(id, out List<int2> footprint))
             {
-                BuildingData buildingData = EntityManager.GetComponentData<BuildingData>(building);
-                if (buildingData.ownerId == playerId)
+                foreach (int2 tile in footprint)
                 {
-                    EntityManager.DestroyEntity(building);
-                    BuildingsCopy.Remove(buildingId);
+                    TileNode node = world.GetTile(tile);
+                    node.used = 0;
+                    world.SetTile(tile, node);
                 }
             }
         }
+    }
 
-        foreach ((int unitId, Entity unit) in Units)
-        {
-            if (EntityManager.HasComponent<ClientUnit>(unit))
-            {
-                ClientUnit clientUnit = EntityManager.GetComponentData<ClientUnit>(unit);
-                if (clientUnit.ownerId == playerId)
-                {
-                    EntityManager.DestroyEntity(unit);
-                    UnitsCopy.Remove(unitId);
-                }
-            }
-        }
+    /// <summary>Sets every entity owned by the player to 0 health; DestructionSystem removes them (with explosions).</summary>
+    [Server]
+    public void KillAllEntitiesOwnedBy(int ownerId)
+    {
+        foreach (Entity e in Units.Values) Kill(e, ownerId);
+        foreach (Entity e in Buildings.Values) Kill(e, ownerId);
+    }
 
-        Units = UnitsCopy;
-        Buildings = BuildingsCopy;
+    private void Kill(Entity entity, int ownerId)
+    {
+        if (!EntityManager.Exists(entity) || !EntityManager.HasComponent<HealthComponent>(entity)) return;
+        int owner = EntityManager.HasComponent<ClientUnit>(entity)
+            ? EntityManager.GetComponentData<ClientUnit>(entity).ownerId
+            : EntityManager.GetComponentData<BuildingData>(entity).ownerId;
+        if (owner != ownerId) return;
+        HealthComponent hp = EntityManager.GetComponentData<HealthComponent>(entity);
+        hp.currentHealth = 0f;
+        EntityManager.SetComponentData(entity, hp);
+    }
+
+    /// <summary>Returns and clears the death positions recorded since the last call.</summary>
+    [Server]
+    public List<float2> TakeDeathPositions()
+    {
+        var copy = new List<float2>(pendingDeathPositions);
+        pendingDeathPositions.Clear();
+        return copy;
     }
 
 
+    [Server]
     public void DestroyAllEntities()
     {
-        foreach ((int buildingId, Entity building) in Buildings)
+        foreach (Entity e in Buildings.Values) if (EntityManager.Exists(e)) EntityManager.DestroyEntity(e);
+        foreach (Entity e in Units.Values) if (EntityManager.Exists(e)) EntityManager.DestroyEntity(e);
+        foreach (List<int2> footprint in buildingFootprints.Values)
         {
-            EntityManager.DestroyEntity(building);
+            foreach (int2 tile in footprint)
+            {
+                TileNode node = world.GetTile(tile);
+                node.used = 0;
+                world.SetTile(tile, node);
+            }
         }
-
-        foreach ((int unitId, Entity unit) in Units)
-        {
-            EntityManager.DestroyEntity(unit);
-        }
-
         Units.Clear();
         Buildings.Clear();
+        buildingFootprints.Clear();
+        Occupancy.Clear();
+        pendingDeathPositions.Clear();
     }
     #endregion
 
@@ -729,6 +758,7 @@ public class WorldStateManager : NetworkBehaviour
         // Add Health Component
         EntityManager.AddComponentData(building, new HealthComponent
         {
+            entityId = buildingData.id,
             currentHealth = buildingConfig.Health,
             maxHealth = buildingConfig.Health
         });
@@ -773,6 +803,7 @@ public class WorldStateManager : NetworkBehaviour
             tileNode.used = 1;
             world.SetTile(tile, tileNode);
         }
+        buildingFootprints[buildingData.id] = tiles;
 
         AddBuilding(building, buildingData.id);
     }
