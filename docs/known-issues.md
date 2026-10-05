@@ -8,6 +8,15 @@ The October 2026 code review found roughly 30 bugs, mismatches and hygiene probl
 |---|---|---|---|
 | `UpdatePlayerViews` uses LINQ `Any`/`FindIndex` over the `ClientPlayer` SyncLists for every visible entity, every `FixedUpdate`. | `WorldStateManager.UpdatePlayerViews` | **v0.5** | O(players × visible²). Fine at current army sizes, slow with large armies. v0.5's hybrid replication (send a unit's path once, then corrections and compact events) replaces the per-player visible lists entirely. |
 
+## Tracked generated files
+
+Found in the v0.3 project review. They were committed before `.gitignore` covered them, so ignoring them has no effect until they're untracked. v0.3 Task 1 clears them.
+
+- **`Editor.log` (1.8 MB) and two `mono_crash.mem.*.blob` crash dumps (10 MB each)** are tracked at the repo root, even though `.gitignore` lists them. **v0.3**
+- **19 files under `obj/`** (MSBuild `AssemblyReference.cache` output) are tracked. **v0.3**
+- **`SystemState.txt`** is tracked (and gitignored). It holds only a Miro board share link, which stays in git history after untracking. The owner decides whether to regenerate the link. **v0.3**
+- **`Assets/SceneDependencyCache/`** (5 `.sceneWithBuildSettings` files plus metas) is tracked. It looks like generated editor cache. Confirm in the editor before untracking. **v0.3**
+
 ## Project and config hygiene
 
 Inert leftovers disclosed in v0.2 and scheduled to be cleaned up together.
