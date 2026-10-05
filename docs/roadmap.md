@@ -8,8 +8,8 @@ This is the overarching development plan for WAR-2D. It explains **what** each u
 
 | Update | Name | Status | Detailed plan |
 |---|---|---|---|
-| v0.2 | Solid Ground | **Merged into `main`** on 2026-10-05 ([PR #4](https://github.com/CoolCoder353/WAR-2D/pull/4)). Windows build profile deferred by the owner. The result of the manual 2-player Linux match isn't recorded yet (v0.3 Task 0 confirms it) | [2026-10-05-v0.2-solid-ground.md](superpowers/plans/2026-10-05-v0.2-solid-ground.md) |
-| v0.3 | Scale Spike | **Planned.** Scenario decisions agreed 2026-10-05. Waiting on confirmation of the v0.2 manual match | [2026-10-05-v0.3-scale-spike.md](superpowers/plans/2026-10-05-v0.3-scale-spike.md) |
+| v0.2 | Solid Ground | **Done.** Merged into `main` on 2026-10-05 ([PR #4](https://github.com/CoolCoder353/WAR-2D/pull/4)). The manual 2-player Linux match passed (confirmed by the owner). Windows build profile deferred by the owner | [2026-10-05-v0.2-solid-ground.md](superpowers/plans/2026-10-05-v0.2-solid-ground.md) |
+| v0.3 | Scale Spike | **Planned.** Scenario decisions agreed 2026-10-05; ready to implement locally | [2026-10-05-v0.3-scale-spike.md](superpowers/plans/2026-10-05-v0.3-scale-spike.md) |
 | v0.4 | Legion | Not started | Written after v0.3 results |
 | v0.5 | Fog & Wire | Not started | — |
 | v0.6 | Command | Not started | — |

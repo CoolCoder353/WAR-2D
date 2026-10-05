@@ -14,7 +14,6 @@ Found in the v0.3 project review. They were committed before `.gitignore` covere
 
 - **`Editor.log` (1.8 MB) and two `mono_crash.mem.*.blob` crash dumps (10 MB each)** are tracked at the repo root, even though `.gitignore` lists them. **v0.3**
 - **19 files under `obj/`** (MSBuild `AssemblyReference.cache` output) are tracked. **v0.3**
-- **`SystemState.txt`** is tracked (and gitignored). It holds only a Miro board share link, which stays in git history after untracking. The owner decides whether to regenerate the link. **v0.3**
 - **`Assets/SceneDependencyCache/`** (5 `.sceneWithBuildSettings` files plus metas) is tracked. It looks like generated editor cache. Confirm in the editor before untracking. **v0.3**
 
 ## Project and config hygiene
