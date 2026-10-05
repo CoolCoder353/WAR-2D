@@ -27,8 +27,6 @@ public class UnitCommander : NetworkBehaviour
     private Dictionary<int, GameObject> unitGameObjects = new Dictionary<int, GameObject>();
     private Dictionary<int, double> lastUnitAttackTimes = new Dictionary<int, double>();
 
-    private GameObject bulletPrefab;
-
     public Dictionary<int, GameObject> buildingGameObjects = new Dictionary<int, GameObject>();
 
 
@@ -38,8 +36,6 @@ public class UnitCommander : NetworkBehaviour
         if (Instance == null)
         {
             Instance = this;
-
-            bulletPrefab = Resources.Load<GameObject>("Prefabs/Bullet");
 
             //Start the selection box as inactive
             selectionBox.SetActive(false);
@@ -184,21 +180,7 @@ public class UnitCommander : NetworkBehaviour
 
                 if (attackerObject != null && enemyObject != null)
                 {
-                    GameObject bullet = GameObject.Instantiate(bulletPrefab);
-                    Destroy(bullet.GetComponent<Collider>());
-
-                    Vector3 startPos = attackerObject.transform.position;
-                    Vector3 endPos = enemyObject.transform.position;
-
-                    bullet.transform.position = startPos;
-                    bullet.transform.localScale = new Vector3(0.5f, 0.1f, 1);
-                    bullet.GetComponent<Renderer>().material.color = Color.yellow;
-                    bullet.GetComponent<Renderer>().material.renderQueue = 3000;
-
-                    Vector3 direction = (endPos - startPos).normalized;
-                    bullet.transform.right = direction;
-
-                    bullet.transform.DOMove(endPos, 0.2f).SetEase(Ease.Linear).OnComplete(() => Destroy(bullet));
+                    Effects.Tracer(attackerObject.transform.position, enemyObject.transform.position);
                 }
             }
         }
