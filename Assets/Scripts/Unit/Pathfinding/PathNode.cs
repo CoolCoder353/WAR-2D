@@ -80,34 +80,6 @@ public struct BurstPath : IDisposable
     }
 }
 
-// Named PathResult rather than Path: a global-namespace Path shadows PathCore.Path in the
-// predefined assemblies that compile DOTween's Modules, which now reference the WAR2D assembly.
-public struct PathResult
-{
-    public PathNode[] path;
-    public int pathLength;
-    public float pathCost;
-
-    public PathResult(PathNode[] path, int pathLength, float pathCost)
-    {
-        this.path = path;
-        this.pathLength = pathLength;
-        this.pathCost = pathCost;
-    }
-
-
-    public static PathResult BurstToPath(BurstPath burstPath)
-    {
-        PathNode[] path = new PathNode[burstPath.path.Length];
-        for (int i = 0; i < burstPath.path.Length; i++)
-        {
-            path[i] = burstPath.path[i];
-        }
-
-        return new PathResult(path, burstPath.pathLength, burstPath.pathCost);
-    }
-}
-
 public struct TileNode
 {
     public int2 position;

@@ -493,50 +493,36 @@ public class WorldStateManager : NetworkBehaviour
         entitiesInBox.Dispose();
     }
 
+    private const int MaxGoalSearchTiles = 4096;
+
     /// <summary>
     /// Finds the best available goal location near the target, avoiding collisions.
-    /// Uses BFS to find the nearest valid tile.
+    /// Uses a bounded BFS to find the nearest valid tile.
     /// </summary>
     [Server]
     private int2 FindBestGoalLocation(int2 goal, int id, List<int2> setGoals)
     {
-        int2 bestGoal = goal;
+        bool found = TileSearch.FindNearest(goal,
+            t => !setGoals.Contains(t) && IsFreeGround(t) && Occupancy.IsAvailable(t, id),
+            t => world.GetTile(t).isWalkable,
+            MaxGoalSearchTiles, out int2 best);
+        return found ? best : goal;
+    }
 
-        // Perform a breadth-first search to find the closest walkable tile that is not claimed
-        Queue<int2> queue = new Queue<int2>();
-        HashSet<int2> visited = new HashSet<int2>();
-        queue.Enqueue(goal);
-        visited.Add(goal);
+    private bool IsFreeGround(int2 tile)
+    {
+        TileNode node = world.GetTile(tile);
+        return node.isWalkable && !node.isUsed;
+    }
 
-        while (queue.Count > 0)
-        {
-            int2 current = queue.Dequeue();
-            visited.Add(current);
-            // Check if the current location is available and not already set as a goal
-            if (!setGoals.Contains(current) && world.GetTile(current).isWalkable && IsAvaliable(current, id))
-            {
-                bestGoal = current;
-                break;
-            }
-
-            // Add neighboring tiles to the queue
-            for (int x = -1; x <= 1; x++)
-            {
-                for (int y = -1; y <= 1; y++)
-                {
-                    if (x == 0 && y == 0) continue;
-
-                    int2 neighbor = new int2(current.x + x, current.y + y);
-                    if (!visited.Contains(neighbor) && world.GetTile(neighbor).isWalkable)
-                    {
-                        queue.Enqueue(neighbor);
-
-                    }
-                }
-            }
-        }
-
-        return bestGoal;
+    /// <summary>Nearest free, unclaimed ground tile to <paramref name="origin"/> (e.g. outside a spawner).</summary>
+    [Server]
+    public bool TryFindFreeTileNear(int2 origin, int unitId, out int2 tile)
+    {
+        return TileSearch.FindNearest(origin,
+            t => IsFreeGround(t) && Occupancy.IsAvailable(t, unitId),
+            t => world.GetTile(t).isWalkable,
+            MaxGoalSearchTiles, out tile);
     }
 
     /// <summary>
@@ -555,8 +541,7 @@ public class WorldStateManager : NetworkBehaviour
     private void MoveUnit(Entity entity, int2 goal)
     {
         LocalTransform localTransform = EntityManager.GetComponentData<LocalTransform>(entity);
-        float2 start = localTransform.Position.xy;
-        int2 startInt = new((int)start.x, (int)start.y);
+        int2 startInt = (int2)math.round(localTransform.Position.xy);
 
         if (startInt.Equals(goal))
         {
@@ -564,22 +549,15 @@ public class WorldStateManager : NetworkBehaviour
             return;
         }
 
-        PathResult path = PathResult.BurstToPath(Pathfinding.BurstFindPath(WorldStateManager.Instance.world, startInt, goal));
-
-        if (path.pathLength > 0)
-        {
-            //Save the path to the entity to be used by the movement system
-            DynamicBuffer<PathPoint> pathBuffer = EntityManager.GetBuffer<PathPoint>(entity);
-            pathBuffer.Clear();
-            foreach (PathNode node in path.path)
-            {
-                pathBuffer.Add(new PathPoint { position = node.position });
-            }
-        }
-        else
+        List<int2> path = Pathfinding.FindPath(world, startInt, goal);
+        if (path.Count == 0)
         {
             Debug.LogWarning($"No path found for unit at {startInt} to {goal}");
+            return;
         }
+        DynamicBuffer<PathPoint> pathBuffer = EntityManager.GetBuffer<PathPoint>(entity);
+        pathBuffer.Clear();
+        foreach (int2 node in path) pathBuffer.Add(new PathPoint { position = node });
     }
 
     /// <summary>

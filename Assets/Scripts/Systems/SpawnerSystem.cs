@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Unity.Entities;
 using Unity.Transforms;
 using Unity.Mathematics;
@@ -22,13 +23,19 @@ public partial struct SpawnerSystem : ISystem
     {
         // Create a single command buffer for all spawning operations
         EntityCommandBuffer commandBuffer = new EntityCommandBuffer(Allocator.Temp);
-        NativeList<int> spawnedUnitIds = new NativeList<int>(Allocator.Temp);
+        List<(int id, int2 tile)> spawnedUnits = new List<(int id, int2 tile)>();
         GameConfigData config = ConfigLoader.LoadConfig();
 
         foreach (var spawnerData in SystemAPI.Query<RefRW<SpawnerData>>())
         {
             if (spawnerData.ValueRW.count > 0 && WorldStateManager.Instance != null)
             {
+                int2 anchor = (int2)math.round(spawnerData.ValueRO.position);
+                if (!WorldStateManager.Instance.TryFindFreeTileNear(anchor, -1, out int2 spawnTile))
+                {
+                    continue; // No room this frame; keep the queue.
+                }
+
                 Debug.Log("SpawnerSystem: Spawning unit");
                 spawnerData.ValueRW.count--;
 
@@ -36,18 +43,22 @@ public partial struct SpawnerSystem : ISystem
                 int id = WorldStateManager.Instance.Ids.Allocate();
                 int idOfOwner = spawnerData.ValueRO.ownerId;
 
-                Entity createdEntity = CreateUnit(commandBuffer, id, idOfOwner, spawnerData.ValueRO.position, spawnerData.ValueRO.unitType, config);
+                // Claim the spawn tile straight away so two spawns in the same frame can't pick it.
+                WorldStateManager.Instance.Occupancy.TryClaim(spawnTile, id);
+
+                Entity createdEntity = CreateUnit(commandBuffer, id, idOfOwner, new float2(spawnTile.x, spawnTile.y), spawnerData.ValueRO.unitType, config);
 
                 // Only add to list if entity was successfully created (had sufficient resources)
                 if (createdEntity != Entity.Null)
                 {
-                    // Store the unit ID to find the entity after playback
-                    spawnedUnitIds.Add(id);
+                    // Store the unit ID and tile to find the entity after playback
+                    spawnedUnits.Add((id, spawnTile));
                 }
                 else
                 {
                     // Restore count if spawn failed due to insufficient resources
                     spawnerData.ValueRW.count++;
+                    WorldStateManager.Instance.Occupancy.Release(spawnTile, id);
                 }
             }
         }
@@ -59,7 +70,7 @@ public partial struct SpawnerSystem : ISystem
         // Now find and add all spawned units to WorldStateManager
         if (WorldStateManager.Instance != null)
         {
-            foreach (int unitId in spawnedUnitIds)
+            foreach (var (unitId, spawnTile) in spawnedUnits)
             {
                 // Find the entity by its ClientUnit.id component
                 foreach (var (clientUnit, entity) in SystemAPI.Query<RefRO<ClientUnit>>().WithEntityAccess())
@@ -67,13 +78,12 @@ public partial struct SpawnerSystem : ISystem
                     if (clientUnit.ValueRO.id == unitId)
                     {
                         WorldStateManager.Instance.AddUnit(entity, unitId);
+                        WorldStateManager.Instance.Occupancy.TryClaim(spawnTile, unitId);
                         break;
                     }
                 }
             }
         }
-
-        spawnedUnitIds.Dispose();
     }
 
     /// <summary>
