@@ -31,7 +31,7 @@ namespace WAR2D.Spike
         /// <summary>Ticks between quality samples. The plan asks for a sample every 20 ticks.</summary>
         private const int SampleInterval = 20;
 
-        /// <summary>Movement under this many tiles in two seconds counts as stuck.</summary>
+        /// <summary>Movement under this many tiles across a two-second window counts as stuck.</summary>
         private const float StuckDistance = 0.5f;
 
         /// <summary>Ticks a unit is ordered for before the order stream re-orders it: every 2 s.</summary>
@@ -300,77 +300,100 @@ namespace WAR2D.Spike
         }
 
         /// <summary>
-        /// The two-second position history the stuck metric needs: each unit's position and whether it
-        /// had an order, one sample back and two samples back, keyed by id. Each id also carries the
-        /// sample it was last seen live in, so a unit that dies leaves the metric instead of sitting
-        /// there frozen - otherwise every dead unit with an order would count as stuck forever.
+        /// The position history the stuck metric needs, keyed by id: each id's position and whether it
+        /// had an order, as of the current sample and as of the sample two seconds back. Samples are
+        /// one second apart (<see cref="SampleInterval"/> ticks), so <c>Stuck()</c> compares sample n
+        /// with sample n - 2 and measures the brief's two-second window exactly.
+        ///
+        /// <para>Each id also carries the sample it was last seen live in, so a unit that dies leaves
+        /// the metric instead of sitting there frozen - otherwise every dead unit with an order would
+        /// count as stuck forever.</para>
         /// </summary>
         private sealed class StuckHistory
         {
-            private NativeArray<float2> previous, older;
-            private NativeArray<byte> previousOrdered, olderOrdered;
-            private NativeArray<int> seenPrevious, seenOlder;
+            private NativeArray<float2> now, middle, before;
+            private NativeArray<byte> nowOrdered, middleOrdered, beforeOrdered;
+            private NativeArray<int> seenNow, seenMiddle, seenBefore;
             private int sample;
 
             public StuckHistory(int idCapacity, Allocator allocator)
             {
-                previous = new NativeArray<float2>(idCapacity, allocator);
-                older = new NativeArray<float2>(idCapacity, allocator);
-                previousOrdered = new NativeArray<byte>(idCapacity, allocator);
-                olderOrdered = new NativeArray<byte>(idCapacity, allocator);
-                seenPrevious = new NativeArray<int>(idCapacity, allocator);
-                seenOlder = new NativeArray<int>(idCapacity, allocator);
+                now = new NativeArray<float2>(idCapacity, allocator);
+                middle = new NativeArray<float2>(idCapacity, allocator);
+                before = new NativeArray<float2>(idCapacity, allocator);
+                nowOrdered = new NativeArray<byte>(idCapacity, allocator);
+                middleOrdered = new NativeArray<byte>(idCapacity, allocator);
+                beforeOrdered = new NativeArray<byte>(idCapacity, allocator);
+                seenNow = new NativeArray<int>(idCapacity, allocator);
+                seenMiddle = new NativeArray<int>(idCapacity, allocator);
+                seenBefore = new NativeArray<int>(idCapacity, allocator);
             }
 
+            /// <summary>Takes this sample's positions and rotates the history down one sample.</summary>
             public void Add(NativeArray<float2> positions, NativeArray<int> fieldGoal, NativeArray<float> health,
                 NativeArray<int> idOf, int capacity)
             {
                 sample++;
+                bool haveMiddle = sample > 1;
+                bool twoBack = sample > SamplesInWindow;
                 for (int i = 0; i < capacity; i++)
                 {
                     if (health[i] <= 0f) continue;
                     int id = idOf[i];
-                    if ((uint)id >= (uint)previous.Length) continue;
-                    if (sample > 1)
+                    if ((uint)id >= (uint)now.Length) continue;
+                    if (twoBack)
                     {
-                        older[id] = previous[id];
-                        olderOrdered[id] = previousOrdered[id];
-                        seenOlder[id] = seenPrevious[id];
+                        before[id] = middle[id];
+                        beforeOrdered[id] = middleOrdered[id];
+                        seenBefore[id] = seenMiddle[id];
                     }
-                    previous[id] = positions[i];
-                    previousOrdered[id] = fieldGoal[i] >= 0 ? (byte)1 : (byte)0;
-                    seenPrevious[id] = sample;
+                    if (haveMiddle)
+                    {
+                        middle[id] = now[id];
+                        middleOrdered[id] = nowOrdered[id];
+                        seenMiddle[id] = seenNow[id];
+                    }
+                    now[id] = positions[i];
+                    nowOrdered[id] = fieldGoal[i] >= 0 ? (byte)1 : (byte)0;
+                    seenNow[id] = sample;
                 }
             }
 
             /// <summary>
             /// The share of the units that were alive and ordered at both ends of the two-second window
-            /// that moved under 0.5 tiles. Dead units, units that spawned inside the window and units
-            /// that lost their order are not part of the denominator or the numerator.
+            /// and moved under 0.5 tiles across it. Dead units, units that spawned inside the window,
+            /// units that lost their order and units sampled for the first time are in neither the
+            /// numerator nor the denominator.
             /// </summary>
             public float Stuck()
             {
-                if (sample < 2) return 0f;
+                if (sample <= SamplesInWindow) return 0f;
                 int ordered = 0, stuck = 0;
-                for (int id = 0; id < olderOrdered.Length; id++)
+                for (int id = 0; id < nowOrdered.Length; id++)
                 {
-                    if (seenPrevious[id] != sample || seenOlder[id] != sample - 1) continue; // live at both ends
-                    if (olderOrdered[id] == 0 || previousOrdered[id] == 0) continue;
+                    if (seenNow[id] != sample || seenBefore[id] != sample - SamplesInWindow) continue;
+                    if (beforeOrdered[id] == 0 || nowOrdered[id] == 0) continue;
                     ordered++;
-                    if (math.distance(older[id], previous[id]) < StuckDistance) stuck++;
+                    if (math.distance(before[id], now[id]) < StuckDistance) stuck++;
                 }
                 return ordered == 0 ? 0f : (float)stuck / ordered;
             }
 
             public void Dispose()
             {
-                previous.Dispose();
-                older.Dispose();
-                previousOrdered.Dispose();
-                olderOrdered.Dispose();
-                seenPrevious.Dispose();
-                seenOlder.Dispose();
+                now.Dispose();
+                middle.Dispose();
+                before.Dispose();
+                nowOrdered.Dispose();
+                middleOrdered.Dispose();
+                beforeOrdered.Dispose();
+                seenNow.Dispose();
+                seenMiddle.Dispose();
+                seenBefore.Dispose();
             }
         }
+
+        /// <summary>Samples a stuck window spans: two, i.e. two seconds at 20 Hz.</summary>
+        private const int SamplesInWindow = 2;
     }
 }
