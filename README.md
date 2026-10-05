@@ -14,6 +14,7 @@ A networked, top-down 2D real-time strategy game built in Unity. Any number of p
 | [docs/architecture.md](docs/architecture.md) | How the code fits together: scenes, singletons, ECS systems, networking, visibility, config |
 | [docs/gameplay.md](docs/gameplay.md) | Rules of the game, controls, buildings, units, economy, combat, win/loss |
 | [docs/known-issues.md](docs/known-issues.md) | Known bugs, code/config mismatches, and work-in-progress or legacy content |
+| [docs/roadmap.md](docs/roadmap.md) | Development plan for v0.2–v0.9: what each update delivers, why, and when it's done |
 | [CLAUDE.md](CLAUDE.md) | Guidance for AI coding assistants working in this repo |
 
 ## Getting started
