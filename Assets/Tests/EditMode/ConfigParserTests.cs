@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Threading;
 using Config;
 using NUnit.Framework;
@@ -9,9 +10,12 @@ public class ConfigParserTests
 {
     internal const string ValidXml = @"<GameConfig>
   <Resources><PassiveGenerationRate>5</PassiveGenerationRate><StartingResources>1000</StartingResources><MiningRate>10</MiningRate><DecayPercentPerSecond>5</DecayPercentPerSecond></Resources>
-  <Match><Scene>Map_2</Scene><CountdownSeconds>5</CountdownSeconds></Match>
+  <Match><Scene>Map_2</Scene><CountdownSeconds>5</CountdownSeconds><Map><Size>1024</Size><Seed>0</Seed><GemChance>0.04</GemChance></Map></Match>
+  <Simulation><TickRate>20</TickRate><TargetSearchSliceTicks>8</TargetSearchSliceTicks><SeparationIntervalTicks>2</SeparationIntervalTicks><SeparationStrength>1</SeparationStrength><HashCellSize>5</HashCellSize><MaxFieldRebuildsPerTick>2</MaxFieldRebuildsPerTick><MaxUnitsPerPlayer>10000</MaxUnitsPerPlayer><MaxEntities>131072</MaxEntities></Simulation>
+  <Replication><CorrectionIntervalTicks>4</CorrectionIntervalTicks><CorrectionThreshold>0.25</CorrectionThreshold><DeltaScale>8</DeltaScale><OffscreenThreshold>2</OffscreenThreshold><OffscreenIntervalTicks>20</OffscreenIntervalTicks><SnapshotBytesPerSecond>262144</SnapshotBytesPerSecond></Replication>
+  <DamageTable><Entry attacker=""Tank"" target=""Unit"">1.0</Entry><Entry attacker=""Tank"" target=""Building"">1.0</Entry><Entry attacker=""Tank"" target=""Wall"">0.5</Entry></DamageTable>
   <Units>
-    <Unit type=""Tank""><Health>100</Health><Damage>10</Damage><Range>5</Range><AttackInterval>1</AttackInterval><MoveSpeed>5</MoveSpeed><Acceleration>5</Acceleration><UpfrontCost>50</UpfrontCost><RunningCost>2</RunningCost></Unit>
+    <Unit type=""Tank""><Health>100</Health><Damage>10</Damage><Range>5</Range><AttackInterval>1</AttackInterval><MoveSpeed>5</MoveSpeed><Acceleration>5</Acceleration><UpfrontCost>50</UpfrontCost><RunningCost>2</RunningCost><Radius>0.35</Radius><SizeClass>0</SizeClass></Unit>
   </Units>
   <Buildings>
     <Building type=""Base""><Health>500</Health><Width>3</Width><Height>3</Height><UpfrontCost>0</UpfrontCost><RunningCost>0</RunningCost><SpawnRate>0</SpawnRate></Building>
@@ -107,5 +111,41 @@ public class ConfigParserTests
         ConfigParser.Parse(File.ReadAllText("Assets/Resources/GameConfig.xml"), errors);
 
         Assert.That(errors, Is.Empty, string.Join("\n", errors));
+    }
+
+    [Test]
+    public void ParsesV04Sections()
+    {
+        var errors = new List<string>();
+        GameConfigData c = ConfigParser.Parse(ValidXml, errors);
+        Assert.That(errors, Is.Empty);
+        Assert.AreEqual(1024, c.Match.Map.Size);
+        Assert.AreEqual(20, c.Simulation.TickRate);
+        Assert.AreEqual(0.05f, c.Simulation.TickSeconds, 1e-6f);
+        Assert.AreEqual(8, c.Simulation.TargetSearchSliceTicks);
+        Assert.AreEqual(4, c.Replication.CorrectionIntervalTicks);
+        Assert.AreEqual(0.35f, c.GetUnit(UnitType.Tank).Radius, 1e-6f);
+        Assert.AreEqual(0.5f, c.Damage.Multiplier(UnitType.Tank, TargetClass.Wall), 1e-6f);
+    }
+
+    [TestCase("<TickRate>0</TickRate>", "TickRate")]
+    [TestCase("<HashCellSize>1</HashCellSize>", "HashCellSize")]
+    [TestCase("<Size>100</Size>", "Size")]          // map sizes are 0 (scene) or 128..4096
+    [TestCase("<DeltaScale>200</DeltaScale>", "DeltaScale")] // the header keeps 7 bits
+    public void RejectsOutOfRangeV04Values(string replacement, string field)
+    {
+        string xml = Regex.Replace(ValidXml, $"<{field}>[^<]*</{field}>", replacement);
+        var errors = new List<string>();
+        ConfigParser.Parse(xml, errors);
+        Assert.That(errors, Has.Some.Contains(field));
+    }
+
+    [Test]
+    public void UnknownDamageTableTypesAreErrors()
+    {
+        string xml = ValidXml.Replace("attacker=\"Tank\" target=\"Wall\"", "attacker=\"Ship\" target=\"Wall\"");
+        var errors = new List<string>();
+        ConfigParser.Parse(xml, errors);
+        Assert.That(errors, Has.Some.Contains("Ship"));
     }
 }

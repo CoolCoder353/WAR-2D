@@ -16,6 +16,8 @@ namespace Config
 
         public static bool IsValid => Errors.Count == 0;
 
+        private static Action<GameConfigData> _testOverride;
+
         public static GameConfigData LoadConfig()
         {
             if (_cached != null) return _cached;
@@ -32,6 +34,7 @@ namespace Config
                 _cached = ConfigParser.Parse(xml.text, errors);
             }
 
+            _testOverride?.Invoke(_cached);
             Errors = errors;
             foreach (string error in errors)
             {
@@ -46,8 +49,16 @@ namespace Config
             Errors = Array.Empty<string>();
         }
 
+        /// <summary>Applies <paramref name="edit"/> to the loaded config (now and after every reload) until <see cref="ResetForTests"/>.</summary>
+        internal static void OverrideForTests(Action<GameConfigData> edit)
+        {
+            _testOverride = edit;
+            if (_cached != null) edit(_cached);
+        }
+
         internal static void ResetForTests()
         {
+            _testOverride = null;
             _cached = null;
             Errors = Array.Empty<string>();
         }

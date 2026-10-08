@@ -12,7 +12,39 @@
   <Match>
     <Scene>Map_2</Scene>
     <CountdownSeconds>5.0</CountdownSeconds>
+    <Map>
+      <Size>1024</Size>          <!-- tiles per side; 0 = use the scene's tilemaps (Map_2). v0.3 results: map size -->
+      <Seed>0</Seed>             <!-- 0 = a new random seed every match -->
+      <GemChance>0.04</GemChance> <!-- share of floor-facing rock that becomes gem; tune in play -->
+    </Map>
   </Match>
+
+  <Simulation>
+    <TickRate>20</TickRate>                               <!-- spec 4.2 -->
+    <TargetSearchSliceTicks>8</TargetSearchSliceTicks>   <!-- v0.3 sim fallback 1 -->
+    <SeparationIntervalTicks>2</SeparationIntervalTicks> <!-- v0.3 sim fallback 2 -->
+    <SeparationStrength>1.0</SeparationStrength>         <!-- spike default -->
+    <HashCellSize>5</HashCellSize>                       <!-- v0.3 hash row -->
+    <MaxFieldRebuildsPerTick>2</MaxFieldRebuildsPerTick> <!-- v0.3 flow row -->
+    <MaxUnitsPerPlayer>10000</MaxUnitsPerPlayer>         <!-- spec 1 -->
+    <MaxEntities>131072</MaxEntities>                    <!-- 8 x 10k plus churn and buildings -->
+  </Simulation>
+
+  <Replication>
+    <CorrectionIntervalTicks>4</CorrectionIntervalTicks>     <!-- v0.3 bandwidth ladder step 1 -->
+    <CorrectionThreshold>0.25</CorrectionThreshold>          <!-- v0.3 bandwidth chosen configuration (tiles) -->
+    <DeltaScale>8</DeltaScale>                               <!-- v0.3 ladder step 2 -->
+    <OffscreenThreshold>2.0</OffscreenThreshold>             <!-- v0.3 view tier (tiles) -->
+    <OffscreenIntervalTicks>20</OffscreenIntervalTicks>      <!-- v0.3 view tier -->
+    <SnapshotBytesPerSecond>262144</SnapshotBytesPerSecond>  <!-- v0.3 snapshot row -->
+  </Replication>
+
+  <!-- Damage multiplier per attacker unit type and target class (Unit, Building, Wall); 1.0 when missing. -->
+  <DamageTable>
+    <Entry attacker="Tank" target="Unit">1.0</Entry>
+    <Entry attacker="Tank" target="Building">1.0</Entry>
+    <Entry attacker="Tank" target="Wall">0.5</Entry>
+  </DamageTable>
 
   <Units>
     <Unit type="Tank">
@@ -24,6 +56,8 @@
       <Acceleration>5.0</Acceleration>
       <UpfrontCost>50.0</UpfrontCost>
       <RunningCost>2.0</RunningCost>
+      <Radius>0.35</Radius>       <!-- collision radius in tiles (v0.3 D2) -->
+      <SizeClass>0</SizeClass>    <!-- pathing size class: 0 small, 1 large -->
     </Unit>
   </Units>
 

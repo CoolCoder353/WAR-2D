@@ -265,11 +265,27 @@ Schema:
   <Match>
     <Scene/>            <!-- scene loaded when the match starts -->
     <CountdownSeconds/> <!-- one server-owned countdown, synced to all clients -->
+    <Map>
+      <Size/>      <!-- 0 = the scene's tilemaps, else 128..4096 tiles per side, generated -->
+      <Seed/>      <!-- 0 = random per match -->
+      <GemChance/> <!-- share of floor-facing rock that becomes gem -->
+    </Map>
   </Match>
+  <Simulation>  <!-- server tick: TickRate, TargetSearchSliceTicks, SeparationIntervalTicks,
+                     SeparationStrength, HashCellSize, MaxFieldRebuildsPerTick,
+                     MaxUnitsPerPlayer, MaxEntities -->
+  </Simulation>
+  <Replication> <!-- encoder: CorrectionIntervalTicks, CorrectionThreshold, DeltaScale,
+                     OffscreenThreshold, OffscreenIntervalTicks, SnapshotBytesPerSecond -->
+  </Replication>
+  <DamageTable>
+    <Entry attacker="Tank" target="Wall">0.5</Entry> <!-- target: Unit | Building | Wall; 1.0 when missing -->
+  </DamageTable>
   <Units>
     <Unit type="Tank"> <!-- must match a UnitType enum name; every non-None type is required -->
       <Health/> <Damage/> <Range/> <AttackInterval/> <MoveSpeed/>
       <Acceleration/> <UpfrontCost/> <RunningCost/>
+      <Radius/> <SizeClass/> <!-- collision radius in tiles; pathing class 0 small, 1 large -->
     </Unit>
   </Units>
   <Buildings>
