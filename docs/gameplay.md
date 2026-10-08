@@ -11,7 +11,7 @@ WAR-2D is a free-for-all RTS for any number of players. Every player has one **H
 ```mermaid
 stateDiagram-v2
     [*] --> Lobby
-    Lobby --> PlacingHQ: Host presses Start Game\n(server loads the configured map, Map_2)
+    Lobby --> PlacingHQ: Host presses Start Game\n(server loads Map_2 and generates the map)
     PlacingHQ --> Countdown: Every player has placed an HQ
     Countdown --> Playing: 5 s server timer (Match.CountdownSeconds)
     Playing --> GameOver: One HQ left (win) or none left (draw)
@@ -19,7 +19,7 @@ stateDiagram-v2
 ```
 
 1. **Lobby** (`Main_Menu` scene). Players host or join by IP. Each player can edit their own nickname. The server owner (the host, or the next player if the host leaves) is the only one who sees the **Start Game** button.
-2. **PlacingHQ** (`Map_2`). An HQ placement prompt is shown. Each player places a single 3×3 HQ on free ground, in any 90° rotation. The screen shows how many players are still placing.
+2. **PlacingHQ** (`Map_2`). The map is generated from a seed (see "Map and tiles"). An HQ placement prompt is shown. Each player places a single 3×3 HQ on free ground, in any 90° rotation. The screen shows how many players are still placing.
 3. **Countdown.** When the last HQ is placed, the server starts a **5-second** countdown (`Match.CountdownSeconds`) and every client displays the same remaining time from the synced end time.
 4. **Playing.** Economy, building, spawning and combat run, and win/loss is checked every second.
 5. **GameOver.** Each player sees a Win, Lose or Draw screen with buttons to return to the main menu or quit.
@@ -33,8 +33,11 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | `W A S D` / arrow keys | Pan the camera |
 | Mouse wheel | Zoom (orthographic size 3–30; 1.5 per notch; pan speed scales with zoom) |
 | Hold `Shift` | Pan 2.5× faster |
-| Left-click + drag | Draw a selection box |
-| Right-click | Order all **your** units inside the last selection box to move to the cursor |
+| Left-click + drag | Select **every** one of your units inside the box (no limit). A plain click selects what is under the cursor. |
+| `Shift` + drag | Add the units in the box to the selection |
+| Right-click | Order the selected units to move to the cursor |
+| `Ctrl` + `1`–`0` | Assign the selection to squad 1–10 (squads are kept by the server) |
+| `1`–`0` | Select that squad (a right-click then orders the whole squad at once) |
 | Building button (HUD) | Pick a building; a preview follows the cursor |
 | `R` (while placing) | Rotate the building preview 90° |
 | Left-click (while placing) | Place the building. The preview is grey if valid and red if not. |
@@ -45,15 +48,16 @@ Camera settings (speed, zoom step and range, shift multiplier) are in `Assets/Ch
 
 ## Map and tiles
 
-The map is a grid of 1×1 tiles built from two Unity Tilemaps in `Map_2`:
+The map is a grid of 1×1 tiles. By default it is **generated from a seed** at the start of each match (`Match/Map`): a 1024×1024 cave map with eight HQ clearings on a circle, joined to the centre by corridors, with gem veins on rock facing open floor and a guaranteed vein beside every clearing. `Seed` 0 picks a new seed every match; every client regenerates the same map and checks it against the server. With `Size` 0 the game uses the small hand-built tilemaps in `Map_2` instead.
 
 | Tile | Walkable | Buildable | Notes |
 |---|---|---|---|
 | Ground (floor) | Yes | Yes | |
 | Wall | No | No | |
 | Gem | No | No | Miners must face a gem tile to produce resources |
+| Border | No | No | The map's outer ring |
 
-A building occupies tiles based on its configured size (3×3 for the HQ, 2×2 for a Small Unit Spawner, 1×1 for a Miner). A building can only be placed when every tile of its footprint is free ground — including tiles currently claimed by a moving unit. Occupied tiles can't be built on again.
+A building occupies tiles based on its configured size (3×3 for the HQ, 2×2 for a Small Unit Spawner, 1×1 for a Miner). A building can only be placed when every tile of its footprint is free ground; units standing there are moved to the nearest free tile. Occupied tiles can't be built on again, and units path around buildings.
 
 ## Economy
 
@@ -67,7 +71,7 @@ There is one resource (shown as **Resources** in the HUD).
 | Building upkeep | Per building, per second | See table below |
 | Unit upkeep | Per unit, per second | See table below |
 
-Upkeep is charged once per second. **If a player can't afford an entity's upkeep, that entity decays**: it loses `DecayPercentPerSecond` of its **max** health every second (5% by default) until its owner can pay. Decay can destroy the entity. Resources never go negative.
+Upkeep is charged once per second. Units are charged one by one (oldest slot first) until the owner's resources run out; the rest go unpaid. **If a player can't afford an entity's upkeep, that entity decays**: it loses `DecayPercentPerSecond` of its **max** health every second (5% by default) until its owner can pay. Decay can destroy the entity. Resources never go negative.
 
 ## Buildings
 
@@ -96,17 +100,19 @@ A Miner checks the single tile next to it in the direction it faces:
 |---|---|---|---|---|---|---|---|---|
 | **Tank** | 100 | 10 | 5 tiles | 1 s | 5 | 5 | 50 | 2 |
 
-- A spawner creates a unit on a nearby free tile — not inside its own footprint — and the unit claims that tile. Units never share a tile, and two spawns in the same frame can't pick the same spot.
-- When ordered to move, each unit gets its own nearby free goal tile, so a group spreads out instead of stacking. It then follows an A* path across walkable tiles. Diagonal moves are allowed.
-- A unit blocked by another unit for 2 seconds gives up its remaining path (the server clears it), so armies can't deadlock on a narrow route.
+- A player can own at most **10,000 units** (`Simulation/MaxUnitsPerPlayer`). A spawner at the cap keeps its queue and refunds the unit.
+- A spawner creates a unit on the nearest free walkable tile outside its footprint. Units are round bodies (`Radius` 0.35 tiles for the Tank) that push apart when they overlap, so a crowd spreads out on its own.
+- A move order gives the whole group one shared flow field to the goal, so any number of units path around walls and buildings together. The group gathers around the goal and stops within a radius that grows with its size.
+- A unit with an enemy in range stops to fight and resumes its order when the target is gone.
 
 ## Combat
 
-- Combat is fully automatic. Every unit picks the **nearest enemy** with health, which can be a unit **or a building**, within range.
+- Combat is fully automatic. Every unit picks the **nearest enemy unit** within range, and only when there is none, the nearest enemy **building**. Idle units look for targets every few ticks, so a new enemy is picked up within about 0.4 s.
+- Damage is the attacker's `Damage` times a multiplier from the damage table (`DamageTable`) for what it hits: units, buildings or walls. Every Tank multiplier is 1.0 except walls (0.5, used once walls arrive in v0.7).
 - It keeps attacking that target every attack interval while the target is alive and in range. When the target dies or leaves range, it picks a new one.
 - Buildings don't attack.
 - Anything at 0 health is destroyed, and **every death plays an explosion**. The server sends each player only the deaths inside their camera view.
-- Clients see a short yellow tracer for each attack, a health bar, and a red flash when something takes damage.
+- Clients see a short yellow tracer for each attack whose attacker is on screen, and a health bar over every damaged unit or building.
 
 ## Win, loss and leaving
 

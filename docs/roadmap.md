@@ -10,7 +10,7 @@ This is the overarching development plan for WAR-2D. It explains **what** each u
 |---|---|---|---|
 | v0.2 | Solid Ground | **Done.** Merged into `main` on 2026-10-05 ([PR #4](https://github.com/CoolCoder353/WAR-2D/pull/4)). The manual 2-player Linux match passed (confirmed by the owner). Windows build profile deferred by the owner | [2026-10-05-v0.2-solid-ground.md](superpowers/plans/2026-10-05-v0.2-solid-ground.md) |
 | v0.3 | Scale Spike | **Done** (2026-10-08). Every row of spec §4.6 has a measurement and a decision; the owner raised the bandwidth budget and chose the async tick with async flow-field rebuilds. See [the results](spike/v0.3-results.md) | [2026-10-05-v0.3-scale-spike.md](superpowers/plans/2026-10-05-v0.3-scale-spike.md) |
-| v0.4 | Legion | **Planned** (2026-10-08). Owner decisions: unit replication moves into v0.4, maps come from a seeded generator and are drawn as a baked texture | [2026-10-08-v0.4-legion.md](superpowers/plans/2026-10-08-v0.4-legion.md) |
+| v0.4 | Legion | **Implemented** (2026-10-09), awaiting the owner's manual Linux match and the PR. Performance gate passed (8 × 10,000 units, 1024² map, 3 runs, medians): host tick main thread **6.6 ms p95** (budget 25), **561 fps** mean (≥ 60), **102 KB/s** average and **170 KB/s** peak 1 s per client (≤ 256 / 768). See [docs/perf/v0.4](perf/v0.4/) | [2026-10-08-v0.4-legion.md](superpowers/plans/2026-10-08-v0.4-legion.md) |
 | v0.5 | Fog & Wire | Not started | — |
 | v0.6 | Command | Not started | — |
 | v0.7 | Siege | Not started | — |
@@ -164,6 +164,8 @@ Each update below lists its goal, its scope, the key decisions already made, wha
 **Exit criteria:** 10,000 units per player meet the performance budget (§4) on a local host, including a host main-thread tick of ≤ 25 ms p95.
 
 **Open decisions (made at the start of v0.4, informed by v0.3):** whether buildings and walls are instanced or pooled GameObjects, the time-slicing interval for target search, and the separation-steering strength.
+
+**Outcome (2026-10-09):** buildings stay GameObjects in v0.4 and are instanced with walls in v0.7; target search is sliced over 8 ticks; separation strength stays 1.0 (every 2 ticks). Gate numbers are in the table above and [docs/perf/v0.4](perf/v0.4/).
 
 ---
 
