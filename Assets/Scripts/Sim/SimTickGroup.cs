@@ -55,10 +55,11 @@ namespace WAR2D.Sim
 
             RemoveDead(data, context);
             SettleUpkeep(data, context);
-            data.AttackEvents.Clear();
 
             RefRW<SimClock> clock = SystemAPI.GetSingletonRW<SimClock>();
             context?.Orders.AtBoundary(context.Map, clock.ValueRO.Tick);
+            if (clock.ValueRO.Running) context?.RaiseSettled(data, clock.ValueRO.Tick, clock.ValueRO.UnitCount);
+            data.AttackEvents.Clear();
             bool running = SimContext.RunningOverride
                 ?? (NetworkServer.active && GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing);
             clock.ValueRW.Running = running;

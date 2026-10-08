@@ -13,6 +13,7 @@ using UnityEngine.Tilemaps;
 using Config;
 using WAR2D.World;
 using WAR2D.Sim;
+using WAR2D.Net.Replication;
 
 /// <summary>
 /// Manages the state of the game world, including the tilemap, units, and buildings.
@@ -59,6 +60,9 @@ public class WorldStateManager : NetworkBehaviour
 
     /// <summary>Server-side id source for units and buildings in this match.</summary>
     public NetIdAllocator Ids => Sim?.Ids;
+
+    /// <summary>This match's unit replication (server only).</summary>
+    public ReplicationService Replication { get; private set; }
 
     /// <summary>This match's simulation (server only).</summary>
     public SimContext Sim { get; private set; }
@@ -111,6 +115,11 @@ public class WorldStateManager : NetworkBehaviour
         Sim = SimContext.Create(World.DefaultGameObjectInjectionWorld, Map, ConfigLoader.LoadConfig());
         Sim.BuildingCreated += OnBuildingCreated;
         Sim.UnitDied += OnUnitDied;
+        Replication = new ReplicationService(Sim, ConfigLoader.LoadConfig());
+        if (GameCore.Instance != null)
+            foreach (NetworkIdentity identity in GameCore.Instance.ServerPlayers.Keys)
+                if (identity != null && identity.connectionToClient != null)
+                    Replication.OnClientJoined(identity.connectionToClient, BuildingData.UIntToInt(identity.netId));
         Sim.BudgetOf = ownerId => GameCore.Instance?.GetServerPlayerById(ownerId)?.Resources ?? 0f;
         Sim.Spend = (ownerId, amount) =>
         {
@@ -159,6 +168,8 @@ public class WorldStateManager : NetworkBehaviour
 
     private void OnDestroy()
     {
+        Replication?.Dispose();
+        Replication = null;
         if (Sim != null)
         {
             Sim.BuildingCreated -= OnBuildingCreated;
@@ -300,6 +311,7 @@ public class WorldStateManager : NetworkBehaviour
         endcorner = math.clamp(endcorner, mapMin, mapMax);
 
         playerView[sender.identity.GetComponent<ClientPlayer>()] = (startcorner, endcorner);
+        Replication?.SetView(sender, startcorner, endcorner);
     }
 
     /// <summary>Drops a leaving player's view box so their entities stop being synced.</summary>

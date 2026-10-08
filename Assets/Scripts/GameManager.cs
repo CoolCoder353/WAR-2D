@@ -98,6 +98,7 @@ public class GameManager : NetworkManager
     [Server]
     public override void OnServerDisconnect(NetworkConnectionToClient conn)
     {
+        WAR2D.Net.Replication.ReplicationService.Instance?.OnClientLeft(conn);
         // Remove the disconnected player from the list of players
         GameCore.Instance.OnPlayerLeave(conn);
 
@@ -129,6 +130,14 @@ public class GameManager : NetworkManager
     /// <summary>
     /// Called on the client when it connects to the server.
     /// </summary>
+    /// <summary>Registers the unit replication handler (it forwards batches to <see cref="WAR2D.Net.Replication.ReplicationClient"/>).</summary>
+    [Client]
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
+        NetworkClient.RegisterHandler<WAR2D.Net.Replication.ReplicationBatch>(WAR2D.Net.Replication.ReplicationClient.Receive, false);
+    }
+
     [Client]
     public override void OnClientConnect()
     {

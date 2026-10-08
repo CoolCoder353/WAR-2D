@@ -53,6 +53,12 @@ namespace WAR2D.Sim
         /// <summary>Raised at a boundary for each unit that died: (id, position).</summary>
         public event Action<int, float2> UnitDied;
 
+        /// <summary>
+        /// Raised at every boundary once the previous tick is settled (jobs complete, dead removed, before
+        /// this tick's commands): the replication layer reads the SoA here. Arguments: data, tick, unit count.
+        /// </summary>
+        public event Action<SimData, int, int> Settled;
+
         /// <summary>Raised when a building entity was created: (id, entity).</summary>
         public event Action<int, Entity> BuildingCreated;
 
@@ -112,6 +118,8 @@ namespace WAR2D.Sim
         public SimClock Clock => World.EntityManager.GetComponentData<SimClock>(singleton);
 
         internal void RaiseUnitDied(int id, float2 position) => UnitDied?.Invoke(id, position);
+
+        internal void RaiseSettled(SimData data, int tick, int count) => Settled?.Invoke(data, tick, count);
 
         internal void RaiseBuildingCreated(int id, Entity entity) => BuildingCreated?.Invoke(id, entity);
 

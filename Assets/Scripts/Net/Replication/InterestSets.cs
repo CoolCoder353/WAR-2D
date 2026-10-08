@@ -52,6 +52,8 @@ namespace WAR2D.Net.Replication
         private readonly NativeList<int>[] entered;
         private readonly NativeList<int>[] left;
         private readonly int[] ownerOf;
+        /// <summary>Most units a client may newly learn about per build (snapshot pacing); 0 is unlimited.</summary>
+        public int MaxEntersPerBuild;
         private readonly int2[] viewMin, viewMax;
         private bool disposed;
 
@@ -121,6 +123,7 @@ namespace WAR2D.Net.Replication
                     KnownId = knownId[c],
                     Entered = entered[c],
                     Left = left[c],
+                    MaxEnters = MaxEntersPerBuild > 0 ? MaxEntersPerBuild : int.MaxValue,
                 }.Schedule(dependency);
             }
             JobHandle all = JobHandle.CombineDependencies(handles);
@@ -158,6 +161,11 @@ namespace WAR2D.Net.Replication
         public NativeArray<ulong> Allowed, KnownBits;
         public NativeArray<int> KnownId;
         public NativeList<int> Entered, Left;
+        /// <summary>
+        /// Snapshot pacing: units past this many new arrivals stay unknown this build and arrive on a
+        /// later one; until then the client is sent nothing about them.
+        /// </summary>
+        public int MaxEnters;
 
         public void Execute()
         {
@@ -197,6 +205,7 @@ namespace WAR2D.Net.Replication
                     if (previous != current)
                     {
                         if (previous != 0) Left.Add(previous);
+                        if (current != 0 && Entered.Length >= MaxEnters) current = 0; // paced: next build
                         if (current != 0) Entered.Add(current);
                         KnownId[index] = current;
                     }

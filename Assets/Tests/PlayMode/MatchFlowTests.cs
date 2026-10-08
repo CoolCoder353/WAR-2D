@@ -17,27 +17,12 @@ public class MatchFlowTests
     [UnitySetUp]
     public IEnumerator SetUp()
     {
-        ConfigLoader.ResetForTests();
-        config = ConfigLoader.LoadConfig();
-        Assert.That(ConfigLoader.IsValid, Is.True, string.Join("\n", ConfigLoader.Errors));
-        config.Match.CountdownSeconds = 0.5f;
-        config.Resources.StartingResources = 10000f;
-        config.Match.Map.Size = 0; // these tests run on Map_2's authored tilemaps
-
-        SceneManager.LoadScene("Main_Menu");
-        yield return null;
-        yield return null;
+        config = PlayModeMatch.Configure();
+        yield return PlayModeMatch.LoadMenu();
     }
 
     [UnityTearDown]
-    public IEnumerator TearDown()
-    {
-        if (NetworkServer.active || NetworkClient.active) GameManager.Instance.StopHost();
-        yield return WaitUntil(() => !NetworkServer.active && !NetworkClient.active, 10f);
-        foreach (GameObject root in DontDestroyRoots()) UnityEngine.Object.Destroy(root);
-        ConfigLoader.ResetForTests();
-        yield return null;
-    }
+    public IEnumerator TearDown() => PlayModeMatch.TearDown();
 
     [UnityTest, Timeout(90000)]
     public IEnumerator Host_PlacesHQ_ReachesPlaying()
@@ -113,26 +98,9 @@ public class MatchFlowTests
 
     // ---------- helpers ----------
 
-    private IEnumerator StartMatchAsHost()
-    {
-        GameManager.Instance.HostServer();
-        yield return WaitUntil(() => NetworkClient.isConnected && NetworkClient.localPlayer != null, 15f);
-        Assert.That(GameCore.Instance.ServerPlayers.Count, Is.EqualTo(1));
+    private IEnumerator StartMatchAsHost() => PlayModeMatch.StartMatchAsHost(config);
 
-        GameCore.Instance.Cmd_StartGame();
-        yield return WaitUntil(() => SceneManager.GetActiveScene().name == config.Match.Scene && WorldStateManager.Instance != null && NetworkClient.ready, 30f);
-        Assert.That(GameCore.Instance.CurrentState, Is.EqualTo(GameState.PlacingHQ));
-    }
-
-    private static IEnumerator WaitUntil(Func<bool> condition, float timeoutSeconds)
-    {
-        float end = Time.realtimeSinceStartup + timeoutSeconds;
-        while (!condition())
-        {
-            if (Time.realtimeSinceStartup > end) Assert.Fail($"Timed out after {timeoutSeconds}s");
-            yield return null;
-        }
-    }
+    private static IEnumerator WaitUntil(Func<bool> condition, float timeoutSeconds) => PlayModeMatch.WaitUntil(condition, timeoutSeconds);
 
     private static EntityManager Em => World.DefaultGameObjectInjectionWorld.EntityManager;
 
@@ -164,31 +132,5 @@ public class MatchFlowTests
         foreach (BuildingData b in data) if (b.buildingType == type) return b.id;
         Assert.Fail($"No {type} found");
         return -1;
-    }
-
-    private static IEnumerable<GameObject> DontDestroyRoots()
-    {
-        var probe = new GameObject("probe");
-        UnityEngine.Object.DontDestroyOnLoad(probe);
-        Scene dd = probe.scene;
-        UnityEngine.Object.DestroyImmediate(probe);
-        foreach (GameObject root in dd.GetRootGameObjects())
-        {
-            // Unity.Entities parks a hidden DefaultWorldInitializationProxy in the DontDestroyOnLoad
-            // scene. Destroying it runs DomainUnloadOrPlayModeChangeShutdown(), which disposes the ECS
-            // default world for the rest of the play-mode session - every later test would then fail
-            // to spawn WorldStateManager. It is engine infrastructure, not match state: leave it up.
-            if (HasEntitiesWorldProxy(root)) continue;
-            yield return root;
-        }
-    }
-
-    private static bool HasEntitiesWorldProxy(GameObject root)
-    {
-        foreach (Component component in root.GetComponents<Component>())
-        {
-            if (component != null && component.GetType().Name == "DefaultWorldInitializationProxy") return true;
-        }
-        return false;
     }
 }
