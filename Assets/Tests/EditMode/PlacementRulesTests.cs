@@ -1,26 +1,36 @@
 using System.Collections.Generic;
 using NUnit.Framework;
 using Unity.Mathematics;
+using WAR2D.World;
 
 public class PlacementRulesTests
 {
-    private Dictionary<int2, TileNode> tiles;
+    // A 21x21 ground map covering world tiles -10..10; grid tile = world tile + Offset.
+    private static readonly int2 Offset = new int2(10, 10);
+    private MapStore map;
     private HashSet<int2> units;
 
     [SetUp]
     public void SetUp()
     {
-        tiles = new Dictionary<int2, TileNode>();
-        for (int x = -10; x <= 10; x++)
-            for (int y = -10; y <= 10; y++)
-                tiles[new int2(x, y)] = new TileNode { position = new int2(x, y), weight = 1, tileType = TileType.Ground };
+        var rows = new string[21];
+        for (int i = 0; i < rows.Length; i++) rows[i] = new string('.', 21);
+        map = MapStore.FromAscii(rows);
         units = new HashSet<int2>();
     }
 
-    private TileNode Get(int2 p) => tiles.TryGetValue(p, out var t) ? t : new TileNode { position = p, weight = 0, tileType = TileType.Wall };
+    [TearDown]
+    public void TearDown() => map.Dispose();
+
+    private void SetTile(int2 world, TileType type)
+    {
+        var tiles = map.Grid.Tiles;
+        tiles[map.Grid.Index(world + Offset)] = (byte)type;
+    }
 
     private PlacementResult Check(BuildingType type, int2 anchor, float rot, int size, GameState state, bool hasHQ) =>
-        PlacementRules.Check(type, anchor, rot, new int2(size, size), state, hasHQ, Get, p => units.Contains(p));
+        PlacementRules.Check(type, anchor, rot, new int2(size, size), state, hasHQ,
+            p => map.Grid.TileAt(p + Offset), p => map.Grid.IsUsed(p + Offset), p => units.Contains(p));
 
     [Test]
     public void HQ_DuringPlacingHQ_IsOk() =>
@@ -45,14 +55,14 @@ public class PlacementRulesTests
     [Test]
     public void Building_OnWall_IsBlocked()
     {
-        tiles[new int2(0, 0)] = new TileNode { position = int2.zero, weight = 0, tileType = TileType.Wall };
+        SetTile(int2.zero, TileType.Wall);
         Assert.That(Check(BuildingType.SmallUnitSpawner, int2.zero, 0, 2, GameState.Playing, true), Is.EqualTo(PlacementResult.TileBlocked));
     }
 
     [Test]
     public void Building_OnUsedTile_IsBlocked()
     {
-        tiles[new int2(-1, -1)] = new TileNode { position = new int2(-1, -1), weight = 1, used = 1 };
+        map.SetUsed(new int2(-1, -1) + Offset, true);
         Assert.That(Check(BuildingType.SmallUnitSpawner, int2.zero, 0, 2, GameState.Playing, true), Is.EqualTo(PlacementResult.TileBlocked));
     }
 
@@ -70,14 +80,14 @@ public class PlacementRulesTests
     [Test]
     public void Miner_FacingGem_IsOk()
     {
-        tiles[new int2(0, 1)] = new TileNode { position = new int2(0, 1), weight = 0, tileType = TileType.Gem };
+        SetTile(new int2(0, 1), TileType.Gem);
         Assert.That(Check(BuildingType.Miner, int2.zero, 90, 1, GameState.Playing, true), Is.EqualTo(PlacementResult.Ok));
     }
 
     [Test]
     public void Miner_NotFacingGem_IsRejected()
     {
-        tiles[new int2(0, 1)] = new TileNode { position = new int2(0, 1), weight = 0, tileType = TileType.Gem };
+        SetTile(new int2(0, 1), TileType.Gem);
         Assert.That(Check(BuildingType.Miner, int2.zero, 0, 1, GameState.Playing, true), Is.EqualTo(PlacementResult.MinerMustFaceGem));
     }
 

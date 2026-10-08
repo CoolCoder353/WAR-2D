@@ -2,13 +2,14 @@ using System.Collections.Generic;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Mathematics;
+using WAR2D.World;
 
 /// <summary>8-directional A* over the tile map. Used tiles and walls are impassable.</summary>
 [BurstCompile]
 public static class Pathfinding
 {
     /// <summary>Returns the tiles from start to end inclusive, or an empty list when there is no path.</summary>
-    public static List<int2> FindPath(TilemapStruct tilemap, int2 start, int2 end)
+    public static List<int2> FindPath(MapGrid tilemap, int2 start, int2 end)
     {
         var result = new List<int2>();
         BurstFindPath(ref tilemap, start.x, start.y, end.x, end.y, out BurstPath path);
@@ -24,21 +25,20 @@ public static class Pathfinding
     }
 
     [BurstCompile]
-    private static void BurstFindPath(ref TilemapStruct tilemap, int startx, int starty, int endx, int endy, out BurstPath path)
+    private static void BurstFindPath(ref MapGrid tilemap, int startx, int starty, int endx, int endy, out BurstPath path)
     {
         int2 start = new int2(startx, starty);
         int2 end = new int2(endx, endy);
         path = default;
 
-        TileNode goal = tilemap.GetTile(end);
-        if (start.Equals(end) || !goal.isWalkable || goal.isUsed) return;
+        if (start.Equals(end) || !tilemap.IsWalkable(end)) return;
 
         var openSet = new NativePriorityQueue(64, Allocator.Temp);
         var closedSet = new NativeHashSet<int2>(256, Allocator.Temp);
         var connections = new NativeHashMap<int2, PathNode>(256, Allocator.Temp);
         var validNeighbours = new NativeHashMap<int2, PathNode>(256, Allocator.Temp);
         var neighbours = new NativeList<PathNode>(8, Allocator.Temp);
-        int maxExpansions = math.max(1, tilemap.width * tilemap.height);
+        int maxExpansions = math.max(1, tilemap.Width * tilemap.Height);
         int expansions = 0;
 
         openSet.Enqueue(new PathNode { position = start, gcost = 0, hcost = 0, weight = 1 });
@@ -101,7 +101,7 @@ public static class Pathfinding
         reversed.Dispose();
     }
 
-    private static void GetNeighbours(ref TilemapStruct tilemap, ref PathNode current, ref NativeHashMap<int2, PathNode> validNeighbours, ref NativeHashSet<int2> closedSet, ref NativeList<PathNode> neighbours)
+    private static void GetNeighbours(ref MapGrid tilemap, ref PathNode current, ref NativeHashMap<int2, PathNode> validNeighbours, ref NativeHashSet<int2> closedSet, ref NativeList<PathNode> neighbours)
     {
         neighbours.Clear();
         for (int x = -1; x <= 1; x++)
@@ -116,10 +116,9 @@ public static class Pathfinding
                     neighbours.Add(cached);
                     continue;
                 }
-                TileNode tile = tilemap.GetTile(pos);
-                if (tile.isWalkable && !tile.isUsed)
+                if (tilemap.IsWalkable(pos))
                 {
-                    PathNode node = TileNode.TileNodeToPathNode(tile);
+                    PathNode node = new PathNode { position = pos, weight = 1, tileType = TileType.Ground };
                     validNeighbours.Add(pos, node);
                     neighbours.Add(node);
                 }

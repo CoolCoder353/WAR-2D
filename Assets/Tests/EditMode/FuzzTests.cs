@@ -30,15 +30,14 @@ public class FuzzTests
     public void Placement_NeverThrows()
     {
         var rng = new System.Random(99);
-        var tiles = new Dictionary<int2, TileNode>();
-        Func<int2, TileNode> get = p => tiles.TryGetValue(p, out var t) ? t : new TileNode { position = p, weight = 0, tileType = TileType.Wall };
+        Func<int2, TileType> get = p => TileType.Wall;
         for (int i = 0; i < Iterations; i++)
         {
             var type = (BuildingType)rng.Next(-5, 10);
             var anchor = new int2(rng.Next(int.MinValue, int.MaxValue), rng.Next(int.MinValue, int.MaxValue));
             float rot = (float)(rng.NextDouble() * 1000 - 500);
             var state = (GameState)rng.Next(0, 5);
-            Assert.DoesNotThrow(() => PlacementRules.Check(type, anchor, rot, new int2(rng.Next(1, 4), rng.Next(1, 4)), state, rng.Next(2) == 0, get, p => false));
+            Assert.DoesNotThrow(() => PlacementRules.Check(type, anchor, rot, new int2(rng.Next(1, 4), rng.Next(1, 4)), state, rng.Next(2) == 0, get, p => false, p => false));
         }
     }
 

@@ -15879,7 +15879,7 @@ Transform:
   m_GameObject: {fileID: 277839354}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 29, y: 45, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -16552,7 +16552,7 @@ Transform:
   m_GameObject: {fileID: 717899494}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -10}
+  m_LocalPosition: {x: 23, y: 22, z: -10}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -19040,10 +19040,11 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  MapSize: 0
+  MapSeed: 0
+  MapHash: 0
   WalkableTilemap: {fileID: 1780845210}
   UnwalkableTilemap: {fileID: 277839355}
-  showTileMapweights: 0
-  visualOffset: {x: 0.5, y: 0.5, z: 0}
 --- !u!114 &1717943088
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -33397,7 +33398,7 @@ Transform:
   m_GameObject: {fileID: 1780845209}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 29, y: 45, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

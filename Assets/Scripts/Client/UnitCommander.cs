@@ -143,6 +143,13 @@ public class UnitCommander : NetworkBehaviour
         // TIM.Console.Log($"Using WorldStateManager {WorldStateManager.Instance}", TIM.MessageType.Network);
 
 
+        if (WorldStateManager.Instance.Map != null)
+        {
+            var (mapMin, mapMax) = WorldStateManager.Instance.MapBounds;
+            corner1 = math.clamp(corner1, mapMin, mapMax);
+            corner2 = math.clamp(corner2, mapMin, mapMax);
+        }
+
         //Request from the server to update what the client can see for the next frame
         viewSendTimer += Time.unscaledDeltaTime;
         if ((!corner1.Equals(lastSentCorner1) || !corner2.Equals(lastSentCorner2)) && viewSendTimer >= 0.1f)

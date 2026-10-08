@@ -18,5 +18,4 @@ Inert leftovers disclosed in v0.2 and scheduled to be cleaned up together.
 - **Empty `Assets/Resources/Prefabs/` folder** (its only asset, `Bullet.prefab`, was deleted in v0.2). **v0.4**
 - **Vendored Mirror components still call the legacy `Input` API** — `Components/GUIConsole.cs`, `Components/RemoteStatistics.cs` and `Components/Profiling/ToggleHotkey.cs` (the last via its own `GraphCanvas.prefab`). None are used in the shipped scenes, and the project is Input System only (`activeInputHandler: 1`), so they would throw if ever attached. **v0.4**
 - **Vendored Console `Demo/Scripts/DemoPlayer.cs` uses the legacy `Input.GetAxis`.** Demo only; not used by any shipped scene. **v0.4**
-- **`WorldStateManager.GenerateTileMap` leaks the tilemap's `NativeHashMap`.** It allocates `world.tiles` with `Allocator.Persistent`, and nothing disposes it — one map-sized leak per `Map_2` load (v0.2 removed the other persistent allocations). **v0.4**
 - **No server-side visibility model.** The view box is client-supplied; v0.2 clamps it to the map, but a modified client can still request the whole map. Replaced by the v0.5 replication + fog of war. **v0.5**

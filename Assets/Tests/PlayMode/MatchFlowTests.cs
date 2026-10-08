@@ -22,6 +22,7 @@ public class MatchFlowTests
         Assert.That(ConfigLoader.IsValid, Is.True, string.Join("\n", ConfigLoader.Errors));
         config.Match.CountdownSeconds = 0.5f;
         config.Resources.StartingResources = 10000f;
+        config.Match.Map.Size = 0; // these tests run on Map_2's authored tilemaps
 
         SceneManager.LoadScene("Main_Menu");
         yield return null;
@@ -92,6 +93,20 @@ public class MatchFlowTests
         yield return WaitUntil(() => GameCore.Instance.CurrentState == GameState.GameOver, 10f);
         Assert.That(NetworkClient.localPlayer.GetComponent<ClientPlayer>().drawDeclared, Is.True, "draw screen RPC must reach the client");
         Assert.That(CountUnits(), Is.EqualTo(0));
+    }
+
+    [UnityTest, Timeout(90000)]
+    public IEnumerator GeneratedMap_ClientHashMatches()
+    {
+        config.Match.Map.Size = 256;
+        config.Match.Map.Seed = 5;
+        yield return StartMatchAsHost();
+        WorldStateManager wsm = WorldStateManager.Instance;
+        Assert.That(wsm.Map, Is.Not.Null);
+        Assert.That(wsm.MapSize, Is.EqualTo(256));
+        Assert.That(wsm.MapSeed, Is.EqualTo(5u));
+        Assert.That(wsm.Map.Hash(), Is.EqualTo(wsm.MapHash));
+        Assert.That(wsm.Map.HqSites.Length, Is.EqualTo(8));
     }
 
     // ---------- helpers ----------

@@ -1,25 +1,29 @@
 using NUnit.Framework;
 using Unity.Collections;
 using Unity.Mathematics;
+using WAR2D.World;
 
 public class PathfindingTests
 {
-    private TilemapStruct map;
+    private MapStore store;
+    private MapGrid map => store.Grid;
 
     [SetUp]
     public void SetUp()
     {
-        var tiles = new NativeHashMap<int2, TileNode>(400, Allocator.Persistent);
-        for (int x = 0; x < 20; x++)
-            for (int y = 0; y < 20; y++)
-                tiles[new int2(x, y)] = new TileNode { position = new int2(x, y), weight = 1, tileType = TileType.Ground };
-        map = new TilemapStruct(tiles, 20, 20);
+        var rows = new string[20];
+        for (int i = 0; i < rows.Length; i++) rows[i] = new string('.', 20);
+        store = MapStore.FromAscii(rows);
     }
 
     [TearDown]
-    public void TearDown() => map.tiles.Dispose();
+    public void TearDown() => store.Dispose();
 
-    private void Wall(int x, int y) => map.SetTile(new int2(x, y), new TileNode { position = new int2(x, y), weight = 0, tileType = TileType.Wall });
+    private void Wall(int x, int y)
+    {
+        var tiles = map.Tiles;
+        tiles[map.Index(new int2(x, y))] = (byte)TileType.Wall;
+    }
 
     [Test]
     public void StraightLine_StartsAtStartEndsAtEnd()
@@ -42,7 +46,7 @@ public class PathfindingTests
     [Test]
     public void AvoidsUsedTiles()
     {
-        for (int y = 0; y < 19; y++) map.SetTile(new int2(5, y), new TileNode { position = new int2(5, y), weight = 1, used = 1 });
+        for (int y = 0; y < 19; y++) store.SetUsed(new int2(5, y), true);
         var path = Pathfinding.FindPath(map, new int2(0, 0), new int2(10, 0));
         Assert.That(path, Has.None.Matches<int2>(p => p.x == 5 && p.y < 19));
     }

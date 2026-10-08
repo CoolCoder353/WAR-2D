@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Mathematics;
+using UnityEngine;
+using UnityEngine.Tilemaps;
 
 namespace WAR2D.World
 {
@@ -52,6 +54,34 @@ namespace WAR2D.World
         {
             if (tiles.Length != width * height) throw new ArgumentException("tile count does not match width × height", nameof(tiles));
             return new MapStore(width, height, tiles, Array.Empty<int2>(), origin);
+        }
+
+        /// <summary>
+        /// Builds the grid from a scene's tilemaps (Map_2): a cell on <paramref name="unwalkable"/> is a Gem
+        /// when its tile asset's name contains "Gems" and a Wall otherwise; the walkable bounds (plus the
+        /// one-cell ring the old tile map kept) are Ground, and everything else is Wall. Grid tiles are world
+        /// tiles (cells through the tilemap's transform), so the tilemaps must sit at non-negative world tiles.
+        /// </summary>
+        public static MapStore FromTilemaps(Tilemap walkable, Tilemap unwalkable)
+        {
+            BoundsInt bounds = walkable.cellBounds;
+            Vector3 originWorld = walkable.CellToWorld(Vector3Int.zero);
+            int2 offset = new int2((int)math.round(originWorld.x), (int)math.round(originWorld.y));
+            int2 groundMin = new int2(bounds.xMin - 1, bounds.yMin - 1) + offset;
+            if (groundMin.x < 0 || groundMin.y < 0)
+                Debug.LogError($"[Map] scene tilemap {bounds} at offset {offset} reaches negative world tiles; those tiles are dropped. Move the tilemaps.");
+            int width = math.max(1, bounds.xMax + offset.x), height = math.max(1, bounds.yMax + offset.y);
+            var tiles = new NativeArray<byte>(width * height, Allocator.Persistent);
+            for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
+            {
+                var cell = new Vector3Int(x - offset.x, y - offset.y, 0);
+                TileType type = x >= groundMin.x && y >= groundMin.y ? TileType.Ground : TileType.Wall;
+                TileBase blocker = unwalkable != null ? unwalkable.GetTile(cell) : null;
+                if (blocker != null) type = blocker.name.Contains("Gems") ? TileType.Gem : TileType.Wall;
+                tiles[y * width + x] = (byte)type;
+            }
+            return FromTiles(width, height, tiles);
         }
 
         /// <summary>

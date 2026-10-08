@@ -89,12 +89,17 @@ Game code moved into its own assembly in v0.2, which is what lets the test assem
 - `CmdSetNickname` is the one authority-checked command here; it goes through `CommandGate` and `CommandValidator.TrySanitizeNickname`.
 
 ### `WorldStateManager` (`Scripts/Unit/WorldStateManager.cs`): `NetworkBehaviour`, the world gateway
-- In `Awake` it builds a `TilemapStruct` (`NativeHashMap<int2, TileNode>`) from `WalkableTilemap` and `UnwalkableTilemap`. Unwalkable tiles whose tile asset name contains `"Gems"` become `TileType.Gem`; all others become `Wall`.
+- In `OnStartServer` it builds `Map` (a `MapStore`, see "Map" below): generated from a seed when `Match/Map/Size > 0`, or from `WalkableTilemap`/`UnwalkableTilemap` when it is 0. `OnDestroy` disposes it.
 - Registries `Units` and `Buildings` (`Dictionary<int id, Entity>`), a `buildingFootprints` map so a destroyed building frees its tiles, `Occupancy` (`TileOccupancy`) for unit tile claims, and `Ids` (`NetIdAllocator`) for unique network ids.
 - It owns every world **Command** clients send (see the table below), and runs `UpdatePlayerViews()` plus `FlushDeathEvents()` every server `FixedUpdate`.
 - Building creation happens here (`TryAddBuilding`) with `EntityManager` and `ConfigLoader`; unit creation happens in `SpawnerSystem`.
 - `OnEntityDestroyed` (called by `DestructionSystem`) unregisters the entity, releases its occupancy claims or footprint tiles, and records a death position. `KillAllEntitiesOwnedBy` zeros a player's entities' health so the normal destruction path (with explosions) runs; `DestroyAllEntities` wipes the world at match end.
-- Debug: enable `showTileMapweights` to draw tile gizmos in play mode. Cyan = gem, red = wall, yellow = occupied, grey scale = weight.
+
+## Map (`Scripts/World/`)
+
+- `MapGrid` is the tile grid: `Width`, `Height`, `Tiles` (`(byte)TileType` per tile: Ground 0, Wall 1, Gem 2, Border 3) and `Used` (1 under a building footprint), row-major with tile (x, y) covering [x, x+1). Off-map reads as `Border`. **Grid tiles are world tiles**, so the map starts at (0, 0) and `WorldStateManager.MapBounds` is `(0, size − 1)`.
+- `MapStore` owns the grid's native memory. `Generate(size, seed, gemChance)` runs `MapGenerator` (the v0.3 cave generator: 45 % rock smoothed four times, eight HQ clearings on a circle joined to the centre by corridors, unreachable floor filled in, gems on floor-facing rock, a guaranteed gem vein beside each clearing, a border ring). `FromTilemaps` reads Map_2's tilemaps through `CellToWorld`; Map_2's Ground and Walls tilemaps are offset by (29, 45) so every tile is non-negative. `SetUsed` records footprint changes in `ChangedTiles`, and `Hash()` is FNV-1a over the tile kinds.
+- Generated maps reach clients as three SyncVars on `WorldStateManager`: `MapSize`, `MapSeed`, `MapHash`. A client regenerates the map, disconnects on a hash mismatch (`[Map] hash mismatch`), hides the tilemap renderers and draws the map with `MapView`: one point-filtered texture, one texel per tile, on a quad at z = 1. A 1024² map generates in about 170 ms.
 
 ### `UnitCommander` (`Scripts/Client/UnitCommander.cs`): client presentation and input
 - Selection box (left drag) and move orders (right click → `CmdMoveUnits`).
@@ -245,7 +250,7 @@ Anchors: `Footprint` treats the anchor as the tile at `size/2` from the footprin
 
 ## Pathfinding (`Scripts/Unit/Pathfinding/`)
 
-- 8-directional A* over `TilemapStruct`, Burst-compiled (`Pathfinding.FindPath` → `BurstFindPath`) with an octile heuristic. Walls and used tiles are impassable; the search is bounded by `width × height` expansions.
+- 8-directional A* over `MapGrid`, Burst-compiled (`Pathfinding.FindPath` → `BurstFindPath`) with an octile heuristic. Walls and used tiles are impassable; the search is bounded by `width × height` expansions.
 - `WorldStateManager.MoveUnit` calls it synchronously and writes the result into the unit's `PathPoint` buffer.
 - `FindBestGoalLocation` runs a bounded BFS out from the clicked tile so each unit in a group gets a different free goal; `TryFindFreeTileNear` does the same to find a spawn tile outside a spawner. Spawn tiles are claimed immediately so two spawns can't pick the same tile.
 - The old managed fallback path and its `doJob` branch were deleted in v0.2; `NativePriorityQueue` remains the queue used by the Burst path.

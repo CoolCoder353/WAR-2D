@@ -10,6 +10,7 @@ using Unity.Transforms;
 using UnityEngine;
 using UnityEngine.Tilemaps;
 using Config;
+using WAR2D.World;
 
 /// <summary>
 /// Manages the state of the game world, including the tilemap, units, and buildings.
@@ -23,10 +24,22 @@ public class WorldStateManager : NetworkBehaviour
     /// </summary>
     public static WorldStateManager Instance { get; private set; }
 
-    /// <summary>
-    /// The internal representation of the tilemap.
-    /// </summary>
-    public TilemapStruct world { get; private set; }
+    /// <summary>The match's tile grid. Built on the server at start, and regenerated on clients for generated maps.</summary>
+    public MapStore Map { get; private set; }
+
+    /// <summary>Tiles per side of a generated map; 0 when the scene's tilemaps are the map.</summary>
+    [SyncVar] public int MapSize;
+
+    /// <summary>Seed of the generated map.</summary>
+    [SyncVar] public uint MapSeed;
+
+    /// <summary>The server's <see cref="MapStore.Hash"/>, which clients verify their regenerated copy against.</summary>
+    [SyncVar] public ulong MapHash;
+
+    /// <summary>Inclusive tile bounds of the map, used for every box clamp. Grid tiles are world tiles.</summary>
+    public (int2 min, int2 max) MapBounds => Map == null
+        ? (int2.zero, int2.zero)
+        : (int2.zero, new int2(Map.Grid.Width - 1, Map.Grid.Height - 1));
 
     private EntityManager EntityManager => World.DefaultGameObjectInjectionWorld.EntityManager;
 
@@ -35,13 +48,6 @@ public class WorldStateManager : NetworkBehaviour
     public Tilemap WalkableTilemap;
     /// <summary>The tilemap defining unwalkable areas (walls, gems).</summary>
     public Tilemap UnwalkableTilemap;
-
-    [Header("Debug")]
-    /// <summary>Whether to visualize the tilemap weights in the editor.</summary>
-    public bool showTileMapweights = false;
-
-    /// <summary>Offset for visualizing tiles to center them.</summary>
-    public Vector3 visualOffset = new Vector3(0.5f, 0.5f, 0);
 
     /// <summary>
     /// Tracks the view area for each client player.
@@ -77,7 +83,6 @@ public class WorldStateManager : NetworkBehaviour
         if (Instance == null)
         {
             Instance = this;
-            GenerateTileMap();
         }
         else
         {
@@ -89,16 +94,54 @@ public class WorldStateManager : NetworkBehaviour
     public override void OnStartServer()
     {
         entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
+
+        MapConfig m = ConfigLoader.LoadConfig().Match.Map;
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        if (m.Size > 0)
+        {
+            uint seed = m.Seed != 0 ? m.Seed : (uint)UnityEngine.Random.Range(1, int.MaxValue);
+            Map = MapStore.Generate(m.Size, seed, m.GemChance);
+            MapSize = m.Size;
+            MapSeed = seed;
+            MapHash = Map.Hash();
+        }
+        else
+        {
+            Map = MapStore.FromTilemaps(WalkableTilemap, UnwalkableTilemap);
+        }
+        Debug.Log($"[Map] {Map.Grid.Width}x{Map.Grid.Height} map ready in {timer.ElapsedMilliseconds} ms (seed {MapSeed})");
     }
 
-    [ServerCallback]
-    public void OnDrawGizmos()
+    /// <summary>
+    /// Regenerates a generated map from its seed, checks it against the server's hash, and draws it.
+    /// A mismatching map would desync every placement check, so the client disconnects.
+    /// </summary>
+    [Client]
+    public override void OnStartClient()
     {
-        //Also check if the game is running
-        if (showTileMapweights && Application.isPlaying)
+        if (MapSize <= 0) return;
+        if (!isServer)
         {
-            DrawTileMap(world.tiles);
+            Map = MapStore.Generate(MapSize, MapSeed, ConfigLoader.LoadConfig().Match.Map.GemChance);
+            if (Map.Hash() != MapHash)
+            {
+                Debug.LogError($"[Map] hash mismatch: local {Map.Hash():X16}, server {MapHash:X16}. Disconnecting.");
+                NetworkClient.Disconnect();
+                return;
+            }
         }
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        if (WalkableTilemap != null) WalkableTilemap.GetComponent<TilemapRenderer>().enabled = false;
+        if (UnwalkableTilemap != null) UnwalkableTilemap.GetComponent<TilemapRenderer>().enabled = false;
+        MapView.Show(Map.Grid);
+        Debug.Log($"[Map] baked the {MapSize}² map texture in {timer.ElapsedMilliseconds} ms");
+    }
+
+    private void OnDestroy()
+    {
+        Map?.Dispose();
+        Map = null;
+        if (Instance == this) Instance = null;
     }
 
     [ServerCallback]
@@ -156,12 +199,7 @@ public class WorldStateManager : NetworkBehaviour
             Buildings.Remove(id);
             if (buildingFootprints.Remove(id, out List<int2> footprint))
             {
-                foreach (int2 tile in footprint)
-                {
-                    TileNode node = world.GetTile(tile);
-                    node.used = 0;
-                    world.SetTile(tile, node);
-                }
+                foreach (int2 tile in footprint) Map.SetUsed(tile, false);
             }
         }
     }
@@ -206,12 +244,7 @@ public class WorldStateManager : NetworkBehaviour
         foreach (Entity e in Units.Values) DestroyWithDeathPosition(e);
         foreach (List<int2> footprint in buildingFootprints.Values)
         {
-            foreach (int2 tile in footprint)
-            {
-                TileNode node = world.GetTile(tile);
-                node.used = 0;
-                world.SetTile(tile, node);
-            }
+            foreach (int2 tile in footprint) Map?.SetUsed(tile, false);
         }
         Units.Clear();
         Buildings.Clear();
@@ -231,108 +264,6 @@ public class WorldStateManager : NetworkBehaviour
     }
     #endregion
 
-    #region Tilemap Management
-
-    /// <summary>
-    /// Draws the tilemap gizmos for debugging.
-    /// </summary>
-    [Server]
-    private void DrawTileMap(NativeHashMap<int2, TileNode> tilemap)
-    {
-        foreach (KVPair<int2, TileNode> tilepair in tilemap)
-        {
-            TileNode tile = tilepair.Value;
-            Vector3 position = new Vector3(tile.position.x, tile.position.y, 0) + visualOffset;
-            if (tile.tileType == TileType.Gem)
-            {
-                Gizmos.color = Color.cyan;
-            }
-            else if (!tile.isWalkable)
-            {
-                Gizmos.color = Color.red;
-            }
-            else if (tile.isUsed)
-            {
-                Gizmos.color = Color.yellow;
-            }
-            else
-            {
-                Gizmos.color = Color.Lerp(Color.white, Color.black, tile.weight / 10f);
-            }
-            Gizmos.DrawCube(position, Vector3.one);
-        }
-    }
-
-    /// <summary>
-    /// Generates the internal tilemap structure from the Unity Tilemaps.
-    /// </summary>
-    public void GenerateTileMap()
-    {
-        BoundsInt bounds = WalkableTilemap.cellBounds;
-        //Add 2 to the size to account for the border of the chunk
-        NativeHashMap<int2, TileNode> tiles = new NativeHashMap<int2, TileNode>((bounds.size.x + 1) * (bounds.size.y + 1), Allocator.Persistent);
-
-        //Go through all the tiles in the chunk
-        for (int i = 0; i < bounds.size.x + 1; i++)
-        {
-            for (int j = 0; j < bounds.size.y + 1; j++)
-            {
-                int tilex = i + bounds.position.x - 1;
-                int tiley = j + bounds.position.y - 1;
-                Vector3Int localPlace = new Vector3Int(tilex, tiley, 0);
-                Vector3 worldPosition = WalkableTilemap.CellToWorld(localPlace);
-                int2 worldPlace = new int2((int)worldPosition.x, (int)worldPosition.y);
-                TileType tileType = TileType.Ground;
-                int weight = 1;
-
-                if (UnwalkableTilemap.GetTile(localPlace) != null)
-                {
-                    weight = 0;
-                    tileType = UnwalkableTilemap.GetTile(localPlace).name.Contains("Gems") ? TileType.Gem : TileType.Wall;
-                }
-
-                TileNode tileNode = new TileNode
-                {
-                    position = worldPlace,
-                    weight = weight,
-                    used = 0,
-                    tileType = tileType
-                };
-
-                tiles[worldPlace] = tileNode;
-            }
-        }
-
-        TilemapStruct tilemap = new TilemapStruct
-        {
-            tiles = tiles,
-            width = bounds.size.x + 1,
-            height = bounds.size.y + 1
-        };
-
-        world = tilemap;
-    }
-
-    /// <summary>
-    /// Gets a tile at a specific position (Server side).
-    /// </summary>
-    [Server]
-    public TileNode GetTile(int2 position)
-    {
-        return world.GetTile(position);
-    }
-
-    /// <summary>
-    /// Sets a tile at a specific position.
-    /// </summary>
-    [Server]
-    public void SetTile(int2 position, TileNode tile)
-    {
-        world.SetTile(position, tile);
-    }
-
-    #endregion
-
     #region Unit Management
 
     /// <summary>
@@ -343,9 +274,7 @@ public class WorldStateManager : NetworkBehaviour
     {
         if (!CommandGate.Allow(sender, nameof(UpdateClientView)) || !CommandValidator.IsBoxValid(startcorner, endcorner)) return;
 
-        BoundsInt mapBounds = WalkableTilemap.cellBounds;
-        int2 mapMin = new int2(mapBounds.xMin, mapBounds.yMin);
-        int2 mapMax = new int2(mapBounds.xMax - 1, mapBounds.yMax - 1);
+        (int2 mapMin, int2 mapMax) = MapBounds;
         startcorner = math.clamp(startcorner, mapMin, mapMax);
         endcorner = math.clamp(endcorner, mapMin, mapMax);
 
@@ -540,9 +469,7 @@ public class WorldStateManager : NetworkBehaviour
         ServerPlayer acting = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(sender.identity.netId));
         if (acting == null || acting.state != PlayerState.Playing) return;
 
-        BoundsInt mapBounds = WalkableTilemap.cellBounds;
-        int2 mapMin = new int2(mapBounds.xMin, mapBounds.yMin);
-        int2 mapMax = new int2(mapBounds.xMax - 1, mapBounds.yMax - 1);
+        (int2 mapMin, int2 mapMax) = MapBounds;
         startcorner = math.clamp(startcorner, mapMin, mapMax);
         endcorner = math.clamp(endcorner, mapMin, mapMax);
 
@@ -598,16 +525,12 @@ public class WorldStateManager : NetworkBehaviour
     {
         bool found = TileSearch.FindNearest(goal,
             t => !setGoals.Contains(t) && IsFreeGround(t) && Occupancy.IsAvailable(t, id),
-            t => world.GetTile(t).isWalkable,
+            t => Map.Grid.TileAt(t) == TileType.Ground,
             MaxGoalSearchTiles, out int2 best);
         return found ? best : goal;
     }
 
-    private bool IsFreeGround(int2 tile)
-    {
-        TileNode node = world.GetTile(tile);
-        return node.isWalkable && !node.isUsed;
-    }
+    private bool IsFreeGround(int2 tile) => Map.Grid.IsWalkable(tile);
 
     /// <summary>Nearest free, unclaimed ground tile to <paramref name="origin"/> (e.g. outside a spawner).</summary>
     [Server]
@@ -615,7 +538,7 @@ public class WorldStateManager : NetworkBehaviour
     {
         return TileSearch.FindNearest(origin,
             t => IsFreeGround(t) && Occupancy.IsAvailable(t, unitId),
-            t => world.GetTile(t).isWalkable,
+            t => Map.Grid.TileAt(t) == TileType.Ground,
             MaxGoalSearchTiles, out tile);
     }
 
@@ -643,7 +566,7 @@ public class WorldStateManager : NetworkBehaviour
             return;
         }
 
-        List<int2> path = Pathfinding.FindPath(world, startInt, goal);
+        List<int2> path = Pathfinding.FindPath(Map.Grid, startInt, goal);
         if (path.Count == 0)
         {
             Debug.LogWarning($"No path found for unit at {startInt} to {goal}");
@@ -754,17 +677,20 @@ public class WorldStateManager : NetworkBehaviour
         if (acting == null || acting.state != PlayerState.Playing) return PlacementResult.WrongGameState;
 
         return PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
-            player.hasPlacedHQ, world.GetTile, tile => !IsAvaliable(tile, -1));
+            player.hasPlacedHQ, Map.Grid.TileAt, Map.Grid.IsUsed, tile => !IsAvaliable(tile, -1));
     }
 
     /// <summary>Test helper: first anchor (scanning the map) where the player may place this building.</summary>
     internal bool TryFindBuildableAnchor(BuildingType type, float rotation, ClientPlayer player, out int2 anchor)
     {
-        foreach (KVPair<int2, TileNode> pair in world.tiles)
+        MapGrid grid = Map.Grid;
+        for (int y = 0; y < grid.Height; y++)
+        for (int x = 0; x < grid.Width; x++)
         {
-            if (CheckPlacement(type, pair.Key, rotation, player) == PlacementResult.Ok)
+            int2 tile = new int2(x, y);
+            if (grid.TileAt(tile) == TileType.Ground && CheckPlacement(type, tile, rotation, player) == PlacementResult.Ok)
             {
-                anchor = pair.Key;
+                anchor = tile;
                 return true;
             }
         }
@@ -865,12 +791,7 @@ public class WorldStateManager : NetworkBehaviour
 
         //Set the tiles the building will cover to be used
         List<int2> tiles = Footprint.Tiles(positon, GetBuildingSize(type));
-        foreach (int2 tile in tiles)
-        {
-            TileNode tileNode = world.GetTile(tile);
-            tileNode.used = 1;
-            world.SetTile(tile, tileNode);
-        }
+        foreach (int2 tile in tiles) Map.SetUsed(tile, true);
         buildingFootprints[buildingData.id] = tiles;
 
         AddBuilding(building, buildingData.id);

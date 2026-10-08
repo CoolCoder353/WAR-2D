@@ -19,16 +19,6 @@ public struct PathNode
 
     public float fcost => (gcost * 0.01f + hcost) * weight;
 
-    public static TileNode PathNodeToTileNode(PathNode pathNode)
-    {
-        return new TileNode
-        {
-            position = pathNode.position,
-            weight = 1,
-            used = 0,
-            tileType = pathNode.tileType
-        };
-    }
 
     //Cloning
     public PathNode(PathNode pathNode)
@@ -77,59 +67,5 @@ public struct BurstPath : IDisposable
         {
             path.Dispose();
         }
-    }
-}
-
-public struct TileNode
-{
-    public int2 position;
-    public float weight;
-    public int used;
-
-    public bool isUsed => used > 0;
-
-    public bool isWalkable => weight > 0;
-
-    public TileType tileType;
-
-
-    public static PathNode TileNodeToPathNode(TileNode tileNode)
-    {
-        return new PathNode
-        {
-            position = tileNode.position,
-            gcost = 0,
-            hcost = 0,
-            weight = tileNode.weight * (tileNode.isUsed ? 0 : 1),
-            tileType = tileNode.tileType
-        };
-    }
-}
-
-public struct TilemapStruct
-{
-    public NativeHashMap<int2, TileNode> tiles;
-    public int width;
-    public int height;
-
-    public TilemapStruct(NativeHashMap<int2, TileNode> tiles, int width, int height)
-    {
-        this.tiles = tiles;
-        this.width = width;
-        this.height = height;
-    }
-
-    public bool Contains(int2 position) => tiles.ContainsKey(position);
-
-    /// <summary>Returns the tile, or an unwalkable wall for positions outside the map.</summary>
-    public TileNode GetTile(int2 position)
-    {
-        if (tiles.TryGetValue(position, out TileNode tileNode)) return tileNode;
-        return new TileNode { position = position, weight = 0, used = 0, tileType = TileType.Wall };
-    }
-
-    public void SetTile(int2 position, TileNode tileNode)
-    {
-        tiles[position] = tileNode;
     }
 }

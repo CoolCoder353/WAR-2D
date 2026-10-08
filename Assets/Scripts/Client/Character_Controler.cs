@@ -24,7 +24,15 @@ namespace Character
             Vector2 pan = GameInput.Pan.ReadValue<Vector2>();
             float multiplier = GameInput.FastPan.IsPressed() ? settings.shiftSpeedMultiplyer : 1f;
             float zoomFactor = playerCamera.orthographicSize / ReferenceSize;
-            transform.position += (Vector3)(pan * settings.speed * multiplier * zoomFactor * Time.unscaledDeltaTime);
+            Vector3 next = transform.position + (Vector3)(pan * settings.speed * multiplier * zoomFactor * Time.unscaledDeltaTime);
+            WorldStateManager world = WorldStateManager.Instance;
+            if (world != null && world.Map != null)
+            {
+                var (min, max) = world.MapBounds;
+                next.x = Mathf.Clamp(next.x, min.x, max.x + 1);
+                next.y = Mathf.Clamp(next.y, min.y, max.y + 1);
+            }
+            transform.position = next;
         }
     }
 }
