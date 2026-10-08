@@ -3,6 +3,8 @@
     "rootNamespace": "",
     "references": [
         "Mirror",
+        "Mirror.Transports",
+        "kcp2k",
         "Unity.Entities",
         "Unity.Burst",
         "Unity.Collections",

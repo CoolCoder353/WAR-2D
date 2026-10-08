@@ -115,7 +115,9 @@ public partial class WorldStateManager : NetworkBehaviour
         Sim = SimContext.Create(World.DefaultGameObjectInjectionWorld, Map, ConfigLoader.LoadConfig());
         Sim.BuildingCreated += OnBuildingCreated;
         Sim.UnitDied += OnUnitDied;
-        Replication = new ReplicationService(Sim, ConfigLoader.LoadConfig());
+        Sim.TeamResolver = ownerId => GameCore.Instance != null ? GameCore.Instance.TeamOf(ownerId) : -ownerId - 1;
+        Sim.Settled += OnSettled;
+        Replication = new ReplicationService(Sim, ConfigLoader.LoadConfig()) { CollectBuildings = FillBuildingViews };
         if (GameCore.Instance != null)
             foreach (NetworkIdentity identity in GameCore.Instance.ServerPlayers.Keys)
                 if (identity != null && identity.connectionToClient != null)
@@ -173,6 +175,7 @@ public partial class WorldStateManager : NetworkBehaviour
         if (Sim != null)
         {
             Sim.BuildingCreated -= OnBuildingCreated;
+            Sim.Settled -= OnSettled;
             Sim.UnitDied -= OnUnitDied;
             Sim.Dispose();
             Sim = null;
@@ -182,23 +185,49 @@ public partial class WorldStateManager : NetworkBehaviour
         if (Instance == this) Instance = null;
     }
 
-    [ServerCallback]
-    public void FixedUpdate()
+    /// <summary>Runs on the settled world at each tick boundary: death explosions, filtered by fog.</summary>
+    [Server]
+    private void OnSettled(SimData data, int tick, int count) => FlushDeathEvents(data);
+
+    /// <summary>Every live building, for the replication layer (main thread, on the settled world).</summary>
+    [Server]
+    private void FillBuildingViews(List<BuildingView> views)
     {
-        UpdatePlayerViews();
-        FlushDeathEvents();
+        foreach (Entity entity in Buildings.Values)
+        {
+            if (!EntityManager.Exists(entity)) continue;
+            BuildingData building = EntityManager.GetComponentData<BuildingData>(entity);
+            LocalTransform transform = EntityManager.GetComponentData<LocalTransform>(entity);
+            HealthComponent health = EntityManager.GetComponentData<HealthComponent>(entity);
+            if (health.currentHealth <= 0f) continue;
+            float2 p = transform.Position.xy;
+            views.Add(new BuildingView
+            {
+                Id = building.id,
+                OwnerId = building.ownerId,
+                Team = Sim.TeamOf(building.ownerId),
+                Type = building.buildingType,
+                Anchor = (int2)math.round(p),
+                Rotation = (byte)((int)math.round(MinerRules.ZDegrees(transform.Rotation) / 90f) & 3),
+                Health = (int)math.ceil(health.currentHealth),
+                MaxHealth = (int)math.ceil(health.maxHealth),
+                Position = p,
+            });
+        }
     }
 
 
     private readonly List<float2> pendingDeathPositions = new List<float2>();
 
     private const int MaxExplosionsPerMessage = 256;
+    private readonly List<float2> seenDeaths = new List<float2>();
 
     /// <summary>
-    /// Sends the deaths recorded since the last tick to each client whose view contains them.
+    /// Sends the deaths recorded since the last tick to each client whose view contains them and whose
+    /// team sees where they happened.
     /// </summary>
     [Server]
-    private void FlushDeathEvents()
+    private void FlushDeathEvents(SimData data)
     {
         List<float2> deaths = TakeDeathPositions();
         if (deaths.Count == 0) return;
@@ -206,7 +235,10 @@ public partial class WorldStateManager : NetworkBehaviour
         foreach (KeyValuePair<ClientPlayer, (int2, int2)> view in playerView)
         {
             if (view.Key == null || view.Key.connectionToClient == null) continue;
-            List<Vector2> visible = VisibilityRules.Filter(deaths, view.Value.Item1, view.Value.Item2);
+            int grid = Sim.VisionOf(BuildingData.UIntToInt(view.Key.netId));
+            seenDeaths.Clear();
+            foreach (float2 death in deaths) if (data.Sees(grid, death)) seenDeaths.Add(death);
+            List<Vector2> visible = VisibilityRules.Filter(seenDeaths, view.Value.Item1, view.Value.Item2);
             for (int i = 0; i < visible.Count; i += MaxExplosionsPerMessage)
             {
                 int n = Mathf.Min(MaxExplosionsPerMessage, visible.Count - i);
@@ -316,102 +348,11 @@ public partial class WorldStateManager : NetworkBehaviour
         Replication?.SetView(sender, startcorner, endcorner);
     }
 
-    /// <summary>Drops a leaving player's view box so their entities stop being synced.</summary>
+    /// <summary>Drops a leaving player's view box.</summary>
     [Server]
     public void RemovePlayerView(ClientPlayer player)
     {
         if (player != null) playerView.Remove(player);
-    }
-
-    /// <summary>Per-player index of what each building SyncList holds: entity id → list index.</summary>
-    private sealed class PlayerViewIndex
-    {
-        public readonly Dictionary<int, int> Buildings = new Dictionary<int, int>();
-        public readonly Dictionary<int, int> Health = new Dictionary<int, int>();
-        public readonly HashSet<int> Seen = new HashSet<int>();
-    }
-
-    private readonly Dictionary<ClientPlayer, PlayerViewIndex> viewIndex = new Dictionary<ClientPlayer, PlayerViewIndex>();
-    private readonly List<ClientPlayer> deadViews = new List<ClientPlayer>();
-
-    /// <summary>
-    /// Copies the buildings (and their health) inside each player's view box into that player's
-    /// SyncLists. Units do not go through here: they reach clients through the replication encoder.
-    /// Each list is indexed by id, so an update is O(visible) and a removal swaps with the last entry.
-    /// </summary>
-    [Server]
-    public void UpdatePlayerViews()
-    {
-        deadViews.Clear();
-        foreach (ClientPlayer player in playerView.Keys) if (player == null) deadViews.Add(player);
-        foreach (ClientPlayer dead in deadViews) { playerView.Remove(dead); viewIndex.Remove(dead); }
-
-        foreach (KeyValuePair<ClientPlayer, (int2, int2)> view in playerView)
-        {
-            ClientPlayer player = view.Key;
-            if (!viewIndex.TryGetValue(player, out PlayerViewIndex index))
-            {
-                viewIndex[player] = index = new PlayerViewIndex();
-                for (int i = 0; i < player.visuableBuildings.Count; i++) index.Buildings[player.visuableBuildings[i].id] = i;
-                for (int i = 0; i < player.entityHealth.Count; i++) index.Health[player.entityHealth[i].entityId] = i;
-            }
-            int2 lo = math.min(view.Value.Item1, view.Value.Item2), hi = math.max(view.Value.Item1, view.Value.Item2);
-            index.Seen.Clear();
-
-            foreach (Entity entity in Buildings.Values)
-            {
-                if (!EntityManager.Exists(entity)) continue;
-                LocalTransform transform = EntityManager.GetComponentData<LocalTransform>(entity);
-                float2 p = transform.Position.xy;
-                if (p.x < lo.x || p.y < lo.y || p.x > hi.x || p.y > hi.y) continue;
-
-                BuildingData building = EntityManager.GetComponentData<BuildingData>(entity);
-                building.position = p;
-                building.rotation = MinerRules.ZDegrees(transform.Rotation);
-                HealthComponent health = EntityManager.GetComponentData<HealthComponent>(entity);
-                health.entityId = building.id;
-                index.Seen.Add(building.id);
-
-                Upsert(player.visuableBuildings, index.Buildings, building.id, building, (a, b) => a.Equals(b));
-                Upsert(player.entityHealth, index.Health, building.id, health,
-                    (a, b) => a.currentHealth == b.currentHealth && a.maxHealth == b.maxHealth);
-            }
-
-            RemoveUnseen(player.visuableBuildings, index.Buildings, index.Seen, b => b.id);
-            RemoveUnseen(player.entityHealth, index.Health, index.Seen, h => h.entityId);
-        }
-    }
-
-    private static void Upsert<T>(SyncList<T> list, Dictionary<int, int> index, int id, T value, Func<T, T, bool> same)
-    {
-        if (index.TryGetValue(id, out int i))
-        {
-            if (!same(list[i], value)) list[i] = value;
-            return;
-        }
-        index[id] = list.Count;
-        list.Add(value);
-    }
-
-    private static readonly List<int> gone = new List<int>();
-
-    private static void RemoveUnseen<T>(SyncList<T> list, Dictionary<int, int> index, HashSet<int> seen, Func<T, int> idOf)
-    {
-        gone.Clear();
-        foreach (int id in index.Keys) if (!seen.Contains(id)) gone.Add(id);
-        foreach (int id in gone)
-        {
-            int i = index[id];
-            int last = list.Count - 1;
-            if (i != last)
-            {
-                T moved = list[last];
-                list[i] = moved;
-                index[idOf(moved)] = i;
-            }
-            list.RemoveAt(last);
-            index.Remove(id);
-        }
     }
 
     /// <summary>Registers a building entity.</summary>

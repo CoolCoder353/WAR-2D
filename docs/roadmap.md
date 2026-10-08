@@ -11,7 +11,7 @@ This is the overarching development plan for WAR-2D. It explains **what** each u
 | v0.2 | Solid Ground | **Done.** Merged into `main` on 2026-10-05 ([PR #4](https://github.com/CoolCoder353/WAR-2D/pull/4)). The manual 2-player Linux match passed (confirmed by the owner). Windows build profile deferred by the owner | [2026-10-05-v0.2-solid-ground.md](superpowers/plans/2026-10-05-v0.2-solid-ground.md) |
 | v0.3 | Scale Spike | **Done** (2026-10-08). Every row of spec §4.6 has a measurement and a decision; the owner raised the bandwidth budget and chose the async tick with async flow-field rebuilds. See [the results](spike/v0.3-results.md) | [2026-10-05-v0.3-scale-spike.md](superpowers/plans/2026-10-05-v0.3-scale-spike.md) |
 | v0.4 | Legion | **Implemented** (2026-10-09), awaiting the owner's manual Linux match and the PR. Performance gate passed (8 × 10,000 units, 1024² map, 3 runs, medians): host tick main thread **6.6 ms p95** (budget 25), **561 fps** mean (≥ 60), **102 KB/s** average and **170 KB/s** peak 1 s per client (≤ 256 / 768). See [docs/perf/v0.4](perf/v0.4/) | [2026-10-08-v0.4-legion.md](superpowers/plans/2026-10-08-v0.4-legion.md) |
-| v0.5 | Fog & Wire | Not started | — |
+| v0.5 | Fog & Wire | **Closed** (2026-10-09) by the owner with the performance gate not run, no manual play-test yet and KCP not tuned. All three are carried into v0.6 in [known-issues.md](known-issues.md). Teams, fog of war, fog interest, buildings on the replication service and the leak tests are done; EditMode 223/223 and PlayMode 10/10 pass | [2026-10-09-v0.5-fog-and-wire.md](superpowers/plans/2026-10-09-v0.5-fog-and-wire.md) |
 | v0.6 | Command | Not started | — |
 | v0.7 | Siege | Not started | — |
 | v0.8 | New Paint | Not started | — |
@@ -188,6 +188,8 @@ Each update below lists its goal, its scope, the key decisions already made, wha
 **Exit criteria**
 - 8 clients × 10,000 units stay within the bandwidth budget.
 - **Leak tests** prove no hidden information is ever serialised to a client.
+
+**Outcome (2026-10-09):** teams fixed at match start, a fog grid of 2×2-tile cells recomputed at 5 Hz, interest = own team + cells the team sees, buildings sent as per-client records with last-seen ghosts, and `LeakTests` passing. The bandwidth exit criterion was not measured: the owner closed v0.5 with the gate, KCP tuning and the manual match moved to v0.6 (see [known-issues.md](known-issues.md)).
 
 **Why not lockstep?** Deterministic lockstep (sending only commands) scales easily, but every client would know every enemy position, so map-hacks become trivial. It would also need the whole simulation rewritten in fixed-point maths to stay in sync across Linux and Windows. The hybrid model keeps the server authoritative and the secrets safe.
 

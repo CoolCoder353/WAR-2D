@@ -186,6 +186,7 @@ namespace WAR2D.Sim
         {
             BuildingData buildingData = spec.Data;
             BuildingConfig buildingConfig = spec.Config;
+            context.SlotOf(buildingData.ownerId); // gives the owner a slot, and so a team
             Entity building = EntityManager.CreateEntity();
             EntityManager.AddComponentData(building, buildingData);
             EntityManager.AddComponentData(building, new LocalTransform

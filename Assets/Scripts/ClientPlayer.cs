@@ -11,12 +11,17 @@ public class ClientPlayer : NetworkBehaviour
     public LobbySystem lobbySystem;
 
 
-    public readonly SyncList<BuildingData> visuableBuildings = new SyncList<BuildingData>();
-
-    public readonly SyncList<HealthComponent> entityHealth = new SyncList<HealthComponent>();
-
     [SyncVar]
     public bool hasPlacedHQ = false;
+
+    /// <summary>The team this player picked in the lobby, or <see cref="TeamRules.NoTeam"/>. Set by the server owner.</summary>
+    [SyncVar(hook = nameof(OnLobbyTeamChanged))]
+    public int lobbyTeam = TeamRules.NoTeam;
+
+    private void OnLobbyTeamChanged(int oldTeam, int newTeam)
+    {
+        if (lobbySystem != null) lobbySystem.UpdateTeamLabel(this);
+    }
 
     /// <summary>True on the client whose player is the current server owner (lobby start button).</summary>
     [SyncVar(hook = nameof(OnServerOwnerChanged))]
@@ -176,87 +181,6 @@ public class ClientPlayer : NetworkBehaviour
 
 
 
-    public void SetBuildingHandles()
-    {
-
-        Debug.Log("Setting up building hooks");
-        visuableBuildings.OnAdd += (int index) =>
-           {
-               BuildingData unit = visuableBuildings[index];
-               UnitCommander.Instance.BuildingListInsert(index, unit);
-
-           };
-        visuableBuildings.OnInsert += (int index) =>
-        {
-            BuildingData unit = visuableBuildings[index];
-            UnitCommander.Instance.BuildingListInsert(index, unit);
-        };
-        visuableBuildings.OnSet += (int index, BuildingData old) =>
-        {
-            BuildingData unit = visuableBuildings[index];
-            UnitCommander.Instance.BuildingListSet(index, old, unit);
-        };
-
-        visuableBuildings.OnRemove += UnitCommander.Instance.BuildingListRemove;
-
-        visuableBuildings.OnClear += UnitCommander.Instance.BuildingListClear;
-
-        //Register the intial state of the units
-        for (int i = 0; i < visuableBuildings.Count; i++)
-        {
-            BuildingData unit = visuableBuildings[i];
-            UnitCommander.Instance.BuildingListInsert(i, unit);
-        }
-
-        // Do the same for the health component
-        entityHealth.OnAdd += (int index) =>
-        {
-            HealthComponent health = entityHealth[index];
-            UnitCommander.Instance.HealthListInsert(index, health);
-
-        };
-        entityHealth.OnInsert += (int index) =>
-        {
-            HealthComponent health = entityHealth[index];
-            UnitCommander.Instance.HealthListInsert(index, health);
-        };
-        entityHealth.OnSet += (int index, HealthComponent old) =>
-        {
-            HealthComponent health = entityHealth[index];
-            UnitCommander.Instance.HealthListSet(index, old, health);
-        };
-        entityHealth.OnRemove += UnitCommander.Instance.HealthListRemove;
-        entityHealth.OnClear += UnitCommander.Instance.HealthListClear;
-        //Register the intial state of the health components
-        for (int i = 0; i < entityHealth.Count; i++)
-        {
-            HealthComponent health = entityHealth[i];
-            UnitCommander.Instance.HealthListInsert(i, health);
-        }
-
-    }
-
-    public void RemoveBuildingHandles()
-    {
-        if (visuableBuildings != null)
-        {
-            Debug.Log("Removing Building hooks");
-            visuableBuildings.OnChange = null;
-            visuableBuildings.OnAdd = null;
-            visuableBuildings.OnInsert = null;
-            visuableBuildings.OnSet = null;
-            visuableBuildings.OnRemove = null;
-            visuableBuildings.OnClear = null;
-
-            Debug.Log("Removing health hooks");
-            entityHealth.OnChange = null;
-            entityHealth.OnAdd = null;
-            entityHealth.OnInsert = null;
-            entityHealth.OnSet = null;
-            entityHealth.OnRemove = null;
-            entityHealth.OnClear = null;
-        }
-    }
 
     /// <summary>
     /// ClientRpc called when a player wins.

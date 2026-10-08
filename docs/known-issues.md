@@ -6,10 +6,22 @@ The October 2026 code review found roughly 30 bugs, mismatches and hygiene probl
 
 | Issue | Where | Target | Effect |
 |---|---|---|---|
-| Buildings are still one GameObject each on clients, fed by `ClientPlayer` SyncLists. | `UnitCommander`, `WorldStateManager.UpdatePlayerViews` | **v0.7** | Fine for a few hundred buildings; walls make the counts large, so v0.7 instances buildings and walls like units. |
-| The perf gate counts the bots' bandwidth at virtual clients (encoded payload plus an estimated KCP/UDP overhead per batch), not at raw KCP clients on loopback as the v0.4 plan asked. | `Dev/PerfMatch.cs`, `ReplicationService.AddVirtualClient` | **v0.5** | The numbers leave out KCP retransmits and the host's KCP send cost. v0.5 tunes the transport and should measure real loopback clients. |
-| The gate's 3 runs were taken with the Unity editor open (the protocol asks for it closed). | `docs/perf/v0.4/` | **v0.5** | Results are conservative; re-run with the editor closed when the gate is next run. |
-| Corrections dominate bandwidth in dense melees (crowd jostle from separation and units stopping to fight). At ~80k units the fronts battle averages ~100 KB/s per client, but an artificially dense battle (reinforcements spawned into the fight) reached ~450 KB/s. | `Net/Replication/ReplicationEncoder.cs` | **v0.5** | Within budget for the gate scenario. v0.5's transport work should consider velocity-carrying corrections or hold-on-target hints. |
+| Buildings are still one GameObject each on clients (fed by `BuildingBatch` records since v0.5). | `UnitCommander`, `BuildingReplication.cs` | **v0.7** | Fine for a few hundred buildings; walls make the counts large, so v0.7 instances buildings and walls like units. |
+| KCP settings (windows, MTU, interval) are still Mirror's defaults on the `Main_Menu` NetworkManager. v0.5 added real loopback measurement (`tools/perf-run.sh` starts 7 headless `-perfClient` players counting raw UDP bytes through `MeteredKcpTransport`) but no gate has been run with it yet. | `Main_Menu` `KcpTransport`, `Dev/PerfClient.cs` | **v0.6** | Tune from the first real-client gate results; the 8 player processes share the host's CPU, so host tick timings in those runs are conservative. |
+| The gate's 3 runs were taken with the Unity editor open (the protocol asks for it closed). | `docs/perf/v0.4/` | **v0.6** | Results are conservative; re-run with the editor closed when the gate is next run. |
+| Corrections dominate bandwidth in dense melees (crowd jostle from separation and units stopping to fight). At ~80k units the fronts battle averages ~100 KB/s per client, but an artificially dense battle (reinforcements spawned into the fight) reached ~450 KB/s. | `Net/Replication/ReplicationEncoder.cs` | **v0.6** | Within budget for the gate scenario. Fog interest (v0.5) sends each client every enemy its team sees, not just the camera box, so re-measure with the real-client gate before choosing velocity-carrying corrections or hold-on-target hints. |
+| **v0.5's performance gate was never run.** Its exit criterion "8 clients × 10,000 units stay within the bandwidth budget" is unverified with fog interest and building records. Needs a Linux release build, the editor closed, then `tools/perf-run.sh` (3 runs, 7 real clients). | `tools/perf-run.sh`, `Dev/PerfMatch.cs`, `Dev/PerfClient.cs` | **v0.6** | The v0.4 numbers (camera-box interest, virtual clients) no longer describe the shipped networking. Results go to `docs/perf/v0.5/`. |
+| `SimVisionSystem`'s cost at 80,000 units is unmeasured. Source collection is a single-threaded job over every unit. | `Sim/SimVisionSystem.cs` | **v0.6** | Measured by the gate above (`perf.tick.main`, `perf.tick.wait`); parallelise the collect step if it shows. |
+
+## Not yet play-tested (v0.5)
+
+v0.5 passed the EditMode and PlayMode suites (including `LeakTests`), but nobody has played a match with it yet. Check these in the first manual Linux match. **v0.6**
+
+- **Fog overlay** (`Client/FogView.cs`): draw order over the instanced units and buildings, and that its colours look right.
+- **Lobby team label** (`LobbySystem`): it is created in code inside each lobby row, so its placement in the row's layout is unchecked; cycling teams as host, and seeing the change on other clients.
+- **Allied play**: allies share vision and never fight; a team win shows the Win screen to every player on the team, including eliminated ones.
+- **Building ghosts**: enemy buildings dim when out of sight and disappear only once their spot is seen again.
+- **One editor crash** happened during the first v0.5 EditMode run (a segfault scheduling `GatherJob`, right after `SimData` gained fields). It did not repeat after restarting the editor, so it is probably stale Burst code. Reopen this if it happens again.
 
 ## Project and config hygiene
 
@@ -21,5 +33,4 @@ Inert leftovers disclosed in v0.2 and scheduled to be cleaned up together.
 - **Empty `Assets/Resources/Prefabs/` folder** (its only asset, `Bullet.prefab`, was deleted in v0.2). **v0.4**
 - **Vendored Mirror components still call the legacy `Input` API** — `Components/GUIConsole.cs`, `Components/RemoteStatistics.cs` and `Components/Profiling/ToggleHotkey.cs` (the last via its own `GraphCanvas.prefab`). None are used in the shipped scenes, and the project is Input System only (`activeInputHandler: 1`), so they would throw if ever attached. **v0.4**
 - **Vendored Console `Demo/Scripts/DemoPlayer.cs` uses the legacy `Input.GetAxis`.** Demo only; not used by any shipped scene. **v0.4**
-- **No server-side visibility model.** The view box is client-supplied; it is clamped to the map and its span checked, but a modified client can still move its view anywhere to see units there. Replaced by v0.5 fog of war. **v0.5**
 - **Every unit type draws with the Tank texture.** `InstancedUnitRenderer` binds one texture; per-type frames come with the sprite atlas in the art pass. **v0.8**

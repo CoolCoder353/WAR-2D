@@ -87,11 +87,14 @@ namespace WAR2D.Client
             bars = new NativeList<UnitInstance>(1024, Allocator.Persistent);
             barCount = new NativeArray<int>(1, Allocator.Persistent);
             ReplicationClient.Received += OnBatch;
+            FogView.Ensure();
         }
 
         private void OnDestroy()
         {
             ReplicationClient.Received -= OnBatch;
+            ClientFog.Clear(); // the match is over; the next one starts with a fresh snapshot
+            ClientBuildings.Clear();
             if (Instance == this) Instance = null;
             renderer?.Dispose();
             store?.Dispose();

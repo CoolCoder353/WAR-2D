@@ -41,6 +41,18 @@ public class GameCore : NetworkBehaviour
     /// <summary>Players present when Playing began (used for the win rule).</summary>
     public int MatchStartPlayerCount { get; private set; }
 
+    /// <summary>Teams present when Playing began (used for the win rule).</summary>
+    public int MatchStartTeamCount { get; private set; }
+
+    /// <summary>Team per owner id, fixed when the match starts and synced to clients. Allies share a team.</summary>
+    public readonly SyncDictionary<int, int> Teams = new SyncDictionary<int, int>();
+
+    /// <summary>The team of an owner: from <see cref="Teams"/>, or a team of its own.</summary>
+    public int TeamOf(int ownerId) => Teams.TryGetValue(ownerId, out int team) ? team : -ownerId - 1;
+
+    /// <summary>True when two owners are on the same team (an owner is its own ally).</summary>
+    public bool AreAllies(int a, int b) => a == b || TeamOf(a) == TeamOf(b);
+
     /// <summary>Owner ids in match order, synced to clients: an owner's position here picks its colour.</summary>
     public readonly SyncList<int> PlayerOrder = new SyncList<int>();
 
@@ -70,6 +82,8 @@ public class GameCore : NetworkBehaviour
         serverOwner = null;
         CurrentState = GameState.Lobby;
         MatchStartPlayerCount = 0;
+        MatchStartTeamCount = 0;
+        Teams.Clear();
     }
 
     [ServerCallback]
@@ -174,6 +188,10 @@ public class GameCore : NetworkBehaviour
         Bots[ownerId] = new ServerPlayer(null, startingResources);
         PlayerOrder.Add(ownerId);
         MatchStartPlayerCount++;
+        int team = 0;
+        foreach (int t in Teams.Values) team = Mathf.Max(team, t + 1);
+        Teams[ownerId] = team; // bots are free-for-all
+        MatchStartTeamCount = TeamRules.CountTeams(Teams.Values);
     }
 
     [Server]
@@ -204,8 +222,36 @@ public class GameCore : NetworkBehaviour
         MatchStartPlayerCount = ServerPlayers.Count;
         PlayerOrder.Clear();
         foreach (NetworkIdentity identity in ServerPlayers.Keys) PlayerOrder.Add(BuildingData.UIntToInt(identity.netId));
+        AssignTeams();
         CurrentState = GameState.PlacingHQ;
         GameManager.Instance.ServerChangeScene(ConfigLoader.LoadConfig().Match.Scene);
+    }
+
+    /// <summary>Sets a player's lobby team choice (<see cref="TeamRules.NoTeam"/> for a team of their own). Server owner only, in the lobby.</summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_SetTeam(uint playerNetId, int team, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_SetTeam))) return;
+        if (!IsServerOwner(sender) || CurrentState != GameState.Lobby) return;
+        if (team < TeamRules.NoTeam || team >= WAR2D.Sim.SimData.MaxOwners) return;
+        foreach (NetworkIdentity identity in ServerPlayers.Keys)
+        {
+            if (identity == null || identity.netId != playerNetId) continue;
+            identity.GetComponent<ClientPlayer>().lobbyTeam = team;
+            return;
+        }
+    }
+
+    /// <summary>Fixes the match's teams from the players' lobby choices.</summary>
+    [Server]
+    private void AssignTeams()
+    {
+        var choices = new List<(int Owner, int Choice)>();
+        foreach (NetworkIdentity identity in ServerPlayers.Keys)
+            choices.Add((BuildingData.UIntToInt(identity.netId), identity.GetComponent<ClientPlayer>().lobbyTeam));
+        Teams.Clear();
+        foreach (KeyValuePair<int, int> pair in TeamRules.Assign(choices)) Teams[pair.Key] = pair.Value;
+        MatchStartTeamCount = TeamRules.CountTeams(Teams.Values);
     }
 
     [Server]
@@ -241,7 +287,7 @@ public class GameCore : NetworkBehaviour
         }
 
         foreach (int id in outcome.NewlyEliminated) EliminatePlayer(id);
-        if (outcome.Kind == OutcomeKind.Winner) DeclareWinner(outcome.WinnerId);
+        if (outcome.Kind == OutcomeKind.Winner) DeclareWinner(outcome.WinnerTeam);
     }
 
     [Server]
@@ -280,14 +326,15 @@ public class GameCore : NetworkBehaviour
     }
 
     [Server]
-    public void DeclareWinner(int playerId)
+    /// <summary>Ends the match: every player on <paramref name="team"/> wins, everyone else loses.</summary>
+    public void DeclareWinner(int team)
     {
         CurrentState = GameState.GameOver;
         WorldStateManager.Instance?.DestroyAllEntities();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
             ClientPlayer client = entry.Key.GetComponent<ClientPlayer>();
-            if (entry.Key.netId == (uint)playerId) client.RpcOnPlayerWon(entry.Value.connection);
+            if (TeamOf(BuildingData.UIntToInt(entry.Key.netId)) == team) client.RpcOnPlayerWon(entry.Value.connection);
             else
             {
                 entry.Value.state = PlayerState.Eliminated;
@@ -315,6 +362,8 @@ public class GameCore : NetworkBehaviour
         CurrentState = GameState.Lobby;
         CountdownEndTime = 0;
         MatchStartPlayerCount = 0;
+        MatchStartTeamCount = 0;
+        Teams.Clear();
         Bots.Clear();
         if (SceneManager.GetActiveScene().name != LobbyScene && NetworkServer.active)
         {

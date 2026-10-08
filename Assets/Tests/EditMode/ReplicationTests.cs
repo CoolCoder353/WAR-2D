@@ -20,6 +20,10 @@ public class ReplicationTests
         public NativeArray<float> Health, MaxHealth, Speeds;
         public NativeArray<int> Owner, IdOf, IndexOfId;
         public NativeArray<byte> Type;
+        /// <summary>Team per slot (the owner id), and one fog grid per client (1 tile per cell).</summary>
+        public NativeArray<int> Team;
+        public NativeArray<byte> Visible;
+        public const int FogSize = 512;
         public NativeList<int2> Attacks = new NativeList<int2>(16, Allocator.Persistent);
         public int Count;
         public RouteStore Routes = new RouteStore(IdCapacity, Allocator.Persistent);
@@ -40,6 +44,8 @@ public class ReplicationTests
             IdOf = new NativeArray<int>(capacity, Allocator.Persistent);
             IndexOfId = new NativeArray<int>(IdCapacity, Allocator.Persistent);
             Type = new NativeArray<byte>(capacity, Allocator.Persistent);
+            Team = new NativeArray<int>(capacity, Allocator.Persistent);
+            Visible = new NativeArray<byte>(clients * FogSize * FogSize, Allocator.Persistent);
             Speeds = new NativeArray<float>(new[] { 0f, 5f }, Allocator.Persistent);
             Interests = new InterestSets(clients, IdCapacity, Allocator.Persistent);
             Encoder = new ReplicationEncoder(Config, Interests, Routes, IdCapacity, Allocator.Persistent);
@@ -57,6 +63,7 @@ public class ReplicationTests
             Health[slot] = 100f;
             MaxHealth[slot] = 100f;
             Owner[slot] = owner;
+            Team[slot] = owner;
             IdOf[slot] = Id(index, generation);
             IndexOfId[index] = slot;
             Type[slot] = 1;
@@ -67,7 +74,23 @@ public class ReplicationTests
         {
             Count = Count, Positions = Positions, Health = Health, MaxHealth = MaxHealth, OwnerId = Owner,
             Type = Type, IdOf = IdOf, IndexOfId = IndexOfId, SpeedByType = Speeds,
+            Team = Team, Visible = Visible, FogCellSize = 1, FogW = FogSize, FogH = FogSize, FogCells = FogSize * FogSize,
         };
+
+        /// <summary>
+        /// Makes <paramref name="client"/> the player <paramref name="owner"/> (on a team of its own) whose
+        /// fog grid sees exactly the inclusive tile box, and sets its camera to the same box.
+        /// </summary>
+        public void Watch(int client, int owner, int2 min, int2 max)
+        {
+            Interests.SetClient(client, owner, owner, client);
+            int start = client * FogSize * FogSize;
+            for (int i = 0; i < FogSize * FogSize; i++) Visible[start + i] = 0;
+            for (int y = math.max(0, min.y); y <= math.min(FogSize - 1, max.y); y++)
+            for (int x = math.max(0, min.x); x <= math.min(FogSize - 1, max.x); x++)
+                Visible[start + y * FogSize + x] = 1;
+            Encoder.SetView(client, min, max);
+        }
 
         /// <summary>Builds interest, encodes the tick, and applies each client's bytes to its store.</summary>
         public void Tick(int tick)
@@ -85,7 +108,7 @@ public class ReplicationTests
         public void Dispose()
         {
             Positions.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Owner.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
-            Type.Dispose(); Speeds.Dispose(); Attacks.Dispose(); Routes.Dispose(); Interests.Dispose(); Encoder.Dispose();
+            Type.Dispose(); Team.Dispose(); Visible.Dispose(); Speeds.Dispose(); Attacks.Dispose(); Routes.Dispose(); Interests.Dispose(); Encoder.Dispose();
             foreach (ClientUnitStore s in ClientStores) s.Dispose();
         }
     }
@@ -148,7 +171,7 @@ public class ReplicationTests
         using var rig = new Rig(4);
         int slot = rig.Add(7, 1, new float2(10, 10));
         rig.Routes.Set(7, new float2(10, 10), new float2(40, 10), new float2(40, 30));
-        rig.Interests.SetClient(0, 1, new int2(0, 0), new int2(100, 100));
+        rig.Watch(0, 1, new int2(0, 0), new int2(100, 100));
         for (int tick = 1; tick < 200; tick++)
         {
             // The real unit walks slower than predicted and drifts, so corrections keep coming.
@@ -166,7 +189,7 @@ public class ReplicationTests
         rig.Add(1, 1, new float2(10, 10));  // own
         rig.Add(2, 2, new float2(15, 15));  // enemy inside the view
         rig.Add(3, 2, new float2(60, 60));  // enemy outside the view
-        rig.Interests.SetClient(0, 1, new int2(0, 0), new int2(20, 20));
+        rig.Watch(0, 1, new int2(0, 0), new int2(20, 20));
         for (int tick = 1; tick < 30; tick++)
         {
             rig.Positions[2] += new float2(0.3f, 0f); // keep it busy: it would draw corrections if visible
@@ -182,7 +205,7 @@ public class ReplicationTests
     {
         using var rig = new Rig(3000);
         for (int i = 0; i < 3000; i++) rig.Add(i + 1, 1, new float2(5 + i % 50, 5 + i / 50));
-        rig.Interests.SetClient(0, 1, new int2(0, 0), new int2(200, 200));
+        rig.Watch(0, 1, new int2(0, 0), new int2(200, 200));
         rig.Tick(1);
         for (int i = 0; i < 3000; i++) rig.Positions[i] += new float2(1.5f, -1f);
         rig.Tick(2);
@@ -199,7 +222,7 @@ public class ReplicationTests
         using var rig = new Rig(4);
         int inside = rig.Add(1, 1, new float2(10, 10));
         int outside = rig.Add(2, 1, new float2(80, 80)); // own, so allowed, but outside the view
-        rig.Interests.SetClient(0, 1, new int2(0, 0), new int2(20, 20));
+        rig.Watch(0, 1, new int2(0, 0), new int2(20, 20));
         rig.Encoder.SetView(0, new int2(0, 0), new int2(20, 20));
         rig.Tick(20);
         rig.Positions[inside] += new float2(1f, 0f);
@@ -216,7 +239,7 @@ public class ReplicationTests
         using var rig = new Rig(2);
         rig.Add(1, 1, new float2(10, 10));
         rig.Routes.Set(1, new float2(10, 10), new float2(60, 10));
-        rig.Interests.SetClient(0, 1, new int2(0, 0), new int2(100, 100));
+        rig.Watch(0, 1, new int2(0, 0), new int2(100, 100));
         for (int tick = 1; tick < 10; tick++) rig.Tick(tick); // the unit stands still
         float2 held = rig.ClientStores[0].PredictOne(1, 10 * Dt);
         Assert.AreEqual(held.x, rig.ClientStores[0].PredictOne(1, 100 * Dt).x, 0.3f, "a stopped unit stays put");
@@ -236,9 +259,9 @@ public class ReplicationTests
         using var rig = new Rig(4, clients: 2);
         rig.Add(1, 1, new float2(10, 10));
         rig.Add(2, 2, new float2(60, 60));
-        rig.Interests.SetClient(0, 1, new int2(0, 0), new int2(20, 20));
+        rig.Watch(0, 1, new int2(0, 0), new int2(20, 20));
         rig.Encoder.SetView(0, new int2(0, 0), new int2(20, 20));
-        rig.Interests.SetClient(1, 2, new int2(50, 50), new int2(70, 70));
+        rig.Watch(1, 2, new int2(50, 50), new int2(70, 70));
         rig.Encoder.SetView(1, new int2(50, 50), new int2(70, 70));
         var seen = new List<int>[] { new List<int>(), new List<int>() };
         for (int c = 0; c < 2; c++) { int client = c; rig.ClientStores[c].Attack += (attacker, _) => seen[client].Add(attacker); }
@@ -254,7 +277,7 @@ public class ReplicationTests
     {
         using var rig = new Rig(2);
         int slot = rig.Add(5, 1, new float2(10, 10), generation: 1);
-        rig.Interests.SetClient(0, 1, new int2(0, 0), new int2(100, 100));
+        rig.Watch(0, 1, new int2(0, 0), new int2(100, 100));
         int died = 0;
         rig.ClientStores[0].Died += (_, _) => died++;
         rig.Tick(1);

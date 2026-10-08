@@ -12,7 +12,7 @@ namespace WAR2D.Sim
     /// The server's asynchronous fixed-rate tick (20 Hz by default). Its stages schedule Burst jobs on
     /// <c>state.Dependency</c> and never complete them: the jobs run on worker threads between ticks and
     /// <see cref="SimBoundarySystem"/> settles them at the start of the next tick.
-    /// Order: boundary → commands → gather → hash → combat → movement → lifecycle → economy → end.
+    /// Order: boundary → commands → gather → hash → combat → movement → vision → economy → lifecycle → end.
     /// </summary>
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     public partial class SimTickGroup : ComponentSystemGroup
@@ -60,6 +60,7 @@ namespace WAR2D.Sim
             context?.Orders.AtBoundary(context.Map, clock.ValueRO.Tick);
             if (clock.ValueRO.Running) context?.RaiseSettled(data, clock.ValueRO.Tick, clock.ValueRO.UnitCount);
             data.AttackEvents.Clear();
+            data.FogChanges.Clear();
             bool running = SimContext.RunningOverride
                 ?? (NetworkServer.active && GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing);
             clock.ValueRW.Running = running;
