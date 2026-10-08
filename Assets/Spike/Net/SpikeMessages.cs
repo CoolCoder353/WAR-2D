@@ -205,6 +205,12 @@ namespace WAR2D.Spike
 
         /// <summary>Index of the waypoint the client should steer toward next.</summary>
         public int Resume;
+
+        /// <summary>
+        /// With <see cref="CorrectionMessage.HasSpeed"/>: the speed the client predicts at from here, in
+        /// 1/64 of the unit's full speed (0 holds the unit where it is; 64 is full speed).
+        /// </summary>
+        public byte Speed;
     }
 
     /// <summary>An unreliable batch of predicted positions that were wrong.</summary>
@@ -220,6 +226,9 @@ namespace WAR2D.Spike
         /// coarser quantisation).
         /// </summary>
         public byte DeltaScale;
+
+        /// <summary>The entries carry <see cref="CorrectionUnit.Speed"/> (the header byte's top bit).</summary>
+        public bool HasSpeed;
 
         /// <summary>The corrected units, ascending by id.</summary>
         public NativeArray<CorrectionUnit> Units;
@@ -425,7 +434,7 @@ namespace WAR2D.Spike
         {
             writer.WriteByte((byte)SpikeMessageType.Correction);
             VarInt.Write(ref writer, (uint)message.Tick);
-            writer.WriteByte(message.DeltaScale);
+            writer.WriteByte((byte)((message.DeltaScale & 0x7F) | (message.HasSpeed ? 0x80 : 0)));
             VarInt.Write(ref writer, (uint)message.Units.Length);
             int previous = 0;
             for (int i = 0; i < message.Units.Length; i++)
@@ -444,6 +453,7 @@ namespace WAR2D.Spike
                     VarInt.WriteInt(ref writer, unit.DY);
                 }
                 VarInt.Write(ref writer, (uint)unit.Resume);
+                if (message.HasSpeed) writer.WriteByte(unit.Speed);
             }
         }
 
@@ -452,7 +462,9 @@ namespace WAR2D.Spike
         {
             Expect(reader, SpikeMessageType.Correction);
             int tick = (int)VarInt.Read(reader);
-            byte scale = reader.ReadByte();
+            byte header = reader.ReadByte();
+            byte scale = (byte)(header & 0x7F);
+            bool hasSpeed = (header & 0x80) != 0;
             int count = (int)VarInt.Read(reader);
             var units = new NativeArray<CorrectionUnit>(count, allocator);
             int previous = 0;
@@ -472,9 +484,10 @@ namespace WAR2D.Spike
                     unit.DY = (short)VarInt.ReadInt(reader);
                 }
                 unit.Resume = (int)VarInt.Read(reader);
+                if (hasSpeed) unit.Speed = reader.ReadByte();
                 units[i] = unit;
             }
-            return new CorrectionMessage { Tick = tick, DeltaScale = scale, Units = units };
+            return new CorrectionMessage { Tick = tick, DeltaScale = scale, HasSpeed = hasSpeed, Units = units };
         }
 
         /// <summary>Writes a Health message, type byte included.</summary>

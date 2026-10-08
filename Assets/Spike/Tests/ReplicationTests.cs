@@ -479,11 +479,11 @@ public class ReplicationTests
     public void DeltaCorrectionsRoundTrip()
     {
         var units = new NativeArray<CorrectionUnit>(3, Allocator.Temp);
-        units[0] = new CorrectionUnit { Id = 5, DX = -3, DY = 64, Resume = 1 };
+        units[0] = new CorrectionUnit { Id = 5, DX = -3, DY = 64, Resume = 1, Speed = 17 };
         units[1] = new CorrectionUnit { Id = 6, DX = 0, DY = -1, Resume = 0 };
         units[2] = new CorrectionUnit { Id = 900, DX = 32767, DY = -32768, Resume = 7 };
         var writer = new NetworkWriter();
-        SpikeMessages.Encode(writer, new CorrectionMessage { Tick = 12, DeltaScale = 8, Units = units });
+        SpikeMessages.Encode(writer, new CorrectionMessage { Tick = 12, DeltaScale = 8, HasSpeed = true, Units = units });
         var reader = new NetworkReader(writer.ToArray());
         CorrectionMessage decoded = SpikeMessages.DecodeCorrection(reader, Allocator.Temp);
         Assert.AreEqual(8, decoded.DeltaScale);
@@ -494,12 +494,55 @@ public class ReplicationTests
             Assert.AreEqual(units[i].DX, decoded.Units[i].DX);
             Assert.AreEqual(units[i].DY, decoded.Units[i].DY);
             Assert.AreEqual(units[i].Resume, decoded.Units[i].Resume);
+            Assert.AreEqual(units[i].Speed, decoded.Units[i].Speed);
         }
+        Assert.IsTrue(decoded.HasSpeed);
         Assert.AreEqual(writer.Position, reader.Position, "the decoder must consume exactly the message");
         // Small offsets are one byte each: id delta 1 + dx 1 + dy 1 + resume 1.
         Assert.AreEqual(4, SpikeMessages.CorrectionDeltaUnitSize(6, 5, 0, -1, 0));
         decoded.Units.Dispose();
         units.Dispose();
+    }
+
+    /// <summary>
+    /// With speed corrections, a unit that stopped (to fight) is corrected once with speed 0 and the
+    /// client then holds it: no further corrections while it stays put. Without them it is corrected
+    /// over and over, because the client keeps walking it down its route.
+    /// </summary>
+    [Test]
+    public void SpeedCorrectionHoldsAStoppedUnit()
+    {
+        int Corrections(bool sendSpeed)
+        {
+            var config = EncoderConfig.Defaults;
+            config.CorrectionInterval = 1;
+            config.SendSpeed = sendSpeed;
+            using var rig = new Rig(8, clients: 1, teams: 8, vision: 30, config);
+            rig.Add(id: 1, player: 0, tile: new int2(10, 10));
+            rig.Route(1, new int2(10, 10), new int2(40, 10)); // the route says walk east
+            rig.Refresh();
+            rig.Encode(0, 0);
+            int total = 0;
+            for (int tick = 1; tick <= 40; tick++) // the unit never moves
+            {
+                rig.Refresh();
+                rig.Encode(0, tick);
+                var reader = rig.UnreliableReader();
+                while (reader.Remaining > 0)
+                {
+                    CorrectionMessage message = SpikeMessages.DecodeCorrection(reader, Allocator.Temp);
+                    Assert.AreEqual(sendSpeed, message.HasSpeed);
+                    if (sendSpeed && message.Units.Length > 0) Assert.AreEqual(0, message.Units[0].Speed, "a stopped unit holds");
+                    total += message.Units.Length;
+                    message.Units.Dispose();
+                }
+            }
+            return total;
+        }
+
+        int withSpeed = Corrections(true), without = Corrections(false);
+        Assert.LessOrEqual(withSpeed, 2, "one hold correction (two at most: the first check measures from the entry)");
+        Assert.Greater(without, 5, "without a speed the client keeps walking the unit and keeps being corrected");
     }
 
     /// <summary>

@@ -45,6 +45,19 @@ namespace WAR2D.Spike
         /// </summary>
         public float2 ViewHalfExtents;
 
+        /// <summary>
+        /// Corrections carry the unit's measured speed (one byte), and the client predicts at it until
+        /// the next order or correction: a unit that stopped to fight holds, one in a crowd crawls.
+        /// </summary>
+        public bool SendSpeed;
+
+        /// <summary>
+        /// A correction resumes at the waypoint after the route segment nearest the unit's real
+        /// position, instead of after the leg the prediction had reached (which may be behind the unit
+        /// or around a corner ahead of it).
+        /// </summary>
+        public bool ProjectResume;
+
         /// <summary>Tiles an off-screen unit may be off before a correction is sent.</summary>
         public float OffscreenThreshold;
 
@@ -205,6 +218,12 @@ namespace WAR2D.Spike
         /// <summary>The error of units inside each client's view.</summary>
         public ErrorHistogram ViewError => Aggregate(1);
 
+        /// <summary>Diagnostic: the error at every check before any correction (in-view units).</summary>
+        public ErrorHistogram RawViewError => Aggregate(2);
+
+        /// <summary>Diagnostic: the same for checks of anchored predictions only (right after a correction).</summary>
+        public ErrorHistogram RawAnchoredError => Aggregate(3);
+
         private ErrorHistogram Aggregate(int which)
         {
             var histogram = new ErrorHistogram();
@@ -342,6 +361,13 @@ namespace WAR2D.Spike
 
         public byte LastHealth;
         public int KnownGeneration;
+
+        /// <summary>The speed the client predicts at, tiles a second (full speed until a speed correction).</summary>
+        public float Speed;
+
+        /// <summary>The real position at the last check, and when, for the measured speed.</summary>
+        public float2 LastActual;
+        public float LastCheck;
     }
 
     /// <summary>The last prediction evaluated for a client, kept so tests can see its inputs.</summary>
@@ -361,6 +387,7 @@ namespace WAR2D.Spike
         public float2 Actual;
         public float Error; // negative for an off-screen unit
         public int Weight;
+        public byte Speed;
     }
 
     /// <summary>One client's scalars, in a one-element array so a job can write them back.</summary>
@@ -397,7 +424,7 @@ namespace WAR2D.Spike
             Scalars = new NativeArray<ClientScalars>(1, allocator);
             Scalars[0] = new ClientScalars { Tokens = budget };
             Totals = new NativeArray<long>((ReplicationEncoder.TypeCount + 1) * 2, allocator);
-            Errors = new NativeArray<long>(ErrorHistogram.Buckets * 2, allocator);
+            Errors = new NativeArray<long>(ErrorHistogram.Buckets * 4, allocator);
             Reliable = new NativeList<byte>(64 * 1024, allocator);
             Unreliable = new NativeList<byte>(16 * 1024, allocator);
             ReliableSizes = new NativeList<int>(64, allocator);
@@ -546,6 +573,9 @@ namespace WAR2D.Spike
                     Fresh = 1,
                     LastHealth = entry.Health,
                     KnownGeneration = Generation(id),
+                    Speed = Config.Speed,
+                    LastActual = Positions[slot],
+                    LastCheck = now,
                 };
             }
 
@@ -589,6 +619,7 @@ namespace WAR2D.Spike
                         state.Anchored = 0;
                         state.StartTime = now;
                         state.Anchor = Positions[slot];
+                        state.Speed = Config.Speed;
                     }
 
                     bool inView = InView(scalars.ViewCentre, Positions[slot]);
@@ -644,14 +675,28 @@ namespace WAR2D.Spike
             scalars.LastPrediction = leg;
             state.LastPredicted = predicted;
 
+            float elapsed = now - state.LastCheck;
+            float measured = elapsed > 0f ? math.distance(actual, state.LastActual) / elapsed : state.Speed;
+            state.LastActual = actual;
+            state.LastCheck = now;
+
             float error = math.distance(actual, predicted);
+            if (inView)
+            {
+                int raw = math.min(ErrorHistogram.Buckets - 1, (int)(error * ErrorHistogram.BucketsPerTile));
+                B.Errors[2 * ErrorHistogram.Buckets + raw] += 1;
+                if (leg.Anchored != 0) B.Errors[3 * ErrorHistogram.Buckets + raw] += 1;
+            }
             float threshold = inView ? Config.CorrectionThreshold : Config.OffscreenThreshold;
             if (error <= threshold)
             {
                 RecordError(inView, error, weight);
                 return;
             }
-            B.Candidates.Add(new Candidate { Id = id, Actual = actual, Error = inView ? error : -error, Weight = weight });
+            B.Candidates.Add(new Candidate
+            {
+                Id = id, Actual = actual, Error = inView ? error : -error, Weight = weight, Speed = SpeedByte(measured),
+            });
         }
 
         /// <summary>
@@ -679,10 +724,12 @@ namespace WAR2D.Spike
                 float error = math.abs(candidate.Error);
                 PredictState state = B.States[candidate.Id];
                 int routeCount = Count(candidate.Id);
-                int resume = math.clamp(state.Index + 1, 0, math.max(0, routeCount - 1));
+                int resume = Config.ProjectResume
+                    ? ProjectedResume(First(candidate.Id), routeCount, state.Index, candidate.Actual)
+                    : math.clamp(state.Index + 1, 0, math.max(0, routeCount - 1));
 
                 // What the client will reconstruct, so both sides anchor on the same point.
-                var unit = new CorrectionUnit { Id = candidate.Id, Resume = resume };
+                var unit = new CorrectionUnit { Id = candidate.Id, Resume = resume, Speed = candidate.Speed };
                 float2 anchor;
                 int cost;
                 if (Config.DeltaScale == 0)
@@ -702,6 +749,7 @@ namespace WAR2D.Spike
                     anchor = state.LastPredicted + (float2)delta / scale;
                     cost = SpikeMessages.CorrectionDeltaUnitSize(unit.Id, previous, delta.x, delta.y, resume);
                 }
+                if (Config.SendSpeed) cost++;
 
                 if (spent + cost > available)
                 {
@@ -717,6 +765,7 @@ namespace WAR2D.Spike
                 state.AnchorTime = now;
                 state.Index = math.max(0, resume - 1);
                 state.LastPredicted = anchor;
+                if (Config.SendSpeed) state.Speed = candidate.Speed / 64f * Config.Speed;
                 B.States[candidate.Id] = state;
                 RecordError(inView, math.distance(candidate.Actual, anchor), candidate.Weight);
             }
@@ -757,7 +806,7 @@ namespace WAR2D.Spike
                 float2 to = Waypoints[routeFirst + target];
                 float2 segment = to - state.Anchor;
                 float length = math.length(segment);
-                float remaining = math.max(0f, Config.Speed * (now - state.AnchorTime));
+                float remaining = math.max(0f, state.Speed * (now - state.AnchorTime));
                 if (length <= 0f || remaining <= length)
                 {
                     leg = new Prediction { First = routeFirst + target, Count = 1, StartTime = state.AnchorTime, Anchored = 1 };
@@ -766,7 +815,7 @@ namespace WAR2D.Spike
 
                 state.Anchored = 0;
                 state.Index = target;
-                state.StartTime = state.AnchorTime + length / Config.Speed;
+                state.StartTime = state.AnchorTime + length / state.Speed;
             }
 
             int index = math.clamp(state.Index, 0, routeCount - 1);
@@ -777,7 +826,7 @@ namespace WAR2D.Spike
                 StartTime = state.StartTime,
                 Anchored = 0,
             };
-            PathFollower.Evaluate(Waypoints, routeFirst + index, routeCount - index, Config.Speed,
+            PathFollower.Evaluate(Waypoints, routeFirst + index, routeCount - index, state.Speed,
                 state.StartTime, now, out float2 position, out float _);
             return position;
         }
@@ -802,6 +851,35 @@ namespace WAR2D.Spike
         private int First(int id) => (uint)id < (uint)RouteStart.Length ? RouteStart[id] : -1;
         private int Count(int id) => (uint)id < (uint)RouteCount.Length ? RouteCount[id] : 0;
         private int Generation(int id) => (uint)id < (uint)RouteGeneration.Length ? RouteGeneration[id] : 0;
+
+        /// <summary>
+        /// The waypoint to resume at: the end of the route segment nearest <paramref name="actual"/>,
+        /// searched a few legs either side of the prediction's own leg.
+        /// </summary>
+        private int ProjectedResume(int first, int count, int index, float2 actual)
+        {
+            if (count <= 1) return 0;
+            int from = math.max(0, index - 2), to = math.min(count - 2, index + 4);
+            int best = math.clamp(index, 0, count - 2);
+            float bestDistance = float.MaxValue;
+            for (int i = from; i <= to; i++)
+            {
+                float2 a = Waypoints[first + i], b = Waypoints[first + i + 1];
+                float2 ab = b - a;
+                float t = math.saturate(math.dot(actual - a, ab) / math.max(1e-6f, math.lengthsq(ab)));
+                float d = math.distancesq(actual, a + ab * t);
+                if (d < bestDistance)
+                {
+                    bestDistance = d;
+                    best = i;
+                }
+            }
+            return best + 1;
+        }
+
+        /// <summary>A speed in tiles a second as the wire's 1/64-of-full-speed byte.</summary>
+        private byte SpeedByte(float speed) =>
+            (byte)math.clamp((int)math.round(speed / Config.Speed * 64f), 0, 255);
 
         private byte HealthByte(float value) =>
             (byte)math.round(math.saturate(value / Config.MaxHealth) * 100f);
@@ -995,6 +1073,7 @@ namespace WAR2D.Spike
                     int cost = Config.DeltaScale == 0
                         ? SpikeMessages.CorrectionUnitSize(unit.Id, previous, unit.Resume)
                         : SpikeMessages.CorrectionDeltaUnitSize(unit.Id, previous, unit.DX, unit.DY, unit.Resume);
+                    if (Config.SendSpeed) cost++;
                     if (index > start && size + cost > SpikeWire.CorrectionMessageLimit) break;
                     size += cost;
                     previous = unit.Id;
@@ -1006,6 +1085,7 @@ namespace WAR2D.Spike
                 {
                     Tick = Tick,
                     DeltaScale = Config.DeltaScale,
+                    HasSpeed = Config.SendSpeed,
                     Units = B.Corrections.AsArray().GetSubArray(start, count),
                 });
                 Add(SpikeMessageType.Correction, sink.Position - before, count, reliable: false);

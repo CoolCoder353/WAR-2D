@@ -246,6 +246,10 @@ namespace WAR2D.Spike
                 allowed <= 0 ? 0 : match.Encoder.Count(0, SpikeMessageType.Correction) / (double)allowed / ticks));
             WriteError(a, "bw.error.all", match.Encoder.AllError);
             WriteError(a, "bw.error.view", match.Encoder.ViewError);
+            WriteError(a, "bw.error.raw", match.Encoder.RawViewError);
+            WriteError(a, "bw.error.rawanchored", match.Encoder.RawAnchoredError);
+            ErrorHistogram raw = match.Encoder.RawViewError, anchored = match.Encoder.RawAnchoredError;
+            SpikeResults.Write(a, "bw.checks.anchored", "share", Single(raw.Total == 0 ? 0 : anchored.Total / (double)raw.Total));
             SpikeResults.Write(a, "bw.route.live", "waypoints", Single(match.Routes.LiveWaypoints));
             SpikeResults.Write(a, "bw.route.arena", "MB", Single(match.Routes.ArenaBytes / (1024.0 * 1024.0)));
 

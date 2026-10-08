@@ -157,6 +157,8 @@ namespace WAR2D.Spike
             if (a.ViewTiles > 0) config.ViewHalfExtents = new float2(a.ViewTiles, a.ViewTiles * 9f / 16f) * 0.5f;
             if (a.OffThreshold > 0f) config.OffscreenThreshold = a.OffThreshold;
             if (a.OffInterval > 0) config.OffscreenInterval = a.OffInterval;
+            config.SendSpeed = a.SendSpeed;
+            config.ProjectResume = a.ProjectResume;
             return config;
         }
 

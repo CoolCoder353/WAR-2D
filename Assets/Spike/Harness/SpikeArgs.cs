@@ -60,6 +60,10 @@ namespace WAR2D.Spike
         public float OffThreshold;
         /// <summary>Bandwidth: ticks between checks of an off-screen unit (0 keeps 20).</summary>
         public int OffInterval;
+        /// <summary>Bandwidth: corrections carry the unit's measured speed (one byte).</summary>
+        public bool SendSpeed;
+        /// <summary>Bandwidth: corrections resume at the waypoint after the nearest route segment.</summary>
+        public bool ProjectResume;
 
         /// <summary>Defaults from the reference scenario table in the v0.3 plan.</summary>
         public static SpikeArgs Defaults => new SpikeArgs
@@ -115,6 +119,8 @@ namespace WAR2D.Spike
                     case "-view": a.ViewTiles = Int(next); break;
                     case "-offt": a.OffThreshold = Float(next); break;
                     case "-offi": a.OffInterval = Int(next); break;
+                    case "-cspeed": a.SendSpeed = true; break;
+                    case "-cproj": a.ProjectResume = true; break;
                 }
             }
             return a;
