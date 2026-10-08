@@ -10,7 +10,7 @@ This is the overarching development plan for WAR-2D. It explains **what** each u
 |---|---|---|---|
 | v0.2 | Solid Ground | **Done.** Merged into `main` on 2026-10-05 ([PR #4](https://github.com/CoolCoder353/WAR-2D/pull/4)). The manual 2-player Linux match passed (confirmed by the owner). Windows build profile deferred by the owner | [2026-10-05-v0.2-solid-ground.md](superpowers/plans/2026-10-05-v0.2-solid-ground.md) |
 | v0.3 | Scale Spike | **Done** (2026-10-08). Every row of spec §4.6 has a measurement and a decision; the owner raised the bandwidth budget and chose the async tick with async flow-field rebuilds. See [the results](spike/v0.3-results.md) | [2026-10-05-v0.3-scale-spike.md](superpowers/plans/2026-10-05-v0.3-scale-spike.md) |
-| v0.4 | Legion | Not started | Written after v0.3 results |
+| v0.4 | Legion | **Planned** (2026-10-08). Owner decisions: unit replication moves into v0.4, maps come from a seeded generator and are drawn as a baked texture | [2026-10-08-v0.4-legion.md](superpowers/plans/2026-10-08-v0.4-legion.md) |
 | v0.5 | Fog & Wire | Not started | — |
 | v0.6 | Command | Not started | — |
 | v0.7 | Siege | Not started | — |
@@ -157,6 +157,7 @@ Each update below lists its goal, its scope, the key decisions already made, wha
 - **Stable network IDs** made of an index plus a reuse counter.
 - **Instanced rendering.** Units are drawn with GPU instancing from a sprite atlas: one draw call per atlas, not one GameObject per unit.
 - **Control.** **Unlimited box select** and **squads** stored on the server, bound to keys 1–0.
+- **Unit replication** (moved here from v0.5 by the owner, 2026-10-08). The v0.3 encoder sends routes plus speed-carrying delta corrections, with fine corrections inside the camera view. Interest stays the camera box until v0.5 adds fog. Buildings keep their per-player lists.
 
 - **Async tick** (decided in v0.3): jobs complete at the next tick boundary, and flow-field rebuilds, fog and interest sets run as jobs off the main thread.
 
@@ -173,7 +174,7 @@ Each update below lists its goal, its scope, the key decisions already made, wha
 **Why now:** v0.4 makes 80,000 units possible on one machine. v0.5 makes it possible across the network without sending anything a player shouldn't know.
 
 **Scope**
-- **Replication (the "hybrid" model).** When a unit gets an order, the server sends its **waypoints, start time and speed once**. The client animates the unit itself. Corrections are only sent when a unit is pushed off course, blocked or fighting. Health changes, spawns, deaths and explosions are compact events. This replaces today's per-player visible lists.
+- **Replication (the "hybrid" model).** Unit movement replication arrives in v0.4. v0.5 replaces its camera-box interest with team fog, moves buildings onto the same encoder, and tunes the transport.
 - **What each client receives:** all of its own team's units and structures, plus enemies standing on tiles its team can currently see. **Never:** enemy bombs, enemy resources, or enemy fog data.
 - **Fog of war (line of sight).**
   - Each team has a visibility grid and an explored-memory grid.
