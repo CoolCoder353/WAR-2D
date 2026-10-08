@@ -24,6 +24,8 @@ Also planned: a full UI/UX overhaul, upgraded pixel art and audio, and Steam int
 | Unit target | 10,000 units **per player**. Up to 8 players means 80,000 units per match. |
 | Players / modes | Up to 8 players. FFA **and** team modes (2–4 teams). |
 | Network model | **Server-authoritative hybrid**: the server sends paths plus corrections, not per-tick state. Lockstep was rejected because it leaks hidden information and requires fixed-point determinism. |
+| Bandwidth budget (v0.3) | Raised to **256 KB/s average, 768 KB/s peak** per client, keeping 10,000 units per player. Fine corrections only inside the client's camera view; speed-carrying, delta-coded corrections. Dedicated servers recommended for full 8-player matches. |
+| Server tick (v0.3) | **Async** 20 Hz tick: jobs complete at the next tick boundary. Flow-field rebuilds, fog and interest sets run as jobs off the main thread. Hierarchical flow fields (32×32 sectors, 2×2-tile cells, ≤ 2 rebuilds a tick). Map size 1024². |
 | Fog of war | Real fog of war, **line of sight** (walls block vision), explored terrain remembered, per team. |
 | Hosting | Player-hosted **and** dedicated servers. |
 | Online services | **Steam** (Steamworks lobbies, relay, auth). Transport: FizzySteamworks for Mirror. |
@@ -91,10 +93,10 @@ Each update ships a playable, tested build, except v0.3, which is an internal pr
 
 | Metric | Target |
 |---|---|
-| Server simulation | 20 ticks/s, **≤ 25 ms per tick** at 80,000 units |
+| Server simulation | 20 ticks/s, **≤ 25 ms per tick** at 80,000 units, measured as the host main thread's time with the async tick (v0.3) |
 | Client frame rate | **≥ 60 fps** with 10,000 own units on screen |
-| Bandwidth per client | **≤ 128 KB/s average**, ≤ 256 KB/s peak |
-| Host upload (7 remote clients) | about 7 Mbps average |
+| Bandwidth per client | **≤ 256 KB/s average**, ≤ 768 KB/s peak (raised from 128 / 256 after v0.3) |
+| Host upload (7 remote clients) | about 11–16 Mbps average (v0.3). Dedicated servers recommended for full 8-player matches |
 
 ### 4.2 Simulation (server, ECS only)
 
@@ -136,12 +138,12 @@ Measured on the reference machine (Ryzen 5 5600GT, RX 6600, Linux) in a non-deve
 | Technique | Configuration | Measured (p95 unless stated) | Budget | Decision | Fallback applied |
 |---|---|---|---|---|---|
 | 80k-unit simulation tick | Battle layout (4 fronts), 80k units, cell 5 | Default 21.9 / 16.4 ms (512² / 1024²). Fallback 2: 14.3 / **9.9 ms**. Fallback 3: **11.5** / 9.1 ms. Async: 0.2–0.7 ms of main thread | ≤ 14 ms | **Go with fallback** | 2 at 1024² (target search every 8 ticks, separation every 2). 3 at 512² |
-| Flow field build + invalidation | 16 orders/s, 4 terrain changes/s, 64 fields + large twins | Full fields: 6.7 / 26.6 ms, 350 ms, 96 / 384 MB. Hierarchical 32×32 sectors, 2×2-tile cells, ≤ 2 rebuilds/tick: **2.7 / 7.0 ms**, 50 ms, < 1 MB. ≤ 1 rebuild/tick: 0.7 / 1.7 ms, but 1,950 ms latency | ≤ 2 ms/tick, ≤ 50 ms latency, ≤ 64 MB | **Owner decision** | 1–3. Recommended: hierarchical, rebuilds scheduled async |
+| Flow field build + invalidation | 16 orders/s, 4 terrain changes/s, 64 fields + large twins | Full fields: 6.7 / 26.6 ms, 350 ms, 96 / 384 MB. Hierarchical 32×32 sectors, 2×2-tile cells, ≤ 2 rebuilds/tick: **2.7 / 7.0 ms**, 50 ms, < 1 MB. ≤ 1 rebuild/tick: 0.7 / 1.7 ms, but 1,950 ms latency | ≤ 2 ms/tick, ≤ 50 ms latency, ≤ 64 MB | **Go with async rebuilds** (owner, 2026-10-08) | 1–3. Hierarchical, rebuilds scheduled as jobs completing at the next tick boundary |
 | Spatial-hash combat | Counting sort, cell 5, target search every 4 ticks | 2.35 ms per slice. Clump: 10.4 ms | inside the simulation row | **Go** | Cell size 5 |
 | Line-of-sight fog at 5 Hz | Shadowcasting, vision 8, buildings 10 | FFA 2.7 / 3.6 ms, 4v4 3.5 / 3.7 ms. Largest unit vision in budget: 12 (8 for 4v4 on 1024²). Building vision 20 fits | ≤ 5 ms per slice | **Go** | None |
 | Instanced rendering, 10k own units on screen | `RenderPrimitives`, structured buffer, 1080p | ~2,750 fps (frame p99 0.65 ms). GameObject baseline: 139 fps | ≥ 60 fps | **Go** | None |
-| Bandwidth per client, 8 clients (FFA and 4v4) | View tier, 5 Hz checks, 1/8-tile delta corrections with speed and projected resume | Plan's model: 653 / 1,863 KB/s (FFA / 4v4). Chosen: **193–202 KB/s** FFA (peak 305–387), **263–277 KB/s** 4v4 (peak 513–706). KCP carries it (latency p95 ≤ 1.3 ms) | ≤ 128 KB/s average, ≤ 256 KB/s peak | **Owner decision** (no-go as specified) | 1, 2 and a view tier. 3 and 4 can't close the gap |
-| Combined host (server + client, one machine) | Async tick, chosen bandwidth configuration, sim fallback 2 | Main thread 11 ms p50, **25.1–26.7 ms p95**. 1,200–2,300 fps, frame p99 14–18 ms. Sync: 42.7 ms | tick ≤ 25 ms p95 and ≥ 60 fps | **Owner decision** (misses by ~1.5 ms) | 1 (async). Recommended: move flow rebuilds, fog and interest build off the main thread |
+| Bandwidth per client, 8 clients (FFA and 4v4) | View tier, 5 Hz checks, 1/8-tile delta corrections with speed and projected resume | Plan's model: 653 / 1,863 KB/s (FFA / 4v4). Chosen: **193–202 KB/s** FFA (peak 305–387), **263–277 KB/s** 4v4 (peak 513–706). KCP carries it (latency p95 ≤ 1.3 ms) | ≤ 128 KB/s average, ≤ 256 KB/s peak (raised to 256 / 768) | **Go under the raised budget** (owner, 2026-10-08) | 1, 2 and a view tier. 3 and 4 can't close the gap |
+| Combined host (server + client, one machine) | Async tick, chosen bandwidth configuration, sim fallback 2 | Main thread 11 ms p50, **25.1–26.7 ms p95**. 1,200–2,300 fps, frame p99 14–18 ms. Sync: 42.7 ms | tick ≤ 25 ms p95 and ≥ 60 fps | **Go with async; fixed in v0.4** (owner, 2026-10-08) | 1 (async). v0.4 moves flow rebuilds, fog and the interest build off the main thread, and gates on 25 ms p95 |
 
 ## 5. Gameplay rules (all values configurable in `GameConfig.xml`)
 

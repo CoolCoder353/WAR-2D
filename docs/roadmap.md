@@ -9,7 +9,7 @@ This is the overarching development plan for WAR-2D. It explains **what** each u
 | Update | Name | Status | Detailed plan |
 |---|---|---|---|
 | v0.2 | Solid Ground | **Done.** Merged into `main` on 2026-10-05 ([PR #4](https://github.com/CoolCoder353/WAR-2D/pull/4)). The manual 2-player Linux match passed (confirmed by the owner). Windows build profile deferred by the owner | [2026-10-05-v0.2-solid-ground.md](superpowers/plans/2026-10-05-v0.2-solid-ground.md) |
-| v0.3 | Scale Spike | **Measured, awaiting owner decisions.** Every row of spec §4.6 has a measurement: rendering, fog and the spatial hash are go, the simulation is go with fallback 2, and flow fields, bandwidth and the combined host need owner decisions. See [the results](spike/v0.3-results.md) | [2026-10-05-v0.3-scale-spike.md](superpowers/plans/2026-10-05-v0.3-scale-spike.md) |
+| v0.3 | Scale Spike | **Done** (2026-10-08). Every row of spec §4.6 has a measurement and a decision; the owner raised the bandwidth budget and chose the async tick with async flow-field rebuilds. See [the results](spike/v0.3-results.md) | [2026-10-05-v0.3-scale-spike.md](superpowers/plans/2026-10-05-v0.3-scale-spike.md) |
 | v0.4 | Legion | Not started | Written after v0.3 results |
 | v0.5 | Fog & Wire | Not started | — |
 | v0.6 | Command | Not started | — |
@@ -158,7 +158,9 @@ Each update below lists its goal, its scope, the key decisions already made, wha
 - **Instanced rendering.** Units are drawn with GPU instancing from a sprite atlas: one draw call per atlas, not one GameObject per unit.
 - **Control.** **Unlimited box select** and **squads** stored on the server, bound to keys 1–0.
 
-**Exit criteria:** 10,000 units per player meet the performance budget (§4) on a local host.
+- **Async tick** (decided in v0.3): jobs complete at the next tick boundary, and flow-field rebuilds, fog and interest sets run as jobs off the main thread.
+
+**Exit criteria:** 10,000 units per player meet the performance budget (§4) on a local host, including a host main-thread tick of ≤ 25 ms p95.
 
 **Open decisions (made at the start of v0.4, informed by v0.3):** whether buildings and walls are instanced or pooled GameObjects, the time-slicing interval for target search, and the separation-steering strength.
 
@@ -316,8 +318,8 @@ These are measured from v0.4 on, on the **reference machine**: the owner's dev P
 |---|---|
 | Server simulation | 20 ticks/s, **≤ 25 ms per tick** at 80,000 units |
 | Client frame rate | **≥ 60 fps** with 10,000 own units on screen |
-| Bandwidth per client | **≤ 128 KB/s average**, ≤ 256 KB/s peak |
-| Host upload with 7 remote players | about 7 Mbps average |
+| Bandwidth per client | **≤ 256 KB/s average**, ≤ 768 KB/s peak (raised after v0.3) |
+| Host upload with 7 remote players | about 11–16 Mbps average (v0.3); dedicated servers recommended for full 8-player matches |
 
 ---
 
@@ -360,7 +362,7 @@ These rules apply to every update. They're the "secure and bug-free as possible"
 | Risk | Mitigation |
 |---|---|
 | Line-of-sight fog too slow at 80,000 units | Measured in v0.3. Fallbacks: lower update rate, coarser vision grid, radius-only vision for units with LOS kept for structures |
-| Host upload too high for home connections with 8 players | Measured in v0.3. Fallbacks: fewer corrections, coarser quantisation, recommend dedicated servers for 8-player matches |
+| Host upload too high for home connections with 8 players | v0.3 measured ~11–16 Mbps for 7 remote clients. The budget was raised, and dedicated servers are recommended for full 8-player matches |
 | Instanced sprite rendering is complex in URP 2D | Prototyped in v0.3 before committing |
 | Mirror message size or throughput limits at this scale | Measured in v0.3. Large messages split into chunks. Transport settings tuned in v0.5 and v0.9 |
 | Code-generated art hits a quality ceiling | v0.8 starts with a method prototype before committing |
@@ -384,6 +386,8 @@ The full table is in the spec (§2). The decisions that most shape the roadmap:
 | Unit target | 10,000 per player, up to 8 players (80,000 units) |
 | Modes | FFA and teams (2–4 teams) |
 | Network model | Server-authoritative hybrid: paths plus corrections |
+| Bandwidth (v0.3) | 256 KB/s average, 768 KB/s peak per client; camera view tier; dedicated servers recommended for full 8-player matches |
+| Server tick (v0.3) | Async 20 Hz tick; flow rebuilds, fog and interest sets as jobs; hierarchical flow fields; 1024² map |
 | Fog of war | Line of sight, per team, explored terrain remembered |
 | Hosting and online | Player-hosted and dedicated servers, on Steam |
 | Team economy | Separate resources, with gifting to allies |
