@@ -9,7 +9,7 @@ This is the overarching development plan for WAR-2D. It explains **what** each u
 | Update | Name | Status | Detailed plan |
 |---|---|---|---|
 | v0.2 | Solid Ground | **Done.** Merged into `main` on 2026-10-05 ([PR #4](https://github.com/CoolCoder353/WAR-2D/pull/4)). The manual 2-player Linux match passed (confirmed by the owner). Windows build profile deferred by the owner | [2026-10-05-v0.2-solid-ground.md](superpowers/plans/2026-10-05-v0.2-solid-ground.md) |
-| v0.3 | Scale Spike | **Planned.** Scenario decisions agreed 2026-10-05; ready to implement locally | [2026-10-05-v0.3-scale-spike.md](superpowers/plans/2026-10-05-v0.3-scale-spike.md) |
+| v0.3 | Scale Spike | **Measured, awaiting owner decisions.** Every row of spec §4.6 has a measurement: rendering, fog and the spatial hash are go, the simulation is go with fallback 2, and flow fields, bandwidth and the combined host need owner decisions. See [the results](spike/v0.3-results.md) | [2026-10-05-v0.3-scale-spike.md](superpowers/plans/2026-10-05-v0.3-scale-spike.md) |
 | v0.4 | Legion | Not started | Written after v0.3 results |
 | v0.5 | Fog & Wire | Not started | — |
 | v0.6 | Command | Not started | — |
@@ -137,6 +137,8 @@ Each update below lists its goal, its scope, the key decisions already made, wha
 
 **Detailed plan:** [v0.3 implementation plan](superpowers/plans/2026-10-05-v0.3-scale-spike.md), 12 tasks (0–11). It also generates large test maps, because today's only map (`Map_2`, 62 × 51 tiles) can't hold 80,000 units.
 
+**Results:** [docs/spike/v0.3-results.md](spike/v0.3-results.md). The results table is spec §4.6.
+
 ---
 
 ### v0.4: Legion
@@ -148,6 +150,7 @@ Each update below lists its goal, its scope, the key decisions already made, wha
 **Scope** (adjusted by the v0.3 results)
 - **Fixed-tick simulation.** Gameplay runs at 20 ticks per second as parallel Burst jobs. Client commands are queued and applied at tick boundaries, never inside network callbacks.
 - **The tile map moves into ECS** as a flat array, so jobs can read it directly.
+- **A large map.** At least 1024 × 1024 tiles, generated or authored: `Map_2` (62 × 51) can't hold 80,000 units, and the v0.3 results point to 1024² as the playable size. Units share tiles with separation steering, replacing one-unit-per-tile `TileOccupancy`.
 - **Flow-field pathfinding.** One shared field per move order, cached, split into 32×32 sectors so terrain changes only rebuild what they touch. Simple separation steering stops units stacking.
 - **Spatial hash.** A bucket grid rebuilt every tick, used for target search, separation, and later bomb triggers and blasts.
 - **Combat.** Target searches are spread across ticks. A **damage table** in `GameConfig.xml` sets a multiplier per attacker type against each kind of target (unit, building, wall).

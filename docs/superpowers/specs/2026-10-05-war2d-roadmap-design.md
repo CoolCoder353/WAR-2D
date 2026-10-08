@@ -131,15 +131,17 @@ Each update ships a playable, tested build, except v0.3, which is an internal pr
 
 ### 4.6 Spike results (filled in by v0.3)
 
-| Technique | Measured | Decision |
-|---|---|---|
-| 80k-unit simulation tick | — | — |
-| Flow field build + invalidation | — | — |
-| Line-of-sight fog at 5 Hz | — | — |
-| Instanced rendering at 10k on screen | — | — |
-| Bandwidth per client (8 clients) | — | — |
+Measured on the reference machine (Ryzen 5 5600GT, RX 6600, Linux) in a non-development Linux player, each configuration 3 times. The method, every table and the raw CSVs are in [docs/spike/v0.3-results.md](../../spike/v0.3-results.md).
 
-(Left empty on purpose. v0.3 fills this in, and v0.4 starts only after it's complete.)
+| Technique | Configuration | Measured (p95 unless stated) | Budget | Decision | Fallback applied |
+|---|---|---|---|---|---|
+| 80k-unit simulation tick | Battle layout (4 fronts), 80k units, cell 5 | Default 21.9 / 16.4 ms (512² / 1024²). Fallback 2: 14.3 / **9.9 ms**. Fallback 3: **11.5** / 9.1 ms. Async: 0.2–0.7 ms of main thread | ≤ 14 ms | **Go with fallback** | 2 at 1024² (target search every 8 ticks, separation every 2). 3 at 512² |
+| Flow field build + invalidation | 16 orders/s, 4 terrain changes/s, 64 fields + large twins | Full fields: 6.7 / 26.6 ms, 350 ms, 96 / 384 MB. Hierarchical 32×32 sectors, 2×2-tile cells, ≤ 2 rebuilds/tick: **2.7 / 7.0 ms**, 50 ms, < 1 MB. ≤ 1 rebuild/tick: 0.7 / 1.7 ms, but 1,950 ms latency | ≤ 2 ms/tick, ≤ 50 ms latency, ≤ 64 MB | **Owner decision** | 1–3. Recommended: hierarchical, rebuilds scheduled async |
+| Spatial-hash combat | Counting sort, cell 5, target search every 4 ticks | 2.35 ms per slice. Clump: 10.4 ms | inside the simulation row | **Go** | Cell size 5 |
+| Line-of-sight fog at 5 Hz | Shadowcasting, vision 8, buildings 10 | FFA 2.7 / 3.6 ms, 4v4 3.5 / 3.7 ms. Largest unit vision in budget: 12 (8 for 4v4 on 1024²). Building vision 20 fits | ≤ 5 ms per slice | **Go** | None |
+| Instanced rendering, 10k own units on screen | `RenderPrimitives`, structured buffer, 1080p | ~2,750 fps (frame p99 0.65 ms). GameObject baseline: 139 fps | ≥ 60 fps | **Go** | None |
+| Bandwidth per client, 8 clients (FFA and 4v4) | View tier, 5 Hz checks, 1/8-tile delta corrections with speed and projected resume | Plan's model: 653 / 1,863 KB/s (FFA / 4v4). Chosen: **193–202 KB/s** FFA (peak 305–387), **263–277 KB/s** 4v4 (peak 513–706). KCP carries it (latency p95 ≤ 1.3 ms) | ≤ 128 KB/s average, ≤ 256 KB/s peak | **Owner decision** (no-go as specified) | 1, 2 and a view tier. 3 and 4 can't close the gap |
+| Combined host (server + client, one machine) | Async tick, chosen bandwidth configuration, sim fallback 2 | Main thread 11 ms p50, **25.1–26.7 ms p95**. 1,200–2,300 fps, frame p99 14–18 ms. Sync: 42.7 ms | tick ≤ 25 ms p95 and ≥ 60 fps | **Owner decision** (misses by ~1.5 ms) | 1 (async). Recommended: move flow rebuilds, fog and interest build off the main thread |
 
 ## 5. Gameplay rules (all values configurable in `GameConfig.xml`)
 
