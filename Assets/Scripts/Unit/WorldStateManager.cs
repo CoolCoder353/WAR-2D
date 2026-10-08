@@ -20,7 +20,7 @@ using WAR2D.Net.Replication;
 /// Handles server-side logic for movement, building placement, and visibility.
 /// </summary>
 [BurstCompile]
-public class WorldStateManager : NetworkBehaviour
+public partial class WorldStateManager : NetworkBehaviour
 {
     /// <summary>
     /// Singleton instance of the WorldStateManager.
@@ -246,6 +246,8 @@ public class WorldStateManager : NetworkBehaviour
     {
         foreach (Entity e in Buildings.Values) Kill(e, ownerId);
         Sim?.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.KillOwner, OwnerId = ownerId });
+        Squads.Forget(ownerId);
+        ForgetOrderTokens(ownerId);
     }
 
     private void Kill(Entity entity, int ownerId)
@@ -417,30 +419,6 @@ public class WorldStateManager : NetworkBehaviour
     public void AddBuilding(Entity entity, int id)
     {
         Buildings.Add(id, entity);
-    }
-
-    /// <summary>
-    /// Orders the sender's units inside the box to the goal. The simulation picks the units from its
-    /// settled state at the next boundary, so only the box and goal are checked here.
-    /// </summary>
-    [Command(requiresAuthority = false)]
-    public void CmdMoveUnits(int2 goal, int2 startcorner, int2 endcorner, NetworkConnectionToClient sender = null)
-    {
-        if (!CommandGate.Allow(sender, nameof(CmdMoveUnits)) || !CommandValidator.IsBoxValid(startcorner, endcorner)) return;
-        if (GameCore.Instance == null || GameCore.Instance.CurrentState != GameState.Playing || Sim == null) return;
-        int ownerId = BuildingData.UIntToInt(sender.identity.netId);
-        ServerPlayer acting = GameCore.Instance.GetServerPlayerById(ownerId);
-        if (acting == null || acting.state != PlayerState.Playing) return;
-
-        (int2 mapMin, int2 mapMax) = MapBounds;
-        Sim.Commands.Enqueue(new SimCommand
-        {
-            Kind = SimCommandKind.MoveUnits,
-            OwnerId = ownerId,
-            Tile = math.clamp(goal, mapMin, mapMax),
-            BoxMin = math.clamp(startcorner, mapMin, mapMax),
-            BoxMax = math.clamp(endcorner, mapMin, mapMax),
-        });
     }
 
     private const int MaxSpawnSearchTiles = 4096;

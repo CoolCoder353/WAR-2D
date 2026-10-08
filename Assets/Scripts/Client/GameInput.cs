@@ -23,6 +23,13 @@ public static class GameInput
     public static InputAction Command => Map["Command"];
     public static InputAction Rotate => Map["Rotate"];
     public static InputAction Point => Map["Point"];
+    /// <summary>Held with a squad key to assign the selection to that squad (Ctrl).</summary>
+    public static InputAction AssignModifier => Map["AssignModifier"];
+    /// <summary>Held while box-selecting to add to the selection (Shift).</summary>
+    public static InputAction AppendModifier => Map["AppendModifier"];
+
+    /// <summary>Squad keys: index 0 is key 1, index 9 is key 0.</summary>
+    public static InputAction Squad(int index) => Map[$"Squad{(index + 1) % 10}"];
 
     /// <summary>True when the pointer is over a UI element (clicks there must not reach the world).</summary>
     public static bool PointerOverUI => EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
@@ -56,6 +63,9 @@ public static class GameInput
         map.AddAction("Command", InputActionType.Button, "<Mouse>/rightButton");
         map.AddAction("Rotate", InputActionType.Button, "<Keyboard>/r");
         map.AddAction("Point", InputActionType.Value, "<Pointer>/position");
+        map.AddAction("AssignModifier", InputActionType.Button, "<Keyboard>/ctrl");
+        map.AddAction("AppendModifier", InputActionType.Button, "<Keyboard>/shift");
+        for (int key = 0; key <= 9; key++) map.AddAction($"Squad{key}", InputActionType.Button, $"<Keyboard>/{key}");
 
         map.Enable();
     }

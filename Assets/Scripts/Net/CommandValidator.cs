@@ -7,6 +7,13 @@ public static class CommandValidator
     public const int MaxBoxSpan = 256;
     public const int MaxNicknameLength = 24;
 
+    /// <summary>Squad numbers are 0..9 (keys 1..0).</summary>
+    public static bool IsSquadIndexValid(int squad) => squad >= 0 && squad < WAR2D.Sim.Squads.Count;
+
+    /// <summary>True when the tile is inside the inclusive bounds.</summary>
+    public static bool IsInside(int2 tile, int2 min, int2 max) =>
+        tile.x >= min.x && tile.y >= min.y && tile.x <= max.x && tile.y <= max.y;
+
     public static bool IsBoxValid(int2 a, int2 b)
     {
         long dx = (long)a.x - b.x;

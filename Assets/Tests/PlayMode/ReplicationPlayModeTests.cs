@@ -84,6 +84,54 @@ public class ReplicationPlayModeTests
         Assert.That(math.distance(ServerPosition(id), (float2)tile + 0.5f), Is.GreaterThan(1f), "the unit should have moved");
     }
 
+    [UnityTest, Timeout(120000)]
+    public IEnumerator BoxSelectAndSquadOrderMoveUnits()
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        int2 hq = default;
+        yield return PlayModeMatch.PlaceHQ(a => hq = a);
+        Assert.That(WorldStateManager.Instance.TryFindSpawnTile(hq, out int2 tile), Is.True);
+        var ids = new System.Collections.Generic.List<int>();
+        for (int i = 0; i < 30; i++) Spawn(PlayModeMatch.LocalOwner, (float2)tile + 0.5f, v => ids.Add(v));
+        yield return PlayModeMatch.WaitUntil(() => ids.Count == 30 && ClientWorld.Instance != null && ClientWorld.Instance.KnownCount >= 30, 10f);
+        Assert.That(ids, Has.None.LessThan(0));
+
+        // A goal ~10 tiles away whose 7x7 neighbourhood is open ground.
+        var grid = WorldStateManager.Instance.Map.Grid;
+        int2 goal = tile;
+        float best = float.MaxValue;
+        for (int y = 3; y < grid.Height - 3; y++)
+        for (int x = 3; x < grid.Width - 3; x++)
+        {
+            float score = math.abs(math.distance(new float2(x, y), tile) - 10f);
+            if (score >= best) continue;
+            bool open = true;
+            for (int dy = -3; dy <= 3 && open; dy++)
+            for (int dx = -3; dx <= 3 && open; dx++) open = grid.IsWalkable(new int2(x + dx, y + dy));
+            if (open) { best = score; goal = new int2(x, y); }
+        }
+        Assert.That(best, Is.LessThan(6f), "Map_2 should have an open area near the HQ");
+
+        UnitCommander.Instance.Selection.SelectIds(ids);
+        UnitCommander.Instance.Selection.AssignSquad(3);
+        yield return PlayModeMatch.WaitUntil(() => WorldStateManager.Instance.Squads.Members(PlayModeMatch.LocalOwner, 3).Count == 30, 5f);
+        UnitCommander.Instance.Selection.OrderMove(goal); // the selection is exactly squad 3: a squad order
+
+        var goalCentre = (float2)goal + 0.5f;
+        float end = UnityEngine.Time.realtimeSinceStartup + 15f;
+        int nearCount = 0;
+        while (UnityEngine.Time.realtimeSinceStartup < end)
+        {
+            nearCount = 0;
+            foreach (int id in ids) if (math.distance(ServerPosition(id), goalCentre) <= 3f) nearCount++;
+            if (nearCount >= 25) yield break;
+            yield return null;
+        }
+        var sample = new System.Text.StringBuilder();
+        for (int i = 0; i < 30; i += 5) sample.Append(ServerPosition(ids[i])).Append(' ');
+        Assert.Fail($"only {nearCount}/30 reached {goalCentre} from {tile}; sample {sample}; orders live {WAR2D.Sim.SimContext.Current.Orders.LiveCount}");
+    }
+
     private static float2 ServerPosition(int id)
     {
         using var q = PlayModeMatch.Em.CreateEntityQuery(typeof(Unit));

@@ -143,6 +143,9 @@ namespace WAR2D.Client
             FireTracers();
         }
 
+        /// <summary>True while the client knows the unit with this id.</summary>
+        public bool IsKnownId(int id) => id > 0 && store.IdOf(NetIdAllocator.IndexOf(id)) == id;
+
         /// <summary>A known unit by id, predicted at the current clock.</summary>
         public bool TryGet(int id, out ClientUnitView view)
         {

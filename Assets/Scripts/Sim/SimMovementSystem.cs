@@ -52,6 +52,7 @@ namespace WAR2D.Sim
                 OrderGoal = data.OrderGoal,
                 OrderLive = data.OrderLive,
                 OrderReady = data.OrderReady,
+                OrderFollowers = data.OrderFollowers,
                 RouteMisses = data.RouteMisses.AsParallelWriter(),
                 SpeedByType = data.SpeedByType,
                 Width = data.Width,
@@ -122,6 +123,8 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<float2> OrderGoal;
         [ReadOnly] public NativeArray<byte> OrderLive;
         [ReadOnly] public NativeArray<byte> OrderReady;
+        /// <summary>Last tick's follower count per order: a bigger group stops farther from the goal.</summary>
+        [ReadOnly] public NativeArray<int> OrderFollowers;
         public NativeQueue<int2>.ParallelWriter RouteMisses;
         [ReadOnly] public NativeArray<float> SpeedByType;
         public int Width, Height;
@@ -149,9 +152,15 @@ namespace WAR2D.Sim
             if (Target[i] < 0 && (uint)slot < (uint)OrderLive.Length && OrderLive[slot] != 0)
             {
                 byte direction = Direction(slot, position);
+                float2 toGoal = OrderGoal[slot] - position;
+                float distance = math.length(toGoal);
+                // A group packs around the goal: the stop radius grows with the square root of its size.
+                float arriveRadius = 0.5f + 0.4f * math.sqrt(math.max(1, OrderFollowers[slot]));
                 if (direction == FlowDirections.AtGoal)
                 {
-                    Arrived[i] = 1;
+                    // On a goal cell: close in on the goal itself, then stop.
+                    if (distance <= arriveRadius) Arrived[i] = 1;
+                    else velocity = speed * toGoal / distance;
                 }
                 else if (FlowDirections.IsStep(direction))
                 {
@@ -165,9 +174,7 @@ namespace WAR2D.Sim
                 {
                     // Off the route (or the route is not built yet): head straight for the goal, and
                     // once the route exists, report the sector so the route grows to cover it.
-                    float2 toGoal = OrderGoal[slot] - position;
-                    float distance = math.length(toGoal);
-                    if (distance < 0.75f) Arrived[i] = 1;
+                    if (distance <= arriveRadius) Arrived[i] = 1;
                     else velocity = speed * toGoal / distance;
                     if (OrderReady[slot] != 0 && (i + Tick) % Slice == 0)
                         RouteMisses.Enqueue(new int2(slot, SectorOf((int2)math.floor(position))));

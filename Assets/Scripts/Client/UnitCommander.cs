@@ -23,6 +23,10 @@ public class UnitCommander : NetworkBehaviour
 
     private ClientPlayer localPlayer;
 
+    /// <summary>The local player's selection and squads.</summary>
+    public WAR2D.Client.Selection Selection { get; } = new WAR2D.Client.Selection();
+    private Vector3 dragStart;
+
 
     public Dictionary<int, GameObject> buildingGameObjects = new Dictionary<int, GameObject>();
 
@@ -60,7 +64,8 @@ public class UnitCommander : NetworkBehaviour
     [ClientCallback]
     private void LateUpdate()
     {
-        WAR2D.Client.ClientWorld.Instance?.Draw(null);
+        Selection.Prune();
+        WAR2D.Client.ClientWorld.Instance?.Draw(Selection.Selected);
     }
 
     public static Vector3 GetMouseWorldPosition()
@@ -85,6 +90,7 @@ public class UnitCommander : NetworkBehaviour
             selecting = true;
             selectionBox.SetActive(true);
             Vector3 worldPosition = GetMouseWorldPosition();
+            dragStart = worldPosition;
             startcorner = new int2((int)worldPosition.x, (int)worldPosition.y);
             endcorner = startcorner;
             selectionBox.transform.position = new Vector3(startcorner.x, startcorner.y, 0);
@@ -118,6 +124,10 @@ public class UnitCommander : NetworkBehaviour
             Vector3 worldPosition = GetMouseWorldPosition();
             endcorner = new int2((int)worldPosition.x, (int)worldPosition.y);
             selecting = false;
+            // A click (no drag) still selects what is under the pointer: pad the box to half a tile.
+            float2 a = new float2(dragStart.x, dragStart.y), b = new float2(worldPosition.x, worldPosition.y);
+            float2 lo = math.min(a, b) - 0.5f, hi = math.max(a, b) + 0.5f;
+            Selection.SelectBox(lo, hi, BuildingData.UIntToInt(localPlayer.netId), GameInput.AppendModifier.IsPressed());
 
         }
 
@@ -126,7 +136,14 @@ public class UnitCommander : NetworkBehaviour
             Vector3 worldPosition = GetMouseWorldPosition();
             int2 goal = new int2((int)worldPosition.x, (int)worldPosition.y);
             // Debug.Log($"Moving units in box {startcorner}, {endcorner} units to {goal.x},{goal.y} -> client side");
-            WorldStateManager.Instance.CmdMoveUnits(goal, startcorner, endcorner);
+            Selection.OrderMove(goal);
+        }
+
+        for (int squad = 0; squad < WAR2D.Sim.Squads.Count; squad++)
+        {
+            if (!GameInput.Squad(squad).WasPressedThisFrame()) continue;
+            if (GameInput.AssignModifier.IsPressed()) Selection.AssignSquad(squad);
+            else Selection.SelectSquad(squad);
         }
 
         //Get the corners of the camera (orthographic bounds)

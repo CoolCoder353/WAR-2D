@@ -52,4 +52,18 @@ public class FuzzTests
             Assert.DoesNotThrow(() => CommandValidator.IsBoxValid(a, b));
         }
     }
+
+    [Test]
+    public void OrderIdDecode_NeverThrows()
+    {
+        var rng = new System.Random(11);
+        var into = new List<int>();
+        for (int i = 0; i < Iterations; i++)
+        {
+            var bytes = new byte[rng.Next(0, 64)];
+            rng.NextBytes(bytes);
+            into.Clear();
+            Assert.DoesNotThrow(() => OrderIdCodec.TryDecode(bytes, OrderIdCodec.MaxIdsPerChunk, into));
+        }
+    }
 }

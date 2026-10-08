@@ -542,7 +542,7 @@ namespace WAR2D.Pathing
             NativeArray<int> spread = FlowGoals.Around(
                 new int2(goal.x / graph.CellSize, goal.y / graph.CellSize), grid,
                 graph.CellWidth, graph.CellHeight, Allocator.Persistent,
-                spread: startCells.IsCreated ? (startCells.Length + 7) / 8 : FlowGoals.Spread); // about 8 units per goal cell
+                spread: startCells.IsCreated ? (startCells.Length + 3) / 4 : FlowGoals.Spread); // about 4 units per goal cell (a 2x2-tile cell)
             for (int i = 0; i < spread.Length; i++) spread[i] = graph.TileOfCell(spread[i]);
 
             var order = new Order
