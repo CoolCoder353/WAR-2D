@@ -3,26 +3,45 @@ using NUnit.Framework;
 
 public class NetIdAllocatorTests
 {
-    [Test]
-    public void Allocate_IsUniqueAndPositive()
+    [Test] public void FreshIdsArePositiveAndUnique()
     {
-        var ids = new NetIdAllocator();
+        var a = new NetIdAllocator(1024);
         var seen = new HashSet<int>();
-        for (int i = 0; i < 10000; i++)
-        {
-            int id = ids.Allocate();
-            Assert.That(id, Is.GreaterThan(0));
-            Assert.That(seen.Add(id), Is.True);
-        }
+        for (int i = 0; i < 1024; i++) { int id = a.Allocate(); Assert.Greater(id, 0); Assert.IsTrue(seen.Add(id)); }
     }
 
-    [Test]
-    public void Reset_StartsAgainAtOne()
+    [Test] public void FreedIndexIsReusedWithANewGeneration()
     {
-        var ids = new NetIdAllocator();
-        ids.Allocate();
-        ids.Allocate();
-        ids.Reset();
-        Assert.That(ids.Allocate(), Is.EqualTo(1));
+        var a = new NetIdAllocator(4);
+        int first = a.Allocate();
+        a.Free(first);
+        int again = a.Allocate();
+        Assert.AreEqual(NetIdAllocator.IndexOf(first), NetIdAllocator.IndexOf(again));
+        Assert.AreNotEqual(first, again);
+        Assert.IsFalse(a.IsLive(first));
+        Assert.IsTrue(a.IsLive(again));
+    }
+
+    [Test] public void ExhaustionThrows()
+    {
+        var a = new NetIdAllocator(2);
+        a.Allocate(); a.Allocate();
+        Assert.Throws<System.InvalidOperationException>(() => a.Allocate());
+    }
+
+    [Test] public void DoubleFreeIsIgnored()
+    {
+        var a = new NetIdAllocator(2);
+        int id = a.Allocate(); a.Free(id); a.Free(id);
+        a.Allocate(); a.Allocate(); // both indices usable exactly once more
+        Assert.Throws<System.InvalidOperationException>(() => a.Allocate());
+    }
+
+    [Test] public void GenerationWrapsBackToOne()
+    {
+        var a = new NetIdAllocator(1);
+        int id = a.Allocate();
+        for (int i = 0; i < 2100; i++) { a.Free(id); id = a.Allocate(); Assert.Greater(id, 0); }
+        Assert.That(NetIdAllocator.GenerationOf(id), Is.InRange(1, 2047));
     }
 }

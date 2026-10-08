@@ -59,7 +59,7 @@ public class WorldStateManager : NetworkBehaviour
     public TileOccupancy Occupancy { get; } = new TileOccupancy();
 
     /// <summary>Server-side id source for units and buildings in this match.</summary>
-    public NetIdAllocator Ids { get; } = new NetIdAllocator();
+    public NetIdAllocator Ids { get; private set; }
 
     /// <summary>
     /// Dictionary of all units in the game. Key: Unit ID, Value: Entity.
@@ -95,6 +95,7 @@ public class WorldStateManager : NetworkBehaviour
     {
         entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
 
+        Ids = new NetIdAllocator(ConfigLoader.LoadConfig().Simulation.MaxEntities);
         MapConfig m = ConfigLoader.LoadConfig().Match.Map;
         var timer = System.Diagnostics.Stopwatch.StartNew();
         if (m.Size > 0)
@@ -192,14 +193,16 @@ public class WorldStateManager : NetworkBehaviour
             int id = EntityManager.GetComponentData<ClientUnit>(entity).id;
             Units.Remove(id);
             Occupancy.ReleaseAll(id);
+            Ids?.Free(id);
         }
         else if (EntityManager.HasComponent<BuildingData>(entity))
         {
             int id = EntityManager.GetComponentData<BuildingData>(entity).id;
             Buildings.Remove(id);
+            Ids?.Free(id);
             if (buildingFootprints.Remove(id, out List<int2> footprint))
             {
-                foreach (int2 tile in footprint) Map.SetUsed(tile, false);
+                foreach (int2 tile in footprint) Map?.SetUsed(tile, false);
             }
         }
     }
@@ -248,6 +251,7 @@ public class WorldStateManager : NetworkBehaviour
         }
         Units.Clear();
         Buildings.Clear();
+        Ids?.Reset();
         buildingFootprints.Clear();
         Occupancy.Clear();
     }
