@@ -133,10 +133,3 @@ public struct TilemapStruct
         tiles[position] = tileNode;
     }
 }
-
-public enum TileType
-{
-    Ground,
-    Wall,
-    Gem
-}
