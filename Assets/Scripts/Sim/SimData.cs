@@ -142,8 +142,23 @@ namespace WAR2D.Sim
         public NativeList<int2> AttackEvents;
         /// <summary>Units the lifecycle found dead this tick.</summary>
         public NativeQueue<DeathRecord> Deaths;
+        /// <summary>Position to move a unit to (out of a new building's footprint), applied by the next gather.</summary>
+        public NativeParallelHashMap<int, float2> PendingMoves;
         /// <summary>Order slot to assign per unit id, applied by the next gather.</summary>
         public NativeParallelHashMap<int, int> PendingOrders;
+
+        // ---- orders (owned by OrderBook; see SimContext) ----
+        /// <summary>Flow direction table: (handle, sector) → block, and the blocks.</summary>
+        public WAR2D.Pathing.OrderFieldTable Orders;
+        /// <summary>Per order handle: goal centre, live flag, ready flag and follower count.</summary>
+        public NativeArray<float2> OrderGoal;
+        public NativeArray<byte> OrderLive;
+        public NativeArray<byte> OrderReady;
+        public NativeArray<int> OrderFollowers;
+        /// <summary>(handle, sector) pairs where a unit of a ready order found no direction.</summary>
+        public NativeQueue<int2> RouteMisses;
+        /// <summary>Non-zero where a large unit may not stand (a tile next to a blocked tile).</summary>
+        public NativeArray<byte> LargeGrid;
 
         // ---- economy ----
         /// <summary>Owner id per slot, or 0 when the slot is free.</summary>
@@ -236,11 +251,13 @@ namespace WAR2D.Sim
                 AttackEvents = new NativeList<int2>(1024, allocator),
                 Deaths = new NativeQueue<DeathRecord>(allocator),
                 PendingOrders = new NativeParallelHashMap<int, int>(1024, allocator),
+                PendingMoves = new NativeParallelHashMap<int, float2>(64, allocator),
                 OwnerIdBySlot = new NativeArray<int>(MaxOwners, allocator),
                 UpkeepBudget = new NativeArray<float>(MaxOwners, allocator),
                 UpkeepSpent = new NativeArray<float>(MaxOwners, allocator),
                 UnitsBySlot = new NativeArray<int>(MaxOwners, allocator),
                 ChargedThisTick = new NativeArray<byte>(1, allocator),
+                LargeGrid = BuildLargeGrid(map, allocator),
             };
 
             foreach (var pair in config.Units)
@@ -268,9 +285,24 @@ namespace WAR2D.Sim
             BuildingCount.Dispose(); BuildingPositions.Dispose(); BuildingOwnerId.Dispose(); BuildingHealth.Dispose();
             BuildingDamage.Dispose(); BuildingIds.Dispose(); BuildingEntities.Dispose(); BuildingSlotOfIndex.Dispose(); BuildingCell.Dispose();
             BuildingCellStart.Dispose(); BuildingSorted.Dispose();
-            AttackEvents.Dispose(); Deaths.Dispose(); PendingOrders.Dispose();
+            AttackEvents.Dispose(); Deaths.Dispose(); PendingOrders.Dispose(); PendingMoves.Dispose();
             OwnerIdBySlot.Dispose(); UpkeepBudget.Dispose(); UpkeepSpent.Dispose(); UnitsBySlot.Dispose();
-            ChargedThisTick.Dispose();
+            ChargedThisTick.Dispose(); LargeGrid.Dispose();
+        }
+
+        private static NativeArray<byte> BuildLargeGrid(in MapGrid map, Allocator allocator)
+        {
+            var grid = new NativeArray<byte>(map.Width * map.Height, allocator);
+            for (int y = 0; y < map.Height; y++)
+            for (int x = 0; x < map.Width; x++)
+            {
+                byte value = 0;
+                for (int dy = -1; dy <= 1 && value == 0; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                    if (map.TileAt(new int2(x + dx, y + dy)) != TileType.Ground) { value = 1; break; }
+                grid[y * map.Width + x] = value;
+            }
+            return grid;
         }
 
         /// <summary>

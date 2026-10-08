@@ -6,7 +6,7 @@ The October 2026 code review found roughly 30 bugs, mismatches and hygiene probl
 
 | Issue | Where | Target | Effect |
 |---|---|---|---|
-| `UpdatePlayerViews` uses LINQ `Any`/`FindIndex` over the `ClientPlayer` SyncLists for every visible entity, every `FixedUpdate`. | `WorldStateManager.UpdatePlayerViews` | **v0.5** | O(players × visible²). Fine at current army sizes, slow with large armies. v0.5's hybrid replication (send a unit's path once, then corrections and compact events) replaces the per-player visible lists entirely. |
+| Buildings are still one GameObject each on clients, fed by `ClientPlayer` SyncLists. | `UnitCommander`, `WorldStateManager.UpdatePlayerViews` | **v0.7** | Fine for a few hundred buildings; walls make the counts large, so v0.7 instances buildings and walls like units. |
 
 ## Project and config hygiene
 

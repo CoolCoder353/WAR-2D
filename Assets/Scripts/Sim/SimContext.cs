@@ -38,8 +38,17 @@ namespace WAR2D.Sim
         /// <summary>The map the units move on.</summary>
         public MapStore Map { get; }
 
+        /// <summary>The live move orders and their flow fields.</summary>
+        public OrderBook Orders { get; }
+
         /// <summary>The config the sim was built from.</summary>
         public GameConfigData Config { get; }
+
+        /// <summary>Resources an owner has for upkeep; null means unlimited (tests).</summary>
+        public Func<int, float> BudgetOf;
+
+        /// <summary>Takes resources an owner's units spent on upkeep; null means nothing is taken (tests).</summary>
+        public Action<int, float> Spend;
 
         /// <summary>Raised at a boundary for each unit that died: (id, position).</summary>
         public event Action<int, float2> UnitDied;
@@ -54,6 +63,13 @@ namespace WAR2D.Sim
             Config = config;
             Ids = new NetIdAllocator(config.Simulation.MaxEntities);
             SimData data = SimData.Create(map.Grid, config, Allocator.Persistent);
+            Orders = new OrderBook(map.Grid);
+            data.Orders = Orders.Table;
+            data.OrderGoal = Orders.Goal;
+            data.OrderLive = Orders.Live;
+            data.OrderReady = Orders.Ready;
+            data.OrderFollowers = Orders.Followers;
+            data.RouteMisses = Orders.RouteMisses;
             singleton = world.EntityManager.CreateEntity(typeof(SimData), typeof(SimClock));
             world.EntityManager.SetComponentData(singleton, data);
             world.EntityManager.SetComponentData(singleton, new SimClock { Dt = config.Simulation.TickSeconds });
@@ -105,7 +121,7 @@ namespace WAR2D.Sim
             if (disposed) return;
             disposed = true;
             if (Current == this) Current = null;
-            if (World == null || !World.IsCreated) return;
+            if (World == null || !World.IsCreated) { Orders.Dispose(); return; }
             EntityManager em = World.EntityManager;
             em.CompleteAllTrackedJobs();
             foreach (ComponentSystemBase system in World.Systems)
@@ -117,6 +133,7 @@ namespace WAR2D.Sim
             }
             using EntityQuery units = em.CreateEntityQuery(typeof(Unit));
             em.DestroyEntity(units);
+            Orders.Dispose();
         }
     }
 }

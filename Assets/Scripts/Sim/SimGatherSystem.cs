@@ -73,6 +73,7 @@ namespace WAR2D.Sim
                 Target = data.Target,
                 TargetKind = data.TargetKind,
                 PendingOrders = data.PendingOrders,
+                PendingMoves = data.PendingMoves,
             }.ScheduleParallel(units, state.Dependency);
         }
     }
@@ -99,11 +100,13 @@ namespace WAR2D.Sim
         [NativeDisableParallelForRestriction] public NativeArray<int> Target;
         [NativeDisableParallelForRestriction] public NativeArray<byte> TargetKind;
         [ReadOnly] public NativeParallelHashMap<int, int> PendingOrders;
+        [ReadOnly] public NativeParallelHashMap<int, float2> PendingMoves;
 
         private void Execute(ref Unit unit, [EntityIndexInQuery] int index)
         {
             if (index >= Capacity) return;
             if (PendingOrders.TryGetValue(unit.Id, out int order)) unit.OrderSlot = order;
+            if (PendingMoves.TryGetValue(unit.Id, out float2 moved)) unit.Position = moved;
 
             Positions[index] = unit.Position;
             Velocity[index] = unit.Velocity;

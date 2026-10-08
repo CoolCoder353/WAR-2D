@@ -11,7 +11,6 @@ public class ClientPlayer : NetworkBehaviour
     public LobbySystem lobbySystem;
 
 
-    public readonly SyncList<ClientUnit> visuableUnits = new SyncList<ClientUnit>();
     public readonly SyncList<BuildingData> visuableBuildings = new SyncList<BuildingData>();
 
     public readonly SyncList<HealthComponent> entityHealth = new SyncList<HealthComponent>();
@@ -176,62 +175,6 @@ public class ClientPlayer : NetworkBehaviour
     }
 
 
-
-    public void SetUnitHandles()
-    {
-
-        Debug.Log("Setting up unit hooks");
-        visuableUnits.OnAdd += (int index) =>
-           {
-               ClientUnit unit = visuableUnits[index];
-               UnitCommander.Instance.UnitListInsert(index, unit);
-
-           };
-        visuableUnits.OnInsert += (int index) =>
-        {
-            ClientUnit unit = visuableUnits[index];
-            UnitCommander.Instance.UnitListInsert(index, unit);
-        };
-        visuableUnits.OnSet += (int index, ClientUnit old) =>
-        {
-            ClientUnit unit = visuableUnits[index];
-            UnitCommander.Instance.UnitListSet(index, old, unit);
-        };
-
-        visuableUnits.OnRemove += UnitCommander.Instance.UnitListRemove;
-
-        visuableUnits.OnClear += UnitCommander.Instance.UnitListClear;
-
-        //Register the intial state of the units
-        for (int i = 0; i < visuableUnits.Count; i++)
-        {
-            ClientUnit unit = visuableUnits[i];
-            UnitCommander.Instance.UnitListInsert(i, unit);
-        }
-
-
-        // //For Debugging log all changes in the visuable units
-        // visuableUnits.OnChange += (SyncList<ClientUnit>.Operation operation, int index, ClientUnit unit) =>
-        // {
-        //     Debug.Log($"Operation: {operation} Index: {index} Unit: {unit}");
-        // };
-
-        // Debug.Log($"Debugging hooks state is {visuableUnits.OnChange != null}");
-    }
-
-    public void RemoveUnitHandles()
-    {
-        if (visuableUnits != null)
-        {
-            Debug.Log("Removing unit hooks");
-            visuableUnits.OnChange = null;
-            visuableUnits.OnAdd = null;
-            visuableUnits.OnInsert = null;
-            visuableUnits.OnSet = null;
-            visuableUnits.OnRemove = null;
-            visuableUnits.OnClear = null;
-        }
-    }
 
     public void SetBuildingHandles()
     {

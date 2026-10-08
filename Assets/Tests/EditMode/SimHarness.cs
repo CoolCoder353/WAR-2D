@@ -78,6 +78,25 @@ public sealed class SimHarness : IDisposable
         return id;
     }
 
+    /// <summary>Queues a move order for the given unit ids.</summary>
+    public void Move(int owner, int2 goal, params int[] ids) =>
+        Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.MoveUnits, OwnerId = owner, Tile = goal, Ids = ids });
+
+    /// <summary>Overwrites a unit's position (tests only; completes the tick's jobs first).</summary>
+    public void Teleport(int id, float2 position)
+    {
+        Em.CompleteAllTrackedJobs();
+        using var q = Em.CreateEntityQuery(typeof(Unit));
+        using var entities = q.ToEntityArray(Allocator.Temp);
+        foreach (Entity e in entities)
+        {
+            Unit u = Em.GetComponentData<Unit>(e);
+            if (u.Id != id) continue;
+            u.Position = position;
+            Em.SetComponentData(e, u);
+        }
+    }
+
     /// <summary>Completes the tick's jobs (as a boundary would) and returns every unit.</summary>
     public Unit[] Units()
     {

@@ -470,6 +470,12 @@ namespace WAR2D.Pathing
             }
         }
 
+        /// <summary>Frees every block a handle published (its order was released), so a reused handle starts clean.</summary>
+        public void Unpublish(ref OrderFieldTable table, int handle) => FreeBlocks(ref table, handle, keep: null);
+
+        /// <summary>True when the handle has at least one sector in the table.</summary>
+        public bool HasPublished(int handle) => publishedSectors.ContainsKey(handle);
+
         private void FreeBlocks(ref OrderFieldTable table, int handle, bool[] keep)
         {
             if (!publishedSectors.TryGetValue(handle, out List<int> sectors)) return;
@@ -535,7 +541,8 @@ namespace WAR2D.Pathing
             // cells at cellSize 2) and reported back as map cell indices for the route search.
             NativeArray<int> spread = FlowGoals.Around(
                 new int2(goal.x / graph.CellSize, goal.y / graph.CellSize), grid,
-                graph.CellWidth, graph.CellHeight, Allocator.Persistent);
+                graph.CellWidth, graph.CellHeight, Allocator.Persistent,
+                spread: startCells.IsCreated ? (startCells.Length + 7) / 8 : FlowGoals.Spread); // about 8 units per goal cell
             for (int i = 0; i < spread.Length; i++) spread[i] = graph.TileOfCell(spread[i]);
 
             var order = new Order

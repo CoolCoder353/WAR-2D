@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Mirror;
@@ -56,19 +57,11 @@ public class WorldStateManager : NetworkBehaviour
     /// </summary>
     private Dictionary<ClientPlayer, (int2, int2)> playerView = new Dictionary<ClientPlayer, (int2, int2)>();
 
-    /// <summary>Server-side unit tile claims.</summary>
-    public TileOccupancy Occupancy { get; } = new TileOccupancy();
-
     /// <summary>Server-side id source for units and buildings in this match.</summary>
     public NetIdAllocator Ids => Sim?.Ids;
 
     /// <summary>This match's simulation (server only).</summary>
     public SimContext Sim { get; private set; }
-
-    /// <summary>
-    /// Dictionary of all units in the game. Key: Unit ID, Value: Entity.
-    /// </summary>
-    private Dictionary<int, Entity> Units = new Dictionary<int, Entity>();
 
     /// <summary>
     /// Dictionary of all buildings in the game. Key: Building ID, Value: Entity.
@@ -117,7 +110,18 @@ public class WorldStateManager : NetworkBehaviour
 
         Sim = SimContext.Create(World.DefaultGameObjectInjectionWorld, Map, ConfigLoader.LoadConfig());
         Sim.BuildingCreated += OnBuildingCreated;
+        Sim.UnitDied += OnUnitDied;
+        Sim.BudgetOf = ownerId => GameCore.Instance?.GetServerPlayerById(ownerId)?.Resources ?? 0f;
+        Sim.Spend = (ownerId, amount) =>
+        {
+            ServerPlayer player = GameCore.Instance?.GetServerPlayerById(ownerId);
+            if (player != null && !player.TrySpend(amount)) player.TrySpend(player.Resources);
+        };
     }
+
+    /// <summary>Records a unit the simulation removed, for its explosion.</summary>
+    [Server]
+    private void OnUnitDied(int id, float2 position) => pendingDeathPositions.Add(position);
 
     /// <summary>Registers a building the simulation created, and checks whether every HQ is down.</summary>
     [Server]
@@ -158,6 +162,7 @@ public class WorldStateManager : NetworkBehaviour
         if (Sim != null)
         {
             Sim.BuildingCreated -= OnBuildingCreated;
+            Sim.UnitDied -= OnUnitDied;
             Sim.Dispose();
             Sim = null;
         }
@@ -209,14 +214,7 @@ public class WorldStateManager : NetworkBehaviour
             pendingDeathPositions.Add(EntityManager.GetComponentData<LocalTransform>(entity).Position.xy);
         }
 
-        if (EntityManager.HasComponent<ClientUnit>(entity))
-        {
-            int id = EntityManager.GetComponentData<ClientUnit>(entity).id;
-            Units.Remove(id);
-            Occupancy.ReleaseAll(id);
-            Ids?.Free(id);
-        }
-        else if (EntityManager.HasComponent<BuildingData>(entity))
+        if (EntityManager.HasComponent<BuildingData>(entity))
         {
             int id = EntityManager.GetComponentData<BuildingData>(entity).id;
             Buildings.Remove(id);
@@ -228,21 +226,21 @@ public class WorldStateManager : NetworkBehaviour
         }
     }
 
-    /// <summary>Sets every entity owned by the player to 0 health; DestructionSystem removes them (with explosions).</summary>
+    /// <summary>
+    /// Kills everything the player owns, with explosions: buildings drop to 0 health (DestructionSystem
+    /// removes them) and the simulation kills the units at the next tick boundary.
+    /// </summary>
     [Server]
     public void KillAllEntitiesOwnedBy(int ownerId)
     {
-        foreach (Entity e in Units.Values) Kill(e, ownerId);
         foreach (Entity e in Buildings.Values) Kill(e, ownerId);
+        Sim?.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.KillOwner, OwnerId = ownerId });
     }
 
     private void Kill(Entity entity, int ownerId)
     {
         if (!EntityManager.Exists(entity) || !EntityManager.HasComponent<HealthComponent>(entity)) return;
-        int owner = EntityManager.HasComponent<ClientUnit>(entity)
-            ? EntityManager.GetComponentData<ClientUnit>(entity).ownerId
-            : EntityManager.GetComponentData<BuildingData>(entity).ownerId;
-        if (owner != ownerId) return;
+        if (EntityManager.GetComponentData<BuildingData>(entity).ownerId != ownerId) return;
         HealthComponent hp = EntityManager.GetComponentData<HealthComponent>(entity);
         hp.currentHealth = 0f;
         EntityManager.SetComponentData(entity, hp);
@@ -265,16 +263,13 @@ public class WorldStateManager : NetworkBehaviour
         // clients as explosions instead of dying silently. pendingDeathPositions is deliberately
         // NOT cleared here: FlushDeathEvents drains it via TakeDeathPositions next FixedUpdate.
         foreach (Entity e in Buildings.Values) DestroyWithDeathPosition(e);
-        foreach (Entity e in Units.Values) DestroyWithDeathPosition(e);
+        Sim?.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.DestroyAll });
         foreach (List<int2> footprint in buildingFootprints.Values)
         {
             foreach (int2 tile in footprint) Map?.SetUsed(tile, false);
         }
-        Units.Clear();
         Buildings.Clear();
-        Ids?.Reset();
         buildingFootprints.Clear();
-        Occupancy.Clear();
     }
 
     /// <summary>Records the entity's death position (when it has one), then destroys it.</summary>
@@ -285,6 +280,7 @@ public class WorldStateManager : NetworkBehaviour
         {
             pendingDeathPositions.Add(EntityManager.GetComponentData<LocalTransform>(entity).Position.xy);
         }
+        if (EntityManager.HasComponent<BuildingData>(entity)) Ids?.Free(EntityManager.GetComponentData<BuildingData>(entity).id);
         EntityManager.DestroyEntity(entity);
     }
     #endregion
@@ -313,134 +309,98 @@ public class WorldStateManager : NetworkBehaviour
         if (player != null) playerView.Remove(player);
     }
 
+    /// <summary>Per-player index of what each building SyncList holds: entity id → list index.</summary>
+    private sealed class PlayerViewIndex
+    {
+        public readonly Dictionary<int, int> Buildings = new Dictionary<int, int>();
+        public readonly Dictionary<int, int> Health = new Dictionary<int, int>();
+        public readonly HashSet<int> Seen = new HashSet<int>();
+    }
+
+    private readonly Dictionary<ClientPlayer, PlayerViewIndex> viewIndex = new Dictionary<ClientPlayer, PlayerViewIndex>();
+    private readonly List<ClientPlayer> deadViews = new List<ClientPlayer>();
+
     /// <summary>
-    /// Updates which units and buildings are visible to each player based on their view area.
+    /// Copies the buildings (and their health) inside each player's view box into that player's
+    /// SyncLists. Units do not go through here: they reach clients through the replication encoder.
+    /// Each list is indexed by id, so an update is O(visible) and a removal swaps with the last entry.
     /// </summary>
-    [Server, BurstCompile]
+    [Server]
     public void UpdatePlayerViews()
     {
-        foreach (ClientPlayer dead in playerView.Keys.Where(p => p == null).ToList()) playerView.Remove(dead);
+        deadViews.Clear();
+        foreach (ClientPlayer player in playerView.Keys) if (player == null) deadViews.Add(player);
+        foreach (ClientPlayer dead in deadViews) { playerView.Remove(dead); viewIndex.Remove(dead); }
 
-        foreach (KeyValuePair<ClientPlayer, (int2, int2)> player in playerView)
+        foreach (KeyValuePair<ClientPlayer, (int2, int2)> view in playerView)
         {
-            int2 startcorner = player.Value.Item1;
-            int2 endcorner = player.Value.Item2;
-
-            NativeList<Entity> entitiesInBox = FindEntitiesInBox(startcorner, endcorner);
-
-            List<int> clientUnits = new List<int>();
-            List<int> clientBuildings = new List<int>();
-
-            foreach (Entity entity in entitiesInBox)
+            ClientPlayer player = view.Key;
+            if (!viewIndex.TryGetValue(player, out PlayerViewIndex index))
             {
-                // Handle Buildings
-                if (!EntityManager.HasComponent<ClientUnit>(entity))
-                {
-                    if (EntityManager.HasComponent<BuildingData>(entity))
-                    {
-                        BuildingData buildingData = EntityManager.GetComponentData<BuildingData>(entity);
-                        buildingData.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
-
-                        HealthComponent health = EntityManager.GetComponentData<HealthComponent>(entity);
-                        health.entityId = buildingData.id;
-
-                        buildingData.rotation = MinerRules.ZDegrees(EntityManager.GetComponentData<LocalTransform>(entity).Rotation);
-
-                        clientBuildings.Add(buildingData.id);
-
-                        if (player.Key.visuableBuildings.Any(b => b.id == buildingData.id))
-                        {
-                            player.Key.visuableBuildings[player.Key.visuableBuildings.FindIndex(b => b.id == buildingData.id)] = buildingData;
-                        }
-                        else
-                        {
-                            player.Key.visuableBuildings.Add(buildingData);
-                        }
-                        ////Debug.Log($"Player {player.Key.nickname} can see building {buildingData.id}. Health: {health.currentHealth}/{health.maxHealth}");
-                        // Update HealthComponent list
-                        if (player.Key.entityHealth.Any(h => h.entityId == health.entityId))
-                        {
-                            player.Key.entityHealth[player.Key.entityHealth.FindIndex(h => h.entityId == health.entityId)] = health;
-                        }
-                        else
-                        {
-                            player.Key.entityHealth.Add(health);
-                        }
-                    }
-                    continue;
-                }
-
-                // Handle Units
-                ClientUnit clientUnit = EntityManager.GetComponentData<ClientUnit>(entity);
-                clientUnit.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
-                HealthComponent unitHealth = EntityManager.GetComponentData<HealthComponent>(entity);
-                unitHealth.entityId = clientUnit.id;
-
-                clientUnits.Add(clientUnit.id);
-
-                if (player.Key.visuableUnits.Any(u => u.id == clientUnit.id))
-                {
-                    player.Key.visuableUnits[player.Key.visuableUnits.FindIndex(u => u.id == clientUnit.id)] = clientUnit;
-                }
-                else
-                {
-                    player.Key.visuableUnits.Add(clientUnit);
-                }
-
-                ////Debug.Log($"Player {player.Key.nickname} can see unit {clientUnit.id}. Health: {unitHealth.currentHealth}/{unitHealth.maxHealth}");
-                if (player.Key.entityHealth.Any(h => h.entityId == unitHealth.entityId))
-                {
-                    player.Key.entityHealth[player.Key.entityHealth.FindIndex(h => h.entityId == unitHealth.entityId)] = unitHealth;
-                }
-                else
-                {
-                    player.Key.entityHealth.Add(unitHealth);
-                }
+                viewIndex[player] = index = new PlayerViewIndex();
+                for (int i = 0; i < player.visuableBuildings.Count; i++) index.Buildings[player.visuableBuildings[i].id] = i;
+                for (int i = 0; i < player.entityHealth.Count; i++) index.Health[player.entityHealth[i].entityId] = i;
             }
-            entitiesInBox.Dispose();
+            int2 lo = math.min(view.Value.Item1, view.Value.Item2), hi = math.max(view.Value.Item1, view.Value.Item2);
+            index.Seen.Clear();
 
-            // Cleanup invisible units
-            for (int i = player.Key.visuableUnits.Count - 1; i >= 0; i--)
+            foreach (Entity entity in Buildings.Values)
             {
-                if (!clientUnits.Contains(player.Key.visuableUnits[i].id))
-                {
-                    player.Key.visuableUnits.RemoveAt(i);
-                }
+                if (!EntityManager.Exists(entity)) continue;
+                LocalTransform transform = EntityManager.GetComponentData<LocalTransform>(entity);
+                float2 p = transform.Position.xy;
+                if (p.x < lo.x || p.y < lo.y || p.x > hi.x || p.y > hi.y) continue;
+
+                BuildingData building = EntityManager.GetComponentData<BuildingData>(entity);
+                building.position = p;
+                building.rotation = MinerRules.ZDegrees(transform.Rotation);
+                HealthComponent health = EntityManager.GetComponentData<HealthComponent>(entity);
+                health.entityId = building.id;
+                index.Seen.Add(building.id);
+
+                Upsert(player.visuableBuildings, index.Buildings, building.id, building, (a, b) => a.Equals(b));
+                Upsert(player.entityHealth, index.Health, building.id, health,
+                    (a, b) => a.currentHealth == b.currentHealth && a.maxHealth == b.maxHealth);
             }
 
-            // Cleanup invisible buildings
-            for (int i = player.Key.visuableBuildings.Count - 1; i >= 0; i--)
-            {
-                if (!clientBuildings.Contains(player.Key.visuableBuildings[i].id))
-                {
-                    player.Key.visuableBuildings.RemoveAt(i);
-                }
-            }
-
-            //Cleanup invisible health components
-            for (int i = player.Key.entityHealth.Count - 1; i >= 0; i--)
-            {
-                if (!clientUnits.Contains(player.Key.entityHealth[i].entityId) &&
-                    !clientBuildings.Contains(player.Key.entityHealth[i].entityId))
-                {
-                    player.Key.entityHealth.RemoveAt(i);
-                }
-            }
+            RemoveUnseen(player.visuableBuildings, index.Buildings, index.Seen, b => b.id);
+            RemoveUnseen(player.entityHealth, index.Health, index.Seen, h => h.entityId);
         }
     }
 
-    /// <summary>
-    /// Registers a unit entity.
-    /// </summary>
-    [Server]
-    public void AddUnit(Entity entity, int id)
+    private static void Upsert<T>(SyncList<T> list, Dictionary<int, int> index, int id, T value, Func<T, T, bool> same)
     {
-        Units.Add(id, entity);
+        if (index.TryGetValue(id, out int i))
+        {
+            if (!same(list[i], value)) list[i] = value;
+            return;
+        }
+        index[id] = list.Count;
+        list.Add(value);
     }
 
-    /// <summary>
-    /// Registers a building entity.
-    /// </summary>
+    private static readonly List<int> gone = new List<int>();
+
+    private static void RemoveUnseen<T>(SyncList<T> list, Dictionary<int, int> index, HashSet<int> seen, Func<T, int> idOf)
+    {
+        gone.Clear();
+        foreach (int id in index.Keys) if (!seen.Contains(id)) gone.Add(id);
+        foreach (int id in gone)
+        {
+            int i = index[id];
+            int last = list.Count - 1;
+            if (i != last)
+            {
+                T moved = list[last];
+                list[i] = moved;
+                index[idOf(moved)] = i;
+            }
+            list.RemoveAt(last);
+            index.Remove(id);
+        }
+    }
+
+    /// <summary>Registers a building entity.</summary>
     [Server]
     public void AddBuilding(Entity entity, int id)
     {
@@ -448,244 +408,37 @@ public class WorldStateManager : NetworkBehaviour
     }
 
     /// <summary>
-    /// Checks if a position is available for a unit.
-    /// </summary>
-    [Server]
-    public bool IsAvaliable(int2 position, int id)
-    {
-        return Occupancy.IsAvailable(position, id);
-    }
-
-    /// <summary>
-    /// Claims a position for a unit.
-    /// </summary>
-    [Server]
-    public bool ClaimLocation(int2 position, int id)
-    {
-        return Occupancy.TryClaim(position, id);
-    }
-
-    /// <summary>
-    /// Releases a position claimed by a unit.
-    /// </summary>
-    [Server]
-    public void ReleaseLocation(int2 position, int id)
-    {
-        Occupancy.Release(position, id);
-    }
-
-    /// <summary>
-    /// Releases all locations claimed by a unit.
-    /// </summary>
-    [Server]
-    public void ReleaseAllLocations(int id)
-    {
-        Occupancy.ReleaseAll(id);
-    }
-
-    /// <summary>
-    /// Commands units to move to a goal.
+    /// Orders the sender's units inside the box to the goal. The simulation picks the units from its
+    /// settled state at the next boundary, so only the box and goal are checked here.
     /// </summary>
     [Command(requiresAuthority = false)]
     public void CmdMoveUnits(int2 goal, int2 startcorner, int2 endcorner, NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(CmdMoveUnits)) || !CommandValidator.IsBoxValid(startcorner, endcorner)) return;
-        if (GameCore.Instance.CurrentState != GameState.Playing) return;
-        ServerPlayer acting = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(sender.identity.netId));
+        if (GameCore.Instance == null || GameCore.Instance.CurrentState != GameState.Playing || Sim == null) return;
+        int ownerId = BuildingData.UIntToInt(sender.identity.netId);
+        ServerPlayer acting = GameCore.Instance.GetServerPlayerById(ownerId);
         if (acting == null || acting.state != PlayerState.Playing) return;
 
         (int2 mapMin, int2 mapMax) = MapBounds;
-        startcorner = math.clamp(startcorner, mapMin, mapMax);
-        endcorner = math.clamp(endcorner, mapMin, mapMax);
-
-        List<ClientUnit> units = new List<ClientUnit>();
-        List<int2> setGoals = new List<int2>();
-
-        NativeList<Entity> entitiesInBox = FindEntitiesInBox(startcorner, endcorner);
-        foreach (Entity entity in entitiesInBox)
+        Sim.Commands.Enqueue(new SimCommand
         {
-            if (!EntityManager.HasComponent<ClientUnit>(entity))
-            {
-                continue;
-            }
-            ClientUnit clientUnit = EntityManager.GetComponentData<ClientUnit>(entity);
-            clientUnit.position = EntityManager.GetComponentData<LocalTransform>(entity).Position.xy;
-
-            if (clientUnit.ownerId != BuildingData.UIntToInt(sender.identity.netId))
-            {
-                continue;
-            }
-
-            units.Add(clientUnit);
-        }
-
-        foreach (ClientUnit unit in units)
-        {
-            if (Units.TryGetValue(unit.id, out Entity entity))
-            {
-                int2 specificgoal = FindBestGoalLocation(goal, unit.id, setGoals);
-                setGoals.Add(specificgoal);
-
-                //Make sure the unit doesnt own any location
-                ReleaseAllLocations(unit.id);
-
-                MoveUnit(entity, specificgoal);
-            }
-            else
-            {
-                Debug.LogWarning($"Unit with id {unit.id} not found when trying to move units.");
-            }
-        }
-        entitiesInBox.Dispose();
+            Kind = SimCommandKind.MoveUnits,
+            OwnerId = ownerId,
+            Tile = math.clamp(goal, mapMin, mapMax),
+            BoxMin = math.clamp(startcorner, mapMin, mapMax),
+            BoxMax = math.clamp(endcorner, mapMin, mapMax),
+        });
     }
 
-    private const int MaxGoalSearchTiles = 4096;
+    private const int MaxSpawnSearchTiles = 4096;
 
-    /// <summary>
-    /// Finds the best available goal location near the target, avoiding collisions.
-    /// Uses a bounded BFS to find the nearest valid tile.
-    /// </summary>
+    /// <summary>Nearest free walkable tile to <paramref name="origin"/>, searching through footprints (e.g. out of a spawner).</summary>
     [Server]
-    private int2 FindBestGoalLocation(int2 goal, int id, List<int2> setGoals)
+    public bool TryFindSpawnTile(int2 origin, out int2 tile)
     {
-        bool found = TileSearch.FindNearest(goal,
-            t => !setGoals.Contains(t) && IsFreeGround(t) && Occupancy.IsAvailable(t, id),
-            t => Map.Grid.TileAt(t) == TileType.Ground,
-            MaxGoalSearchTiles, out int2 best);
-        return found ? best : goal;
-    }
-
-    private bool IsFreeGround(int2 tile) => Map.Grid.IsWalkable(tile);
-
-    /// <summary>Nearest free, unclaimed ground tile to <paramref name="origin"/> (e.g. outside a spawner).</summary>
-    [Server]
-    public bool TryFindFreeTileNear(int2 origin, int unitId, out int2 tile)
-    {
-        return TileSearch.FindNearest(origin,
-            t => IsFreeGround(t) && Occupancy.IsAvailable(t, unitId),
-            t => Map.Grid.TileAt(t) == TileType.Ground,
-            MaxGoalSearchTiles, out tile);
-    }
-
-    /// <summary>
-    /// Finds all entities within a specified rectangular area.
-    /// </summary>
-    [Server]
-    private NativeList<Entity> FindEntitiesInBox(int2 startcorner, int2 endcorner)
-    {
-        return FindEntitiesInBoxJobMethod(startcorner, endcorner);
-    }
-
-    /// <summary>
-    /// Moves a unit entity to a goal position using pathfinding.
-    /// </summary>
-    [Server]
-    private void MoveUnit(Entity entity, int2 goal)
-    {
-        LocalTransform localTransform = EntityManager.GetComponentData<LocalTransform>(entity);
-        int2 startInt = (int2)math.round(localTransform.Position.xy);
-
-        if (startInt.Equals(goal))
-        {
-            Debug.LogWarning($"Unit at {startInt} is already at goal {goal}");
-            return;
-        }
-
-        List<int2> path = Pathfinding.FindPath(Map.Grid, startInt, goal);
-        if (path.Count == 0)
-        {
-            Debug.LogWarning($"No path found for unit at {startInt} to {goal}");
-            return;
-        }
-        DynamicBuffer<PathPoint> pathBuffer = EntityManager.GetBuffer<PathPoint>(entity);
-        pathBuffer.Clear();
-        foreach (int2 node in path) pathBuffer.Add(new PathPoint { position = node });
-    }
-
-    /// <summary>
-    /// Job to filter entities within a bounding box.
-    /// </summary>
-    [BurstCompile]
-    public struct FindEntitiesInBoxJob : IJob
-    {
-        [Unity.Collections.ReadOnly] public NativeArray<Entity> entities;
-        [Unity.Collections.ReadOnly] public NativeArray<LocalTransform> transforms;
-        public int2 startcorner;
-        public int2 endcorner;
-        public NativeList<Entity> result;
-
-        public void Execute()
-        {
-            int2 minCorner = math.min(startcorner, endcorner);
-            int2 maxCorner = math.max(startcorner, endcorner);
-
-            for (int i = 0; i < entities.Length; i++)
-            {
-                if (transforms[i].Position.x >= minCorner.x && transforms[i].Position.x <= maxCorner.x &&
-                    transforms[i].Position.y >= minCorner.y && transforms[i].Position.y <= maxCorner.y)
-                {
-                    result.Add(entities[i]);
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    /// Executes the FindEntitiesInBoxJob.
-    /// </summary>
-    [Server]
-    public NativeList<Entity> FindEntitiesInBoxJobMethod(int2 startcorner, int2 endcorner)
-    {
-        NativeList<Entity> entitiesInBox = new(Allocator.TempJob);
-
-        //UNITS
-        var query = EntityManager.CreateEntityQuery(ComponentType.ReadOnly<MovementComponent>(), ComponentType.ReadOnly<LocalTransform>());
-        NativeArray<Entity> entities = query.ToEntityArray(Allocator.TempJob);
-        NativeArray<LocalTransform> transforms = query.ToComponentDataArray<LocalTransform>(Allocator.TempJob);
-
-        //BUILDINGS
-        var buildingQuery = EntityManager.CreateEntityQuery(ComponentType.ReadOnly<BuildingData>(), ComponentType.ReadOnly<LocalTransform>());
-        NativeArray<Entity> buildingEntities = buildingQuery.ToEntityArray(Allocator.TempJob);
-        NativeArray<LocalTransform> buildingTransforms = buildingQuery.ToComponentDataArray<LocalTransform>(Allocator.TempJob);
-
-
-        //EVERYTHING
-        NativeArray<Entity> allEntities = new NativeArray<Entity>(entities.Length + buildingEntities.Length, Allocator.TempJob);
-        NativeArray<LocalTransform> allTransforms = new NativeArray<LocalTransform>(transforms.Length + buildingTransforms.Length, Allocator.TempJob);
-
-        allEntities.Slice(0, entities.Length).CopyFrom(entities);
-        allEntities.Slice(entities.Length, buildingEntities.Length).CopyFrom(buildingEntities);
-
-        allTransforms.Slice(0, transforms.Length).CopyFrom(transforms);
-        allTransforms.Slice(transforms.Length, buildingTransforms.Length).CopyFrom(buildingTransforms);
-
-        FindEntitiesInBoxJob job = new()
-        {
-            entities = allEntities,
-            transforms = allTransforms,
-            startcorner = startcorner,
-            endcorner = endcorner,
-            result = entitiesInBox
-        };
-
-        JobHandle handle = job.Schedule();
-        handle.Complete();
-
-        entities.Dispose();
-        transforms.Dispose();
-
-        buildingEntities.Dispose();
-        buildingTransforms.Dispose();
-
-        allEntities.Dispose();
-        allTransforms.Dispose();
-
-        // Ensure the entitiesInBox is disposed of properly
-        NativeList<Entity> result = new NativeList<Entity>(entitiesInBox.Length, Allocator.Persistent);
-        result.AddRange(entitiesInBox.AsArray());
-        entitiesInBox.Dispose();
-
-        return result;
+        MapGrid grid = Map.Grid;
+        return TileSearch.FindNearest(origin, grid.IsWalkable, t => grid.TileAt(t) == TileType.Ground, MaxSpawnSearchTiles, out tile);
     }
 
     #endregion
@@ -702,7 +455,7 @@ public class WorldStateManager : NetworkBehaviour
         if (acting == null || acting.state != PlayerState.Playing) return PlacementResult.WrongGameState;
 
         return PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
-            player.hasPlacedHQ, Map.Grid.TileAt, Map.Grid.IsUsed, tile => !IsAvaliable(tile, -1));
+            player.hasPlacedHQ, Map.Grid.TileAt, Map.Grid.IsUsed, tile => false); // units are pushed out of new footprints
     }
 
     /// <summary>Test helper: first anchor (scanning the map) where the player may place this building.</summary>

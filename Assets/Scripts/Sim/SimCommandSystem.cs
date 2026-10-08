@@ -43,6 +43,7 @@ namespace WAR2D.Sim
 
             WriteBackBuildingDamage(data);
             data.PendingOrders.Clear();
+            data.PendingMoves.Clear();
 
             List<SimCommand> commands = context.Commands.Drain();
             deferred.Clear();
@@ -52,6 +53,7 @@ namespace WAR2D.Sim
                 {
                     case SimCommandKind.CreateBuilding:
                         CreateBuilding(context, command.Building);
+                        PushUnitsOutOf(data, context, command.Building, clock.UnitCount);
                         break;
                     case SimCommandKind.KillOwner:
                         KillUnits(data, context, command.OwnerId, all: false);
@@ -150,6 +152,34 @@ namespace WAR2D.Sim
             }
             EntityManager.DestroyEntity(doomed.AsArray());
             doomed.Dispose();
+        }
+
+        /// <summary>
+        /// Moves every unit standing on a new building's footprint to the nearest free tile (the footprint
+        /// is already marked used), so no unit is trapped inside a building.
+        /// </summary>
+        private static void PushUnitsOutOf(SimData data, SimContext context, in BuildingSpec spec, int unitCount)
+        {
+            int2 anchor = (int2)math.round(spec.Data.position);
+            int2 lo = int2.zero, hi = int2.zero;
+            bool first = true;
+            foreach (int2 tile in Footprint.Tiles(anchor, spec.Config.Size))
+            {
+                lo = first ? tile : math.min(lo, tile);
+                hi = first ? tile : math.max(hi, tile);
+                first = false;
+            }
+            if (first) return;
+            WAR2D.World.MapGrid grid = context.Map.Grid;
+            for (int slot = 0; slot < unitCount; slot++)
+            {
+                float2 p = data.Positions[slot];
+                float r = data.Radius[slot];
+                if (p.x + r < lo.x || p.y + r < lo.y || p.x - r > hi.x + 1 || p.y - r > hi.y + 1) continue;
+                if (!TileSearch.FindNearest((int2)math.floor(p), grid.IsWalkable, t => grid.TileAt(t) == TileType.Ground, 4096, out int2 free)) continue;
+                if (data.PendingMoves.Capacity <= data.PendingMoves.Count()) data.PendingMoves.Capacity *= 2;
+                data.PendingMoves[data.IdOf[slot]] = (float2)free + 0.5f;
+            }
         }
 
         private void CreateBuilding(SimContext context, in BuildingSpec spec)

@@ -54,13 +54,31 @@ namespace WAR2D.Sim
             SimContext context = SimContext.Current;
 
             RemoveDead(data, context);
+            SettleUpkeep(data, context);
             data.AttackEvents.Clear();
 
             RefRW<SimClock> clock = SystemAPI.GetSingletonRW<SimClock>();
+            context?.Orders.AtBoundary(context.Map, clock.ValueRO.Tick);
             bool running = SimContext.RunningOverride
                 ?? (NetworkServer.active && GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing);
             clock.ValueRW.Running = running;
             if (running) clock.ValueRW.Tick++;
+        }
+
+        /// <summary>Takes last tick's upkeep from the owners, then refreshes every owner's budget.</summary>
+        private static void SettleUpkeep(SimData data, SimContext context)
+        {
+            bool charged = data.ChargedThisTick[0] != 0;
+            data.ChargedThisTick[0] = 0;
+            for (int s = 0; s < SimData.MaxOwners; s++)
+            {
+                int owner = data.OwnerIdBySlot[s];
+                float spent = data.UpkeepSpent[s];
+                data.UpkeepSpent[s] = 0f;
+                if (owner == 0) continue;
+                if (charged && spent > 0f) context?.Spend?.Invoke(owner, spent);
+                data.UpkeepBudget[s] = context?.BudgetOf != null ? context.BudgetOf(owner) : float.MaxValue;
+            }
         }
 
         private void RemoveDead(SimData data, SimContext context)
@@ -90,6 +108,8 @@ namespace WAR2D.Sim
 
         protected override void OnUpdate()
         {
+            SimContext context = SimContext.Current;
+            if (context != null) context.Orders.ScheduleRebuilds(context.Config.Simulation.MaxFieldRebuildsPerTick);
             SimTiming.LastMainThreadMs = SimBoundarySystem.TickWatch.Elapsed.TotalMilliseconds;
         }
     }

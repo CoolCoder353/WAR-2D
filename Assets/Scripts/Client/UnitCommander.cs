@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using DG.Tweening;
 using Mirror;
 using Unity.Collections;
 using Unity.Mathematics;
@@ -24,8 +23,6 @@ public class UnitCommander : NetworkBehaviour
 
     private ClientPlayer localPlayer;
 
-    private Dictionary<int, GameObject> unitGameObjects = new Dictionary<int, GameObject>();
-    private Dictionary<int, double> lastUnitAttackTimes = new Dictionary<int, double>();
 
     public Dictionary<int, GameObject> buildingGameObjects = new Dictionary<int, GameObject>();
 
@@ -41,7 +38,6 @@ public class UnitCommander : NetworkBehaviour
             selectionBox.SetActive(false);
 
             localPlayer = NetworkClient.connection.identity.GetComponent<ClientPlayer>();
-            localPlayer.SetUnitHandles();
             localPlayer.SetBuildingHandles();
         }
         else
@@ -57,7 +53,6 @@ public class UnitCommander : NetworkBehaviour
         {
             Instance = null;
         }
-        localPlayer.RemoveUnitHandles();
     }
 
     public static Vector3 GetMouseWorldPosition()
@@ -159,160 +154,7 @@ public class UnitCommander : NetworkBehaviour
             lastSentCorner2 = corner2;
             viewSendTimer = 0f;
         }
-
-        MoveUnits();
-        VisualizeAttackingUnits();
     }
-
-
-    [Client]
-    private void VisualizeAttackingUnits()
-    {
-        foreach (ClientUnit unit in localPlayer.visuableUnits)
-        {
-            if (!lastUnitAttackTimes.ContainsKey(unit.id))
-            {
-                lastUnitAttackTimes[unit.id] = unit.lastAttackTime;
-            }
-
-            if (unit.targetId != -1 && unit.lastAttackTime > lastUnitAttackTimes[unit.id])
-            {
-                lastUnitAttackTimes[unit.id] = unit.lastAttackTime;
-
-                unitGameObjects.TryGetValue(unit.id, out GameObject attackerObject);
-                if (!unitGameObjects.TryGetValue(unit.targetId, out GameObject enemyObject))
-                {
-                    buildingGameObjects.TryGetValue(unit.targetId, out enemyObject);
-                }
-
-                if (attackerObject != null && enemyObject != null)
-                {
-                    Effects.Tracer(attackerObject.transform.position, enemyObject.transform.position);
-                }
-            }
-        }
-    }
-
-
-    //Goes through all visible units and makes sure the game objects are in the right place
-    [Client]
-    private void MoveUnits()
-    {
-
-        // Debug.LogWarning($"Moving the visable units of client '{localPlayer.nickname}', '{localPlayer.visuableUnits.Count}' units");
-        foreach (ClientUnit unit in localPlayer.visuableUnits)
-        {
-            unitGameObjects.TryGetValue(unit.id, out GameObject go);
-            if (go != null)
-            {
-                if (go.transform.position == new Vector3(unit.position.x, unit.position.y, go.transform.position.z))
-                {
-                    // Debug.LogWarning($"Unit {unit.id} is already in the right position");
-                    continue;
-                }
-
-                //TODO: Tween move the game object
-                DOTween.To(() => go.transform.position, x => go.transform.position = x, new Vector3(unit.position.x, unit.position.y, go.transform.position.z), 0.5f);
-                // go.transform.position = new Vector3(unit.position.x, unit.position.y, go.transform.position.z);
-            }
-            else
-            {
-                Debug.LogError($"Unit game object not found for unit {unit.id}. When checking the insert hook it returned; Add: '{localPlayer.visuableUnits.OnAdd != null}', Insert: '{localPlayer.visuableUnits.OnInsert != null}', Set: '{localPlayer.visuableUnits.OnSet != null}', Remove: '{localPlayer.visuableUnits.OnRemove != null}', Clear: '{localPlayer.visuableUnits.OnClear != null}'");
-            }
-        }
-    }
-
-    //This is called when a unit is added or inserted into the list, returning the index of the list and the unit itself
-    [Client]
-    public void UnitListInsert(int index, ClientUnit unit)
-    {
-        // Debug.Log($"UnitListInsert called with unit id: '{unit.id}', sprite:  '{unit.spriteName}', position : '{unit.position}'");
-        if (unitGameObjects.ContainsKey(unit.id))
-        {
-            Debug.LogError("UnitListInsert called with unit that already exists in the list. Unit id: " + unit.id);
-            return;
-        }
-
-        //Create a new game object
-        GameObject go = new GameObject();
-        go.transform.position = new Vector3(unit.position.x, unit.position.y, 0);
-        go.AddComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(unit.spriteName.ToString());
-        UnitDataClient data = go.AddComponent<UnitDataClient>();
-        data.unitData = unit;
-
-        unitGameObjects.Add(unit.id, go);
-    }
-
-    //Called when a unit is removed from the list, returning the index of the list and the old unit itself
-    [Client]
-    public void UnitListRemove(int index, ClientUnit OldUnit)
-    {
-        //Remove the game object from the list
-        if (unitGameObjects.ContainsKey(OldUnit.id))
-        {
-            Destroy(unitGameObjects[OldUnit.id]);
-            unitGameObjects.Remove(OldUnit.id);
-        }
-        if (lastUnitAttackTimes.ContainsKey(OldUnit.id))
-        {
-            lastUnitAttackTimes.Remove(OldUnit.id);
-        }
-    }
-
-    //Called when the enitre list is cleared
-    [Client]
-    public void UnitListClear()
-    {
-        //Destroy all the game objects
-        foreach (var item in unitGameObjects)
-        {
-            Destroy(item.Value);
-        }
-        unitGameObjects.Clear();
-        lastUnitAttackTimes.Clear();
-    }
-
-    //Called when an item in the list is set to a new value
-    //Note: I am not sure whether this will be called if something inside the object is changed, or if the object itself is changed
-    [Client]
-    public void UnitListSet(int index, ClientUnit oldUnit, ClientUnit newUnit)
-    {
-
-        if (oldUnit.id != newUnit.id)
-        {
-            Debug.LogError("UnitListSet called with different id for old and new unit");
-            return;
-        }
-
-        //If the unit is not in the list, add it, this should not happen but just in case
-        if (!unitGameObjects.ContainsKey(newUnit.id))
-        {
-            ////UnitListInsert(index, newUnit);
-            return;
-        }
-
-
-        //If only the position is changed, tween move the game object
-        if (oldUnit.position.x != newUnit.position.x || oldUnit.position.y != newUnit.position.y)
-        {
-            //TODO: Tween move the game object
-            if (unitGameObjects.ContainsKey(oldUnit.id))
-            {
-                unitGameObjects[oldUnit.id].transform.position = new Vector3(newUnit.position.x, newUnit.position.y, 0);
-            }
-        }
-        //If the sprite is changed, change the sprite
-        if (oldUnit.spriteName != newUnit.spriteName)
-        {
-            if (unitGameObjects.ContainsKey(oldUnit.id))
-            {
-                unitGameObjects[oldUnit.id].GetComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(newUnit.spriteName.ToString());
-            }
-        }
-
-    }
-
-
 
 
     #region Buildings
@@ -470,14 +312,6 @@ public class UnitCommander : NetworkBehaviour
                 Destroy(healthComponent);
             }
         }
-        foreach (var unitGO in unitGameObjects.Values)
-        {
-            var healthComponent = unitGO.GetComponent<UnitDataClient>();
-            if (healthComponent != null)
-            {
-                Destroy(healthComponent);
-            }
-        }
     }
     [Client]
     private void AddHealthComponent(HealthComponent health, bool remove = false)
@@ -489,23 +323,6 @@ public class UnitCommander : NetworkBehaviour
             if (healthComponent == null && !remove)
             {
                 healthComponent = buildingGO.AddComponent<BuildingDataClient>();
-            }
-            if (!remove)
-            {
-                healthComponent.healthComponent = health;
-            }
-            else
-            {
-                Destroy(healthComponent);
-            }
-        }
-        else if (unitGameObjects.ContainsKey(health.entityId))
-        {
-            var unitGO = unitGameObjects[health.entityId];
-            var healthComponent = unitGO.GetComponent<UnitDataClient>();
-            if (healthComponent == null && !remove)
-            {
-                healthComponent = unitGO.AddComponent<UnitDataClient>();
             }
             if (!remove)
             {

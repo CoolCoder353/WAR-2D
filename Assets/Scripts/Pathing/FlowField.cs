@@ -306,12 +306,13 @@ namespace WAR2D.Pathing
 
         /// <summary>A goal cell list for <paramref name="click"/> on a class grid.</summary>
         public static NativeArray<int> Around(
-            int2 click, NativeArray<byte> classGrid, int width, int height, Allocator allocator)
+            int2 click, NativeArray<byte> classGrid, int width, int height, Allocator allocator, int spread = Spread)
         {
-            var picked = new System.Collections.Generic.List<int>(Spread);
+            spread = math.clamp(spread, 1, Spread);
+            var picked = new System.Collections.Generic.List<int>(spread);
             if (classGrid[click.y * width + click.x] == PathMap.Floor) picked.Add(click.y * width + click.x);
-            for (int ring = 1; ring <= 8 && picked.Count < Spread; ring++)
-            for (int i = 0; i < 8 * ring && picked.Count < Spread; i++)
+            for (int ring = 1; ring <= 8 && picked.Count < spread; ring++)
+            for (int i = 0; i < 8 * ring && picked.Count < spread; i++)
             {
                 int2 tile = RingTile(click, ring, i);
                 if ((uint)tile.x >= (uint)width || (uint)tile.y >= (uint)height) continue;

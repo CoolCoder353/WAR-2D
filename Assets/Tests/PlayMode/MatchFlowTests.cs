@@ -75,8 +75,10 @@ public class MatchFlowTests
 
         yield return WaitUntil(() => CountUnits() == 1, 10f);
         var footprint = Footprint.Tiles(spawnerAnchor, config.GetBuilding(BuildingType.SmallUnitSpawner).Size);
-        float3 unitPos = FirstUnitPosition();
-        Assert.That(footprint, Has.No.Member(new int2((int)math.round(unitPos.x), (int)math.round(unitPos.y))));
+        float2 unitPos = FirstUnitPosition();
+        int2 unitTile = (int2)math.floor(unitPos);
+        Assert.That(footprint, Has.No.Member(unitTile), "the unit spawns outside the footprint");
+        Assert.That(wsm.Map.Grid.IsWalkable(unitTile), Is.True, "the unit spawns on walkable ground");
     }
 
     [UnityTest, Timeout(90000)]
@@ -136,15 +138,15 @@ public class MatchFlowTests
 
     private static int CountUnits()
     {
-        using var q = Em.CreateEntityQuery(typeof(ClientUnit));
+        using var q = Em.CreateEntityQuery(typeof(WAR2D.Sim.Unit));
         return q.CalculateEntityCount();
     }
 
-    private static float3 FirstUnitPosition()
+    private static float2 FirstUnitPosition()
     {
-        using var q = Em.CreateEntityQuery(typeof(ClientUnit), typeof(Unity.Transforms.LocalTransform));
-        using var transforms = q.ToComponentDataArray<Unity.Transforms.LocalTransform>(Unity.Collections.Allocator.Temp);
-        return transforms[0].Position;
+        using var q = Em.CreateEntityQuery(typeof(WAR2D.Sim.Unit));
+        using var units = q.ToComponentDataArray<WAR2D.Sim.Unit>(Unity.Collections.Allocator.Temp);
+        return units[0].Position;
     }
 
     private static bool HasBuilding(BuildingType type)
