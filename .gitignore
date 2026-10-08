@@ -87,3 +87,13 @@ crashlytics-build.properties
 /[Aa]ssets/[Ss]treamingAssets/aa/*
 
 # End of https://www.toptal.com/developers/gitignore/api/unity
+
+# Local editor/crash output committed before these rules existed (removed in v0.3)
+/obj/
+/Editor.log
+mono_crash.*
+/Assets/SceneDependencyCache/
+/Assets/SceneDependencyCache.meta
+# Spike output
+/Builds/
+/SpikeResults/
