@@ -1,7 +1,10 @@
 using System;
 using Mirror;
+using Unity.Burst;
 using Unity.Collections;
+using Unity.Jobs;
 using Unity.Mathematics;
+using ReadOnly = Unity.Collections.ReadOnlyAttribute;
 
 namespace WAR2D.Spike
 {
@@ -20,6 +23,34 @@ namespace WAR2D.Spike
         /// <summary>Health a full bar is 100 % of.</summary>
         public float MaxHealth;
 
+        /// <summary>
+        /// 0 sends corrections as absolute 1/16-tile positions. Otherwise they are deltas against the
+        /// client's own prediction in 1/DeltaScale tile (the bandwidth ladder's coarser quantisation).
+        /// </summary>
+        public byte DeltaScale;
+
+        /// <summary>
+        /// Payload bytes a second each client may receive; 0 is unlimited. When set, the tick's
+        /// reliable messages are paid for first and the corrections that still fit go out largest
+        /// error first, from a bucket that holds at most one second of budget. A correction that does
+        /// not fit is retried at the unit's next check, by then with a larger error.
+        /// </summary>
+        public int BudgetBytesPerSecond;
+
+        /// <summary>
+        /// Half the client's camera view in tiles (x, y); zero disables the view tier. Units outside
+        /// the view are checked every <see cref="OffscreenInterval"/> ticks against
+        /// <see cref="OffscreenThreshold"/>: the minimap needs where they are, not where they are to
+        /// 1/4 tile.
+        /// </summary>
+        public float2 ViewHalfExtents;
+
+        /// <summary>Tiles an off-screen unit may be off before a correction is sent.</summary>
+        public float OffscreenThreshold;
+
+        /// <summary>Ticks between two checks of an off-screen unit.</summary>
+        public int OffscreenInterval;
+
         /// <summary>The plan's defaults: 0.25 tiles, every other tick, 5 tiles/s, 100 health.</summary>
         public static EncoderConfig Defaults => new EncoderConfig
         {
@@ -27,13 +58,14 @@ namespace WAR2D.Spike
             CorrectionInterval = 2,
             Speed = SpikeSimRules.Speed,
             MaxHealth = 100f,
+            OffscreenThreshold = 2f,
+            OffscreenInterval = 20,
         };
     }
 
     /// <summary>
     /// The server half of the v0.5 hybrid movement model, and the spike's byte counter. For one
-    /// client it turns the tick's state into the seven message types and writes them into Mirror's
-    /// reliable and unreliable writers.
+    /// client it turns the tick's state into the seven message types.
     ///
     /// <para><b>What it can see.</b> The encoder's unit loop is driven entirely by the client's
     /// <see cref="InterestSets"/> allowed bitset: an id that is not in it is never looked up, never
@@ -41,104 +73,41 @@ namespace WAR2D.Spike
     /// sim's id-to-slot map of an allowed id. The v0.5 leak tests have their prototype here.</para>
     ///
     /// <para><b>Prediction and corrections.</b> A unit the client knows carries a route (the traced
-    /// flow path) and a leg to walk. The client evaluates
-    /// <see cref="PathFollower.Evaluate"/> over the route at speed; the server does exactly the same
-    /// for the same unit, and when the simulation's position is more than
-    /// <see cref="EncoderConfig.CorrectionThreshold"/> tiles off the prediction, it sends the corrected
-    /// point and the waypoint to resume from, at most once every
+    /// flow path) and a leg to walk. The client evaluates <see cref="PathFollower.Evaluate"/> over the
+    /// route at speed; the server does exactly the same for the same unit, and when the simulation's
+    /// position is more than <see cref="EncoderConfig.CorrectionThreshold"/> tiles off the prediction,
+    /// it sends the corrected point and the waypoint to resume from, at most once every
     /// <see cref="EncoderConfig.CorrectionInterval"/> ticks per unit. After a correction the client
     /// predicts straight from the corrected point toward the resumed waypoint, and so does the
     /// server.</para>
     ///
-    /// <para><b>Cadence.</b> The encoder runs on the main thread after the tick's jobs complete,
-    /// because Mirror's writers are managed. Every method is single-threaded.</para>
+    /// <para><b>Cadence.</b> Each client's encode is a Burst job (<see cref="EncodeClientJob"/>) that
+    /// writes into its own native byte lists. <see cref="EncodeAll"/> runs every client's job in
+    /// parallel after the tick's simulation completes; <see cref="CopyOut"/> then hands one client's
+    /// bytes to Mirror's managed writers. <see cref="Encode"/> does both for one client, in place, for
+    /// tests. This is the plan's fallback for an encoder over its 4 ms budget.</para>
     /// </summary>
     public sealed class ReplicationEncoder : IDisposable
     {
-        /// <summary>
-        /// What one client believes about one unit: its prediction and the last byte sent. Keyed by the
-        /// unit's id, never by its ECS slot - the simulation's query slots churn by a quarter of the
-        /// army a tick, so a slot's occupant is a different unit on the next tick.
-        /// </summary>
-        private struct PredictState
-        {
-            /// <summary>The last position the client was told (the anchor while <see cref="Anchored"/>).</summary>
-            public float2 Anchor;
-
-            /// <summary>The position the client's prediction produced at the last check.</summary>
-            public float2 LastPredicted;
-
-            /// <summary>When an anchored prediction started, i.e. the tick of the correction.</summary>
-            public float AnchorTime;
-
-            /// <summary>When the current route leg started; the client computes it from the same tick.</summary>
-            public float StartTime;
-
-            /// <summary>Route waypoint the current leg departs from.</summary>
-            public int Index;
-
-            /// <summary>1 while the client predicts from a corrected point rather than from a waypoint.</summary>
-            public byte Anchored;
-
-            /// <summary>1 while the client knows the unit.</summary>
-            public byte Known;
-
-            /// <summary>1 for the tick the unit entered, so it is not also corrected that tick.</summary>
-            public byte Fresh;
-        }
-
-        /// <summary>The last prediction evaluated for a client, kept so tests and diagnostics can see its inputs.</summary>
-        private struct Prediction
-        {
-            public int Id;
-            public int First;
-            public int Count;
-            public float StartTime;
-            public byte Anchored;
-        }
-
-        private const int TypeCount = 7;
+        internal const int TypeCount = 7;
 
         private readonly EncoderConfig config;
         private readonly InterestSets interests;
         private readonly RouteStore routes;
-        private readonly int clients, idCapacity, capacity, words;
-
-        private readonly NativeArray<PredictState>[] states;
-        private readonly NativeArray<byte>[] lastHealth;
-        private readonly NativeArray<int>[] knownGeneration;
-        private readonly long[,] byteTotals;   // [client, message type]
-        private readonly long[,] unitTotals;   // [client, message type]
-        private readonly float[] lastNow;
-        private readonly Prediction[] lastPredictions;
-
-        // Per-call scratch, reused across clients.
-        private readonly NativeList<RouteUnit> moveOrders;
-        private readonly NativeList<int2> moveOrderTiles;
-        private readonly NativeList<EnterUnit> enters;
-        private readonly NativeList<int2> enterTiles;
-        private readonly NativeList<LeaveUnit> leaves;
-        private readonly NativeList<HealthUnit> healths;
-        private readonly NativeList<CorrectionUnit> corrections;
-        private readonly NativeList<ushort> explosionX, explosionY;
-        private readonly NativeList<int> fogCells;
-        private readonly NativeList<int> reliableSizes, unreliableSizes;
+        private readonly int clients, idCapacity, capacity;
+        private readonly ClientBuffers[] buffers;
+        private readonly NativeArray<int> noFog;
+        private byte[] copyBuffer = new byte[64 * 1024];
 
         private NativeArray<float2> positions;
         private NativeArray<float> health;
         private NativeArray<byte> player;
         private NativeArray<int> ids;
         private NativeArray<int> indexOfId;
-
         private FogSystem fog;
-        private int accountingClient;
+        private int lastClient;
         private bool disposed;
 
-        /// <summary>
-        /// Builds an encoder for <paramref name="interests"/>' clients, reading routes from
-        /// <paramref name="routes"/>. The per-client prediction and "last byte sent" tables are
-        /// allocated once, indexed by unit slot.
-        /// </summary>
         public ReplicationEncoder(in EncoderConfig config, InterestSets interests, RouteStore routes,
             int capacity, int idCapacity, Allocator allocator)
         {
@@ -148,34 +117,10 @@ namespace WAR2D.Spike
             this.capacity = math.max(1, capacity);
             this.idCapacity = math.max(1, idCapacity);
             clients = interests.Clients;
-            words = BitSet.Words(this.idCapacity);
-
-            states = new NativeArray<PredictState>[clients];
-            lastHealth = new NativeArray<byte>[clients];
-            knownGeneration = new NativeArray<int>[clients];
+            buffers = new ClientBuffers[clients];
             for (int client = 0; client < clients; client++)
-            {
-                states[client] = new NativeArray<PredictState>(this.idCapacity, allocator);
-                lastHealth[client] = new NativeArray<byte>(this.idCapacity, allocator);
-                knownGeneration[client] = new NativeArray<int>(this.idCapacity, allocator);
-            }
-            byteTotals = new long[clients, TypeCount + 1];
-            unitTotals = new long[clients, TypeCount + 1];
-            lastNow = new float[clients];
-            lastPredictions = new Prediction[clients];
-
-            moveOrders = new NativeList<RouteUnit>(256, allocator);
-            moveOrderTiles = new NativeList<int2>(1024, allocator);
-            enters = new NativeList<EnterUnit>(256, allocator);
-            enterTiles = new NativeList<int2>(1024, allocator);
-            leaves = new NativeList<LeaveUnit>(64, allocator);
-            healths = new NativeList<HealthUnit>(256, allocator);
-            corrections = new NativeList<CorrectionUnit>(1024, allocator);
-            explosionX = new NativeList<ushort>(64, allocator);
-            explosionY = new NativeList<ushort>(64, allocator);
-            fogCells = new NativeList<int>(1024, allocator);
-            reliableSizes = new NativeList<int>(64, allocator);
-            unreliableSizes = new NativeList<int>(64, allocator);
+                buffers[client] = new ClientBuffers(this.idCapacity, config.BudgetBytesPerSecond, allocator);
+            noFog = new NativeArray<int>(0, allocator);
         }
 
         /// <summary>Clients this encoder serves.</summary>
@@ -196,248 +141,598 @@ namespace WAR2D.Spike
         /// <summary>Binds the fog whose changed-cell lists become FogDelta messages.</summary>
         public void SetFog(FogSystem fog) => this.fog = fog;
 
+        /// <summary>Centres a client's camera view (tiles); only used while the view tier is on.</summary>
+        public void SetView(int client, float2 centre)
+        {
+            ClientScalars scalars = buffers[client].Scalars[0];
+            scalars.ViewCentre = centre;
+            buffers[client].Scalars[0] = scalars;
+        }
+
         /// <summary>Payload bytes the client was sent for one message type over the whole run.</summary>
-        public long Bytes(int client, SpikeMessageType type) => byteTotals[client, (int)type];
+        public long Bytes(int client, SpikeMessageType type) => buffers[client].Totals[(int)type];
 
         /// <summary>Units (or explosions, or cells) one message type carried for the client.</summary>
-        public long Count(int client, SpikeMessageType type) => unitTotals[client, (int)type];
+        public long Count(int client, SpikeMessageType type) => buffers[client].Totals[TypeCount + 1 + (int)type];
 
         /// <summary>Times a slot changed hands underneath a client's prediction (diagnostic only).</summary>
-        public long Reseeds { get; private set; }
+        public long Reseeds
+        {
+            get
+            {
+                long total = 0;
+                for (int client = 0; client < clients; client++) total += buffers[client].Scalars[0].Reseeds;
+                return total;
+            }
+        }
 
         /// <summary>
-        /// The reliable messages the last <see cref="Encode"/> wrote, by payload size, in order. The
+        /// The reliable messages the last encoded client was sent, by payload size, in order. The
         /// bench feeds these to <see cref="SpikeWire.WireBytes"/> so Mirror's batching and KCP's
         /// segmentation are counted message by message rather than guessed from the total.
         /// </summary>
-        public NativeArray<int> ReliableMessageSizes => reliableSizes.AsArray();
+        public NativeArray<int> ReliableMessageSizes => buffers[lastClient].ReliableSizes.AsArray();
 
-        /// <summary>The unreliable messages the last <see cref="Encode"/> wrote, by payload size.</summary>
-        public NativeArray<int> UnreliableMessageSizes => unreliableSizes.AsArray();
+        /// <summary>The unreliable messages the last encoded client was sent, by payload size.</summary>
+        public NativeArray<int> UnreliableMessageSizes => buffers[lastClient].UnreliableSizes.AsArray();
 
         /// <summary>The clock the client's last encode used, in seconds.</summary>
-        public float LastNow(int client) => lastNow[client];
+        public float LastNow(int client) => buffers[client].Scalars[0].Now;
 
-        /// <summary>The position the client predicts for a unit after the last <see cref="Encode"/>.</summary>
-        public float2 PredictedPosition(int client, int id) => states[client][id].LastPredicted;
+        /// <summary>The position the client predicts for a unit after the last encode.</summary>
+        public float2 PredictedPosition(int client, int id) => buffers[client].States[id].LastPredicted;
 
         /// <summary>True when the client currently predicts from a corrected point rather than a waypoint.</summary>
-        public bool PredictsFromCorrection(int client, int id) => states[client][id].Anchored != 0;
+        public bool PredictsFromCorrection(int client, int id) => buffers[client].States[id].Anchored != 0;
 
         /// <summary>
         /// The route leg the client's last prediction walked: the slice it evaluates and the time it
         /// started from. False when the last prediction came from a correction anchor, which is not a
-        /// plain route evaluation. This is what the prediction test feeds
-        /// <see cref="PathFollowerJob"/> with.
+        /// plain route evaluation. This is what the prediction test feeds <see cref="PathFollowerJob"/> with.
         /// </summary>
         public bool PredictedLeg(int client, int id, out int first, out int count, out float startTime)
         {
-            Prediction prediction = lastPredictions[client];
+            Prediction prediction = buffers[client].Scalars[0].LastPrediction;
             first = prediction.First;
             count = prediction.Count;
             startTime = prediction.StartTime;
             return prediction.Id == id && prediction.Anchored == 0;
         }
 
+        /// <summary>The error every client's predictions showed, all units (see <see cref="EncodeClientJob"/>).</summary>
+        public ErrorHistogram AllError => Aggregate(0);
+
+        /// <summary>The error of units inside each client's view.</summary>
+        public ErrorHistogram ViewError => Aggregate(1);
+
+        private ErrorHistogram Aggregate(int which)
+        {
+            var histogram = new ErrorHistogram();
+            for (int client = 0; client < clients; client++)
+                histogram.AddCounts(buffers[client].Errors, which * ErrorHistogram.Buckets, ErrorHistogram.Buckets);
+            return histogram;
+        }
+
         /// <summary>
-        /// Encodes one tick for one client. The reliable writer takes the stateful messages, the
-        /// unreliable one the corrections; both are appended to, and the caller resets them. The
-        /// tick's <see cref="InterestSets.Build"/> must have run first.
+        /// Encodes one tick for one client in place and appends its bytes to the two writers (reliable:
+        /// the stateful messages; unreliable: the corrections). The tick's
+        /// <see cref="InterestSets.Build"/> must have run first.
         /// </summary>
         public void Encode(int client, int tick, NetworkWriter reliable, NetworkWriter unreliable)
         {
             ThrowIfDisposed();
-            float now = tick * SpikeSimRules.TickSeconds;
-            lastNow[client] = now;
-            accountingClient = client;
-            moveOrders.Clear();
-            moveOrderTiles.Clear();
-            enters.Clear();
-            enterTiles.Clear();
-            leaves.Clear();
-            healths.Clear();
-            corrections.Clear();
-            explosionX.Clear();
-            explosionY.Clear();
-            fogCells.Clear();
-            reliableSizes.Clear();
-            unreliableSizes.Clear();
+            Job(client, tick).Run();
+            CopyOut(client, reliable, unreliable);
+        }
 
-            // Departures first. The interest build has already reseeded the client's knowledge, so a
-            // unit that died or left vision has no other way to be reported.
-            NativeList<int> left = interests.Left(client);
-            for (int i = 0; i < left.Length; i++)
-            {
-                int id = left[i];
-                int slot = SlotOf(id);
-                bool valid = (uint)slot < (uint)capacity && ids[slot] == id;
-                PredictState state = states[client][id];
-                bool died = valid && health[slot] <= 0f;
-                float2 at = state.Known != 0 ? state.LastPredicted : valid ? positions[slot] : float2.zero;
+        /// <summary>Encodes one tick for every client, in parallel, and waits for them.</summary>
+        public void EncodeAll(int tick)
+        {
+            ThrowIfDisposed();
+            var handles = new NativeArray<JobHandle>(clients, Allocator.Temp);
+            for (int client = 0; client < clients; client++) handles[client] = Job(client, tick).Schedule();
+            JobHandle.CompleteAll(handles);
+            handles.Dispose();
+        }
 
-                leaves.Add(new LeaveUnit { Id = id, Reason = died ? LeaveReason.Died : LeaveReason.LeftVision });
-                if (died)
-                {
-                    explosionX.Add(SpikeQuantise.Encode(at.x));
-                    explosionY.Add(SpikeQuantise.Encode(at.y));
-                }
-                state.Known = 0;
-                states[client][id] = state;
-                knownGeneration[client][id] = 0;
-            }
+        /// <summary>Appends a client's last encoded bytes to Mirror's writers; returns the two sizes.</summary>
+        public (int reliable, int unreliable) CopyOut(int client, NetworkWriter reliable, NetworkWriter unreliable)
+        {
+            lastClient = client;
+            ClientBuffers b = buffers[client];
+            Append(b.Reliable, reliable);
+            Append(b.Unreliable, unreliable);
+            return (b.Reliable.Length, b.Unreliable.Length);
+        }
 
-            // Arrivals: a fresh unit, with its route.
-            NativeList<int> entered = interests.Entered(client);
-            for (int i = 0; i < entered.Length; i++)
-            {
-                int id = entered[i];
-                int slot = SlotOf(id);
-                if ((uint)slot >= (uint)capacity || ids[slot] != id) continue;
+        /// <summary>A client's last encoded bytes without copying them (for byte counting).</summary>
+        public (int reliable, int unreliable) LastSizes(int client)
+        {
+            lastClient = client;
+            return (buffers[client].Reliable.Length, buffers[client].Unreliable.Length);
+        }
 
-                PredictState previous = states[client][id];
-                if (previous.Known != 0) Reseeds++;
+        private void Append(NativeList<byte> bytes, NetworkWriter writer)
+        {
+            int length = bytes.Length;
+            if (length == 0) return;
+            if (copyBuffer.Length < length) copyBuffer = new byte[math.ceilpow2(length)];
+            NativeArray<byte>.Copy(bytes.AsArray(), 0, copyBuffer, 0, length);
+            writer.WriteBytes(copyBuffer, 0, length);
+        }
 
-                var entry = new EnterUnit
-                {
-                    Id = id,
-                    Type = 0,
-                    Owner = player[slot],
-                    X = SpikeQuantise.Encode(positions[slot].x),
-                    Y = SpikeQuantise.Encode(positions[slot].y),
-                    Health = HealthByte(health[slot]),
-                    First = enterTiles.Length,
-                };
-                entry.Count = AppendRoute(id, enterTiles);
-                enters.Add(entry);
-
-                states[client][id] = new PredictState
-                {
-                    Anchor = positions[slot],
-                    LastPredicted = positions[slot],
-                    AnchorTime = now,
-                    StartTime = now,
-                    Index = 0,
-                    Known = 1,
-                    Fresh = 1,
-                };
-                lastHealth[client][id] = entry.Health;
-                knownGeneration[client][id] = routes.Generation(id);
-            }
-
-            // Everything the client is allowed to know: health changes, new routes and corrections.
-            NativeArray<ulong> allowed = interests.Allowed(client);
-            int interval = math.max(1, config.CorrectionInterval);
-            for (int w = 0; w < words; w++)
-            {
-                ulong bits = allowed[w];
-                while (bits != 0)
-                {
-                    int bit = math.tzcnt(bits);
-                    bits &= bits - 1;
-                    int id = w * 64 + bit;
-                    if (id >= idCapacity) continue;
-                    int slot = SlotOf(id);
-                    if ((uint)slot >= (uint)capacity || ids[slot] != id) continue;
-
-                    PredictState state = states[client][id];
-                    if (state.Fresh != 0 || state.Known == 0) continue;
-
-                    byte healthByte = HealthByte(health[slot]);
-                    if (healthByte != lastHealth[client][id])
-                    {
-                        healths.Add(new HealthUnit { Id = id, Health = healthByte });
-                        lastHealth[client][id] = healthByte;
-                    }
-
-                    int generation = routes.Generation(id);
-                    if (generation != knownGeneration[client][id])
-                    {
-                        moveOrders.Add(new RouteUnit
-                        {
-                            Id = id,
-                            First = moveOrderTiles.Length,
-                            Count = AppendRoute(id, moveOrderTiles),
-                        });
-                        knownGeneration[client][id] = generation;
-                        // A new route restarts the client's prediction at its first waypoint.
-                        state.Index = 0;
-                        state.Anchored = 0;
-                        state.StartTime = now;
-                        state.Anchor = positions[slot];
-                    }
-
-                    if ((tick + id) % interval == 0)
-                        CheckCorrection(client, slot, id, ref state, now);
-
-                    states[client][id] = state;
-                }
-            }
-
-            // The fog's changed cells go to the team whose grid just flipped.
+        private EncodeClientJob Job(int client, int tick)
+        {
+            ClientBuffers b = buffers[client];
+            NativeArray<int> fogCells = noFog;
             if (fog != null)
             {
                 int team = interests.TeamOfClient(client);
                 for (int i = 0; i < fog.LastTickTeams; i++)
                 {
                     if (fog.LastTickTeam(i) != team) continue;
-                    NativeList<int> changed = fog.Changed(team);
-                    for (int c = 0; c < changed.Length; c++) fogCells.Add(changed[c]);
+                    fogCells = fog.Changed(team).AsArray();
                     break;
                 }
             }
+            return new EncodeClientJob
+            {
+                Config = config,
+                Tick = tick,
+                Capacity = capacity,
+                IdCapacity = idCapacity,
+                Positions = positions,
+                Health = health,
+                Player = player,
+                Ids = ids,
+                IndexOfId = indexOfId,
+                Waypoints = routes.Waypoints,
+                RouteStart = routes.Starts,
+                RouteCount = routes.Counts,
+                RouteGeneration = routes.Generations,
+                Allowed = interests.Allowed(client),
+                Entered = interests.Entered(client).AsArray(),
+                Left = interests.Left(client).AsArray(),
+                FogCells = fogCells,
+                B = b.ForJob(),
+            };
+        }
 
-            FlushEnters(reliable);
-            FlushMoveOrders(reliable, tick);
-            FlushLeaves(reliable);
-            FlushHealths(reliable);
-            FlushExplosions(reliable);
-            FlushFogDelta(reliable);
-            FlushCorrections(unreliable, tick);
+        /// <summary>Frees every per-client table and scratch list. Safe to call twice.</summary>
+        public void Dispose()
+        {
+            if (disposed) return;
+            disposed = true;
+            for (int client = 0; client < clients; client++) buffers[client].Dispose();
+            noFog.Dispose();
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (disposed) throw new ObjectDisposedException(nameof(ReplicationEncoder));
+        }
+    }
+
+    /// <summary>What one client believes about one unit: its prediction and what it was last sent.</summary>
+    internal struct PredictState
+    {
+        /// <summary>The last position the client was told (the anchor while <see cref="Anchored"/>).</summary>
+        public float2 Anchor;
+
+        /// <summary>The position the client's prediction produced at the last check.</summary>
+        public float2 LastPredicted;
+
+        /// <summary>When an anchored prediction started, i.e. the tick of the correction.</summary>
+        public float AnchorTime;
+
+        /// <summary>When the current route leg started; the client computes it from the same tick.</summary>
+        public float StartTime;
+
+        /// <summary>Route waypoint the current leg departs from.</summary>
+        public int Index;
+
+        /// <summary>1 while the client predicts from a corrected point rather than from a waypoint.</summary>
+        public byte Anchored;
+
+        /// <summary>1 while the client knows the unit.</summary>
+        public byte Known;
+
+        /// <summary>1 for the tick the unit entered, so it is not also corrected that tick.</summary>
+        public byte Fresh;
+
+        public byte LastHealth;
+        public int KnownGeneration;
+    }
+
+    /// <summary>The last prediction evaluated for a client, kept so tests can see its inputs.</summary>
+    internal struct Prediction
+    {
+        public int Id;
+        public int First;
+        public int Count;
+        public float StartTime;
+        public byte Anchored;
+    }
+
+    /// <summary>A unit whose prediction is off by more than its threshold this tick.</summary>
+    internal struct Candidate
+    {
+        public int Id;
+        public float2 Actual;
+        public float Error; // negative for an off-screen unit
+        public int Weight;
+    }
+
+    /// <summary>One client's scalars, in a one-element array so a job can write them back.</summary>
+    internal struct ClientScalars
+    {
+        public float Tokens;
+        public float Now;
+        public float2 ViewCentre;
+        public long Reseeds;
+        public Prediction LastPrediction;
+    }
+
+    /// <summary>Everything one client's encode owns: its knowledge, its scratch and its output.</summary>
+    internal sealed class ClientBuffers : IDisposable
+    {
+        public NativeArray<PredictState> States;
+        public NativeArray<ClientScalars> Scalars;
+        public NativeArray<long> Totals;   // bytes [0..7], then counts [8..15], by message type
+        public NativeArray<long> Errors;   // two histograms: all units, in-view units
+        public NativeList<byte> Reliable, Unreliable;
+        public NativeList<int> ReliableSizes, UnreliableSizes;
+        public NativeList<RouteUnit> MoveOrders;
+        public NativeList<int2> MoveOrderTiles, EnterTiles;
+        public NativeList<EnterUnit> Enters;
+        public NativeList<LeaveUnit> Leaves;
+        public NativeList<HealthUnit> Healths;
+        public NativeList<CorrectionUnit> Corrections;
+        public NativeList<Candidate> Candidates;
+        public NativeList<ushort> ExplosionX, ExplosionY;
+
+        public ClientBuffers(int idCapacity, int budget, Allocator allocator)
+        {
+            States = new NativeArray<PredictState>(idCapacity, allocator);
+            Scalars = new NativeArray<ClientScalars>(1, allocator);
+            Scalars[0] = new ClientScalars { Tokens = budget };
+            Totals = new NativeArray<long>((ReplicationEncoder.TypeCount + 1) * 2, allocator);
+            Errors = new NativeArray<long>(ErrorHistogram.Buckets * 2, allocator);
+            Reliable = new NativeList<byte>(64 * 1024, allocator);
+            Unreliable = new NativeList<byte>(16 * 1024, allocator);
+            ReliableSizes = new NativeList<int>(64, allocator);
+            UnreliableSizes = new NativeList<int>(64, allocator);
+            MoveOrders = new NativeList<RouteUnit>(256, allocator);
+            MoveOrderTiles = new NativeList<int2>(1024, allocator);
+            Enters = new NativeList<EnterUnit>(256, allocator);
+            EnterTiles = new NativeList<int2>(1024, allocator);
+            Leaves = new NativeList<LeaveUnit>(64, allocator);
+            Healths = new NativeList<HealthUnit>(256, allocator);
+            Corrections = new NativeList<CorrectionUnit>(1024, allocator);
+            Candidates = new NativeList<Candidate>(1024, allocator);
+            ExplosionX = new NativeList<ushort>(64, allocator);
+            ExplosionY = new NativeList<ushort>(64, allocator);
+        }
+
+        public ClientJobBuffers ForJob() => new ClientJobBuffers
+        {
+            States = States, Scalars = Scalars, Totals = Totals, Errors = Errors,
+            Reliable = Reliable, Unreliable = Unreliable, ReliableSizes = ReliableSizes, UnreliableSizes = UnreliableSizes,
+            MoveOrders = MoveOrders, MoveOrderTiles = MoveOrderTiles, Enters = Enters, EnterTiles = EnterTiles,
+            Leaves = Leaves, Healths = Healths, Corrections = Corrections, Candidates = Candidates,
+            ExplosionX = ExplosionX, ExplosionY = ExplosionY,
+        };
+
+        public void Dispose()
+        {
+            States.Dispose(); Scalars.Dispose(); Totals.Dispose(); Errors.Dispose();
+            Reliable.Dispose(); Unreliable.Dispose(); ReliableSizes.Dispose(); UnreliableSizes.Dispose();
+            MoveOrders.Dispose(); MoveOrderTiles.Dispose(); Enters.Dispose(); EnterTiles.Dispose();
+            Leaves.Dispose(); Healths.Dispose(); Corrections.Dispose(); Candidates.Dispose();
+            ExplosionX.Dispose(); ExplosionY.Dispose();
+        }
+    }
+
+    /// <summary>The job-side view of <see cref="ClientBuffers"/>.</summary>
+    internal struct ClientJobBuffers
+    {
+        public NativeArray<PredictState> States;
+        public NativeArray<ClientScalars> Scalars;
+        public NativeArray<long> Totals;
+        public NativeArray<long> Errors;
+        public NativeList<byte> Reliable, Unreliable;
+        public NativeList<int> ReliableSizes, UnreliableSizes;
+        public NativeList<RouteUnit> MoveOrders;
+        public NativeList<int2> MoveOrderTiles, EnterTiles;
+        public NativeList<EnterUnit> Enters;
+        public NativeList<LeaveUnit> Leaves;
+        public NativeList<HealthUnit> Healths;
+        public NativeList<CorrectionUnit> Corrections;
+        public NativeList<Candidate> Candidates;
+        public NativeList<ushort> ExplosionX, ExplosionY;
+    }
+
+    /// <summary>
+    /// One client's encode for one tick, Burst compiled. The float mode matches
+    /// <see cref="PathFollowerJob"/>'s, so the server's prediction is bit-identical to the client's.
+    /// </summary>
+    [BurstCompile(FloatMode = FloatMode.Deterministic)]
+    internal struct EncodeClientJob : IJob
+    {
+        public EncoderConfig Config;
+        public int Tick, Capacity, IdCapacity;
+
+        [ReadOnly] public NativeArray<float2> Positions;
+        [ReadOnly] public NativeArray<float> Health;
+        [ReadOnly] public NativeArray<byte> Player;
+        [ReadOnly] public NativeArray<int> Ids;
+        [ReadOnly] public NativeArray<int> IndexOfId;
+        [ReadOnly] public NativeArray<float2> Waypoints;
+        [ReadOnly] public NativeArray<int> RouteStart, RouteCount, RouteGeneration;
+        [ReadOnly] public NativeArray<ulong> Allowed;
+        [ReadOnly] public NativeArray<int> Entered, Left, FogCells;
+
+        public ClientJobBuffers B;
+
+        public void Execute()
+        {
+            float now = Tick * SpikeSimRules.TickSeconds;
+            ClientScalars scalars = B.Scalars[0];
+            scalars.Now = now;
+            B.Reliable.Clear();
+            B.Unreliable.Clear();
+            B.ReliableSizes.Clear();
+            B.UnreliableSizes.Clear();
+            B.MoveOrders.Clear();
+            B.MoveOrderTiles.Clear();
+            B.Enters.Clear();
+            B.EnterTiles.Clear();
+            B.Leaves.Clear();
+            B.Healths.Clear();
+            B.Corrections.Clear();
+            B.Candidates.Clear();
+            B.ExplosionX.Clear();
+            B.ExplosionY.Clear();
+
+            // Departures first. The interest build has already reseeded the client's knowledge, so a
+            // unit that died or left vision has no other way to be reported.
+            for (int i = 0; i < Left.Length; i++)
+            {
+                int id = Left[i];
+                int slot = SlotOf(id);
+                bool valid = (uint)slot < (uint)Capacity && Ids[slot] == id;
+                PredictState state = B.States[id];
+                bool died = valid && Health[slot] <= 0f;
+                float2 at = state.Known != 0 ? state.LastPredicted : valid ? Positions[slot] : float2.zero;
+                B.Leaves.Add(new LeaveUnit { Id = id, Reason = died ? LeaveReason.Died : LeaveReason.LeftVision });
+                if (died)
+                {
+                    B.ExplosionX.Add(SpikeQuantise.Encode(at.x));
+                    B.ExplosionY.Add(SpikeQuantise.Encode(at.y));
+                }
+                state.Known = 0;
+                state.KnownGeneration = 0;
+                B.States[id] = state;
+            }
+
+            // Arrivals: a fresh unit, with its route.
+            for (int i = 0; i < Entered.Length; i++)
+            {
+                int id = Entered[i];
+                int slot = SlotOf(id);
+                if ((uint)slot >= (uint)Capacity || Ids[slot] != id) continue;
+                if (B.States[id].Known != 0) scalars.Reseeds++;
+
+                var entry = new EnterUnit
+                {
+                    Id = id,
+                    Type = 0,
+                    Owner = Player[slot],
+                    X = SpikeQuantise.Encode(Positions[slot].x),
+                    Y = SpikeQuantise.Encode(Positions[slot].y),
+                    Health = HealthByte(Health[slot]),
+                    First = B.EnterTiles.Length,
+                };
+                entry.Count = AppendRoute(id, B.EnterTiles);
+                B.Enters.Add(entry);
+                B.States[id] = new PredictState
+                {
+                    Anchor = Positions[slot],
+                    LastPredicted = Positions[slot],
+                    AnchorTime = now,
+                    StartTime = now,
+                    Index = 0,
+                    Known = 1,
+                    Fresh = 1,
+                    LastHealth = entry.Health,
+                    KnownGeneration = Generation(id),
+                };
+            }
+
+            // Everything the client is allowed to know: health changes, new routes and corrections.
+            int interval = math.max(1, Config.CorrectionInterval);
+            int words = Allowed.Length;
+            for (int w = 0; w < words; w++)
+            {
+                ulong bits = Allowed[w];
+                while (bits != 0)
+                {
+                    int bit = math.tzcnt(bits);
+                    bits &= bits - 1;
+                    int id = w * 64 + bit;
+                    if (id >= IdCapacity) continue;
+                    int slot = SlotOf(id);
+                    if ((uint)slot >= (uint)Capacity || Ids[slot] != id) continue;
+
+                    PredictState state = B.States[id];
+                    if (state.Fresh != 0 || state.Known == 0) continue;
+
+                    byte healthByte = HealthByte(Health[slot]);
+                    if (healthByte != state.LastHealth)
+                    {
+                        B.Healths.Add(new HealthUnit { Id = id, Health = healthByte });
+                        state.LastHealth = healthByte;
+                    }
+
+                    int generation = Generation(id);
+                    if (generation != state.KnownGeneration)
+                    {
+                        B.MoveOrders.Add(new RouteUnit
+                        {
+                            Id = id,
+                            First = B.MoveOrderTiles.Length,
+                            Count = AppendRoute(id, B.MoveOrderTiles),
+                        });
+                        state.KnownGeneration = generation;
+                        // A new route restarts the client's prediction at its first waypoint.
+                        state.Index = 0;
+                        state.Anchored = 0;
+                        state.StartTime = now;
+                        state.Anchor = Positions[slot];
+                    }
+
+                    bool inView = InView(scalars.ViewCentre, Positions[slot]);
+                    int every = inView ? interval : math.max(1, Config.OffscreenInterval);
+                    if ((Tick + id) % every == 0)
+                        CheckCorrection(ref scalars, slot, id, ref state, now, inView, every);
+
+                    B.States[id] = state;
+                }
+            }
+
+            FlushEnters();
+            FlushMoveOrders();
+            FlushLeaves();
+            FlushHealths();
+            FlushExplosions();
+            FlushFogDelta();
+            SelectCorrections(ref scalars, now, B.Reliable.Length);
+            FlushCorrections();
 
             // The tick's fresh units are ordinary units from the next tick on.
-            for (int i = 0; i < enters.Length; i++)
+            for (int i = 0; i < B.Enters.Length; i++)
             {
-                int id = enters[i].Id;
-                PredictState state = states[client][id];
+                int id = B.Enters[i].Id;
+                PredictState state = B.States[id];
                 if (state.Fresh == 0) continue;
                 state.Fresh = 0;
-                states[client][id] = state;
+                B.States[id] = state;
             }
+            B.Scalars[0] = scalars;
+        }
+
+        private bool InView(float2 centre, float2 position)
+        {
+            if (Config.ViewHalfExtents.x <= 0f) return true;
+            float2 d = math.abs(position - centre);
+            return d.x <= Config.ViewHalfExtents.x && d.y <= Config.ViewHalfExtents.y;
         }
 
         /// <summary>
-        /// The correction rule: the client's predicted position against the simulation's, checked once
-        /// every <see cref="EncoderConfig.CorrectionInterval"/> ticks per unit. A correction carries the
-        /// real position and the waypoint to steer toward next, and restarts the client's prediction
-        /// from there.
+        /// The correction rule: the client's predicted position against the simulation's. A unit off by
+        /// more than its threshold becomes a candidate; the rest just record their error.
         /// </summary>
-        private void CheckCorrection(int client, int slot, int id, ref PredictState state, float now)
+        private void CheckCorrection(ref ClientScalars scalars, int slot, int id, ref PredictState state, float now,
+            bool inView, int weight)
         {
-            float2 actual = positions[slot];
-            int routeFirst = routes.First(id);
-            int routeCount = routes.Count(id);
+            float2 actual = Positions[slot];
+            int routeFirst = First(id);
+            int routeCount = Count(id);
             float2 predicted = Predict(ref state, routeFirst, routeCount, now, out Prediction leg);
 
             leg.Id = id;
-            lastPredictions[client] = leg;
+            scalars.LastPrediction = leg;
             state.LastPredicted = predicted;
 
-            if (math.distance(actual, predicted) <= config.CorrectionThreshold) return;
-
-            // Resume at the waypoint the client was steering toward, so both sides walk the same leg.
-            int resume = math.clamp(state.Index + 1, 0, math.max(0, routeCount - 1));
-            corrections.Add(new CorrectionUnit
+            float error = math.distance(actual, predicted);
+            float threshold = inView ? Config.CorrectionThreshold : Config.OffscreenThreshold;
+            if (error <= threshold)
             {
-                Id = id,
-                X = SpikeQuantise.Encode(actual.x),
-                Y = SpikeQuantise.Encode(actual.y),
-                Resume = resume,
-            });
-            state.Anchored = 1;
-            state.Anchor = actual;
-            state.AnchorTime = now;
-            state.Index = math.max(0, resume - 1);
-            state.LastPredicted = actual;
+                RecordError(inView, error, weight);
+                return;
+            }
+            B.Candidates.Add(new Candidate { Id = id, Actual = actual, Error = inView ? error : -error, Weight = weight });
+        }
+
+        /// <summary>
+        /// Turns the tick's candidates into corrections. Without a budget every candidate is sent.
+        /// With one, the reliable bytes are paid first and the rest go largest error first (in-view
+        /// units ahead of off-screen ones) while the bucket lasts; the others keep their prediction.
+        /// </summary>
+        private void SelectCorrections(ref ClientScalars scalars, float now, int reliableBytes)
+        {
+            int budget = Config.BudgetBytesPerSecond;
+            float available = float.MaxValue;
+            if (budget > 0)
+            {
+                scalars.Tokens = math.min(budget, scalars.Tokens + budget * SpikeSimRules.TickSeconds) - reliableBytes;
+                available = scalars.Tokens;
+                B.Candidates.Sort(new CandidateOrder());
+            }
+
+            int previous = 0;
+            float spent = 0f;
+            for (int i = 0; i < B.Candidates.Length; i++)
+            {
+                Candidate candidate = B.Candidates[i];
+                bool inView = candidate.Error >= 0f;
+                float error = math.abs(candidate.Error);
+                PredictState state = B.States[candidate.Id];
+                int routeCount = Count(candidate.Id);
+                int resume = math.clamp(state.Index + 1, 0, math.max(0, routeCount - 1));
+
+                // What the client will reconstruct, so both sides anchor on the same point.
+                var unit = new CorrectionUnit { Id = candidate.Id, Resume = resume };
+                float2 anchor;
+                int cost;
+                if (Config.DeltaScale == 0)
+                {
+                    unit.X = SpikeQuantise.Encode(candidate.Actual.x);
+                    unit.Y = SpikeQuantise.Encode(candidate.Actual.y);
+                    anchor = new float2(SpikeQuantise.Decode(unit.X), SpikeQuantise.Decode(unit.Y));
+                    cost = SpikeMessages.CorrectionUnitSize(unit.Id, previous, resume);
+                }
+                else
+                {
+                    float scale = Config.DeltaScale;
+                    int2 delta = (int2)math.round((candidate.Actual - state.LastPredicted) * scale);
+                    delta = math.clamp(delta, short.MinValue, short.MaxValue);
+                    unit.DX = (short)delta.x;
+                    unit.DY = (short)delta.y;
+                    anchor = state.LastPredicted + (float2)delta / scale;
+                    cost = SpikeMessages.CorrectionDeltaUnitSize(unit.Id, previous, delta.x, delta.y, resume);
+                }
+
+                if (spent + cost > available)
+                {
+                    RecordError(inView, error, candidate.Weight);
+                    continue;
+                }
+                spent += cost;
+                previous = unit.Id;
+                B.Corrections.Add(unit);
+
+                state.Anchored = 1;
+                state.Anchor = anchor;
+                state.AnchorTime = now;
+                state.Index = math.max(0, resume - 1);
+                state.LastPredicted = anchor;
+                B.States[candidate.Id] = state;
+                RecordError(inView, math.distance(candidate.Actual, anchor), candidate.Weight);
+            }
+            if (budget > 0)
+            {
+                scalars.Tokens -= spent;
+                // The flush wants ascending ids for the delta coding; the budget sort broke that order.
+                B.Corrections.Sort(new CorrectionOrder());
+            }
+        }
+
+        private void RecordError(bool inView, float error, int weight)
+        {
+            int bucket = math.min(ErrorHistogram.Buckets - 1, (int)(error * ErrorHistogram.BucketsPerTile));
+            B.Errors[bucket] += weight;
+            if (inView) B.Errors[ErrorHistogram.Buckets + bucket] += weight;
         }
 
         /// <summary>
@@ -459,10 +754,10 @@ namespace WAR2D.Spike
                     leg = new Prediction { First = routeFirst, Count = 1, StartTime = state.AnchorTime, Anchored = 1 };
                     return state.Anchor;
                 }
-                float2 to = routes.Waypoints[routeFirst + target];
+                float2 to = Waypoints[routeFirst + target];
                 float2 segment = to - state.Anchor;
                 float length = math.length(segment);
-                float remaining = math.max(0f, config.Speed * (now - state.AnchorTime));
+                float remaining = math.max(0f, Config.Speed * (now - state.AnchorTime));
                 if (length <= 0f || remaining <= length)
                 {
                     leg = new Prediction { First = routeFirst + target, Count = 1, StartTime = state.AnchorTime, Anchored = 1 };
@@ -471,7 +766,7 @@ namespace WAR2D.Spike
 
                 state.Anchored = 0;
                 state.Index = target;
-                state.StartTime = state.AnchorTime + length / config.Speed;
+                state.StartTime = state.AnchorTime + length / Config.Speed;
             }
 
             int index = math.clamp(state.Index, 0, routeCount - 1);
@@ -482,7 +777,7 @@ namespace WAR2D.Spike
                 StartTime = state.StartTime,
                 Anchored = 0,
             };
-            PathFollower.Evaluate(routes.Waypoints, routeFirst + index, routeCount - index, config.Speed,
+            PathFollower.Evaluate(Waypoints, routeFirst + index, routeCount - index, Config.Speed,
                 state.StartTime, now, out float2 position, out float _);
             return position;
         }
@@ -490,67 +785,75 @@ namespace WAR2D.Spike
         /// <summary>Appends a unit's route (tiles) to a message's waypoint list, returning its count.</summary>
         private int AppendRoute(int id, NativeList<int2> into)
         {
-            int first = routes.First(id), count = routes.Count(id);
+            int first = First(id), count = Count(id);
             if (count <= 0)
             {
                 // No route at all (a unit the maintenance pass has not seen): the client still needs a
                 // point to hold at, so send the unit's own tile.
                 int slot = SlotOf(id);
-                into.Add(slot >= 0 ? (int2)math.floor(positions[slot]) : int2.zero);
+                into.Add(slot >= 0 ? (int2)math.floor(Positions[slot]) : int2.zero);
                 return 1;
             }
-            for (int i = 0; i < count; i++) into.Add((int2)math.floor(routes.Waypoints[first + i]));
+            for (int i = 0; i < count; i++) into.Add((int2)math.floor(Waypoints[first + i]));
             return count;
         }
 
-        private int SlotOf(int id) => (uint)id < (uint)idCapacity ? indexOfId[id] : -1;
+        private int SlotOf(int id) => (uint)id < (uint)IdCapacity ? IndexOfId[id] : -1;
+        private int First(int id) => (uint)id < (uint)RouteStart.Length ? RouteStart[id] : -1;
+        private int Count(int id) => (uint)id < (uint)RouteCount.Length ? RouteCount[id] : 0;
+        private int Generation(int id) => (uint)id < (uint)RouteGeneration.Length ? RouteGeneration[id] : 0;
 
         private byte HealthByte(float value) =>
-            (byte)math.round(math.saturate(value / config.MaxHealth) * 100f);
+            (byte)math.round(math.saturate(value / Config.MaxHealth) * 100f);
 
-        private void EncodeEnterChunk(NetworkWriter writer, NativeArray<int2> waypoints, NativeArray<EnterUnit> units)
+        private void Add(SpikeMessageType type, int bytes, int count, bool reliable = true)
         {
-            int before = writer.Position;
-            SpikeMessages.Encode(writer, new EnterMessage { Waypoints = waypoints, Units = units });
-            Add(SpikeMessageType.Enter, writer.Position - before, units.Length);
+            B.Totals[(int)type] += bytes;
+            B.Totals[ReplicationEncoder.TypeCount + 1 + (int)type] += count;
+            if (reliable) B.ReliableSizes.Add(bytes);
+            else B.UnreliableSizes.Add(bytes);
         }
 
-        private void FlushEnters(NetworkWriter writer)
+        private void FlushEnters()
         {
-            if (enters.Length == 0) return;
-            NativeArray<int2> waypoints = enterTiles.AsArray();
+            if (B.Enters.Length == 0) return;
+            NativeArray<int2> waypoints = B.EnterTiles.AsArray();
+            var sink = new NativeSink(B.Reliable);
             int index = 0;
-            while (index < enters.Length)
+            while (index < B.Enters.Length)
             {
                 int start = index;
                 int size = 1 + 3; // type byte and the count varint (at most three bytes at this scale)
                 int previous = 0;
-                while (index < enters.Length)
+                while (index < B.Enters.Length)
                 {
-                    EnterUnit entry = enters[index];
+                    EnterUnit entry = B.Enters[index];
                     int cost = SpikeMessages.EnterUnitSize(waypoints, entry.First, entry.Count, entry.Id, previous);
                     if (index > start && size + cost > SpikeMessages.ReliableChunk) break;
                     size += cost;
                     previous = entry.Id;
                     index++;
                 }
-                EncodeEnterChunk(writer, waypoints, enters.AsArray().GetSubArray(start, index - start));
+                int before = sink.Position;
+                SpikeMessages.Encode(ref sink, new EnterMessage { Waypoints = waypoints, Units = B.Enters.AsArray().GetSubArray(start, index - start) });
+                Add(SpikeMessageType.Enter, sink.Position - before, index - start);
             }
         }
 
-        private void FlushMoveOrders(NetworkWriter writer, int tick)
+        private void FlushMoveOrders()
         {
-            if (moveOrders.Length == 0) return;
-            NativeArray<int2> waypoints = moveOrderTiles.AsArray();
+            if (B.MoveOrders.Length == 0) return;
+            NativeArray<int2> waypoints = B.MoveOrderTiles.AsArray();
+            var sink = new NativeSink(B.Reliable);
             int index = 0;
-            while (index < moveOrders.Length)
+            while (index < B.MoveOrders.Length)
             {
                 int start = index;
-                int size = 1 + VarInt.Size((uint)tick) + 1 + 3; // type, tick, speed class, count
+                int size = 1 + VarInt.Size((uint)Tick) + 1 + 3; // type, tick, speed class, count
                 int previous = 0;
-                while (index < moveOrders.Length)
+                while (index < B.MoveOrders.Length)
                 {
-                    RouteUnit unit = moveOrders[index];
+                    RouteUnit unit = B.MoveOrders[index];
                     int cost = SpikeMessages.MoveOrderUnitSize(waypoints, unit.First, unit.Count, unit.Id, previous);
                     if (index > start && size + cost > SpikeMessages.ReliableChunk) break;
                     size += cost;
@@ -558,185 +861,227 @@ namespace WAR2D.Spike
                     index++;
                 }
                 int count = index - start;
-                int before = writer.Position;
-                SpikeMessages.Encode(writer, new MoveOrderMessage
+                int before = sink.Position;
+                SpikeMessages.Encode(ref sink, new MoveOrderMessage
                 {
-                    Tick = tick,
+                    Tick = Tick,
                     SpeedClass = 0,
                     Waypoints = waypoints,
-                    Units = moveOrders.AsArray().GetSubArray(start, count),
+                    Units = B.MoveOrders.AsArray().GetSubArray(start, count),
                 });
-                Add(SpikeMessageType.MoveOrder, writer.Position - before, count);
+                Add(SpikeMessageType.MoveOrder, sink.Position - before, count);
             }
         }
 
-        private void FlushLeaves(NetworkWriter writer)
+        private void FlushLeaves()
         {
-            if (leaves.Length == 0) return;
+            if (B.Leaves.Length == 0) return;
+            var sink = new NativeSink(B.Reliable);
             int index = 0;
-            while (index < leaves.Length)
+            while (index < B.Leaves.Length)
             {
                 int start = index;
                 int size = 1 + 3;
                 int previous = 0;
-                while (index < leaves.Length)
+                while (index < B.Leaves.Length)
                 {
-                    int cost = SpikeMessages.LeaveUnitSize(leaves[index].Id, previous);
+                    int cost = SpikeMessages.LeaveUnitSize(B.Leaves[index].Id, previous);
                     if (index > start && size + cost > SpikeMessages.ReliableChunk) break;
                     size += cost;
-                    previous = leaves[index].Id;
+                    previous = B.Leaves[index].Id;
                     index++;
                 }
                 int count = index - start;
-                int before = writer.Position;
-                SpikeMessages.Encode(writer, new LeaveMessage { Units = leaves.AsArray().GetSubArray(start, count) });
-                Add(SpikeMessageType.Leave, writer.Position - before, count);
+                int before = sink.Position;
+                SpikeMessages.Encode(ref sink, new LeaveMessage { Units = B.Leaves.AsArray().GetSubArray(start, count) });
+                Add(SpikeMessageType.Leave, sink.Position - before, count);
             }
         }
 
-        private void FlushHealths(NetworkWriter writer)
+        private void FlushHealths()
         {
-            if (healths.Length == 0) return;
+            if (B.Healths.Length == 0) return;
+            var sink = new NativeSink(B.Reliable);
             int index = 0;
-            while (index < healths.Length)
+            while (index < B.Healths.Length)
             {
                 int start = index;
                 int size = 1 + 3;
                 int previous = 0;
-                while (index < healths.Length)
+                while (index < B.Healths.Length)
                 {
-                    int cost = SpikeMessages.HealthUnitSize(healths[index].Id, previous);
+                    int cost = SpikeMessages.HealthUnitSize(B.Healths[index].Id, previous);
                     if (index > start && size + cost > SpikeMessages.ReliableChunk) break;
                     size += cost;
-                    previous = healths[index].Id;
+                    previous = B.Healths[index].Id;
                     index++;
                 }
                 int count = index - start;
-                int before = writer.Position;
-                SpikeMessages.Encode(writer, new HealthMessage { Units = healths.AsArray().GetSubArray(start, count) });
-                Add(SpikeMessageType.Health, writer.Position - before, count);
+                int before = sink.Position;
+                SpikeMessages.Encode(ref sink, new HealthMessage { Units = B.Healths.AsArray().GetSubArray(start, count) });
+                Add(SpikeMessageType.Health, sink.Position - before, count);
             }
         }
 
-        private void FlushExplosions(NetworkWriter writer)
+        private void FlushExplosions()
         {
-            if (explosionX.Length == 0) return;
+            if (B.ExplosionX.Length == 0) return;
+            var sink = new NativeSink(B.Reliable);
             int index = 0;
-            while (index < explosionX.Length)
+            while (index < B.ExplosionX.Length)
             {
                 int start = index;
                 int size = 1 + 3;
-                while (index < explosionX.Length)
+                while (index < B.ExplosionX.Length)
                 {
                     if (index > start && size + 4 > SpikeMessages.ReliableChunk) break;
                     size += 4;
                     index++;
                 }
                 int count = index - start;
-                int before = writer.Position;
-                SpikeMessages.Encode(writer, new ExplosionMessage
+                int before = sink.Position;
+                SpikeMessages.Encode(ref sink, new ExplosionMessage
                 {
-                    X = explosionX.AsArray().GetSubArray(start, count),
-                    Y = explosionY.AsArray().GetSubArray(start, count),
+                    X = B.ExplosionX.AsArray().GetSubArray(start, count),
+                    Y = B.ExplosionY.AsArray().GetSubArray(start, count),
                 });
-                Add(SpikeMessageType.Explosion, writer.Position - before, count);
+                Add(SpikeMessageType.Explosion, sink.Position - before, count);
             }
         }
 
-        private void FlushFogDelta(NetworkWriter writer)
+        private void FlushFogDelta()
         {
-            if (fogCells.Length == 0) return;
+            if (FogCells.Length == 0) return;
+            var sink = new NativeSink(B.Reliable);
             int index = 0;
-            while (index < fogCells.Length)
+            while (index < FogCells.Length)
             {
                 int start = index;
                 int size = 1 + 3;
                 int previous = 0;
-                while (index < fogCells.Length)
+                while (index < FogCells.Length)
                 {
-                    int cost = VarInt.Size((uint)(fogCells[index] - previous));
+                    int cost = VarInt.Size((uint)(FogCells[index] - previous));
                     if (index > start && size + cost > SpikeMessages.ReliableChunk) break;
                     size += cost;
-                    previous = fogCells[index];
+                    previous = FogCells[index];
                     index++;
                 }
                 int count = index - start;
-                int before = writer.Position;
-                SpikeMessages.Encode(writer, new FogDeltaMessage { Cells = fogCells.AsArray().GetSubArray(start, count) });
-                Add(SpikeMessageType.FogDelta, writer.Position - before, count);
+                int before = sink.Position;
+                SpikeMessages.Encode(ref sink, new FogDeltaMessage { Cells = FogCells.GetSubArray(start, count) });
+                Add(SpikeMessageType.FogDelta, sink.Position - before, count);
             }
         }
 
         /// <summary>
-        /// Corrections are the unreliable channel's only message, and each one must fit the MTU's
-        /// 1,194-byte message limit, so the packer closes a message before the next entry would push
-        /// it over.
+        /// Corrections are the unreliable channel's only message, and each one must fit
+        /// <see cref="SpikeWire.CorrectionMessageLimit"/>, so the packer closes a message before the
+        /// next entry would push it over.
         /// </summary>
-        private void FlushCorrections(NetworkWriter writer, int tick)
+        private void FlushCorrections()
         {
-            if (corrections.Length == 0) return;
+            if (B.Corrections.Length == 0) return;
+            var sink = new NativeSink(B.Unreliable);
             int index = 0;
-            while (index < corrections.Length)
+            while (index < B.Corrections.Length)
             {
                 int start = index;
-                int size = 1 + VarInt.Size((uint)tick) + 3; // type, tick, count
+                int size = 1 + VarInt.Size((uint)Tick) + 1 + 3; // type, tick, delta scale, count
                 int previous = 0;
-                while (index < corrections.Length)
+                while (index < B.Corrections.Length)
                 {
-                    CorrectionUnit unit = corrections[index];
-                    int cost = SpikeMessages.CorrectionUnitSize(unit.Id, previous, unit.Resume);
-                    if (index > start && size + cost > SpikeWire.UnreliableMaxMessageSize) break;
+                    CorrectionUnit unit = B.Corrections[index];
+                    int cost = Config.DeltaScale == 0
+                        ? SpikeMessages.CorrectionUnitSize(unit.Id, previous, unit.Resume)
+                        : SpikeMessages.CorrectionDeltaUnitSize(unit.Id, previous, unit.DX, unit.DY, unit.Resume);
+                    if (index > start && size + cost > SpikeWire.CorrectionMessageLimit) break;
                     size += cost;
                     previous = unit.Id;
                     index++;
                 }
                 int count = index - start;
-                int before = writer.Position;
-                SpikeMessages.Encode(writer, new CorrectionMessage
+                int before = sink.Position;
+                SpikeMessages.Encode(ref sink, new CorrectionMessage
                 {
-                    Tick = tick,
-                    Units = corrections.AsArray().GetSubArray(start, count),
+                    Tick = Tick,
+                    DeltaScale = Config.DeltaScale,
+                    Units = B.Corrections.AsArray().GetSubArray(start, count),
                 });
-                Add(SpikeMessageType.Correction, writer.Position - before, count, reliable: false);
+                Add(SpikeMessageType.Correction, sink.Position - before, count, reliable: false);
             }
         }
 
-        private void Add(SpikeMessageType type, int bytes, int count, bool reliable = true)
+        /// <summary>In-view first (non-negative), then by error, largest first.</summary>
+        private struct CandidateOrder : System.Collections.Generic.IComparer<Candidate>
         {
-            byteTotals[accountingClient, (int)type] += bytes;
-            unitTotals[accountingClient, (int)type] += count;
-            if (reliable) reliableSizes.Add(bytes);
-            else unreliableSizes.Add(bytes);
-        }
-
-        /// <summary>Frees every per-client table and scratch list. Safe to call twice.</summary>
-        public void Dispose()
-        {
-            if (disposed) return;
-            disposed = true;
-            for (int client = 0; client < clients; client++)
+            public int Compare(Candidate a, Candidate b)
             {
-                states[client].Dispose();
-                lastHealth[client].Dispose();
-                knownGeneration[client].Dispose();
+                bool av = a.Error >= 0f, bv = b.Error >= 0f;
+                if (av != bv) return av ? -1 : 1;
+                return math.abs(b.Error).CompareTo(math.abs(a.Error));
             }
-            moveOrders.Dispose();
-            moveOrderTiles.Dispose();
-            enters.Dispose();
-            enterTiles.Dispose();
-            leaves.Dispose();
-            healths.Dispose();
-            corrections.Dispose();
-            explosionX.Dispose();
-            explosionY.Dispose();
-            fogCells.Dispose();
-            reliableSizes.Dispose();
-            unreliableSizes.Dispose();
         }
 
-        private void ThrowIfDisposed()
+        private struct CorrectionOrder : System.Collections.Generic.IComparer<CorrectionUnit>
         {
-            if (disposed) throw new ObjectDisposedException(nameof(ReplicationEncoder));
+            public int Compare(CorrectionUnit a, CorrectionUnit b) => a.Id.CompareTo(b.Id);
+        }
+    }
+
+    /// <summary>
+    /// Position errors in 1/64-tile buckets up to 32 tiles (the last bucket holds everything above),
+    /// weighted, so the percentiles of millions of samples cost nothing to keep.
+    /// </summary>
+    public sealed class ErrorHistogram
+    {
+        public const float BucketsPerTile = 64f;
+        public const int Buckets = 32 * 64 + 1;
+        private readonly long[] counts = new long[Buckets];
+        private long total;
+
+        public long Total => total;
+
+        public void Add(float error, int weight)
+        {
+            int bucket = math.min(Buckets - 1, (int)(error * BucketsPerTile));
+            counts[bucket] += weight;
+            total += weight;
+        }
+
+        /// <summary>Adds a native histogram's counts (one client's) to this one.</summary>
+        public void AddCounts(NativeArray<long> source, int offset, int length)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                counts[i] += source[offset + i];
+                total += source[offset + i];
+            }
+        }
+
+        /// <summary>The error at percentile <paramref name="p"/> (0-100), as the bucket's upper edge, in tiles.</summary>
+        public double Percentile(double p)
+        {
+            if (total == 0) return double.NaN;
+            long rank = (long)Math.Ceiling(p / 100.0 * total);
+            long seen = 0;
+            for (int i = 0; i < counts.Length; i++)
+            {
+                seen += counts[i];
+                if (seen >= rank && counts[i] > 0) return (i + 1) / BucketsPerTile;
+            }
+            return counts.Length / BucketsPerTile;
+        }
+
+        public double Mean
+        {
+            get
+            {
+                if (total == 0) return double.NaN;
+                double sum = 0;
+                for (int i = 0; i < counts.Length; i++) sum += counts[i] * (i + 0.5) / BucketsPerTile;
+                return sum / total;
+            }
         }
     }
 }

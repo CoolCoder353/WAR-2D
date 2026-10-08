@@ -160,6 +160,15 @@ namespace WAR2D.Spike
         /// <summary>The waypoints every route indexes into.</summary>
         public NativeArray<float2> Waypoints => arena.AsArray();
 
+        /// <summary>Per-id first waypoint (-1 for none), for jobs that cannot call <see cref="First"/>.</summary>
+        public NativeArray<int> Starts => start;
+
+        /// <summary>Per-id waypoint count, for jobs.</summary>
+        public NativeArray<int> Counts => count;
+
+        /// <summary>Per-id route generation, for jobs.</summary>
+        public NativeArray<int> Generations => generation;
+
         /// <summary>
         /// First waypoint of a unit's route in <see cref="Waypoints"/>, or -1. Routes are keyed by the
         /// unit's id, not by its ECS slot: the simulation's query slots churn by a quarter of the army

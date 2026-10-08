@@ -470,8 +470,120 @@ public class ReplicationTests
 
         Assert.AreEqual(units, decoded, "every correction must be carried");
         Assert.Greater(messages, 1, "1,000 corrections cannot fit one MTU-sized message");
-        Assert.LessOrEqual(biggest, SpikeWire.UnreliableMaxMessageSize,
-            $"a correction message may not exceed {SpikeWire.UnreliableMaxMessageSize} bytes");
+        Assert.LessOrEqual(biggest, SpikeWire.CorrectionMessageLimit,
+            $"a correction message may not exceed {SpikeWire.CorrectionMessageLimit} bytes");
+    }
+
+    /// <summary>Delta-mode corrections carry signed offsets against the prediction and round-trip.</summary>
+    [Test]
+    public void DeltaCorrectionsRoundTrip()
+    {
+        var units = new NativeArray<CorrectionUnit>(3, Allocator.Temp);
+        units[0] = new CorrectionUnit { Id = 5, DX = -3, DY = 64, Resume = 1 };
+        units[1] = new CorrectionUnit { Id = 6, DX = 0, DY = -1, Resume = 0 };
+        units[2] = new CorrectionUnit { Id = 900, DX = 32767, DY = -32768, Resume = 7 };
+        var writer = new NetworkWriter();
+        SpikeMessages.Encode(writer, new CorrectionMessage { Tick = 12, DeltaScale = 8, Units = units });
+        var reader = new NetworkReader(writer.ToArray());
+        CorrectionMessage decoded = SpikeMessages.DecodeCorrection(reader, Allocator.Temp);
+        Assert.AreEqual(8, decoded.DeltaScale);
+        Assert.AreEqual(12, decoded.Tick);
+        for (int i = 0; i < 3; i++)
+        {
+            Assert.AreEqual(units[i].Id, decoded.Units[i].Id);
+            Assert.AreEqual(units[i].DX, decoded.Units[i].DX);
+            Assert.AreEqual(units[i].DY, decoded.Units[i].DY);
+            Assert.AreEqual(units[i].Resume, decoded.Units[i].Resume);
+        }
+        Assert.AreEqual(writer.Position, reader.Position, "the decoder must consume exactly the message");
+        // Small offsets are one byte each: id delta 1 + dx 1 + dy 1 + resume 1.
+        Assert.AreEqual(4, SpikeMessages.CorrectionDeltaUnitSize(6, 5, 0, -1, 0));
+        decoded.Units.Dispose();
+        units.Dispose();
+    }
+
+    /// <summary>
+    /// With a byte budget the encoder sends fewer corrections than candidates, never more bytes
+    /// than the bucket holds, the largest errors first, and the rest on later ticks.
+    /// </summary>
+    [Test]
+    public void BudgetSendsLargestErrorsFirst()
+    {
+        const int units = 400;
+        var config = EncoderConfig.Defaults;
+        config.CorrectionInterval = 1;
+        config.BudgetBytesPerSecond = 1024;
+        using var rig = new Rig(units + 8, clients: 1, teams: 8, vision: 30, config);
+        for (int i = 0; i < units; i++)
+        {
+            rig.Add(id: i + 1, player: 0, tile: new int2(10, 10));
+            rig.Route(i + 1, new int2(10, 10));
+        }
+        rig.Refresh();
+        rig.Encode(0, 0); // the Enter burst, paid for out of the bucket
+        for (int i = 0; i < units; i++) rig.Move(i + 1, new float2(10.5f + 1f + i * 0.05f, 10.5f));
+
+        var corrected = new HashSet<int>();
+        int firstTickCount = 0;
+        for (int tick = 1; tick <= 400 && corrected.Count < units; tick++)
+        {
+            rig.Refresh();
+            (int _, int unreliable) = rig.Encode(0, tick);
+            Assert.LessOrEqual(unreliable, config.BudgetBytesPerSecond + 64, "a tick may not spend more than the bucket");
+            var reader = rig.UnreliableReader();
+            var ids = new List<int>();
+            while (reader.Remaining > 0)
+            {
+                CorrectionMessage message = SpikeMessages.DecodeCorrection(reader, Allocator.Temp);
+                for (int u = 0; u < message.Units.Length; u++) ids.Add(message.Units[u].Id);
+                message.Units.Dispose();
+            }
+            if (tick == 1 || firstTickCount == 0) firstTickCount = ids.Count;
+            foreach (int id in ids) corrected.Add(id);
+            if (tick == 1 && ids.Count > 0)
+            {
+                // The first ticks' picks are the far end of the line: the largest errors.
+                foreach (int id in ids) Assert.Greater(id, units / 2, $"unit {id} has a smaller error than one left waiting");
+            }
+        }
+        Assert.Less(firstTickCount, units, "the budget must hold some corrections back");
+        Assert.AreEqual(units, corrected.Count, "every unit is corrected eventually");
+    }
+
+    /// <summary>
+    /// The view tier: an in-view unit is corrected at the fine threshold, an off-screen one only
+    /// when it is past the coarse threshold, and only on its slower check cadence.
+    /// </summary>
+    [Test]
+    public void ViewTierCorrectsOffscreenUnitsCoarsely()
+    {
+        var config = EncoderConfig.Defaults;
+        config.CorrectionInterval = 1;
+        config.ViewHalfExtents = new float2(8f, 8f);
+        config.OffscreenThreshold = 2f;
+        config.OffscreenInterval = 1;
+        using var rig = new Rig(8, clients: 1, teams: 8, vision: 60, config);
+        rig.Encoder.SetView(0, new float2(16f, 16f));
+        rig.Add(id: 1, player: 0, tile: new int2(16, 16)); // in view, will be 1 tile off
+        rig.Add(id: 2, player: 0, tile: new int2(50, 50)); // off-screen, 1 tile off
+        rig.Add(id: 3, player: 0, tile: new int2(50, 40)); // off-screen, 5 tiles off
+        rig.Refresh();
+        rig.Encode(0, 0);
+        rig.Move(1, new float2(17.5f, 16.5f));
+        rig.Move(2, new float2(51.5f, 50.5f));
+        rig.Move(3, new float2(55.5f, 40.5f));
+        rig.Refresh();
+        rig.Encode(0, 1);
+
+        var reader = rig.UnreliableReader();
+        var ids = new List<int>();
+        while (reader.Remaining > 0)
+        {
+            CorrectionMessage message = SpikeMessages.DecodeCorrection(reader, Allocator.Temp);
+            for (int u = 0; u < message.Units.Length; u++) ids.Add(message.Units[u].Id);
+            message.Units.Dispose();
+        }
+        CollectionAssert.AreEquivalent(new[] { 1, 3 }, ids);
     }
 
     /// <summary>

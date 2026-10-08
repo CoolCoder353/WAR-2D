@@ -18,6 +18,13 @@ namespace WAR2D.Spike
         /// <summary>Appends <paramref name="value"/> as a LEB128 varint.</summary>
         public static void Write(NetworkWriter writer, uint value)
         {
+            var sink = new NetworkSink(writer);
+            Write(ref sink, value);
+        }
+
+        /// <summary>Appends <paramref name="value"/> as a LEB128 varint to any byte sink.</summary>
+        public static void Write<W>(ref W writer, uint value) where W : struct, ISpikeWriter
+        {
             while (value >= 0x80)
             {
                 writer.WriteByte((byte)(value | 0x80u));
@@ -56,6 +63,9 @@ namespace WAR2D.Spike
         /// <summary>Appends a signed value as a zigzag varint.</summary>
         public static void WriteInt(NetworkWriter writer, int value) => Write(writer, ZigZag(value));
 
+        /// <summary>Appends a signed value as a zigzag varint to any byte sink.</summary>
+        public static void WriteInt<W>(ref W writer, int value) where W : struct, ISpikeWriter => Write(ref writer, ZigZag(value));
+
         /// <summary>Reads a zigzag varint.</summary>
         public static int ReadInt(NetworkReader reader) => UnZigZag(Read(reader));
 
@@ -67,5 +77,42 @@ namespace WAR2D.Spike
 
         /// <summary>The signed value <see cref="ZigZag"/> encoded.</summary>
         public static int UnZigZag(uint value) => (int)(value >> 1) ^ -(int)(value & 1);
+    }
+
+    /// <summary>
+    /// Where encoded bytes go. Mirror's <see cref="NetworkWriter"/> is managed, so the message writers
+    /// are generic over this: tests and the soak write into a NetworkWriter through
+    /// <see cref="NetworkSink"/>, and the Burst encoder writes into a native list through
+    /// <see cref="NativeSink"/>. Multi-byte values are little-endian, as Mirror writes them.
+    /// </summary>
+    public interface ISpikeWriter
+    {
+        int Position { get; }
+        void WriteByte(byte value);
+        void WriteUShort(ushort value);
+    }
+
+    /// <summary>A <see cref="NetworkWriter"/> as a sink (managed; not for Burst).</summary>
+    public struct NetworkSink : ISpikeWriter
+    {
+        private readonly NetworkWriter writer;
+        public NetworkSink(NetworkWriter writer) => this.writer = writer;
+        public int Position => writer.Position;
+        public void WriteByte(byte value) => writer.WriteByte(value);
+        public void WriteUShort(ushort value) => writer.WriteUShort(value);
+    }
+
+    /// <summary>A native byte list as a sink, for Burst jobs.</summary>
+    public struct NativeSink : ISpikeWriter
+    {
+        public Unity.Collections.NativeList<byte> Bytes;
+        public NativeSink(Unity.Collections.NativeList<byte> bytes) => Bytes = bytes;
+        public int Position => Bytes.Length;
+        public void WriteByte(byte value) => Bytes.Add(value);
+        public void WriteUShort(ushort value)
+        {
+            Bytes.Add((byte)value);
+            Bytes.Add((byte)(value >> 8));
+        }
     }
 }

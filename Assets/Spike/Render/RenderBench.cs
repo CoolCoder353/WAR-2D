@@ -49,7 +49,7 @@ namespace WAR2D.Spike
         internal const float ClusterTilesAt10k = 110f;
 
         /// <summary>Units per worker slice in the per-frame jobs.</summary>
-        private const int JobBatch = 128;
+        internal const int JobBatch = 128;
 
         /// <summary>Frames of frame-timing lag dropped at the front of the sample window.</summary>
         private const int FrameTimingSkip = 4;
@@ -384,7 +384,7 @@ namespace WAR2D.Spike
         }
 
         /// <summary>The health-bar atlas: frame n is the bar at n / (frames - 1) health, drawn as a white bar in a transparent square.</summary>
-        private static Texture2D BuildBarAtlas(int frames)
+        internal static Texture2D BuildBarAtlas(int frames)
         {
             const int cell = 32, barHeight = 8;
             var texture = new Texture2D(frames * cell, cell, TextureFormat.RGBA32, false)
@@ -427,7 +427,7 @@ namespace WAR2D.Spike
         /// instanced quad with the spike shader. No sprite or URP material is involved, so the
         /// background cannot be the thing that fails to render under the 2D renderer.
         /// </summary>
-        private sealed class Backdrop : IDisposable
+        internal sealed class Backdrop : IDisposable
         {
             private readonly Material material;
             private readonly GraphicsBuffer instances, frameRects;

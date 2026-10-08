@@ -114,6 +114,7 @@ namespace WAR2D.Spike
             config.SpawnPerTick = SpikeSimRules.SpawnPerTick;
             config.SpawnTarget = Scenario.UnitsPerPlayer;
             config.SpawnOrigins = Scenario.HqSites;
+            config.Async = a.Async;
             Sim = SpikeSim.Create(config, Map, allocator, Cache);
             Sim.AddScenario(Scenario);
             SetupOrders();
@@ -136,12 +137,55 @@ namespace WAR2D.Spike
             Interests.SetFog(Fog);
             Interests.SetTileGrid(Map.Width, Map.Height);
 
-            Encoder = new ReplicationEncoder(EncoderConfig.Defaults, Interests, Routes,
+            Encoder = new ReplicationEncoder(EncoderConfigFor(a), Interests, Routes,
                 Sim.Data.Capacity, Sim.Data.IdCapacity, allocator);
             Encoder.SetUnits(Sim.Data.Positions, Sim.Data.Health, Sim.Data.Team, Sim.Data.IdOf, Sim.Data.IndexOfId, Sim.Data.Capacity);
             Encoder.SetFog(Fog);
 
             terrain = new NativeList<int2>(8, allocator);
+        }
+
+        /// <summary>The encoder's tuning from the bandwidth ladder's command-line knobs.</summary>
+        public static EncoderConfig EncoderConfigFor(SpikeArgs a)
+        {
+            EncoderConfig config = EncoderConfig.Defaults;
+            if (a.CorrInterval > 0) config.CorrectionInterval = a.CorrInterval;
+            if (a.CorrThreshold > 0f) config.CorrectionThreshold = a.CorrThreshold;
+            config.DeltaScale = (byte)math.clamp(a.DeltaScale, 0, 255);
+            config.BudgetBytesPerSecond = math.max(0, a.BudgetKBps) * 1024;
+            // A 16:9 camera: -view is its width in tiles.
+            if (a.ViewTiles > 0) config.ViewHalfExtents = new float2(a.ViewTiles, a.ViewTiles * 9f / 16f) * 0.5f;
+            if (a.OffThreshold > 0f) config.OffscreenThreshold = a.OffThreshold;
+            if (a.OffInterval > 0) config.OffscreenInterval = a.OffInterval;
+            return config;
+        }
+
+        /// <summary>Tiles per side of the grid the camera picks its spot from.</summary>
+        private const int ViewCell = 16;
+
+        /// <summary>
+        /// Points each client's camera at the densest 16-tile block of its own army: the player
+        /// watches their biggest group, which is the worst case for the in-view correction rate.
+        /// </summary>
+        public void UpdateViews()
+        {
+            if (Args.ViewTiles <= 0) return;
+            int cells = (Map.Width + ViewCell - 1) / ViewCell;
+            var counts = new int[Players, cells * cells];
+            for (int i = 0; i < Sim.Data.Capacity; i++)
+            {
+                if (Sim.Data.Health[i] <= 0f) continue;
+                int owner = Sim.Data.Team[i];
+                if (owner >= Players) continue;
+                int2 c = math.clamp((int2)(Sim.Data.Positions[i] / ViewCell), 0, cells - 1);
+                counts[owner, c.y * cells + c.x]++;
+            }
+            for (int client = 0; client < Clients; client++)
+            {
+                int best = 0;
+                for (int c = 1; c < cells * cells; c++) if (counts[client, c] > counts[client, best]) best = c;
+                Encoder.SetView(client, new float2(best % cells + 0.5f, best / cells + 0.5f) * ViewCell);
+            }
         }
 
         /// <summary>Builds a match for <paramref name="a"/>'s options, running for <paramref name="ticks"/> measured ticks.</summary>
@@ -224,6 +268,41 @@ namespace WAR2D.Spike
             Fog.Tick();
         }
 
+        /// <summary>
+        /// The async host's order of work (the combined bench): the previous tick's jobs are settled
+        /// first, then orders, terrain and fog run on the settled world. The caller encodes, and then
+        /// <see cref="ScheduleSim"/> starts the next simulation tick, whose jobs run while the host
+        /// renders. Clients see the world one tick later than in sync mode.
+        /// </summary>
+        public double SettleAndPrepare(int tick)
+        {
+            Sim.Settle();
+            double wait = Sim.LastBoundaryMilliseconds;
+            Intake(tick);
+            ApplyTerrain(tick);
+            Fog.Tick();
+            return wait;
+        }
+
+        /// <summary>Schedules the simulation tick without waiting for it (async mode).</summary>
+        public void ScheduleSim() => Sim.Tick();
+
+        /// <summary>The centre of the densest 16-tile block of a player's army: where its camera looks.</summary>
+        public float2 DensestBlock(int player)
+        {
+            int cells = (Map.Width + ViewCell - 1) / ViewCell;
+            var counts = new int[cells * cells];
+            for (int i = 0; i < Sim.Data.Capacity; i++)
+            {
+                if (Sim.Data.Health[i] <= 0f || Sim.Data.Team[i] != player) continue;
+                int2 c = math.clamp((int2)(Sim.Data.Positions[i] / ViewCell), 0, cells - 1);
+                counts[c.y * cells + c.x]++;
+            }
+            int best = 0;
+            for (int c = 1; c < counts.Length; c++) if (counts[c] > counts[best]) best = c;
+            return new float2(best % cells + 0.5f, best / cells + 0.5f) * ViewCell;
+        }
+
         /// <summary>Re-traces the routes the tick invalidated; the benches time this separately.</summary>
         public void Maintain() => Maintenance.Maintain();
 
@@ -239,6 +318,23 @@ namespace WAR2D.Spike
             Encoder.Encode(client, tick, Reliable, Unreliable);
             return (Reliable.Position, Unreliable.Position);
         }
+
+        /// <summary>Encodes every client's tick in parallel (Burst jobs); read each with <see cref="Output"/> or <see cref="Sizes"/>.</summary>
+        public void EncodeAll(int tick) => Encoder.EncodeAll(tick);
+
+        /// <summary>
+        /// Copies one client's encoded tick into <see cref="Reliable"/> and <see cref="Unreliable"/>
+        /// (reset first) and returns the two payload sizes.
+        /// </summary>
+        public (int reliable, int unreliable) Output(int client)
+        {
+            Reliable.Position = 0;
+            Unreliable.Position = 0;
+            return Encoder.CopyOut(client, Reliable, Unreliable);
+        }
+
+        /// <summary>One client's encoded payload sizes without copying them; selects it for <see cref="LastWireBytes"/>.</summary>
+        public (int reliable, int unreliable) Sizes(int client) => Encoder.LastSizes(client);
 
         /// <summary>Payload bytes the last <see cref="Encode"/> would cost on the wire.</summary>
         public long LastWireBytes() =>

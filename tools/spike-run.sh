@@ -32,8 +32,11 @@ for run in 1 2 3; do
     bandwidth) for m in 512 1024; do for t in 8 2; do for v in 8 16 32; do
                  headless "bw-m$m-t$t-v$v-r$run" -spike bandwidth -map "$m" -teams "$t" -vision "$v" "$@"
                done; done; done ;;
-    soak)      headless "soak-r$run" -spike soak "$@" ;;
-    combined)  windowed "combined-r$run" -spike combined "$@"; windowed "combined-async-r$run" -spike combined -async "$@" ;;
+    soak)      for t in 8 2; do headless "soak-t$t-r$run" -spike soak -teams "$t" "$@"; done ;;
+    combined)  for t in 8 2; do
+                 windowed "combined-t$t-r$run" -spike combined -teams "$t" "$@"
+                 windowed "combined-async-t$t-r$run" -spike combined -teams "$t" -async "$@"
+               done ;;
     *) echo "Unknown group $group" >&2; exit 2 ;;
   esac
 done

@@ -176,6 +176,11 @@ namespace WAR2D.Spike
                 {
                     waitStats.Add(sim.LastBoundaryMilliseconds);
                     scheduleStats.Add(wall - sim.LastBoundaryMilliseconds);
+                    // A host renders frames between ticks, so the next boundary comes a tick period
+                    // later, not immediately: without this pause the boundary would wait for the
+                    // whole of the previous tick's jobs and async would measure the same as sync.
+                    double rest = SpikeSimRules.TickSeconds * 1000.0 - wall;
+                    if (rest > 0) System.Threading.Thread.Sleep((int)rest);
                 }
                 else
                 {

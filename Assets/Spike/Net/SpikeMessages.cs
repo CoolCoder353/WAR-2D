@@ -69,6 +69,12 @@ namespace WAR2D.Spike
         /// <summary>Mirror's unreliable message limit: MTU less metadata and the channel byte.</summary>
         public const int UnreliableMaxMessageSize = Mtu - MetadataSize - 1;
 
+        /// <summary>
+        /// The size a correction message is packed to: the unreliable limit less the soak's eight-byte
+        /// send timestamp, so Stage B can send each message in one datagram exactly as Stage A counts it.
+        /// </summary>
+        public const int CorrectionMessageLimit = UnreliableMaxMessageSize - 8;
+
         /// <summary>Mirror's batching threshold, the same number: a batch may be this large.</summary>
         public const int BatchThreshold = UnreliableMaxMessageSize;
 
@@ -190,6 +196,13 @@ namespace WAR2D.Spike
         /// <summary>Quantised y, 1/16 tile.</summary>
         public ushort Y;
 
+        /// <summary>
+        /// Delta mode only: the real position minus the client's own prediction, in
+        /// 1/<see cref="CorrectionMessage.DeltaScale"/> tile. Both sides evaluate the same prediction,
+        /// so the client adds this to it.
+        /// </summary>
+        public short DX, DY;
+
         /// <summary>Index of the waypoint the client should steer toward next.</summary>
         public int Resume;
     }
@@ -199,6 +212,14 @@ namespace WAR2D.Spike
     {
         /// <summary>The tick the corrections were computed at.</summary>
         public int Tick;
+
+        /// <summary>
+        /// 0: absolute positions (<see cref="CorrectionUnit.X"/>, <see cref="CorrectionUnit.Y"/>, 1/16
+        /// tile). Otherwise the entries carry <see cref="CorrectionUnit.DX"/>/<see cref="CorrectionUnit.DY"/>
+        /// against the prediction, in 1/DeltaScale tile, as zigzag varints (the bandwidth ladder's
+        /// coarser quantisation).
+        /// </summary>
+        public byte DeltaScale;
 
         /// <summary>The corrected units, ascending by id.</summary>
         public NativeArray<CorrectionUnit> Units;
@@ -327,6 +348,10 @@ namespace WAR2D.Spike
         public static int CorrectionUnitSize(int id, int previousId, int resume) =>
             VarInt.Size((uint)(id - previousId)) + 4 + VarInt.Size((uint)resume);
 
+        /// <summary>Bytes a delta-mode Correction entry costs.</summary>
+        public static int CorrectionDeltaUnitSize(int id, int previousId, int dx, int dy, int resume) =>
+            VarInt.Size((uint)(id - previousId)) + VarInt.SizeInt(dx) + VarInt.SizeInt(dy) + VarInt.Size((uint)resume);
+
         /// <summary>Bytes an Enter entry costs, delta against <paramref name="previousId"/> included.</summary>
         public static int EnterUnitSize(NativeArray<int2> waypoints, int first, int count, int id, int previousId) =>
             VarInt.Size((uint)(id - previousId)) + 7 + RouteSize(waypoints, first, count);
@@ -340,17 +365,24 @@ namespace WAR2D.Spike
         /// <summary>Writes a MoveOrder message, type byte included.</summary>
         public static void Encode(NetworkWriter writer, in MoveOrderMessage message)
         {
+            var sink = new NetworkSink(writer);
+            Encode(ref sink, message);
+        }
+
+        /// <summary>The same message into any byte sink; the Burst encoder writes into a native list.</summary>
+        public static void Encode<W>(ref W writer, in MoveOrderMessage message) where W : struct, ISpikeWriter
+        {
             writer.WriteByte((byte)SpikeMessageType.MoveOrder);
-            VarInt.Write(writer, (uint)message.Tick);
+            VarInt.Write(ref writer, (uint)message.Tick);
             writer.WriteByte(message.SpeedClass);
-            VarInt.Write(writer, (uint)message.Units.Length);
+            VarInt.Write(ref writer, (uint)message.Units.Length);
             int previous = 0;
             for (int i = 0; i < message.Units.Length; i++)
             {
                 RouteUnit unit = message.Units[i];
-                VarInt.Write(writer, (uint)(unit.Id - previous));
+                VarInt.Write(ref writer, (uint)(unit.Id - previous));
                 previous = unit.Id;
-                WriteRoute(writer, message.Waypoints, unit.First, unit.Count);
+                WriteRoute(ref writer, message.Waypoints, unit.First, unit.Count);
             }
         }
 
@@ -384,18 +416,34 @@ namespace WAR2D.Spike
         /// <summary>Writes a Correction message, type byte included.</summary>
         public static void Encode(NetworkWriter writer, in CorrectionMessage message)
         {
+            var sink = new NetworkSink(writer);
+            Encode(ref sink, message);
+        }
+
+        /// <summary>The same message into any byte sink; the Burst encoder writes into a native list.</summary>
+        public static void Encode<W>(ref W writer, in CorrectionMessage message) where W : struct, ISpikeWriter
+        {
             writer.WriteByte((byte)SpikeMessageType.Correction);
-            VarInt.Write(writer, (uint)message.Tick);
-            VarInt.Write(writer, (uint)message.Units.Length);
+            VarInt.Write(ref writer, (uint)message.Tick);
+            writer.WriteByte(message.DeltaScale);
+            VarInt.Write(ref writer, (uint)message.Units.Length);
             int previous = 0;
             for (int i = 0; i < message.Units.Length; i++)
             {
                 CorrectionUnit unit = message.Units[i];
-                VarInt.Write(writer, (uint)(unit.Id - previous));
+                VarInt.Write(ref writer, (uint)(unit.Id - previous));
                 previous = unit.Id;
-                writer.WriteUShort(unit.X);
-                writer.WriteUShort(unit.Y);
-                VarInt.Write(writer, (uint)unit.Resume);
+                if (message.DeltaScale == 0)
+                {
+                    writer.WriteUShort(unit.X);
+                    writer.WriteUShort(unit.Y);
+                }
+                else
+                {
+                    VarInt.WriteInt(ref writer, unit.DX);
+                    VarInt.WriteInt(ref writer, unit.DY);
+                }
+                VarInt.Write(ref writer, (uint)unit.Resume);
             }
         }
 
@@ -404,6 +452,7 @@ namespace WAR2D.Spike
         {
             Expect(reader, SpikeMessageType.Correction);
             int tick = (int)VarInt.Read(reader);
+            byte scale = reader.ReadByte();
             int count = (int)VarInt.Read(reader);
             var units = new NativeArray<CorrectionUnit>(count, allocator);
             int previous = 0;
@@ -411,27 +460,40 @@ namespace WAR2D.Spike
             {
                 int id = previous + (int)VarInt.Read(reader);
                 previous = id;
-                units[i] = new CorrectionUnit
+                var unit = new CorrectionUnit { Id = id };
+                if (scale == 0)
                 {
-                    Id = id,
-                    X = reader.ReadUShort(),
-                    Y = reader.ReadUShort(),
-                    Resume = (int)VarInt.Read(reader),
-                };
+                    unit.X = reader.ReadUShort();
+                    unit.Y = reader.ReadUShort();
+                }
+                else
+                {
+                    unit.DX = (short)VarInt.ReadInt(reader);
+                    unit.DY = (short)VarInt.ReadInt(reader);
+                }
+                unit.Resume = (int)VarInt.Read(reader);
+                units[i] = unit;
             }
-            return new CorrectionMessage { Tick = tick, Units = units };
+            return new CorrectionMessage { Tick = tick, DeltaScale = scale, Units = units };
         }
 
         /// <summary>Writes a Health message, type byte included.</summary>
         public static void Encode(NetworkWriter writer, in HealthMessage message)
         {
+            var sink = new NetworkSink(writer);
+            Encode(ref sink, message);
+        }
+
+        /// <summary>The same message into any byte sink; the Burst encoder writes into a native list.</summary>
+        public static void Encode<W>(ref W writer, in HealthMessage message) where W : struct, ISpikeWriter
+        {
             writer.WriteByte((byte)SpikeMessageType.Health);
-            VarInt.Write(writer, (uint)message.Units.Length);
+            VarInt.Write(ref writer, (uint)message.Units.Length);
             int previous = 0;
             for (int i = 0; i < message.Units.Length; i++)
             {
                 HealthUnit unit = message.Units[i];
-                VarInt.Write(writer, (uint)(unit.Id - previous));
+                VarInt.Write(ref writer, (uint)(unit.Id - previous));
                 previous = unit.Id;
                 writer.WriteByte(unit.Health);
             }
@@ -456,20 +518,27 @@ namespace WAR2D.Spike
         /// <summary>Writes an Enter message, type byte included.</summary>
         public static void Encode(NetworkWriter writer, in EnterMessage message)
         {
+            var sink = new NetworkSink(writer);
+            Encode(ref sink, message);
+        }
+
+        /// <summary>The same message into any byte sink; the Burst encoder writes into a native list.</summary>
+        public static void Encode<W>(ref W writer, in EnterMessage message) where W : struct, ISpikeWriter
+        {
             writer.WriteByte((byte)SpikeMessageType.Enter);
-            VarInt.Write(writer, (uint)message.Units.Length);
+            VarInt.Write(ref writer, (uint)message.Units.Length);
             int previous = 0;
             for (int i = 0; i < message.Units.Length; i++)
             {
                 EnterUnit unit = message.Units[i];
-                VarInt.Write(writer, (uint)(unit.Id - previous));
+                VarInt.Write(ref writer, (uint)(unit.Id - previous));
                 previous = unit.Id;
                 writer.WriteByte(unit.Type);
                 writer.WriteByte(unit.Owner);
                 writer.WriteUShort(unit.X);
                 writer.WriteUShort(unit.Y);
                 writer.WriteByte(unit.Health);
-                WriteRoute(writer, message.Waypoints, unit.First, unit.Count);
+                WriteRoute(ref writer, message.Waypoints, unit.First, unit.Count);
             }
         }
 
@@ -510,13 +579,20 @@ namespace WAR2D.Spike
         /// <summary>Writes a Leave message, type byte included.</summary>
         public static void Encode(NetworkWriter writer, in LeaveMessage message)
         {
+            var sink = new NetworkSink(writer);
+            Encode(ref sink, message);
+        }
+
+        /// <summary>The same message into any byte sink; the Burst encoder writes into a native list.</summary>
+        public static void Encode<W>(ref W writer, in LeaveMessage message) where W : struct, ISpikeWriter
+        {
             writer.WriteByte((byte)SpikeMessageType.Leave);
-            VarInt.Write(writer, (uint)message.Units.Length);
+            VarInt.Write(ref writer, (uint)message.Units.Length);
             int previous = 0;
             for (int i = 0; i < message.Units.Length; i++)
             {
                 LeaveUnit unit = message.Units[i];
-                VarInt.Write(writer, (uint)(unit.Id - previous));
+                VarInt.Write(ref writer, (uint)(unit.Id - previous));
                 previous = unit.Id;
                 writer.WriteByte((byte)unit.Reason);
             }
@@ -541,8 +617,15 @@ namespace WAR2D.Spike
         /// <summary>Writes an Explosion message, type byte included.</summary>
         public static void Encode(NetworkWriter writer, in ExplosionMessage message)
         {
+            var sink = new NetworkSink(writer);
+            Encode(ref sink, message);
+        }
+
+        /// <summary>The same message into any byte sink; the Burst encoder writes into a native list.</summary>
+        public static void Encode<W>(ref W writer, in ExplosionMessage message) where W : struct, ISpikeWriter
+        {
             writer.WriteByte((byte)SpikeMessageType.Explosion);
-            VarInt.Write(writer, (uint)message.X.Length);
+            VarInt.Write(ref writer, (uint)message.X.Length);
             for (int i = 0; i < message.X.Length; i++)
             {
                 writer.WriteUShort(message.X[i]);
@@ -568,13 +651,20 @@ namespace WAR2D.Spike
         /// <summary>Writes a FogDelta message (ascending cells as gaps), type byte included.</summary>
         public static void Encode(NetworkWriter writer, in FogDeltaMessage message)
         {
+            var sink = new NetworkSink(writer);
+            Encode(ref sink, message);
+        }
+
+        /// <summary>The same message into any byte sink; the Burst encoder writes into a native list.</summary>
+        public static void Encode<W>(ref W writer, in FogDeltaMessage message) where W : struct, ISpikeWriter
+        {
             writer.WriteByte((byte)SpikeMessageType.FogDelta);
-            VarInt.Write(writer, (uint)message.Cells.Length);
+            VarInt.Write(ref writer, (uint)message.Cells.Length);
             int previous = 0;
             for (int i = 0; i < message.Cells.Length; i++)
             {
                 int cell = message.Cells[i];
-                VarInt.Write(writer, (uint)(cell - previous));
+                VarInt.Write(ref writer, (uint)(cell - previous));
                 previous = cell;
             }
         }
@@ -607,9 +697,9 @@ namespace WAR2D.Spike
         }
 
         /// <summary>Writes one unit's route: count, absolute first tile, delta-coded or escaped rest.</summary>
-        public static void WriteRoute(NetworkWriter writer, NativeArray<int2> waypoints, int first, int count)
+        public static void WriteRoute<W>(ref W writer, NativeArray<int2> waypoints, int first, int count) where W : struct, ISpikeWriter
         {
-            VarInt.Write(writer, (uint)count);
+            VarInt.Write(ref writer, (uint)count);
             int2 tile = waypoints[first];
             writer.WriteUShort((ushort)tile.x);
             writer.WriteUShort((ushort)tile.y);
@@ -620,8 +710,8 @@ namespace WAR2D.Spike
                 int dx = tile.x - previous.x, dy = tile.y - previous.y;
                 if (dx >= -127 && dx <= 127 && dy >= -127 && dy <= 127)
                 {
-                    writer.WriteSByte((sbyte)dx);
-                    writer.WriteSByte((sbyte)dy);
+                    writer.WriteByte((byte)(sbyte)dx);
+                    writer.WriteByte((byte)(sbyte)dy);
                 }
                 else
                 {

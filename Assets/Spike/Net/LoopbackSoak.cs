@@ -73,7 +73,7 @@ namespace WAR2D.Spike
         private static byte[] sendBuffer = new byte[SpikeWire.ReliableMaxMessageSize + Header.Length];
 
         /// <summary>One raw client: its KCP peer, the bytes it received and its latency samples.</summary>
-        private sealed class RawClient
+        internal sealed class RawClient
         {
             public KcpClient Peer;
             public int ConnectionId = -1;
@@ -192,21 +192,25 @@ namespace WAR2D.Spike
             long receivedReliable = 0, receivedUnreliable = 0;
             int peakQueue = 0;
 
+            var period = Stopwatch.StartNew();
             for (int tick = 0; tick < ticks; tick++)
             {
+                // Real time: KCP flushes and retransmits on its own wall-clock interval, so the streams
+                // must arrive at 20 Hz, not as fast as the CPU can encode them.
+                period.Restart();
                 match.Step(tick);
+                if (tick % SpikeScenario.TicksPerSecond == 0) match.UpdateViews();
                 match.Maintain();
                 match.BuildInterests();
 
                 sw.Restart();
+                match.EncodeAll(tick);
                 for (int client = 0; client < clients; client++)
                 {
-                    match.Reliable.Position = 0;
-                    match.Unreliable.Position = 0;
-                    match.Encode(client, tick);
+                    match.Output(client);
                     int connectionId = raw[client].ConnectionId;
-                    long reliable = SendStream(transport, connectionId, match.Reliable, KcpChannel.Reliable);
-                    long unreliable = SendStream(transport, connectionId, match.Unreliable, KcpChannel.Unreliable);
+                    long reliable = SendStream(transport, connectionId, match.Reliable, KcpChannel.Reliable, match.Encoder.ReliableMessageSizes);
+                    long unreliable = SendStream(transport, connectionId, match.Unreliable, KcpChannel.Unreliable, match.Encoder.UnreliableMessageSizes);
                     sentBytes += reliable + unreliable;
                     sentReliable += reliable;
                     sentUnreliable += unreliable;
@@ -221,6 +225,16 @@ namespace WAR2D.Spike
                 for (int client = 0; client < clients; client++) raw[client].Peer.Tick();
                 sw.Stop();
                 serverMs.Add(sw.Elapsed.TotalMilliseconds);
+
+                // The rest of the tick period: the transport keeps updating every frame, as Mirror's
+                // NetworkServer would. A tick that took longer than the period starts late.
+                while (period.Elapsed.TotalMilliseconds < SpikeSimRules.TickSeconds * 1000.0)
+                {
+                    yield return null;
+                    transport.ServerEarlyUpdate();
+                    transport.ServerLateUpdate();
+                    for (int client = 0; client < clients; client++) raw[client].Peer.Tick();
+                }
 
                 int window = 0;
                 foreach (KcpServerConnection connection in transport.Server.connections.Values)
@@ -281,31 +295,48 @@ namespace WAR2D.Spike
         /// Sends one stream to a connection: the eight-byte send timestamp, then the writer's bytes,
         /// chunked to what the channel's single message may carry. Returns the payload bytes sent.
         /// </summary>
-        private static long SendStream(SpikeKcpTransport transport, int connectionId, NetworkWriter writer, KcpChannel channel)
+        internal static long SendStream(SpikeKcpTransport transport, int connectionId, NetworkWriter writer,
+            KcpChannel channel, NativeArray<int> messageSizes)
         {
             if (writer.Position == 0) return 0;
-            int max = channel == KcpChannel.Reliable
-                ? SpikeWire.ReliableMaxMessageSize
-                : SpikeWire.UnreliableMaxMessageSize;
-
+            ArraySegment<byte> payload = writer.ToArraySegment();
             long sent = 0;
             int offset = 0;
-            ArraySegment<byte> payload = writer.ToArraySegment();
+            if (channel == KcpChannel.Unreliable)
+            {
+                // One datagram per correction message, as packed: an unreliable message that spanned
+                // two datagrams would be lost whole if either were.
+                for (int i = 0; i < messageSizes.Length; i++)
+                {
+                    Send(transport, connectionId, payload, offset, messageSizes[i], Channels.Unreliable);
+                    offset += messageSizes[i];
+                    sent += messageSizes[i];
+                }
+                return sent;
+            }
+
+            // The timestamp header travels inside the same transport message, so it comes out of the limit.
+            int max = SpikeWire.ReliableMaxMessageSize - Header.Length;
             while (offset < writer.Position)
             {
                 int chunk = Math.Min(max, writer.Position - offset);
-                BitConverter.TryWriteBytes(new Span<byte>(sendBuffer, 0, Header.Length), Stopwatch.GetTimestamp());
-                Buffer.BlockCopy(payload.Array, offset, sendBuffer, Header.Length, chunk);
-                transport.ServerSend(connectionId, new ArraySegment<byte>(sendBuffer, 0, Header.Length + chunk),
-                    channel == KcpChannel.Reliable ? Channels.Reliable : Channels.Unreliable);
+                Send(transport, connectionId, payload, offset, chunk, Channels.Reliable);
                 offset += chunk;
                 sent += chunk;
             }
             return sent;
         }
 
+        private static void Send(SpikeKcpTransport transport, int connectionId, ArraySegment<byte> payload,
+            int offset, int count, int channel)
+        {
+            BitConverter.TryWriteBytes(new Span<byte>(sendBuffer, 0, Header.Length), Stopwatch.GetTimestamp());
+            Buffer.BlockCopy(payload.Array, payload.Offset + offset, sendBuffer, Header.Length, count);
+            transport.ServerSend(connectionId, new ArraySegment<byte>(sendBuffer, 0, Header.Length + count), channel);
+        }
+
         /// <summary>One arriving message: its timestamp turns into a latency sample.</summary>
-        private static void OnData(RawClient client, ArraySegment<byte> message, KcpChannel channel)
+        internal static void OnData(RawClient client, ArraySegment<byte> message, KcpChannel channel)
         {
             client.Bytes += message.Count;
             client.Messages++;
@@ -323,7 +354,7 @@ namespace WAR2D.Spike
         /// The transport connection a raw client holds: kcp2k identifies a connection by its remote
         /// endpoint, which is exactly the client's local endpoint on loopback.
         /// </summary>
-        private static int FindConnection(SpikeKcpTransport transport, RawClient client)
+        internal static int FindConnection(SpikeKcpTransport transport, RawClient client)
         {
             // Compare ports, not addresses: the transport's socket is dual mode, so the server sees a
             // client that connected to 127.0.0.1 as [::ffff:127.0.0.1] and the strings differ.

@@ -46,6 +46,21 @@ namespace WAR2D.Spike
         /// <summary>Integrate half the units on alternating ticks, the sim ladder's step 3 (sim only).</summary>
         public bool MoveHalves;
 
+        /// <summary>Bandwidth: ticks between correction checks of an in-view unit (0 keeps the plan's 2).</summary>
+        public int CorrInterval;
+        /// <summary>Bandwidth: tiles of error before an in-view unit is corrected (0 keeps 0.25).</summary>
+        public float CorrThreshold;
+        /// <summary>Bandwidth: corrections as deltas against the prediction in 1/n tile; 0 is absolute.</summary>
+        public int DeltaScale;
+        /// <summary>Bandwidth: payload KB/s per client, corrections largest error first; 0 is unlimited.</summary>
+        public int BudgetKBps;
+        /// <summary>Bandwidth: camera width in tiles (16:9) for the view tier; 0 disables it.</summary>
+        public int ViewTiles;
+        /// <summary>Bandwidth: error threshold for off-screen units (0 keeps 2 tiles).</summary>
+        public float OffThreshold;
+        /// <summary>Bandwidth: ticks between checks of an off-screen unit (0 keeps 20).</summary>
+        public int OffInterval;
+
         /// <summary>Defaults from the reference scenario table in the v0.3 plan.</summary>
         public static SpikeArgs Defaults => new SpikeArgs
         {
@@ -93,11 +108,20 @@ namespace WAR2D.Spike
                     case "-sepk": a.SepStrength = Int(next); break;
                     case "-sepiter": a.SepIterations = Int(next); break;
                     case "-halves": a.MoveHalves = true; break;
+                    case "-corri": a.CorrInterval = Int(next); break;
+                    case "-corrt": a.CorrThreshold = Float(next); break;
+                    case "-cq": a.DeltaScale = Int(next); break;
+                    case "-budget": a.BudgetKBps = Int(next); break;
+                    case "-view": a.ViewTiles = Int(next); break;
+                    case "-offt": a.OffThreshold = Float(next); break;
+                    case "-offi": a.OffInterval = Int(next); break;
                 }
             }
             return a;
         }
 
         private static int Int(string s) => int.Parse(s, NumberStyles.Integer, CultureInfo.InvariantCulture);
+
+        private static float Float(string s) => float.Parse(s, NumberStyles.Float, CultureInfo.InvariantCulture);
     }
 }

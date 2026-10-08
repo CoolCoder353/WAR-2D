@@ -372,21 +372,29 @@ namespace WAR2D.Spike
         /// </summary>
         public void Tick()
         {
-            LastBoundaryMilliseconds = 0;
-            if (data.Async)
-            {
-                var boundary = Stopwatch.StartNew();
-                World.EntityManager.CompleteAllTrackedJobs();
-                World.Unmanaged.GetUnsafeSystemRef<SpikeLifecycleSystem>(lifecycleHandle)
-                    .PlaybackPending(World.EntityManager);
-                boundary.Stop();
-                LastBoundaryMilliseconds = boundary.Elapsed.TotalMilliseconds;
-            }
+            if (data.Async) Settle();
+            else LastBoundaryMilliseconds = 0;
 
             World.SetTime(new TimeData(tick * SpikeSimRules.TickSeconds, SpikeSimRules.TickSeconds));
             tick++;
             Group.Update();
             if (!data.Async) World.EntityManager.CompleteAllTrackedJobs();
+        }
+
+        /// <summary>
+        /// The async tick boundary on its own: completes the previous tick's jobs and plays back its
+        /// lifecycle commands, so the world can be read (fog, encoding, rendering) before the next
+        /// <see cref="Tick"/> schedules. Calling it again before the next tick costs nothing; its cost
+        /// is <see cref="LastBoundaryMilliseconds"/>.
+        /// </summary>
+        public void Settle()
+        {
+            var boundary = Stopwatch.StartNew();
+            World.EntityManager.CompleteAllTrackedJobs();
+            World.Unmanaged.GetUnsafeSystemRef<SpikeLifecycleSystem>(lifecycleHandle)
+                .PlaybackPending(World.EntityManager);
+            boundary.Stop();
+            LastBoundaryMilliseconds = boundary.Elapsed.TotalMilliseconds;
         }
 
         /// <summary>Turns the group's per-stage breakdown on or off (sync mode only).</summary>

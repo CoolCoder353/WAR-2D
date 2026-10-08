@@ -80,11 +80,10 @@ namespace WAR2D.Spike
             var snapshotWire = new SpikeStats();
             var snapshotUnits = new SpikeStats();
             var snapshotSeconds = new SpikeStats();
+            match.EncodeAll(SnapshotTicks);
             for (int client = 0; client < match.Clients; client++)
             {
-                match.Reliable.Position = 0;
-                match.Unreliable.Position = 0;
-                (int reliable, int unreliable) = match.Encode(client, SnapshotTicks);
+                (int reliable, int unreliable) = match.Sizes(client);
                 long wire = match.LastWireBytes();
                 snapshotPayload.Add((reliable + unreliable) / 1024.0);
                 snapshotWire.Add(wire / 1024.0);
@@ -121,6 +120,7 @@ namespace WAR2D.Spike
             {
                 int tick = SnapshotTicks + i;
                 match.Step(tick);
+                if (i % SpikeScenario.TicksPerSecond == 0) match.UpdateViews();
 
                 sw.Restart();
                 match.Maintain();
@@ -132,19 +132,21 @@ namespace WAR2D.Spike
                 sw.Stop();
                 interestMs.Add(sw.Elapsed.TotalMilliseconds);
 
+                // The Burst encoder, every client in parallel, plus the copy into Mirror's writers a
+                // real server would do before sending.
                 sw.Restart();
+                match.EncodeAll(tick);
+                for (int client = 0; client < clients; client++) match.Output(client);
+                sw.Stop();
+                encodeMs.Add(sw.Elapsed.TotalMilliseconds);
                 for (int client = 0; client < clients; client++)
                 {
-                    match.Reliable.Position = 0;
-                    match.Unreliable.Position = 0;
-                    (int reliable, int unreliable) = match.Encode(client, tick);
+                    (int reliable, int unreliable) = match.Sizes(client);
                     long index = (long)client * ticks + i;
                     perTickReliable[index] = reliable;
                     perTickUnreliable[index] = unreliable;
                     perTickWire[index] = match.LastWireBytes();
                 }
-                sw.Stop();
-                encodeMs.Add(sw.Elapsed.TotalMilliseconds);
                 deferred.Add(match.Maintenance.Deferred);
 
                 if ((i + 1) % 200 != 0) continue;
@@ -242,6 +244,8 @@ namespace WAR2D.Spike
             SpikeResults.Write(a, "bw.allowed", "units", Single(allowed));
             SpikeResults.Write(a, "bw.corrections.perunit", "corrections", Single(
                 allowed <= 0 ? 0 : match.Encoder.Count(0, SpikeMessageType.Correction) / (double)allowed / ticks));
+            WriteError(a, "bw.error.all", match.Encoder.AllError);
+            WriteError(a, "bw.error.view", match.Encoder.ViewError);
             SpikeResults.Write(a, "bw.route.live", "waypoints", Single(match.Routes.LiveWaypoints));
             SpikeResults.Write(a, "bw.route.arena", "MB", Single(match.Routes.ArenaBytes / (1024.0 * 1024.0)));
 
@@ -255,6 +259,19 @@ namespace WAR2D.Spike
                       $"enters {match.Encoder.Count(0, SpikeMessageType.Enter)}, " +
                       $"fog cells {match.Encoder.Count(0, SpikeMessageType.FogDelta)}, " +
                       $"live units {match.LiveUnits()}");
+        }
+
+        /// <summary>
+        /// The client's prediction error: mean, p50, p95 and p99 in tiles, as one-sample metrics
+        /// (a histogram has no per-sample list for <see cref="SpikeStats"/>).
+        /// </summary>
+        private static void WriteError(SpikeArgs a, string metric, ErrorHistogram histogram)
+        {
+            if (histogram.Total == 0) return;
+            SpikeResults.Write(a, metric + ".mean", "tiles", Single(histogram.Mean));
+            SpikeResults.Write(a, metric + ".p50", "tiles", Single(histogram.Percentile(50)));
+            SpikeResults.Write(a, metric + ".p95", "tiles", Single(histogram.Percentile(95)));
+            SpikeResults.Write(a, metric + ".p99", "tiles", Single(histogram.Percentile(99)));
         }
 
         /// <summary>One-sample statistics, for metrics that are a single number.</summary>
