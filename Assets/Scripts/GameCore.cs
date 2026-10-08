@@ -41,6 +41,9 @@ public class GameCore : NetworkBehaviour
     /// <summary>Players present when Playing began (used for the win rule).</summary>
     public int MatchStartPlayerCount { get; private set; }
 
+    /// <summary>Owner ids in match order, synced to clients: an owner's position here picks its colour.</summary>
+    public readonly SyncList<int> PlayerOrder = new SyncList<int>();
+
     private NetworkConnectionToClient serverOwner;
 
     private const string LobbyScene = "Main_Menu";
@@ -181,6 +184,8 @@ public class GameCore : NetworkBehaviour
         }
         // Captured at launch so a departure before Playing can't stop the survivor from winning.
         MatchStartPlayerCount = ServerPlayers.Count;
+        PlayerOrder.Clear();
+        foreach (NetworkIdentity identity in ServerPlayers.Keys) PlayerOrder.Add(BuildingData.UIntToInt(identity.netId));
         CurrentState = GameState.PlacingHQ;
         GameManager.Instance.ServerChangeScene(ConfigLoader.LoadConfig().Match.Scene);
     }

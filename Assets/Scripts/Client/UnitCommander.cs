@@ -36,6 +36,7 @@ public class UnitCommander : NetworkBehaviour
 
             //Start the selection box as inactive
             selectionBox.SetActive(false);
+            if (GetComponent<WAR2D.Client.ClientWorld>() == null) gameObject.AddComponent<WAR2D.Client.ClientWorld>();
 
             localPlayer = NetworkClient.connection.identity.GetComponent<ClientPlayer>();
             localPlayer.SetBuildingHandles();
@@ -53,6 +54,13 @@ public class UnitCommander : NetworkBehaviour
         {
             Instance = null;
         }
+    }
+
+    /// <summary>Draws the units after this frame's prediction.</summary>
+    [ClientCallback]
+    private void LateUpdate()
+    {
+        WAR2D.Client.ClientWorld.Instance?.Draw(null);
     }
 
     public static Vector3 GetMouseWorldPosition()

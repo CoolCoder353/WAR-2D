@@ -69,6 +69,13 @@ namespace WAR2D.Client
         /// <summary>Positions from the last <see cref="PredictAll"/>, parallel to <see cref="Known"/>.</summary>
         public NativeArray<float2> Predicted => predicted.AsArray();
 
+        /// <summary>Owner id by index (for packing jobs).</summary>
+        internal NativeArray<int> OwnerArray => owner;
+        /// <summary>Health percent by index (for packing jobs).</summary>
+        internal NativeArray<byte> HealthArray => health;
+        /// <summary>Id capacity (indices are below this).</summary>
+        public int Capacity => states.Length;
+
         public bool IsKnown(int index) => (uint)index < (uint)knownSlot.Length && knownSlot[index] >= 0;
         public int IdOf(int index) => IsKnown(index) ? states[index].Id : 0;
         public int OwnerOf(int index) => owner[index];
