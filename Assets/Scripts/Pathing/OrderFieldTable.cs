@@ -57,6 +57,19 @@ namespace WAR2D.Pathing
             return Blocks[block * CellsPerSector * CellsPerSector + cy * CellsPerSector + cx];
         }
 
+        /// <summary>The order's direction at a cell of the half-resolution cell grid, or None.</summary>
+        public byte DirectionAtCell(int handle, int2 cell)
+        {
+            int2 tile = cell * CellSize;
+            if ((uint)handle >= MaxOrders || tile.x < 0 || tile.y < 0) return FlowDirections.None;
+            int sx = tile.x / SectorGraph.SectorSize, sy = tile.y / SectorGraph.SectorSize;
+            if (sx >= SectorsX || sy >= SectorsY) return FlowDirections.None;
+            int block = BlockOf[handle * SectorCount + sy * SectorsX + sx];
+            if (block < 0) return FlowDirections.None;
+            int cx = cell.x % CellsPerSector, cy = cell.y % CellsPerSector;
+            return Blocks[block * CellsPerSector * CellsPerSector + cy * CellsPerSector + cx];
+        }
+
         public void Dispose()
         {
             if (BlockOf.IsCreated) BlockOf.Dispose();
