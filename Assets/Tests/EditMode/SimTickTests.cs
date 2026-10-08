@@ -23,12 +23,14 @@ public class SimTickTests
         for (int i = 0; i < 1000; i++) sim.Spawn(SimHarness.OwnerA, new float2(2.5f + i % 100, 2.5f + i / 100));
         sim.Tick();
         SimData data = sim.Context.Data;
-        Assert.Throws<InvalidOperationException>(() => { float2 _ = data.Positions[0]; },
-            "the gather's job should still own the SoA after the tick returns");
+        var positions = data.Positions;
+        Assert.Throws<InvalidOperationException>(() => positions[0] = float2.zero,
+            "the tick's jobs should still own the SoA after the tick returns");
 
         SimContext.RunningOverride = false; // the next boundary settles the jobs and schedules nothing
         sim.Tick();
-        Assert.DoesNotThrow(() => { float2 _ = sim.Context.Data.Positions[0]; });
+        var settled = sim.Context.Data.Positions;
+        Assert.DoesNotThrow(() => settled[0] = settled[0]);
     }
 
     [Test]
