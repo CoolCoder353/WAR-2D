@@ -58,6 +58,7 @@ public class LobbySystem : MonoBehaviour
                 //Remove the client player from the all references that still exist
                 keysToRemove.Add(clientPlayer.Key);
                 playerNicknames.Remove(clientPlayer.Value);
+                teamLabels.Remove(clientPlayer.Value);
                 Destroy(lobbyPlayerUI.transform.GetChild(index).gameObject);
             }
             index++;
@@ -109,11 +110,40 @@ public class LobbySystem : MonoBehaviour
         }
         input_field.gameObject.SetActive(addNicknameListener);
 
+        // Team picker: shows the player's team; the server owner clicks it to cycle the team.
+        var teamObject = new GameObject("Team", typeof(RectTransform));
+        teamObject.transform.SetParent(lobbyPlayer.transform, false);
+        var teamLabel = teamObject.AddComponent<TextMeshProUGUI>();
+        teamLabel.fontSize = 18f;
+        teamObject.AddComponent<Button>().onClick.AddListener(() => CycleTeam(player));
+        teamLabels[player] = teamLabel;
+        UpdateTeamLabel(player);
 
 
         lobbyUI.SetActive(true);
     }
 
+
+    /// <summary>Lobby team labels, by player.</summary>
+    private readonly Dictionary<ClientPlayer, TMP_Text> teamLabels = new Dictionary<ClientPlayer, TMP_Text>();
+
+    /// <summary>Shows a player's lobby team choice.</summary>
+    public void UpdateTeamLabel(ClientPlayer player)
+    {
+        if (player == null || !teamLabels.TryGetValue(player, out TMP_Text label) || label == null) return;
+        label.text = player.lobbyTeam == TeamRules.NoTeam ? "Team: solo" : $"Team: {player.lobbyTeam + 1}";
+    }
+
+    /// <summary>Server owner only: moves a player to the next team (solo, 1..4, then solo again).</summary>
+    private void CycleTeam(ClientPlayer player)
+    {
+        if (player == null || GameCore.Instance == null || NetworkClient.localPlayer == null) return;
+        ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+        if (local == null || !local.isServerOwner) return;
+        int next = player.lobbyTeam + 1;
+        if (next >= 4) next = TeamRules.NoTeam;
+        GameCore.Instance.Cmd_SetTeam(player.netId, next);
+    }
 
     [Client]
     public void UpdateClientPlayerNickname(ClientPlayer player, string newNickname)

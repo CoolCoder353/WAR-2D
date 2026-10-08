@@ -55,7 +55,7 @@ namespace WAR2D.Sim
             state.Dependency = new ResolveTargetsJob
             {
                 Positions = data.Positions,
-                OwnerId = data.OwnerId,
+                Team = data.Team,
                 Health = data.Health,
                 Type = data.Type,
                 RangeSqByType = data.RangeSqByType,
@@ -63,7 +63,7 @@ namespace WAR2D.Sim
                 IndexOfId = data.IndexOfId,
                 UnitCount = count,
                 BuildingPositions = data.BuildingPositions,
-                BuildingOwnerId = data.BuildingOwnerId,
+                BuildingTeam = data.BuildingTeam,
                 BuildingHealth = data.BuildingHealth,
                 BuildingIds = data.BuildingIds,
                 BuildingSlotOfIndex = data.BuildingSlotOfIndex,
@@ -75,14 +75,14 @@ namespace WAR2D.Sim
             state.Dependency = new NearestEnemyJob
             {
                 Positions = data.Positions,
-                OwnerId = data.OwnerId,
+                Team = data.Team,
                 Health = data.Health,
                 Type = data.Type,
                 RangeSqByType = data.RangeSqByType,
                 CellStart = data.CellStart,
                 Sorted = data.Sorted,
                 BuildingPositions = data.BuildingPositions,
-                BuildingOwnerId = data.BuildingOwnerId,
+                BuildingTeam = data.BuildingTeam,
                 BuildingHealth = data.BuildingHealth,
                 BuildingCellStart = data.BuildingCellStart,
                 BuildingSorted = data.BuildingSorted,
@@ -142,7 +142,7 @@ namespace WAR2D.Sim
     public struct ResolveTargetsJob : IJobParallelFor
     {
         [ReadOnly] public NativeArray<float2> Positions;
-        [ReadOnly] public NativeArray<int> OwnerId;
+        [ReadOnly] public NativeArray<int> Team;
         [ReadOnly] public NativeArray<float> Health;
         [ReadOnly] public NativeArray<byte> Type;
         [ReadOnly] public NativeArray<float> RangeSqByType;
@@ -150,7 +150,7 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<int> IndexOfId;
         public int UnitCount;
         [ReadOnly] public NativeArray<float2> BuildingPositions;
-        [ReadOnly] public NativeArray<int> BuildingOwnerId;
+        [ReadOnly] public NativeArray<int> BuildingTeam;
         [ReadOnly] public NativeArray<float> BuildingHealth;
         [ReadOnly] public NativeArray<int> BuildingIds;
         [ReadOnly] public NativeArray<int> BuildingSlotOfIndex;
@@ -171,7 +171,7 @@ namespace WAR2D.Sim
             if (TargetKind[i] == TargetKinds.Unit)
             {
                 int j = IndexOfId[index];
-                if ((uint)j >= (uint)UnitCount || IdOf[j] != id || Health[j] <= 0f || OwnerId[j] == OwnerId[i] ||
+                if ((uint)j >= (uint)UnitCount || IdOf[j] != id || Health[j] <= 0f || Team[j] == Team[i] ||
                     math.distancesq(Positions[i], Positions[j]) > rangeSq) return;
                 Target[i] = j;
             }
@@ -179,7 +179,7 @@ namespace WAR2D.Sim
             {
                 int j = BuildingSlotOfIndex[index];
                 if ((uint)j >= (uint)BuildingCount || BuildingIds[j] != id || BuildingHealth[j] <= 0f ||
-                    BuildingOwnerId[j] == OwnerId[i] || math.distancesq(Positions[i], BuildingPositions[j]) > rangeSq) return;
+                    BuildingTeam[j] == Team[i] || math.distancesq(Positions[i], BuildingPositions[j]) > rangeSq) return;
                 Target[i] = j;
             }
         }

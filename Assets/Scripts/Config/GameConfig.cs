@@ -82,6 +82,10 @@ namespace Config
         public int MaxUnitsPerPlayer;
         /// <summary>Capacity of the network id index (units and buildings).</summary>
         public int MaxEntities;
+        /// <summary>Fog of war grid cell size in tiles.</summary>
+        public int FogCellSize;
+        /// <summary>Fog of war is recomputed every this many ticks.</summary>
+        public int VisionIntervalTicks;
 
         /// <summary>Seconds per simulation tick.</summary>
         public float TickSeconds => 1f / TickRate;
@@ -129,6 +133,8 @@ namespace Config
         public float Radius;
         /// <summary>Pathing size class: 0 small, 1 large.</summary>
         public int SizeClass;
+        /// <summary>Sight radius in tiles.</summary>
+        public float Sight;
     }
 
     public class BuildingConfig
@@ -140,6 +146,8 @@ namespace Config
         public float RunningCost;
         /// <summary>Units per second a spawner may produce (0 for non-spawners).</summary>
         public float SpawnRate;
+        /// <summary>Sight radius in tiles.</summary>
+        public float Sight;
 
         public int2 Size => new int2(Width, Height);
     }

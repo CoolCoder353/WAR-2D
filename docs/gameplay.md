@@ -4,7 +4,7 @@ This document describes how WAR-2D plays **as currently implemented**. Every num
 
 ## The goal
 
-WAR-2D is a free-for-all RTS for any number of players. Every player has one **Headquarters (HQ)**. If your HQ is destroyed, you're eliminated. The last player with an HQ wins. If every remaining HQ is destroyed in the same check, the match is a draw.
+WAR-2D is an RTS for any number of players, free-for-all or in teams. Every player has one **Headquarters (HQ)**. If your HQ is destroyed, you're eliminated. The last **team** with an HQ wins (in free-for-all every player is their own team). If every remaining HQ is destroyed in the same check, the match is a draw.
 
 ## Match flow
 
@@ -18,7 +18,7 @@ stateDiagram-v2
     GameOver --> [*]: Return to main menu
 ```
 
-1. **Lobby** (`Main_Menu` scene). Players host or join by IP. Each player can edit their own nickname. The server owner (the host, or the next player if the host leaves) is the only one who sees the **Start Game** button.
+1. **Lobby** (`Main_Menu` scene). Players host or join by IP. Each player can edit their own nickname. The server owner (the host, or the next player if the host leaves) is the only one who sees the **Start Game** button, and the only one who can click a player's **Team** label to cycle it (solo, 1 to 4). Players on the same team are allies; solo players are on a team of their own. Teams are fixed when the match starts.
 2. **PlacingHQ** (`Map_2`). The map is generated from a seed (see "Map and tiles"). An HQ placement prompt is shown. Each player places a single 3×3 HQ on free ground, in any 90° rotation. The screen shows how many players are still placing.
 3. **Countdown.** When the last HQ is placed, the server starts a **5-second** countdown (`Match.CountdownSeconds`) and every client displays the same remaining time from the synced end time.
 4. **Playing.** Economy, building, spawning and combat run, and win/loss is checked every second.
@@ -105,19 +105,27 @@ A Miner checks the single tile next to it in the direction it faces:
 - A move order gives the whole group one shared flow field to the goal, so any number of units path around walls and buildings together. The group gathers around the goal and stops within a radius that grows with its size.
 - A unit with an enemy in range stops to fight and resumes its order when the target is gone.
 
+## Fog of war and teams
+
+- Each team sees through the eyes of all its units and buildings. Sight radius (`Sight`) is per unit and building type in `GameConfig.xml`: Tank 8 tiles, HQ 10, Spawner 6, Miner 4.
+- Walls block sight; you can see a wall's face but not what's behind it. Fog is tracked on a grid of 2×2-tile cells and updated 5 times a second.
+- The map shows three states: **unexplored** (black), **explored** (dimmed: you've seen it before), and **visible** (clear).
+- You only receive enemy units standing where your team can see now. Enemy buildings you've seen stay on your map as dimmed **last-seen ghosts** when they go out of sight; you only find out a ghost was destroyed when you see its spot again.
+- Allies share vision and never damage each other (bomb blasts will be the exception, v0.7).
+
 ## Combat
 
-- Combat is fully automatic. Every unit picks the **nearest enemy unit** within range, and only when there is none, the nearest enemy **building**. Idle units look for targets every few ticks, so a new enemy is picked up within about 0.4 s.
+- Combat is fully automatic. Every unit picks the **nearest enemy unit** (any unit not on its team) within range, and only when there is none, the nearest enemy **building**. Idle units look for targets every few ticks, so a new enemy is picked up within about 0.4 s.
 - Damage is the attacker's `Damage` times a multiplier from the damage table (`DamageTable`) for what it hits: units, buildings or walls. Every Tank multiplier is 1.0 except walls (0.5, used once walls arrive in v0.7).
 - It keeps attacking that target every attack interval while the target is alive and in range. When the target dies or leaves range, it picks a new one.
 - Buildings don't attack.
-- Anything at 0 health is destroyed, and **every death plays an explosion**. The server sends each player only the deaths inside their camera view.
+- Anything at 0 health is destroyed, and **every death plays an explosion**. The server sends each player only the deaths inside their camera view that their team can see.
 - Clients see a short yellow tracer for each attack whose attacker is on screen, and a health bar over every damaged unit or building.
 
 ## Win, loss and leaving
 
 - During *Playing* the server checks every second which players still own an HQ.
 - A player with no HQ is **eliminated**: all their remaining units and buildings are destroyed (each with an explosion) and they see the Lose screen. Eliminated players stop earning passive income.
-- If exactly one player still has an HQ and the match had more than one player at the start, that player **wins**. Everyone else sees the Lose screen, and the winner's world is wiped with explosions as the match ends.
+- If the only players with an HQ left are all on one team, and the match started with more than one team, that team **wins**: every player on it (eliminated or not) sees the Win screen. Everyone else sees the Lose screen, and the winner's world is wiped with explosions as the match ends.
 - If nobody has an HQ, it's a **draw**, and everyone sees a Draw screen.
 - When a player disconnects mid-match, they're removed from the player list, their units and buildings are destroyed, and the lobby UI updates. If the **server owner** leaves, ownership passes to another player; if the host itself leaves, the server shuts down and everyone returns to the main menu.

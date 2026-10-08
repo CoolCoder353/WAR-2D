@@ -26,12 +26,12 @@ public partial struct WinLossSystem : ISystem
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in GameCore.Instance.ServerPlayers)
         {
             int id = (int)entry.Key.netId;
-            statuses.Add(new PlayerStatus(id, hqOwners.Contains(id), entry.Value.state == PlayerState.Eliminated));
+            statuses.Add(new PlayerStatus(id, hqOwners.Contains(id), entry.Value.state == PlayerState.Eliminated, GameCore.Instance.TeamOf(id)));
         }
         foreach (KeyValuePair<int, ServerPlayer> bot in GameCore.Instance.Bots)
-            statuses.Add(new PlayerStatus(bot.Key, hqOwners.Contains(bot.Key), bot.Value.state == PlayerState.Eliminated));
+            statuses.Add(new PlayerStatus(bot.Key, hqOwners.Contains(bot.Key), bot.Value.state == PlayerState.Eliminated, GameCore.Instance.TeamOf(bot.Key)));
         hqOwners.Dispose();
 
-        GameCore.Instance.ApplyOutcome(WinLossRules.Evaluate(statuses, GameCore.Instance.MatchStartPlayerCount));
+        GameCore.Instance.ApplyOutcome(WinLossRules.Evaluate(statuses, GameCore.Instance.MatchStartTeamCount));
     }
 }

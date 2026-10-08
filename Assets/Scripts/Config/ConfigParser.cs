@@ -83,6 +83,7 @@ namespace Config
                         RunningCost = Float(node, "RunningCost", ctx, errors, min: 0),
                         Radius = Float(node, "Radius", ctx, errors, min: 0.1f, max: 2),
                         SizeClass = Int(node, "SizeClass", ctx, errors, min: 0, max: 1),
+                        Sight = Float(node, "Sight", ctx, errors, min: 1, max: 32),
                     };
                 }
             }
@@ -99,6 +100,8 @@ namespace Config
                 config.Simulation.MaxFieldRebuildsPerTick = Int(sim, "MaxFieldRebuildsPerTick", c, errors, min: 1, max: 16);
                 config.Simulation.MaxUnitsPerPlayer = Int(sim, "MaxUnitsPerPlayer", c, errors, min: 1, max: 20000);
                 config.Simulation.MaxEntities = Int(sim, "MaxEntities", c, errors, min: 1024, max: 1048576);
+                config.Simulation.FogCellSize = Int(sim, "FogCellSize", c, errors, min: 1, max: 8);
+                config.Simulation.VisionIntervalTicks = Int(sim, "VisionIntervalTicks", c, errors, min: 1, max: 20);
             }
 
             XmlNode rep = Require(root, "Replication", errors);
@@ -155,6 +158,7 @@ namespace Config
                         UpfrontCost = Float(node, "UpfrontCost", ctx, errors, min: 0),
                         RunningCost = Float(node, "RunningCost", ctx, errors, min: 0),
                         SpawnRate = Float(node, "SpawnRate", ctx, errors, min: 0, max: 100),
+                        Sight = Float(node, "Sight", ctx, errors, min: 0, max: 32),
                     };
                 }
             }

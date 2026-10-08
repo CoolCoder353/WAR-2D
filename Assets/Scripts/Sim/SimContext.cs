@@ -47,6 +47,15 @@ namespace WAR2D.Sim
         /// <summary>Resources an owner has for upkeep; null means unlimited (tests).</summary>
         public Func<int, float> BudgetOf;
 
+        /// <summary>
+        /// The team of an owner id, read when the owner first gets a slot (teams are fixed for a match).
+        /// Null means every owner is on a team of its own (<see cref="SimData.TeamOfOwner"/>).
+        /// </summary>
+        public Func<int, int> TeamResolver;
+
+        /// <summary>The team of an owner id: <see cref="TeamResolver"/>, or a team of its own.</summary>
+        public int TeamOf(int ownerId) => TeamResolver != null ? TeamResolver(ownerId) : -ownerId - 1;
+
         /// <summary>Takes resources an owner's units spent on upkeep; null means nothing is taken (tests).</summary>
         public Action<int, float> Spend;
 
@@ -103,9 +112,22 @@ namespace WAR2D.Sim
                 slotOfOwner[ownerId] = s;
                 SimData data = Data;
                 data.OwnerIdBySlot[s] = ownerId;
+                int team = TeamOf(ownerId);
+                data.TeamBySlot[s] = team;
+                byte grid = s;
+                for (byte t = 0; t < s; t++)
+                    if (data.OwnerIdBySlot[t] != 0 && data.TeamBySlot[t] == team) { grid = data.VisionBySlot[t]; break; }
+                data.VisionBySlot[s] = grid;
                 return s;
             }
             return -1;
+        }
+
+        /// <summary>The vision grid of an owner's team, giving the owner a slot first. -1 when every slot is taken.</summary>
+        public int VisionOf(int ownerId)
+        {
+            int slot = SlotOf(ownerId);
+            return slot < 0 ? -1 : Data.VisionBySlot[slot];
         }
 
         /// <summary>Owner ids that hold a slot.</summary>

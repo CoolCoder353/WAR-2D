@@ -27,6 +27,19 @@ namespace WAR2D.Net.Replication
         [ReadOnly] public NativeArray<int> IdOf;
         [ReadOnly] public NativeArray<int> IndexOfId;
         [ReadOnly] public NativeArray<float> SpeedByType;
+        /// <summary>Team per unit slot.</summary>
+        [ReadOnly] public NativeArray<int> Team;
+        /// <summary>Every team's fog grid (see <c>SimData.Visible</c>): grid g covers [g * FogCells, (g + 1) * FogCells).</summary>
+        [ReadOnly] public NativeArray<byte> Visible;
+        public int FogCellSize, FogW, FogH, FogCells;
+
+        /// <summary>True when fog grid <paramref name="grid"/> sees <paramref name="p"/>.</summary>
+        public bool Sees(int grid, float2 p)
+        {
+            if (grid < 0) return false;
+            int2 c = math.clamp((int2)math.floor(p / FogCellSize), 0, new int2(FogW - 1, FogH - 1));
+            return Visible[grid * FogCells + c.y * FogW + c.x] != 0;
+        }
 
         /// <summary>The slot of the unit at an id index, or -1.</summary>
         public int SlotOfIndex(int index)
@@ -38,8 +51,8 @@ namespace WAR2D.Net.Replication
     }
 
     /// <summary>
-    /// What each client may know about units: its own units always, and any unit inside its camera box
-    /// (v0.5 replaces the box with team fog). <see cref="Build"/> also diffs against what the client
+    /// What each client may know about units: its own team's units always, and any other unit standing
+    /// on a fog cell its team sees now. Nothing else, whatever the client asks for. <see cref="Build"/> also diffs against what the client
     /// knew, by id index: an index whose id changed (the unit died and the index was reused) is a Leave
     /// of the old id followed by an Enter of the new one.
     /// </summary>
@@ -51,10 +64,9 @@ namespace WAR2D.Net.Replication
         private readonly NativeArray<int>[] knownId;
         private readonly NativeList<int>[] entered;
         private readonly NativeList<int>[] left;
-        private readonly int[] ownerOf;
+        private readonly int[] ownerOf, teamOf, gridOf;
         /// <summary>Most units a client may newly learn about per build (snapshot pacing); 0 is unlimited.</summary>
         public int MaxEntersPerBuild;
-        private readonly int2[] viewMin, viewMax;
         private bool disposed;
 
         public InterestSets(int clients, int idCapacity, Allocator allocator)
@@ -68,8 +80,8 @@ namespace WAR2D.Net.Replication
             entered = new NativeList<int>[clients];
             left = new NativeList<int>[clients];
             ownerOf = new int[clients];
-            viewMin = new int2[clients];
-            viewMax = new int2[clients];
+            teamOf = new int[clients];
+            gridOf = new int[clients];
             for (int c = 0; c < clients; c++)
             {
                 allowed[c] = new NativeArray<ulong>(words, allocator);
@@ -83,12 +95,15 @@ namespace WAR2D.Net.Replication
 
         public int Clients { get; }
 
-        /// <summary>Sets a client's owner id and camera box (inclusive tiles). An owner of int.MinValue disables the client.</summary>
-        public void SetClient(int client, int ownerId, int2 min, int2 max)
+        /// <summary>
+        /// Sets a client's owner id, team and fog grid (-1: sees only its team's units). An owner of
+        /// int.MinValue disables the client.
+        /// </summary>
+        public void SetClient(int client, int ownerId, int team, int grid)
         {
             ownerOf[client] = ownerId;
-            viewMin[client] = math.min(min, max);
-            viewMax[client] = math.max(min, max);
+            teamOf[client] = team;
+            gridOf[client] = grid;
         }
 
         /// <summary>Forgets everything a client knew (it left, or a new client takes its place).</summary>
@@ -115,9 +130,8 @@ namespace WAR2D.Net.Replication
                 {
                     Input = input,
                     Active = ownerOf[c] != int.MinValue,
-                    OwnerId = ownerOf[c],
-                    ViewMin = viewMin[c],
-                    ViewMax = viewMax[c],
+                    Team = teamOf[c],
+                    Grid = gridOf[c],
                     Allowed = allowed[c],
                     KnownBits = knownBits[c],
                     KnownId = knownId[c],
@@ -156,8 +170,7 @@ namespace WAR2D.Net.Replication
     {
         public ReplicationInput Input;
         public bool Active;
-        public int OwnerId;
-        public int2 ViewMin, ViewMax;
+        public int Team, Grid;
         public NativeArray<ulong> Allowed, KnownBits;
         public NativeArray<int> KnownId;
         public NativeList<int> Entered, Left;
@@ -174,13 +187,10 @@ namespace WAR2D.Net.Replication
             for (int w = 0; w < Allowed.Length; w++) Allowed[w] = 0;
             if (Active)
             {
-                float2 lo = ViewMin, hi = (float2)ViewMax + 1f;
                 for (int i = 0; i < Input.Count; i++)
                 {
                     if (Input.Health[i] <= 0f) continue;
-                    float2 p = Input.Positions[i];
-                    bool inView = p.x >= lo.x && p.y >= lo.y && p.x < hi.x && p.y < hi.y;
-                    if (Input.OwnerId[i] != OwnerId && !inView) continue;
+                    if (Input.Team[i] != Team && !Input.Sees(Grid, Input.Positions[i])) continue;
                     int index = NetIdAllocator.IndexOf(Input.IdOf[i]);
                     if (index < KnownId.Length) BitSet.Set(Allowed, index);
                 }

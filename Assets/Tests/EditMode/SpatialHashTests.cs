@@ -51,9 +51,9 @@ public class SpatialHashTests
             h = new CountingSortJob { Cell = BCell, CellStart = BCellStart, Sorted = BSorted }.Schedule(h);
             h = new NearestEnemyJob
             {
-                Positions = Positions, OwnerId = Owner, Health = Health, Type = Type, RangeSqByType = RangeSqByType,
+                Positions = Positions, Team = Owner, Health = Health, Type = Type, RangeSqByType = RangeSqByType,
                 CellStart = CellStart, Sorted = Sorted,
-                BuildingPositions = BuildingPositions, BuildingOwnerId = BuildingOwner, BuildingHealth = BuildingHealth,
+                BuildingPositions = BuildingPositions, BuildingTeam = BuildingOwner, BuildingHealth = BuildingHealth,
                 BuildingCellStart = BCellStart, BuildingSorted = BSorted,
                 InvCellSize = inv, CellsX = CellsAcross, CellsY = CellsAcross, SearchCells = (int)math.ceil(Range / CellSize),
                 Tick = tick, Slice = slice, Target = Target, TargetKind = TargetKind,

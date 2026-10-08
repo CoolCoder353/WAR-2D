@@ -28,6 +28,8 @@
     <MaxFieldRebuildsPerTick>2</MaxFieldRebuildsPerTick> <!-- v0.3 flow row -->
     <MaxUnitsPerPlayer>10000</MaxUnitsPerPlayer>         <!-- spec 1 -->
     <MaxEntities>131072</MaxEntities>                    <!-- 8 x 10k plus churn and buildings -->
+    <FogCellSize>2</FogCellSize>                         <!-- v0.5: fog grid cell size in tiles -->
+    <VisionIntervalTicks>4</VisionIntervalTicks>         <!-- v0.5: fog recomputed at 5 Hz -->
   </Simulation>
 
   <Replication>
@@ -58,6 +60,7 @@
       <RunningCost>2.0</RunningCost>
       <Radius>0.35</Radius>       <!-- collision radius in tiles (v0.3 D2) -->
       <SizeClass>0</SizeClass>    <!-- pathing size class: 0 small, 1 large -->
+      <Sight>8.0</Sight>          <!-- v0.5: sight radius in tiles -->
     </Unit>
   </Units>
 
@@ -69,6 +72,7 @@
       <UpfrontCost>0.0</UpfrontCost>
       <RunningCost>0.0</RunningCost>
       <SpawnRate>0.0</SpawnRate>
+      <Sight>10.0</Sight>
     </Building>
     <Building type="Miner">
       <Health>50</Health>
@@ -77,6 +81,7 @@
       <UpfrontCost>50.0</UpfrontCost>
       <RunningCost>0.0</RunningCost>
       <SpawnRate>0.0</SpawnRate>
+      <Sight>4.0</Sight>
     </Building>
     <Building type="SmallUnitSpawner">
       <Health>300</Health>
@@ -85,6 +90,7 @@
       <UpfrontCost>200.0</UpfrontCost>
       <RunningCost>20.0</RunningCost>
       <SpawnRate>1.0</SpawnRate>
+      <Sight>6.0</Sight>
     </Building>
   </Buildings>
 </GameConfig>

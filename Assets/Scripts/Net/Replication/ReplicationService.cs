@@ -25,13 +25,23 @@ namespace WAR2D.Net.Replication
 
     /// <summary>
     /// The server's unit send pipeline. At every settled tick boundary it re-traces routes, builds each
-    /// client's interest set (own units plus units inside its camera box), encodes, and sends each
-    /// client its bytes. A joining client's snapshot is paced: at most a tick's share of
+    /// client's interest set (its team's units plus units its team's fog grid sees), encodes, and sends
+    /// each client its bytes, plus its own team's fog changes (<see cref="FogBatch"/>). The camera box a
+    /// client reports only tunes correction fidelity; it never widens what the client may know. A joining client's snapshot is paced: at most a tick's share of
     /// <c>SnapshotBytesPerSecond</c> of new units is admitted per tick.
     /// </summary>
     public sealed class ReplicationService : IDisposable
     {
         public const int MaxClients = 16;
+        /// <summary>The channel a virtual sink is given for fog payloads (they are not replication messages).</summary>
+        public const int FogSinkChannel = -1;
+        /// <summary>The channel a virtual sink is given for building payloads.</summary>
+        public const int BuildingSinkChannel = -2;
+
+        /// <summary>Fills the list with every live building (set by the world; null sends no buildings).</summary>
+        public Action<List<BuildingView>> CollectBuildings;
+        private readonly List<BuildingView> buildingViews = new List<BuildingView>();
+        private readonly HashSet<int> buildingIds = new HashSet<int>();
         private const int EnterBytesEstimate = 24;
         /// <summary>Room a ReplicationBatch needs around its payload (tick, flags, length prefix).</summary>
         private const int BatchHeaderRoom = 16;
@@ -41,6 +51,10 @@ namespace WAR2D.Net.Replication
             public NetworkConnectionToClient Connection;
             public Action<ArraySegment<byte>, int> VirtualSink;
             public int OwnerId;
+            /// <summary>The fog grid the client was last sent a snapshot of, or -1 (send one).</summary>
+            public int FogGrid = -1;
+            /// <summary>What the client knows about buildings.</summary>
+            public readonly BuildingInterest Buildings = new BuildingInterest();
             public long EntersSent;
             public long BytesSent;
         }
@@ -98,7 +112,7 @@ namespace WAR2D.Net.Replication
                 active[c] = true;
                 interests.ResetClient(c);
                 encoder.ResetClient(c);
-                interests.SetClient(c, client.OwnerId, new int2(int.MinValue / 2), new int2(int.MinValue / 2));
+                interests.SetClient(c, client.OwnerId, sim.TeamOf(client.OwnerId), -1); // the grid is set at the next boundary
                 encoder.SetView(c, new int2(int.MinValue / 2), new int2(int.MinValue / 2));
                 return;
             }
@@ -116,12 +130,11 @@ namespace WAR2D.Net.Replication
             encoder.ResetClient(c);
         }
 
-        /// <summary>Sets a client's camera box (inclusive tiles, already clamped to the map).</summary>
+        /// <summary>Sets a client's camera box (inclusive tiles, already clamped to the map). Only tunes correction fidelity.</summary>
         public void SetView(NetworkConnectionToClient conn, int2 min, int2 max)
         {
             int c = Find(conn);
             if (c < 0) return;
-            interests.SetClient(c, clients[c].OwnerId, min, max);
             encoder.SetView(c, min, max);
         }
 
@@ -131,7 +144,6 @@ namespace WAR2D.Net.Replication
             for (int c = 0; c < MaxClients; c++)
             {
                 if (clients[c] == null || clients[c].VirtualSink == null || clients[c].OwnerId != ownerId) continue;
-                interests.SetClient(c, ownerId, min, max);
                 encoder.SetView(c, min, max);
             }
         }
@@ -167,6 +179,7 @@ namespace WAR2D.Net.Replication
             {
                 Count = count, Positions = data.Positions, Health = data.Health, MaxHealth = data.MaxHealth,
                 OwnerId = data.OwnerId, Type = data.Type, IdOf = data.IdOf, IndexOfId = data.IndexOfId, SpeedByType = data.SpeedByType,
+                Team = data.Team, Visible = data.Visible, FogCellSize = data.FogCellSize, FogW = data.FogW, FogH = data.FogH, FogCells = data.FogCells,
             };
             JobHandle handle = new RouteMaintenanceJob
             {
@@ -200,6 +213,10 @@ namespace WAR2D.Net.Replication
                 LastMilliseconds = watch.Elapsed.TotalMilliseconds;
                 return;
             }
+            for (int c = 0; c < MaxClients; c++)
+                if (active[c]) interests.SetClient(c, clients[c].OwnerId, sim.TeamOf(clients[c].OwnerId), sim.VisionOf(clients[c].OwnerId));
+            SendFog(data);
+            SendBuildings(data);
             handle = interests.Schedule(input, handle);
             handle.Complete(); // the encoder reads the route arena by value, so it must not move under it
             using var attacks = new NativeArray<int2>(data.AttackEvents.AsArray(), Allocator.TempJob);
@@ -220,6 +237,78 @@ namespace WAR2D.Net.Replication
                 SendSplit(client, tick, unreliable, unreliableSizes, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
             }
             LastMilliseconds = watch.Elapsed.TotalMilliseconds;
+        }
+
+        private readonly Dictionary<int, List<int>> fogChanges = new Dictionary<int, List<int>>();
+
+        /// <summary>
+        /// Sends every client its own team's fog: a snapshot when its grid is new to it, otherwise the
+        /// cells that flipped in the last vision pass. Runs on the settled world, before the queue is cleared.
+        /// </summary>
+        private void SendFog(SimData data)
+        {
+            foreach (List<int> list in fogChanges.Values) list.Clear();
+            while (data.FogChanges.TryDequeue(out int index))
+            {
+                int grid = index / data.FogCells;
+                if (!fogChanges.TryGetValue(grid, out List<int> list)) fogChanges[grid] = list = new List<int>();
+                list.Add(index - grid * data.FogCells);
+            }
+            foreach (List<int> list in fogChanges.Values) list.Sort();
+
+            for (int c = 0; c < MaxClients; c++)
+            {
+                if (!active[c]) continue;
+                Client client = clients[c];
+                int grid = sim.VisionOf(client.OwnerId);
+                if (grid < 0) continue;
+                if (client.FogGrid != grid)
+                {
+                    client.FogGrid = grid;
+                    writer.Position = 0;
+                    FogCodec.WriteSnapshot(writer, data.FogW, data.FogH, data.FogCellSize, data.Visible, data.Explored, grid * data.FogCells);
+                    SendFogPayload(client, writer.ToArraySegment());
+                    continue;
+                }
+                if (!fogChanges.TryGetValue(grid, out List<int> cells)) continue;
+                for (int start = 0; start < cells.Count; start += FogCodec.MaxDeltaCells)
+                {
+                    writer.Position = 0;
+                    FogCodec.WriteDelta(writer, cells, start, math.min(FogCodec.MaxDeltaCells, cells.Count - start));
+                    SendFogPayload(client, writer.ToArraySegment());
+                }
+            }
+        }
+
+        /// <summary>Sends every client the building records that bring it up to date (see <see cref="BuildingInterest"/>).</summary>
+        private void SendBuildings(SimData data)
+        {
+            if (CollectBuildings == null) return;
+            buildingViews.Clear();
+            buildingIds.Clear();
+            CollectBuildings(buildingViews);
+            foreach (BuildingView v in buildingViews) buildingIds.Add(v.Id);
+            int limit = BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4);
+            for (int c = 0; c < MaxClients; c++)
+            {
+                if (!active[c]) continue;
+                Client client = clients[c];
+                int grid = sim.VisionOf(client.OwnerId);
+                int team = sim.TeamOf(client.OwnerId);
+                writer.Position = 0;
+                if (client.Buildings.Update(buildingViews, buildingIds, team, p => data.Sees(grid, p), writer, limit) == 0) continue;
+                ArraySegment<byte> payload = writer.ToArraySegment();
+                client.BytesSent += payload.Count;
+                if (client.VirtualSink != null) client.VirtualSink(payload, BuildingSinkChannel);
+                else client.Connection.Send(new BuildingBatch { Payload = payload }, Channels.Reliable);
+            }
+        }
+
+        private static void SendFogPayload(Client client, ArraySegment<byte> payload)
+        {
+            client.BytesSent += payload.Count;
+            if (client.VirtualSink != null) client.VirtualSink(payload, FogSinkChannel);
+            else client.Connection.Send(new FogBatch { Payload = payload }, Channels.Reliable);
         }
 
         /// <summary>Largest payload one batch may carry on a channel: Mirror's limit less the header, capped.</summary>

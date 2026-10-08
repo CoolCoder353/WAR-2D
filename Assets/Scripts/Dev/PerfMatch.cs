@@ -16,7 +16,8 @@ using WAR2D.Sim;
 /// up for 100 ticks, samples 1,200 ticks, writes <c>perf.csv</c> and quits. The bots' replication
 /// streams go to virtual clients that count payload plus KCP/UDP overhead. Armies are topped back up to
 /// 10,000 every second (as the v0.3 spike's spawn target did), so the load stays at 80,000 units while
-/// the battle kills them. Does nothing without the flag.
+/// the battle kills them. With <c>-perfClients n</c> the first n bots are instead real players (see
+/// <see cref="PerfClient"/>) who measure what they receive over KCP. Does nothing without the flag.
 /// </summary>
 public sealed class PerfMatch : MonoBehaviour
 {
@@ -31,6 +32,8 @@ public sealed class PerfMatch : MonoBehaviour
     private readonly int[] reinforcementCursor = new int[Owners];
     private readonly long[] botBytesThisSecond = new long[Owners];
     private int[] owners;
+    /// <summary>Owners before this index are real players (the host and -perfClients); from it on, bots.</summary>
+    private int firstBot = 1;
     private int2[] armyStart;
     private int lastTick = -1, startTick = -1;
     private float secondTimer;
@@ -38,7 +41,7 @@ public sealed class PerfMatch : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Boot()
     {
-        if (!DevApi.PerfFlag) return;
+        if (!DevApi.PerfFlag || ArgValue("-perfClient") != null) return;
         var go = new GameObject("PerfMatch");
         DontDestroyOnLoad(go);
         go.AddComponent<PerfMatch>();
@@ -65,6 +68,11 @@ public sealed class PerfMatch : MonoBehaviour
 
         GameManager.Instance.HostServer();
         yield return new WaitUntil(() => NetworkClient.isConnected && NetworkClient.localPlayer != null);
+        // Real players (-perfClients n): wait for them; the rest of the owners are bots.
+        int realClients = int.TryParse(ArgValue("-perfClients"), out int wanted) ? math.clamp(wanted, 0, Owners - 1) : 0;
+        float waitStart = Time.realtimeSinceStartup;
+        yield return new WaitUntil(() => GameCore.Instance.ServerPlayers.Count >= 1 + realClients || Time.realtimeSinceStartup - waitStart > 180f);
+        if (GameCore.Instance.ServerPlayers.Count < 1 + realClients) Fail($"only {GameCore.Instance.ServerPlayers.Count - 1} of {realClients} perf clients joined");
         GameCore.Instance.Cmd_StartGame();
         yield return new WaitUntil(() => WorldStateManager.Instance != null && WorldStateManager.Instance.Sim != null && GameCore.Instance.CurrentState == GameState.PlacingHQ);
         WorldStateManager world = WorldStateManager.Instance;
@@ -72,7 +80,13 @@ public sealed class PerfMatch : MonoBehaviour
         int host = BuildingData.UIntToInt(NetworkClient.localPlayer.netId);
         owners = new int[Owners];
         owners[0] = host;
-        for (int i = 1; i < Owners; i++)
+        firstBot = 1;
+        foreach (NetworkIdentity identity in GameCore.Instance.ServerPlayers.Keys)
+        {
+            int id = BuildingData.UIntToInt(identity.netId);
+            if (id != host && firstBot < Owners) owners[firstBot++] = id;
+        }
+        for (int i = firstBot; i < Owners; i++)
         {
             owners[i] = BotIdBase + i;
             GameCore.Instance.AddBot(owners[i], 1e9f);
@@ -81,7 +95,7 @@ public sealed class PerfMatch : MonoBehaviour
         int2[] sites = world.Map.HqSites;
         for (int i = 0; i < Owners; i++)
             if (!PlaceNear(world, owners[i], sites[i])) Fail($"no room for owner {i}'s HQ near {sites[i]}");
-        NetworkClient.localPlayer.GetComponent<ClientPlayer>().hasPlacedHQ = true;
+        foreach (NetworkIdentity identity in GameCore.Instance.ServerPlayers.Keys) identity.GetComponent<ClientPlayer>().hasPlacedHQ = true;
         GameCore.Instance.CheckHQPlacementProgress();
         yield return new WaitUntil(() => GameCore.Instance.CurrentState == GameState.Playing);
 
@@ -103,12 +117,12 @@ public sealed class PerfMatch : MonoBehaviour
         world.Sim.UnitDied += (id, _) => { foreach (HashSet<int> army in armyIds) if (army.Remove(id)) break; };
 
         bool breakdown = Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0;
-        for (int i = 1; i < Owners; i++)
+        for (int i = firstBot; i < Owners; i++)
         {
             int bot = i;
-            if (breakdown && i == 1)
+            if (breakdown && i == firstBot)
             {
-                world.Replication.AddVirtualClient(owners[i], (segment, channel) => { botBytesThisSecond[bot] += WireLimits.WireBytes(segment.Count); CountTypes(segment); });
+                world.Replication.AddVirtualClient(owners[i], (segment, channel) => { botBytesThisSecond[bot] += WireLimits.WireBytes(segment.Count); if (channel >= 0) CountTypes(segment); });
                 world.Replication.SetVirtualView(owners[i], armyStart[i] - new int2(32, 18), armyStart[i] + new int2(32, 18));
                 continue;
             }
@@ -139,7 +153,7 @@ public sealed class PerfMatch : MonoBehaviour
             secondTimer += Time.unscaledDeltaTime;
             if (secondTimer >= 1f)
             {
-                for (int i = 1; i < Owners; i++)
+                for (int i = firstBot; i < Owners; i++)
                 {
                     stats.Add("perf.bw.avg", botBytesThisSecond[i] / secondTimer);
                     stats.Add("perf.bw.peak1s", botBytesThisSecond[i] / secondTimer);
@@ -311,7 +325,7 @@ public sealed class PerfMatch : MonoBehaviour
         return new int2(origin.x - ring, origin.y + ring - i);
     }
 
-    private static string ArgValue(string name)
+    internal static string ArgValue(string name)
     {
         string[] args = Environment.GetCommandLineArgs();
         int i = Array.IndexOf(args, name);

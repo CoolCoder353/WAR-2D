@@ -50,6 +50,24 @@ public class SimCombatTests
     }
 
     [Test]
+    public void AlliesNeverFight()
+    {
+        using var sim = Sim();
+        sim.Context.TeamResolver = owner => 0; // everyone on one team
+        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10, 10));
+        int[] b = sim.Spawn(SimHarness.OwnerB, new float2(11, 10));
+        Entity building = sim.Em.CreateEntity();
+        sim.Em.AddComponentData(building, new BuildingData { id = sim.Context.Ids.Allocate(), ownerId = SimHarness.OwnerB, buildingType = BuildingType.Miner, position = new float2(12, 10) });
+        sim.Em.AddComponentData(building, new HealthComponent { currentHealth = 300, maxHealth = 300 });
+        sim.Em.AddComponentData(building, LocalTransform.FromPosition(new float3(12, 10, 0)));
+        for (int i = 0; i < 10; i++) sim.Tick();
+        sim.Em.CompleteAllTrackedJobs();
+        Assert.AreEqual(-1, sim.UnitById(a[0]).TargetId);
+        Assert.AreEqual(sim.Config.GetUnit(UnitType.Tank).Health, sim.UnitById(b[0]).Health);
+        Assert.AreEqual(300f, sim.Em.GetComponentData<HealthComponent>(building).currentHealth);
+    }
+
+    [Test]
     public void SliceSpreadsSearches()
     {
         using var sim = Sim(slice: 8);

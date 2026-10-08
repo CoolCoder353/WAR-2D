@@ -4,6 +4,7 @@ using Mirror;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
+using WAR2D.Net.Replication;
 
 public class UnitCommander : NetworkBehaviour
 {
@@ -43,7 +44,7 @@ public class UnitCommander : NetworkBehaviour
             if (GetComponent<WAR2D.Client.ClientWorld>() == null) gameObject.AddComponent<WAR2D.Client.ClientWorld>();
 
             localPlayer = NetworkClient.connection.identity.GetComponent<ClientPlayer>();
-            localPlayer.SetBuildingHandles();
+            SubscribeBuildings();
         }
         else
         {
@@ -56,6 +57,7 @@ public class UnitCommander : NetworkBehaviour
     {
         if (Instance == this)
         {
+            UnsubscribeBuildings();
             Instance = null;
         }
     }
@@ -183,6 +185,58 @@ public class UnitCommander : NetworkBehaviour
 
 
     #region Buildings
+
+    private ClientBuildings subscribedBuildings;
+
+    /// <summary>Mirrors the buildings the server sends (see ClientBuildings) as GameObjects, including ones already known.</summary>
+    [Client]
+    private void SubscribeBuildings()
+    {
+        subscribedBuildings = ClientBuildings.Current;
+        subscribedBuildings.Entered += OnBuildingEntered;
+        subscribedBuildings.HealthChanged += OnBuildingHealthChanged;
+        subscribedBuildings.Hidden += OnBuildingHidden;
+        subscribedBuildings.Removed += OnBuildingRemoved;
+        foreach (ClientBuildings.Entry entry in subscribedBuildings.Entries.Values)
+        {
+            OnBuildingEntered(entry.Data, entry.Health);
+            if (entry.Ghost) OnBuildingHidden(entry.Data.id);
+        }
+    }
+
+    private void UnsubscribeBuildings()
+    {
+        if (subscribedBuildings == null) return;
+        subscribedBuildings.Entered -= OnBuildingEntered;
+        subscribedBuildings.HealthChanged -= OnBuildingHealthChanged;
+        subscribedBuildings.Hidden -= OnBuildingHidden;
+        subscribedBuildings.Removed -= OnBuildingRemoved;
+        subscribedBuildings = null;
+    }
+
+    /// <summary>A building is seen: (re)creates its GameObject, replacing a ghost.</summary>
+    private void OnBuildingEntered(BuildingData data, HealthComponent health)
+    {
+        if (buildingGameObjects.ContainsKey(data.id)) BuildingListRemove(0, data);
+        BuildingListInsert(0, data);
+        AddHealthComponent(health);
+    }
+
+    private void OnBuildingHealthChanged(HealthComponent health) => AddHealthComponent(health);
+
+    /// <summary>A building left sight: it stays, dimmed, as last seen.</summary>
+    private void OnBuildingHidden(int id)
+    {
+        if (buildingGameObjects.TryGetValue(id, out GameObject go) && go.TryGetComponent(out SpriteRenderer sprite))
+            sprite.color = new Color(0.55f, 0.55f, 0.55f, 0.7f);
+    }
+
+    private void OnBuildingRemoved(int id)
+    {
+        if (!buildingGameObjects.TryGetValue(id, out GameObject go)) return;
+        Destroy(go);
+        buildingGameObjects.Remove(id);
+    }
     //This is called when a unit is added or inserted into the list, returning the index of the list and the unit itself
     [Client]
     public void BuildingListInsert(int index, BuildingData unit)

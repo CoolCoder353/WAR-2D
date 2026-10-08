@@ -43,6 +43,9 @@ namespace WAR2D.Sim
                 int id = building.ValueRO.id;
                 data.BuildingPositions[b] = transform.ValueRO.Position.xy;
                 data.BuildingOwnerId[b] = building.ValueRO.ownerId;
+                data.BuildingTeam[b] = data.TeamOfOwner(building.ValueRO.ownerId);
+                int buildingType = (int)building.ValueRO.buildingType;
+                data.BuildingSight[b] = (uint)buildingType < (uint)data.BuildingSightByType.Length ? data.BuildingSightByType[buildingType] : 0f;
                 data.BuildingHealth[b] = health.ValueRO.currentHealth;
                 data.BuildingDamage[b] = 0f;
                 data.BuildingIds[b] = id;
@@ -60,6 +63,8 @@ namespace WAR2D.Sim
                 Velocity = data.Velocity,
                 OwnerId = data.OwnerId,
                 OwnerSlot = data.OwnerSlot,
+                Team = data.Team,
+                TeamBySlot = data.TeamBySlot,
                 Type = data.Type,
                 SizeClass = data.SizeClass,
                 Health = data.Health,
@@ -87,6 +92,8 @@ namespace WAR2D.Sim
         [NativeDisableParallelForRestriction] public NativeArray<float2> Velocity;
         [NativeDisableParallelForRestriction] public NativeArray<int> OwnerId;
         [NativeDisableParallelForRestriction] public NativeArray<byte> OwnerSlot;
+        [NativeDisableParallelForRestriction] public NativeArray<int> Team;
+        [ReadOnly] public NativeArray<int> TeamBySlot;
         [NativeDisableParallelForRestriction] public NativeArray<byte> Type;
         [NativeDisableParallelForRestriction] public NativeArray<byte> SizeClass;
         [NativeDisableParallelForRestriction] public NativeArray<float> Health;
@@ -112,6 +119,7 @@ namespace WAR2D.Sim
             Velocity[index] = unit.Velocity;
             OwnerId[index] = unit.OwnerId;
             OwnerSlot[index] = unit.OwnerSlot;
+            Team[index] = TeamBySlot[unit.OwnerSlot];
             Type[index] = unit.Type;
             SizeClass[index] = unit.SizeClass;
             Health[index] = unit.Health;

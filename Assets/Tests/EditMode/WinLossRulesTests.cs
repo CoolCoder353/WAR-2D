@@ -55,4 +55,20 @@ public class WinLossRulesTests
     {
         Assert.That(WinLossRules.Evaluate(new PlayerStatus[0], 2).Kind, Is.EqualTo(OutcomeKind.Continue));
     }
+
+    [Test]
+    public void LastTeamStandingWins()
+    {
+        var o = WinLossRules.Evaluate(new[] { new PlayerStatus(1, true, false, 0), new PlayerStatus(2, true, false, 0), new PlayerStatus(3, false, false, 1) }, 2);
+        Assert.That(o.Kind, Is.EqualTo(OutcomeKind.Winner));
+        Assert.That(o.WinnerTeam, Is.EqualTo(0));
+        Assert.That(o.NewlyEliminated, Is.EquivalentTo(new[] { 3 }));
+    }
+
+    [Test]
+    public void AlliedSurvivorsDoNotEndTheMatchEarly()
+    {
+        var o = WinLossRules.Evaluate(new[] { new PlayerStatus(1, true, false, 0), new PlayerStatus(2, false, false, 0), new PlayerStatus(3, true, false, 1) }, 2);
+        Assert.That(o.Kind, Is.EqualTo(OutcomeKind.Continue));
+    }
 }

@@ -5,7 +5,7 @@ WAR-2D combines two models:
 - **Mirror** handles connections, players, scene changes and all client↔server messaging.
 - **Unity DOTS (Entities)** holds and simulates the game world. Units and buildings are ECS entities that exist **only on the server**.
 
-Clients never see the ECS world. Units reach them through the **replication encoder**: each client gets its own units and the units inside its camera box as routes plus corrections, and predicts and draws them with GPU instancing. Buildings (a few hundred at most) still reach clients through `ClientPlayer` SyncLists and are drawn as GameObjects.
+Clients never see the ECS world. Units reach them through the **replication encoder**: each client gets its team's units and the units its team's fog of war sees, as routes plus corrections, and predicts and draws them with GPU instancing. Buildings (a few hundred at most) go through the same service as per-client building records (`BuildingBatch`) and are drawn as GameObjects; the fog itself reaches each client as its own team's grid (`FogBatch`).
 
 The server simulates units in an **asynchronous 20 Hz tick**: a fixed-rate system group whose Burst jobs run on worker threads between ticks and are settled at the next tick boundary. Main-thread code never touches unit entities; it queues `SimCommand`s that the tick applies at its boundary.
 
@@ -15,7 +15,7 @@ flowchart LR
         UC[UnitCommander<br/>input, selection]
         CW[ClientWorld<br/>decode, predict, draw]
         BBM[BuildingButtonManager<br/>placement UI]
-        CP_C[ClientPlayer<br/>building SyncLists]
+        CP_C[ClientPlayer<br/>lobby state]
     end
     subgraph Server
         GATE[CommandGate<br/>rate limits + validation]
@@ -77,10 +77,11 @@ Game code moved into its own assembly in v0.2, which is what lets the test assem
 ### `GameCore` (`Scripts/GameCore.cs`): `NetworkBehaviour`, server game state
 - `[SyncVar] CurrentState : GameState` (`Lobby`, `PlacingHQ`, `Countdown`, `Playing`, `GameOver`) and `[SyncVar] CountdownEndTime`.
 - `ServerPlayers : Dictionary<NetworkIdentity, ServerPlayer>` is the authoritative player list. `MatchStartPlayerCount` records how many players were present when the match launched (so a departure before *Playing* can't stop the survivor from winning).
+- `Teams : SyncDictionary<int, int>` maps each owner id to its team, fixed by `Cmd_StartGame` from the lobby choices (`TeamRules.Assign`: players who picked the same team share one, the rest are solo; bots get their own). `TeamOf`/`AreAllies` read it. The host sets choices with `Cmd_SetTeam(playerNetId, team)` (server owner, *Lobby* only).
 - `PlayerOrder : SyncList<int>` holds the owner ids in match order; a client colours an owner's units by its position here.
 - `Bots` are connectionless players for the performance harness only (`AddBot`, refused unless `DevApi.Allowed`). They count in the player order, the match's player count and win/loss.
 - Server ownership: `SetServerOwner`/`IsServerOwner`. The owner is the only player allowed to start a match, and ownership transfers when the owner leaves.
-- `Cmd_StartGame` (owner only, *Lobby* only, valid config only) resets each player's `hasPlacedHQ`, captures `MatchStartPlayerCount`, switches to *PlacingHQ* and loads the configured map.
+- `Cmd_StartGame` (owner only, *Lobby* only, valid config only) resets each player's `hasPlacedHQ`, captures `MatchStartPlayerCount` and `MatchStartTeamCount`, fixes `Teams`, switches to *PlacingHQ* and loads the configured map.
 - `CheckHQPlacementProgress` starts the *Countdown* once every player has placed an HQ. `Update` switches to *Playing* at `CountdownEndTime`.
 - `ApplyOutcome(MatchOutcome)` (from `WinLossSystem`) eliminates the newly HQ-less players and ends the match on a win or draw.
 - `EliminatePlayer`, `DeclareWinner` and `DeclareDraw` send the Win/Lose/Draw TargetRpcs and wipe entities (through `WorldStateManager`).
@@ -93,15 +94,14 @@ Game code moved into its own assembly in v0.2, which is what lets the test assem
 
 ### `ClientPlayer` (`Scripts/ClientPlayer.cs`): `NetworkBehaviour` on the player prefab
 - `[SyncVar] nickname`, `hasPlacedHQ`, `isServerOwner` (drives the lobby Start button, including when ownership transfers).
-- `SyncList<BuildingData> visuableBuildings` and `SyncList<HealthComponent> entityHealth` (buildings only; units go through replication). The server fills these with only the buildings this player can see.
-- `SetBuildingHandles` connects the SyncList callbacks to `UnitCommander`, which calls it when `Map_2` loads.
+- `[SyncVar] lobbyTeam`: the team the player was put on in the lobby (`TeamRules.NoTeam` = solo). Shown and cycled by the lobby's team label (server owner only).
 - It receives these TargetRpcs: `TargetUpdateResources`, `TargetReceiveCanBuildBuildingResponse`, `TargetPlayExplosions`, `RpcOnPlayerWon`, `RpcOnPlayerLost` and `RpcOnMatchDraw` (the Lose screen relabelled "Draw"). The end screens load `Resources/UI/WinScreenUI` / `LoseScreenUI` and disable the HUD canvas.
 - `CmdSetNickname` is the one authority-checked command here; it goes through `CommandGate` and `CommandValidator.TrySanitizeNickname`.
 
 ### `WorldStateManager` (`Scripts/Unit/WorldStateManager.cs`): `NetworkBehaviour`, the world gateway
 - In `OnStartServer` it builds `Map` (a `MapStore`, see "Map" below), then creates the match's simulation (`Sim`, a `SimContext`) and unit replication (`Replication`, a `ReplicationService`), and registers every connected player with replication. `OnDestroy` disposes all three.
 - `Ids => Sim.Ids` (the match's `NetIdAllocator`), a `Buildings` registry (`Dictionary<int id, Entity>`) and a `buildingFootprints` map so a destroyed building frees its tiles.
-- It owns every world **Command** clients send (see the table below), and runs `UpdatePlayerViews()` (buildings only) plus `FlushDeathEvents()` every server `FixedUpdate`. The order and squad commands live in `Net/OrderCommands.cs` (`WorldStateManager` is `partial`).
+- It owns every world **Command** clients send (see the table below), fills `ReplicationService.CollectBuildings` with every live building, and on each settled boundary (`SimContext.Settled`) flushes death explosions (`FlushDeathEvents`). The order and squad commands live in `Net/OrderCommands.cs` (`WorldStateManager` is `partial`).
 - `TryAddBuilding` validates, charges, reserves the footprint and sets `hasPlacedHQ`, then queues `CreateBuilding`; the entity appears at the next tick boundary. Spawners queue `SpawnUnit`.
 - `OnEntityDestroyed` (called by `DestructionSystem`) unregisters a building, frees its id and footprint, and records a death position; unit deaths arrive through `SimContext.UnitDied`. `KillAllEntitiesOwnedBy` zeros the player's buildings' health and queues `KillOwner` (and forgets their squads); `DestroyAllEntities` wipes buildings and queues `DestroyAll` at match end.
 - Dev only (`DevApi.Allowed`): `DevPlaceBuilding` and `DevSpawnUnit` for the performance harness.
@@ -116,7 +116,7 @@ Game code moved into its own assembly in v0.2, which is what lets the test assem
 - Owns the local `Selection` (`Client/Selection.cs`): left drag selects every own unit in the box (no limit; Shift adds), right click orders the selection, Ctrl+1–0 assigns a squad and 1–0 selects one. Orders go out as chunked id lists, or as one `CmdOrderSquad` when the selection is exactly a squad.
 - Sends its camera rectangle (padded by `visualAdditionalRange`, clamped to the map) through `UpdateClientView`, only when it changes and at most every 0.1 s.
 - Adds `ClientWorld` on clients and calls `ClientWorld.Draw(selection)` from `LateUpdate`.
-- Buildings: creates a GameObject per visible building from the SyncList hooks (sprite loaded by enum name), with `BuildingDataClient` for health and `SpawnerClientManager` on Small Unit Spawners for click-to-spawn.
+- Buildings: creates a GameObject per building `ClientBuildings` reports (dimmed while a ghost: out of sight, shown as last seen) (sprite loaded by enum name), with `BuildingDataClient` for health and `SpawnerClientManager` on Small Unit Spawners for click-to-spawn.
 
 ### `ClientWorld` (`Scripts/Client/ClientWorld.cs`): the client's units
 - Wraps a `ClientUnitStore`, which decodes `ReplicationBatch` payloads (Enter, Leave, MoveOrder, Correction, Health, Attack) and predicts every known unit with `MovementPrediction`, the same code the server's encoder runs, so the server knows the client's position bit for bit. A malformed batch is logged and dropped.
@@ -163,6 +163,7 @@ Enums: `UnitType { None, Tank }`, `BuildingType { None, Miner, SmallUnitSpawner,
 | `SimHashSystem` | Counting-sort spatial hashes of units and buildings (`HashCellSize` 5). |
 | `SimCombatSystem` | Resolves last tick's targets, runs the sliced nearest-enemy search (a unit searches every `TargetSearchSliceTicks` ticks; enemy units first, then enemy buildings), attacks on cooldown for `Damage × DamageTable(type, target class)`, applies damage with one writer, records attack events, writes back. |
 | `SimMovementSystem` | Follows the order's flow field from the `OrderFieldTable` (aiming at the next cell's centre), holds while it has a target, steers straight at the goal and reports a route miss when off the route, separates (every `SeparationIntervalTicks`), integrates without entering blocked tiles, counts each order's followers. A unit stops within `0.5 + 0.4·√followers` tiles of the goal. |
+| `SimVisionSystem` | Every `VisionIntervalTicks` (5 Hz): each team's fog grid (`FogCellSize` tiles per cell) is cleared and re-stamped from every living unit and building (sources merged per team and cell; Bresenham line of sight against opaque cells, skipped on open ground via a summed-area table). Changed cells are queued on `FogChanges` for replication and seen cells added to `Explored`. Allies share a grid (`VisionBySlot`). |
 | `SimEconomySystem` | Once a second charges each owner's units their running cost in slot order until the owner's budget runs out (the rest are unpaid); unpaid units decay; counts units per owner. |
 | `SimLifecycleSystem` | Queues every unit at 0 health for the next boundary. |
 | `SimEndSystem` (last) | Schedules up to `MaxFieldRebuildsPerTick` flow-field rebuilds (completed at the next boundary) and closes the main-thread timing (`SimTiming`). |
@@ -193,7 +194,7 @@ Every stage declares write access to `Unit`, which chains their jobs without a s
 |---|---|---|---|---|
 | `CmdSetNickname(name)` | `ClientPlayer` | Rename in the lobby | 5, 1 | nickname sanitised; *Lobby* only |
 | `Cmd_StartGame()` | `GameCore` | Server owner starts the match | 3, 0.5 | ownership, state and config |
-| `UpdateClientView(start, end)` | `WorldStateManager` | Camera rectangle (interest box) | 20, 15 | box span; clamped to the map |
+| `UpdateClientView(start, end)` | `WorldStateManager` | Camera rectangle (correction fidelity and explosions only; never widens what the client may know) | 20, 15 | box span; clamped to the map |
 | `CmdOrderMoveChunk(token, ids, final, goal)` | `WorldStateManager` | One chunk of a move order | 40, 20 | *Playing*, player still playing; goal inside the map; `OrderIdCodec.TryDecode` (≤ 2,048 ids, ≤ 8 KB, strictly ascending); ≤ `MaxUnitsPerPlayer` ids per token; ≤ 4 open tokens, dropped after 2 s; the sim skips ids that aren't the sender's or aren't live |
 | `CmdAssignSquadChunk(token, squad, ids, final)` | `WorldStateManager` | One chunk of a squad assignment | 40, 10 | as above, plus squad 0..9 |
 | `CmdOrderSquad(squad, goal)` | `WorldStateManager` | Order a squad's living members | 10, 5 | squad 0..9; goal inside the map; dead members pruned |
@@ -210,7 +211,9 @@ All are `requiresAuthority = false` and take `NetworkConnectionToClient sender =
 | Message | `ReplicationBatch { Tick, Flags, Payload }` | Unit replication: whole encoded messages; reliable batches carry Enter/Leave/MoveOrder/Health, unreliable ones one Correction or Attack message each |
 | SyncVar | `GameCore.CurrentState`, `GameCore.CountdownEndTime`, `ClientPlayer.nickname`, `hasPlacedHQ`, `isServerOwner`, `WorldStateManager.MapSize / MapSeed / MapHash` | Shared state |
 | SyncList | `GameCore.PlayerOrder` | Owner order (unit colours) |
-| SyncList | `ClientPlayer.visuableBuildings / entityHealth` | Per-player visible buildings |
+| Message | `FogBatch` | The client's own team fog: a snapshot, then deltas |
+| Message | `BuildingBatch` | Building Enter / Health / Hide (ghost) / Gone records |
+| SyncDictionary | `GameCore.Teams` | Team per owner |
 | TargetRpc | `TargetUpdateResources` | Private resources, sent only when changed (≤ 10 Hz) |
 | TargetRpc | `TargetReceiveCanBuildBuildingResponse` | Placement preview replies |
 | TargetRpc | `TargetPlayExplosions` | Death explosions inside that player's view (≤ 256 per message) |
@@ -230,13 +233,14 @@ sequenceDiagram
     participant C as ClientWorld
     T->>R: Settled(SimData, tick, count)
     R->>R: RouteMaintenanceJob: trace new/changed orders' routes from the flow cells
-    R->>R: BuildInterestJob per client: own units + units in the camera box, diffed by id index
+    R->>R: BuildInterestJob per client: own team's units + units on cells its team sees, diffed by id index
+    R->>C: FogBatch (team grid snapshot, then flipped cells) and BuildingBatch (records)
     R->>R: EncodeClientJob per client: Leave, Enter, Health, MoveOrder, Correction, Attack
     R->>C: ReplicationBatch (reliable: whole messages ≤ Mirror's limit; unreliable: one message each)
     C->>C: decode, apply, predict every frame (same MovementPrediction), draw instanced
 ```
 
-- **Interest.** A client may know its own units and any unit inside its camera box (v0.5 swaps the box for team fog). A unit outside the allowed set is never looked up by that client's encode. The diff is by id index: an index whose id changed (the unit died and the index was reused) is a Leave followed by an Enter.
+- **Interest.** A client may know its team's units and any unit standing on a fog cell its team sees now; nothing else, whatever camera box it reports. Enemy fog and resources never leave the server (`LeakTests`). A unit outside the allowed set is never looked up by that client's encode. The diff is by id index: an index whose id changed (the unit died and the index was reused) is a Leave followed by an Enter.
 - **Messages** (`Messages.cs`): units are addressed by id index, ascending and delta coded; only Enter carries the full id (index + generation), owner, type, quantised position, health and route. Corrections are deltas from the client's own prediction in 1/`DeltaScale` tile, with the unit's measured speed (1/64 of full speed) and the projected resume waypoint.
 - **Cadence.** In-view units are checked every `CorrectionIntervalTicks` against `CorrectionThreshold`; units outside the view every `OffscreenIntervalTicks` against `OffscreenThreshold`. Attack events go to clients whose view holds the attacker.
 - **Snapshot pacing.** A joining client learns at most `SnapshotBytesPerSecond / TickRate` worth of new units per tick; until a unit is admitted the client is sent nothing about it.
@@ -245,7 +249,7 @@ sequenceDiagram
 
 ## Buildings on clients
 
-Buildings stay on `ClientPlayer` SyncLists in v0.4. `UpdatePlayerViews` keeps, per player, an id → index dictionary for each list and a set of the ids seen this pass; updates only write changed entries, and removals swap with the last entry. It iterates buildings only. v0.7 instances buildings and walls like units.
+`ReplicationService.SendBuildings` runs at each settled boundary over the list `WorldStateManager.FillBuildingViews` gathers. Per client, `BuildingInterest` remembers what the client knows and writes records: **Enter** when a building becomes visible (or its team's), **Health** when a seen building's health changes, **Hide** when it leaves sight (the client keeps a dimmed ghost as it was last seen), and **Gone** only once the client's team can see the spot (or it was the team's own). A building destroyed out of sight therefore stays a ghost until it is scouted again. Clients apply records to `ClientBuildings`, which `UnitCommander` mirrors as GameObjects. v0.7 instances buildings and walls like units.
 
 ## Destruction and death events
 
@@ -260,7 +264,7 @@ sequenceDiagram
     W->>W: unregister id, release occupancy / footprint tiles, record position
     DS->>DS: DestroyEntity
     loop every server FixedUpdate
-        W->>W: FlushDeathEvents: filter recorded positions to each player's view box
+        W->>W: FlushDeathEvents (at Settled): keep positions the player's team sees and its view box contains
         W->>P: TargetPlayExplosions(positions)
         P->>P: Effects.Explosion at each position
     end
@@ -321,7 +325,7 @@ Schema:
   </Match>
   <Simulation>  <!-- server tick: TickRate, TargetSearchSliceTicks, SeparationIntervalTicks,
                      SeparationStrength, HashCellSize, MaxFieldRebuildsPerTick,
-                     MaxUnitsPerPlayer, MaxEntities -->
+                     MaxUnitsPerPlayer, MaxEntities, FogCellSize, VisionIntervalTicks -->
   </Simulation>
   <Replication> <!-- encoder: CorrectionIntervalTicks, CorrectionThreshold, DeltaScale,
                      OffscreenThreshold, OffscreenIntervalTicks, SnapshotBytesPerSecond -->
@@ -334,11 +338,12 @@ Schema:
       <Health/> <Damage/> <Range/> <AttackInterval/> <MoveSpeed/>
       <Acceleration/> <UpfrontCost/> <RunningCost/>
       <Radius/> <SizeClass/> <!-- collision radius in tiles; pathing class 0 small, 1 large -->
+      <Sight/>              <!-- sight radius in tiles (fog of war) -->
     </Unit>
   </Units>
   <Buildings>
     <Building type="Base"> <!-- must match a BuildingType enum name; every non-None type is required -->
-      <Health/> <Width/> <Height/> <UpfrontCost/> <RunningCost/> <SpawnRate/>
+      <Health/> <Width/> <Height/> <UpfrontCost/> <RunningCost/> <SpawnRate/> <Sight/>
     </Building>
   </Buildings>
 </GameConfig>
