@@ -11,6 +11,7 @@ using UnityEngine;
 using UnityEngine.Tilemaps;
 using Config;
 using WAR2D.World;
+using WAR2D.Sim;
 
 /// <summary>
 /// Manages the state of the game world, including the tilemap, units, and buildings.
@@ -59,7 +60,10 @@ public class WorldStateManager : NetworkBehaviour
     public TileOccupancy Occupancy { get; } = new TileOccupancy();
 
     /// <summary>Server-side id source for units and buildings in this match.</summary>
-    public NetIdAllocator Ids { get; private set; }
+    public NetIdAllocator Ids => Sim?.Ids;
+
+    /// <summary>This match's simulation (server only).</summary>
+    public SimContext Sim { get; private set; }
 
     /// <summary>
     /// Dictionary of all units in the game. Key: Unit ID, Value: Entity.
@@ -95,7 +99,6 @@ public class WorldStateManager : NetworkBehaviour
     {
         entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
 
-        Ids = new NetIdAllocator(ConfigLoader.LoadConfig().Simulation.MaxEntities);
         MapConfig m = ConfigLoader.LoadConfig().Match.Map;
         var timer = System.Diagnostics.Stopwatch.StartNew();
         if (m.Size > 0)
@@ -111,6 +114,18 @@ public class WorldStateManager : NetworkBehaviour
             Map = MapStore.FromTilemaps(WalkableTilemap, UnwalkableTilemap);
         }
         Debug.Log($"[Map] {Map.Grid.Width}x{Map.Grid.Height} map ready in {timer.ElapsedMilliseconds} ms (seed {MapSeed})");
+
+        Sim = SimContext.Create(World.DefaultGameObjectInjectionWorld, Map, ConfigLoader.LoadConfig());
+        Sim.BuildingCreated += OnBuildingCreated;
+    }
+
+    /// <summary>Registers a building the simulation created, and checks whether every HQ is down.</summary>
+    [Server]
+    private void OnBuildingCreated(int id, Entity entity)
+    {
+        AddBuilding(entity, id);
+        if (EntityManager.GetComponentData<BuildingData>(entity).buildingType == BuildingType.Base)
+            GameCore.Instance?.CheckHQPlacementProgress();
     }
 
     /// <summary>
@@ -140,6 +155,12 @@ public class WorldStateManager : NetworkBehaviour
 
     private void OnDestroy()
     {
+        if (Sim != null)
+        {
+            Sim.BuildingCreated -= OnBuildingCreated;
+            Sim.Dispose();
+            Sim = null;
+        }
         Map?.Dispose();
         Map = null;
         if (Instance == this) Instance = null;
@@ -736,69 +757,19 @@ public class WorldStateManager : NetworkBehaviour
 
         Debug.Log($"Placing building of type {type} at position {positon} with rotation {rotation}, owned by player {buildingData.ownerId}");
 
-        Entity building = EntityManager.CreateEntity();
-        EntityManager.AddComponentData<BuildingData>(building, buildingData);
-
-        EntityManager.AddComponentData<LocalTransform>(building, new LocalTransform
+        // Set at once so a second HQ in the same tick fails the placement check.
+        if (type == BuildingType.Base) placer.hasPlacedHQ = true;
+        Sim.Commands.Enqueue(new SimCommand
         {
-            Position = new float3(buildingData.position.x, buildingData.position.y, 0),
-            Rotation = quaternion.Euler(0, 0, math.radians(rotation)),
-            Scale = 1f
+            Kind = SimCommandKind.CreateBuilding,
+            OwnerId = buildingData.ownerId,
+            Building = new BuildingSpec { Data = buildingData, Rotation = rotation, Config = buildingConfig },
         });
-
-        // Every building pays its running cost; unpaid buildings decay.
-        EntityManager.AddComponentData(building, new UpkeepComponent
-        {
-            ownerId = buildingData.ownerId,
-            runningCostPerSecond = buildingConfig.RunningCost,
-        });
-
-        // Add Health Component
-        EntityManager.AddComponentData(building, new HealthComponent
-        {
-            entityId = buildingData.id,
-            currentHealth = buildingConfig.Health,
-            maxHealth = buildingConfig.Health
-        });
-
-        switch (type)
-        {
-            case BuildingType.Base:
-                EntityManager.AddComponentData(building, new HQComponent { ownerId = buildingData.ownerId });
-                sender.identity.GetComponent<ClientPlayer>().hasPlacedHQ = true;
-                // Notify GameCore to check if all players have placed HQ
-                GameCore.Instance.CheckHQPlacementProgress();
-                break;
-            case BuildingType.Miner:
-                // Add mining component to miner buildings
-                EntityManager.AddComponentData(building, new MiningComponent
-                {
-                    timeSinceLastMining = 0f,
-                    isActive = false
-                });
-                break;
-            case BuildingType.SmallUnitSpawner:
-                EntityManager.AddComponentData(building,
-                new SpawnerData
-                {
-                    count = 0,
-                    ownerId = buildingData.ownerId,
-                    position = buildingData.position,
-                    unitType = UnitType.Tank,
-                    spawnRate = buildingConfig.SpawnRate
-                });
-                break;
-            default:
-                Debug.LogError("BuildingType not found in WorldStateManager");
-                break;
-        }
 
         //Set the tiles the building will cover to be used
         List<int2> tiles = Footprint.Tiles(positon, GetBuildingSize(type));
         foreach (int2 tile in tiles) Map.SetUsed(tile, true);
         buildingFootprints[buildingData.id] = tiles;
-
-        AddBuilding(building, buildingData.id);
     }
 
     /// <summary>

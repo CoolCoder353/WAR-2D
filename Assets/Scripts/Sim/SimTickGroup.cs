@@ -1,0 +1,96 @@
+using Config;
+using Mirror;
+using Unity.Collections;
+using Unity.Entities;
+using Unity.Mathematics;
+using UnityEngine;
+using Stopwatch = System.Diagnostics.Stopwatch;
+
+namespace WAR2D.Sim
+{
+    /// <summary>
+    /// The server's asynchronous fixed-rate tick (20 Hz by default). Its stages schedule Burst jobs on
+    /// <c>state.Dependency</c> and never complete them: the jobs run on worker threads between ticks and
+    /// <see cref="SimBoundarySystem"/> settles them at the start of the next tick.
+    /// Order: boundary → commands → gather → hash → combat → movement → lifecycle → economy → end.
+    /// </summary>
+    [UpdateInGroup(typeof(SimulationSystemGroup))]
+    public partial class SimTickGroup : ComponentSystemGroup
+    {
+        protected override void OnCreate()
+        {
+            base.OnCreate();
+            GameConfigData config = ConfigLoader.LoadConfig();
+            float seconds = config.Simulation.TickRate > 0 ? config.Simulation.TickSeconds : 0.05f;
+            RateManager = new RateUtils.FixedRateCatchUpManager(seconds);
+        }
+    }
+
+    /// <summary>
+    /// Settles the previous tick: completes its jobs, removes the units it found dead (freeing their ids
+    /// and recording their explosions), applies the upkeep it charged, and decides whether this tick runs.
+    /// </summary>
+    [UpdateInGroup(typeof(SimTickGroup), OrderFirst = true)]
+    public partial class SimBoundarySystem : SystemBase
+    {
+        internal static readonly Stopwatch TickWatch = new Stopwatch();
+        private readonly Stopwatch waitWatch = new Stopwatch();
+
+        protected override void OnCreate()
+        {
+            RequireForUpdate<SimData>();
+        }
+
+        protected override void OnUpdate()
+        {
+            TickWatch.Restart();
+            waitWatch.Restart();
+            EntityManager.CompleteAllTrackedJobs();
+            waitWatch.Stop();
+            SimTiming.LastBoundaryWaitMs = waitWatch.Elapsed.TotalMilliseconds;
+            SimTiming.LastBoundaryFrame = UnityEngine.Time.frameCount;
+
+            SimData data = SystemAPI.GetSingleton<SimData>();
+            SimContext context = SimContext.Current;
+
+            RemoveDead(data, context);
+            data.AttackEvents.Clear();
+
+            RefRW<SimClock> clock = SystemAPI.GetSingletonRW<SimClock>();
+            bool running = SimContext.RunningOverride
+                ?? (NetworkServer.active && GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing);
+            clock.ValueRW.Running = running;
+            if (running) clock.ValueRW.Tick++;
+        }
+
+        private void RemoveDead(SimData data, SimContext context)
+        {
+            if (data.Deaths.Count == 0) return;
+            var entities = new NativeList<Entity>(data.Deaths.Count, Allocator.Temp);
+            while (data.Deaths.TryDequeue(out DeathRecord death))
+            {
+                entities.Add(death.Entity);
+                if (context == null) continue;
+                context.Ids.Free(death.Id);
+                context.RaiseUnitDied(death.Id, death.Position);
+            }
+            EntityManager.DestroyEntity(entities.AsArray());
+            entities.Dispose();
+        }
+    }
+
+    /// <summary>Closes the tick's main-thread timing.</summary>
+    [UpdateInGroup(typeof(SimTickGroup), OrderLast = true)]
+    public partial class SimEndSystem : SystemBase
+    {
+        protected override void OnCreate()
+        {
+            RequireForUpdate<SimData>();
+        }
+
+        protected override void OnUpdate()
+        {
+            SimTiming.LastMainThreadMs = SimBoundarySystem.TickWatch.Elapsed.TotalMilliseconds;
+        }
+    }
+}
