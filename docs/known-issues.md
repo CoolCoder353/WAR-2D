@@ -13,7 +13,6 @@ The October 2026 code review found roughly 30 bugs, mismatches and hygiene probl
 Inert leftovers disclosed in v0.2 and scheduled to be cleaned up together.
 
 - **No Windows build profile.** Only `Assets/Settings/Build Profiles/Linux.asset` is checked in — the owner deferred Windows to a later release. **v0.4**
-- **Dangling HDRP entry** in `ProjectSettings/GraphicsSettings.asset`'s `m_RenderPipelineGlobalSettingsMap`: it points at a deleted HDRP global-settings asset (the project runs URP 2D). **v0.4**
 - **Inert `ProjectSettings/HDRPProjectSettings.asset`** left behind by the move to URP 2D. **v0.4**
 - **Unreferenced `Assets/Resources/Materials/TankRTS-5.png.mat`** — the Ground tilemap used it before the URP conversion. **v0.4**
 - **Empty `Assets/Resources/Prefabs/` folder** (its only asset, `Bullet.prefab`, was deleted in v0.2). **v0.4**

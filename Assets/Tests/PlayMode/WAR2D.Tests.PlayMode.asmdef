@@ -3,7 +3,7 @@
     "rootNamespace": "",
     "references": [
         "WAR2D", "Mirror", "Unity.Entities", "Unity.Collections", "Unity.Mathematics", "Unity.Transforms",
-        "UnityEngine.TestRunner"
+        "UnityEngine.TestRunner", "Unity.PerformanceTesting"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
