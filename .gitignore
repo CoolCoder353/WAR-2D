@@ -97,3 +97,6 @@ mono_crash.*
 # Spike output
 /Builds/
 /SpikeResults/
+
+# Performance gate output (tools/perf-run.sh)
+/PerfResults/

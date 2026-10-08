@@ -577,6 +577,41 @@ public partial class WorldStateManager : NetworkBehaviour
         }
     }
 
+    /// <summary>
+    /// Dev only (performance harness): places a building for any owner, bypassing the economy and the
+    /// game-state rules (the footprint must still be free ground). Returns false when refused.
+    /// </summary>
+    [Server]
+    internal bool DevPlaceBuilding(int ownerId, BuildingType type, int2 anchor, float health = 0f)
+    {
+        if (!DevApi.Allowed || Sim == null) return false;
+        BuildingConfig buildingConfig = ConfigLoader.LoadConfig().GetBuilding(type);
+        List<int2> tiles = Footprint.Tiles(anchor, GetBuildingSize(type));
+        foreach (int2 tile in tiles) if (!Map.Grid.IsWalkable(tile)) return false;
+        if (health > 0f)
+        {
+            buildingConfig = new BuildingConfig
+            {
+                Health = (int)health, Width = buildingConfig.Width, Height = buildingConfig.Height,
+                UpfrontCost = 0f, RunningCost = 0f, SpawnRate = buildingConfig.SpawnRate,
+            };
+        }
+        var data = new BuildingData { position = anchor, id = Ids.Allocate(), buildingType = type, ownerId = ownerId, rotation = 0f };
+        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.CreateBuilding, OwnerId = ownerId, Building = new BuildingSpec { Data = data, Rotation = 0f, Config = buildingConfig } });
+        foreach (int2 tile in tiles) Map.SetUsed(tile, true);
+        buildingFootprints[data.id] = tiles;
+        return true;
+    }
+
+    /// <summary>Dev only (performance harness): queues a free unit for any owner.</summary>
+    [Server]
+    internal bool DevSpawnUnit(int ownerId, float2 position, Action<int> onSpawned = null)
+    {
+        if (!DevApi.Allowed || Sim == null) return false;
+        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.SpawnUnit, OwnerId = ownerId, Position = position, UnitType = UnitType.Tank, OnSpawned = onSpawned });
+        return true;
+    }
+
     //HELPER FUNCTIONS
 
     public static int2 GetBuildingSize(BuildingType type)

@@ -36,7 +36,7 @@ public class GameCore : NetworkBehaviour
     /// <summary>Server-only player records, keyed by player object identity.</summary>
     public Dictionary<NetworkIdentity, ServerPlayer> ServerPlayers = new Dictionary<NetworkIdentity, ServerPlayer>();
 
-    public IEnumerable<ServerPlayer> serverPlayers => ServerPlayers.Values;
+    public IEnumerable<ServerPlayer> serverPlayers => ServerPlayers.Values.Concat(Bots.Values);
 
     /// <summary>Players present when Playing began (used for the win rule).</summary>
     public int MatchStartPlayerCount { get; private set; }
@@ -66,6 +66,7 @@ public class GameCore : NetworkBehaviour
     {
         base.OnStopServer();
         ServerPlayers.Clear();
+        Bots.Clear();
         serverOwner = null;
         CurrentState = GameState.Lobby;
         MatchStartPlayerCount = 0;
@@ -159,9 +160,26 @@ public class GameCore : NetworkBehaviour
     [Server]
     public bool IsServerOwner(NetworkConnectionToClient conn) => conn != null && serverOwner == conn;
 
+    /// <summary>Connectionless players (the performance harness's bots), by owner id.</summary>
+    public readonly Dictionary<int, ServerPlayer> Bots = new Dictionary<int, ServerPlayer>();
+
+    /// <summary>
+    /// Adds a bot: a player with no connection, counted in the player order and the match's player count.
+    /// Dev only (the performance harness); refused unless dev APIs are enabled.
+    /// </summary>
+    [Server]
+    internal void AddBot(int ownerId, float startingResources)
+    {
+        if (!DevApi.Allowed || Bots.ContainsKey(ownerId)) return;
+        Bots[ownerId] = new ServerPlayer(null, startingResources);
+        PlayerOrder.Add(ownerId);
+        MatchStartPlayerCount++;
+    }
+
     [Server]
     public ServerPlayer GetServerPlayerById(int ownerId)
     {
+        if (Bots.TryGetValue(ownerId, out ServerPlayer bot)) return bot;
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
             if (entry.Key != null && entry.Key.netId == (uint)ownerId) return entry.Value;
@@ -242,6 +260,13 @@ public class GameCore : NetworkBehaviour
     [Server]
     public void EliminatePlayer(int playerId)
     {
+        if (Bots.TryGetValue(playerId, out ServerPlayer bot))
+        {
+            if (bot.state == PlayerState.Eliminated) return;
+            bot.state = PlayerState.Eliminated;
+            WorldStateManager.Instance?.KillAllEntitiesOwnedBy(playerId);
+            return;
+        }
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
             if (entry.Key.netId != (uint)playerId || entry.Value.state == PlayerState.Eliminated) continue;
@@ -290,6 +315,7 @@ public class GameCore : NetworkBehaviour
         CurrentState = GameState.Lobby;
         CountdownEndTime = 0;
         MatchStartPlayerCount = 0;
+        Bots.Clear();
         if (SceneManager.GetActiveScene().name != LobbyScene && NetworkServer.active)
         {
             GameManager.Instance.ServerChangeScene(LobbyScene);

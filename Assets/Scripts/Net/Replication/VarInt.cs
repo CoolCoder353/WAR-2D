@@ -98,8 +98,8 @@ namespace WAR2D.Net.Replication
         public const int CorrectionMessageLimit = UnreliableMaxMessageSize - 64;
         /// <summary>Largest reliable message (KCP fragments it into at most 254 segments).</summary>
         public const int ReliableMaxMessageSize = (Mtu - SegmentOverhead - MetadataSize) * (255 - 1) - 1;
-        /// <summary>Reliable chunk the encoder packs a message type into.</summary>
-        public const int ReliableChunk = 32 * 1024;
+        /// <summary>Reliable chunk the encoder packs a message type into (well under Mirror's ~16 KB message cap).</summary>
+        public const int ReliableChunk = 12 * 1024;
 
         /// <summary>Approximate bytes on the wire for a payload sent as one batch.</summary>
         public static long WireBytes(int payloadBytes)

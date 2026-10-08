@@ -33,7 +33,8 @@ namespace WAR2D.Net.Replication
     {
         public const int MaxClients = 16;
         private const int EnterBytesEstimate = 24;
-        private const int ReliableBatchLimit = 60 * 1024;
+        /// <summary>Room a ReplicationBatch needs around its payload (tick, flags, length prefix).</summary>
+        private const int BatchHeaderRoom = 16;
 
         private sealed class Client
         {
@@ -215,11 +216,15 @@ namespace WAR2D.Net.Replication
                 }
                 client.EntersSent += interests.Entered(c).Length;
                 var (reliable, reliableSizes, unreliable, unreliableSizes) = encoder.Output(c);
-                SendSplit(client, tick, reliable, reliableSizes, Channels.Reliable, ReliableBatchLimit);
-                SendSplit(client, tick, unreliable, unreliableSizes, Channels.Unreliable, WireLimits.CorrectionMessageLimit);
+                SendSplit(client, tick, reliable, reliableSizes, Channels.Reliable, BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4));
+                SendSplit(client, tick, unreliable, unreliableSizes, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
             }
             LastMilliseconds = watch.Elapsed.TotalMilliseconds;
         }
+
+        /// <summary>Largest payload one batch may carry on a channel: Mirror's limit less the header, capped.</summary>
+        private static int BatchLimit(int channel, int cap) =>
+            Transport.active != null ? math.min(cap, NetworkMessages.MaxContentSize(channel) - BatchHeaderRoom) : cap;
 
         /// <summary>Sends whole messages in batches no larger than <paramref name="limit"/> bytes.</summary>
         private void SendSplit(Client client, int tick, NativeList<byte> bytes, NativeList<int> sizes, int channel, int limit)

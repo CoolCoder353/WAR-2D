@@ -126,13 +126,17 @@ namespace WAR2D.Net.Replication
             int2 cell = (int2)math.floor(position / CellSize);
             byte walking = DirectionAtCell(order, cell);
             int steps = 4 * math.max(Width, Height) / CellSize;
+            bool first = true;
             while (into.Length < MaxWaypoints && steps-- > 0 && FlowDirections.IsStep(walking))
             {
                 int2 next = cell + FlowDirections.Step(walking);
                 byte direction = DirectionAtCell(order, next);
                 if (direction == FlowDirections.None) break;
                 cell = next;
-                if (direction != walking) into.Add(Centre(cell));
+                // The unit steers for the next cell's centre first (see SimMovementSystem), so the route
+                // does too; after that it keeps a waypoint only where the direction changes.
+                if (first || direction != walking) into.Add(Centre(cell));
+                first = false;
                 walking = direction;
             }
             float2 end = Centre(cell);

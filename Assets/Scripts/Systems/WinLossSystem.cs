@@ -28,6 +28,8 @@ public partial struct WinLossSystem : ISystem
             int id = (int)entry.Key.netId;
             statuses.Add(new PlayerStatus(id, hqOwners.Contains(id), entry.Value.state == PlayerState.Eliminated));
         }
+        foreach (KeyValuePair<int, ServerPlayer> bot in GameCore.Instance.Bots)
+            statuses.Add(new PlayerStatus(bot.Key, hqOwners.Contains(bot.Key), bot.Value.state == PlayerState.Eliminated));
         hqOwners.Dispose();
 
         GameCore.Instance.ApplyOutcome(WinLossRules.Evaluate(statuses, GameCore.Instance.MatchStartPlayerCount));
