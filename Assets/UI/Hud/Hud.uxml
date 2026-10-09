@@ -1,0 +1,7 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <Style src="../Theme.uss" />
+    <ui:Template name="TopBar" src="TopBar.uxml" />
+    <ui:VisualElement name="hud" class="hud-root" picking-mode="Ignore">
+        <ui:Instance template="TopBar" name="top-bar-instance" />
+    </ui:VisualElement>
+</ui:UXML>

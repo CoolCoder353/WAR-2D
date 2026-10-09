@@ -132,7 +132,10 @@ public partial class WorldStateManager : NetworkBehaviour
         Sim.Spend = (ownerId, amount) =>
         {
             ServerPlayer player = GameCore.Instance?.GetServerPlayerById(ownerId);
-            if (player != null && !player.TrySpend(amount)) player.TrySpend(player.Resources);
+            if (player == null) return;
+            float before = player.Resources;
+            if (!player.TrySpend(amount)) player.TrySpend(player.Resources);
+            player.AddUpkeep(before - player.Resources);
         };
     }
 

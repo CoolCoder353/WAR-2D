@@ -59,6 +59,7 @@ public partial class GameCore : NetworkBehaviour
     private const string LobbyScene = "Main_Menu";
     private const float ResourceSyncInterval = 0.1f;
     private float resourceSyncTimer;
+    private float rollTimer;
 
     public void Awake()
     {
@@ -88,6 +89,13 @@ public partial class GameCore : NetworkBehaviour
     [ServerCallback]
     public void LateUpdate()
     {
+        rollTimer += Time.deltaTime;
+        if (rollTimer >= 1f)
+        {
+            rollTimer -= 1f;
+            foreach (ServerPlayer player in ServerPlayers.Values) player.RollSecond();
+        }
+
         resourceSyncTimer += Time.deltaTime;
         if (resourceSyncTimer < ResourceSyncInterval) return;
         resourceSyncTimer = 0f;
@@ -96,7 +104,7 @@ public partial class GameCore : NetworkBehaviour
         {
             ServerPlayer player = entry.Value;
             if (!player.ResourcesDirty || entry.Key == null) continue;
-            entry.Key.GetComponent<ClientPlayer>().TargetUpdateResources(player.connection, player.Resources);
+            entry.Key.GetComponent<ClientPlayer>().TargetUpdateResources(player.connection, player.Resources, player.IncomeLastSecond, player.UpkeepLastSecond);
             player.MarkSynced();
         }
     }

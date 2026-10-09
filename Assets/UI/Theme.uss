@@ -1,0 +1,126 @@
+/* WAR-2D theme. Generated from the approved v0.6 Figma variables (docs/ux/v0.6-figma.md).
+   Variable color/surface/panel is --color-surface-panel. Change values in Figma first. */
+
+:root {
+    --color-surface-base: #26303A;
+    --color-surface-panel: #34404C;
+    --color-surface-raised: #40505F;
+    --color-border: #52627A;
+    --color-text-primary: #F0F4F8;
+    --color-text-secondary: #AEBBCB;
+    --color-text-disabled: #6B7A8C;
+    --color-accent: #3FD0FF;
+    --color-on-accent: #062633;
+    --color-readout: #FFC857;
+    --color-success: #5BE37D;
+    --color-warning: #FF9A3D;
+    --color-danger: #FF5263;
+    --color-player-1: #4DA3FF;
+    --color-player-2: #E5484D;
+    --color-player-3: #46C46B;
+    --color-player-4: #F2C230;
+    --color-player-5: #A970FF;
+    --color-player-6: #F07F2E;
+    --color-player-7: #2FC4C4;
+    --color-player-8: #E85FB5;
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-12: 48px;
+    --font-size-12: 12px;
+    --font-size-14: 14px;
+    --font-size-16: 16px;
+    --font-size-20: 20px;
+    --font-size-28: 28px;
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+}
+
+.palette-colourblind {
+    --color-surface-base: #26303A;
+    --color-surface-panel: #34404C;
+    --color-surface-raised: #40505F;
+    --color-border: #52627A;
+    --color-text-primary: #F0F4F8;
+    --color-text-secondary: #AEBBCB;
+    --color-text-disabled: #6B7A8C;
+    --color-accent: #3FD0FF;
+    --color-on-accent: #062633;
+    --color-readout: #F0E442;
+    --color-success: #56B4E9;
+    --color-warning: #E69F00;
+    --color-danger: #F06BB8;
+    --color-player-1: #E69F00;
+    --color-player-2: #56B4E9;
+    --color-player-3: #009E73;
+    --color-player-4: #F0E442;
+    --color-player-5: #0072B2;
+    --color-player-6: #D55E00;
+    --color-player-7: #CC79A7;
+    --color-player-8: #BBBBBB;
+}
+
+.palette-high-contrast {
+    --color-surface-base: #000000;
+    --color-surface-panel: #0B0F14;
+    --color-surface-raised: #1A1F26;
+    --color-border: #FFFFFF;
+    --color-text-primary: #FFFFFF;
+    --color-text-secondary: #D9E2EC;
+    --color-text-disabled: #8A96A3;
+    --color-accent: #00E5FF;
+    --color-on-accent: #001A20;
+    --color-readout: #FFE14D;
+    --color-success: #3DFF7A;
+    --color-warning: #FFB000;
+    --color-danger: #FF4D4D;
+    --color-player-1: #3DA5FF;
+    --color-player-2: #FF5A5A;
+    --color-player-3: #3DFF7A;
+    --color-player-4: #FFE14D;
+    --color-player-5: #C38BFF;
+    --color-player-6: #FF9F3D;
+    --color-player-7: #3DFFF0;
+    --color-player-8: #FF7AD9;
+}
+
+.player-1 { background-color: var(--color-player-1); }
+.player-2 { background-color: var(--color-player-2); }
+.player-3 { background-color: var(--color-player-3); }
+.player-4 { background-color: var(--color-player-4); }
+.player-5 { background-color: var(--color-player-5); }
+.player-6 { background-color: var(--color-player-6); }
+.player-7 { background-color: var(--color-player-7); }
+.player-8 { background-color: var(--color-player-8); }
+
+.hud-root { flex-grow: 1; }
+.panel { background-color: var(--color-surface-panel); border-color: var(--color-border); border-width: 1px; border-radius: var(--radius-lg); overflow: hidden; }
+.panel__title { background-color: var(--color-surface-raised); color: var(--color-text-primary); font-size: var(--font-size-14); -unity-font-style: bold; padding: var(--space-2) var(--space-3); }
+.text { color: var(--color-text-primary); font-size: var(--font-size-14); }
+.text--secondary { color: var(--color-text-secondary); font-size: var(--font-size-12); }
+.text--readout { color: var(--color-readout); -unity-font-style: bold; }
+.text--success { color: var(--color-success); font-size: var(--font-size-12); }
+.text--disabled { color: var(--color-text-disabled); }
+.button { background-color: var(--color-surface-panel); border-color: var(--color-border); border-width: 1px; border-radius: var(--radius-sm); color: var(--color-text-primary); font-size: var(--font-size-14); padding: var(--space-2) var(--space-3); margin: 0; }
+.button:hover { background-color: var(--color-surface-raised); border-color: var(--color-text-primary); }
+.button--primary { background-color: var(--color-accent); color: var(--color-on-accent); border-width: 0; }
+.button:disabled { background-color: var(--color-surface-panel); color: var(--color-text-disabled); border-color: var(--color-border); }
+.swatch { width: 10px; height: 10px; border-radius: 2px; }
+.swatch--eliminated { background-color: var(--color-text-disabled); }
+
+/* Top bar (Figma: HUD / Default, Top bar) */
+.top-bar { position: absolute; left: 0; top: 0; right: 0; height: 44px; flex-direction: row; align-items: center; padding-left: var(--space-4); padding-right: var(--space-4); background-color: var(--color-surface-panel); border-bottom-width: 1px; border-color: var(--color-border); }
+.top-bar__players { flex-grow: 1; flex-basis: 0; flex-direction: row; align-items: center; }
+.top-bar__player { flex-direction: row; align-items: center; margin-right: var(--space-4); }
+.top-bar__player .swatch { margin-right: 6px; }
+.top-bar__name { color: var(--color-text-primary); font-size: var(--font-size-12); }
+.top-bar__name--eliminated { color: var(--color-text-disabled); }
+.top-bar__resources { flex-direction: row; align-items: center; }
+.top-bar__resources > Label { margin-right: var(--space-2); }
+.top-bar__resources-value { font-size: var(--font-size-20); }
+.top-bar__actions { flex-grow: 1; flex-basis: 0; flex-direction: row; justify-content: flex-end; }
+.top-bar__actions > Button { margin-left: var(--space-2); }

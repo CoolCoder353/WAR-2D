@@ -1,0 +1,16 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="top-bar" class="top-bar">
+        <ui:VisualElement name="players" class="top-bar__players" />
+        <ui:VisualElement name="resources" class="top-bar__resources">
+            <ui:Label text="Resources" class="text--secondary" />
+            <ui:Label name="resources-value" text="0" class="text text--readout top-bar__resources-value" />
+            <ui:Label name="income-value" text="+0/s income" class="text--success" />
+            <ui:Label name="upkeep-value" text="−0/s upkeep" class="text--secondary" />
+        </ui:VisualElement>
+        <ui:VisualElement name="actions" class="top-bar__actions">
+            <ui:Button name="gift-button" text="Gift" class="button" />
+            <ui:Button name="diplomacy-button" text="Diplomacy" class="button" />
+            <ui:Button name="menu-button" text="Menu (Esc)" class="button" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

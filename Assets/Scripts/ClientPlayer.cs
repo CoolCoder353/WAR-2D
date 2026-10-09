@@ -77,15 +77,19 @@ public class ClientPlayer : NetworkBehaviour
     /// </summary>
     public float currentResources { get; private set; } = 0f;
 
-    /// <summary>
-    /// TargetRpc to update the local player's resource count
-    /// </summary>
+    /// <summary>Resources the local player earned during the last second (local player only).</summary>
+    public float incomePerSecond { get; private set; }
+
+    /// <summary>Upkeep the local player paid during the last second (local player only).</summary>
+    public float upkeepPerSecond { get; private set; }
+
+    /// <summary>The owning player's own resources and last second's income and upkeep. Private: never a SyncVar.</summary>
     [TargetRpc]
-    public void TargetUpdateResources(NetworkConnection target, float newResources)
+    public void TargetUpdateResources(NetworkConnection target, float newResources, float income, float upkeep)
     {
         currentResources = newResources;
-        // You can add UI update logic here or use an event
-        // For example: onResourcesChanged?.Invoke(newResources);
+        incomePerSecond = income;
+        upkeepPerSecond = upkeep;
     }
 
     /// <summary>Whom this player attacks; bit i is the owner at <c>GameCore.PlayerOrder[i]</c> (local player only).</summary>

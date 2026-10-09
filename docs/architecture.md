@@ -59,7 +59,7 @@ Game code moved into its own assembly in v0.2, which is what lets the test assem
 | Scene | Contains | Notes |
 |---|---|---|
 | `Assets/Main_Menu.unity` | `GameManager` (Mirror `NetworkManager` + `KcpTransport`, port 7778), `GameCore`, `LobbySystem`, `MainMenuUI`, TIM Console + `Custom_Commands` | Offline scene. `GameManager` and `GameCore` are `DontDestroyOnLoad` singletons. |
-| `Assets/Maps/Map_2.unity` | `WorldStateManager`, `UnitCommander` (adds `ClientWorld` on clients), `BuildingButtonManager`, `HQPlacementUI`, `ResourceUI`, orthographic camera with `Character_Controler`, walkable and unwalkable tilemaps | Loaded by `GameCore.Cmd_StartGame` → `ServerChangeScene`, using the scene name from `GameConfig.xml` (`Match.Scene`, currently `Map_2`). With `Match/Map/Size > 0` (the default, 1024) the map is generated and the scene's tilemaps are hidden; with 0 the tilemaps are the map (the PlayMode tests use this). |
+| `Assets/Maps/Map_2.unity` | `WorldStateManager`, `UnitCommander` (adds `ClientWorld` on clients), `BuildingButtonManager`, `HQPlacementUI`, the `HUD` (`UIDocument` + `HudController`), orthographic camera with `Character_Controler`, walkable and unwalkable tilemaps | Loaded by `GameCore.Cmd_StartGame` → `ServerChangeScene`, using the scene name from `GameConfig.xml` (`Match.Scene`, currently `Map_2`). With `Match/Map/Size > 0` (the default, 1024) the map is generated and the scene's tilemaps are hidden; with 0 the tilemaps are the map (the PlayMode tests use this). |
 | `Assets/Player.prefab` | `ClientPlayer` | Mirror player prefab, auto-created for each connection and `DontDestroyOnLoad`. |
 
 `GameManager.LeaveLobby()` stops the host or client, destroys the `GameCore` and `WorldStateManager` objects, and reloads `Main_Menu`.
@@ -95,7 +95,7 @@ Game code moved into its own assembly in v0.2, which is what lets the test assem
 ### `ClientPlayer` (`Scripts/ClientPlayer.cs`): `NetworkBehaviour` on the player prefab
 - `[SyncVar] nickname`, `hasPlacedHQ`, `isServerOwner` (drives the lobby Start button, including when ownership transfers).
 - `[SyncVar] lobbyTeam`: the team the player was put on in the lobby (`TeamRules.NoTeam` = solo). Shown and cycled by the lobby's team label (server owner only).
-- It receives these TargetRpcs: `TargetUpdateResources`, `TargetReceiveCanBuildBuildingResponse`, `TargetPlayExplosions`, `RpcOnPlayerWon`, `RpcOnPlayerLost` and `RpcOnMatchDraw` (the Lose screen relabelled "Draw"). The end screens load `Resources/UI/WinScreenUI` / `LoseScreenUI` and disable the HUD canvas.
+- It receives these TargetRpcs: `TargetUpdateResources` (resources plus last second's income and upkeep, kept by `ServerPlayer.AddIncome`/`AddUpkeep` and rolled once a second by `GameCore`), `TargetReceiveCanBuildBuildingResponse`, `TargetPlayExplosions`, `RpcOnPlayerWon`, `RpcOnPlayerLost` and `RpcOnMatchDraw` (the Lose screen relabelled "Draw"). The end screens load `Resources/UI/WinScreenUI` / `LoseScreenUI` and disable the HUD canvas.
 - `CmdSetNickname` is the one authority-checked command here; it goes through `CommandGate` and `CommandValidator.TrySanitizeNickname`.
 
 ### `WorldStateManager` (`Scripts/Unit/WorldStateManager.cs`): `NetworkBehaviour`, the world gateway
@@ -351,6 +351,15 @@ Schema:
 ```
 
 `Width`/`Height` set a building's footprint (and the client uses the same `Footprint` maths to place its sprite). `SpawnRate` is units per second and must be > 0 for the Small Unit Spawner.
+
+## Client UI (`Assets/UI/`, `Scripts/UI/`)
+
+v0.6 moves the HUD to **UI Toolkit**, built from the approved Figma design (see [ux/v0.6-figma.md](ux/v0.6-figma.md)).
+
+- **Tokens.** `UI/Theme.uss` holds the Figma variables as USS custom properties (`--color-*`, `--color-player-1..8`, `--space-*`, `--font-size-*`, `--radius-*`) for the standard palette on `:root`, overridden by `.palette-colourblind` and `.palette-high-contrast`, plus the shared classes (`.panel`, `.button*`, `.swatch`, `.player-N`). Change colours in Figma first, then mirror them here.
+- **Panel.** `UI/PanelSettings.asset` uses `UI/RuntimeTheme.tss` (default theme + `Theme.uss`) and scales with screen size from a 1920×1080 reference (no player UI-scale setting).
+- **Layout.** UXML per screen part (`UI/Hud/Hud.uxml` instances `UI/Hud/TopBar.uxml`). Elements are found by `name`.
+- **Models and controllers.** A model (`Scripts/UI/Models/`, e.g. `HudModel`) pulls only data the client legitimately has (its own `ClientPlayer`, public SyncVars) and raises change events only when values change. A controller (`Scripts/UI/Controllers/`, e.g. `TopBarController`) binds a model to its elements and exposes button events. `HudController` (on the `HUD` object in `Map_2`) owns both and pulls resources each frame and players four times a second.
 
 ## Rendering and input
 

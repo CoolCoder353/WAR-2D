@@ -8,7 +8,15 @@ public class ServerPlayer
 
     public float Resources { get; private set; }
 
-    /// <summary>True when Resources changed since the last sync to the client.</summary>
+    /// <summary>Resources earned (passive and mining) during the last whole second.</summary>
+    public float IncomeLastSecond { get; private set; }
+
+    /// <summary>Upkeep paid (units and buildings) during the last whole second.</summary>
+    public float UpkeepLastSecond { get; private set; }
+
+    private float incomeThisSecond, upkeepThisSecond;
+
+    /// <summary>True when Resources (or the per-second rates) changed since the last sync to the client.</summary>
     public bool ResourcesDirty { get; private set; } = true;
 
     public ServerPlayer(NetworkConnectionToClient connection, float startingResources)
@@ -22,6 +30,30 @@ public class ServerPlayer
         if (!(amount > 0f)) return; // also rejects NaN
         Resources += amount;
         ResourcesDirty = true;
+    }
+
+    /// <summary>Adds earned resources and counts them towards this second's income.</summary>
+    public void AddIncome(float amount)
+    {
+        if (!(amount > 0f)) return;
+        Add(amount);
+        incomeThisSecond += amount;
+    }
+
+    /// <summary>Counts upkeep already taken with <see cref="TrySpend"/> towards this second's upkeep.</summary>
+    public void AddUpkeep(float amount)
+    {
+        if (amount > 0f) upkeepThisSecond += amount;
+    }
+
+    /// <summary>Publishes this second's income and upkeep and starts a new second. Called once a second.</summary>
+    public void RollSecond()
+    {
+        if (incomeThisSecond != IncomeLastSecond || upkeepThisSecond != UpkeepLastSecond) ResourcesDirty = true;
+        IncomeLastSecond = incomeThisSecond;
+        UpkeepLastSecond = upkeepThisSecond;
+        incomeThisSecond = 0f;
+        upkeepThisSecond = 0f;
     }
 
     public bool TrySpend(float amount)
