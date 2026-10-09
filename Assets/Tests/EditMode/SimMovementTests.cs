@@ -103,7 +103,7 @@ public class SimMovementTests
         int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 10.5f));
         sim.Spawn(SimHarness.OwnerB, new float2(13.5f, 10.5f));
         sim.Tick();
-        sim.Move(SimHarness.OwnerA, new int2(50, 50), a[0]);
+        sim.Order(SimHarness.OwnerA, OrderKind.AttackMove, new int2(50, 50), a[0]);
         for (int i = 0; i < 5; i++) sim.Tick();
         Unit unit = sim.UnitById(a[0]);
         Assert.Less(math.length(unit.Velocity), 1e-3f);

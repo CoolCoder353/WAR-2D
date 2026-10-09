@@ -9,8 +9,11 @@ namespace WAR2D.Sim
     {
         /// <summary>Create one unit of <see cref="SimCommand.UnitType"/> at <see cref="SimCommand.Position"/>.</summary>
         SpawnUnit,
-        /// <summary>Order <see cref="SimCommand.Ids"/> (or the owner's units inside the box) to <see cref="SimCommand.Tile"/>.</summary>
-        MoveUnits,
+        /// <summary>
+        /// Give <see cref="SimCommand.Ids"/> (or the owner's units inside the box) the order
+        /// <see cref="SimCommand.Order"/>; Move and AttackMove go to <see cref="SimCommand.Tile"/>.
+        /// </summary>
+        OrderUnits,
         /// <summary>Create the building in <see cref="SimCommand.Building"/>.</summary>
         CreateBuilding,
         /// <summary>Kill every unit of <see cref="SimCommand.OwnerId"/>.</summary>
@@ -32,6 +35,8 @@ namespace WAR2D.Sim
     {
         public SimCommandKind Kind;
         public int OwnerId;
+        /// <summary>The order of an <see cref="SimCommandKind.OrderUnits"/> command.</summary>
+        public OrderKind Order;
         /// <summary>Goal tile of a move.</summary>
         public int2 Tile;
         /// <summary>Spawn position.</summary>

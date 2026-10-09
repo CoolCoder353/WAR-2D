@@ -14,7 +14,7 @@ public static class CommandGate
     private static readonly RateLimiter Limiter = new RateLimiter(new Dictionary<string, (float, float)>
     {
         ["UpdateClientView"] = (20f, 15f),
-        ["CmdOrderMoveChunk"] = (40f, 20f),
+        ["CmdOrderChunk"] = (40f, 20f),
         ["CmdAssignSquadChunk"] = (40f, 10f),
         ["CmdOrderSquad"] = (10f, 5f),
         ["TryAddBuilding"] = (10f, 5f),

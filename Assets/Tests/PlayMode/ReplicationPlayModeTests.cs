@@ -69,7 +69,7 @@ public class ReplicationPlayModeTests
         for (int r = 12; r > 2 && goal.Equals(tile); r--)
             foreach (int2 d in new[] { new int2(r, 0), new int2(-r, 0), new int2(0, r), new int2(0, -r) })
                 if (grid.IsWalkable(tile + d)) { goal = tile + d; break; }
-        SimCommandQueue.Instance.Enqueue(new SimCommand { Kind = SimCommandKind.MoveUnits, OwnerId = PlayModeMatch.LocalOwner, Tile = goal, Ids = new[] { id } });
+        SimCommandQueue.Instance.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, OwnerId = PlayModeMatch.LocalOwner, Tile = goal, Ids = new[] { id } });
 
         float end = UnityEngine.Time.realtimeSinceStartup + 3f, nextCheck = 0f;
         for (int frame = 0; UnityEngine.Time.realtimeSinceStartup < end; frame++)

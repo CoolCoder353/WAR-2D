@@ -62,18 +62,24 @@ namespace WAR2D.Client
         }
 
         /// <summary>Orders the selection to the goal: one squad order when it is exactly a squad, chunked ids otherwise.</summary>
-        public void OrderMove(int2 goal)
+        public void OrderMove(int2 goal) => Order(OrderKind.Move, false, goal);
+
+        /// <summary>
+        /// Gives the selection an order (the goal matters only for Move and AttackMove): one squad order
+        /// when it is exactly a squad, chunked ids otherwise.
+        /// </summary>
+        public void Order(OrderKind kind, bool queue, int2 goal)
         {
             if (selected.Count == 0 || WorldStateManager.Instance == null) return;
             if (selectedSquad >= 0 && IsExactly(squads[selectedSquad]))
             {
-                WorldStateManager.Instance.CmdOrderSquad((byte)selectedSquad, goal);
+                WorldStateManager.Instance.CmdOrderSquad((byte)selectedSquad, (byte)kind, queue, goal);
                 return;
             }
             ushort token = NextToken();
             List<byte[]> chunks = OrderIdCodec.EncodeChunks(Sorted());
             for (int i = 0; i < chunks.Count; i++)
-                WorldStateManager.Instance.CmdOrderMoveChunk(token, chunks[i], i == chunks.Count - 1, goal);
+                WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, queue, goal);
         }
 
         /// <summary>Drops ids the client no longer knows (dead or out of sight).</summary>

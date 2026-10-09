@@ -73,6 +73,7 @@ namespace WAR2D.Sim
                 Cooldown = data.Cooldown,
                 OrderSlot = data.OrderSlot,
                 Unpaid = data.Unpaid,
+                Stance = data.Stance,
                 IdOf = data.IdOf,
                 IndexOfId = data.IndexOfId,
                 Target = data.Target,
@@ -102,17 +103,22 @@ namespace WAR2D.Sim
         [NativeDisableParallelForRestriction] public NativeArray<float> Cooldown;
         [NativeDisableParallelForRestriction] public NativeArray<int> OrderSlot;
         [NativeDisableParallelForRestriction] public NativeArray<byte> Unpaid;
+        [NativeDisableParallelForRestriction] public NativeArray<byte> Stance;
         [NativeDisableParallelForRestriction] public NativeArray<int> IdOf;
         [NativeDisableParallelForRestriction] public NativeArray<int> IndexOfId;
         [NativeDisableParallelForRestriction] public NativeArray<int> Target;
         [NativeDisableParallelForRestriction] public NativeArray<byte> TargetKind;
-        [ReadOnly] public NativeParallelHashMap<int, int> PendingOrders;
+        [ReadOnly] public NativeParallelHashMap<int, PendingOrder> PendingOrders;
         [ReadOnly] public NativeParallelHashMap<int, float2> PendingMoves;
 
         private void Execute(ref Unit unit, [EntityIndexInQuery] int index)
         {
             if (index >= Capacity) return;
-            if (PendingOrders.TryGetValue(unit.Id, out int order)) unit.OrderSlot = order;
+            if (PendingOrders.TryGetValue(unit.Id, out PendingOrder order))
+            {
+                unit.OrderSlot = order.Slot;
+                unit.Stance = order.Stance;
+            }
             if (PendingMoves.TryGetValue(unit.Id, out float2 moved)) unit.Position = moved;
 
             Positions[index] = unit.Position;
@@ -128,6 +134,7 @@ namespace WAR2D.Sim
             Cooldown[index] = unit.Cooldown;
             OrderSlot[index] = unit.OrderSlot;
             Unpaid[index] = unit.Unpaid;
+            Stance[index] = unit.Stance;
             IdOf[index] = unit.Id;
             int idIndex = NetIdAllocator.IndexOf(unit.Id);
             if (idIndex < IndexOfId.Length) IndexOfId[idIndex] = index;

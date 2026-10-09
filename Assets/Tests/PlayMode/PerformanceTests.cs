@@ -68,7 +68,7 @@ public class PerformanceTests
         }
         yield return PlayModeMatch.WaitUntil(() => ids[0].Count + ids[1].Count >= 2 * perOwner * 9 / 10, 20f);
         for (int o = 0; o < 2; o++)
-            SimContext.Current.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.MoveUnits, OwnerId = owners[o], Tile = starts[1 - o], Ids = ids[o].ToArray() });
+            SimContext.Current.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.AttackMove, OwnerId = owners[o], Tile = starts[1 - o], Ids = ids[o].ToArray() });
 
         var tickMain = new SampleGroup("tick.main", SampleUnit.Millisecond);
         var samples = new List<double>();

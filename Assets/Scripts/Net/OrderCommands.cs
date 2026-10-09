@@ -25,18 +25,22 @@ public partial class WorldStateManager
 
     private readonly Dictionary<(int owner, ushort token, byte kind), PendingOrder> pendingOrders = new Dictionary<(int, ushort, byte), PendingOrder>();
     private readonly List<(int, ushort, byte)> staleTokens = new List<(int, ushort, byte)>();
-    private const byte MoveKind = 0;
+    private const byte OrderChunkKind = 0;
     private const byte SquadKindBase = 1; // + squad index
 
-    /// <summary>Accumulates one chunk of a move order; the final chunk queues the move.</summary>
+    /// <summary>
+    /// Accumulates one chunk of an order (<see cref="OrderKind"/>); the final chunk queues it. The goal
+    /// is used (and validated) only for Move and AttackMove. <paramref name="queue"/> is reserved for
+    /// Shift-queued waypoints.
+    /// </summary>
     [Command(requiresAuthority = false)]
-    public void CmdOrderMoveChunk(ushort token, byte[] idChunk, bool final, int2 goal, NetworkConnectionToClient sender = null)
+    public void CmdOrderChunk(ushort token, byte[] idChunk, bool final, byte kind, bool queue, int2 goal, NetworkConnectionToClient sender = null)
     {
-        if (!CommandGate.Allow(sender, nameof(CmdOrderMoveChunk))) return;
-        if (!TryActingOwner(sender, out int owner) || !IsGoalValid(goal)) return;
-        List<int> ids = Accumulate(owner, token, MoveKind, idChunk, final);
+        if (!CommandGate.Allow(sender, nameof(CmdOrderChunk))) return;
+        if (!TryActingOwner(sender, out int owner) || !IsOrderValid(kind, goal)) return;
+        List<int> ids = Accumulate(owner, token, OrderChunkKind, idChunk, final);
         if (ids == null) return;
-        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.MoveUnits, OwnerId = owner, Tile = goal, Ids = ids.ToArray() });
+        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = (OrderKind)kind, OwnerId = owner, Tile = goal, Ids = ids.ToArray() });
     }
 
     /// <summary>Accumulates one chunk of a squad assignment; the final chunk replaces the squad.</summary>
@@ -50,18 +54,18 @@ public partial class WorldStateManager
         Squads.Assign(owner, squad, ids);
     }
 
-    /// <summary>Orders a squad's living members to the goal.</summary>
+    /// <summary>Gives a squad's living members an order (<see cref="OrderKind"/>), as <see cref="CmdOrderChunk"/>.</summary>
     [Command(requiresAuthority = false)]
-    public void CmdOrderSquad(byte squad, int2 goal, NetworkConnectionToClient sender = null)
+    public void CmdOrderSquad(byte squad, byte kind, bool queue, int2 goal, NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(CmdOrderSquad))) return;
-        if (!CommandValidator.IsSquadIndexValid(squad) || !TryActingOwner(sender, out int owner) || !IsGoalValid(goal)) return;
+        if (!CommandValidator.IsSquadIndexValid(squad) || !TryActingOwner(sender, out int owner) || !IsOrderValid(kind, goal)) return;
         Squads.Prune(owner, squad, Ids);
         IReadOnlyList<int> members = Squads.Members(owner, squad);
         if (members.Count == 0) return;
         var ids = new int[members.Count];
         for (int i = 0; i < ids.Length; i++) ids[i] = members[i];
-        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.MoveUnits, OwnerId = owner, Tile = goal, Ids = ids });
+        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = (OrderKind)kind, OwnerId = owner, Tile = goal, Ids = ids });
     }
 
     /// <summary>The sender's owner id, when they may give orders now (Playing, still in the match).</summary>
@@ -74,10 +78,11 @@ public partial class WorldStateManager
         return acting != null && acting.state == PlayerState.Playing;
     }
 
-    private bool IsGoalValid(int2 goal)
+    /// <summary>A known order kind, with a goal inside the map when the order moves.</summary>
+    private bool IsOrderValid(byte kind, int2 goal)
     {
         (int2 min, int2 max) = MapBounds;
-        return Map != null && CommandValidator.IsInside(goal, min, max);
+        return Map != null && CommandValidator.IsOrderValid(kind, goal, min, max);
     }
 
     /// <summary>

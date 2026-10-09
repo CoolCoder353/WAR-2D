@@ -10,6 +10,13 @@ namespace WAR2D.Sim
     {
         public const byte Unit = 0;
         public const byte Building = 1;
+
+        /// <summary>
+        /// True for a unit on a <see cref="Stances.Move"/> order that is still live: it neither searches
+        /// for nor keeps a target until it arrives.
+        /// </summary>
+        public static bool IgnoresEnemies(byte stance, int orderSlot, NativeArray<byte> orderLive) =>
+            stance == Stances.Move && (uint)orderSlot < (uint)orderLive.Length && orderLive[orderSlot] != 0;
     }
 
     /// <summary>
@@ -25,6 +32,9 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<int> Team;
         [ReadOnly] public NativeArray<float> Health;
         [ReadOnly] public NativeArray<byte> Type;
+        [ReadOnly] public NativeArray<byte> Stance;
+        [ReadOnly] public NativeArray<int> OrderSlot;
+        [ReadOnly] public NativeArray<byte> OrderLive;
         [ReadOnly] public NativeArray<float> RangeSqByType;
         [ReadOnly] public NativeArray<int> CellStart, Sorted;
         [ReadOnly] public NativeArray<float2> BuildingPositions;
@@ -40,7 +50,7 @@ namespace WAR2D.Sim
         public void Execute(int i)
         {
             if (Slice > 1 && (i + Tick) % Slice != 0) return;
-            if (Health[i] <= 0f) { Target[i] = -1; return; }
+            if (Health[i] <= 0f || TargetKinds.IgnoresEnemies(Stance[i], OrderSlot[i], OrderLive)) { Target[i] = -1; return; }
 
             float2 p = Positions[i];
             int team = Team[i];

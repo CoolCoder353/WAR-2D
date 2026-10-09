@@ -65,8 +65,8 @@ namespace WAR2D.Sim
                         if (clock.Running) Spawn(data, context, command);
                         else deferred.Add(command);
                         break;
-                    case SimCommandKind.MoveUnits:
-                        if (clock.Running) Move(data, context, command, clock.UnitCount);
+                    case SimCommandKind.OrderUnits:
+                        if (clock.Running) ApplyOrder(data, context, command, clock.UnitCount);
                         else deferred.Add(command);
                         break;
                 }
@@ -129,12 +129,6 @@ namespace WAR2D.Sim
             });
             command.OnSpawned?.Invoke(id);
         }
-
-        /// <summary>Order handling arrives with the flow fields (Task 8).</summary>
-        partial void ApplyMove(SimData data, SimContext context, in SimCommand command, int unitCount);
-
-        private void Move(SimData data, SimContext context, in SimCommand command, int unitCount)
-            => ApplyMove(data, context, command, unitCount);
 
         /// <summary>Destroys every unit of the owner (or every unit), recording each death for its explosion.</summary>
         private void KillUnits(SimData data, SimContext context, int ownerId, bool all)

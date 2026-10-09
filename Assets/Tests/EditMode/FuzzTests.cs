@@ -66,4 +66,21 @@ public class FuzzTests
             Assert.DoesNotThrow(() => OrderIdCodec.TryDecode(bytes, OrderIdCodec.MaxIdsPerChunk, into));
         }
     }
+
+    [Test]
+    public void Order_NeverThrows_AndKeepsInvariants()
+    {
+        var rng = new System.Random(23);
+        int2 min = int2.zero, max = new int2(255, 255);
+        for (int i = 0; i < Iterations; i++)
+        {
+            byte kind = (byte)rng.Next(0, 256);
+            var goal = new int2(rng.Next(-512, 512), rng.Next(-512, 512));
+            bool valid = false;
+            Assert.DoesNotThrow(() => valid = CommandValidator.IsOrderValid(kind, goal, min, max));
+            if (kind > (byte)OrderKind.Stop) Assert.IsFalse(valid);
+            else if (kind <= (byte)OrderKind.AttackMove) Assert.AreEqual(CommandValidator.IsInside(goal, min, max), valid);
+            else Assert.IsTrue(valid, "Stop and Hold ignore the goal");
+        }
+    }
 }

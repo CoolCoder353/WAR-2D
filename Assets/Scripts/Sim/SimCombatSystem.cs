@@ -58,6 +58,9 @@ namespace WAR2D.Sim
                 Team = data.Team,
                 Health = data.Health,
                 Type = data.Type,
+                Stance = data.Stance,
+                OrderSlot = data.OrderSlot,
+                OrderLive = data.OrderLive,
                 RangeSqByType = data.RangeSqByType,
                 IdOf = data.IdOf,
                 IndexOfId = data.IndexOfId,
@@ -78,6 +81,9 @@ namespace WAR2D.Sim
                 Team = data.Team,
                 Health = data.Health,
                 Type = data.Type,
+                Stance = data.Stance,
+                OrderSlot = data.OrderSlot,
+                OrderLive = data.OrderLive,
                 RangeSqByType = data.RangeSqByType,
                 CellStart = data.CellStart,
                 Sorted = data.Sorted,
@@ -136,7 +142,7 @@ namespace WAR2D.Sim
 
     /// <summary>
     /// Turns each unit's stored target id into this tick's slot, dropping targets that died, left range,
-    /// changed hands or no longer exist.
+    /// changed hands or no longer exist, and the targets of units on a live Move order.
     /// </summary>
     [BurstCompile]
     public struct ResolveTargetsJob : IJobParallelFor
@@ -145,6 +151,9 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<int> Team;
         [ReadOnly] public NativeArray<float> Health;
         [ReadOnly] public NativeArray<byte> Type;
+        [ReadOnly] public NativeArray<byte> Stance;
+        [ReadOnly] public NativeArray<int> OrderSlot;
+        [ReadOnly] public NativeArray<byte> OrderLive;
         [ReadOnly] public NativeArray<float> RangeSqByType;
         [ReadOnly] public NativeArray<int> IdOf;
         [ReadOnly] public NativeArray<int> IndexOfId;
@@ -162,7 +171,7 @@ namespace WAR2D.Sim
         {
             int id = Target[i];
             Target[i] = -1;
-            if (Health[i] <= 0f || id <= 0) return;
+            if (Health[i] <= 0f || id <= 0 || TargetKinds.IgnoresEnemies(Stance[i], OrderSlot[i], OrderLive)) return;
             int index = NetIdAllocator.IndexOf(id);
             if (index >= IndexOfId.Length) return;
             int type = Type[i];

@@ -16,7 +16,8 @@ public class SpatialHashTests
         public NativeArray<float2> Positions, BuildingPositions;
         public NativeArray<int> Owner, BuildingOwner, Cell, CellStart, Sorted, Target, BCell, BCellStart, BSorted;
         public NativeArray<float> Health, BuildingHealth, RangeSqByType;
-        public NativeArray<byte> Type, TargetKind;
+        public NativeArray<byte> Type, TargetKind, Stance, OrderLive;
+        public NativeArray<int> OrderSlot;
         public int CellsAcross;
 
         public Rig(int units, int buildings, int size)
@@ -27,6 +28,9 @@ public class SpatialHashTests
             Owner = new NativeArray<int>(units, Allocator.TempJob);
             Health = new NativeArray<float>(units, Allocator.TempJob);
             Type = new NativeArray<byte>(units, Allocator.TempJob);
+            Stance = new NativeArray<byte>(units, Allocator.TempJob);
+            OrderSlot = new NativeArray<int>(units, Allocator.TempJob);
+            OrderLive = new NativeArray<byte>(1, Allocator.TempJob);
             Cell = new NativeArray<int>(units, Allocator.TempJob);
             CellStart = new NativeArray<int>(cells, Allocator.TempJob);
             Sorted = new NativeArray<int>(units, Allocator.TempJob);
@@ -52,6 +56,7 @@ public class SpatialHashTests
             h = new NearestEnemyJob
             {
                 Positions = Positions, Team = Owner, Health = Health, Type = Type, RangeSqByType = RangeSqByType,
+                Stance = Stance, OrderSlot = OrderSlot, OrderLive = OrderLive,
                 CellStart = CellStart, Sorted = Sorted,
                 BuildingPositions = BuildingPositions, BuildingTeam = BuildingOwner, BuildingHealth = BuildingHealth,
                 BuildingCellStart = BCellStart, BuildingSorted = BSorted,
@@ -63,7 +68,7 @@ public class SpatialHashTests
 
         public void Dispose()
         {
-            Positions.Dispose(); Owner.Dispose(); Health.Dispose(); Type.Dispose(); Cell.Dispose(); CellStart.Dispose();
+            Positions.Dispose(); Owner.Dispose(); Health.Dispose(); Type.Dispose(); Stance.Dispose(); OrderSlot.Dispose(); OrderLive.Dispose(); Cell.Dispose(); CellStart.Dispose();
             Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose(); BuildingPositions.Dispose(); BuildingOwner.Dispose();
             BuildingHealth.Dispose(); BCell.Dispose(); BCellStart.Dispose(); BSorted.Dispose(); RangeSqByType.Dispose();
         }

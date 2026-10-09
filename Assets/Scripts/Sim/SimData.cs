@@ -107,6 +107,8 @@ namespace WAR2D.Sim
         public NativeArray<byte> Arrived;
         /// <summary>1 when the unit's upkeep went unpaid at the last charge.</summary>
         public NativeArray<byte> Unpaid;
+        /// <summary>Stance per unit (<see cref="Stances"/>).</summary>
+        public NativeArray<byte> Stance;
         /// <summary>Network id per unit slot.</summary>
         public NativeArray<int> IdOf;
         /// <summary>Slot by id index; valid only while <c>IdOf[slot] == id</c>.</summary>
@@ -148,8 +150,8 @@ namespace WAR2D.Sim
         public NativeQueue<DeathRecord> Deaths;
         /// <summary>Position to move a unit to (out of a new building's footprint), applied by the next gather.</summary>
         public NativeParallelHashMap<int, float2> PendingMoves;
-        /// <summary>Order slot to assign per unit id, applied by the next gather.</summary>
-        public NativeParallelHashMap<int, int> PendingOrders;
+        /// <summary>Order slot and stance to assign per unit id, applied by the next gather.</summary>
+        public NativeParallelHashMap<int, PendingOrder> PendingOrders;
 
         // ---- orders (owned by OrderBook; see SimContext) ----
         /// <summary>Flow direction table: (handle, sector) → block, and the blocks.</summary>
@@ -287,6 +289,7 @@ namespace WAR2D.Sim
                 OrderSlot = new NativeArray<int>(capacity, allocator),
                 Arrived = new NativeArray<byte>(capacity, allocator),
                 Unpaid = new NativeArray<byte>(capacity, allocator),
+                Stance = new NativeArray<byte>(capacity, allocator),
                 IdOf = new NativeArray<int>(capacity, allocator),
                 IndexOfId = new NativeArray<int>(sim.MaxEntities, allocator),
                 Cell = new NativeArray<int>(capacity, allocator),
@@ -308,7 +311,7 @@ namespace WAR2D.Sim
                 BuildingSorted = new NativeArray<int>(buildingCapacity, allocator),
                 AttackEvents = new NativeList<int2>(1024, allocator),
                 Deaths = new NativeQueue<DeathRecord>(allocator),
-                PendingOrders = new NativeParallelHashMap<int, int>(1024, allocator),
+                PendingOrders = new NativeParallelHashMap<int, PendingOrder>(1024, allocator),
                 PendingMoves = new NativeParallelHashMap<int, float2>(64, allocator),
                 OwnerIdBySlot = new NativeArray<int>(MaxOwners, allocator),
                 TeamBySlot = new NativeArray<int>(MaxOwners, allocator),
@@ -363,7 +366,7 @@ namespace WAR2D.Sim
             RunningCostByType.Dispose(); DamageTable.Dispose();
             Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Team.Dispose(); Type.Dispose();
             SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose();
-            OrderSlot.Dispose(); Arrived.Dispose(); Unpaid.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
+            OrderSlot.Dispose(); Arrived.Dispose(); Unpaid.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
             Cell.Dispose(); CellStart.Dispose(); Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose();
             BuildingCount.Dispose(); BuildingPositions.Dispose(); BuildingOwnerId.Dispose(); BuildingTeam.Dispose(); BuildingHealth.Dispose();
             BuildingDamage.Dispose(); BuildingIds.Dispose(); BuildingEntities.Dispose(); BuildingSlotOfIndex.Dispose(); BuildingCell.Dispose();

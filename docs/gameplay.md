@@ -30,12 +30,15 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 
 | Input | Action |
 |---|---|
-| `W A S D` / arrow keys | Pan the camera |
+| Arrow keys | Pan the camera (`A`, `S` and `H` are order keys since v0.6) |
 | Mouse wheel | Zoom (orthographic size 3–30; 1.5 per notch; pan speed scales with zoom) |
 | Hold `Shift` | Pan 2.5× faster |
 | Left-click + drag | Select **every** one of your units inside the box (no limit). A plain click selects what is under the cursor. |
 | `Shift` + drag | Add the units in the box to the selection |
-| Right-click | Order the selected units to move to the cursor |
+| Right-click | Order the selected units to **Move** to the cursor (they ignore enemies until they arrive) |
+| `A`, then left- or right-click | **Attack-move** to the cursor: move, but stop to fight enemies in range |
+| `S` | **Stop**: drop the order and stand (still fighting enemies in range) |
+| `H` | **Hold**: stand still, never pushed aside, fighting enemies in range |
 | `Ctrl` + `1`–`0` | Assign the selection to squad 1–10 (squads are kept by the server) |
 | `1`–`0` | Select that squad (a right-click then orders the whole squad at once) |
 | Building button (HUD) | Pick a building; a preview follows the cursor |
@@ -103,7 +106,7 @@ A Miner checks the single tile next to it in the direction it faces:
 - A player can own at most **10,000 units** (`Simulation/MaxUnitsPerPlayer`). A spawner at the cap keeps its queue and refunds the unit.
 - A spawner creates a unit on the nearest free walkable tile outside its footprint. Units are round bodies (`Radius` 0.35 tiles for the Tank) that push apart when they overlap, so a crowd spreads out on its own.
 - A move order gives the whole group one shared flow field to the goal, so any number of units path around walls and buildings together. The group gathers around the goal and stops within a radius that grows with its size.
-- A unit with an enemy in range stops to fight and resumes its order when the target is gone.
+- Every unit has a stance. On a **Move** order it ignores enemies until it arrives. On an **Attack-move** order, an enemy in range makes it stop to fight, and it resumes the order when the target is gone. **Idle** (no order, or arrived) and **Hold** units fight whatever comes in range; a Hold unit never moves, not even when its neighbours push. Arriving at the goal makes a Move or Attack-move unit Idle.
 
 ## Fog of war and teams
 

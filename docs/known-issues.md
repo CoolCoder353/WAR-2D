@@ -27,10 +27,10 @@ v0.5 passed the EditMode and PlayMode suites (including `LeakTests`), but nobody
 
 Inert leftovers disclosed in v0.2 and scheduled to be cleaned up together.
 
-- **No Windows build profile.** Only `Assets/Settings/Build Profiles/Linux.asset` is checked in — the owner deferred Windows to a later release. **v0.4**
-- **Inert `ProjectSettings/HDRPProjectSettings.asset`** left behind by the move to URP 2D. **v0.4**
-- **Unreferenced `Assets/Resources/Materials/TankRTS-5.png.mat`** — the Ground tilemap used it before the URP conversion. **v0.4**
-- **Empty `Assets/Resources/Prefabs/` folder** (its only asset, `Bullet.prefab`, was deleted in v0.2). **v0.4**
-- **Vendored Mirror components still call the legacy `Input` API** — `Components/GUIConsole.cs`, `Components/RemoteStatistics.cs` and `Components/Profiling/ToggleHotkey.cs` (the last via its own `GraphCanvas.prefab`). None are used in the shipped scenes, and the project is Input System only (`activeInputHandler: 1`), so they would throw if ever attached. **v0.4**
-- **Vendored Console `Demo/Scripts/DemoPlayer.cs` uses the legacy `Input.GetAxis`.** Demo only; not used by any shipped scene. **v0.4**
+- **No Windows build profile.** Only `Assets/Settings/Build Profiles/Linux.asset` is checked in — the owner deferred Windows to a later release. **v0.9**
+- **Inert `ProjectSettings/HDRPProjectSettings.asset`** left behind by the move to URP 2D. **v0.6** (Task 0; deletion pending the owner)
+- **Unreferenced `Assets/Resources/Materials/TankRTS-5.png.mat`** — the Ground tilemap used it before the URP conversion. **v0.6** (Task 0; deletion pending the owner)
+- **Empty `Assets/Resources/Prefabs/` folder** (its only asset, `Bullet.prefab`, was deleted in v0.2). **v0.6** (Task 0; deletion pending the owner)
+- **Vendored Mirror components still call the legacy `Input` API** — `Components/GUIConsole.cs`, `Components/RemoteStatistics.cs` and `Components/Profiling/ToggleHotkey.cs` (the last via its own `GraphCanvas.prefab`). None are used in the shipped scenes, and the project is Input System only (`activeInputHandler: 1`), so they would throw if ever attached. Not shipped; leave vendored code alone (no target).
+- **Vendored Console `Demo/Scripts/DemoPlayer.cs` uses the legacy `Input.GetAxis`.** Demo only; not used by any shipped scene. Not shipped; leave vendored code alone (no target).
 - **Every unit type draws with the Tank texture.** `InstancedUnitRenderer` binds one texture; per-type frames come with the sprite atlas in the art pass. **v0.8**

@@ -15,6 +15,8 @@ public class UnitCommander : NetworkBehaviour
     private int2 startcorner;
     private int2 endcorner;
     private bool selecting;
+    /// <summary>Set by the attack-move key: the next left or right click sends AttackMove.</summary>
+    private bool attackMoveArmed;
 
     private int2 lastSentCorner1 = new int2(int.MinValue, int.MinValue);
     private int2 lastSentCorner2 = new int2(int.MinValue, int.MinValue);
@@ -86,8 +88,25 @@ public class UnitCommander : NetworkBehaviour
         }
 
 
+        if (GameInput.AttackMove.WasPressedThisFrame()) attackMoveArmed = true;
+        if (GameInput.Stop.WasPressedThisFrame()) Selection.Order(OrderKind.Stop, false, default);
+        if (GameInput.Hold.WasPressedThisFrame()) Selection.Order(OrderKind.Hold, false, default);
+
+        // With attack-move armed, the next left or right click sends it instead of selecting or moving.
+        bool clickUsed = false;
+        if (attackMoveArmed && (GameInput.Select.WasPressedThisFrame() || GameInput.Command.WasPressedThisFrame()))
+        {
+            attackMoveArmed = false;
+            if (!GameInput.PointerOverUI)
+            {
+                Vector3 target = GetMouseWorldPosition();
+                Selection.Order(OrderKind.AttackMove, GameInput.QueueModifier.IsPressed(), new int2((int)target.x, (int)target.y));
+                clickUsed = true;
+            }
+        }
+
         //Mouse down, start selection
-        if (GameInput.Select.WasPressedThisFrame() && !GameInput.PointerOverUI)
+        if (!clickUsed && GameInput.Select.WasPressedThisFrame() && !GameInput.PointerOverUI)
         {
             selecting = true;
             selectionBox.SetActive(true);
@@ -133,12 +152,11 @@ public class UnitCommander : NetworkBehaviour
 
         }
 
-        if (GameInput.Command.WasPressedThisFrame() && !GameInput.PointerOverUI)
+        if (!clickUsed && GameInput.Command.WasPressedThisFrame() && !GameInput.PointerOverUI)
         {
             Vector3 worldPosition = GetMouseWorldPosition();
             int2 goal = new int2((int)worldPosition.x, (int)worldPosition.y);
-            // Debug.Log($"Moving units in box {startcorner}, {endcorner} units to {goal.x},{goal.y} -> client side");
-            Selection.OrderMove(goal);
+            Selection.Order(OrderKind.Move, GameInput.QueueModifier.IsPressed(), goal);
         }
 
         for (int squad = 0; squad < WAR2D.Sim.Squads.Count; squad++)

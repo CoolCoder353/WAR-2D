@@ -10,11 +10,12 @@ namespace WAR2D.Sim
         private readonly List<int>[] moversByClass = { new List<int>(), new List<int>() };
 
         /// <summary>
-        /// Gives the owner's units (the listed ids, or every unit inside the box) a move order: one order
-        /// (one flow field) per size class present. Ids that are not live or not the owner's are skipped.
-        /// Reads the settled SoA, so it must run right after the boundary.
+        /// Gives the owner's units (the listed ids, or every unit inside the box) an order. Move and
+        /// AttackMove issue one order (one flow field) per size class present; Stop and Hold clear the
+        /// order. Ids that are not live or not the owner's are skipped. Reads the settled SoA, so it
+        /// must run right after the boundary.
         /// </summary>
-        partial void ApplyMove(SimData data, SimContext context, in SimCommand command, int unitCount)
+        private void ApplyOrder(SimData data, SimContext context, in SimCommand command, int unitCount)
         {
             foreach (List<int> list in moversByClass) list.Clear();
             if (command.Ids != null)
@@ -38,6 +39,15 @@ namespace WAR2D.Sim
                 }
             }
 
+            if (command.Order == OrderKind.Stop || command.Order == OrderKind.Hold)
+            {
+                byte stance = command.Order == OrderKind.Hold ? Stances.Hold : Stances.Idle;
+                foreach (List<int> slots in moversByClass)
+                    AddPending(data, slots, new PendingOrder { Slot = -1, Stance = stance });
+                return;
+            }
+
+            byte moveStance = command.Order == OrderKind.AttackMove ? Stances.AttackMove : Stances.Move;
             int tick = SystemAPI.GetSingleton<SimClock>().Tick;
             for (int sizeClass = 0; sizeClass < moversByClass.Length; sizeClass++)
             {
@@ -52,10 +62,16 @@ namespace WAR2D.Sim
                 int handle = context.Orders.Issue(command.Tile, sizeClass, starts, tick);
                 starts.Dispose();
                 if (handle < 0) continue;
-                NativeParallelHashMap<int, int> pending = data.PendingOrders;
-                if (pending.Capacity < pending.Count() + slots.Count) pending.Capacity = pending.Count() + slots.Count + 1024;
-                foreach (int slot in slots) pending[data.IdOf[slot]] = handle;
+                AddPending(data, slots, new PendingOrder { Slot = handle, Stance = moveStance });
             }
+        }
+
+        private static void AddPending(SimData data, List<int> slots, PendingOrder order)
+        {
+            if (slots.Count == 0) return;
+            NativeParallelHashMap<int, PendingOrder> pending = data.PendingOrders;
+            if (pending.Capacity < pending.Count() + slots.Count) pending.Capacity = pending.Count() + slots.Count + 1024;
+            foreach (int slot in slots) pending[data.IdOf[slot]] = order;
         }
     }
 }
