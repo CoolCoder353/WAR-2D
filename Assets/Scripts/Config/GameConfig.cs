@@ -19,6 +19,8 @@ namespace Config
         public SimulationConfig Simulation = new SimulationConfig();
         /// <summary>Unit replication encoder tuning.</summary>
         public ReplicationConfig Replication = new ReplicationConfig();
+        /// <summary>Unit orders (Shift-queued waypoints).</summary>
+        public OrdersConfig Orders = new OrdersConfig();
         /// <summary>Damage multipliers per attacker type and target class.</summary>
         public DamageTableConfig Damage = new DamageTableConfig();
 
@@ -89,6 +91,12 @@ namespace Config
 
         /// <summary>Seconds per simulation tick.</summary>
         public float TickSeconds => 1f / TickRate;
+    }
+
+    public class OrdersConfig
+    {
+        /// <summary>Shift-queued waypoints kept per unit; extras are dropped.</summary>
+        public int MaxQueued;
     }
 
     public class ReplicationConfig

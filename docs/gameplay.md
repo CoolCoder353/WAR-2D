@@ -37,6 +37,7 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | `Shift` + drag | Add the units in the box to the selection |
 | Right-click | Order the selected units to **Move** to the cursor (they ignore enemies until they arrive) |
 | `A`, then left- or right-click | **Attack-move** to the cursor: move, but stop to fight enemies in range |
+| `Shift` + right-click (or attack-move click) | **Queue** the order after the current one: up to 4 waypoints per unit (`Orders/MaxQueued`). Units without an order start it at once. Stop, Hold or an unqueued order clears the queue. |
 | `S` | **Stop**: drop the order and stand (still fighting enemies in range) |
 | `H` | **Hold**: stand still, never pushed aside, fighting enemies in range |
 | `Ctrl` + `1`–`0` | Assign the selection to squad 1–10 (squads are kept by the server) |

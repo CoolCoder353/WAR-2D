@@ -30,8 +30,8 @@ public partial class WorldStateManager
 
     /// <summary>
     /// Accumulates one chunk of an order (<see cref="OrderKind"/>); the final chunk queues it. The goal
-    /// is used (and validated) only for Move and AttackMove. <paramref name="queue"/> is reserved for
-    /// Shift-queued waypoints.
+    /// is used (and validated) only for Move and AttackMove; <paramref name="queue"/> (Shift) queues
+    /// those after each unit's current order.
     /// </summary>
     [Command(requiresAuthority = false)]
     public void CmdOrderChunk(ushort token, byte[] idChunk, bool final, byte kind, bool queue, int2 goal, NetworkConnectionToClient sender = null)
@@ -40,7 +40,7 @@ public partial class WorldStateManager
         if (!TryActingOwner(sender, out int owner) || !IsOrderValid(kind, goal)) return;
         List<int> ids = Accumulate(owner, token, OrderChunkKind, idChunk, final);
         if (ids == null) return;
-        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = (OrderKind)kind, OwnerId = owner, Tile = goal, Ids = ids.ToArray() });
+        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = (OrderKind)kind, Queue = queue, OwnerId = owner, Tile = goal, Ids = ids.ToArray() });
     }
 
     /// <summary>Accumulates one chunk of a squad assignment; the final chunk replaces the squad.</summary>
@@ -65,7 +65,7 @@ public partial class WorldStateManager
         if (members.Count == 0) return;
         var ids = new int[members.Count];
         for (int i = 0; i < ids.Length; i++) ids[i] = members[i];
-        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = (OrderKind)kind, OwnerId = owner, Tile = goal, Ids = ids });
+        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = (OrderKind)kind, Queue = queue, OwnerId = owner, Tile = goal, Ids = ids });
     }
 
     /// <summary>The sender's owner id, when they may give orders now (Playing, still in the match).</summary>

@@ -32,6 +32,7 @@ namespace WAR2D.Sim
         internal void ResetForNewMatch()
         {
             deferred.Clear();
+            legs.Clear();
         }
 
         protected override void OnUpdate()
@@ -44,6 +45,8 @@ namespace WAR2D.Sim
             WriteBackBuildingDamage(data);
             data.PendingOrders.Clear();
             data.PendingMoves.Clear();
+            if (clock.Running) AdvanceWaypoints(data, context, clock.UnitCount, clock.Tick);
+            else data.Arrivals.Clear();
 
             List<SimCommand> commands = context.Commands.Drain();
             deferred.Clear();

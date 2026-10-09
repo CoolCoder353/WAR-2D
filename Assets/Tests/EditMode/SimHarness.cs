@@ -82,8 +82,11 @@ public sealed class SimHarness : IDisposable
     public void Move(int owner, int2 goal, params int[] ids) => Order(owner, OrderKind.Move, goal, ids);
 
     /// <summary>Queues an order of the given kind for the given unit ids.</summary>
-    public void Order(int owner, OrderKind kind, int2 goal, params int[] ids) =>
-        Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, OwnerId = owner, Tile = goal, Ids = ids });
+    public void Order(int owner, OrderKind kind, int2 goal, params int[] ids) => Order(owner, kind, false, goal, ids);
+
+    /// <summary>Queues an order of the given kind, Shift-queued when <paramref name="queue"/> is set.</summary>
+    public void Order(int owner, OrderKind kind, bool queue, int2 goal, params int[] ids) =>
+        Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, Queue = queue, OwnerId = owner, Tile = goal, Ids = ids });
 
     /// <summary>Overwrites a unit's position (tests only; completes the tick's jobs first).</summary>
     public void Teleport(int id, float2 position)

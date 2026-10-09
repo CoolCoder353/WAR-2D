@@ -37,6 +37,8 @@ namespace WAR2D.Sim
         public int OwnerId;
         /// <summary>The order of an <see cref="SimCommandKind.OrderUnits"/> command.</summary>
         public OrderKind Order;
+        /// <summary>Shift-queued: a Move or AttackMove runs after the unit's current order.</summary>
+        public bool Queue;
         /// <summary>Goal tile of a move.</summary>
         public int2 Tile;
         /// <summary>Spawn position.</summary>

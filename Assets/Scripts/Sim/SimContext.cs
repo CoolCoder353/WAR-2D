@@ -41,6 +41,9 @@ namespace WAR2D.Sim
         /// <summary>The live move orders and their flow fields.</summary>
         public OrderBook Orders { get; }
 
+        /// <summary>Shift-queued waypoints per unit (main thread, boundary only).</summary>
+        public WaypointBook Waypoints { get; }
+
         /// <summary>The config the sim was built from.</summary>
         public GameConfigData Config { get; }
 
@@ -79,6 +82,8 @@ namespace WAR2D.Sim
             Ids = new NetIdAllocator(config.Simulation.MaxEntities);
             SimData data = SimData.Create(map.Grid, config, Allocator.Persistent);
             Orders = new OrderBook(map.Grid);
+            Waypoints = new WaypointBook(config.Orders.MaxQueued);
+            UnitDied += (id, _) => Waypoints.Forget(id);
             data.Orders = Orders.Table;
             data.OrderGoal = Orders.Goal;
             data.OrderLive = Orders.Live;

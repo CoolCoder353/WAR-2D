@@ -101,6 +101,7 @@ namespace WAR2D.Sim
                 Positions = data.Positions,
                 Velocity = data.Velocity,
                 Arrived = data.Arrived,
+                Arrivals = data.Arrivals.AsParallelWriter(),
                 Count = count,
             }.ScheduleParallel(units, state.Dependency);
         }
@@ -320,13 +321,17 @@ namespace WAR2D.Sim
         }
     }
 
-    /// <summary>Writes position and velocity back, and clears the order (and moving stance) of a unit that arrived.</summary>
+    /// <summary>
+    /// Writes position and velocity back, and clears the order (and moving stance) of a unit that arrived,
+    /// reporting it in <see cref="SimData.Arrivals"/> for its next waypoint.
+    /// </summary>
     [BurstCompile]
     public partial struct WriteBackMovementJob : IJobEntity
     {
         [ReadOnly] public NativeArray<float2> Positions;
         [ReadOnly] public NativeArray<float2> Velocity;
         [ReadOnly] public NativeArray<byte> Arrived;
+        public NativeQueue<int>.ParallelWriter Arrivals;
         public int Count;
 
         private void Execute(ref Unit unit, [EntityIndexInQuery] int index)
@@ -337,6 +342,7 @@ namespace WAR2D.Sim
             if (Arrived[index] != 0)
             {
                 unit.OrderSlot = -1;
+                Arrivals.Enqueue(unit.Id);
                 if (unit.Stance == Stances.Move || unit.Stance == Stances.AttackMove) unit.Stance = Stances.Idle;
             }
         }

@@ -41,6 +41,10 @@
     <SnapshotBytesPerSecond>262144</SnapshotBytesPerSecond>  <!-- v0.3 snapshot row -->
   </Replication>
 
+  <Orders>
+    <MaxQueued>4</MaxQueued>  <!-- v0.6: Shift-queued waypoints per unit -->
+  </Orders>
+
   <!-- Damage multiplier per attacker unit type and target class (Unit, Building, Wall); 1.0 when missing. -->
   <DamageTable>
     <Entry attacker="Tank" target="Unit">1.0</Entry>

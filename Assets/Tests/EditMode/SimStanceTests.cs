@@ -101,4 +101,76 @@ public class SimStanceTests
         Assert.AreEqual(-1, u.OrderSlot);
         Assert.AreEqual(Stances.Idle, u.Stance);
     }
+
+    [Test]
+    public void QueuedWaypointsRunInOrder()
+    {
+        using var sim = Sim();
+        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10, 10));
+        sim.Tick();
+        var goals = new[] { new int2(20, 20), new int2(40, 20), new int2(40, 40) };
+        sim.Order(SimHarness.OwnerA, OrderKind.Move, false, goals[0], a[0]);
+        sim.Tick();
+        sim.Order(SimHarness.OwnerA, OrderKind.Move, true, goals[1], a[0]);
+        sim.Order(SimHarness.OwnerA, OrderKind.Move, true, goals[2], a[0]);
+        var closest = new float[3] { float.MaxValue, float.MaxValue, float.MaxValue };
+        var closestTick = new int[3];
+        int ticks = (int)math.ceil(30f * sim.Config.Simulation.TickRate);
+        for (int t = 0; t < ticks; t++)
+        {
+            sim.Tick();
+            float2 p = sim.UnitById(a[0]).Position;
+            for (int g = 0; g < 3; g++)
+            {
+                float d = math.distance(p, (float2)goals[g] + 0.5f);
+                if (d < closest[g]) { closest[g] = d; closestTick[g] = t; }
+            }
+        }
+        for (int g = 0; g < 3; g++) Assert.Less(closest[g], 1.5f, $"goal {g} visited");
+        Assert.Less(closestTick[0], closestTick[1]);
+        Assert.Less(closestTick[1], closestTick[2]);
+    }
+
+    [Test]
+    public void QueueBeyondCapIsDropped()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(64), c => { c.Simulation.TargetSearchSliceTicks = 1; c.Orders.MaxQueued = 2; });
+        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10, 10));
+        sim.Tick();
+        sim.Order(SimHarness.OwnerA, OrderKind.Move, false, new int2(20, 10), a[0]);
+        sim.Tick();
+        sim.Order(SimHarness.OwnerA, OrderKind.Move, true, new int2(30, 10), a[0]);
+        sim.Order(SimHarness.OwnerA, OrderKind.Move, true, new int2(30, 30), a[0]);
+        sim.Order(SimHarness.OwnerA, OrderKind.Move, true, new int2(10, 30), a[0]);
+        sim.TickSeconds(30f);
+        Assert.Less(math.distance(sim.UnitById(a[0]).Position, new float2(30.5f, 30.5f)), 1.5f);
+    }
+
+    [Test]
+    public void GroupSharesOneFieldPerLeg()
+    {
+        using var sim = Sim();
+        var ids = new int[30];
+        var boxes = new int[30][];
+        for (int i = 0; i < 30; i++) boxes[i] = sim.Spawn(SimHarness.OwnerA, new float2(8 + i % 6, 8 + i / 6));
+        sim.Tick();
+        for (int i = 0; i < 30; i++) ids[i] = boxes[i][0];
+        sim.Order(SimHarness.OwnerA, OrderKind.Move, false, new int2(30, 12), ids);
+        sim.Tick();
+        sim.Order(SimHarness.OwnerA, OrderKind.Move, true, new int2(30, 40), ids);
+        sim.Order(SimHarness.OwnerA, OrderKind.Move, true, new int2(50, 40), ids);
+        int maxLive = 0;
+        int ticks = (int)math.ceil(40f * sim.Config.Simulation.TickRate);
+        for (int t = 0; t < ticks; t++)
+        {
+            sim.Tick();
+            sim.Em.CompleteAllTrackedJobs();
+            maxLive = math.max(maxLive, sim.Context.Orders.LiveCount);
+        }
+        // One small size class: at most the leg being finished and the next one are live at once.
+        Assert.LessOrEqual(maxLive, 2);
+        int near = 0;
+        foreach (int id in ids) if (math.distance(sim.UnitById(id).Position, new float2(50.5f, 40.5f)) < 6f) near++;
+        Assert.GreaterOrEqual(near, 27, "the group reached the last leg");
+    }
 }

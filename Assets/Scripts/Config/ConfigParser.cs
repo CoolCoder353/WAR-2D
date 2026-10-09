@@ -116,6 +116,10 @@ namespace Config
                 config.Replication.SnapshotBytesPerSecond = Int(rep, "SnapshotBytesPerSecond", c, errors, min: 16384, max: 16777216);
             }
 
+            XmlNode orders = Require(root, "Orders", errors);
+            if (orders != null)
+                config.Orders.MaxQueued = Int(orders, "MaxQueued", "Orders", errors, min: 0, max: 16);
+
             XmlNode damage = Require(root, "DamageTable", errors);
             if (damage != null)
             {

@@ -150,6 +150,8 @@ namespace WAR2D.Sim
         public NativeQueue<DeathRecord> Deaths;
         /// <summary>Position to move a unit to (out of a new building's footprint), applied by the next gather.</summary>
         public NativeParallelHashMap<int, float2> PendingMoves;
+        /// <summary>Ids of units that reached their goal this tick, for their next queued waypoint.</summary>
+        public NativeQueue<int> Arrivals;
         /// <summary>Order slot and stance to assign per unit id, applied by the next gather.</summary>
         public NativeParallelHashMap<int, PendingOrder> PendingOrders;
 
@@ -313,6 +315,7 @@ namespace WAR2D.Sim
                 Deaths = new NativeQueue<DeathRecord>(allocator),
                 PendingOrders = new NativeParallelHashMap<int, PendingOrder>(1024, allocator),
                 PendingMoves = new NativeParallelHashMap<int, float2>(64, allocator),
+                Arrivals = new NativeQueue<int>(allocator),
                 OwnerIdBySlot = new NativeArray<int>(MaxOwners, allocator),
                 TeamBySlot = new NativeArray<int>(MaxOwners, allocator),
                 UpkeepBudget = new NativeArray<float>(MaxOwners, allocator),
@@ -371,7 +374,7 @@ namespace WAR2D.Sim
             BuildingCount.Dispose(); BuildingPositions.Dispose(); BuildingOwnerId.Dispose(); BuildingTeam.Dispose(); BuildingHealth.Dispose();
             BuildingDamage.Dispose(); BuildingIds.Dispose(); BuildingEntities.Dispose(); BuildingSlotOfIndex.Dispose(); BuildingCell.Dispose();
             BuildingCellStart.Dispose(); BuildingSorted.Dispose();
-            AttackEvents.Dispose(); Deaths.Dispose(); PendingOrders.Dispose(); PendingMoves.Dispose();
+            AttackEvents.Dispose(); Deaths.Dispose(); PendingOrders.Dispose(); PendingMoves.Dispose(); Arrivals.Dispose();
             OwnerIdBySlot.Dispose(); TeamBySlot.Dispose(); UpkeepBudget.Dispose(); UpkeepSpent.Dispose(); UnitsBySlot.Dispose();
             ChargedThisTick.Dispose(); LargeGrid.Dispose();
             SightByType.Dispose(); BuildingSightByType.Dispose(); BuildingSight.Dispose(); VisionBySlot.Dispose();
