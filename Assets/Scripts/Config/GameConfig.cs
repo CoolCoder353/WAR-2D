@@ -21,6 +21,8 @@ namespace Config
         public ReplicationConfig Replication = new ReplicationConfig();
         /// <summary>Unit orders (Shift-queued waypoints).</summary>
         public OrdersConfig Orders = new OrdersConfig();
+        /// <summary>Player-controlled diplomacy.</summary>
+        public DiplomacyConfig Diplomacy = new DiplomacyConfig();
         /// <summary>Damage multipliers per attacker type and target class.</summary>
         public DamageTableConfig Damage = new DamageTableConfig();
 
@@ -97,6 +99,12 @@ namespace Config
     {
         /// <summary>Shift-queued waypoints kept per unit; extras are dropped.</summary>
         public int MaxQueued;
+    }
+
+    public class DiplomacyConfig
+    {
+        /// <summary>Seconds a player waits between changes, per command.</summary>
+        public float ChangeCooldownSeconds;
     }
 
     public class ReplicationConfig

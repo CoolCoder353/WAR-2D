@@ -22,7 +22,7 @@ public enum GameState
 /// <summary>
 /// Server-authoritative match state: players, ownership, the state machine and outcomes.
 /// </summary>
-public class GameCore : NetworkBehaviour
+public partial class GameCore : NetworkBehaviour
 {
     public static GameCore Instance { get; private set; }
 
@@ -50,8 +50,6 @@ public class GameCore : NetworkBehaviour
     /// <summary>The team of an owner: from <see cref="Teams"/>, or a team of its own.</summary>
     public int TeamOf(int ownerId) => Teams.TryGetValue(ownerId, out int team) ? team : -ownerId - 1;
 
-    /// <summary>True when two owners are on the same team (an owner is its own ally).</summary>
-    public bool AreAllies(int a, int b) => a == b || TeamOf(a) == TeamOf(b);
 
     /// <summary>Owner ids in match order, synced to clients: an owner's position here picks its colour.</summary>
     public readonly SyncList<int> PlayerOrder = new SyncList<int>();
@@ -84,6 +82,7 @@ public class GameCore : NetworkBehaviour
         MatchStartPlayerCount = 0;
         MatchStartTeamCount = 0;
         Teams.Clear();
+        ForgetDiplomacyCooldowns();
     }
 
     [ServerCallback]
@@ -108,6 +107,7 @@ public class GameCore : NetworkBehaviour
         if (CurrentState == GameState.Countdown && NetworkTime.time >= CountdownEndTime)
         {
             CurrentState = GameState.Playing;
+            SendAllDiplomacy();
         }
     }
 
@@ -364,6 +364,8 @@ public class GameCore : NetworkBehaviour
         MatchStartPlayerCount = 0;
         MatchStartTeamCount = 0;
         Teams.Clear();
+        ForgetDiplomacyCooldowns();
+        DiplomacyEnabled = false;
         Bots.Clear();
         if (SceneManager.GetActiveScene().name != LobbyScene && NetworkServer.active)
         {

@@ -55,7 +55,8 @@ namespace WAR2D.Sim
             state.Dependency = new ResolveTargetsJob
             {
                 Positions = data.Positions,
-                Team = data.Team,
+                OwnerSlot = data.OwnerSlot,
+                AttackMask = data.AttackMask,
                 Health = data.Health,
                 Type = data.Type,
                 Stance = data.Stance,
@@ -66,7 +67,7 @@ namespace WAR2D.Sim
                 IndexOfId = data.IndexOfId,
                 UnitCount = count,
                 BuildingPositions = data.BuildingPositions,
-                BuildingTeam = data.BuildingTeam,
+                BuildingOwnerSlot = data.BuildingOwnerSlot,
                 BuildingHealth = data.BuildingHealth,
                 BuildingIds = data.BuildingIds,
                 BuildingSlotOfIndex = data.BuildingSlotOfIndex,
@@ -78,7 +79,8 @@ namespace WAR2D.Sim
             state.Dependency = new NearestEnemyJob
             {
                 Positions = data.Positions,
-                Team = data.Team,
+                OwnerSlot = data.OwnerSlot,
+                AttackMask = data.AttackMask,
                 Health = data.Health,
                 Type = data.Type,
                 Stance = data.Stance,
@@ -88,7 +90,7 @@ namespace WAR2D.Sim
                 CellStart = data.CellStart,
                 Sorted = data.Sorted,
                 BuildingPositions = data.BuildingPositions,
-                BuildingTeam = data.BuildingTeam,
+                BuildingOwnerSlot = data.BuildingOwnerSlot,
                 BuildingHealth = data.BuildingHealth,
                 BuildingCellStart = data.BuildingCellStart,
                 BuildingSorted = data.BuildingSorted,
@@ -142,13 +144,14 @@ namespace WAR2D.Sim
 
     /// <summary>
     /// Turns each unit's stored target id into this tick's slot, dropping targets that died, left range,
-    /// changed hands or no longer exist, and the targets of units on a live Move order.
+    /// changed hands, are no longer attacked (diplomacy) or no longer exist, and the targets of units on a live Move order.
     /// </summary>
     [BurstCompile]
     public struct ResolveTargetsJob : IJobParallelFor
     {
         [ReadOnly] public NativeArray<float2> Positions;
-        [ReadOnly] public NativeArray<int> Team;
+        [ReadOnly] public NativeArray<byte> OwnerSlot;
+        [ReadOnly] public NativeArray<ushort> AttackMask;
         [ReadOnly] public NativeArray<float> Health;
         [ReadOnly] public NativeArray<byte> Type;
         [ReadOnly] public NativeArray<byte> Stance;
@@ -159,7 +162,7 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<int> IndexOfId;
         public int UnitCount;
         [ReadOnly] public NativeArray<float2> BuildingPositions;
-        [ReadOnly] public NativeArray<int> BuildingTeam;
+        [ReadOnly] public NativeArray<byte> BuildingOwnerSlot;
         [ReadOnly] public NativeArray<float> BuildingHealth;
         [ReadOnly] public NativeArray<int> BuildingIds;
         [ReadOnly] public NativeArray<int> BuildingSlotOfIndex;
@@ -180,7 +183,7 @@ namespace WAR2D.Sim
             if (TargetKind[i] == TargetKinds.Unit)
             {
                 int j = IndexOfId[index];
-                if ((uint)j >= (uint)UnitCount || IdOf[j] != id || Health[j] <= 0f || Team[j] == Team[i] ||
+                if ((uint)j >= (uint)UnitCount || IdOf[j] != id || Health[j] <= 0f || !SimData.Attacks(AttackMask, OwnerSlot[i], OwnerSlot[j]) ||
                     math.distancesq(Positions[i], Positions[j]) > rangeSq) return;
                 Target[i] = j;
             }
@@ -188,7 +191,7 @@ namespace WAR2D.Sim
             {
                 int j = BuildingSlotOfIndex[index];
                 if ((uint)j >= (uint)BuildingCount || BuildingIds[j] != id || BuildingHealth[j] <= 0f ||
-                    BuildingTeam[j] == Team[i] || math.distancesq(Positions[i], BuildingPositions[j]) > rangeSq) return;
+                    !SimData.Attacks(AttackMask, OwnerSlot[i], BuildingOwnerSlot[j]) || math.distancesq(Positions[i], BuildingPositions[j]) > rangeSq) return;
                 Target[i] = j;
             }
         }

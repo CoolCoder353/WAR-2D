@@ -21,7 +21,7 @@ v0.5 passed the EditMode and PlayMode suites (including `LeakTests`), but nobody
 - **Lobby team label** (`LobbySystem`): it is created in code inside each lobby row, so its placement in the row's layout is unchecked; cycling teams as host, and seeing the change on other clients.
 - **Allied play**: allies share vision and never fight; a team win shows the Win screen to every player on the team, including eliminated ones.
 - **Building ghosts**: enemy buildings dim when out of sight and disappear only once their spot is seen again.
-- **One editor crash** happened during the first v0.5 EditMode run (a segfault scheduling `GatherJob`, right after `SimData` gained fields). It did not repeat after restarting the editor, so it is probably stale Burst code. Reopen this if it happens again.
+- **Editor crash after `SimData` gains fields.** The first EditMode run after `SimData`'s layout changes can segfault while scheduling a tick job (v0.5: `GatherJob`; v0.6 Task 4: `SimCombatSystem`, in `AtomicSafetyHandle` handle extraction). Restarting the editor fixes it every time, so it is stale Burst code compiled against the old struct layout. Restart the editor after changing `SimData`'s fields, before running the tests.
 
 ## Project and config hygiene
 

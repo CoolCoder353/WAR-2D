@@ -41,6 +41,16 @@ namespace WAR2D.Sim
         /// <summary>The live move orders and their flow fields.</summary>
         public OrderBook Orders { get; }
 
+        /// <summary>
+        /// Who attacks and shares vision with whom, per owner slot. Starts from the teams as each owner
+        /// gets a slot; changed only by <see cref="SimCommandKind.SetAttack"/> and
+        /// <see cref="SimCommandKind.SetShareVision"/> at the boundary.
+        /// </summary>
+        public Diplomacy Diplomacy { get; } = new Diplomacy();
+
+        /// <summary>Raised at the boundary after a diplomacy command changed a mask: (from owner, to owner).</summary>
+        public event Action<int, int> DiplomacyChanged;
+
         /// <summary>Shift-queued waypoints per unit (main thread, boundary only).</summary>
         public WaypointBook Waypoints { get; }
 
@@ -123,9 +133,21 @@ namespace WAR2D.Sim
                 for (byte t = 0; t < s; t++)
                     if (data.OwnerIdBySlot[t] != 0 && data.TeamBySlot[t] == team) { grid = data.VisionBySlot[t]; break; }
                 data.VisionBySlot[s] = grid;
+                var others = new List<(int, int)>();
+                for (int t = 0; t < SimData.MaxOwners; t++)
+                    if (t != s && data.OwnerIdBySlot[t] != 0) others.Add((t, data.TeamBySlot[t]));
+                Diplomacy.Join(s, team, others);
                 return s;
             }
             return -1;
+        }
+
+        /// <summary>The owner's slot, without assigning one.</summary>
+        public bool TrySlotOf(int ownerId, out int slot)
+        {
+            bool found = slotOfOwner.TryGetValue(ownerId, out byte s);
+            slot = found ? s : -1;
+            return found;
         }
 
         /// <summary>The vision grid of an owner's team, giving the owner a slot first. -1 when every slot is taken.</summary>
@@ -147,6 +169,8 @@ namespace WAR2D.Sim
         internal void RaiseUnitDied(int id, float2 position) => UnitDied?.Invoke(id, position);
 
         internal void RaiseSettled(SimData data, int tick, int count) => Settled?.Invoke(data, tick, count);
+
+        internal void RaiseDiplomacyChanged(int fromOwner, int toOwner) => DiplomacyChanged?.Invoke(fromOwner, toOwner);
 
         internal void RaiseBuildingCreated(int id, Entity entity) => BuildingCreated?.Invoke(id, entity);
 

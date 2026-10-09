@@ -64,6 +64,10 @@ namespace WAR2D.Sim
                     case SimCommandKind.DestroyAll:
                         KillUnits(data, context, 0, all: true);
                         break;
+                    case SimCommandKind.SetAttack:
+                    case SimCommandKind.SetShareVision:
+                        ApplyDiplomacy(context, command);
+                        break;
                     case SimCommandKind.SpawnUnit:
                         if (clock.Running) Spawn(data, context, command);
                         else deferred.Add(command);
@@ -75,6 +79,19 @@ namespace WAR2D.Sim
                 }
             }
             if (deferred.Count > 0) context.Commands.Requeue(deferred);
+            if (context.Diplomacy.Dirty) context.Diplomacy.CopyTo(data);
+        }
+
+        /// <summary>Applies a diplomacy change between two owners with slots, and reports it.</summary>
+        private static void ApplyDiplomacy(SimContext context, in SimCommand command)
+        {
+            int from = context.SlotOf(command.OwnerId), to = context.SlotOf(command.TargetOwnerId);
+            if (from < 0 || to < 0 || from == to) return;
+            bool before = command.Kind == SimCommandKind.SetAttack ? context.Diplomacy.Attacks(from, to) : context.Diplomacy.SharesVisionWith(from, to);
+            if (before == command.Flag) return;
+            if (command.Kind == SimCommandKind.SetAttack) context.Diplomacy.SetAttack(from, to, command.Flag);
+            else context.Diplomacy.SetShareVision(from, to, command.Flag);
+            context.RaiseDiplomacyChanged(command.OwnerId, command.TargetOwnerId);
         }
 
         /// <summary>Applies the damage the last tick's attacks dealt to buildings.</summary>

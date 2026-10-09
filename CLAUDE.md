@@ -32,7 +32,7 @@ WAR-2D is a Unity `6000.4.1f1` multiplayer 2D RTS (free-for-all, any player coun
 - **Singletons:** `GameManager`, `GameCore` (both `DontDestroyOnLoad`, in `Main_Menu`), `WorldStateManager` and `UnitCommander` (in `Map_2`). Null-check `.Instance` in code that can run during scene transitions.
 - **IDs:** entity `id` comes from `WorldStateManager.Ids` (`NetIdAllocator`: `(generation << 20) | index`, indices are reused with a new generation), and `ownerId` is the player's `netId` as int. Per-unit arrays are indexed by `NetIdAllocator.IndexOf(id)`. Don't confuse either with ECS `Entity.Index`.
 - **Dev-only APIs** (bots, free units and buildings for the perf harness) check `DevApi.Allowed` and refuse without `-perf`.
-- **Teams:** `GameCore.Teams` (owner → team, fixed at match start); in the sim, `SimData.Team` / `BuildingTeam` per slot. "Enemy" always means a different team, never just a different owner.
+- **Teams and diplomacy:** `GameCore.Teams` (owner → team, fixed at match start) is only the *starting* state. Who attacks and shares vision with whom lives in `SimContext.Diplomacy` (per owner slot, one-way), copied to `SimData.AttackMask` / `ShareVisionMask` at the boundary; change it only through the `SetAttack` / `SetShareVision` `SimCommand`s. "Enemy" means an owner on my attack mask, never just a different owner or team. A player learns only their own row (`ClientPlayer.TargetDiplomacy`).
 - **Game state** is `GameCore.CurrentState`. Resource and win/loss systems only run in `GameState.Playing`.
 
 ## Adding content

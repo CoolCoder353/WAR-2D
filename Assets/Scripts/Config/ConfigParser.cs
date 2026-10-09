@@ -120,6 +120,10 @@ namespace Config
             if (orders != null)
                 config.Orders.MaxQueued = Int(orders, "MaxQueued", "Orders", errors, min: 0, max: 16);
 
+            XmlNode diplomacy = Require(root, "Diplomacy", errors);
+            if (diplomacy != null)
+                config.Diplomacy.ChangeCooldownSeconds = Float(diplomacy, "ChangeCooldownSeconds", "Diplomacy", errors, min: 0, max: 60);
+
             XmlNode damage = Require(root, "DamageTable", errors);
             if (damage != null)
             {

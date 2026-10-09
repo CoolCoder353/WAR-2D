@@ -88,6 +88,28 @@ public class ClientPlayer : NetworkBehaviour
         // For example: onResourcesChanged?.Invoke(newResources);
     }
 
+    /// <summary>Whom this player attacks; bit i is the owner at <c>GameCore.PlayerOrder[i]</c> (local player only).</summary>
+    public ushort AttackMask { get; private set; }
+
+    /// <summary>Whom this player shares vision with (bits as <see cref="AttackMask"/>).</summary>
+    public ushort ShareVisionMask { get; private set; }
+
+    /// <summary>Who shares vision with this player (bits as <see cref="AttackMask"/>).</summary>
+    public ushort SharedWithMe { get; private set; }
+
+    /// <summary>Raised on the owning client when its diplomacy row arrives.</summary>
+    public event System.Action DiplomacyChanged;
+
+    /// <summary>The owner's own diplomacy row; sent at match start and whenever it changes.</summary>
+    [TargetRpc]
+    public void TargetDiplomacy(NetworkConnection target, ushort attackMask, ushort shareMask, ushort sharedWithMe)
+    {
+        AttackMask = attackMask;
+        ShareVisionMask = shareMask;
+        SharedWithMe = sharedWithMe;
+        DiplomacyChanged?.Invoke();
+    }
+
     /// <summary>Plays death explosions the server has filtered to this player's view.</summary>
     [TargetRpc]
     public void TargetPlayExplosions(NetworkConnection target, Vector2[] positions)

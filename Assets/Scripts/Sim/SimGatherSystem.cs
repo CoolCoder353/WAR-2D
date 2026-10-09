@@ -43,7 +43,7 @@ namespace WAR2D.Sim
                 int id = building.ValueRO.id;
                 data.BuildingPositions[b] = transform.ValueRO.Position.xy;
                 data.BuildingOwnerId[b] = building.ValueRO.ownerId;
-                data.BuildingTeam[b] = data.TeamOfOwner(building.ValueRO.ownerId);
+                data.BuildingOwnerSlot[b] = data.OwnerSlotOf(building.ValueRO.ownerId);
                 int buildingType = (int)building.ValueRO.buildingType;
                 data.BuildingSight[b] = (uint)buildingType < (uint)data.BuildingSightByType.Length ? data.BuildingSightByType[buildingType] : 0f;
                 data.BuildingHealth[b] = health.ValueRO.currentHealth;

@@ -83,4 +83,26 @@ public class FuzzTests
             else Assert.IsTrue(valid, "Stop and Hold ignore the goal");
         }
     }
+
+    [Test]
+    public void Diplomacy_NeverThrows_AndNeverAllowsSelfOrDisabled()
+    {
+        var rng = new System.Random(31);
+        var diplomacy = new WAR2D.Sim.Diplomacy();
+        for (int i = 0; i < Iterations; i++)
+        {
+            int from = rng.Next(int.MinValue, int.MaxValue), to = rng.Next(0, 3) == 0 ? from : rng.Next(int.MinValue, int.MaxValue);
+            bool enabled = rng.Next(2) == 1, on = rng.Next(2) == 1;
+            var state = (GameState)rng.Next(0, 6);
+            PlayerState? sender = rng.Next(3) == 0 ? (PlayerState?)null : (PlayerState)rng.Next(0, 3);
+            PlayerState? target = rng.Next(3) == 0 ? (PlayerState?)null : (PlayerState)rng.Next(0, 3);
+            double now = rng.NextDouble() * 100, last = rng.Next(2) == 0 ? double.NegativeInfinity : rng.NextDouble() * 100;
+            bool allowed = false;
+            Assert.DoesNotThrow(() => allowed = DiplomacyRules.CanChange(enabled, state, sender, target, from, to, now, last, 2f));
+            if (from == to || !enabled) Assert.IsFalse(allowed);
+            int slotFrom = rng.Next(-4, 20), slotTo = rng.Next(-4, 20);
+            Assert.DoesNotThrow(() => diplomacy.SetAttack(slotFrom, slotTo, on));
+            Assert.DoesNotThrow(() => diplomacy.SetShareVision(slotFrom, slotTo, on));
+        }
+    }
 }

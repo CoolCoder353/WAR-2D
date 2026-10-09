@@ -20,6 +20,10 @@ namespace WAR2D.Sim
         KillOwner,
         /// <summary>Kill every unit (match end).</summary>
         DestroyAll,
+        /// <summary><see cref="SimCommand.OwnerId"/> starts (Flag) or stops attacking <see cref="SimCommand.TargetOwnerId"/>.</summary>
+        SetAttack,
+        /// <summary><see cref="SimCommand.OwnerId"/> starts (Flag) or stops sharing vision with <see cref="SimCommand.TargetOwnerId"/>.</summary>
+        SetShareVision,
     }
 
     /// <summary>A building the command system creates; placement, payment and footprint are done already.</summary>
@@ -37,6 +41,10 @@ namespace WAR2D.Sim
         public int OwnerId;
         /// <summary>The order of an <see cref="SimCommandKind.OrderUnits"/> command.</summary>
         public OrderKind Order;
+        /// <summary>The other owner of a diplomacy command.</summary>
+        public int TargetOwnerId;
+        /// <summary>The new value of a diplomacy command.</summary>
+        public bool Flag;
         /// <summary>Shift-queued: a Move or AttackMove runs after the unit's current order.</summary>
         public bool Queue;
         /// <summary>Goal tile of a move.</summary>

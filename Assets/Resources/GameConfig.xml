@@ -45,6 +45,10 @@
     <MaxQueued>4</MaxQueued>  <!-- v0.6: Shift-queued waypoints per unit -->
   </Orders>
 
+  <Diplomacy>
+    <ChangeCooldownSeconds>2.0</ChangeCooldownSeconds>  <!-- v0.6: per player, per command -->
+  </Diplomacy>
+
   <!-- Damage multiplier per attacker unit type and target class (Unit, Building, Wall); 1.0 when missing. -->
   <DamageTable>
     <Entry attacker="Tank" target="Unit">1.0</Entry>

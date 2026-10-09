@@ -23,6 +23,8 @@ public static class CommandGate
         ["CmdSetNickname"] = (5f, 1f),
         ["Cmd_StartGame"] = (3f, 0.5f),
         ["Cmd_SetTeam"] = (10f, 5f),
+        ["Cmd_SetAttack"] = (10f, 2f),
+        ["Cmd_SetShareVision"] = (10f, 2f),
     }, (10f, 5f));
 
     private static readonly Dictionary<int, (int count, double windowStart)> Violations = new Dictionary<int, (int, double)>();

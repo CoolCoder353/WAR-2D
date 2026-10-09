@@ -117,6 +117,12 @@ public partial class WorldStateManager : NetworkBehaviour
         Sim.UnitDied += OnUnitDied;
         Sim.TeamResolver = ownerId => GameCore.Instance != null ? GameCore.Instance.TeamOf(ownerId) : -ownerId - 1;
         Sim.Settled += OnSettled;
+        Sim.DiplomacyChanged += (from, to) =>
+        {
+            if (GameCore.Instance == null) return;
+            GameCore.Instance.SendDiplomacy(from);
+            GameCore.Instance.SendDiplomacy(to);
+        };
         Replication = new ReplicationService(Sim, ConfigLoader.LoadConfig()) { CollectBuildings = FillBuildingViews };
         if (GameCore.Instance != null)
             foreach (NetworkIdentity identity in GameCore.Instance.ServerPlayers.Keys)

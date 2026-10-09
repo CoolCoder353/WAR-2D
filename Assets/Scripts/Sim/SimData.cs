@@ -32,6 +32,9 @@ namespace WAR2D.Sim
         /// <summary>Owner slots in every per-owner table.</summary>
         public const int MaxOwners = 16;
 
+        /// <summary>The owner slot of an owner that has none.</summary>
+        public const byte NoSlot = 255;
+
         // ---- sizes ----
         /// <summary>Unit slots in every SoA array.</summary>
         public int Capacity;
@@ -129,8 +132,8 @@ namespace WAR2D.Sim
         public NativeArray<int> BuildingCount;
         public NativeArray<float2> BuildingPositions;
         public NativeArray<int> BuildingOwnerId;
-        /// <summary>Team per building slot (<see cref="TeamOfOwner"/>).</summary>
-        public NativeArray<int> BuildingTeam;
+        /// <summary>Owner slot per building slot, or <see cref="NoSlot"/> when the owner has none.</summary>
+        public NativeArray<byte> BuildingOwnerSlot;
         public NativeArray<float> BuildingHealth;
         /// <summary>Damage dealt to each building slot this tick; written back to the entity at the next boundary.</summary>
         public NativeArray<float> BuildingDamage;
@@ -171,8 +174,12 @@ namespace WAR2D.Sim
         // ---- economy ----
         /// <summary>Owner id per slot, or 0 when the slot is free.</summary>
         public NativeArray<int> OwnerIdBySlot;
-        /// <summary>Team per owner slot. Owners on the same team are allies: they share vision and never fight.</summary>
+        /// <summary>Starting team per owner slot (vision grids follow it until fog becomes per player).</summary>
         public NativeArray<int> TeamBySlot;
+        /// <summary>Per owner slot, bit t set when the slot attacks slot t (<see cref="Diplomacy"/>, copied at the boundary).</summary>
+        public NativeArray<ushort> AttackMask;
+        /// <summary>Per owner slot, bit t set when the slot shares its vision with slot t (<see cref="Diplomacy"/>).</summary>
+        public NativeArray<ushort> ShareVisionMask;
         /// <summary>Resources each owner has for this second's upkeep, written at the boundary.</summary>
         public NativeArray<float> UpkeepBudget;
         /// <summary>Resources each owner's units spent at the last charge, read back at the boundary.</summary>
@@ -302,7 +309,7 @@ namespace WAR2D.Sim
                 BuildingCount = new NativeArray<int>(1, allocator),
                 BuildingPositions = new NativeArray<float2>(buildingCapacity, allocator),
                 BuildingOwnerId = new NativeArray<int>(buildingCapacity, allocator),
-                BuildingTeam = new NativeArray<int>(buildingCapacity, allocator),
+                BuildingOwnerSlot = new NativeArray<byte>(buildingCapacity, allocator),
                 BuildingHealth = new NativeArray<float>(buildingCapacity, allocator),
                 BuildingDamage = new NativeArray<float>(buildingCapacity, allocator),
                 BuildingIds = new NativeArray<int>(buildingCapacity, allocator),
@@ -318,6 +325,8 @@ namespace WAR2D.Sim
                 Arrivals = new NativeQueue<int>(allocator),
                 OwnerIdBySlot = new NativeArray<int>(MaxOwners, allocator),
                 TeamBySlot = new NativeArray<int>(MaxOwners, allocator),
+                AttackMask = new NativeArray<ushort>(MaxOwners, allocator),
+                ShareVisionMask = new NativeArray<ushort>(MaxOwners, allocator),
                 UpkeepBudget = new NativeArray<float>(MaxOwners, allocator),
                 UpkeepSpent = new NativeArray<float>(MaxOwners, allocator),
                 UnitsBySlot = new NativeArray<int>(MaxOwners, allocator),
@@ -371,11 +380,11 @@ namespace WAR2D.Sim
             SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose();
             OrderSlot.Dispose(); Arrived.Dispose(); Unpaid.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
             Cell.Dispose(); CellStart.Dispose(); Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose();
-            BuildingCount.Dispose(); BuildingPositions.Dispose(); BuildingOwnerId.Dispose(); BuildingTeam.Dispose(); BuildingHealth.Dispose();
+            BuildingCount.Dispose(); BuildingPositions.Dispose(); BuildingOwnerId.Dispose(); BuildingOwnerSlot.Dispose(); BuildingHealth.Dispose();
             BuildingDamage.Dispose(); BuildingIds.Dispose(); BuildingEntities.Dispose(); BuildingSlotOfIndex.Dispose(); BuildingCell.Dispose();
             BuildingCellStart.Dispose(); BuildingSorted.Dispose();
             AttackEvents.Dispose(); Deaths.Dispose(); PendingOrders.Dispose(); PendingMoves.Dispose(); Arrivals.Dispose();
-            OwnerIdBySlot.Dispose(); TeamBySlot.Dispose(); UpkeepBudget.Dispose(); UpkeepSpent.Dispose(); UnitsBySlot.Dispose();
+            OwnerIdBySlot.Dispose(); TeamBySlot.Dispose(); AttackMask.Dispose(); ShareVisionMask.Dispose(); UpkeepBudget.Dispose(); UpkeepSpent.Dispose(); UnitsBySlot.Dispose();
             ChargedThisTick.Dispose(); LargeGrid.Dispose();
             SightByType.Dispose(); BuildingSightByType.Dispose(); BuildingSight.Dispose(); VisionBySlot.Dispose();
             Opaque.Dispose(); OpaqueSum.Dispose(); Visible.Dispose(); VisiblePrev.Dispose(); Explored.Dispose();
@@ -427,15 +436,22 @@ namespace WAR2D.Sim
             return grid;
         }
 
-        /// <summary>
-        /// The team of an owner id. An owner without a slot is on a team of its own (<c>-ownerId - 1</c>),
-        /// so it is nobody's ally. Scans the slots, so it is Burst-safe.
-        /// </summary>
-        public int TeamOfOwner(int ownerId)
+        /// <summary>The owner id's slot, or <see cref="NoSlot"/>. Scans the slots, so it is Burst-safe.</summary>
+        public byte OwnerSlotOf(int ownerId)
         {
             for (int s = 0; s < OwnerIdBySlot.Length; s++)
-                if (OwnerIdBySlot[s] == ownerId && ownerId != 0) return TeamBySlot[s];
-            return -ownerId - 1;
+                if (OwnerIdBySlot[s] == ownerId && ownerId != 0) return (byte)s;
+            return NoSlot;
+        }
+
+        /// <summary>
+        /// True when slot <paramref name="from"/> attacks slot <paramref name="to"/>. An owner without a slot
+        /// (<see cref="NoSlot"/>) is hostile to everyone, as it has no diplomacy.
+        /// </summary>
+        public static bool Attacks(NativeArray<ushort> attackMask, int from, int to)
+        {
+            if ((uint)to >= MaxOwners) return true;
+            return (uint)from < MaxOwners && (attackMask[from] >> to & 1) != 0;
         }
 
         /// <summary>

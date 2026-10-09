@@ -23,13 +23,14 @@ namespace WAR2D.Sim
     /// Nearest-enemy search over the counting-sort hash. Each unit searches on one tick in
     /// <see cref="Slice"/> (staggered by slot) and keeps its resolved target in between. It looks for
     /// the nearest living enemy unit within its type's range; with none in range it falls back to the
-    /// nearest enemy building. "Enemy" means a different team.
+    /// nearest enemy building. "Enemy" means an owner on the unit's owner's attack mask.
     /// </summary>
     [BurstCompile]
     public struct NearestEnemyJob : IJobParallelFor
     {
         [ReadOnly] public NativeArray<float2> Positions;
-        [ReadOnly] public NativeArray<int> Team;
+        [ReadOnly] public NativeArray<byte> OwnerSlot;
+        [ReadOnly] public NativeArray<ushort> AttackMask;
         [ReadOnly] public NativeArray<float> Health;
         [ReadOnly] public NativeArray<byte> Type;
         [ReadOnly] public NativeArray<byte> Stance;
@@ -38,7 +39,7 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<float> RangeSqByType;
         [ReadOnly] public NativeArray<int> CellStart, Sorted;
         [ReadOnly] public NativeArray<float2> BuildingPositions;
-        [ReadOnly] public NativeArray<int> BuildingTeam;
+        [ReadOnly] public NativeArray<byte> BuildingOwnerSlot;
         [ReadOnly] public NativeArray<float> BuildingHealth;
         [ReadOnly] public NativeArray<int> BuildingCellStart, BuildingSorted;
         public float InvCellSize;
@@ -53,7 +54,7 @@ namespace WAR2D.Sim
             if (Health[i] <= 0f || TargetKinds.IgnoresEnemies(Stance[i], OrderSlot[i], OrderLive)) { Target[i] = -1; return; }
 
             float2 p = Positions[i];
-            int team = Team[i];
+            int slot = OwnerSlot[i];
             int type = Type[i];
             float range = type < RangeSqByType.Length ? RangeSqByType[type] : 0f;
             int2 c = (int2)math.floor(p * InvCellSize);
@@ -69,7 +70,7 @@ namespace WAR2D.Sim
                 for (int k = CellStart[cell]; k < CellStart[cell + 1]; k++)
                 {
                     int j = Sorted[k];
-                    if (Team[j] == team || Health[j] <= 0f) continue;
+                    if (Health[j] <= 0f || !SimData.Attacks(AttackMask, slot, OwnerSlot[j])) continue;
                     float d = math.distancesq(p, Positions[j]);
                     if (d <= best) { best = d; bestIndex = j; }
                 }
@@ -89,7 +90,7 @@ namespace WAR2D.Sim
                 for (int k = BuildingCellStart[cell]; k < BuildingCellStart[cell + 1]; k++)
                 {
                     int j = BuildingSorted[k];
-                    if (BuildingTeam[j] == team || BuildingHealth[j] <= 0f) continue;
+                    if (BuildingHealth[j] <= 0f || !SimData.Attacks(AttackMask, slot, BuildingOwnerSlot[j])) continue;
                     float d = math.distancesq(p, BuildingPositions[j]);
                     if (d <= best) { best = d; bestIndex = j; }
                 }
