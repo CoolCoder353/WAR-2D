@@ -222,7 +222,7 @@ Each update below lists its goal, its scope, the key decisions already made, wha
   - In-match menu: settings, leave, surrender. Nothing pauses in multiplayer.
   - End screen with match stats.
 - **Settings**
-  - Graphics, audio volumes, full key rebinding, UI scale.
+  - Graphics, audio volumes, full key rebinding.
   - **Colour-blind-safe and high-contrast** team palettes.
 - **Resource gifting:** a validated server command plus its UI.
 
