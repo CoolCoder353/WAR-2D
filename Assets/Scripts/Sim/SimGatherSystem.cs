@@ -63,8 +63,6 @@ namespace WAR2D.Sim
                 Velocity = data.Velocity,
                 OwnerId = data.OwnerId,
                 OwnerSlot = data.OwnerSlot,
-                Team = data.Team,
-                TeamBySlot = data.TeamBySlot,
                 Type = data.Type,
                 SizeClass = data.SizeClass,
                 Health = data.Health,
@@ -93,8 +91,6 @@ namespace WAR2D.Sim
         [NativeDisableParallelForRestriction] public NativeArray<float2> Velocity;
         [NativeDisableParallelForRestriction] public NativeArray<int> OwnerId;
         [NativeDisableParallelForRestriction] public NativeArray<byte> OwnerSlot;
-        [NativeDisableParallelForRestriction] public NativeArray<int> Team;
-        [ReadOnly] public NativeArray<int> TeamBySlot;
         [NativeDisableParallelForRestriction] public NativeArray<byte> Type;
         [NativeDisableParallelForRestriction] public NativeArray<byte> SizeClass;
         [NativeDisableParallelForRestriction] public NativeArray<float> Health;
@@ -125,7 +121,6 @@ namespace WAR2D.Sim
             Velocity[index] = unit.Velocity;
             OwnerId[index] = unit.OwnerId;
             OwnerSlot[index] = unit.OwnerSlot;
-            Team[index] = TeamBySlot[unit.OwnerSlot];
             Type[index] = unit.Type;
             SizeClass[index] = unit.SizeClass;
             Health[index] = unit.Health;

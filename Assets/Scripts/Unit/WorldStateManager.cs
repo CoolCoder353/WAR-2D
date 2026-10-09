@@ -211,7 +211,6 @@ public partial class WorldStateManager : NetworkBehaviour
             {
                 Id = building.id,
                 OwnerId = building.ownerId,
-                Team = Sim.TeamOf(building.ownerId),
                 Type = building.buildingType,
                 Anchor = (int2)math.round(p),
                 Rotation = (byte)((int)math.round(MinerRules.ZDegrees(transform.Rotation) / 90f) & 3),

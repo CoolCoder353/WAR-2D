@@ -9,8 +9,8 @@ using WAR2D.World;
 
 /// <summary>
 /// Leak tests: everything the server serialises to a client, decoded the way the client would, must be
-/// about the client's own team, or about something its team sees right now. Never another team's fog,
-/// units or buildings it cannot see.
+/// about the client's own entities, or about something its grid (its sight plus vision shared with it)
+/// sees right now. Never another player's fog, diplomacy, or units or buildings it cannot see.
 /// </summary>
 public class LeakTests
 {
@@ -24,7 +24,7 @@ public class LeakTests
         public readonly ClientFog Fog = new ClientFog();
         public readonly ClientBuildings Buildings = new ClientBuildings();
         public readonly List<string> Failures = new List<string>();
-        public int UnitsSeen, FogPayloads, BuildingPayloads;
+        public int UnitsSeen, OthersSeen, FogPayloads, BuildingPayloads;
         private readonly SimContext sim;
 
         public Spy(SimContext sim, ReplicationService replication, int owner)
@@ -38,7 +38,7 @@ public class LeakTests
         private void Receive(ArraySegment<byte> payload, int channel)
         {
             SimData data = sim.Data;
-            int grid = sim.VisionOf(Owner), team = sim.TeamOf(Owner);
+            int grid = sim.VisionOf(Owner);
             int count = sim.Clock.UnitCount;
             if (channel == ReplicationService.FogSinkChannel)
             {
@@ -47,7 +47,7 @@ public class LeakTests
                 for (int i = 0; i < Fog.State.Length; i++)
                 {
                     bool visible = data.Visible[grid * data.FogCells + i] != 0;
-                    if (visible != (Fog.State[i] == (byte)FogState.Visible)) { Failures.Add($"fog cell {i} is not this team's"); return; }
+                    if (visible != (Fog.State[i] == (byte)FogState.Visible)) { Failures.Add($"fog cell {i} is not this player's"); return; }
                 }
                 return;
             }
@@ -56,7 +56,7 @@ public class LeakTests
                 BuildingPayloads++;
                 if (!BuildingCodec.Apply(Buildings, payload)) { Failures.Add("malformed buildings"); return; }
                 foreach (ClientBuildings.Entry e in Buildings.Entries.Values)
-                    if (!e.Ghost && sim.TeamOf(e.Data.ownerId) != team && !data.Sees(grid, e.Data.position))
+                    if (!e.Ghost && e.Data.ownerId != Owner && !data.Sees(grid, e.Data.position))
                         Failures.Add($"building {e.Data.id} known while unseen");
                 return;
             }
@@ -67,8 +67,9 @@ public class LeakTests
                 int slot = data.SlotOf(id, count);
                 if (slot < 0) continue; // died this boundary: its Leave is in this payload or the next
                 UnitsSeen++;
-                if (data.Team[slot] != team && !data.Sees(grid, data.Positions[slot]))
-                    Failures.Add($"unit {id} of team {data.Team[slot]} known to team {team} while unseen");
+                if (data.OwnerId[slot] != Owner && !data.Sees(grid, data.Positions[slot]))
+                    Failures.Add($"unit {id} of owner {data.OwnerId[slot]} known to {Owner} while unseen");
+                if (data.OwnerId[slot] != Owner) OthersSeen++;
             }
         }
 
@@ -99,6 +100,12 @@ public class LeakTests
 
         for (int t = 0; t < 120; t++)
         {
+            if (t % 20 == 0) // a random diplomacy change every second
+            {
+                int from = owners[random.NextInt(3)], to = owners[random.NextInt(3)];
+                SimCommandKind kind = random.NextBool() ? SimCommandKind.SetShareVision : SimCommandKind.SetAttack;
+                sim.Context.Commands.Enqueue(new SimCommand { Kind = kind, OwnerId = from, TargetOwnerId = to, Flag = random.NextBool() });
+            }
             if (t % 15 == 0)
                 for (int o = 0; o < 3; o++)
                 {
@@ -129,7 +136,7 @@ public class LeakTests
         int[] scout = sim.Spawn(SimHarness.OwnerA, new float2(20, 20));
         sim.Spawn(OwnerC, new float2(80, 80)); // gives C a slot, so its team is known
         sim.Tick();
-        views.Add(new BuildingView { Id = 99, OwnerId = OwnerC, Team = sim.Context.TeamOf(OwnerC), Type = BuildingType.Miner, Anchor = new int2(22, 20), Health = 50, MaxHealth = 50, Position = new float2(22, 20) });
+        views.Add(new BuildingView { Id = 99, OwnerId = OwnerC, Type = BuildingType.Miner, Anchor = new int2(22, 20), Health = 50, MaxHealth = 50, Position = new float2(22, 20) });
         for (int i = 0; i < 6; i++) sim.Tick();
         Assert.IsTrue(spy.Buildings.Entries.ContainsKey(99), "seen while the scout is next to it");
         Assert.IsFalse(spy.Buildings.Entries[99].Ghost);
@@ -147,5 +154,55 @@ public class LeakTests
         Assert.IsFalse(spy.Buildings.Entries.ContainsKey(99), "seeing the spot again clears the ghost");
         CollectionAssert.IsEmpty(spy.Failures);
         spy.Dispose();
+    }
+
+    [Test]
+    public void InterestNeverExceedsReceiverGrid()
+    {
+        using var sim = new SimHarness(Map());
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        var spy = new Spy(sim.Context, replication, SimHarness.OwnerB);
+        sim.Spawn(SimHarness.OwnerB, new float2(10, 10));
+        for (int u = 0; u < 5; u++) sim.Spawn(SimHarness.OwnerA, new float2(80, 80 - u));
+        for (int i = 0; i < 10; i++) sim.Tick();
+        Assert.AreEqual(0, spy.OthersSeen, "A's units are out of B's sight");
+
+        sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.SetShareVision, OwnerId = SimHarness.OwnerA, TargetOwnerId = SimHarness.OwnerB, Flag = true });
+        for (int i = 0; i < 10; i++) sim.Tick();
+        Assert.Greater(spy.OthersSeen, 0, "shared vision lets B know A's units");
+
+        sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.SetShareVision, OwnerId = SimHarness.OwnerA, TargetOwnerId = SimHarness.OwnerB, Flag = false });
+        for (int i = 0; i < 10; i++) sim.Tick();
+        spy.OthersSeen = 0;
+        for (int i = 0; i < 10; i++) sim.Tick();
+        Assert.AreEqual(0, spy.OthersSeen, "unsharing ends it");
+        CollectionAssert.IsEmpty(spy.Failures);
+        spy.Dispose();
+    }
+
+    [Test]
+    public void NoClientReceivesAnotherPlayersAttackMask([Values(1, 2, 3)] int seed)
+    {
+        // TargetDiplomacy is the only message carrying masks, and it carries RowFor(receiver). Changing any
+        // pair the receiver is not part of must leave the receiver's message unchanged.
+        var random = new Unity.Mathematics.Random((uint)seed);
+        var diplomacy = new Diplomacy();
+        var slotByIndex = new List<int> { 0, 1, 2, 3, 4 };
+        for (int s = 0; s < 5; s++)
+        {
+            var others = new List<(int, int)>();
+            for (int t = 0; t < s; t++) others.Add((t, t % 2));
+            diplomacy.Join(s, s % 2, others);
+        }
+        for (int step = 0; step < 200; step++)
+        {
+            int receiver = random.NextInt(5);
+            var before = diplomacy.RowFor(receiver, slotByIndex);
+            int from = random.NextInt(5), to = random.NextInt(5);
+            if (from == receiver || to == receiver) { diplomacy.SetAttack(from, to, random.NextBool()); continue; }
+            diplomacy.SetAttack(from, to, random.NextBool());
+            diplomacy.SetShareVision(from, to, random.NextBool());
+            Assert.AreEqual(before, diplomacy.RowFor(receiver, slotByIndex), $"receiver {receiver} learned about {from} -> {to}");
+        }
     }
 }

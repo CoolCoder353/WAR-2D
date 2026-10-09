@@ -96,8 +96,6 @@ namespace WAR2D.Sim
         public NativeArray<float2> Velocity;
         public NativeArray<int> OwnerId;
         public NativeArray<byte> OwnerSlot;
-        /// <summary>Team per unit (<see cref="TeamBySlot"/> of its owner slot), written by the gather.</summary>
-        public NativeArray<int> Team;
         public NativeArray<byte> Type;
         public NativeArray<byte> SizeClass;
         public NativeArray<float> Health;
@@ -174,7 +172,7 @@ namespace WAR2D.Sim
         // ---- economy ----
         /// <summary>Owner id per slot, or 0 when the slot is free.</summary>
         public NativeArray<int> OwnerIdBySlot;
-        /// <summary>Starting team per owner slot (vision grids follow it until fog becomes per player).</summary>
+        /// <summary>Starting team per owner slot (the <see cref="Diplomacy"/> starting state).</summary>
         public NativeArray<int> TeamBySlot;
         /// <summary>Per owner slot, bit t set when the slot attacks slot t (<see cref="Diplomacy"/>, copied at the boundary).</summary>
         public NativeArray<ushort> AttackMask;
@@ -198,11 +196,6 @@ namespace WAR2D.Sim
         public NativeArray<float> SightByType, BuildingSightByType;
         /// <summary>Sight radius per building slot, written by the gather.</summary>
         public NativeArray<float> BuildingSight;
-        /// <summary>
-        /// Vision grid per owner slot: the lowest slot on the same team, so allies share one grid.
-        /// Grid g covers <c>[g * FogCells, (g + 1) * FogCells)</c> of <see cref="Visible"/> and <see cref="Explored"/>.
-        /// </summary>
-        public NativeArray<byte> VisionBySlot;
         /// <summary>1 where a fog cell blocks sight (most of its tiles are walls).</summary>
         public NativeArray<byte> Opaque;
         /// <summary>Summed-area table of <see cref="Opaque"/>, (FogW + 1) x (FogH + 1), for the open-ground fast path.</summary>
@@ -219,13 +212,14 @@ namespace WAR2D.Sim
         /// </summary>
         public NativeQueue<int> FogChanges;
 
-        /// <summary>The vision grid an owner's team uses, or -1 when the owner has no slot.</summary>
+        /// <summary>
+        /// The vision grid an owner uses (its slot: grid g covers <c>[g * FogCells, (g + 1) * FogCells)</c>
+        /// of <see cref="Visible"/> and <see cref="Explored"/>), or -1 when the owner has no slot.
+        /// </summary>
         public int VisionOfOwner(int ownerId)
         {
-            if (ownerId == 0) return -1;
-            for (int s = 0; s < OwnerIdBySlot.Length; s++)
-                if (OwnerIdBySlot[s] == ownerId) return VisionBySlot[s];
-            return -1;
+            byte slot = OwnerSlotOf(ownerId);
+            return slot == NoSlot ? -1 : slot;
         }
 
         /// <summary>The fog cell holding a world position (clamped to the grid).</summary>
@@ -288,7 +282,6 @@ namespace WAR2D.Sim
                 Velocity = new NativeArray<float2>(capacity, allocator),
                 OwnerId = new NativeArray<int>(capacity, allocator),
                 OwnerSlot = new NativeArray<byte>(capacity, allocator),
-                Team = new NativeArray<int>(capacity, allocator),
                 Type = new NativeArray<byte>(capacity, allocator),
                 SizeClass = new NativeArray<byte>(capacity, allocator),
                 Health = new NativeArray<float>(capacity, allocator),
@@ -346,7 +339,6 @@ namespace WAR2D.Sim
             foreach (var pair in config.Buildings)
                 if ((int)pair.Key >= 0 && (int)pair.Key < data.BuildingSightByType.Length) data.BuildingSightByType[(int)pair.Key] = pair.Value.Sight;
             data.BuildingSight = new NativeArray<float>(buildingCapacity, allocator);
-            data.VisionBySlot = new NativeArray<byte>(MaxOwners, allocator);
             data.Opaque = BuildOpaque(map, fogCell, data.FogW, data.FogH, allocator);
             data.OpaqueSum = BuildSum(data.Opaque, data.FogW, data.FogH, allocator);
             int fogTotal = MaxOwners * data.FogCells;
@@ -376,7 +368,7 @@ namespace WAR2D.Sim
         {
             SpeedByType.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose(); CooldownByType.Dispose();
             RunningCostByType.Dispose(); DamageTable.Dispose();
-            Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Team.Dispose(); Type.Dispose();
+            Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Type.Dispose();
             SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose();
             OrderSlot.Dispose(); Arrived.Dispose(); Unpaid.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
             Cell.Dispose(); CellStart.Dispose(); Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose();
@@ -386,7 +378,7 @@ namespace WAR2D.Sim
             AttackEvents.Dispose(); Deaths.Dispose(); PendingOrders.Dispose(); PendingMoves.Dispose(); Arrivals.Dispose();
             OwnerIdBySlot.Dispose(); TeamBySlot.Dispose(); AttackMask.Dispose(); ShareVisionMask.Dispose(); UpkeepBudget.Dispose(); UpkeepSpent.Dispose(); UnitsBySlot.Dispose();
             ChargedThisTick.Dispose(); LargeGrid.Dispose();
-            SightByType.Dispose(); BuildingSightByType.Dispose(); BuildingSight.Dispose(); VisionBySlot.Dispose();
+            SightByType.Dispose(); BuildingSightByType.Dispose(); BuildingSight.Dispose();
             Opaque.Dispose(); OpaqueSum.Dispose(); Visible.Dispose(); VisiblePrev.Dispose(); Explored.Dispose();
             SourceRadius.Dispose(); Sources.Dispose(); FogChanges.Dispose();
         }

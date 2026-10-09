@@ -129,10 +129,6 @@ namespace WAR2D.Sim
                 data.OwnerIdBySlot[s] = ownerId;
                 int team = TeamOf(ownerId);
                 data.TeamBySlot[s] = team;
-                byte grid = s;
-                for (byte t = 0; t < s; t++)
-                    if (data.OwnerIdBySlot[t] != 0 && data.TeamBySlot[t] == team) { grid = data.VisionBySlot[t]; break; }
-                data.VisionBySlot[s] = grid;
                 var others = new List<(int, int)>();
                 for (int t = 0; t < SimData.MaxOwners; t++)
                     if (t != s && data.OwnerIdBySlot[t] != 0) others.Add((t, data.TeamBySlot[t]));
@@ -150,12 +146,11 @@ namespace WAR2D.Sim
             return found;
         }
 
-        /// <summary>The vision grid of an owner's team, giving the owner a slot first. -1 when every slot is taken.</summary>
-        public int VisionOf(int ownerId)
-        {
-            int slot = SlotOf(ownerId);
-            return slot < 0 ? -1 : Data.VisionBySlot[slot];
-        }
+        /// <summary>
+        /// The owner's vision grid (its slot), giving the owner a slot first. -1 when every slot is taken.
+        /// The grid holds what the owner sees, plus what every player sharing vision with it sees.
+        /// </summary>
+        public int VisionOf(int ownerId) => SlotOf(ownerId);
 
         /// <summary>Owner ids that hold a slot.</summary>
         public IEnumerable<int> Owners => slotOfOwner.Keys;

@@ -14,7 +14,7 @@ namespace WAR2D.Net.Replication
     /// <summary>One live building as the server sees it, gathered at a boundary.</summary>
     public struct BuildingView
     {
-        public int Id, OwnerId, Team;
+        public int Id, OwnerId;
         public BuildingType Type;
         /// <summary>Footprint anchor tile.</summary>
         public int2 Anchor;
@@ -40,8 +40,8 @@ namespace WAR2D.Net.Replication
 
     /// <summary>
     /// Per client, what it knows about buildings and the records that bring it up to date. A client may
-    /// know its team's buildings and any building on a fog cell its team sees now. A building that leaves
-    /// sight becomes a ghost; the client only learns a ghost is gone once its team sees the spot again.
+    /// know its own buildings and any building on a fog cell its grid sees now (its own sight plus vision shared with it). A building that leaves
+    /// sight becomes a ghost; the client only learns a ghost is gone once its grid sees the spot again.
     /// </summary>
     public sealed class BuildingInterest
     {
@@ -50,7 +50,7 @@ namespace WAR2D.Net.Replication
             public bool Live;
             public int Health;
             public float2 Position;
-            public int Team;
+            public int OwnerId;
         }
 
         private readonly Dictionary<int, Known> known = new Dictionary<int, Known>();
@@ -61,15 +61,15 @@ namespace WAR2D.Net.Replication
 
         /// <summary>
         /// Writes the records that take the client from what it knew to what it may know now; returns how
-        /// many were written. <paramref name="sees"/> answers whether the client's team sees a position.
+        /// many were written. <paramref name="sees"/> answers whether the client's grid sees a position.
         /// Stops once the writer holds <paramref name="maxBytes"/>; the rest follows on the next update.
         /// </summary>
-        public int Update(List<BuildingView> views, HashSet<int> present, int team, Func<float2, bool> sees, NetworkWriter writer, int maxBytes = int.MaxValue)
+        public int Update(List<BuildingView> views, HashSet<int> present, int ownerId, Func<float2, bool> sees, NetworkWriter writer, int maxBytes = int.MaxValue)
         {
             int records = 0;
             foreach (BuildingView v in views)
             {
-                bool allowed = v.Team == team || sees(v.Position);
+                bool allowed = v.OwnerId == ownerId || sees(v.Position);
                 bool wasKnown = known.TryGetValue(v.Id, out Known k);
                 if (allowed)
                 {
@@ -83,7 +83,7 @@ namespace WAR2D.Net.Replication
                         BuildingCodec.WriteId(writer, BuildingRecord.Health, v.Id, v.Health);
                         records++;
                     }
-                    known[v.Id] = new Known { Live = true, Health = v.Health, Position = v.Position, Team = v.Team };
+                    known[v.Id] = new Known { Live = true, Health = v.Health, Position = v.Position, OwnerId = v.OwnerId };
                     if (writer.Position >= maxBytes) return records;
                 }
                 else if (wasKnown && k.Live)
@@ -102,7 +102,7 @@ namespace WAR2D.Net.Replication
             foreach (int id in scratch)
             {
                 Known k = known[id];
-                if (k.Team == team || sees(k.Position))
+                if (k.OwnerId == ownerId || sees(k.Position))
                 {
                     BuildingCodec.WriteId(writer, BuildingRecord.Gone, id, 0);
                     records++;

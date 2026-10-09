@@ -109,17 +109,17 @@ A Miner checks the single tile next to it in the direction it faces:
 - A move order gives the whole group one shared flow field to the goal, so any number of units path around walls and buildings together. The group gathers around the goal and stops within a radius that grows with its size.
 - Every unit has a stance. On a **Move** order it ignores enemies until it arrives. On an **Attack-move** order, an enemy in range makes it stop to fight, and it resumes the order when the target is gone. **Idle** (no order, or arrived) and **Hold** units fight whatever comes in range; a Hold unit never moves, not even when its neighbours push. Arriving at the goal makes a Move or Attack-move unit Idle.
 
-## Fog of war and teams
+## Fog of war, teams and diplomacy
 
-- Each team sees through the eyes of all its units and buildings. Sight radius (`Sight`) is per unit and building type in `GameConfig.xml`: Tank 8 tiles, HQ 10, Spawner 6, Miner 4.
+- Each player sees through the eyes of all their units and buildings, plus those of every player sharing vision with them. Teammates share vision with each other from the start. Sight radius (`Sight`) is per unit and building type in `GameConfig.xml`: Tank 8 tiles, HQ 10, Spawner 6, Miner 4.
 - Walls block sight; you can see a wall's face but not what's behind it. Fog is tracked on a grid of 2×2-tile cells and updated 5 times a second.
 - The map shows three states: **unexplored** (black), **explored** (dimmed: you've seen it before), and **visible** (clear).
-- You only receive enemy units standing where your team can see now. Enemy buildings you've seen stay on your map as dimmed **last-seen ghosts** when they go out of sight; you only find out a ghost was destroyed when you see its spot again.
-- Allies share vision and never damage each other (bomb blasts will be the exception, v0.7).
+- You only receive other players' units standing where you can see now (your own sight plus vision shared with you). Enemy buildings you've seen stay on your map as dimmed **last-seen ghosts** when they go out of sight; you only find out a ghost was destroyed when you see its spot again.
+- Diplomacy is per player and one-way. At the start, teammates don't attack each other and share vision; everyone else attacks and doesn't share. When the match has diplomacy on, each player chooses whom they attack and with whom they share vision (at most one change per command every 2 s, `Diplomacy/ChangeCooldownSeconds`). Stopping sharing keeps what the other player already explored. Nobody learns another player's choices, except that you're told who shares vision with you. Units of players who don't attack each other never damage each other (bomb blasts will be the exception, v0.7).
 
 ## Combat
 
-- Combat is fully automatic. Every unit picks the **nearest enemy unit** (any unit not on its team) within range, and only when there is none, the nearest enemy **building**. Idle units look for targets every few ticks, so a new enemy is picked up within about 0.4 s.
+- Combat is fully automatic. Every unit picks the **nearest enemy unit** (a unit of any player its owner attacks) within range, and only when there is none, the nearest enemy **building**. Idle units look for targets every few ticks, so a new enemy is picked up within about 0.4 s.
 - Damage is the attacker's `Damage` times a multiplier from the damage table (`DamageTable`) for what it hits: units, buildings or walls. Every Tank multiplier is 1.0 except walls (0.5, used once walls arrive in v0.7).
 - It keeps attacking that target every attack interval while the target is alive and in range. When the target dies or leaves range, it picks a new one.
 - Buildings don't attack.

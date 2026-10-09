@@ -74,14 +74,9 @@ public partial class GameCore
             if (candidate != null && candidate.netId == (uint)ownerId) identity = candidate;
         if (identity == null || identity.connectionToClient == null) return;
 
-        ushort attack = 0, share = 0, sharedWithMe = 0;
-        for (int i = 0; i < PlayerOrder.Count && i < 16; i++)
-        {
-            if (!sim.TrySlotOf(PlayerOrder[i], out int other) || other == slot) continue;
-            if (sim.Diplomacy.Attacks(slot, other)) attack |= (ushort)(1 << i);
-            if (sim.Diplomacy.SharesVisionWith(slot, other)) share |= (ushort)(1 << i);
-            if (sim.Diplomacy.SharesVisionWith(other, slot)) sharedWithMe |= (ushort)(1 << i);
-        }
+        var slotByIndex = new List<int>(PlayerOrder.Count);
+        foreach (int other in PlayerOrder) slotByIndex.Add(sim.TrySlotOf(other, out int s) ? s : -1);
+        (ushort attack, ushort share, ushort sharedWithMe) = sim.Diplomacy.RowFor(slot, slotByIndex);
         identity.GetComponent<ClientPlayer>().TargetDiplomacy(identity.connectionToClient, attack, share, sharedWithMe);
     }
 

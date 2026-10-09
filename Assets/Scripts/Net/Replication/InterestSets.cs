@@ -27,9 +27,7 @@ namespace WAR2D.Net.Replication
         [ReadOnly] public NativeArray<int> IdOf;
         [ReadOnly] public NativeArray<int> IndexOfId;
         [ReadOnly] public NativeArray<float> SpeedByType;
-        /// <summary>Team per unit slot.</summary>
-        [ReadOnly] public NativeArray<int> Team;
-        /// <summary>Every team's fog grid (see <c>SimData.Visible</c>): grid g covers [g * FogCells, (g + 1) * FogCells).</summary>
+        /// <summary>Every owner's fog grid (see <c>SimData.Visible</c>): grid g covers [g * FogCells, (g + 1) * FogCells).</summary>
         [ReadOnly] public NativeArray<byte> Visible;
         public int FogCellSize, FogW, FogH, FogCells;
 
@@ -51,8 +49,8 @@ namespace WAR2D.Net.Replication
     }
 
     /// <summary>
-    /// What each client may know about units: its own team's units always, and any other unit standing
-    /// on a fog cell its team sees now. Nothing else, whatever the client asks for. <see cref="Build"/> also diffs against what the client
+    /// What each client may know about units: its own units always, and any other unit standing
+    /// on a fog cell its grid sees now (its own sight plus vision shared with it). Nothing else, whatever the client asks for. <see cref="Build"/> also diffs against what the client
     /// knew, by id index: an index whose id changed (the unit died and the index was reused) is a Leave
     /// of the old id followed by an Enter of the new one.
     /// </summary>
@@ -64,7 +62,7 @@ namespace WAR2D.Net.Replication
         private readonly NativeArray<int>[] knownId;
         private readonly NativeList<int>[] entered;
         private readonly NativeList<int>[] left;
-        private readonly int[] ownerOf, teamOf, gridOf;
+        private readonly int[] ownerOf, gridOf;
         /// <summary>Most units a client may newly learn about per build (snapshot pacing); 0 is unlimited.</summary>
         public int MaxEntersPerBuild;
         private bool disposed;
@@ -80,7 +78,6 @@ namespace WAR2D.Net.Replication
             entered = new NativeList<int>[clients];
             left = new NativeList<int>[clients];
             ownerOf = new int[clients];
-            teamOf = new int[clients];
             gridOf = new int[clients];
             for (int c = 0; c < clients; c++)
             {
@@ -96,13 +93,12 @@ namespace WAR2D.Net.Replication
         public int Clients { get; }
 
         /// <summary>
-        /// Sets a client's owner id, team and fog grid (-1: sees only its team's units). An owner of
-        /// int.MinValue disables the client.
+        /// Sets a client's owner id and fog grid (-1: sees only its own units). An owner of int.MinValue
+        /// disables the client.
         /// </summary>
-        public void SetClient(int client, int ownerId, int team, int grid)
+        public void SetClient(int client, int ownerId, int grid)
         {
             ownerOf[client] = ownerId;
-            teamOf[client] = team;
             gridOf[client] = grid;
         }
 
@@ -130,7 +126,7 @@ namespace WAR2D.Net.Replication
                 {
                     Input = input,
                     Active = ownerOf[c] != int.MinValue,
-                    Team = teamOf[c],
+                    Owner = ownerOf[c],
                     Grid = gridOf[c],
                     Allowed = allowed[c],
                     KnownBits = knownBits[c],
@@ -170,7 +166,7 @@ namespace WAR2D.Net.Replication
     {
         public ReplicationInput Input;
         public bool Active;
-        public int Team, Grid;
+        public int Owner, Grid;
         public NativeArray<ulong> Allowed, KnownBits;
         public NativeArray<int> KnownId;
         public NativeList<int> Entered, Left;
@@ -190,7 +186,7 @@ namespace WAR2D.Net.Replication
                 for (int i = 0; i < Input.Count; i++)
                 {
                     if (Input.Health[i] <= 0f) continue;
-                    if (Input.Team[i] != Team && !Input.Sees(Grid, Input.Positions[i])) continue;
+                    if (Input.OwnerId[i] != Owner && !Input.Sees(Grid, Input.Positions[i])) continue;
                     int index = NetIdAllocator.IndexOf(Input.IdOf[i]);
                     if (index < KnownId.Length) BitSet.Set(Allowed, index);
                 }

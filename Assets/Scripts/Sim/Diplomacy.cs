@@ -32,6 +32,25 @@ namespace WAR2D.Sim
             return mask;
         }
 
+        /// <summary>
+        /// One player's own row for the client, re-indexed by player order: bit i refers to the owner whose
+        /// slot is <paramref name="slotByIndex"/>[i] (-1 for none). Holds whom the slot attacks, whom it
+        /// shares vision with, and who shares vision with it; nothing about pairs it is not part of.
+        /// </summary>
+        public (ushort attack, ushort share, ushort sharedWithMe) RowFor(int slot, IReadOnlyList<int> slotByIndex)
+        {
+            ushort attackBits = 0, shareBits = 0, sharedBits = 0;
+            for (int i = 0; i < slotByIndex.Count && i < 16; i++)
+            {
+                int other = slotByIndex[i];
+                if (!Valid(other) || other == slot) continue;
+                if (Attacks(slot, other)) attackBits |= (ushort)(1 << i);
+                if (SharesVisionWith(slot, other)) shareBits |= (ushort)(1 << i);
+                if (SharesVisionWith(other, slot)) sharedBits |= (ushort)(1 << i);
+            }
+            return (attackBits, shareBits, sharedBits);
+        }
+
         public bool Attacks(int fromSlot, int toSlot) => Valid(fromSlot) && Valid(toSlot) && (attack[fromSlot] >> toSlot & 1) != 0;
 
         public bool SharesVisionWith(int fromSlot, int toSlot) => Valid(fromSlot) && Valid(toSlot) && (share[fromSlot] >> toSlot & 1) != 0;
