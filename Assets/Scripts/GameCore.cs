@@ -287,7 +287,7 @@ public partial class GameCore : NetworkBehaviour
         }
 
         foreach (int id in outcome.NewlyEliminated) EliminatePlayer(id);
-        if (outcome.Kind == OutcomeKind.Winner) DeclareWinner(outcome.WinnerTeam);
+        if (outcome.Kind == OutcomeKind.Winner) DeclareWinner(outcome.Winners);
     }
 
     [Server]
@@ -326,15 +326,15 @@ public partial class GameCore : NetworkBehaviour
     }
 
     [Server]
-    /// <summary>Ends the match: every player on <paramref name="team"/> wins, everyone else loses.</summary>
-    public void DeclareWinner(int team)
+    /// <summary>Ends the match: every player in <paramref name="winners"/> wins, everyone else loses.</summary>
+    public void DeclareWinner(IReadOnlyCollection<int> winners)
     {
         CurrentState = GameState.GameOver;
         WorldStateManager.Instance?.DestroyAllEntities();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
             ClientPlayer client = entry.Key.GetComponent<ClientPlayer>();
-            if (TeamOf(BuildingData.UIntToInt(entry.Key.netId)) == team) client.RpcOnPlayerWon(entry.Value.connection);
+            if (winners.Contains(BuildingData.UIntToInt(entry.Key.netId))) client.RpcOnPlayerWon(entry.Value.connection);
             else
             {
                 entry.Value.state = PlayerState.Eliminated;

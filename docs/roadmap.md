@@ -393,7 +393,8 @@ The full table is in the spec (§2). The decisions that most shape the roadmap:
 | Network model | Server-authoritative hybrid: paths plus corrections |
 | Bandwidth (v0.3) | 256 KB/s average, 768 KB/s peak per client; camera view tier; dedicated servers recommended for full 8-player matches |
 | Server tick (v0.3) | Async 20 Hz tick; flow rebuilds, fog and interest sets as jobs; hierarchical flow fields; 1024² map |
-| Fog of war | Line of sight, per team, explored terrain remembered |
+| Fog of war | Line of sight, per player with one-way vision sharing (teammates share from the start), explored terrain remembered (v0.6; was per team) |
+| Win rule (v0.6) | The match is won when no remaining HQ holder attacks another and it started with an attacking pair; all HQ holders win, plus eliminated players on a winner's starting team (was "last team standing") |
 | Hosting and online | Player-hosted and dedicated servers, on Steam |
 | Team economy | Separate resources, with gifting to allies |
 | Unpaid upkeep | Decay until paid |

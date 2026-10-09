@@ -130,6 +130,6 @@ A Miner checks the single tile next to it in the direction it faces:
 
 - During *Playing* the server checks every second which players still own an HQ.
 - A player with no HQ is **eliminated**: all their remaining units and buildings are destroyed (each with an explosion) and they see the Lose screen. Eliminated players stop earning passive income.
-- If the only players with an HQ left are all on one team, and the match started with more than one team, that team **wins**: every player on it (eliminated or not) sees the Win screen. Everyone else sees the Lose screen, and the winner's world is wiped with explosions as the match ends.
+- If no player with an HQ left attacks another (they are all at peace with each other, or only one is left), and the match started with more than one team, they **win** together: every HQ holder, and every eliminated player whose starting team includes one, sees the Win screen. Peace must be mutual: if one survivor still attacks another, the match goes on. Everyone else sees the Lose screen, and the winner's world is wiped with explosions as the match ends.
 - If nobody has an HQ, it's a **draw**, and everyone sees a Draw screen.
 - When a player disconnects mid-match, they're removed from the player list, their units and buildings are destroyed, and the lobby UI updates. If the **server owner** leaves, ownership passes to another player; if the host itself leaves, the server shuts down and everyone returns to the main menu.
