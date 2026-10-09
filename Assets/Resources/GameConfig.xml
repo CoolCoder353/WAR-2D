@@ -49,6 +49,12 @@
     <ChangeCooldownSeconds>2.0</ChangeCooldownSeconds>  <!-- v0.6: per player, per command -->
   </Diplomacy>
 
+  <Alerts>
+    <ThrottleSeconds>10.0</ThrottleSeconds>  <!-- v0.6: one Under-attack alert per area per window -->
+    <AreaTiles>32</AreaTiles>                <!-- v0.6: side of an alert area, in tiles -->
+    <ShowSeconds>8.0</ShowSeconds>           <!-- v0.6: how long an alert stays in the feed -->
+  </Alerts>
+
   <!-- Damage multiplier per attacker unit type and target class (Unit, Building, Wall); 1.0 when missing. -->
   <DamageTable>
     <Entry attacker="Tank" target="Unit">1.0</Entry>

@@ -120,6 +120,16 @@ public class ClientPlayer : NetworkBehaviour
         SquadCounts = counts;
     }
 
+    /// <summary>Raised on the owning client when alerts arrive.</summary>
+    public event System.Action<Alert[]> AlertsReceived;
+
+    /// <summary>The owner's own alerts. Private: each player is sent only alerts about their own entities and choices made towards them.</summary>
+    [TargetRpc]
+    public void TargetAlerts(NetworkConnection target, Alert[] alerts)
+    {
+        if (alerts != null && alerts.Length > 0) AlertsReceived?.Invoke(alerts);
+    }
+
     /// <summary>Whom this player attacks; bit i is the owner at <c>GameCore.PlayerOrder[i]</c> (local player only).</summary>
     public ushort AttackMask { get; private set; }
 

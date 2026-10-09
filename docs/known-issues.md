@@ -23,6 +23,10 @@ v0.5 passed the EditMode and PlayMode suites (including `LeakTests`), but nobody
 - **Building ghosts**: enemy buildings dim when out of sight and disappear only once their spot is seen again.
 - **Editor crash after `SimData` gains fields.** The first EditMode run after `SimData`'s layout changes can segfault while scheduling a tick job (v0.5: `GatherJob`; v0.6 Task 4: `SimCombatSystem`, in `AtomicSafetyHandle` handle extraction). Restarting the editor fixes it every time, so it is stale Burst code compiled against the old struct layout. Restart the editor after changing `SimData`'s fields, before running the tests.
 
+## Developer tools
+
+- **Bots look eliminated in the HUD.** Dev bots (`GameCore.AddBot`, perf harness and tests) have no player object, so the top bar and diplomacy panel list them as "Player (eliminated)" with disabled switches, and their diplomacy bit reaches clients only after `SendAllDiplomacy` is called again (bots join after match start). Dev only; real players are unaffected. (no target)
+
 ## Project and config hygiene
 
 Inert leftovers disclosed in v0.2 and scheduled to be cleaned up together.

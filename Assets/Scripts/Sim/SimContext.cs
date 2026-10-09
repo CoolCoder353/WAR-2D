@@ -167,6 +167,11 @@ namespace WAR2D.Sim
 
         internal void RaiseDiplomacyChanged(int fromOwner, int toOwner) => DiplomacyChanged?.Invoke(fromOwner, toOwner);
 
+        /// <summary>Raised when one owner starts or stops sharing vision with another: (from, to, on).</summary>
+        public event Action<int, int, bool> VisionShareChanged;
+
+        internal void RaiseVisionShareChanged(int fromOwner, int toOwner, bool on) => VisionShareChanged?.Invoke(fromOwner, toOwner, on);
+
         internal void RaiseBuildingCreated(int id, Entity entity) => BuildingCreated?.Invoke(id, entity);
 
         /// <summary>Completes the tick's jobs and frees the singletons and their arrays.</summary>

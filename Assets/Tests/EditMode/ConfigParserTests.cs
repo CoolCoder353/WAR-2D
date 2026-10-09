@@ -15,6 +15,7 @@ public class ConfigParserTests
   <Replication><CorrectionIntervalTicks>4</CorrectionIntervalTicks><CorrectionThreshold>0.25</CorrectionThreshold><DeltaScale>8</DeltaScale><OffscreenThreshold>2</OffscreenThreshold><OffscreenIntervalTicks>20</OffscreenIntervalTicks><SnapshotBytesPerSecond>262144</SnapshotBytesPerSecond></Replication>
   <Orders><MaxQueued>4</MaxQueued></Orders>
   <Diplomacy><ChangeCooldownSeconds>2</ChangeCooldownSeconds></Diplomacy>
+  <Alerts><ThrottleSeconds>10</ThrottleSeconds><AreaTiles>32</AreaTiles><ShowSeconds>8</ShowSeconds></Alerts>
   <DamageTable><Entry attacker=""Tank"" target=""Unit"">1.0</Entry><Entry attacker=""Tank"" target=""Building"">1.0</Entry><Entry attacker=""Tank"" target=""Wall"">0.5</Entry></DamageTable>
   <Units>
     <Unit type=""Tank""><Health>100</Health><Damage>10</Damage><Range>5</Range><AttackInterval>1</AttackInterval><MoveSpeed>5</MoveSpeed><Acceleration>5</Acceleration><UpfrontCost>50</UpfrontCost><RunningCost>2</RunningCost><Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>8</Sight></Unit>
@@ -169,6 +170,28 @@ public class ConfigParserTests
         GameConfigData c = ConfigParser.Parse(ValidXml, errors);
         Assert.That(errors, Is.Empty);
         Assert.AreEqual(2f, c.Diplomacy.ChangeCooldownSeconds, 1e-6f);
+    }
+
+    [Test]
+    public void AlertsParse()
+    {
+        var errors = new List<string>();
+        GameConfigData c = ConfigParser.Parse(ValidXml, errors);
+        Assert.That(errors, Is.Empty);
+        Assert.AreEqual(10f, c.Alerts.ThrottleSeconds, 1e-6f);
+        Assert.AreEqual(32, c.Alerts.AreaTiles);
+        Assert.AreEqual(8f, c.Alerts.ShowSeconds, 1e-6f);
+    }
+
+    [TestCase("<AreaTiles>0</AreaTiles>", "AreaTiles")]
+    [TestCase("<ShowSeconds>0</ShowSeconds>", "ShowSeconds")]
+    [TestCase("", "AreaTiles")]
+    public void AlertsRequiredAndInRange(string replacement, string field)
+    {
+        string xml = Regex.Replace(ValidXml, $"<{field}>[^<]*</{field}>", replacement);
+        var errors = new List<string>();
+        ConfigParser.Parse(xml, errors);
+        Assert.That(errors, Has.Some.Contains(field));
     }
 
     [TestCase("<ChangeCooldownSeconds>-1</ChangeCooldownSeconds>")]

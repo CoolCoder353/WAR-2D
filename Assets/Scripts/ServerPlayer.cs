@@ -46,9 +46,20 @@ public class ServerPlayer
         if (amount > 0f) upkeepThisSecond += amount;
     }
 
+    private bool unpaidThisSecond, unpaidLastSecond;
+
+    /// <summary>True for the second in which some of the player's upkeep first went unpaid (after <see cref="RollSecond"/>).</summary>
+    public bool BecameUnpaid { get; private set; }
+
+    /// <summary>Records that some of the player's upkeep (units or buildings) went unpaid this second.</summary>
+    public void MarkUnpaid() => unpaidThisSecond = true;
+
     /// <summary>Publishes this second's income and upkeep and starts a new second. Called once a second.</summary>
     public void RollSecond()
     {
+        BecameUnpaid = unpaidThisSecond && !unpaidLastSecond;
+        unpaidLastSecond = unpaidThisSecond;
+        unpaidThisSecond = false;
         if (incomeThisSecond != IncomeLastSecond || upkeepThisSecond != UpkeepLastSecond) ResourcesDirty = true;
         IncomeLastSecond = incomeThisSecond;
         UpkeepLastSecond = upkeepThisSecond;

@@ -56,6 +56,21 @@ namespace WAR2D.UI
             }
         }
 
+        private const long PingMilliseconds = 3000;
+
+        /// <summary>Shows a ring at a world tile for a few seconds (an UnderAttack alert).</summary>
+        public void Ping(int2 tile)
+        {
+            if (texture == null) return;
+            Vector2 at = MinimapTexture.ToLocal((float2)tile + 0.5f, image.layout.size, WorldSize);
+            var ring = new VisualElement { name = "minimap-ping", pickingMode = PickingMode.Ignore };
+            ring.AddToClassList("minimap-ping");
+            ring.style.left = at.x;
+            ring.style.top = at.y;
+            Pings.Add(ring);
+            ring.schedule.Execute(() => ring.RemoveFromHierarchy()).ExecuteLater(PingMilliseconds);
+        }
+
         /// <summary>Redraws at 5 Hz and moves the camera box every frame.</summary>
         public void Update(float deltaTime)
         {

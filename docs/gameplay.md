@@ -120,7 +120,16 @@ A Miner checks the single tile next to it in the direction it faces:
 - Walls block sight; you can see a wall's face but not what's behind it. Fog is tracked on a grid of 2×2-tile cells and updated 5 times a second.
 - The map shows three states: **unexplored** (black), **explored** (dimmed: you've seen it before), and **visible** (clear).
 - You only receive other players' units standing where you can see now (your own sight plus vision shared with you). Enemy buildings you've seen stay on your map as dimmed **last-seen ghosts** when they go out of sight; you only find out a ghost was destroyed when you see its spot again.
-- Diplomacy is per player and one-way. At the start, teammates don't attack each other and share vision; everyone else attacks and doesn't share. When the match has diplomacy on, each player chooses whom they attack and with whom they share vision (at most one change per command every 2 s, `Diplomacy/ChangeCooldownSeconds`). Stopping sharing keeps what the other player already explored. Nobody learns another player's choices, except that you're told who shares vision with you. Units of players who don't attack each other never damage each other (bomb blasts will be the exception, v0.7).
+- Diplomacy is per player and one-way. At the start, teammates don't attack each other and share vision; everyone else attacks and doesn't share. When the match has diplomacy on, each player chooses whom they attack and with whom they share vision (at most one change per command every 2 s, `Diplomacy/ChangeCooldownSeconds`). Stopping sharing keeps what the other player already explored. Nobody learns another player's choices, except that you're told who shares vision with you. Units of players who don't attack each other never damage each other (bomb blasts will be the exception, v0.7). The **Diplomacy** button on the top bar (shown only when the match has diplomacy on) opens a panel with an Attack and a Share-vision switch per player; it also marks who shares vision with you.
+
+### Alerts
+
+The alert feed (top left) shows the newest four alerts for 8 s each (`Alerts/ShowSeconds`); × dismisses one. You're told only about your own things and choices made towards you:
+
+- **Under attack near your HQ/Spawner/Miner** (or "Your units are under attack"): one of your units or buildings took damage. The minimap pings the spot. At most one per 32-tile area every 10 s (`Alerts/AreaTiles`, `Alerts/ThrottleSeconds`). It never says who attacked.
+- **Upkeep unpaid**: some of your upkeep first went unpaid (repeats only after a fully paid second).
+- **A player shares vision with you / stopped sharing vision with you**.
+- **A player gifted you N** (gifting arrives with the in-match menu).
 
 ## Combat
 

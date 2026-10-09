@@ -67,6 +67,7 @@ public partial struct ResourceSystem : ISystem
             ServerPlayer owner = core.GetServerPlayerById(upkeep.ValueRO.ownerId);
             upkeep.ValueRW.unpaid = owner == null || !owner.TrySpend(cost);
             if (!upkeep.ValueRO.unpaid) owner.AddUpkeep(cost);
+            else owner?.MarkUnpaid();
             upkeep.ValueRW.timeSinceLastCharge = 0f;
         }
     }

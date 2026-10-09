@@ -92,6 +92,7 @@ namespace WAR2D.Sim
             if (command.Kind == SimCommandKind.SetAttack) context.Diplomacy.SetAttack(from, to, command.Flag);
             else context.Diplomacy.SetShareVision(from, to, command.Flag);
             context.RaiseDiplomacyChanged(command.OwnerId, command.TargetOwnerId);
+            if (command.Kind == SimCommandKind.SetShareVision) context.RaiseVisionShareChanged(command.OwnerId, command.TargetOwnerId, command.Flag);
         }
 
         /// <summary>Applies the damage the last tick's attacks dealt to buildings.</summary>

@@ -124,6 +124,14 @@ namespace Config
             if (diplomacy != null)
                 config.Diplomacy.ChangeCooldownSeconds = Float(diplomacy, "ChangeCooldownSeconds", "Diplomacy", errors, min: 0, max: 60);
 
+            XmlNode alerts = Require(root, "Alerts", errors);
+            if (alerts != null)
+            {
+                config.Alerts.ThrottleSeconds = Float(alerts, "ThrottleSeconds", "Alerts", errors, min: 0, max: 300);
+                config.Alerts.AreaTiles = Int(alerts, "AreaTiles", "Alerts", errors, min: 1, max: 1024);
+                config.Alerts.ShowSeconds = Float(alerts, "ShowSeconds", "Alerts", errors, min: 1, max: 300);
+            }
+
             XmlNode damage = Require(root, "DamageTable", errors);
             if (damage != null)
             {

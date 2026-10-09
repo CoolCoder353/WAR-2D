@@ -205,4 +205,65 @@ public class LeakTests
             Assert.AreEqual(before, diplomacy.RowFor(receiver, slotByIndex), $"receiver {receiver} learned about {from} -> {to}");
         }
     }
+
+    /// <summary>A fight between A and C with an alert service on the settled world, checking every alert as it is sent.</summary>
+    private static List<string> FightWithAlerts(int seed, out int sent)
+    {
+        using var sim = new SimHarness(Map());
+        var failures = new List<string>();
+        int count = 0;
+        SimData settled = default;
+        int units = 0;
+        var alerts = new AlertService(0f, 4, (receiver, list) =>
+        {
+            foreach (Alert alert in list)
+            {
+                count++;
+                if (alert.Kind == AlertKind.UnderAttack && alert.OtherOwnerId != 0) failures.Add($"alert to {receiver} names {alert.OtherOwnerId}");
+                bool own = false;
+                for (int slot = 0; slot < units && !own; slot++)
+                    own = settled.OwnerId[slot] == receiver && math.all((int2)math.floor(settled.Positions[slot]) == alert.Tile);
+                if (!own) failures.Add($"alert to {receiver} at {alert.Tile} is not on one of its units");
+            }
+        });
+        sim.Context.Settled += (data, tick, n) =>
+        {
+            settled = data;
+            units = n;
+            alerts.CollectDamage(data, n, _ => (false, 0, default), tick);
+            alerts.Flush();
+        };
+        var random = new Unity.Mathematics.Random((uint)seed);
+        for (int u = 0; u < 30; u++)
+        {
+            sim.Spawn(SimHarness.OwnerA, new float2(40 + random.NextFloat(-3, 3), 48 + random.NextFloat(-3, 3)));
+            sim.Spawn(OwnerC, new float2(44 + random.NextFloat(-3, 3), 48 + random.NextFloat(-3, 3)));
+        }
+        for (int t = 0; t < 60; t++) sim.Tick();
+        sent = count;
+        return failures;
+    }
+
+    [Test]
+    public void AlertsCarryOnlyOwnEntities([Values(1, 2)] int seed)
+    {
+        List<string> failures = FightWithAlerts(seed, out int sent);
+        Assert.Greater(sent, 0, "the fight raised alerts");
+        CollectionAssert.IsEmpty(failures);
+    }
+
+    [Test]
+    public void AlertsNeverNameAttackers()
+    {
+        var damaged = new List<(int owner, int2 tile)> { (1, new int2(3, 3)), (2, new int2(9, 9)) };
+        var throttle = new AlertThrottle(0f, 1);
+        AlertRules.UnderAttack(damaged, throttle, 0, (receiver, alert) =>
+        {
+            Assert.AreEqual(0, alert.OtherOwnerId, "an UnderAttack alert never names anyone");
+            Assert.AreEqual(AlertKind.UnderAttack, alert.Kind);
+        });
+        string text = WAR2D.UI.AlertFeedModel.Text(new Alert { Kind = AlertKind.UnderAttack, OtherOwnerId = 42 }, owner => "ATTACKER", null);
+        StringAssert.DoesNotContain("ATTACKER", text, "the feed text has no attacker even if an id slipped in");
+        Assert.IsEmpty(FightWithAlerts(3, out _));
+    }
 }

@@ -24,6 +24,10 @@ namespace WAR2D.UI
         private SquadBarController squadBar;
         private HudOverlayController overlay;
         private MinimapController minimap;
+        private AlertFeedController alertFeed;
+        private DiplomacyPanelController diplomacy;
+        private ClientPlayer alertSource;
+        private Button diplomacyButton;
         private float playerTimer, selectionTimer;
         private int placedHQs, players;
 
@@ -32,6 +36,12 @@ namespace WAR2D.UI
 
         /// <summary>The selection, command card and squad bar data.</summary>
         public SelectionModel Selection { get; } = new SelectionModel();
+
+        /// <summary>The alert feed's data.</summary>
+        public AlertFeedModel Alerts { get; private set; }
+
+        /// <summary>The diplomacy panel's controller.</summary>
+        public DiplomacyPanelController Diplomacy => diplomacy;
 
         /// <summary>The minimap's controller.</summary>
         public MinimapController Minimap => minimap;
@@ -58,6 +68,17 @@ namespace WAR2D.UI
             squadBar = new SquadBarController(root, Selection);
             overlay = new HudOverlayController(root);
             minimap = new MinimapController(root);
+            Alerts = new AlertFeedModel(config.Alerts.ShowSeconds);
+            alertFeed = new AlertFeedController(root, Alerts);
+            diplomacy = new DiplomacyPanelController(root, Model);
+            diplomacyButton = root.Q<Button>("diplomacy-button");
+            Model.DiplomacyChanged += ShowDiplomacyButton;
+            ShowDiplomacyButton();
+
+            Alerts.PingRequested += minimap.Ping;
+            topBar.DiplomacyClicked += diplomacy.Toggle;
+            diplomacy.AttackToggled += SetAttack;
+            diplomacy.ShareToggled += SetShareVision;
 
             Selection.FilterRequested += OnFilter;
             commandCard.OrderClicked += OnOrder;
@@ -75,6 +96,11 @@ namespace WAR2D.UI
             squadBar?.Dispose();
             minimap?.Dispose();
             minimap = null;
+            alertFeed?.Dispose();
+            diplomacy?.Dispose();
+            Model.DiplomacyChanged -= ShowDiplomacyButton;
+            if (alertSource != null) alertSource.AlertsReceived -= OnAlerts;
+            alertSource = null;
             topBar = null;
             selectionPanel = null;
             commandCard = null;
@@ -85,6 +111,9 @@ namespace WAR2D.UI
         {
             Model.PullResources();
             minimap.Update(Time.unscaledDeltaTime);
+            Model.PullDiplomacy();
+            Alerts.Expire(Time.unscaledTime);
+            SubscribeAlerts();
 
             selectionTimer -= Time.unscaledDeltaTime;
             if (selectionTimer <= 0f)
@@ -114,6 +143,53 @@ namespace WAR2D.UI
                 if (player.hasPlacedHQ) placedHQs++;
             }
         }
+
+        private void ShowDiplomacyButton() => diplomacyButton.EnableInClassList("top-bar__hidden", !Model.DiplomacyEnabled);
+
+        /// <summary>Listens to the local player's alerts once it exists.</summary>
+        private void SubscribeAlerts()
+        {
+            if (alertSource != null || NetworkClient.localPlayer == null) return;
+            alertSource = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+            if (alertSource != null) alertSource.AlertsReceived += OnAlerts;
+        }
+
+        private void OnAlerts(Alert[] alerts)
+        {
+            foreach (Alert alert in alerts)
+                Alerts.Add(alert, AlertFeedModel.Text(alert, NameOf, alert.Kind == AlertKind.UnderAttack ? NearestOwnBuilding(alert.Tile) : null), Time.unscaledTime);
+        }
+
+        private const float NearBuildingTiles = 12f;
+
+        /// <summary>The local player's building nearest a tile (within 12 tiles), as players name it.</summary>
+        private string NearestOwnBuilding(Unity.Mathematics.int2 tile)
+        {
+            float best = NearBuildingTiles * NearBuildingTiles;
+            string name = null;
+            foreach (WAR2D.Net.Replication.ClientBuildings.Entry entry in WAR2D.Net.Replication.ClientBuildings.Current.Entries.Values)
+            {
+                if (entry.Data.ownerId != Model.LocalOwnerId) continue;
+                float d = Unity.Mathematics.math.distancesq(entry.Data.position, tile);
+                if (d > best) continue;
+                best = d;
+                name = AlertFeedModel.BuildingName(entry.Data.buildingType) ?? name;
+            }
+            return name;
+        }
+
+        /// <summary>A player's public nickname.</summary>
+        private string NameOf(int ownerId)
+        {
+            foreach (PlayerRow row in Model.Players) if (row.OwnerId == ownerId) return row.Nickname;
+            return "A player";
+        }
+
+        /// <summary>Sends the diplomacy panel's attack switch (the server checks it, and the new row comes back).</summary>
+        public void SetAttack(int ownerId, bool on) => GameCore.Instance?.Cmd_SetAttack((uint)ownerId, on);
+
+        /// <summary>Sends the diplomacy panel's share-vision switch.</summary>
+        public void SetShareVision(int ownerId, bool on) => GameCore.Instance?.Cmd_SetShareVision((uint)ownerId, on);
 
         private void OnFilter(UnitType type) => UnitCommander.Instance?.Selection.FilterTo(type);
 

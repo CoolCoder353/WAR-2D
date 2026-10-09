@@ -117,6 +117,10 @@ public partial class WorldStateManager : NetworkBehaviour
         Sim.UnitDied += OnUnitDied;
         Sim.TeamResolver = ownerId => GameCore.Instance != null ? GameCore.Instance.TeamOf(ownerId) : -ownerId - 1;
         Sim.Settled += OnSettled;
+        AlertsConfig alertConfig = ConfigLoader.LoadConfig().Alerts;
+        Alerts = new AlertService(alertConfig.ThrottleSeconds, alertConfig.AreaTiles);
+        Sim.VisionShareChanged += (from, to, on) =>
+            Alerts.Add(to, new Alert { Kind = on ? AlertKind.VisionSharedWithYou : AlertKind.VisionUnshared, OtherOwnerId = from });
         Sim.DiplomacyChanged += (from, to) =>
         {
             if (GameCore.Instance == null) return;
@@ -200,6 +204,35 @@ public partial class WorldStateManager : NetworkBehaviour
     {
         FlushDeathEvents(data);
         SendSquadCounts(data, tick, count);
+        if (tick % UnpaidScanTicks == 0) MarkUnpaidOwners(data, count);
+        Alerts.CollectDamage(data, count, BuildingOwnerAndTile, NetworkTime.localTime);
+        Alerts.Flush();
+    }
+
+    private const int UnpaidScanTicks = 20; // once a second at 20 Hz
+
+    /// <summary>The server's alerts (own damage, upkeep, vision sharing, gifts), sent once per tick.</summary>
+    public AlertService Alerts { get; private set; }
+
+    /// <summary>Marks every owner with an unpaid unit (the upkeep alert fires on the first unpaid second).</summary>
+    [Server]
+    private void MarkUnpaidOwners(SimData data, int count)
+    {
+        int last = 0;
+        for (int slot = 0; slot < count; slot++)
+        {
+            if (data.Unpaid[slot] == 0 || data.OwnerId[slot] == last) continue;
+            last = data.OwnerId[slot];
+            GameCore.Instance?.GetServerPlayerById(last)?.MarkUnpaid();
+        }
+    }
+
+    /// <summary>A live building's owner and anchor tile, by id.</summary>
+    private (bool, int, int2) BuildingOwnerAndTile(int id)
+    {
+        if (!Buildings.TryGetValue(id, out Entity entity) || !EntityManager.Exists(entity)) return (false, 0, default);
+        BuildingData building = EntityManager.GetComponentData<BuildingData>(entity);
+        return (true, building.ownerId, (int2)math.round(building.position));
     }
 
     /// <summary>Every live building, for the replication layer (main thread, on the settled world).</summary>
@@ -292,6 +325,7 @@ public partial class WorldStateManager : NetworkBehaviour
         Sim?.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.KillOwner, OwnerId = ownerId });
         Squads.Forget(ownerId);
         ForgetOrderTokens(ownerId);
+        Alerts?.Forget(ownerId);
     }
 
     private void Kill(Entity entity, int ownerId)

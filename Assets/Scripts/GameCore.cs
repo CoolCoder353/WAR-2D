@@ -93,7 +93,12 @@ public partial class GameCore : NetworkBehaviour
         if (rollTimer >= 1f)
         {
             rollTimer -= 1f;
-            foreach (ServerPlayer player in ServerPlayers.Values) player.RollSecond();
+            foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
+            {
+                entry.Value.RollSecond();
+                if (entry.Value.BecameUnpaid && entry.Key != null)
+                    WorldStateManager.Instance?.Alerts?.Add(BuildingData.UIntToInt(entry.Key.netId), new Alert { Kind = AlertKind.UpkeepUnpaid });
+            }
         }
 
         resourceSyncTimer += Time.deltaTime;

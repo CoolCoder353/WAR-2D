@@ -81,6 +81,44 @@ namespace WAR2D.UI
             PlayersChanged?.Invoke();
         }
 
+        /// <summary>The local player's owner id (0 before it spawns).</summary>
+        public int LocalOwnerId { get; private set; }
+
+        /// <summary>True when the match lets players change diplomacy.</summary>
+        public bool DiplomacyEnabled { get; private set; }
+
+        /// <summary>Whom the local player attacks; bit i is the player at <c>GameCore.PlayerOrder[i]</c> (their <see cref="PlayerRow.ColourIndex"/>).</summary>
+        public ushort AttackMask { get; private set; }
+
+        /// <summary>Whom the local player shares vision with (bits as <see cref="AttackMask"/>).</summary>
+        public ushort ShareMask { get; private set; }
+
+        /// <summary>Who shares vision with the local player (bits as <see cref="AttackMask"/>).</summary>
+        public ushort SharedWithMe { get; private set; }
+
+        /// <summary>Raised when the local player's diplomacy row or the diplomacy setting changed.</summary>
+        public event Action DiplomacyChanged;
+
+        /// <summary>Sets the local player's own diplomacy row.</summary>
+        public void SetDiplomacy(int localOwnerId, bool enabled, ushort attack, ushort share, ushort sharedWithMe)
+        {
+            if (localOwnerId == LocalOwnerId && enabled == DiplomacyEnabled && attack == AttackMask && share == ShareMask && sharedWithMe == SharedWithMe) return;
+            LocalOwnerId = localOwnerId;
+            DiplomacyEnabled = enabled;
+            AttackMask = attack;
+            ShareMask = share;
+            SharedWithMe = sharedWithMe;
+            DiplomacyChanged?.Invoke();
+        }
+
+        /// <summary>Reads the local player's diplomacy row (<see cref="ClientPlayer.TargetDiplomacy"/>) and the match's diplomacy setting.</summary>
+        public void PullDiplomacy()
+        {
+            ClientPlayer local = NetworkClient.localPlayer != null ? NetworkClient.localPlayer.GetComponent<ClientPlayer>() : null;
+            if (local == null || GameCore.Instance == null) return;
+            SetDiplomacy((int)local.netId, GameCore.Instance.DiplomacyEnabled, local.AttackMask, local.ShareVisionMask, local.SharedWithMe);
+        }
+
         /// <summary>Reads the local player's resources from its <see cref="ClientPlayer"/>.</summary>
         public void PullResources()
         {

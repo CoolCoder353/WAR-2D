@@ -27,7 +27,11 @@ public class HudTests
     }
 
     [UnityTearDown]
-    public IEnumerator TearDown() => PlayModeMatch.TearDown();
+    public IEnumerator TearDown()
+    {
+        DevApi.AllowForTests = false;
+        yield return PlayModeMatch.TearDown();
+    }
 
     /// <summary>The HUD's root visual element in the match scene.</summary>
     public static VisualElement HudRoot()
@@ -274,5 +278,127 @@ public class HudTests
         float2 goal = start.x < (min.x + max.x) / 2f ? start + new float2(12, 0) : start - new float2(12, 0);
         minimap.Click(MinimapTexture.ToLocal(goal, size, minimap.WorldSize), 1, false);
         yield return PlayModeMatch.WaitUntil(() => math.distance(Centre(selection), goal) < math.distance(start, goal) - 2f, 10f);
+    }
+
+    private const int Bot = 1000002;
+
+    /// <summary>Adds a hostile bot with an indestructible HQ as far from <paramref name="from"/> as fits; returns its anchor.</summary>
+    private static int2 AddBotWithHQ(int2 from)
+    {
+        DevApi.AllowForTests = true;
+        GameCore.Instance.AddBot(Bot, 1e9f);
+        WorldStateManager wsm = WorldStateManager.Instance;
+        (int2 min, int2 max) = wsm.MapBounds;
+        int2 far = new int2(from.x < (min.x + max.x) / 2 ? max.x - 6 : min.x + 6, from.y < (min.y + max.y) / 2 ? max.y - 6 : min.y + 6);
+        for (int ring = 0; ring < 40; ring++)
+        for (int i = 0; i < math.max(1, 8 * ring); i++)
+        {
+            int2 anchor = Ring(far, ring, i);
+            if (wsm.DevPlaceBuilding(Bot, BuildingType.Base, anchor, 1e7f)) return anchor;
+        }
+        Assert.Fail("no room for the bot's HQ");
+        return default;
+    }
+
+    /// <summary>Spawns units for an owner on walkable tiles in rings around a point (from ring 2, clear of a 3×3 building).</summary>
+    private static void SpawnAround(int owner, int2 centre, int count)
+    {
+        WorldStateManager wsm = WorldStateManager.Instance;
+        int placed = 0;
+        for (int ring = 2; placed < count && ring < 20; ring++)
+        for (int i = 0; i < 8 * ring && placed < count; i++)
+        {
+            int2 tile = Ring(centre, ring, i);
+            if (!wsm.Map.Grid.IsWalkable(tile)) continue;
+            wsm.DevSpawnUnit(owner, (float2)tile + 0.5f);
+            placed++;
+        }
+    }
+
+    private static int2 Ring(int2 origin, int ring, int i)
+    {
+        if (ring == 0) return origin;
+        int side = 2 * ring;
+        if (i < side) return new int2(origin.x - ring + i, origin.y - ring);
+        i -= side;
+        if (i < side) return new int2(origin.x + ring, origin.y - ring + i);
+        i -= side;
+        if (i < side) return new int2(origin.x + ring - i, origin.y + ring);
+        i -= side;
+        return new int2(origin.x - ring, origin.y + ring - i);
+    }
+
+    [UnityTest, Timeout(90000)]
+    public IEnumerator UnderAttackAlertAndPing()
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        int2 hq = default;
+        yield return PlayModeMatch.PlaceHQ(a => hq = a);
+        AddBotWithHQ(hq);
+        SpawnAround(Bot, hq, 6); // the bot's units attack the HQ
+
+        VisualElement root = HudRoot();
+        yield return PlayModeMatch.WaitUntil(() => root.Q("alert-feed").childCount > 0, 15f);
+        StringAssert.StartsWith("Under attack", root.Q("alert-feed")[0].Q<Label>("alert-text").text);
+        Assert.That(root.Q("minimap-pings").childCount, Is.GreaterThan(0), "the attack is pinged on the minimap");
+
+        Click(root.Q("alert-feed")[0].Q<Button>("alert-dismiss"));
+        yield return null;
+        Assert.That(root.Q("alert-feed").childCount, Is.EqualTo(0), "× dismisses the alert");
+    }
+
+    [UnityTest, Timeout(90000)]
+    public IEnumerator DiplomacyToggleStopsMyUnitsAttacking()
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        GameCore.Instance.DiplomacyEnabled = true;
+        int2 hq = default;
+        yield return PlayModeMatch.PlaceHQ(a => hq = a);
+        int2 botHQ = AddBotWithHQ(hq);
+        int me = PlayModeMatch.LocalOwner;
+        SpawnAround(me, botHQ, 8); // my units attack the bot's HQ, which has no units to fight back with
+
+        int mine = 0;
+        WAR2D.Sim.SimContext sim = WorldStateManager.Instance.Sim;
+        System.Action<WAR2D.Sim.SimData, int, int> count = (data, tick, n) =>
+        {
+            foreach (int2 attack in data.AttackEvents)
+            {
+                int slot = data.SlotOf(attack.x, n);
+                if (slot >= 0 && data.OwnerId[slot] == me) mine++;
+            }
+        };
+        sim.Settled += count;
+        try
+        {
+            yield return PlayModeMatch.WaitUntil(() => mine > 0, 15f);
+
+            VisualElement root = HudRoot();
+            HudController hud = Object.FindAnyObjectByType<HudController>();
+            yield return PlayModeMatch.WaitUntil(() => !root.Q<Button>("diplomacy-button").ClassListContains("top-bar__hidden"), 5f);
+            Click(root.Q<Button>("diplomacy-button"));
+            yield return null;
+            Assert.That(hud.Diplomacy.IsOpen, Is.True, "the Diplomacy button opens the panel");
+
+            // The bot has no player object, so its row shows as eliminated with its switches disabled;
+            // send the attack switch's event the way an enabled switch does.
+            // Bots join after match start, so resend everyone's row once the bot has a slot.
+            yield return PlayModeMatch.WaitUntil(() => sim.TrySlotOf(Bot, out _), 5f);
+            GameCore.Instance.SendAllDiplomacy();
+            int botBit = 1 << GameCore.Instance.PlayerOrder.IndexOf(Bot);
+            yield return PlayModeMatch.WaitUntil(() => (hud.Model.AttackMask & botBit) != 0, 5f);
+            Assert.That(hud.Model.AttackMask & botBit, Is.Not.Zero, "starts attacking the bot");
+            hud.SetAttack(Bot, false);
+            yield return PlayModeMatch.WaitUntil(() => (hud.Model.AttackMask & botBit) == 0, 5f);
+            yield return new WaitForSeconds(1f);
+            mine = 0;
+            yield return new WaitForSeconds(1f);
+            Assert.That(mine, Is.EqualTo(0), "my units stop firing once I stop attacking");
+            Assert.That(GameCore.Instance.CurrentState, Is.EqualTo(GameState.Playing), "the bot still attacks me, so nobody is at peace");
+        }
+        finally
+        {
+            sim.Settled -= count;
+        }
     }
 }

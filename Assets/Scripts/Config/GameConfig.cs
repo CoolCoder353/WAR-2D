@@ -23,6 +23,7 @@ namespace Config
         public OrdersConfig Orders = new OrdersConfig();
         /// <summary>Player-controlled diplomacy.</summary>
         public DiplomacyConfig Diplomacy = new DiplomacyConfig();
+        public AlertsConfig Alerts = new AlertsConfig();
         /// <summary>Damage multipliers per attacker type and target class.</summary>
         public DamageTableConfig Damage = new DamageTableConfig();
 
@@ -105,6 +106,16 @@ namespace Config
     {
         /// <summary>Seconds a player waits between changes, per command.</summary>
         public float ChangeCooldownSeconds;
+    }
+
+    public class AlertsConfig
+    {
+        /// <summary>Seconds an Under-attack alert for one area stays quiet after it fires.</summary>
+        public float ThrottleSeconds;
+        /// <summary>Side of the square area (in tiles) that shares one Under-attack throttle.</summary>
+        public int AreaTiles;
+        /// <summary>Seconds an alert stays in the feed unless dismissed.</summary>
+        public float ShowSeconds;
     }
 
     public class ReplicationConfig
