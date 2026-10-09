@@ -12,7 +12,7 @@ This is the overarching development plan for WAR-2D. It explains **what** each u
 | v0.3 | Scale Spike | **Done** (2026-10-08). Every row of spec §4.6 has a measurement and a decision; the owner raised the bandwidth budget and chose the async tick with async flow-field rebuilds. See [the results](spike/v0.3-results.md) | [2026-10-05-v0.3-scale-spike.md](superpowers/plans/2026-10-05-v0.3-scale-spike.md) |
 | v0.4 | Legion | **Implemented** (2026-10-09), awaiting the owner's manual Linux match and the PR. Performance gate passed (8 × 10,000 units, 1024² map, 3 runs, medians): host tick main thread **6.6 ms p95** (budget 25), **561 fps** mean (≥ 60), **102 KB/s** average and **170 KB/s** peak 1 s per client (≤ 256 / 768). See [docs/perf/v0.4](perf/v0.4/) | [2026-10-08-v0.4-legion.md](superpowers/plans/2026-10-08-v0.4-legion.md) |
 | v0.5 | Fog & Wire | **Closed** (2026-10-09) by the owner with the performance gate not run, no manual play-test yet and KCP not tuned. All three are carried into v0.6 in [known-issues.md](known-issues.md). Teams, fog of war, fog interest, buildings on the replication service and the leak tests are done; EditMode 223/223 and PlayMode 10/10 pass | [2026-10-09-v0.5-fog-and-wire.md](superpowers/plans/2026-10-09-v0.5-fog-and-wire.md) |
-| v0.6 | Command | Not started | — |
+| v0.6 | Command | **Planned** (2026-10-09). Design: [v0.6 spec](superpowers/specs/2026-10-09-v0.6-command-design.md). UI work is gated on an owner-approved Figma design | [2026-10-09-v0.6-command.md](superpowers/plans/2026-10-09-v0.6-command.md) |
 | v0.7 | Siege | Not started | — |
 | v0.8 | New Paint | Not started | — |
 | v0.9 | Steam | Not started | — |
