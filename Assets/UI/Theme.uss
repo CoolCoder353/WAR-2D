@@ -124,3 +124,73 @@
 .top-bar__resources-value { font-size: var(--font-size-20); }
 .top-bar__actions { flex-grow: 1; flex-basis: 0; flex-direction: row; justify-content: flex-end; }
 .top-bar__actions > Button { margin-left: var(--space-2); }
+
+/* HUD layers: each section's template fills the screen and ignores the pointer; only its panels pick. */
+.hud-layer { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }
+.text--muted { color: var(--color-text-secondary); }
+.icon-slot { width: 24px; height: 24px; border-width: 1px; border-color: var(--color-text-secondary); border-radius: 2px; }
+
+/* Command card (Figma: HUD / Default, Panel / Commands; HUD states, Spawner selected) */
+.command-card { position: absolute; right: var(--space-4); bottom: var(--space-4); }
+.command-card__content { padding: var(--space-3); }
+.command-card__row { flex-direction: row; }
+.command-card__divider { height: 1px; background-color: var(--color-border); margin-top: var(--space-2); margin-bottom: var(--space-2); }
+.command-button { width: 52px; height: 52px; margin: 0 6px 0 0; padding: 4px 0 0 0; align-items: center; justify-content: space-between; background-color: var(--color-surface-panel); border-width: 1px; border-color: var(--color-border); border-radius: var(--radius-sm); color: var(--color-text-primary); }
+.command-button:hover { background-color: var(--color-surface-raised); }
+.command-button:disabled { color: var(--color-text-disabled); background-color: var(--color-surface-panel); }
+.command-button--active { background-color: var(--color-accent); border-color: var(--color-text-primary); color: var(--color-on-accent); }
+.command-button--active:hover { background-color: var(--color-accent); }
+.command-icon { width: 24px; height: 24px; }
+.command-button__key { font-size: var(--font-size-12); -unity-font-style: bold; color: var(--color-text-secondary); height: 15px; margin-bottom: 4px; padding: 0; -unity-text-align: middle-center; }
+.command-button:disabled .command-button__key { color: var(--color-text-disabled); }
+.command-button--active .command-button__key { color: var(--color-on-accent); }
+.production { display: none; }
+.command-card--building .production { display: flex; }
+.command-card--building #orders, .command-card--building #divider, .command-card--building #builds { display: none; }
+.production__row { flex-direction: row; align-items: center; margin-top: var(--space-2); margin-bottom: var(--space-2); }
+.production__row > * { margin-right: var(--space-2); }
+.production__button { width: 36px; height: 35px; padding: 0; -unity-text-align: middle-center; }
+.production__count { font-size: var(--font-size-20); min-width: 22px; -unity-text-align: middle-center; }
+
+/* Selection panel (Figma: Panel / Selection) */
+.selection-panel { position: absolute; left: 292px; bottom: var(--space-4); display: none; }
+.selection-panel--visible { display: flex; }
+.selection-panel__content { padding: var(--space-3); }
+.selection-panel__types { flex-direction: row; margin-bottom: var(--space-2); }
+.selection-type { flex-direction: row; align-items: center; padding: 6px var(--space-2); margin: 0 var(--space-2) 0 0; background-color: var(--color-surface-raised); border-width: 1px; border-color: var(--color-border); border-radius: var(--radius-sm); }
+.selection-type:hover { border-color: var(--color-text-primary); }
+.selection-type > * { margin-right: 6px; }
+.selection-type__count { color: var(--color-readout); -unity-font-style: bold; font-size: var(--font-size-14); }
+.selection-panel__health { flex-direction: row; align-items: center; }
+.selection-panel__health > * { margin-right: var(--space-2); }
+.health-bar { width: 240px; height: 6px; background-color: var(--color-surface-raised); border-radius: var(--radius-sm); overflow: hidden; }
+.health-bar__fill { height: 100%; width: 0; background-color: var(--color-success); border-radius: var(--radius-sm); }
+
+/* Squad bar (Figma: Squad bar) */
+.squad-bar { position: absolute; left: 292px; bottom: 142px; flex-direction: row; }
+.squad { min-width: 30px; height: 38px; padding: 3px 10px; margin: 0 4px 0 0; align-items: center; justify-content: center; background-color: var(--color-surface-panel); border-width: 1px; border-color: var(--color-border); border-radius: var(--radius-sm); }
+.squad:hover { border-color: var(--color-text-primary); }
+.squad--active { border-color: var(--color-accent); }
+.squad__key { font-size: var(--font-size-12); color: var(--color-text-secondary); padding: 0; }
+.squad__count { font-size: var(--font-size-12); -unity-font-style: bold; color: var(--color-readout); padding: 0; }
+.squad__count--empty { color: var(--color-text-disabled); }
+
+/* HQ placement and countdown overlays (Figma: HUD / HQ placement, HUD / Countdown) */
+.hud-overlay { position: absolute; left: 0; top: 0; right: 0; bottom: 0; align-items: center; display: none; }
+.hud-overlay--visible { display: flex; }
+.hud-overlay--top { padding-top: 80px; }
+.hud-overlay--centre { justify-content: center; }
+.hq-prompt { border-color: var(--color-accent); border-width: 2px; padding: 14px var(--space-6); align-items: center; }
+.hq-prompt > * { margin-bottom: 6px; }
+.hq-prompt__title { font-size: var(--font-size-20); -unity-font-style: bold; }
+.countdown { padding: 20px 40px; align-items: center; }
+.countdown__label { font-size: var(--font-size-16); }
+.countdown__value { font-size: 72px; }
+.command-card--building { width: 400px; }
+
+/* Exact Figma metrics for HUD panels (UI Toolkit's default label and button padding would add height). */
+.panel__title { height: 33px; padding: 0 var(--space-3); margin: 0; -unity-text-align: middle-left; }
+.selection-type { height: 38px; padding: 0 var(--space-2); }
+.selection-type > Label, .selection-panel__health > Label, .production Label, .squad > Label { padding: 0; margin-top: 0; margin-bottom: 0; }
+.selection-panel__health { height: 15px; }
+.command-card .text--secondary { padding: 0; margin: 0; }

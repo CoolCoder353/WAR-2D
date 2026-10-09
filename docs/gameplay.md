@@ -41,11 +41,14 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | `S` | **Stop**: drop the order and stand (still fighting enemies in range) |
 | `H` | **Hold**: stand still, never pushed aside, fighting enemies in range |
 | `Ctrl` + `1`–`0` | Assign the selection to squad 1–10 (squads are kept by the server) |
-| `1`–`0` | Select that squad (a right-click then orders the whole squad at once) |
-| Building button (HUD) | Pick a building; a preview follows the cursor |
+| `1`–`0`, or a squad on the squad bar | Select that squad (a right-click then orders the whole squad at once). The squad bar shows each squad's live unit count. |
+| Command card: Move, Attack-move | Arm the order: the next left- or right-click sends it (the armed button is highlighted) |
+| Command card: Stop, Hold | Same as `S` and `H` |
+| Selection panel: a unit type | Keep only that type selected |
+| Command card: Miner, Spawner | Pick a building (greyed out until you can afford it); a preview follows the cursor. Right-click cancels. |
 | `R` (while placing) | Rotate the building preview 90° |
-| Left-click (while placing) | Place the building. The preview is grey if valid and red if not. |
-| Left-click on your Small Unit Spawner | Queue one Tank (max 100 queued) |
+| Left-click (while placing) | Place the building. The preview is grey if valid and red if not. During HQ placement the HQ preview appears on its own. |
+| Left-click on your Small Unit Spawner | Select it: the command card shows its production queue, where `+` queues one Tank and `−` removes one (max 100 queued; nothing is refunded, as the cost is charged at spawn) |
 | `` ` `` (backquote) | Toggle the developer console |
 
 Camera settings (speed, zoom step and range, shift multiplier) are in `Assets/Character_Settings.asset`.

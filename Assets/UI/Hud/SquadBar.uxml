@@ -1,0 +1,3 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="squad-bar" class="squad-bar" picking-mode="Ignore" />
+</ui:UXML>

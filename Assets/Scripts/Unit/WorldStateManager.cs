@@ -194,9 +194,13 @@ public partial class WorldStateManager : NetworkBehaviour
         if (Instance == this) Instance = null;
     }
 
-    /// <summary>Runs on the settled world at each tick boundary: death explosions, filtered by fog.</summary>
+    /// <summary>Runs on the settled world at each tick boundary: death explosions (filtered by fog) and squad counts.</summary>
     [Server]
-    private void OnSettled(SimData data, int tick, int count) => FlushDeathEvents(data);
+    private void OnSettled(SimData data, int tick, int count)
+    {
+        FlushDeathEvents(data);
+        SendSquadCounts(data, tick, count);
+    }
 
     /// <summary>Every live building, for the replication layer (main thread, on the settled world).</summary>
     [Server]
@@ -475,55 +479,44 @@ public partial class WorldStateManager : NetworkBehaviour
         player.TargetReceiveCanBuildBuildingResponse(sender, CheckPlacement(type, position, rotation, player) == PlacementResult.Ok);
     }
 
-    /// <summary>
-    /// Handles a click on a building (e.g., to spawn units).
-    /// </summary>
+    /// <summary>Queues one unit on the sender's spawner (the production queue's + button).</summary>
     [Command(requiresAuthority = false)]
     public void BuildingClicked(int buildingId, NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(BuildingClicked))) return;
-        ServerPlayer acting = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(sender.identity.netId));
-        if (acting == null || acting.state != PlayerState.Playing) return;
-        // Queuing units is only allowed while the game is actually being played.
-        if (GameCore.Instance.CurrentState != GameState.Playing) return;
+        ChangeQueue(buildingId, sender, enqueue: true);
+    }
 
-        if (Buildings.TryGetValue(buildingId, out Entity building))
-        {
-            BuildingData buildingData = EntityManager.GetComponentData<BuildingData>(building);
-            ClientPlayer player = sender.identity.GetComponent<ClientPlayer>();
+    /// <summary>Removes one queued unit from the sender's spawner (the production queue's − button). Refunds nothing: cost is charged at spawn.</summary>
+    [Command(requiresAuthority = false)]
+    public void CmdDequeueUnit(int buildingId, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(CmdDequeueUnit))) return;
+        ChangeQueue(buildingId, sender, enqueue: false);
+    }
 
-            if (buildingData.ownerId != BuildingData.UIntToInt(player.netId))
-            {
-                Debug.LogWarning($"Player {player.nickname} tried to click on building {buildingId} that they do not own.");
-                return;
-            }
+    /// <summary>Adds or removes one unit on a spawner the sender owns, while Playing, and tells the owner the new count.</summary>
+    [Server]
+    private void ChangeQueue(int buildingId, NetworkConnectionToClient sender, bool enqueue)
+    {
+        if (!TryActingOwner(sender, out int owner)) return;
+        if (!Buildings.TryGetValue(buildingId, out Entity building) || !EntityManager.Exists(building)) return;
+        if (EntityManager.GetComponentData<BuildingData>(building).ownerId != owner || !EntityManager.HasComponent<SpawnerData>(building)) return;
 
-            if (EntityManager.HasComponent<SpawnerData>(building))
-            {
+        SpawnerData spawner = EntityManager.GetComponentData<SpawnerData>(building);
+        bool changed = enqueue ? SpawnerRules.TryEnqueue(ref spawner.count) : SpawnerRules.TryDequeue(ref spawner.count);
+        if (!changed) return;
+        EntityManager.SetComponentData(building, spawner);
+        SendSpawnerQueue(owner, buildingId, spawner.count);
+    }
 
-                SpawnerData spawnerData = EntityManager.GetComponentData<SpawnerData>(building);
-                if (spawnerData.count < SpawnerRules.MaxQueue)
-                {
-                    spawnerData.count += 1;
-
-                    EntityCommandBuffer commandBuffer = new EntityCommandBuffer(Allocator.Temp);
-                    commandBuffer.SetComponent(building, spawnerData);
-                    commandBuffer.Playback(EntityManager);
-                    commandBuffer.Dispose();
-                }
-                else
-                {
-                    Debug.LogWarning($"Player {player.nickname} tried to queue more than {SpawnerRules.MaxQueue} units on building {buildingId}.");
-                }
-
-                Debug.Log($"Player {player.nickname} clicked on building {buildingId}. Spawner count is now {spawnerData.count}");
-
-            }
-        }
-        else
-        {
-            Debug.LogWarning($"Building with id {buildingId} not found when trying to click on building.");
-        }
+    /// <summary>Tells a spawner's owner (only) its queue count.</summary>
+    [Server]
+    public void SendSpawnerQueue(int ownerId, int buildingId, int count)
+    {
+        NetworkConnectionToClient connection = GameCore.Instance?.GetServerPlayerById(ownerId)?.connection;
+        if (connection?.identity == null || !connection.identity.TryGetComponent(out ClientPlayer player)) return;
+        player.TargetSpawnerQueue(connection, buildingId, count);
     }
 
     /// <summary>

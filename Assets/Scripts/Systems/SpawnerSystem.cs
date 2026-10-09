@@ -10,6 +10,7 @@ using WAR2D.Sim;
 /// <c>UpfrontCost</c>, on the nearest free walkable tile outside the footprint. The unit itself is
 /// created by the simulation at its next boundary (<see cref="SimCommandKind.SpawnUnit"/>); if the
 /// simulation refuses it (the owner is at the unit cap), the cost is refunded and the queue kept.
+/// Each count change is sent to the owner only (<see cref="WorldStateManager.SendSpawnerQueue"/>).
 /// Server only, Playing state only.
 /// </summary>
 public partial struct SpawnerSystem : ISystem
@@ -24,7 +25,7 @@ public partial struct SpawnerSystem : ISystem
         float dt = SystemAPI.Time.DeltaTime;
         EntityManager entityManager = state.EntityManager;
 
-        foreach (var (spawner, entity) in SystemAPI.Query<RefRW<SpawnerData>>().WithEntityAccess())
+        foreach (var (spawner, building, entity) in SystemAPI.Query<RefRW<SpawnerData>, RefRO<BuildingData>>().WithEntityAccess())
         {
             float spawnRate = spawner.ValueRO.spawnRate;
             // Clamp the timer to one unit's worth so a spawner that sat idle does not burst out its whole queue.
@@ -43,6 +44,8 @@ public partial struct SpawnerSystem : ISystem
 
             spawner.ValueRW.count--;
             spawner.ValueRW.timeSinceLastSpawn = 0f;
+            int buildingId = building.ValueRO.id;
+            WorldStateManager.Instance.SendSpawnerQueue(ownerId, buildingId, spawner.ValueRO.count);
             Entity source = entity;
             queue.Enqueue(new SimCommand
             {
@@ -58,6 +61,7 @@ public partial struct SpawnerSystem : ISystem
                     SpawnerData data = entityManager.GetComponentData<SpawnerData>(source);
                     data.count++;
                     entityManager.SetComponentData(source, data);
+                    WorldStateManager.Instance?.SendSpawnerQueue(ownerId, buildingId, data.count);
                 },
             });
         }

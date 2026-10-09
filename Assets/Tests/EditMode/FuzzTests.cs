@@ -105,4 +105,18 @@ public class FuzzTests
             Assert.DoesNotThrow(() => diplomacy.SetShareVision(slotFrom, slotTo, on));
         }
     }
+
+    [Test]
+    public void SpawnerQueue_NeverLeavesItsRange()
+    {
+        var rng = new System.Random(31);
+        for (int i = 0; i < Iterations; i++)
+        {
+            int count = rng.Next(int.MinValue, int.MaxValue);
+            int before = count;
+            bool changed = rng.Next(2) == 0 ? SpawnerRules.TryEnqueue(ref count) : SpawnerRules.TryDequeue(ref count);
+            if (!changed) Assert.That(count, Is.EqualTo(before), "a refused change leaves the count alone");
+            else Assert.That(count, Is.InRange(0, SpawnerRules.MaxQueue));
+        }
+    }
 }

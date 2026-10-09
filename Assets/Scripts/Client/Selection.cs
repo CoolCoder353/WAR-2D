@@ -21,11 +21,29 @@ namespace WAR2D.Client
         /// <summary>Selected unit ids.</summary>
         public IReadOnlyCollection<int> Selected => selected;
 
+        /// <summary>The selected own building's id (0 when none). Selecting units clears it, and the reverse.</summary>
+        public int SelectedBuilding { get; private set; }
+
+        /// <summary>The selected squad when the selection is exactly that squad, else -1.</summary>
+        public int ActiveSquad => selectedSquad >= 0 && IsExactly(squads[selectedSquad]) ? selectedSquad : -1;
+
+        /// <summary>Selects one own building (dropping the unit selection).</summary>
+        public void SelectBuilding(int buildingId)
+        {
+            selected.Clear();
+            selectedSquad = -1;
+            SelectedBuilding = buildingId;
+        }
+
+        /// <summary>Clears the building selection (for example when the building is gone).</summary>
+        public void ClearBuilding() => SelectedBuilding = 0;
+
         /// <summary>Selects the own units inside the box; <paramref name="append"/> keeps the current selection.</summary>
         public void SelectBox(float2 a, float2 b, int ownerId, bool append)
         {
             if (!append) selected.Clear();
             selectedSquad = -1;
+            SelectedBuilding = 0;
             scratch.Clear();
             ClientWorld.Instance?.QueryBox(a, b, ownerId, scratch);
             foreach (int id in scratch) selected.Add(id);
@@ -36,7 +54,17 @@ namespace WAR2D.Client
         {
             selected.Clear();
             selectedSquad = -1;
+            SelectedBuilding = 0;
             foreach (int id in ids) selected.Add(id);
+        }
+
+        /// <summary>Keeps only the selected units of one type (the selection panel's type buttons).</summary>
+        public void FilterTo(UnitType type)
+        {
+            ClientWorld world = ClientWorld.Instance;
+            if (world == null) return;
+            selected.RemoveWhere(id => !world.TryGet(id, out ClientUnitView view) || view.Type != type);
+            selectedSquad = -1;
         }
 
         /// <summary>Assigns the selection to a squad, here and on the server.</summary>
@@ -57,6 +85,7 @@ namespace WAR2D.Client
         {
             if ((uint)squad >= squads.Length || squads[squad] == null) return;
             selected.Clear();
+            SelectedBuilding = 0;
             foreach (int id in squads[squad]) selected.Add(id);
             selectedSquad = squad;
         }

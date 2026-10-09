@@ -10,9 +10,8 @@ public class SpawnerClientManager : MonoBehaviour, IPointerClickHandler
 
     public void OnPointerClick(PointerEventData eventData)
     {
-        Debug.Log("Building clicked with ID: " + buildingData.id);
-
-        WorldStateManager.Instance.BuildingClicked(buildingData.id);
+        // Selecting the spawner shows its production queue on the command card.
+        UnitCommander.Instance?.SelectBuilding(buildingData);
     }
 
 

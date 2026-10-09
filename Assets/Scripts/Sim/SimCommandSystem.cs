@@ -237,7 +237,7 @@ namespace WAR2D.Sim
                         count = 0,
                         ownerId = buildingData.ownerId,
                         position = buildingData.position,
-                        unitType = UnitType.Tank,
+                        unitType = SpawnerRules.UnitFor(BuildingType.SmallUnitSpawner),
                         spawnRate = buildingConfig.SpawnRate
                     });
                     break;

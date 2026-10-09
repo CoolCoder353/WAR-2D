@@ -15,8 +15,11 @@ public class UnitCommander : NetworkBehaviour
     private int2 startcorner;
     private int2 endcorner;
     private bool selecting;
-    /// <summary>Set by the attack-move key: the next left or right click sends AttackMove.</summary>
-    private bool attackMoveArmed;
+    /// <summary>
+    /// An order waiting for its target: set by the attack-move key or the command card's Move and
+    /// Attack-move buttons; the next left or right click sends it. Null when nothing is armed.
+    /// </summary>
+    public OrderKind? ArmedOrder { get; private set; }
 
     private int2 lastSentCorner1 = new int2(int.MinValue, int.MinValue);
     private int2 lastSentCorner2 = new int2(int.MinValue, int.MinValue);
@@ -72,6 +75,36 @@ public class UnitCommander : NetworkBehaviour
         WAR2D.Client.ClientWorld.Instance?.Draw(Selection.Selected);
     }
 
+    /// <summary>
+    /// The command card and the order keys share these paths. Move and AttackMove arm the order for the
+    /// next click; Stop and Hold apply to the selection at once.
+    /// </summary>
+    [Client]
+    public void Order(OrderKind kind)
+    {
+        if (kind == OrderKind.Move || kind == OrderKind.AttackMove) Arm(kind);
+        else
+        {
+            ArmedOrder = null;
+            Selection.Order(kind, false, default);
+        }
+    }
+
+    /// <summary>Arms Move or AttackMove for the next click (only with units selected).</summary>
+    private void Arm(OrderKind kind)
+    {
+        if (Selection.Selected.Count > 0) ArmedOrder = kind;
+    }
+
+    /// <summary>Selects one of the local player's buildings (others are ignored).</summary>
+    [Client]
+    public void SelectBuilding(BuildingData building)
+    {
+        if (localPlayer == null || building.ownerId != BuildingData.UIntToInt(localPlayer.netId)) return;
+        ArmedOrder = null;
+        Selection.SelectBuilding(building.id);
+    }
+
     public static Vector3 GetMouseWorldPosition()
     {
         return GameInput.PointerWorld();
@@ -88,19 +121,24 @@ public class UnitCommander : NetworkBehaviour
         }
 
 
-        if (GameInput.AttackMove.WasPressedThisFrame()) attackMoveArmed = true;
-        if (GameInput.Stop.WasPressedThisFrame()) Selection.Order(OrderKind.Stop, false, default);
-        if (GameInput.Hold.WasPressedThisFrame()) Selection.Order(OrderKind.Hold, false, default);
+        if (GameInput.AttackMove.WasPressedThisFrame()) Arm(OrderKind.AttackMove);
+        if (GameInput.Stop.WasPressedThisFrame()) Order(OrderKind.Stop);
+        if (GameInput.Hold.WasPressedThisFrame()) Order(OrderKind.Hold);
 
-        // With attack-move armed, the next left or right click sends it instead of selecting or moving.
-        bool clickUsed = false;
-        if (attackMoveArmed && (GameInput.Select.WasPressedThisFrame() || GameInput.Command.WasPressedThisFrame()))
+        // While placing a building, clicks belong to the placement.
+        BuildingPlacement placement = BuildingPlacement.Instance;
+        bool clickUsed = placement != null && (placement.IsPlacing || placement.ActiveFrame == Time.frameCount);
+        if (clickUsed) ArmedOrder = null;
+
+        // With an order armed, the next left or right click sends it instead of selecting or moving.
+        if (!clickUsed && ArmedOrder.HasValue && (GameInput.Select.WasPressedThisFrame() || GameInput.Command.WasPressedThisFrame()))
         {
-            attackMoveArmed = false;
+            OrderKind kind = ArmedOrder.Value;
+            ArmedOrder = null;
             if (!GameInput.PointerOverUI)
             {
                 Vector3 target = GetMouseWorldPosition();
-                Selection.Order(OrderKind.AttackMove, GameInput.QueueModifier.IsPressed(), new int2((int)target.x, (int)target.y));
+                Selection.Order(kind, GameInput.QueueModifier.IsPressed(), new int2((int)target.x, (int)target.y));
                 clickUsed = true;
             }
         }
@@ -251,6 +289,7 @@ public class UnitCommander : NetworkBehaviour
 
     private void OnBuildingRemoved(int id)
     {
+        if (Selection.SelectedBuilding == id) Selection.ClearBuilding();
         if (!buildingGameObjects.TryGetValue(id, out GameObject go)) return;
         Destroy(go);
         buildingGameObjects.Remove(id);

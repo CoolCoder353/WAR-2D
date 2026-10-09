@@ -39,4 +39,16 @@ public class SquadsTests
     [TestCase(9, true)]
     [TestCase(10, false)]
     public void SquadIndexIsValidated(int squad, bool valid) => Assert.AreEqual(valid, CommandValidator.IsSquadIndexValid(squad));
+
+    [Test]
+    public void PruneToOwnedCountsOnlyTheOwnersLiveUnits()
+    {
+        var squads = new Squads();
+        squads.Assign(1, 2, new[] { 10, 11, 12 });
+        int count = squads.PruneToOwned(1, 2, id => id != 11); // 11 is dead or someone else's
+        Assert.That(count, Is.EqualTo(2));
+        CollectionAssert.AreEqual(new[] { 10, 12 }, squads.Members(1, 2));
+        Assert.That(squads.PruneToOwned(2, 2, id => true), Is.EqualTo(0), "another player has no such squad");
+        CollectionAssert.Contains(squads.Owners, 1);
+    }
 }

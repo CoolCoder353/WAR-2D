@@ -1,0 +1,51 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:war="WAR2D.UI">
+    <ui:VisualElement name="command-card" class="panel command-card">
+        <ui:Label name="command-title" text="Commands" class="panel__title" />
+        <ui:VisualElement class="command-card__content">
+            <ui:VisualElement name="orders" class="command-card__row">
+                <ui:Button name="cmd-move" class="command-button" tooltip="Move">
+                    <war:CommandIcon icon="Move" />
+                    <ui:Label text="RMB" class="command-button__key" />
+                </ui:Button>
+                <ui:Button name="cmd-attack-move" class="command-button" tooltip="Attack-move">
+                    <war:CommandIcon icon="AttackMove" />
+                    <ui:Label text="A" class="command-button__key" />
+                </ui:Button>
+                <ui:Button name="cmd-stop" class="command-button" tooltip="Stop">
+                    <war:CommandIcon icon="Stop" />
+                    <ui:Label text="S" class="command-button__key" />
+                </ui:Button>
+                <ui:Button name="cmd-hold" class="command-button" tooltip="Hold">
+                    <war:CommandIcon icon="Hold" />
+                    <ui:Label text="H" class="command-button__key" />
+                </ui:Button>
+            </ui:VisualElement>
+            <ui:VisualElement name="divider" class="command-card__divider" />
+            <ui:VisualElement name="builds" class="command-card__row">
+                <ui:Button name="build-miner" class="command-button" tooltip="Miner">
+                    <war:CommandIcon icon="Miner" />
+                    <ui:Label text=" " class="command-button__key" />
+                </ui:Button>
+                <ui:Button name="build-spawner" class="command-button" tooltip="Spawner">
+                    <war:CommandIcon icon="Spawner" />
+                    <ui:Label text=" " class="command-button__key" />
+                </ui:Button>
+                <ui:Button name="build-wall" class="command-button" tooltip="Wall (v0.7)" enabled="false">
+                    <war:CommandIcon icon="Wall" />
+                    <ui:Label text=" " class="command-button__key" />
+                </ui:Button>
+            </ui:VisualElement>
+            <ui:VisualElement name="production" class="production">
+                <ui:Label text="Production queue" class="text--secondary" />
+                <ui:VisualElement class="production__row">
+                    <ui:VisualElement class="icon-slot" />
+                    <ui:Label name="production-unit" text="Tank" class="text" />
+                    <ui:Button name="production-minus" text="−" class="button production__button" />
+                    <ui:Label name="production-count" text="0" class="text text--readout production__count" />
+                    <ui:Button name="production-plus" text="+" class="button production__button" />
+                </ui:VisualElement>
+                <ui:Label name="production-help" text="1 per second · cost charged at spawn · max 100" class="text--secondary" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

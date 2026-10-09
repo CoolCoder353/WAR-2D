@@ -52,6 +52,7 @@ public partial class WorldStateManager
         List<int> ids = Accumulate(owner, token, (byte)(SquadKindBase + squad), idChunk, final);
         if (ids == null) return;
         Squads.Assign(owner, squad, ids);
+        squadCountsDirty = true;
     }
 
     /// <summary>Gives a squad's living members an order (<see cref="OrderKind"/>), as <see cref="CmdOrderChunk"/>.</summary>
@@ -66,6 +67,36 @@ public partial class WorldStateManager
         var ids = new int[members.Count];
         for (int i = 0; i < ids.Length; i++) ids[i] = members[i];
         Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = (OrderKind)kind, Queue = queue, OwnerId = owner, Tile = goal, Ids = ids });
+    }
+
+    private const int SquadCountTicks = 40; // 2 s at 20 Hz
+    private bool squadCountsDirty;
+    private readonly List<int> squadOwners = new List<int>();
+
+    /// <summary>
+    /// On the settled world, after an assignment or every 2 s: prunes each player's squads to their own
+    /// live units and sends each player (only) their counts.
+    /// </summary>
+    [Server]
+    private void SendSquadCounts(WAR2D.Sim.SimData data, int tick, int unitCount)
+    {
+        if (!squadCountsDirty && tick % SquadCountTicks != 0) return;
+        squadCountsDirty = false;
+        squadOwners.Clear();
+        squadOwners.AddRange(Squads.Owners);
+        foreach (int owner in squadOwners)
+        {
+            NetworkConnectionToClient connection = GameCore.Instance?.GetServerPlayerById(owner)?.connection;
+            if (connection?.identity == null || !connection.identity.TryGetComponent(out ClientPlayer player)) continue;
+            var counts = new int[Squads.Count];
+            for (int squad = 0; squad < counts.Length; squad++)
+                counts[squad] = Squads.PruneToOwned(owner, squad, id =>
+                {
+                    int slot = data.SlotOf(id, unitCount);
+                    return slot >= 0 && data.OwnerId[slot] == owner && data.Health[slot] > 0f;
+                });
+            player.TargetSquadCounts(connection, counts);
+        }
     }
 
     /// <summary>The sender's owner id, when they may give orders now (Playing, still in the match).</summary>

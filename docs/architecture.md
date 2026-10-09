@@ -14,7 +14,7 @@ flowchart LR
     subgraph Client
         UC[UnitCommander<br/>input, selection]
         CW[ClientWorld<br/>decode, predict, draw]
-        BBM[BuildingButtonManager<br/>placement UI]
+        BBM[BuildingPlacement<br/>placement preview]
         CP_C[ClientPlayer<br/>lobby state]
     end
     subgraph Server
@@ -59,7 +59,7 @@ Game code moved into its own assembly in v0.2, which is what lets the test assem
 | Scene | Contains | Notes |
 |---|---|---|
 | `Assets/Main_Menu.unity` | `GameManager` (Mirror `NetworkManager` + `KcpTransport`, port 7778), `GameCore`, `LobbySystem`, `MainMenuUI`, TIM Console + `Custom_Commands` | Offline scene. `GameManager` and `GameCore` are `DontDestroyOnLoad` singletons. |
-| `Assets/Maps/Map_2.unity` | `WorldStateManager`, `UnitCommander` (adds `ClientWorld` on clients), `BuildingButtonManager`, `HQPlacementUI`, the `HUD` (`UIDocument` + `HudController`), orthographic camera with `Character_Controler`, walkable and unwalkable tilemaps | Loaded by `GameCore.Cmd_StartGame` → `ServerChangeScene`, using the scene name from `GameConfig.xml` (`Match.Scene`, currently `Map_2`). With `Match/Map/Size > 0` (the default, 1024) the map is generated and the scene's tilemaps are hidden; with 0 the tilemaps are the map (the PlayMode tests use this). |
+| `Assets/Maps/Map_2.unity` | `WorldStateManager`, `UnitCommander` (adds `ClientWorld` on clients), `BuildingPlacement`, the `HUD` (`UIDocument` + `HudController`), orthographic camera with `Character_Controler`, walkable and unwalkable tilemaps | Loaded by `GameCore.Cmd_StartGame` → `ServerChangeScene`, using the scene name from `GameConfig.xml` (`Match.Scene`, currently `Map_2`). With `Match/Map/Size > 0` (the default, 1024) the map is generated and the scene's tilemaps are hidden; with 0 the tilemaps are the map (the PlayMode tests use this). |
 | `Assets/Player.prefab` | `ClientPlayer` | Mirror player prefab, auto-created for each connection and `DontDestroyOnLoad`. |
 
 `GameManager.LeaveLobby()` stops the host or client, destroys the `GameCore` and `WorldStateManager` objects, and reloads `Main_Menu`.
@@ -95,7 +95,7 @@ Game code moved into its own assembly in v0.2, which is what lets the test assem
 ### `ClientPlayer` (`Scripts/ClientPlayer.cs`): `NetworkBehaviour` on the player prefab
 - `[SyncVar] nickname`, `hasPlacedHQ`, `isServerOwner` (drives the lobby Start button, including when ownership transfers).
 - `[SyncVar] lobbyTeam`: the team the player was put on in the lobby (`TeamRules.NoTeam` = solo). Shown and cycled by the lobby's team label (server owner only).
-- It receives these TargetRpcs: `TargetUpdateResources` (resources plus last second's income and upkeep, kept by `ServerPlayer.AddIncome`/`AddUpkeep` and rolled once a second by `GameCore`), `TargetReceiveCanBuildBuildingResponse`, `TargetPlayExplosions`, `RpcOnPlayerWon`, `RpcOnPlayerLost` and `RpcOnMatchDraw` (the Lose screen relabelled "Draw"). The end screens load `Resources/UI/WinScreenUI` / `LoseScreenUI` and disable the HUD canvas.
+- It receives these TargetRpcs: `TargetUpdateResources` (resources plus last second's income and upkeep, kept by `ServerPlayer.AddIncome`/`AddUpkeep` and rolled once a second by `GameCore`), `TargetReceiveCanBuildBuildingResponse`, `TargetPlayExplosions`, `RpcOnPlayerWon`, `RpcOnPlayerLost` and `RpcOnMatchDraw` (the Lose screen relabelled "Draw"). The end screens load `Resources/UI/WinScreenUI` / `LoseScreenUI` and hide the HUD.
 - `CmdSetNickname` is the one authority-checked command here; it goes through `CommandGate` and `CommandValidator.TrySanitizeNickname`.
 
 ### `WorldStateManager` (`Scripts/Unit/WorldStateManager.cs`): `NetworkBehaviour`, the world gateway
@@ -113,7 +113,7 @@ Game code moved into its own assembly in v0.2, which is what lets the test assem
 - Generated maps reach clients as three SyncVars on `WorldStateManager`: `MapSize`, `MapSeed`, `MapHash`. A client regenerates the map, disconnects on a hash mismatch (`[Map] hash mismatch`), hides the tilemap renderers and draws the map with `MapView`: one point-filtered texture, one texel per tile, on a quad at z = 1. A 1024² map generates in about 170 ms.
 
 ### `UnitCommander` (`Scripts/Client/UnitCommander.cs`): client presentation and input
-- Owns the local `Selection` (`Client/Selection.cs`): left drag selects every own unit in the box (no limit; Shift adds), right click orders the selection, Ctrl+1–0 assigns a squad and 1–0 selects one. Orders go out as chunked id lists, or as one `CmdOrderSquad` when the selection is exactly a squad.
+- Owns the local `Selection` (`Client/Selection.cs`): left drag selects every own unit in the box (no limit; Shift adds), right click orders the selection, Ctrl+1–0 assigns a squad and 1–0 selects one; clicking an own spawner selects it (`SelectBuilding`). Move and Attack-move can be armed (`ArmedOrder`) by the `A` key or the command card, and the next click sends them. Orders go out as chunked id lists, or as one `CmdOrderSquad` when the selection is exactly a squad.
 - Sends its camera rectangle (padded by `visualAdditionalRange`, clamped to the map) through `UpdateClientView`, only when it changes and at most every 0.1 s.
 - Adds `ClientWorld` on clients and calls `ClientWorld.Draw(selection)` from `LateUpdate`.
 - Buildings: creates a GameObject per building `ClientBuildings` reports (dimmed while a ghost: out of sight, shown as last seen) (sprite loaded by enum name), with `BuildingDataClient` for health and `SpawnerClientManager` on Small Unit Spawners for click-to-spawn.
@@ -125,9 +125,9 @@ Game code moved into its own assembly in v0.2, which is what lets the test assem
 - `Attack` events become tracers for attackers on screen (≤ 200 a frame).
 - `TryGet`, `IsKnownId` and `QueryBox` serve selection.
 
-### `BuildingButtonManager` (`Scripts/Building/Building Spawning/BuildingButtonManager.cs`)
-- Maps HUD buttons to `BuildingType`s. While placing, it asks the server whether the spot is valid (change-gated and throttled `CanBuildBuildingCommand` → TargetRpc → preview colour) and places with `TryAddBuilding`.
-- `HQPlacementUI` shows the HQ prompt and progress during *PlacingHQ*, and renders the server-owned countdown during *Countdown* from `GameCore.CountdownEndTime`.
+### `BuildingPlacement` (`Scripts/Building/Building Spawning/BuildingPlacement.cs`)
+- Started by the command card's build buttons (`BeginPlacement`), and on its own with the HQ during *PlacingHQ* until `hasPlacedHQ`. While placing, it asks the server whether the spot is valid (change-gated and throttled `CanBuildBuildingCommand` → TargetRpc → preview colour), places with `TryAddBuilding` on left-click and cancels on right-click. `UnitCommander` leaves that frame's clicks to it.
+- The HQ prompt, progress and the server-owned countdown (from `GameCore.CountdownEndTime`) are HUD overlays (`HudOverlayController`).
 - Lobby UI: `LobbySystem` builds one row per connected player, sends nickname edits on `onEndEdit`, and shows/hides the Start button from `ClientPlayer.isServerOwner`.
 
 ## ECS data model
@@ -200,7 +200,8 @@ Every stage declares write access to `Unit`, which chains their jobs without a s
 | `CmdOrderSquad(squad, goal)` | `WorldStateManager` | Order a squad's living members | 10, 5 | squad 0..9; goal inside the map; dead members pruned |
 | `TryAddBuilding(pos, type, rot)` | `WorldStateManager` | Validate, charge and queue a building | 10, 5 | `PlacementRules`; cost charged |
 | `CanBuildBuildingCommand(pos, type, rot)` | `WorldStateManager` | Placement preview validity | 20, 15 | throttled client-side |
-| `BuildingClicked(id)` | `WorldStateManager` | Queue a unit at an owned spawner | 20, 10 | *Playing* only; ownership |
+| `BuildingClicked(id)` | `WorldStateManager` | Queue a unit at an owned spawner (production +) | 20, 10 | *Playing* only; ownership; queue below 100 |
+| `CmdDequeueUnit(id)` | `WorldStateManager` | Remove a queued unit (production −; no refund, cost is charged at spawn) | 20, 10 | *Playing* only; ownership; queue above 0 |
 
 All are `requiresAuthority = false` and take `NetworkConnectionToClient sender = null`.
 
@@ -217,6 +218,8 @@ All are `requiresAuthority = false` and take `NetworkConnectionToClient sender =
 | SyncDictionary | `GameCore.Teams` | Team per owner |
 | TargetRpc | `TargetUpdateResources` | Private resources, sent only when changed (≤ 10 Hz) |
 | TargetRpc | `TargetReceiveCanBuildBuildingResponse` | Placement preview replies |
+| TargetRpc | `ClientPlayer.TargetSpawnerQueue` | One of the receiver's spawners changed its queue count |
+| TargetRpc | `ClientPlayer.TargetSquadCounts` | The receiver's own live units per squad (after an assignment, and every 2 s) |
 | TargetRpc | `TargetPlayExplosions` | Death explosions inside that player's view (≤ 256 per message) |
 | TargetRpc | `RpcOnPlayerWon`, `RpcOnPlayerLost`, `RpcOnMatchDraw` | End-of-game screens |
 | ClientRpc | `RPC_RemoveClientLobbyUI`, `RpcUpdateHQPlacementProgress` | Lobby cleanup, progress |
@@ -277,7 +280,7 @@ Every path to death records a position: units through the tick (the lifecycle qu
 
 ```mermaid
 sequenceDiagram
-    participant B as BuildingButtonManager
+    participant B as BuildingPlacement
     participant W as WorldStateManager (server)
     participant G as GameCore
     B->>W: CanBuildBuildingCommand(pos, type, rot) (throttled)
@@ -359,6 +362,8 @@ v0.6 moves the HUD to **UI Toolkit**, built from the approved Figma design (see 
 - **Tokens.** `UI/Theme.uss` holds the Figma variables as USS custom properties (`--color-*`, `--color-player-1..8`, `--space-*`, `--font-size-*`, `--radius-*`) for the standard palette on `:root`, overridden by `.palette-colourblind` and `.palette-high-contrast`, plus the shared classes (`.panel`, `.button*`, `.swatch`, `.player-N`). Change colours in Figma first, then mirror them here.
 - **Panel.** `UI/PanelSettings.asset` uses `UI/RuntimeTheme.tss` (default theme + `Theme.uss`) and scales with screen size from a 1920×1080 reference (no player UI-scale setting).
 - **Layout.** UXML per screen part (`UI/Hud/Hud.uxml` instances `UI/Hud/TopBar.uxml`). Elements are found by `name`.
+- **Sections.** `TopBarController` (resources, players), `SelectionPanelController` (count, squad, per-type buttons that narrow the selection, combined health), `CommandCardController` (order buttons, build buttons, and a selected spawner's production queue), `SquadBarController` (squad counts), `HudOverlayController` (HQ prompt, countdown). Command icons are `CommandIcon`, a `Painter2D` element drawn from the Figma vectors. Order buttons call `UnitCommander.Order`, the same path as the keys.
+- **Private HUD data.** A spawner's queue count reaches only its owner (`ClientPlayer.TargetSpawnerQueue`, sent on every change) and so do squad counts (`TargetSquadCounts`, after an assignment and every 2 s, counted on the settled world from the owner's own live units, so a client can't learn about ids it put in a squad that aren't its own).
 - **Models and controllers.** A model (`Scripts/UI/Models/`, e.g. `HudModel`) pulls only data the client legitimately has (its own `ClientPlayer`, public SyncVars) and raises change events only when values change. A controller (`Scripts/UI/Controllers/`, e.g. `TopBarController`) binds a model to its elements and exposes button events. `HudController` (on the `HUD` object in `Map_2`) owns both and pulls resources each frame and players four times a second.
 
 ## Rendering and input

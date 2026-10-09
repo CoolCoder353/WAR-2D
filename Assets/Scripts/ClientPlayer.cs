@@ -92,6 +92,34 @@ public class ClientPlayer : NetworkBehaviour
         upkeepPerSecond = upkeep;
     }
 
+    private readonly System.Collections.Generic.Dictionary<int, int> spawnerQueues = new System.Collections.Generic.Dictionary<int, int>();
+
+    /// <summary>Units queued on one of the local player's spawners, as last told by the server (0 when unknown).</summary>
+    public int SpawnerQueue(int buildingId) => spawnerQueues.TryGetValue(buildingId, out int count) ? count : 0;
+
+    /// <summary>Raised when a spawner's queue count arrives: (building id, count).</summary>
+    public event System.Action<int, int> SpawnerQueueChanged;
+
+    /// <summary>The number of the local player's live units in each squad (0–9), as last told by the server.</summary>
+    public int[] SquadCounts { get; private set; } = new int[WAR2D.Sim.Squads.Count];
+
+    /// <summary>One of the owner's spawners changed its queue. Private: only the owner learns it.</summary>
+    [TargetRpc]
+    public void TargetSpawnerQueue(NetworkConnection target, int buildingId, int count)
+    {
+        if (count <= 0) spawnerQueues.Remove(buildingId);
+        else spawnerQueues[buildingId] = count;
+        SpawnerQueueChanged?.Invoke(buildingId, count);
+    }
+
+    /// <summary>The owner's live units per squad. Private: only the owner learns it.</summary>
+    [TargetRpc]
+    public void TargetSquadCounts(NetworkConnection target, int[] counts)
+    {
+        if (counts == null || counts.Length != WAR2D.Sim.Squads.Count) return;
+        SquadCounts = counts;
+    }
+
     /// <summary>Whom this player attacks; bit i is the owner at <c>GameCore.PlayerOrder[i]</c> (local player only).</summary>
     public ushort AttackMask { get; private set; }
 
@@ -135,6 +163,13 @@ public class ClientPlayer : NetworkBehaviour
         if (isLocalPlayer && lobbySystem != null) lobbySystem.SetStartButtonVisible(newValue);
     }
 
+    /// <summary>Hides the match HUD under an end screen, so it can't be used after the match.</summary>
+    private static void HideHud()
+    {
+        WAR2D.UI.HudController hud = FindAnyObjectByType<WAR2D.UI.HudController>();
+        if (hud != null) hud.gameObject.SetActive(false);
+    }
+
     /// <summary>Shown to every player when all HQs were destroyed at the same time.</summary>
     [TargetRpc]
     public void RpcOnMatchDraw(NetworkConnectionToClient target)
@@ -142,8 +177,7 @@ public class ClientPlayer : NetworkBehaviour
         if (gameOverDeclared) return;
         drawDeclared = true;
         GameObject prefab = Resources.Load<GameObject>("UI/LoseScreenUI");
-        Canvas hud = FindAnyObjectByType<Canvas>();
-        if (hud != null) hud.enabled = false;
+        HideHud();
         if (prefab != null)
         {
             GameObject screen = Instantiate(prefab);
@@ -224,7 +258,7 @@ public class ClientPlayer : NetworkBehaviour
 
 
         GameObject winScreenPrefab = Resources.Load<GameObject>("UI/WinScreenUI");
-        FindAnyObjectByType<Canvas>().enabled = false; // Disable the main game canvas to prevent interaction with it after losing
+        HideHud();
         if (winScreenPrefab != null)
         {
             Instantiate(winScreenPrefab);
@@ -252,7 +286,7 @@ public class ClientPlayer : NetworkBehaviour
 
         GameObject lossScreenPrefab = Resources.Load<GameObject>("UI/LoseScreenUI");
 
-        FindAnyObjectByType<Canvas>().enabled = false; // Disable the main game canvas to prevent interaction with it after losing
+        HideHud();
         if (lossScreenPrefab != null)
         {
             Instantiate(lossScreenPrefab);
