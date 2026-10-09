@@ -10,6 +10,20 @@ namespace Character
 
         private const float ReferenceSize = 5f;
 
+        /// <summary>Centres the camera on a world point, kept inside the map (the minimap's click).</summary>
+        public void CentreOn(Vector2 point)
+        {
+            Vector3 next = new Vector3(point.x, point.y, transform.position.z);
+            WorldStateManager world = WorldStateManager.Instance;
+            if (world != null && world.Map != null)
+            {
+                var (min, max) = world.MapBounds;
+                next.x = Mathf.Clamp(next.x, min.x, max.x + 1);
+                next.y = Mathf.Clamp(next.y, min.y, max.y + 1);
+            }
+            transform.position = next;
+        }
+
         private void Update()
         {
             if (playerCamera == null || settings == null) return;

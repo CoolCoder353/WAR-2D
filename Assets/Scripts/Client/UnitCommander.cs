@@ -90,6 +90,18 @@ public class UnitCommander : NetworkBehaviour
         }
     }
 
+    /// <summary>
+    /// Sends the selection to a point (the minimap's right-click): the armed order if there is one,
+    /// else Move. <paramref name="queue"/> queues it after the current order.
+    /// </summary>
+    [Client]
+    public void OrderAt(int2 goal, bool queue)
+    {
+        OrderKind kind = ArmedOrder ?? OrderKind.Move;
+        ArmedOrder = null;
+        Selection.Order(kind, queue, goal);
+    }
+
     /// <summary>Arms Move or AttackMove for the next click (only with units selected).</summary>
     private void Arm(OrderKind kind)
     {

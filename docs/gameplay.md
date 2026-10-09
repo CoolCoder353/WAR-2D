@@ -46,6 +46,8 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | Command card: Stop, Hold | Same as `S` and `H` |
 | Selection panel: a unit type | Keep only that type selected |
 | Command card: Miner, Spawner | Pick a building (greyed out until you can afford it); a preview follows the cursor. Right-click cancels. |
+| Minimap: left-click or drag | Move the camera there |
+| Minimap: right-click | Send the selection there (Move, or the armed Attack-move; `Shift` queues) |
 | `R` (while placing) | Rotate the building preview 90° |
 | Left-click (while placing) | Place the building. The preview is grey if valid and red if not. During HQ placement the HQ preview appears on its own. |
 | Left-click on your Small Unit Spawner | Select it: the command card shows its production queue, where `+` queues one Tank and `−` removes one (max 100 queued; nothing is refunded, as the cost is charged at spawn) |

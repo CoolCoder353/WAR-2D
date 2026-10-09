@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Unity.Entities;
 using WAR2D.Client;
+using WAR2D.Net.Replication;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Config;
@@ -233,5 +234,45 @@ public class HudTests
             if (em.GetComponentData<BuildingData>(e).id == buildingId) return em.GetComponentData<SpawnerData>(e).count;
         Assert.Fail("spawner not found");
         return -1;
+    }
+
+    [UnityTest, Timeout(90000)]
+    public IEnumerator MinimapClickMovesCamera()
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        yield return PlayModeMatch.PlaceHQ(null);
+        MinimapController minimap = Object.FindAnyObjectByType<HudController>().Minimap;
+        yield return PlayModeMatch.WaitUntil(() => minimap.Texture != null, 10f);
+        yield return null;
+
+        VisualElement image = HudRoot().Q("minimap-image");
+        Vector2 size = image.layout.size;
+        Assert.That(size.x, Is.GreaterThan(0f), "the minimap image is laid out");
+        var local = new Vector2(size.x * 0.25f, size.y * 0.75f); // lower-left quarter
+        minimap.Click(local, 0, false);
+        float2 expected = MinimapTexture.ToWorld(local, size, minimap.WorldSize);
+        Vector3 cam = Camera.main.transform.position;
+        Assert.That(math.distance(new float2(cam.x, cam.y), expected), Is.LessThan(1.5f), "the camera centres on the clicked point");
+    }
+
+    [UnityTest, Timeout(90000)]
+    public IEnumerator MinimapRightClickOrdersSelection()
+    {
+        BuildingData spawner = default;
+        yield return WithSpawner(config, s => spawner = s);
+        VisualElement root = HudRoot();
+        yield return ProduceUnits(root, spawner, 1);
+        MinimapController minimap = Object.FindAnyObjectByType<HudController>().Minimap;
+        yield return PlayModeMatch.WaitUntil(() => minimap.Texture != null, 10f);
+
+        Selection selection = UnitCommander.Instance.Selection;
+        selection.SelectIds(OwnUnits());
+        float2 start = Centre(selection);
+        Vector2 size = root.Q("minimap-image").layout.size;
+        // A point 12 tiles away on the map, as a minimap position.
+        (int2 min, int2 max) = WorldStateManager.Instance.MapBounds;
+        float2 goal = start.x < (min.x + max.x) / 2f ? start + new float2(12, 0) : start - new float2(12, 0);
+        minimap.Click(MinimapTexture.ToLocal(goal, size, minimap.WorldSize), 1, false);
+        yield return PlayModeMatch.WaitUntil(() => math.distance(Centre(selection), goal) < math.distance(start, goal) - 2f, 10f);
     }
 }

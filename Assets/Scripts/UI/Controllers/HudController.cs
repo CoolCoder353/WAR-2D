@@ -23,6 +23,7 @@ namespace WAR2D.UI
         private CommandCardController commandCard;
         private SquadBarController squadBar;
         private HudOverlayController overlay;
+        private MinimapController minimap;
         private float playerTimer, selectionTimer;
         private int placedHQs, players;
 
@@ -31,6 +32,9 @@ namespace WAR2D.UI
 
         /// <summary>The selection, command card and squad bar data.</summary>
         public SelectionModel Selection { get; } = new SelectionModel();
+
+        /// <summary>The minimap's controller.</summary>
+        public MinimapController Minimap => minimap;
 
         /// <summary>The top bar's controller (its buttons are wired by later HUD sections).</summary>
         public TopBarController TopBar => topBar;
@@ -53,6 +57,7 @@ namespace WAR2D.UI
             commandCard = new CommandCardController(root, Selection, Model, costs, config.GetBuilding(BuildingType.SmallUnitSpawner).SpawnRate);
             squadBar = new SquadBarController(root, Selection);
             overlay = new HudOverlayController(root);
+            minimap = new MinimapController(root);
 
             Selection.FilterRequested += OnFilter;
             commandCard.OrderClicked += OnOrder;
@@ -68,6 +73,8 @@ namespace WAR2D.UI
             selectionPanel?.Dispose();
             commandCard?.Dispose();
             squadBar?.Dispose();
+            minimap?.Dispose();
+            minimap = null;
             topBar = null;
             selectionPanel = null;
             commandCard = null;
@@ -77,6 +84,7 @@ namespace WAR2D.UI
         private void Update()
         {
             Model.PullResources();
+            minimap.Update(Time.unscaledDeltaTime);
 
             selectionTimer -= Time.unscaledDeltaTime;
             if (selectionTimer <= 0f)

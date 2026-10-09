@@ -182,6 +182,27 @@ namespace WAR2D.Client
             }
         }
 
+        /// <summary>Plots every known unit on the minimap in its owner's colour (the minimap drops units on cells not seen now).</summary>
+        public void PlotOn(MinimapTexture minimap)
+        {
+            NativeArray<int> known = store.Known;
+            NativeArray<float2> predicted = store.Predicted;
+            NativeArray<int> owners = store.OwnerArray;
+            int n = math.min(known.Length, predicted.Length);
+            int lastOwner = int.MinValue;
+            Color32 colour = default;
+            for (int i = 0; i < n; i++)
+            {
+                int owner = owners[known[i]];
+                if (owner != lastOwner)
+                {
+                    lastOwner = owner;
+                    colour = PlayerPalette.Of(GameCore.Instance != null ? GameCore.Instance.PlayerOrder.IndexOf(owner) : -1);
+                }
+                minimap.PlotUnit(predicted[i], colour);
+            }
+        }
+
         /// <summary>Predicted positions, parallel to the known list (refreshed every frame).</summary>
         public NativeArray<float2> Positions => store.Predicted;
 

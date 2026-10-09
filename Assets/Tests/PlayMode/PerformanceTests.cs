@@ -93,6 +93,45 @@ public class PerformanceTests
         Assert.That(p95, Is.LessThanOrEqualTo(25.0), $"tick main-thread p95 {p95:F2} ms (editor) is over 25 ms");
     }
 
+    [UnityTest, Performance, Timeout(180000)]
+    public IEnumerator MinimapRedrawAtTenThousandOwnUnitsIsUnderOneMillisecond()
+    {
+        config.Match.Map.Size = 1024; // the default map: a 512² fog grid
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        yield return PlayModeMatch.PlaceHQ(null);
+        WorldStateManager world = WorldStateManager.Instance;
+        const int units = 10000;
+        var centre = new int2(world.Map.Grid.Width / 2, world.Map.Grid.Height / 2);
+        int placed = 0;
+        for (int ring = 0; placed < units && ring < 120; ring++)
+        for (int i = 0; i < math.max(1, 8 * ring) && placed < units; i++)
+        {
+            int2 tile = Ring(centre, ring, i);
+            if (!world.Map.Grid.IsWalkable(tile)) continue;
+            world.DevSpawnUnit(PlayModeMatch.LocalOwner, (float2)tile + 0.5f, null);
+            placed++;
+        }
+        yield return PlayModeMatch.WaitUntil(() => WAR2D.Client.ClientWorld.Instance != null && WAR2D.Client.ClientWorld.Instance.KnownCount >= units * 9 / 10, 30f);
+        WAR2D.UI.MinimapController minimap = UnityEngine.Object.FindAnyObjectByType<WAR2D.UI.HudController>().Minimap;
+        yield return PlayModeMatch.WaitUntil(() => minimap.Texture != null, 10f);
+
+        var redraw = new SampleGroup("minimap.redraw", SampleUnit.Millisecond);
+        var samples = new List<double>();
+        var watch = new System.Diagnostics.Stopwatch();
+        for (int i = 0; i < 60; i++)
+        {
+            yield return null;
+            watch.Restart();
+            minimap.Redraw(WAR2D.Net.Replication.ClientFog.Current);
+            watch.Stop();
+            samples.Add(watch.Elapsed.TotalMilliseconds);
+            Measure.Custom(redraw, watch.Elapsed.TotalMilliseconds);
+        }
+        samples.Sort();
+        double median = samples[samples.Count / 2];
+        Assert.That(median, Is.LessThanOrEqualTo(1.0), $"minimap redraw median {median:F2} ms at {WAR2D.Client.ClientWorld.Instance.KnownCount} units");
+    }
+
     private static int2 Ring(int2 origin, int ring, int i)
     {
         if (ring == 0) return origin;
