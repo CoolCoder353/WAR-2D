@@ -56,4 +56,14 @@ public class LobbyModelTests
         Assert.IsTrue(model.LocalIsHost);
         Assert.AreEqual("Waiting for you and Rook to be ready", model.Status);
     }
+
+    [Test]
+    public void ClaimantIsThePlayerOnThatClearing()
+    {
+        LobbyModel model = Lobby(new LobbyPlayer(1, "Host", 0, TeamRules.NoTeam, false, true, 2), new LobbyPlayer(2, "Rook", 1, TeamRules.NoTeam, false, false));
+        Assert.IsTrue(model.TryClaimant(2, out LobbyPlayer host));
+        Assert.AreEqual(1, host.OwnerId);
+        Assert.IsFalse(model.TryClaimant(0, out _), "a free clearing");
+        Assert.IsFalse(model.TryClaimant(LobbyRules.NoStartSite, out _), "unclaimed players are on no clearing");
+    }
 }

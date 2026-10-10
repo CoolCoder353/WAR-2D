@@ -9,8 +9,8 @@ namespace WAR2D.UI
 {
     /// <summary>
     /// Binds the lobby (<c>Assets/UI/Menus/Lobby.uxml</c>): the players with their colour, team and ready
-    /// state, the joined player's colour and team pickers, the host's match settings (read-only for
-    /// everyone else), the map preview with spawn markers, seed and Reroll, and Leave / Ready / Start.
+    /// state, the local player's colour and team pickers, the host's match settings (read-only for
+    /// everyone else), the map preview with clickable start markers, seed and Reroll, and Leave / Ready / Start.
     /// Raises events only; <see cref="MenuController"/> sends the commands.
     /// </summary>
     public sealed class LobbyController : IDisposable
@@ -19,7 +19,7 @@ namespace WAR2D.UI
         private readonly MapPreview preview;
         private readonly LobbyConfig lobby;
         private readonly string hostAddress;
-        private readonly VisualElement rows, localPickers, colourPicker, teamSection, teamPicker;
+        private readonly VisualElement rows, colourPicker, teamSection, teamPicker;
         private readonly VisualElement modeOptions, sizeOptions, resourceOptions, diplomacySlot;
         private readonly VisualElement previewImage, markers;
         private readonly Label subtitle, playersTitle, settingsTitle, status;
@@ -31,6 +31,8 @@ namespace WAR2D.UI
         public event Action RerollClicked, StartClicked, LeaveClicked;
         /// <summary>The local player picked a colour.</summary>
         public event Action<int> ColourClicked;
+        /// <summary>The local player clicked a free HQ clearing's marker (its index in the map's sites).</summary>
+        public event Action<int> StartSiteClicked;
         /// <summary>The local player picked their own team (<see cref="TeamRules.NoTeam"/> = Solo).</summary>
         public event Action<int> TeamClicked;
         /// <summary>The host cycled a player's team: (owner, new team).</summary>
@@ -45,7 +47,6 @@ namespace WAR2D.UI
             this.lobby = lobby;
             this.hostAddress = hostAddress;
             rows = root.Q("player-rows");
-            localPickers = root.Q("local-pickers");
             colourPicker = root.Q("colour-picker");
             teamSection = root.Q("team-section");
             teamPicker = root.Q("team-picker");
@@ -153,8 +154,6 @@ namespace WAR2D.UI
 
         private void ShowPickers(bool host, bool teams, LobbyPlayer me)
         {
-            localPickers.EnableInClassList("hidden", host);
-            if (host) return;
             colourPicker.Clear();
             for (int c = 0; c < LobbyRules.Colours; c++)
             {
@@ -240,16 +239,37 @@ namespace WAR2D.UI
             ShowMarkers();
         }
 
-        /// <summary>Spawn markers: the first ones in the players' colours (join order), the rest grey.</summary>
+        /// <summary>
+        /// Start markers (Figma: Menu / Lobby – start picks): a claimed clearing in its player's colour (the
+        /// local player's ringed, with "You"), a free one grey and clickable to claim it.
+        /// </summary>
         private void ShowMarkers()
         {
             markers.Clear();
             IReadOnlyList<int2> spawns = preview.Spawns;
             for (int i = 0; i < spawns.Count; i++)
             {
-                var marker = new VisualElement { name = "spawn-" + i, pickingMode = PickingMode.Ignore };
+                int site = i;
+                bool claimed = model.TryClaimant(i, out LobbyPlayer claimant);
+                bool mine = claimed && claimant.OwnerId == model.LocalOwnerId;
+                var marker = new VisualElement { name = "spawn-" + i, pickingMode = claimed ? PickingMode.Ignore : PickingMode.Position };
                 marker.AddToClassList("spawn-marker");
-                if (i < model.Players.Count) marker.style.backgroundColor = (UnityEngine.Color)PlayerPalette.Of(model.Players[i].ColourIndex);
+                marker.EnableInClassList("spawn-marker--mine", mine);
+                marker.EnableInClassList("spawn-marker--free", !claimed);
+                if (claimed) marker.style.backgroundColor = (UnityEngine.Color)PlayerPalette.Of(claimant.ColourIndex);
+                else
+                {
+                    marker.RegisterCallback<ClickEvent>(_ => StartSiteClicked?.Invoke(site));
+                    var tip = new Label("Click to start here") { pickingMode = PickingMode.Ignore };
+                    tip.AddToClassList("spawn-marker__tooltip");
+                    marker.Add(tip);
+                }
+                if (mine)
+                {
+                    var you = new Label("You") { pickingMode = PickingMode.Ignore };
+                    you.AddToClassList("spawn-marker__you");
+                    marker.Add(you);
+                }
                 marker.style.left = Length.Percent(100f * spawns[i].x / MapPreview.Resolution);
                 marker.style.top = Length.Percent(100f * (1f - (float)spawns[i].y / MapPreview.Resolution));
                 markers.Add(marker);

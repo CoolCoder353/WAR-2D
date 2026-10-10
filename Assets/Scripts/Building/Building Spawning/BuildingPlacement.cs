@@ -39,6 +39,7 @@ public class BuildingPlacement : MonoBehaviour
     {
         if (Instance == this) Instance = null;
         if (localPlayer != null) localPlayer.onResponseFromCanBuildBuilding.RemoveListener(ResultFromCommand);
+        WAR2D.Client.ClearingRing.Hide();
     }
 
     [ClientCallback]
@@ -73,6 +74,20 @@ public class BuildingPlacement : MonoBehaviour
         currentRotation = 0f;
     }
 
+    /// <summary>While the HQ is still to be placed, rings the clearing it must go in (the player's lobby claim).</summary>
+    private void ShowOwnClearing(bool needHQ)
+    {
+        WorldStateManager wsm = WorldStateManager.Instance;
+        int2[] sites = wsm != null && wsm.Map != null ? wsm.Map.HqSites : null;
+        int site = localPlayer.startSite;
+        if (!needHQ || sites == null || site < 0 || site >= sites.Length)
+        {
+            WAR2D.Client.ClearingRing.Hide();
+            return;
+        }
+        WAR2D.Client.ClearingRing.Show((float2)sites[site] + 0.5f, WAR2D.World.MapGenerator.HqClearRadius, PlayerPalette.Of(localPlayer.colourIndex));
+    }
+
     [ClientCallback]
     private void Update()
     {
@@ -83,6 +98,7 @@ public class BuildingPlacement : MonoBehaviour
         bool needHQ = core.CurrentState == GameState.PlacingHQ && !localPlayer.hasPlacedHQ;
         if (needHQ && PlacingType != BuildingType.Base) BeginPlacement(BuildingType.Base);
         if (!needHQ && PlacingType == BuildingType.Base) Cancel();
+        ShowOwnClearing(needHQ);
         if (!IsPlacing) return;
         ActiveFrame = Time.frameCount;
 

@@ -13,9 +13,12 @@ namespace WAR2D.UI
         /// <summary>The lobby team choice (<see cref="TeamRules.NoTeam"/> = Solo).</summary>
         public readonly int Team;
         public readonly bool Ready, IsHost;
+        /// <summary>The HQ clearing claimed, or <see cref="LobbyRules.NoStartSite"/>.</summary>
+        public readonly int StartSite;
 
-        public LobbyPlayer(int ownerId, string nickname, int colourIndex, int team, bool ready, bool isHost)
+        public LobbyPlayer(int ownerId, string nickname, int colourIndex, int team, bool ready, bool isHost, int startSite = LobbyRules.NoStartSite)
         {
+            StartSite = startSite;
             OwnerId = ownerId;
             Nickname = nickname;
             ColourIndex = colourIndex;
@@ -24,9 +27,9 @@ namespace WAR2D.UI
             IsHost = isHost;
         }
 
-        public bool Equals(LobbyPlayer o) => OwnerId == o.OwnerId && Nickname == o.Nickname && ColourIndex == o.ColourIndex && Team == o.Team && Ready == o.Ready && IsHost == o.IsHost;
+        public bool Equals(LobbyPlayer o) => OwnerId == o.OwnerId && Nickname == o.Nickname && ColourIndex == o.ColourIndex && Team == o.Team && Ready == o.Ready && IsHost == o.IsHost && StartSite == o.StartSite;
         public override bool Equals(object obj) => obj is LobbyPlayer o && Equals(o);
-        public override int GetHashCode() => HashCode.Combine(OwnerId, Nickname, ColourIndex, Team, Ready, IsHost);
+        public override int GetHashCode() => HashCode.Combine(OwnerId, Nickname, ColourIndex, Team, Ready, IsHost, StartSite);
     }
 
     /// <summary>
@@ -106,6 +109,15 @@ namespace WAR2D.UI
             return false;
         }
 
+        /// <summary>The player who claimed this clearing, if anyone has.</summary>
+        public bool TryClaimant(int site, out LobbyPlayer claimant)
+        {
+            foreach (LobbyPlayer p in players)
+                if (p.StartSite == site && site != LobbyRules.NoStartSite) { claimant = p; return true; }
+            claimant = default;
+            return false;
+        }
+
         /// <summary>Reads the lobby from every player's public SyncVars and <c>GameCore.Settings</c>.</summary>
         public void Pull()
         {
@@ -115,7 +127,7 @@ namespace WAR2D.UI
             foreach (NetworkIdentity identity in NetworkClient.spawned.Values)
             {
                 if (identity == null || !identity.TryGetComponent(out ClientPlayer p)) continue;
-                scratch.Add(new LobbyPlayer((int)identity.netId, string.IsNullOrEmpty(p.nickname) ? "Player" : p.nickname, p.colourIndex, p.lobbyTeam, p.ready, p.isServerOwner));
+                scratch.Add(new LobbyPlayer((int)identity.netId, string.IsNullOrEmpty(p.nickname) ? "Player" : p.nickname, p.colourIndex, p.lobbyTeam, p.ready, p.isServerOwner, p.startSite));
             }
             scratch.Sort((a, b) => a.OwnerId.CompareTo(b.OwnerId)); // join order
             Set(scratch, core.Settings, (int)NetworkClient.localPlayer.netId);

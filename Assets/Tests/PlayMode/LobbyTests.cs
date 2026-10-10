@@ -113,6 +113,34 @@ public class LobbyTests
         Assert.That(GameCore.Instance.Settings.MapSize, Is.Not.EqualTo(333), "settings outside the lobby's lists are refused");
     }
 
+    /// <summary>Owner reports (2026-10-10): the host couldn't pick a colour or a starting location (Figma approved 2026-10-11).</summary>
+    [UnityTest, Timeout(60000)]
+    public IEnumerator HostPicksAColourAndClaimsAClearing()
+    {
+        yield return HostFromMenu();
+        VisualElement root = Root();
+        HudTests.Click(root.Q<Button>("colour-3"));
+        yield return PlayModeMatch.WaitUntil(() => Local.colourIndex == 3, 5f);
+
+        Assert.That(Local.startSite, Is.EqualTo(LobbyRules.NoStartSite), "nobody has claimed a clearing yet");
+        HudTests.Click(root.Q<Button>("size-256")); // a generated map (the test config uses the scene's tilemaps, which have no clearings)
+        yield return PlayModeMatch.WaitUntil(() => root.Q("spawn-4") != null, 10f);
+        VisualElement marker = root.Q("spawn-4");
+        Assert.That(marker.ClassListContains("spawn-marker--free"), Is.True);
+        using (ClickEvent e = ClickEvent.GetPooled())
+        {
+            e.target = marker;
+            marker.SendEvent(e);
+        }
+        yield return PlayModeMatch.WaitUntil(() => Local.startSite == 4, 5f);
+        yield return PlayModeMatch.WaitUntil(() => root.Q("spawn-4").ClassListContains("spawn-marker--mine"), 5f);
+        Assert.That(root.Q("spawn-4").pickingMode, Is.EqualTo(PickingMode.Ignore), "a claimed clearing can't be clicked again");
+
+        GameCore.Instance.Cmd_SetStartSite(LobbyRules.StartSites);
+        yield return new WaitForSeconds(0.3f);
+        Assert.That(Local.startSite, Is.EqualTo(4), "clearings outside the map's sites are refused");
+    }
+
     [UnityTest, Timeout(60000)]
     public IEnumerator JoinRejectsAnInvalidAddress()
     {
