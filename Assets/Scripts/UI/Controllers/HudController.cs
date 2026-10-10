@@ -154,8 +154,8 @@ namespace WAR2D.UI
         private bool cameraCentred;
 
         /// <summary>
-        /// Once the match map is ready, puts the camera on the local player's HQ clearing (the one the lobby
-        /// preview marked in their colour: <c>HqSites[i]</c> for the i-th player).
+        /// Once the match map is ready, puts the camera on the local player's HQ clearing (the one they claimed
+        /// in the lobby, or were given at the start).
         /// </summary>
         private void CentreOnOwnClearing()
         {
@@ -164,7 +164,7 @@ namespace WAR2D.UI
             WorldStateManager wsm = WorldStateManager.Instance;
             if (core == null || wsm == null || wsm.Map == null || NetworkClient.localPlayer == null) return;
             cameraCentred = true;
-            int index = core.PlayerOrder.IndexOf((int)NetworkClient.localPlayer.netId);
+            int index = NetworkClient.localPlayer.TryGetComponent(out ClientPlayer me) ? me.startSite : -1;
             Unity.Mathematics.int2[] sites = wsm.Map.HqSites;
             if (index < 0 || sites == null || sites.Length == 0) return;
             Unity.Mathematics.int2 site = sites[index % sites.Length];

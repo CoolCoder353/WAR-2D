@@ -27,6 +27,7 @@ public static class CommandGate
         ["Cmd_SetMatchSettings"] = (10f, 4f),
         ["Cmd_RerollMap"] = (5f, 2f),
         ["Cmd_SetColour"] = (10f, 4f),
+        ["Cmd_SetStartSite"] = (10f, 4f),
         ["Cmd_SetReady"] = (10f, 4f),
         ["Cmd_SetOwnTeam"] = (10f, 4f),
         ["Cmd_Surrender"] = (3f, 0.5f),

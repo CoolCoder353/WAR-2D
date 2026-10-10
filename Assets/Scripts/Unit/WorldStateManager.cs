@@ -461,7 +461,18 @@ public partial class WorldStateManager : NetworkBehaviour
         if (acting == null || acting.state != PlayerState.Playing) return PlacementResult.WrongGameState;
 
         return PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
-            player.hasPlacedHQ, Map.Grid.TileAt, Map.IsUsed, tile => false); // units are pushed out of new footprints
+            player.hasPlacedHQ, Map.Grid.TileAt, Map.IsUsed, tile => false, // units are pushed out of new footprints
+            OwnClearing(player));
+    }
+
+    /// <summary>The test for "inside this player's claimed HQ clearing", or null when they have none (or the map has no sites).</summary>
+    private System.Func<int2, bool> OwnClearing(ClientPlayer player)
+    {
+        int2[] sites = Map.HqSites;
+        int site = player.startSite;
+        if (sites == null || site < 0 || site >= sites.Length) return null;
+        int2 centre = sites[site];
+        return tile => PlacementRules.InClearing(tile, centre, WAR2D.World.MapGenerator.HqClearRadius);
     }
 
     /// <summary>Test helper: first anchor (scanning the map) where the player may place this building.</summary>

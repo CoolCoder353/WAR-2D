@@ -114,4 +114,22 @@ public class PlacementRulesTests
         Assert.That(Check(BuildingType.Base, int2.zero, 0, 3, state, false), Is.EqualTo(PlacementResult.WrongGameState));
         Assert.That(Check(BuildingType.SmallUnitSpawner, int2.zero, 0, 2, state, true), Is.EqualTo(PlacementResult.WrongGameState));
     }
+
+    [Test]
+    public void HQ_OutsideOwnClearing_IsRejected()
+    {
+        int2 site = new int2(-6, -6);
+        System.Func<int2, bool> inClearing = t => PlacementRules.InClearing(t, site, 4f);
+        PlacementResult Place(int2 anchor) => PlacementRules.Check(BuildingType.Base, anchor, 0, new int2(3, 3), GameState.PlacingHQ, false,
+            p => map.Grid.TileAt(p + Offset), p => map.Grid.IsUsed(p + Offset), p => false, inClearing);
+        Assert.That(Place(site), Is.EqualTo(PlacementResult.Ok));
+        Assert.That(Place(new int2(6, 6)), Is.EqualTo(PlacementResult.OutsideHqClearing));
+    }
+
+    [Test]
+    public void Spawner_IgnoresTheClearing()
+    {
+        Assert.That(PlacementRules.Check(BuildingType.SmallUnitSpawner, new int2(6, 6), 0, new int2(2, 2), GameState.Playing, true,
+            p => map.Grid.TileAt(p + Offset), p => map.Grid.IsUsed(p + Offset), p => false, t => false), Is.EqualTo(PlacementResult.Ok));
+    }
 }

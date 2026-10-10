@@ -93,9 +93,10 @@ public sealed class QaSmoke : MonoBehaviour
         yield return new WaitForSecondsRealtime(2f);
         State("placing");
         Shot("placing");
-        // Each side places its HQ on its own clearing, through the same command the placement click sends.
+        // Each side places its HQ on the clearing it was given at the start, through the same command the placement click sends.
         Unity.Mathematics.int2[] sites = WorldStateManager.Instance.Map.HqSites;
-        Unity.Mathematics.int2 site = sites.Length > 0 ? sites[role == "host" ? 0 : sites.Length / 2] : default;
+        int own = NetworkClient.localPlayer.GetComponent<ClientPlayer>().startSite;
+        Unity.Mathematics.int2 site = own >= 0 && own < sites.Length ? sites[own] : default;
         WorldStateManager.Instance.TryAddBuilding(site, BuildingType.Base, 0f);
         yield return Until(() => GameCore.Instance.CurrentState == GameState.Playing, 30f);
         yield return new WaitForSecondsRealtime(2f);

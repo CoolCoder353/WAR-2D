@@ -67,6 +67,32 @@ public partial class GameCore
         if (LobbyRules.IsColourFree(colourIndex, others)) me.colourIndex = colourIndex;
     }
 
+    /// <summary>Claims an HQ clearing nobody else has (or gives the claim up with <see cref="LobbyRules.NoStartSite"/>), in the lobby.</summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_SetStartSite(int site, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_SetStartSite))) return;
+        if (CurrentState != GameState.Lobby || !TryLobbyPlayer(sender, out ClientPlayer me)) return;
+        var others = new List<int>();
+        foreach (ClientPlayer player in LobbyClientPlayers()) if (player != me) others.Add(player.startSite);
+        if (LobbyRules.IsStartSiteChoiceValid(site, others)) me.startSite = site;
+    }
+
+    /// <summary>Gives every player without a claimed clearing a free one, at match start.</summary>
+    [Server]
+    private void AssignStartSites()
+    {
+        var claims = new List<(int owner, int site)>();
+        var players = new Dictionary<int, ClientPlayer>();
+        foreach (ClientPlayer player in LobbyClientPlayers())
+        {
+            int owner = BuildingData.UIntToInt(player.netId);
+            players[owner] = player;
+            claims.Add((owner, player.startSite));
+        }
+        foreach (KeyValuePair<int, int> site in LobbyRules.AssignStartSites(claims)) players[site.Key].startSite = site.Value;
+    }
+
     /// <summary>Marks the sender ready (or not), in the lobby.</summary>
     [Command(requiresAuthority = false)]
     public void Cmd_SetReady(bool ready, NetworkConnectionToClient sender = null)

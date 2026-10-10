@@ -259,6 +259,7 @@ public partial class GameCore : NetworkBehaviour
         PlayerOrder.Clear();
         foreach (int owner in order) PlayerOrder.Add(owner);
         AssignTeams();
+        AssignStartSites();
         CurrentState = GameState.PlacingHQ;
         GameManager.Instance.ServerChangeScene(ConfigLoader.LoadConfig().Match.Scene);
     }

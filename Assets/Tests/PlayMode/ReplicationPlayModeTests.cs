@@ -186,9 +186,13 @@ public class ReplicationPlayModeTests
         config.Match.Map.Seed = 5;
         yield return PlayModeMatch.StartMatchAsHost(config);
         yield return PlayModeMatch.PlaceHQ(null);
-        // The host camera's box is a few tens of tiles; the far HQ clearing is ~190 tiles away from the near one.
+        // The host camera's box is a few tens of tiles; the clearing opposite the host's own (where its HQ
+        // must stand) is ~195 tiles away across the map.
         WorldStateManager.Instance.UpdateClientView(new int2(0, 0), new int2(40, 40));
-        int2 far = WorldStateManager.Instance.Map.HqSites[0];
+        int2[] sites = WorldStateManager.Instance.Map.HqSites;
+        int own = NetworkClient.localPlayer.GetComponent<ClientPlayer>().startSite;
+        Assert.That(own, Is.GreaterThanOrEqualTo(0), "the host was given a clearing at the start");
+        int2 far = sites[(own + sites.Length / 2) % sites.Length];
         int enemy = -1;
         Spawn(424242, (float2)far + 0.5f, v => enemy = v);
         yield return PlayModeMatch.WaitUntil(() => enemy > 0, 5f);
