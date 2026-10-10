@@ -52,6 +52,18 @@ public static class Rebinding
         b.ApplyBindingOverride(0, pathA);
     }
 
+    /// <summary>Overrides a <c>GameInput</c> action's first binding (tests and tools).</summary>
+    public static void Override(string action, string path) => GameInput.Map[action].ApplyBindingOverride(0, path);
+
+    /// <summary>A <c>GameInput</c> action's first binding path, with overrides.</summary>
+    public static string PathOf(string action) => GameInput.Map[action].bindings[0].effectivePath;
+
+    /// <summary>Drops every override (Reset to defaults).</summary>
+    public static void ResetAll() => GameInput.Map.RemoveAllBindingOverrides();
+
+    /// <summary>The game's overrides as JSON.</summary>
+    public static string SaveGame() => Save(GameInput.Map);
+
     /// <summary>A binding as players read it ("A", "Left mouse", "Esc").</summary>
     public static string Display(InputAction action) =>
         action == null || action.bindings.Count == 0 ? "" : action.GetBindingDisplayString(0, InputBinding.DisplayStringOptions.DontIncludeInteractions);

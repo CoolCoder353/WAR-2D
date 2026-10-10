@@ -55,8 +55,11 @@ public static class SettingsStore
 
     private static GameSettings current;
 
-    /// <summary>The default path, or the given one.</summary>
-    public static string PathOf(string path) => path ?? System.IO.Path.Combine(Application.persistentDataPath, FileName);
+    /// <summary>Test seam: where settings go instead of the player's real file (the editor shares it with builds).</summary>
+    internal static string PathForTests;
+
+    /// <summary>The given path, or the test path, or the player's settings file.</summary>
+    public static string PathOf(string path) => path ?? PathForTests ?? System.IO.Path.Combine(Application.persistentDataPath, FileName);
 
     /// <summary>Reads the settings; a missing file gives the defaults, a corrupt one the defaults and a warning.</summary>
     public static GameSettings Load(string path = null)
@@ -106,10 +109,24 @@ public static class SettingsStore
             QualitySettings.vSyncCount = s.VSync ? 1 : 0;
             Application.targetFrameRate = s.FpsCap > 0 ? s.FpsCap : -1;
         }
-        AudioListener.volume = s.Master;
+        UnityEngine.Audio.AudioMixer mixer = Mixer;
+        if (mixer != null)
+        {
+            mixer.SetFloat("MasterVolume", Decibels(s.Master));
+            mixer.SetFloat("MusicVolume", Decibels(s.Music));
+            mixer.SetFloat("SFXVolume", Decibels(s.Sfx));
+        }
         Palettes.Current = s.Palette;
         Rebinding.Load(GameInput.Map, s.Bindings);
     }
+
+    private static UnityEngine.Audio.AudioMixer mixer;
+
+    /// <summary>The game's mixer (<c>Assets/Resources/Main.mixer</c>: Master, Music and SFX groups); route new audio sources to its groups.</summary>
+    public static UnityEngine.Audio.AudioMixer Mixer => mixer != null ? mixer : mixer = Resources.Load<UnityEngine.Audio.AudioMixer>("Main");
+
+    /// <summary>A 0–1 slider value as mixer decibels (silent at 0).</summary>
+    public static float Decibels(float volume) => volume <= 0.0001f ? -80f : 20f * Mathf.Log10(volume);
 
     /// <summary>Loads and applies the saved settings once at start (players only; tests and headless runs keep the defaults).</summary>
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]

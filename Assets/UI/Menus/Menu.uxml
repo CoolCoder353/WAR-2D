@@ -3,9 +3,11 @@
     <ui:Template name="MainMenu" src="MainMenu.uxml" />
     <ui:Template name="HostJoin" src="HostJoin.uxml" />
     <ui:Template name="Lobby" src="Lobby.uxml" />
+    <ui:Template name="Settings" src="Settings.uxml" />
     <ui:VisualElement name="menu" class="hud-root" picking-mode="Ignore">
         <ui:Instance template="MainMenu" name="main-menu-instance" class="hud-layer" />
         <ui:Instance template="HostJoin" name="host-join-instance" class="hud-layer" />
         <ui:Instance template="Lobby" name="lobby-instance" class="hud-layer" />
+        <ui:Instance template="Settings" name="settings-instance" class="hud-layer" />
     </ui:VisualElement>
 </ui:UXML>

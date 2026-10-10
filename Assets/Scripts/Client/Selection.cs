@@ -49,6 +49,48 @@ namespace WAR2D.Client
             foreach (int id in scratch) selected.Add(id);
         }
 
+        /// <summary>
+        /// Selects every own unit of the type of the own unit nearest <paramref name="at"/> (within a tile)
+        /// that lies inside the view (a double-click). Does nothing when no own unit is there.
+        /// </summary>
+        public void SelectTypeAt(float2 at, float2 viewMin, float2 viewMax, int ownerId)
+        {
+            ClientWorld world = ClientWorld.Instance;
+            if (world == null) return;
+            scratch.Clear();
+            world.QueryBox(at - 1f, at + 1f, ownerId, scratch);
+            int nearest = -1;
+            float best = float.MaxValue;
+            foreach (int id in scratch)
+            {
+                if (!world.TryGet(id, out ClientUnitView view)) continue;
+                float d = math.distancesq(view.Position, at);
+                if (d < best) { best = d; nearest = id; }
+            }
+            if (nearest < 0 || !world.TryGet(nearest, out ClientUnitView clicked)) return;
+            scratch.Clear();
+            world.QueryBox(viewMin, viewMax, ownerId, scratch);
+            selected.Clear();
+            selectedSquad = -1;
+            SelectedBuilding = 0;
+            foreach (int id in scratch)
+                if (world.TryGet(id, out ClientUnitView view) && view.Type == clicked.Type) selected.Add(id);
+        }
+
+        /// <summary>The centre of the selected units the client knows; false when none.</summary>
+        public bool TryCentre(out float2 centre)
+        {
+            centre = float2.zero;
+            ClientWorld world = ClientWorld.Instance;
+            if (world == null) return false;
+            int n = 0;
+            foreach (int id in selected)
+                if (world.TryGet(id, out ClientUnitView view)) { centre += view.Position; n++; }
+            if (n == 0) return false;
+            centre /= n;
+            return true;
+        }
+
         /// <summary>Selects exactly these ids (tests and tools).</summary>
         public void SelectIds(IEnumerable<int> ids)
         {

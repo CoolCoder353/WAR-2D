@@ -10,6 +10,7 @@
     <ui:Template name="GiftDialog" src="GiftDialog.uxml" />
     <ui:Template name="InMatchMenu" src="InMatchMenu.uxml" />
     <ui:Template name="EndScreen" src="EndScreen.uxml" />
+    <ui:Template name="Settings" src="../Menus/Settings.uxml" />
     <ui:VisualElement name="hud" class="hud-root" picking-mode="Ignore">
         <ui:Instance template="TopBar" name="top-bar-instance" picking-mode="Ignore" class="hud-layer" />
         <ui:Instance template="SquadBar" name="squad-bar-instance" picking-mode="Ignore" class="hud-layer" />
@@ -34,5 +35,6 @@
         </ui:VisualElement>
         <ui:Instance template="InMatchMenu" name="in-match-menu-instance" picking-mode="Ignore" class="hud-layer" />
         <ui:Instance template="EndScreen" name="end-screen-instance" picking-mode="Ignore" class="hud-layer" />
+        <ui:Instance template="Settings" name="settings-instance" picking-mode="Ignore" class="hud-layer" />
     </ui:VisualElement>
 </ui:UXML>

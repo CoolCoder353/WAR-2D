@@ -117,6 +117,21 @@ public class UnitCommander : NetworkBehaviour
         Selection.SelectBuilding(building.id);
     }
 
+    private const float DoubleTapSeconds = 0.35f;
+    private float lastClickTime = -1f, lastSquadTapTime = -1f;
+    private float2 lastClickAt;
+    private int lastSquadTap = -1;
+
+    /// <summary>The world rectangle the main camera shows.</summary>
+    private static (float2 min, float2 max) CameraView()
+    {
+        Camera cam = Camera.main;
+        if (cam == null) return (float2.zero, float2.zero);
+        float halfH = cam.orthographicSize, halfW = halfH * cam.aspect;
+        Vector3 c = cam.transform.position;
+        return (new float2(c.x - halfW, c.y - halfH), new float2(c.x + halfW, c.y + halfH));
+    }
+
     public static Vector3 GetMouseWorldPosition()
     {
         return GameInput.PointerWorld();
@@ -198,8 +213,20 @@ public class UnitCommander : NetworkBehaviour
             // A click (no drag) still selects what is under the pointer: pad the box to half a tile.
             float2 a = new float2(dragStart.x, dragStart.y), b = new float2(worldPosition.x, worldPosition.y);
             float2 lo = math.min(a, b) - 0.5f, hi = math.max(a, b) + 0.5f;
-            Selection.SelectBox(lo, hi, BuildingData.UIntToInt(localPlayer.netId), GameInput.AppendModifier.IsPressed());
-
+            int me = BuildingData.UIntToInt(localPlayer.netId);
+            bool click = math.distance(a, b) < 0.5f;
+            if (click && Time.unscaledTime - lastClickTime < DoubleTapSeconds && math.distance(b, lastClickAt) < 1f)
+            {
+                // Double-click: every own unit of the clicked unit's type on screen.
+                (float2 viewMin, float2 viewMax) = CameraView();
+                Selection.SelectTypeAt(b, viewMin, viewMax, me);
+                lastClickTime = -1f;
+            }
+            else
+            {
+                Selection.SelectBox(lo, hi, me, GameInput.AppendModifier.IsPressed());
+                if (click) { lastClickTime = Time.unscaledTime; lastClickAt = b; }
+            }
         }
 
         if (!clickUsed && GameInput.Command.WasPressedThisFrame() && !GameInput.PointerOverUI)
@@ -213,7 +240,22 @@ public class UnitCommander : NetworkBehaviour
         {
             if (!GameInput.Squad(squad).WasPressedThisFrame()) continue;
             if (GameInput.AssignModifier.IsPressed()) Selection.AssignSquad(squad);
-            else Selection.SelectSquad(squad);
+            else
+            {
+                Selection.SelectSquad(squad);
+                // Double-tapping a squad key centres the camera on the squad.
+                if (squad == lastSquadTap && Time.unscaledTime - lastSquadTapTime < DoubleTapSeconds && Selection.TryCentre(out float2 centre))
+                {
+                    Camera main = Camera.main;
+                    if (main != null && main.TryGetComponent(out Character.Character_Controler controller)) controller.CentreOn(centre);
+                    lastSquadTap = -1;
+                }
+                else
+                {
+                    lastSquadTap = squad;
+                    lastSquadTapTime = Time.unscaledTime;
+                }
+            }
         }
 
         //Get the corners of the camera (orthographic bounds)
@@ -265,6 +307,7 @@ public class UnitCommander : NetworkBehaviour
         subscribedBuildings.HealthChanged += OnBuildingHealthChanged;
         subscribedBuildings.Hidden += OnBuildingHidden;
         subscribedBuildings.Removed += OnBuildingRemoved;
+        Palettes.Changed += Retint;
         foreach (ClientBuildings.Entry entry in subscribedBuildings.Entries.Values)
         {
             OnBuildingEntered(entry.Data, entry.Health);
@@ -279,6 +322,7 @@ public class UnitCommander : NetworkBehaviour
         subscribedBuildings.HealthChanged -= OnBuildingHealthChanged;
         subscribedBuildings.Hidden -= OnBuildingHidden;
         subscribedBuildings.Removed -= OnBuildingRemoved;
+        Palettes.Changed -= Retint;
         subscribedBuildings = null;
     }
 
@@ -296,7 +340,26 @@ public class UnitCommander : NetworkBehaviour
     private void OnBuildingHidden(int id)
     {
         if (buildingGameObjects.TryGetValue(id, out GameObject go) && go.TryGetComponent(out SpriteRenderer sprite))
-            sprite.color = new Color(0.55f, 0.55f, 0.55f, 0.7f);
+            sprite.color = GhostTint(sprite.color);
+    }
+
+    /// <summary>A building's tint: its owner's colour (current palette), half-mixed into the sprite.</summary>
+    private static Color Tint(int ownerId) => Color.Lerp(Color.white, PlayerPalette.OfOwner(ownerId), 0.5f);
+
+    /// <summary>A last-seen ghost: dimmed and see-through.</summary>
+    private static Color GhostTint(Color tint) => new Color(tint.r * 0.55f, tint.g * 0.55f, tint.b * 0.55f, 0.7f);
+
+    /// <summary>Re-tints every building for a new palette.</summary>
+    private void Retint()
+    {
+        if (this == null) { Palettes.Changed -= Retint; return; } // destroyed after the client stopped (OnDestroy is client-only)
+        if (subscribedBuildings == null) return;
+        foreach (ClientBuildings.Entry entry in subscribedBuildings.Entries.Values)
+        {
+            if (!buildingGameObjects.TryGetValue(entry.Data.id, out GameObject go) || go == null || !go.TryGetComponent(out SpriteRenderer sprite)) continue;
+            Color tint = Tint(entry.Data.ownerId);
+            sprite.color = entry.Ghost ? GhostTint(tint) : tint;
+        }
     }
 
     private void OnBuildingRemoved(int id)
@@ -323,7 +386,9 @@ public class UnitCommander : NetworkBehaviour
         float2 centre = Footprint.VisualCenter(anchor, WorldStateManager.GetBuildingSize(unit.buildingType));
         go.transform.position = new Vector3(centre.x, centre.y, 0);
 
-        go.AddComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(unit.buildingType.ToString());
+        SpriteRenderer buildingSprite = go.AddComponent<SpriteRenderer>();
+        buildingSprite.sprite = Resources.Load<Sprite>(unit.buildingType.ToString());
+        buildingSprite.color = Tint(unit.ownerId);
         go.AddComponent<BoxCollider2D>().isTrigger = true;
         go.name = $"Building_{unit.buildingType}_{unit.id}";
 

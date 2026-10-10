@@ -37,8 +37,29 @@ public sealed class QaSmoke : MonoBehaviour
             if (type != LogType.Log) log.WriteLine($"[{type}] {message}\n{trace}");
         };
         yield return new WaitUntil(() => GameManager.Instance != null);
-        yield return new WaitForSecondsRealtime(1f);
+        yield return new WaitForSecondsRealtime(4f); // the menu battle gets going
         Shot("menu");
+        yield return null; // the shot is taken at the end of the frame
+        if (role == "host")
+        {
+            var menu = FindAnyObjectByType<WAR2D.UI.MenuController>();
+            menu.Settings.Open();
+            yield return null;
+            yield return null;
+            Shot("settings-graphics");
+            yield return null;
+            Click(menu, "tab-controls");
+            yield return null;
+            yield return null;
+            Shot("settings-controls");
+            yield return null;
+            Click(menu, "tab-audio");
+            yield return null;
+            yield return null;
+            Shot("settings-audio");
+            yield return null;
+            menu.Settings.Close();
+        }
         if (role == "host")
         {
             GameManager.Instance.HostServer();
@@ -60,12 +81,37 @@ public sealed class QaSmoke : MonoBehaviour
         State("lobby");
 
         yield return Until(() => SceneManager.GetActiveScene().name != "Main_Menu", 60f);
-        for (int i = 0; i < 4; i++)
+        yield return Until(() => WorldStateManager.Instance != null && WorldStateManager.Instance.Map != null && NetworkClient.ready, 30f);
+        yield return new WaitForSecondsRealtime(2f);
+        State("placing");
+        Shot("placing");
+        // Each side places its HQ on its own clearing, through the same command the placement click sends.
+        Unity.Mathematics.int2[] sites = WorldStateManager.Instance.Map.HqSites;
+        Unity.Mathematics.int2 site = sites.Length > 0 ? sites[role == "host" ? 0 : sites.Length / 2] : default;
+        WorldStateManager.Instance.TryAddBuilding(site, BuildingType.Base, 0f);
+        yield return Until(() => GameCore.Instance.CurrentState == GameState.Playing, 30f);
+        yield return new WaitForSecondsRealtime(2f);
+        State("playing");
+        Shot("playing");
+        var hud = FindAnyObjectByType<WAR2D.UI.HudController>();
+        if (role == "client")
         {
-            yield return new WaitForSecondsRealtime(3f);
-            State("match" + i);
-            Shot("match" + i);
+            hud.MatchMenu.Open();
+            yield return null;
+            yield return null;
+            Shot("match-menu");
+            yield return null;
+            hud.MatchMenu.Close();
         }
+        else
+        {
+            yield return new WaitForSecondsRealtime(2f);
+            GameCore.Instance.Cmd_Surrender();
+        }
+        yield return Until(() => GameCore.Instance.CurrentState == GameState.GameOver, 30f);
+        yield return new WaitForSecondsRealtime(2f);
+        State("end");
+        Shot("end");
         log.WriteLine("done");
         Application.Quit();
     }
@@ -93,6 +139,12 @@ public sealed class QaSmoke : MonoBehaviour
             log.WriteLine($"  identity '{id.name}' active={id.gameObject.activeInHierarchy} scene={id.gameObject.scene.name} sceneId={id.sceneId:X} netId={id.netId} " +
                           $"server={NetworkServer.spawned.ContainsKey(id.netId)} client={NetworkClient.spawned.ContainsKey(id.netId)} observers={(NetworkServer.active ? id.observers.Count : -1)}");
         }
+    }
+
+    private static void Click(WAR2D.UI.MenuController menu, string button)
+    {
+        var b = menu.GetComponent<UIDocument>().rootVisualElement.Q<Button>(button);
+        using (NavigationSubmitEvent e = NavigationSubmitEvent.GetPooled()) { e.target = b; b.SendEvent(e); }
     }
 
     private void Shot(string label) => ScreenCapture.CaptureScreenshot(Path.Combine(dir, $"{role}-{label}.png"));

@@ -29,6 +29,7 @@ namespace WAR2D.UI
         private ClientPlayer alertSource;
         private Button diplomacyButton;
         private InMatchMenuController matchMenu;
+        private SettingsController settings;
         private GiftDialogController gift;
         private EndScreenController endScreen;
         private VisualElement root;
@@ -68,6 +69,8 @@ namespace WAR2D.UI
         private void OnEnable()
         {
             root = GetComponent<UIDocument>().rootVisualElement;
+            Palettes.ApplyTo(root);
+            Palettes.Changed += ApplyPalette;
             // Each section's template fills the screen; only its panels take the pointer.
             root.Query<TemplateContainer>().ForEach(t => t.pickingMode = PickingMode.Ignore);
 
@@ -97,7 +100,9 @@ namespace WAR2D.UI
             diplomacy.ShareToggled += SetShareVision;
 
             matchMenu = new InMatchMenuController(root);
-            matchMenu.SettingsClicked += () => SettingsRequested?.Invoke();
+            settings = new SettingsController(root);
+            settings.Closed += matchMenu.Open;
+            matchMenu.SettingsClicked += () => { matchMenu.Close(); settings.Open(); SettingsRequested?.Invoke(); };
             matchMenu.SurrenderConfirmed += () => GameCore.Instance?.Cmd_Surrender();
             matchMenu.LeaveClicked += () => GameManager.Instance?.LeaveLobby();
             topBar.MenuClicked += matchMenu.Toggle;
@@ -133,6 +138,8 @@ namespace WAR2D.UI
             alertFeed?.Dispose();
             diplomacy?.Dispose();
             gift?.Dispose();
+            settings?.Dispose();
+            Palettes.Changed -= ApplyPalette;
             ClientPlayer.MatchEnded -= OnMatchEnded;
             GameCore.MatchStatsReceived -= OnMatchStats;
             Model.DiplomacyChanged -= ShowDiplomacyButton;
@@ -144,12 +151,35 @@ namespace WAR2D.UI
             squadBar = null;
         }
 
+        private bool cameraCentred;
+
+        /// <summary>
+        /// Once the match map is ready, puts the camera on the local player's HQ clearing (the one the lobby
+        /// preview marked in their colour: <c>HqSites[i]</c> for the i-th player).
+        /// </summary>
+        private void CentreOnOwnClearing()
+        {
+            if (cameraCentred) return;
+            GameCore core = GameCore.Instance;
+            WorldStateManager wsm = WorldStateManager.Instance;
+            if (core == null || wsm == null || wsm.Map == null || NetworkClient.localPlayer == null) return;
+            cameraCentred = true;
+            int index = core.PlayerOrder.IndexOf((int)NetworkClient.localPlayer.netId);
+            Unity.Mathematics.int2[] sites = wsm.Map.HqSites;
+            if (index < 0 || sites == null || sites.Length == 0) return;
+            Unity.Mathematics.int2 site = sites[index % sites.Length];
+            Camera cam = Camera.main;
+            if (cam != null && cam.TryGetComponent(out Character.Character_Controler controller)) controller.CentreOn(new Vector2(site.x + 0.5f, site.y + 0.5f));
+        }
+
         private void Update()
         {
+            CentreOnOwnClearing();
             Model.PullResources();
             if (GameInput.Menu.WasPressedThisFrame() && !endScreen.IsShown)
             {
-                if (gift.IsOpen) gift.Close();
+                if (settings.IsOpen) settings.Close();
+                else if (gift.IsOpen) gift.Close();
                 else if (diplomacy.IsOpen) diplomacy.SetOpen(false);
                 else matchMenu.Toggle();
             }
@@ -213,6 +243,11 @@ namespace WAR2D.UI
             endScreen.Show(mine, EndScreenController.Line(mine, winners, result.DurationSeconds));
             endScreen.ShowStats(result, NameOf, PlayerPalette.ColourIndexOf);
         }
+
+        private void ApplyPalette() => Palettes.ApplyTo(root);
+
+        /// <summary>The settings screen.</summary>
+        public SettingsController Settings => settings;
 
         private void ShowDiplomacyButton() => diplomacyButton.EnableInClassList("top-bar__hidden", !Model.DiplomacyEnabled);
 

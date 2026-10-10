@@ -22,6 +22,8 @@ namespace WAR2D.UI
         private MainMenuController main;
         private HostJoinController play;
         private LobbyController lobby;
+        private SettingsController settings;
+        private VisualElement root;
         private readonly MapPreview preview = new MapPreview();
         private bool wantsPlay;
         private string joiningAddress;
@@ -34,12 +36,17 @@ namespace WAR2D.UI
         /// <summary>The map preview (tests read its texture).</summary>
         public MapPreview Preview => preview;
 
+        /// <summary>The settings screen.</summary>
+        public SettingsController Settings => settings;
+
         /// <summary>Raised by the main menu's Settings button.</summary>
         public event System.Action SettingsRequested;
 
         private void OnEnable()
         {
-            VisualElement root = GetComponent<UIDocument>().rootVisualElement;
+            root = GetComponent<UIDocument>().rootVisualElement;
+            Palettes.ApplyTo(root);
+            Palettes.Changed += ApplyPalette;
             root.Query<TemplateContainer>().ForEach(t => t.pickingMode = PickingMode.Ignore);
             mainScreen = root.Q("main-menu");
             playScreen = root.Q("host-join");
@@ -47,7 +54,8 @@ namespace WAR2D.UI
 
             main = new MainMenuController(root);
             main.PlayClicked += () => wantsPlay = true;
-            main.SettingsClicked += () => SettingsRequested?.Invoke();
+            settings = new SettingsController(root);
+            main.SettingsClicked += () => { settings.Open(); SettingsRequested?.Invoke(); };
             main.QuitClicked += () => GameManager.Instance?.QuitGame();
 
             play = new HostJoinController(root);
@@ -69,8 +77,12 @@ namespace WAR2D.UI
             Show(Screen.Main);
         }
 
+        private void ApplyPalette() => Palettes.ApplyTo(root);
+
         private void OnDisable()
         {
+            Palettes.Changed -= ApplyPalette;
+            settings?.Dispose();
             lobby?.Dispose();
             preview.Dispose();
         }

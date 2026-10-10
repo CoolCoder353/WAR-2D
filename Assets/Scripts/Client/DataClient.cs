@@ -11,8 +11,6 @@ public class DataClient : MonoBehaviour
 
     private float lastHealthPercent = 1f;
 
-    private Color originalColor;
-
 
     public float testVaule = 1f;
 
@@ -47,11 +45,8 @@ public class DataClient : MonoBehaviour
 
         Slider healthBarSlider = healthBarObject.GetComponent<Slider>();
         SpriteRenderer sprite = this.GetComponent<SpriteRenderer>();
-        originalColor = sprite.color;
-        //Scale the red health bar according to health
         while (true)
         {
-            sprite.color = originalColor;
             if (healthBarSlider == null)
             {
                 Debug.LogError("Health bar slider component not found for " + this.name);
@@ -59,22 +54,20 @@ public class DataClient : MonoBehaviour
             }
 
             float healthPercent = (float)healthComponent.currentHealth / (float)healthComponent.maxHealth;
+            healthBarSlider.value = healthPercent;
 
             if (lastHealthPercent > healthPercent && sprite != null)
             {
-                //Flash red to show damage taken
-
-                sprite.color = Color.red;
+                // Flash red to show damage taken, then back to whatever tint it had (owner colour, ghost).
                 lastHealthPercent = healthPercent;
+                Color tint = sprite.color;
+                sprite.color = Color.red;
+                yield return new WaitForSeconds(0.15f);
+                if (sprite != null && sprite.color == Color.red) sprite.color = tint;
             }
 
-            healthBarSlider.value = healthPercent;
-            ////Debug.Log("Health percent for " + this.name + ": " + healthPercent + "(Slider value: " + healthBarSlider.value + ")");
-
-            yield return new WaitForSeconds(0.3f); //Update every x frames
+            yield return new WaitForSeconds(0.3f);
         }
-
-
     }
 
 

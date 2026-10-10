@@ -31,7 +31,12 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | Input | Action |
 |---|---|
 | Arrow keys | Pan the camera (`A`, `S` and `H` are order keys since v0.6) |
-| Mouse wheel | Zoom (orthographic size 3–30; 1.5 per notch; pan speed scales with zoom) |
+| Pointer at a screen edge | Pan that way (Settings → Controls → Edge scrolling) |
+| Middle mouse + drag | Drag the map |
+| Mouse wheel | Zoom towards the cursor (orthographic size 3–30; 1.5 per notch; pan speed scales with zoom) |
+| Double-click a unit | Select every own unit of that type on screen |
+| `1`–`0` twice quickly | Select that squad and centre the camera on it |
+| `Esc` | In-match menu (closes the settings, gift or diplomacy panel first) |
 | Hold `Shift` | Pan 2.5× faster |
 | Left-click + drag | Select **every** one of your units inside the box (no limit). A plain click selects what is under the cursor. |
 | `Shift` + drag | Add the units in the box to the selection |
@@ -52,6 +57,17 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | Left-click (while placing) | Place the building. The preview is grey if valid and red if not. During HQ placement the HQ preview appears on its own. |
 | Left-click on your Small Unit Spawner | Select it: the command card shows its production queue, where `+` queues one Tank and `−` removes one (max 100 queued; nothing is refunded, as the cost is charged at spawn) |
 | `` ` `` (backquote) | Toggle the developer console |
+
+Every key except panning (arrows) can be rebound in **Settings → Controls**: click a binding, press the new key (Esc cancels). A key already in use offers to swap the two bindings. Bindings are saved with the settings.
+
+## Settings
+
+Settings (main menu, or the in-match menu) apply at once and are saved on this machine (`settings.json` in the player's data folder):
+
+- **Graphics:** resolution (1280×720, 1920×1080, 2560×1440), fullscreen, VSync, FPS cap (60, 120, 144, none), the battle behind the main menu, and the **colour palette**: Standard, Colourblind (Okabe–Ito; every pair at least ΔE2000 20 apart) or High contrast (every player colour at least 4.5:1 against the map floor). The palette recolours units, buildings, the minimap and the whole UI at once.
+- **Audio:** master, music and sound-effect volumes (the `Main` mixer's groups).
+- **Controls:** rebinding and edge scrolling.
+- **Reset to defaults** restores everything, bindings included.
 
 Camera settings (speed, zoom step and range, shift multiplier) are in `Assets/Character_Settings.asset`.
 
