@@ -154,6 +154,16 @@ public class LobbyTests
             return false;
         }, 15f);
 
+        // Owner report (2026-10-10): the battle drew no shots or explosions, as the real game does.
+        Assert.That(view.ViewCamera, Is.Not.Null, "tracers are culled against the menu's camera");
+        bool sawTracer = false, sawExplosion = false;
+        yield return PlayModeMatch.WaitUntil(() =>
+        {
+            sawTracer |= UnityEngine.GameObject.Find("Tracer") != null;
+            sawExplosion |= UnityEngine.GameObject.Find("Explosion") != null;
+            return sawTracer && sawExplosion;
+        }, 40f);
+
         yield return HostFromMenu();
         Assert.That(WAR2D.Client.MenuBattle.Instance.Running, Is.False, "the battle is torn down before hosting");
         Assert.That(WAR2D.Sim.SimContext.RunningOverride, Is.Null);

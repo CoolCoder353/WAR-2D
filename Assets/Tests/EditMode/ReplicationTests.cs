@@ -243,6 +243,25 @@ public class ReplicationTests
         Assert.AreEqual(10f, held.x, 0.3f);
     }
 
+    /// <summary>Owner report (2026-10-10): movement looked jumpy. A correction moves the prediction at once but the drawn unit glides.</summary>
+    [Test]
+    public void CorrectionsGlideInTheDrawnPositions()
+    {
+        using var rig = new Rig(2);
+        rig.Add(1, 1, new float2(10, 10));
+        rig.Routes.Set(1, new float2(10, 10), new float2(60, 10));
+        rig.Watch(0, 1, new int2(0, 0), new int2(100, 100));
+        ClientUnitStore store = rig.ClientStores[0];
+        rig.Tick(1); // Enter: the client predicts the unit setting off along its route
+        store.Now = 4 * Dt;
+        rig.Tick(4); // it stood still, so a correction pulls it back
+        store.PredictAll(4 * Dt);
+        Assert.AreEqual(10f, store.Predicted[0].x, 0.3f, "the prediction is corrected at once");
+        Assert.Greater(store.Drawn[0].x, store.Predicted[0].x + 0.4f, "the drawn unit starts from where it was drawn");
+        store.PredictAll(4 * Dt + 10 * ClientUnitStore.BlendSeconds);
+        Assert.AreEqual(store.Predicted[0].x, store.Drawn[0].x, 1e-3f, "and glides onto the prediction");
+    }
+
     [Test]
     public void ProjectedResumeTargetsNextSegmentAhead()
     {
