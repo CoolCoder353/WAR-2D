@@ -23,6 +23,11 @@ v0.5 passed the EditMode and PlayMode suites (including `LeakTests`), but nobody
 - **Building ghosts**: enemy buildings dim when out of sight and disappear only once their spot is seen again.
 - **Editor crash after `SimData` gains fields.** The first EditMode run after `SimData`'s layout changes can segfault while scheduling a tick job (v0.5: `GatherJob`; v0.6 Task 4: `SimCombatSystem`, in `AtomicSafetyHandle` handle extraction). Restarting the editor fixes it every time, so it is stale Burst code compiled against the old struct layout. Restart the editor after changing `SimData`'s fields, before running the tests.
 
+## Fixed in v0.6 (found by the first two-process run)
+
+- `GameCore`'s `NetworkIdentity` in `Main_Menu` was **Server Only** (since the initial commit), so remote clients never received it: no game state, player list, HQ prompt or HQ placement, and every `GameCore` command was unusable from a joining client. The host worked because it is the server, which is why no hosted PlayMode test caught it. Fixed; `tools/qa-smoke.sh` now covers a real joining client.
+- `Run In Background` was off, so a player who alt-tabbed stopped updating (and a host froze the match). Now on.
+
 ## Developer tools
 
 - **Bots look eliminated in the HUD.** Dev bots (`GameCore.AddBot`, perf harness and tests) have no player object, so the top bar and diplomacy panel list them as "Player (eliminated)" with disabled switches, and their diplomacy bit reaches clients only after `SendAllDiplomacy` is called again (bots join after match start). Dev only; real players are unaffected. (no target)
