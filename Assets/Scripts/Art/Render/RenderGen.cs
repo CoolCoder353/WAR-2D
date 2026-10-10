@@ -21,12 +21,12 @@ namespace WAR2D.Art.Render
         // Materials.
         private static Material Rubber => new Material(C(StylePalette.Body0) * 0.85f, 0.08f, 8);
         private static Material Hull => new Material(C(StylePalette.Body1) * 1.1f, 0.3f, 28);
-        private static Material Plate => new Material(C(StylePalette.Body2) * 1.05f, 0.4f, 36);
-        private static Material Steel => new Material(C(StylePalette.Body3), 0.7f, 60);
+        private static Material Plate => new Material(C(StylePalette.Body3) * 1.15f, 0.35f, 36);
+        private static Material Steel => new Material(C(StylePalette.Body3) * 1.55f, 0.6f, 60);
         private static Material Dark => new Material(C(StylePalette.Body0), 0.15f, 12);
         private static Material Team => new Material(Color.white, 0.45f, 40, team: true);
         private static Material Lamp => new Material(C(StylePalette.Lamp) * 0.9f, 0.1f, 20, glow: 0.45f);
-        private static Material Concrete => new Material(C(StylePalette.Floor2) * 1.08f, 0.05f, 6);
+        private static Material Concrete => new Material(C(StylePalette.Body3) * 1.3f, 0.05f, 6);
 
         // ---------- Signed distance helpers (negative inside) ----------
 
@@ -83,8 +83,6 @@ namespace WAR2D.Art.Render
                     float lx = k * 8, ly = s * 11;
                     c.Rivet(o + lx * cos - ly * sin, o + lx * sin + ly * cos, 0.8f, 0.7f);
                 }
-            // Rear lamps.
-            foreach (float s in new[] { -1f, 1f }) c.Shape(L((x, y) => Circle(x, y, -21, s * 9, 1.6f)), Lamp, 10.5f, 0.6f, 0.4f);
             // Turret (team colour) with a hatch, and the barrel.
             c.Shape(L((x, y) => Box(x, y, -3, 0, 11, 10, 5)), Team, 17, 3, 4);
             c.Shape(L((x, y) => Circle(x, y, -6, 4, 3.4f)), Plate, 18, 1, 1);
@@ -101,100 +99,193 @@ namespace WAR2D.Art.Render
             return c;
         }
 
-        /// <summary>The Miner (1×1), its drill arm facing east; frames turn the drill's spiral.</summary>
+        /// <summary>
+        /// The Miner (1×1): a drilling rig. A truss derrick stands over the drill at the gem face (east); a
+        /// conveyor carries ore chunks back to a hopper; an engine with an exhaust drives it. Frames turn the
+        /// drill and advance the belt.
+        /// </summary>
         public static LitCanvas Miner(int frame)
         {
             var c = new LitCanvas(TileSize, TileSize);
             float o = TileSize / 2f;
-            foreach (var (fx, fy) in new[] { (-1, -1), (1, -1), (-1, 1), (1, 1) })
+            // Skid frame the rig sits on.
+            c.Shape((x, y) => Box(x, y, o, o, 29, 22, 3), Concrete, 4, 1.5f, 1.5f);
+            // Engine block (west) with a cooling grille and an exhaust.
+            c.Shape((x, y) => Box(x, y, o - 19, o - 8, 9, 9, 2), Hull, 14, 2, 2);
+            c.Groove((x, y) => Box(x, y, o - 19, o - 8, 7, 7) > 0 ? 9 : Mathf.Abs(Mod(y, 4) - 2) - 0.8f, 1.2f, 0.9f);
+            c.Shape((x, y) => Circle(x, y, o - 24, o + 4, 3), Steel, 18, 1.2f, 1.5f);
+            c.Shape((x, y) => Circle(x, y, o - 24, o + 4, 1.6f), Dark, 16, 0.5f, 0.5f);
+            // Hopper (north-west) holding mined gems.
+            c.Shape((x, y) => Box(x, y, o - 17, o + 13, 10, 8, 2), Plate, 12, 2, 2);
+            c.Shape((x, y) => Box(x, y, o - 17, o + 13, 7, 5, 1), Dark, 7, 1, 1);
+            foreach (var (gx, gy) in new[] { (-20f, 12f), (-15f, 14f), (-17f, 10f), (-13f, 11f) })
+                c.Shape((x, y) => Polygon(x, y, o + gx, o + gy, 2.2f, 6, 0.3f), Ore, 9, 1.5f, 1.5f);
+            // Conveyor from the drill to the hopper; belt cleats and ore chunks move with the frame.
+            c.Shape((x, y) => Box(x, y, o + 2, o + 13, 15, 3.5f, 1), Rubber, 9, 1, 1);
+            c.Groove((x, y) => Box(x, y, o + 2, o + 13, 15, 3) > 0 ? 9 : Mathf.Abs(Mod(x + frame * 2, 4) - 2) - 0.4f, 0.7f, 0.4f);
+            for (int k = 0; k < 3; k++)
             {
-                c.Shape((x, y) => Capsule(x, y, o, o, o + fx * 21, o + fy * 21, 3.2f), Dark, 6, 2, 2);
-                c.Shape((x, y) => Circle(x, y, o + fx * 22, o + fy * 22, 5.5f), Plate, 8, 2, 3);
-                c.Rivet(o + fx * 22, o + fy * 22, 1.6f, 1f, 0.6f);
+                float gx = o + 12 - Mod(k * 9 + frame * 2, 27);
+                c.Shape((x, y) => Polygon(x, y, gx, o + 13, 1.8f, 5, k), Ore, 11, 1, 1);
             }
-            c.Shape((x, y) => Box(x, y, o, o, 15, 15, 5), Hull, 11, 3, 3);
-            foreach (float s in new[] { -1f, 1f }) c.Shape((x, y) => Box(x, y, o - 6, o + s * 10, 7, 3, 1.5f), Team, 12.5f, 1, 1);
-            // Arm toward the gem (east).
-            c.Shape((x, y) => Box(x, y, o + 20, o, 11, 4, 2), Plate, 12, 1.5f, 2);
-            c.Shape((x, y) => Circle(x, y, o + 29, o, 4.5f), Steel, 13, 2, 3);
-            // The drill head: a spiral of grooves turning a quarter per frame.
-            c.Shape((x, y) => Circle(x, y, o, o, 9), Steel, 18, 6, 6);
+            // Derrick over the drill at the gem face: a truss square with cross braces, the drill inside.
+            float dx = o + 17, dy = o - 4;
+            c.Shape((x, y) => Mathf.Max(Box(x, y, dx, dy, 12, 12, 1), -Box(x, y, dx, dy, 9f, 9f)), Steel, 22, 1, 2);
+            foreach (float s in new[] { -1f, 1f })
+                c.Shape((x, y) => Capsule(x, y, dx - 10, dy - 10 * s, dx + 10, dy + 10 * s, 1.6f), Plate, 21, 1f, 1.2f);
+            c.Shape((x, y) => Circle(x, y, dx, dy, 6), Steel, 16, 4, 5);
             float phase = frame * Mathf.PI / 2;
             c.Groove((x, y) =>
             {
-                float dx = x - o, dy = y - o, r = Mathf.Sqrt(dx * dx + dy * dy);
-                return r > 8.5f ? 9 : Mathf.Abs(Mathf.Sin(Mathf.Atan2(dy, dx) * 3 + r * 0.7f + phase)) - 0.35f;
+                float px = x - dx, py = y - dy, r = Mathf.Sqrt(px * px + py * py);
+                return r > 5.5f ? 9 : Mathf.Abs(Mathf.Sin(Mathf.Atan2(py, px) * 3 + r * 0.9f + phase)) - 0.35f;
             }, 1.2f, 0.4f);
-            c.Shape((x, y) => Circle(x, y, o - 12, o - 11, 1.5f), Lamp, 11.5f, 0.5f, 0.3f);
-            c.Grime(11, 0.3f, 0.12f, 6);
+            // Team panel on the engine, and a work lamp.
+            c.Shape((x, y) => Box(x, y, o - 19, o - 20, 9, 2.5f, 1), Team, 10, 1, 1);
+            c.Shape((x, y) => Circle(x, y, dx + 10, dy + 10, 1.6f), Lamp, 23, 0.6f, 0.4f);
+            c.Grime(11, 0.25f, 0.12f, 6);
             return c;
         }
 
-        /// <summary>The Small Unit Spawner (2×2): a factory block with roof vents, a stack and a lit bay door; frame 1 dims the bay.</summary>
+        private static Material Ore => new Material(C(StylePalette.Gem1), 0.8f, 70, glow: 0.3f);
+        private static Material Hazard => new Material(C(StylePalette.Warn) * 0.95f, 0.15f, 16);
+
+        /// <summary>Hazard stripes (warning yellow and dark) inside <paramref name="sdf"/>.</summary>
+        private static void Stripes(LitCanvas c, Func<float, float, float> sdf, float top)
+        {
+            c.Shape(sdf, Hazard, top, 0.8f, 0.8f);
+            c.Shape((x, y) => Mathf.Max(sdf(x, y), Mathf.Abs(Mod(x + y, 12) - 6) - 3), Dark, top, 0.4f, 0.3f);
+        }
+
+        /// <summary>A half-built tank (no turret) for the factory bay.</summary>
+        private static void Chassis(LitCanvas c, float cx, float cy, float top)
+        {
+            foreach (float s in new[] { -1f, 1f })
+            {
+                c.Shape((x, y) => Box(x, y, cx + s * 9, cy, 3.5f, 13, 1.5f), Rubber, top + 3, 1, 1.5f);
+                c.Groove((x, y) => Box(x, y, cx + s * 9, cy, 3, 12) > 0 ? 9 : Mathf.Abs(Mod(y, 3) - 1.5f) - 0.6f, 0.8f, 0.5f);
+            }
+            c.Shape((x, y) => Box(x, y, cx, cy, 6.5f, 11, 2), Hull, top + 5, 1.5f, 2);
+            c.Shape((x, y) => Circle(x, y, cx, cy + 1, 3.5f), Dark, top + 4, 1, 1); // the empty turret ring
+        }
+
+        /// <summary>
+        /// The Small Unit Spawner (2×2): a vehicle factory. Its roof is open over the assembly bay, where a
+        /// tank is being built on a turntable under a gantry crane carrying its turret; vehicles leave through
+        /// the striped roller door on the south side. Fuel tanks and a pipe feed it; a stack vents it. Frame 1
+        /// moves the crane and dims the door lamp.
+        /// </summary>
         public static LitCanvas Spawner(int frame)
         {
             int s = 2 * TileSize;
             var c = new LitCanvas(s, s);
             float o = s / 2f;
-            c.Shape((x, y) => Box(x, y, o, o, 60, 60, 8), Concrete, 3, 2, 2);
-            c.Groove((x, y) => Box(x, y, o, o, 56, 56, 6), 0.8f, 0.6f);
-            c.Shape((x, y) => Box(x, y, o, o + 6, 50, 44, 7), Hull, 22, 4, 5);
-            // Roof seams.
-            c.Groove((x, y) => Mathf.Abs(x - o) - 0.1f, 1, 0.7f);
-            c.Groove((x, y) => Mathf.Abs(y - (o + 18)) - 0.1f, 1, 0.7f);
-            // Vents with grilles.
-            foreach (float vx in new[] { o - 26, o + 26 })
+            // Concrete apron, tyre tracks out of the door, hazard stripes along the exit.
+            c.Shape((x, y) => Box(x, y, o, o, 62, 62, 4), Concrete, 3, 1.5f, 1.5f);
+            foreach (float tx in new[] { o - 14f, o - 2f }) c.Groove((x, y) => y > 22 ? 9 : Mathf.Abs(x - tx) - 1.5f, 0.6f, 1.2f);
+            Stripes(c, (x, y) => Box(x, y, o - 8, 7, 32, 5), 3.5f);
+            // Main hall (west and middle): corrugated roof around an open bay.
+            Func<float, float, float> hall = (x, y) => Box(x, y, o - 12, o + 12, 46, 42, 3);
+            Func<float, float, float> bay = (x, y) => Box(x, y, o - 12, o + 18, 26, 26, 2);
+            c.Shape((x, y) => Mathf.Max(hall(x, y), -bay(x, y)), Plate, 26, 2, 3);
+            c.Groove((x, y) => hall(x, y) > -3 || bay(x, y) < 3 ? 9 : Mathf.Abs(Mod(x, 10) - 5) - 0.9f, 1.4f, 1.2f);
+            // The bay floor, the turntable and the tank being built.
+            c.Shape(bay, Concrete, 6, 1, 1);
+            c.Shape((x, y) => Circle(x, y, o - 12, o + 16, 19), Steel, 8, 1, 1);
+            c.Groove((x, y) => Mathf.Abs(Circle(x, y, o - 12, o + 16, 16)) - 0.1f, 0.6f, 0.5f);
+            Chassis(c, o - 12, o + 16, 8);
+            // Gantry crane: two rails across the bay, a trolley carrying the turret.
+            foreach (float ry in new[] { o + 38f, o - 2f })
+                c.Shape((x, y) => Box(x, y, o - 12, ry, 28, 3f, 1f), Steel, 30, 1.2f, 1.5f);
+            float trolley = o - 22 + frame * 8;
+            c.Shape((x, y) => Box(x, y, trolley, o + 18, 5, 23, 1.5f), Plate, 32, 1.5f, 2f);
+            c.Shape((x, y) => Box(x, y, trolley, o + 24, 8, 7, 2.5f), Team, 34, 2f, 2.5f);
+            c.Shape((x, y) => Box(x, y, trolley + 10, o + 24, 6, 2f, 1f), Steel, 34, 1f, 1f);
+            // Roller door (south) with its lamp, in the hall's south wall.
+            c.Shape((x, y) => Box(x, y, o - 8, o - 33, 16, 2.5f, 0.5f), Dark, 24, 0.6f, 0.6f);
+            c.Shape((x, y) => Box(x, y, o - 8, 18, 14, 5, 1), Plate, 8, 1, 1);
+            c.Groove((x, y) => Box(x, y, o - 8, 18, 13, 4) > 0 ? 9 : Mathf.Abs(Mod(y, 4) - 2) - 0.7f, 1f, 0.9f);
+            c.Shape((x, y) => Circle(x, y, o + 10, o - 33, 1.8f), frame == 0 ? Lamp : Plate, 27, 0.6f, 0.4f);
+            // Team stripe along the hall's roof edge.
+            c.Shape((x, y) => Box(x, y, o - 12, o + 50, 44, 4, 1f), Team, 27, 1f, 1f);
+            // Fuel tanks (east), a pipe into the hall, and the stack.
+            foreach (float ty in new[] { o + 30f, o + 6f })
             {
-                c.Shape((x, y) => Box(x, y, vx, o + 30, 12, 9, 3), Plate, 25, 2, 2);
-                c.Groove((x, y) => Box(x, y, vx, o + 30, 10, 7) > 0 ? 9 : Mathf.Abs(Mod(y, 3) - 1.5f) - 0.6f, 1, 0.5f);
+                c.Shape((x, y) => Circle(x, y, o + 48, ty, 10), Plate, 20, 7, 9);
+                c.Groove((x, y) => Mathf.Abs(Circle(x, y, o + 48, ty, 6)) - 0.1f, 0.6f, 0.5f);
+                c.Rivet(o + 48, ty, 1.5f, 1.2f);
             }
-            // Team panels on the roof.
-            c.Shape((x, y) => Box(x, y, o - 30, o - 2, 14, 10, 2.5f), Team, 24, 1.5f, 1.5f);
-            c.Shape((x, y) => Box(x, y, o + 30, o - 2, 14, 10, 2.5f), Team, 24, 1.5f, 1.5f);
-            // Stack.
-            c.Shape((x, y) => Circle(x, y, o + 40, o + 40, 8), Steel, 32, 3, 3);
-            c.Shape((x, y) => Circle(x, y, o + 40, o + 40, 4.5f), Dark, 27, 1, 1);
-            // Bay door (south) with its lamp.
-            c.Shape((x, y) => Box(x, y, o, o - 38, 22, 9, 2), Dark, 9, 1.5f, 1.5f);
-            c.Groove((x, y) => Box(x, y, o, o - 38, 20, 7) > 0 ? 9 : Mathf.Abs(Mod(x, 6) - 3) - 0.5f, 0.8f, 0.5f);
-            c.Shape((x, y) => Box(x, y, o, o - 26, 10, 2.2f, 1), frame == 0 ? Lamp : Plate, 23, 1, 1);
-            for (int k = -2; k <= 2; k++) { c.Rivet(o + k * 20, o + 47, 1.1f, 1); c.Rivet(o + k * 20, o - 35 + 0, 0.9f, 0.8f); }
-            c.Grime(23, 0.35f, 0.14f, 8);
+            c.Shape((x, y) => Mathf.Min(Capsule(x, y, o + 48, o + 18, o + 36, o + 18, 2), Capsule(x, y, o + 48, o + 30, o + 48, o + 6, 1.6f)), Steel, 14, 1.2f, 1.5f);
+            c.Shape((x, y) => Circle(x, y, o + 46, o - 20, 7), Steel, 36, 2, 3);
+            c.Shape((x, y) => Circle(x, y, o + 46, o - 20, 4), Dark, 30, 1, 1);
+            c.Grime(23, 0.3f, 0.13f, 8);
             return c;
         }
 
-        /// <summary>The HQ (3×3): a command hull with a team-coloured dome, four lamp towers and a landing pad.</summary>
+        /// <summary>
+        /// The HQ (3×3): a command post. A bunker with roof AC units and the team's marking, a radar dish and
+        /// an antenna mast, a vehicle garage to the south, a landing pad to the west, fuel drums and supply
+        /// crates, all inside a sandbag wall with gaps for the roads.
+        /// </summary>
         public static LitCanvas Base()
         {
             int s = 3 * TileSize;
             var c = new LitCanvas(s, s);
             float o = s / 2f;
-            c.Shape((x, y) => Mathf.Max(Box(x, y, o, o, 92, 92, 10), Polygon(x, y, o, o, 100, 8, Mathf.PI / 8)), Concrete, 3, 2, 2);
-            c.Groove((x, y) => Mathf.Max(Box(x, y, o, o, 86, 86, 8), Polygon(x, y, o, o, 94, 8, Mathf.PI / 8)), 0.8f, 0.7f);
-            c.Shape((x, y) => Box(x, y, o, o, 66, 66, 16), Hull, 18, 6, 6);
-            c.Groove((x, y) => Box(x, y, o, o, 56, 56, 12), 1.2f, 0.8f);
-            for (int k = 0; k < 4; k++)
+            c.Shape((x, y) => Box(x, y, o, o, 94, 94, 6), Concrete, 3, 1.5f, 1.5f);
+            // Sandbag wall: a chain of rounded bags around the edge, with gaps north, south, east and west.
+            for (int i = 0; i < 28; i++)
             {
-                float a = k * Mathf.PI / 2 + Mathf.PI / 4;
-                c.Groove((x, y) => Capsule(x, y, o + Mathf.Cos(a) * 34, o + Mathf.Sin(a) * 34, o + Mathf.Cos(a) * 62, o + Mathf.Sin(a) * 62, 0.1f), 1, 0.7f);
+                float t = i / 28f * 4, side = Mathf.Floor(t), u = (t - side) * 172 - 86;
+                if (Mathf.Abs(u) < 16) continue;
+                float bx = side == 0 ? o + u : side == 1 ? o + 86 : side == 2 ? o - u : o - 86;
+                float by = side == 0 ? o - 86 : side == 1 ? o + u : side == 2 ? o + 86 : o - u;
+                bool horizontal = side == 0 || side == 2;
+                c.Shape((x, y) => Box(x, y, bx, by, horizontal ? 5.5f : 4.5f, horizontal ? 4.5f : 5.5f, 2.5f), new Material(new Color(0.42f, 0.39f, 0.32f), 0.05f, 6), 7, 1.5f, 3);
             }
-            // Four lamp towers.
-            foreach (var (tx, ty) in new[] { (-1, -1), (1, -1), (-1, 1), (1, 1) })
+            // Landing pad (west): a ring and an H.
+            c.Shape((x, y) => Circle(x, y, o - 52, o + 30, 22), Plate, 5, 1, 1);
+            c.Groove((x, y) => Mathf.Abs(Circle(x, y, o - 52, o + 30, 18)) - 0.2f, 0.7f, 0.8f);
+            c.Shape((x, y) => Mathf.Min(Mathf.Min(Box(x, y, o - 58, o + 30, 1.8f, 9), Box(x, y, o - 46, o + 30, 1.8f, 9)), Box(x, y, o - 52, o + 30, 6, 1.6f)), Hazard, 5.6f, 0.4f, 0.4f);
+            // Bunker: chamfered block with a team roof marking, AC units and a hatch.
+            Func<float, float, float> bunker = (x, y) => Mathf.Max(Box(x, y, o + 6, o + 4, 40, 34, 4), Polygon(x, y, o + 6, o + 4, 48, 8, Mathf.PI / 8));
+            c.Shape(bunker, Hull, 24, 4, 5);
+            c.Groove((x, y) => Box(x, y, o + 6, o + 4, 34, 28, 3), 1.4f, 1.1f);
+            c.Shape((x, y) => Box(x, y, o - 4, o + 4, 20, 20, 3), Team, 26f, 2f, 2f);
+            c.Groove((x, y) => Box(x, y, o - 4, o + 4, 16, 16) > 0 ? 9 : Mathf.Abs(Mathf.Abs(x - (o - 4)) * 0.8f + (y - o - 4) * 0.9f - 2) - 1.4f, 1.5f, 1.4f); // chevron
+            foreach (float ax in new[] { o + 22f, o + 34f })
             {
-                float cx = o + tx * 66, cy = o + ty * 66;
-                c.Shape((x, y) => Circle(x, y, cx, cy, 13), Plate, 28, 4, 5);
-                c.Shape((x, y) => Circle(x, y, cx, cy, 5), Lamp, 30, 2, 1);
-                for (int k = 0; k < 6; k++) c.Rivet(cx + Mathf.Cos(k * 1.047f) * 9.5f, cy + Mathf.Sin(k * 1.047f) * 9.5f, 1, 0.8f);
+                c.Shape((x, y) => Box(x, y, ax, o + 22, 6, 6, 1.5f), Plate, 28, 1.5f, 2f);
+                c.Groove((x, y) => Mathf.Abs(Circle(x, y, ax, o + 22, 3)) - 0.1f, 0.8f, 0.5f);
+                c.Groove((x, y) => Circle(x, y, ax, o + 22, 3) > 0 ? 9 : Mathf.Abs(Mathf.Sin(Mathf.Atan2(y - o - 22, x - ax) * 3)) - 0.4f, 0.6f, 0.3f);
             }
-            // The dome, in team colour, with rings.
-            c.Shape((x, y) => Circle(x, y, o, o, 34), Team, 44, 26, 24);
-            c.Groove((x, y) => Mathf.Abs(Circle(x, y, o, o, 22)) - 0.1f, 1, 0.8f);
-            c.Groove((x, y) => Mathf.Abs(Circle(x, y, o, o, 11)) - 0.1f, 1, 0.8f);
-            c.Shape((x, y) => Circle(x, y, o, o, 5), Steel, 48, 3, 2);
-            // Antenna mast toward the north-east.
-            c.Shape((x, y) => Capsule(x, y, o + 20, o + 20, o + 44, o + 44, 2.2f), Steel, 34, 1.5f, 1.5f);
-            c.Shape((x, y) => Circle(x, y, o + 44, o + 44, 3.5f), Lamp, 35, 1, 1);
-            c.Grime(31, 0.4f, 0.14f, 10);
+            c.Shape((x, y) => Circle(x, y, o + 28, o - 12, 5), Plate, 26, 1.5f, 1.5f);
+            c.Groove((x, y) => Mathf.Abs(Circle(x, y, o + 28, o - 12, 3.2f)) - 0.1f, 0.6f, 0.4f);
+            // Radar dish on a pylon (north-east) and an antenna mast with a beacon.
+            c.Shape((x, y) => Box(x, y, o + 56, o + 56, 5, 5, 1), Plate, 18, 1, 1);
+            c.Shape((x, y) => Circle(x, y, o + 56, o + 56, 18), Steel, 32, 16, 11);
+            c.Groove((x, y) => Mathf.Abs(Circle(x, y, o + 56, o + 56, 9)) - 0.1f, 0.6f, 0.5f);
+            c.Shape((x, y) => Capsule(x, y, o + 56, o + 56, o + 66, o + 64, 1), Steel, 34, 0.5f, 0.5f);
+            c.Shape((x, y) => Circle(x, y, o - 26, o + 52, 3), Steel, 30, 1, 1);
+            c.Shape((x, y) => Capsule(x, y, o - 26, o + 52, o - 26, o + 72, 0.9f), Steel, 31, 0.5f, 0.5f);
+            c.Shape((x, y) => Circle(x, y, o - 26, o + 73, 2), Lamp, 32, 0.6f, 0.4f);
+            // Garage (south) with a striped apron.
+            c.Shape((x, y) => Box(x, y, o + 6, o - 42, 22, 10, 2), Hull, 18, 2, 2);
+            c.Shape((x, y) => Box(x, y, o + 6, o - 52, 18, 2, 0.5f), Plate, 8, 0.6f, 0.6f);
+            c.Groove((x, y) => Box(x, y, o + 6, o - 52, 17, 1.5f) > 0 ? 9 : Mathf.Abs(Mod(x, 6) - 3) - 0.8f, 1f, 0.8f);
+            Stripes(c, (x, y) => Box(x, y, o + 6, o - 62, 20, 3), 3.5f);
+            // Fuel drums and supply crates (south-east).
+            foreach (var (fx, fy) in new[] { (48f, -46f), (58f, -46f), (53f, -55f), (63f, -55f) })
+            {
+                c.Shape((x, y) => Circle(x, y, o + fx, o + fy, 4.5f), new Material(new Color(0.55f, 0.18f, 0.14f), 0.4f, 30), 9, 2, 2.5f);
+                c.Rivet(o + fx, o + fy, 0.9f, 0.6f);
+            }
+            foreach (var (bx, by) in new[] { (-50f, -52f), (-38f, -52f), (-44f, -40f) })
+            {
+                c.Shape((x, y) => Box(x, y, o + bx, o + by, 5.5f, 5.5f, 1f), new Material(new Color(0.42f, 0.33f, 0.22f), 0.08f, 8), 10, 1, 1.5f);
+                c.Groove((x, y) => Box(x, y, o + bx, o + by, 3.5f, 3.5f) > 0 ? 9 : Mathf.Min(Mathf.Abs(x - o - bx - (y - o - by)), Mathf.Abs(x - o - bx + (y - o - by))) - 0.4f, 0.6f, 0.4f);
+            }
+            c.Grime(31, 0.3f, 0.13f, 10);
             return c;
         }
 
