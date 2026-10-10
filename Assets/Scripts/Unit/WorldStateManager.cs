@@ -283,28 +283,36 @@ public partial class WorldStateManager : NetworkBehaviour
     private readonly List<float2> pendingDeathPositions = new List<float2>();
 
     private const int MaxExplosionsPerMessage = 256;
+    /// <summary>
+    /// Most explosions one client is sent per tick (each is a GameObject on the client). Only a mass death
+    /// in view, such as the match-end wipe of a big battle, reaches it; the rest of that tick's are dropped.
+    /// </summary>
+    private const int MaxExplosionsPerFlush = 4 * MaxExplosionsPerMessage;
     private readonly List<float2> seenDeaths = new List<float2>();
 
     /// <summary>
     /// Sends the deaths recorded since the last tick to each client whose view contains them and whose
-    /// team sees where they happened.
+    /// team sees where they happened. Once the match is over (GameOver) nothing is secret any more, so the
+    /// match-end wipe skips the fog test (by then the wipe has emptied the fog grids).
     /// </summary>
     [Server]
     private void FlushDeathEvents(SimData data)
     {
         List<float2> deaths = TakeDeathPositions();
         if (deaths.Count == 0) return;
+        GameState state = GameCore.Instance != null ? GameCore.Instance.CurrentState : GameState.Playing;
 
         foreach (KeyValuePair<ClientPlayer, (int2, int2)> view in playerView)
         {
             if (view.Key == null || view.Key.connectionToClient == null) continue;
             int grid = Sim.VisionOf(BuildingData.UIntToInt(view.Key.netId));
             seenDeaths.Clear();
-            foreach (float2 death in deaths) if (data.Sees(grid, death)) seenDeaths.Add(death);
+            foreach (float2 death in deaths) if (VisibilityRules.ShowsDeath(state, data.Sees(grid, death))) seenDeaths.Add(death);
             List<Vector2> visible = VisibilityRules.Filter(seenDeaths, view.Value.Item1, view.Value.Item2);
-            for (int i = 0; i < visible.Count; i += MaxExplosionsPerMessage)
+            int count = Mathf.Min(visible.Count, MaxExplosionsPerFlush);
+            for (int i = 0; i < count; i += MaxExplosionsPerMessage)
             {
-                int n = Mathf.Min(MaxExplosionsPerMessage, visible.Count - i);
+                int n = Mathf.Min(MaxExplosionsPerMessage, count - i);
                 view.Key.TargetPlayExplosions(view.Key.connectionToClient, visible.GetRange(i, n).ToArray());
             }
         }
@@ -329,7 +337,7 @@ public partial class WorldStateManager : NetworkBehaviour
             Ids?.Free(id);
             if (buildingFootprints.Remove(id, out List<int2> footprint))
             {
-                foreach (int2 tile in footprint) Map?.SetUsed(tile, false);
+                foreach (int2 tile in footprint) Map?.QueueUsed(tile, false);
             }
         }
     }
@@ -372,12 +380,13 @@ public partial class WorldStateManager : NetworkBehaviour
     {
         // Each entity records its position as it goes, so the match-end wipe still reaches
         // clients as explosions instead of dying silently. pendingDeathPositions is deliberately
-        // NOT cleared here: FlushDeathEvents drains it via TakeDeathPositions next FixedUpdate.
+        // NOT cleared here: FlushDeathEvents drains it at the next settled boundary (the tick keeps
+        // running in GameOver for this, see SimBoundarySystem.RunsIn).
         foreach (Entity e in Buildings.Values) DestroyWithDeathPosition(e);
         Sim?.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.DestroyAll });
         foreach (List<int2> footprint in buildingFootprints.Values)
         {
-            foreach (int2 tile in footprint) Map?.SetUsed(tile, false);
+            foreach (int2 tile in footprint) Map?.QueueUsed(tile, false);
         }
         Buildings.Clear();
         buildingFootprints.Clear();
@@ -435,7 +444,7 @@ public partial class WorldStateManager : NetworkBehaviour
     public bool TryFindSpawnTile(int2 origin, out int2 tile)
     {
         MapGrid grid = Map.Grid;
-        return TileSearch.FindNearest(origin, grid.IsWalkable, t => grid.TileAt(t) == TileType.Ground, MaxSpawnSearchTiles, out tile);
+        return TileSearch.FindNearest(origin, Map.IsWalkable, t => grid.TileAt(t) == TileType.Ground, MaxSpawnSearchTiles, out tile);
     }
 
     #endregion
@@ -452,7 +461,7 @@ public partial class WorldStateManager : NetworkBehaviour
         if (acting == null || acting.state != PlayerState.Playing) return PlacementResult.WrongGameState;
 
         return PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
-            player.hasPlacedHQ, Map.Grid.TileAt, Map.Grid.IsUsed, tile => false); // units are pushed out of new footprints
+            player.hasPlacedHQ, Map.Grid.TileAt, Map.IsUsed, tile => false); // units are pushed out of new footprints
     }
 
     /// <summary>Test helper: first anchor (scanning the map) where the player may place this building.</summary>
@@ -518,7 +527,7 @@ public partial class WorldStateManager : NetworkBehaviour
 
         //Set the tiles the building will cover to be used
         List<int2> tiles = Footprint.Tiles(positon, GetBuildingSize(type));
-        foreach (int2 tile in tiles) Map.SetUsed(tile, true);
+        foreach (int2 tile in tiles) Map.QueueUsed(tile, true);
         buildingFootprints[buildingData.id] = tiles;
     }
 
@@ -583,7 +592,7 @@ public partial class WorldStateManager : NetworkBehaviour
         if (!DevApi.Allowed || Sim == null) return false;
         BuildingConfig buildingConfig = ConfigLoader.LoadConfig().GetBuilding(type);
         List<int2> tiles = Footprint.Tiles(anchor, GetBuildingSize(type));
-        foreach (int2 tile in tiles) if (!Map.Grid.IsWalkable(tile)) return false;
+        foreach (int2 tile in tiles) if (!Map.IsWalkable(tile)) return false;
         if (health > 0f)
         {
             buildingConfig = new BuildingConfig
@@ -594,7 +603,7 @@ public partial class WorldStateManager : NetworkBehaviour
         }
         var data = new BuildingData { position = anchor, id = Ids.Allocate(), buildingType = type, ownerId = ownerId, rotation = 0f };
         Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.CreateBuilding, OwnerId = ownerId, Building = new BuildingSpec { Data = data, Rotation = 0f, Config = buildingConfig } });
-        foreach (int2 tile in tiles) Map.SetUsed(tile, true);
+        foreach (int2 tile in tiles) Map.QueueUsed(tile, true);
         buildingFootprints[data.id] = tiles;
         return true;
     }

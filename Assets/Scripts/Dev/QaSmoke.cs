@@ -74,6 +74,14 @@ public sealed class QaSmoke : MonoBehaviour
         {
             GameManager.Instance.ConnectToServer(PerfMatch.ArgValue("-qaJoin"));
             yield return Until(() => NetworkClient.isConnected && GameCore.Instance != null && NetworkClient.localPlayer != null, 30f);
+            if (GameCore.Instance == null || NetworkClient.localPlayer == null)
+            {
+                // The server refused the join (its match had started, or it was full).
+                State("refused");
+                log.WriteLine("done (not admitted)");
+                Application.Quit();
+                yield break;
+            }
             yield return new WaitForSecondsRealtime(2f);
             GameCore.Instance.Cmd_SetReady(true);
             Shot("lobby");

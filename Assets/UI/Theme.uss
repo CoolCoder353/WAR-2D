@@ -374,7 +374,8 @@
 
 /* ---------- Settings (Figma: Settings page) ---------- */
 .settings-screen { background-color: var(--color-surface-base); }
-.settings { width: 760px; }
+/* Pinned from the top, not centred: the pages differ in height, and a centred panel moved its title and tabs whenever the tab changed (owner request, 2026-10-10). 14% keeps the tallest state (a binding conflict) on screen. */
+.settings { width: 760px; position: absolute; top: 14%; left: 50%; translate: -50% 0; }
 .settings__content { padding: 20px 24px; }
 .settings__divider { margin: var(--space-2) 0; }
 .settings__page { display: none; }

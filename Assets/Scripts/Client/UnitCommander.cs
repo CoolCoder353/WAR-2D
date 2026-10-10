@@ -185,22 +185,11 @@ public class UnitCommander : NetworkBehaviour
 
         if (selecting && GameInput.Select.IsPressed())
         {
-
+            // The box follows the drag at any size (selection has no limit), from where the drag began.
             Vector3 worldPosition = GetMouseWorldPosition();
-            Vector3 startPosition = new Vector3(startcorner.x, startcorner.y, 0);
-            float sqrdistance = (worldPosition - startPosition).sqrMagnitude;
-            if (sqrdistance < 1000 && sqrdistance > 1) // Only update if the mouse is within 100 units from the origin and more than 1 unit away
-            {
-                Vector3 center = (worldPosition + startPosition) / 2;
-                selectionBox.transform.position = center;
-                Vector3 size = new Vector3(Mathf.Abs(worldPosition.x - startPosition.x), Mathf.Abs(worldPosition.y - startPosition.y), 1);
-                selectionBox.transform.localScale = size;
-
-            }
-
-
-
-
+            Vector3 startPosition = new Vector3(dragStart.x, dragStart.y, 0);
+            selectionBox.transform.position = (worldPosition + startPosition) / 2;
+            selectionBox.transform.localScale = new Vector3(Mathf.Abs(worldPosition.x - startPosition.x), Mathf.Abs(worldPosition.y - startPosition.y), 1);
         }
 
         //Mouse up, end selection 
@@ -225,6 +214,8 @@ public class UnitCommander : NetworkBehaviour
             else
             {
                 Selection.SelectBox(lo, hi, me, GameInput.AppendModifier.IsPressed());
+                // A click on no unit of ours, but on one of our spawners, selects the spawner (its production queue).
+                if (click && Selection.Selected.Count == 0 && TryOwnSpawnerAt(b, me, out BuildingData spawner)) SelectBuilding(spawner);
                 if (click) { lastClickTime = Time.unscaledTime; lastClickAt = b; }
             }
         }
@@ -360,6 +351,23 @@ public class UnitCommander : NetworkBehaviour
             Color tint = Tint(entry.Data.ownerId);
             sprite.color = entry.Ghost ? GhostTint(tint) : tint;
         }
+    }
+
+    /// <summary>The local player's spawner (seen now, not a ghost) whose footprint holds the world point.</summary>
+    private bool TryOwnSpawnerAt(float2 point, int ownerId, out BuildingData spawner)
+    {
+        foreach (ClientBuildings.Entry entry in (subscribedBuildings ?? ClientBuildings.Current).Entries.Values)
+        {
+            BuildingData data = entry.Data;
+            if (entry.Ghost || data.ownerId != ownerId || SpawnerRules.UnitFor(data.buildingType) == UnitType.None) continue;
+            int2 size = WorldStateManager.GetBuildingSize(data.buildingType);
+            float2 start = Footprint.Start((int2)math.round(data.position), size);
+            if (point.x < start.x || point.y < start.y || point.x >= start.x + size.x || point.y >= start.y + size.y) continue;
+            spawner = data;
+            return true;
+        }
+        spawner = default;
+        return false;
     }
 
     private void OnBuildingRemoved(int id)

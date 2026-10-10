@@ -115,7 +115,11 @@ namespace WAR2D.World
             return h;
         }
 
-        /// <summary>Sets or clears the footprint flag of a grid tile and records it in <see cref="ChangedTiles"/>.</summary>
+        /// <summary>
+        /// Sets or clears the footprint flag of a grid tile now and records it in <see cref="ChangedTiles"/>.
+        /// Only while no tick job reads the grid (the boundary, tests, a map without a simulation); a live
+        /// match's main-thread code uses <see cref="QueueUsed"/>.
+        /// </summary>
         public void SetUsed(int2 tile, bool used)
         {
             if (!_grid.Contains(tile)) return;
@@ -125,6 +129,38 @@ namespace WAR2D.World
             NativeArray<byte> flags = _grid.Used;
             flags[i] = value;
             ChangedTiles.Add(tile);
+        }
+
+        private readonly Dictionary<int, byte> pendingUsed = new Dictionary<int, byte>();
+
+        /// <summary>
+        /// Queues a footprint change for the next tick boundary (<see cref="ApplyPendingUsed"/>): the tick's
+        /// jobs read <c>Used</c> between ticks, so main-thread code never writes it then. <see cref="IsUsed"/>
+        /// and <see cref="IsWalkable"/> see queued changes at once, so a footprint can't be booked twice.
+        /// </summary>
+        public void QueueUsed(int2 tile, bool used)
+        {
+            if (_grid.Contains(tile)) pendingUsed[_grid.Index(tile)] = used ? (byte)1 : (byte)0;
+        }
+
+        /// <summary>True when the tile is under a building footprint, counting queued changes.</summary>
+        public bool IsUsed(int2 tile)
+        {
+            if (!_grid.Contains(tile)) return false;
+            int i = _grid.Index(tile);
+            return pendingUsed.TryGetValue(i, out byte queued) ? queued != 0 : _grid.Used[i] != 0;
+        }
+
+        /// <summary>True for free ground, counting queued footprint changes.</summary>
+        public bool IsWalkable(int2 tile) => _grid.Contains(tile) && _grid.Tiles[_grid.Index(tile)] == (byte)TileType.Ground && !IsUsed(tile);
+
+        /// <summary>Applies the queued footprint changes. Tick boundary only, once the tick's jobs are complete.</summary>
+        public void ApplyPendingUsed()
+        {
+            if (pendingUsed.Count == 0) return;
+            foreach (KeyValuePair<int, byte> change in pendingUsed)
+                SetUsed(new int2(change.Key % _grid.Width, change.Key / _grid.Width), change.Value != 0);
+            pendingUsed.Clear();
         }
 
         /// <summary>Frees the native arrays. Safe to call twice.</summary>

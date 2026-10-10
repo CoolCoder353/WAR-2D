@@ -47,8 +47,18 @@ public static class LobbyRules
     /// <summary>Player colours to pick from (the palette's size).</summary>
     public const int Colours = 8;
 
+    /// <summary>Most players in a match: one per colour and HQ clearing.</summary>
+    public const int MaxPlayers = Colours;
+
     /// <summary>Teams a player may pick in Teams mode (shown as Team 1–4, plus Solo).</summary>
     public const int PickableTeams = 4;
+
+    /// <summary>
+    /// True when a new connection may join: only in the lobby, and only while the connections (the new one
+    /// included) number at most <see cref="MaxPlayers"/>.
+    /// </summary>
+    public static bool MayJoin(GameState state, int connectionsIncludingNew) =>
+        state == GameState.Lobby && connectionsIncludingNew <= MaxPlayers;
 
     /// <summary>The lowest colour nobody has taken, or -1 when all are taken.</summary>
     public static int FirstFreeColour(IEnumerable<int> taken)

@@ -17,6 +17,13 @@ public class GameManager : NetworkManager
     public static GameManager Instance { get; private set; }
 
     /// <summary>
+    /// The <see cref="GameCore"/> prefab under <c>Resources</c>. The server spawns one when it starts; it is
+    /// not a scene object, because a <c>DontDestroyOnLoad</c> scene object in the editor's first scene never
+    /// gets Mirror's scene id and a build client could not find it.
+    /// </summary>
+    public const string GameCorePrefabPath = "Network/GameCore";
+
+    /// <summary>
     /// Awake is called when the script instance is being loaded.
     /// It initializes the singleton instance and ensures it persists across scene loads.
     /// </summary>
@@ -37,6 +44,11 @@ public class GameManager : NetworkManager
 
         // Load Game Config
         Config.ConfigLoader.LoadConfig();
+
+        // Clients spawn GameCore from its prefab (registered with the client when it starts).
+        GameObject core = Resources.Load<GameObject>(GameCorePrefabPath);
+        if (core == null) Debug.LogError($"Resources/{GameCorePrefabPath}.prefab is missing: no match can be hosted or joined.");
+        else if (!spawnPrefabs.Contains(core)) spawnPrefabs.Add(core);
     }
 
     /// <summary>
@@ -70,7 +82,24 @@ public class GameManager : NetworkManager
             if (Application.isBatchMode) Application.Quit(1);
             return;
         }
+        GameObject corePrefab = Resources.Load<GameObject>(GameCorePrefabPath);
+        if (GameCore.Instance == null && corePrefab != null) NetworkServer.Spawn(Instantiate(corePrefab));
         Debug.Log("Server has started");
+    }
+
+    /// <summary>
+    /// Called on the server when a client connects. Only the lobby takes new players, and only up to
+    /// <see cref="LobbyRules.MaxPlayers"/>: a player joining a running match would have no team, colour
+    /// slot, HQ or replication, so the server closes the connection (the joining client says so).
+    /// </summary>
+    [Server]
+    public override void OnServerConnect(NetworkConnectionToClient conn)
+    {
+        base.OnServerConnect(conn);
+        GameCore core = GameCore.Instance;
+        if (core == null || LobbyRules.MayJoin(core.CurrentState, NetworkServer.connections.Count)) return;
+        Debug.Log($"Refusing connection {conn.connectionId}: the match is {core.CurrentState} with {NetworkServer.connections.Count - 1} players.");
+        conn.Disconnect();
     }
 
     /// <summary>

@@ -18,7 +18,7 @@ stateDiagram-v2
     GameOver --> [*]: End screen, then Main menu
 ```
 
-1. **Main menu → Play → Lobby** (`Main_Menu` scene). The main menu (Play, Settings, Quit) has a live battle running behind it (`<MenuBattle>`; off in Settings → Graphics). **Play** asks for a nickname (remembered) and either **Host** (others join on your IP, port 7778) or **Join** an address (invalid addresses are flagged; while connecting there is a Cancel; a failed join says so). In the **lobby** every player picks an unused colour (8, from the palette) and readies up; in Teams mode they pick Team 1–4 or Solo (the host can also cycle anyone's team). The host (the server owner: the host, or the next player if the host leaves) sets the **match settings**: mode (Free-for-all or Teams), Diplomacy on/off, map size (`Lobby/MapSizes`: 256, 512, 1024) and starting resources (`Lobby/StartingResources`: 500–5000), the map seed (typed, or **Reroll**). Everyone sees the settings and a **map preview** with the 8 HQ areas (coloured for the players). Any settings change or reroll clears everyone's ready. **Start match** needs every player ready and at least two teams (so someone attacks someone). Teams are fixed when the match starts.
+1. **Main menu → Play → Lobby** (`Main_Menu` scene). The main menu (Play, Settings, Quit) has a live battle running behind it (`<MenuBattle>`; off in Settings → Graphics). **Play** asks for a nickname (remembered) and either **Host** (others join on your IP, port 7778) or **Join** an address (invalid addresses are flagged; while connecting there is a Cancel; a failed join says so). A lobby holds up to **8 players**, and nobody can join once the match has started (the server refuses the connection and the Play screen says why). In the **lobby** every player picks an unused colour (8, from the palette; the host can't pick one yet, see [known-issues.md](known-issues.md)) and readies up; in Teams mode they pick Team 1–4 or Solo (the host can also cycle anyone's team). The host (the server owner: the host, or the next player if the host leaves) sets the **match settings**: mode (Free-for-all or Teams), Diplomacy on/off, map size (`Lobby/MapSizes`: 256, 512, 1024) and starting resources (`Lobby/StartingResources`: 500–5000), the map seed (typed, or **Reroll**). Everyone sees the settings and a **map preview** with the 8 HQ areas (coloured for the players). Any settings change or reroll clears everyone's ready. **Start match** needs every player ready and at least two teams (so someone attacks someone). Teams are fixed when the match starts.
 2. **PlacingHQ** (`Map_2`). The map is generated from a seed (see "Map and tiles"). An HQ placement prompt is shown. Each player places a single 3×3 HQ on free ground, in any 90° rotation. The screen shows how many players are still placing.
 3. **Countdown.** When the last HQ is placed, the server starts a **5-second** countdown (`Match.CountdownSeconds`) and every client displays the same remaining time from the synced end time.
 4. **Playing.** Economy, building, spawning and combat run, and win/loss is checked every second.
@@ -45,7 +45,7 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | `Shift` + right-click (or attack-move click) | **Queue** the order after the current one: up to 4 waypoints per unit (`Orders/MaxQueued`). Units without an order start it at once. Stop, Hold or an unqueued order clears the queue. |
 | `S` | **Stop**: drop the order and stand (still fighting enemies in range) |
 | `H` | **Hold**: stand still, never pushed aside, fighting enemies in range |
-| `Ctrl` + `1`–`0` | Assign the selection to squad 1–10 (squads are kept by the server) |
+| `Ctrl` + `1`–`0` | Assign the selection to squad 1–10 (squads are kept by the server); with nothing selected, empty that squad |
 | `1`–`0`, or a squad on the squad bar | Select that squad (a right-click then orders the whole squad at once). The squad bar shows each squad's live unit count. |
 | Command card: Move, Attack-move | Arm the order: the next left- or right-click sends it (the armed button is highlighted) |
 | Command card: Stop, Hold | Same as `S` and `H` |
@@ -55,10 +55,10 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | Minimap: right-click | Send the selection there (Move, or the armed Attack-move; `Shift` queues) |
 | `R` (while placing) | Rotate the building preview 90° |
 | Left-click (while placing) | Place the building. The preview is grey if valid and red if not. During HQ placement the HQ preview appears on its own. |
-| Left-click on your Small Unit Spawner | Select it: the command card shows its production queue, where `+` queues one Tank and `−` removes one (max 100 queued; nothing is refunded, as the cost is charged at spawn) |
+| Left-click on your Small Unit Spawner (where none of your units are) | Select it: the command card shows its production queue, where `+` queues one Tank and `−` removes one (max 100 queued; nothing is refunded, as the cost is charged at spawn) |
 | `` ` `` (backquote) | Toggle the developer console |
 
-Every key except panning (arrows) can be rebound in **Settings → Controls**: click a binding, press the new key (Esc cancels). A key already in use offers to swap the two bindings. Bindings are saved with the settings.
+In **Settings → Controls** you can rebind Select, Move, Attack-move, Stop, Hold, Queue order (Shift), the squad-assign modifier (Ctrl), Rotate and Menu: click a binding, press the new key (Esc cancels). A key already in use offers to swap the two bindings. Bindings are saved with the settings. Panning (arrows), the squad number keys, zoom, middle-drag and Shift for fast panning and adding to a box selection are fixed.
 
 ## Settings
 
@@ -153,7 +153,7 @@ The alert feed (top left) shows the newest four alerts for 8 s each (`Alerts/Sho
 - Damage is the attacker's `Damage` times a multiplier from the damage table (`DamageTable`) for what it hits: units, buildings or walls. Every Tank multiplier is 1.0 except walls (0.5, used once walls arrive in v0.7).
 - It keeps attacking that target every attack interval while the target is alive and in range. When the target dies or leaves range, it picks a new one.
 - Buildings don't attack.
-- Anything at 0 health is destroyed, and **every death plays an explosion**. The server sends each player only the deaths inside their camera view that their team can see.
+- Anything at 0 health is destroyed, and **every death plays an explosion**. The server sends each player only the deaths inside their camera view that they can see (their sight plus vision shared with them), at most 1,024 a tick; once the match is over, the end-of-match wipe shows wherever they look.
 - Clients see a short yellow tracer for each attack whose attacker is on screen, and a health bar over every damaged unit or building.
 
 ## Win, loss and leaving
@@ -163,5 +163,5 @@ The alert feed (top left) shows the newest four alerts for 8 s each (`Alerts/Sho
 - If no player with an HQ left attacks another (they are all at peace with each other, or only one is left), and the match started with more than one team, they **win** together: every HQ holder, and every eliminated player whose starting team includes one, sees the Win screen. Peace must be mutual: if one survivor still attacks another, the match goes on. Everyone else sees the Lose screen, and the winner's world is wiped with explosions as the match ends.
 - If nobody has an HQ, it's a **draw**, and everyone sees a Draw screen.
 - **Esc** (or Menu on the top bar) opens the **in-match menu**: Resume, Settings, Surrender and Leave match. Nothing pauses. **Surrender** asks to confirm, then eliminates you exactly as losing your HQ.
-- **Gifting.** Gift (top bar) sends resources to any other live player, ally or enemy (marked from whom you attack): a whole amount from 1 up to what you have, one gift every 5 s (`Gifting/CooldownSeconds`). It is taken from you and given at once; only you and the recipient are told (the recipient gets an alert).
+- **Gifting.** Gift (top bar) sends resources to any other live player, ally or enemy (marked from whom you attack): an amount from 1 up to what you have, one gift every 5 s (`Gifting/CooldownSeconds`). It is taken from you and given at once; only you and the recipient are told (the recipient gets an alert).
 - When a player disconnects mid-match, they're removed from the player list, their units and buildings are destroyed, and the lobby UI updates. If the **server owner** leaves, ownership passes to another player; if the host itself leaves, the server shuts down and everyone returns to the main menu.

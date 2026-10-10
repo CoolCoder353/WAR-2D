@@ -140,6 +140,20 @@ public class LobbyTests
         yield return PlayModeMatch.WaitUntil(() => WAR2D.Client.MenuBattle.Instance != null && WAR2D.Client.MenuBattle.Instance.Running, 10f);
         yield return PlayModeMatch.WaitUntil(() => WAR2D.Client.ClientWorld.Instance != null && WAR2D.Client.ClientWorld.Instance.KnownCount > 100, 20f);
 
+        // The armies march at each other: it is a battle, not a still picture.
+        WAR2D.Client.ClientWorld view = WAR2D.Client.ClientWorld.Instance;
+        var ids = new System.Collections.Generic.List<int>();
+        view.QueryBox(Unity.Mathematics.float2.zero, new Unity.Mathematics.float2(4096f), 1, ids);
+        Assert.That(ids.Count, Is.GreaterThan(100), "army A is visible");
+        var start = new System.Collections.Generic.Dictionary<int, Unity.Mathematics.float2>();
+        foreach (int id in ids) if (view.TryGet(id, out WAR2D.Client.ClientUnitView unit)) start[id] = unit.Position;
+        yield return PlayModeMatch.WaitUntil(() =>
+        {
+            foreach (var pair in start)
+                if (view.TryGet(pair.Key, out WAR2D.Client.ClientUnitView unit) && Unity.Mathematics.math.distance(unit.Position, pair.Value) > 3f) return true;
+            return false;
+        }, 15f);
+
         yield return HostFromMenu();
         Assert.That(WAR2D.Client.MenuBattle.Instance.Running, Is.False, "the battle is torn down before hosting");
         Assert.That(WAR2D.Sim.SimContext.RunningOverride, Is.Null);

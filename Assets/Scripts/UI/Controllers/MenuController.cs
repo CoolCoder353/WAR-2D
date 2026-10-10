@@ -108,10 +108,12 @@ namespace WAR2D.UI
             bool connected = NetworkClient.isConnected;
             if (connected) wasConnected = true;
 
-            // A join that ended before it ever connected failed.
+            // A join that ended before reaching the lobby failed: nobody answered, or the server closed the
+            // connection (its match has started or it is full).
             if (joiningAddress != null && !NetworkClient.active)
             {
                 if (!wasConnected) play.ShowFailed(joiningAddress, 7778);
+                else play.ShowRefused(joiningAddress);
                 joiningAddress = null;
             }
 

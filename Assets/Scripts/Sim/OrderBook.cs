@@ -81,14 +81,16 @@ namespace WAR2D.Sim
         }
 
         /// <summary>
-        /// The boundary's flow pipeline: complete last tick's rebuilds and publish them, apply terrain
-        /// changes, retire orders with no followers and extend routes to sectors units wandered into.
+        /// The boundary's flow pipeline: complete last tick's rebuilds and publish them, apply the queued
+        /// footprint changes (<see cref="MapStore.QueueUsed"/>) and the terrain changes they make, retire
+        /// orders with no followers and extend routes to sectors units wandered into.
         /// </summary>
         public void AtBoundary(MapStore map, int tick)
         {
             cache.CompleteRebuilds(ref table);
             rebuilds = default;
 
+            map.ApplyPendingUsed(); // footprints placed or freed since the last boundary
             foreach (int2 tile in map.ChangedTiles) cache.Invalidate(tile);
             map.ChangedTiles.Clear();
 

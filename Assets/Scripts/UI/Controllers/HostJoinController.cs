@@ -74,5 +74,13 @@ namespace WAR2D.UI
             failed.text = $"No server answered at {to}:{port}. Check the address and that the host is running.";
             failed.AddToClassList("play-panel__state--visible");
         }
+
+        /// <summary>Shows that the server answered but closed the connection before the lobby (match started or full).</summary>
+        public void ShowRefused(string to)
+        {
+            ShowIdle();
+            failed.text = $"{to} closed the connection: its match has already started, or it is full ({LobbyRules.MaxPlayers} players).";
+            failed.AddToClassList("play-panel__state--visible");
+        }
     }
 }

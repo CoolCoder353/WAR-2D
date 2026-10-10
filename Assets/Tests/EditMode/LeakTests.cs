@@ -275,6 +275,16 @@ public class LeakTests
     }
 
     [Test]
+    public void DeathsInFogNeverExplodeBeforeGameOver()
+    {
+        foreach (GameState state in System.Enum.GetValues(typeof(GameState)))
+        {
+            Assert.IsTrue(VisibilityRules.ShowsDeath(state, gridSees: true), $"a seen death always shows ({state})");
+            Assert.AreEqual(state == GameState.GameOver, VisibilityRules.ShowsDeath(state, gridSees: false), $"a death in fog in {state}");
+        }
+    }
+
+    [Test]
     public void GiftNoticeOnlyToSenderAndRecipient()
     {
         CollectionAssert.AreEquivalent(new[] { 7, 9 }, GiftRules.Recipients(7, 9));

@@ -27,7 +27,7 @@ flowchart LR
         GC[GameCore<br/>state machine, players]
         SYS[Building systems<br/>Spawner / Resource /<br/>Destruction / WinLoss]
     end
-    UC -- "Cmd: UpdateClientView, CmdOrderMoveChunk,<br/>CmdAssignSquadChunk, CmdOrderSquad" --> GATE
+    UC -- "Cmd: UpdateClientView, CmdOrderChunk,<br/>CmdAssignSquadChunk, CmdOrderSquad" --> GATE
     BBM -- "Cmd: TryAddBuilding, CanBuildBuildingCommand" --> GATE
     GATE --> WSM
     WSM --> Q
@@ -36,9 +36,8 @@ flowchart LR
     TICK <--> ECS
     SYS <--> ECS
     TICK -- "settled SoA at each boundary" --> REP
-    REP -- "ReplicationBatch (reliable + unreliable)" --> CW
-    WSM -- "per-player visible buildings" --> CP_C
-    WSM -- "TargetRpc: explosions" --> CP_C
+    REP -- "ReplicationBatch (reliable + unreliable),<br/>FogBatch, BuildingBatch" --> CW
+    WSM -- "TargetRpc: explosions, alerts, squad counts" --> CP_C
     SYS -- "resources, eliminate, win" --> GC
     GC -- "TargetRpc: resources, win/lose" --> CP_C
 ```
@@ -58,27 +57,30 @@ Game code moved into its own assembly in v0.2, which is what lets the test assem
 
 | Scene | Contains | Notes |
 |---|---|---|
-| `Assets/Main_Menu.unity` | `GameManager` (Mirror `NetworkManager` + `KcpTransport`, port 7778), `GameCore`, `LobbySystem`, `MainMenuUI`, TIM Console + `Custom_Commands` | Offline scene. `GameManager` and `GameCore` are `DontDestroyOnLoad` singletons. |
-| `Assets/Maps/Map_2.unity` | `WorldStateManager`, `UnitCommander` (adds `ClientWorld` on clients), `BuildingPlacement`, the `HUD` (`UIDocument` + `HudController`), orthographic camera with `Character_Controler`, walkable and unwalkable tilemaps | Loaded by `GameCore.Cmd_StartGame` → `ServerChangeScene`, using the scene name from `GameConfig.xml` (`Match.Scene`, currently `Map_2`). With `Match/Map/Size > 0` (the default, 1024) the map is generated and the scene's tilemaps are hidden; with 0 the tilemaps are the map (the PlayMode tests use this). |
+| `Assets/Main_Menu.unity` | `GameManager` (Mirror `NetworkManager` + `MultiplexTransport`: KCP and SimpleWebTransport, both on port 7778), the `Menu` UI (`UIDocument`, `MenuController`, `MenuBattle`), `Custom_Commands` | Offline scene. `GameManager` is a `DontDestroyOnLoad` singleton. `GameCore` is **not** in the scene: the server spawns it from `Resources/Network/GameCore.prefab` when it starts (see `GameManager`). |
+| `Assets/Maps/Map_2.unity` | `WorldStateManager`, `UnitCommander` (adds `ClientWorld` on clients), `BuildingPlacement`, the `HUD` (`UIDocument` + `HudController`), orthographic camera with `Character_Controler` and a `Physics2DRaycaster`, walkable and unwalkable tilemaps | Loaded by `GameCore.Cmd_StartGame` → `ServerChangeScene`, using the scene name from `GameConfig.xml` (`Match.Scene`, currently `Map_2`). With `Match/Map/Size > 0` (the default, 1024) the map is generated and the scene's tilemaps are hidden; with 0 the tilemaps are the map (the PlayMode tests use this). |
 | `Assets/Player.prefab` | `ClientPlayer` | Mirror player prefab, auto-created for each connection and `DontDestroyOnLoad`. |
+| `Assets/Resources/Network/GameCore.prefab` | `GameCore` | Spawned by the server in `GameManager.OnStartServer` and registered with clients in `GameManager.Awake` (`spawnPrefabs`); `DontDestroyOnLoad` once spawned, destroyed by Mirror when the server or client stops. A spawned prefab rather than a scene object: in the editor, the scene play mode starts in never gets Mirror's scene post-process, so a scene object that moves itself to `DontDestroyOnLoad` kept an id a build client couldn't match. |
 
 `GameManager.LeaveLobby()` stops the host or client, destroys the `GameCore` and `WorldStateManager` objects, and reloads `Main_Menu`.
 
 ## Core classes
 
 ### `GameManager` (`Scripts/GameManager.cs`): `NetworkManager`
-- Loads `GameConfig.xml` in `Awake` and again in `OnStartServer`; an invalid config stops the server (and quits, in batch mode).
+- Loads `GameConfig.xml` in `Awake` and adds the `GameCore` prefab to `spawnPrefabs`. `OnStartServer` stops the server on an invalid config (and quits, in batch mode), then spawns `GameCore`.
+- **`OnServerConnect`** closes the connection unless the match is in the lobby and has room (`LobbyRules.MayJoin`: *Lobby* only, at most `LobbyRules.MaxPlayers` = 8 connections). The joining client's Play screen then says the match has started or is full.
 - **`OnServerAddPlayer`** creates a `ServerPlayer` with the configured starting resources and adds it to `GameCore.ServerPlayers`.
 - **`OnServerDisconnect`** stops replication to the connection and forwards to `GameCore.OnPlayerLeave`.
-- **`OnStartClient`** registers the `ReplicationBatch` handler, which forwards to `ReplicationClient.Received`.
-- Main-menu buttons are wired by **serialized references** in `MainMenuUI` (v0.2 removed the old tag-based lookups).
+- **`OnStartClient`** registers the `ReplicationBatch`, `FogBatch` and `BuildingBatch` handlers (`ReplicationClient`, `ClientFog`, `ClientBuildings`).
+- The menus are UI Toolkit (`MenuController`, see "Menus" below).
 - Public actions: `HostServer`, `ConnectToServer(address)`, `LeaveLobby`, `QuitGame`.
 
 ### `GameCore` (`Scripts/GameCore.cs`): `NetworkBehaviour`, server game state
-- `[SyncVar] CurrentState : GameState` (`Lobby`, `PlacingHQ`, `Countdown`, `Playing`, `GameOver`) and `[SyncVar] CountdownEndTime`.
+- Spawned by the server from `Resources/Network/GameCore.prefab` (not a scene object); `Instance` is cleared when it is destroyed.
+- `[SyncVar] CurrentState : GameState` (`Lobby`, `PlacingHQ`, `Countdown`, `Playing`, `GameOver`), `[SyncVar] CountdownEndTime`, and the public lobby and match data `Settings` (`MatchSettings`), `DiplomacyEnabled` and `MatchStartTime`.
 - `ServerPlayers : Dictionary<NetworkIdentity, ServerPlayer>` is the authoritative player list. `MatchStartPlayerCount` records how many players were present when the match launched (so a departure before *Playing* can't stop the survivor from winning).
-- `Teams : SyncDictionary<int, int>` maps each owner id to its team, fixed by `Cmd_StartGame` from the lobby choices (`TeamRules.Assign`: players who picked the same team share one, the rest are solo; bots get their own). `TeamOf` reads it. It is only the starting state of diplomacy (`SimContext.Diplomacy`, see the tick section): from Playing on, who attacks and shares vision with whom is per player and one-way. The host sets choices with `Cmd_SetTeam(playerNetId, team)` (server owner, *Lobby* only).
-- `PlayerOrder : SyncList<int>` holds the owner ids in match order; a client colours an owner's units by its position here.
+- `Teams : SyncDictionary<int, int>` maps each owner id to its team, fixed by `Cmd_StartGame` from the lobby choices (`TeamRules.Assign`: players who picked the same team share one, the rest are solo; bots get their own). `TeamOf` reads it. It is only the starting state of diplomacy (`SimContext.Diplomacy`, see the tick section): from Playing on, who attacks and shares vision with whom is per player and one-way. The host sets choices with `Cmd_SetTeam(playerNetId, team)` (server owner, *Lobby* only, and only choices a player could make for themselves: `LobbyRules.IsTeamChoiceValid`, so Solo only in Free-for-all).
+- `PlayerOrder : SyncList<int>` holds the owner ids in match order: join order (ascending net id), as the lobby lists the players and colours the HQ sites. An owner's index here is its bit in the diplomacy masks and picks the clearing the camera starts on; colours come from each player's lobby `colourIndex`.
 - `Bots` are connectionless players for the performance harness only (`AddBot`, refused unless `DevApi.Allowed`). They count in the player order, the match's player count and win/loss.
 - Server ownership: `SetServerOwner`/`IsServerOwner`. The owner is the only player allowed to start a match, and ownership transfers when the owner leaves.
 - `Cmd_StartGame` (owner only, *Lobby* only, valid config only) resets each player's `hasPlacedHQ`, captures `MatchStartPlayerCount` and `MatchStartTeamCount`, fixes `Teams`, switches to *PlacingHQ* and loads the configured map.
@@ -94,26 +96,26 @@ Game code moved into its own assembly in v0.2, which is what lets the test assem
 
 ### `ClientPlayer` (`Scripts/ClientPlayer.cs`): `NetworkBehaviour` on the player prefab
 - `[SyncVar] nickname`, `hasPlacedHQ`, `isServerOwner` (drives the lobby Start button, including when ownership transfers).
-- `[SyncVar] lobbyTeam`: the team the player was put on in the lobby (`TeamRules.NoTeam` = solo). Shown and cycled by the lobby's team label (server owner only).
-- It receives these TargetRpcs: `TargetUpdateResources` (resources plus last second's income and upkeep, kept by `ServerPlayer.AddIncome`/`AddUpkeep` and rolled once a second by `GameCore`), `TargetReceiveCanBuildBuildingResponse`, `TargetPlayExplosions`, `RpcOnPlayerWon`, `RpcOnPlayerLost` and `RpcOnMatchDraw` (the Lose screen relabelled "Draw"). The end screens load `Resources/UI/WinScreenUI` / `LoseScreenUI` and hide the HUD.
+- `[SyncVar] colourIndex` (0–7, unique in the lobby), `ready`, and `lobbyTeam`: the team the player was put on in the lobby (`TeamRules.NoTeam` = solo), shown in each lobby row and cycled by the host's team pill.
+- It receives these TargetRpcs: `TargetUpdateResources` (resources plus last second's income and upkeep, kept by `ServerPlayer.AddIncome`/`AddUpkeep` and rolled once a second by `GameCore`), `TargetReceiveCanBuildBuildingResponse`, `TargetPlayExplosions`, `TargetSpawnerQueue`, `TargetSquadCounts`, `TargetAlerts`, `TargetDiplomacy`, `TargetGift`, `RpcOnPlayerWon`, `RpcOnPlayerLost` and `RpcOnMatchDraw`. The end screen is a HUD layer (`EndScreenController`, raised through `ClientPlayer.MatchEnded`).
 - `CmdSetNickname` is the one authority-checked command here; it goes through `CommandGate` and `CommandValidator.TrySanitizeNickname`.
 
 ### `WorldStateManager` (`Scripts/Unit/WorldStateManager.cs`): `NetworkBehaviour`, the world gateway
 - In `OnStartServer` it builds `Map` (a `MapStore`, see "Map" below), then creates the match's simulation (`Sim`, a `SimContext`) and unit replication (`Replication`, a `ReplicationService`), and registers every connected player with replication. `OnDestroy` disposes all three.
 - `Ids => Sim.Ids` (the match's `NetIdAllocator`), a `Buildings` registry (`Dictionary<int id, Entity>`) and a `buildingFootprints` map so a destroyed building frees its tiles.
 - It owns every world **Command** clients send (see the table below), fills `ReplicationService.CollectBuildings` with every live building, and on each settled boundary (`SimContext.Settled`) flushes death explosions (`FlushDeathEvents`). The order and squad commands live in `Net/OrderCommands.cs` (`WorldStateManager` is `partial`).
-- `TryAddBuilding` validates, charges, reserves the footprint and sets `hasPlacedHQ`, then queues `CreateBuilding`; the entity appears at the next tick boundary. Spawners queue `SpawnUnit`.
+- `TryAddBuilding` validates, charges, reserves the footprint (`MapStore.QueueUsed`) and sets `hasPlacedHQ`, then queues `CreateBuilding`; the entity appears at the next tick boundary. Spawners queue `SpawnUnit`.
 - `OnEntityDestroyed` (called by `DestructionSystem`) unregisters a building, frees its id and footprint, and records a death position; unit deaths arrive through `SimContext.UnitDied`. `KillAllEntitiesOwnedBy` zeros the player's buildings' health and queues `KillOwner` (and forgets their squads); `DestroyAllEntities` wipes buildings and queues `DestroyAll` at match end.
 - Dev only (`DevApi.Allowed`): `DevPlaceBuilding` and `DevSpawnUnit` for the performance harness.
 
 ## Map (`Scripts/World/`)
 
 - `MapGrid` is the tile grid: `Width`, `Height`, `Tiles` (`(byte)TileType` per tile: Ground 0, Wall 1, Gem 2, Border 3) and `Used` (1 under a building footprint), row-major with tile (x, y) covering [x, x+1). Off-map reads as `Border`. **Grid tiles are world tiles**, so the map starts at (0, 0) and `WorldStateManager.MapBounds` is `(0, size − 1)`.
-- `MapStore` owns the grid's native memory. `Generate(size, seed, gemChance)` runs `MapGenerator` (the v0.3 cave generator: 45 % rock smoothed four times, eight HQ clearings on a circle joined to the centre by corridors, unreachable floor filled in, gems on floor-facing rock, a guaranteed gem vein beside each clearing, a border ring). `FromTilemaps` reads Map_2's tilemaps through `CellToWorld`; Map_2's Ground and Walls tilemaps are offset by (29, 45) so every tile is non-negative. `SetUsed` records footprint changes in `ChangedTiles`, and `Hash()` is FNV-1a over the tile kinds.
+- `MapStore` owns the grid's native memory. `Generate(size, seed, gemChance)` runs `MapGenerator` (the v0.3 cave generator: 45 % rock smoothed four times, eight HQ clearings on a circle joined to the centre by corridors, unreachable floor filled in, gems on floor-facing rock, a guaranteed gem vein beside each clearing, a border ring). `FromTilemaps` reads Map_2's tilemaps through `CellToWorld`; Map_2's Ground and Walls tilemaps are offset by (29, 45) so every tile is non-negative. The tick's movement job reads `Used`, so main-thread code between ticks never writes it: `QueueUsed` queues a footprint change, `IsUsed` / `IsWalkable` see queued changes at once (no footprint is booked twice), and `OrderBook.AtBoundary` applies the queue (`ApplyPendingUsed`, then `SetUsed`, which records `ChangedTiles`) once the jobs are complete. `Hash()` is FNV-1a over the tile kinds.
 - Generated maps reach clients as three SyncVars on `WorldStateManager`: `MapSize`, `MapSeed`, `MapHash`. A client regenerates the map, disconnects on a hash mismatch (`[Map] hash mismatch`), hides the tilemap renderers and draws the map with `MapView`: one point-filtered texture, one texel per tile, on a quad at z = 1. A 1024² map generates in about 170 ms.
 
 ### `UnitCommander` (`Scripts/Client/UnitCommander.cs`): client presentation and input
-- Owns the local `Selection` (`Client/Selection.cs`): left drag selects every own unit in the box (no limit; Shift adds), right click orders the selection, Ctrl+1–0 assigns a squad and 1–0 selects one; clicking an own spawner selects it (`SelectBuilding`). Move and Attack-move can be armed (`ArmedOrder`) by the `A` key or the command card, and the next click sends them. Orders go out as chunked id lists, or as one `CmdOrderSquad` when the selection is exactly a squad.
+- Owns the local `Selection` (`Client/Selection.cs`): left drag selects every own unit in the box (no limit; Shift adds), right click orders the selection, Ctrl+1–0 assigns a squad (an empty selection empties it) and 1–0 selects one; a click that hits none of your units but your spawner's footprint selects the spawner (`SelectBuilding`). `SpawnerClientManager` only marks spawner GameObjects; the commander alone decides what a click selects. Move and Attack-move can be armed (`ArmedOrder`) by the `A` key or the command card, and the next click sends them. Orders go out as chunked id lists, or as one `CmdOrderSquad` when the selection is exactly a squad.
 - Sends its camera rectangle (padded by `visualAdditionalRange`, clamped to the map) through `UpdateClientView`, only when it changes and at most every 0.1 s.
 - Adds `ClientWorld` on clients and calls `ClientWorld.Draw(selection)` from `LateUpdate`.
 - Buildings: creates a GameObject per building `ClientBuildings` reports (dimmed while a ghost: out of sight, shown as last seen) (sprite loaded by enum name), with `BuildingDataClient` for health and `SpawnerClientManager` on Small Unit Spawners for click-to-spawn.
@@ -128,7 +130,6 @@ Game code moved into its own assembly in v0.2, which is what lets the test assem
 ### `BuildingPlacement` (`Scripts/Building/Building Spawning/BuildingPlacement.cs`)
 - Started by the command card's build buttons (`BeginPlacement`), and on its own with the HQ during *PlacingHQ* until `hasPlacedHQ`. While placing, it asks the server whether the spot is valid (change-gated and throttled `CanBuildBuildingCommand` → TargetRpc → preview colour), places with `TryAddBuilding` on left-click and cancels on right-click. `UnitCommander` leaves that frame's clicks to it.
 - The HQ prompt, progress and the server-owned countdown (from `GameCore.CountdownEndTime`) are HUD overlays (`HudOverlayController`).
-- Lobby UI: `LobbySystem` builds one row per connected player, sends nickname edits on `onEndEdit`, and shows/hides the Start button from `ClientPlayer.isServerOwner`.
 
 ## ECS data model
 
@@ -136,7 +137,7 @@ All components are `IComponentData` structs.
 
 | Component | File | Fields | On |
 |---|---|---|---|
-| `Unit` | `Sim/SimComponents.cs` | `Id`, `OwnerId`, `OwnerSlot`, `Type`, `SizeClass`, `TargetKind`, `Radius`, `Health`, `MaxHealth`, `Position`, `Velocity`, `TargetId` (unit or building id, or −1), `Cooldown`, `OrderSlot` (order handle or −1), `Unpaid` | Units: the only unit component |
+| `Unit` | `Sim/SimComponents.cs` | `Id`, `OwnerId`, `OwnerSlot`, `Type`, `SizeClass`, `TargetKind`, `Radius`, `Health`, `MaxHealth`, `Position`, `Velocity`, `TargetId` (unit or building id, or −1), `Cooldown`, `OrderSlot` (order handle or −1), `Unpaid`, `Stance`, `LastHitBy` (owner of the last attacker) | Units: the only unit component |
 | `SimData` (singleton) | `Sim/SimData.cs` | The map arrays (not owned), per-type balance tables, the damage table, and the SoA scratch every stage runs over (positions, health, owners, ids, hash cells, targets…), building targets, attack events, death queue, pending orders/moves, order table, economy arrays | The sim singleton |
 | `SimClock` (singleton) | `Sim/SimComponents.cs` | `Tick`, `Running`, `Dt`, `UnitCount` | The sim singleton |
 | `MapGrid` | `World/MapGrid.cs` | `Width`, `Height`, `Tiles`, `Used` | A plain struct the sim and pathing copy |
@@ -157,7 +158,7 @@ Enums: `UnitType { None, Tank }`, `BuildingType { None, Miner, SmallUnitSpawner,
 
 | System | Does |
 |---|---|
-| `SimBoundarySystem` (first, managed) | `CompleteAllTrackedJobs` (the previous tick's jobs) → destroys the units the lifecycle queued (freeing ids, raising `UnitDied` for explosions) → takes last second's upkeep from the owners (`SimContext.Spend`) and refreshes budgets (`BudgetOf`) → `OrderBook.AtBoundary` (publish rebuilt flow fields, apply terrain changes, retire orders with no followers, extend routes to sectors units wandered into) → raises `Settled` (replication runs here on the settled SoA) → sets `Running` (server, *Playing*). Later stages return at once while not running. |
+| `SimBoundarySystem` (first, managed) | `CompleteAllTrackedJobs` (the previous tick's jobs) → destroys the units the lifecycle queued (freeing ids, raising `UnitDied` for explosions) → takes last second's upkeep from the owners (`SimContext.Spend`) and refreshes budgets (`BudgetOf`) → `OrderBook.AtBoundary` (publish rebuilt flow fields, apply queued footprints and the terrain changes they make, retire orders with no followers, extend routes to sectors units wandered into) → raises `Settled` (replication runs here on the settled SoA) → sets `Running` (server, *Playing* or *GameOver*: `RunsIn`; *GameOver* so the match-end wipe is settled once more and reaches clients as explosions and Leaves). Later stages return at once while not running. |
 | `SimCommandSystem` (managed) | Writes last tick's building damage to `HealthComponent`s, sends each unit in `SimData.Arrivals` (written by movement when a unit reaches its goal) on to its next `WaypointBook` waypoint (units popping the same goal, stance and size class share one order), then drains the queue: `CreateBuilding` (and pushes units out of the new footprint), `KillOwner` and `DestroyAll` in any state; `SpawnUnit` (refused over `MaxUnitsPerPlayer`) and `OrderUnits` only while running (deferred otherwise). `OrderUnits` carries an `OrderKind` (Move, AttackMove, Hold, Stop) that sets the unit's `Stance`; a Shift-queued Move or AttackMove is appended to the `WaypointBook` of each unit with a live order (up to `Orders/MaxQueued`), and any other order clears the unit's waypoints. Every structural change to units happens here. |
 | `SimGatherSystem` | Counts units and gathers building targets on the main thread, then a parallel job copies each `Unit` into its SoA slot, applying pending orders and moves. |
 | `SimHashSystem` | Counting-sort spatial hashes of units and buildings (`HashCellSize` 5). |
@@ -193,37 +194,48 @@ Every stage declares write access to `Unit`, which chains their jobs without a s
 | Command | On | Purpose | Budget (burst, /s) | Validation |
 |---|---|---|---|---|
 | `CmdSetNickname(name)` | `ClientPlayer` | Rename in the lobby | 5, 1 | nickname sanitised; *Lobby* only |
-| `Cmd_StartGame()` | `GameCore` | Server owner starts the match | 3, 0.5 | ownership, state and config |
+| `Cmd_StartGame()` | `GameCore` | Server owner starts the match | 3, 0.5 | ownership, *Lobby*, valid config, `LobbyRules.CanStart` (all ready, ≥ 2 teams; skipped under `DevApi.Allowed`) |
+| `Cmd_SetMatchSettings(settings)` | `GameCore` | Host changes mode, diplomacy, map size, seed, starting resources | 10, 4 | ownership, *Lobby*, `MatchSettingsRules.IsValid` (values from `<Lobby>`); clears every ready flag |
+| `Cmd_RerollMap()` | `GameCore` | Host picks a new random seed | 5, 2 | ownership, *Lobby*; clears every ready flag |
+| `Cmd_SetTeam(playerNetId, team)` | `GameCore` | Host sets a player's lobby team | 10, 5 | ownership, *Lobby*, `LobbyRules.IsTeamChoiceValid` |
+| `Cmd_SetColour(colour)` | `GameCore` | Pick a palette colour | 10, 4 | *Lobby*, sender in the lobby, `LobbyRules.IsColourFree` (0–7, unused) |
+| `Cmd_SetReady(ready)` | `GameCore` | Ready up or cancel | 10, 4 | *Lobby*, sender in the lobby |
+| `Cmd_SetOwnTeam(team)` | `GameCore` | Pick one's own team | 10, 4 | *Lobby*, `LobbyRules.IsTeamChoiceValid` |
+| `Cmd_Surrender()` | `GameCore` | Leave the match as if the HQ fell | 3, 0.5 | *Playing*, sender still playing |
+| `Cmd_GiftResources(targetNetId, amount)` | `GameCore` | Give resources to another live player | 5, 1 | `GiftRules.CanGift` (*Playing*, both playing, not self, cooldown) and `GiftRules.IsValid` (finite, ≥ 1, ≤ balance) |
+| `Cmd_SetAttack(targetNetId, on)`, `Cmd_SetShareVision(targetNetId, on)` | `GameCore` | Diplomacy | 10, 2 each | `DiplomacyRules.CanChange` (diplomacy on, *Playing*, both playing, not self, per-command cooldown) |
 | `UpdateClientView(start, end)` | `WorldStateManager` | Camera rectangle (correction fidelity and explosions only; never widens what the client may know) | 20, 15 | box span; clamped to the map |
-| `CmdOrderMoveChunk(token, ids, final, goal)` | `WorldStateManager` | One chunk of a move order | 40, 20 | *Playing*, player still playing; goal inside the map; `OrderIdCodec.TryDecode` (≤ 2,048 ids, ≤ 8 KB, strictly ascending); ≤ `MaxUnitsPerPlayer` ids per token; ≤ 4 open tokens, dropped after 2 s; the sim skips ids that aren't the sender's or aren't live |
-| `CmdAssignSquadChunk(token, squad, ids, final)` | `WorldStateManager` | One chunk of a squad assignment | 40, 10 | as above, plus squad 0..9 |
-| `CmdOrderSquad(squad, goal)` | `WorldStateManager` | Order a squad's living members | 10, 5 | squad 0..9; goal inside the map; dead members pruned |
+| `CmdOrderChunk(token, ids, final, kind, queue, goal)` | `WorldStateManager` | One chunk of an order (`OrderKind`: Move, AttackMove, Hold, Stop; `queue` = Shift) | 40, 20 | *Playing*, player still playing; known kind, goal inside the map for Move/AttackMove; `OrderIdCodec.TryDecode` (≤ 2,048 ids, ≤ 8 KB, strictly ascending; an empty chunk is no ids); ≤ `MaxUnitsPerPlayer` ids per token; ≤ 4 open tokens, dropped after 2 s; the sim skips ids that aren't the sender's or aren't live |
+| `CmdAssignSquadChunk(token, squad, ids, final)` | `WorldStateManager` | One chunk of a squad assignment (empty = empty the squad) | 40, 10 | as above, plus squad 0..9 |
+| `CmdOrderSquad(squad, kind, queue, goal)` | `WorldStateManager` | Order a squad's living members | 10, 5 | squad 0..9; as `CmdOrderChunk`; dead members pruned |
 | `TryAddBuilding(pos, type, rot)` | `WorldStateManager` | Validate, charge and queue a building | 10, 5 | `PlacementRules`; cost charged |
 | `CanBuildBuildingCommand(pos, type, rot)` | `WorldStateManager` | Placement preview validity | 20, 15 | throttled client-side |
 | `BuildingClicked(id)` | `WorldStateManager` | Queue a unit at an owned spawner (production +) | 20, 10 | *Playing* only; ownership; queue below 100 |
 | `CmdDequeueUnit(id)` | `WorldStateManager` | Remove a queued unit (production −; no refund, cost is charged at spawn) | 20, 10 | *Playing* only; ownership; queue above 0 |
 
-All are `requiresAuthority = false` and take `NetworkConnectionToClient sender = null`.
+All are `requiresAuthority = false` and take `NetworkConnectionToClient sender = null`, except `CmdSetNickname`, which runs on the sender's own player object. Commands not listed in `CommandGate` get its default budget (10, 5).
 
 ### Server → client
 
 | Mechanism | Member | Purpose |
 |---|---|---|
 | Message | `ReplicationBatch { Tick, Flags, Payload }` | Unit replication: whole encoded messages; reliable batches carry Enter/Leave/MoveOrder/Health, unreliable ones one Correction or Attack message each |
-| SyncVar | `GameCore.CurrentState`, `GameCore.CountdownEndTime`, `ClientPlayer.nickname`, `hasPlacedHQ`, `isServerOwner`, `WorldStateManager.MapSize / MapSeed / MapHash` | Shared state |
-| SyncList | `GameCore.PlayerOrder` | Owner order (unit colours) |
 | Message | `FogBatch` | The client's own fog grid: a snapshot, then deltas |
-| TargetRpc | `ClientPlayer.TargetDiplomacy` | The receiver's own diplomacy row (whom it attacks, whom it shares with, who shares with it), bits by `PlayerOrder` index |
 | Message | `BuildingBatch` | Building Enter / Health / Hide (ghost) / Gone records |
+| SyncVar | `GameCore.CurrentState`, `CountdownEndTime`, `Settings`, `DiplomacyEnabled`, `MatchStartTime`; `ClientPlayer.nickname`, `colourIndex`, `ready`, `lobbyTeam`, `hasPlacedHQ`, `isServerOwner`; `WorldStateManager.MapSize / MapSeed / MapHash` | Public lobby and match state |
+| SyncList | `GameCore.PlayerOrder` | Owner order (diplomacy bits, starting clearing) |
 | SyncDictionary | `GameCore.Teams` | Team per owner |
 | TargetRpc | `TargetUpdateResources` | Private resources, sent only when changed (≤ 10 Hz) |
 | TargetRpc | `TargetReceiveCanBuildBuildingResponse` | Placement preview replies |
+| TargetRpc | `ClientPlayer.TargetDiplomacy` | The receiver's own diplomacy row (whom it attacks, whom it shares with, who shares with it), bits by `PlayerOrder` index |
 | TargetRpc | `ClientPlayer.TargetAlerts` | The receiver's own alerts (`AlertService`, once per tick): damage to its own entities at their own tile (never the attacker), first unpaid upkeep, vision shared or unshared with it, gifts |
 | TargetRpc | `ClientPlayer.TargetSpawnerQueue` | One of the receiver's spawners changed its queue count |
 | TargetRpc | `ClientPlayer.TargetSquadCounts` | The receiver's own live units per squad (after an assignment, and every 2 s) |
-| TargetRpc | `TargetPlayExplosions` | Death explosions inside that player's view (≤ 256 per message) |
+| TargetRpc | `ClientPlayer.TargetGift` | A gift between the receiver and another player (sender and recipient only) |
+| TargetRpc | `TargetPlayExplosions` | Death explosions inside that player's view that its fog sees (any after *GameOver*), ≤ 256 per message and ≤ 1,024 per tick |
 | TargetRpc | `RpcOnPlayerWon`, `RpcOnPlayerLost`, `RpcOnMatchDraw` | End-of-game screens |
-| ClientRpc | `RPC_RemoveClientLobbyUI`, `RpcUpdateHQPlacementProgress` | Lobby cleanup, progress |
+| ClientRpc | `GameCore.RpcMatchStats` | Every player's statistics, sent only at *GameOver* (`StatsRules.MaySend`) |
+| ClientRpc | `RpcUpdateHQPlacementProgress` | Placement progress (clients count `hasPlacedHQ` themselves) |
 
 ### Command security
 
@@ -268,14 +280,14 @@ sequenceDiagram
     DS->>W: OnEntityDestroyed(entity)
     W->>W: unregister id, release occupancy / footprint tiles, record position
     DS->>DS: DestroyEntity
-    loop every server FixedUpdate
-        W->>W: FlushDeathEvents (at Settled): keep positions the player's grid sees and its view box contains
-        W->>P: TargetPlayExplosions(positions)
+    loop at each settled tick boundary
+        W->>W: FlushDeathEvents: keep positions the player's grid sees (any, after GameOver) and its view box contains
+        W->>P: TargetPlayExplosions(positions), ≤ 1,024 per tick
         P->>P: Effects.Explosion at each position
     end
 ```
 
-Every path to death records a position: units through the tick (the lifecycle queues them, the boundary destroys them and raises `UnitDied`), buildings through `DestructionSystem`, and kills/the match-end wipe through the command system. So every death reaches clients as an explosion, and only if that client can see the tile. Clients also drop a dead unit when its Leave (reason `Died`) arrives.
+Every path to death records a position: units through the tick (the lifecycle queues them, the boundary destroys them and raises `UnitDied`), buildings through `DestructionSystem`, and kills/the match-end wipe through the command system. So every death reaches clients as an explosion, and only if that client can see the tile; once the match is over (*GameOver*) nothing is secret, so the match-end wipe shows wherever the client is looking (`VisibilityRules.ShowsDeath`). The tick keeps running in *GameOver* so that wipe is settled at all. Clients also drop a dead unit when its Leave (reason `Died`) arrives.
 
 ## Building placement
 
@@ -335,6 +347,15 @@ Schema:
   <Replication> <!-- encoder: CorrectionIntervalTicks, CorrectionThreshold, DeltaScale,
                      OffscreenThreshold, OffscreenIntervalTicks, SnapshotBytesPerSecond -->
   </Replication>
+  <Orders> <MaxQueued/> </Orders>                         <!-- Shift-queued waypoints per unit -->
+  <Diplomacy> <ChangeCooldownSeconds/> </Diplomacy>       <!-- per player, per command -->
+  <Lobby>
+    <MapSizes/>          <!-- space-separated, ascending: the sizes the host may pick -->
+    <StartingResources/> <!-- likewise, the starting resources the host may pick -->
+  </Lobby>
+  <MenuBattle> <UnitsPerArmy/> <MapSize/> <Seed/> </MenuBattle> <!-- the battle behind the main menu -->
+  <Gifting> <CooldownSeconds/> </Gifting>                 <!-- per sender -->
+  <Alerts> <ThrottleSeconds/> <AreaTiles/> <ShowSeconds/> </Alerts>
   <DamageTable>
     <Entry attacker="Tank" target="Wall">0.5</Entry> <!-- target: Unit | Building | Wall; 1.0 when missing -->
   </DamageTable>
@@ -371,9 +392,11 @@ v0.6 moves the HUD to **UI Toolkit**, built from the approved Figma design (see 
 
 The `Menu` object in `Main_Menu` has a `UIDocument` (`Menu.uxml`: `MainMenu`, `HostJoin`, `Lobby`), `MenuController` (shows the screen the network state calls for and sends the lobby commands) and `MenuBattle`. The lobby's model is `LobbyModel` (public SyncVars only: `ClientPlayer.nickname`, `colourIndex`, `lobbyTeam`, `ready`, `isServerOwner`, and `GameCore.Settings`). `MapPreview` generates the host's map in a job and downsamples it to 256² (1024² takes ~170 ms); clients regenerate the full map at match start anyway, so the preview reveals nothing new.
 
+**Joining.** The server takes new players only in the lobby and up to `LobbyRules.MaxPlayers` (8, one per colour and HQ clearing); `GameManager.OnServerConnect` closes any other connection, and `MenuController` tells the joining player the match has started or is full (`HostJoinController.ShowRefused`).
+
 **Lobby rules** (`Net/MatchSettings.cs`, `Net/LobbyCommands.cs`): `GameCore.Settings` (`MatchSettings`: mode, diplomacy, map size, seed, starting resources) is the only source of the map size, seed and starting resources at start; the config gives the defaults (`Match/Map`, `Resources/StartingResources`) and the lists the host may choose from (`<Lobby>`). `Cmd_SetMatchSettings` and `Cmd_RerollMap` (server owner, Lobby) clear every ready flag; Free-for-all forces every lobby team to Solo. `Cmd_SetColour` (unique, 0–7), `Cmd_SetReady`, `Cmd_SetOwnTeam` (Teams mode, or Solo). `Cmd_StartGame` also requires `LobbyRules.CanStart` (all ready, ≥ 2 teams), except under `DevApi.Allowed` (the perf harness and hosted tests start alone); it sets `DiplomacyEnabled` from the settings and resets every player's resources to the starting resources.
 
-**Menu battle** (`Client/MenuBattle.cs`): while offline (not hosting or joined, not batch mode, not `-perf`), a `SimContext` in a World of its own ("MenuBattle", the `SimTickGroup` stages added as in `SimHarness`) runs two bot armies (`<MenuBattle>`) on attack-move on a generated map, ticked at 20 Hz from `Update` with `SimContext.RunningOverride`, replicated through a virtual client into a `ClientWorld` whose colours map the two bots to player colours 1 and 2. Reinforced every 4 s. It is torn down (view, map backdrop, replication, `SimContext`, World, `RunningOverride`) before Host or Join, and whenever the client becomes active.
+**Menu battle** (`Client/MenuBattle.cs`): while offline (not hosting or joined, not batch mode, not `-perf`), a `SimContext` in a World of its own ("MenuBattle", the `SimTickGroup` stages added as in `SimHarness`) runs two bot armies (`<MenuBattle>`) on attack-move on a generated map, ticked at 20 Hz from `Update` with `SimContext.RunningOverride`, replicated through a virtual client into a `ClientWorld` whose colours map the two bots to player colours 1 and 2. The attack-move goes out on the tick after a spawn (a box order only reaches units already in the settled world). Armies that lost a tenth of their units are topped up and re-ordered, checked every 4 s. It is torn down (view, map backdrop, replication, `SimContext`, World, `RunningOverride`) before Host or Join, and whenever the client becomes active.
 
 ### Match end (`Net/MatchCommands.cs`)
 
@@ -387,7 +410,7 @@ The `Menu` object in `Main_Menu` has a `UIDocument` (`Menu.uxml`: `MainMenu`, `H
 
 - **URP 2D.** `Assets/Settings/Rendering/URP-2D.asset` is the default render pipeline in `ProjectSettings/GraphicsSettings.asset`, with `Renderer2D.asset` and a Global Light 2D in both scenes.
 - **Units** are drawn by `ClientWorld` with GPU instancing (see above); **the map** by `MapView` (one texture, a texel per tile); **buildings** as sprite GameObjects.
-- **Input System only** (`activeInputHandler: 1`). Gameplay input is a code-defined action map in `Scripts/Client/GameInput.cs` (`Pan`, `Zoom`, `FastPan`, `Select`, `Command`, `Rotate`, `Point`, `AssignModifier` (Ctrl), `AppendModifier` (Shift), `Squad1`–`Squad0`, plus `PointerOverUI`); UI uses `InputSystemUIInputModule`.
+- **Input System only** (`activeInputHandler: 1`). Gameplay input is a code-defined action map in `Scripts/Client/GameInput.cs` (`Pan`, `Zoom`, `FastPan`, `Select`, `Command`, `Rotate`, `Point`, `AssignModifier` (Ctrl), `AppendModifier` (Shift), `QueueModifier` (Shift), `AttackMove`, `Stop`, `Hold`, `DragPan`, `Menu`, `Squad1`–`Squad0`); UI uses `InputSystemUIInputModule`. `GameInput.PointerOverUI` is true only over UI: the camera's `Physics2DRaycaster` also hits building and tilemap colliders, and those clicks belong to the world.
 - **Orthographic camera.** `Character_Controler` pans at a speed scaled by `orthographicSize / 5`, zooms between the configured limits, and is clamped to the map.
 - Client-side placeholder effects (`Effects.Explosion`, `Effects.Tracer`) draw procedural sprites from `ProceduralSprites`; real art is scheduled for v0.8.
 
@@ -403,7 +426,7 @@ Sprites are loaded by enum name from the root of `Resources/`, e.g. `Resources.L
 
 ## Developer tools
 
-- **TIM Console** (`` ` `` to toggle). Custom commands live in `Assets/3rd Party/Console/Custom Commands/Custom_Commands.cs`: help, server player count, server/client active, GameCore null check, players' resources, WorldStateManager.
+- **TIM Console** (`` ` `` to toggle; editor and development builds only, `DevUi` removes it from release builds). Custom commands live in `Assets/3rd Party/Console/Custom Commands/Custom_Commands.cs`: help, server player count, server/client active, GameCore null check, players' resources, WorldStateManager.
 - **NaughtyAttributes** `[Button]`s on `BuildingDataClient` print a clicked building's synced data in the inspector.
 - **Two-process smoke test.** `tools/qa-smoke.sh` builds a Linux player into `Builds/QA` through the live editor, then runs one instance with `-qaHost` and another with `-qaJoin 127.0.0.1` (`Dev/QaSmoke.cs`): the host starts the match once the client joins, and both write their state (game state, HQ placement, HUD overlays, every `NetworkIdentity` and whether it was spawned to that side), warnings, errors and screenshots to the output directory. PlayMode tests run as host only, so anything a remote client depends on (scene objects, SyncVars, TargetRpcs) needs this check.
 - **Performance gate.** A player build started with `-perf` (`Dev/PerfMatch.cs`) hosts 8 owners × 10,000 units on a generated 1024² map (seed 1), runs the v0.3 fronts battle with reinforcements around each HQ, samples 1,200 ticks and writes `perf.csv` (`-perfOut <dir>`). `tools/perf-run.sh` runs it three times against `Builds/Linux/WAR-2D.x86_64` and prints the median of each gated statistic against its budget. `-perfBreakdown` adds bytes per message type for one bot; `-perfCorrectionThreshold`, `-perfCorrectionInterval`, `-perfDeltaScale` and `-perfSeparationStrength` try tunings without a rebuild. Dev-only server APIs (`DevApi`) refuse to run without `-perf`.

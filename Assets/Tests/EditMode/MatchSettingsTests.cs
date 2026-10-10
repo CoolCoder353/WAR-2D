@@ -53,4 +53,15 @@ public class MatchSettingsTests
         Assert.IsTrue(LobbyRules.IsTeamChoiceValid(MatchMode.Teams, 3));
         Assert.IsFalse(LobbyRules.IsTeamChoiceValid(MatchMode.Teams, 4));
     }
+
+    [Test]
+    public void OnlyTheLobbyTakesNewPlayersUpToTheColours()
+    {
+        Assert.IsTrue(LobbyRules.MayJoin(GameState.Lobby, 1), "the host");
+        Assert.IsTrue(LobbyRules.MayJoin(GameState.Lobby, LobbyRules.MaxPlayers));
+        Assert.IsFalse(LobbyRules.MayJoin(GameState.Lobby, LobbyRules.MaxPlayers + 1), "a ninth player would share a colour and have no HQ site");
+        Assert.AreEqual(LobbyRules.Colours, LobbyRules.MaxPlayers);
+        foreach (GameState state in System.Enum.GetValues(typeof(GameState)))
+            if (state != GameState.Lobby) Assert.IsFalse(LobbyRules.MayJoin(state, 2), $"no joining in {state}");
+    }
 }

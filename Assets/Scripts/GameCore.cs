@@ -72,6 +72,11 @@ public partial class GameCore : NetworkBehaviour
         DontDestroyOnLoad(this);
     }
 
+    private void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
+    }
+
     [Server]
     public override void OnStartServer()
     {
@@ -247,20 +252,27 @@ public partial class GameCore : NetworkBehaviour
         }
         // Captured at launch so a departure before Playing can't stop the survivor from winning.
         MatchStartPlayerCount = ServerPlayers.Count;
+        // Join order (ascending net id), as the lobby lists the players and colours their HQ sites.
+        var order = new List<int>();
+        foreach (NetworkIdentity identity in ServerPlayers.Keys) order.Add(BuildingData.UIntToInt(identity.netId));
+        order.Sort();
         PlayerOrder.Clear();
-        foreach (NetworkIdentity identity in ServerPlayers.Keys) PlayerOrder.Add(BuildingData.UIntToInt(identity.netId));
+        foreach (int owner in order) PlayerOrder.Add(owner);
         AssignTeams();
         CurrentState = GameState.PlacingHQ;
         GameManager.Instance.ServerChangeScene(ConfigLoader.LoadConfig().Match.Scene);
     }
 
-    /// <summary>Sets a player's lobby team choice (<see cref="TeamRules.NoTeam"/> for a team of their own). Server owner only, in the lobby.</summary>
+    /// <summary>
+    /// Sets a player's lobby team choice (<see cref="TeamRules.NoTeam"/> for a team of their own). Server
+    /// owner only, in the lobby, with the choices a player could make for themselves (Free-for-all is Solo only).
+    /// </summary>
     [Command(requiresAuthority = false)]
     public void Cmd_SetTeam(uint playerNetId, int team, NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(Cmd_SetTeam))) return;
         if (!IsServerOwner(sender) || CurrentState != GameState.Lobby) return;
-        if (team < TeamRules.NoTeam || team >= WAR2D.Sim.SimData.MaxOwners) return;
+        if (!LobbyRules.IsTeamChoiceValid(Settings.Mode, team)) return;
         foreach (NetworkIdentity identity in ServerPlayers.Keys)
         {
             if (identity == null || identity.netId != playerNetId) continue;

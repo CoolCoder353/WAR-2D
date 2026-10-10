@@ -47,6 +47,11 @@ namespace WAR2D.Client
         private double time;
         private float tickTimer, reinforceTimer, startTimer = StartDelaySeconds;
         private Vector3 cameraHome;
+        /// <summary>
+        /// Set when units were spawned: the order goes out after the next tick. A box order only reaches units
+        /// already in the settled world, and spawns join it during the tick that applies them.
+        /// </summary>
+        private bool orderPending;
 
         /// <summary>True while the battle's simulation exists.</summary>
         public bool Running => sim != null;
@@ -87,6 +92,11 @@ namespace WAR2D.Client
             {
                 tickTimer -= dt;
                 Tick(dt);
+                if (orderPending)
+                {
+                    orderPending = false;
+                    Order();
+                }
             }
             if (tickTimer > dt) tickTimer = 0f;
 
@@ -139,7 +149,7 @@ namespace WAR2D.Client
             replication.SetVirtualView(OwnerA, centre - new int2(64, 40), centre + new int2(64, 40));
             Spawn(0, battle.UnitsPerArmy);
             Spawn(1, battle.UnitsPerArmy);
-            Order();
+            orderPending = true;
 
             Camera cam = MenuCamera();
             if (cam != null)
@@ -169,6 +179,7 @@ namespace WAR2D.Client
             world = null;
             map.Dispose();
             map = null;
+            orderPending = false;
             SimContext.RunningOverride = null;
         }
 
@@ -208,7 +219,7 @@ namespace WAR2D.Client
                 Spawn(army, missing);
                 any = true;
             }
-            if (any) Order();
+            if (any) orderPending = true;
         }
 
         /// <summary>Spawns units for an army on walkable tiles in rings behind its start.</summary>

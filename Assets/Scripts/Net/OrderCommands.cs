@@ -118,7 +118,8 @@ public partial class WorldStateManager
 
     /// <summary>
     /// Adds a chunk to the sender's pending list for the token. Returns the whole list on the final
-    /// chunk, else null. A malformed chunk, too many ids, or too many open tokens drops the order.
+    /// chunk, else null. A malformed chunk, too many ids, or too many open tokens drops the order. An empty
+    /// chunk adds no ids: Ctrl+number with nothing selected sends one, and it empties the squad.
     /// </summary>
     private List<int> Accumulate(int owner, ushort token, byte kind, byte[] chunk, bool final)
     {
@@ -135,7 +136,8 @@ public partial class WorldStateManager
         }
         int cap = ConfigLoader.LoadConfig().Simulation.MaxUnitsPerPlayer;
         int room = cap - pending.Ids.Count;
-        if (room <= 0 || !OrderIdCodec.TryDecode(chunk, System.Math.Min(OrderIdCodec.MaxIdsPerChunk, room), pending.Ids))
+        bool empty = chunk != null && chunk.Length == 0;
+        if (chunk == null || (!empty && (room <= 0 || !OrderIdCodec.TryDecode(chunk, System.Math.Min(OrderIdCodec.MaxIdsPerChunk, room), pending.Ids))))
         {
             pendingOrders.Remove(key);
             return null;

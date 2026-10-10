@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -43,8 +44,44 @@ public static class GameInput
     /// <summary>Squad keys: index 0 is key 1, index 9 is key 0.</summary>
     public static InputAction Squad(int index) => Map[$"Squad{(index + 1) % 10}"];
 
-    /// <summary>True when the pointer is over a UI element (clicks there must not reach the world).</summary>
-    public static bool PointerOverUI => EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+    private static readonly List<RaycastResult> uiHits = new List<RaycastResult>();
+    private static PointerEventData uiPointer;
+    private static EventSystem uiSystem;
+    private static int uiFrame = -1;
+    private static bool overUI;
+
+    /// <summary>
+    /// True when the pointer is over a UI element (clicks there must not reach the world). Hits from a
+    /// physics raycaster (Map_2's camera has one) are world objects, such as building and tilemap
+    /// colliders, not UI: clicking a building must still select and order. Worked out once a frame.
+    /// </summary>
+    public static bool PointerOverUI
+    {
+        get
+        {
+            if (uiFrame == Time.frameCount) return overUI;
+            uiFrame = Time.frameCount;
+            overUI = false;
+            EventSystem system = EventSystem.current;
+            if (system == null || !system.IsPointerOverGameObject()) return false;
+            if (uiPointer == null || uiSystem != system)
+            {
+                uiPointer = new PointerEventData(system);
+                uiSystem = system;
+            }
+            uiPointer.Reset();
+            uiPointer.position = Point.ReadValue<Vector2>();
+            uiHits.Clear();
+            system.RaycastAll(uiPointer, uiHits);
+            foreach (RaycastResult hit in uiHits)
+            {
+                if (hit.module is PhysicsRaycaster) continue; // Physics2DRaycaster derives from it
+                overUI = true;
+                break;
+            }
+            return overUI;
+        }
+    }
 
     /// <summary>Pointer position on the z = 0 world plane (orthographic camera).</summary>
     public static Vector3 PointerWorld()
