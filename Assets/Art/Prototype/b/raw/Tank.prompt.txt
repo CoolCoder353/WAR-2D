@@ -1,0 +1,2 @@
+Tool: Figma generate_image (model gemini-3.1-flash-image), 1024×1024, 2026-10-11.
+Pixel art game sprite, strict top-down orthographic view (seen from directly above), a single small military tank facing right (barrel pointing to the right), centered. Chunky 16x16-pixel-style art with large crisp square pixels, 1-pixel dark outline, limited palette. The hull and turret are painted in pure magenta (#FF00FF) shades for team colour; tracks and barrel in dark steel grey. No shadow, no text, no perspective. Solid flat pure green (#00FF00) background filling the whole image.
