@@ -67,10 +67,24 @@ public sealed class PerfClient : MonoBehaviour
         Application.Quit();
     }
 
-    /// <summary>Replaces the scene's KCP transport with the metered one (same tuning) before connecting.</summary>
+    /// <summary>
+    /// Replaces the scene's KCP transport with the metered one (same tuning) before connecting. The scene's
+    /// transport may be a multiplexer (KCP and WebSocket); a perf client only needs its KCP half.
+    /// </summary>
     private static void UseMeteredTransport()
     {
-        if (!(Transport.active is KcpTransport kcp) || kcp is MeteredKcpTransport) return;
+        // The manager's transport: Transport.active (and NetworkManager.singleton) are only set once a
+        // client or server starts.
+        Transport scene = GameManager.Instance.transport;
+        KcpTransport kcp = scene as KcpTransport;
+        if (kcp == null && scene is MultiplexTransport multiplex)
+            foreach (Transport t in multiplex.transports) if (t is KcpTransport k) { kcp = k; break; }
+        if (kcp == null)
+        {
+            Debug.LogError("[PerfClient] the scene has no KCP transport to meter; bandwidth will read 0");
+            return;
+        }
+        if (kcp is MeteredKcpTransport) return;
         var go = new GameObject("MeteredKcpTransport");
         go.SetActive(false); // Awake (which reads the tuning) waits for the copy
         DontDestroyOnLoad(go);
@@ -78,7 +92,7 @@ public sealed class PerfClient : MonoBehaviour
         metered.CopyFrom(kcp);
         go.SetActive(true);
         kcp.enabled = false;
-        NetworkManager.singleton.transport = metered;
+        GameManager.Instance.transport = metered;
         Transport.active = metered;
     }
 
