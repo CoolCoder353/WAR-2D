@@ -38,6 +38,11 @@ namespace WAR2D.Art.Render
         public const int Supersample = 2;
 
         public readonly int Width, Height; // output pixels
+        /// <summary>
+        /// Output pixels from the bottom to the footprint's centre (where the sprite is anchored on the map).
+        /// Buildings drawn with <c>lift</c> are taller than their footprint, so their canvas has headroom above it.
+        /// </summary>
+        public readonly float PivotY;
         private readonly int rw, rh;       // render pixels
         private readonly float[] height, alpha, spec, gloss, glow, team;
         private readonly Color[] albedo;
@@ -45,10 +50,13 @@ namespace WAR2D.Art.Render
         /// <summary>Light direction (toward the light): from the top left and above.</summary>
         public static readonly Vector3 LightDir = new Vector3(-0.55f, 0.6f, 0.9f).normalized;
 
-        public LitCanvas(int width, int height)
+        public LitCanvas(int width, int height) : this(width, height, height / 2f) { }
+
+        public LitCanvas(int width, int height, float pivotY)
         {
             Width = width;
             Height = height;
+            PivotY = pivotY;
             rw = width * Supersample;
             rh = height * Supersample;
             int n = rw * rh;
@@ -176,9 +184,10 @@ namespace WAR2D.Art.Render
         /// <paramref name="shadow"/> adds a soft drop shadow away from the light (for sprites drawn over the
         /// ground; terrain tiles pass false). Returns output-resolution colours, y up.
         /// </summary>
-        public Color32[] Render(Color teamColour, bool shadow = true, float ambient = 0.42f, float heightScale = 1f)
+        public Color32[] Render(Color teamColour, bool shadow = true, float ambient = 0.42f, float heightScale = 1f, float lift = 0f)
         {
             var lit = new Color[rw * rh];
+            var wall = lift > 0 ? new Color[rw * rh] : null;
             float[] blurred = BoxBlur(height, rw, rh, 5 * Supersample);
             Vector3 view = Vector3.forward;
             Vector3 half = (LightDir + view).normalized;
@@ -198,6 +207,13 @@ namespace WAR2D.Art.Render
                 c += baseColour * glow[i];
                 c.a = alpha[i];
                 lit[i] = c;
+                if (wall != null)
+                {
+                    // South-facing walls: the light comes from the north-west, so they get ambient and a little bounce.
+                    Color wc = baseColour * (ambient * 0.8f + 0.06f) + baseColour * glow[i] * 0.5f;
+                    wc.a = alpha[i];
+                    wall[i] = wc;
+                }
             }
 
             if (shadow)
@@ -221,6 +237,8 @@ namespace WAR2D.Art.Render
                 }
             }
 
+            if (wall != null) lit = Raise(lit, wall, lift);
+
             // Downsample (box) with premultiplied alpha.
             var output = new Color32[Width * Height];
             for (int y = 0; y < Height; y++)
@@ -236,6 +254,42 @@ namespace WAR2D.Art.Render
                 float n = Supersample * Supersample;
                 output[y * Width + x] = a <= 0 ? new Color32(0, 0, 0, 0)
                     : (Color32)new Color(Mathf.Clamp01(r / a), Mathf.Clamp01(g / a), Mathf.Clamp01(b / a), Mathf.Clamp01(a / n));
+            }
+            return output;
+        }
+
+        /// <summary>
+        /// The 3/4 view: every pixel rises up the screen by its height × <paramref name="lift"/>, and the gap it
+        /// leaves below becomes its south wall (darker toward the ground). Far rows are drawn first, so nearer
+        /// parts cover what's behind them.
+        /// </summary>
+        private Color[] Raise(Color[] top, Color[] wall, float lift)
+        {
+            var output = new Color[top.Length];
+            for (int i = 0; i < top.Length; i++)
+                if (height[i] <= 0.01f && top[i].a > 0) output[i] = top[i]; // the ground and anything flat stays put
+            for (int y = rh - 1; y >= 0; y--)
+            for (int x = 0; x < rw; x++)
+            {
+                int i = y * rw + x;
+                if (top[i].a <= 0 || height[i] <= 0.01f) continue;
+                int rise = Mathf.RoundToInt(height[i] * lift * Supersample);
+                for (int k = 0; k <= rise; k++)
+                {
+                    int yy = y + k;
+                    if (yy >= rh) break;
+                    Color c;
+                    if (k == rise) c = top[i];
+                    else
+                    {
+                        float shade = 0.75f + 0.25f * k / Mathf.Max(1, rise);
+                        // Glass (very shiny) facades get floors of windows: lit bands between dark sills.
+                        if (spec[i] >= 0.85f) shade *= (k / (2 * Supersample)) % 3 == 0 ? 0.55f : 1.6f;
+                        c = wall[i] * shade;
+                        c.a = wall[i].a;
+                    }
+                    output[yy * rw + x] = c;
+                }
             }
             return output;
         }

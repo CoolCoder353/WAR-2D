@@ -105,7 +105,7 @@ namespace WAR2D.Art.Render
         /// </summary>
         public static LitCanvas Miner(int frame)
         {
-            var c = new LitCanvas(TileSize, TileSize);
+            var c = new LitCanvas(TileSize, TileSize + Headroom / 3, TileSize / 2f);
             float o = TileSize / 2f;
             // Tracks and rig body (west), with a team cab and a hopper of ore.
             foreach (float s in new[] { -1f, 1f })
@@ -118,21 +118,20 @@ namespace WAR2D.Art.Render
             c.Shape((x, y) => Box(x, y, o - 11, o - 4, 5, 4, 1), Dark, 9, 1, 1);
             c.Shape((x, y) => Polygon(x, y, o - 12, o - 4, 2.4f, 5, 0.2f), Ore, 12, 1.2f, 1.5f);
             c.Shape((x, y) => Polygon(x, y, o - 9, o - 3, 2f, 6, 0.9f), Ore, 11.5f, 1.2f, 1.5f);
-            // Boom with a hydraulic ram.
-            c.Shape((x, y) => Capsule(x, y, o - 6, o, o + 16, o, 3.4f), Plate, 15, 1.5f, 2);
-            c.Shape((x, y) => Capsule(x, y, o - 4, o - 5, o + 10, o - 2, 1.4f), Steel, 16, 0.8f, 1);
-            // The auger: a big steel disc with spiral flutes, turning with the frame.
-            float ax = o + 20, ay = o;
-            c.Shape((x, y) => Circle(x, y, ax, ay, 11), Steel, 20, 6, 8);
-            float phase = frame * Mathf.PI / 2;
-            c.Groove((x, y) =>
+            // Motor housing, then a long fluted bit lying east into the rock (its tip at the tile's edge);
+            // the flutes travel along it with the frame.
+            c.Shape((x, y) => Box(x, y, o - 1, o, 6, 7, 2), Hull, 15, 2, 2);
+            c.Shape((x, y) => Box(x, y, o + 6, o, 3, 5, 1), Steel, 14, 1, 1.5f);
+            float x0 = o + 8, x1 = o + 32;
+            Func<float, float, float> bit = (x, y) =>
             {
-                float px = x - ax, py = y - ay, r = Mathf.Sqrt(px * px + py * py);
-                return r > 10.5f || r < 2.5f ? 9 : Mathf.Abs(Mathf.Sin(Mathf.Atan2(py, px) * 2 - r * 0.45f + phase)) - 0.45f;
-            }, 2.2f, 1.2f);
-            c.Shape((x, y) => Circle(x, y, ax, ay, 2.6f), Dark, 21, 1, 1);
+                float t = Mathf.Clamp01((x - x0) / (x1 - x0));
+                return Mathf.Max(Mathf.Abs(y - o) - Mathf.Lerp(6f, 0.8f, t), Mathf.Max(x0 - x, x - x1));
+            };
+            c.Shape(bit, Steel, 14, 4, 7);
+            c.Groove((x, y) => bit(x, y) > 0 ? 9 : Mathf.Abs(Mod(x - x0 + (y - o) * 0.9f - frame * 2.5f, 5) - 2.5f) - 0.9f, 1.6f, 1f);
             // Ore spilling beside the auger.
-            foreach (var (gx, gy, r) in new[] { (o + 8f, o - 12f, 2.4f), (o + 13f, o - 15f, 1.8f), (o + 10f, o + 13f, 2.1f) })
+            foreach (var (gx, gy, r) in new[] { (o + 22f, o - 10f, 2.4f), (o + 27f, o - 13f, 1.8f), (o + 24f, o + 11f, 2.1f) })
                 c.Shape((x, y) => Polygon(x, y, gx, gy, r, 6, gx), Ore, 5, 1.2f, 1.5f);
             c.Shape((x, y) => Circle(x, y, o - 22, o - 7, 1.4f), Lamp, 13, 0.5f, 0.3f);
             c.Grime(11, 0.2f, 0.08f, 6);
@@ -158,7 +157,7 @@ namespace WAR2D.Art.Render
         public static LitCanvas Spawner(int frame)
         {
             int s = 2 * TileSize;
-            var c = new LitCanvas(s, s);
+            var c = new LitCanvas(s, s + Headroom / 2, s / 2f);
             float o = s / 2f;
             // Loading apron with stripes along its front edge.
             c.Shape((x, y) => Box(x, y, o - 14, o - 42, 22, 14, 2), Concrete, 3, 1, 1.5f);
@@ -196,61 +195,58 @@ namespace WAR2D.Art.Render
             return c;
         }
 
+        /// <summary>Headroom (output px at 64 px per tile) above a building's footprint for the 3/4 view.</summary>
+        public const int Headroom = 72;
+        /// <summary>How far up the screen a unit of height lifts a building in the 3/4 view.</summary>
+        public const float Lift = 0.5f;
+
         /// <summary>
-        /// The HQ (3×3): a command compound. A cross-shaped command building with the team's roof marking and
-        /// AC units, a lattice comms tower with a dish and a beacon, a round helipad, and a garage annex,
-        /// joined by walkways, with crates and fuel drums.
+        /// The HQ (3×3): a command complex. A podium with two low wings and a big main block, topped by a tall
+        /// command tower with banded windows, a dish and an antenna mast with a beacon; the team marking on the
+        /// main roof and stripes on the wings; a helipad on the podium and garage doors in the wings' fronts.
+        /// Drawn for the 3/4 view (<see cref="Lift"/>), so its canvas has <see cref="Headroom"/> above the footprint.
         /// </summary>
         public static LitCanvas Base()
         {
             int s = 3 * TileSize;
-            var c = new LitCanvas(s, s);
+            var c = new LitCanvas(s, s + Headroom, s / 2f);
             float o = s / 2f;
-            // Walkways between the parts.
-            c.Shape((x, y) => Mathf.Min(Mathf.Min(
-                Capsule(x, y, o - 8, o + 4, o - 56, o + 46, 4),
-                Capsule(x, y, o - 8, o + 4, o + 50, o - 40, 4)),
-                Capsule(x, y, o - 8, o + 4, o + 54, o + 52, 4)), Concrete, 2.5f, 1, 1);
-            // Helipad (north-west).
-            c.Shape((x, y) => Circle(x, y, o - 56, o + 46, 24), Concrete, 4, 1.5f, 2);
-            c.Groove((x, y) => Mathf.Abs(Circle(x, y, o - 56, o + 46, 19)) - 0.3f, 0.8f, 1f);
-            c.Shape((x, y) => Mathf.Min(Mathf.Min(Box(x, y, o - 63, o + 46, 2.2f, 10), Box(x, y, o - 49, o + 46, 2.2f, 10)), Box(x, y, o - 56, o + 46, 7, 2)), Hazard, 4.6f, 0.4f, 0.4f);
-            // Command building: a cross of two blocks with a parapet, the team chevron and AC units.
-            Func<float, float, float> hq = (x, y) => Mathf.Min(Box(x, y, o - 8, o + 4, 38, 20, 3), Box(x, y, o - 8, o + 4, 20, 36, 3));
-            c.Shape(hq, Hull, 26, 3, 4);
-            c.Groove((x, y) => hq(x, y) + 4, 1.5f, 1.2f);
-            c.Shape((x, y) => Box(x, y, o - 8, o + 4, 13, 13, 2), Team, 27.5f, 1.5f, 1.5f);
-            c.Groove((x, y) => Box(x, y, o - 8, o + 4, 10, 10) > 0 ? 9 : Mathf.Abs(Mathf.Abs(x - (o - 8)) * 0.9f + (y - o - 4) - 2) - 1.5f, 1.6f, 1.4f);
-            foreach (var (ax, ay) in new[] { (o - 36f, o + 10f), (o + 20f, o + 10f), (o - 8f, o + 32f) })
+            // Podium: a chamfered platform over most of the footprint, with a striped front edge.
+            c.Shape((x, y) => Mathf.Max(Box(x, y, o, o, 90, 84, 6), Polygon(x, y, o, o, 104, 8, Mathf.PI / 8)), Concrete, 5, 2, 2);
+            c.Groove((x, y) => Mathf.Max(Box(x, y, o, o, 84, 78, 4), Polygon(x, y, o, o, 97, 8, Mathf.PI / 8)), 1, 0.9f);
+            Stripes(c, (x, y) => Box(x, y, o, o - 80, 30, 3.5f), 5.5f);
+            // Helipad (south-west on the podium).
+            c.Shape((x, y) => Circle(x, y, o - 54, o - 50, 20), Plate, 6.5f, 1, 1);
+            c.Groove((x, y) => Mathf.Abs(Circle(x, y, o - 54, o - 50, 16)) - 0.3f, 0.8f, 0.9f);
+            c.Shape((x, y) => Mathf.Min(Mathf.Min(Box(x, y, o - 60, o - 50, 2.2f, 9), Box(x, y, o - 48, o - 50, 2.2f, 9)), Box(x, y, o - 54, o - 50, 6, 2)), Hazard, 7, 0.4f, 0.4f);
+            // Wings (east and west): low blocks with team stripes and garage doors in their fronts.
+            foreach (float side in new[] { -1f, 1f })
             {
-                c.Shape((x, y) => Box(x, y, ax, ay, 6, 5, 1.2f), Plate, 30, 1.2f, 2);
+                float wx = o + side * 60;
+                c.Shape((x, y) => Box(x, y, wx, o + 10, 20, 34, 3), Hull, 24, 2, 2.5f);
+                c.Shape((x, y) => Box(x, y, wx, o + 40, 18, 2.5f, 1), Team, 25, 1, 1);
+                c.Groove((x, y) => Mathf.Abs(Mod(y - o, 12) - 6) - 0.5f > 0 || Box(x, y, wx, o + 10, 17, 31) > 0 ? 9 : 0, 0.8f, 0.6f);
+                c.Shape((x, y) => Box(x, y, wx, o - 22, 12, 2.5f, 0.6f), Glass, 24.5f, 0.6f, 0.6f); // the facade row: windows
+            }
+            // Main block, with the team marking on its roof and AC units.
+            c.Shape((x, y) => Box(x, y, o, o + 6, 40, 44, 5), Hull, 40, 3, 3);
+            c.Groove((x, y) => Box(x, y, o, o + 6, 36, 40, 3), 1.4f, 1.1f);
+            c.Shape((x, y) => Box(x, y, o, o - 37, 34, 2.5f, 0.8f), Glass, 40.5f, 0.6f, 0.6f);
+            c.Shape((x, y) => Box(x, y, o - 18, o - 18, 14, 14, 2), Team, 41.5f, 1.5f, 1.5f);
+            c.Groove((x, y) => Box(x, y, o - 18, o - 18, 11, 11) > 0 ? 9 : Mathf.Abs(Mathf.Abs(x - (o - 18)) * 0.9f + (y - o + 18) - 2) - 1.5f, 1.6f, 1.4f);
+            foreach (var (ax, ay) in new[] { (o + 20f, o - 22f), (o + 20f, o - 6f) })
+            {
+                c.Shape((x, y) => Box(x, y, ax, ay, 6, 5, 1.2f), Plate, 44, 1.2f, 2);
                 c.Groove((x, y) => Mathf.Abs(Circle(x, y, ax, ay, 3)) - 0.3f, 0.9f, 0.7f);
             }
-            // Comms tower (north-east): a lattice square with cross braces, a dish and a beacon.
-            float tx = o + 54, ty = o + 52;
-            c.Shape((x, y) => Mathf.Max(Box(x, y, tx, ty, 11, 11, 1), -Box(x, y, tx, ty, 8, 8)), Steel, 34, 0.8f, 1.5f);
-            foreach (float sgn in new[] { -1f, 1f })
-                c.Shape((x, y) => Capsule(x, y, tx - 9, ty - 9 * sgn, tx + 9, ty + 9 * sgn, 1.4f), Steel, 33, 0.8f, 1);
-            c.Shape((x, y) => Circle(x, y, tx - 14, ty - 12, 11), Plate, 30, 10, 7);
-            c.Groove((x, y) => Mathf.Abs(Circle(x, y, tx - 14, ty - 12, 6)) - 0.3f, 0.8f, 0.6f);
-            c.Shape((x, y) => Circle(x, y, tx, ty, 2.5f), Lamp, 36, 0.8f, 0.5f);
-            // Garage (south-east) with a roller door and a striped apron.
-            c.Shape((x, y) => Box(x, y, o + 50, o - 40, 20, 15, 2.5f), Hull, 18, 2, 2.5f);
-            c.Shape((x, y) => Box(x, y, o + 50, o - 40, 14, 9, 1.5f), Plate, 19, 1, 1);
-            c.Shape((x, y) => Box(x, y, o + 50, o - 56, 15, 2.5f, 0.6f), Dark, 9, 0.6f, 0.6f);
-            c.Groove((x, y) => Box(x, y, o + 50, o - 56, 14, 2) > 0 ? 9 : Mathf.Abs(Mod(x, 4) - 2) - 0.7f, 0.8f, 0.8f);
-            Stripes(c, (x, y) => Box(x, y, o + 50, o - 64, 17, 3.5f), 3.5f);
-            // Supply crates (south-west) and fuel drums (by the helipad).
-            foreach (var (bx, by) in new[] { (-50f, -46f), (-38f, -46f), (-44f, -34f) })
-            {
-                c.Shape((x, y) => Box(x, y, o + bx, o + by, 5.5f, 5.5f, 1), new Material(new Color(0.42f, 0.33f, 0.22f), 0.08f, 8), 10, 1, 1.5f);
-                c.Groove((x, y) => Box(x, y, o + bx, o + by, 4, 4) > 0 ? 9 : Mathf.Min(Mathf.Abs(x - o - bx - (y - o - by)), Mathf.Abs(x - o - bx + (y - o - by))) - 0.6f, 0.8f, 0.6f);
-            }
-            foreach (var (fx, fy) in new[] { (-76f, 12f), (-66f, 12f), (-71f, 3f) })
-            {
-                c.Shape((x, y) => Circle(x, y, o + fx, o + fy, 4.5f), new Material(new Color(0.55f, 0.18f, 0.14f), 0.4f, 30), 9, 2, 2.5f);
-                c.Rivet(o + fx, o + fy, 1f, 0.6f);
-            }
+            // Command tower: tall, windowed on its front, with a dish and an antenna mast.
+            c.Shape((x, y) => Box(x, y, o - 4, o + 26, 22, 18, 4), Plate, 74, 2.5f, 3);
+            c.Shape((x, y) => Box(x, y, o - 4, o + 9, 20, 2, 0.6f), Glass, 74.5f, 0.6f, 0.6f);
+            c.Groove((x, y) => Box(x, y, o - 4, o + 26, 18, 14, 3), 1.2f, 1);
+            c.Shape((x, y) => Circle(x, y, o + 8, o + 30, 8), Steel, 84, 7, 5);
+            c.Groove((x, y) => Mathf.Abs(Circle(x, y, o + 8, o + 30, 4.5f)) - 0.3f, 0.8f, 0.6f);
+            c.Shape((x, y) => Circle(x, y, o - 16, o + 32, 2.6f), Steel, 110, 1, 1);
+            c.Shape((x, y) => Circle(x, y, o - 16, o + 32, 1.6f), Lamp, 112, 0.6f, 0.4f);
             c.Grime(31, 0.2f, 0.08f, 10);
             return c;
         }

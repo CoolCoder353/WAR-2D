@@ -16,48 +16,61 @@ namespace WAR2D.EditorTools
     /// </summary>
     public static class RenderSamplesMenu
     {
-        public const string LitFolder = "docs/art/render", PixelFolder = "docs/art/pixel";
+        public const string LitFolder = "docs/art/render", PixelFolder = "docs/art/pixel", PixelHdFolder = "docs/art/pixel-hd";
+
+        /// <summary>The finishes the owner compares: pixel art at 32 px per tile, pixel art at 64, and smooth (lit, anti-aliased) at 64.</summary>
+        public enum Finish { Pixel32, Pixel64, Smooth64 }
+        private static Finish mode;
         private const int Seed = 1, SceneW = 30, SceneH = 17;
 
-        /// <summary>True while rendering the pixel-art finish (32 px per tile, limited palette, outlines, hard shadows).</summary>
-        private static bool pixel;
-        private static string Folder => pixel ? PixelFolder : LitFolder;
+        private static bool pixel => mode != Finish.Smooth64;
+        private static int Factor => mode == Finish.Pixel32 ? 2 : 1;
+        private static string Folder => mode == Finish.Pixel32 ? PixelFolder : mode == Finish.Pixel64 ? PixelHdFolder : LitFolder;
         /// <summary>Output pixels per tile.</summary>
-        private static int T => pixel ? RenderGen.TileSize / 2 : RenderGen.TileSize;
+        private static int T => RenderGen.TileSize / Factor;
+        /// <summary>Close-up, terrain and scene scales for the page.</summary>
+        private static int CloseScale => mode == Finish.Pixel32 ? 4 : 2;
 
         [MenuItem("WAR-2D/Art/Render lit samples")]
-        public static void Render() => RenderAll(false);
+        public static void Render() => RenderAll(Finish.Smooth64);
 
         [MenuItem("WAR-2D/Art/Render pixel samples")]
-        public static void RenderPixel() => RenderAll(true);
+        public static void RenderPixel() => RenderAll(Finish.Pixel32);
+
+        [MenuItem("WAR-2D/Art/Render all sample finishes")]
+        public static void RenderEveryFinish()
+        {
+            foreach (Finish f in Enum.GetValues(typeof(Finish))) RenderAll(f);
+        }
 
         /// <summary>A sprite or tile, finished for the current mode; its output size in <paramref name="w"/> × <paramref name="h"/>.</summary>
-        private static Color32[] Img(LitCanvas c, Color team, bool sprite, out int w, out int h)
+        private static Color32[] Img(LitCanvas c, Color team, bool sprite, out int w, out int h, float lift = 0f)
         {
             if (!pixel)
             {
                 w = c.Width;
                 h = c.Height;
-                return c.Render(team, shadow: sprite);
+                return c.Render(team, shadow: sprite, lift: lift);
             }
-            w = c.Width / 2;
-            h = c.Height / 2;
-            Color32[] lit = c.Render(team, shadow: false);
-            return PixelFinish.Finish(lit, c.Width, c.Height, 2, PixelFinish.Palette(WAR2D.Art.Style.StylePalettes.Charcoal, team),
+            w = c.Width / Factor;
+            h = c.Height / Factor;
+            Color32[] lit = c.Render(team, shadow: false, lift: lift);
+            return PixelFinish.Finish(lit, c.Width, c.Height, Factor, PixelFinish.Palette(WAR2D.Art.Style.StylePalettes.Charcoal, team),
                 sprite ? (Color32?)WAR2D.Art.Style.StylePalettes.Charcoal.Colours[WAR2D.Art.Style.StylePalette.Outline] : null);
         }
 
         /// <summary>Draws a sprite with its shadow: hard and offset in pixel mode (the lit mode bakes a soft one).</summary>
-        private static void Sprite(Color32[] dst, int w, int h, LitCanvas c, Color team, int cx, int cy)
+        private static void Sprite(Color32[] dst, int w, int h, LitCanvas c, Color team, int cx, int cy, float lift = 0f)
         {
-            Color32[] img = Img(c, team, true, out int sw, out int sh);
-            int ox = cx - sw / 2, oy = cy - sh / 2;
+            Color32[] img = Img(c, team, true, out int sw, out int sh, lift);
+            int ox = cx - sw / 2, oy = cy - Mathf.RoundToInt(c.PivotY / Factor);
+            int sd = 4 / Factor;
             if (pixel)
                 for (int y = 0; y < sh; y++)
                 for (int x = 0; x < sw; x++)
                 {
                     if (img[y * sw + x].a == 0) continue;
-                    int dx = ox + x + 2, dy = oy + y - 2;
+                    int dx = ox + x + sd, dy = oy + y - sd;
                     if ((uint)dx >= (uint)w || (uint)dy >= (uint)h) continue;
                     Color32 d = dst[dy * w + dx];
                     dst[dy * w + dx] = new Color32((byte)(d.r * 0.55f), (byte)(d.g * 0.55f), (byte)(d.b * 0.55f), 255);
@@ -65,33 +78,33 @@ namespace WAR2D.EditorTools
             Over(dst, w, h, img, sw, sh, ox, oy);
         }
 
-        private static void RenderAll(bool pixelMode)
+        private static void RenderAll(Finish finish)
         {
-            pixel = pixelMode;
+            mode = finish;
             TileCache.Clear();
             Directory.CreateDirectory(Folder);
             Color blue = (Color)(Color32)PlayerPalette.Of(0), red = (Color)(Color32)PlayerPalette.Of(1);
 
             // Close-ups on a floor strip.
             int gap = pixel ? 6 : 12;
-            var items = new List<(LitCanvas canvas, Color team)>();
-            for (int d = 0; d < 8; d++) items.Add((RenderGen.Tank(d * Mathf.PI / 4, 0), blue));
-            items.Add((RenderGen.Tank(0, 2), red));
-            items.Add((RenderGen.Miner(0), blue));
-            items.Add((RenderGen.Spawner(0), blue));
-            items.Add((RenderGen.Base(), red));
-            int w = gap, h = 3 * T + 2 * gap;
+            var items = new List<(LitCanvas canvas, Color team, float lift)>();
+            for (int d = 0; d < 8; d++) items.Add((RenderGen.Tank(d * Mathf.PI / 4, 0), blue, 0f));
+            items.Add((RenderGen.Tank(0, 2), red, 0f));
+            items.Add((RenderGen.Miner(0), blue, RenderGen.Lift));
+            items.Add((RenderGen.Spawner(0), blue, RenderGen.Lift));
+            items.Add((RenderGen.Base(), red, RenderGen.Lift));
+            int w = gap, h = 3 * T + RenderGen.Headroom / Factor + 2 * gap;
             foreach (var item in items) w += item.canvas.Width * T / RenderGen.TileSize + gap;
             var strip = new Color32[w * h];
             Tile(strip, w, h, (x, y) => TileAt(TileType.Ground, 0, (x + y) & 3));
             int ox = gap;
-            foreach (var (canvas, team) in items)
+            foreach (var (canvas, team, lift) in items)
             {
                 int cw = canvas.Width * T / RenderGen.TileSize;
-                Sprite(strip, w, h, canvas, team, ox + cw / 2, gap + 3 * T / 2);
+                Sprite(strip, w, h, canvas, team, ox + cw / 2, gap + 3 * T / 2, lift);
                 ox += cw + gap;
             }
-            Save(Path.Combine(Folder, "sprites.png"), strip, w, h, pixel ? 4 : 2);
+            Save(Path.Combine(Folder, "sprites.png"), strip, w, h, CloseScale);
 
             // Terrain close-ups: floor, rock masks, gem.
             var tiles = new List<Color32[]> { TileAt(TileType.Ground, 0, 0), TileAt(TileType.Ground, 0, 1) };
@@ -102,9 +115,9 @@ namespace WAR2D.EditorTools
             var terrain = new Color32[tw * th];
             for (int i = 0; i < terrain.Length; i++) terrain[i] = new Color32(0x26, 0x30, 0x3A, 255);
             for (int k = 0; k < tiles.Count; k++) Over(terrain, tw, th, tiles[k], T, T, gap + k * (T + gap), gap);
-            Save(Path.Combine(Folder, "terrain.png"), terrain, tw, th, pixel ? 6 : 3);
+            Save(Path.Combine(Folder, "terrain.png"), terrain, tw, th, CloseScale + CloseScale / 2);
 
-            Save(Path.Combine(Folder, "scene.png"), Scene(blue, red, out int sw, out int sh), sw, sh, pixel ? 2 : 1);
+            Save(Path.Combine(Folder, "scene.png"), Scene(blue, red, out int sw, out int sh), sw, sh, CloseScale / 2);
             Debug.Log($"[Art] rendered lit samples to {Folder}");
         }
 
@@ -144,16 +157,16 @@ namespace WAR2D.EditorTools
             }
 
             float2 hq = (float2)site + 0.5f - new float2(x0, y0);
-            void Put(LitCanvas sprite, Color team, float2 tile) => Sprite(px, W, H, sprite, team, (int)(tile.x * T), (int)(tile.y * T));
-            Put(RenderGen.Base(), blue, hq);
-            Put(RenderGen.Spawner(0), blue, hq + new float2(4f, -0.5f));
+            void Put(LitCanvas sprite, Color team, float2 tile, float lift = 0f) => Sprite(px, W, H, sprite, team, (int)(tile.x * T), (int)(tile.y * T), lift);
+            Put(RenderGen.Spawner(0), blue, hq + new float2(4f, -0.5f), RenderGen.Lift);
+            Put(RenderGen.Base(), blue, hq, RenderGen.Lift);
             int miners = 0;
             for (int ty = 1; ty < SceneH - 1 && miners < 2; ty++)
             for (int tx = 1; tx < SceneW - 1 && miners < 2; tx++)
             {
                 int mx = x0 + tx, my = y0 + ty;
                 if (Rock(mx, my) || map.Grid.TileAt(new int2(mx + 1, my)) != TileType.Gem) continue;
-                Put(RenderGen.Miner(miners), blue, new float2(tx + 0.5f, ty + 0.5f));
+                Put(RenderGen.Miner(miners), blue, new float2(tx + 0.5f, ty + 0.5f), RenderGen.Lift);
                 miners++;
             }
             var rng = new System.Random(4);
