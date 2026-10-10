@@ -1,0 +1,16 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lit Style Samples</title><style>
+:root{--bg:#1b2026;--panel:#26303a;--text:#e8edf2;--muted:#9aa7b4}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,sans-serif}
+main{max-width:1240px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:26px;margin:0 0 4px} h2{font-size:19px;margin:0 0 4px}
+p{color:var(--muted);margin:4px 0 12px}
+section{background:var(--panel);border-radius:8px;padding:16px;margin:20px 0}
+img{max-width:100%;height:auto;display:block;border-radius:4px}
+</style></head><body><main>
+<h1>WAR-2D lit style samples</h1>
+<p>"Factorio combined with the current style", in the Charcoal palette you picked. Every sprite is still drawn by code, but now as a lit 3D-ish surface: bevelled plates, panel lines, rivets, grime, light from the top left, shading and drop shadows, at 64 px per tile (the earlier samples were flat pixel art at 32 px). Blue and red are player colours 1 and 2; the team-coloured parts follow each player's pick.</p>
+<section><h2>In game (1:1, about the default zoom)</h2><p>A real generated map: the HQ, a Small Unit Spawner, a Miner by a gem vein, and two tank armies.</p><img src="scene.png" alt="In-game scene"></section>
+<section><h2>Units and buildings (2×)</h2><p>The Tank in 8 facings (the light stays fixed, so each facing is rendered, not rotated), the Tank firing, the Miner, the Small Unit Spawner and the HQ.</p><img src="sprites.png" alt="Units and buildings"></section>
+<section><h2>Terrain (3×)</h2><p>Two floor tiles, rock enclosed, open to the north, open on two sides and isolated, then gem rock enclosed and at an edge.</p><img src="terrain.png" alt="Terrain tiles"></section>
+</main></body></html>
