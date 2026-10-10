@@ -175,6 +175,13 @@ namespace WAR2D.Sim
                     float2 next = ((float2)(cell + FlowDirections.Step(direction)) + 0.5f) * FieldCellSize;
                     velocity = speed * math.normalizesafe(next - position, math.normalize((float2)FlowDirections.Step(direction)));
                 }
+                else if (NearestFieldCell(slot, position, out float2 rejoin))
+                {
+                    // On a floor tile in a field cell that holds wall (the field runs on 2×2-tile cells, so
+                    // cave edges are full of these): step back onto the field instead of heading straight
+                    // at the goal, which would pin the unit against the wall.
+                    velocity = speed * math.normalizesafe(rejoin - position);
+                }
                 else
                 {
                     // Off the route (or the route is not built yet): head straight for the goal, and
@@ -193,6 +200,30 @@ namespace WAR2D.Sim
             float maxSpeed = math.max(speed, 1f) * 2f;
             float speedSq = math.lengthsq(velocity);
             Velocity[i] = speedSq > maxSpeed * maxSpeed ? velocity * (maxSpeed * math.rsqrt(speedSq)) : velocity;
+        }
+
+        /// <summary>
+        /// The centre of the nearest of the eight neighbouring field cells that has a direction, when the
+        /// unit's own cell has none. False when none does (the unit really is off the route).
+        /// </summary>
+        private bool NearestFieldCell(int handle, float2 position, out float2 centre)
+        {
+            centre = default;
+            int2 cell = (int2)math.floor(position / FieldCellSize);
+            float best = float.MaxValue;
+            for (int dy = -1; dy <= 1; dy++)
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                if (dx == 0 && dy == 0) continue;
+                float2 c = ((float2)(cell + new int2(dx, dy)) + 0.5f) * FieldCellSize;
+                byte direction = Direction(handle, c);
+                if (direction != FlowDirections.AtGoal && !FlowDirections.IsStep(direction)) continue;
+                float d = math.distancesq(c, position);
+                if (d >= best) continue;
+                best = d;
+                centre = c;
+            }
+            return best < float.MaxValue;
         }
 
         private int SectorOf(int2 tile) => tile.y / SectorGraph.SectorSize * SectorsX + tile.x / SectorGraph.SectorSize;

@@ -316,6 +316,12 @@
 .lobby__preview-image { width: 512px; height: 512px; background-color: var(--color-surface-raised); border-width: 1px; border-color: var(--color-border); }
 .lobby__markers { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }
 .spawn-marker { position: absolute; width: 20px; height: 20px; margin-left: -10px; margin-top: -10px; border-radius: 10px; border-width: 2px; border-color: var(--color-surface-base); background-color: var(--color-text-secondary); }
+.spawn-marker--free:hover { border-color: var(--color-accent); }
+.spawn-marker--mine { width: 26px; height: 26px; margin-left: -13px; margin-top: -13px; border-radius: 13px; border-width: 3px; border-color: var(--color-text-primary); }
+.spawn-marker__you { position: absolute; left: 30px; top: 3px; padding: 0; font-size: var(--font-size-12); -unity-font-style: bold; color: var(--color-text-primary); }
+.spawn-marker__tooltip { display: none; position: absolute; left: 24px; top: -4px; padding: 4px 8px; border-width: 1px; border-color: var(--color-accent); border-radius: var(--radius-sm); background-color: var(--color-surface-base); font-size: var(--font-size-12); color: var(--color-text-primary); white-space: nowrap; }
+.spawn-marker--free:hover > .spawn-marker__tooltip { display: flex; }
+.lobby__caption { white-space: normal; width: 520px; }
 .lobby__seed-row { align-items: flex-end; }
 .lobby__reroll { height: 35px; }
 .lobby__footer { position: absolute; left: 120px; top: 960px; }

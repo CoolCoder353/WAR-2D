@@ -23,7 +23,7 @@
         <ui:VisualElement name="hq-prompt" class="hud-overlay hud-overlay--top" picking-mode="Ignore">
             <ui:VisualElement class="panel hq-prompt" picking-mode="Ignore">
                 <ui:Label text="Place your HQ" class="text hq-prompt__title" picking-mode="Ignore" />
-                <ui:Label text="Left-click a clear 3×3 spot. R rotates. The preview turns red where you can't build." class="text text--muted" picking-mode="Ignore" />
+                <ui:Label text="Left-click a clear 3×3 spot inside your clearing. R rotates. The preview turns red where you can't build." class="text text--muted" picking-mode="Ignore" />
                 <ui:Label name="hq-progress" text="" class="text text--readout" picking-mode="Ignore" />
             </ui:VisualElement>
         </ui:VisualElement>

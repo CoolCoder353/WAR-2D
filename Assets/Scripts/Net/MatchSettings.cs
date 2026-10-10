@@ -76,6 +76,44 @@ public static class LobbyRules
         return true;
     }
 
+    /// <summary>HQ clearings a player may claim in the lobby (the generated map's sites, one per player).</summary>
+    public const int StartSites = MaxPlayers;
+
+    /// <summary>No clearing claimed: one is handed out when the match starts.</summary>
+    public const int NoStartSite = -1;
+
+    /// <summary>True for <see cref="NoStartSite"/> (giving a claim up) or a clearing nobody else has claimed.</summary>
+    public static bool IsStartSiteChoiceValid(int site, IEnumerable<int> takenByOthers)
+    {
+        if (site == NoStartSite) return true;
+        if (site < 0 || site >= StartSites) return false;
+        foreach (int s in takenByOthers) if (s == site) return false;
+        return true;
+    }
+
+    /// <summary>
+    /// Every player's clearing at match start: valid claims are kept (on a clash, which the lobby prevents,
+    /// the lower owner keeps it), and the players without one get the lowest free clearings in owner order.
+    /// </summary>
+    public static Dictionary<int, int> AssignStartSites(IReadOnlyList<(int owner, int site)> claims)
+    {
+        var sorted = new List<(int owner, int site)>(claims);
+        sorted.Sort((a, b) => a.owner.CompareTo(b.owner));
+        var result = new Dictionary<int, int>();
+        var used = new HashSet<int>();
+        foreach (var c in sorted)
+            if (c.site >= 0 && c.site < StartSites && used.Add(c.site)) result[c.owner] = c.site;
+        int next = 0;
+        foreach (var c in sorted)
+        {
+            if (result.ContainsKey(c.owner)) continue;
+            while (next < StartSites && used.Contains(next)) next++;
+            result[c.owner] = next < StartSites ? next : NoStartSite;
+            if (next < StartSites) used.Add(next);
+        }
+        return result;
+    }
+
     /// <summary>True for a team a player may pick for themselves in this mode.</summary>
     public static bool IsTeamChoiceValid(MatchMode mode, int team) =>
         team == TeamRules.NoTeam || (mode == MatchMode.Teams && team >= 0 && team < PickableTeams);

@@ -64,4 +64,32 @@ public class MatchSettingsTests
         foreach (GameState state in System.Enum.GetValues(typeof(GameState)))
             if (state != GameState.Lobby) Assert.IsFalse(LobbyRules.MayJoin(state, 2), $"no joining in {state}");
     }
+
+    [Test]
+    public void StartSiteChoices_AreFreeClearingsOrGivingUp()
+    {
+        Assert.IsTrue(LobbyRules.IsStartSiteChoiceValid(3, new[] { 0, 1 }));
+        Assert.IsFalse(LobbyRules.IsStartSiteChoiceValid(1, new[] { 0, 1 }), "taken by someone else");
+        Assert.IsTrue(LobbyRules.IsStartSiteChoiceValid(LobbyRules.NoStartSite, new[] { 0, 1 }), "giving a claim up");
+        Assert.IsFalse(LobbyRules.IsStartSiteChoiceValid(LobbyRules.StartSites, new int[0]));
+        Assert.IsFalse(LobbyRules.IsStartSiteChoiceValid(-2, new int[0]));
+    }
+
+    [Test]
+    public void AssignStartSites_KeepsClaimsAndFillsTheRestInOwnerOrder()
+    {
+        var sites = LobbyRules.AssignStartSites(new[] { (30, LobbyRules.NoStartSite), (10, 0), (20, LobbyRules.NoStartSite), (40, 5) });
+        Assert.AreEqual(0, sites[10]);
+        Assert.AreEqual(5, sites[40]);
+        Assert.AreEqual(1, sites[20], "lowest free clearing, lower owner first");
+        Assert.AreEqual(2, sites[30]);
+    }
+
+    [Test]
+    public void AssignStartSites_ResolvesAClashToTheLowerOwner()
+    {
+        var sites = LobbyRules.AssignStartSites(new[] { (20, 3), (10, 3) });
+        Assert.AreEqual(3, sites[10]);
+        Assert.AreEqual(0, sites[20]);
+    }
 }

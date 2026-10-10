@@ -51,7 +51,7 @@
                     </ui:VisualElement>
                     <ui:Button name="reroll-button" text="Reroll" class="button lobby__reroll" />
                 </ui:VisualElement>
-                <ui:Label text="Coloured markers are where each player's HQ area is; grey ones are unused." class="text--secondary" />
+                <ui:Label name="start-caption" text="Click a free (grey) marker to claim that clearing; you place your HQ inside it. Markers show each player's colour; players who haven't picked get a free clearing when the match starts." class="text--secondary lobby__caption" />
             </ui:VisualElement>
         </ui:VisualElement>
         <ui:VisualElement class="row lobby__footer">

@@ -28,6 +28,22 @@ namespace WAR2D.Client
         private NativeList<int> known;
         private NativeArray<int> knownSlot; // index -> position in `known`, or -1
         private NativeList<float2> predicted;
+        // Drawing only: the jump each correction or new route made, faded out over BlendSeconds.
+        private NativeArray<float2> blend;
+        private NativeList<float2> drawn;
+        private float lastPredictTime = -1f;
+
+        /// <summary>How long a correction's jump takes to fade out of the drawn position.</summary>
+        public const float BlendSeconds = 0.1f;
+        /// <summary>Jumps longer than this (tiles) are drawn as they are: the unit really was somewhere else.</summary>
+        public const float MaxBlendTiles = 2f;
+
+        /// <summary>
+        /// The client's clock, which the drawn-position blend measures jumps at. Prediction itself never
+        /// reads it (corrections apply at their own tick, so the server's copy stays bit-identical).
+        /// Zero turns the blend off.
+        /// </summary>
+        public float Now { get; set; }
 
         // Decode scratch, reused.
         private readonly List<EnterUnit> enters = new List<EnterUnit>();
@@ -58,6 +74,8 @@ namespace WAR2D.Client
             knownSlot = new NativeArray<int>(idCapacity, allocator);
             for (int i = 0; i < idCapacity; i++) knownSlot[i] = -1;
             predicted = new NativeList<float2>(1024, allocator);
+            blend = new NativeArray<float2>(idCapacity, allocator);
+            drawn = new NativeList<float2>(1024, allocator);
         }
 
         /// <summary>Units known.</summary>
@@ -68,6 +86,11 @@ namespace WAR2D.Client
         public NativeArray<int> Known => known.AsArray();
         /// <summary>Positions from the last <see cref="PredictAll"/>, parallel to <see cref="Known"/>.</summary>
         public NativeArray<float2> Predicted => predicted.AsArray();
+        /// <summary>
+        /// Where to draw each unit, parallel to <see cref="Known"/>: <see cref="Predicted"/> plus the fading
+        /// remainder of its last correction, so units glide instead of stepping. Never use it for gameplay.
+        /// </summary>
+        public NativeArray<float2> Drawn => drawn.AsArray();
 
         /// <summary>Owner id by index (for packing jobs).</summary>
         internal NativeArray<int> OwnerArray => owner;
@@ -130,10 +153,12 @@ namespace WAR2D.Client
                     foreach (RouteUnit u in moves)
                     {
                         if (!IsKnown(u.Index)) continue;
+                        float2 before = PredictOne(u.Index, Now);
                         SetRoute(u.Index, u.First, u.Count);
                         PredictState s = states[u.Index];
                         MovementPrediction.StartRoute(ref s, arena[routeStart[u.Index]], tick * dt);
                         states[u.Index] = s;
+                        Blend(u.Index, before);
                     }
                     break;
                 }
@@ -144,9 +169,11 @@ namespace WAR2D.Client
                     foreach (CorrectionUnit c in corrections)
                     {
                         if (!IsKnown(c.Index)) continue;
+                        float2 before = PredictOne(c.Index, Now);
                         PredictState s = states[c.Index];
                         MovementPrediction.ApplyCorrection(ref s, arena.AsArray(), routeStart[c.Index], routeCount[c.Index], tick * dt, c, scale);
                         states[c.Index] = s;
+                        Blend(c.Index, before);
                     }
                     break;
                 }
@@ -165,10 +192,19 @@ namespace WAR2D.Client
             }
         }
 
+        /// <summary>Adds the jump between where the unit was drawn from (<paramref name="before"/>) and its new prediction to its blend.</summary>
+        private void Blend(int index, float2 before)
+        {
+            if (Now <= 0f) return;
+            float2 offset = blend[index] + before - PredictOne(index, Now);
+            blend[index] = math.lengthsq(offset) > MaxBlendTiles * MaxBlendTiles ? float2.zero : offset;
+        }
+
         private void Enter(in EnterUnit u, int tick)
         {
             int index = NetIdAllocator.IndexOf(u.Id);
             if (index >= states.Length) throw new InvalidDataException("unit index beyond the client's capacity");
+            blend[index] = float2.zero;
             if (!IsKnown(index))
             {
                 knownSlot[index] = known.Length;
@@ -208,6 +244,7 @@ namespace WAR2D.Client
             liveWaypoints -= routeCount[u.Index];
             routeCount[u.Index] = 0;
             states[u.Index] = default;
+            blend[u.Index] = float2.zero;
         }
 
         private void SetRoute(int index, int first, int count)
@@ -238,6 +275,9 @@ namespace WAR2D.Client
         public void PredictAll(float now)
         {
             predicted.ResizeUninitialized(known.Length);
+            drawn.ResizeUninitialized(known.Length);
+            float elapsed = lastPredictTime < 0f ? 0f : math.max(0f, now - lastPredictTime);
+            lastPredictTime = now;
             new PredictJob
             {
                 Known = known.AsArray(),
@@ -247,6 +287,9 @@ namespace WAR2D.Client
                 Waypoints = arena.AsArray(),
                 Now = now,
                 Positions = predicted.AsArray(),
+                Blend = blend,
+                BlendKeep = math.exp(-elapsed / BlendSeconds),
+                Drawn = drawn.AsArray(),
             }.Schedule(known.Length, 256).Complete();
         }
 
@@ -255,7 +298,7 @@ namespace WAR2D.Client
             if (disposed) return;
             disposed = true;
             states.Dispose(); routeStart.Dispose(); routeCount.Dispose(); owner.Dispose(); type.Dispose(); health.Dispose();
-            arena.Dispose(); known.Dispose(); knownSlot.Dispose(); predicted.Dispose();
+            arena.Dispose(); known.Dispose(); knownSlot.Dispose(); predicted.Dispose(); blend.Dispose(); drawn.Dispose();
         }
 
         [BurstCompile(FloatMode = FloatMode.Deterministic)]
@@ -267,12 +310,20 @@ namespace WAR2D.Client
             [ReadOnly] public NativeArray<float2> Waypoints;
             public float Now;
             public NativeArray<float2> Positions;
+            [NativeDisableParallelForRestriction] public NativeArray<float2> Blend; // by index; each index is in one slot
+            public float BlendKeep;
+            public NativeArray<float2> Drawn;
 
             public void Execute(int i)
             {
                 int index = Known[i];
                 PredictState s = States[index];
-                Positions[i] = MovementPrediction.Predict(ref s, Waypoints, RouteStart[index], RouteCount[index], Now);
+                float2 p = MovementPrediction.Predict(ref s, Waypoints, RouteStart[index], RouteCount[index], Now);
+                float2 b = Blend[index] * BlendKeep;
+                if (math.lengthsq(b) < 1e-8f) b = float2.zero;
+                Blend[index] = b;
+                Positions[i] = p;
+                Drawn[i] = p + b;
             }
         }
     }

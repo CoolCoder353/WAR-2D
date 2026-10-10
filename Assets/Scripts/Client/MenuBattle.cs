@@ -23,6 +23,8 @@ namespace WAR2D.Client
     public sealed class MenuBattle : MonoBehaviour
     {
         private const int OwnerA = 1, OwnerB = 2;
+        /// <summary>Most explosions started in one tick (each is a GameObject), as the server caps a real client's.</summary>
+        private const int MaxExplosionsPerTick = 64;
         private const float StartDelaySeconds = 0.5f, ReinforceSeconds = 4f, CameraSize = 26f, DriftSpeed = 1.5f;
 
         /// <summary>The running battle, or null.</summary>
@@ -52,6 +54,7 @@ namespace WAR2D.Client
         /// already in the settled world, and spawns join it during the tick that applies them.
         /// </summary>
         private bool orderPending;
+        private int explosionsThisTick;
 
         /// <summary>True while the battle's simulation exists.</summary>
         public bool Running => sim != null;
@@ -135,6 +138,7 @@ namespace WAR2D.Client
             SimContext.RunningOverride = true;
             sim = SimContext.Create(world, map, config);
             sim.Settled += CountAlive;
+            sim.UnitDied += Explode;
             replication = new ReplicationService(sim, config);
             replication.AddVirtualClient(OwnerA, Receive);
             // B shares its sight with A, so the watcher sees both sides of the fight.
@@ -142,6 +146,7 @@ namespace WAR2D.Client
 
             view = new GameObject("MenuBattleView").AddComponent<ClientWorld>();
             view.ColourIndexOf = owner => owner - 1; // army A in player colour 1, B in colour 2
+            view.ViewCamera = MenuCamera();
             MapView.Show(map.Grid);
 
             int2 centre = new int2(map.Grid.Width / 2, map.Grid.Height / 2);
@@ -173,6 +178,7 @@ namespace WAR2D.Client
             replication.Dispose();
             replication = null;
             sim.Settled -= CountAlive;
+            sim.UnitDied -= Explode;
             sim.Dispose();
             sim = null;
             if (world != null && world.IsCreated) world.Dispose();
@@ -186,6 +192,7 @@ namespace WAR2D.Client
         private void Tick(float dt)
         {
             time += dt;
+            explosionsThisTick = 0;
             world.SetTime(new TimeData(time, dt));
             group.Update();
         }
@@ -194,6 +201,20 @@ namespace WAR2D.Client
         {
             if (channel < 0 || view == null) return; // fog and building payloads: the menu shows neither
             view.Apply(new ReplicationBatch { Tick = sim.Clock.Tick, Payload = payload });
+        }
+
+        /// <summary>
+        /// A death's explosion, when it is on screen. A real match gets these from the server
+        /// (<c>ClientPlayer.TargetPlayExplosions</c>); the offline battle has no server, so it plays its own.
+        /// </summary>
+        private void Explode(int id, float2 position)
+        {
+            Camera cam = view != null ? view.ViewCamera : null;
+            if (cam == null || explosionsThisTick >= MaxExplosionsPerTick) return;
+            Vector3 v = cam.WorldToViewportPoint(new Vector3(position.x, position.y, 0f));
+            if (v.x < 0f || v.x > 1f || v.y < 0f || v.y > 1f) return;
+            explosionsThisTick++;
+            Effects.Explosion(new Vector2(position.x, position.y));
         }
 
         private void CountAlive(SimData data, int tick, int count)

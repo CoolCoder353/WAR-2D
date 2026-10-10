@@ -42,6 +42,10 @@ public class GameManager : NetworkManager
         // Ensure this GameManager persists across scene loads
         DontDestroyOnLoad(this);
 
+        // There is no dedicated server: a batch-mode player is a perf client (or a test) that starts its own
+        // networking. Mirror's default auto-start would make every one of them host on the same port.
+        headlessStartMode = HeadlessStartOptions.DoNothing;
+
         // Load Game Config
         Config.ConfigLoader.LoadConfig();
 

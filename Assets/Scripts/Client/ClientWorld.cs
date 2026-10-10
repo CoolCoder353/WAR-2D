@@ -62,6 +62,9 @@ namespace WAR2D.Client
         /// <summary>An owner's palette colour index (by default their lobby colour; the menu battle maps its bots).</summary>
         public Func<int, int> ColourIndexOf = PlayerPalette.ColourIndexOf;
 
+        /// <summary>The camera tracers are culled against; null uses <c>Camera.main</c> (the menu's camera isn't tagged MainCamera).</summary>
+        public Camera ViewCamera;
+
         /// <summary>The underlying store (tests).</summary>
         internal ClientUnitStore Store => store;
 
@@ -115,6 +118,7 @@ namespace WAR2D.Client
         /// <summary>Decodes and applies a batch; a malformed one is logged and dropped.</summary>
         public void Apply(in ReplicationBatch batch)
         {
+            store.Now = serverTime;
             if (!store.Apply(batch.Payload, batch.Tick))
             {
                 MalformedBatches++;
@@ -215,7 +219,9 @@ namespace WAR2D.Client
         public void Draw(IReadOnlyCollection<int> selectedIds)
         {
             int count = store.Count;
-            if (count == 0 || store.Predicted.Length != count) return;
+            if (count == 0 || store.Drawn.Length != count) return;
+            // A -nographics player (perf clients) has no GPU buffers to draw with.
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) return;
             if (unitRenderer == null)
             {
                 var texture = Resources.Load<Texture2D>(UnitType.Tank.ToString());
@@ -234,7 +240,7 @@ namespace WAR2D.Client
                 }
 
             NativeArray<int> known = store.Known;
-            NativeArray<float2> positions = store.Predicted;
+            NativeArray<float2> positions = store.Drawn; // smoothed: corrections glide instead of stepping
             NativeArray<int> owners = store.OwnerArray;
             NativeArray<byte> healthBytes = store.HealthArray;
             for (int i = 0; i < count; i++)
@@ -281,7 +287,7 @@ namespace WAR2D.Client
         private void FireTracers()
         {
             if (attacks.Count == 0) return;
-            Camera cam = Camera.main;
+            Camera cam = ViewCamera != null ? ViewCamera : Camera.main;
             int start = math.max(0, attacks.Count - MaxTracersPerFrame);
             for (int i = start; i < attacks.Count && cam != null; i++)
             {

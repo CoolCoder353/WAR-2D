@@ -12,6 +12,13 @@ public class ClientPlayer : NetworkBehaviour
     [SyncVar]
     public int colourIndex;
 
+    /// <summary>
+    /// The HQ clearing (index into the map's HQ sites) this player claimed in the lobby, or
+    /// <see cref="LobbyRules.NoStartSite"/>. Every player has one once the match starts (<see cref="GameCore.Cmd_SetStartSite"/>).
+    /// </summary>
+    [SyncVar]
+    public int startSite = LobbyRules.NoStartSite;
+
     /// <summary>True once the player readied up in the lobby; any settings change clears it.</summary>
     [SyncVar]
     public bool ready;

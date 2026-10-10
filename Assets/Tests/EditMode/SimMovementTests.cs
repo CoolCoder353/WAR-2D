@@ -42,6 +42,27 @@ public class SimMovementTests
         Assert.Fail($"unit ended at {sim.UnitById(a[0]).Position}");
     }
 
+    /// <summary>
+    /// Owner report (2026-10-10): units got stuck on walls. Tile x = 33 is floor, but its 2×2 field cell
+    /// (tiles 32–33) holds wall, so the field has no direction there; the unit must step back onto the
+    /// field rather than head straight at the goal through the wall.
+    /// </summary>
+    [Test]
+    public void UnitBesideAWallInABlockedFieldCellStillGoesAround()
+    {
+        using var sim = new SimHarness(WallWithGap());
+        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(33.5f, 10.5f));
+        sim.Tick();
+        sim.Move(SimHarness.OwnerA, new int2(10, 10), a[0]);
+        var goal = new float2(10.5f, 10.5f);
+        for (int t = 0; t < 20 * 40; t++)
+        {
+            sim.Tick();
+            if (math.distance(sim.UnitById(a[0]).Position, goal) <= 1.5f) return;
+        }
+        Assert.Fail($"unit ended at {sim.UnitById(a[0]).Position}");
+    }
+
     [Test]
     public void UnitsShareOneFieldPerOrder()
     {
