@@ -10,6 +10,17 @@ public static class CommandValidator
     /// <summary>Squad numbers are 0..9 (keys 1..0).</summary>
     public static bool IsSquadIndexValid(int squad) => squad >= 0 && squad < WAR2D.Sim.Squads.Count;
 
+    /// <summary>Order kinds are the <see cref="OrderKind"/> values 0..3.</summary>
+    public static bool IsOrderKindValid(byte kind) => kind <= (byte)OrderKind.Stop;
+
+    /// <summary>A known order kind, with a goal inside the inclusive bounds when the order moves.</summary>
+    public static bool IsOrderValid(byte kind, int2 goal, int2 min, int2 max)
+    {
+        if (!IsOrderKindValid(kind)) return false;
+        OrderKind order = (OrderKind)kind;
+        return (order != OrderKind.Move && order != OrderKind.AttackMove) || IsInside(goal, min, max);
+    }
+
     /// <summary>True when the tile is inside the inclusive bounds.</summary>
     public static bool IsInside(int2 tile, int2 min, int2 max) =>
         tile.x >= min.x && tile.y >= min.y && tile.x <= max.x && tile.y <= max.y;

@@ -25,18 +25,22 @@ public partial class WorldStateManager
 
     private readonly Dictionary<(int owner, ushort token, byte kind), PendingOrder> pendingOrders = new Dictionary<(int, ushort, byte), PendingOrder>();
     private readonly List<(int, ushort, byte)> staleTokens = new List<(int, ushort, byte)>();
-    private const byte MoveKind = 0;
+    private const byte OrderChunkKind = 0;
     private const byte SquadKindBase = 1; // + squad index
 
-    /// <summary>Accumulates one chunk of a move order; the final chunk queues the move.</summary>
+    /// <summary>
+    /// Accumulates one chunk of an order (<see cref="OrderKind"/>); the final chunk queues it. The goal
+    /// is used (and validated) only for Move and AttackMove; <paramref name="queue"/> (Shift) queues
+    /// those after each unit's current order.
+    /// </summary>
     [Command(requiresAuthority = false)]
-    public void CmdOrderMoveChunk(ushort token, byte[] idChunk, bool final, int2 goal, NetworkConnectionToClient sender = null)
+    public void CmdOrderChunk(ushort token, byte[] idChunk, bool final, byte kind, bool queue, int2 goal, NetworkConnectionToClient sender = null)
     {
-        if (!CommandGate.Allow(sender, nameof(CmdOrderMoveChunk))) return;
-        if (!TryActingOwner(sender, out int owner) || !IsGoalValid(goal)) return;
-        List<int> ids = Accumulate(owner, token, MoveKind, idChunk, final);
+        if (!CommandGate.Allow(sender, nameof(CmdOrderChunk))) return;
+        if (!TryActingOwner(sender, out int owner) || !IsOrderValid(kind, goal)) return;
+        List<int> ids = Accumulate(owner, token, OrderChunkKind, idChunk, final);
         if (ids == null) return;
-        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.MoveUnits, OwnerId = owner, Tile = goal, Ids = ids.ToArray() });
+        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = (OrderKind)kind, Queue = queue, OwnerId = owner, Tile = goal, Ids = ids.ToArray() });
     }
 
     /// <summary>Accumulates one chunk of a squad assignment; the final chunk replaces the squad.</summary>
@@ -48,20 +52,51 @@ public partial class WorldStateManager
         List<int> ids = Accumulate(owner, token, (byte)(SquadKindBase + squad), idChunk, final);
         if (ids == null) return;
         Squads.Assign(owner, squad, ids);
+        squadCountsDirty = true;
     }
 
-    /// <summary>Orders a squad's living members to the goal.</summary>
+    /// <summary>Gives a squad's living members an order (<see cref="OrderKind"/>), as <see cref="CmdOrderChunk"/>.</summary>
     [Command(requiresAuthority = false)]
-    public void CmdOrderSquad(byte squad, int2 goal, NetworkConnectionToClient sender = null)
+    public void CmdOrderSquad(byte squad, byte kind, bool queue, int2 goal, NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(CmdOrderSquad))) return;
-        if (!CommandValidator.IsSquadIndexValid(squad) || !TryActingOwner(sender, out int owner) || !IsGoalValid(goal)) return;
+        if (!CommandValidator.IsSquadIndexValid(squad) || !TryActingOwner(sender, out int owner) || !IsOrderValid(kind, goal)) return;
         Squads.Prune(owner, squad, Ids);
         IReadOnlyList<int> members = Squads.Members(owner, squad);
         if (members.Count == 0) return;
         var ids = new int[members.Count];
         for (int i = 0; i < ids.Length; i++) ids[i] = members[i];
-        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.MoveUnits, OwnerId = owner, Tile = goal, Ids = ids });
+        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = (OrderKind)kind, Queue = queue, OwnerId = owner, Tile = goal, Ids = ids });
+    }
+
+    private const int SquadCountTicks = 40; // 2 s at 20 Hz
+    private bool squadCountsDirty;
+    private readonly List<int> squadOwners = new List<int>();
+
+    /// <summary>
+    /// On the settled world, after an assignment or every 2 s: prunes each player's squads to their own
+    /// live units and sends each player (only) their counts.
+    /// </summary>
+    [Server]
+    private void SendSquadCounts(WAR2D.Sim.SimData data, int tick, int unitCount)
+    {
+        if (!squadCountsDirty && tick % SquadCountTicks != 0) return;
+        squadCountsDirty = false;
+        squadOwners.Clear();
+        squadOwners.AddRange(Squads.Owners);
+        foreach (int owner in squadOwners)
+        {
+            NetworkConnectionToClient connection = GameCore.Instance?.GetServerPlayerById(owner)?.connection;
+            if (connection?.identity == null || !connection.identity.TryGetComponent(out ClientPlayer player)) continue;
+            var counts = new int[Squads.Count];
+            for (int squad = 0; squad < counts.Length; squad++)
+                counts[squad] = Squads.PruneToOwned(owner, squad, id =>
+                {
+                    int slot = data.SlotOf(id, unitCount);
+                    return slot >= 0 && data.OwnerId[slot] == owner && data.Health[slot] > 0f;
+                });
+            player.TargetSquadCounts(connection, counts);
+        }
     }
 
     /// <summary>The sender's owner id, when they may give orders now (Playing, still in the match).</summary>
@@ -74,15 +109,17 @@ public partial class WorldStateManager
         return acting != null && acting.state == PlayerState.Playing;
     }
 
-    private bool IsGoalValid(int2 goal)
+    /// <summary>A known order kind, with a goal inside the map when the order moves.</summary>
+    private bool IsOrderValid(byte kind, int2 goal)
     {
         (int2 min, int2 max) = MapBounds;
-        return Map != null && CommandValidator.IsInside(goal, min, max);
+        return Map != null && CommandValidator.IsOrderValid(kind, goal, min, max);
     }
 
     /// <summary>
     /// Adds a chunk to the sender's pending list for the token. Returns the whole list on the final
-    /// chunk, else null. A malformed chunk, too many ids, or too many open tokens drops the order.
+    /// chunk, else null. A malformed chunk, too many ids, or too many open tokens drops the order. An empty
+    /// chunk adds no ids: Ctrl+number with nothing selected sends one, and it empties the squad.
     /// </summary>
     private List<int> Accumulate(int owner, ushort token, byte kind, byte[] chunk, bool final)
     {
@@ -99,7 +136,8 @@ public partial class WorldStateManager
         }
         int cap = ConfigLoader.LoadConfig().Simulation.MaxUnitsPerPlayer;
         int room = cap - pending.Ids.Count;
-        if (room <= 0 || !OrderIdCodec.TryDecode(chunk, System.Math.Min(OrderIdCodec.MaxIdsPerChunk, room), pending.Ids))
+        bool empty = chunk != null && chunk.Length == 0;
+        if (chunk == null || (!empty && (room <= 0 || !OrderIdCodec.TryDecode(chunk, System.Math.Min(OrderIdCodec.MaxIdsPerChunk, room), pending.Ids))))
         {
             pendingOrders.Remove(key);
             return null;

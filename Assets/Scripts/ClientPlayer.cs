@@ -5,26 +5,35 @@ using UnityEngine;
 [System.Serializable]
 public class ClientPlayer : NetworkBehaviour
 {
-    [SyncVar(hook = nameof(OnNicknameChangedEvent))]
+    [SyncVar]
     public string nickname;
 
-    public LobbySystem lobbySystem;
-
-
+    /// <summary>The player's palette colour (0–7), unique in the lobby (<see cref="GameCore.Cmd_SetColour"/>).</summary>
     [SyncVar]
+    public int colourIndex;
+
+    /// <summary>True once the player readied up in the lobby; any settings change clears it.</summary>
+    [SyncVar]
+    public bool ready;
+
+
+    [SyncVar(hook = nameof(OnHasPlacedHQ))]
     public bool hasPlacedHQ = false;
 
-    /// <summary>The team this player picked in the lobby, or <see cref="TeamRules.NoTeam"/>. Set by the server owner.</summary>
-    [SyncVar(hook = nameof(OnLobbyTeamChanged))]
-    public int lobbyTeam = TeamRules.NoTeam;
-
-    private void OnLobbyTeamChanged(int oldTeam, int newTeam)
+    /// <summary>A new HQ means a new match: its end screen may show again.</summary>
+    private void OnHasPlacedHQ(bool before, bool now)
     {
-        if (lobbySystem != null) lobbySystem.UpdateTeamLabel(this);
+        if (!now) return;
+        gameOverDeclared = false;
+        drawDeclared = false;
     }
 
-    /// <summary>True on the client whose player is the current server owner (lobby start button).</summary>
-    [SyncVar(hook = nameof(OnServerOwnerChanged))]
+    /// <summary>The team this player picked in the lobby, or <see cref="TeamRules.NoTeam"/> (Solo). Set by the player (Teams mode) or the server owner.</summary>
+    [SyncVar]
+    public int lobbyTeam = TeamRules.NoTeam;
+
+    /// <summary>True for the current server owner (the host: lobby settings and Start).</summary>
+    [SyncVar]
     public bool isServerOwner;
 
     public UnityEngine.Events.UnityEvent<bool> onResponseFromCanBuildBuilding = new UnityEngine.Events.UnityEvent<bool>();
@@ -38,17 +47,14 @@ public class ClientPlayer : NetworkBehaviour
         base.OnStartClient();
 
         DontDestroyOnLoad(this);
-        //Find the lobby system
-        lobbySystem = FindAnyObjectByType<LobbySystem>();
-        if (lobbySystem != null)
-        {
-            lobbySystem.AddClientPlayer(this, addNicknameListener: isLocalPlayer);
-            if (isLocalPlayer) lobbySystem.SetStartButtonVisible(isServerOwner);
-        }
+    }
 
-        //Add the hook to the scene change event
-        if (!isLocalPlayer) return;
-
+    /// <summary>Sends the nickname chosen on the Play screen.</summary>
+    public override void OnStartLocalPlayer()
+    {
+        base.OnStartLocalPlayer();
+        string wanted = WAR2D.UI.MenuModel.Nickname;
+        if (!string.IsNullOrWhiteSpace(wanted)) CmdSetNickname(wanted);
     }
 
     [Client]
@@ -77,15 +83,86 @@ public class ClientPlayer : NetworkBehaviour
     /// </summary>
     public float currentResources { get; private set; } = 0f;
 
-    /// <summary>
-    /// TargetRpc to update the local player's resource count
-    /// </summary>
+    /// <summary>Resources the local player earned during the last second (local player only).</summary>
+    public float incomePerSecond { get; private set; }
+
+    /// <summary>Upkeep the local player paid during the last second (local player only).</summary>
+    public float upkeepPerSecond { get; private set; }
+
+    /// <summary>The owning player's own resources and last second's income and upkeep. Private: never a SyncVar.</summary>
     [TargetRpc]
-    public void TargetUpdateResources(NetworkConnection target, float newResources)
+    public void TargetUpdateResources(NetworkConnection target, float newResources, float income, float upkeep)
     {
         currentResources = newResources;
-        // You can add UI update logic here or use an event
-        // For example: onResourcesChanged?.Invoke(newResources);
+        incomePerSecond = income;
+        upkeepPerSecond = upkeep;
+    }
+
+    private readonly System.Collections.Generic.Dictionary<int, int> spawnerQueues = new System.Collections.Generic.Dictionary<int, int>();
+
+    /// <summary>Units queued on one of the local player's spawners, as last told by the server (0 when unknown).</summary>
+    public int SpawnerQueue(int buildingId) => spawnerQueues.TryGetValue(buildingId, out int count) ? count : 0;
+
+    /// <summary>Raised when a spawner's queue count arrives: (building id, count).</summary>
+    public event System.Action<int, int> SpawnerQueueChanged;
+
+    /// <summary>The number of the local player's live units in each squad (0–9), as last told by the server.</summary>
+    public int[] SquadCounts { get; private set; } = new int[WAR2D.Sim.Squads.Count];
+
+    /// <summary>One of the owner's spawners changed its queue. Private: only the owner learns it.</summary>
+    [TargetRpc]
+    public void TargetSpawnerQueue(NetworkConnection target, int buildingId, int count)
+    {
+        if (count <= 0) spawnerQueues.Remove(buildingId);
+        else spawnerQueues[buildingId] = count;
+        SpawnerQueueChanged?.Invoke(buildingId, count);
+    }
+
+    /// <summary>The owner's live units per squad. Private: only the owner learns it.</summary>
+    [TargetRpc]
+    public void TargetSquadCounts(NetworkConnection target, int[] counts)
+    {
+        if (counts == null || counts.Length != WAR2D.Sim.Squads.Count) return;
+        SquadCounts = counts;
+    }
+
+    /// <summary>Raised on the client of the sender or the recipient of a gift: (from, to, amount).</summary>
+    public event System.Action<int, int, float> GiftNoticed;
+
+    /// <summary>A gift between this player and another. Only the sender and the recipient are told.</summary>
+    [TargetRpc]
+    public void TargetGift(NetworkConnection target, int fromOwner, int toOwner, float amount) => GiftNoticed?.Invoke(fromOwner, toOwner, amount);
+
+    /// <summary>Raised on the owning client when alerts arrive.</summary>
+    public event System.Action<Alert[]> AlertsReceived;
+
+    /// <summary>The owner's own alerts. Private: each player is sent only alerts about their own entities and choices made towards them.</summary>
+    [TargetRpc]
+    public void TargetAlerts(NetworkConnection target, Alert[] alerts)
+    {
+        if (alerts != null && alerts.Length > 0) AlertsReceived?.Invoke(alerts);
+    }
+
+    /// <summary>Whom this player attacks; bit i is the owner at <c>GameCore.PlayerOrder[i]</c> (local player only).</summary>
+    public ushort AttackMask { get; private set; }
+
+    /// <summary>Whom this player shares vision with (bits as <see cref="AttackMask"/>).</summary>
+    public ushort ShareVisionMask { get; private set; }
+
+    /// <summary>Who shares vision with this player (bits as <see cref="AttackMask"/>).</summary>
+    public ushort SharedWithMe { get; private set; }
+
+    /// <summary>Raised on the owning client when its diplomacy row arrives.</summary>
+    public event System.Action DiplomacyChanged;
+
+    /// <summary>The owner's own diplomacy row; sent at match start and whenever it changes.</summary>
+    [TargetRpc]
+    public void TargetDiplomacy(NetworkConnection target, ushort attackMask, ushort shareMask, ushort sharedWithMe)
+    {
+        AttackMask = attackMask;
+        ShareVisionMask = shareMask;
+        SharedWithMe = sharedWithMe;
+        DiplomacyChanged?.Invoke();
     }
 
     /// <summary>Plays death explosions the server has filtered to this player's view.</summary>
@@ -103,44 +180,23 @@ public class ClientPlayer : NetworkBehaviour
         return connectionToClient;
     }
 
-    /// <summary>Enables or hides the start button on the owning client when ownership moves.</summary>
-    private void OnServerOwnerChanged(bool oldValue, bool newValue)
+    /// <summary>Raised on this client when its player's match ends: shown by the HUD's end screen.</summary>
+    public static event System.Action<WAR2D.UI.EndResult> MatchEnded;
+
+    /// <summary>Shows the local end screen once per match.</summary>
+    private void EndMatch(WAR2D.UI.EndResult result)
     {
-        if (isLocalPlayer && lobbySystem != null) lobbySystem.SetStartButtonVisible(newValue);
+        if (gameOverDeclared) return;
+        gameOverDeclared = true;
+        MatchEnded?.Invoke(result);
     }
 
     /// <summary>Shown to every player when all HQs were destroyed at the same time.</summary>
     [TargetRpc]
     public void RpcOnMatchDraw(NetworkConnectionToClient target)
     {
-        if (gameOverDeclared) return;
         drawDeclared = true;
-        GameObject prefab = Resources.Load<GameObject>("UI/LoseScreenUI");
-        Canvas hud = FindAnyObjectByType<Canvas>();
-        if (hud != null) hud.enabled = false;
-        if (prefab != null)
-        {
-            GameObject screen = Instantiate(prefab);
-            foreach (TMPro.TMP_Text text in screen.GetComponentsInChildren<TMPro.TMP_Text>(true))
-            {
-                if (text.gameObject.name == "You Lost") text.text = "Draw";
-            }
-        }
-        gameOverDeclared = true;
-    }
-
-    [ClientRpc]
-    public void RPC_RemoveClientLobbyUI()
-    {
-
-        if (lobbySystem != null)
-        {
-            lobbySystem.CheckForLostPlayers();
-        }
-        else
-        {
-            Debug.LogError("Could not find lobby system to remove client player from.");
-        }
+        EndMatch(WAR2D.UI.EndResult.Draw);
     }
 
     [Server]
@@ -161,81 +217,18 @@ public class ClientPlayer : NetworkBehaviour
         nickname = clean;
     }
 
-    [Client]
-    private void OnNicknameChangedEvent(string old, string newNickname)
-    {
-
-        if (newNickname == null || newNickname == string.Empty)
-        {
-            ////Debug.LogWarning("Nickname is null or empty");
-            return;
-        }
-        if (lobbySystem == null)
-        {
-            ////Debug.LogWarning("LobbySystem not found when trying to update nickname.");
-            return;
-        }
-        lobbySystem.UpdateClientPlayerNickname(this, newNickname);
-
-    }
-
-
-
-
     /// <summary>
     /// ClientRpc called when a player wins.
     /// </summary>
     /// <param name="winner">The NetworkIdentity of the winner.</param>
     [TargetRpc]
-    public void RpcOnPlayerWon(NetworkConnectionToClient winner)
-    {
-        // UI Implementation to handle this
-
-        Debug.Log("Victory!");
-
-        if (gameOverDeclared) return; // Prevent multiple win screens if multiple players are declared winners (shouldn't happen but just in case)
-
-
-
-        GameObject winScreenPrefab = Resources.Load<GameObject>("UI/WinScreenUI");
-        FindAnyObjectByType<Canvas>().enabled = false; // Disable the main game canvas to prevent interaction with it after losing
-        if (winScreenPrefab != null)
-        {
-            Instantiate(winScreenPrefab);
-        }
-        else
-        {
-            Debug.LogError("Win screen prefab not found in Resources/UI/WinScreenUI");
-        }
-        gameOverDeclared = true;
-
-    }
+    public void RpcOnPlayerWon(NetworkConnectionToClient winner) => EndMatch(WAR2D.UI.EndResult.Victory);
 
     /// <summary>
     /// ClientRpc called when a player loses.
     /// </summary>
     /// <param name="loser">The NetworkIdentity of the loser.</param>
     [TargetRpc]
-    public void RpcOnPlayerLost(NetworkConnectionToClient loser)
-    {
-        // UI Implementation to handle this
-
-        Debug.Log("Defeat!");
-
-        if (gameOverDeclared) return; // Prevent multiple loss screens if multiple players are declared losers (shouldn't happen but just in case)
-
-        GameObject lossScreenPrefab = Resources.Load<GameObject>("UI/LoseScreenUI");
-
-        FindAnyObjectByType<Canvas>().enabled = false; // Disable the main game canvas to prevent interaction with it after losing
-        if (lossScreenPrefab != null)
-        {
-            Instantiate(lossScreenPrefab);
-        }
-        else
-        {
-            Debug.LogError("Loss screen prefab not found in Resources/UI/LoseScreenUI");
-        }
-        gameOverDeclared = true;
-    }
+    public void RpcOnPlayerLost(NetworkConnectionToClient loser) => EndMatch(WAR2D.UI.EndResult.Defeat);
 
 }

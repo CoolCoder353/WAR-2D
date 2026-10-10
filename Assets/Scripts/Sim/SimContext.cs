@@ -41,6 +41,19 @@ namespace WAR2D.Sim
         /// <summary>The live move orders and their flow fields.</summary>
         public OrderBook Orders { get; }
 
+        /// <summary>
+        /// Who attacks and shares vision with whom, per owner slot. Starts from the teams as each owner
+        /// gets a slot; changed only by <see cref="SimCommandKind.SetAttack"/> and
+        /// <see cref="SimCommandKind.SetShareVision"/> at the boundary.
+        /// </summary>
+        public Diplomacy Diplomacy { get; } = new Diplomacy();
+
+        /// <summary>Raised at the boundary after a diplomacy command changed a mask: (from owner, to owner).</summary>
+        public event Action<int, int> DiplomacyChanged;
+
+        /// <summary>Shift-queued waypoints per unit (main thread, boundary only).</summary>
+        public WaypointBook Waypoints { get; }
+
         /// <summary>The config the sim was built from.</summary>
         public GameConfigData Config { get; }
 
@@ -79,6 +92,8 @@ namespace WAR2D.Sim
             Ids = new NetIdAllocator(config.Simulation.MaxEntities);
             SimData data = SimData.Create(map.Grid, config, Allocator.Persistent);
             Orders = new OrderBook(map.Grid);
+            Waypoints = new WaypointBook(config.Orders.MaxQueued);
+            UnitDied += (id, _) => Waypoints.Forget(id);
             data.Orders = Orders.Table;
             data.OrderGoal = Orders.Goal;
             data.OrderLive = Orders.Live;
@@ -114,21 +129,28 @@ namespace WAR2D.Sim
                 data.OwnerIdBySlot[s] = ownerId;
                 int team = TeamOf(ownerId);
                 data.TeamBySlot[s] = team;
-                byte grid = s;
-                for (byte t = 0; t < s; t++)
-                    if (data.OwnerIdBySlot[t] != 0 && data.TeamBySlot[t] == team) { grid = data.VisionBySlot[t]; break; }
-                data.VisionBySlot[s] = grid;
+                var others = new List<(int, int)>();
+                for (int t = 0; t < SimData.MaxOwners; t++)
+                    if (t != s && data.OwnerIdBySlot[t] != 0) others.Add((t, data.TeamBySlot[t]));
+                Diplomacy.Join(s, team, others);
                 return s;
             }
             return -1;
         }
 
-        /// <summary>The vision grid of an owner's team, giving the owner a slot first. -1 when every slot is taken.</summary>
-        public int VisionOf(int ownerId)
+        /// <summary>The owner's slot, without assigning one.</summary>
+        public bool TrySlotOf(int ownerId, out int slot)
         {
-            int slot = SlotOf(ownerId);
-            return slot < 0 ? -1 : Data.VisionBySlot[slot];
+            bool found = slotOfOwner.TryGetValue(ownerId, out byte s);
+            slot = found ? s : -1;
+            return found;
         }
+
+        /// <summary>
+        /// The owner's vision grid (its slot), giving the owner a slot first. -1 when every slot is taken.
+        /// The grid holds what the owner sees, plus what every player sharing vision with it sees.
+        /// </summary>
+        public int VisionOf(int ownerId) => SlotOf(ownerId);
 
         /// <summary>Owner ids that hold a slot.</summary>
         public IEnumerable<int> Owners => slotOfOwner.Keys;
@@ -141,7 +163,24 @@ namespace WAR2D.Sim
 
         internal void RaiseUnitDied(int id, float2 position) => UnitDied?.Invoke(id, position);
 
+        /// <summary>Raised for every unit removed: (owner, killer's owner or 0). Match statistics.</summary>
+        public event Action<int, int> UnitKilled;
+
+        /// <summary>Raised for every unit created: (owner). Match statistics.</summary>
+        public event Action<int> UnitSpawned;
+
+        internal void RaiseUnitKilled(int owner, int killer) => UnitKilled?.Invoke(owner, killer);
+
+        internal void RaiseUnitSpawned(int owner) => UnitSpawned?.Invoke(owner);
+
         internal void RaiseSettled(SimData data, int tick, int count) => Settled?.Invoke(data, tick, count);
+
+        internal void RaiseDiplomacyChanged(int fromOwner, int toOwner) => DiplomacyChanged?.Invoke(fromOwner, toOwner);
+
+        /// <summary>Raised when one owner starts or stops sharing vision with another: (from, to, on).</summary>
+        public event Action<int, int, bool> VisionShareChanged;
+
+        internal void RaiseVisionShareChanged(int fromOwner, int toOwner, bool on) => VisionShareChanged?.Invoke(fromOwner, toOwner, on);
 
         internal void RaiseBuildingCreated(int id, Entity entity) => BuildingCreated?.Invoke(id, entity);
 

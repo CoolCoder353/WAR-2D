@@ -15,6 +15,11 @@ public class UnitCommander : NetworkBehaviour
     private int2 startcorner;
     private int2 endcorner;
     private bool selecting;
+    /// <summary>
+    /// An order waiting for its target: set by the attack-move key or the command card's Move and
+    /// Attack-move buttons; the next left or right click sends it. Null when nothing is armed.
+    /// </summary>
+    public OrderKind? ArmedOrder { get; private set; }
 
     private int2 lastSentCorner1 = new int2(int.MinValue, int.MinValue);
     private int2 lastSentCorner2 = new int2(int.MinValue, int.MinValue);
@@ -70,6 +75,63 @@ public class UnitCommander : NetworkBehaviour
         WAR2D.Client.ClientWorld.Instance?.Draw(Selection.Selected);
     }
 
+    /// <summary>
+    /// The command card and the order keys share these paths. Move and AttackMove arm the order for the
+    /// next click; Stop and Hold apply to the selection at once.
+    /// </summary>
+    [Client]
+    public void Order(OrderKind kind)
+    {
+        if (kind == OrderKind.Move || kind == OrderKind.AttackMove) Arm(kind);
+        else
+        {
+            ArmedOrder = null;
+            Selection.Order(kind, false, default);
+        }
+    }
+
+    /// <summary>
+    /// Sends the selection to a point (the minimap's right-click): the armed order if there is one,
+    /// else Move. <paramref name="queue"/> queues it after the current order.
+    /// </summary>
+    [Client]
+    public void OrderAt(int2 goal, bool queue)
+    {
+        OrderKind kind = ArmedOrder ?? OrderKind.Move;
+        ArmedOrder = null;
+        Selection.Order(kind, queue, goal);
+    }
+
+    /// <summary>Arms Move or AttackMove for the next click (only with units selected).</summary>
+    private void Arm(OrderKind kind)
+    {
+        if (Selection.Selected.Count > 0) ArmedOrder = kind;
+    }
+
+    /// <summary>Selects one of the local player's buildings (others are ignored).</summary>
+    [Client]
+    public void SelectBuilding(BuildingData building)
+    {
+        if (localPlayer == null || building.ownerId != BuildingData.UIntToInt(localPlayer.netId)) return;
+        ArmedOrder = null;
+        Selection.SelectBuilding(building.id);
+    }
+
+    private const float DoubleTapSeconds = 0.35f;
+    private float lastClickTime = -1f, lastSquadTapTime = -1f;
+    private float2 lastClickAt;
+    private int lastSquadTap = -1;
+
+    /// <summary>The world rectangle the main camera shows.</summary>
+    private static (float2 min, float2 max) CameraView()
+    {
+        Camera cam = Camera.main;
+        if (cam == null) return (float2.zero, float2.zero);
+        float halfH = cam.orthographicSize, halfW = halfH * cam.aspect;
+        Vector3 c = cam.transform.position;
+        return (new float2(c.x - halfW, c.y - halfH), new float2(c.x + halfW, c.y + halfH));
+    }
+
     public static Vector3 GetMouseWorldPosition()
     {
         return GameInput.PointerWorld();
@@ -86,8 +148,30 @@ public class UnitCommander : NetworkBehaviour
         }
 
 
+        if (GameInput.AttackMove.WasPressedThisFrame()) Arm(OrderKind.AttackMove);
+        if (GameInput.Stop.WasPressedThisFrame()) Order(OrderKind.Stop);
+        if (GameInput.Hold.WasPressedThisFrame()) Order(OrderKind.Hold);
+
+        // While placing a building, clicks belong to the placement.
+        BuildingPlacement placement = BuildingPlacement.Instance;
+        bool clickUsed = placement != null && (placement.IsPlacing || placement.ActiveFrame == Time.frameCount);
+        if (clickUsed) ArmedOrder = null;
+
+        // With an order armed, the next left or right click sends it instead of selecting or moving.
+        if (!clickUsed && ArmedOrder.HasValue && (GameInput.Select.WasPressedThisFrame() || GameInput.Command.WasPressedThisFrame()))
+        {
+            OrderKind kind = ArmedOrder.Value;
+            ArmedOrder = null;
+            if (!GameInput.PointerOverUI)
+            {
+                Vector3 target = GetMouseWorldPosition();
+                Selection.Order(kind, GameInput.QueueModifier.IsPressed(), new int2((int)target.x, (int)target.y));
+                clickUsed = true;
+            }
+        }
+
         //Mouse down, start selection
-        if (GameInput.Select.WasPressedThisFrame() && !GameInput.PointerOverUI)
+        if (!clickUsed && GameInput.Select.WasPressedThisFrame() && !GameInput.PointerOverUI)
         {
             selecting = true;
             selectionBox.SetActive(true);
@@ -101,22 +185,11 @@ public class UnitCommander : NetworkBehaviour
 
         if (selecting && GameInput.Select.IsPressed())
         {
-
+            // The box follows the drag at any size (selection has no limit), from where the drag began.
             Vector3 worldPosition = GetMouseWorldPosition();
-            Vector3 startPosition = new Vector3(startcorner.x, startcorner.y, 0);
-            float sqrdistance = (worldPosition - startPosition).sqrMagnitude;
-            if (sqrdistance < 1000 && sqrdistance > 1) // Only update if the mouse is within 100 units from the origin and more than 1 unit away
-            {
-                Vector3 center = (worldPosition + startPosition) / 2;
-                selectionBox.transform.position = center;
-                Vector3 size = new Vector3(Mathf.Abs(worldPosition.x - startPosition.x), Mathf.Abs(worldPosition.y - startPosition.y), 1);
-                selectionBox.transform.localScale = size;
-
-            }
-
-
-
-
+            Vector3 startPosition = new Vector3(dragStart.x, dragStart.y, 0);
+            selectionBox.transform.position = (worldPosition + startPosition) / 2;
+            selectionBox.transform.localScale = new Vector3(Mathf.Abs(worldPosition.x - startPosition.x), Mathf.Abs(worldPosition.y - startPosition.y), 1);
         }
 
         //Mouse up, end selection 
@@ -129,23 +202,51 @@ public class UnitCommander : NetworkBehaviour
             // A click (no drag) still selects what is under the pointer: pad the box to half a tile.
             float2 a = new float2(dragStart.x, dragStart.y), b = new float2(worldPosition.x, worldPosition.y);
             float2 lo = math.min(a, b) - 0.5f, hi = math.max(a, b) + 0.5f;
-            Selection.SelectBox(lo, hi, BuildingData.UIntToInt(localPlayer.netId), GameInput.AppendModifier.IsPressed());
-
+            int me = BuildingData.UIntToInt(localPlayer.netId);
+            bool click = math.distance(a, b) < 0.5f;
+            if (click && Time.unscaledTime - lastClickTime < DoubleTapSeconds && math.distance(b, lastClickAt) < 1f)
+            {
+                // Double-click: every own unit of the clicked unit's type on screen.
+                (float2 viewMin, float2 viewMax) = CameraView();
+                Selection.SelectTypeAt(b, viewMin, viewMax, me);
+                lastClickTime = -1f;
+            }
+            else
+            {
+                Selection.SelectBox(lo, hi, me, GameInput.AppendModifier.IsPressed());
+                // A click on no unit of ours, but on one of our spawners, selects the spawner (its production queue).
+                if (click && Selection.Selected.Count == 0 && TryOwnSpawnerAt(b, me, out BuildingData spawner)) SelectBuilding(spawner);
+                if (click) { lastClickTime = Time.unscaledTime; lastClickAt = b; }
+            }
         }
 
-        if (GameInput.Command.WasPressedThisFrame() && !GameInput.PointerOverUI)
+        if (!clickUsed && GameInput.Command.WasPressedThisFrame() && !GameInput.PointerOverUI)
         {
             Vector3 worldPosition = GetMouseWorldPosition();
             int2 goal = new int2((int)worldPosition.x, (int)worldPosition.y);
-            // Debug.Log($"Moving units in box {startcorner}, {endcorner} units to {goal.x},{goal.y} -> client side");
-            Selection.OrderMove(goal);
+            Selection.Order(OrderKind.Move, GameInput.QueueModifier.IsPressed(), goal);
         }
 
         for (int squad = 0; squad < WAR2D.Sim.Squads.Count; squad++)
         {
             if (!GameInput.Squad(squad).WasPressedThisFrame()) continue;
             if (GameInput.AssignModifier.IsPressed()) Selection.AssignSquad(squad);
-            else Selection.SelectSquad(squad);
+            else
+            {
+                Selection.SelectSquad(squad);
+                // Double-tapping a squad key centres the camera on the squad.
+                if (squad == lastSquadTap && Time.unscaledTime - lastSquadTapTime < DoubleTapSeconds && Selection.TryCentre(out float2 centre))
+                {
+                    Camera main = Camera.main;
+                    if (main != null && main.TryGetComponent(out Character.Character_Controler controller)) controller.CentreOn(centre);
+                    lastSquadTap = -1;
+                }
+                else
+                {
+                    lastSquadTap = squad;
+                    lastSquadTapTime = Time.unscaledTime;
+                }
+            }
         }
 
         //Get the corners of the camera (orthographic bounds)
@@ -197,6 +298,7 @@ public class UnitCommander : NetworkBehaviour
         subscribedBuildings.HealthChanged += OnBuildingHealthChanged;
         subscribedBuildings.Hidden += OnBuildingHidden;
         subscribedBuildings.Removed += OnBuildingRemoved;
+        Palettes.Changed += Retint;
         foreach (ClientBuildings.Entry entry in subscribedBuildings.Entries.Values)
         {
             OnBuildingEntered(entry.Data, entry.Health);
@@ -211,6 +313,7 @@ public class UnitCommander : NetworkBehaviour
         subscribedBuildings.HealthChanged -= OnBuildingHealthChanged;
         subscribedBuildings.Hidden -= OnBuildingHidden;
         subscribedBuildings.Removed -= OnBuildingRemoved;
+        Palettes.Changed -= Retint;
         subscribedBuildings = null;
     }
 
@@ -228,11 +331,48 @@ public class UnitCommander : NetworkBehaviour
     private void OnBuildingHidden(int id)
     {
         if (buildingGameObjects.TryGetValue(id, out GameObject go) && go.TryGetComponent(out SpriteRenderer sprite))
-            sprite.color = new Color(0.55f, 0.55f, 0.55f, 0.7f);
+            sprite.color = GhostTint(sprite.color);
+    }
+
+    /// <summary>A building's tint: its owner's colour (current palette), half-mixed into the sprite.</summary>
+    private static Color Tint(int ownerId) => Color.Lerp(Color.white, PlayerPalette.OfOwner(ownerId), 0.5f);
+
+    /// <summary>A last-seen ghost: dimmed and see-through.</summary>
+    private static Color GhostTint(Color tint) => new Color(tint.r * 0.55f, tint.g * 0.55f, tint.b * 0.55f, 0.7f);
+
+    /// <summary>Re-tints every building for a new palette.</summary>
+    private void Retint()
+    {
+        if (this == null) { Palettes.Changed -= Retint; return; } // destroyed after the client stopped (OnDestroy is client-only)
+        if (subscribedBuildings == null) return;
+        foreach (ClientBuildings.Entry entry in subscribedBuildings.Entries.Values)
+        {
+            if (!buildingGameObjects.TryGetValue(entry.Data.id, out GameObject go) || go == null || !go.TryGetComponent(out SpriteRenderer sprite)) continue;
+            Color tint = Tint(entry.Data.ownerId);
+            sprite.color = entry.Ghost ? GhostTint(tint) : tint;
+        }
+    }
+
+    /// <summary>The local player's spawner (seen now, not a ghost) whose footprint holds the world point.</summary>
+    private bool TryOwnSpawnerAt(float2 point, int ownerId, out BuildingData spawner)
+    {
+        foreach (ClientBuildings.Entry entry in (subscribedBuildings ?? ClientBuildings.Current).Entries.Values)
+        {
+            BuildingData data = entry.Data;
+            if (entry.Ghost || data.ownerId != ownerId || SpawnerRules.UnitFor(data.buildingType) == UnitType.None) continue;
+            int2 size = WorldStateManager.GetBuildingSize(data.buildingType);
+            float2 start = Footprint.Start((int2)math.round(data.position), size);
+            if (point.x < start.x || point.y < start.y || point.x >= start.x + size.x || point.y >= start.y + size.y) continue;
+            spawner = data;
+            return true;
+        }
+        spawner = default;
+        return false;
     }
 
     private void OnBuildingRemoved(int id)
     {
+        if (Selection.SelectedBuilding == id) Selection.ClearBuilding();
         if (!buildingGameObjects.TryGetValue(id, out GameObject go)) return;
         Destroy(go);
         buildingGameObjects.Remove(id);
@@ -254,7 +394,9 @@ public class UnitCommander : NetworkBehaviour
         float2 centre = Footprint.VisualCenter(anchor, WorldStateManager.GetBuildingSize(unit.buildingType));
         go.transform.position = new Vector3(centre.x, centre.y, 0);
 
-        go.AddComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(unit.buildingType.ToString());
+        SpriteRenderer buildingSprite = go.AddComponent<SpriteRenderer>();
+        buildingSprite.sprite = Resources.Load<Sprite>(unit.buildingType.ToString());
+        buildingSprite.color = Tint(unit.ownerId);
         go.AddComponent<BoxCollider2D>().isTrigger = true;
         go.name = $"Building_{unit.buildingType}_{unit.id}";
 
@@ -272,6 +414,9 @@ public class UnitCommander : NetworkBehaviour
                 buildingType = typeof(SpawnerClientManager);
                 break;
             // Add other building types as needed
+            case BuildingType.Base:
+            case BuildingType.Miner:
+                break; // no client-side behaviour
             default:
                 Debug.LogWarning($"No client script mapping found for building type {unit.buildingType}");
                 break;
@@ -290,10 +435,6 @@ public class UnitCommander : NetworkBehaviour
             {
                 Debug.LogWarning($"Client script '{buildingType.Name}' does not contain a 'buildingData' field. Or it is spelled incorrectly. Most likely the ladder.");
             }
-        }
-        else
-        {
-            Debug.LogWarning($"No client script found for building type {unit.buildingType}");
         }
 
         buildingGameObjects.Add(unit.id, go);

@@ -53,6 +53,44 @@ public class ReplicationPlayModeTests
     }
 
     [UnityTest, Timeout(90000)]
+    public IEnumerator AssigningAnEmptySelectionEmptiesTheSquad()
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        int2 hq = default;
+        yield return PlayModeMatch.PlaceHQ(a => hq = a);
+        Assert.That(WorldStateManager.Instance.TryFindSpawnTile(hq, out int2 tile), Is.True);
+        var ids = new System.Collections.Generic.List<int>();
+        for (int i = 0; i < 3; i++) Spawn(PlayModeMatch.LocalOwner, (float2)tile + 0.5f, v => ids.Add(v));
+        yield return PlayModeMatch.WaitUntil(() => ids.Count == 3 && ClientWorld.Instance != null && ClientWorld.Instance.KnownCount >= 3, 10f);
+
+        UnitCommander.Instance.Selection.SelectIds(ids);
+        UnitCommander.Instance.Selection.AssignSquad(2);
+        yield return PlayModeMatch.WaitUntil(() => WorldStateManager.Instance.Squads.Members(PlayModeMatch.LocalOwner, 2).Count == 3, 5f);
+
+        // Ctrl+3 with nothing selected empties the squad here and on the server alike.
+        UnitCommander.Instance.Selection.SelectIds(new int[0]);
+        UnitCommander.Instance.Selection.AssignSquad(2);
+        yield return PlayModeMatch.WaitUntil(() => WorldStateManager.Instance.Squads.Members(PlayModeMatch.LocalOwner, 2).Count == 0, 5f);
+    }
+
+    [UnityTest, Timeout(90000)]
+    public IEnumerator MatchEndWipeReachesTheClient()
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        int2 hq = default;
+        yield return PlayModeMatch.PlaceHQ(a => hq = a);
+        Assert.That(WorldStateManager.Instance.TryFindSpawnTile(hq, out int2 tile), Is.True);
+        int id = -1;
+        Spawn(PlayModeMatch.LocalOwner, (float2)tile + 0.5f, v => id = v);
+        yield return PlayModeMatch.WaitUntil(() => id > 0 && ClientWorld.Instance != null && ClientWorld.Instance.IsKnownId(id), 5f);
+
+        // The match ends with the unit alive: the wipe after GameOver must still reach the client (a Leave),
+        // instead of leaving it predicted on its route behind the end screen.
+        GameCore.Instance.DeclareDraw();
+        yield return PlayModeMatch.WaitUntil(() => !ClientWorld.Instance.IsKnownId(id) && !store.IsKnown(NetIdAllocator.IndexOf(id)), 5f);
+    }
+
+    [UnityTest, Timeout(90000)]
     public IEnumerator UnitDrawsWhereServerHasIt()
     {
         yield return PlayModeMatch.StartMatchAsHost(config);
@@ -69,7 +107,7 @@ public class ReplicationPlayModeTests
         for (int r = 12; r > 2 && goal.Equals(tile); r--)
             foreach (int2 d in new[] { new int2(r, 0), new int2(-r, 0), new int2(0, r), new int2(0, -r) })
                 if (grid.IsWalkable(tile + d)) { goal = tile + d; break; }
-        SimCommandQueue.Instance.Enqueue(new SimCommand { Kind = SimCommandKind.MoveUnits, OwnerId = PlayModeMatch.LocalOwner, Tile = goal, Ids = new[] { id } });
+        SimCommandQueue.Instance.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, OwnerId = PlayModeMatch.LocalOwner, Tile = goal, Ids = new[] { id } });
 
         float end = UnityEngine.Time.realtimeSinceStartup + 3f, nextCheck = 0f;
         for (int frame = 0; UnityEngine.Time.realtimeSinceStartup < end; frame++)

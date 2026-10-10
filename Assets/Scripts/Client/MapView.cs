@@ -20,6 +20,13 @@ public class MapView : MonoBehaviour
         _instance.Bake(grid);
     }
 
+    /// <summary>Removes the shown map (the menu battle's teardown).</summary>
+    public static void Hide()
+    {
+        if (_instance != null) Destroy(_instance.gameObject);
+        _instance = null;
+    }
+
     /// <summary>The backdrop colour of a tile kind (the v0.3 spike's colours).</summary>
     public static Color32 TileColor(TileType type) => type switch
     {

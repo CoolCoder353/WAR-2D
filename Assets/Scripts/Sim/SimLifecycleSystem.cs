@@ -39,7 +39,7 @@ namespace WAR2D.Sim
 
         private void Execute(Entity entity, in Unit unit)
         {
-            if (unit.Health <= 0f) Deaths.Enqueue(new DeathRecord { Entity = entity, Id = unit.Id, Position = unit.Position });
+            if (unit.Health <= 0f) Deaths.Enqueue(new DeathRecord { Entity = entity, Id = unit.Id, Position = unit.Position, OwnerId = unit.OwnerId, Killer = unit.LastHitBy });
         }
     }
 }

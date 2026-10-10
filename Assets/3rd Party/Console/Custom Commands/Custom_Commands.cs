@@ -53,7 +53,7 @@ public class Custom_Commands : MonoBehaviour
 
     private void GetWorldStateManagerCommand(CmdInputResult arg0)
     {
-        Console.Log(WorldStateManager.Instance.ToString());
+        Console.Log(WorldStateManager.Instance != null ? WorldStateManager.Instance.ToString() : "No WorldStateManager: no match is loaded.");
     }
 
     public void HelpCommand(CmdInputResult result)
@@ -65,12 +65,16 @@ public class Custom_Commands : MonoBehaviour
         }
     }
 
-    [Server]
     public void GetPlayersResources(CmdInputResult result)
     {
+        if (!NetworkServer.active || GameCore.Instance == null)
+        {
+            Console.Log("Players' resources are only known on a running server.", MessageType.Error);
+            return;
+        }
         foreach (var player in GameCore.Instance.ServerPlayers)
         {
-            Console.Log(player.Value.connection.identity.GetComponent<NetworkIdentity>().netId + " " + player.Value.Resources);
+            Console.Log(player.Key.netId + " " + player.Value.Resources);
         }
     }
 
@@ -81,7 +85,7 @@ public class Custom_Commands : MonoBehaviour
 
     public void ServerPlayerCountCommand(CmdInputResult result)
     {
-        Console.Log("Server player count: " + GameCore.Instance.ServerPlayers.Count, MessageType.Network);
+        Console.Log(GameCore.Instance != null ? "Server player count: " + GameCore.Instance.ServerPlayers.Count : "No GameCore: not hosting or joined.", MessageType.Network);
     }
 
     // public void GetClientPlayerCommand(CmdInputResult result)

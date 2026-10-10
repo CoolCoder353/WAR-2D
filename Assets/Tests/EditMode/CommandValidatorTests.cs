@@ -15,6 +15,15 @@ public class CommandValidatorTests
     public void Box_ExtremeValues_DoNotOverflow() =>
         Assert.That(CommandValidator.IsBoxValid(new int2(int.MinValue, 0), new int2(int.MaxValue, 0)), Is.False);
 
+    [TestCase(0, true)]
+    [TestCase(1, true)]
+    [TestCase(2, true)]
+    [TestCase(3, true)]
+    [TestCase(4, false)]
+    [TestCase(255, false)]
+    public void OrderKindRange(int kind, bool valid) =>
+        Assert.That(CommandValidator.IsOrderKindValid((byte)kind), Is.EqualTo(valid));
+
     [TestCase("Alice", "Alice")]
     [TestCase("  Bob  ", "Bob")]
     [TestCase("<color=red>Eve</color>", "color=redEve/color")]

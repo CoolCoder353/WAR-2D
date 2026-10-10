@@ -46,12 +46,11 @@ namespace WAR2D.Sim
                 Type = data.Type,
                 OwnerSlot = data.OwnerSlot,
                 SightByType = data.SightByType,
-                VisionBySlot = data.VisionBySlot,
-                OwnerIdBySlot = data.OwnerIdBySlot,
+                ShareVisionMask = data.ShareVisionMask,
                 BuildingPositions = data.BuildingPositions,
                 BuildingHealth = data.BuildingHealth,
                 BuildingSight = data.BuildingSight,
-                BuildingOwnerId = data.BuildingOwnerId,
+                BuildingOwnerSlot = data.BuildingOwnerSlot,
                 SourceRadius = data.SourceRadius,
                 Sources = data.Sources,
                 FogCellSize = data.FogCellSize,
@@ -95,14 +94,17 @@ namespace WAR2D.Sim
         }
     }
 
-    /// <summary>Merges units and buildings into one sight source per (team grid, fog cell).</summary>
+    /// <summary>
+    /// Merges units and buildings into one sight source per (grid, fog cell). Each source goes on its
+    /// owner's grid and on the grid of every slot its owner shares vision with.
+    /// </summary>
     [BurstCompile]
     public struct CollectSourcesJob : IJob
     {
         [ReadOnly] public NativeArray<float2> Positions, BuildingPositions;
         [ReadOnly] public NativeArray<float> Health, SightByType, BuildingHealth, BuildingSight;
-        [ReadOnly] public NativeArray<byte> Type, OwnerSlot, VisionBySlot;
-        [ReadOnly] public NativeArray<int> OwnerIdBySlot, BuildingOwnerId;
+        [ReadOnly] public NativeArray<byte> Type, OwnerSlot, BuildingOwnerSlot;
+        [ReadOnly] public NativeArray<ushort> ShareVisionMask;
         public NativeArray<byte> SourceRadius;
         public NativeList<int> Sources;
         public int FogCellSize, FogW, FogH, FogCells;
@@ -117,15 +119,26 @@ namespace WAR2D.Sim
                 if (Health[i] <= 0f) continue;
                 int type = Type[i];
                 float sight = type < SightByType.Length ? SightByType[type] : 0f;
-                Add(VisionBySlot[OwnerSlot[i]], Positions[i], sight * inv);
+                AddShared(OwnerSlot[i], Positions[i], sight * inv);
             }
             for (int b = 0; b < BuildingCount; b++)
             {
                 if (BuildingHealth[b] <= 0f || BuildingSight[b] <= 0f) continue;
-                int owner = BuildingOwnerId[b], grid = -1;
-                for (int s = 0; s < OwnerIdBySlot.Length && owner != 0; s++)
-                    if (OwnerIdBySlot[s] == owner) { grid = VisionBySlot[s]; break; }
-                if (grid >= 0) Add(grid, BuildingPositions[b], BuildingSight[b] * inv);
+                AddShared(BuildingOwnerSlot[b], BuildingPositions[b], BuildingSight[b] * inv);
+            }
+        }
+
+        /// <summary>Adds the source to its owner slot's grid and to every grid the owner shares with.</summary>
+        private void AddShared(int slot, float2 position, float radiusCells)
+        {
+            if ((uint)slot >= SimData.MaxOwners) return;
+            Add(slot, position, radiusCells);
+            int shared = ShareVisionMask[slot];
+            while (shared != 0)
+            {
+                int r = math.tzcnt(shared);
+                shared &= shared - 1;
+                Add(r, position, radiusCells);
             }
         }
 

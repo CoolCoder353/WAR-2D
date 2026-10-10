@@ -13,6 +13,10 @@ namespace WAR2D.Sim
         public Entity Entity;
         public int Id;
         public float2 Position;
+        /// <summary>The dead unit's owner.</summary>
+        public int OwnerId;
+        /// <summary>The owner of the last unit that hit it (0 when none, e.g. upkeep decay).</summary>
+        public int Killer;
     }
 
     /// <summary>
@@ -31,6 +35,9 @@ namespace WAR2D.Sim
     {
         /// <summary>Owner slots in every per-owner table.</summary>
         public const int MaxOwners = 16;
+
+        /// <summary>The owner slot of an owner that has none.</summary>
+        public const byte NoSlot = 255;
 
         // ---- sizes ----
         /// <summary>Unit slots in every SoA array.</summary>
@@ -93,20 +100,22 @@ namespace WAR2D.Sim
         public NativeArray<float2> Velocity;
         public NativeArray<int> OwnerId;
         public NativeArray<byte> OwnerSlot;
-        /// <summary>Team per unit (<see cref="TeamBySlot"/> of its owner slot), written by the gather.</summary>
-        public NativeArray<int> Team;
         public NativeArray<byte> Type;
         public NativeArray<byte> SizeClass;
         public NativeArray<float> Health;
         public NativeArray<float> MaxHealth;
         public NativeArray<float> Radius;
         public NativeArray<float> Cooldown;
+        /// <summary>Owner id of the last attacker per unit (0 = none), written only by the damage job.</summary>
+        public NativeArray<int> LastHitBy;
         /// <summary>Order slot per unit, or -1.</summary>
         public NativeArray<int> OrderSlot;
         /// <summary>Set for a unit that reached its goal this tick: its order is complete.</summary>
         public NativeArray<byte> Arrived;
         /// <summary>1 when the unit's upkeep went unpaid at the last charge.</summary>
         public NativeArray<byte> Unpaid;
+        /// <summary>Stance per unit (<see cref="Stances"/>).</summary>
+        public NativeArray<byte> Stance;
         /// <summary>Network id per unit slot.</summary>
         public NativeArray<int> IdOf;
         /// <summary>Slot by id index; valid only while <c>IdOf[slot] == id</c>.</summary>
@@ -127,8 +136,8 @@ namespace WAR2D.Sim
         public NativeArray<int> BuildingCount;
         public NativeArray<float2> BuildingPositions;
         public NativeArray<int> BuildingOwnerId;
-        /// <summary>Team per building slot (<see cref="TeamOfOwner"/>).</summary>
-        public NativeArray<int> BuildingTeam;
+        /// <summary>Owner slot per building slot, or <see cref="NoSlot"/> when the owner has none.</summary>
+        public NativeArray<byte> BuildingOwnerSlot;
         public NativeArray<float> BuildingHealth;
         /// <summary>Damage dealt to each building slot this tick; written back to the entity at the next boundary.</summary>
         public NativeArray<float> BuildingDamage;
@@ -148,8 +157,10 @@ namespace WAR2D.Sim
         public NativeQueue<DeathRecord> Deaths;
         /// <summary>Position to move a unit to (out of a new building's footprint), applied by the next gather.</summary>
         public NativeParallelHashMap<int, float2> PendingMoves;
-        /// <summary>Order slot to assign per unit id, applied by the next gather.</summary>
-        public NativeParallelHashMap<int, int> PendingOrders;
+        /// <summary>Ids of units that reached their goal this tick, for their next queued waypoint.</summary>
+        public NativeQueue<int> Arrivals;
+        /// <summary>Order slot and stance to assign per unit id, applied by the next gather.</summary>
+        public NativeParallelHashMap<int, PendingOrder> PendingOrders;
 
         // ---- orders (owned by OrderBook; see SimContext) ----
         /// <summary>Flow direction table: (handle, sector) → block, and the blocks.</summary>
@@ -167,8 +178,12 @@ namespace WAR2D.Sim
         // ---- economy ----
         /// <summary>Owner id per slot, or 0 when the slot is free.</summary>
         public NativeArray<int> OwnerIdBySlot;
-        /// <summary>Team per owner slot. Owners on the same team are allies: they share vision and never fight.</summary>
+        /// <summary>Starting team per owner slot (the <see cref="Diplomacy"/> starting state).</summary>
         public NativeArray<int> TeamBySlot;
+        /// <summary>Per owner slot, bit t set when the slot attacks slot t (<see cref="Diplomacy"/>, copied at the boundary).</summary>
+        public NativeArray<ushort> AttackMask;
+        /// <summary>Per owner slot, bit t set when the slot shares its vision with slot t (<see cref="Diplomacy"/>).</summary>
+        public NativeArray<ushort> ShareVisionMask;
         /// <summary>Resources each owner has for this second's upkeep, written at the boundary.</summary>
         public NativeArray<float> UpkeepBudget;
         /// <summary>Resources each owner's units spent at the last charge, read back at the boundary.</summary>
@@ -187,11 +202,6 @@ namespace WAR2D.Sim
         public NativeArray<float> SightByType, BuildingSightByType;
         /// <summary>Sight radius per building slot, written by the gather.</summary>
         public NativeArray<float> BuildingSight;
-        /// <summary>
-        /// Vision grid per owner slot: the lowest slot on the same team, so allies share one grid.
-        /// Grid g covers <c>[g * FogCells, (g + 1) * FogCells)</c> of <see cref="Visible"/> and <see cref="Explored"/>.
-        /// </summary>
-        public NativeArray<byte> VisionBySlot;
         /// <summary>1 where a fog cell blocks sight (most of its tiles are walls).</summary>
         public NativeArray<byte> Opaque;
         /// <summary>Summed-area table of <see cref="Opaque"/>, (FogW + 1) x (FogH + 1), for the open-ground fast path.</summary>
@@ -208,13 +218,14 @@ namespace WAR2D.Sim
         /// </summary>
         public NativeQueue<int> FogChanges;
 
-        /// <summary>The vision grid an owner's team uses, or -1 when the owner has no slot.</summary>
+        /// <summary>
+        /// The vision grid an owner uses (its slot: grid g covers <c>[g * FogCells, (g + 1) * FogCells)</c>
+        /// of <see cref="Visible"/> and <see cref="Explored"/>), or -1 when the owner has no slot.
+        /// </summary>
         public int VisionOfOwner(int ownerId)
         {
-            if (ownerId == 0) return -1;
-            for (int s = 0; s < OwnerIdBySlot.Length; s++)
-                if (OwnerIdBySlot[s] == ownerId) return VisionBySlot[s];
-            return -1;
+            byte slot = OwnerSlotOf(ownerId);
+            return slot == NoSlot ? -1 : slot;
         }
 
         /// <summary>The fog cell holding a world position (clamped to the grid).</summary>
@@ -277,16 +288,17 @@ namespace WAR2D.Sim
                 Velocity = new NativeArray<float2>(capacity, allocator),
                 OwnerId = new NativeArray<int>(capacity, allocator),
                 OwnerSlot = new NativeArray<byte>(capacity, allocator),
-                Team = new NativeArray<int>(capacity, allocator),
                 Type = new NativeArray<byte>(capacity, allocator),
                 SizeClass = new NativeArray<byte>(capacity, allocator),
                 Health = new NativeArray<float>(capacity, allocator),
                 MaxHealth = new NativeArray<float>(capacity, allocator),
                 Radius = new NativeArray<float>(capacity, allocator),
                 Cooldown = new NativeArray<float>(capacity, allocator),
+                LastHitBy = new NativeArray<int>(capacity, allocator),
                 OrderSlot = new NativeArray<int>(capacity, allocator),
                 Arrived = new NativeArray<byte>(capacity, allocator),
                 Unpaid = new NativeArray<byte>(capacity, allocator),
+                Stance = new NativeArray<byte>(capacity, allocator),
                 IdOf = new NativeArray<int>(capacity, allocator),
                 IndexOfId = new NativeArray<int>(sim.MaxEntities, allocator),
                 Cell = new NativeArray<int>(capacity, allocator),
@@ -297,7 +309,7 @@ namespace WAR2D.Sim
                 BuildingCount = new NativeArray<int>(1, allocator),
                 BuildingPositions = new NativeArray<float2>(buildingCapacity, allocator),
                 BuildingOwnerId = new NativeArray<int>(buildingCapacity, allocator),
-                BuildingTeam = new NativeArray<int>(buildingCapacity, allocator),
+                BuildingOwnerSlot = new NativeArray<byte>(buildingCapacity, allocator),
                 BuildingHealth = new NativeArray<float>(buildingCapacity, allocator),
                 BuildingDamage = new NativeArray<float>(buildingCapacity, allocator),
                 BuildingIds = new NativeArray<int>(buildingCapacity, allocator),
@@ -308,10 +320,13 @@ namespace WAR2D.Sim
                 BuildingSorted = new NativeArray<int>(buildingCapacity, allocator),
                 AttackEvents = new NativeList<int2>(1024, allocator),
                 Deaths = new NativeQueue<DeathRecord>(allocator),
-                PendingOrders = new NativeParallelHashMap<int, int>(1024, allocator),
+                PendingOrders = new NativeParallelHashMap<int, PendingOrder>(1024, allocator),
                 PendingMoves = new NativeParallelHashMap<int, float2>(64, allocator),
+                Arrivals = new NativeQueue<int>(allocator),
                 OwnerIdBySlot = new NativeArray<int>(MaxOwners, allocator),
                 TeamBySlot = new NativeArray<int>(MaxOwners, allocator),
+                AttackMask = new NativeArray<ushort>(MaxOwners, allocator),
+                ShareVisionMask = new NativeArray<ushort>(MaxOwners, allocator),
                 UpkeepBudget = new NativeArray<float>(MaxOwners, allocator),
                 UpkeepSpent = new NativeArray<float>(MaxOwners, allocator),
                 UnitsBySlot = new NativeArray<int>(MaxOwners, allocator),
@@ -331,7 +346,6 @@ namespace WAR2D.Sim
             foreach (var pair in config.Buildings)
                 if ((int)pair.Key >= 0 && (int)pair.Key < data.BuildingSightByType.Length) data.BuildingSightByType[(int)pair.Key] = pair.Value.Sight;
             data.BuildingSight = new NativeArray<float>(buildingCapacity, allocator);
-            data.VisionBySlot = new NativeArray<byte>(MaxOwners, allocator);
             data.Opaque = BuildOpaque(map, fogCell, data.FogW, data.FogH, allocator);
             data.OpaqueSum = BuildSum(data.Opaque, data.FogW, data.FogH, allocator);
             int fogTotal = MaxOwners * data.FogCells;
@@ -361,17 +375,17 @@ namespace WAR2D.Sim
         {
             SpeedByType.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose(); CooldownByType.Dispose();
             RunningCostByType.Dispose(); DamageTable.Dispose();
-            Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Team.Dispose(); Type.Dispose();
-            SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose();
-            OrderSlot.Dispose(); Arrived.Dispose(); Unpaid.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
+            Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Type.Dispose();
+            SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose(); LastHitBy.Dispose();
+            OrderSlot.Dispose(); Arrived.Dispose(); Unpaid.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
             Cell.Dispose(); CellStart.Dispose(); Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose();
-            BuildingCount.Dispose(); BuildingPositions.Dispose(); BuildingOwnerId.Dispose(); BuildingTeam.Dispose(); BuildingHealth.Dispose();
+            BuildingCount.Dispose(); BuildingPositions.Dispose(); BuildingOwnerId.Dispose(); BuildingOwnerSlot.Dispose(); BuildingHealth.Dispose();
             BuildingDamage.Dispose(); BuildingIds.Dispose(); BuildingEntities.Dispose(); BuildingSlotOfIndex.Dispose(); BuildingCell.Dispose();
             BuildingCellStart.Dispose(); BuildingSorted.Dispose();
-            AttackEvents.Dispose(); Deaths.Dispose(); PendingOrders.Dispose(); PendingMoves.Dispose();
-            OwnerIdBySlot.Dispose(); TeamBySlot.Dispose(); UpkeepBudget.Dispose(); UpkeepSpent.Dispose(); UnitsBySlot.Dispose();
+            AttackEvents.Dispose(); Deaths.Dispose(); PendingOrders.Dispose(); PendingMoves.Dispose(); Arrivals.Dispose();
+            OwnerIdBySlot.Dispose(); TeamBySlot.Dispose(); AttackMask.Dispose(); ShareVisionMask.Dispose(); UpkeepBudget.Dispose(); UpkeepSpent.Dispose(); UnitsBySlot.Dispose();
             ChargedThisTick.Dispose(); LargeGrid.Dispose();
-            SightByType.Dispose(); BuildingSightByType.Dispose(); BuildingSight.Dispose(); VisionBySlot.Dispose();
+            SightByType.Dispose(); BuildingSightByType.Dispose(); BuildingSight.Dispose();
             Opaque.Dispose(); OpaqueSum.Dispose(); Visible.Dispose(); VisiblePrev.Dispose(); Explored.Dispose();
             SourceRadius.Dispose(); Sources.Dispose(); FogChanges.Dispose();
         }
@@ -421,15 +435,22 @@ namespace WAR2D.Sim
             return grid;
         }
 
-        /// <summary>
-        /// The team of an owner id. An owner without a slot is on a team of its own (<c>-ownerId - 1</c>),
-        /// so it is nobody's ally. Scans the slots, so it is Burst-safe.
-        /// </summary>
-        public int TeamOfOwner(int ownerId)
+        /// <summary>The owner id's slot, or <see cref="NoSlot"/>. Scans the slots, so it is Burst-safe.</summary>
+        public byte OwnerSlotOf(int ownerId)
         {
             for (int s = 0; s < OwnerIdBySlot.Length; s++)
-                if (OwnerIdBySlot[s] == ownerId && ownerId != 0) return TeamBySlot[s];
-            return -ownerId - 1;
+                if (OwnerIdBySlot[s] == ownerId && ownerId != 0) return (byte)s;
+            return NoSlot;
+        }
+
+        /// <summary>
+        /// True when slot <paramref name="from"/> attacks slot <paramref name="to"/>. An owner without a slot
+        /// (<see cref="NoSlot"/>) is hostile to everyone, as it has no diplomacy.
+        /// </summary>
+        public static bool Attacks(NativeArray<ushort> attackMask, int from, int to)
+        {
+            if ((uint)to >= MaxOwners) return true;
+            return (uint)from < MaxOwners && (attackMask[from] >> to & 1) != 0;
         }
 
         /// <summary>

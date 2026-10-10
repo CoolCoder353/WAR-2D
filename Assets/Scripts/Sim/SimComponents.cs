@@ -54,6 +54,12 @@ namespace WAR2D.Sim
 
         /// <summary>1 while this unit's upkeep went unpaid at the last charge.</summary>
         public byte Unpaid;
+
+        /// <summary>One of <see cref="Stances"/>.</summary>
+        public byte Stance;
+
+        /// <summary>Owner id of the last unit that hit this one (0 when never hit): who gets the kill.</summary>
+        public int LastHitBy;
     }
 
     /// <summary>The tick's clock and state, a singleton next to <see cref="SimData"/>.</summary>

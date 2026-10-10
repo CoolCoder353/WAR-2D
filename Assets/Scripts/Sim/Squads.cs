@@ -34,6 +34,20 @@ namespace WAR2D.Sim
             squads[squad].RemoveAll(id => !ids.IsLive(id));
         }
 
+        /// <summary>
+        /// Drops a squad's members for which <paramref name="ownsLive"/> is false (dead, gone, or not the
+        /// owner's) and returns how many remain.
+        /// </summary>
+        public int PruneToOwned(int ownerId, int squad, System.Func<int, bool> ownsLive)
+        {
+            if ((uint)squad >= Count || !byOwner.TryGetValue(ownerId, out List<int>[] squads) || squads[squad] == null) return 0;
+            squads[squad].RemoveAll(id => !ownsLive(id));
+            return squads[squad].Count;
+        }
+
+        /// <summary>Owners with at least one squad assigned.</summary>
+        public IEnumerable<int> Owners => byOwner.Keys;
+
         /// <summary>Forgets every squad of a player who left or was eliminated.</summary>
         public void Forget(int ownerId) => byOwner.Remove(ownerId);
     }

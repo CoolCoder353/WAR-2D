@@ -61,11 +61,17 @@ namespace WAR2D.Sim
             if (clock.ValueRO.Running) context?.RaiseSettled(data, clock.ValueRO.Tick, clock.ValueRO.UnitCount);
             data.AttackEvents.Clear();
             data.FogChanges.Clear();
-            bool running = SimContext.RunningOverride
-                ?? (NetworkServer.active && GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing);
+            bool running = SimContext.RunningOverride ?? (NetworkServer.active && GameCore.Instance != null && RunsIn(GameCore.Instance.CurrentState));
             clock.ValueRW.Running = running;
             if (running) clock.ValueRW.Tick++;
         }
+
+        /// <summary>
+        /// The game states the tick runs in: Playing, and GameOver, so the match-end wipe (applied after the
+        /// state changes) is still settled once more: its deaths reach clients as explosions and Leaves.
+        /// Nothing new can start in GameOver: orders, spawners and building systems need Playing.
+        /// </summary>
+        public static bool RunsIn(GameState state) => state == GameState.Playing || state == GameState.GameOver;
 
         /// <summary>Takes last tick's upkeep from the owners, then refreshes every owner's budget.</summary>
         private static void SettleUpkeep(SimData data, SimContext context)
@@ -93,6 +99,7 @@ namespace WAR2D.Sim
                 if (context == null) continue;
                 context.Ids.Free(death.Id);
                 context.RaiseUnitDied(death.Id, death.Position);
+                context.RaiseUnitKilled(death.OwnerId, death.Killer);
             }
             EntityManager.DestroyEntity(entities.AsArray());
             entities.Dispose();

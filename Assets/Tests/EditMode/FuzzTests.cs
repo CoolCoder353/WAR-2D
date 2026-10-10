@@ -66,4 +66,101 @@ public class FuzzTests
             Assert.DoesNotThrow(() => OrderIdCodec.TryDecode(bytes, OrderIdCodec.MaxIdsPerChunk, into));
         }
     }
+
+    [Test]
+    public void Order_NeverThrows_AndKeepsInvariants()
+    {
+        var rng = new System.Random(23);
+        int2 min = int2.zero, max = new int2(255, 255);
+        for (int i = 0; i < Iterations; i++)
+        {
+            byte kind = (byte)rng.Next(0, 256);
+            var goal = new int2(rng.Next(-512, 512), rng.Next(-512, 512));
+            bool valid = false;
+            Assert.DoesNotThrow(() => valid = CommandValidator.IsOrderValid(kind, goal, min, max));
+            if (kind > (byte)OrderKind.Stop) Assert.IsFalse(valid);
+            else if (kind <= (byte)OrderKind.AttackMove) Assert.AreEqual(CommandValidator.IsInside(goal, min, max), valid);
+            else Assert.IsTrue(valid, "Stop and Hold ignore the goal");
+        }
+    }
+
+    [Test]
+    public void Diplomacy_NeverThrows_AndNeverAllowsSelfOrDisabled()
+    {
+        var rng = new System.Random(31);
+        var diplomacy = new WAR2D.Sim.Diplomacy();
+        for (int i = 0; i < Iterations; i++)
+        {
+            int from = rng.Next(int.MinValue, int.MaxValue), to = rng.Next(0, 3) == 0 ? from : rng.Next(int.MinValue, int.MaxValue);
+            bool enabled = rng.Next(2) == 1, on = rng.Next(2) == 1;
+            var state = (GameState)rng.Next(0, 6);
+            PlayerState? sender = rng.Next(3) == 0 ? (PlayerState?)null : (PlayerState)rng.Next(0, 3);
+            PlayerState? target = rng.Next(3) == 0 ? (PlayerState?)null : (PlayerState)rng.Next(0, 3);
+            double now = rng.NextDouble() * 100, last = rng.Next(2) == 0 ? double.NegativeInfinity : rng.NextDouble() * 100;
+            bool allowed = false;
+            Assert.DoesNotThrow(() => allowed = DiplomacyRules.CanChange(enabled, state, sender, target, from, to, now, last, 2f));
+            if (from == to || !enabled) Assert.IsFalse(allowed);
+            int slotFrom = rng.Next(-4, 20), slotTo = rng.Next(-4, 20);
+            Assert.DoesNotThrow(() => diplomacy.SetAttack(slotFrom, slotTo, on));
+            Assert.DoesNotThrow(() => diplomacy.SetShareVision(slotFrom, slotTo, on));
+        }
+    }
+
+    [Test]
+    public void SpawnerQueue_NeverLeavesItsRange()
+    {
+        var rng = new System.Random(31);
+        for (int i = 0; i < Iterations; i++)
+        {
+            int count = rng.Next(int.MinValue, int.MaxValue);
+            int before = count;
+            bool changed = rng.Next(2) == 0 ? SpawnerRules.TryEnqueue(ref count) : SpawnerRules.TryDequeue(ref count);
+            if (!changed) Assert.That(count, Is.EqualTo(before), "a refused change leaves the count alone");
+            else Assert.That(count, Is.InRange(0, SpawnerRules.MaxQueue));
+        }
+    }
+
+    [Test]
+    public void MatchSettingsAndColours_NeverThrow()
+    {
+        var rng = new System.Random(77);
+        var lobby = new Config.LobbyConfig { MapSizes = new[] { 256, 512, 1024 }, StartingResources = new[] { 500f, 1000f } };
+        for (int i = 0; i < Iterations; i++)
+        {
+            var s = new MatchSettings
+            {
+                Mode = (MatchMode)rng.Next(0, 256),
+                Diplomacy = rng.Next(2) == 0,
+                MapSize = rng.Next(int.MinValue, int.MaxValue),
+                Seed = (uint)rng.Next(int.MinValue, int.MaxValue),
+                StartingResources = (float)(rng.NextDouble() * 1e6 - 5e5),
+            };
+            bool valid = false;
+            Assert.DoesNotThrow(() => valid = MatchSettingsRules.IsValid(s, lobby));
+            if (valid) Assert.That(System.Array.IndexOf(lobby.MapSizes, s.MapSize), Is.GreaterThanOrEqualTo(0));
+            int colour = rng.Next(-300, 300);
+            Assert.DoesNotThrow(() => LobbyRules.IsColourFree(colour, new[] { rng.Next(0, 8) }));
+            Assert.DoesNotThrow(() => LobbyRules.IsTeamChoiceValid((MatchMode)rng.Next(0, 256), rng.Next(-10, 10)));
+        }
+    }
+
+    [Test]
+    public void GiftAmounts_NeverAllowMoreThanTheBalance()
+    {
+        var rng = new System.Random(91);
+        for (int i = 0; i < Iterations; i++)
+        {
+            float balance = (float)(rng.NextDouble() * 10000);
+            float amount = rng.Next(4) switch
+            {
+                0 => float.NaN,
+                1 => float.PositiveInfinity,
+                _ => (float)(rng.NextDouble() * 20000 - 5000),
+            };
+            bool valid = false;
+            Assert.DoesNotThrow(() => valid = GiftRules.IsValid(amount, balance));
+            if (valid) Assert.That(amount, Is.InRange(1f, balance));
+            Assert.DoesNotThrow(() => GiftRules.CanGift((GameState)rng.Next(0, 10), (PlayerState)rng.Next(0, 4), null, rng.Next(), rng.Next(), rng.NextDouble(), rng.NextDouble(), 5f));
+        }
+    }
 }

@@ -96,13 +96,16 @@ public partial class WorldStateManager : NetworkBehaviour
     {
         entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
 
+        // The lobby's settings are the only source of the map's size and seed (the config gives the defaults).
         MapConfig m = ConfigLoader.LoadConfig().Match.Map;
+        int size = GameCore.Instance != null ? GameCore.Instance.Settings.MapSize : m.Size;
+        uint settingsSeed = GameCore.Instance != null ? GameCore.Instance.Settings.Seed : m.Seed;
         var timer = System.Diagnostics.Stopwatch.StartNew();
-        if (m.Size > 0)
+        if (size > 0)
         {
-            uint seed = m.Seed != 0 ? m.Seed : (uint)UnityEngine.Random.Range(1, int.MaxValue);
-            Map = MapStore.Generate(m.Size, seed, m.GemChance);
-            MapSize = m.Size;
+            uint seed = settingsSeed != 0 ? settingsSeed : (uint)UnityEngine.Random.Range(1, int.MaxValue);
+            Map = MapStore.Generate(size, seed, m.GemChance);
+            MapSize = size;
             MapSeed = seed;
             MapHash = Map.Hash();
         }
@@ -117,6 +120,18 @@ public partial class WorldStateManager : NetworkBehaviour
         Sim.UnitDied += OnUnitDied;
         Sim.TeamResolver = ownerId => GameCore.Instance != null ? GameCore.Instance.TeamOf(ownerId) : -ownerId - 1;
         Sim.Settled += OnSettled;
+        AlertsConfig alertConfig = ConfigLoader.LoadConfig().Alerts;
+        Alerts = new AlertService(alertConfig.ThrottleSeconds, alertConfig.AreaTiles);
+        Sim.UnitKilled += (owner, killer) => GameCore.Instance?.Stats.UnitDied(owner, killer);
+        Sim.UnitSpawned += owner => GameCore.Instance?.Stats.UnitBuilt(owner);
+        Sim.VisionShareChanged += (from, to, on) =>
+            Alerts.Add(to, new Alert { Kind = on ? AlertKind.VisionSharedWithYou : AlertKind.VisionUnshared, OtherOwnerId = from });
+        Sim.DiplomacyChanged += (from, to) =>
+        {
+            if (GameCore.Instance == null) return;
+            GameCore.Instance.SendDiplomacy(from);
+            GameCore.Instance.SendDiplomacy(to);
+        };
         Replication = new ReplicationService(Sim, ConfigLoader.LoadConfig()) { CollectBuildings = FillBuildingViews };
         if (GameCore.Instance != null)
             foreach (NetworkIdentity identity in GameCore.Instance.ServerPlayers.Keys)
@@ -126,19 +141,23 @@ public partial class WorldStateManager : NetworkBehaviour
         Sim.Spend = (ownerId, amount) =>
         {
             ServerPlayer player = GameCore.Instance?.GetServerPlayerById(ownerId);
-            if (player != null && !player.TrySpend(amount)) player.TrySpend(player.Resources);
+            if (player == null) return;
+            float before = player.Resources;
+            if (!player.TrySpend(amount)) player.TrySpend(player.Resources);
+            player.AddUpkeep(before - player.Resources);
         };
     }
 
     /// <summary>Records a unit the simulation removed, for its explosion.</summary>
-    [Server]
+    [ServerCallback]
     private void OnUnitDied(int id, float2 position) => pendingDeathPositions.Add(position);
 
     /// <summary>Registers a building the simulation created, and checks whether every HQ is down.</summary>
-    [Server]
+    [ServerCallback]
     private void OnBuildingCreated(int id, Entity entity)
     {
         AddBuilding(entity, id);
+        GameCore.Instance?.Stats.BuildingBuilt(EntityManager.GetComponentData<BuildingData>(entity).ownerId);
         if (EntityManager.GetComponentData<BuildingData>(entity).buildingType == BuildingType.Base)
             GameCore.Instance?.CheckHQPlacementProgress();
     }
@@ -185,9 +204,54 @@ public partial class WorldStateManager : NetworkBehaviour
         if (Instance == this) Instance = null;
     }
 
-    /// <summary>Runs on the settled world at each tick boundary: death explosions, filtered by fog.</summary>
+    /// <summary>Runs on the settled world at each tick boundary: death explosions (filtered by fog) and squad counts.</summary>
+    [ServerCallback]
+    private void OnSettled(SimData data, int tick, int count)
+    {
+        FlushDeathEvents(data);
+        SendSquadCounts(data, tick, count);
+        if (tick % UnpaidScanTicks == 0) MarkUnpaidOwners(data, count);
+        Alerts.CollectDamage(data, count, BuildingOwnerAndTile, NetworkTime.localTime);
+        Alerts.Flush();
+    }
+
+    private const int UnpaidScanTicks = 20; // once a second at 20 Hz
+
+    /// <summary>The server's alerts (own damage, upkeep, vision sharing, gifts), sent once per tick.</summary>
+    public AlertService Alerts { get; private set; }
+
+    private readonly Dictionary<int, int> armyScratch = new Dictionary<int, int>();
+
+    /// <summary>
+    /// Once a second: marks every owner with an unpaid unit (the upkeep alert fires on the first unpaid
+    /// second) and records each owner's army size (the end screen's peak army).
+    /// </summary>
     [Server]
-    private void OnSettled(SimData data, int tick, int count) => FlushDeathEvents(data);
+    private void MarkUnpaidOwners(SimData data, int count)
+    {
+        GameCore core = GameCore.Instance;
+        if (core == null) return;
+        armyScratch.Clear();
+        int lastUnpaid = 0;
+        for (int slot = 0; slot < count; slot++)
+        {
+            int owner = data.OwnerId[slot];
+            armyScratch.TryGetValue(owner, out int n);
+            armyScratch[owner] = n + 1;
+            if (data.Unpaid[slot] == 0 || owner == lastUnpaid) continue;
+            lastUnpaid = owner;
+            core.GetServerPlayerById(owner)?.MarkUnpaid();
+        }
+        foreach (KeyValuePair<int, int> army in armyScratch) core.Stats.Army(army.Key, army.Value);
+    }
+
+    /// <summary>A live building's owner and anchor tile, by id.</summary>
+    private (bool, int, int2) BuildingOwnerAndTile(int id)
+    {
+        if (!Buildings.TryGetValue(id, out Entity entity) || !EntityManager.Exists(entity)) return (false, 0, default);
+        BuildingData building = EntityManager.GetComponentData<BuildingData>(entity);
+        return (true, building.ownerId, (int2)math.round(building.position));
+    }
 
     /// <summary>Every live building, for the replication layer (main thread, on the settled world).</summary>
     [Server]
@@ -205,7 +269,6 @@ public partial class WorldStateManager : NetworkBehaviour
             {
                 Id = building.id,
                 OwnerId = building.ownerId,
-                Team = Sim.TeamOf(building.ownerId),
                 Type = building.buildingType,
                 Anchor = (int2)math.round(p),
                 Rotation = (byte)((int)math.round(MinerRules.ZDegrees(transform.Rotation) / 90f) & 3),
@@ -220,28 +283,36 @@ public partial class WorldStateManager : NetworkBehaviour
     private readonly List<float2> pendingDeathPositions = new List<float2>();
 
     private const int MaxExplosionsPerMessage = 256;
+    /// <summary>
+    /// Most explosions one client is sent per tick (each is a GameObject on the client). Only a mass death
+    /// in view, such as the match-end wipe of a big battle, reaches it; the rest of that tick's are dropped.
+    /// </summary>
+    private const int MaxExplosionsPerFlush = 4 * MaxExplosionsPerMessage;
     private readonly List<float2> seenDeaths = new List<float2>();
 
     /// <summary>
     /// Sends the deaths recorded since the last tick to each client whose view contains them and whose
-    /// team sees where they happened.
+    /// team sees where they happened. Once the match is over (GameOver) nothing is secret any more, so the
+    /// match-end wipe skips the fog test (by then the wipe has emptied the fog grids).
     /// </summary>
     [Server]
     private void FlushDeathEvents(SimData data)
     {
         List<float2> deaths = TakeDeathPositions();
         if (deaths.Count == 0) return;
+        GameState state = GameCore.Instance != null ? GameCore.Instance.CurrentState : GameState.Playing;
 
         foreach (KeyValuePair<ClientPlayer, (int2, int2)> view in playerView)
         {
             if (view.Key == null || view.Key.connectionToClient == null) continue;
             int grid = Sim.VisionOf(BuildingData.UIntToInt(view.Key.netId));
             seenDeaths.Clear();
-            foreach (float2 death in deaths) if (data.Sees(grid, death)) seenDeaths.Add(death);
+            foreach (float2 death in deaths) if (VisibilityRules.ShowsDeath(state, data.Sees(grid, death))) seenDeaths.Add(death);
             List<Vector2> visible = VisibilityRules.Filter(seenDeaths, view.Value.Item1, view.Value.Item2);
-            for (int i = 0; i < visible.Count; i += MaxExplosionsPerMessage)
+            int count = Mathf.Min(visible.Count, MaxExplosionsPerFlush);
+            for (int i = 0; i < count; i += MaxExplosionsPerMessage)
             {
-                int n = Mathf.Min(MaxExplosionsPerMessage, visible.Count - i);
+                int n = Mathf.Min(MaxExplosionsPerMessage, count - i);
                 view.Key.TargetPlayExplosions(view.Key.connectionToClient, visible.GetRange(i, n).ToArray());
             }
         }
@@ -259,12 +330,14 @@ public partial class WorldStateManager : NetworkBehaviour
 
         if (EntityManager.HasComponent<BuildingData>(entity))
         {
-            int id = EntityManager.GetComponentData<BuildingData>(entity).id;
+            BuildingData building = EntityManager.GetComponentData<BuildingData>(entity);
+            int id = building.id;
+            if (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing) GameCore.Instance.Stats.BuildingLost(building.ownerId);
             Buildings.Remove(id);
             Ids?.Free(id);
             if (buildingFootprints.Remove(id, out List<int2> footprint))
             {
-                foreach (int2 tile in footprint) Map?.SetUsed(tile, false);
+                foreach (int2 tile in footprint) Map?.QueueUsed(tile, false);
             }
         }
     }
@@ -280,6 +353,7 @@ public partial class WorldStateManager : NetworkBehaviour
         Sim?.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.KillOwner, OwnerId = ownerId });
         Squads.Forget(ownerId);
         ForgetOrderTokens(ownerId);
+        Alerts?.Forget(ownerId);
     }
 
     private void Kill(Entity entity, int ownerId)
@@ -306,12 +380,13 @@ public partial class WorldStateManager : NetworkBehaviour
     {
         // Each entity records its position as it goes, so the match-end wipe still reaches
         // clients as explosions instead of dying silently. pendingDeathPositions is deliberately
-        // NOT cleared here: FlushDeathEvents drains it via TakeDeathPositions next FixedUpdate.
+        // NOT cleared here: FlushDeathEvents drains it at the next settled boundary (the tick keeps
+        // running in GameOver for this, see SimBoundarySystem.RunsIn).
         foreach (Entity e in Buildings.Values) DestroyWithDeathPosition(e);
         Sim?.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.DestroyAll });
         foreach (List<int2> footprint in buildingFootprints.Values)
         {
-            foreach (int2 tile in footprint) Map?.SetUsed(tile, false);
+            foreach (int2 tile in footprint) Map?.QueueUsed(tile, false);
         }
         Buildings.Clear();
         buildingFootprints.Clear();
@@ -369,7 +444,7 @@ public partial class WorldStateManager : NetworkBehaviour
     public bool TryFindSpawnTile(int2 origin, out int2 tile)
     {
         MapGrid grid = Map.Grid;
-        return TileSearch.FindNearest(origin, grid.IsWalkable, t => grid.TileAt(t) == TileType.Ground, MaxSpawnSearchTiles, out tile);
+        return TileSearch.FindNearest(origin, Map.IsWalkable, t => grid.TileAt(t) == TileType.Ground, MaxSpawnSearchTiles, out tile);
     }
 
     #endregion
@@ -386,7 +461,7 @@ public partial class WorldStateManager : NetworkBehaviour
         if (acting == null || acting.state != PlayerState.Playing) return PlacementResult.WrongGameState;
 
         return PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
-            player.hasPlacedHQ, Map.Grid.TileAt, Map.Grid.IsUsed, tile => false); // units are pushed out of new footprints
+            player.hasPlacedHQ, Map.Grid.TileAt, Map.IsUsed, tile => false); // units are pushed out of new footprints
     }
 
     /// <summary>Test helper: first anchor (scanning the map) where the player may place this building.</summary>
@@ -452,7 +527,7 @@ public partial class WorldStateManager : NetworkBehaviour
 
         //Set the tiles the building will cover to be used
         List<int2> tiles = Footprint.Tiles(positon, GetBuildingSize(type));
-        foreach (int2 tile in tiles) Map.SetUsed(tile, true);
+        foreach (int2 tile in tiles) Map.QueueUsed(tile, true);
         buildingFootprints[buildingData.id] = tiles;
     }
 
@@ -467,55 +542,44 @@ public partial class WorldStateManager : NetworkBehaviour
         player.TargetReceiveCanBuildBuildingResponse(sender, CheckPlacement(type, position, rotation, player) == PlacementResult.Ok);
     }
 
-    /// <summary>
-    /// Handles a click on a building (e.g., to spawn units).
-    /// </summary>
+    /// <summary>Queues one unit on the sender's spawner (the production queue's + button).</summary>
     [Command(requiresAuthority = false)]
     public void BuildingClicked(int buildingId, NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(BuildingClicked))) return;
-        ServerPlayer acting = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(sender.identity.netId));
-        if (acting == null || acting.state != PlayerState.Playing) return;
-        // Queuing units is only allowed while the game is actually being played.
-        if (GameCore.Instance.CurrentState != GameState.Playing) return;
+        ChangeQueue(buildingId, sender, enqueue: true);
+    }
 
-        if (Buildings.TryGetValue(buildingId, out Entity building))
-        {
-            BuildingData buildingData = EntityManager.GetComponentData<BuildingData>(building);
-            ClientPlayer player = sender.identity.GetComponent<ClientPlayer>();
+    /// <summary>Removes one queued unit from the sender's spawner (the production queue's − button). Refunds nothing: cost is charged at spawn.</summary>
+    [Command(requiresAuthority = false)]
+    public void CmdDequeueUnit(int buildingId, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(CmdDequeueUnit))) return;
+        ChangeQueue(buildingId, sender, enqueue: false);
+    }
 
-            if (buildingData.ownerId != BuildingData.UIntToInt(player.netId))
-            {
-                Debug.LogWarning($"Player {player.nickname} tried to click on building {buildingId} that they do not own.");
-                return;
-            }
+    /// <summary>Adds or removes one unit on a spawner the sender owns, while Playing, and tells the owner the new count.</summary>
+    [Server]
+    private void ChangeQueue(int buildingId, NetworkConnectionToClient sender, bool enqueue)
+    {
+        if (!TryActingOwner(sender, out int owner)) return;
+        if (!Buildings.TryGetValue(buildingId, out Entity building) || !EntityManager.Exists(building)) return;
+        if (EntityManager.GetComponentData<BuildingData>(building).ownerId != owner || !EntityManager.HasComponent<SpawnerData>(building)) return;
 
-            if (EntityManager.HasComponent<SpawnerData>(building))
-            {
+        SpawnerData spawner = EntityManager.GetComponentData<SpawnerData>(building);
+        bool changed = enqueue ? SpawnerRules.TryEnqueue(ref spawner.count) : SpawnerRules.TryDequeue(ref spawner.count);
+        if (!changed) return;
+        EntityManager.SetComponentData(building, spawner);
+        SendSpawnerQueue(owner, buildingId, spawner.count);
+    }
 
-                SpawnerData spawnerData = EntityManager.GetComponentData<SpawnerData>(building);
-                if (spawnerData.count < SpawnerRules.MaxQueue)
-                {
-                    spawnerData.count += 1;
-
-                    EntityCommandBuffer commandBuffer = new EntityCommandBuffer(Allocator.Temp);
-                    commandBuffer.SetComponent(building, spawnerData);
-                    commandBuffer.Playback(EntityManager);
-                    commandBuffer.Dispose();
-                }
-                else
-                {
-                    Debug.LogWarning($"Player {player.nickname} tried to queue more than {SpawnerRules.MaxQueue} units on building {buildingId}.");
-                }
-
-                Debug.Log($"Player {player.nickname} clicked on building {buildingId}. Spawner count is now {spawnerData.count}");
-
-            }
-        }
-        else
-        {
-            Debug.LogWarning($"Building with id {buildingId} not found when trying to click on building.");
-        }
+    /// <summary>Tells a spawner's owner (only) its queue count.</summary>
+    [Server]
+    public void SendSpawnerQueue(int ownerId, int buildingId, int count)
+    {
+        NetworkConnectionToClient connection = GameCore.Instance?.GetServerPlayerById(ownerId)?.connection;
+        if (connection?.identity == null || !connection.identity.TryGetComponent(out ClientPlayer player)) return;
+        player.TargetSpawnerQueue(connection, buildingId, count);
     }
 
     /// <summary>
@@ -528,7 +592,7 @@ public partial class WorldStateManager : NetworkBehaviour
         if (!DevApi.Allowed || Sim == null) return false;
         BuildingConfig buildingConfig = ConfigLoader.LoadConfig().GetBuilding(type);
         List<int2> tiles = Footprint.Tiles(anchor, GetBuildingSize(type));
-        foreach (int2 tile in tiles) if (!Map.Grid.IsWalkable(tile)) return false;
+        foreach (int2 tile in tiles) if (!Map.IsWalkable(tile)) return false;
         if (health > 0f)
         {
             buildingConfig = new BuildingConfig
@@ -539,7 +603,7 @@ public partial class WorldStateManager : NetworkBehaviour
         }
         var data = new BuildingData { position = anchor, id = Ids.Allocate(), buildingType = type, ownerId = ownerId, rotation = 0f };
         Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.CreateBuilding, OwnerId = ownerId, Building = new BuildingSpec { Data = data, Rotation = 0f, Config = buildingConfig } });
-        foreach (int2 tile in tiles) Map.SetUsed(tile, true);
+        foreach (int2 tile in tiles) Map.QueueUsed(tile, true);
         buildingFootprints[data.id] = tiles;
         return true;
     }

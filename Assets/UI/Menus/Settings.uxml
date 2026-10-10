@@ -1,0 +1,42 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="settings" class="overlay-screen settings-screen">
+        <ui:VisualElement class="panel settings">
+            <ui:Label text="Settings" class="panel__title" />
+            <ui:VisualElement class="settings__content">
+                <ui:VisualElement name="settings-tabs" class="row segmented" />
+                <ui:VisualElement class="divider settings__divider" />
+                <ui:VisualElement name="settings-graphics" class="settings__page">
+                    <ui:VisualElement class="settings-row"><ui:Label text="Resolution" class="text settings-row__label" /><ui:VisualElement name="resolution-options" class="row segmented" /></ui:VisualElement>
+                    <ui:VisualElement class="settings-row"><ui:Label text="Fullscreen" class="text settings-row__label" /><ui:VisualElement name="fullscreen-slot" /></ui:VisualElement>
+                    <ui:VisualElement class="settings-row"><ui:Label text="VSync" class="text settings-row__label" /><ui:VisualElement name="vsync-slot" /></ui:VisualElement>
+                    <ui:VisualElement class="settings-row"><ui:Label text="FPS cap" class="text settings-row__label" /><ui:VisualElement name="fps-options" class="row segmented" /></ui:VisualElement>
+                    <ui:VisualElement class="settings-row"><ui:Label text="Menu background battle" class="text settings-row__label" /><ui:VisualElement name="battle-slot" /></ui:VisualElement>
+                    <ui:Label text="Colour palette" class="text settings__heading" />
+                    <ui:VisualElement name="palette-picker" class="row settings__palettes" />
+                </ui:VisualElement>
+                <ui:VisualElement name="settings-audio" class="settings__page">
+                    <ui:VisualElement class="settings-row"><ui:Label text="Master" class="text settings-row__label" /><ui:VisualElement name="master-slider" /></ui:VisualElement>
+                    <ui:VisualElement class="settings-row"><ui:Label text="Music" class="text settings-row__label" /><ui:VisualElement name="music-slider" /></ui:VisualElement>
+                    <ui:VisualElement class="settings-row"><ui:Label text="Sound effects" class="text settings-row__label" /><ui:VisualElement name="sfx-slider" /></ui:VisualElement>
+                </ui:VisualElement>
+                <ui:VisualElement name="settings-controls" class="settings__page">
+                    <ui:VisualElement name="binding-rows" />
+                    <ui:VisualElement class="settings-row"><ui:Label text="Edge scrolling" class="text settings-row__label" /><ui:VisualElement name="edge-slot" /></ui:VisualElement>
+                    <ui:Label name="rebind-hint" text="" class="text--secondary settings__hint" />
+                    <ui:VisualElement name="conflict" class="settings__conflict">
+                        <ui:Label name="conflict-text" text="" class="text" />
+                        <ui:Label name="conflict-help" text="" class="text--secondary" />
+                        <ui:VisualElement class="row">
+                            <ui:Button name="conflict-cancel" text="Cancel" class="button" />
+                            <ui:Button name="conflict-swap" text="Swap bindings" class="button button--primary" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                </ui:VisualElement>
+                <ui:VisualElement class="row settings__footer">
+                    <ui:Button name="settings-back" text="Back" class="button" />
+                    <ui:Button name="settings-reset" text="Reset to defaults" class="button" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

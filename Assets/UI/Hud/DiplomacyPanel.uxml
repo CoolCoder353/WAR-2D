@@ -1,0 +1,15 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="diplomacy-panel" class="panel diplomacy-panel">
+        <ui:Label text="Diplomacy" class="panel__title" />
+        <ui:VisualElement class="diplomacy-panel__content">
+            <ui:VisualElement class="diplomacy-row diplomacy-row--header">
+                <ui:VisualElement class="diplomacy-row__spacer" />
+                <ui:Label text="Player" class="text--secondary diplomacy-row__name" />
+                <ui:Label text="Attack" class="text--secondary diplomacy-row__column" />
+                <ui:Label text="Share vision" class="text--secondary diplomacy-row__column" />
+            </ui:VisualElement>
+            <ui:VisualElement name="diplomacy-rows" />
+            <ui:Label text="Changes apply within a second. Nobody else sees your choices." class="text--secondary diplomacy-panel__note" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

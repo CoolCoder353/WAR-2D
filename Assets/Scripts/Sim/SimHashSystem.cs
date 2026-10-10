@@ -11,7 +11,13 @@ namespace WAR2D.Sim
     [UpdateAfter(typeof(SimGatherSystem))]
     public partial struct SimHashSystem : ISystem
     {
-        public void OnCreate(ref SystemState state) => state.RequireForUpdate<SimData>();
+        public void OnCreate(ref SystemState state)
+        {
+            state.RequireForUpdate<SimData>();
+            // Declared, not used: being a writer of Unit chains this stage after the gather and before
+            // the later stages (see SimData).
+            state.GetEntityQuery(ComponentType.ReadWrite<Unit>());
+        }
 
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
@@ -19,9 +25,6 @@ namespace WAR2D.Sim
             SimClock clock = SystemAPI.GetSingleton<SimClock>();
             if (!clock.Running) return;
             SimData data = SystemAPI.GetSingleton<SimData>();
-            // Declared, not used: being a writer of Unit chains this stage after the gather and before
-            // the later stages (see SimData).
-            _ = state.GetComponentTypeHandle<Unit>(isReadOnly: false);
 
             int count = clock.UnitCount;
             float inv = 1f / data.CellSize;

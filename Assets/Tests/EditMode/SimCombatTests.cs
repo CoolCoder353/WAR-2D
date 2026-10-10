@@ -82,4 +82,20 @@ public class SimCombatTests
         }
         Assert.GreaterOrEqual(found, 0, "the target should be picked up within one slice");
     }
+
+    [Test]
+    public void KillGoesToTheLastHittersOwner()
+    {
+        using var sim = Sim();
+        var kills = new System.Collections.Generic.List<(int owner, int killer)>();
+        int spawned = 0;
+        sim.Context.UnitKilled += (owner, killer) => kills.Add((owner, killer));
+        sim.Context.UnitSpawned += _ => spawned++;
+        for (int i = 0; i < 4; i++) sim.Spawn(SimHarness.OwnerA, new float2(10, 9 + i * 0.7f));
+        sim.Spawn(SimHarness.OwnerB, new float2(13, 10));
+        for (int t = 0; t < 2000 && kills.Count == 0; t++) sim.Tick();
+        Assert.AreEqual(5, spawned, "every spawn is reported");
+        Assert.IsNotEmpty(kills, "B's unit died");
+        Assert.AreEqual((SimHarness.OwnerB, SimHarness.OwnerA), kills[0], "A gets the kill");
+    }
 }

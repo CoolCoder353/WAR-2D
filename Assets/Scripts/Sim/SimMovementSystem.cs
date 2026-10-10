@@ -42,6 +42,7 @@ namespace WAR2D.Sim
                 Type = data.Type,
                 Target = data.Target,
                 OrderSlot = data.OrderSlot,
+                Stance = data.Stance,
                 Arrived = data.Arrived,
                 BlockOf = data.Orders.BlockOf,
                 Blocks = data.Orders.Blocks.AsArray(),
@@ -100,6 +101,7 @@ namespace WAR2D.Sim
                 Positions = data.Positions,
                 Velocity = data.Velocity,
                 Arrived = data.Arrived,
+                Arrivals = data.Arrivals.AsParallelWriter(),
                 Count = count,
             }.ScheduleParallel(units, state.Dependency);
         }
@@ -115,6 +117,7 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<byte> Type;
         [ReadOnly] public NativeArray<int> Target;
         [ReadOnly] public NativeArray<int> OrderSlot;
+        [ReadOnly] public NativeArray<byte> Stance;
         public NativeArray<byte> Arrived;
         [ReadOnly] public NativeArray<int> BlockOf;
         [ReadOnly] public NativeArray<byte> Blocks;
@@ -139,8 +142,9 @@ namespace WAR2D.Sim
         public void Execute(int i)
         {
             Arrived[i] = 0;
-            if (Health[i] <= 0f)
+            if (Health[i] <= 0f || Stance[i] == Stances.Hold)
             {
+                // Holding units stand still: no flow and no separation push of their own.
                 Velocity[i] = float2.zero;
                 return;
             }
@@ -149,7 +153,8 @@ namespace WAR2D.Sim
             float2 velocity = float2.zero;
 
             int slot = OrderSlot[i];
-            if (Target[i] < 0 && (uint)slot < (uint)OrderLive.Length && OrderLive[slot] != 0)
+            // Moving units ignore their target; the others hold to fight it.
+            if ((Target[i] < 0 || Stance[i] == Stances.Move) && (uint)slot < (uint)OrderLive.Length && OrderLive[slot] != 0)
             {
                 byte direction = Direction(slot, position);
                 float2 toGoal = OrderGoal[slot] - position;
@@ -316,13 +321,17 @@ namespace WAR2D.Sim
         }
     }
 
-    /// <summary>Writes position and velocity back, and clears the order of a unit that arrived.</summary>
+    /// <summary>
+    /// Writes position and velocity back, and clears the order (and moving stance) of a unit that arrived,
+    /// reporting it in <see cref="SimData.Arrivals"/> for its next waypoint.
+    /// </summary>
     [BurstCompile]
     public partial struct WriteBackMovementJob : IJobEntity
     {
         [ReadOnly] public NativeArray<float2> Positions;
         [ReadOnly] public NativeArray<float2> Velocity;
         [ReadOnly] public NativeArray<byte> Arrived;
+        public NativeQueue<int>.ParallelWriter Arrivals;
         public int Count;
 
         private void Execute(ref Unit unit, [EntityIndexInQuery] int index)
@@ -330,7 +339,12 @@ namespace WAR2D.Sim
             if (index >= Count) return;
             unit.Position = Positions[index];
             unit.Velocity = Velocity[index];
-            if (Arrived[index] != 0) unit.OrderSlot = -1;
+            if (Arrived[index] != 0)
+            {
+                unit.OrderSlot = -1;
+                Arrivals.Enqueue(unit.Id);
+                if (unit.Stance == Stances.Move || unit.Stance == Stances.AttackMove) unit.Stance = Stances.Idle;
+            }
         }
     }
 }

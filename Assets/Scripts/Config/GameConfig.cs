@@ -19,6 +19,14 @@ namespace Config
         public SimulationConfig Simulation = new SimulationConfig();
         /// <summary>Unit replication encoder tuning.</summary>
         public ReplicationConfig Replication = new ReplicationConfig();
+        /// <summary>Unit orders (Shift-queued waypoints).</summary>
+        public OrdersConfig Orders = new OrdersConfig();
+        /// <summary>Player-controlled diplomacy.</summary>
+        public DiplomacyConfig Diplomacy = new DiplomacyConfig();
+        public GiftingConfig Gifting = new GiftingConfig();
+        public AlertsConfig Alerts = new AlertsConfig();
+        public LobbyConfig Lobby = new LobbyConfig();
+        public MenuBattleConfig MenuBattle = new MenuBattleConfig();
         /// <summary>Damage multipliers per attacker type and target class.</summary>
         public DamageTableConfig Damage = new DamageTableConfig();
 
@@ -89,6 +97,52 @@ namespace Config
 
         /// <summary>Seconds per simulation tick.</summary>
         public float TickSeconds => 1f / TickRate;
+    }
+
+    public class OrdersConfig
+    {
+        /// <summary>Shift-queued waypoints kept per unit; extras are dropped.</summary>
+        public int MaxQueued;
+    }
+
+    public class DiplomacyConfig
+    {
+        /// <summary>Seconds a player waits between changes, per command.</summary>
+        public float ChangeCooldownSeconds;
+    }
+
+    public class MenuBattleConfig
+    {
+        /// <summary>Units per army in the battle behind the main menu.</summary>
+        public int UnitsPerArmy;
+        /// <summary>Tiles per side of its generated map.</summary>
+        public int MapSize;
+        /// <summary>Its map seed.</summary>
+        public uint Seed;
+    }
+
+    public class LobbyConfig
+    {
+        /// <summary>Map sizes the host may pick (tiles per side), smallest first.</summary>
+        public int[] MapSizes = System.Array.Empty<int>();
+        /// <summary>Starting resources the host may pick, smallest first.</summary>
+        public float[] StartingResources = System.Array.Empty<float>();
+    }
+
+    public class GiftingConfig
+    {
+        /// <summary>Seconds a player waits between gifts.</summary>
+        public float CooldownSeconds;
+    }
+
+    public class AlertsConfig
+    {
+        /// <summary>Seconds an Under-attack alert for one area stays quiet after it fires.</summary>
+        public float ThrottleSeconds;
+        /// <summary>Side of the square area (in tiles) that shares one Under-attack throttle.</summary>
+        public int AreaTiles;
+        /// <summary>Seconds an alert stays in the feed unless dismissed.</summary>
+        public float ShowSeconds;
     }
 
     public class ReplicationConfig

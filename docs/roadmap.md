@@ -12,7 +12,7 @@ This is the overarching development plan for WAR-2D. It explains **what** each u
 | v0.3 | Scale Spike | **Done** (2026-10-08). Every row of spec §4.6 has a measurement and a decision; the owner raised the bandwidth budget and chose the async tick with async flow-field rebuilds. See [the results](spike/v0.3-results.md) | [2026-10-05-v0.3-scale-spike.md](superpowers/plans/2026-10-05-v0.3-scale-spike.md) |
 | v0.4 | Legion | **Implemented** (2026-10-09), awaiting the owner's manual Linux match and the PR. Performance gate passed (8 × 10,000 units, 1024² map, 3 runs, medians): host tick main thread **6.6 ms p95** (budget 25), **561 fps** mean (≥ 60), **102 KB/s** average and **170 KB/s** peak 1 s per client (≤ 256 / 768). See [docs/perf/v0.4](perf/v0.4/) | [2026-10-08-v0.4-legion.md](superpowers/plans/2026-10-08-v0.4-legion.md) |
 | v0.5 | Fog & Wire | **Closed** (2026-10-09) by the owner with the performance gate not run, no manual play-test yet and KCP not tuned. All three are carried into v0.6 in [known-issues.md](known-issues.md). Teams, fog of war, fog interest, buildings on the replication service and the leak tests are done; EditMode 223/223 and PlayMode 10/10 pass | [2026-10-09-v0.5-fog-and-wire.md](superpowers/plans/2026-10-09-v0.5-fog-and-wire.md) |
-| v0.6 | Command | Not started | — |
+| v0.6 | Command | **In progress** (2026-10-10) on `release/v0.6`. Design: [v0.6 spec](superpowers/specs/2026-10-09-v0.6-command-design.md); the Figma design was approved on 2026-10-09 ([record](ux/v0.6-figma.md)). The HUD, menus, lobby, settings, the new orders and diplomacy are implemented; the owner's first play-test reports and a bug run are tracked in [known-issues.md](known-issues.md). The performance gate and KCP tuning carried from v0.5 are still open | [2026-10-09-v0.6-command.md](superpowers/plans/2026-10-09-v0.6-command.md) |
 | v0.7 | Siege | Not started | — |
 | v0.8 | New Paint | Not started | — |
 | v0.9 | Steam | Not started | — |
@@ -222,7 +222,7 @@ Each update below lists its goal, its scope, the key decisions already made, wha
   - In-match menu: settings, leave, surrender. Nothing pauses in multiplayer.
   - End screen with match stats.
 - **Settings**
-  - Graphics, audio volumes, full key rebinding, UI scale.
+  - Graphics, audio volumes, full key rebinding.
   - **Colour-blind-safe and high-contrast** team palettes.
 - **Resource gifting:** a validated server command plus its UI.
 
@@ -393,7 +393,8 @@ The full table is in the spec (§2). The decisions that most shape the roadmap:
 | Network model | Server-authoritative hybrid: paths plus corrections |
 | Bandwidth (v0.3) | 256 KB/s average, 768 KB/s peak per client; camera view tier; dedicated servers recommended for full 8-player matches |
 | Server tick (v0.3) | Async 20 Hz tick; flow rebuilds, fog and interest sets as jobs; hierarchical flow fields; 1024² map |
-| Fog of war | Line of sight, per team, explored terrain remembered |
+| Fog of war | Line of sight, per player with one-way vision sharing (teammates share from the start), explored terrain remembered (v0.6; was per team) |
+| Win rule (v0.6) | The match is won when no remaining HQ holder attacks another and it started with an attacking pair; all HQ holders win, plus eliminated players on a winner's starting team (was "last team standing") |
 | Hosting and online | Player-hosted and dedicated servers, on Steam |
 | Team economy | Separate resources, with gifting to allies |
 | Unpaid upkeep | Decay until paid |

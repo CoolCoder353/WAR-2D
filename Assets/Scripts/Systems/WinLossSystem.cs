@@ -32,6 +32,13 @@ public partial struct WinLossSystem : ISystem
             statuses.Add(new PlayerStatus(bot.Key, hqOwners.Contains(bot.Key), bot.Value.state == PlayerState.Eliminated, GameCore.Instance.TeamOf(bot.Key)));
         hqOwners.Dispose();
 
-        GameCore.Instance.ApplyOutcome(WinLossRules.Evaluate(statuses, GameCore.Instance.MatchStartTeamCount));
+        GameCore core = GameCore.Instance;
+        WAR2D.Sim.SimContext sim = WorldStateManager.Instance != null ? WorldStateManager.Instance.Sim : null;
+        bool Attacks(int a, int b)
+        {
+            if (sim != null && sim.TrySlotOf(a, out int from) && sim.TrySlotOf(b, out int to)) return sim.Diplomacy.Attacks(from, to);
+            return core.TeamOf(a) != core.TeamOf(b); // no slot yet: the starting state
+        }
+        core.ApplyOutcome(WinLossRules.Evaluate(statuses, Attacks, core.MatchStartTeamCount > 1));
     }
 }

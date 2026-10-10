@@ -32,6 +32,7 @@ namespace WAR2D.Sim
         internal void ResetForNewMatch()
         {
             deferred.Clear();
+            legs.Clear();
         }
 
         protected override void OnUpdate()
@@ -44,6 +45,8 @@ namespace WAR2D.Sim
             WriteBackBuildingDamage(data);
             data.PendingOrders.Clear();
             data.PendingMoves.Clear();
+            if (clock.Running) AdvanceWaypoints(data, context, clock.UnitCount, clock.Tick);
+            else data.Arrivals.Clear();
 
             List<SimCommand> commands = context.Commands.Drain();
             deferred.Clear();
@@ -61,17 +64,35 @@ namespace WAR2D.Sim
                     case SimCommandKind.DestroyAll:
                         KillUnits(data, context, 0, all: true);
                         break;
+                    case SimCommandKind.SetAttack:
+                    case SimCommandKind.SetShareVision:
+                        ApplyDiplomacy(context, command);
+                        break;
                     case SimCommandKind.SpawnUnit:
                         if (clock.Running) Spawn(data, context, command);
                         else deferred.Add(command);
                         break;
-                    case SimCommandKind.MoveUnits:
-                        if (clock.Running) Move(data, context, command, clock.UnitCount);
+                    case SimCommandKind.OrderUnits:
+                        if (clock.Running) ApplyOrder(data, context, command, clock.UnitCount);
                         else deferred.Add(command);
                         break;
                 }
             }
             if (deferred.Count > 0) context.Commands.Requeue(deferred);
+            if (context.Diplomacy.Dirty) context.Diplomacy.CopyTo(data);
+        }
+
+        /// <summary>Applies a diplomacy change between two owners with slots, and reports it.</summary>
+        private static void ApplyDiplomacy(SimContext context, in SimCommand command)
+        {
+            int from = context.SlotOf(command.OwnerId), to = context.SlotOf(command.TargetOwnerId);
+            if (from < 0 || to < 0 || from == to) return;
+            bool before = command.Kind == SimCommandKind.SetAttack ? context.Diplomacy.Attacks(from, to) : context.Diplomacy.SharesVisionWith(from, to);
+            if (before == command.Flag) return;
+            if (command.Kind == SimCommandKind.SetAttack) context.Diplomacy.SetAttack(from, to, command.Flag);
+            else context.Diplomacy.SetShareVision(from, to, command.Flag);
+            context.RaiseDiplomacyChanged(command.OwnerId, command.TargetOwnerId);
+            if (command.Kind == SimCommandKind.SetShareVision) context.RaiseVisionShareChanged(command.OwnerId, command.TargetOwnerId, command.Flag);
         }
 
         /// <summary>Applies the damage the last tick's attacks dealt to buildings.</summary>
@@ -127,14 +148,9 @@ namespace WAR2D.Sim
                 TargetId = -1,
                 OrderSlot = -1,
             });
+            context.RaiseUnitSpawned(command.OwnerId);
             command.OnSpawned?.Invoke(id);
         }
-
-        /// <summary>Order handling arrives with the flow fields (Task 8).</summary>
-        partial void ApplyMove(SimData data, SimContext context, in SimCommand command, int unitCount);
-
-        private void Move(SimData data, SimContext context, in SimCommand command, int unitCount)
-            => ApplyMove(data, context, command, unitCount);
 
         /// <summary>Destroys every unit of the owner (or every unit), recording each death for its explosion.</summary>
         private void KillUnits(SimData data, SimContext context, int ownerId, bool all)
@@ -223,7 +239,7 @@ namespace WAR2D.Sim
                         count = 0,
                         ownerId = buildingData.ownerId,
                         position = buildingData.position,
-                        unitType = UnitType.Tank,
+                        unitType = SpawnerRules.UnitFor(BuildingType.SmallUnitSpawner),
                         spawnRate = buildingConfig.SpawnRate
                     });
                     break;

@@ -116,6 +116,41 @@ namespace Config
                 config.Replication.SnapshotBytesPerSecond = Int(rep, "SnapshotBytesPerSecond", c, errors, min: 16384, max: 16777216);
             }
 
+            XmlNode orders = Require(root, "Orders", errors);
+            if (orders != null)
+                config.Orders.MaxQueued = Int(orders, "MaxQueued", "Orders", errors, min: 0, max: 16);
+
+            XmlNode diplomacy = Require(root, "Diplomacy", errors);
+            if (diplomacy != null)
+                config.Diplomacy.ChangeCooldownSeconds = Float(diplomacy, "ChangeCooldownSeconds", "Diplomacy", errors, min: 0, max: 60);
+
+            XmlNode lobby = Require(root, "Lobby", errors);
+            if (lobby != null)
+            {
+                config.Lobby.MapSizes = IntList(lobby, "MapSizes", "Lobby", errors, 128, 4096);
+                config.Lobby.StartingResources = FloatList(lobby, "StartingResources", "Lobby", errors, 0f, 1e7f);
+            }
+
+            XmlNode menuBattle = Require(root, "MenuBattle", errors);
+            if (menuBattle != null)
+            {
+                config.MenuBattle.UnitsPerArmy = Int(menuBattle, "UnitsPerArmy", "MenuBattle", errors, min: 0, max: 10000);
+                config.MenuBattle.MapSize = Int(menuBattle, "MapSize", "MenuBattle", errors, min: 128, max: 1024);
+                config.MenuBattle.Seed = (uint)Int(menuBattle, "Seed", "MenuBattle", errors, min: 1, max: int.MaxValue);
+            }
+
+            XmlNode gifting = Require(root, "Gifting", errors);
+            if (gifting != null)
+                config.Gifting.CooldownSeconds = Float(gifting, "CooldownSeconds", "Gifting", errors, min: 0, max: 300);
+
+            XmlNode alerts = Require(root, "Alerts", errors);
+            if (alerts != null)
+            {
+                config.Alerts.ThrottleSeconds = Float(alerts, "ThrottleSeconds", "Alerts", errors, min: 0, max: 300);
+                config.Alerts.AreaTiles = Int(alerts, "AreaTiles", "Alerts", errors, min: 1, max: 1024);
+                config.Alerts.ShowSeconds = Float(alerts, "ShowSeconds", "Alerts", errors, min: 1, max: 300);
+            }
+
             XmlNode damage = Require(root, "DamageTable", errors);
             if (damage != null)
             {
@@ -184,6 +219,47 @@ namespace Config
             XmlNode node = parent.SelectSingleNode(name);
             if (node == null) errors.Add($"Missing <{name}> section.");
             return node;
+        }
+
+        /// <summary>A required, space-separated, strictly ascending list of whole numbers in [min, max].</summary>
+        private static int[] IntList(XmlNode parent, string name, string ctx, List<string> errors, int min, int max)
+        {
+            float[] values = FloatList(parent, name, ctx, errors, min, max);
+            var ints = new int[values.Length];
+            for (int i = 0; i < values.Length; i++)
+            {
+                ints[i] = (int)values[i];
+                if (ints[i] != values[i]) errors.Add($"{ctx}: <{name}> value {values[i]} must be a whole number.");
+            }
+            return ints;
+        }
+
+        /// <summary>A required, space-separated, strictly ascending list of numbers in [min, max].</summary>
+        private static float[] FloatList(XmlNode parent, string name, string ctx, List<string> errors, float min, float max)
+        {
+            string text = parent.SelectSingleNode(name)?.InnerText?.Trim();
+            if (string.IsNullOrEmpty(text))
+            {
+                errors.Add($"{ctx}: <{name}> is missing or empty.");
+                return System.Array.Empty<float>();
+            }
+            string[] parts = text.Split((char[])null, System.StringSplitOptions.RemoveEmptyEntries);
+            var values = new float[parts.Length];
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (!float.TryParse(parts[i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out values[i]) ||
+                    float.IsNaN(values[i]) || values[i] < min || values[i] > max)
+                {
+                    errors.Add($"{ctx}: <{name}> value '{parts[i]}' must be a number in [{min}, {max}].");
+                    return System.Array.Empty<float>();
+                }
+                if (i > 0 && values[i] <= values[i - 1])
+                {
+                    errors.Add($"{ctx}: <{name}> must be in ascending order.");
+                    return System.Array.Empty<float>();
+                }
+            }
+            return values;
         }
 
         private static float Float(XmlNode parent, string name, string ctx, List<string> errors, float min = float.MinValue, float max = float.MaxValue)

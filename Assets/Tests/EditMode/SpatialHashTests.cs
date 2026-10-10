@@ -14,9 +14,13 @@ public class SpatialHashTests
     private sealed class Rig : System.IDisposable
     {
         public NativeArray<float2> Positions, BuildingPositions;
-        public NativeArray<int> Owner, BuildingOwner, Cell, CellStart, Sorted, Target, BCell, BCellStart, BSorted;
+        public NativeArray<int> Cell, CellStart, Sorted, Target, BCell, BCellStart, BSorted;
         public NativeArray<float> Health, BuildingHealth, RangeSqByType;
-        public NativeArray<byte> Type, TargetKind;
+        /// <summary>Owner slots: 1 and 2 attack each other.</summary>
+        public NativeArray<byte> Owner, BuildingOwner;
+        public NativeArray<ushort> AttackMask;
+        public NativeArray<byte> Type, TargetKind, Stance, OrderLive;
+        public NativeArray<int> OrderSlot;
         public int CellsAcross;
 
         public Rig(int units, int buildings, int size)
@@ -24,16 +28,20 @@ public class SpatialHashTests
             CellsAcross = (size + CellSize - 1) / CellSize;
             int cells = CellsAcross * CellsAcross + 1;
             Positions = new NativeArray<float2>(units, Allocator.TempJob);
-            Owner = new NativeArray<int>(units, Allocator.TempJob);
+            Owner = new NativeArray<byte>(units, Allocator.TempJob);
+            AttackMask = new NativeArray<ushort>(new ushort[] { 0, 1 << 2, 1 << 1 }, Allocator.TempJob);
             Health = new NativeArray<float>(units, Allocator.TempJob);
             Type = new NativeArray<byte>(units, Allocator.TempJob);
+            Stance = new NativeArray<byte>(units, Allocator.TempJob);
+            OrderSlot = new NativeArray<int>(units, Allocator.TempJob);
+            OrderLive = new NativeArray<byte>(1, Allocator.TempJob);
             Cell = new NativeArray<int>(units, Allocator.TempJob);
             CellStart = new NativeArray<int>(cells, Allocator.TempJob);
             Sorted = new NativeArray<int>(units, Allocator.TempJob);
             Target = new NativeArray<int>(units, Allocator.TempJob);
             TargetKind = new NativeArray<byte>(units, Allocator.TempJob);
             BuildingPositions = new NativeArray<float2>(buildings, Allocator.TempJob);
-            BuildingOwner = new NativeArray<int>(buildings, Allocator.TempJob);
+            BuildingOwner = new NativeArray<byte>(buildings, Allocator.TempJob);
             BuildingHealth = new NativeArray<float>(buildings, Allocator.TempJob);
             BCell = new NativeArray<int>(buildings, Allocator.TempJob);
             BCellStart = new NativeArray<int>(cells, Allocator.TempJob);
@@ -51,9 +59,10 @@ public class SpatialHashTests
             h = new CountingSortJob { Cell = BCell, CellStart = BCellStart, Sorted = BSorted }.Schedule(h);
             h = new NearestEnemyJob
             {
-                Positions = Positions, Team = Owner, Health = Health, Type = Type, RangeSqByType = RangeSqByType,
+                Positions = Positions, OwnerSlot = Owner, AttackMask = AttackMask, Health = Health, Type = Type, RangeSqByType = RangeSqByType,
+                Stance = Stance, OrderSlot = OrderSlot, OrderLive = OrderLive,
                 CellStart = CellStart, Sorted = Sorted,
-                BuildingPositions = BuildingPositions, BuildingTeam = BuildingOwner, BuildingHealth = BuildingHealth,
+                BuildingPositions = BuildingPositions, BuildingOwnerSlot = BuildingOwner, BuildingHealth = BuildingHealth,
                 BuildingCellStart = BCellStart, BuildingSorted = BSorted,
                 InvCellSize = inv, CellsX = CellsAcross, CellsY = CellsAcross, SearchCells = (int)math.ceil(Range / CellSize),
                 Tick = tick, Slice = slice, Target = Target, TargetKind = TargetKind,
@@ -63,7 +72,7 @@ public class SpatialHashTests
 
         public void Dispose()
         {
-            Positions.Dispose(); Owner.Dispose(); Health.Dispose(); Type.Dispose(); Cell.Dispose(); CellStart.Dispose();
+            Positions.Dispose(); Owner.Dispose(); AttackMask.Dispose(); Health.Dispose(); Type.Dispose(); Stance.Dispose(); OrderSlot.Dispose(); OrderLive.Dispose(); Cell.Dispose(); CellStart.Dispose();
             Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose(); BuildingPositions.Dispose(); BuildingOwner.Dispose();
             BuildingHealth.Dispose(); BCell.Dispose(); BCellStart.Dispose(); BSorted.Dispose(); RangeSqByType.Dispose();
         }
@@ -75,7 +84,7 @@ public class SpatialHashTests
         const int count = 2000, size = 128;
         using var rig = new Rig(count, 0, size);
         var rng = new Random(20261005u);
-        for (int i = 0; i < count; i++) { rig.Positions[i] = rng.NextFloat2(0f, size); rig.Owner[i] = 1 + rng.NextInt(2); }
+        for (int i = 0; i < count; i++) { rig.Positions[i] = rng.NextFloat2(0f, size); rig.Owner[i] = (byte)(1 + rng.NextInt(2)); }
         rig.Search();
 
         int found = 0;

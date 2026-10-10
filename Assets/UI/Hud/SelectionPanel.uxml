@@ -1,0 +1,15 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="selection-panel" class="panel selection-panel">
+        <ui:Label name="selection-title" text="Selection" class="panel__title" />
+        <ui:VisualElement class="selection-panel__content">
+            <ui:VisualElement name="selection-types" class="selection-panel__types" />
+            <ui:VisualElement class="selection-panel__health">
+                <ui:Label text="Health" class="text--secondary" />
+                <ui:VisualElement class="health-bar">
+                    <ui:VisualElement name="selection-health-fill" class="health-bar__fill" />
+                </ui:VisualElement>
+                <ui:Label name="selection-health" text="0%" class="text--secondary text--readout" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

@@ -112,7 +112,7 @@ namespace WAR2D.Net.Replication
                 active[c] = true;
                 interests.ResetClient(c);
                 encoder.ResetClient(c);
-                interests.SetClient(c, client.OwnerId, sim.TeamOf(client.OwnerId), -1); // the grid is set at the next boundary
+                interests.SetClient(c, client.OwnerId, -1); // the grid is set at the next boundary
                 encoder.SetView(c, new int2(int.MinValue / 2), new int2(int.MinValue / 2));
                 return;
             }
@@ -179,7 +179,7 @@ namespace WAR2D.Net.Replication
             {
                 Count = count, Positions = data.Positions, Health = data.Health, MaxHealth = data.MaxHealth,
                 OwnerId = data.OwnerId, Type = data.Type, IdOf = data.IdOf, IndexOfId = data.IndexOfId, SpeedByType = data.SpeedByType,
-                Team = data.Team, Visible = data.Visible, FogCellSize = data.FogCellSize, FogW = data.FogW, FogH = data.FogH, FogCells = data.FogCells,
+                Visible = data.Visible, FogCellSize = data.FogCellSize, FogW = data.FogW, FogH = data.FogH, FogCells = data.FogCells,
             };
             JobHandle handle = new RouteMaintenanceJob
             {
@@ -214,7 +214,7 @@ namespace WAR2D.Net.Replication
                 return;
             }
             for (int c = 0; c < MaxClients; c++)
-                if (active[c]) interests.SetClient(c, clients[c].OwnerId, sim.TeamOf(clients[c].OwnerId), sim.VisionOf(clients[c].OwnerId));
+                if (active[c]) interests.SetClient(c, clients[c].OwnerId, sim.VisionOf(clients[c].OwnerId));
             SendFog(data);
             SendBuildings(data);
             handle = interests.Schedule(input, handle);
@@ -294,9 +294,8 @@ namespace WAR2D.Net.Replication
                 if (!active[c]) continue;
                 Client client = clients[c];
                 int grid = sim.VisionOf(client.OwnerId);
-                int team = sim.TeamOf(client.OwnerId);
                 writer.Position = 0;
-                if (client.Buildings.Update(buildingViews, buildingIds, team, p => data.Sees(grid, p), writer, limit) == 0) continue;
+                if (client.Buildings.Update(buildingViews, buildingIds, client.OwnerId, p => data.Sees(grid, p), writer, limit) == 0) continue;
                 ArraySegment<byte> payload = writer.ToArraySegment();
                 client.BytesSent += payload.Count;
                 if (client.VirtualSink != null) client.VirtualSink(payload, BuildingSinkChannel);

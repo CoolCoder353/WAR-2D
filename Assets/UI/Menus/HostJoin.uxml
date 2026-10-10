@@ -1,0 +1,36 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="host-join" class="menu-screen menu-screen--centre" picking-mode="Ignore">
+        <ui:VisualElement class="panel play-panel">
+            <ui:Label text="Play" class="panel__title" />
+            <ui:VisualElement class="play-panel__content">
+                <ui:VisualElement class="input">
+                    <ui:Label text="Nickname" class="input__label" />
+                    <ui:TextField name="nickname-field" max-length="24" class="input__field" />
+                </ui:VisualElement>
+                <ui:Label text="Host a match" class="text play-panel__heading" />
+                <ui:Label text="Others join with your IP address on port 7778." class="text--secondary" />
+                <ui:VisualElement class="row">
+                    <ui:Button name="host-button" text="Host" class="button button--primary" />
+                </ui:VisualElement>
+                <ui:VisualElement class="divider" />
+                <ui:Label text="Join a match" class="text play-panel__heading" />
+                <ui:VisualElement name="address-input" class="input">
+                    <ui:Label text="Host address" class="input__label" />
+                    <ui:TextField name="address-field" max-length="253" class="input__field" />
+                    <ui:Label name="address-error" text="Enter an address like 192.168.1.20" class="input__message" />
+                </ui:VisualElement>
+                <ui:VisualElement name="join-buttons" class="row">
+                    <ui:Button name="back-button" text="Back" class="button" />
+                    <ui:Button name="join-button" text="Join" class="button button--primary" />
+                </ui:VisualElement>
+                <ui:VisualElement name="connecting" class="play-panel__state">
+                    <ui:Label name="connecting-text" text="Connecting…" class="text" />
+                    <ui:VisualElement class="row">
+                        <ui:Button name="cancel-button" text="Cancel" class="button" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+                <ui:Label name="join-failed" text="" class="text text--danger play-panel__state" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

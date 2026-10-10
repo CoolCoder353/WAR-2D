@@ -43,7 +43,7 @@ namespace WAR2D.Sim
                 int id = building.ValueRO.id;
                 data.BuildingPositions[b] = transform.ValueRO.Position.xy;
                 data.BuildingOwnerId[b] = building.ValueRO.ownerId;
-                data.BuildingTeam[b] = data.TeamOfOwner(building.ValueRO.ownerId);
+                data.BuildingOwnerSlot[b] = data.OwnerSlotOf(building.ValueRO.ownerId);
                 int buildingType = (int)building.ValueRO.buildingType;
                 data.BuildingSight[b] = (uint)buildingType < (uint)data.BuildingSightByType.Length ? data.BuildingSightByType[buildingType] : 0f;
                 data.BuildingHealth[b] = health.ValueRO.currentHealth;
@@ -63,16 +63,16 @@ namespace WAR2D.Sim
                 Velocity = data.Velocity,
                 OwnerId = data.OwnerId,
                 OwnerSlot = data.OwnerSlot,
-                Team = data.Team,
-                TeamBySlot = data.TeamBySlot,
                 Type = data.Type,
                 SizeClass = data.SizeClass,
                 Health = data.Health,
                 MaxHealth = data.MaxHealth,
                 Radius = data.Radius,
                 Cooldown = data.Cooldown,
+                LastHitBy = data.LastHitBy,
                 OrderSlot = data.OrderSlot,
                 Unpaid = data.Unpaid,
+                Stance = data.Stance,
                 IdOf = data.IdOf,
                 IndexOfId = data.IndexOfId,
                 Target = data.Target,
@@ -92,42 +92,47 @@ namespace WAR2D.Sim
         [NativeDisableParallelForRestriction] public NativeArray<float2> Velocity;
         [NativeDisableParallelForRestriction] public NativeArray<int> OwnerId;
         [NativeDisableParallelForRestriction] public NativeArray<byte> OwnerSlot;
-        [NativeDisableParallelForRestriction] public NativeArray<int> Team;
-        [ReadOnly] public NativeArray<int> TeamBySlot;
         [NativeDisableParallelForRestriction] public NativeArray<byte> Type;
         [NativeDisableParallelForRestriction] public NativeArray<byte> SizeClass;
         [NativeDisableParallelForRestriction] public NativeArray<float> Health;
         [NativeDisableParallelForRestriction] public NativeArray<float> MaxHealth;
         [NativeDisableParallelForRestriction] public NativeArray<float> Radius;
         [NativeDisableParallelForRestriction] public NativeArray<float> Cooldown;
+        [NativeDisableParallelForRestriction] public NativeArray<int> LastHitBy;
         [NativeDisableParallelForRestriction] public NativeArray<int> OrderSlot;
         [NativeDisableParallelForRestriction] public NativeArray<byte> Unpaid;
+        [NativeDisableParallelForRestriction] public NativeArray<byte> Stance;
         [NativeDisableParallelForRestriction] public NativeArray<int> IdOf;
         [NativeDisableParallelForRestriction] public NativeArray<int> IndexOfId;
         [NativeDisableParallelForRestriction] public NativeArray<int> Target;
         [NativeDisableParallelForRestriction] public NativeArray<byte> TargetKind;
-        [ReadOnly] public NativeParallelHashMap<int, int> PendingOrders;
+        [ReadOnly] public NativeParallelHashMap<int, PendingOrder> PendingOrders;
         [ReadOnly] public NativeParallelHashMap<int, float2> PendingMoves;
 
         private void Execute(ref Unit unit, [EntityIndexInQuery] int index)
         {
             if (index >= Capacity) return;
-            if (PendingOrders.TryGetValue(unit.Id, out int order)) unit.OrderSlot = order;
+            if (PendingOrders.TryGetValue(unit.Id, out PendingOrder order))
+            {
+                unit.OrderSlot = order.Slot;
+                unit.Stance = order.Stance;
+            }
             if (PendingMoves.TryGetValue(unit.Id, out float2 moved)) unit.Position = moved;
 
             Positions[index] = unit.Position;
             Velocity[index] = unit.Velocity;
             OwnerId[index] = unit.OwnerId;
             OwnerSlot[index] = unit.OwnerSlot;
-            Team[index] = TeamBySlot[unit.OwnerSlot];
             Type[index] = unit.Type;
             SizeClass[index] = unit.SizeClass;
             Health[index] = unit.Health;
             MaxHealth[index] = unit.MaxHealth;
             Radius[index] = unit.Radius;
             Cooldown[index] = unit.Cooldown;
+            LastHitBy[index] = unit.LastHitBy;
             OrderSlot[index] = unit.OrderSlot;
             Unpaid[index] = unit.Unpaid;
+            Stance[index] = unit.Stance;
             IdOf[index] = unit.Id;
             int idIndex = NetIdAllocator.IndexOf(unit.Id);
             if (idIndex < IndexOfId.Length) IndexOfId[idIndex] = index;

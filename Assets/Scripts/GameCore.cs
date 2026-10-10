@@ -22,7 +22,7 @@ public enum GameState
 /// <summary>
 /// Server-authoritative match state: players, ownership, the state machine and outcomes.
 /// </summary>
-public class GameCore : NetworkBehaviour
+public partial class GameCore : NetworkBehaviour
 {
     public static GameCore Instance { get; private set; }
 
@@ -50,8 +50,6 @@ public class GameCore : NetworkBehaviour
     /// <summary>The team of an owner: from <see cref="Teams"/>, or a team of its own.</summary>
     public int TeamOf(int ownerId) => Teams.TryGetValue(ownerId, out int team) ? team : -ownerId - 1;
 
-    /// <summary>True when two owners are on the same team (an owner is its own ally).</summary>
-    public bool AreAllies(int a, int b) => a == b || TeamOf(a) == TeamOf(b);
 
     /// <summary>Owner ids in match order, synced to clients: an owner's position here picks its colour.</summary>
     public readonly SyncList<int> PlayerOrder = new SyncList<int>();
@@ -61,6 +59,7 @@ public class GameCore : NetworkBehaviour
     private const string LobbyScene = "Main_Menu";
     private const float ResourceSyncInterval = 0.1f;
     private float resourceSyncTimer;
+    private float rollTimer;
 
     public void Awake()
     {
@@ -71,6 +70,18 @@ public class GameCore : NetworkBehaviour
         }
         Instance = this;
         DontDestroyOnLoad(this);
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
+    }
+
+    [Server]
+    public override void OnStartServer()
+    {
+        base.OnStartServer();
+        InitSettings();
     }
 
     [Server]
@@ -84,11 +95,24 @@ public class GameCore : NetworkBehaviour
         MatchStartPlayerCount = 0;
         MatchStartTeamCount = 0;
         Teams.Clear();
+        ForgetDiplomacyCooldowns();
     }
 
     [ServerCallback]
     public void LateUpdate()
     {
+        rollTimer += Time.deltaTime;
+        if (rollTimer >= 1f)
+        {
+            rollTimer -= 1f;
+            foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
+            {
+                entry.Value.RollSecond();
+                if (entry.Value.BecameUnpaid && entry.Key != null)
+                    WorldStateManager.Instance?.Alerts?.Add(BuildingData.UIntToInt(entry.Key.netId), new Alert { Kind = AlertKind.UpkeepUnpaid });
+            }
+        }
+
         resourceSyncTimer += Time.deltaTime;
         if (resourceSyncTimer < ResourceSyncInterval) return;
         resourceSyncTimer = 0f;
@@ -97,7 +121,7 @@ public class GameCore : NetworkBehaviour
         {
             ServerPlayer player = entry.Value;
             if (!player.ResourcesDirty || entry.Key == null) continue;
-            entry.Key.GetComponent<ClientPlayer>().TargetUpdateResources(player.connection, player.Resources);
+            entry.Key.GetComponent<ClientPlayer>().TargetUpdateResources(player.connection, player.Resources, player.IncomeLastSecond, player.UpkeepLastSecond);
             player.MarkSynced();
         }
     }
@@ -108,6 +132,8 @@ public class GameCore : NetworkBehaviour
         if (CurrentState == GameState.Countdown && NetworkTime.time >= CountdownEndTime)
         {
             CurrentState = GameState.Playing;
+            MatchStartTime = NetworkTime.time;
+            SendAllDiplomacy();
         }
     }
 
@@ -118,6 +144,12 @@ public class GameCore : NetworkBehaviour
     {
         ServerPlayers[conn.identity] = new ServerPlayer(conn, startingResources);
         if (serverOwner == null) SetServerOwner(conn);
+        if (conn.identity.TryGetComponent(out ClientPlayer joining))
+        {
+            AssignFreeColour(joining);
+            joining.ready = false;
+            if (Settings.Mode == MatchMode.FreeForAll) joining.lobbyTeam = TeamRules.NoTeam;
+        }
     }
 
     [Server]
@@ -131,11 +163,6 @@ public class GameCore : NetworkBehaviour
         {
             WorldStateManager.Instance.RemovePlayerView(leaving);
             WorldStateManager.Instance.KillAllEntitiesOwnedBy((int)conn.identity.netId);
-        }
-
-        foreach (NetworkIdentity remaining in ServerPlayers.Keys)
-        {
-            remaining.GetComponent<ClientPlayer>().RPC_RemoveClientLobbyUI();
         }
 
         if (serverOwner == conn)
@@ -212,28 +239,40 @@ public class GameCore : NetworkBehaviour
     {
         if (!CommandGate.Allow(sender, nameof(Cmd_StartGame))) return;
         if (!IsServerOwner(sender) || CurrentState != GameState.Lobby || !ConfigLoader.IsValid) return;
+        // Dev only (perf harness, hosted tests): a solo host may start without the lobby's rules.
+        if (!DevApi.Allowed && !LobbyRules.CanStart(LobbyStartState())) return;
 
+        DiplomacyEnabled = Settings.Diplomacy;
+        BeginStats();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
             entry.Value.state = PlayerState.Playing;
+            entry.Value.ResetResources(Settings.StartingResources);
             entry.Key.GetComponent<ClientPlayer>().hasPlacedHQ = false;
         }
         // Captured at launch so a departure before Playing can't stop the survivor from winning.
         MatchStartPlayerCount = ServerPlayers.Count;
+        // Join order (ascending net id), as the lobby lists the players and colours their HQ sites.
+        var order = new List<int>();
+        foreach (NetworkIdentity identity in ServerPlayers.Keys) order.Add(BuildingData.UIntToInt(identity.netId));
+        order.Sort();
         PlayerOrder.Clear();
-        foreach (NetworkIdentity identity in ServerPlayers.Keys) PlayerOrder.Add(BuildingData.UIntToInt(identity.netId));
+        foreach (int owner in order) PlayerOrder.Add(owner);
         AssignTeams();
         CurrentState = GameState.PlacingHQ;
         GameManager.Instance.ServerChangeScene(ConfigLoader.LoadConfig().Match.Scene);
     }
 
-    /// <summary>Sets a player's lobby team choice (<see cref="TeamRules.NoTeam"/> for a team of their own). Server owner only, in the lobby.</summary>
+    /// <summary>
+    /// Sets a player's lobby team choice (<see cref="TeamRules.NoTeam"/> for a team of their own). Server
+    /// owner only, in the lobby, with the choices a player could make for themselves (Free-for-all is Solo only).
+    /// </summary>
     [Command(requiresAuthority = false)]
     public void Cmd_SetTeam(uint playerNetId, int team, NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(Cmd_SetTeam))) return;
         if (!IsServerOwner(sender) || CurrentState != GameState.Lobby) return;
-        if (team < TeamRules.NoTeam || team >= WAR2D.Sim.SimData.MaxOwners) return;
+        if (!LobbyRules.IsTeamChoiceValid(Settings.Mode, team)) return;
         foreach (NetworkIdentity identity in ServerPlayers.Keys)
         {
             if (identity == null || identity.netId != playerNetId) continue;
@@ -287,7 +326,7 @@ public class GameCore : NetworkBehaviour
         }
 
         foreach (int id in outcome.NewlyEliminated) EliminatePlayer(id);
-        if (outcome.Kind == OutcomeKind.Winner) DeclareWinner(outcome.WinnerTeam);
+        if (outcome.Kind == OutcomeKind.Winner) DeclareWinner(outcome.Winners);
     }
 
     [Server]
@@ -326,15 +365,16 @@ public class GameCore : NetworkBehaviour
     }
 
     [Server]
-    /// <summary>Ends the match: every player on <paramref name="team"/> wins, everyone else loses.</summary>
-    public void DeclareWinner(int team)
+    /// <summary>Ends the match: every player in <paramref name="winners"/> wins, everyone else loses.</summary>
+    public void DeclareWinner(IReadOnlyCollection<int> winners)
     {
         CurrentState = GameState.GameOver;
+        SendStats(winners);
         WorldStateManager.Instance?.DestroyAllEntities();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
             ClientPlayer client = entry.Key.GetComponent<ClientPlayer>();
-            if (TeamOf(BuildingData.UIntToInt(entry.Key.netId)) == team) client.RpcOnPlayerWon(entry.Value.connection);
+            if (winners.Contains(BuildingData.UIntToInt(entry.Key.netId))) client.RpcOnPlayerWon(entry.Value.connection);
             else
             {
                 entry.Value.state = PlayerState.Eliminated;
@@ -347,6 +387,7 @@ public class GameCore : NetworkBehaviour
     public void DeclareDraw()
     {
         CurrentState = GameState.GameOver;
+        SendStats(null);
         WorldStateManager.Instance?.DestroyAllEntities();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
@@ -364,7 +405,10 @@ public class GameCore : NetworkBehaviour
         MatchStartPlayerCount = 0;
         MatchStartTeamCount = 0;
         Teams.Clear();
+        ForgetDiplomacyCooldowns();
+        DiplomacyEnabled = false;
         Bots.Clear();
+        foreach (ClientPlayer player in LobbyClientPlayers()) player.ready = false;
         if (SceneManager.GetActiveScene().name != LobbyScene && NetworkServer.active)
         {
             GameManager.Instance.ServerChangeScene(LobbyScene);

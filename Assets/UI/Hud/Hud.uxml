@@ -1,0 +1,40 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <Style src="../Theme.uss" />
+    <ui:Template name="TopBar" src="TopBar.uxml" />
+    <ui:Template name="SquadBar" src="SquadBar.uxml" />
+    <ui:Template name="SelectionPanel" src="SelectionPanel.uxml" />
+    <ui:Template name="CommandCard" src="CommandCard.uxml" />
+    <ui:Template name="Minimap" src="Minimap.uxml" />
+    <ui:Template name="AlertFeed" src="AlertFeed.uxml" />
+    <ui:Template name="DiplomacyPanel" src="DiplomacyPanel.uxml" />
+    <ui:Template name="GiftDialog" src="GiftDialog.uxml" />
+    <ui:Template name="InMatchMenu" src="InMatchMenu.uxml" />
+    <ui:Template name="EndScreen" src="EndScreen.uxml" />
+    <ui:Template name="Settings" src="../Menus/Settings.uxml" />
+    <ui:VisualElement name="hud" class="hud-root" picking-mode="Ignore">
+        <ui:Instance template="TopBar" name="top-bar-instance" picking-mode="Ignore" class="hud-layer" />
+        <ui:Instance template="SquadBar" name="squad-bar-instance" picking-mode="Ignore" class="hud-layer" />
+        <ui:Instance template="SelectionPanel" name="selection-panel-instance" picking-mode="Ignore" class="hud-layer" />
+        <ui:Instance template="CommandCard" name="command-card-instance" picking-mode="Ignore" class="hud-layer" />
+        <ui:Instance template="Minimap" name="minimap-instance" picking-mode="Ignore" class="hud-layer" />
+        <ui:Instance template="AlertFeed" name="alert-feed-instance" picking-mode="Ignore" class="hud-layer" />
+        <ui:Instance template="DiplomacyPanel" name="diplomacy-panel-instance" picking-mode="Ignore" class="hud-layer" />
+        <ui:Instance template="GiftDialog" name="gift-dialog-instance" picking-mode="Ignore" class="hud-layer" />
+        <ui:VisualElement name="hq-prompt" class="hud-overlay hud-overlay--top" picking-mode="Ignore">
+            <ui:VisualElement class="panel hq-prompt" picking-mode="Ignore">
+                <ui:Label text="Place your HQ" class="text hq-prompt__title" picking-mode="Ignore" />
+                <ui:Label text="Left-click a clear 3×3 spot. R rotates. The preview turns red where you can't build." class="text text--muted" picking-mode="Ignore" />
+                <ui:Label name="hq-progress" text="" class="text text--readout" picking-mode="Ignore" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement name="countdown" class="hud-overlay hud-overlay--centre" picking-mode="Ignore">
+            <ui:VisualElement class="panel countdown" picking-mode="Ignore">
+                <ui:Label text="Match starts in" class="text text--muted countdown__label" picking-mode="Ignore" />
+                <ui:Label name="countdown-value" text="3" class="text text--readout countdown__value" picking-mode="Ignore" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:Instance template="InMatchMenu" name="in-match-menu-instance" picking-mode="Ignore" class="hud-layer" />
+        <ui:Instance template="EndScreen" name="end-screen-instance" picking-mode="Ignore" class="hud-layer" />
+        <ui:Instance template="Settings" name="settings-instance" picking-mode="Ignore" class="hud-layer" />
+    </ui:VisualElement>
+</ui:UXML>

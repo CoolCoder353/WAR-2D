@@ -1,0 +1,13 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="minimap" class="panel minimap">
+        <ui:Label text="Minimap" class="panel__title" />
+        <ui:VisualElement class="minimap__content">
+            <ui:VisualElement name="minimap-frame" class="minimap__frame">
+                <ui:VisualElement name="minimap-image" class="minimap__image">
+                    <ui:VisualElement name="minimap-camera" class="minimap__camera" picking-mode="Ignore" />
+                    <ui:VisualElement name="minimap-pings" class="minimap__pings" picking-mode="Ignore" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

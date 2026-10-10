@@ -28,7 +28,7 @@ public partial struct ResourceSystem : ISystem
             float income = config.Resources.PassiveGenerationRate * passiveTimer;
             foreach (ServerPlayer player in core.serverPlayers)
             {
-                if (player.state == PlayerState.Playing) player.Add(income);
+                if (player.state == PlayerState.Playing) player.AddIncome(income);
             }
             passiveTimer = 0f;
         }
@@ -47,7 +47,9 @@ public partial struct ResourceSystem : ISystem
                 ServerPlayer owner = core.GetServerPlayerById(building.ValueRO.ownerId);
                 if (owner != null && owner.state == PlayerState.Playing)
                 {
-                    owner.Add(config.Resources.MiningRate * mining.ValueRO.timeSinceLastMining);
+                    float mined = config.Resources.MiningRate * mining.ValueRO.timeSinceLastMining;
+                    owner.AddIncome(mined);
+                    core.Stats.Mined(building.ValueRO.ownerId, mined);
                 }
             }
             mining.ValueRW.timeSinceLastMining = 0f;
@@ -66,6 +68,8 @@ public partial struct ResourceSystem : ISystem
             float cost = upkeep.ValueRO.runningCostPerSecond * upkeep.ValueRO.timeSinceLastCharge;
             ServerPlayer owner = core.GetServerPlayerById(upkeep.ValueRO.ownerId);
             upkeep.ValueRW.unpaid = owner == null || !owner.TrySpend(cost);
+            if (!upkeep.ValueRO.unpaid) owner.AddUpkeep(cost);
+            else owner?.MarkUnpaid();
             upkeep.ValueRW.timeSinceLastCharge = 0f;
         }
     }

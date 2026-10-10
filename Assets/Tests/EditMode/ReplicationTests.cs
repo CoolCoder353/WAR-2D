@@ -20,8 +20,7 @@ public class ReplicationTests
         public NativeArray<float> Health, MaxHealth, Speeds;
         public NativeArray<int> Owner, IdOf, IndexOfId;
         public NativeArray<byte> Type;
-        /// <summary>Team per slot (the owner id), and one fog grid per client (1 tile per cell).</summary>
-        public NativeArray<int> Team;
+        /// <summary>One fog grid per client (1 tile per cell).</summary>
         public NativeArray<byte> Visible;
         public const int FogSize = 512;
         public NativeList<int2> Attacks = new NativeList<int2>(16, Allocator.Persistent);
@@ -44,7 +43,6 @@ public class ReplicationTests
             IdOf = new NativeArray<int>(capacity, Allocator.Persistent);
             IndexOfId = new NativeArray<int>(IdCapacity, Allocator.Persistent);
             Type = new NativeArray<byte>(capacity, Allocator.Persistent);
-            Team = new NativeArray<int>(capacity, Allocator.Persistent);
             Visible = new NativeArray<byte>(clients * FogSize * FogSize, Allocator.Persistent);
             Speeds = new NativeArray<float>(new[] { 0f, 5f }, Allocator.Persistent);
             Interests = new InterestSets(clients, IdCapacity, Allocator.Persistent);
@@ -63,7 +61,6 @@ public class ReplicationTests
             Health[slot] = 100f;
             MaxHealth[slot] = 100f;
             Owner[slot] = owner;
-            Team[slot] = owner;
             IdOf[slot] = Id(index, generation);
             IndexOfId[index] = slot;
             Type[slot] = 1;
@@ -74,7 +71,7 @@ public class ReplicationTests
         {
             Count = Count, Positions = Positions, Health = Health, MaxHealth = MaxHealth, OwnerId = Owner,
             Type = Type, IdOf = IdOf, IndexOfId = IndexOfId, SpeedByType = Speeds,
-            Team = Team, Visible = Visible, FogCellSize = 1, FogW = FogSize, FogH = FogSize, FogCells = FogSize * FogSize,
+            Visible = Visible, FogCellSize = 1, FogW = FogSize, FogH = FogSize, FogCells = FogSize * FogSize,
         };
 
         /// <summary>
@@ -83,7 +80,7 @@ public class ReplicationTests
         /// </summary>
         public void Watch(int client, int owner, int2 min, int2 max)
         {
-            Interests.SetClient(client, owner, owner, client);
+            Interests.SetClient(client, owner, client);
             int start = client * FogSize * FogSize;
             for (int i = 0; i < FogSize * FogSize; i++) Visible[start + i] = 0;
             for (int y = math.max(0, min.y); y <= math.min(FogSize - 1, max.y); y++)
@@ -108,7 +105,7 @@ public class ReplicationTests
         public void Dispose()
         {
             Positions.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Owner.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
-            Type.Dispose(); Team.Dispose(); Visible.Dispose(); Speeds.Dispose(); Attacks.Dispose(); Routes.Dispose(); Interests.Dispose(); Encoder.Dispose();
+            Type.Dispose(); Visible.Dispose(); Speeds.Dispose(); Attacks.Dispose(); Routes.Dispose(); Interests.Dispose(); Encoder.Dispose();
             foreach (ClientUnitStore s in ClientStores) s.Dispose();
         }
     }

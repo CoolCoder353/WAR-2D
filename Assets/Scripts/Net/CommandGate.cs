@@ -14,15 +14,25 @@ public static class CommandGate
     private static readonly RateLimiter Limiter = new RateLimiter(new Dictionary<string, (float, float)>
     {
         ["UpdateClientView"] = (20f, 15f),
-        ["CmdOrderMoveChunk"] = (40f, 20f),
+        ["CmdOrderChunk"] = (40f, 20f),
         ["CmdAssignSquadChunk"] = (40f, 10f),
         ["CmdOrderSquad"] = (10f, 5f),
         ["TryAddBuilding"] = (10f, 5f),
         ["CanBuildBuildingCommand"] = (20f, 15f),
         ["BuildingClicked"] = (20f, 10f),
+        ["CmdDequeueUnit"] = (20f, 10f),
         ["CmdSetNickname"] = (5f, 1f),
         ["Cmd_StartGame"] = (3f, 0.5f),
         ["Cmd_SetTeam"] = (10f, 5f),
+        ["Cmd_SetMatchSettings"] = (10f, 4f),
+        ["Cmd_RerollMap"] = (5f, 2f),
+        ["Cmd_SetColour"] = (10f, 4f),
+        ["Cmd_SetReady"] = (10f, 4f),
+        ["Cmd_SetOwnTeam"] = (10f, 4f),
+        ["Cmd_Surrender"] = (3f, 0.5f),
+        ["Cmd_GiftResources"] = (5f, 1f),
+        ["Cmd_SetAttack"] = (10f, 2f),
+        ["Cmd_SetShareVision"] = (10f, 2f),
     }, (10f, 5f));
 
     private static readonly Dictionary<int, (int count, double windowStart)> Violations = new Dictionary<int, (int, double)>();
