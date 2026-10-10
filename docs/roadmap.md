@@ -12,9 +12,9 @@ This is the overarching development plan for WAR-2D. It explains **what** each u
 | v0.3 | Scale Spike | **Done** (2026-10-08). Every row of spec §4.6 has a measurement and a decision; the owner raised the bandwidth budget and chose the async tick with async flow-field rebuilds. See [the results](spike/v0.3-results.md) | [2026-10-05-v0.3-scale-spike.md](superpowers/plans/2026-10-05-v0.3-scale-spike.md) |
 | v0.4 | Legion | **Implemented** (2026-10-09), awaiting the owner's manual Linux match and the PR. Performance gate passed (8 × 10,000 units, 1024² map, 3 runs, medians): host tick main thread **6.6 ms p95** (budget 25), **561 fps** mean (≥ 60), **102 KB/s** average and **170 KB/s** peak 1 s per client (≤ 256 / 768). See [docs/perf/v0.4](perf/v0.4/) | [2026-10-08-v0.4-legion.md](superpowers/plans/2026-10-08-v0.4-legion.md) |
 | v0.5 | Fog & Wire | **Closed** (2026-10-09) by the owner with the performance gate not run, no manual play-test yet and KCP not tuned. All three are carried into v0.6 in [known-issues.md](known-issues.md). Teams, fog of war, fog interest, buildings on the replication service and the leak tests are done; EditMode 223/223 and PlayMode 10/10 pass | [2026-10-09-v0.5-fog-and-wire.md](superpowers/plans/2026-10-09-v0.5-fog-and-wire.md) |
-| v0.6 | Command | **In progress** (2026-10-10) on `release/v0.6`. Design: [v0.6 spec](superpowers/specs/2026-10-09-v0.6-command-design.md); the Figma design was approved on 2026-10-09 ([record](ux/v0.6-figma.md)). The HUD, menus, lobby, settings, the new orders and diplomacy are implemented. The owner's first manual Linux match was played on 2026-10-10 and its three reports are fixed. The performance gate passed with 7 real clients (tick **10.6 ms p95**, **243 fps**, **162 KB/s** average per client; [docs/perf/v0.6](perf/v0.6/)), and KCP stays on its defaults. The host's colour pick and reserved start clearings followed (Figma approved 2026-10-11). Awaiting merge of the PR | [2026-10-09-v0.6-command.md](superpowers/plans/2026-10-09-v0.6-command.md) |
-| v0.7 | Siege | Not started | — |
-| v0.8 | New Paint | Not started | — |
+| v0.6 | Command | **Done.** Merged into `main` on 2026-10-11. HUD, menus, lobby (colour picks and reserved HQ clearings), settings, new orders and per-player diplomacy; the first manual Linux match was played and its reports fixed; the performance gate passed with 7 real clients (tick **10.6 ms p95**, **243 fps**, **162 KB/s** average per client; [docs/perf/v0.6](perf/v0.6/)) | [2026-10-09-v0.6-command.md](superpowers/plans/2026-10-09-v0.6-command.md) |
+| v0.8 | New Paint | **In progress** (2026-10-11) on `release/v0.8`. Moved ahead of v0.7 so the art style sets how the new units and buildings look; it also delivers the v0.7 art kit | [2026-10-10-v0.8-new-paint.md](superpowers/plans/2026-10-10-v0.8-new-paint.md) |
+| v0.7 | Siege | Not started (after v0.8, using its art kit) | — |
 | v0.9 | Steam | Not started | — |
 
 ---
@@ -50,10 +50,10 @@ flowchart LR
     v03 --> v04[v0.4 Legion<br/>core rebuilt for scale]
     v04 --> v05[v0.5 Fog & Wire<br/>networking + fog + teams]
     v05 --> v06[v0.6 Command<br/>UI/UX, lobby, settings]
+    v06 --> v08[v0.8 New Paint<br/>art + audio, v0.7 art kit]
     v05 --> v07[v0.7 Siege<br/>Builder, walls, Digger, bombs]
-    v06 --> v07
-    v07 --> v08[v0.8 New Paint<br/>art + audio]
-    v08 --> v09[v0.9 Steam<br/>Steamworks + playtest]
+    v08 --> v07
+    v07 --> v09[v0.9 Steam<br/>Steamworks + playtest]
 ```
 
 We chose **foundation first, then prove scale, then features**. Two alternatives were rejected:
@@ -65,7 +65,7 @@ The order follows from the dependencies:
 - **v0.2 first:** you can't build reliably on a buggy, untested base.
 - **v0.3 before v0.4:** the riskiest assumptions (line-of-sight fog at 80,000 units, network bandwidth, rendering) get measured cheaply before the core is rebuilt around them.
 - **v0.5 before v0.6 and v0.7:** the HUD minimap, team lobby and hidden bombs all depend on teams, fog of war and the new networking.
-- **v0.8 late:** art is easiest to replace once the systems that display it (instanced rendering, UI Toolkit) exist.
+- **v0.8 after v0.6, before v0.7** (reordered 2026-10-11): art is easiest to replace once the systems that display it (instanced rendering, UI Toolkit) exist, and doing it before v0.7 means the art style decides how the Builder, Digger, walls and bombs look. v0.8 draws the v0.7 art kit; v0.7 only wires it.
 - **v0.9 last:** Steam integration wraps a finished game.
 
 Every update **except v0.3** ships a playable, tested build.
@@ -238,7 +238,7 @@ Each update below lists its goal, its scope, the key decisions already made, wha
 
 > The new gameplay: Builders, walls, Diggers and hidden bombs.
 
-**Why now:** these features need flow fields that update when terrain changes (v0.4), line-of-sight fog and team-only visibility (v0.5), and the command card and alerts (v0.6).
+**Why now:** these features need flow fields that update when terrain changes (v0.4), line-of-sight fog and team-only visibility (v0.5), the command card and alerts (v0.6), and the art kit (v0.8), which already draws its units, walls, bombs and blueprints.
 
 **Builder and construction**
 - Builders are produced from the **HQ**. This may change later.
@@ -276,7 +276,7 @@ Each update below lists its goal, its scope, the key decisions already made, wha
 
 > Replace every placeholder with a consistent pixel-art set, and add sound and music.
 
-**Why now:** the systems that display art (instanced unit rendering, UI Toolkit HUD, fog rendering) exist by now, so the art is made once, to fit them.
+**Why now:** the systems that display art (instanced unit rendering, UI Toolkit HUD, fog rendering) exist by now, so the art is made once, to fit them. It comes **before v0.7** so the chosen style also covers the v0.7 kit (Builder, Digger, walls, bomb, blueprints), which v0.8 delivers in its atlases.
 
 **Scope**
 1. **Choose the art method by prototype.** Make the same few sprites (one unit, one building, one tile set) two ways:
@@ -401,5 +401,6 @@ The full table is in the spec (§2). The decisions that most shape the roadmap:
 | Elimination or leaving | All the player's entities destroyed, with explosions |
 | Rendering | URP 2D; Pixel Perfect Camera in v0.8 |
 | Art and audio | Pixel art (method chosen in v0.8); sfxr-style SFX; code-generated chiptune music |
+| Order (2026-10-10) | v0.8 New Paint before v0.7 Siege, so the art style sets how the new units and buildings look. v0.8 delivers the v0.7 art kit; v0.7 wires it |
 | Testing | Local only, through the live editor; no CI |
 | Team | The owner plus Claude, in small shippable updates |
