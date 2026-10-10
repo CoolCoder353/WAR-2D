@@ -45,7 +45,7 @@ namespace WAR2D.Client
         private NativeArray<byte> selected;
         private NativeList<UnitInstance> instances, bars;
         private NativeArray<int> barCount;
-        private InstancedUnitRenderer renderer;
+        private InstancedUnitRenderer unitRenderer;
         private readonly List<(int attacker, int target)> attacks = new List<(int, int)>();
         private readonly List<int> selectedIndices = new List<int>();
         private readonly Dictionary<int, uint> colorOfOwner = new Dictionary<int, uint>();
@@ -58,6 +58,9 @@ namespace WAR2D.Client
 
         /// <summary>Batches the client could not decode (logged and dropped).</summary>
         public int MalformedBatches { get; private set; }
+
+        /// <summary>An owner's palette colour index (by default their lobby colour; the menu battle maps its bots).</summary>
+        public Func<int, int> ColourIndexOf = PlayerPalette.ColourIndexOf;
 
         /// <summary>The underlying store (tests).</summary>
         internal ClientUnitStore Store => store;
@@ -87,16 +90,18 @@ namespace WAR2D.Client
             bars = new NativeList<UnitInstance>(1024, Allocator.Persistent);
             barCount = new NativeArray<int>(1, Allocator.Persistent);
             ReplicationClient.Received += OnBatch;
+            Palettes.Changed += colorOfOwner.Clear;
             FogView.Ensure();
         }
 
         private void OnDestroy()
         {
             ReplicationClient.Received -= OnBatch;
+            Palettes.Changed -= colorOfOwner.Clear;
             ClientFog.Clear(); // the match is over; the next one starts with a fresh snapshot
             ClientBuildings.Clear();
             if (Instance == this) Instance = null;
-            renderer?.Dispose();
+            unitRenderer?.Dispose();
             store?.Dispose();
             if (lastPosition.IsCreated)
             {
@@ -197,7 +202,7 @@ namespace WAR2D.Client
                 if (owner != lastOwner)
                 {
                     lastOwner = owner;
-                    colour = PlayerPalette.Of(GameCore.Instance != null ? GameCore.Instance.PlayerOrder.IndexOf(owner) : -1);
+                    colour = PlayerPalette.OfOwner(owner);
                 }
                 minimap.PlotUnit(predicted[i], colour);
             }
@@ -211,10 +216,10 @@ namespace WAR2D.Client
         {
             int count = store.Count;
             if (count == 0 || store.Predicted.Length != count) return;
-            if (renderer == null)
+            if (unitRenderer == null)
             {
                 var texture = Resources.Load<Texture2D>(UnitType.Tank.ToString());
-                renderer = new InstancedUnitRenderer(texture, 0.8f);
+                unitRenderer = new InstancedUnitRenderer(texture, 0.8f);
             }
 
             foreach (int index in selectedIndices) selected[index] = 0;
@@ -258,16 +263,16 @@ namespace WAR2D.Client
                 Bars = bars.AsArray(),
                 BarCount = barCount,
             }.Run();
-            renderer.Draw(instances.AsArray(), count);
-            renderer.DrawHealthBars(bars.AsArray(), barCount[0]);
+            unitRenderer.Draw(instances.AsArray(), count);
+            unitRenderer.DrawHealthBars(bars.AsArray(), barCount[0]);
         }
 
         private uint ColorOf(int ownerId)
         {
             if (colorOfOwner.TryGetValue(ownerId, out uint c)) return c;
-            int slot = GameCore.Instance != null ? GameCore.Instance.PlayerOrder.IndexOf(ownerId) : -1;
-            if (slot < 0) return InstancedUnitRenderer.Pack(new Color32(160, 160, 160, 255)); // not cached: the order may still arrive
-            c = InstancedUnitRenderer.Pack(InstancedUnitRenderer.TeamColors[slot % InstancedUnitRenderer.TeamColors.Length]);
+            int colour = ColourIndexOf(ownerId);
+            if (colour < 0) return InstancedUnitRenderer.Pack(new Color32(160, 160, 160, 255)); // not cached: the player may still arrive
+            c = InstancedUnitRenderer.Pack(PlayerPalette.Of(colour));
             colorOfOwner[ownerId] = c;
             return c;
         }

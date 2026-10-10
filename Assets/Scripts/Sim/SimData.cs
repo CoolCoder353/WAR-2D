@@ -13,6 +13,10 @@ namespace WAR2D.Sim
         public Entity Entity;
         public int Id;
         public float2 Position;
+        /// <summary>The dead unit's owner.</summary>
+        public int OwnerId;
+        /// <summary>The owner of the last unit that hit it (0 when none, e.g. upkeep decay).</summary>
+        public int Killer;
     }
 
     /// <summary>
@@ -102,6 +106,8 @@ namespace WAR2D.Sim
         public NativeArray<float> MaxHealth;
         public NativeArray<float> Radius;
         public NativeArray<float> Cooldown;
+        /// <summary>Owner id of the last attacker per unit (0 = none), written only by the damage job.</summary>
+        public NativeArray<int> LastHitBy;
         /// <summary>Order slot per unit, or -1.</summary>
         public NativeArray<int> OrderSlot;
         /// <summary>Set for a unit that reached its goal this tick: its order is complete.</summary>
@@ -288,6 +294,7 @@ namespace WAR2D.Sim
                 MaxHealth = new NativeArray<float>(capacity, allocator),
                 Radius = new NativeArray<float>(capacity, allocator),
                 Cooldown = new NativeArray<float>(capacity, allocator),
+                LastHitBy = new NativeArray<int>(capacity, allocator),
                 OrderSlot = new NativeArray<int>(capacity, allocator),
                 Arrived = new NativeArray<byte>(capacity, allocator),
                 Unpaid = new NativeArray<byte>(capacity, allocator),
@@ -369,7 +376,7 @@ namespace WAR2D.Sim
             SpeedByType.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose(); CooldownByType.Dispose();
             RunningCostByType.Dispose(); DamageTable.Dispose();
             Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Type.Dispose();
-            SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose();
+            SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose(); LastHitBy.Dispose();
             OrderSlot.Dispose(); Arrived.Dispose(); Unpaid.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
             Cell.Dispose(); CellStart.Dispose(); Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose();
             BuildingCount.Dispose(); BuildingPositions.Dispose(); BuildingOwnerId.Dispose(); BuildingOwnerSlot.Dispose(); BuildingHealth.Dispose();

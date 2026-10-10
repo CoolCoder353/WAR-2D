@@ -73,6 +73,13 @@ public partial class GameCore : NetworkBehaviour
     }
 
     [Server]
+    public override void OnStartServer()
+    {
+        base.OnStartServer();
+        InitSettings();
+    }
+
+    [Server]
     public override void OnStopServer()
     {
         base.OnStopServer();
@@ -120,6 +127,7 @@ public partial class GameCore : NetworkBehaviour
         if (CurrentState == GameState.Countdown && NetworkTime.time >= CountdownEndTime)
         {
             CurrentState = GameState.Playing;
+            MatchStartTime = NetworkTime.time;
             SendAllDiplomacy();
         }
     }
@@ -131,6 +139,12 @@ public partial class GameCore : NetworkBehaviour
     {
         ServerPlayers[conn.identity] = new ServerPlayer(conn, startingResources);
         if (serverOwner == null) SetServerOwner(conn);
+        if (conn.identity.TryGetComponent(out ClientPlayer joining))
+        {
+            AssignFreeColour(joining);
+            joining.ready = false;
+            if (Settings.Mode == MatchMode.FreeForAll) joining.lobbyTeam = TeamRules.NoTeam;
+        }
     }
 
     [Server]
@@ -144,11 +158,6 @@ public partial class GameCore : NetworkBehaviour
         {
             WorldStateManager.Instance.RemovePlayerView(leaving);
             WorldStateManager.Instance.KillAllEntitiesOwnedBy((int)conn.identity.netId);
-        }
-
-        foreach (NetworkIdentity remaining in ServerPlayers.Keys)
-        {
-            remaining.GetComponent<ClientPlayer>().RPC_RemoveClientLobbyUI();
         }
 
         if (serverOwner == conn)
@@ -225,10 +234,15 @@ public partial class GameCore : NetworkBehaviour
     {
         if (!CommandGate.Allow(sender, nameof(Cmd_StartGame))) return;
         if (!IsServerOwner(sender) || CurrentState != GameState.Lobby || !ConfigLoader.IsValid) return;
+        // Dev only (perf harness, hosted tests): a solo host may start without the lobby's rules.
+        if (!DevApi.Allowed && !LobbyRules.CanStart(LobbyStartState())) return;
 
+        DiplomacyEnabled = Settings.Diplomacy;
+        BeginStats();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
             entry.Value.state = PlayerState.Playing;
+            entry.Value.ResetResources(Settings.StartingResources);
             entry.Key.GetComponent<ClientPlayer>().hasPlacedHQ = false;
         }
         // Captured at launch so a departure before Playing can't stop the survivor from winning.
@@ -343,6 +357,7 @@ public partial class GameCore : NetworkBehaviour
     public void DeclareWinner(IReadOnlyCollection<int> winners)
     {
         CurrentState = GameState.GameOver;
+        SendStats(winners);
         WorldStateManager.Instance?.DestroyAllEntities();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
@@ -360,6 +375,7 @@ public partial class GameCore : NetworkBehaviour
     public void DeclareDraw()
     {
         CurrentState = GameState.GameOver;
+        SendStats(null);
         WorldStateManager.Instance?.DestroyAllEntities();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
@@ -380,6 +396,7 @@ public partial class GameCore : NetworkBehaviour
         ForgetDiplomacyCooldowns();
         DiplomacyEnabled = false;
         Bots.Clear();
+        foreach (ClientPlayer player in LobbyClientPlayers()) player.ready = false;
         if (SceneManager.GetActiveScene().name != LobbyScene && NetworkServer.active)
         {
             GameManager.Instance.ServerChangeScene(LobbyScene);

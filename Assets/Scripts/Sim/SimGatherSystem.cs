@@ -69,6 +69,7 @@ namespace WAR2D.Sim
                 MaxHealth = data.MaxHealth,
                 Radius = data.Radius,
                 Cooldown = data.Cooldown,
+                LastHitBy = data.LastHitBy,
                 OrderSlot = data.OrderSlot,
                 Unpaid = data.Unpaid,
                 Stance = data.Stance,
@@ -97,6 +98,7 @@ namespace WAR2D.Sim
         [NativeDisableParallelForRestriction] public NativeArray<float> MaxHealth;
         [NativeDisableParallelForRestriction] public NativeArray<float> Radius;
         [NativeDisableParallelForRestriction] public NativeArray<float> Cooldown;
+        [NativeDisableParallelForRestriction] public NativeArray<int> LastHitBy;
         [NativeDisableParallelForRestriction] public NativeArray<int> OrderSlot;
         [NativeDisableParallelForRestriction] public NativeArray<byte> Unpaid;
         [NativeDisableParallelForRestriction] public NativeArray<byte> Stance;
@@ -127,6 +129,7 @@ namespace WAR2D.Sim
             MaxHealth[index] = unit.MaxHealth;
             Radius[index] = unit.Radius;
             Cooldown[index] = unit.Cooldown;
+            LastHitBy[index] = unit.LastHitBy;
             OrderSlot[index] = unit.OrderSlot;
             Unpaid[index] = unit.Unpaid;
             Stance[index] = unit.Stance;

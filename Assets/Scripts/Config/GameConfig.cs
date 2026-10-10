@@ -23,7 +23,10 @@ namespace Config
         public OrdersConfig Orders = new OrdersConfig();
         /// <summary>Player-controlled diplomacy.</summary>
         public DiplomacyConfig Diplomacy = new DiplomacyConfig();
+        public GiftingConfig Gifting = new GiftingConfig();
         public AlertsConfig Alerts = new AlertsConfig();
+        public LobbyConfig Lobby = new LobbyConfig();
+        public MenuBattleConfig MenuBattle = new MenuBattleConfig();
         /// <summary>Damage multipliers per attacker type and target class.</summary>
         public DamageTableConfig Damage = new DamageTableConfig();
 
@@ -106,6 +109,30 @@ namespace Config
     {
         /// <summary>Seconds a player waits between changes, per command.</summary>
         public float ChangeCooldownSeconds;
+    }
+
+    public class MenuBattleConfig
+    {
+        /// <summary>Units per army in the battle behind the main menu.</summary>
+        public int UnitsPerArmy;
+        /// <summary>Tiles per side of its generated map.</summary>
+        public int MapSize;
+        /// <summary>Its map seed.</summary>
+        public uint Seed;
+    }
+
+    public class LobbyConfig
+    {
+        /// <summary>Map sizes the host may pick (tiles per side), smallest first.</summary>
+        public int[] MapSizes = System.Array.Empty<int>();
+        /// <summary>Starting resources the host may pick, smallest first.</summary>
+        public float[] StartingResources = System.Array.Empty<float>();
+    }
+
+    public class GiftingConfig
+    {
+        /// <summary>Seconds a player waits between gifts.</summary>
+        public float CooldownSeconds;
     }
 
     public class AlertsConfig

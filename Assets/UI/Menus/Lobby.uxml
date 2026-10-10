@@ -1,0 +1,64 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="lobby" class="menu-screen lobby">
+        <ui:Label text="Lobby" class="lobby__title" />
+        <ui:Label name="lobby-subtitle" text="" class="text text--muted lobby__subtitle" />
+        <ui:VisualElement class="lobby__left">
+            <ui:VisualElement class="panel">
+                <ui:Label name="players-title" text="Players" class="panel__title" />
+                <ui:VisualElement class="lobby__players">
+                    <ui:VisualElement name="player-rows" />
+                    <ui:VisualElement name="local-pickers">
+                        <ui:Label text="Your colour (taken colours are crossed out)" class="text--secondary lobby__label" />
+                        <ui:VisualElement name="colour-picker" class="row lobby__colours" />
+                        <ui:VisualElement name="team-section">
+                            <ui:Label text="Your team" class="text--secondary lobby__label" />
+                            <ui:VisualElement name="team-picker" class="row segmented" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement class="panel lobby__settings">
+                <ui:Label name="settings-title" text="Match settings" class="panel__title" />
+                <ui:VisualElement class="lobby__settings-content">
+                    <ui:VisualElement class="row lobby__mode-row">
+                        <ui:VisualElement class="option-group">
+                            <ui:Label text="Mode" class="text--secondary lobby__label" />
+                            <ui:VisualElement name="mode-options" class="row segmented" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="diplomacy-switch-slot" class="lobby__diplomacy" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="option-group">
+                        <ui:Label text="Map size" class="text--secondary lobby__label" />
+                        <ui:VisualElement name="size-options" class="row segmented" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="option-group">
+                        <ui:Label text="Starting resources" class="text--secondary lobby__label" />
+                        <ui:VisualElement name="resource-options" class="row segmented" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement class="panel lobby__preview">
+            <ui:Label text="Map preview" class="panel__title" />
+            <ui:VisualElement class="lobby__preview-content">
+                <ui:VisualElement name="preview-image" class="lobby__preview-image">
+                    <ui:VisualElement name="preview-markers" class="lobby__markers" picking-mode="Ignore" />
+                </ui:VisualElement>
+                <ui:VisualElement class="row lobby__seed-row">
+                    <ui:VisualElement class="input">
+                        <ui:Label text="Seed" class="input__label" />
+                        <ui:TextField name="seed-field" max-length="10" class="input__field" />
+                    </ui:VisualElement>
+                    <ui:Button name="reroll-button" text="Reroll" class="button lobby__reroll" />
+                </ui:VisualElement>
+                <ui:Label text="Coloured markers are where each player's HQ area is; grey ones are unused." class="text--secondary" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement class="row lobby__footer">
+            <ui:Button name="leave-button" text="Leave" class="button" />
+            <ui:Button name="ready-button" text="Ready" class="button button--primary" />
+            <ui:Button name="start-button" text="Start match" class="button button--primary" />
+            <ui:Label name="lobby-status" text="" class="text lobby__status" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

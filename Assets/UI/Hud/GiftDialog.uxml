@@ -1,0 +1,19 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="gift-dialog" class="panel gift-dialog">
+        <ui:Label text="Gift resources" class="panel__title" />
+        <ui:VisualElement class="gift-dialog__content">
+            <ui:Label text="To" class="text--secondary gift-dialog__label" />
+            <ui:VisualElement name="gift-targets" />
+            <ui:VisualElement name="gift-amount-input" class="input">
+                <ui:Label name="gift-amount-label" text="Amount" class="input__label" />
+                <ui:TextField name="gift-amount" max-length="9" class="input__field" />
+                <ui:Label name="gift-amount-error" text="" class="input__message" />
+            </ui:VisualElement>
+            <ui:VisualElement class="row">
+                <ui:Button name="gift-cancel" text="Cancel" class="button" />
+                <ui:Button name="gift-send" text="Send gift" class="button button--primary" />
+            </ui:VisualElement>
+            <ui:Label name="gift-note" text="One gift every 5 s. Only you and the recipient are told." class="text--secondary" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

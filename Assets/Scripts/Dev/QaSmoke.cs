@@ -43,6 +43,8 @@ public sealed class QaSmoke : MonoBehaviour
         {
             GameManager.Instance.HostServer();
             yield return Until(() => GameCore.Instance != null && GameCore.Instance.ServerPlayers.Count >= 2, 90f);
+            GameCore.Instance.Cmd_SetReady(true);
+            yield return Until(() => LobbyRules.CanStart(GameCore.Instance.LobbyStartState()), 30f);
             yield return new WaitForSecondsRealtime(2f);
             Shot("lobby");
             GameCore.Instance.Cmd_StartGame();
@@ -50,8 +52,9 @@ public sealed class QaSmoke : MonoBehaviour
         else
         {
             GameManager.Instance.ConnectToServer(PerfMatch.ArgValue("-qaJoin"));
-            yield return Until(() => NetworkClient.isConnected, 30f);
+            yield return Until(() => NetworkClient.isConnected && GameCore.Instance != null && NetworkClient.localPlayer != null, 30f);
             yield return new WaitForSecondsRealtime(2f);
+            GameCore.Instance.Cmd_SetReady(true);
             Shot("lobby");
         }
         State("lobby");

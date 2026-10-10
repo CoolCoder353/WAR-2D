@@ -47,7 +47,9 @@ public partial struct ResourceSystem : ISystem
                 ServerPlayer owner = core.GetServerPlayerById(building.ValueRO.ownerId);
                 if (owner != null && owner.state == PlayerState.Playing)
                 {
-                    owner.AddIncome(config.Resources.MiningRate * mining.ValueRO.timeSinceLastMining);
+                    float mined = config.Resources.MiningRate * mining.ValueRO.timeSinceLastMining;
+                    owner.AddIncome(mined);
+                    core.Stats.Mined(building.ValueRO.ownerId, mined);
                 }
             }
             mining.ValueRW.timeSinceLastMining = 0f;

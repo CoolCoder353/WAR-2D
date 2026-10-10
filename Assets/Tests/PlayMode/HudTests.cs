@@ -401,4 +401,64 @@ public class HudTests
             sim.Settled -= count;
         }
     }
+
+    [UnityTest, Timeout(90000)]
+    public IEnumerator SurrenderEndsTheMatchWithTheEndScreenAndStats()
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        int2 hq = default;
+        yield return PlayModeMatch.PlaceHQ(a => hq = a);
+        AddBotWithHQ(hq);
+        VisualElement root = HudRoot();
+        HudController hud = Object.FindAnyObjectByType<HudController>();
+
+        hud.MatchMenu.Open();
+        yield return null;
+        Assert.That(root.Q("in-match-menu").ClassListContains("overlay-screen--visible"), Is.True, "the menu opens");
+        Click(root.Q<Button>("surrender-button"));
+        yield return null;
+        Assert.That(root.Q("in-match-menu").ClassListContains("in-match-menu--confirm"), Is.True, "Surrender asks first");
+        Click(root.Q<Button>("surrender-confirm"));
+
+        yield return PlayModeMatch.WaitUntil(() => hud.EndScreen.IsShown, 10f);
+        Assert.That(root.Q<Label>("end-title").text, Is.EqualTo("Defeat"));
+        yield return PlayModeMatch.WaitUntil(() => GameCore.Instance.CurrentState == GameState.GameOver && root.Q("end-stats").childCount > 1, 10f);
+        Assert.That(root.Q("stats-" + PlayModeMatch.LocalOwner), Is.Not.Null, "the table has a row for me");
+        Assert.That(root.Q("stats-" + Bot), Is.Not.Null, "and one for the winner");
+        StringAssert.Contains("win", root.Q<Label>("end-subtitle").text);
+    }
+
+    [UnityTest, Timeout(90000)]
+    public IEnumerator GiftToEnemyMovesResources()
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        int2 hq = default;
+        yield return PlayModeMatch.PlaceHQ(a => hq = a);
+        AddBotWithHQ(hq);
+        ServerPlayer me = GameCore.Instance.GetServerPlayerById(PlayModeMatch.LocalOwner);
+        ServerPlayer bot = GameCore.Instance.GetServerPlayerById(Bot);
+        float botBefore = bot.Resources;
+        int noticed = 0;
+        ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+        local.GiftNoticed += (from, to, amount) => noticed++;
+
+        HudController hud = Object.FindAnyObjectByType<HudController>();
+        VisualElement root = HudRoot();
+        Click(root.Q<Button>("gift-button"));
+        yield return PlayModeMatch.WaitUntil(() => root.Q<Button>("gift-target-" + Bot) != null, 5f);
+        Assert.That(root.Q<Button>("gift-target-" + Bot).enabledSelf, Is.False, "a bot has no player object, so the dialog lists it as eliminated");
+
+        GameCore.Instance.Cmd_GiftResources((uint)Bot, 250f); // the dialog's send path, past the row
+        yield return PlayModeMatch.WaitUntil(() => noticed > 0, 5f);
+        Assert.That(bot.Resources, Is.GreaterThanOrEqualTo(botBefore + 250f - 0.01f), "the enemy received it");
+        Assert.That(GameCore.Instance.Stats.Of(PlayModeMatch.LocalOwner).GiftedOut, Is.EqualTo(250f));
+
+        GameCore.Instance.Cmd_GiftResources((uint)Bot, 250f);
+        yield return new WaitForSeconds(0.5f);
+        Assert.That(GameCore.Instance.Stats.Of(PlayModeMatch.LocalOwner).GiftedOut, Is.EqualTo(250f), "one gift per cooldown");
+        GameCore.Instance.Cmd_GiftResources((uint)Bot, me.Resources + 1000f);
+        GameCore.Instance.Cmd_GiftResources((uint)PlayModeMatch.LocalOwner, 10f);
+        yield return new WaitForSeconds(0.5f);
+        Assert.That(GameCore.Instance.Stats.Of(PlayModeMatch.LocalOwner).GiftedOut, Is.EqualTo(250f), "more than you have, or to yourself, is refused");
+    }
 }

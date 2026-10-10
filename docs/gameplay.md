@@ -11,18 +11,18 @@ WAR-2D is an RTS for any number of players, free-for-all or in teams. Every play
 ```mermaid
 stateDiagram-v2
     [*] --> Lobby
-    Lobby --> PlacingHQ: Host presses Start Game\n(server loads Map_2 and generates the map)
+    Lobby --> PlacingHQ: Everyone is ready and the host presses Start match\n(server loads Map_2 and generates the map)
     PlacingHQ --> Countdown: Every player has placed an HQ
     Countdown --> Playing: 5 s server timer (Match.CountdownSeconds)
     Playing --> GameOver: One HQ left (win) or none left (draw)
-    GameOver --> [*]: Return to main menu
+    GameOver --> [*]: End screen, then Main menu
 ```
 
-1. **Lobby** (`Main_Menu` scene). Players host or join by IP. Each player can edit their own nickname. The server owner (the host, or the next player if the host leaves) is the only one who sees the **Start Game** button, and the only one who can click a player's **Team** label to cycle it (solo, 1 to 4). Players on the same team are allies; solo players are on a team of their own. Teams are fixed when the match starts.
+1. **Main menu → Play → Lobby** (`Main_Menu` scene). The main menu (Play, Settings, Quit) has a live battle running behind it (`<MenuBattle>`; off in Settings → Graphics). **Play** asks for a nickname (remembered) and either **Host** (others join on your IP, port 7778) or **Join** an address (invalid addresses are flagged; while connecting there is a Cancel; a failed join says so). In the **lobby** every player picks an unused colour (8, from the palette) and readies up; in Teams mode they pick Team 1–4 or Solo (the host can also cycle anyone's team). The host (the server owner: the host, or the next player if the host leaves) sets the **match settings**: mode (Free-for-all or Teams), Diplomacy on/off, map size (`Lobby/MapSizes`: 256, 512, 1024) and starting resources (`Lobby/StartingResources`: 500–5000), the map seed (typed, or **Reroll**). Everyone sees the settings and a **map preview** with the 8 HQ areas (coloured for the players). Any settings change or reroll clears everyone's ready. **Start match** needs every player ready and at least two teams (so someone attacks someone). Teams are fixed when the match starts.
 2. **PlacingHQ** (`Map_2`). The map is generated from a seed (see "Map and tiles"). An HQ placement prompt is shown. Each player places a single 3×3 HQ on free ground, in any 90° rotation. The screen shows how many players are still placing.
 3. **Countdown.** When the last HQ is placed, the server starts a **5-second** countdown (`Match.CountdownSeconds`) and every client displays the same remaining time from the synced end time.
 4. **Playing.** Economy, building, spawning and combat run, and win/loss is checked every second.
-5. **GameOver.** Each player sees a Win, Lose or Draw screen with buttons to return to the main menu or quit.
+5. **GameOver.** Each player sees the **end screen**: Victory, Defeat or Draw, who won and how long it took, and every player's statistics (units built, lost and killed, buildings built and lost, mined, spent, gifted out and in, peak army). Statistics are sent only once the match is over. A player eliminated earlier sees Defeat at once and the table when the match ends. Buttons: Main menu, Quit.
 
 Before *Playing*, the economy, spawning, combat and win/loss checks are paused, and units can't be ordered. Passive income only starts in *Playing*.
 
@@ -146,4 +146,6 @@ The alert feed (top left) shows the newest four alerts for 8 s each (`Alerts/Sho
 - A player with no HQ is **eliminated**: all their remaining units and buildings are destroyed (each with an explosion) and they see the Lose screen. Eliminated players stop earning passive income.
 - If no player with an HQ left attacks another (they are all at peace with each other, or only one is left), and the match started with more than one team, they **win** together: every HQ holder, and every eliminated player whose starting team includes one, sees the Win screen. Peace must be mutual: if one survivor still attacks another, the match goes on. Everyone else sees the Lose screen, and the winner's world is wiped with explosions as the match ends.
 - If nobody has an HQ, it's a **draw**, and everyone sees a Draw screen.
+- **Esc** (or Menu on the top bar) opens the **in-match menu**: Resume, Settings, Surrender and Leave match. Nothing pauses. **Surrender** asks to confirm, then eliminates you exactly as losing your HQ.
+- **Gifting.** Gift (top bar) sends resources to any other live player, ally or enemy (marked from whom you attack): a whole amount from 1 up to what you have, one gift every 5 s (`Gifting/CooldownSeconds`). It is taken from you and given at once; only you and the recipient are told (the recipient gets an alert).
 - When a player disconnects mid-match, they're removed from the player list, their units and buildings are destroyed, and the lobby UI updates. If the **server owner** leaves, ownership passes to another player; if the host itself leaves, the server shuts down and everyone returns to the main menu.

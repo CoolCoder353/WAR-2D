@@ -169,4 +169,28 @@ public class MapGeneratorTests
         public byte TileAt(int2 t) => Contains(t) ? Tiles[t.y * Width + t.x] : Border;
         public void Dispose() => Tiles.Dispose();
     }
+
+    [Test]
+    public void EveryLobbySizeFitsEightClearings()
+    {
+        int[] sizes = Config.ConfigParser.Parse(System.IO.File.ReadAllText("Assets/Resources/GameConfig.xml"), new List<string>()).Lobby.MapSizes;
+        Assert.IsNotEmpty(sizes);
+        foreach (int size in sizes)
+        for (uint seed = 1; seed <= 5; seed++)
+        {
+            (NativeArray<byte> tiles, int2[] sites) = MapGenerator.Generate(size, seed, 0.04f, Allocator.Temp);
+            try
+            {
+                Assert.AreEqual(8, sites.Length, $"size {size}");
+                foreach (int2 site in sites)
+                for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                    Assert.AreEqual((byte)TileType.Ground, tiles[(site.y + dy) * size + site.x + dx], $"size {size} seed {seed}: the 3x3 HQ footprint at {site} is clear");
+            }
+            finally
+            {
+                tiles.Dispose();
+            }
+        }
+    }
 }

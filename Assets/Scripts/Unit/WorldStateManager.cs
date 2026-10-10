@@ -96,13 +96,16 @@ public partial class WorldStateManager : NetworkBehaviour
     {
         entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
 
+        // The lobby's settings are the only source of the map's size and seed (the config gives the defaults).
         MapConfig m = ConfigLoader.LoadConfig().Match.Map;
+        int size = GameCore.Instance != null ? GameCore.Instance.Settings.MapSize : m.Size;
+        uint settingsSeed = GameCore.Instance != null ? GameCore.Instance.Settings.Seed : m.Seed;
         var timer = System.Diagnostics.Stopwatch.StartNew();
-        if (m.Size > 0)
+        if (size > 0)
         {
-            uint seed = m.Seed != 0 ? m.Seed : (uint)UnityEngine.Random.Range(1, int.MaxValue);
-            Map = MapStore.Generate(m.Size, seed, m.GemChance);
-            MapSize = m.Size;
+            uint seed = settingsSeed != 0 ? settingsSeed : (uint)UnityEngine.Random.Range(1, int.MaxValue);
+            Map = MapStore.Generate(size, seed, m.GemChance);
+            MapSize = size;
             MapSeed = seed;
             MapHash = Map.Hash();
         }
@@ -119,6 +122,8 @@ public partial class WorldStateManager : NetworkBehaviour
         Sim.Settled += OnSettled;
         AlertsConfig alertConfig = ConfigLoader.LoadConfig().Alerts;
         Alerts = new AlertService(alertConfig.ThrottleSeconds, alertConfig.AreaTiles);
+        Sim.UnitKilled += (owner, killer) => GameCore.Instance?.Stats.UnitDied(owner, killer);
+        Sim.UnitSpawned += owner => GameCore.Instance?.Stats.UnitBuilt(owner);
         Sim.VisionShareChanged += (from, to, on) =>
             Alerts.Add(to, new Alert { Kind = on ? AlertKind.VisionSharedWithYou : AlertKind.VisionUnshared, OtherOwnerId = from });
         Sim.DiplomacyChanged += (from, to) =>
@@ -144,14 +149,15 @@ public partial class WorldStateManager : NetworkBehaviour
     }
 
     /// <summary>Records a unit the simulation removed, for its explosion.</summary>
-    [Server]
+    [ServerCallback]
     private void OnUnitDied(int id, float2 position) => pendingDeathPositions.Add(position);
 
     /// <summary>Registers a building the simulation created, and checks whether every HQ is down.</summary>
-    [Server]
+    [ServerCallback]
     private void OnBuildingCreated(int id, Entity entity)
     {
         AddBuilding(entity, id);
+        GameCore.Instance?.Stats.BuildingBuilt(EntityManager.GetComponentData<BuildingData>(entity).ownerId);
         if (EntityManager.GetComponentData<BuildingData>(entity).buildingType == BuildingType.Base)
             GameCore.Instance?.CheckHQPlacementProgress();
     }
@@ -199,7 +205,7 @@ public partial class WorldStateManager : NetworkBehaviour
     }
 
     /// <summary>Runs on the settled world at each tick boundary: death explosions (filtered by fog) and squad counts.</summary>
-    [Server]
+    [ServerCallback]
     private void OnSettled(SimData data, int tick, int count)
     {
         FlushDeathEvents(data);
@@ -214,17 +220,29 @@ public partial class WorldStateManager : NetworkBehaviour
     /// <summary>The server's alerts (own damage, upkeep, vision sharing, gifts), sent once per tick.</summary>
     public AlertService Alerts { get; private set; }
 
-    /// <summary>Marks every owner with an unpaid unit (the upkeep alert fires on the first unpaid second).</summary>
+    private readonly Dictionary<int, int> armyScratch = new Dictionary<int, int>();
+
+    /// <summary>
+    /// Once a second: marks every owner with an unpaid unit (the upkeep alert fires on the first unpaid
+    /// second) and records each owner's army size (the end screen's peak army).
+    /// </summary>
     [Server]
     private void MarkUnpaidOwners(SimData data, int count)
     {
-        int last = 0;
+        GameCore core = GameCore.Instance;
+        if (core == null) return;
+        armyScratch.Clear();
+        int lastUnpaid = 0;
         for (int slot = 0; slot < count; slot++)
         {
-            if (data.Unpaid[slot] == 0 || data.OwnerId[slot] == last) continue;
-            last = data.OwnerId[slot];
-            GameCore.Instance?.GetServerPlayerById(last)?.MarkUnpaid();
+            int owner = data.OwnerId[slot];
+            armyScratch.TryGetValue(owner, out int n);
+            armyScratch[owner] = n + 1;
+            if (data.Unpaid[slot] == 0 || owner == lastUnpaid) continue;
+            lastUnpaid = owner;
+            core.GetServerPlayerById(owner)?.MarkUnpaid();
         }
+        foreach (KeyValuePair<int, int> army in armyScratch) core.Stats.Army(army.Key, army.Value);
     }
 
     /// <summary>A live building's owner and anchor tile, by id.</summary>
@@ -304,7 +322,9 @@ public partial class WorldStateManager : NetworkBehaviour
 
         if (EntityManager.HasComponent<BuildingData>(entity))
         {
-            int id = EntityManager.GetComponentData<BuildingData>(entity).id;
+            BuildingData building = EntityManager.GetComponentData<BuildingData>(entity);
+            int id = building.id;
+            if (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing) GameCore.Instance.Stats.BuildingLost(building.ownerId);
             Buildings.Remove(id);
             Ids?.Free(id);
             if (buildingFootprints.Remove(id, out List<int2> footprint))

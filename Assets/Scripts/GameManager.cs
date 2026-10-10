@@ -148,17 +148,13 @@ public class GameManager : NetworkManager
 
     /// <summary>
     /// Called on the client when it disconnects from the server.
+    /// Not [Client]: Mirror calls it after the client is already inactive. Mirror loads the
+    /// offline scene (Main_Menu) itself.
     /// </summary>
-    [Client]
     public override void OnClientDisconnect()
     {
         base.OnClientDisconnect();
-
-        // Log the disconnection
         Debug.Log("Disconnected from server");
-
-        //Return to main menu via resetting the scene
-        SceneManager.LoadScene("Main_Menu");
     }
 
 

@@ -49,6 +49,21 @@
     <ChangeCooldownSeconds>2.0</ChangeCooldownSeconds>  <!-- v0.6: per player, per command -->
   </Diplomacy>
 
+  <Lobby>
+    <MapSizes>256 512 1024</MapSizes>                    <!-- v0.6: map sizes the host may pick -->
+    <StartingResources>500 1000 2500 5000</StartingResources> <!-- v0.6: starting resources the host may pick -->
+  </Lobby>
+
+  <MenuBattle>
+    <UnitsPerArmy>1500</UnitsPerArmy>  <!-- v0.6: each of the two armies behind the main menu -->
+    <MapSize>512</MapSize>             <!-- v0.6: its generated map -->
+    <Seed>7</Seed>
+  </MenuBattle>
+
+  <Gifting>
+    <CooldownSeconds>5.0</CooldownSeconds>  <!-- v0.6: per sender -->
+  </Gifting>
+
   <Alerts>
     <ThrottleSeconds>10.0</ThrottleSeconds>  <!-- v0.6: one Under-attack alert per area per window -->
     <AreaTiles>32</AreaTiles>                <!-- v0.6: side of an alert area, in tiles -->

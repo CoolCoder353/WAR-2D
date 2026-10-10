@@ -102,11 +102,9 @@ namespace WAR2D.UI
         public void Redraw(ClientFog fog)
         {
             texture.Begin(fog.State);
-            GameCore core = GameCore.Instance;
             foreach (ClientBuildings.Entry entry in ClientBuildings.Current.Entries.Values)
             {
-                int slot = core != null ? core.PlayerOrder.IndexOf(entry.Data.ownerId) : -1;
-                texture.PlotBuilding(entry.Data.position, PlayerPalette.Of(slot), entry.Ghost);
+                texture.PlotBuilding(entry.Data.position, PlayerPalette.OfOwner(entry.Data.ownerId), entry.Ghost);
             }
             ClientWorld.Instance?.PlotOn(texture);
             texture.End();

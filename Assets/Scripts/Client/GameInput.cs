@@ -33,6 +33,8 @@ public static class GameInput
     public static InputAction Stop => Map["Stop"];
     /// <summary>Holds the selection in place (H).</summary>
     public static InputAction Hold => Map["Hold"];
+    /// <summary>Opens or closes the in-match menu (Esc).</summary>
+    public static InputAction Menu => Map["Menu"];
     /// <summary>Held while ordering to queue the order after the current one (Shift).</summary>
     public static InputAction QueueModifier => Map["QueueModifier"];
 
@@ -75,6 +77,7 @@ public static class GameInput
         map.AddAction("Stop", InputActionType.Button, "<Keyboard>/s");
         map.AddAction("Hold", InputActionType.Button, "<Keyboard>/h");
         map.AddAction("QueueModifier", InputActionType.Button, "<Keyboard>/shift");
+        map.AddAction("Menu", InputActionType.Button, "<Keyboard>/escape");
         for (int key = 0; key <= 9; key++) map.AddAction($"Squad{key}", InputActionType.Button, $"<Keyboard>/{key}");
 
         map.Enable();

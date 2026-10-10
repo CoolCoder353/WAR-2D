@@ -119,7 +119,7 @@ public class BuildingPlacement : MonoBehaviour
     private void QueryPlacement()
     {
         queryTimer += Time.unscaledDeltaTime;
-        if ((math.any(currentAnchor != lastQueriedAnchor) || currentRotation != lastQueriedRotation) && queryTimer >= 0.1f && WorldStateManager.Instance != null)
+        if ((math.any(currentAnchor != lastQueriedAnchor) || currentRotation != lastQueriedRotation) && queryTimer >= 0.1f && NetworkClient.ready && WorldStateManager.Instance != null)
         {
             WorldStateManager.Instance.CanBuildBuildingCommand(currentAnchor, PlacingType, currentRotation);
             lastQueriedAnchor = currentAnchor;

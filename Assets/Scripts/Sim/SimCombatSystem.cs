@@ -13,6 +13,8 @@ namespace WAR2D.Sim
         public byte Kind;
         public int Slot;
         public float Amount;
+        /// <summary>The attacker's owner (who gets the kill).</summary>
+        public int AttackerOwner;
     }
 
     /// <summary>
@@ -108,6 +110,7 @@ namespace WAR2D.Sim
             {
                 Health = data.Health,
                 Type = data.Type,
+                OwnerId = data.OwnerId,
                 Cooldown = data.Cooldown,
                 Target = data.Target,
                 TargetKind = data.TargetKind,
@@ -125,6 +128,7 @@ namespace WAR2D.Sim
             {
                 Hits = hits,
                 Health = data.Health,
+                LastHitBy = data.LastHitBy,
                 BuildingHealth = data.BuildingHealth,
                 BuildingDamage = data.BuildingDamage,
             }.Schedule(state.Dependency);
@@ -133,6 +137,7 @@ namespace WAR2D.Sim
             {
                 Health = data.Health,
                 Cooldown = data.Cooldown,
+                LastHitBy = data.LastHitBy,
                 Target = data.Target,
                 TargetKind = data.TargetKind,
                 IdOf = data.IdOf,
@@ -203,6 +208,7 @@ namespace WAR2D.Sim
     {
         [ReadOnly] public NativeArray<float> Health;
         [ReadOnly] public NativeArray<byte> Type;
+        [ReadOnly] public NativeArray<int> OwnerId;
         public NativeArray<float> Cooldown;
         [ReadOnly] public NativeArray<int> Target;
         [ReadOnly] public NativeArray<byte> TargetKind;
@@ -228,18 +234,19 @@ namespace WAR2D.Sim
             byte kind = TargetKind[i];
             float multiplier = WAR2D.Rules.DamageTable.Get(DamageTable, type, kind == TargetKinds.Unit ? TargetClass.Unit : TargetClass.Building);
             float damage = (type < DamageByType.Length ? DamageByType[type] : 0f) * multiplier;
-            Hits.Enqueue(new DamageHit { Kind = kind, Slot = target, Amount = damage });
+            Hits.Enqueue(new DamageHit { Kind = kind, Slot = target, Amount = damage, AttackerOwner = OwnerId[i] });
             Events.AddNoResize(new int2(IdOf[i], kind == TargetKinds.Unit ? IdOf[target] : BuildingIds[target]));
             Cooldown[i] = type < CooldownByType.Length ? CooldownByType[type] : 1f;
         }
     }
 
-    /// <summary>The single writer of damage: units lose health in the SoA, buildings accumulate it.</summary>
+    /// <summary>The single writer of damage: units lose health (and remember who hit them last) in the SoA, buildings accumulate it.</summary>
     [BurstCompile]
     public struct ApplyDamageJob : IJob
     {
         public NativeQueue<DamageHit> Hits;
         public NativeArray<float> Health;
+        public NativeArray<int> LastHitBy;
         public NativeArray<float> BuildingHealth;
         public NativeArray<float> BuildingDamage;
 
@@ -250,6 +257,7 @@ namespace WAR2D.Sim
                 if (hit.Kind == TargetKinds.Unit)
                 {
                     Health[hit.Slot] = math.max(0f, Health[hit.Slot] - hit.Amount);
+                    LastHitBy[hit.Slot] = hit.AttackerOwner;
                 }
                 else
                 {
@@ -266,6 +274,7 @@ namespace WAR2D.Sim
     {
         [ReadOnly] public NativeArray<float> Health;
         [ReadOnly] public NativeArray<float> Cooldown;
+        [ReadOnly] public NativeArray<int> LastHitBy;
         [ReadOnly] public NativeArray<int> Target;
         [ReadOnly] public NativeArray<byte> TargetKind;
         [ReadOnly] public NativeArray<int> IdOf;
@@ -277,6 +286,7 @@ namespace WAR2D.Sim
             if (index >= Count) return;
             unit.Health = Health[index];
             unit.Cooldown = Cooldown[index];
+            unit.LastHitBy = LastHitBy[index];
             int target = Target[index];
             byte kind = TargetKind[index];
             unit.TargetKind = kind;

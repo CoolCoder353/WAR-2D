@@ -28,6 +28,10 @@ namespace WAR2D.UI
         private DiplomacyPanelController diplomacy;
         private ClientPlayer alertSource;
         private Button diplomacyButton;
+        private InMatchMenuController matchMenu;
+        private GiftDialogController gift;
+        private EndScreenController endScreen;
+        private VisualElement root;
         private float playerTimer, selectionTimer;
         private int placedHQs, players;
 
@@ -40,6 +44,18 @@ namespace WAR2D.UI
         /// <summary>The alert feed's data.</summary>
         public AlertFeedModel Alerts { get; private set; }
 
+        /// <summary>The in-match menu's controller.</summary>
+        public InMatchMenuController MatchMenu => matchMenu;
+
+        /// <summary>The gift dialog's controller.</summary>
+        public GiftDialogController Gift => gift;
+
+        /// <summary>The end screen's controller.</summary>
+        public EndScreenController EndScreen => endScreen;
+
+        /// <summary>Raised by the in-match menu's Settings button.</summary>
+        public event System.Action SettingsRequested;
+
         /// <summary>The diplomacy panel's controller.</summary>
         public DiplomacyPanelController Diplomacy => diplomacy;
 
@@ -51,7 +67,7 @@ namespace WAR2D.UI
 
         private void OnEnable()
         {
-            VisualElement root = GetComponent<UIDocument>().rootVisualElement;
+            root = GetComponent<UIDocument>().rootVisualElement;
             // Each section's template fills the screen; only its panels take the pointer.
             root.Query<TemplateContainer>().ForEach(t => t.pickingMode = PickingMode.Ignore);
 
@@ -80,6 +96,24 @@ namespace WAR2D.UI
             diplomacy.AttackToggled += SetAttack;
             diplomacy.ShareToggled += SetShareVision;
 
+            matchMenu = new InMatchMenuController(root);
+            matchMenu.SettingsClicked += () => SettingsRequested?.Invoke();
+            matchMenu.SurrenderConfirmed += () => GameCore.Instance?.Cmd_Surrender();
+            matchMenu.LeaveClicked += () => GameManager.Instance?.LeaveLobby();
+            topBar.MenuClicked += matchMenu.Toggle;
+
+            gift = new GiftDialogController(root, Model, config.Gifting.CooldownSeconds);
+            gift.GiftRequested += (owner, amount) => GameCore.Instance?.Cmd_GiftResources((uint)owner, amount);
+            topBar.GiftClicked += () => { diplomacy.SetOpen(false); gift.Toggle(); };
+            topBar.DiplomacyClicked += gift.Close;
+
+            endScreen = new EndScreenController(root);
+            endScreen.MainMenuClicked += () => GameManager.Instance?.LeaveLobby();
+            endScreen.QuitClicked += () => GameManager.Instance?.QuitGame();
+            ClientPlayer.MatchEnded += OnMatchEnded;
+            GameCore.MatchStatsReceived += OnMatchStats;
+            GameCore.ClearMatchStats(); // a new match
+
             Selection.FilterRequested += OnFilter;
             commandCard.OrderClicked += OnOrder;
             commandCard.BuildClicked += OnBuild;
@@ -98,6 +132,9 @@ namespace WAR2D.UI
             minimap = null;
             alertFeed?.Dispose();
             diplomacy?.Dispose();
+            gift?.Dispose();
+            ClientPlayer.MatchEnded -= OnMatchEnded;
+            GameCore.MatchStatsReceived -= OnMatchStats;
             Model.DiplomacyChanged -= ShowDiplomacyButton;
             if (alertSource != null) alertSource.AlertsReceived -= OnAlerts;
             alertSource = null;
@@ -110,6 +147,13 @@ namespace WAR2D.UI
         private void Update()
         {
             Model.PullResources();
+            if (GameInput.Menu.WasPressedThisFrame() && !endScreen.IsShown)
+            {
+                if (gift.IsOpen) gift.Close();
+                else if (diplomacy.IsOpen) diplomacy.SetOpen(false);
+                else matchMenu.Toggle();
+            }
+            matchMenu.SetCanSurrender(root, GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing && !endScreen.IsShown);
             minimap.Update(Time.unscaledDeltaTime);
             Model.PullDiplomacy();
             Alerts.Expire(Time.unscaledTime);
@@ -137,11 +181,37 @@ namespace WAR2D.UI
         {
             placedHQs = 0;
             players = 0;
-            foreach (ClientPlayer player in FindObjectsByType<ClientPlayer>(FindObjectsSortMode.None))
+            foreach (ClientPlayer player in FindObjectsByType<ClientPlayer>())
             {
                 players++;
                 if (player.hasPlacedHQ) placedHQs++;
             }
+        }
+
+        /// <summary>The local player's match ended: the end screen replaces the HUD (the table follows at game over).</summary>
+        private void OnMatchEnded(EndResult result)
+        {
+            matchMenu.Close();
+            gift.Close();
+            diplomacy.SetOpen(false);
+            GameCore core = GameCore.Instance;
+            float seconds = core != null ? (float)(NetworkTime.time - core.MatchStartTime) : 0f;
+            var winners = new List<string>();
+            if (result == EndResult.Victory) winners.Add("You");
+            endScreen.Show(result, EndScreenController.Line(result, result == EndResult.Victory ? null : winners, seconds));
+            if (GameCore.LastMatchStats != null) OnMatchStats(GameCore.LastMatchStats);
+        }
+
+        /// <summary>The final statistics arrived (game over): fills the table and names the winners.</summary>
+        private void OnMatchStats(MatchResult result)
+        {
+            if (!endScreen.IsShown) return;
+            var winners = new List<string>();
+            foreach (int owner in result.Winners) winners.Add(NameOf(owner));
+            bool won = System.Array.IndexOf(result.Winners, Model.LocalOwnerId) >= 0;
+            EndResult mine = result.Winners.Length == 0 ? EndResult.Draw : won ? EndResult.Victory : EndResult.Defeat;
+            endScreen.Show(mine, EndScreenController.Line(mine, winners, result.DurationSeconds));
+            endScreen.ShowStats(result, NameOf, PlayerPalette.ColourIndexOf);
         }
 
         private void ShowDiplomacyButton() => diplomacyButton.EnableInClassList("top-bar__hidden", !Model.DiplomacyEnabled);

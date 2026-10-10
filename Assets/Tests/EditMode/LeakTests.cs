@@ -266,4 +266,17 @@ public class LeakTests
         StringAssert.DoesNotContain("ATTACKER", text, "the feed text has no attacker even if an id slipped in");
         Assert.IsEmpty(FightWithAlerts(3, out _));
     }
+
+    [Test]
+    public void StatsNeverSentBeforeGameOver()
+    {
+        foreach (GameState state in System.Enum.GetValues(typeof(GameState)))
+            Assert.AreEqual(state == GameState.GameOver, StatsRules.MaySend(state), $"stats in {state}");
+    }
+
+    [Test]
+    public void GiftNoticeOnlyToSenderAndRecipient()
+    {
+        CollectionAssert.AreEquivalent(new[] { 7, 9 }, GiftRules.Recipients(7, 9));
+    }
 }

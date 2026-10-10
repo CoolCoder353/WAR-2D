@@ -1,0 +1,24 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="in-match-menu" class="overlay-screen">
+        <ui:VisualElement name="match-menu-panel" class="panel match-menu">
+            <ui:Label text="Menu" class="panel__title" />
+            <ui:VisualElement class="match-menu__content">
+                <ui:Button name="resume-button" text="Resume" class="button button--primary match-menu__button" />
+                <ui:Button name="match-settings-button" text="Settings" class="button match-menu__button" />
+                <ui:Button name="surrender-button" text="Surrender" class="button button--danger match-menu__button" />
+                <ui:Button name="leave-match-button" text="Leave match" class="button button--danger match-menu__button" />
+                <ui:Label text="The match keeps running while this is open." class="text--secondary" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement name="surrender-panel" class="panel surrender">
+            <ui:Label text="Surrender?" class="panel__title" />
+            <ui:VisualElement class="surrender__content">
+                <ui:Label text="Your HQ, units and buildings are destroyed and you're out of the match. Your team keeps playing." class="text surrender__text" />
+                <ui:VisualElement class="row">
+                    <ui:Button name="surrender-cancel" text="Cancel" class="button" />
+                    <ui:Button name="surrender-confirm" text="Surrender" class="button button--danger" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

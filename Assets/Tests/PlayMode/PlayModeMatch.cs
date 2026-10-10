@@ -46,8 +46,13 @@ public static class PlayModeMatch
         yield return WaitUntil(() => NetworkClient.isConnected && NetworkClient.localPlayer != null, 15f);
         Assert.That(GameCore.Instance.ServerPlayers.Count, Is.EqualTo(1));
 
+        // A solo host may start without readying up or a second team. The host's own Command runs on a
+        // later server update, so the bypass stays on until the match scene is up.
+        bool devAllowed = DevApi.AllowForTests;
+        DevApi.AllowForTests = true;
         GameCore.Instance.Cmd_StartGame();
         yield return WaitUntil(() => SceneManager.GetActiveScene().name == config.Match.Scene && WorldStateManager.Instance != null && NetworkClient.ready, 30f);
+        DevApi.AllowForTests = devAllowed;
         Assert.That(GameCore.Instance.CurrentState, Is.EqualTo(GameState.PlacingHQ));
     }
 

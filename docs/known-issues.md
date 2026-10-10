@@ -28,6 +28,10 @@ v0.5 passed the EditMode and PlayMode suites (including `LeakTests`), but nobody
 - `GameCore`'s `NetworkIdentity` in `Main_Menu` was **Server Only** (since the initial commit), so remote clients never received it: no game state, player list, HQ prompt or HQ placement, and every `GameCore` command was unusable from a joining client. The host worked because it is the server, which is why no hosted PlayMode test caught it. Fixed; `tools/qa-smoke.sh` now covers a real joining client.
 - `Run In Background` was off, so a player who alt-tabbed stopped updating (and a host froze the match). Now on.
 
+## UI
+
+- **`com.unity.ugui` stays installed.** All screens are UI Toolkit since v0.6, but building health bars are still a world-space uGUI slider (`Resources/Ui/HealthBarUI`, `Client/DataClient.cs`) on the per-building GameObjects. They go with instanced buildings. **v0.7**
+
 ## Developer tools
 
 - **Bots look eliminated in the HUD.** Dev bots (`GameCore.AddBot`, perf harness and tests) have no player object, so the top bar and diplomacy panel list them as "Player (eliminated)" with disabled switches, and their diplomacy bit reaches clients only after `SendAllDiplomacy` is called again (bots join after match start). Dev only; real players are unaffected. (no target)

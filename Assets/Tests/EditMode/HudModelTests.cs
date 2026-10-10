@@ -43,7 +43,7 @@ public class HudModelTests
         // A player row carries public lobby data only, and nothing on the model takes another
         // player's resources: the only resource setter is for the local player's own numbers.
         string[] rowFields = typeof(PlayerRow).GetFields(BindingFlags.Public | BindingFlags.Instance).Select(f => f.Name).ToArray();
-        CollectionAssert.AreEquivalent(new[] { "OwnerId", "Nickname", "ColourIndex", "StartTeam", "Eliminated" }, rowFields);
+        CollectionAssert.AreEquivalent(new[] { "OwnerId", "Nickname", "ColourIndex", "OrderIndex", "StartTeam", "Eliminated" }, rowFields);
         foreach (MethodInfo m in typeof(HudModel).GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
         {
             if (!m.Name.Contains("Resources")) continue;

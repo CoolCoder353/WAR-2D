@@ -163,6 +163,16 @@ namespace WAR2D.Sim
 
         internal void RaiseUnitDied(int id, float2 position) => UnitDied?.Invoke(id, position);
 
+        /// <summary>Raised for every unit removed: (owner, killer's owner or 0). Match statistics.</summary>
+        public event Action<int, int> UnitKilled;
+
+        /// <summary>Raised for every unit created: (owner). Match statistics.</summary>
+        public event Action<int> UnitSpawned;
+
+        internal void RaiseUnitKilled(int owner, int killer) => UnitKilled?.Invoke(owner, killer);
+
+        internal void RaiseUnitSpawned(int owner) => UnitSpawned?.Invoke(owner);
+
         internal void RaiseSettled(SimData data, int tick, int count) => Settled?.Invoke(data, tick, count);
 
         internal void RaiseDiplomacyChanged(int fromOwner, int toOwner) => DiplomacyChanged?.Invoke(fromOwner, toOwner);

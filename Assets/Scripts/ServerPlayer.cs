@@ -25,6 +25,16 @@ public class ServerPlayer
         Resources = startingResources;
     }
 
+    /// <summary>Sets the balance at match start (the lobby's starting resources) and clears the per-second counters.</summary>
+    public void ResetResources(float amount)
+    {
+        Resources = amount > 0f ? amount : 0f;
+        incomeThisSecond = upkeepThisSecond = 0f;
+        IncomeLastSecond = UpkeepLastSecond = 0f;
+        SpentThisMatch = 0f;
+        ResourcesDirty = true;
+    }
+
     public void Add(float amount)
     {
         if (!(amount > 0f)) return; // also rejects NaN
@@ -67,12 +77,17 @@ public class ServerPlayer
         upkeepThisSecond = 0f;
     }
 
-    public bool TrySpend(float amount)
+    /// <summary>Resources spent this match (buildings, units, upkeep; not gifts), for the end screen.</summary>
+    public float SpentThisMatch { get; private set; }
+
+    /// <summary>Takes <paramref name="amount"/> if the player can afford it; it counts as spent unless <paramref name="countAsSpent"/> is false (gifts).</summary>
+    public bool TrySpend(float amount, bool countAsSpent = true)
     {
         float balance = Resources;
         if (!UpkeepRules.TryCharge(ref balance, amount)) return false;
         if (balance != Resources)
         {
+            if (countAsSpent) SpentThisMatch += Resources - balance;
             Resources = balance;
             ResourcesDirty = true;
         }

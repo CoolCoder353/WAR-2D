@@ -9,26 +9,29 @@ namespace WAR2D.UI
     {
         public readonly int OwnerId;
         public readonly string Nickname;
-        /// <summary>Index into the palette's player colours (the owner's place in <c>GameCore.PlayerOrder</c>).</summary>
+        /// <summary>Index into the palette's player colours (the colour they picked in the lobby).</summary>
         public readonly int ColourIndex;
+        /// <summary>The owner's place in <c>GameCore.PlayerOrder</c> (their bit in the diplomacy masks).</summary>
+        public readonly int OrderIndex;
         public readonly int StartTeam;
         public readonly bool Eliminated;
 
-        public PlayerRow(int ownerId, string nickname, int colourIndex, int startTeam, bool eliminated)
+        public PlayerRow(int ownerId, string nickname, int colourIndex, int startTeam, bool eliminated, int orderIndex = -1)
         {
             OwnerId = ownerId;
             Nickname = nickname;
             ColourIndex = colourIndex;
+            OrderIndex = orderIndex < 0 ? colourIndex : orderIndex;
             StartTeam = startTeam;
             Eliminated = eliminated;
         }
 
         public bool Equals(PlayerRow other) => OwnerId == other.OwnerId && Nickname == other.Nickname &&
-            ColourIndex == other.ColourIndex && StartTeam == other.StartTeam && Eliminated == other.Eliminated;
+            ColourIndex == other.ColourIndex && OrderIndex == other.OrderIndex && StartTeam == other.StartTeam && Eliminated == other.Eliminated;
 
         public override bool Equals(object obj) => obj is PlayerRow other && Equals(other);
 
-        public override int GetHashCode() => HashCode.Combine(OwnerId, Nickname, ColourIndex, StartTeam, Eliminated);
+        public override int GetHashCode() => HashCode.Combine(OwnerId, Nickname, ColourIndex, OrderIndex, StartTeam, Eliminated);
     }
 
     /// <summary>
@@ -142,7 +145,8 @@ namespace WAR2D.UI
                 // A player who left has no object; one whose HQ fell lost hasPlacedHQ while Playing.
                 bool eliminated = player == null || (core.CurrentState == GameState.Playing && !player.hasPlacedHQ);
                 string name = player != null && !string.IsNullOrEmpty(player.nickname) ? player.nickname : "Player";
-                scratch.Add(new PlayerRow(owner, name, i, core.TeamOf(owner), eliminated));
+                int colour = player != null ? player.colourIndex : i;
+                scratch.Add(new PlayerRow(owner, name, colour, core.TeamOf(owner), eliminated, i));
             }
             SetPlayers(scratch);
         }

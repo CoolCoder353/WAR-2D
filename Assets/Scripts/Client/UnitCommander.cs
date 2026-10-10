@@ -341,6 +341,9 @@ public class UnitCommander : NetworkBehaviour
                 buildingType = typeof(SpawnerClientManager);
                 break;
             // Add other building types as needed
+            case BuildingType.Base:
+            case BuildingType.Miner:
+                break; // no client-side behaviour
             default:
                 Debug.LogWarning($"No client script mapping found for building type {unit.buildingType}");
                 break;
@@ -359,10 +362,6 @@ public class UnitCommander : NetworkBehaviour
             {
                 Debug.LogWarning($"Client script '{buildingType.Name}' does not contain a 'buildingData' field. Or it is spelled incorrectly. Most likely the ladder.");
             }
-        }
-        else
-        {
-            Debug.LogWarning($"No client script found for building type {unit.buildingType}");
         }
 
         buildingGameObjects.Add(unit.id, go);

@@ -15,6 +15,9 @@ public class ConfigParserTests
   <Replication><CorrectionIntervalTicks>4</CorrectionIntervalTicks><CorrectionThreshold>0.25</CorrectionThreshold><DeltaScale>8</DeltaScale><OffscreenThreshold>2</OffscreenThreshold><OffscreenIntervalTicks>20</OffscreenIntervalTicks><SnapshotBytesPerSecond>262144</SnapshotBytesPerSecond></Replication>
   <Orders><MaxQueued>4</MaxQueued></Orders>
   <Diplomacy><ChangeCooldownSeconds>2</ChangeCooldownSeconds></Diplomacy>
+  <Lobby><MapSizes>256 512 1024</MapSizes><StartingResources>500 1000 2500 5000</StartingResources></Lobby>
+  <MenuBattle><UnitsPerArmy>1500</UnitsPerArmy><MapSize>512</MapSize><Seed>7</Seed></MenuBattle>
+  <Gifting><CooldownSeconds>5</CooldownSeconds></Gifting>
   <Alerts><ThrottleSeconds>10</ThrottleSeconds><AreaTiles>32</AreaTiles><ShowSeconds>8</ShowSeconds></Alerts>
   <DamageTable><Entry attacker=""Tank"" target=""Unit"">1.0</Entry><Entry attacker=""Tank"" target=""Building"">1.0</Entry><Entry attacker=""Tank"" target=""Wall"">0.5</Entry></DamageTable>
   <Units>

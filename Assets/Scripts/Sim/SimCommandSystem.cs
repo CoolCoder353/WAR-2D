@@ -148,6 +148,7 @@ namespace WAR2D.Sim
                 TargetId = -1,
                 OrderSlot = -1,
             });
+            context.RaiseUnitSpawned(command.OwnerId);
             command.OnSpawned?.Invoke(id);
         }
 

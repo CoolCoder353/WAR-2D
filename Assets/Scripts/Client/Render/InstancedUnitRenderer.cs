@@ -37,7 +37,6 @@ namespace WAR2D.Client.Render
         private const int QuadVertices = 6;
 
         /// <summary>Owner tints, indexed by the owner's slot in <c>GameCore.PlayerOrder</c>.</summary>
-        public static readonly Color32[] TeamColors = PlayerPalette.Standard;
 
         public static uint Pack(Color32 c) => (uint)c.r | ((uint)c.g << 8) | ((uint)c.b << 16) | ((uint)c.a << 24);
 

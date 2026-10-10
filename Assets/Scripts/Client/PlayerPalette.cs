@@ -1,20 +1,26 @@
 using UnityEngine;
 
 /// <summary>
-/// Player colours, in <c>GameCore.PlayerOrder</c> order: the approved Figma tokens <c>color/player/1–8</c>
-/// (standard palette; the same values as <c>--color-player-N</c> in <c>Assets/UI/Theme.uss</c>). Units,
-/// the minimap and the HUD swatches all use them.
+/// Player colours for drawing: the current palette's (<see cref="Palettes"/>), by colour index, and each
+/// player's colour index (their lobby colour). Units, buildings, the minimap and the HUD swatches all use them.
 /// </summary>
 public static class PlayerPalette
 {
-    public static readonly Color32[] Standard =
-    {
-        new Color32(0x4D, 0xA3, 0xFF, 255), new Color32(0xE5, 0x48, 0x4D, 255),
-        new Color32(0x46, 0xC4, 0x6B, 255), new Color32(0xF2, 0xC2, 0x30, 255),
-        new Color32(0xA9, 0x70, 0xFF, 255), new Color32(0xF0, 0x7F, 0x2E, 255),
-        new Color32(0x2F, 0xC4, 0xC4, 255), new Color32(0xE8, 0x5F, 0xB5, 255),
-    };
+    /// <summary>A palette colour by index in the current palette (grey when unknown).</summary>
+    public static Color32 Of(int colourIndex) => colourIndex < 0 ? new Color32(160, 160, 160, 255) : Palettes.Player(Palettes.Current, colourIndex);
 
-    /// <summary>The colour of the player at <paramref name="slot"/> in the player order (grey when unknown).</summary>
-    public static Color32 Of(int slot) => slot < 0 ? new Color32(160, 160, 160, 255) : Standard[slot % Standard.Length];
+    /// <summary>
+    /// A player's colour index: the colour they picked in the lobby (public, <see cref="ClientPlayer.colourIndex"/>),
+    /// or for a bot without a player object, its place in the player order. -1 when unknown.
+    /// </summary>
+    public static int ColourIndexOf(int ownerId)
+    {
+        if (Mirror.NetworkClient.spawned.TryGetValue((uint)ownerId, out Mirror.NetworkIdentity identity) && identity != null &&
+            identity.TryGetComponent(out ClientPlayer player))
+            return player.colourIndex;
+        return GameCore.Instance != null ? GameCore.Instance.PlayerOrder.IndexOf(ownerId) : -1;
+    }
+
+    /// <summary>A player's colour (see <see cref="ColourIndexOf"/>).</summary>
+    public static Color32 OfOwner(int ownerId) => Of(ColourIndexOf(ownerId));
 }

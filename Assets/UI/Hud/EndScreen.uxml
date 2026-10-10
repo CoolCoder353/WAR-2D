@@ -1,0 +1,13 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="end-screen" class="overlay-screen end-screen">
+        <ui:VisualElement class="end-screen__result">
+            <ui:Label name="end-title" text="Victory" class="end-screen__title" />
+            <ui:Label name="end-subtitle" text="" class="text end-screen__subtitle" />
+        </ui:VisualElement>
+        <ui:VisualElement name="end-stats" class="panel end-screen__stats" />
+        <ui:VisualElement class="row end-screen__buttons">
+            <ui:Button name="end-main-menu" text="Main menu" class="button button--primary" />
+            <ui:Button name="end-quit" text="Quit" class="button" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

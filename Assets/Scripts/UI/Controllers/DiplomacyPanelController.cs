@@ -45,7 +45,7 @@ namespace WAR2D.UI
             foreach (PlayerRow player in model.Players)
             {
                 if (player.OwnerId == model.LocalOwnerId) continue;
-                int bit = 1 << player.ColourIndex;
+                int bit = 1 << player.OrderIndex;
                 var row = new VisualElement { name = "diplomacy-row-" + player.OwnerId };
                 row.AddToClassList("diplomacy-row");
 
@@ -69,29 +69,10 @@ namespace WAR2D.UI
                 bool attack = (model.AttackMask & bit) != 0, share = (model.ShareMask & bit) != 0;
                 row.Add(swatch);
                 row.Add(name);
-                row.Add(Switch("attack-" + owner, attack, !player.Eliminated, () => AttackToggled?.Invoke(owner, !attack)));
-                row.Add(Switch("share-" + owner, share, !player.Eliminated, () => ShareToggled?.Invoke(owner, !share)));
+                row.Add(Widgets.Switch("attack-" + owner, attack, !player.Eliminated, () => AttackToggled?.Invoke(owner, !attack)));
+                row.Add(Widgets.Switch("share-" + owner, share, !player.Eliminated, () => ShareToggled?.Invoke(owner, !share)));
                 rows.Add(row);
             }
-        }
-
-        /// <summary>The approved Toggle component: a track with a knob and an On/Off label.</summary>
-        private static Button Switch(string name, bool on, bool enabled, Action clicked)
-        {
-            var button = new Button(clicked) { name = name };
-            button.AddToClassList("switch");
-            button.EnableInClassList("switch--on", on);
-            var track = new VisualElement();
-            track.AddToClassList("switch__track");
-            var knob = new VisualElement();
-            knob.AddToClassList("switch__knob");
-            track.Add(knob);
-            var label = new Label(on ? "On" : "Off");
-            label.AddToClassList("switch__label");
-            button.Add(track);
-            button.Add(label);
-            button.SetEnabled(enabled);
-            return button;
         }
 
         public void Dispose()
