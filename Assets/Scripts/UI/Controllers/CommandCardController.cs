@@ -52,8 +52,8 @@ namespace WAR2D.UI
             AddOrder(root, "cmd-hold", OrderKind.Hold);
             AddBuild(root, "build-miner", BuildingType.Miner);
             AddBuild(root, "build-spawner", BuildingType.SmallUnitSpawner);
-            minus.clicked += () => QueueClicked?.Invoke(selection.BuildingId, -1);
-            plus.clicked += () => QueueClicked?.Invoke(selection.BuildingId, +1);
+            minus.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); QueueClicked?.Invoke(selection.BuildingId, -1); };
+            plus.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); QueueClicked?.Invoke(selection.BuildingId, +1); };
 
             selection.Changed += Show;
             hud.ResourcesChanged += Show;
@@ -63,14 +63,14 @@ namespace WAR2D.UI
         private void AddOrder(VisualElement root, string name, OrderKind kind)
         {
             Button button = root.Q<Button>(name);
-            button.clicked += () => OrderClicked?.Invoke(kind);
+            button.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); OrderClicked?.Invoke(kind); };
             orders[kind] = button;
         }
 
         private void AddBuild(VisualElement root, string name, BuildingType type)
         {
             Button button = root.Q<Button>(name);
-            button.clicked += () => BuildClicked?.Invoke(type);
+            button.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); BuildClicked?.Invoke(type); };
             builds[type] = button;
         }
 

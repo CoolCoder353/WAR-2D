@@ -54,6 +54,7 @@ public static class Effects
         Slot s = Take(Explosions);
         if (s == null) return;
         s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
+        WAR2D.Audio.AudioService.Sfx("explosion_small", position);
     }
 
     /// <summary>A muzzle flash at <paramref name="position"/>.</summary>
@@ -62,6 +63,7 @@ public static class Effects
         Slot s = Take(Flashes);
         if (s == null) return;
         s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
+        WAR2D.Audio.AudioService.Sfx("shot_tank", position);
     }
 
     /// <summary>How far from a shooter's centre its barrel ends, in tiles (the muzzle flash goes there).</summary>

@@ -151,6 +151,13 @@ namespace Config
                 config.Alerts.ShowSeconds = Float(alerts, "ShowSeconds", "Alerts", errors, min: 1, max: 300);
             }
 
+            XmlNode audio = Require(root, "Audio", errors);
+            if (audio != null)
+            {
+                config.Audio.BattleDeathsPerSecond = Int(audio, "BattleDeathsPerSecond", "Audio", errors, min: 1, max: 1000);
+                config.Audio.BattleHoldSeconds = Float(audio, "BattleHoldSeconds", "Audio", errors, min: 1, max: 600);
+            }
+
             XmlNode damage = Require(root, "DamageTable", errors);
             if (damage != null)
             {

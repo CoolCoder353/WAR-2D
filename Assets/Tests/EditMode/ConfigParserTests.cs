@@ -19,6 +19,7 @@ public class ConfigParserTests
   <MenuBattle><UnitsPerArmy>1500</UnitsPerArmy><MapSize>512</MapSize><Seed>7</Seed></MenuBattle>
   <Gifting><CooldownSeconds>5</CooldownSeconds></Gifting>
   <Alerts><ThrottleSeconds>10</ThrottleSeconds><AreaTiles>32</AreaTiles><ShowSeconds>8</ShowSeconds></Alerts>
+  <Audio><BattleDeathsPerSecond>3</BattleDeathsPerSecond><BattleHoldSeconds>20</BattleHoldSeconds></Audio>
   <DamageTable><Entry attacker=""Tank"" target=""Unit"">1.0</Entry><Entry attacker=""Tank"" target=""Building"">1.0</Entry><Entry attacker=""Tank"" target=""Wall"">0.5</Entry></DamageTable>
   <Units>
     <Unit type=""Tank""><Health>100</Health><Damage>10</Damage><Range>5</Range><AttackInterval>1</AttackInterval><MoveSpeed>5</MoveSpeed><Acceleration>5</Acceleration><UpfrontCost>50</UpfrontCost><RunningCost>2</RunningCost><Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>8</Sight></Unit>
@@ -184,6 +185,26 @@ public class ConfigParserTests
         Assert.AreEqual(10f, c.Alerts.ThrottleSeconds, 1e-6f);
         Assert.AreEqual(32, c.Alerts.AreaTiles);
         Assert.AreEqual(8f, c.Alerts.ShowSeconds, 1e-6f);
+    }
+
+    [Test]
+    public void AudioParse()
+    {
+        var errors = new List<string>();
+        GameConfigData c = ConfigParser.Parse(ValidXml, errors);
+        Assert.That(errors, Is.Empty);
+        Assert.AreEqual(3, c.Audio.BattleDeathsPerSecond);
+        Assert.AreEqual(20f, c.Audio.BattleHoldSeconds, 1e-6f);
+    }
+
+    [TestCase("<BattleDeathsPerSecond>0</BattleDeathsPerSecond>", "BattleDeathsPerSecond")]
+    [TestCase("", "BattleHoldSeconds")]
+    public void AudioRequiredAndInRange(string replacement, string field)
+    {
+        string xml = Regex.Replace(ValidXml, $"<{field}>[^<]*</{field}>", replacement);
+        var errors = new List<string>();
+        ConfigParser.Parse(xml, errors);
+        Assert.That(errors, Has.Some.Contains(field));
     }
 
     [TestCase("<AreaTiles>0</AreaTiles>", "AreaTiles")]

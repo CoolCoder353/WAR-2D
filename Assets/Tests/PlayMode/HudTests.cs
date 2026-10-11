@@ -422,6 +422,8 @@ public class HudTests
 
         yield return PlayModeMatch.WaitUntil(() => hud.EndScreen.IsShown, 10f);
         Assert.That(root.Q<Label>("end-title").text, Is.EqualTo("Defeat"));
+        yield return null; // the music picks its cue in the service's Update
+        Assert.That(WAR2D.Audio.AudioService.CurrentCue, Is.EqualTo(WAR2D.Audio.MusicCue.Defeat), "the Defeat stinger plays");
         yield return PlayModeMatch.WaitUntil(() => GameCore.Instance.CurrentState == GameState.GameOver && root.Q("end-stats").childCount > 1, 10f);
         Assert.That(root.Q("stats-" + PlayModeMatch.LocalOwner), Is.Not.Null, "the table has a row for me");
         Assert.That(root.Q("stats-" + Bot), Is.Not.Null, "and one for the winner");

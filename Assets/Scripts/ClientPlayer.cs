@@ -185,7 +185,11 @@ public class ClientPlayer : NetworkBehaviour
     [TargetRpc]
     public void TargetPlayExplosions(NetworkConnection target, Vector2[] positions)
     {
-        foreach (Vector2 p in positions) Effects.Explosion(p);
+        foreach (Vector2 p in positions)
+        {
+            Effects.Explosion(p);
+            WAR2D.Audio.AudioService.ReportDeath();
+        }
     }
 
 

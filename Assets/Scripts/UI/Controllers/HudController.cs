@@ -263,6 +263,7 @@ namespace WAR2D.UI
         {
             foreach (Alert alert in alerts)
                 Alerts.Add(alert, AlertFeedModel.Text(alert, NameOf, alert.Kind == AlertKind.UnderAttack ? NearestOwnBuilding(alert.Tile) : null), Time.unscaledTime);
+                WAR2D.Audio.AudioService.Ui("alert");
         }
 
         private const float NearBuildingTiles = 12f;

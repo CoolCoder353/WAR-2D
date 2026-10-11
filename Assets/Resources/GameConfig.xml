@@ -70,6 +70,11 @@
     <ShowSeconds>8.0</ShowSeconds>           <!-- v0.6: how long an alert stays in the feed -->
   </Alerts>
 
+  <Audio>
+    <BattleDeathsPerSecond>3</BattleDeathsPerSecond>  <!-- v0.8: visible deaths in one second that start the battle music -->
+    <BattleHoldSeconds>20.0</BattleHoldSeconds>       <!-- v0.8: how long the battle music holds after that -->
+  </Audio>
+
   <!-- Damage multiplier per attacker unit type and target class (Unit, Building, Wall); 1.0 when missing. -->
   <DamageTable>
     <Entry attacker="Tank" target="Unit">1.0</Entry>

@@ -144,6 +144,7 @@ public class BuildingPlacement : MonoBehaviour
         if (GameInput.Select.WasPressedThisFrame() && !GameInput.PointerOverUI)
         {
             WorldStateManager.Instance?.TryAddBuilding(currentAnchor, PlacingType, currentRotation);
+            WAR2D.Audio.AudioService.Ui("building_placed");
             // Holding the queue modifier (Shift) keeps placing the same type, as it queues unit orders.
             if (PlacingType != BuildingType.Base && GameInput.QueueModifier.IsPressed())
             {
