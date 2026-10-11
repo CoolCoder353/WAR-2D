@@ -132,7 +132,13 @@ public partial class WorldStateManager : NetworkBehaviour
             GameCore.Instance.SendDiplomacy(from);
             GameCore.Instance.SendDiplomacy(to);
         };
-        Replication = new ReplicationService(Sim, ConfigLoader.LoadConfig()) { CollectBuildings = FillBuildingViews };
+        Replication = new ReplicationService(Sim, ConfigLoader.LoadConfig())
+        {
+            CollectBuildings = FillBuildingViews,
+            // A defeated player still connected watches the rest of the match with the whole map shown (P10).
+            Spectating = owner => GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing &&
+                                  GameCore.Instance.GetServerPlayerById(owner)?.state == PlayerState.Eliminated,
+        };
         if (GameCore.Instance != null)
             foreach (NetworkIdentity identity in GameCore.Instance.ServerPlayers.Keys)
                 if (identity != null && identity.connectionToClient != null)

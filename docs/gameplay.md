@@ -22,7 +22,7 @@ stateDiagram-v2
 2. **PlacingHQ** (`Map_2`). The map is generated from a seed (see "Map and tiles"). An HQ placement prompt is shown. Each player places a single 5×5 HQ on free ground **inside their own clearing** (ringed in their colour; the camera starts there), The screen shows how many players are still placing.
 3. **Countdown.** When the last HQ is placed, the server starts a **5-second** countdown (`Match.CountdownSeconds`) and every client displays the same remaining time from the synced end time.
 4. **Playing.** Economy, building, spawning and combat run, and win/loss is checked every second.
-5. **GameOver.** Each player sees the **end screen**: Victory, Defeat or Draw, who won and how long it took, and every player's statistics (units built, lost and killed, buildings built and lost, mined, spent, gifted out and in, peak army). Statistics are sent only once the match is over. A player eliminated earlier sees Defeat at once and the table when the match ends. Buttons: Main menu, Quit.
+5. **GameOver.** Each player sees the **end screen**: Victory, Defeat or Draw, who won and how long it took, and every player's statistics (units built, lost and killed, buildings built and lost, mined, spent, gifted out and in, peak army). Statistics are sent only once the match is over. A player eliminated earlier **spectates** the rest of the match: a Spectating panel (with Leave match) replaces the HUD's controls, and the server shows them the whole map (every unit and building, no fog); the end screen with Defeat and the table comes when the match ends. Buttons: Main menu, Quit.
 
 Before *Playing*, the economy, spawning, combat and win/loss checks are paused, and units can't be ordered. Passive income only starts in *Playing*.
 
@@ -162,7 +162,7 @@ The alert feed (top left) shows the newest four alerts for 8 s each (`Alerts/Sho
 ## Win, loss and leaving
 
 - During *Playing* the server checks every second which players still own an HQ.
-- A player with no HQ is **eliminated**: all their remaining units and buildings are destroyed (each with an explosion) and they see the Lose screen. Eliminated players stop earning passive income.
+- A player with no HQ is **eliminated**: all their remaining units and buildings are destroyed (each with an explosion) and, while the match goes on, they spectate it with the whole map shown (see GameOver above). Eliminated players stop earning passive income.
 - If no player with an HQ left attacks another (they are all at peace with each other, or only one is left), and the match started with more than one team, they **win** together: every HQ holder, and every eliminated player whose starting team includes one, sees the Win screen. Peace must be mutual: if one survivor still attacks another, the match goes on. Everyone else sees the Lose screen, and the winner's world is wiped with explosions as the match ends.
 - If nobody has an HQ, it's a **draw**, and everyone sees a Draw screen.
 - **Esc** (or Menu on the top bar) opens the **in-match menu**: Resume, Settings, Surrender and Leave match. Nothing pauses. **Surrender** asks to confirm, then eliminates you exactly as losing your HQ.

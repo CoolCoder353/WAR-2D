@@ -34,7 +34,7 @@ sending units via the minimap onto a unknown area, if you accidentally click on 
 Mining building didn't rotate visually. **Fixed:** the Miner is rendered in 4 facings and draws the one for its rotation, upright; other buildings can't be turned.
 No valid or invalid feedback to user placements. **Fixed:** the preview tints valid spots green and invalid spots red, follows the selected rotation, and ignores responses for a previous spot.
 
-Spectate mode for dead players
+Spectate mode for dead players. **Fixed:** an eliminated player sees the whole map until the match ends (`ReplicationService.Spectating`).
 The host leaves the game dies for everyone. **Partly fixed:** joined players now get a "The host left the match" dialog on the main menu instead of being dropped there silently. The match still ends: Mirror's host is the server (host migration or a dedicated server is a v0.9 decision).
 
 ## Fixed after the first manual Linux match (2026-10-10)

@@ -214,7 +214,7 @@ namespace WAR2D.Net.Replication
                 return;
             }
             for (int c = 0; c < MaxClients; c++)
-                if (active[c]) interests.SetClient(c, clients[c].OwnerId, sim.VisionOf(clients[c].OwnerId));
+                if (active[c]) interests.SetClient(c, clients[c].OwnerId, GridOf(clients[c].OwnerId));
             SendFog(data);
             SendBuildings(data);
             handle = interests.Schedule(input, handle);
@@ -240,6 +240,17 @@ namespace WAR2D.Net.Replication
         }
 
         private readonly Dictionary<int, List<int>> fogChanges = new Dictionary<int, List<int>>();
+        private NativeArray<byte> allSeen;
+
+        /// <summary>
+        /// Answers whether an owner is a defeated player spectating (server: eliminated while the match is
+        /// still Playing). Such a client is given <see cref="SimData.SeesAll"/>: every unit, building and a clear
+        /// fog. Null (tests, the menu battle) means nobody spectates.
+        /// </summary>
+        public Func<int, bool> Spectating;
+
+        /// <summary>The fog grid an owner's client is replicated against.</summary>
+        private int GridOf(int ownerId) => Spectating != null && Spectating(ownerId) ? SimData.SeesAll : sim.VisionOf(ownerId);
 
         /// <summary>
         /// Sends every client its own team's fog: a snapshot when its grid is new to it, otherwise the
@@ -260,8 +271,24 @@ namespace WAR2D.Net.Replication
             {
                 if (!active[c]) continue;
                 Client client = clients[c];
-                int grid = sim.VisionOf(client.OwnerId);
+                int grid = GridOf(client.OwnerId);
                 if (grid < 0) continue;
+                if (grid == SimData.SeesAll)
+                {
+                    // A spectator: one snapshot of a fully seen map, then nothing (nothing can flip).
+                    if (client.FogGrid == grid) continue;
+                    client.FogGrid = grid;
+                    if (!allSeen.IsCreated || allSeen.Length != data.FogCells)
+                    {
+                        if (allSeen.IsCreated) allSeen.Dispose();
+                        allSeen = new NativeArray<byte>(data.FogCells, Allocator.Persistent);
+                        for (int i = 0; i < allSeen.Length; i++) allSeen[i] = 1;
+                    }
+                    writer.Position = 0;
+                    FogCodec.WriteSnapshot(writer, data.FogW, data.FogH, data.FogCellSize, allSeen, allSeen, 0);
+                    SendFogPayload(client, writer.ToArraySegment());
+                    continue;
+                }
                 if (client.FogGrid != grid)
                 {
                     client.FogGrid = grid;
@@ -293,7 +320,7 @@ namespace WAR2D.Net.Replication
             {
                 if (!active[c]) continue;
                 Client client = clients[c];
-                int grid = sim.VisionOf(client.OwnerId);
+                int grid = GridOf(client.OwnerId);
                 writer.Position = 0;
                 if (client.Buildings.Update(buildingViews, buildingIds, client.OwnerId, p => data.Sees(grid, p), writer, limit) == 0) continue;
                 ArraySegment<byte> payload = writer.ToArraySegment();
@@ -351,6 +378,7 @@ namespace WAR2D.Net.Replication
             if (Instance == this) Instance = null;
             routes.Dispose();
             interests.Dispose();
+            if (allSeen.IsCreated) allSeen.Dispose();
             encoder.Dispose();
         }
     }

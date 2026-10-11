@@ -181,6 +181,32 @@ public class LeakTests
     }
 
     [Test]
+    public void OnlyASpectatorSeesTheWholeMap()
+    {
+        using var sim = new SimHarness(Map());
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        bool bDefeated = false;
+        replication.Spectating = owner => owner == SimHarness.OwnerB && bDefeated;
+        var b = new Spy(sim.Context, replication, SimHarness.OwnerB);
+        var c = new Spy(sim.Context, replication, OwnerC);
+        sim.Spawn(SimHarness.OwnerB, new float2(10, 10));
+        sim.Spawn(OwnerC, new float2(10, 85));
+        for (int u = 0; u < 5; u++) sim.Spawn(SimHarness.OwnerA, new float2(80, 80 - u));
+        for (int i = 0; i < 10; i++) sim.Tick();
+        Assert.AreEqual(0, b.OthersSeen, "before defeat, B sees only its own sight");
+        CollectionAssert.IsEmpty(b.Failures);
+
+        bDefeated = true;
+        for (int i = 0; i < 10; i++) sim.Tick();
+        Assert.Greater(b.OthersSeen, 0, "a spectator is sent every unit");
+        foreach (byte cell in b.Fog.State) Assert.AreEqual((byte)FogState.Visible, cell, "and a clear fog");
+        CollectionAssert.IsEmpty(c.Failures, "a live player never gets more than its own grid");
+        Assert.AreEqual(0, c.OthersSeen);
+        b.Dispose();
+        c.Dispose();
+    }
+
+    [Test]
     public void NoClientReceivesAnotherPlayersAttackMask([Values(1, 2, 3)] int seed)
     {
         // TargetDiplomacy is the only message carrying masks, and it carries RowFor(receiver). Changing any

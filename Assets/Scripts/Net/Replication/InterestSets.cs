@@ -34,6 +34,7 @@ namespace WAR2D.Net.Replication
         /// <summary>True when fog grid <paramref name="grid"/> sees <paramref name="p"/>.</summary>
         public bool Sees(int grid, float2 p)
         {
+            if (grid == WAR2D.Sim.SimData.SeesAll) return true;
             if (grid < 0) return false;
             int2 c = math.clamp((int2)math.floor(p / FogCellSize), 0, new int2(FogW - 1, FogH - 1));
             return Visible[grid * FogCells + c.y * FogW + c.x] != 0;
