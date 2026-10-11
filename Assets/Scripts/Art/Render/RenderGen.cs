@@ -258,6 +258,21 @@ namespace WAR2D.Art.Render
             return c;
         }
 
+        /// <summary>
+        /// A stand-in for art that doesn't exist yet (the v0.7 kit): a team-coloured block with a hazard band,
+        /// <paramref name="tiles"/> tiles square, so the atlases always hold every manifest id.
+        /// </summary>
+        public static LitCanvas Placeholder(int tiles = 1)
+        {
+            int s = tiles * TileSize;
+            var c = new LitCanvas(s, s);
+            float o = s / 2f, r = s * 0.34f;
+            c.Shape((x, y) => Box(x, y, o, o, r, r, 3), Hull, 6, 1.5f, 2);
+            c.Shape((x, y) => Box(x, y, o, o, r * 0.62f, r * 0.62f, 2), Team, 9, 1.2f, 1.5f);
+            Stripes(c, (x, y) => Box(x, y, o, o - r * 0.8f, r * 0.9f, 2.5f), 7);
+            return c;
+        }
+
         // ---------- Terrain ----------
 
         /// <summary>Stone floor: mottled, pebbled and cracked; tiles seamlessly.</summary>
@@ -299,14 +314,32 @@ namespace WAR2D.Art.Render
         {
             LitCanvas c = Rock(seed, mask);
             var rng = new ArtRandom(seed, "crystals" + variant);
-            int count = 3 + rng.Range(3);
+            int count = 3 + rng.Range(3), placed = 0;
+            void Crystal(float cx, float cy, float r, float a, float t)
+            {
+                Color tint = Color.Lerp(C(StylePalette.Gem1), C(StylePalette.Gem2), t);
+                c.Shape((x, y) => Polygon(x, y, cx, cy, r, 6, a), new Material(tint, 0.9f, 80, glow: 0.35f), 34 + r, r, r * 1.6f);
+                placed++;
+            }
             for (int k = 0; k < count; k++)
             {
                 float cx = 14 + rng.Range(TileSize - 28), cy = 14 + rng.Range(TileSize - 28);
-                if (EdgeDistance(cx, cy, mask) < 14) continue;
-                float r = 4 + rng.Range(4), a = rng.Range(60) * Mathf.Deg2Rad;
-                Color tint = Color.Lerp(C(StylePalette.Gem1), C(StylePalette.Gem2), rng.Range(100) / 100f);
-                c.Shape((x, y) => Polygon(x, y, cx, cy, r, 6, a), new Material(tint, 0.9f, 80, glow: 0.35f), 34 + r, r, r * 1.6f);
+                float r = 4 + rng.Range(4), a = rng.Range(60) * Mathf.Deg2Rad, t = rng.Range(100) / 100f;
+                // Only on the rock's top: the cliff and its bevel reach about 23 px in from an open side.
+                if (EdgeDistance(cx, cy, mask) < 23 + r) continue;
+                Crystal(cx, cy, r, a, t);
+            }
+            if (placed == 0)
+            {
+                // Narrow rock (most sides open): one crystal at the deepest point, so every gem tile shows gems.
+                float bx = TileSize / 2f, by = TileSize / 2f, best = -1;
+                for (int y = 8; y <= TileSize - 8; y += 4)
+                for (int x = 8; x <= TileSize - 8; x += 4)
+                {
+                    float d = EdgeDistance(x, y, mask);
+                    if (d > best) { best = d; bx = x; by = y; }
+                }
+                Crystal(bx, by, Mathf.Clamp(best - 23, 3, 6), rng.Range(60) * Mathf.Deg2Rad, 0.5f);
             }
             return c;
         }

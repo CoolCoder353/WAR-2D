@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using WAR2D.Art.Render;
@@ -33,6 +34,52 @@ namespace WAR2D.Art
         /// shader shades the owner's colour by step.
         /// </summary>
         public static readonly Color32[] TeamKeyRamp = Ramp(new Color(0.64f, 0f, 0.64f));
+
+        /// <summary>
+        /// What each team key step becomes in the colour atlas: a grey the shader multiplies by the owner's
+        /// colour (the brightest step is white), so the step survives as brightness.
+        /// </summary>
+        public static readonly Color32[] TeamGrey = Greys();
+
+        /// <summary>Alpha of the baked hard shadow (black, 45 %: the samples' 0.55 darkening).</summary>
+        public const byte ShadowAlpha = 115;
+
+        /// <summary>Shadow offset in art pixels: right and down, away from the top-left light.</summary>
+        public const int ShadowOffset = 4;
+
+        /// <summary>
+        /// Splits source art into the colour atlas and the team mask: team key pixels become their
+        /// <see cref="TeamGrey"/> step and get mask 255; every other pixel is unchanged with mask 0.
+        /// </summary>
+        public static Color32[] SplitTeamKey(Color32[] source, out Color32[] mask)
+        {
+            var colour = (Color32[])source.Clone();
+            mask = new Color32[source.Length];
+            for (int i = 0; i < source.Length; i++)
+            {
+                int step = Array.IndexOf(TeamKeyRamp, source[i]);
+                if (step < 0)
+                {
+                    mask[i] = new Color32(0, 0, 0, 255);
+                    continue;
+                }
+                colour[i] = TeamGrey[step];
+                mask[i] = new Color32(255, 255, 255, 255);
+            }
+            return colour;
+        }
+
+        private static Color32[] Greys()
+        {
+            float[] shades = PixelFinish.Shades;
+            var greys = new Color32[shades.Length];
+            for (int i = 0; i < greys.Length; i++)
+            {
+                byte v = (byte)Mathf.RoundToInt(255f * shades[i] / shades[shades.Length - 1]);
+                greys[i] = new Color32(v, v, v, 255);
+            }
+            return greys;
+        }
 
         /// <summary>
         /// The shipped palette: the Charcoal roles and the renderer's extra colours in

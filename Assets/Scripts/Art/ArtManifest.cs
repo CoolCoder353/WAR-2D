@@ -68,7 +68,7 @@ namespace WAR2D.Art
             // Tiles: frames are variants (random for floor and gems, autotile masks for walls).
             new ArtEntry(nameof(TileType.Ground), ArtKind.Tile, 1, 1, 4, 1, false),
             new ArtEntry(nameof(TileType.Wall), ArtKind.Tile, 1, 1, AutotileVariants, 1, false),
-            new ArtEntry(nameof(TileType.Gem), ArtKind.Tile, 1, 1, 4, 1, false),
+            new ArtEntry(nameof(TileType.Gem), ArtKind.Tile, 1, 1, 4 * AutotileVariants, 1, false), // 4 variants × 16 masks, variant-major
             new ArtEntry(nameof(TileType.Border), ArtKind.Tile, 1, 1, 1, 1, false),
             new ArtEntry("PlayerWall", ArtKind.Tile, 1, 1, AutotileVariants * WallDamageStates, 1, true),
             new ArtEntry("WallBlueprint", ArtKind.Tile, 1, 1, AutotileVariants, 1, true),

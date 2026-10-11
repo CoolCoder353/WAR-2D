@@ -2,7 +2,7 @@
 
 Every placeholder the game uses today and every asset v0.7 Siege will need. `Assets/Scripts/Art/ArtManifest.cs` is the code version of the art tables: tests fail when a `UnitType`, `BuildingType` or `TileType` value has no entry. Sizes are in tiles (one tile is one world unit). A sprite has `frames × directions` cells in its atlas.
 
-Provisional values (16 px per tile, 8 unit facings, frame counts) are confirmed or changed by the style guide (plan Task 5).
+The [style guide](style-guide.md) sets the values: 64 px per tile (PPU 64), 8 unit facings, 10 fps. `WAR-2D/Art/Build all` (`Editor/ArtBuild.cs`) renders every unit, building and tile entry into `Assets/Resources/Art/{Units,Buildings,Tiles}` (`.png`, `_mask.png` for the team colour, `.json` frame table, loaded with `ArtAtlas`). Entries with no generator yet (the v0.7 kit: Builder, Digger, Bomb, PlayerWall, WallBlueprint) get a placeholder block. Effects, icons and UI get their atlases with plan Tasks 11 and 12.
 
 ## Units
 
@@ -31,7 +31,7 @@ Footprints match `GameConfig.xml` (`ArtManifestTests.BuildingFootprintsMatchTheC
 |---|---|---|---|
 | `Ground` | 4 random variants | no | `Resources/Sprites/Tiles/Floor.asset`; generated maps draw one flat texel per tile (`MapView`) |
 | `Wall` (rock) | 16 autotile masks (N, E, S, W) | no | `Wall.asset`, `WallSIB.asset` (sibling rule tile) |
-| `Gem` | 4 random variants | no | `Gems.asset`, `GemsSIB.asset` |
+| `Gem` | 4 random variants × 16 autotile masks (variant-major) | no | `Gems.asset`, `GemsSIB.asset` |
 | `Border` | 1 (solid rock) | no | drawn as rock |
 | `PlayerWall` | 16 masks × 3 damage states | yes | none (v0.7) |
 | `WallBlueprint` | 16 masks | yes | none (v0.7) |

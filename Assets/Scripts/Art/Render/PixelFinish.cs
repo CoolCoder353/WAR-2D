@@ -54,5 +54,34 @@ namespace WAR2D.Art.Render
                     result[y * dw + x] = outline.Value;
             return result;
         }
+
+        /// <summary>
+        /// The atlas finish (style guide): <paramref name="team"/> pixels snap to <paramref name="teamRamp"/> and
+        /// the rest to <paramref name="palette"/>, then the outline and a baked hard shadow
+        /// (<see cref="ArtStyle.ShadowAlpha"/> black, <see cref="ArtStyle.ShadowOffset"/> px right and down).
+        /// Without <paramref name="outline"/> (terrain) there is no outline and no shadow.
+        /// </summary>
+        public static Color32[] FinishTeam(Color32[] lit, bool[] team, int w, int h, Color32[] palette, Color32[] teamRamp, Color32? outline)
+        {
+            Color32[] rest = PaletteQuantizer.Quantize(lit, w, h, w, h, palette, alphaCutoff: 140);
+            Color32[] keyed = PaletteQuantizer.Quantize(lit, w, h, w, h, teamRamp, alphaCutoff: 140);
+            var dst = new Color32[w * h];
+            for (int i = 0; i < dst.Length; i++) dst[i] = team[i] ? keyed[i] : rest[i];
+            if (outline == null) return dst;
+
+            bool Opaque(Color32[] px, int x, int y) => (uint)x < (uint)w && (uint)y < (uint)h && px[y * w + x].a == 255;
+            var outlined = (Color32[])dst.Clone();
+            for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                if (!Opaque(dst, x, y) && (Opaque(dst, x - 1, y) || Opaque(dst, x + 1, y) || Opaque(dst, x, y - 1) || Opaque(dst, x, y + 1)))
+                    outlined[y * w + x] = outline.Value;
+            var result = (Color32[])outlined.Clone();
+            int d = ArtStyle.ShadowOffset;
+            for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                if (result[y * w + x].a == 0 && Opaque(outlined, x - d, y + d))
+                    result[y * w + x] = new Color32(0, 0, 0, ArtStyle.ShadowAlpha);
+            return result;
+        }
     }
 }

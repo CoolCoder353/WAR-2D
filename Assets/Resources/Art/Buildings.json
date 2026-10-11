@@ -1,0 +1,105 @@
+{
+    "width": 1024,
+    "height": 512,
+    "pixelsPerUnit": 64,
+    "sprites": [
+        {
+            "id": "Base",
+            "first": 0,
+            "frames": 1,
+            "directions": 1
+        },
+        {
+            "id": "SmallUnitSpawner",
+            "first": 1,
+            "frames": 2,
+            "directions": 1
+        },
+        {
+            "id": "Miner",
+            "first": 3,
+            "frames": 4,
+            "directions": 1
+        },
+        {
+            "id": "Bomb",
+            "first": 7,
+            "frames": 2,
+            "directions": 1
+        }
+    ],
+    "frames": [
+        {
+            "x": 2,
+            "y": 2,
+            "w": 320,
+            "h": 440,
+            "pivotX": 160.0,
+            "pivotY": 160.0
+        },
+        {
+            "x": 324,
+            "y": 2,
+            "w": 128,
+            "h": 164,
+            "pivotX": 64.0,
+            "pivotY": 64.0
+        },
+        {
+            "x": 454,
+            "y": 2,
+            "w": 128,
+            "h": 164,
+            "pivotX": 64.0,
+            "pivotY": 64.0
+        },
+        {
+            "x": 584,
+            "y": 2,
+            "w": 64,
+            "h": 88,
+            "pivotX": 32.0,
+            "pivotY": 32.0
+        },
+        {
+            "x": 650,
+            "y": 2,
+            "w": 64,
+            "h": 88,
+            "pivotX": 32.0,
+            "pivotY": 32.0
+        },
+        {
+            "x": 716,
+            "y": 2,
+            "w": 64,
+            "h": 88,
+            "pivotX": 32.0,
+            "pivotY": 32.0
+        },
+        {
+            "x": 782,
+            "y": 2,
+            "w": 64,
+            "h": 88,
+            "pivotX": 32.0,
+            "pivotY": 32.0
+        },
+        {
+            "x": 848,
+            "y": 2,
+            "w": 64,
+            "h": 64,
+            "pivotX": 32.0,
+            "pivotY": 32.0
+        },
+        {
+            "x": 914,
+            "y": 2,
+            "w": 64,
+            "h": 64,
+            "pivotX": 32.0,
+            "pivotY": 32.0
+        }
+    ]
+}

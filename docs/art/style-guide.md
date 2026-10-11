@@ -13,7 +13,8 @@
 | Units | Top-down, in a 64×64 frame, with **8 rendered facings** 45° apart. Quads never rotate. The light stays fixed at the top left in every facing. |
 | Buildings | **3/4 view** (`RenderGen.Lift`) with their own silhouettes inside square footprints and headroom above them (`RenderGen.Headroom`, scaled per building). The pivot sits at the footprint's centre. The HQ is 5×5, the Small Unit Spawner 2×2, the Miner 1×1. Buildings rotate in 90° steps as whole sprites. |
 | Terrain | Stone floor, raised craggy rock with 16 autotile masks, faceted gems. All opaque. |
-| Finish | Majority-vote downsample onto the palette (no blending), a 1 px outline in the palette's outline colour, and hard 2 px shadows. |
+| Finish | Majority-vote downsample onto the palette (no blending) and a 1 px outline in the palette's outline colour. Unit and building frames carry a baked hard shadow: 45 % black, 4 art px right and down (`ArtStyle.ShadowAlpha`, `ShadowOffset`). Terrain has neither. |
+| Atlases | `WAR-2D/Art/Build all` writes `Assets/Resources/Art/{Units,Buildings,Tiles}`: the colour atlas (team parts as `ArtStyle.TeamGrey`), the team mask (white on team pixels) and a JSON frame table with pivots. A unit's cell for direction `d` (0 = east, anticlockwise) and frame `f` is `first + d × frames + f`. Frames are 2 px apart so mipmaps bleed less. |
 | Palette | **Charcoal** (`StylePalettes.Charcoal`): its 18 role colours plus the renderer's 4 extra colours (sandbags, drums, crates, white), each in 5 shades (`PixelFinish.Shades`). |
 
 ## Decided (recommendations approved)
