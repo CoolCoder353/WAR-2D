@@ -5,7 +5,7 @@ A networked, top-down 2D real-time strategy game built in Unity. Any number of p
 - **Engine:** Unity `6000.4.1f1`
 - **Networking:** [Mirror](https://mirror-networking.com/) (server-authoritative, KCP transport)
 - **Simulation:** Unity DOTS / Entities `6.4.0` (units and buildings are ECS entities, not GameObjects)
-- **Target platforms:** Linux standalone for now; a Windows build profile is deferred to a later release (see [known issues](docs/known-issues.md#project-and-config-hygiene))
+- **Target platforms:** Linux standalone for now (the code has no Linux-only parts); a Windows build profile is deferred to a later release (see [known issues](docs/known-issues.md#project-and-config-hygiene))
 
 ## Documentation
 
@@ -51,7 +51,7 @@ The scenes in the build are `Assets/Main_Menu.unity` (index 0) and `Assets/Maps/
 - **Linux:** a build profile is checked in at `Assets/Settings/Build Profiles/Linux.asset`. Open it under *File → Build Profiles* and build.
 - **Windows:** no profile is checked in — the owner deferred Windows to a later release. To build one yourself, create a Windows build profile with the same two scenes.
 
-Headless/dedicated auto-start works: the `GameManager` in `Main_Menu` uses `headlessStartMode: AutoStartServer`, so a headless build starts a dedicated server, and the first client to connect becomes the server owner (`GameCore.AddPlayer`). Verification on both platforms is deferred to a later release; see the [roadmap](docs/roadmap.md).
+There is no dedicated server: a batch-mode player is a test or perf client, and `GameManager` sets `headlessStartMode` to `DoNothing` so none of them starts hosting on its own. The host is always a player (Mirror host); host migration or a dedicated build is a v0.9 decision (see the [roadmap](docs/roadmap.md)). A match takes 2 to 8 players.
 
 ## Tests
 
@@ -72,30 +72,39 @@ Gameplay numbers are set in `Assets/Resources/GameConfig.xml`, which is read at 
 
 ```
 Assets/
-├── Main_Menu.unity              Lobby scene (GameManager, GameCore, LobbySystem, console)
-├── Maps/Map_2.unity             The playable map (WorldStateManager, UnitCommander, game UI)
+├── Main_Menu.unity              Lobby scene (GameManager, UI documents, console)
+├── Maps/Map_2.unity             The playable map (WorldStateManager, UnitCommander, HUD)
 ├── Player.prefab                Networked player object (ClientPlayer)
-├── Resources/                   Runtime-loaded assets: GameConfig.xml, sprites, UI prefabs, tiles
+├── Resources/                   Runtime-loaded assets: GameConfig.xml, generated art and audio, GameCore.prefab
 ├── Scripts/                     Game code (WAR2D assembly)
 │   ├── GameManager.cs           Mirror NetworkManager: connect/host/join/leave, scene hooks
-│   ├── GameCore.cs              Server game state machine, players, win/loss
-│   ├── ClientPlayer.cs          Per-player NetworkBehaviour: SyncLists, RPCs
+│   ├── GameCore.cs (+ Net/*Commands.cs)  Server game state machine, lobby, players, win/loss
+│   ├── ClientPlayer.cs          Per-player NetworkBehaviour: SyncVars, RPCs
 │   ├── ServerPlayer.cs          Server-only player data (resources, state)
-│   ├── LobbySystem.cs           Lobby UI
-│   ├── Unit/                    WorldStateManager + pathfinding
-│   ├── Building/                Building components, placement UI (BuildingButtonManager)
-│   ├── Components/              ECS component structs (units, buildings, health, upkeep)
-│   ├── Systems/                 ECS systems: movement, combat, resources, spawning, win/loss, destruction
-│   ├── Client/                  Client presentation: UnitCommander, input, camera, effects, UI
+│   ├── Unit/                    WorldStateManager: map, ids, buildings, order commands
+│   ├── Sim/                     The 20 Hz unit simulation: tick stages, SimData, orders, vision
+│   ├── Pathing/                 Sector graph and flow fields
+│   ├── World/                   Map grid, store and generator
+│   ├── Building/                Mining component and building placement helpers
+│   ├── Components/              ECS component structs (buildings, health, upkeep)
+│   ├── Systems/                 ECS systems for buildings: resources, spawning, destruction, win/loss
+│   ├── Net/                     Command gate, rate limiter, validator, lobby/match/order commands, UPnP
+│   ├── Net/Replication/         Per-client interest, encoder, fog and building messages
+│   ├── Client/                  Presentation: UnitCommander, input, camera, instanced rendering, effects
+│   ├── UI/                      UI Toolkit controllers and models (menu, lobby, HUD, settings)
+│   ├── Art/, Audio/             Procedural art and sound generators
 │   ├── Config/                  GameConfig data classes + strict XML parser/loader
-│   ├── Rules/                   Pure rule helpers (placement, combat, upkeep, win/loss, …)
-│   ├── Net/                     Command gate, rate limiter, validator, tile occupancy, id allocator
-│   └── UI/                      HQ placement screen, menu wiring, exit/return buttons
+│   ├── Rules/                   Pure rule helpers (placement, combat, upkeep, win/loss, ...)
+│   └── Dev/                     Perf harness and QA helpers (need `-perf`)
 ├── Tests/                       EditMode and PlayMode test assemblies
 ├── 3rd Party/                   TIM Console (+ custom commands), NaughtyAttributes
 ├── Mirror/                      Vendored Mirror networking
 └── Plugins/Demigiant/DOTween/   Vendored DOTween (client tweening)
 ```
+
+## Licensing
+
+The project has no licence file yet. The vendored components (Mirror, DOTween, NaughtyAttributes, TIM Console) keep their own licences in their folders.
 
 ## Contributors
 

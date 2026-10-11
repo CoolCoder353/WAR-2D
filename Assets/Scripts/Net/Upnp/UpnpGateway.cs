@@ -29,7 +29,14 @@ namespace WAR2D.Net.Upnp
     /// </summary>
     public sealed class UpnpGateway
     {
-        private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+        /// <summary>No redirects and a small body cap: a device description comes from whatever answered on the LAN.</summary>
+        private const long MaxDescriptionBytes = 256 * 1024;
+
+        private static readonly HttpClient Http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+        {
+            Timeout = TimeSpan.FromSeconds(3),
+            MaxResponseContentBufferSize = MaxDescriptionBytes,
+        };
 
         /// <summary>The router's WAN connection service.</summary>
         public WanService Service { get; }
@@ -66,19 +73,25 @@ namespace WAR2D.Net.Upnp
                 if (await Task.WhenAny(receive, Task.Delay(left, ct)).ConfigureAwait(false) != receive) break;
                 ct.ThrowIfCancellationRequested();
 
-                Uri location = UpnpProtocol.ParseLocation(Encoding.ASCII.GetString(receive.Result.Buffer));
+                UdpReceiveResult reply = receive.Result;
+                Uri location = UpnpProtocol.ParseLocation(Encoding.ASCII.GetString(reply.Buffer));
                 receive = udp.ReceiveAsync();
-                if (location == null || !seen.Add(location.AbsoluteUri)) continue;
+                // A gateway describes itself at its own address; anything else is another device pointing us elsewhere.
+                if (location == null || !UpnpProtocol.IsSameHost(location, reply.RemoteEndPoint.Address) || !seen.Add(location.AbsoluteUri)) continue;
 
                 try
                 {
-                    string description = Encoding.UTF8.GetString(await Http.GetByteArrayAsync(location).ConfigureAwait(false));
-                    if (UpnpProtocol.TryFindWanService(description, location, out WanService service))
+                    using var get = new HttpRequestMessage(HttpMethod.Get, location);
+                    using HttpResponseMessage page = await Http.SendAsync(get, ct).ConfigureAwait(false);
+                    if (!page.IsSuccessStatusCode) continue;
+                    string description = Encoding.UTF8.GetString(await page.Content.ReadAsByteArrayAsync().ConfigureAwait(false));
+                    if (UpnpProtocol.TryFindWanService(description, location, out WanService service) && UpnpProtocol.IsSameHost(service.ControlUrl, reply.RemoteEndPoint.Address))
                         return new UpnpGateway(service, LocalAddressFacing(location));
                 }
-                catch (Exception e) when (e is HttpRequestException || e is TaskCanceledException)
+                catch (Exception e) when (!ct.IsCancellationRequested)
                 {
-                    UnityEngine.Debug.Log($"[UPnP] could not read {location}: {e.Message}");
+                    // One bad responder (unreachable, malformed, IPv6) must not stop the search for the real router.
+                    UnityEngine.Debug.Log($"[UPnP] could not use {location}: {e.Message}");
                 }
             }
             ct.ThrowIfCancellationRequested();

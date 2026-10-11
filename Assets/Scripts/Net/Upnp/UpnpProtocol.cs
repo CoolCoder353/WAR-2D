@@ -144,8 +144,14 @@ namespace WAR2D.Net.Upnp
             if (b[0] == 169 && b[1] == 254) return false;
             if (b[0] == 172 && (b[1] & 0xF0) == 16) return false;
             if (b[0] == 192 && b[1] == 168) return false;
+            if (b[0] == 192 && b[1] == 0 && (b[2] == 0 || b[2] == 2)) return false; // IETF protocol and documentation
+            if (b[0] == 198 && (b[1] & 0xFE) == 18) return false; // benchmarking
             return b[0] < 224; // multicast and reserved
         }
+
+        /// <summary>True when <paramref name="url"/> names exactly <paramref name="address"/> (a literal IP, as routers give).</summary>
+        public static bool IsSameHost(Uri url, IPAddress address) =>
+            url != null && address != null && IPAddress.TryParse(url.Host, out IPAddress host) && host.Equals(address);
 
         private static XmlDocument Load(string xml)
         {
@@ -153,7 +159,8 @@ namespace WAR2D.Net.Upnp
             try
             {
                 var doc = new XmlDocument { XmlResolver = null };
-                doc.LoadXml(xml);
+                var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null };
+                using (var reader = XmlReader.Create(new System.IO.StringReader(xml), settings)) doc.Load(reader);
                 return doc;
             }
             catch (XmlException)

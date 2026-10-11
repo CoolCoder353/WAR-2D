@@ -4,7 +4,7 @@ Guidance for AI coding assistants working in this repository.
 
 ## What this is
 
-WAR-2D is a Unity `6000.4.1f1` multiplayer 2D RTS (free-for-all, any player count, Linux + Windows). It uses **Mirror** for networking (server-authoritative, KCP on port 7778) and **Unity Entities (DOTS)** for the simulation. Read these before making non-trivial changes:
+WAR-2D is a Unity `6000.4.1f1` multiplayer 2D RTS (free-for-all or teams, 2 to 8 players, Linux build; a Windows profile is deferred). It uses **Mirror** for networking (server-authoritative, KCP on port 7778) and **Unity Entities (DOTS)** for the simulation. Read these before making non-trivial changes:
 
 - [docs/architecture.md](docs/architecture.md): how the systems connect, the networking reference, the ECS data model
 - [docs/gameplay.md](docs/gameplay.md): intended rules and numbers

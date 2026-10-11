@@ -12,6 +12,7 @@ namespace WAR2D.Net.Replication
     /// </summary>
     public struct FogBatch : NetworkMessage
     {
+        /// <summary>The encoded fog payload.</summary>
         public ArraySegment<byte> Payload;
     }
 
@@ -27,7 +28,9 @@ namespace WAR2D.Net.Replication
     /// <summary>Encodes and decodes fog payloads. Pure.</summary>
     public static class FogCodec
     {
+        /// <summary>Payload type: the whole grid.</summary>
         public const byte Snapshot = 0;
+        /// <summary>Payload type: cells that flipped.</summary>
         public const byte Delta = 1;
         /// <summary>Most cell indices per delta payload (keeps a payload well under the reliable limit).</summary>
         public const int MaxDeltaCells = 16384;
@@ -122,8 +125,11 @@ namespace WAR2D.Net.Replication
 
         /// <summary>A <see cref="FogState"/> per cell, row-major, or null before the first snapshot.</summary>
         public byte[] State { get; private set; }
+        /// <summary>Grid width in cells.</summary>
         public int Width { get; private set; }
+        /// <summary>Grid height in cells.</summary>
         public int Height { get; private set; }
+        /// <summary>Tiles per cell side.</summary>
         public int CellSize { get; private set; }
         /// <summary>Cells changed since the last <see cref="TakeChanges"/> (all of them after a snapshot).</summary>
         private readonly List<int> changed = new List<int>();

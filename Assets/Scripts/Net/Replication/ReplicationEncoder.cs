@@ -10,14 +10,20 @@ namespace WAR2D.Net.Replication
     /// <summary>Tuning for <see cref="ReplicationEncoder"/>, from <see cref="ReplicationConfig"/>.</summary>
     public struct EncoderConfig
     {
+        /// <summary>Prediction error (tiles) that triggers a correction in view.</summary>
         public float CorrectionThreshold;
+        /// <summary>Ticks between correction passes in view.</summary>
         public int CorrectionInterval;
+        /// <summary>Correction quantisation steps per tile.</summary>
         public byte DeltaScale;
+        /// <summary>Prediction error (tiles) that triggers a correction outside the view.</summary>
         public float OffscreenThreshold;
+        /// <summary>Ticks between correction passes outside the view.</summary>
         public int OffscreenInterval;
         /// <summary>Seconds per tick: message time is <c>tick * Dt</c>.</summary>
         public float Dt;
 
+        /// <summary>Builds the encoder tuning from the loaded config.</summary>
         public static EncoderConfig From(GameConfigData config) => new EncoderConfig
         {
             CorrectionThreshold = config.Replication.CorrectionThreshold,
@@ -133,6 +139,7 @@ namespace WAR2D.Net.Replication
             };
         }
 
+        /// <summary>Frees the native buffers.</summary>
         public void Dispose()
         {
             if (disposed) return;
@@ -142,16 +149,25 @@ namespace WAR2D.Net.Replication
 
         private sealed class ClientBuffers : IDisposable
         {
+            /// <summary>Per-unit state the client is known to predict.</summary>
             public NativeArray<PredictState> States;
             public NativeArray<int4> View;
+            /// <summary>Encoded bytes for the reliable and unreliable channels.</summary>
             public NativeList<byte> Reliable, Unreliable;
+            /// <summary>Sizes of the whole messages in each channel, in order.</summary>
             public NativeList<int> ReliableSizes, UnreliableSizes;
+            /// <summary>Scratch: units entering.</summary>
             public NativeList<EnterUnit> Enters;
             public NativeList<int2> EnterTiles, MoveTiles;
+            /// <summary>Scratch: units with a new route.</summary>
             public NativeList<RouteUnit> MoveOrders;
+            /// <summary>Scratch: units leaving.</summary>
             public NativeList<LeaveUnit> Leaves;
+            /// <summary>Scratch: units whose health changed.</summary>
             public NativeList<HealthUnit> Healths;
+            /// <summary>Scratch: units to correct.</summary>
             public NativeList<CorrectionUnit> Corrections;
+            /// <summary>Scratch: attacks to show.</summary>
             public NativeList<AttackEvent> Attacks;
 
             public ClientBuffers(int idCapacity, Allocator allocator)
@@ -173,6 +189,7 @@ namespace WAR2D.Net.Replication
                 Attacks = new NativeList<AttackEvent>(256, allocator);
             }
 
+            /// <summary>Frees the native buffers.</summary>
             public void Dispose()
             {
                 States.Dispose(); View.Dispose(); Reliable.Dispose(); Unreliable.Dispose(); ReliableSizes.Dispose();
@@ -186,8 +203,11 @@ namespace WAR2D.Net.Replication
     [BurstCompile(FloatMode = FloatMode.Deterministic)]
     public struct EncodeClientJob : IJob
     {
+        /// <summary>Encoder tuning.</summary>
         public EncoderConfig Config;
+        /// <summary>The tick being encoded.</summary>
         public int Tick;
+        /// <summary>The settled world the client may see.</summary>
         public ReplicationInput Input;
         [ReadOnly] public NativeArray<float2> Waypoints;
         [ReadOnly] public NativeArray<int> RouteStart, RouteCount, RouteGeneration;
@@ -196,16 +216,25 @@ namespace WAR2D.Net.Replication
         [ReadOnly] public NativeArray<int2> Attacks;
         [ReadOnly] public NativeArray<int4> View;
         public NativeArray<PredictState> States;
+        /// <summary>Encoded bytes for the reliable and unreliable channels.</summary>
         public NativeList<byte> Reliable, Unreliable;
+        /// <summary>Sizes of the whole messages in each channel, in order.</summary>
         public NativeList<int> ReliableSizes, UnreliableSizes;
+        /// <summary>Scratch: units entering.</summary>
         public NativeList<EnterUnit> Enters;
         public NativeList<int2> EnterTiles, MoveTiles;
+        /// <summary>Scratch: units with a new route.</summary>
         public NativeList<RouteUnit> MoveOrders;
+        /// <summary>Scratch: units leaving.</summary>
         public NativeList<LeaveUnit> Leaves;
+        /// <summary>Scratch: units whose health changed.</summary>
         public NativeList<HealthUnit> Healths;
+        /// <summary>Scratch: units to correct.</summary>
         public NativeList<CorrectionUnit> Corrections;
+        /// <summary>Output: attacks to send this client.</summary>
         public NativeList<AttackEvent> AttackOut;
 
+        /// <summary>Runs the job.</summary>
         public void Execute()
         {
             float now = Tick * Config.Dt;

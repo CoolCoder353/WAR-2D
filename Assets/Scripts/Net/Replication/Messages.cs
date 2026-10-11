@@ -32,14 +32,18 @@ namespace WAR2D.Net.Replication
     /// <summary>A unit and its route (a slice of a shared waypoint list).</summary>
     public struct RouteUnit
     {
+        /// <summary>The unit's id index (<see cref="NetIdAllocator.IndexOf"/>).</summary>
         public int Index;
+        /// <summary>Where the unit's waypoints start in the shared waypoint list.</summary>
         public int First;
+        /// <summary>How many waypoints the route has.</summary>
         public int Count;
     }
 
     /// <summary>A position correction against the client's prediction.</summary>
     public struct CorrectionUnit
     {
+        /// <summary>The unit's id index (<see cref="NetIdAllocator.IndexOf"/>).</summary>
         public int Index;
         /// <summary>Offset from the predicted position, in 1/DeltaScale tile.</summary>
         public short DX, DY;
@@ -49,33 +53,47 @@ namespace WAR2D.Net.Replication
         public byte Speed;
     }
 
+    /// <summary>A unit whose health changed.</summary>
     public struct HealthUnit
     {
+        /// <summary>The unit's id index (<see cref="NetIdAllocator.IndexOf"/>).</summary>
         public int Index;
         /// <summary>Percent of max health, 0..100.</summary>
         public byte Health;
     }
 
+    /// <summary>A unit entering a client's interest: full id, type, owner, position, health and route.</summary>
     public struct EnterUnit
     {
+        /// <summary>The full unit id (generation and index).</summary>
         public int Id;
+        /// <summary>The <see cref="UnitType"/> value.</summary>
         public byte Type;
+        /// <summary>The owner's player id.</summary>
         public int OwnerId;
+        /// <summary>Position in <see cref="Quantise"/> units.</summary>
         public ushort X, Y;
+        /// <summary>Percent of max health, 0..100.</summary>
         public byte Health;
+        /// <summary>The route as a slice of the shared waypoint list.</summary>
         public int First, Count;
     }
 
+    /// <summary>A unit leaving a client's interest.</summary>
     public struct LeaveUnit
     {
+        /// <summary>The unit's id index (<see cref="NetIdAllocator.IndexOf"/>).</summary>
         public int Index;
+        /// <summary>Why it left.</summary>
         public LeaveReason Reason;
     }
 
     /// <summary>An attack for the client's tracer: attacker index, target id (unit or building).</summary>
     public struct AttackEvent
     {
+        /// <summary>The attacker's id index.</summary>
         public int AttackerIndex;
+        /// <summary>The target's full id.</summary>
         public int TargetId;
     }
 
@@ -91,6 +109,7 @@ namespace WAR2D.Net.Replication
 
         // ---------- sizes, for packing ----------
 
+        /// <summary>Bytes a route takes on the wire.</summary>
         public static int RouteSize(NativeArray<int2> waypoints, int first, int count)
         {
             int size = VarInt.Size((uint)count) + 4;
@@ -102,15 +121,18 @@ namespace WAR2D.Net.Replication
             return size;
         }
 
+        /// <summary>Bytes one Enter entry takes on the wire.</summary>
         public static int EnterUnitSize(NativeArray<int2> waypoints, in EnterUnit u, int previousIndex) =>
             VarInt.Size((uint)(NetIdAllocator.IndexOf(u.Id) - previousIndex)) + VarInt.Size((uint)NetIdAllocator.GenerationOf(u.Id))
             + 1 + VarInt.Size((uint)u.OwnerId) + 5 + RouteSize(waypoints, u.First, u.Count);
 
+        /// <summary>Bytes one Correction entry takes on the wire.</summary>
         public static int CorrectionUnitSize(in CorrectionUnit u, int previousIndex) =>
             VarInt.Size((uint)(u.Index - previousIndex)) + VarInt.SizeInt(u.DX) + VarInt.SizeInt(u.DY) + VarInt.Size((uint)u.Resume) + 1;
 
         // ---------- encoders ----------
 
+        /// <summary>Writes a route: the first tile, then signed byte steps (an escape byte starts an absolute tile).</summary>
         public static void WriteRoute<W>(ref W writer, NativeArray<int2> waypoints, int first, int count) where W : struct, IWireWriter
         {
             VarInt.Write(ref writer, (uint)count);
@@ -136,6 +158,7 @@ namespace WAR2D.Net.Replication
             }
         }
 
+        /// <summary>Encodes an Enter message for the given units.</summary>
         public static void EncodeEnter<W>(ref W writer, NativeArray<int2> waypoints, NativeArray<EnterUnit> units) where W : struct, IWireWriter
         {
             writer.WriteByte((byte)MessageType.Enter);
@@ -157,6 +180,7 @@ namespace WAR2D.Net.Replication
             }
         }
 
+        /// <summary>Encodes a MoveOrder message for the given units.</summary>
         public static void EncodeMoveOrder<W>(ref W writer, int tick, NativeArray<int2> waypoints, NativeArray<RouteUnit> units) where W : struct, IWireWriter
         {
             writer.WriteByte((byte)MessageType.MoveOrder);
@@ -172,6 +196,7 @@ namespace WAR2D.Net.Replication
             }
         }
 
+        /// <summary>Encodes a Correction message for the given units.</summary>
         public static void EncodeCorrection<W>(ref W writer, int tick, byte deltaScale, NativeArray<CorrectionUnit> units) where W : struct, IWireWriter
         {
             writer.WriteByte((byte)MessageType.Correction);
@@ -191,6 +216,7 @@ namespace WAR2D.Net.Replication
             }
         }
 
+        /// <summary>Encodes a Health message for the given units.</summary>
         public static void EncodeHealth<W>(ref W writer, NativeArray<HealthUnit> units) where W : struct, IWireWriter
         {
             writer.WriteByte((byte)MessageType.Health);
@@ -204,6 +230,7 @@ namespace WAR2D.Net.Replication
             }
         }
 
+        /// <summary>Encodes a Leave message for the given units.</summary>
         public static void EncodeLeave<W>(ref W writer, NativeArray<LeaveUnit> units) where W : struct, IWireWriter
         {
             writer.WriteByte((byte)MessageType.Leave);
@@ -217,6 +244,7 @@ namespace WAR2D.Net.Replication
             }
         }
 
+        /// <summary>Encodes an Attack message for the given units.</summary>
         public static void EncodeAttack<W>(ref W writer, NativeArray<AttackEvent> events) where W : struct, IWireWriter
         {
             writer.WriteByte((byte)MessageType.Attack);
@@ -232,6 +260,7 @@ namespace WAR2D.Net.Replication
 
         // ---------- decoders ----------
 
+        /// <summary>The type of the next message, without consuming it.</summary>
         public static MessageType PeekType(NetworkReader reader)
         {
             if (reader.Remaining < 1) throw new EndOfStreamException("no message type");
@@ -264,6 +293,7 @@ namespace WAR2D.Net.Replication
             return previous;
         }
 
+        /// <summary>Reads a route into the waypoint list and returns its length; throws on a malformed route.</summary>
         public static int ReadRoute(NetworkReader reader, List<int2> waypoints)
         {
             int count = (int)VarInt.Read(reader);
@@ -280,6 +310,7 @@ namespace WAR2D.Net.Replication
             return count;
         }
 
+        /// <summary>Decodes an Enter message. Throws <see cref="InvalidDataException"/> on malformed input.</summary>
         public static void DecodeEnter(NetworkReader reader, List<EnterUnit> units, List<int2> waypoints)
         {
             Expect(reader, MessageType.Enter);
@@ -305,6 +336,7 @@ namespace WAR2D.Net.Replication
             }
         }
 
+        /// <summary>Decodes a MoveOrder message and returns its tick.</summary>
         public static int DecodeMoveOrder(NetworkReader reader, List<RouteUnit> units, List<int2> waypoints)
         {
             Expect(reader, MessageType.MoveOrder);
@@ -320,6 +352,7 @@ namespace WAR2D.Net.Replication
             return tick;
         }
 
+        /// <summary>Decodes a Correction message and returns its tick.</summary>
         public static int DecodeCorrection(NetworkReader reader, List<CorrectionUnit> units, out byte deltaScale)
         {
             Expect(reader, MessageType.Correction);
@@ -339,6 +372,7 @@ namespace WAR2D.Net.Replication
             return tick;
         }
 
+        /// <summary>Decodes a Health message.</summary>
         public static void DecodeHealth(NetworkReader reader, List<HealthUnit> units)
         {
             Expect(reader, MessageType.Health);
@@ -348,6 +382,7 @@ namespace WAR2D.Net.Replication
                 units.Add(new HealthUnit { Index = NextIndex(reader, ref previous), Health = reader.ReadByte() });
         }
 
+        /// <summary>Decodes a Leave message.</summary>
         public static void DecodeLeave(NetworkReader reader, List<LeaveUnit> units)
         {
             Expect(reader, MessageType.Leave);
@@ -362,6 +397,7 @@ namespace WAR2D.Net.Replication
             }
         }
 
+        /// <summary>Decodes an Attack message.</summary>
         public static void DecodeAttack(NetworkReader reader, List<AttackEvent> events)
         {
             Expect(reader, MessageType.Attack);

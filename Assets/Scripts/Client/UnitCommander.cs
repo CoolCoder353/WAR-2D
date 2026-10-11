@@ -573,10 +573,9 @@ public class UnitCommander : NetworkBehaviour
         }
 
 
-        //If only the position is changed, tween move the game object
+        //If only the position is changed, move the game object (buildings do not move once placed)
         if (oldUnit.position.x != newUnit.position.x || oldUnit.position.y != newUnit.position.y)
         {
-            //TODO: Tween move the game object
             if (buildingGameObjects.ContainsKey(oldUnit.id))
             {
                 int2 anchor = (int2)math.round(newUnit.position);

@@ -8,7 +8,7 @@ namespace WAR2D.Sim
     public partial class SimCommandSystem
     {
         private readonly List<int>[] moversByClass = { new List<int>(), new List<int>() };
-        private readonly Dictionary<(int2 goal, byte stance, int sizeClass), List<int>> legs = new Dictionary<(int2, byte, int), List<int>>();
+        private readonly Dictionary<(int2 goal, byte stance, int sizeClass, int owner), List<int>> legs = new Dictionary<(int2, byte, int, int), List<int>>();
         private readonly Stack<List<int>> spareLegs = new Stack<List<int>>();
 
         /// <summary>
@@ -60,7 +60,7 @@ namespace WAR2D.Sim
             }
             int tick = SystemAPI.GetSingleton<SimClock>().Tick;
             for (int sizeClass = 0; sizeClass < moversByClass.Length; sizeClass++)
-                Issue(data, context, moversByClass[sizeClass], sizeClass, command.Tile, stance, tick);
+                Issue(data, context, moversByClass[sizeClass], sizeClass, command.Tile, stance, tick, command.OwnerId);
         }
 
         /// <summary>Queues the unit's waypoint, or clears its waypoints and adds it to this order's movers.</summary>
@@ -100,7 +100,7 @@ namespace WAR2D.Sim
                     context.Waypoints.Forget(id);
                     continue;
                 }
-                var key = (goal, stance, data.SizeClass[slot] & 1);
+                var key = (goal, stance, data.SizeClass[slot] & 1, data.OwnerId[slot]);
                 if (!legs.TryGetValue(key, out List<int> slots))
                 {
                     slots = spareLegs.Count > 0 ? spareLegs.Pop() : new List<int>();
@@ -108,9 +108,9 @@ namespace WAR2D.Sim
                 }
                 slots.Add(slot);
             }
-            foreach (KeyValuePair<(int2 goal, byte stance, int sizeClass), List<int>> leg in legs)
+            foreach (KeyValuePair<(int2 goal, byte stance, int sizeClass, int owner), List<int>> leg in legs)
             {
-                Issue(data, context, leg.Value, leg.Key.sizeClass, leg.Key.goal, leg.Key.stance, tick);
+                Issue(data, context, leg.Value, leg.Key.sizeClass, leg.Key.goal, leg.Key.stance, tick, leg.Key.owner);
                 leg.Value.Clear();
                 spareLegs.Push(leg.Value);
             }
@@ -118,7 +118,7 @@ namespace WAR2D.Sim
         }
 
         /// <summary>Issues (or joins) the order for the goal and gives it to the units.</summary>
-        private static void Issue(SimData data, SimContext context, List<int> slots, int sizeClass, int2 goal, byte stance, int tick)
+        private static void Issue(SimData data, SimContext context, List<int> slots, int sizeClass, int2 goal, byte stance, int tick, int owner)
         {
             if (slots.Count == 0) return;
             var starts = new NativeArray<int>(slots.Count, Allocator.Temp);
@@ -127,7 +127,7 @@ namespace WAR2D.Sim
                 int2 tile = math.clamp((int2)math.floor(data.Positions[slots[i]]), 0, new int2(data.Width - 1, data.Height - 1));
                 starts[i] = tile.y * data.Width + tile.x;
             }
-            int handle = context.Orders.Issue(goal, sizeClass, starts, tick);
+            int handle = context.Orders.Issue(goal, sizeClass, starts, tick, owner);
             starts.Dispose();
             if (handle < 0) return;
             AddPending(data, slots, new PendingOrder { Slot = handle, Stance = stance });

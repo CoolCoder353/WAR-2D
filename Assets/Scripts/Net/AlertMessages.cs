@@ -24,9 +24,12 @@ public enum AlertKind : byte
 /// </summary>
 public struct Alert
 {
+    /// <summary>What happened.</summary>
     public AlertKind Kind;
     public int2 Tile;
+    /// <summary>The other player involved, or 0.</summary>
     public int OtherOwnerId;
+    /// <summary>Gift size (GiftReceived only).</summary>
     public float Amount;
 }
 

@@ -70,4 +70,14 @@ public class ServerPlayerTests
         Assert.That(p.UpkeepLastSecond, Is.EqualTo(0f));
         Assert.That(p.Resources, Is.EqualTo(10f));
     }
+
+    [Test]
+    public void ARefundIsNotCountedAsSpent()
+    {
+        var p = new ServerPlayer(null, 10f);
+        Assert.IsTrue(p.TrySpend(4f));
+        p.Refund(4f);
+        Assert.AreEqual(10f, p.Resources, 1e-4f);
+        Assert.AreEqual(0f, p.SpentThisMatch, 1e-4f);
+    }
 }

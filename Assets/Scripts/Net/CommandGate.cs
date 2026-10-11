@@ -40,11 +40,13 @@ public static class CommandGate
 
     private static readonly Dictionary<int, (int count, double windowStart)> Violations = new Dictionary<int, (int, double)>();
 
+    /// <summary>True when the connection has a player and is within the command's rate limit; repeated excess disconnects it.</summary>
     public static bool Allow(NetworkConnectionToClient conn, string command)
     {
-        if (conn == null || conn.identity == null) return false;
+        if (conn == null) return false;
         double now = NetworkTime.localTime;
-        if (Limiter.TryConsume(conn.connectionId, command, now)) return true;
+        // A connection without a player is limited and kicked like any other, but never allowed.
+        if (Limiter.TryConsume(conn.connectionId, command, now)) return conn.identity != null;
 
         Violations.TryGetValue(conn.connectionId, out var v);
         if (now - v.windowStart > ViolationWindowSeconds) v = (0, now);

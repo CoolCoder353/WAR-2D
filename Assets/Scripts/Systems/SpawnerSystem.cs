@@ -64,7 +64,7 @@ public partial struct SpawnerSystem : ISystem
                         if (rally) SimCommandQueue.Instance?.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.Move, OwnerId = ownerId, Tile = rallyTile, Ids = new[] { id } });
                         return;
                     }
-                    owner.Add(cost);
+                    owner.Refund(cost);
                     if (!entityManager.Exists(source) || !entityManager.HasComponent<SpawnerData>(source)) return;
                     SpawnerData data = entityManager.GetComponentData<SpawnerData>(source);
                     data.count++;

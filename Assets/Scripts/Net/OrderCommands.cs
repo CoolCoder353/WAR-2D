@@ -118,7 +118,7 @@ public partial class WorldStateManager
 
     /// <summary>
     /// Adds a chunk to the sender's pending list for the token. Returns the whole list on the final
-    /// chunk, else null. A malformed chunk, too many ids, or too many open tokens drops the order. An empty
+    /// chunk (sorted, without duplicates), else null. A malformed chunk, too many ids, or too many open tokens drops the order. An empty
     /// chunk adds no ids: Ctrl+number with nothing selected sends one, and it empties the squad.
     /// </summary>
     private List<int> Accumulate(int owner, ushort token, byte kind, byte[] chunk, bool final)
@@ -144,6 +144,13 @@ public partial class WorldStateManager
         }
         if (!final) return null;
         pendingOrders.Remove(key);
+        if (pending.Ids.Count > 1)
+        {
+            pending.Ids.Sort();
+            int kept = 1;
+            for (int i = 1; i < pending.Ids.Count; i++) if (pending.Ids[i] != pending.Ids[kept - 1]) pending.Ids[kept++] = pending.Ids[i];
+            pending.Ids.RemoveRange(kept, pending.Ids.Count - kept);
+        }
         return pending.Ids;
     }
 
