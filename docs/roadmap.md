@@ -14,8 +14,8 @@ This is the overarching development plan for WAR-2D. It explains **what** each u
 | v0.5 | Fog & Wire | **Closed** (2026-10-09) by the owner with the performance gate not run, no manual play-test yet and KCP not tuned. All three are carried into v0.6 in [known-issues.md](known-issues.md). Teams, fog of war, fog interest, buildings on the replication service and the leak tests are done; EditMode 223/223 and PlayMode 10/10 pass | [2026-10-09-v0.5-fog-and-wire.md](superpowers/plans/2026-10-09-v0.5-fog-and-wire.md) |
 | v0.6 | Command | **Done.** Merged into `main` on 2026-10-11. HUD, menus, lobby (colour picks and reserved HQ clearings), settings, new orders and per-player diplomacy; the first manual Linux match was played and its reports fixed; the performance gate passed with 7 real clients (tick **10.6 ms p95**, **243 fps**, **162 KB/s** average per client; [docs/perf/v0.6](perf/v0.6/)) | [2026-10-09-v0.6-command.md](superpowers/plans/2026-10-09-v0.6-command.md) |
 | v0.8 | New Paint | **Done** (2026-10-12), owner signed off; PR `release/v0.8` → `main`. Moved ahead of v0.7 so the art style sets how the new units and buildings look; it also delivers the v0.7 art kit | [2026-10-10-v0.8-new-paint.md](superpowers/plans/2026-10-10-v0.8-new-paint.md) |
-| v0.7 | Siege | Not started (after v0.8, using its art kit) | — |
-| v0.9 | Steam | Not started | — |
+| v0.9 | Steam | Design approved and plan written (2026-10-12); not started. Moved ahead of v0.7 (2026-10-12) so playtests are easier to run before new content lands. Scope: the playtest core only (relay, lobbies, auth, delivery) | [design](superpowers/specs/2026-10-12-v0.9-steam-design.md), [plan](superpowers/plans/2026-10-12-v0.9-steam.md) |
+| v0.7 | Siege | Not started (now after v0.9, using the v0.8 art kit) | — |
 
 ---
 
@@ -51,9 +51,8 @@ flowchart LR
     v04 --> v05[v0.5 Fog & Wire<br/>networking + fog + teams]
     v05 --> v06[v0.6 Command<br/>UI/UX, lobby, settings]
     v06 --> v08[v0.8 New Paint<br/>art + audio, v0.7 art kit]
-    v05 --> v07[v0.7 Siege<br/>Builder, walls, Digger, bombs]
-    v08 --> v07
-    v07 --> v09[v0.9 Steam<br/>Steamworks + playtest]
+    v08 --> v09[v0.9 Steam<br/>relay, lobbies, playtest]
+    v09 --> v07[v0.7 Siege<br/>Builder, walls, Digger, bombs]
 ```
 
 We chose **foundation first, then prove scale, then features**. Two alternatives were rejected:
@@ -66,7 +65,7 @@ The order follows from the dependencies:
 - **v0.3 before v0.4:** the riskiest assumptions (line-of-sight fog at 80,000 units, network bandwidth, rendering) get measured cheaply before the core is rebuilt around them.
 - **v0.5 before v0.6 and v0.7:** the HUD minimap, team lobby and hidden bombs all depend on teams, fog of war and the new networking.
 - **v0.8 after v0.6, before v0.7** (reordered 2026-10-11): art is easiest to replace once the systems that display it (instanced rendering, UI Toolkit) exist, and doing it before v0.7 means the art style decides how the Builder, Digger, walls and bombs look. v0.8 draws the v0.7 art kit; v0.7 only wires it.
-- **v0.9 last:** Steam integration wraps a finished game.
+- **v0.9 before v0.7** (reordered 2026-10-12): the owner wants better playtesting before new content. Hosting needs a router port or a tunnel today, which limits who can test. Steam relay and lobbies remove that, so the v0.7 gameplay gets playtested by more people. v0.9 is limited to the playtest core; the dedicated server is deferred, and the store page and content survey are not needed for the playtest.
 
 Every update **except v0.3** ships a playable, tested build.
 
@@ -303,15 +302,17 @@ Each update below lists its goal, its scope, the key decisions already made, wha
 > Ship the game to a Steam playtest.
 
 **Scope**
-- **Steamworks** integration through the **FizzySteamworks** transport for Mirror.
-- **Steam lobbies and invites**, **relay** (no port forwarding), and **authentication tickets** so the server knows who each player really is.
-- A **headless dedicated server build** alongside player hosting.
-- A **server browser** replacing join-by-IP.
-- Store page and content-survey preparation, including the AI-content disclosure.
+Scoped on 2026-10-12 to the **playtest core**. Full design: [v0.9 Steam design](superpowers/specs/2026-10-12-v0.9-steam-design.md).
+
+- **Steamworks** integration through the **FizzySteamworks** transport for Mirror, next to KCP (kept as "Direct" for tests, perf runs and LAN).
+- **Steam lobbies, invites and a lobby browser** replacing join-by-IP, **relay** (no port forwarding), and **authentication tickets** so the server knows who each player really is.
+- **SteamPipe delivery** of Linux and Windows builds to a Playtest branch.
+
+**Deferred:** the headless dedicated server. The store page and content-survey preparation (including the AI-content disclosure) are not needed for the playtest and come with the release.
 
 **Exit criteria:** a friends-only Steam playtest on Linux and Windows. Windows verification happens here at the latest.
 
-**Open decisions:** Steam app setup (app ID, depots), and the friends playtest group.
+**Open decisions:** the friends playtest group. App ID 713149 (to be confirmed in the Steamworks dashboard); the owner says no store page is needed for the playtest.
 
 ---
 

@@ -123,6 +123,27 @@ public class SimMovementTests
     }
 
     [Test]
+    public void OneOwnerCannotFillTheOrderTable()
+    {
+        using MapStore open = WallWithGap();
+        using var book = new WAR2D.Sim.OrderBook(open.Grid);
+        var starts = new Unity.Collections.NativeArray<int>(1, Unity.Collections.Allocator.Temp);
+        try
+        {
+            starts[0] = 10 * open.Grid.Width + 40;
+            var granted = new System.Collections.Generic.HashSet<int>();
+            for (int x = 0; x < 2 * WAR2D.Sim.OrderBook.MaxOrdersPerOwner; x++)
+            {
+                int handle = book.Issue(new int2(2 + x % 40, 2 + x / 40 * 3), 0, starts, 1, owner: 7);
+                if (handle >= 0) granted.Add(handle);
+            }
+            Assert.AreEqual(WAR2D.Sim.OrderBook.MaxOrdersPerOwner, granted.Count);
+            Assert.GreaterOrEqual(book.Issue(new int2(60, 10), 0, starts, 1, owner: 8), 0, "another owner is unaffected");
+        }
+        finally { starts.Dispose(); }
+    }
+
+    [Test]
     public void SnapGoalFindsNearestFloorOrNone()
     {
         using MapStore open = WallWithGap();

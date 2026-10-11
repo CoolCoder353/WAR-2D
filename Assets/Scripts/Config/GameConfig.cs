@@ -11,9 +11,13 @@ namespace Config
     /// </summary>
     public class GameConfigData
     {
+        /// <summary>Passive income, starting balance, mining and decay.</summary>
         public ResourceConfig Resources = new ResourceConfig();
+        /// <summary>Match scene, countdown and map.</summary>
         public MatchConfig Match = new MatchConfig();
+        /// <summary>Unit stats by type.</summary>
         public Dictionary<UnitType, UnitConfig> Units = new Dictionary<UnitType, UnitConfig>();
+        /// <summary>Building stats by type.</summary>
         public Dictionary<BuildingType, BuildingConfig> Buildings = new Dictionary<BuildingType, BuildingConfig>();
         /// <summary>Server simulation tick and its job tuning.</summary>
         public SimulationConfig Simulation = new SimulationConfig();
@@ -23,10 +27,15 @@ namespace Config
         public OrdersConfig Orders = new OrdersConfig();
         /// <summary>Player-controlled diplomacy.</summary>
         public DiplomacyConfig Diplomacy = new DiplomacyConfig();
+        /// <summary>Resource gifting between players.</summary>
         public GiftingConfig Gifting = new GiftingConfig();
+        /// <summary>The alert feed.</summary>
         public AlertsConfig Alerts = new AlertsConfig();
+        /// <summary>Music switching.</summary>
         public AudioConfig Audio = new AudioConfig();
+        /// <summary>What the host may pick in the lobby.</summary>
         public LobbyConfig Lobby = new LobbyConfig();
+        /// <summary>The battle behind the main menu.</summary>
         public MenuBattleConfig MenuBattle = new MenuBattleConfig();
         /// <summary>Damage multipliers per attacker type and target class.</summary>
         public DamageTableConfig Damage = new DamageTableConfig();
@@ -46,23 +55,31 @@ namespace Config
         }
     }
 
+    /// <summary>Economy rates.</summary>
     public class ResourceConfig
     {
+        /// <summary>Resources per second every player earns without mining.</summary>
         public float PassiveGenerationRate;
+        /// <summary>Balance at the start of a match (the lobby may override it).</summary>
         public float StartingResources;
+        /// <summary>Resources per second a working miner earns.</summary>
         public float MiningRate;
         /// <summary>Percent of max health lost per second while upkeep is unpaid.</summary>
         public float DecayPercentPerSecond;
     }
 
+    /// <summary>Match setup.</summary>
     public class MatchConfig
     {
+        /// <summary>The match scene to load.</summary>
         public string Scene = "Map_2";
+        /// <summary>Seconds between the last HQ placed and the start of play.</summary>
         public float CountdownSeconds;
         /// <summary>The match map: generated from a seed, or the scene's tilemaps.</summary>
         public MapConfig Map = new MapConfig();
     }
 
+    /// <summary>Map generation.</summary>
     public class MapConfig
     {
         /// <summary>Tiles per side of the generated map; 0 uses the scene's tilemaps.</summary>
@@ -73,6 +90,7 @@ namespace Config
         public float GemChance;
     }
 
+    /// <summary>Server simulation tuning.</summary>
     public class SimulationConfig
     {
         /// <summary>Server simulation ticks per second.</summary>
@@ -100,18 +118,21 @@ namespace Config
         public float TickSeconds => 1f / TickRate;
     }
 
+    /// <summary>Unit order tuning.</summary>
     public class OrdersConfig
     {
         /// <summary>Shift-queued waypoints kept per unit; extras are dropped.</summary>
         public int MaxQueued;
     }
 
+    /// <summary>Diplomacy tuning.</summary>
     public class DiplomacyConfig
     {
         /// <summary>Seconds a player waits between changes, per command.</summary>
         public float ChangeCooldownSeconds;
     }
 
+    /// <summary>Main menu battle.</summary>
     public class MenuBattleConfig
     {
         /// <summary>Units per army in the battle behind the main menu.</summary>
@@ -122,6 +143,7 @@ namespace Config
         public uint Seed;
     }
 
+    /// <summary>Lobby choices.</summary>
     public class LobbyConfig
     {
         /// <summary>Map sizes the host may pick (tiles per side), smallest first.</summary>
@@ -130,12 +152,14 @@ namespace Config
         public float[] StartingResources = System.Array.Empty<float>();
     }
 
+    /// <summary>Gifting tuning.</summary>
     public class GiftingConfig
     {
         /// <summary>Seconds a player waits between gifts.</summary>
         public float CooldownSeconds;
     }
 
+    /// <summary>Music tuning.</summary>
     public class AudioConfig
     {
         /// <summary>Deaths the player sees within one second that switch the music to the battle track.</summary>
@@ -144,6 +168,7 @@ namespace Config
         public float BattleHoldSeconds;
     }
 
+    /// <summary>Alert tuning.</summary>
     public class AlertsConfig
     {
         /// <summary>Seconds an Under-attack alert for one area stays quiet after it fires.</summary>
@@ -154,6 +179,7 @@ namespace Config
         public float ShowSeconds;
     }
 
+    /// <summary>Unit replication tuning.</summary>
     public class ReplicationConfig
     {
         /// <summary>Ticks between correction passes for units in view.</summary>
@@ -181,16 +207,24 @@ namespace Config
             => Entries.TryGetValue((attacker, target), out float m) ? m : 1f;
     }
 
+    /// <summary>One unit type's stats.</summary>
     public class UnitConfig
     {
+        /// <summary>Hit points.</summary>
         public int Health;
+        /// <summary>Damage per attack before the damage table.</summary>
         public int Damage;
+        /// <summary>Attack range in tiles.</summary>
         public float Range;
         /// <summary>Seconds between attacks.</summary>
         public float AttackInterval;
+        /// <summary>Tiles per second.</summary>
         public float MoveSpeed;
+        /// <summary>Parsed but not used yet: units reach full speed at once.</summary>
         public float Acceleration;
+        /// <summary>Resources taken once, when built or spawned.</summary>
         public float UpfrontCost;
+        /// <summary>Upkeep in resources per second.</summary>
         public float RunningCost;
         /// <summary>Collision radius in tiles.</summary>
         public float Radius;
@@ -200,18 +234,25 @@ namespace Config
         public float Sight;
     }
 
+    /// <summary>One building type's stats.</summary>
     public class BuildingConfig
     {
+        /// <summary>Hit points.</summary>
         public int Health;
+        /// <summary>Footprint width in tiles.</summary>
         public int Width;
+        /// <summary>Footprint height in tiles.</summary>
         public int Height;
+        /// <summary>Resources taken once, when built or spawned.</summary>
         public float UpfrontCost;
+        /// <summary>Upkeep in resources per second.</summary>
         public float RunningCost;
         /// <summary>Units per second a spawner may produce (0 for non-spawners).</summary>
         public float SpawnRate;
         /// <summary>Sight radius in tiles.</summary>
         public float Sight;
 
+        /// <summary>The footprint in tiles.</summary>
         public int2 Size => new int2(Width, Height);
     }
 }

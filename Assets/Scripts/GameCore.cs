@@ -155,8 +155,8 @@ public partial class GameCore : NetworkBehaviour
     [Server]
     public void OnPlayerLeave(NetworkConnectionToClient conn)
     {
-        if (conn.identity == null || !ServerPlayers.Remove(conn.identity)) return;
         CommandGate.Forget(conn.connectionId);
+        if (conn.identity == null || !ServerPlayers.Remove(conn.identity)) return;
 
         ClientPlayer leaving = conn.identity.GetComponent<ClientPlayer>();
         if (WorldStateManager.Instance != null)
@@ -355,7 +355,7 @@ public partial class GameCore : NetworkBehaviour
         }
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
-            if (entry.Key.netId != (uint)playerId || entry.Value.state == PlayerState.Eliminated) continue;
+            if (entry.Key == null || entry.Key.netId != (uint)playerId || entry.Value.state == PlayerState.Eliminated) continue;
             entry.Value.state = PlayerState.Eliminated;
             WorldStateManager.Instance?.KillAllEntitiesOwnedBy(playerId);
             ClientPlayer client = entry.Key.GetComponent<ClientPlayer>();
@@ -365,8 +365,8 @@ public partial class GameCore : NetworkBehaviour
         }
     }
 
-    [Server]
     /// <summary>Ends the match: every player in <paramref name="winners"/> wins, everyone else loses.</summary>
+    [Server]
     public void DeclareWinner(IReadOnlyCollection<int> winners)
     {
         CurrentState = GameState.GameOver;

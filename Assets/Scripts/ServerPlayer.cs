@@ -42,6 +42,14 @@ public class ServerPlayer
         ResourcesDirty = true;
     }
 
+    /// <summary>Gives back resources taken with <see cref="TrySpend"/> (a refused spawn), so they no longer count as spent.</summary>
+    public void Refund(float amount)
+    {
+        if (!(amount > 0f)) return;
+        Add(amount);
+        SpentThisMatch = SpentThisMatch > amount ? SpentThisMatch - amount : 0f;
+    }
+
     /// <summary>Adds earned resources and counts them towards this second's income.</summary>
     public void AddIncome(float amount)
     {

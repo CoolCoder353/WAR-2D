@@ -24,6 +24,13 @@ namespace WAR2D.Sim
         private OrderFieldTable table;
         private readonly Dictionary<int, int> issuedTick = new Dictionary<int, int>();
         private readonly HashSet<long> missSeen = new HashSet<long>();
+        private readonly Dictionary<int, HashSet<int>> ordersByOwner = new Dictionary<int, HashSet<int>>();
+
+        /// <summary>
+        /// Most live orders one owner may hold, so a single player cannot fill the shared table
+        /// (<see cref="OrderFieldTable.MaxOrders"/>) and leave everyone else's orders refused.
+        /// </summary>
+        public const int MaxOrdersPerOwner = OrderFieldTable.MaxOrders / 8;
         private JobHandle rebuilds;
         private bool disposed;
 
@@ -62,9 +69,10 @@ namespace WAR2D.Sim
         /// <summary>
         /// Creates (or joins) the order for a goal and size class and returns its handle, or -1 when the
         /// table is full. <paramref name="startTiles"/> (tile indices of the ordered units) decide which
-        /// sectors the route covers first.
+        /// sectors the route covers first. An <paramref name="owner"/> already holding
+        /// <see cref="MaxOrdersPerOwner"/> other orders is refused with -1.
         /// </summary>
-        public int Issue(int2 goal, int sizeClass, NativeArray<int> startTiles, int tick)
+        public int Issue(int2 goal, int sizeClass, NativeArray<int> startTiles, int tick, int owner)
         {
             goal = math.clamp(goal, 0, new int2(cache.Width - 1, cache.Height - 1));
             int2 from = startTiles.Length > 0 ? new int2(startTiles[0] % cache.Width, startTiles[0] / cache.Width) : goal;
@@ -75,6 +83,13 @@ namespace WAR2D.Sim
                 cache.Release(handle, 1);
                 return -1;
             }
+            if (!ordersByOwner.TryGetValue(owner, out HashSet<int> held)) ordersByOwner[owner] = held = new HashSet<int>();
+            if (!held.Contains(handle) && held.Count >= MaxOrdersPerOwner)
+            {
+                cache.Release(handle, 1);
+                return -1;
+            }
+            held.Add(handle);
             if (issuedTick.ContainsKey(handle))
             {
                 cache.Release(handle, 1); // joining a live order: keep one reference per order
@@ -134,6 +149,7 @@ namespace WAR2D.Sim
             foreach (int handle in dead)
             {
                 issuedTick.Remove(handle);
+                ForgetHandle(handle);
                 cache.Release(handle, 1);
                 cache.Unpublish(ref table, handle);
                 Live[handle] = 0;
@@ -150,6 +166,11 @@ namespace WAR2D.Sim
             foreach (int handle in issuedTick.Keys) Ready[handle] = cache.HasPublished(handle) ? (byte)1 : (byte)0;
         }
 
+        private void ForgetHandle(int handle)
+        {
+            foreach (HashSet<int> held in ordersByOwner.Values) held.Remove(handle);
+        }
+
         /// <summary>Schedules up to <paramref name="maxPerTick"/> rebuilds; the next boundary completes them.</summary>
         public void ScheduleRebuilds(int maxPerTick) => rebuilds = cache.ScheduleRebuilds(maxPerTick);
 
@@ -158,6 +179,7 @@ namespace WAR2D.Sim
         {
             rebuilds.Complete();
             cache.CompleteRebuilds(ref table);
+            ordersByOwner.Clear();
             foreach (int handle in issuedTick.Keys)
             {
                 cache.Release(handle, 1);

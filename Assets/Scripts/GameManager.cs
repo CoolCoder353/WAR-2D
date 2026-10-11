@@ -138,6 +138,7 @@ public class GameManager : NetworkManager
     {
         base.OnServerAddPlayer(conn);
 
+        if (GameCore.Instance == null) return;
         GameCore.Instance.AddPlayer(conn, Config.ConfigLoader.LoadConfig().Resources.StartingResources);
 
         // Log the connection
@@ -155,12 +156,11 @@ public class GameManager : NetworkManager
     {
         WAR2D.Net.Replication.ReplicationService.Instance?.OnClientLeft(conn);
         // Remove the disconnected player from the list of players
-        GameCore.Instance.OnPlayerLeave(conn);
-
+        if (GameCore.Instance != null) GameCore.Instance.OnPlayerLeave(conn);
+        else CommandGate.Forget(conn.connectionId);
 
         // Log the disconnection
         Debug.Log($"Player {conn.connectionId} has disconnected");
-        Debug.Log($"There are now {GameCore.Instance.ServerPlayers.Count} players connected");
 
 
 
@@ -182,9 +182,6 @@ public class GameManager : NetworkManager
         Debug.Log($"Error: {reason}");
     }
 
-    /// <summary>
-    /// Called on the client when it connects to the server.
-    /// </summary>
     /// <summary>Registers the unit replication handler (it forwards batches to <see cref="WAR2D.Net.Replication.ReplicationClient"/>).</summary>
     [Client]
     public override void OnStartClient()
@@ -195,6 +192,7 @@ public class GameManager : NetworkManager
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.BuildingBatch>(WAR2D.Net.Replication.ClientBuildings.Receive, false);
     }
 
+    /// <summary>Called on the client when it connects to the server.</summary>
     [Client]
     public override void OnClientConnect()
     {

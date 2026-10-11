@@ -1,6 +1,18 @@
 # Known Issues and Tech Debt
 
-The October 2026 code review found roughly 30 bugs, mismatches and hygiene problems. **v0.2 fixed all of them except the items below**, which are deliberately deferred to a later version. Each entry names the version that should clear it. See [roadmap.md](roadmap.md) for what each version delivers.
+Bugs, mismatches and hygiene problems, newest sections last. The October 2026 code review (v0.2) found roughly 30 and fixed all of them except the items below, which are deliberately deferred; each names the version that should clear it. A second review (v0.8, 2026-10-12) is recorded in the next section. See [roadmap.md](roadmap.md) for what each version delivers.
+
+## v0.8 code and security review (2026-10-12)
+
+| Finding | Where | Status |
+| --- | --- | --- |
+| **Open (design decision).** Enemy units a client may see are sent with their whole route, so a modified client can read where visible enemy units are heading beyond the fog. Clients need routes to predict movement; the fix would be to send enemy units only the part of the route on cells the team sees (or a short prefix), at the cost of less accurate prediction. `LeakTests` do not cover routes. | `ReplicationEncoder.AppendRoute`, `Messages.ReadRoute` | **Open: needs an owner decision.** |
+| One player could fill the shared order table (256 flow-field orders) with single-unit orders to distinct goals, after which nobody's move orders worked. | `OrderBook.Issue` | **Fixed.** Each owner may hold `OrderBook.MaxOrdersPerOwner` (32) live orders; queued legs count too. `SimMovementTests.OneOwnerCannotFillTheOrderTable`. |
+| UPnP fetched whatever URL any LAN device named, with no size cap, followed redirects, accepted a control URL on another host and allowed DTDs. One odd responder (an IPv6 location, a bad URI) also ended discovery before the real router answered. | `UpnpGateway.DiscoverAsync`, `UpnpProtocol` | **Fixed.** The description and control URLs must be the responder's own address, bodies are capped at 256 KB, redirects are off, DTDs are refused, and a bad responder is skipped. More documentation and benchmarking ranges are non-public. |
+| A connection without a player could send commands without ever being rate-limited or kicked; its rate-limit buckets were never forgotten. | `CommandGate.Allow`, `GameCore.OnPlayerLeave` | **Fixed.** Such a connection is limited and kicked like any other, and its buckets are dropped on every disconnect. The transport still accepts up to `maxConnections` (100, in the `Main_Menu` scene) before `OnServerConnect` closes the extras. |
+| `EliminatePlayer` read a destroyed identity; `OnServerAddPlayer` and `OnServerDisconnect` assumed `GameCore.Instance`. | `GameCore.cs`, `GameManager.cs` | **Fixed.** |
+| A refused spawn's refund still counted as spent on the end screen. | `SpawnerSystem` | **Fixed.** `ServerPlayer.Refund`. |
+| Order chunks could repeat unit ids. | `WorldStateManager.Accumulate` | **Fixed.** The list is sorted and de-duplicated. |
 
 ## Performance and scale
 
@@ -17,27 +29,25 @@ The October 2026 code review found roughly 30 bugs, mismatches and hygiene probl
 | The settings panel's top keeps changing position                                                                | The panel was centred and each tab is a different height, so the title and tabs moved with every tab change (the approved Figma frames are centred the same way).                                                                                                                                                                                                                                                                                                                                 | **Fixed.** The panel is pinned 14 % from the top (`Theme.uss`, `.settings`). The Figma Settings frames still show centred panels: update them to match.                                                                                                                                                                                                                                       |
 | Map generation looks boring                                                                                     | The generator is a 45 % rock fill smoothed by a cellular automaton, plus clearings and corridors (`World/MapGenerator.cs`).                                                                                                                                                                                                                                                                                                                                                                       | **Open: design request.** Any change alters every seed's map and hash, the HQ sites, and the perf gate's seed-1 layout, so it needs a brainstorm and owner sign-off first.                                                                                                                                                                                                                    |
 
-## Owner playtest bugs,
+## Owner playtest bugs (v0.8)
 
 Fix plan: [2026-10-11-v0.8-playtest-fixes.md](superpowers/plans/2026-10-11-v0.8-playtest-fixes.md).
 
-Cannot work out how to put units in groups.
-Unit pathfinding gets stuck on walls -> see image below from per test:
-![alt text](image.png)
-
-Attacking HQ through walls. **Fixed:** targets need a clear line over the fog grid's rock cells, the same trace vision uses.
-Units movement not smooth
-Multiplace buildings not a thing. **Fixed:** holding Shift (the queue modifier) keeps the preview after each placement.
-
-A location should be able to be set where units that are spawned from a specific spawner will travel on spawn. **Fixed:** right-click with spawners selected sets a rally point.
-Multiple spawners should be able to be selected and increased the prod queue for each of them. **Fixed:** Shift-click or box-select spawners.
-A plus 10 and plus 50 button on the spawners would be good. **Fixed.**
-sending units via the minimap onto a unknown area, if you accidentally click on a wall, has the units bug out and randomly move. **Fixed:** goals on rock or footprints snap to the nearest open floor (`OrderBook.SnapGoal`); with none within 12 tiles the order is dropped.
-Mining building didn't rotate visually. **Fixed:** the Miner is rendered in 4 facings and draws the one for its rotation, upright; other buildings can't be turned.
-No valid or invalid feedback to user placements. **Fixed:** the preview tints valid spots green and invalid spots red, follows the selected rotation, and ignores responses for a previous spot.
-
-Spectate mode for dead players. **Fixed:** an eliminated player sees the whole map until the match ends (`ReplicationService.Spectating`).
-The host leaves the game dies for everyone. **Partly fixed:** joined players now get a "The host left the match" dialog on the main menu instead of being dropped there silently. The match still ends: Mirror's host is the server (host migration or a dedicated server is a v0.9 decision).
+| Report | Status |
+| --- | --- |
+| Cannot work out how to put units in groups | **Open.** Squads exist (Ctrl+number assigns, number selects), but nothing in the HUD says so; the squad bar shows counts only. Needs a Figma-approved hint. |
+| Unit pathfinding gets stuck on walls ([screenshot](ux/stuck-on-walls.png)) | **Fixed.** See "Fixed after the first manual Linux match" below (`SimMovementSystem.NearestFieldCell`). |
+| Attacking an HQ through walls | **Fixed.** Targets need a clear line over the fog grid's rock cells, the same trace vision uses. |
+| Unit movement not smooth | **Fixed.** Drawn positions blend corrections (`ClientUnitStore.Drawn`). |
+| Multi-place buildings | **Fixed.** Holding Shift (the queue modifier) keeps the preview after each placement. |
+| A rally point for a spawner's units | **Fixed.** Right-click with spawners selected sets a rally point. |
+| Production queue for several spawners at once | **Fixed.** Shift-click or box-select spawners. |
+| +10 and +50 queue buttons | **Fixed.** |
+| Units sent by minimap onto rock bug out | **Fixed.** Goals on rock or footprints snap to the nearest open floor (`OrderBook.SnapGoal`); with none within 12 tiles the order is dropped. |
+| Miner didn't rotate visually | **Fixed.** Rendered in 4 facings; other buildings can't be turned. |
+| No valid/invalid placement feedback | **Fixed.** The preview tints green or red, follows the rotation, and ignores responses for a previous spot. |
+| Spectate mode for dead players | **Fixed.** An eliminated player sees the whole map until the match ends (`ReplicationService.Spectating`). |
+| The host leaving ends the game for everyone | **Partly fixed.** Joined players get a "The host left the match" dialog. The match still ends: Mirror's host is the server (host migration or a dedicated server is a v0.9 decision). |
 
 ## Fixed after the first manual Linux match (2026-10-10)
 

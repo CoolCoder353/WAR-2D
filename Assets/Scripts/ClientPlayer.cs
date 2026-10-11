@@ -75,10 +75,6 @@ public class ClientPlayer : NetworkBehaviour
     {
         if (!isLocalPlayer) return;
 
-        //TODO: Need to make sure we remove handles when the player disconnects, or the scene changes
-
-        // RemoveUnitHandles();
-
         Destroy(this.gameObject);
 
     }

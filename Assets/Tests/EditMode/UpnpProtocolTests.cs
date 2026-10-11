@@ -85,8 +85,27 @@ public class UpnpProtocolTests
     [TestCase("0.0.0.0", false)]
     [TestCase("224.0.0.1", false)]
     [TestCase("2001:db8::1", false)]
+    [TestCase("198.18.0.1", false)]
+    [TestCase("192.0.2.1", false)]
     public void ClassifiesPublicAddresses(string address, bool isPublic)
     {
         Assert.AreEqual(isPublic, UpnpProtocol.IsPublic(IPAddress.Parse(address)));
+    }
+
+    [Test]
+    public void OnlyTheRespondersOwnAddressCountsAsItsHost()
+    {
+        var router = IPAddress.Parse("192.168.1.1");
+        Assert.IsTrue(UpnpProtocol.IsSameHost(new Uri("http://192.168.1.1:5000/desc.xml"), router));
+        Assert.IsFalse(UpnpProtocol.IsSameHost(new Uri("http://192.168.1.2:5000/desc.xml"), router));
+        Assert.IsFalse(UpnpProtocol.IsSameHost(new Uri("http://evil.example/desc.xml"), router));
+    }
+
+    [Test]
+    public void DoctypesInADescriptionAreRefused()
+    {
+        string xml = "<!DOCTYPE r [<!ENTITY a \"x\">]><root><URLBase>http://192.168.1.1/</URLBase></root>";
+        Assert.IsFalse(UpnpProtocol.TryFindWanService(xml, new Uri("http://192.168.1.1/d.xml"), out _));
+        Assert.IsNull(UpnpProtocol.ParseValue(xml, "URLBase"));
     }
 }
