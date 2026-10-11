@@ -1,5 +1,6 @@
 using UnityEditor;
 using UnityEngine;
+using WAR2D.Art;
 
 namespace WAR2D.EditorTools
 {
@@ -17,6 +18,17 @@ namespace WAR2D.EditorTools
             importer.spritePixelsPerUnit = pixelsPerUnit;
             importer.alphaIsTransparency = true;
             importer.SaveAndReimport();
+        }
+
+        /// <summary>Writes <c>Assets/Art/palette.png</c>: <see cref="ArtStyle.Palette"/> at 1 px per colour.</summary>
+        [MenuItem("WAR-2D/Art/Write palette")]
+        public static void WritePalette()
+        {
+            const string path = "Assets/Art/palette.png";
+            System.IO.Directory.CreateDirectory("Assets/Art");
+            System.IO.File.WriteAllBytes(path, Png.Encode(ArtStyle.Palette.Length, 1, ArtStyle.Palette));
+            AssetDatabase.ImportAsset(path);
+            ApplyPixelImport(path, 1);
         }
     }
 }
