@@ -279,7 +279,8 @@ namespace WAR2D.Art.Render
         public static LitCanvas Floor(int seed, int variant)
         {
             var c = new LitCanvas(TileSize, TileSize);
-            c.Ground(new Material(C(StylePalette.Floor1) * 1.15f, 0.06f, 8));
+            // 0.95: dark enough that every high-contrast player colour stands out 4.5:1 (PalettesTests).
+            c.Ground(new Material(C(StylePalette.Floor1) * 0.95f, 0.06f, 8));
             int s = seed + variant * 977;
             c.Grime(s, 0.9f, 0.16f, 4, 5);
             // Fine cracks along a noise contour, broken up by a second noise so they don't form loops.

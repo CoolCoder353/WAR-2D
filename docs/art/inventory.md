@@ -29,7 +29,7 @@ Footprints match `GameConfig.xml` (`ArtManifestTests.BuildingFootprintsMatchTheC
 
 | Id | Frames | Team mask | Source today |
 |---|---|---|---|
-| `Ground` | 4 random variants | no | `Resources/Sprites/Tiles/Floor.asset`; generated maps draw one flat texel per tile (`MapView`) |
+| `Ground` | 4 random variants | no | `Tiles` atlas, drawn by the `Terrain` shader (`MapView`, index texture from `TileAutotile`) |
 | `Wall` (rock) | 16 autotile masks (N, E, S, W) | no | `Wall.asset`, `WallSIB.asset` (sibling rule tile) |
 | `Gem` | 4 random variants × 16 autotile masks (variant-major) | no | `Gems.asset`, `GemsSIB.asset` |
 | `Border` | 1 (solid rock) | no | drawn as rock |
