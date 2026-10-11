@@ -99,7 +99,9 @@ namespace WAR2D.UI
             if (manager == null) return;
             manager.HostServer();
             // Open the port on the router so players on other networks can join (external playtests).
-            if (NetworkServer.active) HostReachability.Start(manager.DefaultPort);
+            if (NetworkServer.active && !WAR2D.Net.Steam.SteamServices.Available) HostReachability.Start(manager.DefaultPort);
+            if (NetworkServer.active && GameCore.Instance != null)
+                WAR2D.Net.Steam.SteamHostLobby.Open(MenuModel.Nickname, GameCore.Instance.Settings, 1);
         }
 
         private void Join(string address)
@@ -126,6 +128,8 @@ namespace WAR2D.UI
             }
 
             GameCore core = GameCore.Instance;
+            if (core != null && NetworkServer.active)
+                WAR2D.Net.Steam.SteamHostLobby.Current?.Update(core.CurrentState, core.Settings, NetworkServer.connections.Count);
             bool inLobby = connected && core != null && core.CurrentState == GameState.Lobby && NetworkClient.localPlayer != null;
             if (inLobby)
             {

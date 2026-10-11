@@ -1,0 +1,14 @@
+{
+    "name": "WAR2D.Steam",
+    "rootNamespace": "WAR2D.Steam",
+    "references": ["WAR2D", "Mirror", "com.rlabrecque.steamworks.net", "FizzySteamworks"],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": ["WAR2D_STEAM"],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

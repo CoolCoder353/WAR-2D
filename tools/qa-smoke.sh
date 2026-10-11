@@ -23,7 +23,7 @@ return "built";' >/dev/null 2>&1
   [[ -x Builds/QA/WAR-2D.x86_64 ]] || { echo "Build failed: no player at Builds/QA/WAR-2D.x86_64 (is a dialog open in the editor?)"; exit 1; }
 fi
 rm -rf "$out" && mkdir -p "$out"
-args=(-qaOut "$out" -screen-width 1280 -screen-height 720 -screen-fullscreen 0)
+args=(-direct -qaOut "$out" -screen-width 1280 -screen-height 720 -screen-fullscreen 0)
 Builds/QA/WAR-2D.x86_64 -qaHost "${args[@]}" -logFile "$out/host.log" &
 host=$!
 sleep 6

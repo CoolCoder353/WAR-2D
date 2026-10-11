@@ -14,7 +14,7 @@ This is the overarching development plan for WAR-2D. It explains **what** each u
 | v0.5 | Fog & Wire | **Closed** (2026-10-09) by the owner with the performance gate not run, no manual play-test yet and KCP not tuned. All three are carried into v0.6 in [known-issues.md](known-issues.md). Teams, fog of war, fog interest, buildings on the replication service and the leak tests are done; EditMode 223/223 and PlayMode 10/10 pass | [2026-10-09-v0.5-fog-and-wire.md](superpowers/plans/2026-10-09-v0.5-fog-and-wire.md) |
 | v0.6 | Command | **Done.** Merged into `main` on 2026-10-11. HUD, menus, lobby (colour picks and reserved HQ clearings), settings, new orders and per-player diplomacy; the first manual Linux match was played and its reports fixed; the performance gate passed with 7 real clients (tick **10.6 ms p95**, **243 fps**, **162 KB/s** average per client; [docs/perf/v0.6](perf/v0.6/)) | [2026-10-09-v0.6-command.md](superpowers/plans/2026-10-09-v0.6-command.md) |
 | v0.8 | New Paint | **Done** (2026-10-12), owner signed off; PR `release/v0.8` → `main`. Moved ahead of v0.7 so the art style sets how the new units and buildings look; it also delivers the v0.7 art kit | [2026-10-10-v0.8-new-paint.md](superpowers/plans/2026-10-10-v0.8-new-paint.md) |
-| v0.9 | Steam | Design approved and plan written (2026-10-12); not started. Moved ahead of v0.7 (2026-10-12) so playtests are easier to run before new content lands. Scope: the playtest core only (relay, lobbies, auth, delivery) | [design](superpowers/specs/2026-10-12-v0.9-steam-design.md), [plan](superpowers/plans/2026-10-12-v0.9-steam.md) |
+| v0.9 | Steam | Design approved and plan written (2026-10-12); code for Tasks 1-7, 8 (logic), 10 (meter) and 11 (build/upload scripts) written, untested against real Steam. Open: lobby UI (Figma approval), relay test, bandwidth gate, Windows build, playtest. Moved ahead of v0.7 (2026-10-12) so playtests are easier to run before new content lands. Scope: the playtest core only (relay, lobbies, auth, delivery) | [design](superpowers/specs/2026-10-12-v0.9-steam-design.md), [plan](superpowers/plans/2026-10-12-v0.9-steam.md) |
 | v0.7 | Siege | Not started (now after v0.9, using the v0.8 art kit) | — |
 
 ---
@@ -312,7 +312,7 @@ Scoped on 2026-10-12 to the **playtest core**. Full design: [v0.9 Steam design](
 
 **Exit criteria:** a friends-only Steam playtest on Linux and Windows. Windows verification happens here at the latest.
 
-**Open decisions:** the friends playtest group. App ID 713149 (to be confirmed in the Steamworks dashboard); the owner says no store page is needed for the playtest.
+**Open decisions:** the friends playtest group. App ID 1975300 (to be confirmed in the Steamworks dashboard); the owner says no store page is needed for the playtest.
 
 ---
 

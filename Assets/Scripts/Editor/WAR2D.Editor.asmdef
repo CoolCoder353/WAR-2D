@@ -3,6 +3,9 @@
     "rootNamespace": "",
     "references": [
         "WAR2D",
+        "Mirror",
+        "Mirror.Transports",
+        "FizzySteamworks",
         "Unity.Mathematics",
         "Unity.Collections"
     ],

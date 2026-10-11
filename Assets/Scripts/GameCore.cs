@@ -143,6 +143,7 @@ public partial class GameCore : NetworkBehaviour
     public void AddPlayer(NetworkConnectionToClient conn, float startingResources)
     {
         ServerPlayers[conn.identity] = new ServerPlayer(conn, startingResources);
+        if (WAR2D.Net.Steam.SteamIdentity.TryGet(conn.connectionId, out ulong sid)) ServerPlayers[conn.identity].SteamId = sid;
         if (serverOwner == null) SetServerOwner(conn);
         if (conn.identity.TryGetComponent(out ClientPlayer joining))
         {

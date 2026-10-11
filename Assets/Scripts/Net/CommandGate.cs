@@ -54,7 +54,7 @@ public static class CommandGate
         Violations[conn.connectionId] = v;
         if (v.count >= ViolationsBeforeKick)
         {
-            Debug.LogWarning($"Disconnecting connection {conn.connectionId}: repeatedly exceeded command rate limits ({command}).");
+            Debug.LogWarning($"Disconnecting connection {conn.connectionId}: repeatedly exceeded command rate limits ({command}){(WAR2D.Net.Steam.SteamIdentity.TryGet(conn.connectionId, out ulong sid) ? $" (Steam {sid})" : "")}.");
             Forget(conn.connectionId);
             conn.Disconnect();
         }

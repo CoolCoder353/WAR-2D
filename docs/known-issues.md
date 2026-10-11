@@ -95,7 +95,7 @@ Besides the owner's reports above:
 
 ## Networking
 
-- **Internet play is UPnP or a tunnel, no relay.** Join-by-IP reaches hosts on other networks only if their router accepts the UPnP mapping (or they forward UDP 7778 by hand) and has a public IPv4. Hosts on carrier-grade NAT, DS-Lite or behind a second router need a tunnel (see `playtesting.md`). The owner's own router (2026-10-11) answers UPnP but reports no external IPv4, so it falls in this group. There is no NAT punch-through and no relay; Steam relay replaces all of this. **v0.9**
+- **Internet play is UPnP or a tunnel, no relay (Direct play only).** *Steam players: fixed in v0.9 (Steam relay; the code is in, not yet playtested across networks).* Join-by-IP reaches hosts on other networks only if their router accepts the UPnP mapping (or they forward UDP 7778 by hand) and has a public IPv4. Hosts on carrier-grade NAT, DS-Lite or behind a second router need a tunnel (see `playtesting.md`). The owner's own router (2026-10-11) answers UPnP but reports no external IPv4, so it falls in this group. There is no NAT punch-through and no relay; Steam relay replaces all of this. **v0.9**
 - **A permanent-lease mapping can outlive a crash.** Routers that only take permanent leases (UPnP error 725) keep the UDP 7778 mapping if the game crashes before `OnStopServer`. Remove it in the router's UPnP page, or host again and leave normally. **v0.9**
 
 ## Project and config hygiene
