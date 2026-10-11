@@ -7,6 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
+using WAR2D.Art;
 using WAR2D.Client.Render;
 using WAR2D.Net.Replication;
 using ReadOnly = Unity.Collections.ReadOnlyAttribute;
@@ -40,6 +41,9 @@ namespace WAR2D.Client
         private float sinceBatch; // seconds since the newest batch arrived: the server kept ticking meanwhile
         private NativeArray<float2> lastPosition;
         private NativeArray<float> rotation;
+        private NativeArray<uint> frame;
+        private NativeArray<float> lastAction; // server time of the unit's last attack, by index
+        private UnitFrames.Table frames;
         private NativeArray<uint> color;
         private NativeArray<float> health01;
         private NativeArray<byte> selected;
@@ -83,9 +87,16 @@ namespace WAR2D.Client
             dt = config.Simulation.TickSeconds;
             int capacity = config.Simulation.MaxEntities;
             store = new ClientUnitStore(capacity, dt);
-            store.Attack += (attacker, target) => attacks.Add((attacker, target));
+            store.Attack += (attacker, target) =>
+            {
+                attacks.Add((attacker, target));
+                if ((uint)attacker < (uint)lastAction.Length) lastAction[attacker] = serverTime;
+            };
             lastPosition = new NativeArray<float2>(capacity, Allocator.Persistent);
             rotation = new NativeArray<float>(capacity, Allocator.Persistent);
+            frame = new NativeArray<uint>(capacity, Allocator.Persistent);
+            lastAction = new NativeArray<float>(capacity, Allocator.Persistent);
+            for (int i = 0; i < capacity; i++) lastAction[i] = float.NegativeInfinity;
             color = new NativeArray<uint>(capacity, Allocator.Persistent);
             health01 = new NativeArray<float>(capacity, Allocator.Persistent);
             selected = new NativeArray<byte>(capacity, Allocator.Persistent);
@@ -108,7 +119,7 @@ namespace WAR2D.Client
             store?.Dispose();
             if (lastPosition.IsCreated)
             {
-                lastPosition.Dispose(); rotation.Dispose(); color.Dispose(); health01.Dispose(); selected.Dispose();
+                lastPosition.Dispose(); rotation.Dispose(); frame.Dispose(); lastAction.Dispose(); color.Dispose(); health01.Dispose(); selected.Dispose();
                 instances.Dispose(); bars.Dispose(); barCount.Dispose();
             }
         }
@@ -224,8 +235,10 @@ namespace WAR2D.Client
             if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) return;
             if (unitRenderer == null)
             {
-                var texture = Resources.Load<Texture2D>(UnitType.Tank.ToString());
-                unitRenderer = new InstancedUnitRenderer(texture, 0.8f);
+                ArtAtlas atlas = ArtAtlas.Load(ArtAtlas.Units);
+                if (atlas == null) Debug.LogError($"Resources/{ArtAtlas.Folder}/{ArtAtlas.Units} is missing: run WAR-2D/Art/Build all.");
+                else frames = new UnitFrames.Table(atlas);
+                unitRenderer = new InstancedUnitRenderer(atlas);
             }
 
             foreach (int index in selectedIndices) selected[index] = 0;
@@ -248,8 +261,11 @@ namespace WAR2D.Client
                 int index = known[i];
                 float2 p = positions[i];
                 float2 delta = p - lastPosition[index];
-                if (math.lengthsq(delta) > 1e-6f && math.lengthsq(delta) < 4f) rotation[index] = math.atan2(delta.y, delta.x);
+                bool moving = math.lengthsq(delta) > 1e-6f && math.lengthsq(delta) < 4f;
+                if (moving) rotation[index] = math.atan2(delta.y, delta.x);
                 lastPosition[index] = p;
+                if (frames != null)
+                    frame[index] = frames.Cell(store.TypeOf(index), rotation[index], moving, serverTime, serverTime - lastAction[index], index);
                 color[index] = ColorOf(owners[index]);
                 health01[index] = healthBytes[index] / 100f;
             }
@@ -261,6 +277,7 @@ namespace WAR2D.Client
                 Known = known,
                 Positions = positions,
                 Rotation = rotation,
+                Frame = frame,
                 Color = color,
                 Health01 = health01,
                 Selected = selected,
@@ -307,6 +324,9 @@ namespace WAR2D.Client
                     to = building.transform.position;
                 }
                 else continue;
+                // Face the target: the facing picks the drawn direction, and the fire frames show the barrel.
+                if ((uint)attacker < (uint)rotation.Length && (to.x != from.x || to.y != from.y))
+                    rotation[attacker] = math.atan2(to.y - from.y, to.x - from.x);
                 Effects.Tracer(new Vector3(from.x, from.y, 0), to);
             }
             attacks.Clear();

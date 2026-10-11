@@ -5,13 +5,17 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
+using WAR2D.Art;
+using WAR2D.Art.Style;
 
 namespace WAR2D.Client.Render
 {
     /// <summary>
     /// One unit's draw data, the 32 bytes the shader's <c>StructuredBuffer&lt;UnitInstance&gt;</c> declares:
     /// <c>float2 position; float rotation; uint frame; uint color; float health; float scale; float pad</c>.
-    /// <c>pad</c> is the selection highlight (1 = selected).
+    /// <c>frame</c> is the atlas cell (<see cref="UnitFrames"/>: the facing picks a rendered direction, the
+    /// shader doesn't rotate the quad), <c>color</c> the owner's colour for the team mask, and <c>pad</c> the
+    /// selection highlight (1 = selected).
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public struct UnitInstance
@@ -27,13 +31,17 @@ namespace WAR2D.Client.Render
 
     /// <summary>
     /// Draws every unit as one GPU-instanced call (plus one for the damaged units' health bars) from a
-    /// structured buffer filled each frame. The shader lives in <c>Resources/Shaders</c> so builds keep it.
+    /// structured buffer filled each frame, with frames from the <c>Units</c> atlas and its team mask. The
+    /// shader lives in <c>Resources/Shaders</c> so builds keep it.
     /// </summary>
     public sealed class InstancedUnitRenderer : IDisposable
     {
         public const string ShaderPath = "Shaders/InstancedUnit";
         public const int InstanceStride = 32;
         public const int BarFrames = 16;
+
+        /// <summary>Health bar size in art pixels: drawn 1:1 at <see cref="ArtStyle.PixelsPerUnit"/>.</summary>
+        public const int BarWidth = 48, BarHeight = 4;
         private const int QuadVertices = 6;
 
         /// <summary>Owner tints, indexed by the owner's slot in <c>GameCore.PlayerOrder</c>.</summary>
@@ -53,20 +61,29 @@ namespace WAR2D.Client.Render
         private readonly GraphicsBuffer unitFrameRects, barFrameRects;
         private int capacity, barCapacity;
 
-        public InstancedUnitRenderer(Texture2D unitTexture, float unitSize, int initialCapacity = 4096)
+        /// <param name="atlas">The <c>Units</c> atlas; without one, every unit draws as a white square.</param>
+        public InstancedUnitRenderer(ArtAtlas atlas, int initialCapacity = 4096)
         {
             Shader shader = Resources.Load<Shader>(ShaderPath);
             if (shader == null) throw new InvalidOperationException($"Resources/{ShaderPath}.shader is missing");
             barAtlas = BuildBarAtlas();
             unitMaterial = new Material(shader) { name = "Unit instances", renderQueue = 3000 };
-            unitMaterial.SetFloat("_UnitSize", unitSize);
-            unitMaterial.SetTexture("_MainTex", unitTexture != null ? unitTexture : Texture2D.whiteTexture);
+            // Unit frames are one tile square (64 px at PPU 64).
+            unitMaterial.SetFloat("_UnitSize", (float)ArtStyle.TileSize / ArtStyle.PixelsPerUnit);
+            unitMaterial.SetFloat("_PixelsPerUnit", ArtStyle.PixelsPerUnit);
+            unitMaterial.SetFloat("_TeamGain", TeamGain());
+            unitMaterial.SetTexture("_MainTex", atlas != null ? atlas.Texture : Texture2D.whiteTexture);
+            unitMaterial.SetTexture("_MaskTex", atlas != null && atlas.Mask != null ? atlas.Mask : Texture2D.blackTexture);
             barMaterial = new Material(shader) { name = "Unit health bars", renderQueue = 3001 };
-            barMaterial.SetFloat("_UnitSize", 0.8f);
-            barMaterial.SetFloat("_Aspect", 0.15f);
+            barMaterial.SetFloat("_UnitSize", (float)BarWidth / ArtStyle.PixelsPerUnit);
+            barMaterial.SetFloat("_Aspect", (float)BarHeight / BarWidth);
+            barMaterial.SetFloat("_PixelsPerUnit", ArtStyle.PixelsPerUnit);
+            barMaterial.SetFloat("_TeamGain", 1f);
             barMaterial.SetTexture("_MainTex", barAtlas);
-            unitFrameRects = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, 16);
-            unitFrameRects.SetData(new[] { new Vector4(0f, 0f, 1f, 1f) });
+            barMaterial.SetTexture("_MaskTex", Texture2D.whiteTexture); // the whole bar takes the bar colour
+            Vector4[] cells = UvRects(atlas);
+            unitFrameRects = new GraphicsBuffer(GraphicsBuffer.Target.Structured, cells.Length, 16);
+            unitFrameRects.SetData(cells);
             barFrameRects = new GraphicsBuffer(GraphicsBuffer.Target.Structured, BarFrames, 16);
             var rects = new Vector4[BarFrames];
             for (int i = 0; i < BarFrames; i++) rects[i] = new Vector4((float)i / BarFrames, 0f, 1f / BarFrames, 1f);
@@ -77,18 +94,52 @@ namespace WAR2D.Client.Render
             EnsureCapacity(ref barInstances, ref barCapacity, initialCapacity / 4, barMaterial);
         }
 
-        /// <summary>Health-bar frames: frame n is a bar n / (frames - 1) full, 16×2 pixels each.</summary>
+        /// <summary>
+        /// The multiplier that turns the middle team grey back into the owner's colour: the grey is sampled
+        /// as sRGB, so in a linear project its value is the linear one.
+        /// </summary>
+        public static float TeamGain()
+        {
+            float grey = ArtStyle.TeamGrey[ArtStyle.TeamGrey.Length / 2].r / 255f;
+            return 1f / (QualitySettings.activeColorSpace == ColorSpace.Linear ? Mathf.GammaToLinearSpace(grey) : grey);
+        }
+
+        /// <summary>Every atlas cell's rect in UV space (the whole texture when there is no atlas).</summary>
+        public static Vector4[] UvRects(ArtAtlas atlas)
+        {
+            if (atlas == null || atlas.FrameRects.Length == 0) return new[] { new Vector4(0f, 0f, 1f, 1f) };
+            float w = atlas.Data.width, h = atlas.Data.height;
+            var uv = new Vector4[atlas.FrameRects.Length];
+            for (int i = 0; i < uv.Length; i++)
+            {
+                Vector4 r = atlas.FrameRects[i];
+                uv[i] = new Vector4(r.x / w, r.y / h, r.z / w, r.w / h);
+            }
+            return uv;
+        }
+
+        /// <summary>
+        /// Health-bar frames: frame n is a bar n / (frames - 1) full, <see cref="BarWidth"/> × <see cref="BarHeight"/>
+        /// pixels with a 1 px outline in the palette's outline colour. The fill is white (tinted by the bar colour),
+        /// the empty part the darkest machine colour.
+        /// </summary>
         private static Texture2D BuildBarAtlas()
         {
-            const int w = 16, h = 2;
+            const int w = BarWidth, h = BarHeight, inner = w - 2;
             var tex = new Texture2D(w * BarFrames, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "HealthBars" };
             var pixels = new Color32[w * BarFrames * h];
+            Color32 outline = StylePalettes.Charcoal.Colours[StylePalette.Outline];
+            Color32 empty = StylePalettes.Charcoal.Colours[StylePalette.Body0];
+            // The shader tints the whole bar by the bar colour; the outline and the empty part stay dark under it.
             for (int f = 0; f < BarFrames; f++)
             {
-                int filled = (int)math.round((float)f / (BarFrames - 1) * w);
+                int filled = (int)math.round((float)f / (BarFrames - 1) * inner);
                 for (int y = 0; y < h; y++)
                 for (int x = 0; x < w; x++)
-                    pixels[y * w * BarFrames + f * w + x] = x < filled ? new Color32(255, 255, 255, 255) : new Color32(20, 20, 20, 200);
+                {
+                    bool edge = x == 0 || y == 0 || x == w - 1 || y == h - 1;
+                    pixels[y * w * BarFrames + f * w + x] = edge ? outline : x - 1 < filled ? new Color32(255, 255, 255, 255) : empty;
+                }
             }
             tex.SetPixels32(pixels);
             tex.Apply(false);
@@ -143,6 +194,7 @@ namespace WAR2D.Client.Render
         [ReadOnly] public NativeArray<int> Known;
         [ReadOnly] public NativeArray<float2> Positions;
         [ReadOnly] public NativeArray<float> Rotation;   // by index
+        [ReadOnly] public NativeArray<uint> Frame;       // by index: the atlas cell
         [ReadOnly] public NativeArray<uint> Color;       // by index
         [ReadOnly] public NativeArray<float> Health01;   // by index
         [ReadOnly] public NativeArray<byte> Selected;    // by index
@@ -162,6 +214,7 @@ namespace WAR2D.Client.Render
                 {
                     position = Positions[i],
                     rotation = Rotation[index],
+                    frame = Frame[index],
                     color = Color[index],
                     health = health,
                     scale = 1f,

@@ -12,7 +12,7 @@ The [style guide](style-guide.md) sets the values: 64 px per tile (PPU 64), 8 un
 | `Builder` | 1×1 | 4 (move 2, build 2) | 8 | yes | none (v0.7) |
 | `Digger` | 1×1 | 4 (move 2, dig 2) | 8 | yes | none (v0.7) |
 
-Units draw with pre-drawn facings, not a rotated quad (rotation breaks the pixel grid under Pixel Perfect). Today every unit type draws with the Tank texture (`known-issues.md`, fixed in plan Task 7).
+Units draw with pre-drawn facings, not a rotated quad (rotation breaks the pixel grid under Pixel Perfect): `UnitFrames` picks the cell from the facing and state, and `InstancedUnitRenderer` tints the team mask with the owner's colour. A type with no frames in the atlas draws as the Tank.
 
 ## Buildings
 
