@@ -403,6 +403,19 @@ public class HudTests
     }
 
     [UnityTest, Timeout(90000)]
+    public IEnumerator HudTextUsesThePixelFont()
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        yield return null;
+        VisualElement root = HudRoot();
+        Label label = root.Query<Label>().Where(l => l.resolvedStyle.display == DisplayStyle.Flex).First();
+        Assert.That(label, Is.Not.Null);
+        FontDefinition font = label.resolvedStyle.unityFontDefinition;
+        string name = font.font != null ? font.font.name : font.fontAsset != null ? font.fontAsset.name : "";
+        StringAssert.Contains("Jersey10", name, "the approved v0.8 font (docs/ux/v0.8-figma.md)");
+    }
+
+    [UnityTest, Timeout(90000)]
     public IEnumerator SurrenderEndsTheMatchWithTheEndScreenAndStats()
     {
         yield return PlayModeMatch.StartMatchAsHost(config);
