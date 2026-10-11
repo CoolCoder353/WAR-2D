@@ -550,7 +550,7 @@ public partial class WorldStateManager : NetworkBehaviour
     {
         if (!CommandGate.Allow(sender, nameof(CanBuildBuildingCommand))) return;
         ClientPlayer player = sender.identity.GetComponent<ClientPlayer>();
-        player.TargetReceiveCanBuildBuildingResponse(sender, CheckPlacement(type, position, rotation, player) == PlacementResult.Ok);
+        player.TargetReceiveCanBuildBuildingResponse(sender, position, type, rotation, CheckPlacement(type, position, rotation, player) == PlacementResult.Ok);
     }
 
     /// <summary>Queues one unit on the sender's spawner (the production queue's + button).</summary>

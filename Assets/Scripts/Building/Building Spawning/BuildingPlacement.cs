@@ -24,6 +24,11 @@ public class BuildingPlacement : MonoBehaviour
 
     private int2 currentAnchor;
     private float currentRotation; // degrees: 0, 90, 180, 270
+    private int2 displayedAnchor;
+    private BuildingType displayedType;
+    private float displayedRotation;
+    private bool hasDisplayedTarget;
+    private SpriteRenderer statusOutline;
 
     private int2 lastQueriedAnchor = new int2(int.MinValue, int.MinValue);
     private float lastQueriedRotation = float.MinValue;
@@ -59,8 +64,11 @@ public class BuildingPlacement : MonoBehaviour
         sprite.sprite = WAR2D.Client.Render.TeamSpriteMaterial.Sprite(type);
         sprite.sharedMaterial = WAR2D.Client.Render.TeamSpriteMaterial.ForColour(PlayerPalette.Of(localPlayer != null ? localPlayer.colourIndex : -1), false);
         sprite.sortingOrder = WAR2D.Client.Render.SortingOrders.PlacementPreview;
+        EnsureStatusOutline(sprite);
         previewBuilding.SetActive(true);
         currentRotation = 0f;
+        hasDisplayedTarget = false;
+        SetPreviewTint(Color.white, false);
         lastQueriedAnchor = new int2(int.MinValue, int.MinValue);
         lastQueriedRotation = float.MinValue; // Sentinels guarantee the next change check differs.
         queryTimer = 1f; // Mature timer, so the first frame asks immediately.
@@ -74,6 +82,7 @@ public class BuildingPlacement : MonoBehaviour
         previewBuilding.SetActive(false);
         previewBuilding.GetComponent<SpriteRenderer>().sprite = null;
         currentRotation = 0f;
+        previewBuilding.transform.rotation = Quaternion.identity;
     }
 
     /// <summary>While the HQ is still to be placed, rings the clearing it must go in (the player's lobby claim).</summary>
@@ -108,12 +117,21 @@ public class BuildingPlacement : MonoBehaviour
         Vector3 mouse = UnitCommander.GetMouseWorldPosition();
         currentAnchor = Footprint.SnapAnchor(new float2(mouse.x, mouse.y), size);
         float2 centre = Footprint.VisualCenter(currentAnchor, size);
-        previewBuilding.transform.position = new Vector3(centre.x, centre.y, 0);
 
         if (GameInput.Rotate.WasPressedThisFrame())
         {
             currentRotation = (currentRotation + 90f) % 360f;
-            // The rotation goes to the server; the sprite stays upright (the 3/4 view only reads one way).
+        }
+        previewBuilding.transform.SetPositionAndRotation(
+            new Vector3(centre.x, centre.y, 0), Quaternion.Euler(0f, 0f, currentRotation));
+
+        if (!hasDisplayedTarget || math.any(currentAnchor != displayedAnchor) || PlacingType != displayedType || currentRotation != displayedRotation)
+        {
+            SetPreviewTint(Color.white, false);
+            displayedAnchor = currentAnchor;
+            displayedType = PlacingType;
+            displayedRotation = currentRotation;
+            hasDisplayedTarget = true;
         }
         QueryPlacement();
 
@@ -149,8 +167,33 @@ public class BuildingPlacement : MonoBehaviour
     [Client]
     public void ResultFromCommand(bool result)
     {
-        // Valid: the building as it will look, see-through; invalid: washed in the palette's gem red.
-        Color invalid = Color.Lerp(Color.white, WAR2D.Art.Style.StylePalettes.Charcoal.Colours[WAR2D.Art.Style.StylePalette.Gem1], 0.75f);
-        previewBuilding.GetComponent<SpriteRenderer>().color = result ? new Color(1f, 1f, 1f, 0.75f) : new Color(invalid.r, invalid.g, invalid.b, 0.75f);
+        if (!IsPlacing || math.any(localPlayer.CanBuildResponsePosition != currentAnchor) ||
+            localPlayer.CanBuildResponseType != PlacingType || localPlayer.CanBuildResponseRotation != currentRotation) return;
+
+        SetPreviewTint(result ? Color.green : Color.red, true);
+    }
+
+    private void EnsureStatusOutline(SpriteRenderer sprite)
+    {
+        if (statusOutline == null)
+        {
+            GameObject outline = new GameObject("PlacementStatusOutline");
+            outline.transform.SetParent(previewBuilding.transform, false);
+            outline.transform.localScale = Vector3.one * 1.1f;
+            statusOutline = outline.AddComponent<SpriteRenderer>();
+        }
+        statusOutline.sprite = sprite.sprite;
+        statusOutline.sortingLayerID = sprite.sortingLayerID;
+        statusOutline.sortingOrder = sprite.sortingOrder - 1;
+        statusOutline.enabled = false;
+    }
+
+    private void SetPreviewTint(Color tint, bool showStatus)
+    {
+        SpriteRenderer sprite = previewBuilding.GetComponent<SpriteRenderer>();
+        sprite.color = showStatus ? new Color(tint.r, tint.g, tint.b, 0.85f) : new Color(1f, 1f, 1f, 0.75f);
+        if (statusOutline == null) return;
+        statusOutline.color = tint;
+        statusOutline.enabled = showStatus;
     }
 }

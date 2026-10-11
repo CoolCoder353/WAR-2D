@@ -413,7 +413,9 @@ public class UnitCommander : NetworkBehaviour
         GameObject go = new GameObject();
         int2 anchor = (int2)math.round(unit.position);
         float2 centre = Footprint.VisualCenter(anchor, WorldStateManager.GetBuildingSize(unit.buildingType));
-        go.transform.position = new Vector3(centre.x, centre.y, 0);
+        go.transform.SetPositionAndRotation(
+            new Vector3(centre.x, centre.y, 0),
+            Quaternion.Euler(0f, 0f, unit.rotation));
 
         SpriteRenderer buildingSprite = go.AddComponent<SpriteRenderer>();
         buildingSprite.sharedMaterial = TeamSpriteMaterial.For(unit.ownerId, false);
@@ -425,8 +427,6 @@ public class UnitCommander : NetworkBehaviour
         collider.size = new Vector2(footprint.x, footprint.y);
         go.name = $"Building_{unit.buildingType}_{unit.id}";
 
-        // The server's rotation is kept in the data but not drawn: footprints are square, and the 3/4 view
-        // only reads the right way up (style guide).
         //Check if there is a client script for the building type
         Type buildingType = null;
 

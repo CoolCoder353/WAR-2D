@@ -1,4 +1,5 @@
 using Mirror;
+using Unity.Mathematics;
 using UnityEngine;
 
 
@@ -45,6 +46,11 @@ public class ClientPlayer : NetworkBehaviour
 
     public UnityEngine.Events.UnityEvent<bool> onResponseFromCanBuildBuilding = new UnityEngine.Events.UnityEvent<bool>();
 
+    /// <summary>The placement checked by the most recent server response.</summary>
+    public int2 CanBuildResponsePosition { get; private set; }
+    public BuildingType CanBuildResponseType { get; private set; }
+    public float CanBuildResponseRotation { get; private set; }
+
     private bool gameOverDeclared = false; // Flag to ensure game over is only declared once
     public bool drawDeclared = false; // Flag set when the draw screen RPC is received
 
@@ -80,8 +86,11 @@ public class ClientPlayer : NetworkBehaviour
 
 
     [TargetRpc]
-    public void TargetReceiveCanBuildBuildingResponse(NetworkConnection target, bool result)
+    public void TargetReceiveCanBuildBuildingResponse(NetworkConnection target, int2 position, BuildingType type, float rotation, bool result)
     {
+        CanBuildResponsePosition = position;
+        CanBuildResponseType = type;
+        CanBuildResponseRotation = rotation;
         onResponseFromCanBuildBuilding?.Invoke(result);
     }
 
