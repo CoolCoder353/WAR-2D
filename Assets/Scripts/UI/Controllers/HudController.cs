@@ -307,12 +307,13 @@ namespace WAR2D.UI
 
         private void OnBuild(BuildingType type) => BuildingPlacement.Instance?.BeginPlacement(type);
 
-        private void OnQueue(int buildingId, int delta)
+        private void OnQueue(IReadOnlyList<int> buildingIds, int delta)
         {
             WorldStateManager wsm = WorldStateManager.Instance;
-            if (wsm == null || buildingId == 0) return;
-            if (delta > 0) wsm.BuildingClicked(buildingId);
-            else wsm.CmdDequeueUnit(buildingId);
+            if (wsm == null || buildingIds.Count == 0) return;
+            var ids = new int[buildingIds.Count];
+            for (int i = 0; i < ids.Length; i++) ids[i] = buildingIds[i];
+            wsm.CmdChangeQueues(ids, delta);
         }
 
         private void OnSquad(int squad)

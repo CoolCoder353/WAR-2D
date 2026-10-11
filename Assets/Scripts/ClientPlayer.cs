@@ -122,6 +122,19 @@ public class ClientPlayer : NetworkBehaviour
     /// <summary>Raised when a spawner's queue count arrives: (building id, count).</summary>
     public event System.Action<int, int> SpawnerQueueChanged;
 
+    private readonly System.Collections.Generic.Dictionary<int, int2> spawnerRallies = new System.Collections.Generic.Dictionary<int, int2>();
+
+    /// <summary>The rally tile of one of the local player's spawners, as last told by the server.</summary>
+    public bool TryGetRally(int buildingId, out int2 tile) => spawnerRallies.TryGetValue(buildingId, out tile);
+
+    /// <summary>One of the owner's spawners set or cleared its rally point. Private: only the owner learns it.</summary>
+    [TargetRpc]
+    public void TargetSpawnerRally(NetworkConnection target, int buildingId, int2 tile, bool has)
+    {
+        if (has) spawnerRallies[buildingId] = tile;
+        else spawnerRallies.Remove(buildingId);
+    }
+
     /// <summary>The number of the local player's live units in each squad (0–9), as last told by the server.</summary>
     public int[] SquadCounts { get; private set; } = new int[WAR2D.Sim.Squads.Count];
 

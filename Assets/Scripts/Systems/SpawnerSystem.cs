@@ -10,7 +10,8 @@ using WAR2D.Sim;
 /// <c>UpfrontCost</c>, on the nearest free walkable tile outside the footprint. The unit itself is
 /// created by the simulation at its next boundary (<see cref="SimCommandKind.SpawnUnit"/>); if the
 /// simulation refuses it (the owner is at the unit cap), the cost is refunded and the queue kept.
-/// Each count change is sent to the owner only (<see cref="WorldStateManager.SendSpawnerQueue"/>).
+/// Each count change is sent to the owner only (<see cref="WorldStateManager.SendSpawnerQueue"/>). A spawner
+/// with a rally point gives each new unit a move order to it.
 /// Server only, Playing state only.
 /// </summary>
 public partial struct SpawnerSystem : ISystem
@@ -47,6 +48,8 @@ public partial struct SpawnerSystem : ISystem
             int buildingId = building.ValueRO.id;
             WorldStateManager.Instance.SendSpawnerQueue(ownerId, buildingId, spawner.ValueRO.count);
             Entity source = entity;
+            bool rally = spawner.ValueRO.hasRally;
+            int2 rallyTile = spawner.ValueRO.rally;
             queue.Enqueue(new SimCommand
             {
                 Kind = SimCommandKind.SpawnUnit,
@@ -55,7 +58,12 @@ public partial struct SpawnerSystem : ISystem
                 Position = (float2)tile + 0.5f,
                 OnSpawned = id =>
                 {
-                    if (id >= 0) return;
+                    if (id >= 0)
+                    {
+                        // A rally point sends the new unit on (applied at the next boundary, once it is settled).
+                        if (rally) SimCommandQueue.Instance?.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.Move, OwnerId = ownerId, Tile = rallyTile, Ids = new[] { id } });
+                        return;
+                    }
                     owner.Add(cost);
                     if (!entityManager.Exists(source) || !entityManager.HasComponent<SpawnerData>(source)) return;
                     SpawnerData data = entityManager.GetComponentData<SpawnerData>(source);

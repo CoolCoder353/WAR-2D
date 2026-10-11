@@ -112,11 +112,36 @@ public class UnitCommander : NetworkBehaviour
 
     /// <summary>Selects one of the local player's buildings (others are ignored).</summary>
     [Client]
-    public void SelectBuilding(BuildingData building)
+    public void SelectBuilding(BuildingData building, bool append = false)
     {
         if (localPlayer == null || building.ownerId != BuildingData.UIntToInt(localPlayer.netId)) return;
         ArmedOrder = null;
-        Selection.SelectBuilding(building.id);
+        // Only spawners combine (their production queues and rally points act together).
+        bool spawner = SpawnerRules.UnitFor(building.buildingType) != UnitType.None;
+        Selection.SelectBuilding(building.id, append && spawner && AllSpawners(Selection.SelectedBuildings));
+    }
+
+    /// <summary>True when every listed building is one of our spawners we can see.</summary>
+    private bool AllSpawners(IReadOnlyList<int> ids)
+    {
+        foreach (int id in ids)
+            if (!buildingGameObjects.TryGetValue(id, out GameObject go) || go == null || !go.TryGetComponent(out BuildingDataClient data) ||
+                SpawnerRules.UnitFor(data.buildingData.buildingType) == UnitType.None) return false;
+        return true;
+    }
+
+    /// <summary>The ids of our spawners (seen now) whose centre lies inside the box.</summary>
+    private List<int> OwnSpawnersIn(float2 lo, float2 hi, int ownerId)
+    {
+        var ids = new List<int>();
+        foreach (ClientBuildings.Entry entry in (subscribedBuildings ?? ClientBuildings.Current).Entries.Values)
+        {
+            BuildingData data = entry.Data;
+            if (entry.Ghost || data.ownerId != ownerId || SpawnerRules.UnitFor(data.buildingType) == UnitType.None) continue;
+            float2 centre = Footprint.VisualCenter((int2)math.round(data.position), WorldStateManager.GetBuildingSize(data.buildingType));
+            if (math.all(centre >= lo) && math.all(centre <= hi)) ids.Add(data.id);
+        }
+        return ids;
     }
 
     private const float DoubleTapSeconds = 0.35f;
@@ -216,9 +241,17 @@ public class UnitCommander : NetworkBehaviour
             }
             else
             {
-                Selection.SelectBox(lo, hi, me, GameInput.AppendModifier.IsPressed());
-                // A click on no unit of ours, but on one of our spawners, selects the spawner (its production queue).
-                if (click && Selection.Selected.Count == 0 && TryOwnSpawnerAt(b, me, out BuildingData spawner)) SelectBuilding(spawner);
+                bool append = GameInput.AppendModifier.IsPressed();
+                var keptBuildings = new List<int>(append ? Selection.SelectedBuildings : System.Array.Empty<int>());
+                Selection.SelectBox(lo, hi, me, append);
+                if (Selection.Selected.Count == 0)
+                {
+                    // No unit of ours there: a click on one of our spawners selects it (Shift adds or removes it),
+                    // and a box selects our spawners inside it, so their queues and rally points act together.
+                    if (append) Selection.SelectBuildings(keptBuildings, false);
+                    if (click && TryOwnSpawnerAt(b, me, out BuildingData spawner)) SelectBuilding(spawner, append);
+                    else if (!click) Selection.SelectBuildings(OwnSpawnersIn(lo, hi, me), append);
+                }
                 if (click) { lastClickTime = Time.unscaledTime; lastClickAt = b; }
             }
         }
@@ -227,7 +260,10 @@ public class UnitCommander : NetworkBehaviour
         {
             Vector3 worldPosition = GetMouseWorldPosition();
             int2 goal = new int2((int)worldPosition.x, (int)worldPosition.y);
-            Selection.Order(OrderKind.Move, GameInput.QueueModifier.IsPressed(), goal);
+            // With only spawners selected, a right-click sets their rally point.
+            if (Selection.Selected.Count == 0 && Selection.SelectedBuildings.Count > 0 && AllSpawners(Selection.SelectedBuildings))
+                WorldStateManager.Instance?.CmdSetRally(ToArray(Selection.SelectedBuildings), goal, false);
+            else Selection.Order(OrderKind.Move, GameInput.QueueModifier.IsPressed(), goal);
         }
 
         for (int squad = 0; squad < WAR2D.Sim.Squads.Count; squad++)
@@ -338,16 +374,45 @@ public class UnitCommander : NetworkBehaviour
         if (go.TryGetComponent(out SpriteFrameAnimator animator)) animator.enabled = false;
     }
 
-    private BuildingSelectionMarker buildingMarker;
+    private readonly List<BuildingSelectionMarker> buildingMarkers = new List<BuildingSelectionMarker>();
+    private readonly List<SpriteRenderer> rallyFlags = new List<SpriteRenderer>();
 
-    /// <summary>Keeps the corner brackets on the selected building (hidden when none is selected).</summary>
+    /// <summary>
+    /// Keeps corner brackets on each selected building and a rally flag on each selected spawner's rally
+    /// point (the owner's own data; hidden when nothing is selected).
+    /// </summary>
     private void ShowBuildingSelection()
     {
-        if (buildingMarker == null) buildingMarker = new GameObject("BuildingSelection").AddComponent<BuildingSelectionMarker>();
-        int id = Selection.SelectedBuilding;
-        if (id != 0 && buildingGameObjects.TryGetValue(id, out GameObject go) && go != null && go.TryGetComponent(out BuildingDataClient data))
-            buildingMarker.Show(id, go, WorldStateManager.GetBuildingSize(data.buildingData.buildingType));
-        else buildingMarker.Show(0, null, default);
+        IReadOnlyList<int> ids = Selection.SelectedBuildings;
+        int shown = 0, flags = 0;
+        WAR2D.Art.ArtAtlas effects = WAR2D.Art.ArtAtlas.Load(WAR2D.Art.ArtAtlas.Effects);
+        for (int i = 0; i < ids.Count; i++)
+        {
+            if (!buildingGameObjects.TryGetValue(ids[i], out GameObject go) || go == null || !go.TryGetComponent(out BuildingDataClient data)) continue;
+            if (shown == buildingMarkers.Count) buildingMarkers.Add(new GameObject("BuildingSelection").AddComponent<BuildingSelectionMarker>());
+            buildingMarkers[shown++].Show(ids[i], go, WorldStateManager.GetBuildingSize(data.buildingData.buildingType));
+            if (localPlayer == null || !localPlayer.TryGetRally(ids[i], out int2 rally) || effects == null) continue;
+            if (flags == rallyFlags.Count)
+            {
+                var flag = new GameObject("RallyFlag").AddComponent<SpriteRenderer>();
+                flag.sortingOrder = SortingOrders.Effects;
+                rallyFlags.Add(flag);
+            }
+            SpriteRenderer f = rallyFlags[flags++];
+            f.sprite = effects.Sprite("RallyFlag", (int)(Time.time * 2f) % Mathf.Max(1, effects.FrameCount("RallyFlag")));
+            f.sharedMaterial = TeamSpriteMaterial.For(data.buildingData.ownerId, false, ArtAtlas.Effects);
+            f.transform.position = new Vector3(rally.x + 0.5f, rally.y + 0.5f, 0f);
+            f.gameObject.SetActive(true);
+        }
+        for (int i = shown; i < buildingMarkers.Count; i++) buildingMarkers[i].Show(0, null, default);
+        for (int i = flags; i < rallyFlags.Count; i++) rallyFlags[i].gameObject.SetActive(false);
+    }
+
+    private static int[] ToArray(IReadOnlyList<int> ids)
+    {
+        var array = new int[ids.Count];
+        for (int i = 0; i < array.Length; i++) array[i] = ids[i];
+        return array;
     }
 
     /// <summary>Shows a building type's atlas sprite on <paramref name="go"/>, animating its idle frames.</summary>
@@ -393,7 +458,7 @@ public class UnitCommander : NetworkBehaviour
 
     private void OnBuildingRemoved(int id)
     {
-        if (Selection.SelectedBuilding == id) Selection.ClearBuilding();
+        Selection.RemoveBuilding(id);
         if (!buildingGameObjects.TryGetValue(id, out GameObject go)) return;
         Destroy(go);
         buildingGameObjects.Remove(id);

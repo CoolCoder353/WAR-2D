@@ -13,29 +13,32 @@ namespace WAR2D.Client.Render
     {
         public const string ShaderPath = "Shaders/TeamSprite";
 
-        private static readonly Dictionary<(Color32, bool), Material> Cache = new Dictionary<(Color32, bool), Material>();
+        private static readonly Dictionary<(Color32, bool, string), Material> Cache = new Dictionary<(Color32, bool, string), Material>();
 
-        /// <summary>The material for an owner's building (in the current palette); <paramref name="ghost"/> for last-seen ones.</summary>
-        public static Material For(int ownerId, bool ghost) => ForColour(PlayerPalette.OfOwner(ownerId), ghost);
+        /// <summary>
+        /// The material for an owner's building (in the current palette); <paramref name="ghost"/> for last-seen
+        /// ones. <paramref name="atlasName"/> picks whose team mask it reads (the rally flag is in the Effects atlas).
+        /// </summary>
+        public static Material For(int ownerId, bool ghost, string atlasName = ArtAtlas.Buildings) => ForColour(PlayerPalette.OfOwner(ownerId), ghost, atlasName);
 
         /// <summary>The material for a team colour.</summary>
-        public static Material ForColour(Color32 colour, bool ghost)
+        public static Material ForColour(Color32 colour, bool ghost, string atlasName = ArtAtlas.Buildings)
         {
             colour.a = 255;
-            if (Cache.TryGetValue((colour, ghost), out Material m) && m != null) return m;
+            if (Cache.TryGetValue((colour, ghost, atlasName), out Material m) && m != null) return m;
             Shader shader = Resources.Load<Shader>(ShaderPath);
             if (shader == null)
             {
                 Debug.LogError($"Resources/{ShaderPath}.shader is missing");
                 shader = Shader.Find("Sprites/Default");
             }
-            ArtAtlas atlas = ArtAtlas.Load(ArtAtlas.Buildings);
+            ArtAtlas atlas = ArtAtlas.Load(atlasName);
             m = new Material(shader) { name = $"Team {colour}{(ghost ? " ghost" : "")}" };
             m.SetTexture("_MaskTex", atlas != null && atlas.Mask != null ? atlas.Mask : Texture2D.blackTexture);
             m.SetColor("_TeamColor", colour);
             m.SetFloat("_TeamGain", InstancedUnitRenderer.TeamGain());
             m.SetFloat("_Ghost", ghost ? 1f : 0f);
-            Cache[(colour, ghost)] = m;
+            Cache[(colour, ghost, atlasName)] = m;
             return m;
         }
 

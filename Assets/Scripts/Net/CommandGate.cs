@@ -21,6 +21,8 @@ public static class CommandGate
         ["CanBuildBuildingCommand"] = (20f, 15f),
         ["BuildingClicked"] = (20f, 10f),
         ["CmdDequeueUnit"] = (20f, 10f),
+        ["CmdChangeQueues"] = (20f, 10f),
+        ["CmdSetRally"] = (10f, 5f),
         ["CmdSetNickname"] = (5f, 1f),
         ["Cmd_StartGame"] = (3f, 0.5f),
         ["Cmd_SetTeam"] = (10f, 5f),

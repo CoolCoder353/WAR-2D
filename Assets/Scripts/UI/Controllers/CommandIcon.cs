@@ -44,4 +44,16 @@ namespace WAR2D.UI
 
         private void Tint() => style.unityBackgroundImageTintColor = resolvedStyle.color;
     }
+
+    /// <summary>The rally flag from <see cref="PixelIcons"/>, in its own colours (the production queue's rally hint).</summary>
+    [UxmlElement]
+    public partial class RallyIcon : VisualElement
+    {
+        public RallyIcon()
+        {
+            pickingMode = PickingMode.Ignore;
+            style.backgroundImage = new StyleBackground(PixelIcons.Texture("IconRallyFlag"));
+            style.backgroundSize = new BackgroundSize(BackgroundSizeType.Contain);
+        }
+    }
 }

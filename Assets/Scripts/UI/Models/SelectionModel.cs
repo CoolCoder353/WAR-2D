@@ -37,8 +37,13 @@ namespace WAR2D.UI
         /// <summary>The selected building's type (None when none).</summary>
         public BuildingType BuildingType { get; private set; }
 
-        /// <summary>Units queued on the selected spawner.</summary>
+        /// <summary>Units queued on the selected spawners, together.</summary>
         public int SpawnerQueue { get; private set; }
+
+        private readonly List<int> buildingIds = new List<int>();
+
+        /// <summary>Every selected own building (several only for spawners).</summary>
+        public IReadOnlyList<int> BuildingIds => buildingIds;
 
         /// <summary>The order waiting for a click, if any.</summary>
         public OrderKind? ArmedOrder { get; private set; }
@@ -70,9 +75,17 @@ namespace WAR2D.UI
         }
 
         /// <summary>Sets the selected own building (0 for none) and its queue.</summary>
-        public void SetBuilding(int id, BuildingType type, int queue)
+        public void SetBuilding(int id, BuildingType type, int queue) => SetBuildings(id == 0 ? Array.Empty<int>() : new[] { id }, type, queue);
+
+        /// <summary>Sets the selected own buildings (the first one's type stands for all) and their queues together.</summary>
+        public void SetBuildings(IReadOnlyList<int> ids, BuildingType type, int queue)
         {
-            if (id == BuildingId && type == BuildingType && queue == SpawnerQueue) return;
+            int id = ids.Count > 0 ? ids[0] : 0;
+            bool sameIds = ids.Count == buildingIds.Count;
+            for (int i = 0; sameIds && i < ids.Count; i++) sameIds = ids[i] == buildingIds[i];
+            if (sameIds && id == BuildingId && type == BuildingType && queue == SpawnerQueue) return;
+            buildingIds.Clear();
+            for (int i = 0; i < ids.Count; i++) buildingIds.Add(ids[i]);
             BuildingId = id;
             BuildingType = type;
             SpawnerQueue = queue;
@@ -118,7 +131,13 @@ namespace WAR2D.UI
             if (buildingId != 0 && commander.buildingGameObjects.TryGetValue(buildingId, out UnityEngine.GameObject go) &&
                 go.TryGetComponent(out BuildingDataClient data))
                 type = data.buildingData.buildingType;
-            SetBuilding(type == BuildingType.None ? 0 : buildingId, type, type == BuildingType.None ? 0 : local.SpawnerQueue(buildingId));
+            if (type == BuildingType.None) SetBuilding(0, BuildingType.None, 0);
+            else
+            {
+                int queue = 0;
+                foreach (int id in selection.SelectedBuildings) queue += local.SpawnerQueue(id);
+                SetBuildings(selection.SelectedBuildings, type, queue);
+            }
             SetArmed(commander.ArmedOrder);
             SetSquadCounts(local.SquadCounts);
         }

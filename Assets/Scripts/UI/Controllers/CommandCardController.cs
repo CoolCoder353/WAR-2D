@@ -16,8 +16,9 @@ namespace WAR2D.UI
         private readonly HudModel hud;
         private readonly IReadOnlyDictionary<BuildingType, float> buildCosts;
         private readonly VisualElement card;
-        private readonly Label title, unitName, count, help;
-        private readonly Button minus, plus;
+        private readonly Label title, unitName, count, help, queueLabel;
+        private readonly Button minus, plus, plus10, plus50;
+        private readonly string singleHelp;
         private readonly Dictionary<OrderKind, Button> orders = new Dictionary<OrderKind, Button>();
         private readonly Dictionary<BuildingType, Button> builds = new Dictionary<BuildingType, Button>();
 
@@ -27,8 +28,8 @@ namespace WAR2D.UI
         /// <summary>Raised by a build button.</summary>
         public event Action<BuildingType> BuildClicked;
 
-        /// <summary>Raised by the production queue's buttons: +1 or −1 on the selected spawner.</summary>
-        public event Action<int, int> QueueClicked;
+        /// <summary>Raised by the production queue's buttons: a step (−1, +1, +10, +50) for every selected spawner.</summary>
+        public event Action<IReadOnlyList<int>, int> QueueClicked;
 
         /// <param name="buildCosts">Each buildable type's upfront cost (types without a button are ignored).</param>
         /// <param name="spawnRate">The spawner's units per second, for the queue's help line.</param>
@@ -44,7 +45,8 @@ namespace WAR2D.UI
             help = root.Q<Label>("production-help");
             minus = root.Q<Button>("production-minus");
             plus = root.Q<Button>("production-plus");
-            help.text = $"{spawnRate:0.##} per second · cost charged at spawn · max {SpawnerRules.MaxQueue}";
+            singleHelp = $"{spawnRate:0.##} per second · cost charged at spawn · max {SpawnerRules.MaxQueue}";
+            help.text = singleHelp;
 
             AddOrder(root, "cmd-move", OrderKind.Move);
             AddOrder(root, "cmd-attack-move", OrderKind.AttackMove);
@@ -52,8 +54,14 @@ namespace WAR2D.UI
             AddOrder(root, "cmd-hold", OrderKind.Hold);
             AddBuild(root, "build-miner", BuildingType.Miner);
             AddBuild(root, "build-spawner", BuildingType.SmallUnitSpawner);
-            minus.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); QueueClicked?.Invoke(selection.BuildingId, -1); };
-            plus.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); QueueClicked?.Invoke(selection.BuildingId, +1); };
+            plus10 = root.Q<Button>("production-plus-10");
+            plus50 = root.Q<Button>("production-plus-50");
+            queueLabel = root.Q<Label>("production-label");
+            void Step(Button button, int delta) => button.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); QueueClicked?.Invoke(selection.BuildingIds, delta); };
+            Step(minus, -1);
+            Step(plus, 1);
+            Step(plus10, 10);
+            Step(plus50, 50);
 
             selection.Changed += Show;
             hud.ResourcesChanged += Show;
@@ -78,14 +86,22 @@ namespace WAR2D.UI
         {
             UnitType produces = SpawnerRules.UnitFor(selection.BuildingType);
             bool spawner = selection.BuildingId != 0 && produces != UnitType.None;
+            int spawners = selection.BuildingIds.Count;
             card.EnableInClassList("command-card--building", spawner);
-            title.text = spawner ? "Commands: Spawner selected" : "Commands";
+            title.text = !spawner ? "Commands" : spawners > 1 ? $"Commands: {spawners} Spawners selected" : "Commands: Spawner selected";
             if (spawner)
             {
                 unitName.text = produces.ToString();
                 count.text = selection.SpawnerQueue.ToString();
+                queueLabel.text = spawners > 1 ? "Production queue (each selected spawner)" : "Production queue";
+                help.text = spawners > 1
+                    ? $"{selection.SpawnerQueue} queued across {spawners} spawners · each adds to every selected spawner · max {SpawnerRules.MaxQueue} each"
+                    : singleHelp;
+                bool room = selection.SpawnerQueue < SpawnerRules.MaxQueue * spawners;
                 minus.SetEnabled(selection.SpawnerQueue > 0);
-                plus.SetEnabled(selection.SpawnerQueue < SpawnerRules.MaxQueue);
+                plus.SetEnabled(room);
+                plus10.SetEnabled(room);
+                plus50.SetEnabled(room);
                 return;
             }
 

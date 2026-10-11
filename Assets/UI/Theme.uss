@@ -158,6 +158,9 @@
 .production__row > * { margin-right: var(--space-2); }
 .production__button { width: 36px; height: 35px; padding: 0; -unity-text-align: middle-center; }
 .production__count { font-size: var(--font-size-20); min-width: 22px; -unity-text-align: middle-center; }
+.production__button--wide { width: 48px; }
+.production__rally { flex-direction: row; align-items: center; margin-top: var(--space-2); }
+.production__rally-icon { width: 16px; height: 16px; margin-right: var(--space-2); flex-shrink: 0; }
 
 /* Selection panel (Figma: Panel / Selection) */
 .selection-panel { position: absolute; left: 292px; bottom: var(--space-4); display: none; }

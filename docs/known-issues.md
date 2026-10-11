@@ -27,9 +27,9 @@ Attacking HQ through walls. **Fixed:** targets need a clear line over the fog gr
 Units movement not smooth
 Multiplace buildings not a thing. **Fixed:** holding Shift (the queue modifier) keeps the preview after each placement.
 
-A location should be able to be set where units that are spawned from a specific spawner will travel on spawn.
-Multiple spawners should be able to be selected and increased the prod queue for each of them.
-A plus 10 and plus 50 button on the spawners would be good
+A location should be able to be set where units that are spawned from a specific spawner will travel on spawn. **Fixed:** right-click with spawners selected sets a rally point.
+Multiple spawners should be able to be selected and increased the prod queue for each of them. **Fixed:** Shift-click or box-select spawners.
+A plus 10 and plus 50 button on the spawners would be good. **Fixed.**
 sending units via the minimap onto a unknown area, if you accidentally click on a wall, has the units bug out and randomly move. **Fixed:** goals on rock or footprints snap to the nearest open floor (`OrderBook.SnapGoal`); with none within 12 tiles the order is dropped.
 Mining building didn't rotate visually. **Fixed:** the Miner is rendered in 4 facings and draws the one for its rotation, upright; other buildings can't be turned.
 No valid or invalid feedback to user placements. **Fixed:** the preview tints valid spots green and invalid spots red, follows the selected rotation, and ignores responses for a previous spot.
