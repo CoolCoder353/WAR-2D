@@ -217,7 +217,7 @@ Each update below lists its goal, its scope, the key decisions already made, wha
   - Building: R rotates, drag places walls, Esc cancels.
 - **Menus and lobby**
   - New main menu.
-  - Host or join by IP. Steam's server browser replaces this in v0.9.
+  - Host or join by IP. Steam's server browser replaces this in v0.9. For external playtests before then, Host opens UDP 7778 on the router through UPnP and Join accepts `host:port` ([playtesting.md](playtesting.md)).
   - Lobby: nickname, team, colour, ready-up. The host picks FFA or teams, the map and the starting resources.
   - In-match menu: settings, leave, surrender. Nothing pauses in multiplayer.
   - End screen with match stats.

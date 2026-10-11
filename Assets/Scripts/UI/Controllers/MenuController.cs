@@ -3,6 +3,7 @@ using Mirror;
 using UnityEngine;
 using UnityEngine.UIElements;
 using WAR2D.Client;
+using WAR2D.Net;
 
 namespace WAR2D.UI
 {
@@ -29,6 +30,7 @@ namespace WAR2D.UI
         private string joiningAddress;
         private bool wasConnected;
         private float lobbyTimer;
+        private int reachabilityVersion;
 
         /// <summary>The lobby's data.</summary>
         public LobbyModel Lobby { get; } = new LobbyModel();
@@ -65,7 +67,8 @@ namespace WAR2D.UI
             play.CancelClicked += () => { joiningAddress = null; GameManager.Instance?.StopClient(); play.ShowIdle(); };
 
             GameConfigData config = ConfigLoader.LoadConfig();
-            lobby = new LobbyController(root, Lobby, preview, config.Lobby, MenuModel.LocalAddress());
+            string lan = MenuModel.LocalAddress();
+            lobby = new LobbyController(root, Lobby, preview, config.Lobby, () => HostReachability.Describe(lan));
             lobby.SettingsChanged += s => GameCore.Instance?.Cmd_SetMatchSettings(s);
             lobby.RerollClicked += () => GameCore.Instance?.Cmd_RerollMap();
             lobby.ColourClicked += c => GameCore.Instance?.Cmd_SetColour((byte)c);
@@ -92,7 +95,11 @@ namespace WAR2D.UI
         {
             MenuBattle.Instance?.TearDown(); // never shares a simulation with a real match
             joiningAddress = null;
-            GameManager.Instance?.HostServer();
+            GameManager manager = GameManager.Instance;
+            if (manager == null) return;
+            manager.HostServer();
+            // Open the port on the router so players on other networks can join (external playtests).
+            if (NetworkServer.active) HostReachability.Start(manager.DefaultPort);
         }
 
         private void Join(string address)
@@ -113,7 +120,7 @@ namespace WAR2D.UI
             // connection (its match has started or it is full).
             if (joiningAddress != null && !NetworkClient.active)
             {
-                if (!wasConnected) play.ShowFailed(joiningAddress, 7778);
+                if (!wasConnected) play.ShowFailed(joiningAddress);
                 else play.ShowRefused(joiningAddress);
                 joiningAddress = null;
             }
@@ -132,6 +139,11 @@ namespace WAR2D.UI
                     preview.Request(s.MapSize, s.Seed, ConfigLoader.LoadConfig().Match.Map.GemChance);
                 }
                 preview.Update();
+                if (reachabilityVersion != HostReachability.Version)
+                {
+                    reachabilityVersion = HostReachability.Version;
+                    lobby.Refresh();
+                }
                 Show(Screen.Lobby);
             }
             else if (connected || (NetworkClient.active && joiningAddress == null)) Show(Screen.None); // starting or leaving a match

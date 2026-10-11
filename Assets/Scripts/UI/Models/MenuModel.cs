@@ -25,14 +25,8 @@ namespace WAR2D.UI
             set => PlayerPrefs.SetString(AddressKey, value ?? "");
         }
 
-        /// <summary>True for an IPv4/IPv6 address or a DNS host name.</summary>
-        public static bool IsAddressValid(string address)
-        {
-            address = address?.Trim();
-            if (string.IsNullOrEmpty(address) || address.Length > 253) return false;
-            if (IPAddress.TryParse(address, out IPAddress ip)) return ip.AddressFamily == AddressFamily.InterNetwork ? address.Split('.').Length == 4 : true;
-            return Uri.CheckHostName(address) == UriHostNameType.Dns && !address.StartsWith(".") && !address.EndsWith(".");
-        }
+        /// <summary>True for an IPv4/IPv6 address or a DNS host name, optionally with a port (<c>host:port</c>, <c>[ipv6]:port</c>).</summary>
+        public static bool IsAddressValid(string address) => Net.JoinAddress.TryParse(address, 1, out _, out _);
 
         /// <summary>This machine's first non-loopback IPv4 address (what others join), or "this machine's address".</summary>
         public static string LocalAddress()

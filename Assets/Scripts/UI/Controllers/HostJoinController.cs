@@ -67,11 +67,13 @@ namespace WAR2D.UI
             failed.RemoveFromClassList("play-panel__state--visible");
         }
 
-        /// <summary>Shows why the last join failed, under the join form.</summary>
-        public void ShowFailed(string to, int port)
+        /// <summary>Shows why the last join failed, under the join form (<paramref name="to"/> as typed, with or without a port).</summary>
+        public void ShowFailed(string to)
         {
             ShowIdle();
-            failed.text = $"No server answered at {to}:{port}. Check the address and that the host is running.";
+            ushort port = GameManager.Instance != null ? GameManager.Instance.DefaultPort : (ushort)7778;
+            string at = Net.JoinAddress.TryParse(to, port, out string host, out port) ? (host.Contains(":") ? $"[{host}]:{port}" : $"{host}:{port}") : to;
+            failed.text = $"No server answered at {at}. Check the address, that the host is running, and that their port is open to the internet.";
             failed.AddToClassList("play-panel__state--visible");
         }
 

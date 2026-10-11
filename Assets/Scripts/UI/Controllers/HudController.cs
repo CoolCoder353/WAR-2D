@@ -104,7 +104,7 @@ namespace WAR2D.UI
             settings.Closed += matchMenu.Open;
             matchMenu.SettingsClicked += () => { matchMenu.Close(); settings.Open(); SettingsRequested?.Invoke(); };
             matchMenu.SurrenderConfirmed += () => GameCore.Instance?.Cmd_Surrender();
-            matchMenu.LeaveClicked += () => GameManager.Instance?.LeaveLobby();
+            matchMenu.LeaveClicked += () => { HostLeftNotice.LeavingOnPurpose = true; GameManager.Instance?.LeaveLobby(); };
             topBar.MenuClicked += matchMenu.Toggle;
 
             gift = new GiftDialogController(root, Model, config.Gifting.CooldownSeconds);
@@ -113,7 +113,7 @@ namespace WAR2D.UI
             topBar.DiplomacyClicked += gift.Close;
 
             endScreen = new EndScreenController(root);
-            endScreen.MainMenuClicked += () => GameManager.Instance?.LeaveLobby();
+            endScreen.MainMenuClicked += () => { HostLeftNotice.LeavingOnPurpose = true; GameManager.Instance?.LeaveLobby(); };
             endScreen.QuitClicked += () => GameManager.Instance?.QuitGame();
             ClientPlayer.MatchEnded += OnMatchEnded;
             GameCore.MatchStatsReceived += OnMatchStats;

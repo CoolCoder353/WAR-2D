@@ -10,10 +10,10 @@
   <Project Path="NaughtyAttributes.Test.csproj" />
   <Project Path="NaughtyAttributes.Core.csproj" />
   <Project Path="kcp2k.csproj" />
+  <Project Path="WAR2D.Tests.EditMode.csproj" />
   <Project Path="Mirror.csproj" />
   <Project Path="SimpleWebTransport.csproj" />
   <Project Path="Mirror.Authenticators.csproj" />
-  <Project Path="WAR2D.Tests.EditMode.csproj" />
   <Project Path="WAR2D.Tests.PlayMode.csproj" />
   <Project Path="EncryptionTransportEditor.csproj" />
   <Project Path="Assembly-CSharp-firstpass.csproj" />
@@ -22,5 +22,6 @@
   <Project Path="TIM.Console.Editor.csproj" />
   <Project Path="Mirror.CompilerSymbols.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
+  <Project Path="WAR2D.Editor.csproj" />
   <Project Path="Assembly-CSharp-Editor.csproj" />
 </Solution>

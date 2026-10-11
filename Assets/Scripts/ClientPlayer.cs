@@ -74,6 +74,8 @@ public class ClientPlayer : NetworkBehaviour
     public override void OnStopClient()
     {
         if (!isLocalPlayer) return;
+        // A joined player dropped mid-match (the host closed their game): the main menu says so.
+        WAR2D.UI.HostLeftNotice.ClientStopped(isServer, GameCore.Instance != null ? GameCore.Instance.CurrentState : GameState.Lobby);
 
         //TODO: Need to make sure we remove handles when the player disconnects, or the scene changes
 
