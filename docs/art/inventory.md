@@ -18,7 +18,7 @@ Units draw with pre-drawn facings, not a rotated quad (rotation breaks the pixel
 
 | Id | Size | Frames | Team mask | Source today |
 |---|---|---|---|---|
-| `Base` (HQ) | 3×3 | 1 | yes | `Resources/Base.png` (64 px, PPU 22) |
+| `Base` (HQ) | 5×5 (3×3 before v0.8) | 1 | yes | `Resources/Base.png` (64 px, PPU 22) |
 | `SmallUnitSpawner` | 2×2 | 2 (idle) | yes | `Resources/SmallUnitSpawner.png` (64 px) |
 | `Miner` | 1×1 | 4 (drill loop) | yes | `Resources/miner.png` (32 px) |
 | `Bomb` | 1×1 | 2 (armed blink) | yes | none (v0.7; never sent to enemy clients, so only its owner's team draws it) |

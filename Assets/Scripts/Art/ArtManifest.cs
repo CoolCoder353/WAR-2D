@@ -60,7 +60,7 @@ namespace WAR2D.Art
             new ArtEntry("Digger", ArtKind.Unit, 1, 1, 4, UnitDirections, true),
 
             // Buildings: footprint from GameConfig.xml; rotated in 90° steps as whole sprites.
-            new ArtEntry(nameof(BuildingType.Base), ArtKind.Building, 3, 3, 1, 1, true),
+            new ArtEntry(nameof(BuildingType.Base), ArtKind.Building, 5, 5, 1, 1, true),
             new ArtEntry(nameof(BuildingType.SmallUnitSpawner), ArtKind.Building, 2, 2, 2, 1, true),
             new ArtEntry(nameof(BuildingType.Miner), ArtKind.Building, 1, 1, 4, 1, true),
             new ArtEntry("Bomb", ArtKind.Building, 1, 1, 2, 1, true),

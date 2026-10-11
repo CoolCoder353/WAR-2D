@@ -19,7 +19,7 @@ stateDiagram-v2
 ```
 
 1. **Main menu → Play → Lobby** (`Main_Menu` scene). The main menu (Play, Settings, Quit) has a live battle running behind it (`<MenuBattle>`; off in Settings → Graphics). **Play** asks for a nickname (remembered) and either **Host** (others join on your IP, port 7778) or **Join** an address (invalid addresses are flagged; while connecting there is a Cancel; a failed join says so). A lobby holds up to **8 players**, and nobody can join once the match has started (the server refuses the connection and the Play screen says why). In the **lobby** every player (the host included) picks an unused colour (8, from the palette), may claim one of the 8 **HQ clearings** by clicking its free (grey) marker on the map preview, and readies up; in Teams mode they pick Team 1–4 or Solo (the host can also cycle anyone's team). The host (the server owner: the host, or the next player if the host leaves) sets the **match settings**: mode (Free-for-all or Teams), Diplomacy on/off, map size (`Lobby/MapSizes`: 256, 512, 1024) and starting resources (`Lobby/StartingResources`: 500–5000), the map seed (typed, or **Reroll**). Everyone sees the settings and a **map preview** with the 8 HQ clearings: claimed ones in their player's colour (your own ringed, with "You"), free ones grey. When the match starts, every player without a claim gets the lowest-numbered free clearing. Any settings change or reroll clears everyone's ready. **Start match** needs every player ready and at least two teams (so someone attacks someone). Teams are fixed when the match starts.
-2. **PlacingHQ** (`Map_2`). The map is generated from a seed (see "Map and tiles"). An HQ placement prompt is shown. Each player places a single 3×3 HQ on free ground **inside their own clearing** (ringed in their colour; the camera starts there), in any 90° rotation. The screen shows how many players are still placing.
+2. **PlacingHQ** (`Map_2`). The map is generated from a seed (see "Map and tiles"). An HQ placement prompt is shown. Each player places a single 5×5 HQ on free ground **inside their own clearing** (ringed in their colour; the camera starts there), in any 90° rotation. The screen shows how many players are still placing.
 3. **Countdown.** When the last HQ is placed, the server starts a **5-second** countdown (`Match.CountdownSeconds`) and every client displays the same remaining time from the synced end time.
 4. **Playing.** Economy, building, spawning and combat run, and win/loss is checked every second.
 5. **GameOver.** Each player sees the **end screen**: Victory, Defeat or Draw, who won and how long it took, and every player's statistics (units built, lost and killed, buildings built and lost, mined, spent, gifted out and in, peak army). Statistics are sent only once the match is over. A player eliminated earlier sees Defeat at once and the table when the match ends. Buttons: Main menu, Quit.
@@ -82,7 +82,7 @@ The map is a grid of 1×1 tiles. By default it is **generated from a seed** at t
 | Gem | No | No | Miners must face a gem tile to produce resources |
 | Border | No | No | The map's outer ring |
 
-A building occupies tiles based on its configured size (3×3 for the HQ, 2×2 for a Small Unit Spawner, 1×1 for a Miner). A building can only be placed when every tile of its footprint is free ground; units standing there are moved to the nearest free tile. Occupied tiles can't be built on again, and units path around buildings.
+A building occupies tiles based on its configured size (5×5 for the HQ, 2×2 for a Small Unit Spawner, 1×1 for a Miner). A building can only be placed when every tile of its footprint is free ground; units standing there are moved to the nearest free tile. Occupied tiles can't be built on again, and units path around buildings.
 
 ## Economy
 
@@ -104,7 +104,7 @@ Buildings are placed from the HUD, can be rotated in 90° steps, and must sit en
 
 | Building | Size | Health | Upfront cost | Upkeep / s | Function |
 |---|---|---|---|---|---|
-| **Base (HQ)** | 3×3 | 500 | 0 | 0 | Your life. Placed during *PlacingHQ*. |
+| **Base (HQ)** | 5×5 | 500 | 0 | 0 | Your life. Placed during *PlacingHQ*. |
 | **Miner** | 1×1 | 50 | 50 | 0 | Produces 10 resources/s while the tile it faces is a gem. Placement is only allowed when it faces a gem. |
 | **Small Unit Spawner** | 2×2 | 300 | 200 | 20 | Click it to queue Tanks (up to 100 queued). Produces **1 unit per second** (`SpawnRate`), charging each Tank's cost as it spawns. |
 

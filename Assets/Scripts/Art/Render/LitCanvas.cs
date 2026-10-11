@@ -43,6 +43,12 @@ namespace WAR2D.Art.Render
         /// Buildings drawn with <c>lift</c> are taller than their footprint, so their canvas has headroom above it.
         /// </summary>
         public readonly float PivotY;
+
+        /// <summary>
+        /// Output pixels per design unit. Shapes, grooves and rivets are given in design units and heights
+        /// scale with them, so one design can be drawn at a bigger footprint (the 5×5 HQ uses its 3×3 design).
+        /// </summary>
+        public float Scale { get; set; } = 1f;
         private readonly int rw, rh;       // render pixels
         private readonly float[] height, alpha, spec, gloss, glow, team;
         private readonly Color[] albedo;
@@ -77,7 +83,7 @@ namespace WAR2D.Art.Render
         /// </summary>
         public void Shape(Func<float, float, float> sdf, Material m, float top, float bevel = 1.5f, float bevelDrop = 2f, bool stack = false)
         {
-            float s = 1f / Supersample;
+            float s = 1f / (Supersample * Scale);
             for (int y = 0; y < rh; y++)
             for (int x = 0; x < rw; x++)
             {
@@ -89,7 +95,7 @@ namespace WAR2D.Art.Render
                 float h = top - bevelDrop * (1 - Mathf.SmoothStep(0, 1, inner));
                 alpha[i] = Mathf.Max(alpha[i], coverage);
                 if (coverage < 0.5f) continue;
-                height[i] = stack ? height[i] + Mathf.Max(0, h) : h;
+                height[i] = stack ? height[i] + Mathf.Max(0, h) * Scale : h * Scale;
                 albedo[i] = m.Albedo;
                 spec[i] = m.Specular;
                 gloss[i] = m.Gloss;
@@ -101,7 +107,7 @@ namespace WAR2D.Art.Render
         /// <summary>A groove along the zero line of <paramref name="sdf"/>: pressed in by <paramref name="depth"/> over <paramref name="width"/> pixels, darkened.</summary>
         public void Groove(Func<float, float, float> sdf, float depth = 1.2f, float width = 0.8f)
         {
-            float s = 1f / Supersample;
+            float s = 1f / (Supersample * Scale);
             for (int y = 0; y < rh; y++)
             for (int x = 0; x < rw; x++)
             {
@@ -110,7 +116,7 @@ namespace WAR2D.Art.Render
                 float d = Mathf.Abs(sdf((x + 0.5f) * s, (y + 0.5f) * s));
                 if (d >= width) continue;
                 float k = 1 - d / width;
-                height[i] -= depth * k;
+                height[i] -= depth * k * Scale;
                 albedo[i] *= 1 - 0.25f * k;
             }
         }
@@ -118,16 +124,17 @@ namespace WAR2D.Art.Render
         /// <summary>A round bump (rivet, bolt head) of radius <paramref name="r"/> raised by <paramref name="h"/>.</summary>
         public void Rivet(float cx, float cy, float r = 0.9f, float h = 0.9f, float shine = 0.3f)
         {
-            float s = 1f / Supersample;
-            for (int y = (int)((cy - r - 1) * Supersample); y <= (int)((cy + r + 1) * Supersample); y++)
-            for (int x = (int)((cx - r - 1) * Supersample); x <= (int)((cx + r + 1) * Supersample); x++)
+            float s = 1f / (Supersample * Scale);
+            float k = Supersample * Scale;
+            for (int y = (int)((cy - r - 1) * k); y <= (int)((cy + r + 1) * k); y++)
+            for (int x = (int)((cx - r - 1) * k); x <= (int)((cx + r + 1) * k); x++)
             {
                 if ((uint)x >= (uint)rw || (uint)y >= (uint)rh) continue;
                 int i = y * rw + x;
                 if (alpha[i] < 0.5f) continue;
                 float dx = (x + 0.5f) * s - cx, dy = (y + 0.5f) * s - cy, q = 1 - (dx * dx + dy * dy) / (r * r);
                 if (q <= 0) continue;
-                height[i] += h * Mathf.Sqrt(q);
+                height[i] += h * Mathf.Sqrt(q) * Scale;
                 spec[i] = Mathf.Max(spec[i], shine);
             }
         }
@@ -138,16 +145,16 @@ namespace WAR2D.Art.Render
         /// </summary>
         public void Grime(int seed, float bump = 0.35f, float mottle = 0.18f, int cells = 6, int octaves = 4)
         {
-            float s = 1f / Supersample;
+            float s = 1f / (Supersample * Scale);
             for (int y = 0; y < rh; y++)
             for (int x = 0; x < rw; x++)
             {
                 int i = y * rw + x;
                 if (alpha[i] <= 0) continue;
                 float px = (x + 0.5f) * s, py = (y + 0.5f) * s;
-                float n = Noise.Fbm(px, py, Width, cells, octaves, seed);
-                float m = Noise.Fbm(px, py, Width, cells * 2, 3, seed + 7);
-                height[i] += (n - 0.5f) * 2 * bump;
+                float n = Noise.Fbm(px, py, Width / Scale, cells, octaves, seed);
+                float m = Noise.Fbm(px, py, Width / Scale, cells * 2, 3, seed + 7);
+                height[i] += (n - 0.5f) * 2 * bump * Scale;
                 albedo[i] *= 1 + (m - 0.5f) * 2 * mottle;
             }
         }
@@ -158,19 +165,19 @@ namespace WAR2D.Art.Render
         /// <summary>Raises (or lowers) the height field by a function of position, where drawn.</summary>
         public void Displace(Func<float, float, float> dh)
         {
-            float s = 1f / Supersample;
+            float s = 1f / (Supersample * Scale);
             for (int y = 0; y < rh; y++)
             for (int x = 0; x < rw; x++)
             {
                 int i = y * rw + x;
-                if (alpha[i] > 0) height[i] += dh((x + 0.5f) * s, (y + 0.5f) * s);
+                if (alpha[i] > 0) height[i] += dh((x + 0.5f) * s, (y + 0.5f) * s) * Scale;
             }
         }
 
         /// <summary>Recolours drawn pixels by a function of position and current colour.</summary>
         public void Tint(Func<float, float, Color, Color> f)
         {
-            float s = 1f / Supersample;
+            float s = 1f / (Supersample * Scale);
             for (int y = 0; y < rh; y++)
             for (int x = 0; x < rw; x++)
             {

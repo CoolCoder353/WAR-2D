@@ -1,6 +1,15 @@
 # v0.8 art method prototype
 
-**Decision:** pending (owner gate, plan Task 4). No production art is made until it is recorded here and in the roadmap's decisions log.
+**Decision (owner, 2026-10-11): code-generated art, as lit models finished as fine pixel art.** Neither prototype below was chosen: the owner disliked both (16 px was too small, units, buildings and terrain looked wrong) and asked to build on the current placeholder art's style. Five rounds of samples followed (`docs/art/style/`, `docs/art/render/`, `docs/art/pixel/`, `docs/art/pixel-hd/`, compared in [compare.html](compare.html)). The result:
+
+- **Method:** code only (`Assets/Scripts/Art/Render/`). Each sprite is a lit model: bevelled shapes with heights and materials (`LitCanvas`, `RenderGen`), lit from the top left with ambient occlusion, then finished as pixel art (`PixelFinish`: majority-vote onto a limited palette, 1 px outline, hard shadows). No AI-generated art ships; prototype (b)'s files were deleted (the log in [ai-content.md](ai-content.md) keeps the record).
+- **Finish B, "fine pixel art": 64 px per tile.** (Round 5 also showed 32 px pixel art and a smooth finish.)
+- **Palette:** "Charcoal" (`StylePalettes.Charcoal`, from the current placeholders), with 5 shades per colour in the pixel palette.
+- **Units:** top-down, 8 rendered facings (the light stays fixed); approved as drawn.
+- **Terrain:** stone floor with fine cracks, craggy raised rock with autotiled edges, faceted glowing gems; approved as drawn.
+- **Buildings:** a 3/4 view (`RenderGen.Lift`: each unit of height lifts a pixel half a pixel up the screen, leaving a shaded south wall), with their own silhouettes inside square footprints and headroom above them. The HQ is **5×5** (was 3×3; config and rules changed with it), a command complex; the Miner is a stationary rig whose drill bit reaches sideways into the rock; the Small Unit Spawner is a sawtooth-roofed factory.
+
+The rest of this page is the original (a)/(b) comparison, kept for the record.
 
 The same subjects were made two ways at the provisional 16 px per tile and the same 24-colour palette plus a 4-step magenta team key:
 

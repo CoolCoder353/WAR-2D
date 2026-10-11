@@ -183,9 +183,9 @@ public class MapGeneratorTests
             {
                 Assert.AreEqual(8, sites.Length, $"size {size}");
                 foreach (int2 site in sites)
-                for (int dy = -1; dy <= 1; dy++)
-                for (int dx = -1; dx <= 1; dx++)
-                    Assert.AreEqual((byte)TileType.Ground, tiles[(site.y + dy) * size + site.x + dx], $"size {size} seed {seed}: the 3x3 HQ footprint at {site} is clear");
+                for (int dy = -2; dy <= 2; dy++)
+                for (int dx = -2; dx <= 2; dx++)
+                    Assert.AreEqual((byte)TileType.Ground, tiles[(site.y + dy) * size + site.x + dx], $"size {size} seed {seed}: the 5x5 HQ footprint at {site} is clear");
             }
             finally
             {

@@ -300,12 +300,12 @@ public class HudTests
         return default;
     }
 
-    /// <summary>Spawns units for an owner on walkable tiles in rings around a point (from ring 2, clear of a 3×3 building).</summary>
+    /// <summary>Spawns units for an owner on walkable tiles in rings around a point (from ring 3, clear of a 5×5 building).</summary>
     private static void SpawnAround(int owner, int2 centre, int count)
     {
         WorldStateManager wsm = WorldStateManager.Instance;
         int placed = 0;
-        for (int ring = 2; placed < count && ring < 20; ring++)
+        for (int ring = 3; placed < count && ring < 20; ring++)
         for (int i = 0; i < 8 * ring && placed < count; i++)
         {
             int2 tile = Ring(centre, ring, i);

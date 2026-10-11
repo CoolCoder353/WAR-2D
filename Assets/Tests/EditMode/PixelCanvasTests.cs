@@ -2,9 +2,8 @@ using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using WAR2D.Art;
-using WAR2D.Art.Generators;
 
-/// <summary>The palette-indexed canvas, the PNG encoder and the prototype generators.</summary>
+/// <summary>The palette-indexed canvas and the PNG encoder.</summary>
 public class PixelCanvasTests
 {
     private static readonly Color32[] Palette =
@@ -60,30 +59,6 @@ public class PixelCanvasTests
             CollectionAssert.AreEqual(pixels, texture.GetPixels32());
         }
         finally { Object.DestroyImmediate(texture); }
-    }
-
-    [Test]
-    public void GeneratorsAreDeterministicAndMatchTheManifest()
-    {
-        foreach (ISpriteGenerator g in PrototypeGenerators.All)
-        {
-            PixelCanvas[] a = g.Generate(7), b = g.Generate(7);
-            Assert.IsTrue(ArtManifest.TryGet(g.Id, out ArtEntry entry), g.Id);
-            Assert.AreEqual(entry.Frames * entry.Directions, a.Length, $"{g.Id}: one canvas per frame and direction");
-            for (int i = 0; i < a.Length; i++)
-            {
-                Assert.AreEqual((entry.WidthTiles * PrototypeGenerators.TileSize, entry.HeightTiles * PrototypeGenerators.TileSize), (a[i].Width, a[i].Height), g.Id);
-                CollectionAssert.AreEqual(a[i].ToPixels(), b[i].ToPixels(), $"{g.Id} frame {i}");
-            }
-        }
-    }
-
-    [Test]
-    public void UnitFacingsDiffer()
-    {
-        PixelCanvas[] tank = new TankGen().Generate(1);
-        int frames = tank.Length / ArtManifest.UnitDirections;
-        CollectionAssert.AreNotEqual(tank[0].ToPixels(), tank[2 * frames].ToPixels(), "east and north facings are drawn differently");
     }
 
     [Test]

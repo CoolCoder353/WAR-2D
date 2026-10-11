@@ -37,6 +37,9 @@ namespace WAR2D.EditorTools
         [MenuItem("WAR-2D/Art/Render pixel samples")]
         public static void RenderPixel() => RenderAll(Finish.Pixel32);
 
+        [MenuItem("WAR-2D/Art/Render fine pixel samples")]
+        public static void RenderFinePixel() => RenderAll(Finish.Pixel64);
+
         [MenuItem("WAR-2D/Art/Render all sample finishes")]
         public static void RenderEveryFinish()
         {
@@ -93,7 +96,7 @@ namespace WAR2D.EditorTools
             items.Add((RenderGen.Miner(0), blue, RenderGen.Lift));
             items.Add((RenderGen.Spawner(0), blue, RenderGen.Lift));
             items.Add((RenderGen.Base(), red, RenderGen.Lift));
-            int w = gap, h = 3 * T + RenderGen.Headroom / Factor + 2 * gap;
+            int w = gap, h = RenderGen.HqTiles * T + RenderGen.Headroom * 2 / Factor + 2 * gap;
             foreach (var item in items) w += item.canvas.Width * T / RenderGen.TileSize + gap;
             var strip = new Color32[w * h];
             Tile(strip, w, h, (x, y) => TileAt(TileType.Ground, 0, (x + y) & 3));
@@ -101,7 +104,7 @@ namespace WAR2D.EditorTools
             foreach (var (canvas, team, lift) in items)
             {
                 int cw = canvas.Width * T / RenderGen.TileSize;
-                Sprite(strip, w, h, canvas, team, ox + cw / 2, gap + 3 * T / 2, lift);
+                Sprite(strip, w, h, canvas, team, ox + cw / 2, gap + RenderGen.HqTiles * T / 2, lift);
                 ox += cw + gap;
             }
             Save(Path.Combine(Folder, "sprites.png"), strip, w, h, CloseScale);
@@ -158,7 +161,7 @@ namespace WAR2D.EditorTools
 
             float2 hq = (float2)site + 0.5f - new float2(x0, y0);
             void Put(LitCanvas sprite, Color team, float2 tile, float lift = 0f) => Sprite(px, W, H, sprite, team, (int)(tile.x * T), (int)(tile.y * T), lift);
-            Put(RenderGen.Spawner(0), blue, hq + new float2(4f, -0.5f), RenderGen.Lift);
+            Put(RenderGen.Spawner(0), blue, hq + new float2(5f, -2.5f), RenderGen.Lift);
             Put(RenderGen.Base(), blue, hq, RenderGen.Lift);
             int miners = 0;
             for (int ty = 1; ty < SceneH - 1 && miners < 2; ty++)
@@ -175,8 +178,8 @@ namespace WAR2D.EditorTools
             for (int i = 0; i < 3000 && (blueCount < 18 || redCount < 16); i++)
             {
                 int tx = rng.Next(SceneW), ty = rng.Next(SceneH);
-                if (Rock(x0 + tx, y0 + ty) || math.distance(new float2(tx, ty), hq) < 3.5f || !used.Add(new int2(tx, ty))) continue;
-                if (math.distance(new float2(tx, ty), hq + new float2(4, -0.5f)) < 2f) continue;
+                if (Rock(x0 + tx, y0 + ty) || math.distance(new float2(tx, ty), hq) < 4.5f || !used.Add(new int2(tx, ty))) continue;
+                if (math.distance(new float2(tx, ty), hq + new float2(5, -2.5f)) < 2.5f) continue;
                 bool isBlue = tx < 16;
                 if (isBlue ? blueCount >= 18 : redCount >= 16) continue;
                 float facing = isBlue ? rng.Next(-1, 2) * Mathf.PI / 4 : Mathf.PI + rng.Next(-1, 2) * Mathf.PI / 4;

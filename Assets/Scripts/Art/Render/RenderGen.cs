@@ -107,11 +107,12 @@ namespace WAR2D.Art.Render
         {
             var c = new LitCanvas(TileSize, TileSize + Headroom / 3, TileSize / 2f);
             float o = TileSize / 2f;
-            // Tracks and rig body (west), with a team cab and a hopper of ore.
-            foreach (float s in new[] { -1f, 1f })
+            // A bolted skid with four anchor feet (the rig is stationary), then the body with a team cab and a hopper of ore.
+            c.Shape((x, y) => Box(x, y, o - 8, o, 20, 15, 2), Dark, 5, 1.2f, 1.5f);
+            foreach (var (fx, fy) in new[] { (-1f, -1f), (1f, -1f), (-1f, 1f), (1f, 1f) })
             {
-                c.Shape((x, y) => Box(x, y, o - 14, o + s * 12, 11, 4, 2), Rubber, 6, 1.5f, 2);
-                c.Groove((x, y) => Box(x, y, o - 14, o + s * 12, 10, 3) > 0 ? 9 : Mathf.Abs(Mod(x, 4) - 2) - 0.7f, 1, 0.8f);
+                c.Shape((x, y) => Box(x, y, o - 8 + fx * 20, o + fy * 15, 4, 4, 1), Plate, 6, 1, 1.5f);
+                c.Rivet(o - 8 + fx * 20, o + fy * 15, 1.4f, 1f, 0.4f);
             }
             c.Shape((x, y) => Box(x, y, o - 14, o, 10, 9, 2.5f), Hull, 12, 2, 2.5f);
             c.Shape((x, y) => Box(x, y, o - 18, o + 4, 5, 5, 1.5f), Team, 16, 1.5f, 2);
@@ -195,22 +196,28 @@ namespace WAR2D.Art.Render
             return c;
         }
 
+        /// <summary>The HQ's footprint in tiles (GameConfig.xml's Base Width and Height).</summary>
+        public const int HqTiles = 5;
+
         /// <summary>Headroom (output px at 64 px per tile) above a building's footprint for the 3/4 view.</summary>
         public const int Headroom = 72;
         /// <summary>How far up the screen a unit of height lifts a building in the 3/4 view.</summary>
         public const float Lift = 0.5f;
 
         /// <summary>
-        /// The HQ (3×3): a command complex. A podium with two low wings and a big main block, topped by a tall
+        /// The HQ (5×5; owner, 2026-10-11): a command complex. A podium with two low wings and a big main block, topped by a tall
         /// command tower with banded windows, a dish and an antenna mast with a beacon; the team marking on the
         /// main roof and stripes on the wings; a helipad on the podium and garage doors in the wings' fronts.
-        /// Drawn for the 3/4 view (<see cref="Lift"/>), so its canvas has <see cref="Headroom"/> above the footprint.
+        /// Drawn for the 3/4 view (<see cref="Lift"/>), so its canvas has headroom above the footprint. The
+        /// design is laid out on a 192-unit square and drawn at the 5×5 footprint (<see cref="LitCanvas.Scale"/>).
         /// </summary>
         public static LitCanvas Base()
         {
-            int s = 3 * TileSize;
-            var c = new LitCanvas(s, s + Headroom, s / 2f);
-            float o = s / 2f;
+            const float design = 192f;
+            int s = HqTiles * TileSize;
+            float scale = s / design;
+            var c = new LitCanvas(s, s + Mathf.CeilToInt(Headroom * scale), s / 2f) { Scale = scale };
+            float o = design / 2f;
             // Podium: a chamfered platform over most of the footprint, with a striped front edge.
             c.Shape((x, y) => Mathf.Max(Box(x, y, o, o, 90, 84, 6), Polygon(x, y, o, o, 104, 8, Mathf.PI / 8)), Concrete, 5, 2, 2);
             c.Groove((x, y) => Mathf.Max(Box(x, y, o, o, 84, 78, 4), Polygon(x, y, o, o, 97, 8, Mathf.PI / 8)), 1, 0.9f);
@@ -262,7 +269,7 @@ namespace WAR2D.Art.Render
             c.Grime(s, 0.9f, 0.16f, 4, 5);
             // Fine cracks along a noise contour, broken up by a second noise so they don't form loops.
             c.Groove((x, y) => Noise.Fbm(x, y, TileSize, 2, 2, s + 9) < 0.55f ? 9 : (Mathf.Abs(Noise.Fbm(x, y, TileSize, 5, 3, s + 5) - 0.5f) - 0.006f) * 60, 0.9f, 0.45f);
-            var rng = new Generators.ArtRandom(seed, "pebbles" + variant);
+            var rng = new ArtRandom(seed, "pebbles" + variant);
             for (int k = 0; k < 6; k++) c.Rivet(4 + rng.Range(TileSize - 8), 4 + rng.Range(TileSize - 8), 0.8f + rng.Range(2) * 0.6f, 0.9f, 0.05f);
             return c;
         }
@@ -291,7 +298,7 @@ namespace WAR2D.Art.Render
         public static LitCanvas Gem(int seed, int variant, int mask = North | East | South | West)
         {
             LitCanvas c = Rock(seed, mask);
-            var rng = new Generators.ArtRandom(seed, "crystals" + variant);
+            var rng = new ArtRandom(seed, "crystals" + variant);
             int count = 3 + rng.Range(3);
             for (int k = 0; k < count; k++)
             {

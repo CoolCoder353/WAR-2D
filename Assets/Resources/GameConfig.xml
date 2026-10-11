@@ -96,8 +96,8 @@
   <Buildings>
     <Building type="Base">
       <Health>500</Health>
-      <Width>3</Width>
-      <Height>3</Height>
+      <Width>5</Width>   <!-- 5×5 since v0.8 (owner, 2026-10-11) -->
+      <Height>5</Height>
       <UpfrontCost>0.0</UpfrontCost>
       <RunningCost>0.0</RunningCost>
       <SpawnRate>0.0</SpawnRate>

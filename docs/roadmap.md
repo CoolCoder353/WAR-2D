@@ -402,5 +402,7 @@ The full table is in the spec (§2). The decisions that most shape the roadmap:
 | Rendering | URP 2D; Pixel Perfect Camera in v0.8 |
 | Art and audio | Pixel art (method chosen in v0.8); sfxr-style SFX; code-generated chiptune music |
 | Order (2026-10-10) | v0.8 New Paint before v0.7 Siege, so the art style sets how the new units and buildings look. v0.8 delivers the v0.7 art kit; v0.7 wires it |
+| Art method (2026-10-11) | Code-generated lit models finished as fine pixel art (64 px per tile, "Charcoal" palette, 3/4 view for buildings, 8 rendered facings for units); no AI art ships. See [method-prototype.md](art/method-prototype.md) |
+| HQ size (2026-10-11) | The HQ is 5×5 (was 3×3), so the art can make it the base's centrepiece |
 | Testing | Local only, through the live editor; no CI |
 | Team | The owner plus Claude, in small shippable updates |
