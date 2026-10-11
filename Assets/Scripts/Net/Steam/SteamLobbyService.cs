@@ -72,6 +72,15 @@ namespace WAR2D.Net.Steam
             Current.Open(hostName, settings, players);
         }
 
+        /// <summary>True once Steam has created the lobby, so friends can be invited to it.</summary>
+        public static bool CanInvite => Current != null && Current.LobbyId != 0 && SteamServices.Available;
+
+        /// <summary>Opens Steam's "invite friends" dialog for the hosted lobby.</summary>
+        public static void OpenInvite()
+        {
+            if (CanInvite) SteamServices.Backend.OpenInviteDialog(Current.LobbyId);
+        }
+
         public static void Close()
         {
             Current?.Close();

@@ -13,14 +13,30 @@
                     <ui:Button name="host-button" text="Host" class="button button--primary" />
                 </ui:VisualElement>
                 <ui:VisualElement class="divider" />
-                <ui:Label text="Join a match" class="text play-panel__heading" />
+                <ui:VisualElement name="friends-section" class="play-panel__section">
+                    <ui:VisualElement class="row play-panel__header">
+                        <ui:Label text="Friends' games" class="text play-panel__heading play-panel__grow" />
+                        <ui:Button name="refresh-button" text="Refresh" class="button button--primary" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="game-list" class="play-panel__list" />
+                    <ui:VisualElement name="friends-empty" class="play-panel__notice">
+                        <ui:Label text="No games found" class="text play-panel__heading" />
+                        <ui:Label text="Ask a friend to host, or accept their invite." class="text--secondary" />
+                    </ui:VisualElement>
+                    <ui:Label name="steam-off" text="Steam isn't running. Start Steam and restart the game to see friends' games." class="text play-panel__notice play-panel__notice--warning" />
+                    <ui:Label name="friends-notice" text="" class="text play-panel__notice play-panel__notice--danger" />
+                </ui:VisualElement>
+                <ui:VisualElement name="direct-block" class="play-panel__section">
+                    <ui:VisualElement class="divider" />
+                    <ui:Button name="direct-toggle" text="Direct (IP)" class="button play-panel__toggle" />
+                    <ui:VisualElement name="direct-section" class="play-panel__section">
+                <ui:Label text="Join by address, or steam:&lt;id&gt;. For LAN and tunnels." class="text--secondary" />
                 <ui:VisualElement name="address-input" class="input">
                     <ui:Label text="Host address" class="input__label" />
                     <ui:TextField name="address-field" max-length="253" class="input__field" />
                     <ui:Label name="address-error" text="Enter an address like 192.168.1.20" class="input__message" />
                 </ui:VisualElement>
                 <ui:VisualElement name="join-buttons" class="row">
-                    <ui:Button name="back-button" text="Back" class="button" />
                     <ui:Button name="join-button" text="Join" class="button button--primary" />
                 </ui:VisualElement>
                 <ui:VisualElement name="connecting" class="play-panel__state">
@@ -30,6 +46,11 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
                 <ui:Label name="join-failed" text="" class="text text--danger play-panel__state" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+                <ui:VisualElement class="row">
+                    <ui:Button name="back-button" text="Back" class="button" />
+                </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>

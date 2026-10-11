@@ -27,6 +27,8 @@ namespace WAR2D.UI
         private VisualElement root;
         private readonly MapPreview preview = new MapPreview();
         private bool wantsPlay;
+        private LobbyListController list;
+        private WAR2D.Net.Steam.SteamJoinFlow joinFlow;
         private string joiningAddress;
         private bool wasConnected;
         private float lobbyTimer;
@@ -64,6 +66,18 @@ namespace WAR2D.UI
             play.BackClicked += () => { wantsPlay = false; play.ShowIdle(); };
             play.HostClicked += Host;
             play.JoinClicked += Join;
+            play.SetDirectAvailable(GameManager.DirectAllowed);
+            play.SetDirectExpanded(!WAR2D.Net.Steam.SteamServices.Available);
+            joinFlow = new WAR2D.Net.Steam.SteamJoinFlow(WAR2D.Net.Steam.SteamServices.Backend);
+            list = new LobbyListController(play, joinFlow);
+            list.RouteChosen += JoinRoute;
+            if (WAR2D.Net.Steam.SteamServices.Available)
+                joinFlow.ListenForInvites(lobbyId =>
+                {
+                    if (NetworkClient.active || NetworkServer.active) { Debug.Log("[Steam] invite ignored: already in a game."); return; }
+                    wantsPlay = true;
+                    list.Join(lobbyId, "your friend");
+                });
             play.CancelClicked += () => { joiningAddress = null; GameManager.Instance?.StopClient(); play.ShowIdle(); };
 
             GameConfigData config = ConfigLoader.LoadConfig();
@@ -77,6 +91,7 @@ namespace WAR2D.UI
             lobby.HostTeamClicked += (owner, team) => GameCore.Instance?.Cmd_SetTeam((uint)owner, team);
             lobby.ReadyClicked += r => GameCore.Instance?.Cmd_SetReady(r);
             lobby.StartClicked += () => GameCore.Instance?.Cmd_StartGame();
+            lobby.InviteClicked += WAR2D.Net.Steam.SteamHostLobby.OpenInvite;
             lobby.LeaveClicked += () => { wantsPlay = true; GameManager.Instance?.LeaveLobby(); };
             Show(Screen.Main);
         }
@@ -86,6 +101,7 @@ namespace WAR2D.UI
         private void OnDisable()
         {
             Palettes.Changed -= ApplyPalette;
+            joinFlow?.StopListening();
             settings?.Dispose();
             lobby?.Dispose();
             preview.Dispose();
@@ -113,8 +129,19 @@ namespace WAR2D.UI
             GameManager.Instance?.ConnectToServer(address);
         }
 
+        private void JoinRoute(WAR2D.Net.Steam.ConnectionRoute route, string label)
+        {
+            MenuBattle.Instance?.TearDown();
+            joiningAddress = route.ToString();
+            wasConnected = false;
+            play.ShowConnecting(label);
+            GameManager.Instance?.Connect(route);
+        }
+
         private void Update()
         {
+            if (playScreen.ClassListContains("menu-screen--visible") && !NetworkClient.active) list.Tick(Time.unscaledDeltaTime);
+            lobby.SetInviteVisible(NetworkServer.active && WAR2D.Net.Steam.SteamHostLobby.CanInvite);
             bool connected = NetworkClient.isConnected;
             if (connected) wasConnected = true;
 

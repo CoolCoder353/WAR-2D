@@ -12,6 +12,9 @@ namespace WAR2D.Net.Steam
     {
         private const double RequestTimeoutSeconds = 10;
 
+        /// <summary>Why the host last refused this client (shown on the Play screen); null when there was none.</summary>
+        public static string LastRefusal { get; private set; }
+
         private SteamAuthSessions sessions;
         private readonly Dictionary<int, (NetworkConnectionToClient conn, double deadline)> waiting =
             new Dictionary<int, (NetworkConnectionToClient, double)>();
@@ -99,6 +102,7 @@ namespace WAR2D.Net.Steam
 
         public override void OnClientAuthenticate()
         {
+            LastRefusal = null;
             if (GameManager.Instance == null || GameManager.Instance.ActiveRoute.Kind != RouteKind.Steam) { ClientAccept(); return; }
             if (!SteamServices.Available || !SteamServices.Backend.TryGetAuthTicket(out byte[] ticket)) { ClientReject(); return; }
             NetworkClient.Send(new SteamAuthRequest { version = GameVersion.Current, steamId = SteamServices.Backend.LocalSteamId, ticket = ticket });
@@ -107,7 +111,7 @@ namespace WAR2D.Net.Steam
         private void OnResponse(SteamAuthResponse msg)
         {
             if (msg.accepted) ClientAccept();
-            else { Debug.LogWarning($"[Steam] the host refused you: {msg.reason}"); ClientReject(); }
+            else { Debug.LogWarning($"[Steam] the host refused you: {msg.reason}"); LastRefusal = msg.reason; ClientReject(); }
         }
     }
 }

@@ -46,3 +46,35 @@ public class SteamJoinFlowTests
         Assert.AreEqual(42UL, got);
     }
 }
+
+public class SteamInviteTests
+{
+    [Test]
+    public void InviteOpensTheDialogForTheHostedLobby()
+    {
+        var fake = new FakeSteamBackend();
+        var previous = SteamServices.Backend;
+        SteamServices.Backend = fake;
+        try
+        {
+            Assert.IsFalse(SteamHostLobby.CanInvite);
+            SteamHostLobby.Open("Ann", new MatchSettings { Mode = MatchMode.FreeForAll, MapSize = 128, Seed = 1, StartingResources = 100 }, 1);
+            Assert.IsTrue(SteamHostLobby.CanInvite);
+            SteamHostLobby.OpenInvite();
+            CollectionAssert.AreEqual(new[] { fake.NextLobbyId - 1 }, fake.InviteDialogs);
+        }
+        finally { SteamHostLobby.Close(); SteamServices.Backend = previous; }
+    }
+
+    [Test]
+    public void StopListeningDropsTheInviteHandler()
+    {
+        var fake = new FakeSteamBackend();
+        ulong got = 0;
+        var flow = new SteamJoinFlow(fake);
+        flow.ListenForInvites(id => got = id);
+        flow.StopListening();
+        fake.RaiseInvite(7);
+        Assert.AreEqual(0UL, got);
+    }
+}

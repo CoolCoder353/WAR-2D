@@ -303,7 +303,8 @@ public class GameManager : NetworkManager
         return true;
     }
 
-    private static bool DirectAllowed => WAR2D.Net.Steam.SteamAuthPolicy.DirectAllowed(
+    /// <summary>Whether Direct (KCP, no Steam sign-in) play is on in this process.</summary>
+    internal static bool DirectAllowed => WAR2D.Net.Steam.SteamAuthPolicy.DirectAllowed(
         Application.isEditor, DevApi.Allowed, System.Environment.GetCommandLineArgs());
 
     private void UseTransport(Transport t)
