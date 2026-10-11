@@ -1,0 +1,10 @@
+{
+  "seed": 23,
+  "root": 55,
+  "minor": true,
+  "bpm": 104,
+  "mood": 0,
+  "sections": "ABAC",
+  "barsPerSection": 8,
+  "loop": true
+}
