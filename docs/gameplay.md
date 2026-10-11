@@ -33,7 +33,7 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | Arrow keys | Pan the camera (`A`, `S` and `H` are order keys since v0.6) |
 | Pointer at a screen edge | Pan that way (Settings → Controls → Edge scrolling) |
 | Middle mouse + drag | Drag the map |
-| Mouse wheel | Zoom towards the cursor (orthographic size 3–30; 1.5 per notch; pan speed scales with zoom) |
+| Mouse wheel | Zoom towards the cursor (orthographic size 3–30; pan speed scales with zoom). The match starts at 1:1 art pixels (size 8.4 at 1080p). Zooming in snaps to whole-number scales (2:1, 3:1, …, pixel perfect); zooming out past 1:1 moves in smooth steps (×1.25 per notch). |
 | Double-click a unit | Select every own unit of that type on screen |
 | `1`–`0` twice quickly | Select that squad and centre the camera on it |
 | `Esc` | In-match menu (closes the settings, gift or diplomacy panel first) |
@@ -69,7 +69,7 @@ Settings (main menu, or the in-match menu) apply at once and are saved on this m
 - **Controls:** rebinding and edge scrolling.
 - **Reset to defaults** restores everything, bindings included.
 
-Camera settings (speed, zoom step and range, shift multiplier) are in `Assets/Character_Settings.asset`.
+Camera settings (speed, zoom range, shift multiplier) are in `Assets/Character_Settings.asset`; the zoom steps are in `CameraZoom`.
 
 ## Map and tiles
 

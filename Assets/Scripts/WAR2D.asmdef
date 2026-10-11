@@ -15,7 +15,8 @@
         "Unity.InputSystem",
         "Unity.2D.Tilemap.Extras",
         "NaughtyAttributes.Core",
-        "TIM.Console"
+        "TIM.Console",
+        "Unity.RenderPipelines.Universal.2D.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

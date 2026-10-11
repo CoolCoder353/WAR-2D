@@ -1,10 +1,14 @@
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
+using WAR2D.Art;
 
 namespace Character
 {
     /// <summary>
     /// RTS camera: pan with the arrow keys (Shift = faster), at the screen edges (Settings → Edge
-    /// scrolling) or by dragging with the middle mouse button; zoom with the wheel towards the cursor.
+    /// scrolling) or by dragging with the middle mouse button; zoom with the wheel towards the cursor in
+    /// <see cref="CameraZoom"/> steps. It starts at 1:1, and the Pixel Perfect Camera (added here, not in the
+    /// scene) is on only at whole-number scales.
     /// </summary>
     public class Character_Controler : MonoBehaviour
     {
@@ -14,6 +18,40 @@ namespace Character
         private const float ReferenceSize = 5f;
         private const float EdgePixels = 8f;
         private Vector3? dragOrigin;
+        private PixelPerfectCamera pixelPerfect;
+        private int lastScreenHeight;
+
+        private void Start()
+        {
+            if (playerCamera == null || settings == null) return;
+            if (!playerCamera.TryGetComponent(out pixelPerfect)) pixelPerfect = playerCamera.gameObject.AddComponent<PixelPerfectCamera>();
+            pixelPerfect.assetsPPU = ArtStyle.PixelsPerUnit;
+            pixelPerfect.gridSnapping = PixelPerfectCamera.GridSnapping.PixelSnapping;
+            pixelPerfect.cropFrame = PixelPerfectCamera.CropFrame.None;
+            SetSize(CameraZoom.Default(ArtStyle.PixelsPerUnit, Screen.height, settings.zoomScale.x, settings.zoomScale.y));
+        }
+
+        /// <summary>
+        /// Sets the zoom; at a whole-number scale the Pixel Perfect Camera takes over with a reference
+        /// resolution that gives exactly that scale, otherwise it is off and the size is used as is.
+        /// </summary>
+        private void SetSize(float size)
+        {
+            int ppu = ArtStyle.PixelsPerUnit;
+            lastScreenHeight = Screen.height;
+            bool snap = CameraZoom.PixelPerfect(size, ppu, Screen.height);
+            if (pixelPerfect != null)
+            {
+                if (snap)
+                {
+                    int k = Mathf.RoundToInt(CameraZoom.Scale(size, ppu, Screen.height));
+                    pixelPerfect.refResolutionX = Mathf.Max(1, Screen.width / k);
+                    pixelPerfect.refResolutionY = Mathf.Max(1, Screen.height / k);
+                }
+                pixelPerfect.enabled = snap;
+            }
+            playerCamera.orthographicSize = size;
+        }
 
         /// <summary>Panning from the pointer at a screen edge (when edge scrolling is on and the window has focus).</summary>
         private static Vector2 EdgePan()
@@ -45,12 +83,17 @@ namespace Character
 
             Vector3 next = transform.position;
             float scroll = GameInput.Zoom.ReadValue<float>();
+            // A resized window keeps its whole-number scale.
+            if (Screen.height != lastScreenHeight && pixelPerfect != null && pixelPerfect.enabled)
+            {
+                int k = Mathf.RoundToInt(CameraZoom.Scale(playerCamera.orthographicSize, ArtStyle.PixelsPerUnit, lastScreenHeight));
+                SetSize(Mathf.Max(settings.zoomScale.x, CameraZoom.SizeAt(Mathf.Max(1, k), ArtStyle.PixelsPerUnit, Screen.height)));
+            }
             if (scroll != 0f && !GameInput.PointerOverUI)
             {
                 // Zoom towards the cursor: the world point under it stays under it.
                 Vector3 before = GameInput.PointerWorld();
-                float size = playerCamera.orthographicSize - Mathf.Sign(scroll) * settings.zoomStep;
-                playerCamera.orthographicSize = Mathf.Clamp(size, settings.zoomScale.x, settings.zoomScale.y);
+                SetSize(CameraZoom.Step(playerCamera.orthographicSize, scroll, ArtStyle.PixelsPerUnit, Screen.height, settings.zoomScale.x, settings.zoomScale.y));
                 Vector3 after = GameInput.PointerWorld();
                 next += new Vector3(before.x - after.x, before.y - after.y, 0f);
             }
