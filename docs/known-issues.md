@@ -35,7 +35,7 @@ Mining building didn't rotate visually. **Fixed:** the Miner is rendered in 4 fa
 No valid or invalid feedback to user placements. **Fixed:** the preview tints valid spots green and invalid spots red, follows the selected rotation, and ignores responses for a previous spot.
 
 Spectate mode for dead players
-The host leaves the game dies for everyone.
+The host leaves the game dies for everyone. **Partly fixed:** joined players now get a "The host left the match" dialog on the main menu instead of being dropped there silently. The match still ends: Mirror's host is the server (host migration or a dedicated server is a v0.9 decision).
 
 ## Fixed after the first manual Linux match (2026-10-10)
 
@@ -80,11 +80,6 @@ Besides the owner's reports above:
 - **Editor crash after `SimData` gains fields.** The first EditMode run after `SimData`'s layout changes can segfault while scheduling a tick job (v0.5: `GatherJob`; v0.6 Task 4: `SimCombatSystem`, in `AtomicSafetyHandle` handle extraction). Restarting the editor fixes it every time, so it is stale Burst code compiled against the old struct layout. Restart the editor after changing `SimData`'s fields, before running the tests.
 - **The editor froze once during a PlayMode run** (2026-10-10, KDE Wayland, Vulkan): after `HudTests`' eighth match the main and render threads sat in futex waits with no CPU use for over 40 minutes, so the pipeline's requests timed out. Killing and reopening the editor fixed it, and the same suite then passed in full. If `tools/unity-test.sh PlayMode` stops reporting progress, check the editor window is visible before suspecting the tests. (no target)
 - **Bots look eliminated in the HUD.** Dev bots (`GameCore.AddBot`, perf harness and tests) have no player object, so the top bar and diplomacy panel list them as "Player (eliminated)" with disabled switches, and their diplomacy bit reaches clients only after `SendAllDiplomacy` is called again (bots join after match start). Dev only; real players are unaffected. (no target)
-
-## Networking
-
-- **Internet play is UPnP or a tunnel, no relay.** Join-by-IP reaches hosts on other networks only if their router accepts the UPnP mapping (or they forward UDP 7778 by hand) and has a public IPv4. Hosts on carrier-grade NAT, DS-Lite or behind a second router need a tunnel (see `playtesting.md`). The owner's own router (2026-10-11) answers UPnP but reports no external IPv4, so it falls in this group. There is no NAT punch-through and no relay; Steam relay replaces all of this. **v0.9**
-- **A permanent-lease mapping can outlive a crash.** Routers that only take permanent leases (UPnP error 725) keep the UDP 7778 mapping if the game crashes before `OnStopServer`. Remove it in the router's UPnP page, or host again and leave normally. **v0.9**
 
 ## Project and config hygiene
 
