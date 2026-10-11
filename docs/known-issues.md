@@ -25,7 +25,7 @@ Cannot work out how to put units in groups.
 Unit pathfinding gets stuck on walls
 Attacking HQ through walls. **Fixed:** targets need a clear line over the fog grid's rock cells, the same trace vision uses.
 Units movement not smooth
-Multiplace buildings not a thing
+Multiplace buildings not a thing. **Fixed:** holding Shift (the queue modifier) keeps the preview after each placement.
 
 A location should be able to be set where units that are spawned from a specific spawner will travel on spawn.
 Multiple spawners should be able to be selected and increased the prod queue for each of them.

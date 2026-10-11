@@ -39,6 +39,7 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | `Esc` | In-match menu (closes the settings, gift or diplomacy panel first) |
 | Hold `Shift` | Pan 2.5× faster |
 | Left-click + drag | Select **every** one of your units inside the box (no limit). A plain click selects what is under the cursor. |
+| `Shift` + left-click while placing | Place the building and keep placing the same type (not the HQ) |
 | `Shift` + drag | Add the units in the box to the selection |
 | Right-click | Order the selected units to **Move** to the cursor (they ignore enemies until they arrive) |
 | `A`, then left- or right-click | **Attack-move** to the cursor: move, but stop to fight enemies in range |

@@ -143,6 +143,13 @@ public class BuildingPlacement : MonoBehaviour
         if (GameInput.Select.WasPressedThisFrame() && !GameInput.PointerOverUI)
         {
             WorldStateManager.Instance?.TryAddBuilding(currentAnchor, PlacingType, currentRotation);
+            // Holding the queue modifier (Shift) keeps placing the same type, as it queues unit orders.
+            if (PlacingType != BuildingType.Base && GameInput.QueueModifier.IsPressed())
+            {
+                hasDisplayedTarget = false;
+                lastQueriedAnchor = new int2(int.MinValue, int.MinValue); // re-ask: this spot is now taken
+                return;
+            }
             Cancel();
         }
     }
