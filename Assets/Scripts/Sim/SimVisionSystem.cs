@@ -185,25 +185,8 @@ namespace WAR2D.Sim
             {
                 int2 d = new int2(x, y) - c;
                 if (d.x * d.x + d.y * d.y > limit) continue;
-                if (opaque > 0 && !LineOfSight(c, new int2(x, y))) continue;
+                if (opaque > 0 && !LineOfSight.Cells(Opaque, FogW, c, new int2(x, y))) continue;
                 Visible[baseIndex + y * FogW + x] = 1;
-            }
-        }
-
-        /// <summary>True when no opaque cell lies strictly between a and b (Bresenham).</summary>
-        private bool LineOfSight(int2 a, int2 b)
-        {
-            int2 d = math.abs(b - a);
-            int2 step = new int2(a.x < b.x ? 1 : -1, a.y < b.y ? 1 : -1);
-            int err = d.x - d.y;
-            int2 p = a;
-            while (true)
-            {
-                int e2 = 2 * err;
-                if (e2 > -d.y) { err -= d.y; p.x += step.x; }
-                if (e2 < d.x) { err += d.x; p.y += step.y; }
-                if (p.x == b.x && p.y == b.y) return true;
-                if (Opaque[p.y * FogW + p.x] != 0) return false;
             }
         }
     }

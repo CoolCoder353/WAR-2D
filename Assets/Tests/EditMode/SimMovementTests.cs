@@ -48,6 +48,31 @@ public class SimMovementTests
     /// field rather than head straight at the goal through the wall.
     /// </summary>
     [Test]
+    public void OrderOntoRockStopsAtTheNearestFloorOnTheUnitsSide()
+    {
+        using var sim = new SimHarness(WallWithGap());
+        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 10.5f));
+        sim.Tick();
+        sim.Move(SimHarness.OwnerA, new int2(32, 10), a[0]); // the wall itself (a minimap click on unknown rock)
+        var goal = new float2(31.5f, 10.5f);
+        for (int t = 0; t < 20 * 20; t++) sim.Tick();
+        Assert.LessOrEqual(math.distance(sim.UnitById(a[0]).Position, goal), 1.5f, $"unit ended at {sim.UnitById(a[0]).Position}");
+    }
+
+    [Test]
+    public void SnapGoalFindsNearestFloorOrNone()
+    {
+        using MapStore open = WallWithGap();
+        Assert.IsTrue(WAR2D.Sim.OrderBook.SnapGoal(open.Grid, new int2(32, 10), new int2(40, 10), 12, out int2 snapped));
+        Assert.AreEqual(new int2(33, 10), snapped, "ties go to the units' side");
+        Assert.IsTrue(WAR2D.Sim.OrderBook.SnapGoal(open.Grid, new int2(5, 5), new int2(40, 10), 12, out snapped));
+        Assert.AreEqual(new int2(5, 5), snapped, "a walkable goal is kept");
+
+        using MapStore rock = MapStore.FromAscii("#####", "#####", "#####");
+        Assert.IsFalse(WAR2D.Sim.OrderBook.SnapGoal(rock.Grid, new int2(2, 1), new int2(0, 0), 12, out _));
+    }
+
+    [Test]
     public void UnitBesideAWallInABlockedFieldCellStillGoesAround()
     {
         using var sim = new SimHarness(WallWithGap());

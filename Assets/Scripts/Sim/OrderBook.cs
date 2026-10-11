@@ -17,6 +17,10 @@ namespace WAR2D.Sim
     public sealed class OrderBook : IDisposable
     {
         private readonly SectorFieldCache cache;
+        private readonly MapGrid map;
+
+        /// <summary>How far (tiles) a goal on rock or a footprint is moved to reach open floor.</summary>
+        public const int GoalSnapRadius = 12;
         private OrderFieldTable table;
         private readonly Dictionary<int, int> issuedTick = new Dictionary<int, int>();
         private readonly HashSet<long> missSeen = new HashSet<long>();
@@ -36,6 +40,7 @@ namespace WAR2D.Sim
 
         public OrderBook(in MapGrid map)
         {
+            this.map = map;
             cache = new SectorFieldCache(map, Allocator.Persistent, cellSize: 2);
             table = cache.CreateTable(Allocator.Persistent);
             Goal = new NativeArray<float2>(OrderFieldTable.MaxOrders, Allocator.Persistent);
@@ -62,6 +67,8 @@ namespace WAR2D.Sim
         public int Issue(int2 goal, int sizeClass, NativeArray<int> startTiles, int tick)
         {
             goal = math.clamp(goal, 0, new int2(cache.Width - 1, cache.Height - 1));
+            int2 from = startTiles.Length > 0 ? new int2(startTiles[0] % cache.Width, startTiles[0] / cache.Width) : goal;
+            if (!SnapGoal(map, goal, from, GoalSnapRadius, out goal)) return -1;
             int handle = cache.Acquire(goal, sizeClass, 1, startTiles);
             if (handle >= OrderFieldTable.MaxOrders)
             {
@@ -78,6 +85,33 @@ namespace WAR2D.Sim
             Goal[handle] = (float2)goal + 0.5f;
             Live[handle] = 1;
             return handle;
+        }
+
+        /// <summary>
+        /// The goal itself when it is walkable, else the nearest walkable tile within <paramref name="radius"/>
+        /// (ties go to the one nearest <paramref name="from"/>, the side the units come from). False when there
+        /// is none, so an order onto unknown rock never sends units wandering after an unreachable goal.
+        /// </summary>
+        public static bool SnapGoal(in MapGrid map, int2 goal, int2 from, int radius, out int2 snapped)
+        {
+            snapped = goal;
+            if (map.IsWalkable(goal)) return true;
+            int best = int.MaxValue, bestFrom = int.MaxValue;
+            for (int r = 1; r <= radius; r++)
+            {
+                for (int y = goal.y - r; y <= goal.y + r; y++)
+                for (int x = goal.x - r; x <= goal.x + r; x++)
+                {
+                    if (math.max(math.abs(x - goal.x), math.abs(y - goal.y)) != r) continue; // this ring only
+                    var t = new int2(x, y);
+                    if (!map.IsWalkable(t)) continue;
+                    int2 dg = t - goal, dfrom = t - from;
+                    int d = dg.x * dg.x + dg.y * dg.y, df = dfrom.x * dfrom.x + dfrom.y * dfrom.y;
+                    if (d < best || (d == best && df < bestFrom)) { best = d; bestFrom = df; snapped = t; }
+                }
+                if (best <= r * r) return true; // no tile on a later ring can be nearer
+            }
+            return best != int.MaxValue;
         }
 
         /// <summary>

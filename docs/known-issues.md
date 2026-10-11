@@ -4,9 +4,9 @@ The October 2026 code review found roughly 30 bugs, mismatches and hygiene probl
 
 ## Performance and scale
 
-| Issue                                                                                                                                                                                                                                                                                              | Where                                                        | Target   | Effect                                                                                                                                                                                                                                        |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Buildings are still one GameObject each on clients (fed by `BuildingBatch` records since v0.5).                                                                                                                                                                                                    | `UnitCommander`, `BuildingReplication.cs`                    | **v0.7** | Fine for a few hundred buildings; walls make the counts large, so v0.7 instances buildings and walls like units.                                                                                                                              |
+| Issue                                                                                           | Where                                     | Target   | Effect                                                                                                           |
+| ----------------------------------------------------------------------------------------------- | ----------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
+| Buildings are still one GameObject each on clients (fed by `BuildingBatch` records since v0.5). | `UnitCommander`, `BuildingReplication.cs` | **v0.7** | Fine for a few hundred buildings; walls make the counts large, so v0.7 instances buildings and walls like units. |
 
 ## Owner-reported issues (2026-10-10)
 
@@ -16,6 +16,26 @@ The October 2026 code review found roughly 30 bugs, mismatches and hygiene probl
 | The menu's background battle is a still picture                                                                 | `MenuBattle` queued the armies' spawns and their attack-move in the same command drain. A box order only reaches units already in the settled world, so nobody got it; the armies start 72 tiles apart, nobody died, and reinforcements (the only other order) never came.                                                                                                                                                                                                                        | **Fixed.** The order goes out on the tick after the spawns. `LobbyTests.MenuBattleRunsAndIsGoneOnceHostIsPressed` now checks units move.                                                                                                                                                                                                                                                      |
 | The settings panel's top keeps changing position                                                                | The panel was centred and each tab is a different height, so the title and tabs moved with every tab change (the approved Figma frames are centred the same way).                                                                                                                                                                                                                                                                                                                                 | **Fixed.** The panel is pinned 14 % from the top (`Theme.uss`, `.settings`). The Figma Settings frames still show centred panels: update them to match.                                                                                                                                                                                                                                       |
 | Map generation looks boring                                                                                     | The generator is a 45 % rock fill smoothed by a cellular automaton, plus clearings and corridors (`World/MapGenerator.cs`).                                                                                                                                                                                                                                                                                                                                                                       | **Open: design request.** Any change alters every seed's map and hash, the HQ sites, and the perf gate's seed-1 layout, so it needs a brainstorm and owner sign-off first.                                                                                                                                                                                                                    |
+
+## Owner playtest bugs,
+
+Fix plan: [2026-10-11-v0.8-playtest-fixes.md](superpowers/plans/2026-10-11-v0.8-playtest-fixes.md).
+
+Cannot work out how to put units in groups.
+Unit pathfinding gets stuck on walls
+Attacking HQ through walls. **Fixed:** targets need a clear line over the fog grid's rock cells, the same trace vision uses.
+Units movement not smooth
+Multiplace buildings not a thing
+
+A location should be able to be set where units that are spawned from a specific spawner will travel on spawn.
+Multiple spawners should be able to be selected and increased the prod queue for each of them.
+A plus 10 and plus 50 button on the spawners would be good
+sending units via the minimap onto a unknown area, if you accidentally click on a wall, has the units bug out and randomly move. **Fixed:** goals on rock or footprints snap to the nearest open floor (`OrderBook.SnapGoal`); with none within 12 tiles the order is dropped.
+Mining building didn't rotate visually. Fixed: client building GameObjects now apply the replicated rotation; the miner's auger animation is unchanged.
+No valid or invalid feedback to user placements. **Fixed:** the preview tints valid spots green and invalid spots red, follows the selected rotation, and ignores responses for a previous spot.
+
+Spectate mode for dead players
+The host leaves the game dies for everyone.
 
 ## Fixed after the first manual Linux match (2026-10-10)
 

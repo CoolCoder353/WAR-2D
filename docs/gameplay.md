@@ -128,7 +128,7 @@ A Miner checks the single tile next to it in the direction it faces:
 - A player can own at most **10,000 units** (`Simulation/MaxUnitsPerPlayer`). A spawner at the cap keeps its queue and refunds the unit.
 - A spawner creates a unit on the nearest free walkable tile outside its footprint. Units are round bodies (`Radius` 0.35 tiles for the Tank) that push apart when they overlap, so a crowd spreads out on its own.
 - A move order gives the whole group one shared flow field to the goal, so any number of units path around walls and buildings together. The group gathers around the goal and stops within a radius that grows with its size.
-- Every unit has a stance. On a **Move** order it ignores enemies until it arrives. On an **Attack-move** order, an enemy in range makes it stop to fight, and it resumes the order when the target is gone. **Idle** (no order, or arrived) and **Hold** units fight whatever comes in range; a Hold unit never moves, not even when its neighbours push. Arriving at the goal makes a Move or Attack-move unit Idle.
+- Every unit has a stance. On a **Move** order it ignores enemies until it arrives. On an **Attack-move** order, an enemy in range makes it stop to fight, and it resumes the order when the target is gone. **Idle** (no order, or arrived) and **Hold** units fight whatever comes in range; a Hold unit never moves, not even when its neighbours push. Arriving at the goal makes a Move or Attack-move unit Idle. A goal on rock or a building is moved to the nearest open floor within 12 tiles (on the units' side when two are as near); with none, the order is ignored.
 
 ## Fog of war, teams and diplomacy
 
@@ -149,7 +149,7 @@ The alert feed (top left) shows the newest four alerts for 8 s each (`Alerts/Sho
 
 ## Combat
 
-- Combat is fully automatic. Every unit picks the **nearest enemy unit** (a unit of any player its owner attacks) within range, and only when there is none, the nearest enemy **building**. Idle units look for targets every few ticks, so a new enemy is picked up within about 0.4 s.
+- Combat is fully automatic. Every unit picks the **nearest enemy unit** (a unit of any player its owner attacks) within range that it has a clear line to (rock blocks shots as it blocks sight; buildings and units don't), and only when there is none, the nearest enemy **building**. Idle units look for targets every few ticks, so a new enemy is picked up within about 0.4 s.
 - Damage is the attacker's `Damage` times a multiplier from the damage table (`DamageTable`) for what it hits: units, buildings or walls. Every Tank multiplier is 1.0 except walls (0.5, used once walls arrive in v0.7).
 - It keeps attacking that target every attack interval while the target is alive and in range. When the target dies or leaves range, it picks a new one.
 - Buildings don't attack.
