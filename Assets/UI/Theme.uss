@@ -151,6 +151,10 @@
 .command-button__key { font-size: var(--font-size-12); -unity-font-style: normal; color: var(--color-text-secondary); height: 15px; margin-bottom: 4px; padding: 0; -unity-text-align: middle-center; }
 .command-button:disabled .command-button__key { color: var(--color-text-disabled); }
 .command-button--active .command-button__key { color: var(--color-on-accent); }
+/* The pixel icons are white bitmaps; each button state tints them like its text. */
+.command-icon { -unity-background-image-tint-color: var(--color-text-primary); }
+.command-button:disabled .command-icon { -unity-background-image-tint-color: var(--color-text-disabled); }
+.command-button--active .command-icon { -unity-background-image-tint-color: var(--color-on-accent); }
 .production { display: none; }
 .command-card--building .production { display: flex; }
 .command-card--building #orders, .command-card--building #divider, .command-card--building #builds { display: none; }

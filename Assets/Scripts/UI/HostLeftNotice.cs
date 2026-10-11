@@ -1,3 +1,4 @@
+using Mirror;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
@@ -8,7 +9,9 @@ namespace WAR2D.UI
     /// The approved <c>Dialog / Host left – v0.8</c>: when a joined player's connection drops mid-match (the
     /// host's game closed; Mirror's host-client model ends the match with it), Mirror loads the main menu,
     /// and this dialog says why instead of leaving the player wondering. Leaving on purpose (the in-match
-    /// menu or the end screen) never shows it.
+    /// menu or the end screen) never shows it. A small persistent watcher notices the drop itself: Mirror's
+    /// client events are assigned (not added to) by <c>NetworkManager</c>, and <c>OnStopClient</c> is skipped
+    /// once the client is inactive.
     /// </summary>
     public sealed class HostLeftNotice : MonoBehaviour
     {
@@ -31,15 +34,39 @@ namespace WAR2D.UI
             LeavingOnPurpose = false;
         }
 
+        // What the last frame saw: a connected client, whether it was the host, and the match state.
+        private static bool wasConnected, wasHost;
+        private static GameState lastState = GameState.Lobby;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
         {
             SceneManager.sceneLoaded -= OnSceneLoaded;
             SceneManager.sceneLoaded += OnSceneLoaded;
+            var watcher = new GameObject("HostLeftWatcher");
+            DontDestroyOnLoad(watcher);
+            watcher.AddComponent<Watcher>();
+        }
+
+        /// <summary>Notices the frame the client's connection drops.</summary>
+        private sealed class Watcher : MonoBehaviour
+        {
+            private void Update() => Watch();
+        }
+
+        private static void Watch()
+        {
+            bool connected = NetworkClient.isConnected;
+            if (wasConnected && !connected) ClientStopped(wasHost, lastState);
+            wasConnected = connected;
+            if (!connected) { lastState = GameState.Lobby; return; }
+            wasHost = NetworkServer.active;
+            if (GameCore.Instance != null) lastState = GameCore.Instance.CurrentState;
         }
 
         private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
+            Watch(); // in case the menu loaded before the watcher's next frame
             if (!Pending || scene.name != MenuScene) return;
             Pending = false;
             UIDocument menu = Object.FindAnyObjectByType<UIDocument>();

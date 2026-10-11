@@ -45,7 +45,7 @@ namespace WAR2D.Audio
         public static void Sfx(string id, Vector2 position)
         {
             AudioService s = Instance;
-            if (s == null) return;
+            if (s == null || s.pool.Cooling(id, Time.unscaledTime)) return; // most calls in a battle stop here
             Camera cam = View != null ? View : Camera.main;
             if (cam == null) return;
             float h = cam.orthographicSize * 2f, w = h * cam.aspect;
@@ -86,7 +86,16 @@ namespace WAR2D.Audio
             if (audio != null && s.deathsInWindow >= audio.BattleDeathsPerSecond) s.battleUntil = now + audio.BattleHoldSeconds;
         }
 
-        private static AudioClip Clip(string id) => Resources.Load<AudioClip>($"Audio/Sfx/{id}");
+        private static readonly System.Collections.Generic.Dictionary<string, AudioClip> Clips = new System.Collections.Generic.Dictionary<string, AudioClip>();
+
+        /// <summary>A sound effect clip, loaded once.</summary>
+        private static AudioClip Clip(string id)
+        {
+            if (Clips.TryGetValue(id, out AudioClip clip)) return clip;
+            clip = Resources.Load<AudioClip>($"Audio/Sfx/{id}");
+            Clips[id] = clip;
+            return clip;
+        }
 
         private void Awake()
         {

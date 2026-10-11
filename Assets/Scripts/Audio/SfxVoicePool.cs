@@ -46,6 +46,9 @@ namespace WAR2D.Audio
             return -1;
         }
 
+        /// <summary>True when <paramref name="id"/> played less than the cooldown ago (a cheap check before placing it).</summary>
+        public bool Cooling(string id, float now) => lastPlayed.TryGetValue(id, out float last) && now - last < cooldown;
+
         /// <summary>True when the sound may play now (see <see cref="Claim"/>).</summary>
         public bool TryPlay(string id, Vector2 pos, Rect cameraView, float now) => Claim(id, pos, cameraView, now) >= 0;
 

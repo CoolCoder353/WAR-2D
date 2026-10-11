@@ -8,8 +8,8 @@ namespace WAR2D.UI
     public enum IconKind { Move, AttackMove, Stop, Hold, Miner, Spawner, Wall }
 
     /// <summary>
-    /// A 16×16 pixel icon from <see cref="PixelIcons"/>, drawn point-filtered at the element's size. It is
-    /// tinted with the element's USS <c>color</c>, so button states recolour it as they did the v0.6 line icons.
+    /// A 16×16 pixel icon from <see cref="PixelIcons"/>, drawn point-filtered at the element's size. Its tint
+    /// comes from <c>Theme.uss</c> per button state (the bitmaps are white), like the v0.6 line icons' stroke.
     /// </summary>
     [UxmlElement]
     public partial class CommandIcon : VisualElement
@@ -32,17 +32,10 @@ namespace WAR2D.UI
             AddToClassList("command-icon");
             pickingMode = PickingMode.Ignore;
             style.backgroundSize = new BackgroundSize(BackgroundSizeType.Contain);
-            RegisterCallback<CustomStyleResolvedEvent>(_ => Tint());
             Apply();
         }
 
-        private void Apply()
-        {
-            style.backgroundImage = new StyleBackground(PixelIcons.Texture(IdOf(icon)));
-            Tint();
-        }
-
-        private void Tint() => style.unityBackgroundImageTintColor = resolvedStyle.color;
+        private void Apply() => style.backgroundImage = new StyleBackground(PixelIcons.Texture(IdOf(icon)));
     }
 
     /// <summary>The rally flag from <see cref="PixelIcons"/>, in its own colours (the production queue's rally hint).</summary>
