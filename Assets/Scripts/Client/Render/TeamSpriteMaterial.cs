@@ -1,0 +1,45 @@
+using System.Collections.Generic;
+using UnityEngine;
+using WAR2D.Art;
+
+namespace WAR2D.Client.Render
+{
+    /// <summary>
+    /// Materials for sprites from the <c>Buildings</c> atlas: the <c>TeamSprite</c> shader with the atlas's
+    /// team mask and an owner's colour, one per colour and ghost flag (cached). A palette change gives owners
+    /// new colours, so asking again after <see cref="Palettes.Changed"/> returns the matching material.
+    /// </summary>
+    public static class TeamSpriteMaterial
+    {
+        public const string ShaderPath = "Shaders/TeamSprite";
+
+        private static readonly Dictionary<(Color32, bool), Material> Cache = new Dictionary<(Color32, bool), Material>();
+
+        /// <summary>The material for an owner's building (in the current palette); <paramref name="ghost"/> for last-seen ones.</summary>
+        public static Material For(int ownerId, bool ghost) => ForColour(PlayerPalette.OfOwner(ownerId), ghost);
+
+        /// <summary>The material for a team colour.</summary>
+        public static Material ForColour(Color32 colour, bool ghost)
+        {
+            colour.a = 255;
+            if (Cache.TryGetValue((colour, ghost), out Material m) && m != null) return m;
+            Shader shader = Resources.Load<Shader>(ShaderPath);
+            if (shader == null)
+            {
+                Debug.LogError($"Resources/{ShaderPath}.shader is missing");
+                shader = Shader.Find("Sprites/Default");
+            }
+            ArtAtlas atlas = ArtAtlas.Load(ArtAtlas.Buildings);
+            m = new Material(shader) { name = $"Team {colour}{(ghost ? " ghost" : "")}" };
+            m.SetTexture("_MaskTex", atlas != null && atlas.Mask != null ? atlas.Mask : Texture2D.blackTexture);
+            m.SetColor("_TeamColor", colour);
+            m.SetFloat("_TeamGain", InstancedUnitRenderer.TeamGain());
+            m.SetFloat("_Ghost", ghost ? 1f : 0f);
+            Cache[(colour, ghost)] = m;
+            return m;
+        }
+
+        /// <summary>The building sprite for <paramref name="type"/> (frame <paramref name="frame"/>) from the atlas, or null.</summary>
+        public static Sprite Sprite(BuildingType type, int frame = 0) => ArtAtlas.Load(ArtAtlas.Buildings)?.Sprite(type.ToString(), frame);
+    }
+}

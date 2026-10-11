@@ -50,6 +50,14 @@ public class ReplicationPlayModeTests
         Assert.That(store.IdOf(NetIdAllocator.IndexOf(id)), Is.EqualTo(id));
         Assert.That(store.OwnerOf(NetIdAllocator.IndexOf(id)), Is.EqualTo(PlayModeMatch.LocalOwner));
         yield return PlayModeMatch.WaitUntil(() => ClientWorld.Instance != null && ClientWorld.Instance.KnownCount >= 1, 5f);
+
+        // The HQ draws from the Buildings atlas with its owner's team material.
+        UnityEngine.SpriteRenderer hqSprite = null;
+        foreach (UnityEngine.GameObject go in UnitCommander.Instance.buildingGameObjects.Values)
+            if (go != null && go.name.StartsWith($"Building_{BuildingType.Base}_")) hqSprite = go.GetComponent<UnityEngine.SpriteRenderer>();
+        Assert.That(hqSprite, Is.Not.Null, "the HQ has a GameObject");
+        Assert.That(hqSprite.sprite.texture, Is.SameAs(WAR2D.Art.ArtAtlas.Load(WAR2D.Art.ArtAtlas.Buildings).Texture));
+        Assert.That(hqSprite.sharedMaterial, Is.SameAs(WAR2D.Client.Render.TeamSpriteMaterial.For(PlayModeMatch.LocalOwner, false)));
     }
 
     [UnityTest, Timeout(90000)]

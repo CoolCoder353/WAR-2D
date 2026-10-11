@@ -55,10 +55,12 @@ public class BuildingPlacement : MonoBehaviour
     {
         if (type == BuildingType.None) return;
         PlacingType = type;
-        previewBuilding.GetComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(type.ToString());
+        SpriteRenderer sprite = previewBuilding.GetComponent<SpriteRenderer>();
+        sprite.sprite = WAR2D.Client.Render.TeamSpriteMaterial.Sprite(type);
+        sprite.sharedMaterial = WAR2D.Client.Render.TeamSpriteMaterial.ForColour(PlayerPalette.Of(localPlayer != null ? localPlayer.colourIndex : -1), false);
+        sprite.sortingOrder = short.MaxValue; // over every building
         previewBuilding.SetActive(true);
         currentRotation = 0f;
-        previewBuilding.transform.rotation = Quaternion.identity;
         lastQueriedAnchor = new int2(int.MinValue, int.MinValue);
         lastQueriedRotation = float.MinValue; // Sentinels guarantee the next change check differs.
         queryTimer = 1f; // Mature timer, so the first frame asks immediately.
@@ -111,7 +113,7 @@ public class BuildingPlacement : MonoBehaviour
         if (GameInput.Rotate.WasPressedThisFrame())
         {
             currentRotation = (currentRotation + 90f) % 360f;
-            previewBuilding.transform.rotation = Quaternion.Euler(0, 0, currentRotation);
+            // The rotation goes to the server; the sprite stays upright (the 3/4 view only reads one way).
         }
         QueryPlacement();
 

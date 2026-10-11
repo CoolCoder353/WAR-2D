@@ -4,6 +4,8 @@ using Mirror;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
+using WAR2D.Art;
+using WAR2D.Client.Render;
 using WAR2D.Net.Replication;
 
 public class UnitCommander : NetworkBehaviour
@@ -327,18 +329,25 @@ public class UnitCommander : NetworkBehaviour
 
     private void OnBuildingHealthChanged(HealthComponent health) => AddHealthComponent(health);
 
-    /// <summary>A building left sight: it stays, dimmed, as last seen.</summary>
+    /// <summary>A building left sight: it stays, grey and see-through, as last seen (and stops animating).</summary>
     private void OnBuildingHidden(int id)
     {
-        if (buildingGameObjects.TryGetValue(id, out GameObject go) && go.TryGetComponent(out SpriteRenderer sprite))
-            sprite.color = GhostTint(sprite.color);
+        if (!buildingGameObjects.TryGetValue(id, out GameObject go) || !go.TryGetComponent(out SpriteRenderer sprite)) return;
+        if (go.TryGetComponent(out BuildingDataClient data)) sprite.sharedMaterial = TeamSpriteMaterial.For(data.buildingData.ownerId, true);
+        if (go.TryGetComponent(out SpriteFrameAnimator animator)) animator.enabled = false;
     }
 
-    /// <summary>A building's tint: its owner's colour (current palette), half-mixed into the sprite.</summary>
-    private static Color Tint(int ownerId) => Color.Lerp(Color.white, PlayerPalette.OfOwner(ownerId), 0.5f);
-
-    /// <summary>A last-seen ghost: dimmed and see-through.</summary>
-    private static Color GhostTint(Color tint) => new Color(tint.r * 0.55f, tint.g * 0.55f, tint.b * 0.55f, 0.7f);
+    /// <summary>Shows a building type's atlas sprite on <paramref name="go"/>, animating its idle frames.</summary>
+    private static void ShowBuildingSprite(GameObject go, SpriteRenderer sprite, BuildingType type)
+    {
+        ArtAtlas atlas = ArtAtlas.Load(ArtAtlas.Buildings);
+        if (atlas == null) Debug.LogError($"Resources/{ArtAtlas.Folder}/{ArtAtlas.Buildings} is missing: run WAR-2D/Art/Build all.");
+        if (!go.TryGetComponent(out SpriteFrameAnimator animator)) animator = go.AddComponent<SpriteFrameAnimator>();
+        // The spawner's lamp blinks once a second; the drill turns every tick.
+        animator.Play(atlas, type.ToString(), type == BuildingType.SmallUnitSpawner ? ArtStyle.FramesPerSecond / 2 : 1);
+        // Taller buildings stand in front of the ones behind them (the 3/4 view).
+        sprite.sortingOrder = -(int)math.round(go.transform.position.y * 4f);
+    }
 
     /// <summary>Re-tints every building for a new palette.</summary>
     private void Retint()
@@ -348,8 +357,7 @@ public class UnitCommander : NetworkBehaviour
         foreach (ClientBuildings.Entry entry in subscribedBuildings.Entries.Values)
         {
             if (!buildingGameObjects.TryGetValue(entry.Data.id, out GameObject go) || go == null || !go.TryGetComponent(out SpriteRenderer sprite)) continue;
-            Color tint = Tint(entry.Data.ownerId);
-            sprite.color = entry.Ghost ? GhostTint(tint) : tint;
+            sprite.sharedMaterial = TeamSpriteMaterial.For(entry.Data.ownerId, entry.Ghost);
         }
     }
 
@@ -395,13 +403,17 @@ public class UnitCommander : NetworkBehaviour
         go.transform.position = new Vector3(centre.x, centre.y, 0);
 
         SpriteRenderer buildingSprite = go.AddComponent<SpriteRenderer>();
-        buildingSprite.sprite = Resources.Load<Sprite>(unit.buildingType.ToString());
-        buildingSprite.color = Tint(unit.ownerId);
-        go.AddComponent<BoxCollider2D>().isTrigger = true;
+        buildingSprite.sharedMaterial = TeamSpriteMaterial.For(unit.ownerId, false);
+        ShowBuildingSprite(go, buildingSprite, unit.buildingType);
+        // Clicks hit the footprint, not the sprite's headroom or shadow.
+        int2 footprint = WorldStateManager.GetBuildingSize(unit.buildingType);
+        BoxCollider2D collider = go.AddComponent<BoxCollider2D>();
+        collider.isTrigger = true;
+        collider.size = new Vector2(footprint.x, footprint.y);
         go.name = $"Building_{unit.buildingType}_{unit.id}";
 
-        // Apply rotation from server
-        go.transform.rotation = Quaternion.Euler(0, 0, unit.rotation);
+        // The server's rotation is kept in the data but not drawn: footprints are square, and the 3/4 view
+        // only reads the right way up (style guide).
         //Check if there is a client script for the building type
         Type buildingType = null;
 
@@ -500,7 +512,8 @@ public class UnitCommander : NetworkBehaviour
         {
             if (buildingGameObjects.ContainsKey(oldUnit.id))
             {
-                buildingGameObjects[oldUnit.id].GetComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(newUnit.buildingType.ToString());
+                GameObject go = buildingGameObjects[oldUnit.id];
+                ShowBuildingSprite(go, go.GetComponent<SpriteRenderer>(), newUnit.buildingType);
             }
         }
 
