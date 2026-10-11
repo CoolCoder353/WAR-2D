@@ -4,9 +4,9 @@ The October 2026 code review found roughly 30 bugs, mismatches and hygiene probl
 
 ## Performance and scale
 
-| Issue                                                                                                                                                                                                                                                                                              | Where                                                        | Target   | Effect                                                                                                                                                                                                                                        |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Buildings are still one GameObject each on clients (fed by `BuildingBatch` records since v0.5).                                                                                                                                                                                                    | `UnitCommander`, `BuildingReplication.cs`                    | **v0.7** | Fine for a few hundred buildings; walls make the counts large, so v0.7 instances buildings and walls like units.                                                                                                                              |
+| Issue                                                                                           | Where                                     | Target   | Effect                                                                                                           |
+| ----------------------------------------------------------------------------------------------- | ----------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
+| Buildings are still one GameObject each on clients (fed by `BuildingBatch` records since v0.5). | `UnitCommander`, `BuildingReplication.cs` | **v0.7** | Fine for a few hundred buildings; walls make the counts large, so v0.7 instances buildings and walls like units. |
 
 ## Owner-reported issues (2026-10-10)
 
@@ -16,6 +16,28 @@ The October 2026 code review found roughly 30 bugs, mismatches and hygiene probl
 | The menu's background battle is a still picture                                                                 | `MenuBattle` queued the armies' spawns and their attack-move in the same command drain. A box order only reaches units already in the settled world, so nobody got it; the armies start 72 tiles apart, nobody died, and reinforcements (the only other order) never came.                                                                                                                                                                                                                        | **Fixed.** The order goes out on the tick after the spawns. `LobbyTests.MenuBattleRunsAndIsGoneOnceHostIsPressed` now checks units move.                                                                                                                                                                                                                                                      |
 | The settings panel's top keeps changing position                                                                | The panel was centred and each tab is a different height, so the title and tabs moved with every tab change (the approved Figma frames are centred the same way).                                                                                                                                                                                                                                                                                                                                 | **Fixed.** The panel is pinned 14 % from the top (`Theme.uss`, `.settings`). The Figma Settings frames still show centred panels: update them to match.                                                                                                                                                                                                                                       |
 | Map generation looks boring                                                                                     | The generator is a 45 % rock fill smoothed by a cellular automaton, plus clearings and corridors (`World/MapGenerator.cs`).                                                                                                                                                                                                                                                                                                                                                                       | **Open: design request.** Any change alters every seed's map and hash, the HQ sites, and the perf gate's seed-1 layout, so it needs a brainstorm and owner sign-off first.                                                                                                                                                                                                                    |
+
+## Owner playtest bugs,
+
+Fix plan: [2026-10-11-v0.8-playtest-fixes.md](superpowers/plans/2026-10-11-v0.8-playtest-fixes.md).
+
+Cannot work out how to put units in groups.
+Unit pathfinding gets stuck on walls -> see image below from per test:
+![alt text](image.png)
+
+Attacking HQ through walls. **Fixed:** targets need a clear line over the fog grid's rock cells, the same trace vision uses.
+Units movement not smooth
+Multiplace buildings not a thing. **Fixed:** holding Shift (the queue modifier) keeps the preview after each placement.
+
+A location should be able to be set where units that are spawned from a specific spawner will travel on spawn. **Fixed:** right-click with spawners selected sets a rally point.
+Multiple spawners should be able to be selected and increased the prod queue for each of them. **Fixed:** Shift-click or box-select spawners.
+A plus 10 and plus 50 button on the spawners would be good. **Fixed.**
+sending units via the minimap onto a unknown area, if you accidentally click on a wall, has the units bug out and randomly move. **Fixed:** goals on rock or footprints snap to the nearest open floor (`OrderBook.SnapGoal`); with none within 12 tiles the order is dropped.
+Mining building didn't rotate visually. **Fixed:** the Miner is rendered in 4 facings and draws the one for its rotation, upright; other buildings can't be turned.
+No valid or invalid feedback to user placements. **Fixed:** the preview tints valid spots green and invalid spots red, follows the selected rotation, and ignores responses for a previous spot.
+
+Spectate mode for dead players. **Fixed:** an eliminated player sees the whole map until the match ends (`ReplicationService.Spectating`).
+The host leaves the game dies for everyone. **Partly fixed:** joined players now get a "The host left the match" dialog on the main menu instead of being dropped there silently. The match still ends: Mirror's host is the server (host migration or a dedicated server is a v0.9 decision).
 
 ## Fixed after the first manual Linux match (2026-10-10)
 
@@ -61,6 +83,11 @@ Besides the owner's reports above:
 - **The editor froze once during a PlayMode run** (2026-10-10, KDE Wayland, Vulkan): after `HudTests`' eighth match the main and render threads sat in futex waits with no CPU use for over 40 minutes, so the pipeline's requests timed out. Killing and reopening the editor fixed it, and the same suite then passed in full. If `tools/unity-test.sh PlayMode` stops reporting progress, check the editor window is visible before suspecting the tests. (no target)
 - **Bots look eliminated in the HUD.** Dev bots (`GameCore.AddBot`, perf harness and tests) have no player object, so the top bar and diplomacy panel list them as "Player (eliminated)" with disabled switches, and their diplomacy bit reaches clients only after `SendAllDiplomacy` is called again (bots join after match start). Dev only; real players are unaffected. (no target)
 
+## Networking
+
+- **Internet play is UPnP or a tunnel, no relay.** Join-by-IP reaches hosts on other networks only if their router accepts the UPnP mapping (or they forward UDP 7778 by hand) and has a public IPv4. Hosts on carrier-grade NAT, DS-Lite or behind a second router need a tunnel (see `playtesting.md`). The owner's own router (2026-10-11) answers UPnP but reports no external IPv4, so it falls in this group. There is no NAT punch-through and no relay; Steam relay replaces all of this. **v0.9**
+- **A permanent-lease mapping can outlive a crash.** Routers that only take permanent leases (UPnP error 725) keep the UDP 7778 mapping if the game crashes before `OnStopServer`. Remove it in the router's UPnP page, or host again and leave normally. **v0.9**
+
 ## Project and config hygiene
 
 Inert leftovers disclosed in v0.2 and scheduled to be cleaned up together.
@@ -68,7 +95,6 @@ Inert leftovers disclosed in v0.2 and scheduled to be cleaned up together.
 - **No Windows build profile.** Only `Assets/Settings/Build Profiles/Linux.asset` is checked in — the owner deferred Windows to a later release. **v0.9**
 - **Vendored Mirror components still call the legacy `Input` API** — `Components/GUIConsole.cs`, `Components/RemoteStatistics.cs` and `Components/Profiling/ToggleHotkey.cs` (the last via its own `GraphCanvas.prefab`). None are used in the shipped scenes, and the project is Input System only (`activeInputHandler: 1`), so they would throw if ever attached. Not shipped; leave vendored code alone (no target).
 - **Vendored Console `Demo/Scripts/DemoPlayer.cs` uses the legacy `Input.GetAxis`.** Demo only; not used by any shipped scene. Not shipped; leave vendored code alone (no target).
-- **Every unit type draws with the Tank texture.** `InstancedUnitRenderer` binds one texture; per-type frames come with the sprite atlas in the art pass. **v0.8**
 - **Rebinding checks conflicts against hidden actions too.** `Rebinding.ConflictWith` looks at every action in `GameInput.Map`, including ones the Controls page doesn't list (the squad keys, `FastPan` and `AppendModifier`, which share Shift with Queue order). Binding Stop to `1` reports a conflict with "Squad1", and Swap gives that hidden action the old key. Show those actions or skip them in the check. **v0.7**
 - **`Acceleration` is parsed but unused.** `GameConfig.xml` and `gameplay.md` list it, but units reach full speed at once. Use it or drop it with the v0.7 units. **v0.7**
 - **Footprints ignore rotation.** `Footprint.Tiles` and the building sprite's placement assume a square footprint, so a rotated non-square building (Width ≠ Height) would cover the wrong tiles. Every building is square today. **v0.7** (walls and new buildings)

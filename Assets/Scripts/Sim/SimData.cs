@@ -237,7 +237,13 @@ namespace WAR2D.Sim
 
         /// <summary>True when vision grid <paramref name="grid"/> sees <paramref name="position"/> now.</summary>
         public bool Sees(int grid, float2 position) =>
-            grid >= 0 && Visible[grid * FogCells + FogCellOf(position)] != 0;
+            grid == SeesAll || (grid >= 0 && Visible[grid * FogCells + FogCellOf(position)] != 0);
+
+        /// <summary>
+        /// A grid value that sees everything: what replication gives a defeated player who stays to spectate
+        /// (never a live one; see <c>ReplicationService.Spectating</c>).
+        /// </summary>
+        public const int SeesAll = int.MaxValue;
 
         /// <summary>Allocates every array for a map and config.</summary>
         public static SimData Create(in MapGrid map, GameConfigData config, Allocator allocator)

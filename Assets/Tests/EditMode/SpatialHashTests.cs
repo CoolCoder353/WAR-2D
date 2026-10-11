@@ -50,6 +50,8 @@ public class SpatialHashTests
             for (int i = 0; i < units; i++) { Type[i] = 1; Health[i] = 100f; }
         }
 
+        private NativeArray<byte> Opaque = new NativeArray<byte>(1, Allocator.Persistent);
+
         public void Search(int tick = 0, int slice = 1)
         {
             float inv = 1f / CellSize;
@@ -66,12 +68,14 @@ public class SpatialHashTests
                 BuildingCellStart = BCellStart, BuildingSorted = BSorted,
                 InvCellSize = inv, CellsX = CellsAcross, CellsY = CellsAcross, SearchCells = (int)math.ceil(Range / CellSize),
                 Tick = tick, Slice = slice, Target = Target, TargetKind = TargetKind,
+                Opaque = Opaque, FogW = 1, FogH = 1, InvFogCellSize = 0f, // open ground: one clear cell
             }.Schedule(Positions.Length, 64, h);
             h.Complete();
         }
 
         public void Dispose()
         {
+            Opaque.Dispose();
             Positions.Dispose(); Owner.Dispose(); AttackMask.Dispose(); Health.Dispose(); Type.Dispose(); Stance.Dispose(); OrderSlot.Dispose(); OrderLive.Dispose(); Cell.Dispose(); CellStart.Dispose();
             Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose(); BuildingPositions.Dispose(); BuildingOwner.Dispose();
             BuildingHealth.Dispose(); BCell.Dispose(); BCellStart.Dispose(); BSorted.Dispose(); RangeSqByType.Dispose();

@@ -24,6 +24,12 @@ public class GameManager : NetworkManager
     public const string GameCorePrefabPath = "Network/GameCore";
 
     /// <summary>
+    /// The transport's port from the scene (7778): the host always listens on it, and a join without a
+    /// <c>:port</c> connects to it.
+    /// </summary>
+    public ushort DefaultPort { get; private set; } = 7778;
+
+    /// <summary>
     /// Awake is called when the script instance is being loaded.
     /// It initializes the singleton instance and ensures it persists across scene loads.
     /// </summary>
@@ -45,6 +51,8 @@ public class GameManager : NetworkManager
         // There is no dedicated server: a batch-mode player is a perf client (or a test) that starts its own
         // networking. Mirror's default auto-start would make every one of them host on the same port.
         headlessStartMode = HeadlessStartOptions.DoNothing;
+
+        if (transport is PortTransport scenePort && scenePort.Port != 0) DefaultPort = scenePort.Port;
 
         // Load Game Config
         Config.ConfigLoader.LoadConfig();
@@ -89,6 +97,20 @@ public class GameManager : NetworkManager
         GameObject corePrefab = Resources.Load<GameObject>(GameCorePrefabPath);
         if (GameCore.Instance == null && corePrefab != null) NetworkServer.Spawn(Instantiate(corePrefab));
         Debug.Log("Server has started");
+    }
+
+    /// <summary>Closes the router port opened for internet players (if the menu's Host opened one).</summary>
+    public override void OnStopServer()
+    {
+        WAR2D.Net.HostReachability.Stop(false);
+        base.OnStopServer();
+    }
+
+    /// <summary>Stops networking, then waits briefly for the router to drop the port mapping.</summary>
+    public override void OnApplicationQuit()
+    {
+        base.OnApplicationQuit();
+        WAR2D.Net.HostReachability.Stop(true);
     }
 
     /// <summary>
@@ -252,26 +274,38 @@ public class GameManager : NetworkManager
         }
         if (!NetworkClient.active)
         {
+            SetPort(DefaultPort); // a previous join may have used another port
             StartHost();
         }
     }
 
     /// <summary>
-    /// Connects to a server at the specified address.
+    /// Connects to a server at the specified address: a host, optionally with a port (<c>host:port</c> or
+    /// <c>[ipv6]:port</c>; <see cref="DefaultPort"/> otherwise), for hosts behind a tunnel or a port forward
+    /// to another external port.
     /// </summary>
-    /// <param name="address">The IP address to connect to.</param>
+    /// <param name="address">The address to connect to.</param>
     public void ConnectToServer(string address)
     {
-        address = address?.Trim();
-        if (string.IsNullOrEmpty(address) || address.Length > 253)
+        if (!WAR2D.Net.JoinAddress.TryParse(address, DefaultPort, out string host, out ushort port))
         {
-            Debug.LogWarning("Enter a server address to join.");
+            Debug.LogWarning($"Not a server address: '{address}'. Enter a host, or host:port.");
             return;
         }
         if (!NetworkClient.active)
         {
-            networkAddress = address;
+            networkAddress = host;
+            SetPort(port);
             StartClient();
         }
+    }
+
+    /// <summary>
+    /// Sets the port the transport connects to (a multiplexer sets its first available transport, KCP). Only
+    /// on a change: a headless multiplexer ignores the setter and warns.
+    /// </summary>
+    private void SetPort(ushort port)
+    {
+        if (transport is PortTransport t && t.Port != port) t.Port = port;
     }
 }

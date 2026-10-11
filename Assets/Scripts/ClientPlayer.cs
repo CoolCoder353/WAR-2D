@@ -1,4 +1,5 @@
 using Mirror;
+using Unity.Mathematics;
 using UnityEngine;
 
 
@@ -45,6 +46,11 @@ public class ClientPlayer : NetworkBehaviour
 
     public UnityEngine.Events.UnityEvent<bool> onResponseFromCanBuildBuilding = new UnityEngine.Events.UnityEvent<bool>();
 
+    /// <summary>The placement checked by the most recent server response.</summary>
+    public int2 CanBuildResponsePosition { get; private set; }
+    public BuildingType CanBuildResponseType { get; private set; }
+    public float CanBuildResponseRotation { get; private set; }
+
     private bool gameOverDeclared = false; // Flag to ensure game over is only declared once
     public bool drawDeclared = false; // Flag set when the draw screen RPC is received
 
@@ -80,8 +86,11 @@ public class ClientPlayer : NetworkBehaviour
 
 
     [TargetRpc]
-    public void TargetReceiveCanBuildBuildingResponse(NetworkConnection target, bool result)
+    public void TargetReceiveCanBuildBuildingResponse(NetworkConnection target, int2 position, BuildingType type, float rotation, bool result)
     {
+        CanBuildResponsePosition = position;
+        CanBuildResponseType = type;
+        CanBuildResponseRotation = rotation;
         onResponseFromCanBuildBuilding?.Invoke(result);
     }
 
@@ -112,6 +121,19 @@ public class ClientPlayer : NetworkBehaviour
 
     /// <summary>Raised when a spawner's queue count arrives: (building id, count).</summary>
     public event System.Action<int, int> SpawnerQueueChanged;
+
+    private readonly System.Collections.Generic.Dictionary<int, int2> spawnerRallies = new System.Collections.Generic.Dictionary<int, int2>();
+
+    /// <summary>The rally tile of one of the local player's spawners, as last told by the server.</summary>
+    public bool TryGetRally(int buildingId, out int2 tile) => spawnerRallies.TryGetValue(buildingId, out tile);
+
+    /// <summary>One of the owner's spawners set or cleared its rally point. Private: only the owner learns it.</summary>
+    [TargetRpc]
+    public void TargetSpawnerRally(NetworkConnection target, int buildingId, int2 tile, bool has)
+    {
+        if (has) spawnerRallies[buildingId] = tile;
+        else spawnerRallies.Remove(buildingId);
+    }
 
     /// <summary>The number of the local player's live units in each squad (0–9), as last told by the server.</summary>
     public int[] SquadCounts { get; private set; } = new int[WAR2D.Sim.Squads.Count];
@@ -176,7 +198,11 @@ public class ClientPlayer : NetworkBehaviour
     [TargetRpc]
     public void TargetPlayExplosions(NetworkConnection target, Vector2[] positions)
     {
-        foreach (Vector2 p in positions) Effects.Explosion(p);
+        foreach (Vector2 p in positions)
+        {
+            Effects.Explosion(p);
+            WAR2D.Audio.AudioService.ReportDeath();
+        }
     }
 
 

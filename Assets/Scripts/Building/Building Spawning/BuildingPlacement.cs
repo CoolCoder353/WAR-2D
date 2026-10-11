@@ -19,11 +19,19 @@ public class BuildingPlacement : MonoBehaviour
     /// <summary>True while a preview follows the pointer.</summary>
     public bool IsPlacing => PlacingType != BuildingType.None;
 
+    /// <summary>The server's answer for the spot under the cursor: null until it arrives (the cursor and tint use it).</summary>
+    public bool? PreviewValid { get; private set; }
+
     /// <summary>The last frame a placement was in progress: that frame's clicks belong to placement, not selection.</summary>
     public int ActiveFrame { get; private set; } = -1;
 
     private int2 currentAnchor;
     private float currentRotation; // degrees: 0, 90, 180, 270
+    private int2 displayedAnchor;
+    private BuildingType displayedType;
+    private float displayedRotation;
+    private bool hasDisplayedTarget;
+    private SpriteRenderer statusOutline;
 
     private int2 lastQueriedAnchor = new int2(int.MinValue, int.MinValue);
     private float lastQueriedRotation = float.MinValue;
@@ -55,10 +63,15 @@ public class BuildingPlacement : MonoBehaviour
     {
         if (type == BuildingType.None) return;
         PlacingType = type;
-        previewBuilding.GetComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(type.ToString());
+        SpriteRenderer sprite = previewBuilding.GetComponent<SpriteRenderer>();
+        sprite.sprite = WAR2D.Client.Render.TeamSpriteMaterial.Sprite(type);
+        sprite.sharedMaterial = WAR2D.Client.Render.TeamSpriteMaterial.ForColour(PlayerPalette.Of(localPlayer != null ? localPlayer.colourIndex : -1), false);
+        sprite.sortingOrder = WAR2D.Client.Render.SortingOrders.PlacementPreview;
+        EnsureStatusOutline(sprite);
         previewBuilding.SetActive(true);
         currentRotation = 0f;
-        previewBuilding.transform.rotation = Quaternion.identity;
+        hasDisplayedTarget = false;
+        SetPreviewTint(Color.white, false);
         lastQueriedAnchor = new int2(int.MinValue, int.MinValue);
         lastQueriedRotation = float.MinValue; // Sentinels guarantee the next change check differs.
         queryTimer = 1f; // Mature timer, so the first frame asks immediately.
@@ -106,12 +119,23 @@ public class BuildingPlacement : MonoBehaviour
         Vector3 mouse = UnitCommander.GetMouseWorldPosition();
         currentAnchor = Footprint.SnapAnchor(new float2(mouse.x, mouse.y), size);
         float2 centre = Footprint.VisualCenter(currentAnchor, size);
-        previewBuilding.transform.position = new Vector3(centre.x, centre.y, 0);
 
-        if (GameInput.Rotate.WasPressedThisFrame())
+        // Rotate turns only buildings drawn in several facings (the Miner); the sprite stays upright and
+        // shows the facing, since the 3/4 view only reads one way up.
+        if (GameInput.Rotate.WasPressedThisFrame() && WAR2D.Client.Render.TeamSpriteMaterial.Facing(PlacingType, 90f) != 0)
         {
             currentRotation = (currentRotation + 90f) % 360f;
-            previewBuilding.transform.rotation = Quaternion.Euler(0, 0, currentRotation);
+            ShowFacing();
+        }
+        previewBuilding.transform.position = new Vector3(centre.x, centre.y, 0);
+
+        if (!hasDisplayedTarget || math.any(currentAnchor != displayedAnchor) || PlacingType != displayedType || currentRotation != displayedRotation)
+        {
+            SetPreviewTint(Color.white, false);
+            displayedAnchor = currentAnchor;
+            displayedType = PlacingType;
+            displayedRotation = currentRotation;
+            hasDisplayedTarget = true;
         }
         QueryPlacement();
 
@@ -123,6 +147,14 @@ public class BuildingPlacement : MonoBehaviour
         if (GameInput.Select.WasPressedThisFrame() && !GameInput.PointerOverUI)
         {
             WorldStateManager.Instance?.TryAddBuilding(currentAnchor, PlacingType, currentRotation);
+            WAR2D.Audio.AudioService.Ui("building_placed");
+            // Holding the queue modifier (Shift) keeps placing the same type, as it queues unit orders.
+            if (PlacingType != BuildingType.Base && GameInput.QueueModifier.IsPressed())
+            {
+                hasDisplayedTarget = false;
+                lastQueriedAnchor = new int2(int.MinValue, int.MinValue); // re-ask: this spot is now taken
+                return;
+            }
             Cancel();
         }
     }
@@ -147,6 +179,44 @@ public class BuildingPlacement : MonoBehaviour
     [Client]
     public void ResultFromCommand(bool result)
     {
-        previewBuilding.GetComponent<SpriteRenderer>().color = result ? new Color(0.8f, 0.8f, 0.8f, 0.75f) : new Color(1, 0, 0, 0.75f);
+        if (!IsPlacing || math.any(localPlayer.CanBuildResponsePosition != currentAnchor) ||
+            localPlayer.CanBuildResponseType != PlacingType || localPlayer.CanBuildResponseRotation != currentRotation) return;
+
+        PreviewValid = result;
+        SetPreviewTint(result ? Color.green : Color.red, true);
+    }
+
+    /// <summary>Shows the preview (and its status outline) in the facing of the current rotation.</summary>
+    private void ShowFacing()
+    {
+        SpriteRenderer sprite = previewBuilding.GetComponent<SpriteRenderer>();
+        sprite.sprite = WAR2D.Client.Render.TeamSpriteMaterial.FacingSprite(PlacingType,
+            WAR2D.Client.Render.TeamSpriteMaterial.Facing(PlacingType, currentRotation));
+        if (statusOutline != null) statusOutline.sprite = sprite.sprite;
+    }
+
+    private void EnsureStatusOutline(SpriteRenderer sprite)
+    {
+        if (statusOutline == null)
+        {
+            GameObject outline = new GameObject("PlacementStatusOutline");
+            outline.transform.SetParent(previewBuilding.transform, false);
+            outline.transform.localScale = Vector3.one * 1.1f;
+            statusOutline = outline.AddComponent<SpriteRenderer>();
+        }
+        statusOutline.sprite = sprite.sprite;
+        statusOutline.sortingLayerID = sprite.sortingLayerID;
+        statusOutline.sortingOrder = sprite.sortingOrder - 1;
+        statusOutline.enabled = false;
+    }
+
+    private void SetPreviewTint(Color tint, bool showStatus)
+    {
+        if (!showStatus) PreviewValid = null;
+        SpriteRenderer sprite = previewBuilding.GetComponent<SpriteRenderer>();
+        sprite.color = showStatus ? new Color(tint.r, tint.g, tint.b, 0.85f) : new Color(1f, 1f, 1f, 0.75f);
+        if (statusOutline == null) return;
+        statusOutline.color = tint;
+        statusOutline.enabled = showStatus;
     }
 }

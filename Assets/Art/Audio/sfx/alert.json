@@ -1,0 +1,12 @@
+{
+  "wave": "Square",
+  "sustain": 0.25,
+  "decay": 0.1,
+  "frequency": 740,
+  "vibratoDepth": 0.08,
+  "vibratoSpeed": 9,
+  "duty": 0.5,
+  "lowPass": 0.85,
+  "volume": 0.55,
+  "seed": 10
+}

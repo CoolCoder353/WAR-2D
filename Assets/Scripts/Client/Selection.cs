@@ -21,22 +21,47 @@ namespace WAR2D.Client
         /// <summary>Selected unit ids.</summary>
         public IReadOnlyCollection<int> Selected => selected;
 
-        /// <summary>The selected own building's id (0 when none). Selecting units clears it, and the reverse.</summary>
-        public int SelectedBuilding { get; private set; }
+        private readonly List<int> buildings = new List<int>();
+
+        /// <summary>The selected own buildings (several only for spawners). Selecting units clears them, and the reverse.</summary>
+        public IReadOnlyList<int> SelectedBuildings => buildings;
+
+        /// <summary>The first selected own building's id (0 when none).</summary>
+        public int SelectedBuilding
+        {
+            get => buildings.Count > 0 ? buildings[0] : 0;
+            private set { buildings.Clear(); if (value != 0) buildings.Add(value); }
+        }
 
         /// <summary>The selected squad when the selection is exactly that squad, else -1.</summary>
         public int ActiveSquad => selectedSquad >= 0 && IsExactly(squads[selectedSquad]) ? selectedSquad : -1;
 
-        /// <summary>Selects one own building (dropping the unit selection).</summary>
-        public void SelectBuilding(int buildingId)
+        /// <summary>
+        /// Selects one own building (dropping the unit selection). With <paramref name="append"/> it is added to
+        /// the buildings already selected, or removed when it already is (Shift-click on spawners).
+        /// </summary>
+        public void SelectBuilding(int buildingId, bool append = false)
         {
             selected.Clear();
             selectedSquad = -1;
-            SelectedBuilding = buildingId;
+            if (!append) { SelectedBuilding = buildingId; return; }
+            if (!buildings.Remove(buildingId)) buildings.Add(buildingId);
         }
 
-        /// <summary>Clears the building selection (for example when the building is gone).</summary>
-        public void ClearBuilding() => SelectedBuilding = 0;
+        /// <summary>Selects these own buildings (a box over spawners), dropping the unit selection; <paramref name="append"/> keeps the current ones.</summary>
+        public void SelectBuildings(IEnumerable<int> ids, bool append)
+        {
+            selected.Clear();
+            selectedSquad = -1;
+            if (!append) buildings.Clear();
+            foreach (int id in ids) if (!buildings.Contains(id)) buildings.Add(id);
+        }
+
+        /// <summary>Clears the building selection.</summary>
+        public void ClearBuilding() => buildings.Clear();
+
+        /// <summary>Drops one building from the selection (it is gone).</summary>
+        public void RemoveBuilding(int buildingId) => buildings.Remove(buildingId);
 
         /// <summary>Selects the own units inside the box; <paramref name="append"/> keeps the current selection.</summary>
         public void SelectBox(float2 a, float2 b, int ownerId, bool append)

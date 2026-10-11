@@ -25,6 +25,7 @@ namespace Config
         public DiplomacyConfig Diplomacy = new DiplomacyConfig();
         public GiftingConfig Gifting = new GiftingConfig();
         public AlertsConfig Alerts = new AlertsConfig();
+        public AudioConfig Audio = new AudioConfig();
         public LobbyConfig Lobby = new LobbyConfig();
         public MenuBattleConfig MenuBattle = new MenuBattleConfig();
         /// <summary>Damage multipliers per attacker type and target class.</summary>
@@ -133,6 +134,14 @@ namespace Config
     {
         /// <summary>Seconds a player waits between gifts.</summary>
         public float CooldownSeconds;
+    }
+
+    public class AudioConfig
+    {
+        /// <summary>Deaths the player sees within one second that switch the music to the battle track.</summary>
+        public int BattleDeathsPerSecond;
+        /// <summary>Seconds the battle track holds after the last such second before going back to calm.</summary>
+        public float BattleHoldSeconds;
     }
 
     public class AlertsConfig

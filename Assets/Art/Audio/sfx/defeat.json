@@ -1,0 +1,12 @@
+{
+  "wave": "Saw",
+  "sustain": 0.5,
+  "decay": 0.9,
+  "frequency": 392,
+  "slide": -0.6,
+  "changeAmount": 0.75,
+  "changeTime": 0.3,
+  "lowPass": 0.5,
+  "volume": 0.6,
+  "seed": 12
+}

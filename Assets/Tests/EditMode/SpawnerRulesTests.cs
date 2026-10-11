@@ -38,4 +38,19 @@ public class SpawnerRulesTests
         Assert.That(SpawnerRules.UnitFor(BuildingType.Miner), Is.EqualTo(UnitType.None));
         Assert.That(SpawnerRules.UnitFor(BuildingType.Base), Is.EqualTo(UnitType.None));
     }
+
+    [Test]
+    public void QueueStepsClampToTheQueue()
+    {
+        int count = 95;
+        Assert.AreEqual(5, SpawnerRules.Apply(ref count, 50), "+50 stops at the max");
+        Assert.AreEqual(SpawnerRules.MaxQueue, count);
+        count = 0;
+        Assert.AreEqual(0, SpawnerRules.Apply(ref count, -1));
+        Assert.AreEqual(10, SpawnerRules.Apply(ref count, 10));
+        Assert.IsTrue(SpawnerRules.IsQueueStep(50) && SpawnerRules.IsQueueStep(-1));
+        Assert.IsFalse(SpawnerRules.IsQueueStep(7) || SpawnerRules.IsQueueStep(-50) || SpawnerRules.IsQueueStep(1000));
+        count = -3;
+        Assert.AreEqual(0, SpawnerRules.Apply(ref count, 10), "an invalid count is left alone");
+    }
 }

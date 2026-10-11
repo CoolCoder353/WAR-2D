@@ -67,6 +67,44 @@ public class MatchFlowTests
     }
 
     [UnityTest, Timeout(90000)]
+    public IEnumerator SpawnerQueueStepsAndRallyPoint()
+    {
+        yield return StartMatchAsHost();
+        ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+        WorldStateManager wsm = WorldStateManager.Instance;
+        wsm.TryFindBuildableAnchor(BuildingType.Base, 0f, local, out int2 hq);
+        wsm.TryAddBuilding(hq, BuildingType.Base, 0f);
+        yield return WaitUntil(() => GameCore.Instance.CurrentState == GameState.Playing, 10f);
+        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.SmallUnitSpawner, 0f, local, out int2 spawnerAnchor), Is.True);
+        wsm.TryAddBuilding(spawnerAnchor, BuildingType.SmallUnitSpawner, 0f);
+        yield return WaitUntil(() => HasBuilding(BuildingType.SmallUnitSpawner), 10f);
+        int spawner = FindBuildingId(BuildingType.SmallUnitSpawner);
+
+        // A rally point on open floor 6–12 tiles away, set before any unit spawns.
+        int2 rally = default;
+        bool found = false;
+        for (int r = 6; r <= 12 && !found; r++)
+        for (int dx = -r; dx <= r && !found; dx++)
+        {
+            int2 t = spawnerAnchor + new int2(dx, r);
+            if (wsm.Map.Grid.IsWalkable(t)) { rally = t; found = true; }
+        }
+        Assert.That(found, Is.True, "open floor near the spawner");
+        wsm.CmdSetRally(new[] { spawner }, rally, false);
+        yield return WaitUntil(() => local.TryGetRally(spawner, out _), 5f);
+        Assert.That(local.TryGetRally(spawner, out int2 told) && told.Equals(rally), Is.True, "the owner is told the rally tile");
+
+        wsm.CmdChangeQueues(new[] { spawner }, 7); // not a button's step: refused
+        wsm.CmdChangeQueues(new[] { spawner }, 10);
+        yield return WaitUntil(() => local.SpawnerQueue(spawner) >= 8, 5f);
+        Assert.That(local.SpawnerQueue(spawner), Is.InRange(8, 10), "+10 queued (minus any already spawned), the 7 was refused");
+
+        float2 goal = (float2)rally + 0.5f;
+        yield return WaitUntil(() => CountUnits() > 0 && math.distance(FirstUnitPosition(), goal) < 3f, 20f);
+        Assert.That(math.distance(FirstUnitPosition(), goal), Is.LessThan(3f), "new units drive to the rally point");
+    }
+
+    [UnityTest, Timeout(90000)]
     public IEnumerator DestroyingOnlyHQ_InSoloMatch_EndsInDraw()
     {
         yield return StartMatchAsHost();

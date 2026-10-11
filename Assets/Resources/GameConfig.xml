@@ -70,6 +70,11 @@
     <ShowSeconds>8.0</ShowSeconds>           <!-- v0.6: how long an alert stays in the feed -->
   </Alerts>
 
+  <Audio>
+    <BattleDeathsPerSecond>3</BattleDeathsPerSecond>  <!-- v0.8: visible deaths in one second that start the battle music -->
+    <BattleHoldSeconds>20.0</BattleHoldSeconds>       <!-- v0.8: how long the battle music holds after that -->
+  </Audio>
+
   <!-- Damage multiplier per attacker unit type and target class (Unit, Building, Wall); 1.0 when missing. -->
   <DamageTable>
     <Entry attacker="Tank" target="Unit">1.0</Entry>
@@ -96,8 +101,8 @@
   <Buildings>
     <Building type="Base">
       <Health>500</Health>
-      <Width>3</Width>
-      <Height>3</Height>
+      <Width>5</Width>   <!-- 5×5 since v0.8 (owner, 2026-10-11) -->
+      <Height>5</Height>
       <UpfrontCost>0.0</UpfrontCost>
       <RunningCost>0.0</RunningCost>
       <SpawnRate>0.0</SpawnRate>

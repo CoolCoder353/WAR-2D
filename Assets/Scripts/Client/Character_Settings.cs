@@ -11,8 +11,6 @@ namespace Character
         [Foldout("Pan")]
         public float shiftSpeedMultiplyer = 2.5f;
 
-        [Foldout("Zoom"), Tooltip("Orthographic size change per mouse-wheel notch.")]
-        public float zoomStep = 1.5f;
         [Foldout("Zoom"), Tooltip("Min and max orthographic size.")]
         public Vector2 zoomScale = new Vector2(3f, 30f);
     }

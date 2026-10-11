@@ -18,7 +18,7 @@ namespace WAR2D.UI
         private readonly LobbyModel model;
         private readonly MapPreview preview;
         private readonly LobbyConfig lobby;
-        private readonly string hostAddress;
+        private readonly Func<string> hostAddress;
         private readonly VisualElement rows, colourPicker, teamSection, teamPicker;
         private readonly VisualElement modeOptions, sizeOptions, resourceOptions, diplomacySlot;
         private readonly VisualElement previewImage, markers;
@@ -40,7 +40,7 @@ namespace WAR2D.UI
         /// <summary>The local player readied up (true) or cancelled (false).</summary>
         public event Action<bool> ReadyClicked;
 
-        public LobbyController(VisualElement root, LobbyModel model, MapPreview preview, LobbyConfig lobby, string hostAddress)
+        public LobbyController(VisualElement root, LobbyModel model, MapPreview preview, LobbyConfig lobby, Func<string> hostAddress)
         {
             this.model = model;
             this.preview = preview;
@@ -90,7 +90,7 @@ namespace WAR2D.UI
 
             string hostName = "the host";
             foreach (LobbyPlayer p in model.Players) if (p.IsHost) hostName = p.Nickname;
-            subtitle.text = host ? $"You are hosting · others join at {hostAddress}" : $"Hosted by {hostName} · you are {me.Nickname}";
+            subtitle.text = host ? $"You are hosting · {hostAddress()}" : $"Hosted by {hostName} · you are {me.Nickname}";
             playersTitle.text = $"Players ({model.Players.Count})";
             settingsTitle.text = host ? "Match settings" : "Match settings (host only)";
 
@@ -280,6 +280,9 @@ namespace WAR2D.UI
 
         /// <summary>Team 1 → 2 → 3 → 4 → Solo → Team 1.</summary>
         private static int NextTeam(int team) => team == TeamRules.NoTeam ? 0 : team + 1 >= LobbyRules.PickableTeams ? TeamRules.NoTeam : team + 1;
+
+        /// <summary>Redraws the lobby (the host's address line changes without the model changing).</summary>
+        public void Refresh() => Show();
 
         public void Dispose()
         {

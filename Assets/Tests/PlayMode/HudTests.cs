@@ -300,12 +300,12 @@ public class HudTests
         return default;
     }
 
-    /// <summary>Spawns units for an owner on walkable tiles in rings around a point (from ring 2, clear of a 3×3 building).</summary>
+    /// <summary>Spawns units for an owner on walkable tiles in rings around a point (from ring 3, clear of a 5×5 building).</summary>
     private static void SpawnAround(int owner, int2 centre, int count)
     {
         WorldStateManager wsm = WorldStateManager.Instance;
         int placed = 0;
-        for (int ring = 2; placed < count && ring < 20; ring++)
+        for (int ring = 3; placed < count && ring < 20; ring++)
         for (int i = 0; i < 8 * ring && placed < count; i++)
         {
             int2 tile = Ring(centre, ring, i);
@@ -403,6 +403,19 @@ public class HudTests
     }
 
     [UnityTest, Timeout(90000)]
+    public IEnumerator HudTextUsesThePixelFont()
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        yield return null;
+        VisualElement root = HudRoot();
+        Label label = root.Query<Label>().Where(l => l.resolvedStyle.display == DisplayStyle.Flex).First();
+        Assert.That(label, Is.Not.Null);
+        FontDefinition font = label.resolvedStyle.unityFontDefinition;
+        string name = font.font != null ? font.font.name : font.fontAsset != null ? font.fontAsset.name : "";
+        StringAssert.Contains("Jersey10", name, "the approved v0.8 font (docs/ux/v0.8-figma.md)");
+    }
+
+    [UnityTest, Timeout(90000)]
     public IEnumerator SurrenderEndsTheMatchWithTheEndScreenAndStats()
     {
         yield return PlayModeMatch.StartMatchAsHost(config);
@@ -422,6 +435,8 @@ public class HudTests
 
         yield return PlayModeMatch.WaitUntil(() => hud.EndScreen.IsShown, 10f);
         Assert.That(root.Q<Label>("end-title").text, Is.EqualTo("Defeat"));
+        yield return null; // the music picks its cue in the service's Update
+        Assert.That(WAR2D.Audio.AudioService.CurrentCue, Is.EqualTo(WAR2D.Audio.MusicCue.Defeat), "the Defeat stinger plays");
         yield return PlayModeMatch.WaitUntil(() => GameCore.Instance.CurrentState == GameState.GameOver && root.Q("end-stats").childCount > 1, 10f);
         Assert.That(root.Q("stats-" + PlayModeMatch.LocalOwner), Is.Not.Null, "the table has a row for me");
         Assert.That(root.Q("stats-" + Bot), Is.Not.Null, "and one for the winner");

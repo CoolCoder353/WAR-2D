@@ -3,6 +3,7 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
 using WAR2D.Sim;
+using WAR2D.World;
 
 /// <summary>Combat inside the tick: targeting, damage, buildings as targets and the search slice.</summary>
 public class SimCombatTests
@@ -36,6 +37,50 @@ public class SimCombatTests
         for (int i = 0; i < 3; i++) sim.Tick(); // damage from tick 1 is written back at a later boundary
         sim.Em.CompleteAllTrackedJobs();
         Assert.Less(sim.Em.GetComponentData<HealthComponent>(building).currentHealth, 300f);
+    }
+
+    /// <summary>A 32-tile open map with a 2-tile rock wall down columns 12 and 13.</summary>
+    private static SimHarness WalledSim()
+    {
+        var rows = new string[32];
+        for (int r = 0; r < 32; r++)
+            rows[r] = r == 0 || r == 31 ? new string('B', 32) : "B" + new string('.', 11) + "##" + new string('.', 17) + "B";
+        return new SimHarness(MapStore.FromAscii(rows), c => c.Simulation.TargetSearchSliceTicks = 1);
+    }
+
+    [Test]
+    public void WallsBlockShotsAtUnits()
+    {
+        using var sim = WalledSim();
+        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10, 10));
+        int[] b = sim.Spawn(SimHarness.OwnerB, new float2(14.5f, 10)); // in range, behind the wall
+        for (int i = 0; i < 10; i++) sim.Tick();
+        Assert.AreEqual(-1, sim.UnitById(a[0]).TargetId);
+        Assert.AreEqual(sim.Config.GetUnit(UnitType.Tank).Health, sim.UnitById(b[0]).Health);
+    }
+
+    [Test]
+    public void WallsBlockShotsAtBuildings()
+    {
+        using var sim = WalledSim();
+        Entity building = sim.Em.CreateEntity();
+        sim.Em.AddComponentData(building, new BuildingData { id = sim.Context.Ids.Allocate(), ownerId = SimHarness.OwnerB, buildingType = BuildingType.Miner, position = new float2(14.5f, 10) });
+        sim.Em.AddComponentData(building, new HealthComponent { currentHealth = 300, maxHealth = 300 });
+        sim.Em.AddComponentData(building, LocalTransform.FromPosition(new float3(14.5f, 10, 0)));
+        sim.Spawn(SimHarness.OwnerA, new float2(10, 10));
+        for (int i = 0; i < 10; i++) sim.Tick();
+        sim.Em.CompleteAllTrackedJobs();
+        Assert.AreEqual(300f, sim.Em.GetComponentData<HealthComponent>(building).currentHealth);
+    }
+
+    [Test]
+    public void LineOfSightTraceSkipsTheEndCells()
+    {
+        // 4×1 fog cells with cell 1 opaque.
+        using var opaque = new Unity.Collections.NativeArray<byte>(new byte[] { 0, 1, 0, 0 }, Unity.Collections.Allocator.Temp);
+        Assert.IsFalse(LineOfSight.Clear(opaque, 4, 1, 0.5f, new float2(0.5f, 0.5f), new float2(5f, 0.5f)));
+        Assert.IsTrue(LineOfSight.Clear(opaque, 4, 1, 0.5f, new float2(4.5f, 0.5f), new float2(7f, 0.5f)));
+        Assert.IsTrue(LineOfSight.Clear(opaque, 4, 1, 0.5f, new float2(2.5f, 0.5f), new float2(5f, 0.5f)), "a shooter in a half-rock cell can fire out");
     }
 
     [Test]

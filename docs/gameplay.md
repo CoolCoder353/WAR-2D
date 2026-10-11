@@ -19,10 +19,10 @@ stateDiagram-v2
 ```
 
 1. **Main menu → Play → Lobby** (`Main_Menu` scene). The main menu (Play, Settings, Quit) has a live battle running behind it (`<MenuBattle>`; off in Settings → Graphics). **Play** asks for a nickname (remembered) and either **Host** (others join on your IP, port 7778) or **Join** an address (invalid addresses are flagged; while connecting there is a Cancel; a failed join says so). A lobby holds up to **8 players**, and nobody can join once the match has started (the server refuses the connection and the Play screen says why). In the **lobby** every player (the host included) picks an unused colour (8, from the palette), may claim one of the 8 **HQ clearings** by clicking its free (grey) marker on the map preview, and readies up; in Teams mode they pick Team 1–4 or Solo (the host can also cycle anyone's team). The host (the server owner: the host, or the next player if the host leaves) sets the **match settings**: mode (Free-for-all or Teams), Diplomacy on/off, map size (`Lobby/MapSizes`: 256, 512, 1024) and starting resources (`Lobby/StartingResources`: 500–5000), the map seed (typed, or **Reroll**). Everyone sees the settings and a **map preview** with the 8 HQ clearings: claimed ones in their player's colour (your own ringed, with "You"), free ones grey. When the match starts, every player without a claim gets the lowest-numbered free clearing. Any settings change or reroll clears everyone's ready. **Start match** needs every player ready and at least two teams (so someone attacks someone). Teams are fixed when the match starts.
-2. **PlacingHQ** (`Map_2`). The map is generated from a seed (see "Map and tiles"). An HQ placement prompt is shown. Each player places a single 3×3 HQ on free ground **inside their own clearing** (ringed in their colour; the camera starts there), in any 90° rotation. The screen shows how many players are still placing.
+2. **PlacingHQ** (`Map_2`). The map is generated from a seed (see "Map and tiles"). An HQ placement prompt is shown. Each player places a single 5×5 HQ on free ground **inside their own clearing** (ringed in their colour; the camera starts there), The screen shows how many players are still placing.
 3. **Countdown.** When the last HQ is placed, the server starts a **5-second** countdown (`Match.CountdownSeconds`) and every client displays the same remaining time from the synced end time.
 4. **Playing.** Economy, building, spawning and combat run, and win/loss is checked every second.
-5. **GameOver.** Each player sees the **end screen**: Victory, Defeat or Draw, who won and how long it took, and every player's statistics (units built, lost and killed, buildings built and lost, mined, spent, gifted out and in, peak army). Statistics are sent only once the match is over. A player eliminated earlier sees Defeat at once and the table when the match ends. Buttons: Main menu, Quit.
+5. **GameOver.** Each player sees the **end screen**: Victory, Defeat or Draw, who won and how long it took, and every player's statistics (units built, lost and killed, buildings built and lost, mined, spent, gifted out and in, peak army). Statistics are sent only once the match is over. A player eliminated earlier **spectates** the rest of the match: a Spectating panel (with Leave match) replaces the HUD's controls, and the server shows them the whole map (every unit and building, no fog); the end screen with Defeat and the table comes when the match ends. Buttons: Main menu, Quit.
 
 Before *Playing*, the economy, spawning, combat and win/loss checks are paused, and units can't be ordered. Passive income only starts in *Playing*.
 
@@ -33,12 +33,13 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | Arrow keys | Pan the camera (`A`, `S` and `H` are order keys since v0.6) |
 | Pointer at a screen edge | Pan that way (Settings → Controls → Edge scrolling) |
 | Middle mouse + drag | Drag the map |
-| Mouse wheel | Zoom towards the cursor (orthographic size 3–30; 1.5 per notch; pan speed scales with zoom) |
+| Mouse wheel | Zoom towards the cursor (orthographic size 3–30; pan speed scales with zoom). The match starts at 1:1 art pixels (size 8.4 at 1080p). Zooming in snaps to whole-number scales (2:1, 3:1, …, pixel perfect); zooming out past 1:1 moves in smooth steps (×1.25 per notch). |
 | Double-click a unit | Select every own unit of that type on screen |
 | `1`–`0` twice quickly | Select that squad and centre the camera on it |
 | `Esc` | In-match menu (closes the settings, gift or diplomacy panel first) |
 | Hold `Shift` | Pan 2.5× faster |
 | Left-click + drag | Select **every** one of your units inside the box (no limit). A plain click selects what is under the cursor. |
+| `Shift` + left-click while placing | Place the building and keep placing the same type (not the HQ) |
 | `Shift` + drag | Add the units in the box to the selection |
 | Right-click | Order the selected units to **Move** to the cursor (they ignore enemies until they arrive) |
 | `A`, then left- or right-click | **Attack-move** to the cursor: move, but stop to fight enemies in range |
@@ -53,9 +54,11 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | Command card: Miner, Spawner | Pick a building (greyed out until you can afford it); a preview follows the cursor. Right-click cancels. |
 | Minimap: left-click or drag | Move the camera there |
 | Minimap: right-click | Send the selection there (Move, or the armed Attack-move; `Shift` queues) |
-| `R` (while placing) | Rotate the building preview 90° |
+| `R` (while placing a Miner) | Turn the Miner 90° (it draws its auger facing that way); other buildings have one facing |
 | Left-click (while placing) | Place the building. The preview is grey if valid and red if not. During HQ placement the HQ preview appears on its own. |
-| Left-click on your Small Unit Spawner (where none of your units are) | Select it: the command card shows its production queue, where `+` queues one Tank and `−` removes one (max 100 queued; nothing is refunded, as the cost is charged at spawn) |
+| Left-click on your Small Unit Spawner (where none of your units are) | Select it: the command card shows its production queue, where `+`, `+10` and `+50` queue Tanks and `−` removes one (max 100 queued per spawner; nothing is refunded, as the cost is charged at spawn) |
+| `Shift` + left-click on your spawners, or drag a box over them (where none of your units are) | Select several spawners: the queue buttons add to (or take from) each of them |
+| Right-click with only spawners selected | Set their **rally point**: each new unit drives there. The flag shows while the spawner is selected; only you see it |
 | `` ` `` (backquote) | Toggle the developer console |
 
 In **Settings → Controls** you can rebind Select, Move, Attack-move, Stop, Hold, Queue order (Shift), the squad-assign modifier (Ctrl), Rotate and Menu: click a binding, press the new key (Esc cancels). A key already in use offers to swap the two bindings. Bindings are saved with the settings. Panning (arrows), the squad number keys, zoom, middle-drag and Shift for fast panning and adding to a box selection are fixed.
@@ -69,7 +72,7 @@ Settings (main menu, or the in-match menu) apply at once and are saved on this m
 - **Controls:** rebinding and edge scrolling.
 - **Reset to defaults** restores everything, bindings included.
 
-Camera settings (speed, zoom step and range, shift multiplier) are in `Assets/Character_Settings.asset`.
+Camera settings (speed, zoom range, shift multiplier) are in `Assets/Character_Settings.asset`; the zoom steps are in `CameraZoom`.
 
 ## Map and tiles
 
@@ -82,7 +85,7 @@ The map is a grid of 1×1 tiles. By default it is **generated from a seed** at t
 | Gem | No | No | Miners must face a gem tile to produce resources |
 | Border | No | No | The map's outer ring |
 
-A building occupies tiles based on its configured size (3×3 for the HQ, 2×2 for a Small Unit Spawner, 1×1 for a Miner). A building can only be placed when every tile of its footprint is free ground; units standing there are moved to the nearest free tile. Occupied tiles can't be built on again, and units path around buildings.
+A building occupies tiles based on its configured size (5×5 for the HQ, 2×2 for a Small Unit Spawner, 1×1 for a Miner). A building can only be placed when every tile of its footprint is free ground; units standing there are moved to the nearest free tile. Occupied tiles can't be built on again, and units path around buildings.
 
 ## Economy
 
@@ -100,11 +103,11 @@ Upkeep is charged once per second. Units are charged one by one (oldest slot fir
 
 ## Buildings
 
-Buildings are placed from the HUD, can be rotated in 90° steps, and must sit entirely on free ground. Except for the HQ, they can only be placed during *Playing*; the HQ can only be placed during *PlacingHQ*, one per player.
+Buildings are placed from the HUD and must sit entirely on free ground. Except for the HQ, they can only be placed during *Playing*; the HQ can only be placed during *PlacingHQ*, one per player.
 
 | Building | Size | Health | Upfront cost | Upkeep / s | Function |
 |---|---|---|---|---|---|
-| **Base (HQ)** | 3×3 | 500 | 0 | 0 | Your life. Placed during *PlacingHQ*. |
+| **Base (HQ)** | 5×5 | 500 | 0 | 0 | Your life. Placed during *PlacingHQ*. |
 | **Miner** | 1×1 | 50 | 50 | 0 | Produces 10 resources/s while the tile it faces is a gem. Placement is only allowed when it faces a gem. |
 | **Small Unit Spawner** | 2×2 | 300 | 200 | 20 | Click it to queue Tanks (up to 100 queued). Produces **1 unit per second** (`SpawnRate`), charging each Tank's cost as it spawns. |
 
@@ -126,9 +129,9 @@ A Miner checks the single tile next to it in the direction it faces:
 | **Tank** | 100 | 10 | 5 tiles | 1 s | 5 | 5 | 50 | 2 |
 
 - A player can own at most **10,000 units** (`Simulation/MaxUnitsPerPlayer`). A spawner at the cap keeps its queue and refunds the unit.
-- A spawner creates a unit on the nearest free walkable tile outside its footprint. Units are round bodies (`Radius` 0.35 tiles for the Tank) that push apart when they overlap, so a crowd spreads out on its own.
+- A spawner creates a unit on the nearest free walkable tile outside its footprint, then sends it to the spawner's rally point if it has one (a Move order, so a rally on rock snaps to the nearest floor). Units are round bodies (`Radius` 0.35 tiles for the Tank) that push apart when they overlap, so a crowd spreads out on its own.
 - A move order gives the whole group one shared flow field to the goal, so any number of units path around walls and buildings together. The group gathers around the goal and stops within a radius that grows with its size.
-- Every unit has a stance. On a **Move** order it ignores enemies until it arrives. On an **Attack-move** order, an enemy in range makes it stop to fight, and it resumes the order when the target is gone. **Idle** (no order, or arrived) and **Hold** units fight whatever comes in range; a Hold unit never moves, not even when its neighbours push. Arriving at the goal makes a Move or Attack-move unit Idle.
+- Every unit has a stance. On a **Move** order it ignores enemies until it arrives. On an **Attack-move** order, an enemy in range makes it stop to fight, and it resumes the order when the target is gone. **Idle** (no order, or arrived) and **Hold** units fight whatever comes in range; a Hold unit never moves, not even when its neighbours push. Arriving at the goal makes a Move or Attack-move unit Idle. A goal on rock or a building is moved to the nearest open floor within 12 tiles (on the units' side when two are as near); with none, the order is ignored.
 
 ## Fog of war, teams and diplomacy
 
@@ -149,7 +152,7 @@ The alert feed (top left) shows the newest four alerts for 8 s each (`Alerts/Sho
 
 ## Combat
 
-- Combat is fully automatic. Every unit picks the **nearest enemy unit** (a unit of any player its owner attacks) within range, and only when there is none, the nearest enemy **building**. Idle units look for targets every few ticks, so a new enemy is picked up within about 0.4 s.
+- Combat is fully automatic. Every unit picks the **nearest enemy unit** (a unit of any player its owner attacks) within range that it has a clear line to (rock blocks shots as it blocks sight; buildings and units don't), and only when there is none, the nearest enemy **building**. Idle units look for targets every few ticks, so a new enemy is picked up within about 0.4 s.
 - Damage is the attacker's `Damage` times a multiplier from the damage table (`DamageTable`) for what it hits: units, buildings or walls. Every Tank multiplier is 1.0 except walls (0.5, used once walls arrive in v0.7).
 - It keeps attacking that target every attack interval while the target is alive and in range. When the target dies or leaves range, it picks a new one.
 - Buildings don't attack.
@@ -159,7 +162,7 @@ The alert feed (top left) shows the newest four alerts for 8 s each (`Alerts/Sho
 ## Win, loss and leaving
 
 - During *Playing* the server checks every second which players still own an HQ.
-- A player with no HQ is **eliminated**: all their remaining units and buildings are destroyed (each with an explosion) and they see the Lose screen. Eliminated players stop earning passive income.
+- A player with no HQ is **eliminated**: all their remaining units and buildings are destroyed (each with an explosion) and, while the match goes on, they spectate it with the whole map shown (see GameOver above). Eliminated players stop earning passive income.
 - If no player with an HQ left attacks another (they are all at peace with each other, or only one is left), and the match started with more than one team, they **win** together: every HQ holder, and every eliminated player whose starting team includes one, sees the Win screen. Peace must be mutual: if one survivor still attacks another, the match goes on. Everyone else sees the Lose screen, and the winner's world is wiped with explosions as the match ends.
 - If nobody has an HQ, it's a **draw**, and everyone sees a Draw screen.
 - **Esc** (or Menu on the top bar) opens the **in-match menu**: Resume, Settings, Surrender and Leave match. Nothing pauses. **Surrender** asks to confirm, then eliminates you exactly as losing your HQ.

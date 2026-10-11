@@ -45,6 +45,9 @@ namespace WAR2D.Sim
         public float InvCellSize;
         public int CellsX, CellsY, SearchCells; // SearchCells = ceil(max range / cell size)
         public int Tick, Slice;
+        [ReadOnly] public NativeArray<byte> Opaque;
+        public int FogW, FogH;
+        public float InvFogCellSize;
         public NativeArray<int> Target;
         public NativeArray<byte> TargetKind;
 
@@ -72,7 +75,7 @@ namespace WAR2D.Sim
                     int j = Sorted[k];
                     if (Health[j] <= 0f || !SimData.Attacks(AttackMask, slot, OwnerSlot[j])) continue;
                     float d = math.distancesq(p, Positions[j]);
-                    if (d <= best) { best = d; bestIndex = j; }
+                    if (d <= best && LineOfSight.Clear(Opaque, FogW, FogH, InvFogCellSize, p, Positions[j])) { best = d; bestIndex = j; }
                 }
             }
             if (bestIndex >= 0)
@@ -92,7 +95,7 @@ namespace WAR2D.Sim
                     int j = BuildingSorted[k];
                     if (BuildingHealth[j] <= 0f || !SimData.Attacks(AttackMask, slot, BuildingOwnerSlot[j])) continue;
                     float d = math.distancesq(p, BuildingPositions[j]);
-                    if (d <= best) { best = d; bestIndex = j; }
+                    if (d <= best && LineOfSight.Clear(Opaque, FogW, FogH, InvFogCellSize, p, BuildingPositions[j])) { best = d; bestIndex = j; }
                 }
             }
             Target[i] = bestIndex;

@@ -2,7 +2,7 @@
     "name": "WAR2D.Tests.EditMode",
     "rootNamespace": "",
     "references": [
-        "WAR2D", "Mirror", "Unity.Entities", "Unity.Collections", "Unity.Mathematics", "Unity.Transforms",
+        "WAR2D", "WAR2D.Editor", "Mirror", "Unity.Entities", "Unity.Collections", "Unity.Mathematics", "Unity.Transforms",
         "Unity.InputSystem", "UnityEngine.TestRunner", "UnityEditor.TestRunner"
     ],
     "includePlatforms": ["Editor"],

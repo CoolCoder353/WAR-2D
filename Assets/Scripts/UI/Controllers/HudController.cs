@@ -104,7 +104,7 @@ namespace WAR2D.UI
             settings.Closed += matchMenu.Open;
             matchMenu.SettingsClicked += () => { matchMenu.Close(); settings.Open(); SettingsRequested?.Invoke(); };
             matchMenu.SurrenderConfirmed += () => GameCore.Instance?.Cmd_Surrender();
-            matchMenu.LeaveClicked += () => GameManager.Instance?.LeaveLobby();
+            matchMenu.LeaveClicked += () => { HostLeftNotice.LeavingOnPurpose = true; GameManager.Instance?.LeaveLobby(); };
             topBar.MenuClicked += matchMenu.Toggle;
 
             gift = new GiftDialogController(root, Model, config.Gifting.CooldownSeconds);
@@ -113,7 +113,7 @@ namespace WAR2D.UI
             topBar.DiplomacyClicked += gift.Close;
 
             endScreen = new EndScreenController(root);
-            endScreen.MainMenuClicked += () => GameManager.Instance?.LeaveLobby();
+            endScreen.MainMenuClicked += () => { HostLeftNotice.LeavingOnPurpose = true; GameManager.Instance?.LeaveLobby(); };
             endScreen.QuitClicked += () => GameManager.Instance?.QuitGame();
             ClientPlayer.MatchEnded += OnMatchEnded;
             GameCore.MatchStatsReceived += OnMatchStats;
@@ -225,6 +225,13 @@ namespace WAR2D.UI
             gift.Close();
             diplomacy.SetOpen(false);
             GameCore core = GameCore.Instance;
+            // Defeated while others play on: watch the rest of the match (the server now shows the whole map);
+            // the end screen and its table come at game over.
+            if (result == EndResult.Defeat && core != null && core.CurrentState == GameState.Playing)
+            {
+                ShowSpectating(true);
+                return;
+            }
             float seconds = core != null ? (float)(NetworkTime.time - core.MatchStartTime) : 0f;
             var winners = new List<string>();
             if (result == EndResult.Victory) winners.Add("You");
@@ -235,13 +242,46 @@ namespace WAR2D.UI
         /// <summary>The final statistics arrived (game over): fills the table and names the winners.</summary>
         private void OnMatchStats(MatchResult result)
         {
-            if (!endScreen.IsShown) return;
+            if (!endScreen.IsShown && !Spectating) return;
+            ShowSpectating(false);
             var winners = new List<string>();
             foreach (int owner in result.Winners) winners.Add(NameOf(owner));
             bool won = System.Array.IndexOf(result.Winners, Model.LocalOwnerId) >= 0;
             EndResult mine = result.Winners.Length == 0 ? EndResult.Draw : won ? EndResult.Victory : EndResult.Defeat;
             endScreen.Show(mine, EndScreenController.Line(mine, winners, result.DurationSeconds));
             endScreen.ShowStats(result, NameOf, PlayerPalette.ColourIndexOf);
+        }
+
+        private VisualElement spectatingPanel;
+
+        /// <summary>True while the local player, defeated, watches the rest of the match.</summary>
+        public bool Spectating => spectatingPanel != null && spectatingPanel.style.display == DisplayStyle.Flex;
+
+        /// <summary>The approved <c>Panel / Spectating – v0.8</c>, top centre, with Leave match.</summary>
+        private void ShowSpectating(bool show)
+        {
+            if (spectatingPanel == null)
+            {
+                if (!show) return;
+                spectatingPanel = new VisualElement { name = "spectating-panel" };
+                spectatingPanel.AddToClassList("panel");
+                spectatingPanel.AddToClassList("spectating");
+                var title = new Label("Spectating");
+                title.AddToClassList("panel__title");
+                var body = new VisualElement();
+                body.AddToClassList("spectating__body");
+                var line = new Label("You were eliminated. You see the whole map: every player's units, buildings and fog.");
+                line.AddToClassList("text--secondary");
+                var leave = new Button(() => { HostLeftNotice.LeavingOnPurpose = true; GameManager.Instance?.LeaveLobby(); }) { text = "Leave match", name = "spectating-leave" };
+                leave.AddToClassList("button");
+                leave.AddToClassList("spectating__leave");
+                body.Add(line);
+                body.Add(leave);
+                spectatingPanel.Add(title);
+                spectatingPanel.Add(body);
+                root.Add(spectatingPanel);
+            }
+            spectatingPanel.style.display = show ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         private void ApplyPalette() => Palettes.ApplyTo(root);
@@ -263,6 +303,7 @@ namespace WAR2D.UI
         {
             foreach (Alert alert in alerts)
                 Alerts.Add(alert, AlertFeedModel.Text(alert, NameOf, alert.Kind == AlertKind.UnderAttack ? NearestOwnBuilding(alert.Tile) : null), Time.unscaledTime);
+                WAR2D.Audio.AudioService.Ui("alert");
         }
 
         private const float NearBuildingTiles = 12f;
@@ -306,12 +347,13 @@ namespace WAR2D.UI
 
         private void OnBuild(BuildingType type) => BuildingPlacement.Instance?.BeginPlacement(type);
 
-        private void OnQueue(int buildingId, int delta)
+        private void OnQueue(IReadOnlyList<int> buildingIds, int delta)
         {
             WorldStateManager wsm = WorldStateManager.Instance;
-            if (wsm == null || buildingId == 0) return;
-            if (delta > 0) wsm.BuildingClicked(buildingId);
-            else wsm.CmdDequeueUnit(buildingId);
+            if (wsm == null || buildingIds.Count == 0) return;
+            var ids = new int[buildingIds.Count];
+            for (int i = 0; i < ids.Length; i++) ids[i] = buildingIds[i];
+            wsm.CmdChangeQueues(ids, delta);
         }
 
         private void OnSquad(int squad)

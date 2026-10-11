@@ -132,7 +132,13 @@ public partial class WorldStateManager : NetworkBehaviour
             GameCore.Instance.SendDiplomacy(from);
             GameCore.Instance.SendDiplomacy(to);
         };
-        Replication = new ReplicationService(Sim, ConfigLoader.LoadConfig()) { CollectBuildings = FillBuildingViews };
+        Replication = new ReplicationService(Sim, ConfigLoader.LoadConfig())
+        {
+            CollectBuildings = FillBuildingViews,
+            // A defeated player still connected watches the rest of the match with the whole map shown (P10).
+            Spectating = owner => GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing &&
+                                  GameCore.Instance.GetServerPlayerById(owner)?.state == PlayerState.Eliminated,
+        };
         if (GameCore.Instance != null)
             foreach (NetworkIdentity identity in GameCore.Instance.ServerPlayers.Keys)
                 if (identity != null && identity.connectionToClient != null)
@@ -550,7 +556,7 @@ public partial class WorldStateManager : NetworkBehaviour
     {
         if (!CommandGate.Allow(sender, nameof(CanBuildBuildingCommand))) return;
         ClientPlayer player = sender.identity.GetComponent<ClientPlayer>();
-        player.TargetReceiveCanBuildBuildingResponse(sender, CheckPlacement(type, position, rotation, player) == PlacementResult.Ok);
+        player.TargetReceiveCanBuildBuildingResponse(sender, position, type, rotation, CheckPlacement(type, position, rotation, player) == PlacementResult.Ok);
     }
 
     /// <summary>Queues one unit on the sender's spawner (the production queue's + button).</summary>
@@ -569,17 +575,62 @@ public partial class WorldStateManager : NetworkBehaviour
         ChangeQueue(buildingId, sender, enqueue: false);
     }
 
+    /// <summary>
+    /// Adds or removes units on each named spawner the sender owns (the production queue's −, +, +10 and +50
+    /// with one or several spawners selected). Steps other than <see cref="SpawnerRules.QueueSteps"/> and lists
+    /// longer than <see cref="SpawnerRules.MaxSpawnersPerCommand"/> are refused.
+    /// </summary>
+    [Command(requiresAuthority = false)]
+    public void CmdChangeQueues(int[] buildingIds, int delta, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(CmdChangeQueues))) return;
+        if (buildingIds == null || buildingIds.Length > SpawnerRules.MaxSpawnersPerCommand || !SpawnerRules.IsQueueStep(delta)) return;
+        foreach (int id in buildingIds) ChangeQueue(id, sender, delta);
+    }
+
+    /// <summary>
+    /// Sets (or, with <paramref name="clear"/>, removes) the rally tile of each named spawner the sender owns:
+    /// new units from it get a move order there. The tile must be on the map; an order onto rock snaps like any
+    /// other (<see cref="WAR2D.Sim.OrderBook.SnapGoal"/>). Only the owner is told.
+    /// </summary>
+    [Command(requiresAuthority = false)]
+    public void CmdSetRally(int[] buildingIds, int2 tile, bool clear, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(CmdSetRally))) return;
+        if (buildingIds == null || buildingIds.Length > SpawnerRules.MaxSpawnersPerCommand || Map == null || !Map.Grid.Contains(tile)) return;
+        if (!TryActingOwner(sender, out int owner)) return;
+        foreach (int id in buildingIds)
+        {
+            if (!TryOwnSpawner(id, owner, out Entity building)) continue;
+            SpawnerData spawner = EntityManager.GetComponentData<SpawnerData>(building);
+            spawner.rally = tile;
+            spawner.hasRally = !clear;
+            EntityManager.SetComponentData(building, spawner);
+            NetworkConnectionToClient connection = GameCore.Instance?.GetServerPlayerById(owner)?.connection;
+            if (connection?.identity != null && connection.identity.TryGetComponent(out ClientPlayer player))
+                player.TargetSpawnerRally(connection, id, tile, !clear);
+        }
+    }
+
+    /// <summary>True when <paramref name="buildingId"/> is a live spawner owned by <paramref name="owner"/>.</summary>
+    [Server]
+    private bool TryOwnSpawner(int buildingId, int owner, out Entity building)
+    {
+        if (!Buildings.TryGetValue(buildingId, out building) || !EntityManager.Exists(building)) return false;
+        return EntityManager.GetComponentData<BuildingData>(building).ownerId == owner && EntityManager.HasComponent<SpawnerData>(building);
+    }
+
     /// <summary>Adds or removes one unit on a spawner the sender owns, while Playing, and tells the owner the new count.</summary>
     [Server]
-    private void ChangeQueue(int buildingId, NetworkConnectionToClient sender, bool enqueue)
-    {
-        if (!TryActingOwner(sender, out int owner)) return;
-        if (!Buildings.TryGetValue(buildingId, out Entity building) || !EntityManager.Exists(building)) return;
-        if (EntityManager.GetComponentData<BuildingData>(building).ownerId != owner || !EntityManager.HasComponent<SpawnerData>(building)) return;
+    private void ChangeQueue(int buildingId, NetworkConnectionToClient sender, bool enqueue) => ChangeQueue(buildingId, sender, enqueue ? 1 : -1);
 
+    /// <summary>Adds or removes <paramref name="delta"/> units on a spawner the sender owns, while Playing, and tells the owner the new count.</summary>
+    [Server]
+    private void ChangeQueue(int buildingId, NetworkConnectionToClient sender, int delta)
+    {
+        if (!TryActingOwner(sender, out int owner) || !TryOwnSpawner(buildingId, owner, out Entity building)) return;
         SpawnerData spawner = EntityManager.GetComponentData<SpawnerData>(building);
-        bool changed = enqueue ? SpawnerRules.TryEnqueue(ref spawner.count) : SpawnerRules.TryDequeue(ref spawner.count);
-        if (!changed) return;
+        if (SpawnerRules.Apply(ref spawner.count, delta) == 0) return;
         EntityManager.SetComponentData(building, spawner);
         SendSpawnerQueue(owner, buildingId, spawner.count);
     }

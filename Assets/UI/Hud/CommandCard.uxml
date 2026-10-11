@@ -36,15 +36,21 @@
                 </ui:Button>
             </ui:VisualElement>
             <ui:VisualElement name="production" class="production">
-                <ui:Label text="Production queue" class="text--secondary" />
+                <ui:Label name="production-label" text="Production queue" class="text--secondary" />
                 <ui:VisualElement class="production__row">
                     <ui:VisualElement class="icon-slot" />
                     <ui:Label name="production-unit" text="Tank" class="text" />
                     <ui:Button name="production-minus" text="−" class="button production__button" />
                     <ui:Label name="production-count" text="0" class="text text--readout production__count" />
                     <ui:Button name="production-plus" text="+" class="button production__button" />
+                    <ui:Button name="production-plus-10" text="+10" class="button production__button production__button--wide" />
+                    <ui:Button name="production-plus-50" text="+50" class="button production__button production__button--wide" />
                 </ui:VisualElement>
                 <ui:Label name="production-help" text="1 per second · cost charged at spawn · max 100" class="text--secondary" />
+                <ui:VisualElement class="production__rally">
+                    <war:RallyIcon class="production__rally-icon" />
+                    <ui:Label text="Rally point: right-click the map with spawners selected. New units drive there." class="text--secondary" />
+                </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>

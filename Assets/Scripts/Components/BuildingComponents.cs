@@ -45,4 +45,7 @@ public struct SpawnerData : IComponentData
     /// <summary>Units per second (from BuildingConfig.SpawnRate).</summary>
     public float spawnRate;
     public float timeSinceLastSpawn;
+    /// <summary>The rally tile new units are sent to, when <see cref="hasRally"/> is set (the owner's choice).</summary>
+    public int2 rally;
+    public bool hasRally;
 }
