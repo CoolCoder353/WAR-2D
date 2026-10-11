@@ -1,6 +1,6 @@
 # Art style guide (v0.8)
 
-**Status: draft for owner approval (plan Task 5).** The method, finish, palette and building view were approved at the method gate on 2026-10-11 ([method-prototype.md](method-prototype.md)). Items marked **Decide** still need the owner's approval or a change.
+**Status: approved by the owner on 2026-10-11 (plan Task 5), with every recommendation below as written.** The method, finish, palette and building view were approved earlier the same day at the method gate ([method-prototype.md](method-prototype.md)). The numbered items were the open decisions.
 
 `Assets/Scripts/Art/ArtStyle.cs` holds these values in code, and `Assets/Art/palette.png` is the shipped palette at 1 px per colour. Written by `WAR-2D/Art/Write palette`, `ArtStyleTests` keeps the code and the file in step.
 
@@ -9,14 +9,14 @@
 | Item | Value |
 |---|---|
 | Method | Code-generated lit models (`Assets/Scripts/Art/Render/`), finished as pixel art by `PixelFinish`. No AI art ships. |
-| Tile and PPU | **64 px per tile, 1 tile = 1 world unit, PPU 64** for every sprite and atlas. Import settings: point filter, uncompressed, no mipmaps (but see Far zoom below). |
+| Tile and PPU | **64 px per tile, 1 tile = 1 world unit, PPU 64** for every sprite and atlas. Import settings: point filter, uncompressed, no mipmaps, except that the unit, building and terrain atlases use mipmaps with trilinear filtering for smooth far zoom (item 4). |
 | Units | Top-down, in a 64×64 frame, with **8 rendered facings** 45° apart. Quads never rotate. The light stays fixed at the top left in every facing. |
 | Buildings | **3/4 view** (`RenderGen.Lift`) with their own silhouettes inside square footprints and headroom above them (`RenderGen.Headroom`, scaled per building). The pivot sits at the footprint's centre. The HQ is 5×5, the Small Unit Spawner 2×2, the Miner 1×1. Buildings rotate in 90° steps as whole sprites. |
 | Terrain | Stone floor, raised craggy rock with 16 autotile masks, faceted gems. All opaque. |
 | Finish | Majority-vote downsample onto the palette (no blending), a 1 px outline in the palette's outline colour, and hard 2 px shadows. |
 | Palette | **Charcoal** (`StylePalettes.Charcoal`): its 18 role colours plus the renderer's 4 extra colours (sandbags, drums, crates, white), each in 5 shades (`PixelFinish.Shades`). |
 
-## Decide
+## Decided (recommendations approved)
 
 **1. Palette clearance from the player colours: leave out the clashing shades.**
 Units and buildings carry the owner's colour, so no environment or machine colour should be mistaken for a player. The rule: drop any palette colour within **ΔE 10** (CIE76) of any player colour in any of the three palette modes (standard, colourblind, high contrast). After that and removing duplicates (bright shades clamp to the same colour), **90 colours** ship (plus transparent). Six shades are dropped:
