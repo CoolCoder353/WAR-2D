@@ -59,6 +59,69 @@ public class SimMovementTests
         Assert.LessOrEqual(math.distance(sim.UnitById(a[0]).Position, goal), 1.5f, $"unit ended at {sim.UnitById(a[0]).Position}");
     }
 
+    /// <summary>A diagonal staircase of rock from (16, 8) to (40, 32) with a 1-tile gap, odd-aligned against the 2×2 field cells.</summary>
+    private static MapStore Staircase()
+    {
+        var rows = new string[64];
+        for (int r = 0; r < 64; r++)
+        {
+            int y = 63 - r;
+            var row = new char[64];
+            for (int x = 0; x < 64; x++)
+            {
+                bool border = x == 0 || y == 0 || x == 63 || y == 63;
+                bool stair = x >= 17 && x <= 47 && (x - y == 9 || x - y == 10) && y != 25;
+                row[x] = border ? 'B' : stair ? '#' : '.';
+            }
+            rows[r] = new string(row);
+        }
+        return MapStore.FromAscii(rows);
+    }
+
+    [Test]
+    public void CrowdCrossesAStaircaseWallThroughAOneTileGap()
+    {
+        using var sim = new SimHarness(Staircase());
+        var boxes = new System.Collections.Generic.List<int[]>();
+        for (int k = 0; k < 12; k++) boxes.Add(sim.Spawn(SimHarness.OwnerA, new float2(40.5f + k % 4, 8.5f + k / 4)));
+        sim.Tick();
+        int[] ids = boxes.ConvertAll(b => b[0]).ToArray();
+        sim.Move(SimHarness.OwnerA, new int2(14, 40), ids);
+        for (int t = 0; t < 20 * 60; t++) sim.Tick();
+        int stuck = 0;
+        string where = "";
+        foreach (int id in ids)
+        {
+            float2 p = sim.UnitById(id).Position;
+            if (math.distance(p, new float2(14.5f, 40.5f)) > 4f) { stuck++; where += $" {p}"; }
+        }
+        Assert.AreEqual(0, stuck, $"stuck at{where}");
+    }
+
+    [Test]
+    public void CrowdCrossesAGeneratedCaveMap([Values(1u, 7u, 42u)] uint seed)
+    {
+        const int size = 128;
+        using var sim = new SimHarness(MapStore.Generate(size, seed, 0.05f));
+        int2[] sites = WAR2D.World.MapGenerator.HqSites(size);
+        var boxes = new System.Collections.Generic.List<int[]>();
+        for (int k = 0; k < 40; k++) boxes.Add(sim.Spawn(SimHarness.OwnerA, (float2)sites[0] + new float2(k % 8 - 3.5f, k / 8 - 2f)));
+        sim.Tick();
+        int[] ids = boxes.ConvertAll(b => b[0]).ToArray();
+        float2 goal = (float2)sites[sites.Length - 1] + 0.5f;
+        sim.Move(SimHarness.OwnerA, sites[sites.Length - 1], ids);
+        for (int t = 0; t < 20 * 120; t++) sim.Tick();
+        int stuck = 0;
+        string where = "";
+        foreach (Unit u in sim.Units())
+        {
+            if (math.distance(u.Position, goal) <= 8f) continue;
+            stuck++;
+            if (stuck <= 6) where += $" {u.Position}";
+        }
+        Assert.AreEqual(0, stuck, $"{stuck} of {ids.Length} short of {goal}, e.g.{where}");
+    }
+
     [Test]
     public void SnapGoalFindsNearestFloorOrNone()
     {
