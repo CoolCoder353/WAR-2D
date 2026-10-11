@@ -19,6 +19,9 @@ public class BuildingPlacement : MonoBehaviour
     /// <summary>True while a preview follows the pointer.</summary>
     public bool IsPlacing => PlacingType != BuildingType.None;
 
+    /// <summary>The server's answer for the spot under the cursor: null until it arrives (the cursor and tint use it).</summary>
+    public bool? PreviewValid { get; private set; }
+
     /// <summary>The last frame a placement was in progress: that frame's clicks belong to placement, not selection.</summary>
     public int ActiveFrame { get; private set; } = -1;
 
@@ -179,6 +182,7 @@ public class BuildingPlacement : MonoBehaviour
         if (!IsPlacing || math.any(localPlayer.CanBuildResponsePosition != currentAnchor) ||
             localPlayer.CanBuildResponseType != PlacingType || localPlayer.CanBuildResponseRotation != currentRotation) return;
 
+        PreviewValid = result;
         SetPreviewTint(result ? Color.green : Color.red, true);
     }
 
@@ -208,6 +212,7 @@ public class BuildingPlacement : MonoBehaviour
 
     private void SetPreviewTint(Color tint, bool showStatus)
     {
+        if (!showStatus) PreviewValid = null;
         SpriteRenderer sprite = previewBuilding.GetComponent<SpriteRenderer>();
         sprite.color = showStatus ? new Color(tint.r, tint.g, tint.b, 0.85f) : new Color(1f, 1f, 1f, 0.75f);
         if (statusOutline == null) return;
