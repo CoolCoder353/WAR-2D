@@ -20,10 +20,10 @@ Units draw with pre-drawn facings, not a rotated quad (rotation breaks the pixel
 |---|---|---|---|---|
 | `Base` (HQ) | 5×5 (3×3 before v0.8) | 1 | yes | `Resources/Base.png` (64 px, PPU 22) |
 | `SmallUnitSpawner` | 2×2 | 2 (idle: door lamp, each held 5 ticks) | yes | `Resources/SmallUnitSpawner.png` (64 px) |
-| `Miner` | 1×1 | 4 (drill loop) | yes | `Resources/miner.png` (32 px) |
+| `Miner` | 1×1 | 4 (drill loop) × 4 facings | yes | `Resources/miner.png` (32 px) |
 | `Bomb` | 1×1 | 2 (armed blink) | yes | none (v0.7; never sent to enemy clients, so only its owner's team draws it) |
 
-Footprints match `GameConfig.xml` (`ArtManifestTests.BuildingFootprintsMatchTheConfig`). The plan's Task 2 note of a 2×2 Miner is out of date: the Miner is 1×1. Buildings draw from the `Buildings` atlas with the `TeamSprite` shader (`TeamSpriteMaterial`, one material per owner colour; ghosts are grey and 60 % opaque), always upright, and loop their idle frames with `SpriteFrameAnimator`.
+Footprints match `GameConfig.xml` (`ArtManifestTests.BuildingFootprintsMatchTheConfig`). The plan's Task 2 note of a 2×2 Miner is out of date: the Miner is 1×1. Buildings draw from the `Buildings` atlas with the `TeamSprite` shader (`TeamSpriteMaterial`, one material per owner colour; ghosts are grey and 60 % opaque), always upright, and loop their idle frames with `SpriteFrameAnimator`. The Miner's 90° rotation picks one of its 4 facings (`TeamSpriteMaterial.Facing`); the other buildings have one.
 
 ## Tiles
 

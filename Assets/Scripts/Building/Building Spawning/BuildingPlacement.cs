@@ -82,7 +82,6 @@ public class BuildingPlacement : MonoBehaviour
         previewBuilding.SetActive(false);
         previewBuilding.GetComponent<SpriteRenderer>().sprite = null;
         currentRotation = 0f;
-        previewBuilding.transform.rotation = Quaternion.identity;
     }
 
     /// <summary>While the HQ is still to be placed, rings the clearing it must go in (the player's lobby claim).</summary>
@@ -118,12 +117,14 @@ public class BuildingPlacement : MonoBehaviour
         currentAnchor = Footprint.SnapAnchor(new float2(mouse.x, mouse.y), size);
         float2 centre = Footprint.VisualCenter(currentAnchor, size);
 
-        if (GameInput.Rotate.WasPressedThisFrame())
+        // Rotate turns only buildings drawn in several facings (the Miner); the sprite stays upright and
+        // shows the facing, since the 3/4 view only reads one way up.
+        if (GameInput.Rotate.WasPressedThisFrame() && WAR2D.Client.Render.TeamSpriteMaterial.Facing(PlacingType, 90f) != 0)
         {
             currentRotation = (currentRotation + 90f) % 360f;
+            ShowFacing();
         }
-        previewBuilding.transform.SetPositionAndRotation(
-            new Vector3(centre.x, centre.y, 0), Quaternion.Euler(0f, 0f, currentRotation));
+        previewBuilding.transform.position = new Vector3(centre.x, centre.y, 0);
 
         if (!hasDisplayedTarget || math.any(currentAnchor != displayedAnchor) || PlacingType != displayedType || currentRotation != displayedRotation)
         {
@@ -178,6 +179,15 @@ public class BuildingPlacement : MonoBehaviour
             localPlayer.CanBuildResponseType != PlacingType || localPlayer.CanBuildResponseRotation != currentRotation) return;
 
         SetPreviewTint(result ? Color.green : Color.red, true);
+    }
+
+    /// <summary>Shows the preview (and its status outline) in the facing of the current rotation.</summary>
+    private void ShowFacing()
+    {
+        SpriteRenderer sprite = previewBuilding.GetComponent<SpriteRenderer>();
+        sprite.sprite = WAR2D.Client.Render.TeamSpriteMaterial.FacingSprite(PlacingType,
+            WAR2D.Client.Render.TeamSpriteMaterial.Facing(PlacingType, currentRotation));
+        if (statusOutline != null) statusOutline.sprite = sprite.sprite;
     }
 
     private void EnsureStatusOutline(SpriteRenderer sprite)

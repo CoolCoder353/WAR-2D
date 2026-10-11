@@ -102,6 +102,12 @@ namespace WAR2D.Art
         /// <summary>How many cells <paramref name="id"/> has (frames × directions), or 0.</summary>
         public int FrameCount(string id) => byId.TryGetValue(id, out AtlasSprite s) ? s.frames * s.directions : 0;
 
+        /// <summary>Frames per direction of <paramref name="id"/>, or 0.</summary>
+        public int Frames(string id) => byId.TryGetValue(id, out AtlasSprite s) ? s.frames : 0;
+
+        /// <summary>Directions (facings) of <paramref name="id"/>, or 0.</summary>
+        public int Directions(string id) => byId.TryGetValue(id, out AtlasSprite s) ? s.directions : 0;
+
         /// <summary>A sprite for one cell of <paramref name="id"/> (made on first use, then cached).</summary>
         public Sprite Sprite(string id, int frame = 0)
         {

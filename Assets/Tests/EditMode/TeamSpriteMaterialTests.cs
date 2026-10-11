@@ -38,7 +38,21 @@ public class TeamSpriteMaterialTests
         Assert.AreSame(atlas.Mask, m.GetTexture("_MaskTex"));
         Assert.AreEqual(InstancedUnitRenderer.TeamGain(), m.GetFloat("_TeamGain"), 1e-5);
         Assert.AreSame(atlas.Texture, TeamSpriteMaterial.Sprite(BuildingType.Base).texture);
-        Assert.AreEqual(4, atlas.FrameCount(nameof(BuildingType.Miner)), "the drill loop");
+        Assert.AreEqual(4, atlas.Frames(nameof(BuildingType.Miner)), "the drill loop");
+        Assert.AreEqual(4, atlas.Directions(nameof(BuildingType.Miner)), "one facing per 90°");
+    }
+
+    [Test]
+    public void RotationPicksTheMinersFacingOnly()
+    {
+        Assert.AreEqual(0, TeamSpriteMaterial.Facing(BuildingType.Miner, 0f));
+        Assert.AreEqual(1, TeamSpriteMaterial.Facing(BuildingType.Miner, 90f));
+        Assert.AreEqual(3, TeamSpriteMaterial.Facing(BuildingType.Miner, 270f));
+        Assert.AreEqual(0, TeamSpriteMaterial.Facing(BuildingType.Miner, 360f));
+        Assert.AreEqual(0, TeamSpriteMaterial.Facing(BuildingType.Base, 90f), "one-facing buildings never turn");
+        ArtAtlas atlas = ArtAtlas.Load(ArtAtlas.Buildings);
+        Assert.AreEqual(atlas.Sprite(nameof(BuildingType.Miner), 2 * atlas.Frames(nameof(BuildingType.Miner))),
+            TeamSpriteMaterial.FacingSprite(BuildingType.Miner, 2));
     }
 
     [Test]

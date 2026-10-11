@@ -19,7 +19,7 @@ stateDiagram-v2
 ```
 
 1. **Main menu → Play → Lobby** (`Main_Menu` scene). The main menu (Play, Settings, Quit) has a live battle running behind it (`<MenuBattle>`; off in Settings → Graphics). **Play** asks for a nickname (remembered) and either **Host** (others join on your IP, port 7778) or **Join** an address (invalid addresses are flagged; while connecting there is a Cancel; a failed join says so). A lobby holds up to **8 players**, and nobody can join once the match has started (the server refuses the connection and the Play screen says why). In the **lobby** every player (the host included) picks an unused colour (8, from the palette), may claim one of the 8 **HQ clearings** by clicking its free (grey) marker on the map preview, and readies up; in Teams mode they pick Team 1–4 or Solo (the host can also cycle anyone's team). The host (the server owner: the host, or the next player if the host leaves) sets the **match settings**: mode (Free-for-all or Teams), Diplomacy on/off, map size (`Lobby/MapSizes`: 256, 512, 1024) and starting resources (`Lobby/StartingResources`: 500–5000), the map seed (typed, or **Reroll**). Everyone sees the settings and a **map preview** with the 8 HQ clearings: claimed ones in their player's colour (your own ringed, with "You"), free ones grey. When the match starts, every player without a claim gets the lowest-numbered free clearing. Any settings change or reroll clears everyone's ready. **Start match** needs every player ready and at least two teams (so someone attacks someone). Teams are fixed when the match starts.
-2. **PlacingHQ** (`Map_2`). The map is generated from a seed (see "Map and tiles"). An HQ placement prompt is shown. Each player places a single 5×5 HQ on free ground **inside their own clearing** (ringed in their colour; the camera starts there), in any 90° rotation. The screen shows how many players are still placing.
+2. **PlacingHQ** (`Map_2`). The map is generated from a seed (see "Map and tiles"). An HQ placement prompt is shown. Each player places a single 5×5 HQ on free ground **inside their own clearing** (ringed in their colour; the camera starts there), The screen shows how many players are still placing.
 3. **Countdown.** When the last HQ is placed, the server starts a **5-second** countdown (`Match.CountdownSeconds`) and every client displays the same remaining time from the synced end time.
 4. **Playing.** Economy, building, spawning and combat run, and win/loss is checked every second.
 5. **GameOver.** Each player sees the **end screen**: Victory, Defeat or Draw, who won and how long it took, and every player's statistics (units built, lost and killed, buildings built and lost, mined, spent, gifted out and in, peak army). Statistics are sent only once the match is over. A player eliminated earlier sees Defeat at once and the table when the match ends. Buttons: Main menu, Quit.
@@ -54,7 +54,7 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | Command card: Miner, Spawner | Pick a building (greyed out until you can afford it); a preview follows the cursor. Right-click cancels. |
 | Minimap: left-click or drag | Move the camera there |
 | Minimap: right-click | Send the selection there (Move, or the armed Attack-move; `Shift` queues) |
-| `R` (while placing) | Rotate the building preview 90° |
+| `R` (while placing a Miner) | Turn the Miner 90° (it draws its auger facing that way); other buildings have one facing |
 | Left-click (while placing) | Place the building. The preview is grey if valid and red if not. During HQ placement the HQ preview appears on its own. |
 | Left-click on your Small Unit Spawner (where none of your units are) | Select it: the command card shows its production queue, where `+` queues one Tank and `−` removes one (max 100 queued; nothing is refunded, as the cost is charged at spawn) |
 | `` ` `` (backquote) | Toggle the developer console |
@@ -101,7 +101,7 @@ Upkeep is charged once per second. Units are charged one by one (oldest slot fir
 
 ## Buildings
 
-Buildings are placed from the HUD, can be rotated in 90° steps, and must sit entirely on free ground. Except for the HQ, they can only be placed during *Playing*; the HQ can only be placed during *PlacingHQ*, one per player.
+Buildings are placed from the HUD and must sit entirely on free ground. Except for the HQ, they can only be placed during *Playing*; the HQ can only be placed during *PlacingHQ*, one per player.
 
 | Building | Size | Health | Upfront cost | Upkeep / s | Function |
 |---|---|---|---|---|---|

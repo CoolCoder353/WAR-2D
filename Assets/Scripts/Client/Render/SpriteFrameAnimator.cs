@@ -13,20 +13,22 @@ namespace WAR2D.Client.Render
         private SpriteRenderer sprite;
         private ArtAtlas atlas;
         private string id;
-        private int frames, hold = 1, shown = -1;
+        private int frames, offset, hold = 1, shown = -1;
         private float phase;
 
         /// <summary>
-        /// Starts looping <paramref name="spriteId"/>'s frames, each held <paramref name="holdTicks"/> ticks; a
-        /// sprite with one frame just shows it.
+        /// Starts looping <paramref name="spriteId"/>'s frames in <paramref name="direction"/> (wrapped to the
+        /// sprite's facings), each held <paramref name="holdTicks"/> ticks; a sprite with one frame just shows it.
         /// </summary>
-        public void Play(ArtAtlas source, string spriteId, int holdTicks = 1)
+        public void Play(ArtAtlas source, string spriteId, int holdTicks = 1, int direction = 0)
         {
             hold = Mathf.Max(1, holdTicks);
             sprite = GetComponent<SpriteRenderer>();
             atlas = source;
             id = spriteId;
-            frames = atlas != null ? atlas.FrameCount(id) : 0;
+            frames = atlas != null ? atlas.Frames(id) : 0;
+            int directions = atlas != null ? Mathf.Max(1, atlas.Directions(id)) : 1;
+            offset = (direction % directions + directions) % directions * frames;
             // Stagger neighbours so a row of drills doesn't move in lockstep.
             phase = (transform.position.x * 0.37f + transform.position.y * 0.61f) % 1f;
             shown = -1;
@@ -40,7 +42,7 @@ namespace WAR2D.Client.Render
         {
             if (atlas == null || frame == shown) return;
             shown = frame;
-            sprite.sprite = atlas.Sprite(id, frame);
+            sprite.sprite = atlas.Sprite(id, offset + frame);
         }
     }
 }

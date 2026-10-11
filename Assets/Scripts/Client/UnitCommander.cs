@@ -351,13 +351,13 @@ public class UnitCommander : NetworkBehaviour
     }
 
     /// <summary>Shows a building type's atlas sprite on <paramref name="go"/>, animating its idle frames.</summary>
-    private static void ShowBuildingSprite(GameObject go, SpriteRenderer sprite, BuildingType type)
+    private static void ShowBuildingSprite(GameObject go, SpriteRenderer sprite, BuildingType type, int facing)
     {
         ArtAtlas atlas = ArtAtlas.Load(ArtAtlas.Buildings);
         if (atlas == null) Debug.LogError($"Resources/{ArtAtlas.Folder}/{ArtAtlas.Buildings} is missing: run WAR-2D/Art/Build all.");
         if (!go.TryGetComponent(out SpriteFrameAnimator animator)) animator = go.AddComponent<SpriteFrameAnimator>();
         // The spawner's lamp blinks once a second; the drill turns every tick.
-        animator.Play(atlas, type.ToString(), type == BuildingType.SmallUnitSpawner ? ArtStyle.FramesPerSecond / 2 : 1);
+        animator.Play(atlas, type.ToString(), type == BuildingType.SmallUnitSpawner ? ArtStyle.FramesPerSecond / 2 : 1, facing);
         // Taller buildings stand in front of the ones behind them (the 3/4 view).
         sprite.sortingOrder = SortingOrders.Building(go.transform.position.y);
     }
@@ -413,13 +413,12 @@ public class UnitCommander : NetworkBehaviour
         GameObject go = new GameObject();
         int2 anchor = (int2)math.round(unit.position);
         float2 centre = Footprint.VisualCenter(anchor, WorldStateManager.GetBuildingSize(unit.buildingType));
-        go.transform.SetPositionAndRotation(
-            new Vector3(centre.x, centre.y, 0),
-            Quaternion.Euler(0f, 0f, unit.rotation));
+        // Upright: the Miner shows its rotation as a rendered facing (the 3/4 view only reads one way up).
+        go.transform.position = new Vector3(centre.x, centre.y, 0);
 
         SpriteRenderer buildingSprite = go.AddComponent<SpriteRenderer>();
         buildingSprite.sharedMaterial = TeamSpriteMaterial.For(unit.ownerId, false);
-        ShowBuildingSprite(go, buildingSprite, unit.buildingType);
+        ShowBuildingSprite(go, buildingSprite, unit.buildingType, TeamSpriteMaterial.Facing(unit.buildingType, unit.rotation));
         // Clicks hit the footprint, not the sprite's headroom or shadow.
         int2 footprint = WorldStateManager.GetBuildingSize(unit.buildingType);
         BoxCollider2D collider = go.AddComponent<BoxCollider2D>();
@@ -526,7 +525,7 @@ public class UnitCommander : NetworkBehaviour
             if (buildingGameObjects.ContainsKey(oldUnit.id))
             {
                 GameObject go = buildingGameObjects[oldUnit.id];
-                ShowBuildingSprite(go, go.GetComponent<SpriteRenderer>(), newUnit.buildingType);
+                ShowBuildingSprite(go, go.GetComponent<SpriteRenderer>(), newUnit.buildingType, TeamSpriteMaterial.Facing(newUnit.buildingType, newUnit.rotation));
             }
         }
 

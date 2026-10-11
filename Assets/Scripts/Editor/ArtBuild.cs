@@ -130,7 +130,7 @@ namespace WAR2D.EditorTools
                 case nameof(BuildingType.SmallUnitSpawner):
                     return ($"Spawner {frame}", () => RenderGen.Spawner(frame), RenderGen.Lift);
                 case nameof(BuildingType.Miner):
-                    return ($"Miner {frame}", () => RenderGen.Miner(frame), RenderGen.Lift);
+                    return ($"Miner {direction} {frame}", () => RenderGen.Miner(frame, direction), RenderGen.Lift);
                 case nameof(TileType.Ground):
                     return ($"Floor {frame}", () => RenderGen.Floor(Seed, frame), 0f);
                 case nameof(TileType.Wall):

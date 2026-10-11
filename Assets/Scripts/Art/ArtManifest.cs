@@ -46,6 +46,9 @@ namespace WAR2D.Art
         /// <summary>Facings drawn for each unit (45° apart).</summary>
         public const int UnitDirections = 8;
 
+        /// <summary>Facings drawn for a building whose rotation shows (90° apart, anticlockwise from east).</summary>
+        public const int BuildingDirections = 4;
+
         /// <summary>Wall-style tiles: one variant per 4-neighbour mask (N, E, S, W).</summary>
         public const int AutotileVariants = 16;
 
@@ -59,10 +62,10 @@ namespace WAR2D.Art
             new ArtEntry("Builder", ArtKind.Unit, 1, 1, 4, UnitDirections, true),
             new ArtEntry("Digger", ArtKind.Unit, 1, 1, 4, UnitDirections, true),
 
-            // Buildings: footprint from GameConfig.xml; rotated in 90° steps as whole sprites.
+            // Buildings: footprint from GameConfig.xml; drawn upright. Only the Miner's rotation shows (4 rendered facings).
             new ArtEntry(nameof(BuildingType.Base), ArtKind.Building, 5, 5, 1, 1, true),
             new ArtEntry(nameof(BuildingType.SmallUnitSpawner), ArtKind.Building, 2, 2, 2, 1, true),
-            new ArtEntry(nameof(BuildingType.Miner), ArtKind.Building, 1, 1, 4, 1, true),
+            new ArtEntry(nameof(BuildingType.Miner), ArtKind.Building, 1, 1, 4, BuildingDirections, true),
             new ArtEntry("Bomb", ArtKind.Building, 1, 1, 2, 1, true),
 
             // Tiles: frames are variants (random for floor and gems, autotile masks for walls).

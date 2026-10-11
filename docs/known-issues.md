@@ -31,7 +31,7 @@ A location should be able to be set where units that are spawned from a specific
 Multiple spawners should be able to be selected and increased the prod queue for each of them.
 A plus 10 and plus 50 button on the spawners would be good
 sending units via the minimap onto a unknown area, if you accidentally click on a wall, has the units bug out and randomly move. **Fixed:** goals on rock or footprints snap to the nearest open floor (`OrderBook.SnapGoal`); with none within 12 tiles the order is dropped.
-Mining building didn't rotate visually. Fixed: client building GameObjects now apply the replicated rotation; the miner's auger animation is unchanged.
+Mining building didn't rotate visually. **Fixed:** the Miner is rendered in 4 facings and draws the one for its rotation, upright; other buildings can't be turned.
 No valid or invalid feedback to user placements. **Fixed:** the preview tints valid spots green and invalid spots red, follows the selected rotation, and ignores responses for a previous spot.
 
 Spectate mode for dead players

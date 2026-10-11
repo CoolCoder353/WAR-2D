@@ -100,41 +100,50 @@ namespace WAR2D.Art.Render
         }
 
         /// <summary>
-        /// The Miner (1×1): a small tracked rig whose boom reaches east to a big spiral auger at the gem face,
-        /// with ore spilling beside it and a hopper on the rig. Frames turn the auger.
+        /// The Miner (1×1): a small tracked rig whose boom reaches out to a big spiral auger at the gem face,
+        /// with ore spilling beside it and a hopper on the rig. Frames turn the auger. <paramref name="facing"/>
+        /// turns the rig's ground plan in 90° steps anticlockwise from east (the building's rotation), so the
+        /// light and the baked shadow stay the same way round in every facing.
         /// </summary>
-        public static LitCanvas Miner(int frame)
+        public static LitCanvas Miner(int frame, int facing = 0)
         {
             var c = new LitCanvas(TileSize, TileSize + Headroom / 3, TileSize / 2f);
             float o = TileSize / 2f;
+            // Canvas point → the rig's own plan (drawn facing east), and back for point features.
+            float angle = -(((facing % 4) + 4) % 4) * Mathf.PI / 2f, cos = Mathf.Cos(angle), sin = Mathf.Sin(angle);
+            Func<float, float, float> R(Func<float, float, float> f) => (x, y) =>
+                f(o + (x - o) * cos - (y - o) * sin, o + (x - o) * sin + (y - o) * cos);
+            (float x, float y) At(float lx, float ly) => (o + (lx - o) * cos + (ly - o) * sin, o - (lx - o) * sin + (ly - o) * cos);
+
             // A bolted skid with four anchor feet (the rig is stationary), then the body with a team cab and a hopper of ore.
-            c.Shape((x, y) => Box(x, y, o - 8, o, 20, 15, 2), Dark, 5, 1.2f, 1.5f);
+            c.Shape(R((x, y) => Box(x, y, o - 8, o, 20, 15, 2)), Dark, 5, 1.2f, 1.5f);
             foreach (var (fx, fy) in new[] { (-1f, -1f), (1f, -1f), (-1f, 1f), (1f, 1f) })
             {
-                c.Shape((x, y) => Box(x, y, o - 8 + fx * 20, o + fy * 15, 4, 4, 1), Plate, 6, 1, 1.5f);
-                c.Rivet(o - 8 + fx * 20, o + fy * 15, 1.4f, 1f, 0.4f);
+                c.Shape(R((x, y) => Box(x, y, o - 8 + fx * 20, o + fy * 15, 4, 4, 1)), Plate, 6, 1, 1.5f);
+                var (rx, ry) = At(o - 8 + fx * 20, o + fy * 15);
+                c.Rivet(rx, ry, 1.4f, 1f, 0.4f);
             }
-            c.Shape((x, y) => Box(x, y, o - 14, o, 10, 9, 2.5f), Hull, 12, 2, 2.5f);
-            c.Shape((x, y) => Box(x, y, o - 18, o + 4, 5, 5, 1.5f), Team, 16, 1.5f, 2);
-            c.Shape((x, y) => Box(x, y, o - 11, o - 4, 5, 4, 1), Dark, 9, 1, 1);
-            c.Shape((x, y) => Polygon(x, y, o - 12, o - 4, 2.4f, 5, 0.2f), Ore, 12, 1.2f, 1.5f);
-            c.Shape((x, y) => Polygon(x, y, o - 9, o - 3, 2f, 6, 0.9f), Ore, 11.5f, 1.2f, 1.5f);
-            // Motor housing, then a long fluted bit lying east into the rock (its tip at the tile's edge);
+            c.Shape(R((x, y) => Box(x, y, o - 14, o, 10, 9, 2.5f)), Hull, 12, 2, 2.5f);
+            c.Shape(R((x, y) => Box(x, y, o - 18, o + 4, 5, 5, 1.5f)), Team, 16, 1.5f, 2);
+            c.Shape(R((x, y) => Box(x, y, o - 11, o - 4, 5, 4, 1)), Dark, 9, 1, 1);
+            c.Shape(R((x, y) => Polygon(x, y, o - 12, o - 4, 2.4f, 5, 0.2f)), Ore, 12, 1.2f, 1.5f);
+            c.Shape(R((x, y) => Polygon(x, y, o - 9, o - 3, 2f, 6, 0.9f)), Ore, 11.5f, 1.2f, 1.5f);
+            // Motor housing, then a long fluted bit lying out into the rock (its tip at the tile's edge);
             // the flutes travel along it with the frame.
-            c.Shape((x, y) => Box(x, y, o - 1, o, 6, 7, 2), Hull, 15, 2, 2);
-            c.Shape((x, y) => Box(x, y, o + 6, o, 3, 5, 1), Steel, 14, 1, 1.5f);
+            c.Shape(R((x, y) => Box(x, y, o - 1, o, 6, 7, 2)), Hull, 15, 2, 2);
+            c.Shape(R((x, y) => Box(x, y, o + 6, o, 3, 5, 1)), Steel, 14, 1, 1.5f);
             float x0 = o + 8, x1 = o + 32;
             Func<float, float, float> bit = (x, y) =>
             {
                 float t = Mathf.Clamp01((x - x0) / (x1 - x0));
                 return Mathf.Max(Mathf.Abs(y - o) - Mathf.Lerp(6f, 0.8f, t), Mathf.Max(x0 - x, x - x1));
             };
-            c.Shape(bit, Steel, 14, 4, 7);
-            c.Groove((x, y) => bit(x, y) > 0 ? 9 : Mathf.Abs(Mod(x - x0 + (y - o) * 0.9f - frame * 2.5f, 5) - 2.5f) - 0.9f, 1.6f, 1f);
+            c.Shape(R(bit), Steel, 14, 4, 7);
+            c.Groove(R((x, y) => bit(x, y) > 0 ? 9 : Mathf.Abs(Mod(x - x0 + (y - o) * 0.9f - frame * 2.5f, 5) - 2.5f) - 0.9f), 1.6f, 1f);
             // Ore spilling beside the auger.
             foreach (var (gx, gy, r) in new[] { (o + 22f, o - 10f, 2.4f), (o + 27f, o - 13f, 1.8f), (o + 24f, o + 11f, 2.1f) })
-                c.Shape((x, y) => Polygon(x, y, gx, gy, r, 6, gx), Ore, 5, 1.2f, 1.5f);
-            c.Shape((x, y) => Circle(x, y, o - 22, o - 7, 1.4f), Lamp, 13, 0.5f, 0.3f);
+                c.Shape(R((x, y) => Polygon(x, y, gx, gy, r, 6, gx)), Ore, 5, 1.2f, 1.5f);
+            c.Shape(R((x, y) => Circle(x, y, o - 22, o - 7, 1.4f)), Lamp, 13, 0.5f, 0.3f);
             c.Grime(11, 0.2f, 0.08f, 6);
             return c;
         }
