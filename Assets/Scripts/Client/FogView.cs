@@ -4,8 +4,8 @@ using WAR2D.Net.Replication;
 
 /// <summary>
 /// Draws the local team's fog of war over the map: black where unexplored, dimmed where explored but
-/// hidden, clear where seen. One texel per fog cell, filtered for soft edges; only changed texels are
-/// rewritten.
+/// hidden, clear where seen. One texel per fog cell, filtered and then dithered on the art-pixel grid by the
+/// <c>Fog</c> shader, so its edges read as pixel art; only changed texels are rewritten.
 /// </summary>
 public class FogView : MonoBehaviour
 {
@@ -70,9 +70,14 @@ public class FogView : MonoBehaviour
         };
         if (_material == null)
         {
-            _material = new Material(Shader.Find("Sprites/Default")) { renderQueue = 3500 };
+            Shader shader = Resources.Load<Shader>("Shaders/Fog");
+            if (shader == null) Debug.LogError("Resources/Shaders/Fog.shader is missing");
+            _material = new Material(shader) { renderQueue = 3500 };
+            _material.SetFloat("_PixelsPerUnit", WAR2D.Art.ArtStyle.PixelsPerUnit);
+            _material.SetFloat("_Explored", Palette[1].a / 255f);
         }
         _material.mainTexture = _texture;
+        _material.SetVector("_WorldSize", new Vector4(fog.Width * fog.CellSize, fog.Height * fog.CellSize, 0, 0));
 
         if (_mesh != null) Destroy(_mesh);
         _mesh = new Mesh { name = "FogView" };
@@ -86,7 +91,7 @@ public class FogView : MonoBehaviour
         if (!TryGetComponent(out MeshRenderer meshRenderer)) meshRenderer = gameObject.AddComponent<MeshRenderer>();
         filter.sharedMesh = _mesh;
         meshRenderer.sharedMaterial = _material;
-        meshRenderer.sortingOrder = 1000;
+        meshRenderer.sortingOrder = WAR2D.Client.Render.SortingOrders.Fog;
         transform.position = new Vector3(0, 0, -1);
     }
 

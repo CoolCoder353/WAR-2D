@@ -42,18 +42,18 @@ Unused today: `Spawner.asset`, `Test.asset` and the `Pallets` tile palette (remo
 
 | Id | Size | Frames | Source today |
 |---|---|---|---|
-| `Explosion` | 2×2 | 6 | `Effects.Explosion`: an orange `ProceduralSprites.Circle` scaled and faded with DOTween |
-| `BombBlast` | 3×3 | 8 | none (v0.7) |
-| `MuzzleFlash` | 1×1 | 2 | none |
-| `Tracer` | 1×1 | 1 | `Effects.Tracer`: a yellow `ProceduralSprites.Pixel` |
-| `DigDebris` | 1×1 | 4 | none (v0.7) |
-| `RepairSparks` | 1×1 | 4 | none (v0.7) |
-| `ConstructionOverlay` | 1×1 (tiled over the footprint) | 4 | none (v0.7: blueprint and under-construction) |
-| `SelectionRingSmall` / `SelectionRingLarge` | 1×1 / 2×2 | 1 | selection is a highlight colour in `InstancedUnit.shader` |
-| `WaypointFlag` | 1×1 | 2 | none (queued waypoints aren't drawn yet) |
-| `RallyFlag` | 1×1 | 2 (team mask) | none |
-| `FogEdge` | 1×1 | 16 dither masks | `FogView`: a flat fog texture, bilinear edges |
-| `HealthBar` | 1×1 | 2 (back, fill) | units: `InstancedUnitRenderer.BuildBarAtlas`; buildings: uGUI `Resources/Ui/HealthBarUI` (goes with instanced buildings in v0.7) |
+| `Explosion` | 2×2 | 6 | `Effects` atlas (`EffectGen.Blast`), pooled in `Effects` (128) |
+| `BombBlast` | 3×3 | 8 | `Effects` atlas (`EffectGen.Blast`); unused until v0.7 |
+| `MuzzleFlash` | 1×1 | 2 | `Effects` atlas, pooled (128), at the shooter's barrel with each tracer |
+| `Tracer` | 1×1 | 1 | `Effects` atlas, pooled (256), turned to its heading |
+| `DigDebris` | 1×1 | 4 | `Effects` atlas; unused until v0.7 |
+| `RepairSparks` | 1×1 | 4 | `Effects` atlas; unused until v0.7 |
+| `ConstructionOverlay` | 1×1 (tiled over the footprint) | 4 | `Effects` atlas; unused until v0.7 |
+| `SelectionRingSmall` / `SelectionRingLarge` | 1×1 / 2×2 | 1 | `Effects` atlas: the small ring is drawn under selected units (instanced, `InstancedUnitRenderer.DrawRings`); the large one is corner brackets, 9-sliced over a selected building's footprint (`BuildingSelectionMarker`) |
+| `WaypointFlag` | 1×1 | 2 | `Effects` atlas; queued waypoints aren't drawn yet |
+| `RallyFlag` | 1×1 | 2 (team mask) | `Effects` atlas; no rally points yet |
+| (fog edge) | — | — | dithered in the `Fog` shader (4×4 ordered dither on 2-art-pixel blocks), so no sprite |
+| `HealthBar` | 1×1 | 2 (back, fill) | `Effects` atlas (reference); units draw `InstancedUnitRenderer.BuildBarAtlas` (48×4, palette outline); buildings: uGUI `Resources/Ui/HealthBarUI` (goes with instanced buildings in v0.7) |
 
 ## Icons and cursors
 

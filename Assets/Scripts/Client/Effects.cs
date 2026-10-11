@@ -1,37 +1,190 @@
-using DG.Tweening;
+using System.Collections.Generic;
 using UnityEngine;
+using WAR2D.Art;
 
-/// <summary>Client-only placeholder visual effects built from procedural sprites.</summary>
+/// <summary>
+/// Client-only effects from the <c>Effects</c> atlas: explosions, muzzle flashes and tracers. Each kind has a
+/// fixed pool of sprites made once (no allocation per effect after warm-up); when a pool is full the oldest
+/// effect is recycled. A runner object advances the frames at <see cref="ArtStyle.FramesPerSecond"/>.
+/// </summary>
 public static class Effects
 {
-    private const int SortingOrder = 100;
+    /// <summary>Pool sizes: the most of each kind on screen at once.</summary>
+    public const int ExplosionPool = 128, FlashPool = 128, TracerPool = 256;
 
-    public static void Explosion(Vector2 position)
+    /// <summary>Seconds a tracer takes to reach its target.</summary>
+    public const float TracerSeconds = 0.2f;
+
+
+    /// <summary>One pooled sprite and what it is playing.</summary>
+    private sealed class Slot
     {
-        var go = new GameObject("Explosion");
-        go.transform.position = new Vector3(position.x, position.y, 0f);
-        go.transform.localScale = Vector3.one * 0.2f;
-        var sr = go.AddComponent<SpriteRenderer>();
-        sr.sprite = ProceduralSprites.Circle;
-        sr.color = new Color(1f, 0.6f, 0.1f, 1f);
-        sr.sortingOrder = SortingOrder;
-
-        DOTween.Sequence()
-            .Join(go.transform.DOScale(1.6f, 0.35f).SetEase(Ease.OutQuad))
-            .Join(DOTween.To(() => sr.color.a, a => sr.color = new Color(sr.color.r, sr.color.g, sr.color.b, a), 0f, 0.35f))
-            .OnComplete(() => Object.Destroy(go));
+        public GameObject Go;
+        public SpriteRenderer Sprite;
+        public float Start;
+        public Vector3 From, To;
+        public bool Active;
     }
 
+    private sealed class Pool
+    {
+        public readonly string Id;
+        public readonly int Size;
+        public readonly List<Slot> Slots = new List<Slot>();
+        public int Next; // ring index: the next slot to use (the oldest when full)
+
+        public Pool(string id, int size) { Id = id; Size = size; }
+    }
+
+    private static readonly Pool Explosions = new Pool("Explosion", ExplosionPool);
+    private static readonly Pool Flashes = new Pool("MuzzleFlash", FlashPool);
+    private static readonly Pool Tracers = new Pool("Tracer", TracerPool);
+    private static Runner runner;
+    private static ArtAtlas atlas;
+
+    /// <summary>Sprite objects created so far (tests: stays at most the pool sizes).</summary>
+    public static int Created { get; private set; }
+
+    /// <summary>Explosions playing now.</summary>
+    public static int ActiveExplosions => Count(Explosions);
+
+    /// <summary>An explosion centred on <paramref name="position"/>.</summary>
+    public static void Explosion(Vector2 position)
+    {
+        Slot s = Take(Explosions);
+        if (s == null) return;
+        s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
+    }
+
+    /// <summary>A muzzle flash at <paramref name="position"/>.</summary>
+    public static void MuzzleFlash(Vector3 position)
+    {
+        Slot s = Take(Flashes);
+        if (s == null) return;
+        s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
+    }
+
+    /// <summary>How far from a shooter's centre its barrel ends, in tiles (the muzzle flash goes there).</summary>
+    public const float BarrelReach = 0.45f;
+
+    /// <summary>A tracer from the shooter to the target (with a muzzle flash at the shooter's barrel).</summary>
     public static void Tracer(Vector3 from, Vector3 to)
     {
-        var go = new GameObject("Tracer");
-        var sr = go.AddComponent<SpriteRenderer>();
-        sr.sprite = ProceduralSprites.Pixel;
-        sr.color = Color.yellow;
-        sr.sortingOrder = SortingOrder;
-        go.transform.position = from;
-        go.transform.right = (to - from).normalized;
-        go.transform.localScale = new Vector3(0.5f, 0.1f, 1f);
-        go.transform.DOMove(to, 0.2f).SetEase(Ease.Linear).OnComplete(() => Object.Destroy(go));
+        Vector3 heading = to - from;
+        heading.z = 0f;
+        MuzzleFlash(from + (heading.sqrMagnitude > 1e-6f ? heading.normalized * BarrelReach : Vector3.zero));
+        Slot s = Take(Tracers);
+        if (s == null) return;
+        s.From = new Vector3(from.x, from.y, 0f);
+        s.To = new Vector3(to.x, to.y, 0f);
+        Vector3 d = s.To - s.From;
+        s.Go.transform.SetPositionAndRotation(s.From, Quaternion.Euler(0f, 0f, Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg));
+    }
+
+    /// <summary>Destroys every pooled sprite (tests, and nothing else needs it: pools follow their runner).</summary>
+    public static void Clear()
+    {
+        if (runner != null)
+        {
+            if (Application.isPlaying) Object.Destroy(runner.gameObject);
+            else Object.DestroyImmediate(runner.gameObject);
+        }
+        Reset();
+    }
+
+    private static void Reset()
+    {
+        runner = null;
+        Created = 0;
+        foreach (Pool p in new[] { Explosions, Flashes, Tracers })
+        {
+            p.Slots.Clear();
+            p.Next = 0;
+        }
+    }
+
+    private static int Count(Pool p)
+    {
+        int n = 0;
+        foreach (Slot s in p.Slots) if (s.Active) n++;
+        return n;
+    }
+
+    /// <summary>The next slot of a pool: a new one until it is full, then the oldest (restarted).</summary>
+    private static Slot Take(Pool pool)
+    {
+        if (runner == null)
+        {
+            Reset();
+            var go = new GameObject("Effects");
+            runner = go.AddComponent<Runner>();
+        }
+        if (atlas == null || atlas.Texture == null) atlas = ArtAtlas.Load(ArtAtlas.Effects);
+        if (atlas == null) return null;
+
+        Slot s;
+        if (pool.Slots.Count < pool.Size)
+        {
+            var go = new GameObject(pool.Id);
+            go.transform.SetParent(runner.transform, false);
+            s = new Slot { Go = go, Sprite = go.AddComponent<SpriteRenderer>() };
+            s.Sprite.sortingOrder = WAR2D.Client.Render.SortingOrders.Effects;
+            pool.Slots.Add(s);
+            Created++;
+        }
+        else
+        {
+            s = pool.Slots[pool.Next];
+            pool.Next = (pool.Next + 1) % pool.Size;
+        }
+        s.Active = true;
+        s.Start = Time.time;
+        s.Sprite.sprite = atlas.Sprite(pool.Id, 0);
+        s.Go.SetActive(true);
+        return s;
+    }
+
+    /// <summary>Advances every playing effect; hides the finished ones.</summary>
+    private sealed class Runner : MonoBehaviour
+    {
+        private void Update()
+        {
+            if (atlas == null) return;
+            float now = Time.time;
+            Animate(Explosions, now, false);
+            Animate(Flashes, now, false);
+            Animate(Tracers, now, true);
+        }
+
+        private static void Animate(Pool pool, float now, bool tracer)
+        {
+            int frames = atlas.FrameCount(pool.Id);
+            foreach (Slot s in pool.Slots)
+            {
+                if (!s.Active) continue;
+                float age = now - s.Start;
+                if (tracer)
+                {
+                    float t = age / TracerSeconds;
+                    if (t >= 1f) { Stop(s); continue; }
+                    s.Go.transform.position = Vector3.Lerp(s.From, s.To, t);
+                    continue;
+                }
+                int frame = (int)(age * ArtStyle.FramesPerSecond);
+                if (frame >= frames) { Stop(s); continue; }
+                s.Sprite.sprite = atlas.Sprite(pool.Id, frame);
+            }
+        }
+
+        private static void Stop(Slot s)
+        {
+            s.Active = false;
+            s.Go.SetActive(false);
+        }
+
+        private void OnDestroy()
+        {
+            if (runner == this) Reset();
+        }
     }
 }

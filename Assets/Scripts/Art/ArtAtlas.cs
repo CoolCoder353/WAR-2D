@@ -40,7 +40,7 @@ namespace WAR2D.Art
     public sealed class ArtAtlas
     {
         /// <summary>The atlases <c>WAR-2D/Art/Build all</c> writes.</summary>
-        public const string Units = "Units", Buildings = "Buildings", Tiles = "Tiles";
+        public const string Units = "Units", Buildings = "Buildings", Tiles = "Tiles", Effects = "Effects";
 
         /// <summary>The <c>Resources</c> folder the atlases live in.</summary>
         public const string Folder = "Art";

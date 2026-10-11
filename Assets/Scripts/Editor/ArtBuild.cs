@@ -10,11 +10,12 @@ using WAR2D.Art.Style;
 namespace WAR2D.EditorTools
 {
     /// <summary>
-    /// Builds the art (plan v0.8 Task 6): renders every unit, building and tile in <see cref="ArtManifest"/>
+    /// Builds the art (plan v0.8 Tasks 6 and 11): renders every unit, building and tile in <see cref="ArtManifest"/>
     /// with <see cref="RenderGen"/>, finishes it as pixel art (<see cref="PixelFinish.FinishTeam"/>), splits the
     /// team key into the mask and packs the frames into <c>Assets/Resources/Art/{Units,Buildings,Tiles}</c>
-    /// (<c>.png</c>, <c>_mask.png</c>, <c>.json</c>). Ids with no generator yet (the v0.7 kit) get
-    /// <see cref="RenderGen.Placeholder"/>. Effects, icons and UI atlases come with plan Tasks 11 and 12.
+    /// (<c>.png</c>, <c>_mask.png</c>, <c>.json</c>); effects come from <see cref="EffectGen"/> into
+    /// <c>Effects</c>. Units, buildings and tiles with no generator yet (the v0.7 kit) get
+    /// <see cref="RenderGen.Placeholder"/>. Icon and UI atlases come with plan Task 12.
     /// Deterministic: the same code writes the same bytes.
     /// </summary>
     public static class ArtBuild
@@ -35,6 +36,7 @@ namespace WAR2D.EditorTools
         public static readonly (string atlas, ArtKind kind)[] Atlases =
         {
             (ArtAtlas.Units, ArtKind.Unit), (ArtAtlas.Buildings, ArtKind.Building), (ArtAtlas.Tiles, ArtKind.Tile),
+            (ArtAtlas.Effects, ArtKind.Effect),
         };
 
         [MenuItem("WAR-2D/Art/Build all")]
@@ -76,6 +78,13 @@ namespace WAR2D.EditorTools
                 data.sprites.Add(new AtlasSprite { id = e.Id, first = frames.Count, frames = e.Frames, directions = e.Directions });
                 for (int i = 0; i < cells; i++)
                 {
+                    if (kind == ArtKind.Effect)
+                    {
+                        Frame fx = Effect(e, i);
+                        frames.Add(fx);
+                        rects.Add((e.Id, i, fx.W, fx.H));
+                        continue;
+                    }
                     var (key, make, lift) = Generator(e, i);
                     if (!cache.TryGetValue(key, out Frame f)) cache[key] = f = Finish(make(), lift, kind != ArtKind.Tile);
                     frames.Add(f);
@@ -105,7 +114,7 @@ namespace WAR2D.EditorTools
             File.WriteAllBytes(path + ".png", Png.Encode(pack.Width, pack.Height, colour));
             File.WriteAllBytes(path + "_mask.png", Png.Encode(pack.Width, pack.Height, mask));
             File.WriteAllText(path + ".json", JsonUtility.ToJson(data, true) + "\n");
-            Debug.Log($"[Art] {name}: {frames.Count} frames ({cache.Count} unique) in {pack.Width}×{pack.Height}");
+            Debug.Log($"[Art] {name}: {frames.Count} frames in {pack.Width}×{pack.Height}");
         }
 
         /// <summary>The generator for cell <paramref name="cell"/> of <paramref name="e"/>: a cache key, the canvas and its 3/4 lift.</summary>
@@ -134,6 +143,16 @@ namespace WAR2D.EditorTools
                 default:
                     return ($"Placeholder {Math.Max(e.WidthTiles, e.HeightTiles)}", () => RenderGen.Placeholder(Math.Max(e.WidthTiles, e.HeightTiles)), 0f);
             }
+        }
+
+        /// <summary>An effect frame from <see cref="EffectGen"/> (already palette pixel art), split into colour and mask.</summary>
+        private static Frame Effect(ArtEntry e, int cell)
+        {
+            EffectFrame? made = EffectGen.For(e.Id, cell, e.Frames);
+            if (made == null) throw new InvalidOperationException($"{e.Id} has no effect generator (EffectGen.For)");
+            EffectFrame f = made.Value;
+            Color32[] colour = ArtStyle.SplitTeamKey(f.Pixels, out Color32[] mask);
+            return new Frame { Colour = colour, Mask = mask, W = f.Width, H = f.Height, PivotY = f.Height / 2f };
         }
 
         /// <summary>Renders <paramref name="c"/>, finds its team pixels and finishes it; sprites get the outline and shadow.</summary>

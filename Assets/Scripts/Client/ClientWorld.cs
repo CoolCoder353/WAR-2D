@@ -47,8 +47,8 @@ namespace WAR2D.Client
         private NativeArray<uint> color;
         private NativeArray<float> health01;
         private NativeArray<byte> selected;
-        private NativeList<UnitInstance> instances, bars;
-        private NativeArray<int> barCount;
+        private NativeList<UnitInstance> instances, bars, rings;
+        private NativeArray<int> barCount, ringCount;
         private InstancedUnitRenderer unitRenderer;
         private readonly List<(int attacker, int target)> attacks = new List<(int, int)>();
         private readonly List<int> selectedIndices = new List<int>();
@@ -103,6 +103,8 @@ namespace WAR2D.Client
             instances = new NativeList<UnitInstance>(4096, Allocator.Persistent);
             bars = new NativeList<UnitInstance>(1024, Allocator.Persistent);
             barCount = new NativeArray<int>(1, Allocator.Persistent);
+            rings = new NativeList<UnitInstance>(1024, Allocator.Persistent);
+            ringCount = new NativeArray<int>(1, Allocator.Persistent);
             ReplicationClient.Received += OnBatch;
             Palettes.Changed += colorOfOwner.Clear;
             FogView.Ensure();
@@ -120,7 +122,7 @@ namespace WAR2D.Client
             if (lastPosition.IsCreated)
             {
                 lastPosition.Dispose(); rotation.Dispose(); frame.Dispose(); lastAction.Dispose(); color.Dispose(); health01.Dispose(); selected.Dispose();
-                instances.Dispose(); bars.Dispose(); barCount.Dispose();
+                instances.Dispose(); bars.Dispose(); barCount.Dispose(); rings.Dispose(); ringCount.Dispose();
             }
         }
 
@@ -272,6 +274,7 @@ namespace WAR2D.Client
 
             instances.ResizeUninitialized(count);
             bars.ResizeUninitialized(count);
+            rings.ResizeUninitialized(count);
             new PackUnitsJob
             {
                 Known = known,
@@ -282,10 +285,14 @@ namespace WAR2D.Client
                 Health01 = health01,
                 Selected = selected,
                 UnitHalfSize = 0.4f,
+                RingFrame = unitRenderer.RingFrame,
                 Instances = instances.AsArray(),
                 Bars = bars.AsArray(),
                 BarCount = barCount,
+                Rings = rings.AsArray(),
+                RingCount = ringCount,
             }.Run();
+            unitRenderer.DrawRings(rings.AsArray(), ringCount[0]);
             unitRenderer.Draw(instances.AsArray(), count);
             unitRenderer.DrawHealthBars(bars.AsArray(), barCount[0]);
         }

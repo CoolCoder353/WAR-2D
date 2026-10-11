@@ -43,7 +43,7 @@ A 64 px tile is drawn 1:1 at an orthographic size of `screenHeight / 128`: **8.4
 - **Recommendation:** zooming in snaps to whole-number scales (1:1, 2:1, …) with the Pixel Perfect Camera on. The default zoom becomes 1:1 (size 8.4 at 1080p, which shows about 15 % less of the map than today). Zooming out past 1:1 turns Pixel Perfect off and moves in smooth steps up to size 30. Smooth steps need **mipmaps with trilinear filtering on the unit, building and terrain atlases** (an exception to the import rule above), because point-sampled pixel art shimmers when it is shrunk. At the farthest zoom, terrain falls back to flat colour as planned.
 - Alternative: keep the default at size 10 and accept slightly downscaled art at the normal view, with Pixel Perfect only when zoomed in.
 
-**5. Effects.**
+**5. Effects.** *(Done in Task 11: `ArtStyle.FireRamp` is `#FFF6D8 #FFE89A #FFB347 #FF8A1E #E8501A #A8281A #6B1C10`; the pure yellows and a deeper orange were dropped by the ΔE rule. Effects use ordered dithering for fades, not alpha.)*
 Same pipeline and finish as the sprites. Explosions and muzzle flashes need a fire ramp (orange), which the palette lacks, and orange sits next to standard player 6 (`#F07F2E`). **Recommendation:** add a fire ramp in Task 11, kept clear of the player colours by the same ΔE rule (pushed toward yellow-white cores and dark-red smoke), and allow additive blending for the flash cores only.
 
 **6. Icons and cursors.**

@@ -142,6 +142,7 @@ public class UnitCommander : NetworkBehaviour
     [ClientCallback]
     public void Update()
     {
+        ShowBuildingSelection();
 
         //This stops the client from disconnecting if the worldstatemanager has not loaded yet or the client is not connected, i.e the client is loading in or out
         if (!NetworkClient.isConnected || WorldStateManager.Instance == null)
@@ -337,6 +338,18 @@ public class UnitCommander : NetworkBehaviour
         if (go.TryGetComponent(out SpriteFrameAnimator animator)) animator.enabled = false;
     }
 
+    private BuildingSelectionMarker buildingMarker;
+
+    /// <summary>Keeps the corner brackets on the selected building (hidden when none is selected).</summary>
+    private void ShowBuildingSelection()
+    {
+        if (buildingMarker == null) buildingMarker = new GameObject("BuildingSelection").AddComponent<BuildingSelectionMarker>();
+        int id = Selection.SelectedBuilding;
+        if (id != 0 && buildingGameObjects.TryGetValue(id, out GameObject go) && go != null && go.TryGetComponent(out BuildingDataClient data))
+            buildingMarker.Show(id, go, WorldStateManager.GetBuildingSize(data.buildingData.buildingType));
+        else buildingMarker.Show(0, null, default);
+    }
+
     /// <summary>Shows a building type's atlas sprite on <paramref name="go"/>, animating its idle frames.</summary>
     private static void ShowBuildingSprite(GameObject go, SpriteRenderer sprite, BuildingType type)
     {
@@ -346,7 +359,7 @@ public class UnitCommander : NetworkBehaviour
         // The spawner's lamp blinks once a second; the drill turns every tick.
         animator.Play(atlas, type.ToString(), type == BuildingType.SmallUnitSpawner ? ArtStyle.FramesPerSecond / 2 : 1);
         // Taller buildings stand in front of the ones behind them (the 3/4 view).
-        sprite.sortingOrder = -(int)math.round(go.transform.position.y * 4f);
+        sprite.sortingOrder = SortingOrders.Building(go.transform.position.y);
     }
 
     /// <summary>Re-tints every building for a new palette.</summary>

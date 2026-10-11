@@ -85,7 +85,6 @@ namespace WAR2D.Art
             new ArtEntry("SelectionRingLarge", ArtKind.Effect, 2, 2, 1, 1, false),
             new ArtEntry("WaypointFlag", ArtKind.Effect, 1, 1, 2, 1, false),
             new ArtEntry("RallyFlag", ArtKind.Effect, 1, 1, 2, 1, true),
-            new ArtEntry("FogEdge", ArtKind.Effect, 1, 1, AutotileVariants, 1, false),
             new ArtEntry("HealthBar", ArtKind.Effect, 1, 1, 2, 1, false),
 
             // Icons: command card (16×16) and cursors.

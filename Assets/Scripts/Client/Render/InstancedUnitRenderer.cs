@@ -55,11 +55,14 @@ namespace WAR2D.Client.Render
             return (uint)(255f * (1f - h)) | ((uint)(255f * h) << 8) | (40u << 16) | (255u << 24);
         }
 
-        private readonly Material unitMaterial, barMaterial;
+        private readonly Material unitMaterial, barMaterial, ringMaterial;
         private readonly Texture2D barAtlas;
-        private GraphicsBuffer instances, barInstances;
-        private readonly GraphicsBuffer unitFrameRects, barFrameRects;
-        private int capacity, barCapacity;
+        private GraphicsBuffer instances, barInstances, ringInstances;
+        private readonly GraphicsBuffer unitFrameRects, barFrameRects, ringFrameRects;
+        private int capacity, barCapacity, ringCapacity;
+
+        /// <summary>The selection ring's cell in the <c>Effects</c> atlas (0 without one).</summary>
+        public uint RingFrame { get; }
 
         /// <param name="atlas">The <c>Units</c> atlas; without one, every unit draws as a white square.</param>
         public InstancedUnitRenderer(ArtAtlas atlas, int initialCapacity = 4096)
@@ -90,8 +93,24 @@ namespace WAR2D.Client.Render
             barFrameRects.SetData(rects);
             unitMaterial.SetBuffer("_FrameRects", unitFrameRects);
             barMaterial.SetBuffer("_FrameRects", barFrameRects);
+
+            // Selection rings: the Effects atlas, drawn just under the units.
+            ArtAtlas effects = ArtAtlas.Load(ArtAtlas.Effects);
+            ringMaterial = new Material(shader) { name = "Selection rings", renderQueue = 2999 };
+            ringMaterial.SetFloat("_UnitSize", (float)ArtStyle.TileSize / ArtStyle.PixelsPerUnit);
+            ringMaterial.SetFloat("_PixelsPerUnit", ArtStyle.PixelsPerUnit);
+            ringMaterial.SetFloat("_TeamGain", 1f);
+            ringMaterial.SetTexture("_MainTex", effects != null ? effects.Texture : Texture2D.whiteTexture);
+            ringMaterial.SetTexture("_MaskTex", Texture2D.blackTexture);
+            Vector4[] ringCells = UvRects(effects);
+            ringFrameRects = new GraphicsBuffer(GraphicsBuffer.Target.Structured, ringCells.Length, 16);
+            ringFrameRects.SetData(ringCells);
+            ringMaterial.SetBuffer("_FrameRects", ringFrameRects);
+            RingFrame = (uint)Mathf.Max(0, effects != null ? effects.FirstFrame("SelectionRingSmall") : 0);
+
             EnsureCapacity(ref instances, ref capacity, initialCapacity, unitMaterial);
             EnsureCapacity(ref barInstances, ref barCapacity, initialCapacity / 4, barMaterial);
+            EnsureCapacity(ref ringInstances, ref ringCapacity, 1024, ringMaterial);
         }
 
         /// <summary>
@@ -164,6 +183,15 @@ namespace WAR2D.Client.Render
             Graphics.RenderPrimitives(new RenderParams(unitMaterial) { worldBounds = WorldBounds }, MeshTopology.Triangles, QuadVertices, count);
         }
 
+        /// <summary>Uploads and draws the selected units' rings (before the units, which draw over them).</summary>
+        public void DrawRings(NativeArray<UnitInstance> rings, int count)
+        {
+            if (count <= 0) return;
+            EnsureCapacity(ref ringInstances, ref ringCapacity, count, ringMaterial);
+            ringInstances.SetData(rings, 0, 0, count);
+            Graphics.RenderPrimitives(new RenderParams(ringMaterial) { worldBounds = WorldBounds }, MeshTopology.Triangles, QuadVertices, count);
+        }
+
         /// <summary>Uploads and draws the damaged units' health bars.</summary>
         public void DrawHealthBars(NativeArray<UnitInstance> bars, int count)
         {
@@ -179,15 +207,18 @@ namespace WAR2D.Client.Render
         {
             instances?.Dispose();
             barInstances?.Dispose();
+            ringInstances?.Dispose();
             unitFrameRects.Dispose();
             barFrameRects.Dispose();
+            ringFrameRects.Dispose();
             UnityEngine.Object.Destroy(unitMaterial);
             UnityEngine.Object.Destroy(barMaterial);
+            UnityEngine.Object.Destroy(ringMaterial);
             UnityEngine.Object.Destroy(barAtlas);
         }
     }
 
-    /// <summary>Packs predicted units into instances, and the damaged ones' health bars into a second list.</summary>
+    /// <summary>Packs predicted units into instances, the damaged ones' health bars and the selected ones' rings into two more lists.</summary>
     [BurstCompile]
     public struct PackUnitsJob : IJob
     {
@@ -199,17 +230,22 @@ namespace WAR2D.Client.Render
         [ReadOnly] public NativeArray<float> Health01;   // by index
         [ReadOnly] public NativeArray<byte> Selected;    // by index
         public float UnitHalfSize;
+        public uint RingFrame;
         public NativeArray<UnitInstance> Instances;
         public NativeArray<UnitInstance> Bars;
         public NativeArray<int> BarCount;
+        public NativeArray<UnitInstance> Rings;
+        public NativeArray<int> RingCount;
 
         public void Execute()
         {
-            int bars = 0;
+            int bars = 0, rings = 0;
             for (int i = 0; i < Known.Length; i++)
             {
                 int index = Known[i];
                 float health = Health01[index];
+                if (Selected[index] != 0)
+                    Rings[rings++] = new UnitInstance { position = Positions[i], frame = RingFrame, color = 0xFFFFFFFFu, scale = 1f };
                 Instances[i] = new UnitInstance
                 {
                     position = Positions[i],
@@ -232,6 +268,7 @@ namespace WAR2D.Client.Render
                 };
             }
             BarCount[0] = bars;
+            RingCount[0] = rings;
         }
     }
 }

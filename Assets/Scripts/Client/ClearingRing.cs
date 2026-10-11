@@ -28,7 +28,7 @@ namespace WAR2D.Client
                 instance.filter = go.AddComponent<MeshFilter>();
                 var renderer = go.AddComponent<MeshRenderer>();
                 renderer.sharedMaterial = new Material(Shader.Find("Sprites/Default"));
-                renderer.sortingOrder = -500; // above the map, below units, buildings and fog
+                renderer.sortingOrder = WAR2D.Client.Render.SortingOrders.ClearingRing; // above the map, below units, buildings and fog
             }
             if (instance.mesh != null && instance.shown.Equals((centre, radius, colour))) return;
             instance.shown = (centre, radius, colour);

@@ -110,6 +110,28 @@ namespace WAR2D.Art
             return colours.ToArray();
         }
 
+        /// <summary>
+        /// The fire ramp for effects (style guide item 5), hottest first: pale core, yellow, amber, orange,
+        /// red-orange, red, dark red. Each is at least <see cref="PlayerClearance"/> from every player colour
+        /// (the pure yellows and a deeper orange were too close to players 4 and 6).
+        /// </summary>
+        public static readonly Color32[] FireRamp =
+        {
+            StylePalette.Hex(0xFFF6D8), StylePalette.Hex(0xFFE89A), StylePalette.Hex(0xFFB347), StylePalette.Hex(0xFF8A1E),
+            StylePalette.Hex(0xE8501A), StylePalette.Hex(0xA8281A), StylePalette.Hex(0x6B1C10),
+        };
+
+        /// <summary>The effects' palette: <see cref="Palette"/> plus <see cref="FireRamp"/>.</summary>
+        public static readonly Color32[] EffectPalette = BuildEffects();
+
+        private static Color32[] BuildEffects()
+        {
+            var colours = new List<Color32>(Palette);
+            foreach (Color32 c in FireRamp)
+                if (!colours.Contains(c)) colours.Add(c);
+            return colours.ToArray();
+        }
+
         /// <summary>Every player colour in every palette mode.</summary>
         public static List<Color32> PlayerColours()
         {

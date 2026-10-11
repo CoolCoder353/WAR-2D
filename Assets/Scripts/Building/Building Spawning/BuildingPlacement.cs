@@ -58,7 +58,7 @@ public class BuildingPlacement : MonoBehaviour
         SpriteRenderer sprite = previewBuilding.GetComponent<SpriteRenderer>();
         sprite.sprite = WAR2D.Client.Render.TeamSpriteMaterial.Sprite(type);
         sprite.sharedMaterial = WAR2D.Client.Render.TeamSpriteMaterial.ForColour(PlayerPalette.Of(localPlayer != null ? localPlayer.colourIndex : -1), false);
-        sprite.sortingOrder = short.MaxValue; // over every building
+        sprite.sortingOrder = WAR2D.Client.Render.SortingOrders.PlacementPreview;
         previewBuilding.SetActive(true);
         currentRotation = 0f;
         lastQueriedAnchor = new int2(int.MinValue, int.MinValue);
@@ -149,6 +149,8 @@ public class BuildingPlacement : MonoBehaviour
     [Client]
     public void ResultFromCommand(bool result)
     {
-        previewBuilding.GetComponent<SpriteRenderer>().color = result ? new Color(0.8f, 0.8f, 0.8f, 0.75f) : new Color(1, 0, 0, 0.75f);
+        // Valid: the building as it will look, see-through; invalid: washed in the palette's gem red.
+        Color invalid = Color.Lerp(Color.white, WAR2D.Art.Style.StylePalettes.Charcoal.Colours[WAR2D.Art.Style.StylePalette.Gem1], 0.75f);
+        previewBuilding.GetComponent<SpriteRenderer>().color = result ? new Color(1f, 1f, 1f, 0.75f) : new Color(invalid.r, invalid.g, invalid.b, 0.75f);
     }
 }

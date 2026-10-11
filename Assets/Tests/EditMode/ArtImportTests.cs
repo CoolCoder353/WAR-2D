@@ -72,9 +72,10 @@ public class ArtImportTests
     [Test]
     public void AtlasPixelsArePaletteTeamGreyOrShadow()
     {
-        var allowed = new HashSet<Color32>(ArtStyle.Palette.Concat(ArtStyle.TeamGrey)) { new Color32(0, 0, 0, ArtStyle.ShadowAlpha) };
         foreach (var (name, _) in ArtBuild.Atlases)
         {
+            Color32[] palette = name == ArtAtlas.Effects ? ArtStyle.EffectPalette : ArtStyle.Palette;
+            var allowed = new HashSet<Color32>(palette.Concat(ArtStyle.TeamGrey)) { new Color32(0, 0, 0, ArtStyle.ShadowAlpha) };
             Color32[] colour = ReadPng($"{ArtImporter.AtlasFolder}{name}.png", out _, out _);
             Color32[] mask = ReadPng($"{ArtImporter.AtlasFolder}{name}_mask.png", out _, out _);
             int team = 0;

@@ -111,7 +111,7 @@ public class MapView : MonoBehaviour
         if (!TryGetComponent(out MeshRenderer meshRenderer)) meshRenderer = gameObject.AddComponent<MeshRenderer>();
         filter.sharedMesh = _mesh;
         meshRenderer.sharedMaterial = _material;
-        meshRenderer.sortingOrder = -1000;
+        meshRenderer.sortingOrder = SortingOrders.Terrain;
         transform.position = new Vector3(0, 0, 1);
     }
 
