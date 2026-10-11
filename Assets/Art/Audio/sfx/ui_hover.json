@@ -1,0 +1,8 @@
+{
+  "wave": "Sine",
+  "sustain": 0.005,
+  "decay": 0.03,
+  "frequency": 1600,
+  "volume": 0.2,
+  "seed": 14
+}

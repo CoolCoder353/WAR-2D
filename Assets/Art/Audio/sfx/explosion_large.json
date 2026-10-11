@@ -1,0 +1,14 @@
+{
+  "wave": "Noise",
+  "sustain": 0.15,
+  "punch": 0.8,
+  "decay": 0.9,
+  "frequency": 110,
+  "slide": -0.8,
+  "lowPass": 0.6,
+  "lowPassSweep": -0.4,
+  "phaserOffset": 0.003,
+  "phaserSweep": 0.004,
+  "volume": 0.85,
+  "seed": 5
+}

@@ -1,0 +1,14 @@
+{
+  "wave": "Square",
+  "sustain": 0.5,
+  "punch": 0.3,
+  "decay": 0.6,
+  "frequency": 523.25,
+  "changeAmount": 1.5,
+  "changeTime": 0.25,
+  "vibratoDepth": 0.01,
+  "vibratoSpeed": 6,
+  "duty": 0.5,
+  "volume": 0.6,
+  "seed": 11
+}
