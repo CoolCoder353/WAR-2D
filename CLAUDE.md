@@ -9,6 +9,7 @@ WAR-2D is a Unity `6000.4.1f1` multiplayer 2D RTS (free-for-all or teams, 2 to 8
 - [docs/architecture.md](docs/architecture.md): how the systems connect, the networking reference, the ECS data model
 - [docs/gameplay.md](docs/gameplay.md): intended rules and numbers
 - [docs/known-issues.md](docs/known-issues.md): known bugs and mismatches. **Check here before "fixing" odd behaviour.** It may already be listed, or be load-bearing.
+- [docs/bug-review.md](docs/bug-review.md): open code-review findings (2026-10-14 general scan plus unit-system re-scan). Check here for unfixed bugs before changing Sim, Net, replication, or unit code.
 
 ## Git commits
 
