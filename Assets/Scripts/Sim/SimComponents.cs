@@ -58,6 +58,12 @@ namespace WAR2D.Sim
         /// <summary>One of <see cref="Stances"/>.</summary>
         public byte Stance;
 
+        /// <summary>Tile index of the work target, valid while <see cref="WorkKind"/> is not None.</summary>
+        public int WorkTile;
+
+        /// <summary>One of <see cref="WorkKinds"/>.</summary>
+        public byte WorkKind;
+
         /// <summary>Owner id of the last unit that hit this one (0 when never hit): who gets the kill.</summary>
         public int LastHitBy;
     }

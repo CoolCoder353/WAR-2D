@@ -21,6 +21,11 @@ namespace WAR2D.Sim
         /// </summary>
         private void ApplyOrder(SimData data, SimContext context, in SimCommand command, int unitCount)
         {
+            if (command.Order == OrderKind.Build || command.Order == OrderKind.Repair || command.Order == OrderKind.Dig)
+            {
+                ApplyWorkOrder(data, context, command, unitCount);
+                return;
+            }
             foreach (List<int> list in moversByClass) list.Clear();
             bool moves = command.Order == OrderKind.Move || command.Order == OrderKind.AttackMove;
             byte stance = command.Order switch
@@ -76,9 +81,10 @@ namespace WAR2D.Sim
             moversByClass[data.SizeClass[slot] & 1].Add(slot);
         }
 
-        /// <summary>True when the unit follows a live order, or was given one earlier in this boundary.</summary>
+        /// <summary>True when the unit follows a live order, works on a target, or was given an order earlier in this boundary.</summary>
         private static bool HasLiveOrder(SimData data, int slot, int id)
         {
+            if (data.WorkKind[slot] != WorkKinds.None && !data.PendingOrders.ContainsKey(id)) return true;
             if (data.PendingOrders.TryGetValue(id, out PendingOrder pending)) return pending.Slot >= 0;
             int order = data.OrderSlot[slot];
             if (data.Arrived[slot] != 0) return false; // it finished its order on the settled tick
@@ -93,11 +99,19 @@ namespace WAR2D.Sim
         {
             while (data.Arrivals.TryDequeue(out int id))
             {
-                if (!context.Waypoints.TryPop(id, out int2 goal, out byte stance)) continue;
-                int slot = data.SlotOf(id, unitCount);
+                int arrivedSlot = data.SlotOf(id, unitCount);
+                // A worker that arrived at its job moves on only when the job is done (see ClearFinishedWork).
+                if (arrivedSlot >= 0 && data.WorkKind[arrivedSlot] != WorkKinds.None && !data.PendingOrders.ContainsKey(id)) continue;
+                if (!context.Waypoints.TryPop(id, out int2 goal, out byte stance, out byte work)) continue;
+                int slot = arrivedSlot;
                 if (slot < 0 || data.Health[slot] <= 0f)
                 {
                     context.Waypoints.Forget(id);
+                    continue;
+                }
+                if (work != WorkKinds.None)
+                {
+                    StartQueuedWork(data, context, slot, goal, work, tick);
                     continue;
                 }
                 var key = (goal, stance, data.SizeClass[slot] & 1, data.OwnerId[slot]);
@@ -131,6 +145,108 @@ namespace WAR2D.Sim
             starts.Dispose();
             if (handle < 0) return;
             AddPending(data, slots, new PendingOrder { Slot = handle, Stance = stance });
+        }
+
+        /// <summary>
+        /// Gives the listed units of the right type (Builders for Build and Repair, Diggers for Dig) a work
+        /// target at the order's tile, and a move to a floor tile next to it. Others are left alone. Shift
+        /// queues the job behind the unit's current one.
+        /// </summary>
+        private void ApplyWorkOrder(SimData data, SimContext context, in SimCommand command, int unitCount)
+        {
+            if (command.Ids == null || !context.Map.Grid.Contains(command.Tile)) return;
+            UnitType worker = command.Order == OrderKind.Dig ? UnitType.Digger : UnitType.Builder;
+            byte kind = WorkKindOf(command.Order);
+            if (!TryWorkTarget(data, context, command.OwnerId, command.Order, command.Tile, out int2 standGoal)) return;
+            foreach (List<int> list in moversByClass) list.Clear();
+            foreach (int id in command.Ids)
+            {
+                int slot = data.SlotOf(id, unitCount);
+                if (slot < 0 || data.OwnerId[slot] != command.OwnerId || data.Health[slot] <= 0f || data.Type[slot] != (byte)worker) continue;
+                if (command.Queue && HasLiveOrder(data, slot, id))
+                {
+                    context.Waypoints.Append(id, command.Tile, Stances.Move, kind);
+                    continue;
+                }
+                context.Waypoints.Clear(id);
+                moversByClass[data.SizeClass[slot] & 1].Add(slot);
+            }
+            int tick = SystemAPI.GetSingleton<SimClock>().Tick;
+            int tileIndex = context.Map.Grid.Index(command.Tile);
+            for (int sizeClass = 0; sizeClass < moversByClass.Length; sizeClass++)
+                IssueWork(data, context, moversByClass[sizeClass], sizeClass, standGoal, tick, command.OwnerId, tileIndex, kind);
+        }
+
+        private static byte WorkKindOf(OrderKind order) =>
+            order == OrderKind.Build ? WorkKinds.Build : order == OrderKind.Repair ? WorkKinds.Repair : WorkKinds.Dig;
+
+        private static OrderKind OrderOf(byte work) =>
+            work == WorkKinds.Build ? OrderKind.Build : work == WorkKinds.Repair ? OrderKind.Repair : OrderKind.Dig;
+
+        /// <summary>Starts a queued job for one unit whose last one finished.</summary>
+        private void StartQueuedWork(SimData data, SimContext context, int slot, int2 tile, byte work, int tick)
+        {
+            int owner = data.OwnerId[slot];
+            if (!context.Map.Grid.Contains(tile) || !TryWorkTarget(data, context, owner, OrderOf(work), tile, out int2 standGoal)) return;
+            var one = new List<int> { slot };
+            IssueWork(data, context, one, data.SizeClass[slot] & 1, standGoal, tick, owner, context.Map.Grid.Index(tile), work);
+        }
+
+        /// <summary>
+        /// Checks the order's target and finds the floor tile its workers head for. Build needs an own
+        /// blueprint; Repair an own or allied building. Wall and dig targets are resolved by their stages.
+        /// </summary>
+        private static bool TryWorkTarget(SimData data, SimContext context, int owner, OrderKind order, int2 tile, out int2 standGoal)
+        {
+            standGoal = tile;
+            WAR2D.World.MapGrid grid = context.Map.Grid;
+            if (!context.BuildingAt.TryGetValue(grid.Index(tile), out int buildingId)) return false;
+            int index = NetIdAllocator.IndexOf(buildingId);
+            int b = index < data.BuildingSlotOfIndex.Length ? data.BuildingSlotOfIndex[index] : -1;
+            if (b < 0 || b >= data.BuildingCount[0] || data.BuildingIds[b] != buildingId) return false;
+            int ownerSlot = context.SlotOf(owner), targetSlot = data.BuildingOwnerSlot[b];
+            bool own = data.BuildingOwnerId[b] == owner;
+            bool allied = targetSlot != SimData.NoSlot && ownerSlot >= 0 && !SimData.Attacks(data.AttackMask, ownerSlot, targetSlot) && !SimData.Attacks(data.AttackMask, targetSlot, ownerSlot);
+            if (order == OrderKind.Build && !own) return false;
+            if (order == OrderKind.Repair && !own && !allied) return false;
+            return TileSearch.FindNearest(data.BuildingAnchor[b], context.Map.IsWalkable, t => TileRules.IsFloor(grid.TileAt(t)) || context.Map.IsUsed(t), 1024, out standGoal);
+        }
+
+        /// <summary>Like <see cref="Issue"/>, with the work target the units start on arrival.</summary>
+        private static void IssueWork(SimData data, SimContext context, List<int> slots, int sizeClass, int2 goal, int tick, int owner, int tileIndex, byte kind)
+        {
+            if (slots.Count == 0) return;
+            var starts = new NativeArray<int>(slots.Count, Allocator.Temp);
+            for (int i = 0; i < slots.Count; i++)
+            {
+                int2 tile = math.clamp((int2)math.floor(data.Positions[slots[i]]), 0, new int2(data.Width - 1, data.Height - 1));
+                starts[i] = tile.y * data.Width + tile.x;
+            }
+            int handle = context.Orders.Issue(goal, sizeClass, starts, tick, owner);
+            starts.Dispose();
+            if (handle < 0) return;
+            AddPending(data, slots, new PendingOrder { Slot = handle, Stance = Stances.Move, WorkTile = tileIndex, WorkKind = kind });
+        }
+
+        /// <summary>
+        /// Stops the workers whose target is done or gone, then sends each on to its next queued job (or
+        /// waypoint) when it has one.
+        /// </summary>
+        private void ClearFinishedWork(SimData data, SimContext context, int unitCount, int tick)
+        {
+            while (data.WorkFinished.TryDequeue(out int id))
+            {
+                int slot = data.SlotOf(id, unitCount);
+                if (slot < 0 || data.Health[slot] <= 0f) { context.Waypoints.Forget(id); continue; }
+                AddPending(data, new List<int> { slot }, new PendingOrder { Slot = -1, Stance = Stances.Idle, WorkKind = WorkKinds.None });
+                if (!context.Waypoints.TryPop(id, out int2 goal, out byte stance, out byte work)) continue;
+                if (work != WorkKinds.None) StartQueuedWork(data, context, slot, goal, work, tick);
+                else
+                {
+                    var one = new List<int> { slot };
+                    Issue(data, context, one, data.SizeClass[slot] & 1, goal, stance, tick, data.OwnerId[slot]);
+                }
+            }
         }
 
         private static void AddPending(SimData data, List<int> slots, PendingOrder order)

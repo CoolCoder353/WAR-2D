@@ -75,6 +75,7 @@ namespace WAR2D.Sim
                 BuildingSlotOfIndex = data.BuildingSlotOfIndex,
                 BuildingCount = buildings,
                 OpaqueTile = data.OpaqueTile,
+                DamageByType = data.DamageByType,
                 Width = data.Width,
                 Height = data.Height,
                 Target = data.Target,
@@ -106,6 +107,7 @@ namespace WAR2D.Sim
                 Tick = clock.Tick % data.Slice,
                 Slice = data.Slice,
                 OpaqueTile = data.OpaqueTile,
+                DamageByType = data.DamageByType,
                 Width = data.Width,
                 Height = data.Height,
                 Target = data.Target,
@@ -179,6 +181,7 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<int> BuildingSlotOfIndex;
         public int BuildingCount;
         [ReadOnly] public NativeArray<byte> OpaqueTile;
+        [ReadOnly] public NativeArray<float> DamageByType;
         public int Width, Height;
         public NativeArray<int> Target;
         public NativeArray<byte> TargetKind;
@@ -187,7 +190,7 @@ namespace WAR2D.Sim
         {
             int id = Target[i];
             Target[i] = -1;
-            if (Health[i] <= 0f || id <= 0 || TargetKinds.IgnoresEnemies(Stance[i], OrderSlot[i], OrderLive)) return;
+            if (Health[i] <= 0f || id <= 0 || TargetKinds.IgnoresEnemies(Stance[i], OrderSlot[i], OrderLive) || DamageByType[Type[i]] <= 0f) return;
             int index = NetIdAllocator.IndexOf(id);
             if (index >= IndexOfId.Length) return;
             int type = Type[i];

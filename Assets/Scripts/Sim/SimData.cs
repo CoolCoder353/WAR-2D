@@ -112,6 +112,18 @@ namespace WAR2D.Sim
         public NativeArray<int> OrderSlot;
         /// <summary>Set for a unit that reached its goal this tick: its order is complete.</summary>
         public NativeArray<byte> Arrived;
+        /// <summary>Work target tile index per unit slot (valid while <see cref="WorkKind"/> is not None).</summary>
+        public NativeArray<int> WorkTile;
+        /// <summary><see cref="WorkKinds"/> per unit slot.</summary>
+        public NativeArray<byte> WorkKind;
+        /// <summary>Ids of units whose work target is gone or done; the boundary clears their work.</summary>
+        public NativeQueue<int> WorkFinished;
+        /// <summary>Repair work on completed buildings, with who pays; applied at the boundary.</summary>
+        public NativeQueue<RepairWork> RepairWork;
+        /// <summary>Resources per point of health a repair restores.</summary>
+        public float RepairCostPerHealth;
+        /// <summary>Health per second one Builder adds.</summary>
+        public float BuildPower;
         /// <summary>1 when the unit's upkeep went unpaid at the last charge.</summary>
         public NativeArray<byte> Unpaid;
         /// <summary>Stance per unit (<see cref="Stances"/>).</summary>
@@ -318,6 +330,12 @@ namespace WAR2D.Sim
                 LastHitBy = new NativeArray<int>(capacity, allocator),
                 OrderSlot = new NativeArray<int>(capacity, allocator),
                 Arrived = new NativeArray<byte>(capacity, allocator),
+                WorkTile = new NativeArray<int>(capacity, allocator),
+                WorkKind = new NativeArray<byte>(capacity, allocator),
+                WorkFinished = new NativeQueue<int>(allocator),
+                RepairWork = new NativeQueue<RepairWork>(allocator),
+                RepairCostPerHealth = config.Siege.RepairCostPerHealth,
+                BuildPower = config.Siege.BuildPower,
                 Unpaid = new NativeArray<byte>(capacity, allocator),
                 Stance = new NativeArray<byte>(capacity, allocator),
                 IdOf = new NativeArray<int>(capacity, allocator),
@@ -411,7 +429,7 @@ namespace WAR2D.Sim
             RunningCostByType.Dispose(); DamageTable.Dispose();
             Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Type.Dispose();
             SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose(); LastHitBy.Dispose();
-            OrderSlot.Dispose(); Arrived.Dispose(); Unpaid.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
+            OrderSlot.Dispose(); Arrived.Dispose(); WorkTile.Dispose(); WorkKind.Dispose(); WorkFinished.Dispose(); RepairWork.Dispose(); Unpaid.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
             Cell.Dispose(); CellStart.Dispose(); Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose();
             BuildingCount.Dispose(); BuildingPositions.Dispose(); BuildingOwnerId.Dispose(); BuildingOwnerSlot.Dispose(); BuildingHealth.Dispose();
             BuildingDamage.Dispose(); BuildingIds.Dispose(); BuildingEntities.Dispose(); BuildingSlotOfIndex.Dispose(); BuildingCell.Dispose();

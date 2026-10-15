@@ -15,7 +15,7 @@ public class SpatialHashTests
     {
         public NativeArray<float2> Positions, BuildingPositions;
         public NativeArray<int> Cell, CellStart, Sorted, Target, BCell, BCellStart, BSorted;
-        public NativeArray<float> Health, BuildingHealth, RangeSqByType;
+        public NativeArray<float> Health, BuildingHealth, RangeSqByType, DamageByType;
         /// <summary>Owner slots: 1 and 2 attack each other.</summary>
         public NativeArray<byte> Owner, BuildingOwner;
         public NativeArray<ushort> AttackMask;
@@ -47,6 +47,7 @@ public class SpatialHashTests
             BCellStart = new NativeArray<int>(cells, Allocator.TempJob);
             BSorted = new NativeArray<int>(buildings, Allocator.TempJob);
             RangeSqByType = new NativeArray<float>(new[] { 0f, Range * Range }, Allocator.TempJob);
+            DamageByType = new NativeArray<float>(new[] { 0f, 1f }, Allocator.TempJob);
             for (int i = 0; i < units; i++) { Type[i] = 1; Health[i] = 100f; }
         }
 
@@ -61,7 +62,7 @@ public class SpatialHashTests
             h = new CountingSortJob { Cell = BCell, CellStart = BCellStart, Sorted = BSorted }.Schedule(h);
             h = new NearestEnemyJob
             {
-                Positions = Positions, OwnerSlot = Owner, AttackMask = AttackMask, Health = Health, Type = Type, RangeSqByType = RangeSqByType,
+                Positions = Positions, OwnerSlot = Owner, AttackMask = AttackMask, Health = Health, Type = Type, RangeSqByType = RangeSqByType, DamageByType = DamageByType,
                 Stance = Stance, OrderSlot = OrderSlot, OrderLive = OrderLive,
                 CellStart = CellStart, Sorted = Sorted,
                 BuildingPositions = BuildingPositions, BuildingOwnerSlot = BuildingOwner, BuildingHealth = BuildingHealth,
@@ -78,7 +79,7 @@ public class SpatialHashTests
             Opaque.Dispose();
             Positions.Dispose(); Owner.Dispose(); AttackMask.Dispose(); Health.Dispose(); Type.Dispose(); Stance.Dispose(); OrderSlot.Dispose(); OrderLive.Dispose(); Cell.Dispose(); CellStart.Dispose();
             Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose(); BuildingPositions.Dispose(); BuildingOwner.Dispose();
-            BuildingHealth.Dispose(); BCell.Dispose(); BCellStart.Dispose(); BSorted.Dispose(); RangeSqByType.Dispose();
+            BuildingHealth.Dispose(); BCell.Dispose(); BCellStart.Dispose(); BSorted.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose();
         }
     }
 

@@ -46,6 +46,7 @@ namespace WAR2D.Sim
         public int CellsX, CellsY, SearchCells; // SearchCells = ceil(max range / cell size)
         public int Tick, Slice;
         [ReadOnly] public NativeArray<byte> OpaqueTile;
+        [ReadOnly] public NativeArray<float> DamageByType;
         public int Width, Height;
         public NativeArray<int> Target;
         public NativeArray<byte> TargetKind;
@@ -53,7 +54,7 @@ namespace WAR2D.Sim
         public void Execute(int i)
         {
             if (Slice > 1 && (i + Tick) % Slice != 0) return;
-            if (Health[i] <= 0f || TargetKinds.IgnoresEnemies(Stance[i], OrderSlot[i], OrderLive)) { Target[i] = -1; return; }
+            if (Health[i] <= 0f || TargetKinds.IgnoresEnemies(Stance[i], OrderSlot[i], OrderLive) || DamageByType[Type[i]] <= 0f) { Target[i] = -1; return; }
 
             float2 p = Positions[i];
             int slot = OwnerSlot[i];

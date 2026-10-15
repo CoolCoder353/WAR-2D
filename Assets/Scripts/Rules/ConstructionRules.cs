@@ -16,6 +16,13 @@ public static class ConstructionRules
     public static float Refund(bool blueprint, float cost, float demolishRefund) =>
         blueprint ? cost : cost * math.saturate(demolishRefund);
 
+    /// <summary>Health a repair restores: the work done, capped by what is missing and by what the budget pays for.</summary>
+    public static float AffordableRepair(float work, float missing, float costPerHealth, float budget)
+    {
+        float health = math.min(work, math.max(0f, missing));
+        return costPerHealth > 0f ? math.min(health, math.max(0f, budget) / costPerHealth) : health;
+    }
+
     /// <summary>
     /// Adds <paramref name="work"/> health-points of construction: health and progress rise together
     /// (progress is work done over max health), health never past max. True once progress reaches 1.

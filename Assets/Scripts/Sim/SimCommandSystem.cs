@@ -46,8 +46,16 @@ namespace WAR2D.Sim
             ApplyBuildingWork(data, context);
             data.PendingOrders.Clear();
             data.PendingMoves.Clear();
-            if (clock.Running) AdvanceWaypoints(data, context, clock.UnitCount, clock.Tick);
-            else data.Arrivals.Clear();
+            if (clock.Running)
+            {
+                ClearFinishedWork(data, context, clock.UnitCount, clock.Tick);
+                AdvanceWaypoints(data, context, clock.UnitCount, clock.Tick);
+            }
+            else
+            {
+                data.Arrivals.Clear();
+                data.WorkFinished.Clear();
+            }
 
             List<SimCommand> commands = context.Commands.Drain();
             deferred.Clear();
@@ -101,10 +109,24 @@ namespace WAR2D.Sim
             if (command.Kind == SimCommandKind.SetShareVision) context.RaiseVisionShareChanged(command.OwnerId, command.TargetOwnerId, command.Flag);
         }
 
-        /// <summary>Applies the last tick's construction work to blueprints, completing them.</summary>
+        /// <summary>Applies the last tick's construction work to blueprints (completing them) and repairs to finished buildings.</summary>
         private void ApplyBuildingWork(SimData data, SimContext context)
         {
             int count = data.BuildingCount[0];
+            while (data.RepairWork.TryDequeue(out RepairWork repair))
+            {
+                if ((uint)repair.Slot >= (uint)count) continue;
+                Entity target = data.BuildingEntities[repair.Slot];
+                if (!EntityManager.Exists(target) || EntityManager.HasComponent<Construction>(target)) continue;
+                HealthComponent health = EntityManager.GetComponentData<HealthComponent>(target);
+                if (health.currentHealth <= 0f) continue;
+                float budget = context.BudgetOf != null ? context.BudgetOf(repair.Payer) : float.MaxValue;
+                float restore = ConstructionRules.AffordableRepair(repair.Work, health.maxHealth - health.currentHealth, data.RepairCostPerHealth, budget);
+                if (restore <= 0f) continue;
+                health.currentHealth = math.min(health.maxHealth, health.currentHealth + restore);
+                EntityManager.SetComponentData(target, health);
+                context.Spend?.Invoke(repair.Payer, restore * data.RepairCostPerHealth);
+            }
             for (int b = 0; b < count; b++)
             {
                 float work = data.BuildingWork[b];
