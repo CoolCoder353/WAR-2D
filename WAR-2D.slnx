@@ -5,12 +5,12 @@
   <Project Path="WAR2D.csproj" />
   <Project Path="Edgegap.csproj" />
   <Project Path="Mirror.Components.csproj" />
+  <Project Path="WAR2D.Tests.EditMode.csproj" />
   <Project Path="Mirror.Editor.csproj" />
   <Project Path="WAR2D.DevConsole.csproj" />
   <Project Path="NaughtyAttributes.Test.csproj" />
   <Project Path="NaughtyAttributes.Core.csproj" />
   <Project Path="kcp2k.csproj" />
-  <Project Path="WAR2D.Tests.EditMode.csproj" />
   <Project Path="Mirror.csproj" />
   <Project Path="SimpleWebTransport.csproj" />
   <Project Path="Mirror.Authenticators.csproj" />
