@@ -23,6 +23,8 @@ namespace WAR2D.Net.Replication
         public int Health, MaxHealth;
         /// <summary>Construction progress in percent, 100 when complete.</summary>
         public byte Progress;
+        /// <summary>A hidden building (a bomb): only its owner and the players its owner shares vision with may know it.</summary>
+        public bool Hidden;
         /// <summary>Where fog is tested (the anchor's world position).</summary>
         public float2 Position;
     }
@@ -54,6 +56,7 @@ namespace WAR2D.Net.Replication
             public bool Live;
             public int Health;
             public byte Progress;
+            public bool Hidden;
             public float2 Position;
             public int OwnerId;
         }
@@ -72,12 +75,13 @@ namespace WAR2D.Net.Replication
         /// many were written. <paramref name="sees"/> answers whether the client's grid sees a position.
         /// Stops once the writer holds <paramref name="maxBytes"/>; the rest follows on the next update.
         /// </summary>
-        public int Update(List<BuildingView> views, HashSet<int> present, int ownerId, Func<float2, bool> sees, NetworkWriter writer, int maxBytes = int.MaxValue)
+        public int Update(List<BuildingView> views, HashSet<int> present, int ownerId, Func<float2, bool> sees, NetworkWriter writer, int maxBytes = int.MaxValue, Func<int, bool> mayKnowHidden = null)
         {
             int records = 0;
             foreach (BuildingView v in views)
             {
                 bool allowed = v.OwnerId == ownerId || sees(v.Position);
+                if (v.Hidden) allowed = allowed && (v.OwnerId == ownerId || (mayKnowHidden != null && mayKnowHidden(v.OwnerId)));
                 bool wasKnown = known.TryGetValue(v.Id, out Known k);
                 if (allowed)
                 {
@@ -99,7 +103,15 @@ namespace WAR2D.Net.Replication
                         records++;
                         progress = v.Progress;
                     }
-                    known[v.Id] = new Known { Live = true, Health = v.Health, Progress = progress, Position = v.Position, OwnerId = v.OwnerId };
+                    known[v.Id] = new Known { Live = true, Health = v.Health, Progress = progress, Hidden = v.Hidden, Position = v.Position, OwnerId = v.OwnerId };
+                    if (writer.Position >= maxBytes) return records;
+                }
+                else if (wasKnown && k.Hidden)
+                {
+                    // It may no longer be known (vision sharing stopped): gone at once, never a ghost of a bomb.
+                    BuildingCodec.WriteId(writer, BuildingRecord.Gone, v.Id, 0);
+                    records++;
+                    known.Remove(v.Id);
                     if (writer.Position >= maxBytes) return records;
                 }
                 else if (wasKnown && k.Live)
@@ -118,7 +130,7 @@ namespace WAR2D.Net.Replication
             foreach (int id in scratch)
             {
                 Known k = known[id];
-                if (k.OwnerId == ownerId || sees(k.Position))
+                if (k.Hidden || k.OwnerId == ownerId || sees(k.Position))
                 {
                     BuildingCodec.WriteId(writer, BuildingRecord.Gone, id, 0);
                     records++;

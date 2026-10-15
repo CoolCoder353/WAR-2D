@@ -78,6 +78,7 @@ namespace WAR2D.Sim
                 DamageByType = data.DamageByType,
                 WallState = data.WallState,
                 WallOwnerSlot = data.WallOwnerSlot,
+                BuildingFlag = data.BuildingFlag,
                 Width = data.Width,
                 Height = data.Height,
                 Target = data.Target,
@@ -112,6 +113,7 @@ namespace WAR2D.Sim
                 DamageByType = data.DamageByType,
                 WallState = data.WallState,
                 WallOwnerSlot = data.WallOwnerSlot,
+                BuildingFlag = data.BuildingFlag,
                 Width = data.Width,
                 Height = data.Height,
                 Target = data.Target,
@@ -188,6 +190,7 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<byte> OpaqueTile;
         [ReadOnly] public NativeArray<float> DamageByType;
         [ReadOnly] public NativeArray<byte> WallState, WallOwnerSlot;
+        [ReadOnly] public NativeArray<byte> BuildingFlag;
         public int Width, Height;
         public NativeArray<int> Target;
         public NativeArray<byte> TargetKind;
@@ -221,7 +224,7 @@ namespace WAR2D.Sim
             else
             {
                 int j = BuildingSlotOfIndex[index];
-                if ((uint)j >= (uint)BuildingCount || BuildingIds[j] != id || BuildingHealth[j] <= 0f ||
+                if ((uint)j >= (uint)BuildingCount || BuildingIds[j] != id || BuildingHealth[j] <= 0f || (BuildingFlag[j] & BuildingFlags.Hidden) != 0 ||
                     !SimData.Attacks(AttackMask, OwnerSlot[i], BuildingOwnerSlot[j]) || math.distancesq(Positions[i], BuildingPositions[j]) > rangeSq ||
                     !LineOfSight.ClearTiles(OpaqueTile, Width, Height, Positions[i], BuildingPositions[j])) return;
                 Target[i] = j;

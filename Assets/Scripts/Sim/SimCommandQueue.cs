@@ -28,6 +28,8 @@ namespace WAR2D.Sim
         SetTile,
         /// <summary>Lay a wall blueprint for <see cref="SimCommand.OwnerId"/> on <see cref="SimCommand.Tile"/>.</summary>
         PlaceWall,
+        /// <summary>Set off the bomb with building id <see cref="SimCommand.TargetId"/> on <see cref="SimCommand.Tile"/> this tick, if <see cref="SimCommand.OwnerId"/>'s side sees the tile.</summary>
+        DetonateBomb,
     }
 
     /// <summary>A building the command system creates; placement, payment and footprint are done already.</summary>
@@ -49,6 +51,8 @@ namespace WAR2D.Sim
         public OrderKind Order;
         /// <summary>The other owner of a diplomacy command.</summary>
         public int TargetOwnerId;
+        /// <summary>A building id (<see cref="SimCommandKind.DetonateBomb"/>).</summary>
+        public int TargetId;
         /// <summary>The new value of a diplomacy command.</summary>
         public bool Flag;
         /// <summary>Shift-queued: a Move or AttackMove runs after the unit's current order.</summary>

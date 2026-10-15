@@ -73,6 +73,9 @@ public partial class WorldStateManager : NetworkBehaviour
     private Dictionary<int, Entity> Buildings = new Dictionary<int, Entity>();
 
     /// <summary>Footprint tiles each building marked used, so they can be freed when it dies.</summary>
+    /// <summary>Where each bomb is: bombs do not mark their tile used (units walk over them), so placement looks here.</summary>
+    private readonly Dictionary<int2, (int id, int owner)> bombTiles = new Dictionary<int2, (int, int)>();
+
     private readonly Dictionary<int, List<int2>> buildingFootprints = new Dictionary<int, List<int2>>();
 
     private EntityManager entityManager;
@@ -141,6 +144,7 @@ public partial class WorldStateManager : NetworkBehaviour
         {
             CollectBuildings = FillBuildingViews,
             TerrainCellOf = TerrainCellAt,
+            SharesVision = SharesVision,
             // A defeated player still connected watches the rest of the match with the whole map shown (P10).
             Spectating = owner => GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing &&
                                   GameCore.Instance.GetServerPlayerById(owner)?.state == PlayerState.Eliminated,
@@ -246,11 +250,37 @@ public partial class WorldStateManager : NetworkBehaviour
     [ServerCallback]
     private void OnSettled(SimData data, int tick, int count)
     {
+        FlushBlasts(data);
         FlushDeathEvents(data);
         SendSquadCounts(data, tick, count);
         if (tick % UnpaidScanTicks == 0) MarkUnpaidOwners(data, count);
         Alerts.CollectDamage(data, count, BuildingOwnerAndTile, NetworkTime.localTime);
         Alerts.Flush();
+    }
+
+    private readonly List<float2> blastScratch = new List<float2>();
+
+    /// <summary>Reports the bombs that went off: an alert for the owner, and the blast to every client whose team sees the tile.</summary>
+    [Server]
+    private void FlushBlasts(SimData data)
+    {
+        if (data.BombBlasts.Count == 0) return;
+        blastScratch.Clear();
+        foreach (BombBlast blast in data.BombBlasts.ToArray(Unity.Collections.Allocator.Temp))
+        {
+            Alerts.Add(blast.OwnerId, new Alert { Kind = AlertKind.BombTriggered, Tile = (int2)math.floor(blast.Position) });
+            blastScratch.Add(blast.Position);
+        }
+        foreach (KeyValuePair<ClientPlayer, (int2, int2)> view in playerView)
+        {
+            if (view.Key == null || view.Key.connectionToClient == null) continue;
+            int grid = Sim.VisionOf(BuildingData.UIntToInt(view.Key.netId));
+            seenDeaths.Clear();
+            foreach (float2 p in blastScratch) if (data.Sees(grid, p)) seenDeaths.Add(p);
+            if (seenDeaths.Count == 0) continue;
+            List<Vector2> visible = VisibilityRules.Filter(seenDeaths, view.Value.Item1, view.Value.Item2);
+            if (visible.Count > 0) view.Key.TargetPlayBlasts(view.Key.connectionToClient, visible.ToArray());
+        }
     }
 
     private const int UnpaidScanTicks = 20; // once a second at 20 Hz
@@ -312,6 +342,7 @@ public partial class WorldStateManager : NetworkBehaviour
                 Rotation = (byte)((int)math.round(MinerRules.ZDegrees(transform.Rotation) / 90f) & 3),
                 Health = (int)math.ceil(health.currentHealth),
                 MaxHealth = (int)math.ceil(health.maxHealth),
+                Hidden = building.buildingType == BuildingType.Bomb,
                 Progress = EntityManager.HasComponent<Construction>(entity)
                     ? (byte)math.clamp((int)math.floor(EntityManager.GetComponentData<Construction>(entity).Progress * 100f), 0, 99)
                     : (byte)100,
@@ -375,6 +406,7 @@ public partial class WorldStateManager : NetworkBehaviour
             int id = building.id;
             if (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing) GameCore.Instance.Stats.BuildingLost(building.ownerId);
             Buildings.Remove(id);
+            if (building.buildingType == BuildingType.Bomb) bombTiles.Remove((int2)math.round(building.position));
             Sim?.ForgetBuilding(id);
             Ids?.Free(id);
             if (buildingFootprints.Remove(id, out List<int2> footprint))
@@ -503,7 +535,7 @@ public partial class WorldStateManager : NetworkBehaviour
         if (acting == null || acting.state != PlayerState.Playing) return PlacementResult.WrongGameState;
 
         return PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
-            player.hasPlacedHQ, Map.Grid.TileAt, Map.IsUsed, tile => false, // units are pushed out of new footprints
+            player.hasPlacedHQ, Map.Grid.TileAt, tile => Map.IsUsed(tile) || KnownBombAt(tile, BuildingData.UIntToInt(player.netId)), tile => false, // units are pushed out of new footprints
             OwnClearing(player));
     }
 
@@ -578,8 +610,16 @@ public partial class WorldStateManager : NetworkBehaviour
             Building = new BuildingSpec { Data = buildingData, Rotation = rotation, Config = buildingConfig },
         });
 
-        //Set the tiles the building will cover to be used
         List<int2> tiles = Footprint.Tiles(positon, GetBuildingSize(type));
+        // Building over a hidden bomb the placer may not know sets it off (the placement never says it was there).
+        foreach (int2 tile in tiles) DetonateUnknownBomb(tile, buildingData.ownerId);
+        if (type == BuildingType.Bomb)
+        {
+            // A bomb's tile is not marked used: units walk over it.
+            bombTiles[positon] = (buildingData.id, buildingData.ownerId);
+            return;
+        }
+        //Set the tiles the building will cover to be used
         foreach (int2 tile in tiles) Map.QueueUsed(tile, true);
         buildingFootprints[buildingData.id] = tiles;
     }

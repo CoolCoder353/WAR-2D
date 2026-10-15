@@ -7,6 +7,13 @@ using WAR2D.World;
 
 namespace WAR2D.Sim
 {
+    /// <summary>A bomb that went off.</summary>
+    public struct BombBlast
+    {
+        public float2 Position;
+        public int OwnerId;
+    }
+
     /// <summary>A rock or gem tile a Digger finished.</summary>
     public struct DigEvent
     {
@@ -134,6 +141,11 @@ namespace WAR2D.Sim
         public NativeArray<byte> WorkKind;
         /// <summary>Ids of units whose work target is gone or done; the boundary clears their work.</summary>
         public NativeQueue<int> WorkFinished;
+        /// <summary>Bombs that went off this tick (cleared after the boundary reports them).</summary>
+        public NativeQueue<BombBlast> BombBlasts;
+        /// <summary>Bomb ids to set off this tick regardless of who stands on them (an enemy built over a hidden bomb).</summary>
+        public NativeParallelHashSet<int> ForcedBombs;
+        public float BlastRadius, BlastDamage;
         /// <summary>Seconds spent digging, per unit slot.</summary>
         public NativeArray<float> DigProgress;
         /// <summary>The tile index being dug, per unit slot (0 when none).</summary>
@@ -371,6 +383,10 @@ namespace WAR2D.Sim
                 WorkTile = new NativeArray<int>(capacity, allocator),
                 WorkKind = new NativeArray<byte>(capacity, allocator),
                 WorkFinished = new NativeQueue<int>(allocator),
+                BombBlasts = new NativeQueue<BombBlast>(allocator),
+                ForcedBombs = new NativeParallelHashSet<int>(16, allocator),
+                BlastRadius = config.Siege.BlastRadius,
+                BlastDamage = config.Siege.BlastDamage,
                 DigProgress = new NativeArray<float>(capacity, allocator),
                 DigAt = new NativeArray<int>(capacity, allocator),
                 DigTime = config.Siege.DigTime,
@@ -480,7 +496,7 @@ namespace WAR2D.Sim
             RunningCostByType.Dispose(); DamageTable.Dispose();
             Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Type.Dispose();
             SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose(); LastHitBy.Dispose();
-            OrderSlot.Dispose(); Arrived.Dispose(); WorkTile.Dispose(); WorkKind.Dispose(); WorkFinished.Dispose(); DigProgress.Dispose(); DigAt.Dispose(); DigDone.Dispose(); DigMoves.Dispose(); WallOwnerSlot.Dispose(); WallState.Dispose(); WallHealth.Dispose(); WallWork.Dispose(); WallDamage.Dispose(); RepairWork.Dispose(); Unpaid.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
+            OrderSlot.Dispose(); Arrived.Dispose(); WorkTile.Dispose(); WorkKind.Dispose(); WorkFinished.Dispose(); BombBlasts.Dispose(); ForcedBombs.Dispose(); DigProgress.Dispose(); DigAt.Dispose(); DigDone.Dispose(); DigMoves.Dispose(); WallOwnerSlot.Dispose(); WallState.Dispose(); WallHealth.Dispose(); WallWork.Dispose(); WallDamage.Dispose(); RepairWork.Dispose(); Unpaid.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
             Cell.Dispose(); CellStart.Dispose(); Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose();
             BuildingCount.Dispose(); BuildingPositions.Dispose(); BuildingOwnerId.Dispose(); BuildingOwnerSlot.Dispose(); BuildingHealth.Dispose();
             BuildingDamage.Dispose(); BuildingIds.Dispose(); BuildingEntities.Dispose(); BuildingSlotOfIndex.Dispose(); BuildingCell.Dispose();

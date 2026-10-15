@@ -17,6 +17,8 @@ public enum AlertKind : byte
     VisionUnshared,
     /// <summary>One of the receiver's blueprints was finished (Tile is the building).</summary>
     ConstructionFinished,
+    /// <summary>One of the receiver's bombs went off (Tile is the bomb).</summary>
+    BombTriggered,
 }
 
 /// <summary>

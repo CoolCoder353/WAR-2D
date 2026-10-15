@@ -59,15 +59,36 @@ public partial class WorldStateManager
         WallRules.Line(from, to, wallScratch);
         foreach (int2 tile in wallScratch)
         {
-            if (!WallRules.CanPlace(tile, Map.Grid.TileAt, Map.IsUsed) || IsHiddenBombTile(tile, owner)) continue;
+            if (!WallRules.CanPlace(tile, Map.Grid.TileAt, Map.IsUsed) || KnownBombAt(tile, owner)) continue;
             if (!player.TrySpend(siege.WallCost)) break;
             float cost = siege.WallCost;
-            Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.PlaceWall, OwnerId = owner, Tile = tile, OnApplied = ok => { if (!ok) player.Refund(cost); } });
+            int2 at = tile;
+            Sim.Commands.Enqueue(new SimCommand
+            {
+                Kind = SimCommandKind.PlaceWall, OwnerId = owner, Tile = tile,
+                OnApplied = ok =>
+                {
+                    if (!ok) player.Refund(cost);
+                    else DetonateUnknownBomb(at, owner); // a wall raised on a bomb the owner may not know sets it off
+                },
+            });
         }
     }
 
-    /// <summary>True when a hidden bomb the sender's side may not know of sits on the tile (Task 13 fills this in).</summary>
-    private bool IsHiddenBombTile(int2 tile, int owner) => false;
+    /// <summary>True when owner <paramref name="from"/> shares vision with owner <paramref name="to"/> (main thread, settled).</summary>
+    private bool SharesVision(int from, int to) =>
+        Sim != null && Sim.TrySlotOf(from, out int a) && Sim.TrySlotOf(to, out int b) && Sim.Diplomacy.SharesVisionWith(a, b);
+
+    /// <summary>True when a bomb the viewer may know of (its own, or shared with it) sits on the tile: placement sees the tile as taken.</summary>
+    private bool KnownBombAt(int2 tile, int viewer) =>
+        bombTiles.TryGetValue(tile, out var bomb) && BombRules.MayKnow(viewer, bomb.owner, SharesVision);
+
+    /// <summary>Sets off the bomb on a tile when <paramref name="placer"/> may not know of it (plan P5); the sim checks the placer's side sees the tile.</summary>
+    private void DetonateUnknownBomb(int2 tile, int placer)
+    {
+        if (!bombTiles.TryGetValue(tile, out var bomb) || BombRules.MayKnow(placer, bomb.owner, SharesVision)) return;
+        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.DetonateBomb, OwnerId = placer, TargetId = bomb.id, Tile = tile });
+    }
 
     /// <summary>What a wall tile is as a client may know it: kind, and for player walls their owner and health percent.</summary>
     private TerrainCell TerrainCellAt(int index)

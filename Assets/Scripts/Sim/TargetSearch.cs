@@ -50,6 +50,7 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<byte> OpaqueTile;
         [ReadOnly] public NativeArray<float> DamageByType;
         [ReadOnly] public NativeArray<byte> WallState, WallOwnerSlot;
+        [ReadOnly] public NativeArray<byte> BuildingFlag;
         public int Width, Height;
         public NativeArray<int> Target;
         public NativeArray<byte> TargetKind;
@@ -96,7 +97,7 @@ namespace WAR2D.Sim
                 for (int k = BuildingCellStart[cell]; k < BuildingCellStart[cell + 1]; k++)
                 {
                     int j = BuildingSorted[k];
-                    if (BuildingHealth[j] <= 0f || !SimData.Attacks(AttackMask, slot, BuildingOwnerSlot[j])) continue;
+                    if (BuildingHealth[j] <= 0f || (BuildingFlag[j] & BuildingFlags.Hidden) != 0 || !SimData.Attacks(AttackMask, slot, BuildingOwnerSlot[j])) continue;
                     float d = math.distancesq(p, BuildingPositions[j]);
                     if (d <= best && LineOfSight.ClearTiles(OpaqueTile, Width, Height, p, BuildingPositions[j])) { best = d; bestIndex = j; }
                 }

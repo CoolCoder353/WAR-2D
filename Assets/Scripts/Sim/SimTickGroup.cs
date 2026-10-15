@@ -60,6 +60,8 @@ namespace WAR2D.Sim
             context?.Orders.AtBoundary(context.Map, clock.ValueRO.Tick);
             if (clock.ValueRO.Running) context?.RaiseSettled(data, clock.ValueRO.Tick, clock.ValueRO.UnitCount);
             data.AttackEvents.Clear();
+            data.BombBlasts.Clear();
+            data.ForcedBombs.Clear();
             data.FogChanges.Clear();
             bool running = SimContext.RunningOverride ?? (NetworkServer.active && GameCore.Instance != null && RunsIn(GameCore.Instance.CurrentState));
             clock.ValueRW.Running = running;

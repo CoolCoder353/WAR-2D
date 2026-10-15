@@ -71,4 +71,19 @@ public class SimDigTests
         sim.TickSeconds(10f); // 150 health, 4 damage x 6 per second
         Assert.AreEqual(TileType.Ground, sim.Map.Grid.TileAt(new int2(8, 8)));
     }
+
+    [Test]
+    public void AnAlliedWallIsNotBreached()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(16));
+        sim.Context.TeamResolver = _ => 0; // everyone is allied
+        sim.PlaceWall(SimHarness.OwnerB, new int2(8, 8));
+        sim.Tick();
+        sim.ForceBuiltWall(new int2(8, 8));
+        int[] digger = sim.Spawn(SimHarness.OwnerA, new float2(6.5f, 8.5f), UnitType.Digger);
+        sim.Tick();
+        sim.Order(SimHarness.OwnerA, OrderKind.Dig, new int2(8, 8), digger[0]);
+        sim.TickSeconds(10f);
+        Assert.AreEqual(TileType.PlayerWall, sim.Map.Grid.TileAt(new int2(8, 8)));
+    }
 }

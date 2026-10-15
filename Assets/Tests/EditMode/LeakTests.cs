@@ -377,4 +377,37 @@ public class LeakTests
         a.Dispose();
         b.Dispose();
     }
+
+    [Test]
+    public void BombsReachOnlyTheirOwnerAndPlayersTheyShareVisionWith()
+    {
+        using var sim = new SimHarness(Map());
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        bool aSharesWithB = false;
+        replication.SharesVision = (from, to) => from == SimHarness.OwnerA && to == SimHarness.OwnerB && aSharesWithB;
+        var views = new List<BuildingView>();
+        replication.CollectBuildings = list => list.AddRange(views);
+        var a = new Spy(sim.Context, replication, SimHarness.OwnerA);
+        var b = new Spy(sim.Context, replication, SimHarness.OwnerB);
+        var c = new Spy(sim.Context, replication, OwnerC);
+        sim.Spawn(SimHarness.OwnerA, new float2(20, 20));
+        sim.Spawn(SimHarness.OwnerB, new float2(21, 21)); // right next to the bomb: B sees the tile
+        sim.Spawn(OwnerC, new float2(22, 19));            // so does C
+        sim.Tick();
+        views.Add(new BuildingView { Id = 500, OwnerId = SimHarness.OwnerA, Type = BuildingType.Bomb, Anchor = new int2(21, 20), Health = 40, MaxHealth = 40, Position = new float2(21, 20), Hidden = true, Progress = 100 });
+        for (int i = 0; i < 8; i++) sim.Tick();
+        Assert.IsTrue(a.Buildings.Entries.ContainsKey(500), "the owner knows its bomb");
+        Assert.IsFalse(b.Buildings.Entries.ContainsKey(500), "B sees the tile but A doesn't share vision with B");
+        Assert.IsFalse(c.Buildings.Entries.ContainsKey(500));
+
+        aSharesWithB = true;
+        for (int i = 0; i < 8; i++) sim.Tick();
+        Assert.IsTrue(b.Buildings.Entries.ContainsKey(500), "shared vision: B may know it");
+
+        aSharesWithB = false;
+        for (int i = 0; i < 8; i++) sim.Tick();
+        Assert.IsFalse(b.Buildings.Entries.ContainsKey(500), "sharing stopped: gone, not a ghost");
+        Assert.IsFalse(c.Buildings.Entries.ContainsKey(500));
+        foreach (Spy s in new[] { a, b, c }) { CollectionAssert.IsEmpty(s.Failures); s.Dispose(); }
+    }
 }

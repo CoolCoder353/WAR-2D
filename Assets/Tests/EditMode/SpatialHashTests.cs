@@ -17,6 +17,7 @@ public class SpatialHashTests
         public NativeArray<int> Cell, CellStart, Sorted, Target, BCell, BCellStart, BSorted;
         public NativeArray<float> Health, BuildingHealth, RangeSqByType, DamageByType;
         public NativeArray<byte> WallState = new NativeArray<byte>(1, Allocator.TempJob);
+        public NativeArray<byte> BuildingFlag;
         /// <summary>Owner slots: 1 and 2 attack each other.</summary>
         public NativeArray<byte> Owner, BuildingOwner;
         public NativeArray<ushort> AttackMask;
@@ -44,6 +45,7 @@ public class SpatialHashTests
             BuildingPositions = new NativeArray<float2>(buildings, Allocator.TempJob);
             BuildingOwner = new NativeArray<byte>(buildings, Allocator.TempJob);
             BuildingHealth = new NativeArray<float>(buildings, Allocator.TempJob);
+            BuildingFlag = new NativeArray<byte>(buildings, Allocator.TempJob);
             BCell = new NativeArray<int>(buildings, Allocator.TempJob);
             BCellStart = new NativeArray<int>(cells, Allocator.TempJob);
             BSorted = new NativeArray<int>(buildings, Allocator.TempJob);
@@ -70,7 +72,7 @@ public class SpatialHashTests
                 BuildingCellStart = BCellStart, BuildingSorted = BSorted,
                 InvCellSize = inv, CellsX = CellsAcross, CellsY = CellsAcross, SearchCells = (int)math.ceil(Range / CellSize),
                 Tick = tick, Slice = slice, Target = Target, TargetKind = TargetKind,
-                OpaqueTile = Opaque, WallState = WallState, WallOwnerSlot = WallState, Width = 1, Height = 1, // open ground: one clear tile
+                OpaqueTile = Opaque, WallState = WallState, WallOwnerSlot = WallState, BuildingFlag = BuildingFlag, Width = 1, Height = 1, // open ground: one clear tile
             }.Schedule(Positions.Length, 64, h);
             h.Complete();
         }
@@ -80,7 +82,7 @@ public class SpatialHashTests
             Opaque.Dispose();
             Positions.Dispose(); Owner.Dispose(); AttackMask.Dispose(); Health.Dispose(); Type.Dispose(); Stance.Dispose(); OrderSlot.Dispose(); OrderLive.Dispose(); Cell.Dispose(); CellStart.Dispose();
             Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose(); BuildingPositions.Dispose(); BuildingOwner.Dispose();
-            BuildingHealth.Dispose(); BCell.Dispose(); BCellStart.Dispose(); BSorted.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose(); WallState.Dispose();
+            BuildingHealth.Dispose(); BCell.Dispose(); BCellStart.Dispose(); BSorted.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose(); WallState.Dispose(); BuildingFlag.Dispose();
         }
     }
 

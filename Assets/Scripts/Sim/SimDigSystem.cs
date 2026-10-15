@@ -44,6 +44,7 @@ namespace WAR2D.Sim
                 WorkKind = data.WorkKind, WorkTile = data.WorkTile, OrderSlot = data.OrderSlot, OrderLive = data.OrderLive, Arrived = data.Arrived,
                 DamageByType = data.DamageByType, CooldownByType = data.CooldownByType, DamageTable = data.DamageTable,
                 Cooldown = data.Cooldown, DigProgress = data.DigProgress, DigAt = data.DigAt,
+                OwnerSlot = data.OwnerSlot, AttackMask = data.AttackMask, WallOwnerSlot = data.WallOwnerSlot,
                 Finished = data.WorkFinished, Done = data.DigDone, Moves = data.DigMoves, WallDamage = data.WallDamage,
             }.Schedule(state.Dependency);
             state.Dependency = new WriteBackDigJob
@@ -61,7 +62,8 @@ namespace WAR2D.Sim
         public int Count, Width, Height;
         public float Dt, DigTime;
         public byte Digger;
-        [ReadOnly] public NativeArray<byte> Tiles, Type, WorkKind, OrderLive, Arrived;
+        [ReadOnly] public NativeArray<byte> Tiles, Type, WorkKind, OrderLive, Arrived, OwnerSlot, WallOwnerSlot;
+        [ReadOnly] public NativeArray<ushort> AttackMask;
         [ReadOnly] public NativeArray<float2> Positions;
         [ReadOnly] public NativeArray<float> Radius, Health, DamageByType, CooldownByType, DamageTable;
         [ReadOnly] public NativeArray<int> OwnerId, IdOf, WorkTile, OrderSlot;
@@ -88,6 +90,14 @@ namespace WAR2D.Sim
                     continue;
                 }
                 int tile = dig.y * Width + dig.x;
+                // A player wall may be breached by its own side or by someone who attacks its owner, never by an ally.
+                if ((TileType)Tiles[tile] == TileType.PlayerWall && WallOwnerSlot[tile] != OwnerSlot[i] && !SimData.Attacks(AttackMask, OwnerSlot[i], WallOwnerSlot[tile]))
+                {
+                    DigProgress[i] = 0f;
+                    DigAt[i] = 0;
+                    Finished.Enqueue(IdOf[i]);
+                    continue;
+                }
                 float2 lo = dig, hi = dig + 1;
                 float2 gap = math.max(math.max(lo - Positions[i], Positions[i] - hi), 0f);
                 if (math.length(gap) <= Radius[i] + 0.6f)

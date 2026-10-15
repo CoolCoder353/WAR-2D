@@ -43,6 +43,9 @@ namespace WAR2D.Net.Replication
         /// <summary>Answers what a tile index currently is (set by the world; null sends the plain kind). Walls add owner and health.</summary>
         public Func<int, TerrainCell> TerrainCellOf;
 
+        /// <summary>Answers whether owner <c>from</c> shares vision with owner <c>to</c> (set by the world; null means nobody does, so only an owner knows its bombs).</summary>
+        public Func<int, int, bool> SharesVision;
+
         /// <summary>Fills the list with every live building (set by the world; null sends no buildings).</summary>
         public Action<List<BuildingView>> CollectBuildings;
         private readonly List<BuildingView> buildingViews = new List<BuildingView>();
@@ -363,7 +366,7 @@ namespace WAR2D.Net.Replication
                 Client client = clients[c];
                 int grid = GridOf(client.OwnerId);
                 writer.Position = 0;
-                if (client.Buildings.Update(buildingViews, buildingIds, client.OwnerId, p => data.Sees(grid, p), writer, limit) == 0) continue;
+                if (client.Buildings.Update(buildingViews, buildingIds, client.OwnerId, p => data.Sees(grid, p), writer, limit, owner => BombRules.MayKnow(client.OwnerId, owner, SharesVision)) == 0) continue;
                 ArraySegment<byte> payload = writer.ToArraySegment();
                 client.BytesSent += payload.Count;
                 if (client.VirtualSink != null) client.VirtualSink(payload, BuildingSinkChannel);

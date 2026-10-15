@@ -50,6 +50,7 @@ namespace WAR2D.Sim
                     : (uint)buildingType < (uint)data.BuildingSightByType.Length ? data.BuildingSightByType[buildingType] : 0f;
                 byte flags = underConstruction ? BuildingFlags.UnderConstruction : (byte)0;
                 if (building.ValueRO.buildingType == BuildingType.Radar && !underConstruction) flags |= BuildingFlags.SeesThroughWalls;
+                if (building.ValueRO.buildingType == BuildingType.Bomb) flags |= BuildingFlags.Hidden;
                 data.BuildingFlag[b] = flags;
                 data.BuildingAnchor[b] = (int2)math.round(transform.ValueRO.Position.xy);
                 data.BuildingSize[b] = (uint)buildingType < (uint)data.BuildingSizeByType.Length ? data.BuildingSizeByType[buildingType] : new int2(1, 1);

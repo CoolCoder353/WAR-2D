@@ -72,6 +72,7 @@ namespace WAR2D.UI
             AlertKind.VisionSharedWithYou => $"{nameOf(alert.OtherOwnerId)} shares vision with you",
             AlertKind.VisionUnshared => $"{nameOf(alert.OtherOwnerId)} stopped sharing vision with you",
             AlertKind.ConstructionFinished => "Construction finished",
+            AlertKind.BombTriggered => "Your bomb went off",
             _ => "",
         };
 

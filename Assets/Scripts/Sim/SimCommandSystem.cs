@@ -80,6 +80,13 @@ namespace WAR2D.Sim
                         command.OnApplied?.Invoke(placed);
                         break;
                     }
+                    case SimCommandKind.DetonateBomb:
+                    {
+                        // Only where the placer's side sees the tile, so building at random never probes for bombs.
+                        int sightGrid = context.VisionOf(command.OwnerId);
+                        if (sightGrid >= 0 && data.Sees(sightGrid, (float2)command.Tile + 0.5f)) data.ForcedBombs.Add(command.TargetId);
+                        break;
+                    }
                     case SimCommandKind.KillOwner:
                         KillUnits(data, context, command.OwnerId, all: false);
                         break;
