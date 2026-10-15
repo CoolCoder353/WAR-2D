@@ -289,6 +289,8 @@ namespace WAR2D.Sim
         public NativeArray<byte> SourceRadius;
         /// <summary>Fog cells holding a sight source this pass, as grid * FogCells + cell. Scratch.</summary>
         public NativeList<int> Sources;
+        /// <summary>Radar sight sources (grid, fog cell, radius in cells): stamped without a line-of-sight test.</summary>
+        public NativeList<int3> RadarSources;
         /// <summary>
         /// Indices (grid * FogCells + cell) whose <see cref="Visible"/> value changed in the last vision
         /// pass. Read by replication at <c>Settled</c>, then cleared at the boundary.
@@ -473,6 +475,7 @@ namespace WAR2D.Sim
             data.Explored = new NativeArray<byte>(fogTotal, allocator);
             data.SourceRadius = new NativeArray<byte>(fogTotal, allocator);
             data.Sources = new NativeList<int>(4096, allocator);
+            data.RadarSources = new NativeList<int3>(64, allocator);
             data.FogChanges = new NativeQueue<int>(allocator);
 
             foreach (var pair in config.Units)
@@ -507,7 +510,7 @@ namespace WAR2D.Sim
             ChargedThisTick.Dispose(); LargeGrid.Dispose();
             SightByType.Dispose(); BuildingSightByType.Dispose(); BuildingSight.Dispose();
             Opaque.Dispose(); OpaqueSum.Dispose(); OpaqueTile.Dispose(); Visible.Dispose(); VisiblePrev.Dispose(); Explored.Dispose();
-            SourceRadius.Dispose(); Sources.Dispose(); FogChanges.Dispose();
+            SourceRadius.Dispose(); Sources.Dispose(); RadarSources.Dispose(); FogChanges.Dispose();
         }
 
         /// <summary>1 per fog cell where any of its tiles blocks sight: only the fast path's "no tile test needed" flag.</summary>

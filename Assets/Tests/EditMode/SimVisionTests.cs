@@ -158,4 +158,36 @@ public class SimVisionTests
         Pass(sim, 8);
         Assert.IsFalse(sim.Context.Data.Sees(grid, new float2(21.5f, 32.5f)));
     }
+
+    private static SimHarness WalledMap()
+    {
+        var rows = new string[64];
+        for (int r = 0; r < 64; r++)
+            rows[r] = r == 0 || r == 63 ? new string('B', 64) : "B" + new string('.', 19) + "##" + new string('.', 41) + "B";
+        return new SimHarness(MapStore.FromAscii(rows));
+    }
+
+    [Test]
+    public void ARadarSeesOverAWallThatBlocksANormalBuilding()
+    {
+        using var sim = WalledMap(); // wall at x = 20..21
+        int radar = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Radar, new int2(14, 32));
+        sim.Tick();
+        sim.Tick();
+        sim.AddWork(radar, 10000f); // complete it
+        Pass(sim, 8);
+        int grid = sim.Context.VisionOf(SimHarness.OwnerA);
+        Assert.IsTrue(sim.Context.Data.Sees(grid, new float2(24.5f, 32.5f)), "behind the wall, inside the radius");
+        Assert.IsFalse(sim.Context.Data.Sees(grid, new float2(45.5f, 32.5f)), "outside the radius");
+    }
+
+    [Test]
+    public void ARadarUnderConstructionSeesOneTile()
+    {
+        using var sim = WalledMap();
+        sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Radar, new int2(14, 32));
+        Pass(sim, 8);
+        int grid = sim.Context.VisionOf(SimHarness.OwnerA);
+        Assert.IsFalse(sim.Context.Data.Sees(grid, new float2(24.5f, 32.5f)));
+    }
 }

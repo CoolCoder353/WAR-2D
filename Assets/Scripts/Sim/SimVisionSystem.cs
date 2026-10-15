@@ -59,6 +59,8 @@ namespace WAR2D.Sim
                 FogCells = data.FogCells,
                 UnitCount = clock.UnitCount,
                 BuildingCount = math.min(data.BuildingCount[0], data.BuildingCapacity),
+                BuildingFlag = data.BuildingFlag,
+                RadarSources = data.RadarSources,
             }.Schedule(state.Dependency);
             state.Dependency = new StampVisionJob
             {
@@ -74,6 +76,14 @@ namespace WAR2D.Sim
                 FogH = data.FogH,
                 FogCells = data.FogCells,
             }.Schedule(data.Sources, 8, state.Dependency);
+            state.Dependency = new StampRadarJob
+            {
+                Sources = data.RadarSources.AsDeferredJobArray(),
+                Visible = data.Visible,
+                FogW = data.FogW,
+                FogH = data.FogH,
+                FogCells = data.FogCells,
+            }.Schedule(data.RadarSources, 4, state.Dependency);
             state.Dependency = new DiffVisionJob
             {
                 Visible = data.Visible,
@@ -106,8 +116,9 @@ namespace WAR2D.Sim
     {
         [ReadOnly] public NativeArray<float2> Positions, BuildingPositions;
         [ReadOnly] public NativeArray<float> Health, SightByType, BuildingHealth, BuildingSight;
-        [ReadOnly] public NativeArray<byte> Type, OwnerSlot, BuildingOwnerSlot;
+        [ReadOnly] public NativeArray<byte> Type, OwnerSlot, BuildingOwnerSlot, BuildingFlag;
         [ReadOnly] public NativeArray<ushort> ShareVisionMask;
+        public NativeList<int3> RadarSources;
         public NativeArray<byte> SourceRadius;
         public NativeList<int> Sources;
         public int FogCellSize, FogW, FogH, FogCells;
@@ -116,6 +127,7 @@ namespace WAR2D.Sim
         public void Execute()
         {
             Sources.Clear();
+            RadarSources.Clear();
             float inv = 1f / FogCellSize;
             for (int i = 0; i < UnitCount; i++)
             {
@@ -127,7 +139,24 @@ namespace WAR2D.Sim
             for (int b = 0; b < BuildingCount; b++)
             {
                 if (BuildingHealth[b] <= 0f || BuildingSight[b] <= 0f) continue;
-                AddShared(BuildingOwnerSlot[b], BuildingPositions[b], BuildingSight[b] * inv);
+                if ((BuildingFlag[b] & BuildingFlags.SeesThroughWalls) != 0) AddRadar(BuildingOwnerSlot[b], BuildingPositions[b], BuildingSight[b] * inv);
+                else AddShared(BuildingOwnerSlot[b], BuildingPositions[b], BuildingSight[b] * inv);
+            }
+        }
+
+        /// <summary>Adds a Radar's source (no line-of-sight test) to its owner slot's grid and every grid the owner shares with.</summary>
+        private void AddRadar(int slot, float2 position, float radiusCells)
+        {
+            if ((uint)slot >= SimData.MaxOwners) return;
+            int2 c = math.clamp((int2)math.floor(position / FogCellSize), 0, new int2(FogW - 1, FogH - 1));
+            byte radius = (byte)math.clamp((int)math.ceil(radiusCells), 1, 255);
+            RadarSources.Add(new int3(slot, c.y * FogW + c.x, radius));
+            int shared = ShareVisionMask[slot];
+            while (shared != 0)
+            {
+                int r = math.tzcnt(shared);
+                shared &= shared - 1;
+                RadarSources.Add(new int3(r, c.y * FogW + c.x, radius));
             }
         }
 
@@ -202,6 +231,32 @@ namespace WAR2D.Sim
                     if (!LineOfSight.Tiles(OpaqueTile, Width, from, to)) continue;
                 }
                 Visible[baseIndex + y * FogW + x] = 1;
+            }
+        }
+    }
+
+    /// <summary>Marks what one Radar sees: its whole circle, walls or not.</summary>
+    [BurstCompile]
+    public struct StampRadarJob : IJobParallelForDefer
+    {
+        [ReadOnly] public NativeArray<int3> Sources;
+        [NativeDisableParallelForRestriction] public NativeArray<byte> Visible;
+        public int FogW, FogH, FogCells;
+
+        public void Execute(int s)
+        {
+            int3 source = Sources[s];
+            int radius = source.z;
+            int2 c = new int2(source.y % FogW, source.y / FogW);
+            int2 lo = math.max(c - radius, 0);
+            int2 hi = math.min(c + radius, new int2(FogW - 1, FogH - 1));
+            int limit = radius * radius + radius;
+            int baseIndex = source.x * FogCells;
+            for (int y = lo.y; y <= hi.y; y++)
+            for (int x = lo.x; x <= hi.x; x++)
+            {
+                int2 d = new int2(x, y) - c;
+                if (d.x * d.x + d.y * d.y <= limit) Visible[baseIndex + y * FogW + x] = 1;
             }
         }
     }

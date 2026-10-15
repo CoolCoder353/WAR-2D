@@ -19,6 +19,8 @@ public enum AlertKind : byte
     ConstructionFinished,
     /// <summary>One of the receiver's bombs went off (Tile is the bomb).</summary>
     BombTriggered,
+    /// <summary>One of the receiver's Radars saw an enemy come into range (Tile is the Radar, never the enemy).</summary>
+    EnemySpotted,
 }
 
 /// <summary>

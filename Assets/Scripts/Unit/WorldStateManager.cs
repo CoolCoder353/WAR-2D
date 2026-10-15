@@ -130,6 +130,8 @@ public partial class WorldStateManager : NetworkBehaviour
         Sim.Settled += OnSettled;
         AlertsConfig alertConfig = ConfigLoader.LoadConfig().Alerts;
         Alerts = new AlertService(alertConfig.ThrottleSeconds, alertConfig.AreaTiles);
+        SiegeConfig siegeConfig = ConfigLoader.LoadConfig().Siege;
+        radars = new RadarService(siegeConfig.RadarClearSeconds, siegeConfig.RadarAlertCooldownSeconds);
         Sim.UnitKilled += (owner, killer) => GameCore.Instance?.Stats.UnitDied(owner, killer);
         Sim.UnitSpawned += owner => GameCore.Instance?.Stats.UnitBuilt(owner);
         Sim.VisionShareChanged += (from, to, on) =>
@@ -251,11 +253,33 @@ public partial class WorldStateManager : NetworkBehaviour
     private void OnSettled(SimData data, int tick, int count)
     {
         FlushBlasts(data);
+        if ((tick - 1) % data.VisionInterval == 0) WatchRadars(data, count);
         FlushDeathEvents(data);
         SendSquadCounts(data, tick, count);
         if (tick % UnpaidScanTicks == 0) MarkUnpaidOwners(data, count);
         Alerts.CollectDamage(data, count, BuildingOwnerAndTile, NetworkTime.localTime);
         Alerts.Flush();
+    }
+
+    private RadarService radars;
+    private readonly List<RadarView> radarScratch = new List<RadarView>();
+
+    /// <summary>Steps every finished Radar's contact watch (once per vision pass) and pings its owner on a new contact.</summary>
+    [Server]
+    private void WatchRadars(SimData data, int unitCount)
+    {
+        radarScratch.Clear();
+        BuildingConfig radarConfig = ConfigLoader.LoadConfig().GetBuilding(BuildingType.Radar);
+        foreach (Entity entity in Buildings.Values)
+        {
+            if (!EntityManager.Exists(entity)) continue;
+            BuildingData building = EntityManager.GetComponentData<BuildingData>(entity);
+            if (building.buildingType != BuildingType.Radar || EntityManager.HasComponent<Construction>(entity)) continue;
+            if (EntityManager.GetComponentData<HealthComponent>(entity).currentHealth <= 0f) continue;
+            int2 anchor = (int2)math.round(building.position);
+            radarScratch.Add(new RadarView { Id = building.id, OwnerId = building.ownerId, Tile = anchor, Centre = Footprint.VisualCenter(anchor, radarConfig.Size), Radius = radarConfig.Sight });
+        }
+        radars.Update(data, unitCount, radarScratch, NetworkTime.localTime, Alerts.Add);
     }
 
     private readonly List<float2> blastScratch = new List<float2>();
@@ -407,6 +431,7 @@ public partial class WorldStateManager : NetworkBehaviour
             if (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing) GameCore.Instance.Stats.BuildingLost(building.ownerId);
             Buildings.Remove(id);
             if (building.buildingType == BuildingType.Bomb) bombTiles.Remove((int2)math.round(building.position));
+            if (building.buildingType == BuildingType.Radar) radars?.Forget(id);
             Sim?.ForgetBuilding(id);
             Ids?.Free(id);
             if (buildingFootprints.Remove(id, out List<int2> footprint))
