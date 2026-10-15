@@ -2,9 +2,9 @@
   <Project Path="Mirror.Transports.csproj" />
   <Project Path="NaughtyAttributes.Editor.csproj" />
   <Project Path="Unity.Mirror.CodeGen.csproj" />
+  <Project Path="WAR2D.csproj" />
   <Project Path="Edgegap.csproj" />
   <Project Path="Mirror.Components.csproj" />
-  <Project Path="WAR2D.csproj" />
   <Project Path="Mirror.Editor.csproj" />
   <Project Path="WAR2D.DevConsole.csproj" />
   <Project Path="NaughtyAttributes.Test.csproj" />
