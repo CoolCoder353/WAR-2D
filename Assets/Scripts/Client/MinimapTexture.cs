@@ -92,14 +92,14 @@ namespace WAR2D.Client
         public void PlotUnit(float2 position, Color32 colour)
         {
             int cell = CellOf(position);
-            if (cell >= 0 && fog[cell] == (byte)FogState.Visible) pixels[cell] = colour;
+            if (fog != null && cell >= 0 && fog[cell] == (byte)FogState.Visible) pixels[cell] = colour;
         }
 
         /// <summary>Plots a building at a world position on any explored cell; a ghost (last seen) is dimmed.</summary>
         public void PlotBuilding(float2 position, Color32 colour, bool ghost)
         {
             int cell = CellOf(position);
-            if (cell < 0 || fog[cell] == (byte)FogState.Unexplored) return;
+            if (fog == null || cell < 0 || fog[cell] == (byte)FogState.Unexplored) return;
             pixels[cell] = ghost ? Scale(colour, 0.5f) : colour;
         }
 

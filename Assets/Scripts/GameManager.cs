@@ -357,7 +357,8 @@ public class GameManager : NetworkManager
             Debug.LogWarning($"Not connecting to {route}: {why}");
             return;
         }
-        if (NetworkClient.active) return;
+        if (NetworkServer.active) return; // hosting: there is nothing to join
+        if (NetworkClient.active) StopClient(); // a lingering connection must not swallow this join
         ActiveRoute = route;
         if (route.Kind == WAR2D.Net.Steam.RouteKind.Steam)
         {

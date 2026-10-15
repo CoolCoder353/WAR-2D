@@ -1,3 +1,4 @@
+using System.Linq;
 using Config;
 using Mirror;
 using UnityEngine;
@@ -52,18 +53,37 @@ namespace WAR2D.UI
             Palettes.ApplyTo(root);
             Palettes.Changed += ApplyPalette;
             root.Query<TemplateContainer>().ForEach(t => t.pickingMode = PickingMode.Ignore);
-            mainScreen = root.Q("main-menu");
-            playScreen = root.Q("host-join");
-            lobbyScreen = root.Q("lobby");
+            VisualElement GetScreen(string instanceName, string innerName)
+            {
+                TemplateContainer instance = root.Q<TemplateContainer>(instanceName);
+                if (instance != null && instance.contentContainer != null)
+                {
+                    VisualElement inner = instance.contentContainer.Q<VisualElement>(innerName);
+                    if (inner != null) return inner;
+                }
+                return root.Q<VisualElement>(innerName) ?? root.Q<VisualElement>(instanceName);
+            }
+
+            mainScreen = GetScreen("main-menu-instance", "main-menu");
+            playScreen = GetScreen("host-join-instance", "host-join");
+            lobbyScreen = GetScreen("lobby-instance", "lobby");
+            if (mainScreen == null || playScreen == null || lobbyScreen == null)
+            {
+                Debug.LogError($"MenuController: failed to bind UI screens. root={root.name}; main={mainScreen != null}; play={playScreen != null}; lobby={lobbyScreen != null}; childNames={string.Join(", ", root.Children().Select(c => c.name))}");
+            }
+            else
+            {
+                Debug.Log($"MenuController: bound screens main={mainScreen.name}, play={playScreen.name}, lobby={lobbyScreen.name}");
+            }
 
             main = new MainMenuController(root);
-            main.PlayClicked += () => wantsPlay = true;
+            main.PlayClicked += () => { wantsPlay = true; Show(Screen.Play); };
             settings = new SettingsController(root);
             main.SettingsClicked += () => { settings.Open(); SettingsRequested?.Invoke(); };
             main.QuitClicked += () => GameManager.Instance?.QuitGame();
 
             play = new HostJoinController(root);
-            play.BackClicked += () => { wantsPlay = false; play.ShowIdle(); };
+            play.BackClicked += () => { wantsPlay = false; play.ShowIdle(); Show(Screen.Main); };
             play.HostClicked += Host;
             play.JoinClicked += Join;
             play.SetDirectAvailable(GameManager.DirectAllowed);
@@ -158,6 +178,7 @@ namespace WAR2D.UI
             if (core != null && NetworkServer.active)
                 WAR2D.Net.Steam.SteamHostLobby.Current?.Update(core.CurrentState, core.Settings, NetworkServer.connections.Count);
             bool inLobby = connected && core != null && core.CurrentState == GameState.Lobby && NetworkClient.localPlayer != null;
+            bool inMatch = connected && core != null && core.CurrentState != GameState.Lobby;
             if (inLobby)
             {
                 joiningAddress = null;
@@ -177,12 +198,22 @@ namespace WAR2D.UI
                 }
                 Show(Screen.Lobby);
             }
-            else if (connected || (NetworkClient.active && joiningAddress == null)) Show(Screen.None); // starting or leaving a match
-            else Show(wantsPlay || joiningAddress != null ? Screen.Play : Screen.Main);
+            else if (inMatch) Show(Screen.None); // actual match flow; hide menu overlays
+            else if (wantsPlay || joiningAddress != null) Show(Screen.Play);
+            else Show(Screen.Main);
         }
 
         private void Show(Screen screen)
         {
+            if (mainScreen == null || playScreen == null || lobbyScreen == null)
+            {
+                Debug.LogError($"MenuController: cannot show screen {screen}; some menu elements are null. main={mainScreen != null}; play={playScreen != null}; lobby={lobbyScreen != null}");
+                return;
+            }
+
+            string joinValue = joiningAddress ?? "<null>";
+            string coreState = GameCore.Instance != null ? GameCore.Instance.CurrentState.ToString() : "<null>";
+            Debug.Log($"MenuController: changing screen to {screen} (wantsPlay={wantsPlay}, joiningAddress={joinValue}, connected={NetworkClient.isConnected}, active={NetworkClient.active}, coreState={coreState})");
             mainScreen.EnableInClassList("menu-screen--visible", screen == Screen.Main);
             playScreen.EnableInClassList("menu-screen--visible", screen == Screen.Play);
             lobbyScreen.EnableInClassList("menu-screen--visible", screen == Screen.Lobby);

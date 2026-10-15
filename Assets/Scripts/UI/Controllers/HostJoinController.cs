@@ -20,7 +20,7 @@ namespace WAR2D.UI
         /// <summary>Raised with the lobby the player chose to join.</summary>
         public event Action<LobbyInfo> JoinGameClicked;
 
-        private readonly VisualElement gameList, friendsEmpty, directSection;
+        private readonly VisualElement gameList, friendsEmpty, directBlock, directSection;
         private readonly Label steamOff, friendsNotice;
         private readonly Button directToggle;
 
@@ -41,6 +41,7 @@ namespace WAR2D.UI
             friendsEmpty = root.Q("friends-empty");
             steamOff = root.Q<Label>("steam-off");
             friendsNotice = root.Q<Label>("friends-notice");
+            directBlock = root.Q("direct-block");
             directSection = root.Q("direct-section");
             directToggle = root.Q<Button>("direct-toggle");
             root.Q<Button>("refresh-button").clicked += () => RefreshClicked?.Invoke();
@@ -101,7 +102,7 @@ namespace WAR2D.UI
         }
 
         /// <summary>Shows or hides the Direct (IP) block as a whole (it is off in release builds without -direct).</summary>
-        public void SetDirectAvailable(bool available) => directToggle.parent.parent.EnableInClassList("hidden", !available);
+        public void SetDirectAvailable(bool available) => directBlock.EnableInClassList("hidden", !available);
 
         /// <summary>Expands or collapses the Direct (IP) form.</summary>
         public void SetDirectExpanded(bool expanded)

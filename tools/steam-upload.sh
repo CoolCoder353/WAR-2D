@@ -13,14 +13,19 @@ source steam/steam.env
 for v in APP_ID DEPOT_LINUX DEPOT_WINDOWS STEAM_USER; do [[ -n "${!v:-}" ]] || { echo "$v is empty in steam/steam.env"; exit 1; }; done
 for d in Builds/Steam/linux Builds/Steam/windows; do [[ -d "$d" ]] || { echo "Missing $d: build it first (WAR-2D/Build menu)"; exit 1; }; done
 
+# Valve does not let a script set the 'default' branch live:
+# for 'default' this uploads the build and you set it live in the Steamworks dashboard (SteamPipe > Builds).
+setlive=""
+[[ "$branch" == "default" ]] || setlive="\"SetLive\" \"$branch\""
+
 out="$(realpath -m steam/output)"; mkdir -p "$out"
 cat > "$out/depot_linux.vdf" <<VDF
-"DepotBuildConfig" { "DepotID" "$DEPOT_LINUX" "ContentRoot" "$(realpath Builds/Steam/linux)" "FileMapping" { "LocalPath" "*" "DepotPath" "." "recursive" "1" } "FileExclusion" "steam_appid.txt" }
+"DepotBuildConfig" { "DepotID" "$DEPOT_LINUX" "ContentRoot" "$(realpath Builds/Steam/linux)" "FileMapping" { "LocalPath" "*" "DepotPath" "." "recursive" "1" } "FileExclusion" "steam_appid.txt" "FileExclusion" "*_BurstDebugInformation_DoNotShip/*" }
 VDF
 cat > "$out/depot_windows.vdf" <<VDF
-"DepotBuildConfig" { "DepotID" "$DEPOT_WINDOWS" "ContentRoot" "$(realpath Builds/Steam/windows)" "FileMapping" { "LocalPath" "*" "DepotPath" "." "recursive" "1" } "FileExclusion" "steam_appid.txt" }
+"DepotBuildConfig" { "DepotID" "$DEPOT_WINDOWS" "ContentRoot" "$(realpath Builds/Steam/windows)" "FileMapping" { "LocalPath" "*" "DepotPath" "." "recursive" "1" } "FileExclusion" "steam_appid.txt" "FileExclusion" "*_BurstDebugInformation_DoNotShip/*" }
 VDF
 cat > "$out/app_build.vdf" <<VDF
-"AppBuild" { "AppID" "$APP_ID" "Desc" "$desc" "BuildOutput" "$out/logs" "SetLive" "$branch" "Depots" { "$DEPOT_LINUX" "$out/depot_linux.vdf" "$DEPOT_WINDOWS" "$out/depot_windows.vdf" } }
+"AppBuild" { "AppID" "$APP_ID" "Desc" "$desc" "BuildOutput" "$out/logs" $setlive "Depots" { "$DEPOT_LINUX" "$out/depot_linux.vdf" "$DEPOT_WINDOWS" "$out/depot_windows.vdf" } }
 VDF
 "$STEAMCMD" +login "$STEAM_USER" +run_app_build "$out/app_build.vdf" +quit
