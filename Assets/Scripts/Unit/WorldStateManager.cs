@@ -795,10 +795,10 @@ public partial class WorldStateManager : NetworkBehaviour
 
     /// <summary>Dev only (performance harness): queues a free unit for any owner.</summary>
     [Server]
-    internal bool DevSpawnUnit(int ownerId, float2 position, Action<int> onSpawned = null)
+    internal bool DevSpawnUnit(int ownerId, float2 position, Action<int> onSpawned = null, UnitType type = UnitType.Tank)
     {
         if (!DevApi.Allowed || Sim == null) return false;
-        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.SpawnUnit, OwnerId = ownerId, Position = position, UnitType = UnitType.Tank, OnSpawned = onSpawned });
+        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.SpawnUnit, OwnerId = ownerId, Position = position, UnitType = type, OnSpawned = onSpawned });
         return true;
     }
 
