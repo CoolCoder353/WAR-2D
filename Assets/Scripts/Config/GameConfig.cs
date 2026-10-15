@@ -31,6 +31,8 @@ namespace Config
         public GiftingConfig Gifting = new GiftingConfig();
         /// <summary>The alert feed.</summary>
         public AlertsConfig Alerts = new AlertsConfig();
+        /// <summary>Construction, walls, digging, bombs and Radars (v0.7).</summary>
+        public SiegeConfig Siege = new SiegeConfig();
         /// <summary>Music switching.</summary>
         public AudioConfig Audio = new AudioConfig();
         /// <summary>What the host may pick in the lobby.</summary>
@@ -166,6 +168,35 @@ namespace Config
         public int BattleDeathsPerSecond;
         /// <summary>Seconds the battle track holds after the last such second before going back to calm.</summary>
         public float BattleHoldSeconds;
+    }
+
+    /// <summary>Construction, walls, digging, bombs and Radars (v0.7).</summary>
+    public class SiegeConfig
+    {
+        /// <summary>Health per second one Builder adds to a blueprint, a rising wall or (for a price) a damaged building.</summary>
+        public float BuildPower;
+        /// <summary>Share of its cost (0..1) a completed building refunds when its owner demolishes it; blueprints refund in full.</summary>
+        public float DemolishRefund;
+        /// <summary>Resources per point of health a repair restores.</summary>
+        public float RepairCostPerHealth;
+        /// <summary>Seconds a Digger takes to turn one rock or gem tile into floor.</summary>
+        public float DigTime;
+        /// <summary>Resources a dug gem tile pays the Digger's owner.</summary>
+        public float GemPayout;
+        /// <summary>Resources per wall segment, taken when it is placed.</summary>
+        public float WallCost;
+        /// <summary>A finished wall segment's health.</summary>
+        public int WallHealth;
+        /// <summary>Most segments one wall drag may lay.</summary>
+        public int MaxWallLine;
+        /// <summary>Radius in tiles a bomb blast reaches.</summary>
+        public float BlastRadius;
+        /// <summary>Damage a bomb blast deals to every unit, building and wall it reaches.</summary>
+        public float BlastDamage;
+        /// <summary>Seconds a Radar's radius must stay clear of enemies before it may ping again.</summary>
+        public float RadarClearSeconds;
+        /// <summary>Least seconds between two pings from one Radar.</summary>
+        public float RadarAlertCooldownSeconds;
     }
 
     /// <summary>Alert tuning.</summary>

@@ -151,6 +151,24 @@ namespace Config
                 config.Alerts.ShowSeconds = Float(alerts, "ShowSeconds", "Alerts", errors, min: 1, max: 300);
             }
 
+            XmlNode siege = Require(root, "Siege", errors);
+            if (siege != null)
+            {
+                const string s = "Siege";
+                config.Siege.BuildPower = Float(siege, "BuildPower", s, errors, min: 0.1f, max: 1000);
+                config.Siege.DemolishRefund = Float(siege, "DemolishRefund", s, errors, min: 0, max: 1);
+                config.Siege.RepairCostPerHealth = Float(siege, "RepairCostPerHealth", s, errors, min: 0, max: 100);
+                config.Siege.DigTime = Float(siege, "DigTime", s, errors, min: 0.05f, max: 60);
+                config.Siege.GemPayout = Float(siege, "GemPayout", s, errors, min: 0, max: 100000);
+                config.Siege.WallCost = Float(siege, "WallCost", s, errors, min: 0, max: 10000);
+                config.Siege.WallHealth = Int(siege, "WallHealth", s, errors, min: 1, max: 100000);
+                config.Siege.MaxWallLine = Int(siege, "MaxWallLine", s, errors, min: 1, max: 256);
+                config.Siege.BlastRadius = Float(siege, "BlastRadius", s, errors, min: 0.5f, max: 16);
+                config.Siege.BlastDamage = Float(siege, "BlastDamage", s, errors, min: 0, max: 100000);
+                config.Siege.RadarClearSeconds = Float(siege, "RadarClearSeconds", s, errors, min: 0, max: 600);
+                config.Siege.RadarAlertCooldownSeconds = Float(siege, "RadarAlertCooldownSeconds", s, errors, min: 0, max: 600);
+            }
+
             XmlNode audio = Require(root, "Audio", errors);
             if (audio != null)
             {

@@ -4,7 +4,11 @@ using Unity.Mathematics;
 public enum UnitType
 {
     None,
-    Tank
+    Tank,
+    /// <summary>Builds from blueprints, finishes walls and repairs buildings; does not attack.</summary>
+    Builder,
+    /// <summary>Tunnels through rock, gems and walls.</summary>
+    Digger
 }
 
 public struct HealthComponent : IComponentData

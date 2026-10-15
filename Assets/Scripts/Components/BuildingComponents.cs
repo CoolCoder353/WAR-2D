@@ -32,7 +32,11 @@ public enum BuildingType
     None,
     Miner,
     SmallUnitSpawner,
-    Base
+    Base,
+    /// <summary>A hidden mine: detonates when an enemy steps on it; visible only to its owner's side.</summary>
+    Bomb,
+    /// <summary>Sees over walls and pings its owner when an enemy comes into range.</summary>
+    Radar
 }
 
 public struct SpawnerData : IComponentData

@@ -19,15 +19,20 @@ public class ConfigParserTests
   <MenuBattle><UnitsPerArmy>1500</UnitsPerArmy><MapSize>512</MapSize><Seed>7</Seed></MenuBattle>
   <Gifting><CooldownSeconds>5</CooldownSeconds></Gifting>
   <Alerts><ThrottleSeconds>10</ThrottleSeconds><AreaTiles>32</AreaTiles><ShowSeconds>8</ShowSeconds></Alerts>
+  <Siege><BuildPower>25</BuildPower><DemolishRefund>0.5</DemolishRefund><RepairCostPerHealth>0.2</RepairCostPerHealth><DigTime>1.5</DigTime><GemPayout>150</GemPayout><WallCost>5</WallCost><WallHealth>150</WallHealth><MaxWallLine>64</MaxWallLine><BlastRadius>2.5</BlastRadius><BlastDamage>200</BlastDamage><RadarClearSeconds>5</RadarClearSeconds><RadarAlertCooldownSeconds>30</RadarAlertCooldownSeconds></Siege>
   <Audio><BattleDeathsPerSecond>3</BattleDeathsPerSecond><BattleHoldSeconds>20</BattleHoldSeconds></Audio>
-  <DamageTable><Entry attacker=""Tank"" target=""Unit"">1.0</Entry><Entry attacker=""Tank"" target=""Building"">1.0</Entry><Entry attacker=""Tank"" target=""Wall"">0.5</Entry></DamageTable>
+  <DamageTable><Entry attacker=""Tank"" target=""Unit"">1.0</Entry><Entry attacker=""Tank"" target=""Building"">1.0</Entry><Entry attacker=""Tank"" target=""Wall"">0.5</Entry><Entry attacker=""Digger"" target=""Unit"">0.5</Entry><Entry attacker=""Digger"" target=""Wall"">6</Entry></DamageTable>
   <Units>
     <Unit type=""Tank""><Health>100</Health><Damage>10</Damage><Range>5</Range><AttackInterval>1</AttackInterval><MoveSpeed>5</MoveSpeed><Acceleration>5</Acceleration><UpfrontCost>50</UpfrontCost><RunningCost>2</RunningCost><Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>8</Sight></Unit>
+    <Unit type=""Builder""><Health>60</Health><Damage>0</Damage><Range>1</Range><AttackInterval>1</AttackInterval><MoveSpeed>5</MoveSpeed><Acceleration>5</Acceleration><UpfrontCost>60</UpfrontCost><RunningCost>2</RunningCost><Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>6</Sight></Unit>
+    <Unit type=""Digger""><Health>120</Health><Damage>4</Damage><Range>1.5</Range><AttackInterval>1</AttackInterval><MoveSpeed>4</MoveSpeed><Acceleration>4</Acceleration><UpfrontCost>120</UpfrontCost><RunningCost>4</RunningCost><Radius>0.4</Radius><SizeClass>0</SizeClass><Sight>6</Sight></Unit>
   </Units>
   <Buildings>
     <Building type=""Base""><Health>500</Health><Width>3</Width><Height>3</Height><UpfrontCost>0</UpfrontCost><RunningCost>0</RunningCost><SpawnRate>0</SpawnRate><Sight>4</Sight></Building>
     <Building type=""Miner""><Health>50</Health><Width>1</Width><Height>1</Height><UpfrontCost>50</UpfrontCost><RunningCost>0</RunningCost><SpawnRate>0</SpawnRate><Sight>4</Sight></Building>
     <Building type=""SmallUnitSpawner""><Health>300</Health><Width>2</Width><Height>2</Height><UpfrontCost>200</UpfrontCost><RunningCost>20</RunningCost><SpawnRate>1</SpawnRate><Sight>4</Sight></Building>
+    <Building type=""Bomb""><Health>40</Health><Width>1</Width><Height>1</Height><UpfrontCost>75</UpfrontCost><RunningCost>1</RunningCost><SpawnRate>0</SpawnRate><Sight>0</Sight></Building>
+    <Building type=""Radar""><Health>200</Health><Width>2</Width><Height>2</Height><UpfrontCost>250</UpfrontCost><RunningCost>5</RunningCost><SpawnRate>0</SpawnRate><Sight>20</Sight></Building>
   </Buildings>
 </GameConfig>";
 
@@ -44,6 +49,34 @@ public class ConfigParserTests
         Assert.That(c.GetUnit(UnitType.Tank).Range, Is.EqualTo(5f));
         Assert.That(c.GetBuilding(BuildingType.SmallUnitSpawner).UpfrontCost, Is.EqualTo(200f));
         Assert.That(c.GetBuilding(BuildingType.Base).Size.x, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void ShippedConfig_HasEverySiegeValueAndType()
+    {
+        ConfigLoader.ResetForTests();
+        GameConfigData c = ConfigLoader.LoadConfig();
+        Assert.IsTrue(ConfigLoader.IsValid);
+        Assert.Greater(c.Siege.BuildPower, 0f);
+        Assert.AreEqual(0.5f, c.Siege.DemolishRefund, "a completed building refunds half its cost (owner, 2026-10-15)");
+        Assert.Greater(c.Siege.DigTime, 0f);
+        Assert.Greater(c.Siege.WallHealth, 0);
+        Assert.Greater(c.Siege.MaxWallLine, 0);
+        Assert.Greater(c.Siege.BlastRadius, 0f);
+        Assert.Greater(c.Siege.RadarAlertCooldownSeconds, 0f);
+        Assert.AreEqual(0, c.GetUnit(UnitType.Builder).Damage, "Builders don't attack");
+        Assert.AreEqual(1, c.GetBuilding(BuildingType.Bomb).Width);
+        Assert.AreEqual(0f, c.GetBuilding(BuildingType.Bomb).Sight, "a bomb is never a sight source");
+        Assert.Greater(c.GetBuilding(BuildingType.Radar).Sight, c.GetBuilding(BuildingType.Base).Sight);
+        Assert.Greater(c.Damage.Multiplier(UnitType.Digger, TargetClass.Wall), c.Damage.Multiplier(UnitType.Digger, TargetClass.Unit));
+    }
+
+    [Test]
+    public void MissingSiegeSection_IsAnError()
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(Regex.Replace(ValidXml, "<Siege>.*?</Siege>", "", RegexOptions.Singleline), errors);
+        Assert.That(errors, Has.Some.Contains("Siege"));
     }
 
     [Test]

@@ -67,6 +67,7 @@ namespace WAR2D.Art
             new ArtEntry(nameof(BuildingType.SmallUnitSpawner), ArtKind.Building, 2, 2, 2, 1, true),
             new ArtEntry(nameof(BuildingType.Miner), ArtKind.Building, 1, 1, 4, BuildingDirections, true),
             new ArtEntry("Bomb", ArtKind.Building, 1, 1, 2, 1, true),
+            new ArtEntry("Radar", ArtKind.Building, 2, 2, 2, 1, true),
 
             // Tiles: frames are variants (random for floor and gems, autotile masks for walls).
             new ArtEntry(nameof(TileType.Ground), ArtKind.Tile, 1, 1, 4, 1, false),
