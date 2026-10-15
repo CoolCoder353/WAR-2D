@@ -200,7 +200,7 @@ namespace WAR2D.Sim
         {
             standGoal = tile;
             WAR2D.World.MapGrid grid = context.Map.Grid;
-            if (!context.BuildingAt.TryGetValue(grid.Index(tile), out int buildingId)) return false;
+            if (!context.BuildingAt.TryGetValue(grid.Index(tile), out int buildingId)) return TryWallTarget(data, context, owner, order, tile, out standGoal);
             int index = NetIdAllocator.IndexOf(buildingId);
             int b = index < data.BuildingSlotOfIndex.Length ? data.BuildingSlotOfIndex[index] : -1;
             if (b < 0 || b >= data.BuildingCount[0] || data.BuildingIds[b] != buildingId) return false;
@@ -210,6 +210,21 @@ namespace WAR2D.Sim
             if (order == OrderKind.Build && !own) return false;
             if (order == OrderKind.Repair && !own && !allied) return false;
             return TileSearch.FindNearest(data.BuildingAnchor[b], context.Map.IsWalkable, t => TileRules.IsFloor(grid.TileAt(t)) || context.Map.IsUsed(t), 1024, out standGoal);
+        }
+
+        /// <summary>A wall tile as a work target: Build needs an own one, Repair an own or allied one; workers stand on a free tile beside it.</summary>
+        private static bool TryWallTarget(SimData data, SimContext context, int owner, OrderKind order, int2 tile, out int2 standGoal)
+        {
+            standGoal = tile;
+            WAR2D.World.MapGrid grid = context.Map.Grid;
+            int index = grid.Index(tile);
+            if (data.WallState[index] == WallStates.None) return false;
+            int ownerSlot = context.SlotOf(owner), wallSlot = data.WallOwnerSlot[index];
+            bool own = wallSlot == ownerSlot;
+            bool allied = wallSlot != SimData.NoSlot && ownerSlot >= 0 && !SimData.Attacks(data.AttackMask, ownerSlot, wallSlot) && !SimData.Attacks(data.AttackMask, wallSlot, ownerSlot);
+            if (order == OrderKind.Build && !own) return false;
+            if (order == OrderKind.Repair && !own && !allied) return false;
+            return TileSearch.FindNearest(tile, t => !t.Equals(tile) && context.Map.IsWalkable(t), t => TileRules.IsFloor(grid.TileAt(t)) || t.Equals(tile) || context.Map.IsUsed(t), 1024, out standGoal);
         }
 
         /// <summary>Like <see cref="Issue"/>, with the work target the units start on arrival.</summary>

@@ -7,6 +7,15 @@ using WAR2D.World;
 
 namespace WAR2D.Sim
 {
+    /// <summary>Work or damage done to one wall tile, applied at the boundary.</summary>
+    public struct TileWork
+    {
+        public int Tile;
+        public float Amount;
+        /// <summary>Who did it (the worker's owner id, who pays for repairs).</summary>
+        public int OwnerId;
+    }
+
     /// <summary>A unit removed at a boundary: the main thread frees its id and records its explosion.</summary>
     public struct DeathRecord
     {
@@ -118,6 +127,18 @@ namespace WAR2D.Sim
         public NativeArray<byte> WorkKind;
         /// <summary>Ids of units whose work target is gone or done; the boundary clears their work.</summary>
         public NativeQueue<int> WorkFinished;
+        /// <summary>Owner slot of each player wall tile (<see cref="NoSlot"/> where there is none).</summary>
+        public NativeArray<byte> WallOwnerSlot;
+        /// <summary><see cref="WallStates"/> per tile.</summary>
+        public NativeArray<byte> WallState;
+        /// <summary>Wall health per tile (0 for a blueprint).</summary>
+        public NativeArray<float> WallHealth;
+        /// <summary>A finished wall's health.</summary>
+        public float WallMaxHealth;
+        /// <summary>Construction and repair work Builders did on wall tiles; applied at the boundary.</summary>
+        public NativeQueue<TileWork> WallWork;
+        /// <summary>Damage done to wall tiles; applied at the boundary.</summary>
+        public NativeQueue<TileWork> WallDamage;
         /// <summary>Repair work on completed buildings, with who pays; applied at the boundary.</summary>
         public NativeQueue<RepairWork> RepairWork;
         /// <summary>Resources per point of health a repair restores.</summary>
@@ -333,6 +354,12 @@ namespace WAR2D.Sim
                 WorkTile = new NativeArray<int>(capacity, allocator),
                 WorkKind = new NativeArray<byte>(capacity, allocator),
                 WorkFinished = new NativeQueue<int>(allocator),
+                WallOwnerSlot = new NativeArray<byte>(map.Width * map.Height, allocator),
+                WallState = new NativeArray<byte>(map.Width * map.Height, allocator),
+                WallHealth = new NativeArray<float>(map.Width * map.Height, allocator),
+                WallMaxHealth = config.Siege.WallHealth,
+                WallWork = new NativeQueue<TileWork>(allocator),
+                WallDamage = new NativeQueue<TileWork>(allocator),
                 RepairWork = new NativeQueue<RepairWork>(allocator),
                 RepairCostPerHealth = config.Siege.RepairCostPerHealth,
                 BuildPower = config.Siege.BuildPower,
@@ -378,6 +405,8 @@ namespace WAR2D.Sim
                 ChargedThisTick = new NativeArray<byte>(1, allocator),
                 LargeGrid = BuildLargeGrid(map, allocator),
             };
+
+            for (int i = 0; i < data.WallOwnerSlot.Length; i++) data.WallOwnerSlot[i] = NoSlot;
 
             int fogCell = math.max(1, sim.FogCellSize);
             data.FogCellSize = fogCell;
@@ -429,7 +458,7 @@ namespace WAR2D.Sim
             RunningCostByType.Dispose(); DamageTable.Dispose();
             Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Type.Dispose();
             SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose(); LastHitBy.Dispose();
-            OrderSlot.Dispose(); Arrived.Dispose(); WorkTile.Dispose(); WorkKind.Dispose(); WorkFinished.Dispose(); RepairWork.Dispose(); Unpaid.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
+            OrderSlot.Dispose(); Arrived.Dispose(); WorkTile.Dispose(); WorkKind.Dispose(); WorkFinished.Dispose(); WallOwnerSlot.Dispose(); WallState.Dispose(); WallHealth.Dispose(); WallWork.Dispose(); WallDamage.Dispose(); RepairWork.Dispose(); Unpaid.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
             Cell.Dispose(); CellStart.Dispose(); Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose();
             BuildingCount.Dispose(); BuildingPositions.Dispose(); BuildingOwnerId.Dispose(); BuildingOwnerSlot.Dispose(); BuildingHealth.Dispose();
             BuildingDamage.Dispose(); BuildingIds.Dispose(); BuildingEntities.Dispose(); BuildingSlotOfIndex.Dispose(); BuildingCell.Dispose();

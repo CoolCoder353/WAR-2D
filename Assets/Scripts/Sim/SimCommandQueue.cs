@@ -26,6 +26,8 @@ namespace WAR2D.Sim
         SetShareVision,
         /// <summary>Change the tile at <see cref="SimCommand.Tile"/> to <see cref="SimCommand.TileType"/>.</summary>
         SetTile,
+        /// <summary>Lay a wall blueprint for <see cref="SimCommand.OwnerId"/> on <see cref="SimCommand.Tile"/>.</summary>
+        PlaceWall,
     }
 
     /// <summary>A building the command system creates; placement, payment and footprint are done already.</summary>
@@ -65,6 +67,8 @@ namespace WAR2D.Sim
         public BuildingSpec Building;
         /// <summary>Called with the new unit's id after a spawn is applied (or -1 when refused).</summary>
         public System.Action<int> OnSpawned;
+        /// <summary>Called after a <see cref="SimCommandKind.PlaceWall"/> is applied (true) or refused (false).</summary>
+        public System.Action<bool> OnApplied;
     }
 
     /// <summary>

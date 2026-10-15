@@ -16,6 +16,7 @@ public class SpatialHashTests
         public NativeArray<float2> Positions, BuildingPositions;
         public NativeArray<int> Cell, CellStart, Sorted, Target, BCell, BCellStart, BSorted;
         public NativeArray<float> Health, BuildingHealth, RangeSqByType, DamageByType;
+        public NativeArray<byte> WallState = new NativeArray<byte>(1, Allocator.TempJob);
         /// <summary>Owner slots: 1 and 2 attack each other.</summary>
         public NativeArray<byte> Owner, BuildingOwner;
         public NativeArray<ushort> AttackMask;
@@ -69,7 +70,7 @@ public class SpatialHashTests
                 BuildingCellStart = BCellStart, BuildingSorted = BSorted,
                 InvCellSize = inv, CellsX = CellsAcross, CellsY = CellsAcross, SearchCells = (int)math.ceil(Range / CellSize),
                 Tick = tick, Slice = slice, Target = Target, TargetKind = TargetKind,
-                OpaqueTile = Opaque, Width = 1, Height = 1, // open ground: one clear tile
+                OpaqueTile = Opaque, WallState = WallState, WallOwnerSlot = WallState, Width = 1, Height = 1, // open ground: one clear tile
             }.Schedule(Positions.Length, 64, h);
             h.Complete();
         }
@@ -79,7 +80,7 @@ public class SpatialHashTests
             Opaque.Dispose();
             Positions.Dispose(); Owner.Dispose(); AttackMask.Dispose(); Health.Dispose(); Type.Dispose(); Stance.Dispose(); OrderSlot.Dispose(); OrderLive.Dispose(); Cell.Dispose(); CellStart.Dispose();
             Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose(); BuildingPositions.Dispose(); BuildingOwner.Dispose();
-            BuildingHealth.Dispose(); BCell.Dispose(); BCellStart.Dispose(); BSorted.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose();
+            BuildingHealth.Dispose(); BCell.Dispose(); BCellStart.Dispose(); BSorted.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose(); WallState.Dispose();
         }
     }
 

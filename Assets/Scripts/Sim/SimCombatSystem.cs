@@ -76,6 +76,8 @@ namespace WAR2D.Sim
                 BuildingCount = buildings,
                 OpaqueTile = data.OpaqueTile,
                 DamageByType = data.DamageByType,
+                WallState = data.WallState,
+                WallOwnerSlot = data.WallOwnerSlot,
                 Width = data.Width,
                 Height = data.Height,
                 Target = data.Target,
@@ -108,6 +110,8 @@ namespace WAR2D.Sim
                 Slice = data.Slice,
                 OpaqueTile = data.OpaqueTile,
                 DamageByType = data.DamageByType,
+                WallState = data.WallState,
+                WallOwnerSlot = data.WallOwnerSlot,
                 Width = data.Width,
                 Height = data.Height,
                 Target = data.Target,
@@ -139,6 +143,7 @@ namespace WAR2D.Sim
                 LastHitBy = data.LastHitBy,
                 BuildingHealth = data.BuildingHealth,
                 BuildingDamage = data.BuildingDamage,
+                WallDamage = data.WallDamage,
             }.Schedule(state.Dependency);
 
             state.Dependency = new WriteBackCombatJob
@@ -182,6 +187,7 @@ namespace WAR2D.Sim
         public int BuildingCount;
         [ReadOnly] public NativeArray<byte> OpaqueTile;
         [ReadOnly] public NativeArray<float> DamageByType;
+        [ReadOnly] public NativeArray<byte> WallState, WallOwnerSlot;
         public int Width, Height;
         public NativeArray<int> Target;
         public NativeArray<byte> TargetKind;
@@ -191,11 +197,19 @@ namespace WAR2D.Sim
             int id = Target[i];
             Target[i] = -1;
             if (Health[i] <= 0f || id <= 0 || TargetKinds.IgnoresEnemies(Stance[i], OrderSlot[i], OrderLive) || DamageByType[Type[i]] <= 0f) return;
-            int index = NetIdAllocator.IndexOf(id);
-            if (index >= IndexOfId.Length) return;
             int type = Type[i];
             float rangeSq = type < RangeSqByType.Length ? RangeSqByType[type] : 0f;
+            int index = TargetKind[i] == TargetKinds.Wall ? 0 : NetIdAllocator.IndexOf(id);
+            if (index >= IndexOfId.Length) return;
 
+            if (TargetKind[i] == TargetKinds.Wall)
+            {
+                if ((uint)id >= (uint)WallState.Length || WallState[id] == WallStates.None || !SimData.Attacks(AttackMask, OwnerSlot[i], WallOwnerSlot[id])) return;
+                float2 centre = new float2(id % Width + 0.5f, id / Width + 0.5f);
+                if (math.distancesq(Positions[i], centre) > rangeSq || !LineOfSight.ClearTiles(OpaqueTile, Width, Height, Positions[i], centre)) return;
+                Target[i] = id;
+                return;
+            }
             if (TargetKind[i] == TargetKinds.Unit)
             {
                 int j = IndexOfId[index];
@@ -245,9 +259,11 @@ namespace WAR2D.Sim
             }
             int type = Type[i];
             byte kind = TargetKind[i];
-            float multiplier = WAR2D.Rules.DamageTable.Get(DamageTable, type, kind == TargetKinds.Unit ? TargetClass.Unit : TargetClass.Building);
+            TargetClass targetClass = kind == TargetKinds.Unit ? TargetClass.Unit : kind == TargetKinds.Wall ? TargetClass.Wall : TargetClass.Building;
+            float multiplier = WAR2D.Rules.DamageTable.Get(DamageTable, type, targetClass);
             float damage = (type < DamageByType.Length ? DamageByType[type] : 0f) * multiplier;
             Hits.Enqueue(new DamageHit { Kind = kind, Slot = target, Amount = damage, AttackerOwner = OwnerId[i] });
+            if (kind != TargetKinds.Wall) // a wall is a tile, not an entity: its damage state travels in the terrain delta (plan P4)
             Events.AddNoResize(new int2(IdOf[i], kind == TargetKinds.Unit ? IdOf[target] : BuildingIds[target]));
             Cooldown[i] = type < CooldownByType.Length ? CooldownByType[type] : 1f;
         }
@@ -262,12 +278,17 @@ namespace WAR2D.Sim
         public NativeArray<int> LastHitBy;
         public NativeArray<float> BuildingHealth;
         public NativeArray<float> BuildingDamage;
+        public NativeQueue<TileWork> WallDamage;
 
         public void Execute()
         {
             while (Hits.TryDequeue(out DamageHit hit))
             {
-                if (hit.Kind == TargetKinds.Unit)
+                if (hit.Kind == TargetKinds.Wall)
+                {
+                    WallDamage.Enqueue(new TileWork { Tile = hit.Slot, Amount = hit.Amount, OwnerId = hit.AttackerOwner });
+                }
+                else if (hit.Kind == TargetKinds.Unit)
                 {
                     Health[hit.Slot] = math.max(0f, Health[hit.Slot] - hit.Amount);
                     LastHitBy[hit.Slot] = hit.AttackerOwner;
@@ -303,7 +324,7 @@ namespace WAR2D.Sim
             int target = Target[index];
             byte kind = TargetKind[index];
             unit.TargetKind = kind;
-            unit.TargetId = target < 0 ? -1 : kind == TargetKinds.Unit ? IdOf[target] : BuildingIds[target];
+            unit.TargetId = target < 0 ? -1 : kind == TargetKinds.Unit ? IdOf[target] : kind == TargetKinds.Wall ? target : BuildingIds[target];
         }
     }
 }

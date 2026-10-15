@@ -43,6 +43,7 @@ namespace WAR2D.Sim
             SimClock clock = SystemAPI.GetSingleton<SimClock>();
 
             WriteBackBuildingDamage(data);
+            bool wallsChanged = ApplyWallWork(data, context);
             ApplyBuildingWork(data, context);
             data.PendingOrders.Clear();
             data.PendingMoves.Clear();
@@ -59,7 +60,7 @@ namespace WAR2D.Sim
 
             List<SimCommand> commands = context.Commands.Drain();
             deferred.Clear();
-            bool terrainChanged = false;
+            bool terrainChanged = wallsChanged;
             foreach (SimCommand command in commands)
             {
                 switch (command.Kind)
@@ -71,6 +72,13 @@ namespace WAR2D.Sim
                     case SimCommandKind.SetTile:
                         terrainChanged |= ApplySetTile(data, context, command.Tile, command.TileType, clock.UnitCount);
                         break;
+                    case SimCommandKind.PlaceWall:
+                    {
+                        bool placed = ApplyPlaceWall(data, context, command.OwnerId, command.Tile);
+                        terrainChanged |= placed;
+                        command.OnApplied?.Invoke(placed);
+                        break;
+                    }
                     case SimCommandKind.KillOwner:
                         KillUnits(data, context, command.OwnerId, all: false);
                         break;
@@ -107,6 +115,73 @@ namespace WAR2D.Sim
             else context.Diplomacy.SetShareVision(from, to, command.Flag);
             context.RaiseDiplomacyChanged(command.OwnerId, command.TargetOwnerId);
             if (command.Kind == SimCommandKind.SetShareVision) context.RaiseVisionShareChanged(command.OwnerId, command.TargetOwnerId, command.Flag);
+        }
+
+        /// <summary>Lays a wall blueprint on a free ground tile for the owner. False when the tile is no longer free.</summary>
+        private static bool ApplyPlaceWall(SimData data, SimContext context, int ownerId, int2 tile)
+        {
+            if (!WallRules.CanPlace(tile, context.Map.Grid.TileAt, context.Map.IsUsed)) return false;
+            if (!context.Map.SetTile(tile, TileType.WallBlueprint)) return false;
+            int index = context.Map.Grid.Index(tile);
+            data.WallOwnerSlot[index] = (byte)math.max(0, context.SlotOf(ownerId));
+            data.WallState[index] = WallStates.Blueprint;
+            data.WallHealth[index] = 0f;
+            data.RefreshTerrain(tile);
+            context.RaiseTerrainChanged(tile);
+            return true;
+        }
+
+        /// <summary>Removes a wall tile: it becomes ground again.</summary>
+        private static void RemoveWall(SimData data, SimContext context, int index, int unitCount)
+        {
+            int2 tile = new int2(index % data.Width, index / data.Width);
+            data.WallOwnerSlot[index] = SimData.NoSlot;
+            data.WallState[index] = WallStates.None;
+            data.WallHealth[index] = 0f;
+            ApplySetTile(data, context, tile, TileType.Ground, unitCount);
+        }
+
+        /// <summary>Applies the last tick's work and damage to wall tiles. True when any tile changed kind.</summary>
+        private bool ApplyWallWork(SimData data, SimContext context)
+        {
+            bool changed = false;
+            int unitCount = SystemAPI.GetSingleton<SimClock>().UnitCount;
+            while (data.WallWork.TryDequeue(out TileWork work))
+            {
+                if ((uint)work.Tile >= (uint)data.WallState.Length) continue;
+                byte state = data.WallState[work.Tile];
+                int2 tile = new int2(work.Tile % data.Width, work.Tile / data.Width);
+                if (state == WallStates.Blueprint)
+                {
+                    if (!ApplySetTile(data, context, tile, TileType.PlayerWall, unitCount)) continue;
+                    changed = true;
+                    data.WallState[work.Tile] = WallStates.Rising;
+                    data.WallHealth[work.Tile] = math.min(work.Amount, data.WallMaxHealth);
+                }
+                else if (state == WallStates.Rising)
+                    data.WallHealth[work.Tile] = math.min(data.WallMaxHealth, data.WallHealth[work.Tile] + work.Amount);
+                else if (state == WallStates.Built)
+                {
+                    float budget = context.BudgetOf != null ? context.BudgetOf(work.OwnerId) : float.MaxValue;
+                    float restore = ConstructionRules.AffordableRepair(work.Amount, data.WallMaxHealth - data.WallHealth[work.Tile], data.RepairCostPerHealth, budget);
+                    if (restore <= 0f) continue;
+                    data.WallHealth[work.Tile] += restore;
+                    context.Spend?.Invoke(work.OwnerId, restore * data.RepairCostPerHealth);
+                }
+                if (data.WallState[work.Tile] == WallStates.Rising && data.WallHealth[work.Tile] >= data.WallMaxHealth)
+                    data.WallState[work.Tile] = WallStates.Built;
+            }
+            while (data.WallDamage.TryDequeue(out TileWork hit))
+            {
+                if ((uint)hit.Tile >= (uint)data.WallState.Length || data.WallState[hit.Tile] == WallStates.None) continue;
+                if (data.WallState[hit.Tile] != WallStates.Blueprint) data.WallHealth[hit.Tile] -= hit.Amount;
+                if (data.WallState[hit.Tile] == WallStates.Blueprint || data.WallHealth[hit.Tile] <= 0f)
+                {
+                    RemoveWall(data, context, hit.Tile, unitCount);
+                    changed = true;
+                }
+            }
+            return changed;
         }
 
         /// <summary>Applies the last tick's construction work to blueprints (completing them) and repairs to finished buildings.</summary>

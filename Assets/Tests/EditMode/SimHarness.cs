@@ -118,6 +118,23 @@ public sealed class SimHarness : IDisposable
         return id;
     }
 
+    /// <summary>Queues a wall blueprint for the owner.</summary>
+    public void PlaceWall(int owner, int2 tile) =>
+        Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.PlaceWall, OwnerId = owner, Tile = tile });
+
+    /// <summary>Makes a placed wall blueprint a finished wall at full health, at once (completes jobs first).</summary>
+    public void ForceBuiltWall(int2 tile)
+    {
+        Em.CompleteAllTrackedJobs();
+        SimData data = Context.Data;
+        int index = Map.Grid.Index(tile);
+        Map.SetTile(tile, TileType.PlayerWall);
+        data.RefreshTerrain(tile);
+        data.WallState[index] = WallStates.Built;
+        data.WallHealth[index] = data.WallMaxHealth;
+        data.RebuildOpaqueSum();
+    }
+
     /// <summary>The building entity with this id (completes the tick's jobs first).</summary>
     public Entity BuildingEntity(int id)
     {

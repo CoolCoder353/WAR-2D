@@ -10,6 +10,8 @@ namespace WAR2D.Sim
     {
         public const byte Unit = 0;
         public const byte Building = 1;
+        /// <summary>A player wall tile; the target is the tile index.</summary>
+        public const byte Wall = 2;
 
         /// <summary>
         /// True for a unit on a <see cref="Stances.Move"/> order that is still live: it neither searches
@@ -47,6 +49,7 @@ namespace WAR2D.Sim
         public int Tick, Slice;
         [ReadOnly] public NativeArray<byte> OpaqueTile;
         [ReadOnly] public NativeArray<float> DamageByType;
+        [ReadOnly] public NativeArray<byte> WallState, WallOwnerSlot;
         public int Width, Height;
         public NativeArray<int> Target;
         public NativeArray<byte> TargetKind;
@@ -100,6 +103,32 @@ namespace WAR2D.Sim
             }
             Target[i] = bestIndex;
             TargetKind[i] = bestIndex >= 0 ? TargetKinds.Building : TargetKinds.Unit;
+            if (bestIndex < 0 && Stance[i] == Stances.AttackMove) FindWall(i, p, slot, range);
+        }
+
+        /// <summary>
+        /// A unit on an Attack-move order that found no unit or building in range breaks the nearest enemy
+        /// wall tile it can see within range. The wall tile ends the line, so it doesn't block its own line.
+        /// </summary>
+        private void FindWall(int i, float2 p, int slot, float rangeSq)
+        {
+            int r = (int)math.ceil(math.sqrt(rangeSq));
+            int2 c = (int2)math.floor(p);
+            int2 lo = math.max(c - r, 0), hi = math.min(c + r, new int2(Width - 1, Height - 1));
+            float best = rangeSq;
+            int bestTile = -1;
+            for (int y = lo.y; y <= hi.y; y++)
+            for (int x = lo.x; x <= hi.x; x++)
+            {
+                int t = y * Width + x;
+                if (WallState[t] == WallStates.None || !SimData.Attacks(AttackMask, slot, WallOwnerSlot[t])) continue;
+                float2 centre = new float2(x + 0.5f, y + 0.5f);
+                float d = math.distancesq(p, centre);
+                if (d <= best && LineOfSight.ClearTiles(OpaqueTile, Width, Height, p, centre)) { best = d; bestTile = t; }
+            }
+            if (bestTile < 0) return;
+            Target[i] = bestTile;
+            TargetKind[i] = TargetKinds.Wall;
         }
     }
 }

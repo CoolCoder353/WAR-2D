@@ -140,6 +140,7 @@ public partial class WorldStateManager : NetworkBehaviour
         Replication = new ReplicationService(Sim, ConfigLoader.LoadConfig())
         {
             CollectBuildings = FillBuildingViews,
+            TerrainCellOf = TerrainCellAt,
             // A defeated player still connected watches the rest of the match with the whole map shown (P10).
             Spectating = owner => GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing &&
                                   GameCore.Instance.GetServerPlayerById(owner)?.state == PlayerState.Eliminated,

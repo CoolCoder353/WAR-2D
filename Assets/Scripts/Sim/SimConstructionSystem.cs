@@ -51,6 +51,8 @@ namespace WAR2D.Sim
                 BuildingHealth = data.BuildingHealth, BuildingMaxHealth = data.BuildingMaxHealth,
                 BuildingWork = data.BuildingWork,
                 Repairs = data.RepairWork,
+                WallState = data.WallState, WallHealth = data.WallHealth, WallMaxHealth = data.WallMaxHealth, Walls = data.WallWork,
+                Height = data.Height, CellSize = data.CellSize, CellsX = data.CellsX, CellsY = data.CellsY, CellStart = data.CellStart, Sorted = data.Sorted,
                 Finished = data.WorkFinished,
             }.Schedule(state.Dependency);
         }
@@ -60,7 +62,7 @@ namespace WAR2D.Sim
     [BurstCompile]
     public struct BuildWorkJob : IJob
     {
-        public int Count, Width, BuildingCount;
+        public int Count, Width, Height, BuildingCount, CellSize, CellsX, CellsY;
         public float Dt, Power;
         public byte Builder;
         [ReadOnly] public NativeArray<float2> Positions;
@@ -70,6 +72,11 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<int2> BuildingAnchor, BuildingSize;
         public NativeArray<float> BuildingWork;
         public NativeQueue<RepairWork> Repairs;
+        [ReadOnly] public NativeArray<byte> WallState;
+        [ReadOnly] public NativeArray<float> WallHealth;
+        public float WallMaxHealth;
+        public NativeQueue<TileWork> Walls;
+        [ReadOnly] public NativeArray<int> CellStart, Sorted;
         public NativeQueue<int> Finished;
 
         public void Execute()
@@ -80,7 +87,12 @@ namespace WAR2D.Sim
                 if (Type[i] != Builder || Health[i] <= 0f || (kind != WorkKinds.Build && kind != WorkKinds.Repair)) continue;
                 int2 tile = new int2(WorkTile[i] % Width, WorkTile[i] / Width);
                 int b = BuildingCovering(tile);
-                if (b < 0 || BuildingHealth[b] <= 0f) { Finished.Enqueue(IdOf[i]); continue; }
+                if (b < 0)
+                {
+                    WallWorkFor(i, kind, WorkTile[i], tile);
+                    continue;
+                }
+                if (BuildingHealth[b] <= 0f) { Finished.Enqueue(IdOf[i]); continue; }
                 bool blueprint = (BuildingFlag[b] & global::BuildingFlags.UnderConstruction) != 0;
                 if (kind == WorkKinds.Build && !blueprint) { Finished.Enqueue(IdOf[i]); continue; }
                 if (kind == WorkKinds.Repair && !blueprint && BuildingHealth[b] >= BuildingMaxHealth[b]) { Finished.Enqueue(IdOf[i]); continue; }
@@ -88,6 +100,43 @@ namespace WAR2D.Sim
                 if (blueprint) BuildingWork[b] += Power * Dt;
                 else Repairs.Enqueue(new RepairWork { Slot = b, Payer = OwnerId[i], Work = Power * Dt });
             }
+        }
+
+        /// <summary>One Builder's work on a wall tile: Blueprints wait while any unit's body overlaps the tile.</summary>
+        private void WallWorkFor(int i, byte kind, int index, int2 tile)
+        {
+            byte state = (uint)index < (uint)WallState.Length ? WallState[index] : WallStates.None;
+            bool full = state == WallStates.Built && WallHealth[index] >= WallMaxHealth;
+            if (state == WallStates.None || (kind == WorkKinds.Build && state == WallStates.Built) || (kind == WorkKinds.Repair && full))
+            {
+                Finished.Enqueue(IdOf[i]);
+                return;
+            }
+            float2 lo = tile, hi = tile + 1;
+            float2 d = math.max(math.max(lo - Positions[i], Positions[i] - hi), 0f);
+            if (math.length(d) > SimConstructionSystem.WorkReach + Radius[i]) return;
+            if (state == WallStates.Blueprint && Occupied(tile)) return;
+            Walls.Enqueue(new TileWork { Tile = index, Amount = Power * Dt, OwnerId = OwnerId[i] });
+        }
+
+        /// <summary>True when a living unit's body overlaps the tile (read from the spatial hash).</summary>
+        private bool Occupied(int2 tile)
+        {
+            int2 cell = math.clamp(tile / CellSize, 0, new int2(CellsX - 1, CellsY - 1));
+            for (int cy = math.max(cell.y - 1, 0); cy <= math.min(cell.y + 1, CellsY - 1); cy++)
+            for (int cx = math.max(cell.x - 1, 0); cx <= math.min(cell.x + 1, CellsX - 1); cx++)
+            {
+                int c = cy * CellsX + cx;
+                for (int k = CellStart[c]; k < CellStart[c + 1]; k++)
+                {
+                    int j = Sorted[k];
+                    if (Health[j] <= 0f) continue;
+                    float2 lo = tile, hi = tile + 1;
+                    float2 gap = math.max(math.max(lo - Positions[j], Positions[j] - hi), 0f);
+                    if (math.length(gap) < Radius[j]) return true;
+                }
+            }
+            return false;
         }
 
         private int BuildingCovering(int2 tile)
