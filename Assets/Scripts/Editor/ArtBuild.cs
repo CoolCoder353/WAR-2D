@@ -125,6 +125,18 @@ namespace WAR2D.EditorTools
             {
                 case nameof(UnitType.Tank):
                     return ($"Tank {direction} {frame}", () => RenderGen.Tank(direction * Mathf.PI / 4f, frame), 0f);
+                case "Builder":
+                    return ($"Builder {direction} {frame}", () => RenderGen.Builder(direction * Mathf.PI / 4f, frame), 0f);
+                case "Digger":
+                    return ($"Digger {direction} {frame}", () => RenderGen.Digger(direction * Mathf.PI / 4f, frame), 0f);
+                case "Bomb":
+                    return ($"Bomb {frame}", () => RenderGen.Bomb(frame), 0f);
+                case "Radar":
+                    return ($"Radar {frame}", () => RenderGen.Radar(frame), RenderGen.Lift);
+                case "PlayerWall":
+                    return ($"PlayerWall {frame}", () => RenderGen.PlayerWall(Seed, frame % ArtManifest.AutotileVariants, frame / ArtManifest.AutotileVariants), 0f);
+                case "WallBlueprint":
+                    return ($"WallBlueprint {frame}", () => RenderGen.WallBlueprint(frame), 0f);
                 case nameof(BuildingType.Base):
                     return ("Base", RenderGen.Base, RenderGen.Lift);
                 case nameof(BuildingType.SmallUnitSpawner):

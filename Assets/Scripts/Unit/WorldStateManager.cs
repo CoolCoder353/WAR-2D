@@ -430,7 +430,12 @@ public partial class WorldStateManager : NetworkBehaviour
             int id = building.id;
             if (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing) GameCore.Instance.Stats.BuildingLost(building.ownerId);
             Buildings.Remove(id);
-            if (building.buildingType == BuildingType.Bomb) bombTiles.Remove((int2)math.round(building.position));
+            if (building.buildingType == BuildingType.Bomb)
+            {
+                // Only drop the entry if it is still this bomb's (another may have been built on the tile since).
+                int2 bombTile = (int2)math.round(building.position);
+                if (bombTiles.TryGetValue(bombTile, out var registered) && registered.id == id) bombTiles.Remove(bombTile);
+            }
             if (building.buildingType == BuildingType.Radar) radars?.Forget(id);
             Sim?.ForgetBuilding(id);
             Ids?.Free(id);

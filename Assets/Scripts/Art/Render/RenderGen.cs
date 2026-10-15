@@ -205,6 +205,123 @@ namespace WAR2D.Art.Render
             return c;
         }
 
+        /// <summary>The Builder: a small tracked hauler with a cab and a crane arm at the back. Frames 0–1 move, 2–3 swing the arm.</summary>
+        public static LitCanvas Builder(float angle, int frame)
+        {
+            var c = new LitCanvas(TileSize, TileSize);
+            float cos = Mathf.Cos(angle), sin = Mathf.Sin(angle), o = TileSize / 2f;
+            Func<float, float, float> L(Func<float, float, float> local) =>
+                (x, y) => local((x - o) * cos + (y - o) * sin, -(x - o) * sin + (y - o) * cos);
+            float tread = frame == 1 ? 2f : 0f, swing = frame == 2 ? 5f : frame == 3 ? -5f : 0f;
+            foreach (float side in new[] { -1f, 1f })
+            {
+                c.Shape(L((x, y) => Box(x, y, 0, side * 13, 19, 5, 2.5f)), Rubber, 5, 2, 3);
+                c.Groove(L((x, y) => Box(x, y, 0, side * 13, 18, 4) > 0 ? 9 : Mathf.Abs(Mod(x + tread, 4) - 2) - 1.1f), 1.1f, 0.7f);
+            }
+            c.Shape(L((x, y) => Box(x, y, -1, 0, 17, 10, 4)), Hull, 9, 3, 3);
+            c.Shape(L((x, y) => Box(x, y, 7, 0, 8, 8, 3)), Team, 15, 2.5f, 3);
+            c.Shape(L((x, y) => Box(x, y, 10, 0, 3, 5, 1)), Glass, 15.5f, 0.6f, 0.6f, stack: true);
+            // The crane: a boom from the rear deck out behind, with a hook.
+            c.Shape(L((x, y) => Capsule(x, y, -8, 0, -24, swing, 1.8f)), Steel, 13, 1.5f, 2);
+            c.Shape(L((x, y) => Circle(x, y, -24, swing, 2.6f)), Plate, 14, 1, 1.5f);
+            c.Rivet(o + (-8f) * cos, o + (-8f) * sin, 1.4f, 1f);
+            c.Grime(11, 0.3f, 0.12f, 6);
+            return c;
+        }
+
+        /// <summary>The Digger: a squat drill carrier. Frames 0–1 move, 2–3 turn the drill's spiral.</summary>
+        public static LitCanvas Digger(float angle, int frame)
+        {
+            var c = new LitCanvas(TileSize, TileSize);
+            float cos = Mathf.Cos(angle), sin = Mathf.Sin(angle), o = TileSize / 2f;
+            Func<float, float, float> L(Func<float, float, float> local) =>
+                (x, y) => local((x - o) * cos + (y - o) * sin, -(x - o) * sin + (y - o) * cos);
+            float tread = frame == 1 ? 2f : 0f, turn = frame >= 2 ? (frame - 2) * 2.2f : 0f;
+            foreach (float side in new[] { -1f, 1f })
+            {
+                c.Shape(L((x, y) => Box(x, y, -2, side * 16, 21, 6.5f, 3)), Rubber, 6, 2, 3);
+                c.Groove(L((x, y) => Box(x, y, -2, side * 16, 20, 5.5f) > 0 ? 9 : Mathf.Abs(Mod(x + tread, 4) - 2) - 1.2f), 1.2f, 0.7f);
+            }
+            c.Shape(L((x, y) => Box(x, y, -3, 0, 18, 12, 4)), Hull, 11, 3, 3.5f);
+            c.Shape(L((x, y) => Box(x, y, -9, 0, 7, 9, 3)), Team, 15, 2, 3);
+            c.Groove(L((x, y) => Box(x, y, 3, 0, 5, 8) > 0 ? 9 : Mathf.Abs(Mod(y, 3) - 1.5f) - 0.5f), 0.8f, 0.5f);
+            // The drill nose, with a spiral groove that turns.
+            c.Shape(L((x, y) => Capsule(x, y, 14, 0, 27, 0, 6)), Steel, 14, 3, 4);
+            c.Groove(L((x, y) => Capsule(x, y, 14, 0, 27, 0, 6) > 0 ? 9 : Mathf.Abs(Mod(x + y * 0.7f + turn, 5) - 2.5f) - 0.8f), 1f, 0.6f);
+            c.Grime(17, 0.35f, 0.14f, 6);
+            return c;
+        }
+
+        /// <summary>The Bomb (1×1): a low disc half sunk in the floor with a team ring; frame 1 blinks the lamp.</summary>
+        public static LitCanvas Bomb(int frame)
+        {
+            var c = new LitCanvas(TileSize, TileSize);
+            float o = TileSize / 2f;
+            c.Shape((x, y) => Circle(x, y, o, o, 20), Dark, 6, 2, 3);
+            c.Shape((x, y) => Mathf.Abs(Circle(x, y, o, o, 14)) - 2.4f, Team, 8, 1, 1.2f, stack: true);
+            c.Shape((x, y) => Circle(x, y, o, o, 7), Plate, 9, 2, 2);
+            c.Shape((x, y) => Circle(x, y, o, o, 3.2f), frame == 0 ? Lamp : Dark, 10, 0.8f, 0.6f);
+            for (int k = 0; k < 4; k++)
+            {
+                float a = k * Mathf.PI / 2f + Mathf.PI / 4f;
+                c.Rivet(o + Mathf.Cos(a) * 17, o + Mathf.Sin(a) * 17, 1f, 0.8f);
+            }
+            c.Grime(5, 0.25f, 0.1f, 6);
+            return c;
+        }
+
+        /// <summary>The Radar (2×2): a concrete pad and equipment block under a tall mast with a dish; frames turn the dish.</summary>
+        public static LitCanvas Radar(int frame)
+        {
+            int s = 2 * TileSize;
+            var c = new LitCanvas(s, s + Headroom / 2, s / 2f);
+            float o = s / 2f;
+            c.Shape((x, y) => Box(x, y, o, o - 8, 52, 40, 3), Concrete, 3, 1, 1.5f);
+            c.Shape((x, y) => Box(x, y, o - 20, o - 20, 22, 16, 2.5f), Hull, 16, 2, 3);
+            c.Shape((x, y) => Box(x, y, o - 20, o - 8, 14, 4, 1), Team, 17, 1, 1.2f, stack: true);
+            c.Groove((x, y) => Box(x, y, o + 22, o - 24, 18, 12) > 0 ? 9 : Mathf.Abs(Mod(x, 4) - 2) - 0.6f, 0.8f, 0.6f);
+            c.Shape((x, y) => Box(x, y, o + 22, o - 24, 18, 12, 2), Plate, 14, 1.5f, 2);
+            // Mast and dish.
+            float shift = frame == 0 ? -5f : 5f;
+            c.Shape((x, y) => Box(x, y, o, o + 6, 4, 26, 1.5f), Steel, 30, 1.5f, 2);
+            c.Shape((x, y) => Circle(x, y, o + shift, o + 30, 24), Steel, 44, 3, 5);
+            c.Groove((x, y) => Mathf.Abs(Circle(x, y, o + shift, o + 30, 16)) - 0.35f, 1f, 0.7f);
+            c.Shape((x, y) => Circle(x, y, o + shift, o + 30, 6), Team, 46, 1.5f, 2.5f);
+            c.Shape((x, y) => Circle(x, y, o + shift, o + 30, 2.2f), Lamp, 48, 0.8f, 0.5f);
+            c.Grime(29, 0.2f, 0.08f, 8);
+            return c;
+        }
+
+        // ---------- Player walls ----------
+
+        /// <summary>
+        /// A player wall for a 4-neighbour mask (bit set = that neighbour is wall or rock): a team-banded block that
+        /// joins its neighbours. <paramref name="damage"/> 0 is whole, 1 cracked, 2 crumbling.
+        /// </summary>
+        public static LitCanvas PlayerWall(int seed, int mask, int damage)
+        {
+            LitCanvas c = Floor(seed, mask & 3);
+            Func<float, float, float> block = (x, y) => EdgeDistance(x, y, mask) - 5;
+            c.Shape((x, y) => -block(x, y), Hull, 20, 4, 6);
+            c.Shape((x, y) => -(EdgeDistance(x, y, mask) - 14), Team, 22.5f, 1.5f, 1.5f, stack: true);
+            c.Groove((x, y) => block(x, y) <= 0 ? 9 : Mathf.Abs(Mod(x + y, 8) - 4) - 0.35f, 0.7f, 0.5f);
+            if (damage > 0)
+            {
+                float width = 0.006f * (1 + damage);
+                c.Groove((x, y) => block(x, y) <= 0 ? 9 : (Mathf.Abs(Noise.Fbm(x, y, TileSize, 3, 3, seed + 5 + damage * 13) - 0.5f) - width) * 60, 1.4f, 0.8f);
+            }
+            if (damage > 1) c.Grime(seed + 3, 0.5f, 0.22f, 5);
+            return c;
+        }
+
+        /// <summary>A planned wall segment: the floor with a dashed team outline where the wall will stand.</summary>
+        public static LitCanvas WallBlueprint(int mask)
+        {
+            LitCanvas c = Floor(7, mask & 3);
+            c.Shape((x, y) => Mod(x + y, 10) < 5 ? Mathf.Abs(EdgeDistance(x, y, mask) - 8) - 1.4f : 9f, Team, 3, 0.8f, 0.8f);
+            return c;
+        }
+
         /// <summary>The HQ's footprint in tiles (GameConfig.xml's Base Width and Height).</summary>
         public const int HqTiles = 5;
 
