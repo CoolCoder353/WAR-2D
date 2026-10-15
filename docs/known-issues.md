@@ -118,3 +118,22 @@ Inert leftovers disclosed in v0.2 and scheduled to be cleaned up together.
 - **`Acceleration` is parsed but unused.** `GameConfig.xml` and `gameplay.md` list it, but units reach full speed at once. Use it or drop it with the v0.7 units. **v0.7**
 - **Footprints ignore rotation.** `Footprint.Tiles` and the building sprite's placement assume a square footprint, so a rotated non-square building (Width ≠ Height) would cover the wrong tiles. Every building is square today. **v0.7** (walls and new buildings)
 - **`UnitCommander` keeps SyncList-era handlers** (`BuildingListSet`, `BuildingListClear`, `HealthList*`) that nothing calls since v0.5's building records. Remove them with instanced buildings. **v0.7**
+
+## v0.7 siege review (2026-10-15)
+
+Fixed:
+
+- **Buildings outlived the match.** `SimContext.Dispose` destroyed units but not building entities, which only `DeclareWinner` / `DeclareDraw` removed. After a host stopped mid-match (and between PlayMode tests) the old spawners stayed in the ECS world, kept producing into the next match, and shared ids with its new buildings. This made `HudTests.ProductionPlusMinusChangesQueue` read a stale spawner and `CommandCardStopHalts` select extra units. `Dispose` now destroys buildings too.
+- **Wall charges revealed the fog.** `CmdPlaceWall` tested each tile against the real map and charged before the sim's sight check, so with a budget for one wall, whether a visible tile got its wall told the player whether an unseen tile on the line was free. The command now only filters known bombs; the sim pays (`SimCommand.TryPay`) once the tile is seen and free.
+- **A Repair order could find a hidden bomb.** Repair accepted an ally's bomb even when the ally didn't share vision, so the Builder's walk revealed it. It now needs the ally to share vision.
+- **Builders kept working for a former ally.** `BuildWorkJob` checked alliance only when the order was given; it now stops a repair when either side attacks the other.
+- **`WorkReach` was hard-coded** (and silently raised Digger reach from 0.6 to 1.6). It is `Siege.WorkReach` in `GameConfig.xml` now.
+- **A new dig job inherited the old tunnel's last tile and progress.** `DigAt` and `DigProgress` reset when a unit's work target changes.
+
+Open:
+
+- **Diggers can't be queued from the HUD.** The production buttons queue the building's first unit (`SpawnerRules.Produces(...)[0]`), so a Spawner only makes Tanks there. Needs a Figma design for a unit choice. **v0.7**
+- **Terrain replication walks every changed tile.** `ReplicationService.SendTerrain` checks every tile changed since the match started, per client, on each vision tick, so the cost grows with the match. **v0.8**
+- **Client positions creep after Stop.** Stopped units' predicted positions converge on the server's at about 0.15 tiles/s instead of snapping, so `HudTests.CommandCardStopHalts` (0.3 tiles over 1 s) can fail on timing when the prediction overshot when Stop arrived. **v0.8**
+- **The flow-field sector cell size went from 2 to 1** (`OrderBook`), four times the sector fields. Re-run `tools/perf-run.sh` before release. **v0.7**
+- **Authored maps (`Size = 0`) get no client terrain.** `WorldStateManager.OnStartClient` returns before `ClientTerrain.Init` when `MapSize <= 0`, so walls and tunnels are not replicated there (found writing `SiegeMatchTests`, which uses a generated map). Real matches always use generated maps. **v0.7**

@@ -74,6 +74,7 @@
     <BuildPower>25.0</BuildPower>                       <!-- v0.7: health/s per Builder (a 300-health Spawner takes 12 s with one) -->
     <DemolishRefund>0.5</DemolishRefund>                <!-- v0.7: share of cost a demolished finished building refunds; blueprints refund in full (owner, 2026-10-15) -->
     <RepairCostPerHealth>0.2</RepairCostPerHealth>      <!-- v0.7 -->
+    <WorkReach>1.6</WorkReach>                          <!-- v0.7: tiles from a worker's body edge to its target (Builders and Diggers); a unit stops within 0.9 tiles of its goal -->
     <DigTime>1.5</DigTime>                              <!-- v0.7: seconds per rock tile -->
     <GemPayout>150.0</GemPayout>                        <!-- v0.7 -->
     <WallCost>5.0</WallCost>                            <!-- v0.7: per segment; no upkeep in v0.7 (plan P3) -->

@@ -14,7 +14,7 @@ namespace WAR2D.Sim
     }
 
     /// <summary>
-    /// Builders at work: each Builder with a Build or Repair target within <see cref="WorkReach"/> tiles of
+    /// Builders at work: each Builder with a Build or Repair target within <see cref="SimData.WorkReach"/> tiles of
     /// the target's footprint adds <c>BuildPower × dt</c> to it. Work on blueprints accumulates in
     /// <see cref="SimData.BuildingWork"/> for the boundary to apply, work on finished buildings in
     /// <see cref="SimData.RepairWork"/> (the repairer pays); a Builder whose target is gone or finished is
@@ -26,10 +26,12 @@ namespace WAR2D.Sim
     [UpdateBefore(typeof(SimVisionSystem))]
     public partial struct SimConstructionSystem : ISystem
     {
-        /// <summary>How far (tiles, from the body's edge) a Builder reaches.</summary>
-        public const float WorkReach = 1.0f;
-
-        public void OnCreate(ref SystemState state) => state.RequireForUpdate<SimData>();
+        public void OnCreate(ref SystemState state)
+        {
+            state.RequireForUpdate<SimData>();
+            // Declared, not used: being a writer of Unit chains this stage after movement and before the later stages.
+            state.GetEntityQuery(ComponentType.ReadWrite<Unit>());
+        }
 
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
@@ -42,9 +44,11 @@ namespace WAR2D.Sim
                 Count = clock.UnitCount,
                 Dt = data.Dt,
                 Power = data.BuildPower,
+                Reach = data.WorkReach,
                 Builder = (byte)UnitType.Builder,
                 Width = data.Width,
                 Positions = data.Positions, Radius = data.Radius, Health = data.Health, Type = data.Type, OwnerId = data.OwnerId,
+                OwnerSlot = data.OwnerSlot, AttackMask = data.AttackMask, BuildingOwnerSlot = data.BuildingOwnerSlot, WallOwnerSlot = data.WallOwnerSlot,
                 IdOf = data.IdOf, WorkTile = data.WorkTile, WorkKind = data.WorkKind,
                 BuildingCount = math.min(data.BuildingCount[0], data.BuildingCapacity),
                 BuildingAnchor = data.BuildingAnchor, BuildingSize = data.BuildingSize, BuildingFlag = data.BuildingFlag,
@@ -63,13 +67,15 @@ namespace WAR2D.Sim
     public struct BuildWorkJob : IJob
     {
         public int Count, Width, Height, BuildingCount, CellSize, CellsX, CellsY;
-        public float Dt, Power;
+        public float Dt, Power, Reach;
         public byte Builder;
         [ReadOnly] public NativeArray<float2> Positions;
         [ReadOnly] public NativeArray<float> Radius, Health, BuildingHealth, BuildingMaxHealth;
         [ReadOnly] public NativeArray<byte> Type, WorkKind, BuildingFlag;
         [ReadOnly] public NativeArray<int> IdOf, WorkTile, OwnerId;
         [ReadOnly] public NativeArray<int2> BuildingAnchor, BuildingSize;
+        [ReadOnly] public NativeArray<byte> OwnerSlot, BuildingOwnerSlot, WallOwnerSlot;
+        [ReadOnly] public NativeArray<ushort> AttackMask;
         public NativeArray<float> BuildingWork;
         public NativeQueue<RepairWork> Repairs;
         [ReadOnly] public NativeArray<byte> WallState;
@@ -95,8 +101,9 @@ namespace WAR2D.Sim
                 if (BuildingHealth[b] <= 0f) { Finished.Enqueue(IdOf[i]); continue; }
                 bool blueprint = (BuildingFlag[b] & global::BuildingFlags.UnderConstruction) != 0;
                 if (kind == WorkKinds.Build && !blueprint) { Finished.Enqueue(IdOf[i]); continue; }
+                if (!Friendly(OwnerSlot[i], BuildingOwnerSlot[b])) { Finished.Enqueue(IdOf[i]); continue; }
                 if (kind == WorkKinds.Repair && !blueprint && BuildingHealth[b] >= BuildingMaxHealth[b]) { Finished.Enqueue(IdOf[i]); continue; }
-                if (DistanceToRect(Positions[i], BuildingAnchor[b], BuildingSize[b]) > SimConstructionSystem.WorkReach + Radius[i]) continue;
+                if (DistanceToRect(Positions[i], BuildingAnchor[b], BuildingSize[b]) > Reach + Radius[i]) continue;
                 if (blueprint) BuildingWork[b] += Power * Dt;
                 else Repairs.Enqueue(new RepairWork { Slot = b, Payer = OwnerId[i], Work = Power * Dt });
             }
@@ -107,14 +114,15 @@ namespace WAR2D.Sim
         {
             byte state = (uint)index < (uint)WallState.Length ? WallState[index] : WallStates.None;
             bool full = state == WallStates.Built && WallHealth[index] >= WallMaxHealth;
-            if (state == WallStates.None || (kind == WorkKinds.Build && state == WallStates.Built) || (kind == WorkKinds.Repair && full))
+            if (state == WallStates.None || (kind == WorkKinds.Build && state == WallStates.Built) || (kind == WorkKinds.Repair && full) ||
+                !Friendly(OwnerSlot[i], WallOwnerSlot[index]))
             {
                 Finished.Enqueue(IdOf[i]);
                 return;
             }
             float2 lo = tile, hi = tile + 1;
             float2 d = math.max(math.max(lo - Positions[i], Positions[i] - hi), 0f);
-            if (math.length(d) > SimConstructionSystem.WorkReach + Radius[i]) return;
+            if (math.length(d) > Reach + Radius[i]) return;
             if (state == WallStates.Blueprint && Occupied(tile)) return;
             Walls.Enqueue(new TileWork { Tile = index, Amount = Power * Dt, OwnerId = OwnerId[i] });
         }
@@ -138,6 +146,11 @@ namespace WAR2D.Sim
             }
             return false;
         }
+
+        /// <summary>True when a worker of <paramref name="workerSlot"/> may still work on a target of <paramref name="targetSlot"/>: its own, or neither side attacks the other (diplomacy may have changed since the order).</summary>
+        private bool Friendly(int workerSlot, int targetSlot) =>
+            workerSlot == targetSlot ||
+            (targetSlot != SimData.NoSlot && !SimData.Attacks(AttackMask, workerSlot, targetSlot) && !SimData.Attacks(AttackMask, targetSlot, workerSlot));
 
         private int BuildingCovering(int2 tile)
         {

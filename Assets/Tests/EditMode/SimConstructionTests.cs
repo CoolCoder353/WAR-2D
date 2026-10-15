@@ -18,7 +18,7 @@ public class SimConstructionTests
         using (var sim = new SimHarness(SimHarness.OpenMap(48)))
         {
             int b = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.SmallUnitSpawner, new int2(20, 20)); // 300 health
-            int[] builder = sim.Spawn(SimHarness.OwnerA, new float2(19.5f, 20.5f), UnitType.Builder);
+            int[] builder = sim.Spawn(SimHarness.OwnerA, new float2(18.5f, 20.5f), UnitType.Builder);
             sim.Tick();
             sim.Order(SimHarness.OwnerA, OrderKind.Build, new int2(20, 20), builder[0]);
             sim.TickSeconds(4f);
@@ -27,8 +27,8 @@ public class SimConstructionTests
         using (var sim = new SimHarness(SimHarness.OpenMap(48)))
         {
             int b = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.SmallUnitSpawner, new int2(20, 20));
-            int[] a = sim.Spawn(SimHarness.OwnerA, new float2(19.5f, 20.5f), UnitType.Builder);
-            int[] c = sim.Spawn(SimHarness.OwnerA, new float2(22.5f, 21.5f), UnitType.Builder);
+            int[] a = sim.Spawn(SimHarness.OwnerA, new float2(18.5f, 20.5f), UnitType.Builder);
+            int[] c = sim.Spawn(SimHarness.OwnerA, new float2(21.5f, 20.5f), UnitType.Builder);
             sim.Tick();
             sim.Order(SimHarness.OwnerA, OrderKind.Build, new int2(20, 20), a[0], c[0]);
             sim.TickSeconds(4f);
@@ -48,7 +48,7 @@ public class SimConstructionTests
         sim.Order(SimHarness.OwnerA, OrderKind.Build, new int2(40, 40), builder[0]);
         sim.TickSeconds(0.5f);
         Assert.AreEqual(0f, Progress(sim, b), "too far to build yet");
-        sim.TickSeconds(15f);
+        sim.TickSeconds(25f);
         Assert.AreEqual(1f, Progress(sim, b), "walked over and finished");
         Assert.AreEqual(WorkKinds.None, sim.UnitById(builder[0]).WorkKind, "its work is cleared once done");
     }
@@ -110,7 +110,7 @@ public class SimConstructionTests
     [Test]
     public void ABuilderRepairsAnOwnBuildingAndTheOwnerPays()
     {
-        using var sim = new SimHarness(SimHarness.OpenMap(48));
+        using var sim = new SimHarness(SimHarness.OpenMap(48), c => c.GetUnit(UnitType.Builder).RunningCost = 0f); // no unit upkeep muddying the bill
         float spent = 0f;
         sim.Context.BudgetOf = _ => 1000f;
         sim.Context.Spend = (_, a) => spent += a;

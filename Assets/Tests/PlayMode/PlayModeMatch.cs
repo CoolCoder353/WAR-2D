@@ -79,6 +79,14 @@ public static class PlayModeMatch
         }
     }
 
+    /// <summary>Places a finished building for the local player (a normal placement is a blueprint until Builders finish it).</summary>
+    public static bool PlaceBuilt(BuildingType type, int2 anchor, float rotation = 0f)
+    {
+        DevApi.AllowForTests = true;
+        try { return WorldStateManager.Instance.DevPlaceBuilding(LocalOwner, type, anchor, 0f, rotation); }
+        finally { DevApi.AllowForTests = false; }
+    }
+
     public static EntityManager Em => World.DefaultGameObjectInjectionWorld.EntityManager;
 
     public static IEnumerable<GameObject> DontDestroyRoots()

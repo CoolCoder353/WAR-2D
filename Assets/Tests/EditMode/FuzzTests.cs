@@ -78,9 +78,10 @@ public class FuzzTests
             var goal = new int2(rng.Next(-512, 512), rng.Next(-512, 512));
             bool valid = false;
             Assert.DoesNotThrow(() => valid = CommandValidator.IsOrderValid(kind, goal, min, max));
-            if (kind > (byte)OrderKind.Stop) Assert.IsFalse(valid);
-            else if (kind <= (byte)OrderKind.AttackMove) Assert.AreEqual(CommandValidator.IsInside(goal, min, max), valid);
-            else Assert.IsTrue(valid, "Stop and Hold ignore the goal");
+            if (kind > (byte)OrderKind.Dig) Assert.IsFalse(valid);
+            else if (kind == (byte)OrderKind.Dig) Assert.AreEqual(CommandValidator.IsInside(goal, min + 1, max - 1), valid, "never the outer ring");
+            else if (kind == (byte)OrderKind.Hold || kind == (byte)OrderKind.Stop) Assert.IsTrue(valid, "Stop and Hold ignore the goal");
+            else Assert.AreEqual(CommandValidator.IsInside(goal, min, max), valid);
         }
     }
 
@@ -180,6 +181,40 @@ public class FuzzTests
                 Assert.DoesNotThrow(() => WAR2D.Net.Replication.TerrainCodec.Apply(terrain, new ArraySegment<byte>(bytes)));
                 foreach (byte t in terrain.Tiles) Assert.LessOrEqual(t, (byte)TileType.WallBlueprint);
             }
+        }
+    }
+
+    [Test]
+    public void WallPlacement_NeverThrows_AndStaysOnTheMap()
+    {
+        var rng = new System.Random(31);
+        var size = new int2(64, 48);
+        for (int i = 0; i < Iterations; i++)
+        {
+            int2 a = RandomTile(rng), b = RandomTile(rng);
+            bool valid = false;
+            Assert.DoesNotThrow(() => valid = WallRules.ValidDrag(a, b, size, 40));
+            if (!valid) continue;
+            var line = new List<int2>();
+            WallRules.Line(a, b, line);
+            Assert.LessOrEqual(line.Count, 40);
+            foreach (int2 t in line) Assert.IsTrue(t.x >= 0 && t.y >= 0 && t.x < size.x && t.y < size.y);
+        }
+    }
+
+    private static int2 RandomTile(System.Random rng) =>
+        rng.Next(4) == 0 ? new int2(rng.Next(int.MinValue, int.MaxValue), rng.Next(int.MinValue, int.MaxValue)) : new int2(rng.Next(-8, 72), rng.Next(-8, 56));
+
+    [Test]
+    public void BuildingRecords_NeverThrow()
+    {
+        var rng = new System.Random(17);
+        var buildings = new WAR2D.Net.Replication.ClientBuildings();
+        for (int i = 0; i < 5000; i++)
+        {
+            var bytes = new byte[rng.Next(0, 96)];
+            rng.NextBytes(bytes);
+            Assert.DoesNotThrow(() => WAR2D.Net.Replication.BuildingCodec.Apply(buildings, new ArraySegment<byte>(bytes)));
         }
     }
 

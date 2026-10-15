@@ -73,6 +73,11 @@ namespace WAR2D.Sim
         public System.Action<int> OnSpawned;
         /// <summary>Called after a <see cref="SimCommandKind.PlaceWall"/> is applied (true) or refused (false).</summary>
         public System.Action<bool> OnApplied;
+        /// <summary>
+        /// Pays for a <see cref="SimCommandKind.PlaceWall"/>, called only once the tile is seen and free (so a refusal on
+        /// an unseen tile never touches the budget). False refuses the wall. Null places it free.
+        /// </summary>
+        public System.Func<bool> TryPay;
     }
 
     /// <summary>

@@ -192,12 +192,22 @@ namespace WAR2D.Sim
         private static OrderKind OrderOf(byte work) =>
             work == WorkKinds.Build ? OrderKind.Build : work == WorkKinds.Repair ? OrderKind.Repair : OrderKind.Dig;
 
+        private readonly List<int> oneScratch = new List<int>(1);
+
+        /// <summary>A one-unit slot list, reused (each use is done before the next call).</summary>
+        private List<int> One(int slot)
+        {
+            oneScratch.Clear();
+            oneScratch.Add(slot);
+            return oneScratch;
+        }
+
         /// <summary>Starts a queued job for one unit whose last one finished.</summary>
         private void StartQueuedWork(SimData data, SimContext context, int slot, int2 tile, byte work, int tick)
         {
             int owner = data.OwnerId[slot];
             if (!context.Map.Grid.Contains(tile)) return;
-            var one = new List<int> { slot };
+            List<int> one = One(slot);
             if (work == WorkKinds.Dig)
             {
                 if (context.Map.Grid.TileAt(tile) == TileType.Border) return;
@@ -210,7 +220,8 @@ namespace WAR2D.Sim
 
         /// <summary>
         /// Checks the order's target and finds the floor tile its workers head for. Build needs an own
-        /// blueprint; Repair an own or allied building. Wall and dig targets are resolved by their stages.
+        /// blueprint; Repair an own or allied building (an ally's bomb only when the ally shares vision).
+        /// Wall and dig targets are resolved by their stages.
         /// </summary>
         private static bool TryWorkTarget(SimData data, SimContext context, int owner, OrderKind order, int2 tile, out int2 standGoal)
         {
@@ -225,6 +236,8 @@ namespace WAR2D.Sim
             bool allied = targetSlot != SimData.NoSlot && ownerSlot >= 0 && !SimData.Attacks(data.AttackMask, ownerSlot, targetSlot) && !SimData.Attacks(data.AttackMask, targetSlot, ownerSlot);
             if (order == OrderKind.Build && !own) return false;
             if (order == OrderKind.Repair && !own && !allied) return false;
+            // A hidden bomb is a target only for players who may know it, or the Builder's walk would reveal it.
+            if (!own && (data.BuildingFlag[b] & global::BuildingFlags.Hidden) != 0 && !context.Diplomacy.SharesVisionWith(targetSlot, ownerSlot)) return false;
             return TileSearch.FindNearest(data.BuildingAnchor[b], context.Map.IsWalkable, t => TileRules.IsFloor(grid.TileAt(t)) || context.Map.IsUsed(t), 1024, out standGoal);
         }
 
@@ -269,13 +282,12 @@ namespace WAR2D.Sim
             {
                 int slot = data.SlotOf(id, unitCount);
                 if (slot < 0 || data.Health[slot] <= 0f) { context.Waypoints.Forget(id); continue; }
-                AddPending(data, new List<int> { slot }, new PendingOrder { Slot = -1, Stance = Stances.Idle, WorkKind = WorkKinds.None });
+                AddPending(data, One(slot), new PendingOrder { Slot = -1, Stance = Stances.Idle, WorkKind = WorkKinds.None });
                 if (!context.Waypoints.TryPop(id, out int2 goal, out byte stance, out byte work)) continue;
                 if (work != WorkKinds.None) StartQueuedWork(data, context, slot, goal, work, tick);
                 else
                 {
-                    var one = new List<int> { slot };
-                    Issue(data, context, one, data.SizeClass[slot] & 1, goal, stance, tick, data.OwnerId[slot]);
+                    Issue(data, context, One(slot), data.SizeClass[slot] & 1, goal, stance, tick, data.OwnerId[slot]);
                 }
             }
         }

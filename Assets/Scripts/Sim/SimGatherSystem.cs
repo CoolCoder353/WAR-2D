@@ -135,6 +135,12 @@ namespace WAR2D.Sim
             {
                 unit.OrderSlot = order.Slot;
                 unit.Stance = order.Stance;
+                if (order.WorkKind != unit.WorkKind || order.WorkTile != unit.WorkTile)
+                {
+                    // A new job: the old tunnel's progress and last dug tile must not steer it.
+                    unit.DigAt = 0;
+                    unit.DigProgress = 0f;
+                }
                 unit.WorkTile = order.WorkTile;
                 unit.WorkKind = order.WorkKind;
             }

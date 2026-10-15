@@ -158,6 +158,7 @@ namespace Config
                 config.Siege.BuildPower = Float(siege, "BuildPower", s, errors, min: 0.1f, max: 1000);
                 config.Siege.DemolishRefund = Float(siege, "DemolishRefund", s, errors, min: 0, max: 1);
                 config.Siege.RepairCostPerHealth = Float(siege, "RepairCostPerHealth", s, errors, min: 0, max: 100);
+                config.Siege.WorkReach = Float(siege, "WorkReach", s, errors, min: 0.1f, max: 8);
                 config.Siege.DigTime = Float(siege, "DigTime", s, errors, min: 0.05f, max: 60);
                 config.Siege.GemPayout = Float(siege, "GemPayout", s, errors, min: 0, max: 100000);
                 config.Siege.WallCost = Float(siege, "WallCost", s, errors, min: 0, max: 10000);

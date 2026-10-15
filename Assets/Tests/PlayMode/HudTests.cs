@@ -65,7 +65,7 @@ public class HudTests
             var anchor = new int2(x, y);
             if (grid.TileAt(anchor + MinerRules.FacingOffset(rotation)) != TileType.Gem) continue;
             if (wsm.CheckPlacement(BuildingType.Miner, anchor, rotation, local) != PlacementResult.Ok) continue;
-            wsm.TryAddBuilding(anchor, BuildingType.Miner, rotation);
+            Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.Miner, anchor, rotation), Is.True);
             placed = true;
             break;
         }
@@ -102,7 +102,7 @@ public class HudTests
         WorldStateManager wsm = WorldStateManager.Instance;
         ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
         Assert.That(wsm.TryFindBuildableAnchor(BuildingType.SmallUnitSpawner, 0f, local, out int2 anchor), Is.True);
-        wsm.TryAddBuilding(anchor, BuildingType.SmallUnitSpawner, 0f);
+        Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.SmallUnitSpawner, anchor), Is.True);
         BuildingData found = default;
         yield return PlayModeMatch.WaitUntil(() =>
         {
@@ -165,7 +165,8 @@ public class HudTests
         // Random and foreign ids are refused without changing anything.
         var rng = new System.Random(5);
         for (int i = 0; i < 20; i++) WorldStateManager.Instance.CmdDequeueUnit(rng.Next(int.MinValue, int.MaxValue));
-        yield return new WaitForSeconds(0.5f);
+        float until = Time.realtimeSinceStartup + 0.5f;
+        while (Time.realtimeSinceStartup < until) { Broke(); yield return null; }
         Broke();
         Assert.That(SpawnerCount(spawner.id), Is.EqualTo(2), "the server's queue matches the HUD");
         Assert.That(root.Q<Label>("production-count").text, Is.EqualTo("2"));

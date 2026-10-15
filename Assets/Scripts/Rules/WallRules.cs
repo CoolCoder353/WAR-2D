@@ -27,6 +27,15 @@ public static class WallRules
         while (line.Next(out int2 tile)) into.Add(tile);
     }
 
+    /// <summary>True when both ends are on the map and the line holds at most <paramref name="maxLine"/> segments. Overflow-safe.</summary>
+    public static bool ValidDrag(int2 from, int2 to, int2 mapSize, int maxLine)
+    {
+        if (from.x < 0 || from.y < 0 || to.x < 0 || to.y < 0) return false;
+        if (from.x >= mapSize.x || to.x >= mapSize.x || from.y >= mapSize.y || to.y >= mapSize.y) return false;
+        long span = Math.Abs((long)to.x - from.x) + Math.Abs((long)to.y - from.y) + 1;
+        return span <= maxLine;
+    }
+
     /// <summary>True when a wall blueprint may go on the tile: plain ground, no building footprint.</summary>
     public static bool CanPlace(int2 tile, Func<int2, TileType> tileAt, Func<int2, bool> isUsed) =>
         tileAt(tile) == TileType.Ground && !isUsed(tile);

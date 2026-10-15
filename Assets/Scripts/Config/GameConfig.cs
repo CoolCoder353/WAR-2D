@@ -179,6 +179,8 @@ namespace Config
         public float DemolishRefund;
         /// <summary>Resources per point of health a repair restores.</summary>
         public float RepairCostPerHealth;
+        /// <summary>How far (tiles, from the body's edge) a Builder or Digger reaches its target.</summary>
+        public float WorkReach;
         /// <summary>Seconds a Digger takes to turn one rock or gem tile into floor.</summary>
         public float DigTime;
         /// <summary>Resources a dug gem tile pays the Digger's owner.</summary>

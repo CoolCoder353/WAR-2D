@@ -26,7 +26,7 @@ public class SimDigTests
         sim.TickSeconds(dig * 1.5f + 0.5f);
         Assert.AreEqual(TileType.Ground, sim.Map.Grid.TileAt(new int2(10, 8)), "first tile dug");
         Assert.AreEqual(TileType.Wall, sim.Map.Grid.TileAt(new int2(12, 8)), "not all at once");
-        sim.TickSeconds(dig * 3f + 3f);
+        sim.TickSeconds(dig * 4f + 6f);
         for (int x = 10; x <= 12; x++) Assert.AreEqual(TileType.Ground, sim.Map.Grid.TileAt(new int2(x, 8)), $"x = {x}");
         Assert.AreEqual(WorkKinds.None, sim.UnitById(digger[0]).WorkKind, "done");
     }

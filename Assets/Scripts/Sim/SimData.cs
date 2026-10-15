@@ -174,6 +174,8 @@ namespace WAR2D.Sim
         public float RepairCostPerHealth;
         /// <summary>Health per second one Builder adds.</summary>
         public float BuildPower;
+        /// <summary>How far (tiles, from the body's edge) a Builder or Digger reaches its target.</summary>
+        public float WorkReach;
         /// <summary>1 when the unit's upkeep went unpaid at the last charge.</summary>
         public NativeArray<byte> Unpaid;
         /// <summary>Stance per unit (<see cref="Stances"/>).</summary>
@@ -403,6 +405,7 @@ namespace WAR2D.Sim
                 RepairWork = new NativeQueue<RepairWork>(allocator),
                 RepairCostPerHealth = config.Siege.RepairCostPerHealth,
                 BuildPower = config.Siege.BuildPower,
+                WorkReach = config.Siege.WorkReach,
                 Unpaid = new NativeArray<byte>(capacity, allocator),
                 Stance = new NativeArray<byte>(capacity, allocator),
                 IdOf = new NativeArray<int>(capacity, allocator),

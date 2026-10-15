@@ -50,7 +50,7 @@ public class MatchFlowTests
         yield return WaitUntil(() => GameCore.Instance.CurrentState == GameState.Playing, 10f);
 
         Assert.That(wsm.TryFindBuildableAnchor(BuildingType.SmallUnitSpawner, 0f, local, out int2 spawnerAnchor), Is.True);
-        wsm.TryAddBuilding(spawnerAnchor, BuildingType.SmallUnitSpawner, 0f);
+        Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.SmallUnitSpawner, spawnerAnchor), Is.True);
         // Host-local Commands travel through Mirror's loopback, which the server drains once per
         // tick (sendInterval), not once per frame - one frame is not enough for the entity to exist.
         yield return WaitUntil(() => HasBuilding(BuildingType.SmallUnitSpawner), 10f);
@@ -76,7 +76,7 @@ public class MatchFlowTests
         wsm.TryAddBuilding(hq, BuildingType.Base, 0f);
         yield return WaitUntil(() => GameCore.Instance.CurrentState == GameState.Playing, 10f);
         Assert.That(wsm.TryFindBuildableAnchor(BuildingType.SmallUnitSpawner, 0f, local, out int2 spawnerAnchor), Is.True);
-        wsm.TryAddBuilding(spawnerAnchor, BuildingType.SmallUnitSpawner, 0f);
+        Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.SmallUnitSpawner, spawnerAnchor), Is.True);
         yield return WaitUntil(() => HasBuilding(BuildingType.SmallUnitSpawner), 10f);
         int spawner = FindBuildingId(BuildingType.SmallUnitSpawner);
 

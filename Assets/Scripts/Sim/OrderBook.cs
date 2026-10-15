@@ -48,7 +48,7 @@ namespace WAR2D.Sim
         public OrderBook(in MapGrid map)
         {
             this.map = map;
-            cache = new SectorFieldCache(map, Allocator.Persistent, cellSize: 2);
+            cache = new SectorFieldCache(map, Allocator.Persistent, cellSize: 1);
             table = cache.CreateTable(Allocator.Persistent);
             Goal = new NativeArray<float2>(OrderFieldTable.MaxOrders, Allocator.Persistent);
             Live = new NativeArray<byte>(OrderFieldTable.MaxOrders, Allocator.Persistent);

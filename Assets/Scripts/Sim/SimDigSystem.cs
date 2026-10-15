@@ -37,11 +37,11 @@ namespace WAR2D.Sim
             {
                 Count = clock.UnitCount,
                 Width = data.Width, Height = data.Height,
-                Dt = data.Dt, DigTime = data.DigTime,
+                Dt = data.Dt, DigTime = data.DigTime, Reach = data.WorkReach,
                 Digger = (byte)UnitType.Digger,
                 Tiles = data.Tiles,
                 Positions = data.Positions, Radius = data.Radius, Health = data.Health, Type = data.Type, OwnerId = data.OwnerId, IdOf = data.IdOf,
-                WorkKind = data.WorkKind, WorkTile = data.WorkTile, OrderSlot = data.OrderSlot, OrderLive = data.OrderLive, Arrived = data.Arrived,
+                WorkKind = data.WorkKind, WorkTile = data.WorkTile, OrderSlot = data.OrderSlot, OrderLive = data.OrderLive, OrderGoal = data.OrderGoal, Arrived = data.Arrived,
                 DamageByType = data.DamageByType, CooldownByType = data.CooldownByType, DamageTable = data.DamageTable,
                 Cooldown = data.Cooldown, DigProgress = data.DigProgress, DigAt = data.DigAt,
                 OwnerSlot = data.OwnerSlot, AttackMask = data.AttackMask, WallOwnerSlot = data.WallOwnerSlot,
@@ -60,11 +60,11 @@ namespace WAR2D.Sim
     public struct DigJob : IJob
     {
         public int Count, Width, Height;
-        public float Dt, DigTime;
+        public float Dt, DigTime, Reach;
         public byte Digger;
         [ReadOnly] public NativeArray<byte> Tiles, Type, WorkKind, OrderLive, Arrived, OwnerSlot, WallOwnerSlot;
         [ReadOnly] public NativeArray<ushort> AttackMask;
-        [ReadOnly] public NativeArray<float2> Positions;
+        [ReadOnly] public NativeArray<float2> Positions, OrderGoal;
         [ReadOnly] public NativeArray<float> Radius, Health, DamageByType, CooldownByType, DamageTable;
         [ReadOnly] public NativeArray<int> OwnerId, IdOf, WorkTile, OrderSlot;
         public NativeArray<float> Cooldown, DigProgress;
@@ -81,7 +81,23 @@ namespace WAR2D.Sim
                 if (Type[i] != Digger || Health[i] <= 0f || WorkKind[i] != WorkKinds.Dig) continue;
                 int2 target = new int2(WorkTile[i] % Width, WorkTile[i] / Width);
                 int2 position = (int2)math.floor(Positions[i]);
+                // A tunnel continues from the tile just dug, so a wobble across a tile edge can't bend it.
+                if (DigAt[i] < 0)
+                {
+                    int last = -DigAt[i] - 1;
+                    int2 lastTile = new int2(last % Width, last / Width);
+                    if (math.all(math.abs(lastTile - position) <= 2)) position = lastTile;
+                }
                 DigStep step = DigRules.Next(Tiles, Width, Height, position, target, out int2 dig, out int2 stand);
+                // Keep digging the tile already started while it is solid and in reach, so a wobble across a
+                // tile edge doesn't change the line and reset the progress.
+                int started = DigAt[i];
+                if (started > 0 && started < Tiles.Length && (TileType)Tiles[started] is TileType.Wall or TileType.Gem)
+                {
+                    int2 sd = new int2(started % Width, started / Width);
+                    float2 sgap = math.max(math.max((float2)sd - Positions[i], Positions[i] - (sd + 1)), 0f);
+                    if (math.length(sgap) <= Radius[i] + Reach) { dig = sd; step = DigStep.Dig; }
+                }
                 if (step != DigStep.Dig)
                 {
                     DigProgress[i] = 0f;
@@ -100,7 +116,7 @@ namespace WAR2D.Sim
                 }
                 float2 lo = dig, hi = dig + 1;
                 float2 gap = math.max(math.max(lo - Positions[i], Positions[i] - hi), 0f);
-                if (math.length(gap) <= Radius[i] + 0.6f)
+                if (math.length(gap) <= Radius[i] + Reach)
                 {
                     if ((TileType)Tiles[tile] == TileType.PlayerWall)
                     {
@@ -116,12 +132,12 @@ namespace WAR2D.Sim
                     {
                         Done.Enqueue(new DigEvent { Tile = tile, OwnerId = OwnerId[i] });
                         DigProgress[i] = 0f;
-                        DigAt[i] = 0;
+                        DigAt[i] = -tile - 1;
                     }
                     continue;
                 }
                 int order = OrderSlot[i];
-                bool live = (uint)order < (uint)OrderLive.Length && OrderLive[order] != 0 && Arrived[i] == 0;
+                bool live = (uint)order < (uint)OrderLive.Length && OrderLive[order] != 0 && Arrived[i] == 0 && math.all(OrderGoal[order] == (float2)stand + 0.5f);
                 if (!live) Moves.Enqueue(new int3(IdOf[i], stand.x, stand.y));
             }
         }

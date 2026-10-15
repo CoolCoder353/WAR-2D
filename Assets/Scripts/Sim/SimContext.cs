@@ -227,7 +227,11 @@ namespace WAR2D.Sim
 
         internal void RaiseBuildingCreated(int id, Entity entity) => BuildingCreated?.Invoke(id, entity);
 
-        /// <summary>Completes the tick's jobs and frees the singletons and their arrays.</summary>
+        /// <summary>
+        /// Completes the tick's jobs and frees the singletons and their arrays, then destroys the match's units
+        /// and buildings: the ECS world outlives the match, so a leftover building would keep producing (and
+        /// share its id with one the next match allocates).
+        /// </summary>
         public void Dispose()
         {
             if (disposed) return;
@@ -245,6 +249,8 @@ namespace WAR2D.Sim
             }
             using EntityQuery units = em.CreateEntityQuery(typeof(Unit));
             em.DestroyEntity(units);
+            using EntityQuery buildings = em.CreateEntityQuery(typeof(BuildingData));
+            em.DestroyEntity(buildings);
             Orders.Dispose();
         }
     }

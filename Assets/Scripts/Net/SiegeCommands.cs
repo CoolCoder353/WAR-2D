@@ -42,8 +42,8 @@ public partial class WorldStateManager
 
     /// <summary>
     /// Lays a wall line from <paramref name="from"/> to <paramref name="to"/> (4-connected, at most
-    /// <c>Siege.MaxWallLine</c> segments): each free ground tile becomes a blueprint the sender pays
-    /// <c>Siege.WallCost</c> for; tiles it can't place or afford are skipped.
+    /// <c>Siege.MaxWallLine</c> segments): at the next boundary, each seen, free ground tile becomes a blueprint
+    /// the sender pays <c>Siege.WallCost</c> for; tiles it can't see, place or afford are skipped.
     /// </summary>
     [Command(requiresAuthority = false)]
     public void CmdPlaceWall(int2 from, int2 to, NetworkConnectionToClient sender = null)
@@ -51,24 +51,26 @@ public partial class WorldStateManager
         if (!CommandGate.Allow(sender, nameof(CmdPlaceWall))) return;
         if (!TryActingOwner(sender, out int owner) || Map == null) return;
         SiegeConfig siege = ConfigLoader.LoadConfig().Siege;
-        long spanX = System.Math.Abs((long)to.x - from.x), spanY = System.Math.Abs((long)to.y - from.y);
-        if (!Map.Grid.Contains(from) || !Map.Grid.Contains(to) || spanX + spanY + 1 > siege.MaxWallLine) return;
+        if (!WallRules.ValidDrag(from, to, new int2(Map.Grid.Width, Map.Grid.Height), siege.MaxWallLine)) return;
         ServerPlayer player = GameCore.Instance.GetServerPlayerById(owner);
         if (player == null) return;
         wallScratch.Clear();
         WallRules.Line(from, to, wallScratch);
+        float cost = siege.WallCost;
         foreach (int2 tile in wallScratch)
         {
-            if (!WallRules.CanPlace(tile, Map.Grid.TileAt, Map.IsUsed) || KnownBombAt(tile, owner)) continue;
-            if (!player.TrySpend(siege.WallCost)) break;
-            float cost = siege.WallCost;
+            // Only the owner's own knowledge filters here. Whether the tile is free is the sim's call, after its
+            // sight check: testing the real map first would let charges reveal what stands in the fog.
+            if (KnownBombAt(tile, owner)) continue;
             int2 at = tile;
+            bool paid = false;
             Sim.Commands.Enqueue(new SimCommand
             {
                 Kind = SimCommandKind.PlaceWall, OwnerId = owner, Tile = tile,
+                TryPay = () => paid = player.TrySpend(cost),
                 OnApplied = ok =>
                 {
-                    if (!ok) player.Refund(cost);
+                    if (!ok) { if (paid) player.Refund(cost); }
                     else DetonateUnknownBomb(at, owner); // a wall raised on a bomb the owner may not know sets it off
                 },
             });

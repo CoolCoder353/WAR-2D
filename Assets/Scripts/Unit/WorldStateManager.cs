@@ -72,10 +72,10 @@ public partial class WorldStateManager : NetworkBehaviour
     /// </summary>
     private Dictionary<int, Entity> Buildings = new Dictionary<int, Entity>();
 
-    /// <summary>Footprint tiles each building marked used, so they can be freed when it dies.</summary>
     /// <summary>Where each bomb is: bombs do not mark their tile used (units walk over them), so placement looks here.</summary>
     private readonly Dictionary<int2, (int id, int owner)> bombTiles = new Dictionary<int2, (int, int)>();
 
+    /// <summary>Footprint tiles each building marked used, so they can be freed when it dies.</summary>
     private readonly Dictionary<int, List<int2>> buildingFootprints = new Dictionary<int, List<int2>>();
 
     private EntityManager entityManager;
@@ -209,10 +209,14 @@ public partial class WorldStateManager : NetworkBehaviour
         if (WalkableTilemap != null) WalkableTilemap.GetComponent<TilemapRenderer>().enabled = false;
         if (UnwalkableTilemap != null) UnwalkableTilemap.GetComponent<TilemapRenderer>().enabled = false;
         MapView.Show(Map.Grid);
-        ClientTerrain.Current.Init(Map.Grid);
-        ClientTerrain.Current.Changed += OnTerrainBatch;
+        terrain = ClientTerrain.Current;
+        terrain.Init(Map.Grid);
+        terrain.Changed += OnTerrainBatch;
         Debug.Log($"[Map] baked the {MapSize}² map texture in {timer.ElapsedMilliseconds} ms");
     }
+
+    /// <summary>The client terrain this map subscribed to.</summary>
+    private ClientTerrain terrain;
 
     /// <summary>
     /// A batch of seen terrain changes arrived. A pure client patches its own grid to match (no simulation runs
@@ -224,7 +228,7 @@ public partial class WorldStateManager : NetworkBehaviour
         if (!isServer)
         {
             NativeArray<byte> grid = Map.Grid.Tiles;
-            byte[] known = ClientTerrain.Current.Tiles;
+            byte[] known = terrain.Tiles;
             foreach (int2 t in tiles) grid[Map.Grid.Index(t)] = known[Map.Grid.Index(t)];
         }
         MapView.Refresh(tiles);
@@ -232,7 +236,8 @@ public partial class WorldStateManager : NetworkBehaviour
 
     private void OnDestroy()
     {
-        ClientTerrain.Current.Changed -= OnTerrainBatch;
+        // The instance subscribed to, not Current: ClientWorld may have replaced it already (ClientTerrain.Clear).
+        if (terrain != null) terrain.Changed -= OnTerrainBatch;
         Replication?.Dispose();
         Replication = null;
         if (Sim != null)
@@ -760,7 +765,7 @@ public partial class WorldStateManager : NetworkBehaviour
     /// game-state rules (the footprint must still be free ground). Returns false when refused.
     /// </summary>
     [Server]
-    internal bool DevPlaceBuilding(int ownerId, BuildingType type, int2 anchor, float health = 0f)
+    internal bool DevPlaceBuilding(int ownerId, BuildingType type, int2 anchor, float health = 0f, float rotation = 0f)
     {
         if (!DevApi.Allowed || Sim == null) return false;
         BuildingConfig buildingConfig = ConfigLoader.LoadConfig().GetBuilding(type);
@@ -774,8 +779,8 @@ public partial class WorldStateManager : NetworkBehaviour
                 UpfrontCost = 0f, RunningCost = 0f, SpawnRate = buildingConfig.SpawnRate,
             };
         }
-        var data = new BuildingData { position = anchor, id = Ids.Allocate(), buildingType = type, ownerId = ownerId, rotation = 0f };
-        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.CreateBuilding, OwnerId = ownerId, Building = new BuildingSpec { Data = data, Rotation = 0f, Config = buildingConfig, Complete = true } });
+        var data = new BuildingData { position = anchor, id = Ids.Allocate(), buildingType = type, ownerId = ownerId, rotation = rotation };
+        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.CreateBuilding, OwnerId = ownerId, Building = new BuildingSpec { Data = data, Rotation = rotation, Config = buildingConfig, Complete = true } });
         foreach (int2 tile in tiles) Map.QueueUsed(tile, true);
         buildingFootprints[data.id] = tiles;
         return true;

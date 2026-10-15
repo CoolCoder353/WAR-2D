@@ -75,7 +75,7 @@ namespace WAR2D.Sim
                         break;
                     case SimCommandKind.PlaceWall:
                     {
-                        bool placed = ApplyPlaceWall(data, context, command.OwnerId, command.Tile);
+                        bool placed = ApplyPlaceWall(data, context, command.OwnerId, command.Tile, command.TryPay);
                         terrainChanged |= placed;
                         command.OnApplied?.Invoke(placed);
                         break;
@@ -143,9 +143,14 @@ namespace WAR2D.Sim
             return changed;
         }
 
-        /// <summary>Lays a wall blueprint on a free ground tile for the owner. False when the tile is no longer free.</summary>
-        private static bool ApplyPlaceWall(SimData data, SimContext context, int ownerId, int2 tile)
+        /// <summary>
+        /// Lays a wall blueprint on a free ground tile for the owner, paying through <paramref name="tryPay"/> once
+        /// the tile is known to be seen and free. False when refused.
+        /// </summary>
+        private static bool ApplyPlaceWall(SimData data, SimContext context, int ownerId, int2 tile, System.Func<bool> tryPay)
         {
+            int slot = context.SlotOf(ownerId);
+            if (slot < 0) return false; // an owner without a slot would be recorded as slot 0's wall
             // Only on tiles the owner's side sees now: a refusal on an unseen tile must not tell it what stands there.
             if (context.WallsNeedSight)
             {
@@ -153,9 +158,10 @@ namespace WAR2D.Sim
                 if (grid < 0 || !data.Sees(grid, (float2)tile + 0.5f)) return false;
             }
             if (!WallRules.CanPlace(tile, context.Map.Grid.TileAt, context.Map.IsUsed)) return false;
+            if (tryPay != null && !tryPay()) return false;
             if (!context.Map.SetTile(tile, TileType.WallBlueprint)) return false;
             int index = context.Map.Grid.Index(tile);
-            data.WallOwnerSlot[index] = (byte)math.max(0, context.SlotOf(ownerId));
+            data.WallOwnerSlot[index] = (byte)slot;
             data.WallState[index] = WallStates.Blueprint;
             data.WallHealth[index] = 0f;
             data.RefreshTerrain(tile);
@@ -427,6 +433,9 @@ namespace WAR2D.Sim
                         spawnRate = buildingConfig.SpawnRate
                     });
                     break;
+                case BuildingType.Bomb:
+                case BuildingType.Radar:
+                    break; // no components of their own: their stages read the building's slot flags
                 default:
                     Debug.LogError($"[Sim] no components for building type {buildingData.buildingType}");
                     break;
