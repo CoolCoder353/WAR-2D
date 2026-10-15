@@ -38,6 +38,12 @@ public sealed class PerfMatch : MonoBehaviour
     private int lastTick = -1, startTick = -1;
     private float secondTimer;
 
+    // v0.7 siege load per owner: walls, Radars, bombs, Builders on the walls and Diggers on the rock.
+    public const int WallsPerOwner = 200, RadarsPerOwner = 5, BombsPerOwner = 20, BuildersPerOwner = 50, DiggersPerOwner = 20, SiegeSetupTick = 60;
+    private bool siegeSetUp;
+    private readonly List<int>[] builderIds = new List<int>[Owners], diggerIds = new List<int>[Owners];
+    private readonly List<int2>[] wallTiles = new List<int2>[Owners], rockTiles = new List<int2>[Owners];
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Boot()
     {
@@ -165,7 +171,8 @@ public sealed class PerfMatch : MonoBehaviour
 
         if (tick == lastTick) return;
         lastTick = tick;
-        if (tick % OrderEveryTicks == 0) IssueOrders(sim, tick);
+        if (!siegeSetUp && tick >= SiegeSetupTick) SetUpSiege(sim);
+        if (tick % OrderEveryTicks == 0) { IssueOrders(sim, tick); IssueSiegeOrders(sim, tick); }
         if (tick % TopUpEveryTicks == 0) TopUp();
 
         if (startTick < 0)
@@ -196,6 +203,73 @@ public sealed class PerfMatch : MonoBehaviour
             var picked = new List<int>(ids.Count / 4 + 1);
             foreach (int id in ids) if (NetIdAllocator.IndexOf(id) % 4 == quarter) picked.Add(id);
             sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.AttackMove, OwnerId = owners[i], Tile = armyStart[i ^ 1], Ids = picked.ToArray() });
+        }
+    }
+
+    /// <summary>Places each owner's walls (blueprints), Radars and bombs near its HQ and spawns its Builders and Diggers.</summary>
+    private void SetUpSiege(SimContext sim)
+    {
+        siegeSetUp = true;
+        WorldStateManager world = WorldStateManager.Instance;
+        int2[] sites = world.Map.HqSites;
+        for (int i = 0; i < Owners; i++)
+        {
+            int owner = owners[i];
+            int2 site = sites[i];
+            builderIds[i] = new List<int>();
+            diggerIds[i] = new List<int>();
+            wallTiles[i] = new List<int2>();
+            rockTiles[i] = new List<int2>();
+            int radars = 0, bombs = 0, step = 0;
+            foreach (int2 tile in WalkableSpiral(world, site, 900))
+            {
+                step++;
+                if (radars < RadarsPerOwner && step % 37 == 0 && world.DevPlaceBuilding(owner, BuildingType.Radar, tile, 1e6f)) radars++;
+                else if (bombs < BombsPerOwner && step % 11 == 0 && world.DevPlaceBuilding(owner, BuildingType.Bomb, tile, 1e6f)) bombs++;
+            }
+            int walls = 0;
+            foreach (int2 tile in WalkableSpiral(world, site, 600))
+            {
+                if (walls >= WallsPerOwner * 3 / 2) break;
+                if (math.abs(tile.x - site.x) < 5 && math.abs(tile.y - site.y) < 5) continue;
+                if (tile.x % 2 != 0 || tile.y % 2 != 0) continue; // spaced so units can still path
+                walls++;
+                int2 t = tile;
+                List<int2> list = wallTiles[i];
+                sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.PlaceWall, OwnerId = owner, Tile = t, OnApplied = ok => { if (ok && list.Count < WallsPerOwner) list.Add(t); } });
+            }
+            for (int dy = -40; dy <= 40; dy++)
+            for (int dx = -40; dx <= 40; dx++)
+            {
+                int2 t = site + new int2(dx, dy);
+                if (world.Map.Grid.Contains(t) && world.Map.Grid.TileAt(t) == TileType.Wall && rockTiles[i].Count < 400) rockTiles[i].Add(t);
+            }
+            for (int k = 0; k < BuildersPerOwner; k++) { List<int> ids = builderIds[i]; world.DevSpawnUnit(owner, (float2)site + new float2(-3 + k % 8, -7 - k / 8), id => { if (id > 0) ids.Add(id); }, UnitType.Builder); }
+            for (int k = 0; k < DiggersPerOwner; k++) { List<int> ids = diggerIds[i]; world.DevSpawnUnit(owner, (float2)site + new float2(-3 + k % 8, -12 - k / 8), id => { if (id > 0) ids.Add(id); }, UnitType.Digger); }
+        }
+    }
+
+    /// <summary>Keeps the Builders building walls and the Diggers digging rock, in batches of ten.</summary>
+    private void IssueSiegeOrders(SimContext sim, int tick)
+    {
+        if (!siegeSetUp) return;
+        int round = tick / OrderEveryTicks;
+        for (int i = 0; i < Owners; i++)
+        {
+            Batches(sim, builderIds[i], wallTiles[i], OrderKind.Build, owners[i], round);
+            Batches(sim, diggerIds[i], rockTiles[i], OrderKind.Dig, owners[i], round);
+        }
+    }
+
+    private static void Batches(SimContext sim, List<int> ids, List<int2> targets, OrderKind kind, int owner, int round)
+    {
+        if (ids == null || ids.Count == 0 || targets == null || targets.Count == 0) return;
+        for (int b = 0; b * 10 < ids.Count; b++)
+        {
+            int count = math.min(10, ids.Count - b * 10);
+            var batch = new int[count];
+            ids.CopyTo(b * 10, batch, 0, count);
+            sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, OwnerId = owner, Tile = targets[(round * 7 + b) % targets.Count], Ids = batch });
         }
     }
 

@@ -51,13 +51,12 @@ public class ReplicationPlayModeTests
         Assert.That(store.OwnerOf(NetIdAllocator.IndexOf(id)), Is.EqualTo(PlayModeMatch.LocalOwner));
         yield return PlayModeMatch.WaitUntil(() => ClientWorld.Instance != null && ClientWorld.Instance.KnownCount >= 1, 5f);
 
-        // The HQ draws from the Buildings atlas with its owner's team material.
-        UnityEngine.SpriteRenderer hqSprite = null;
-        foreach (UnityEngine.GameObject go in UnitCommander.Instance.buildingGameObjects.Values)
-            if (go != null && go.name.StartsWith($"Building_{BuildingType.Base}_")) hqSprite = go.GetComponent<UnityEngine.SpriteRenderer>();
-        Assert.That(hqSprite, Is.Not.Null, "the HQ has a GameObject");
-        Assert.That(hqSprite.sprite.texture, Is.SameAs(WAR2D.Art.ArtAtlas.Load(WAR2D.Art.ArtAtlas.Buildings).Texture));
-        Assert.That(hqSprite.sharedMaterial, Is.SameAs(WAR2D.Client.Render.TeamSpriteMaterial.For(PlayModeMatch.LocalOwner, false)));
+        // The HQ is drawn instanced (no GameObject per building) in its owner's colour.
+        yield return PlayModeMatch.WaitUntil(() => ClientWorld.Instance.BuildingsDrawn >= 1, 5f);
+        Assert.That(ClientWorld.Instance.LastBuildingColour(PlayModeMatch.LocalOwner), Is.EqualTo(
+            WAR2D.Client.Render.InstancedUnitRenderer.Pack(PlayerPalette.OfOwner(PlayModeMatch.LocalOwner)) & 0x00FFFFFFu));
+        foreach (UnityEngine.SpriteRenderer sprite in UnityEngine.Object.FindObjectsByType<UnityEngine.SpriteRenderer>())
+            Assert.That(sprite.name.StartsWith("Building_"), Is.False, "no building GameObjects");
     }
 
     [UnityTest, Timeout(90000)]

@@ -35,6 +35,8 @@ public class MapView : MonoBehaviour
     /// <summary>Bakes the grid and shows it, replacing any earlier map. Safe to call again.</summary>
     public static void Show(MapGrid grid)
     {
+        // A -nographics player (the perf clients) has no GPU buffers to draw the map with.
+        if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) return;
         if (_instance == null) _instance = new GameObject("MapView").AddComponent<MapView>();
         _instance.Bake(grid);
     }

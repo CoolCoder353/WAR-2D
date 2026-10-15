@@ -29,7 +29,7 @@ public static class ClickOrders
     {
         bool enemyWall = target.Tile == TileType.PlayerWall && target.WallOwner != 0 && target.WallOwner != me && isEnemy(target.WallOwner);
         OrderKind others = enemyWall ? OrderKind.AttackMove : OrderKind.Move;
-        return (BuilderOrder(target, me, isEnemy) ?? others, DiggerOrder(target, enemyWall) ?? others, others);
+        return (BuilderOrder(target, me, isEnemy) ?? OrderKind.Move, DiggerOrder(target, enemyWall) ?? others, others);
     }
 
     private static OrderKind? BuilderOrder(in ClickTarget target, int me, System.Func<int, bool> isEnemy)

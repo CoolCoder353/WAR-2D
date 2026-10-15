@@ -295,6 +295,9 @@ public class GameManager : NetworkManager
 
     private Transport hostTransport;
 
+    /// <summary>Dev only (the perf clients): the transport direct (KCP) joins use, in place of the scene's.</summary>
+    internal void SetDirectTransport(Transport t) => directTransport = t;
+
     /// <summary>Whether a route may be used right now: Steam routes need Steam, Direct routes need <c>-direct</c> (or the editor / dev API).</summary>
     internal static bool CanConnect(WAR2D.Net.Steam.ConnectionRoute route, bool steamAvailable, bool directAllowed, out string why)
     {

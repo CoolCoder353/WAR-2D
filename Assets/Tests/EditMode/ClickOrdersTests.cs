@@ -48,7 +48,7 @@ public class ClickOrdersTests
     {
         var wall = new ClickTarget { Tile = TileType.PlayerWall, WallOwner = Enemy, WallHealth = 100 };
         Assert.That(On(wall).others, Is.EqualTo(OrderKind.AttackMove));
-        Assert.That(On(wall).builders, Is.EqualTo(OrderKind.AttackMove), "a Builder with nothing to do follows the rest");
+        Assert.That(On(wall).builders, Is.EqualTo(OrderKind.Move), "a Builder cannot attack, so it just moves");
         Assert.That(On(new ClickTarget { Tile = TileType.PlayerWall, WallOwner = Ally, WallHealth = 100 }).others, Is.EqualTo(OrderKind.Move));
     }
 }

@@ -189,7 +189,7 @@ namespace WAR2D.UI
                 else if (diplomacy.IsOpen) diplomacy.SetOpen(false);
                 else matchMenu.Toggle();
             }
-            if (GameInput.Cancel.WasPressedThisFrame() && !matchMenu.IsOpen) commandCard.RequestRemove();
+            if (GameInput.Cancel.WasPressedThisFrame() && !matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !diplomacy.IsOpen) commandCard.RequestRemove();
             matchMenu.SetCanSurrender(root, GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing && !endScreen.IsShown);
             minimap.Update(Time.unscaledDeltaTime);
             ShowWallReadout();

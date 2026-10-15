@@ -24,9 +24,7 @@ cannot destroy stuff i placed wrong
 
 ## Performance and scale
 
-| Issue                                                                                           | Where                                     | Target   | Effect                                                                                                           |
-| ----------------------------------------------------------------------------------------------- | ----------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
-| Buildings are still one GameObject each on clients (fed by `BuildingBatch` records since v0.5). | `UnitCommander`, `BuildingReplication.cs` | **v0.7** | Fine for a few hundred buildings; walls make the counts large, so v0.7 instances buildings and walls like units. |
+None open. (Per-building GameObjects on clients were fixed in v0.7; see the v0.7 siege review below.)
 
 ## Owner-reported issues (2026-10-10)
 
@@ -117,7 +115,6 @@ Inert leftovers disclosed in v0.2 and scheduled to be cleaned up together.
 - **Rebinding checks conflicts against hidden actions too.** `Rebinding.ConflictWith` looks at every action in `GameInput.Map`, including ones the Controls page doesn't list (the squad keys, `FastPan` and `AppendModifier`, which share Shift with Queue order). Binding Stop to `1` reports a conflict with "Squad1", and Swap gives that hidden action the old key. Show those actions or skip them in the check. **v0.7**
 - **`Acceleration` is parsed but unused.** `GameConfig.xml` and `gameplay.md` list it, but units reach full speed at once. Use it or drop it with the v0.7 units. **v0.7**
 - **Footprints ignore rotation.** `Footprint.Tiles` and the building sprite's placement assume a square footprint, so a rotated non-square building (Width ≠ Height) would cover the wrong tiles. Every building is square today. **v0.7** (walls and new buildings)
-- **`UnitCommander` keeps SyncList-era handlers** (`BuildingListSet`, `BuildingListClear`, `HealthList*`) that nothing calls since v0.5's building records. Remove them with instanced buildings. **v0.7**
 
 ## v0.7 siege review (2026-10-15)
 
@@ -129,6 +126,7 @@ Fixed:
 - **Builders kept working for a former ally.** `BuildWorkJob` checked alliance only when the order was given; it now stops a repair when either side attacks the other.
 - **`WorkReach` was hard-coded** (and silently raised Digger reach from 0.6 to 1.6). It is `Siege.WorkReach` in `GameConfig.xml` now.
 - **A new dig job inherited the old tunnel's last tile and progress.** `DigAt` and `DigProgress` reset when a unit's work target changes.
+- **Buildings were one GameObject each on clients.** Fixed in v0.7: instanced (`InstancedBuildingRenderer`, one draw for buildings, one for construction overlays, one for health and progress bars), picked by tile (`BuildingPicker`). The SyncList-era handlers in `UnitCommander` (`BuildingList*`, `HealthList*`), `DataClient`, `BuildingDataClient`, `SpawnerClientManager`, `SpriteFrameAnimator` and the `HealthBarUI` prefab are gone.
 - **Diggers couldn't be queued from the HUD.** The production buttons queued only the building's first unit type. The command card now has one production row per type the building makes (Figma `Command card – v0.7`).
 
 Open:

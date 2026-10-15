@@ -142,7 +142,7 @@ namespace WAR2D.Client.Render
         /// pixels with a 1 px outline in the palette's outline colour. The fill is white (tinted by the bar colour),
         /// the empty part the darkest machine colour.
         /// </summary>
-        private static Texture2D BuildBarAtlas()
+        public static Texture2D BuildBarAtlas()
         {
             const int w = BarWidth, h = BarHeight, inner = w - 2;
             var tex = new Texture2D(w * BarFrames, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "HealthBars" };
