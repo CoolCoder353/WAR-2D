@@ -5,6 +5,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 using WAR2D.Art;
+using WAR2D.Client;
 using WAR2D.Client.Render;
 using WAR2D.Net.Replication;
 
@@ -130,17 +131,16 @@ public class UnitCommander : NetworkBehaviour
         return true;
     }
 
-    /// <summary>The ids of our spawners (seen now) whose centre lies inside the box.</summary>
+    /// <summary>The ids of our spawners (seen now) with a footprint tile inside the box.</summary>
     private List<int> OwnSpawnersIn(float2 lo, float2 hi, int ownerId)
     {
+        var inBox = new List<int>();
+        picker.InBox((int2)math.floor(lo), (int2)math.floor(hi), inBox);
         var ids = new List<int>();
-        foreach (ClientBuildings.Entry entry in (subscribedBuildings ?? ClientBuildings.Current).Entries.Values)
-        {
-            BuildingData data = entry.Data;
-            if (entry.Ghost || data.ownerId != ownerId || SpawnerRules.UnitFor(data.buildingType) == UnitType.None) continue;
-            float2 centre = Footprint.VisualCenter((int2)math.round(data.position), WorldStateManager.GetBuildingSize(data.buildingType));
-            if (math.all(centre >= lo) && math.all(centre <= hi)) ids.Add(data.id);
-        }
+        ClientBuildings known = subscribedBuildings ?? ClientBuildings.Current;
+        foreach (int id in inBox)
+            if (known.Entries.TryGetValue(id, out ClientBuildings.Entry e) && !e.Ghost && e.Data.ownerId == ownerId &&
+                SpawnerRules.UnitFor(e.Data.buildingType) != UnitType.None) ids.Add(id);
         return ids;
     }
 
@@ -327,12 +327,14 @@ public class UnitCommander : NetworkBehaviour
     #region Buildings
 
     private ClientBuildings subscribedBuildings;
+    private readonly BuildingPicker picker = new BuildingPicker(WorldStateManager.GetBuildingSize);
 
     /// <summary>Mirrors the buildings the server sends (see ClientBuildings) as GameObjects, including ones already known.</summary>
     [Client]
     private void SubscribeBuildings()
     {
         subscribedBuildings = ClientBuildings.Current;
+        picker.Attach(subscribedBuildings);
         subscribedBuildings.Entered += OnBuildingEntered;
         subscribedBuildings.HealthChanged += OnBuildingHealthChanged;
         subscribedBuildings.Hidden += OnBuildingHidden;
@@ -348,6 +350,7 @@ public class UnitCommander : NetworkBehaviour
     private void UnsubscribeBuildings()
     {
         if (subscribedBuildings == null) return;
+        picker.Detach();
         subscribedBuildings.Entered -= OnBuildingEntered;
         subscribedBuildings.HealthChanged -= OnBuildingHealthChanged;
         subscribedBuildings.Hidden -= OnBuildingHidden;
@@ -442,14 +445,11 @@ public class UnitCommander : NetworkBehaviour
     /// <summary>The local player's spawner (seen now, not a ghost) whose footprint holds the world point.</summary>
     private bool TryOwnSpawnerAt(float2 point, int ownerId, out BuildingData spawner)
     {
-        foreach (ClientBuildings.Entry entry in (subscribedBuildings ?? ClientBuildings.Current).Entries.Values)
+        if (picker.TryPick((int2)math.floor(point), out int id) &&
+            (subscribedBuildings ?? ClientBuildings.Current).Entries.TryGetValue(id, out ClientBuildings.Entry e) &&
+            !e.Ghost && e.Data.ownerId == ownerId && SpawnerRules.UnitFor(e.Data.buildingType) != UnitType.None)
         {
-            BuildingData data = entry.Data;
-            if (entry.Ghost || data.ownerId != ownerId || SpawnerRules.UnitFor(data.buildingType) == UnitType.None) continue;
-            int2 size = WorldStateManager.GetBuildingSize(data.buildingType);
-            float2 start = Footprint.Start((int2)math.round(data.position), size);
-            if (point.x < start.x || point.y < start.y || point.x >= start.x + size.x || point.y >= start.y + size.y) continue;
-            spawner = data;
+            spawner = e.Data;
             return true;
         }
         spawner = default;
