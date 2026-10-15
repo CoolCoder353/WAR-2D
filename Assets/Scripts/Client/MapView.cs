@@ -63,6 +63,8 @@ public class MapView : MonoBehaviour
             TileType.Ground => roles[StylePalette.Floor0],
             TileType.Wall => roles[StylePalette.Rock2],
             TileType.Gem => roles[StylePalette.Gem1],
+            TileType.PlayerWall => roles[StylePalette.Rock1],
+            TileType.WallBlueprint => roles[StylePalette.Floor1],
             _ => roles[StylePalette.Rock0],
         };
     }
@@ -138,7 +140,7 @@ public class MapView : MonoBehaviour
         {
             int cell = atlas != null && t < names.Length ? atlas.FirstFrame(names[t]) : -1;
             first[t] = cell < 0 ? (atlas != null ? atlas.FirstFrame(nameof(TileType.Border)) : 0) : cell;
-            Color c = TileColor(t < 4 ? (TileType)t : TileType.Wall);
+            Color c = TileColor(t <= (int)TileType.WallBlueprint ? (TileType)t : TileType.Wall);
             flat[t] = linear ? (Vector4)c.linear : (Vector4)c;
         }
         _material.SetFloatArray("_TileFirst", first);

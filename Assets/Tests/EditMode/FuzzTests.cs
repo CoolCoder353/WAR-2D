@@ -163,4 +163,23 @@ public class FuzzTests
             Assert.DoesNotThrow(() => GiftRules.CanGift((GameState)rng.Next(0, 10), (PlayerState)rng.Next(0, 4), null, rng.Next(), rng.Next(), rng.NextDouble(), rng.NextDouble(), 5f));
         }
     }
+
+    [Test]
+    public void TerrainDecode_NeverThrows()
+    {
+        var map = WAR2D.World.MapStore.FromAscii(System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Repeat(new string('.', 16), 16)));
+        using (map)
+        {
+            var terrain = new WAR2D.Net.Replication.ClientTerrain();
+            terrain.Init(map.Grid);
+            var rng = new System.Random(7);
+            for (int i = 0; i < 2000; i++)
+            {
+                var bytes = new byte[rng.Next(0, 64)];
+                rng.NextBytes(bytes);
+                Assert.DoesNotThrow(() => WAR2D.Net.Replication.TerrainCodec.Apply(terrain, new ArraySegment<byte>(bytes)));
+                foreach (byte t in terrain.Tiles) Assert.LessOrEqual(t, (byte)TileType.WallBlueprint);
+            }
+        }
+    }
 }

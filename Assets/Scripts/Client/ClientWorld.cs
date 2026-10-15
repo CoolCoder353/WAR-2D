@@ -116,6 +116,7 @@ namespace WAR2D.Client
             Palettes.Changed -= colorOfOwner.Clear;
             ClientFog.Clear(); // the match is over; the next one starts with a fresh snapshot
             ClientBuildings.Clear();
+            ClientTerrain.Clear();
             if (Instance == this) Instance = null;
             unitRenderer?.Dispose();
             store?.Dispose();

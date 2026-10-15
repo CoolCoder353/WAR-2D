@@ -23,8 +23,9 @@ public class LeakTests
         public readonly ClientUnitStore Units;
         public readonly ClientFog Fog = new ClientFog();
         public readonly ClientBuildings Buildings = new ClientBuildings();
+        public readonly ClientTerrain Terrain = new ClientTerrain();
         public readonly List<string> Failures = new List<string>();
-        public int UnitsSeen, OthersSeen, FogPayloads, BuildingPayloads;
+        public int UnitsSeen, OthersSeen, FogPayloads, BuildingPayloads, TerrainPayloads;
         private readonly SimContext sim;
 
         public Spy(SimContext sim, ReplicationService replication, int owner)
@@ -32,6 +33,7 @@ public class LeakTests
             this.sim = sim;
             Owner = owner;
             Units = new ClientUnitStore(sim.Config.Simulation.MaxEntities, sim.Config.Simulation.TickSeconds);
+            Terrain.Init(sim.Map.Grid); // before any tick: the map is still as generated
             replication.AddVirtualClient(owner, Receive);
         }
 
@@ -50,6 +52,19 @@ public class LeakTests
                     if (visible != (Fog.State[i] == (byte)FogState.Visible)) { Failures.Add($"fog cell {i} is not this player's"); return; }
                 }
                 return;
+            }
+            if (channel == ReplicationService.TerrainSinkChannel)
+            {
+                TerrainPayloads++;
+                var cells = new List<int2>();
+                Terrain.Changed += Collect;
+                bool ok = TerrainCodec.Apply(Terrain, payload);
+                Terrain.Changed -= Collect;
+                if (!ok) { Failures.Add("malformed terrain"); return; }
+                foreach (int2 tile in cells)
+                    if (!data.Sees(grid, (float2)tile + 0.5f)) Failures.Add($"terrain {tile} sent while unseen");
+                return;
+                void Collect(IReadOnlyList<int2> changed) => cells.AddRange(changed);
             }
             if (channel == ReplicationService.BuildingSinkChannel)
             {
@@ -314,5 +329,52 @@ public class LeakTests
     public void GiftNoticeOnlyToSenderAndRecipient()
     {
         CollectionAssert.AreEquivalent(new[] { 7, 9 }, GiftRules.Recipients(7, 9));
+    }
+
+    private static void SetTile(SimHarness sim, int2 tile, TileType type) =>
+        sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.SetTile, Tile = tile, TileType = type });
+
+    [Test]
+    public void TerrainChangedUnderFogIsNotSentUntilSeen()
+    {
+        using var sim = new SimHarness(Map());
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        var spy = new Spy(sim.Context, replication, SimHarness.OwnerA);
+        int[] scout = sim.Spawn(SimHarness.OwnerA, new float2(10, 10));
+        sim.Tick();
+        int2 tile = new int2(80, 80);
+        int index = sim.Map.Grid.Index(tile);
+        SetTile(sim, tile, TileType.Wall);
+        for (int i = 0; i < 10; i++) sim.Tick();
+        Assert.AreEqual((byte)TileType.Ground, spy.Terrain.Tiles[index], "changed far out of sight: still floor to A");
+
+        sim.Teleport(scout[0], new float2(78, 80));
+        for (int i = 0; i < 10; i++) sim.Tick();
+        Assert.AreEqual((byte)TileType.Wall, spy.Terrain.Tiles[index], "seen now: sent");
+        int payloads = spy.TerrainPayloads;
+        for (int i = 0; i < 10; i++) sim.Tick();
+        Assert.AreEqual(payloads, spy.TerrainPayloads, "sent once, not every tick");
+        CollectionAssert.IsEmpty(spy.Failures);
+        spy.Dispose();
+    }
+
+    [Test]
+    public void TerrainChangesReachOnlyThePlayersWhoSeeThem()
+    {
+        using var sim = new SimHarness(Map());
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        var a = new Spy(sim.Context, replication, SimHarness.OwnerA);
+        var b = new Spy(sim.Context, replication, SimHarness.OwnerB);
+        sim.Spawn(SimHarness.OwnerA, new float2(10, 10));
+        sim.Spawn(SimHarness.OwnerB, new float2(80, 80));
+        sim.Tick();
+        SetTile(sim, new int2(82, 80), TileType.Wall);
+        for (int i = 0; i < 10; i++) sim.Tick();
+        Assert.Greater(b.TerrainPayloads, 0, "B sees the tile");
+        Assert.AreEqual(0, a.TerrainPayloads, "A doesn't");
+        CollectionAssert.IsEmpty(a.Failures);
+        CollectionAssert.IsEmpty(b.Failures);
+        a.Dispose();
+        b.Dispose();
     }
 }

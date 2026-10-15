@@ -215,6 +215,7 @@ public class GameManager : NetworkManager
         base.OnStartClient();
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.ReplicationBatch>(WAR2D.Net.Replication.ReplicationClient.Receive, false);
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.FogBatch>(WAR2D.Net.Replication.ClientFog.Receive, false);
+        NetworkClient.RegisterHandler<WAR2D.Net.Replication.TerrainBatch>(WAR2D.Net.Replication.ClientTerrain.Receive, false);
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.BuildingBatch>(WAR2D.Net.Replication.ClientBuildings.Receive, false);
     }
 

@@ -190,11 +190,30 @@ public partial class WorldStateManager : NetworkBehaviour
         if (WalkableTilemap != null) WalkableTilemap.GetComponent<TilemapRenderer>().enabled = false;
         if (UnwalkableTilemap != null) UnwalkableTilemap.GetComponent<TilemapRenderer>().enabled = false;
         MapView.Show(Map.Grid);
+        ClientTerrain.Current.Init(Map.Grid);
+        ClientTerrain.Current.Changed += OnTerrainChanged;
         Debug.Log($"[Map] baked the {MapSize}² map texture in {timer.ElapsedMilliseconds} ms");
+    }
+
+    /// <summary>
+    /// A batch of seen terrain changes arrived. A pure client patches its own grid to match (no simulation runs
+    /// there); a host's grid is already the truth, so only the view refreshes, and only for tiles its player sees.
+    /// </summary>
+    private void OnTerrainChanged(IReadOnlyList<int2> tiles)
+    {
+        if (Map == null) return;
+        if (!isServer)
+        {
+            NativeArray<byte> grid = Map.Grid.Tiles;
+            byte[] known = ClientTerrain.Current.Tiles;
+            foreach (int2 t in tiles) grid[Map.Grid.Index(t)] = known[Map.Grid.Index(t)];
+        }
+        MapView.Refresh(tiles);
     }
 
     private void OnDestroy()
     {
+        ClientTerrain.Current.Changed -= OnTerrainChanged;
         Replication?.Dispose();
         Replication = null;
         if (Sim != null)

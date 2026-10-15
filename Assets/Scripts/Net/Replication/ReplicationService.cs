@@ -37,6 +37,11 @@ namespace WAR2D.Net.Replication
         public const int FogSinkChannel = -1;
         /// <summary>The channel a virtual sink is given for building payloads.</summary>
         public const int BuildingSinkChannel = -2;
+        /// <summary>The channel a virtual sink is given for terrain payloads.</summary>
+        public const int TerrainSinkChannel = -3;
+
+        /// <summary>Answers what a tile index currently is (set by the world; null sends the plain kind). Walls add owner and health.</summary>
+        public Func<int, TerrainCell> TerrainCellOf;
 
         /// <summary>Fills the list with every live building (set by the world; null sends no buildings).</summary>
         public Action<List<BuildingView>> CollectBuildings;
@@ -53,8 +58,12 @@ namespace WAR2D.Net.Replication
             public int OwnerId;
             /// <summary>The fog grid the client was last sent a snapshot of, or -1 (send one).</summary>
             public int FogGrid = -1;
+            /// <summary>The fog grid terrain was last walked for, or -1.</summary>
+            public int TerrainGrid = -1;
             /// <summary>What the client knows about buildings.</summary>
             public readonly BuildingInterest Buildings = new BuildingInterest();
+            /// <summary>What the client knows about changed terrain.</summary>
+            public readonly TerrainInterest Terrain = new TerrainInterest();
             public long EntersSent;
             public long BytesSent;
         }
@@ -216,6 +225,7 @@ namespace WAR2D.Net.Replication
             for (int c = 0; c < MaxClients; c++)
                 if (active[c]) interests.SetClient(c, clients[c].OwnerId, GridOf(clients[c].OwnerId));
             SendFog(data);
+            SendTerrain(data, tick);
             SendBuildings(data);
             handle = interests.Schedule(input, handle);
             handle.Complete(); // the encoder reads the route arena by value, so it must not move under it
@@ -303,6 +313,37 @@ namespace WAR2D.Net.Replication
                     writer.Position = 0;
                     FogCodec.WriteDelta(writer, cells, start, math.min(FogCodec.MaxDeltaCells, cells.Count - start));
                     SendFogPayload(client, writer.ToArraySegment());
+                }
+            }
+        }
+
+        /// <summary>
+        /// Sends every client the changed tiles its grid sees (see <see cref="TerrainInterest"/>). Fog only moves on
+        /// vision ticks, so the walk over changed tiles runs then, and whenever a client's fog grid was just sent.
+        /// </summary>
+        private void SendTerrain(SimData data, int tick)
+        {
+            if (sim.Map.ChangedSinceStart.Count == 0) return;
+            bool visionTick = (tick - 1) % data.VisionInterval == 0;
+            int limit = BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4);
+            Func<int, TerrainCell> cellOf = TerrainCellOf ?? (i => new TerrainCell { Index = i, Type = data.Tiles[i] });
+            for (int c = 0; c < MaxClients; c++)
+            {
+                if (!active[c]) continue;
+                Client client = clients[c];
+                int grid = GridOf(client.OwnerId);
+                if (grid < 0 || (!visionTick && client.TerrainGrid == grid)) continue;
+                client.TerrainGrid = grid;
+                while (true)
+                {
+                    writer.Position = 0;
+                    int cells = client.Terrain.Update(sim.Map.ChangedSinceStart, cellOf, p => data.Sees(grid, p), data.Width, sim.Map.InitialTiles, writer, limit);
+                    if (cells == 0) break;
+                    ArraySegment<byte> payload = writer.ToArraySegment();
+                    client.BytesSent += payload.Count;
+                    if (client.VirtualSink != null) client.VirtualSink(payload, TerrainSinkChannel);
+                    else client.Connection.Send(new TerrainBatch { Payload = payload }, Channels.Reliable);
+                    if (cells < TerrainCodec.MaxCells) break;
                 }
             }
         }
