@@ -284,6 +284,8 @@ namespace WAR2D.Sim
             {
                 case BuildingType.Base:
                     EntityManager.AddComponentData(building, new HQComponent { ownerId = buildingData.ownerId });
+                    // The HQ produces Builders.
+                    EntityManager.AddComponentData(building, new SpawnerData { ownerId = buildingData.ownerId, position = buildingData.position, spawnRate = buildingConfig.SpawnRate });
                     break;
                 case BuildingType.Miner:
                     EntityManager.AddComponentData(building, new MiningComponent { timeSinceLastMining = 0f, isActive = false });
@@ -291,10 +293,8 @@ namespace WAR2D.Sim
                 case BuildingType.SmallUnitSpawner:
                     EntityManager.AddComponentData(building, new SpawnerData
                     {
-                        count = 0,
                         ownerId = buildingData.ownerId,
                         position = buildingData.position,
-                        unitType = SpawnerRules.UnitFor(BuildingType.SmallUnitSpawner),
                         spawnRate = buildingConfig.SpawnRate
                     });
                     break;

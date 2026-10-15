@@ -118,7 +118,7 @@ public class UnitCommander : NetworkBehaviour
         if (localPlayer == null || building.ownerId != BuildingData.UIntToInt(localPlayer.netId)) return;
         ArmedOrder = null;
         // Only spawners combine (their production queues and rally points act together).
-        bool spawner = SpawnerRules.UnitFor(building.buildingType) != UnitType.None;
+        bool spawner = SpawnerRules.IsProducer(building.buildingType);
         Selection.SelectBuilding(building.id, append && spawner && AllSpawners(Selection.SelectedBuildings));
     }
 
@@ -127,7 +127,7 @@ public class UnitCommander : NetworkBehaviour
     {
         foreach (int id in ids)
             if (!buildingGameObjects.TryGetValue(id, out GameObject go) || go == null || !go.TryGetComponent(out BuildingDataClient data) ||
-                SpawnerRules.UnitFor(data.buildingData.buildingType) == UnitType.None) return false;
+                !SpawnerRules.IsProducer(data.buildingData.buildingType)) return false;
         return true;
     }
 
@@ -140,7 +140,7 @@ public class UnitCommander : NetworkBehaviour
         ClientBuildings known = subscribedBuildings ?? ClientBuildings.Current;
         foreach (int id in inBox)
             if (known.Entries.TryGetValue(id, out ClientBuildings.Entry e) && !e.Ghost && e.Data.ownerId == ownerId &&
-                SpawnerRules.UnitFor(e.Data.buildingType) != UnitType.None) ids.Add(id);
+                SpawnerRules.IsProducer(e.Data.buildingType)) ids.Add(id);
         return ids;
     }
 
@@ -447,7 +447,7 @@ public class UnitCommander : NetworkBehaviour
     {
         if (picker.TryPick((int2)math.floor(point), out int id) &&
             (subscribedBuildings ?? ClientBuildings.Current).Entries.TryGetValue(id, out ClientBuildings.Entry e) &&
-            !e.Ghost && e.Data.ownerId == ownerId && SpawnerRules.UnitFor(e.Data.buildingType) != UnitType.None)
+            !e.Ghost && e.Data.ownerId == ownerId && SpawnerRules.IsProducer(e.Data.buildingType))
         {
             spawner = e.Data;
             return true;

@@ -196,7 +196,7 @@ public partial class WorldStateManager : NetworkBehaviour
         if (UnwalkableTilemap != null) UnwalkableTilemap.GetComponent<TilemapRenderer>().enabled = false;
         MapView.Show(Map.Grid);
         ClientTerrain.Current.Init(Map.Grid);
-        ClientTerrain.Current.Changed += OnTerrainChanged;
+        ClientTerrain.Current.Changed += OnTerrainBatch;
         Debug.Log($"[Map] baked the {MapSize}² map texture in {timer.ElapsedMilliseconds} ms");
     }
 
@@ -204,7 +204,7 @@ public partial class WorldStateManager : NetworkBehaviour
     /// A batch of seen terrain changes arrived. A pure client patches its own grid to match (no simulation runs
     /// there); a host's grid is already the truth, so only the view refreshes, and only for tiles its player sees.
     /// </summary>
-    private void OnTerrainChanged(IReadOnlyList<int2> tiles)
+    private void OnTerrainBatch(IReadOnlyList<int2> tiles)
     {
         if (Map == null) return;
         if (!isServer)
@@ -218,7 +218,7 @@ public partial class WorldStateManager : NetworkBehaviour
 
     private void OnDestroy()
     {
-        ClientTerrain.Current.Changed -= OnTerrainChanged;
+        ClientTerrain.Current.Changed -= OnTerrainBatch;
         Replication?.Dispose();
         Replication = null;
         if (Sim != null)
@@ -592,7 +592,7 @@ public partial class WorldStateManager : NetworkBehaviour
     public void BuildingClicked(int buildingId, NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(BuildingClicked))) return;
-        ChangeQueue(buildingId, sender, enqueue: true);
+        ChangeQueue(buildingId, sender, UnitType.None, 1);
     }
 
     /// <summary>Removes one queued unit from the sender's spawner (the production queue's − button). Refunds nothing: cost is charged at spawn.</summary>
@@ -600,7 +600,7 @@ public partial class WorldStateManager : NetworkBehaviour
     public void CmdDequeueUnit(int buildingId, NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(CmdDequeueUnit))) return;
-        ChangeQueue(buildingId, sender, enqueue: false);
+        ChangeQueue(buildingId, sender, UnitType.None, -1);
     }
 
     /// <summary>
@@ -609,11 +609,12 @@ public partial class WorldStateManager : NetworkBehaviour
     /// longer than <see cref="SpawnerRules.MaxSpawnersPerCommand"/> are refused.
     /// </summary>
     [Command(requiresAuthority = false)]
-    public void CmdChangeQueues(int[] buildingIds, int delta, NetworkConnectionToClient sender = null)
+    public void CmdChangeQueues(int[] buildingIds, byte unitType, int delta, NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(CmdChangeQueues))) return;
         if (buildingIds == null || buildingIds.Length > SpawnerRules.MaxSpawnersPerCommand || !SpawnerRules.IsQueueStep(delta)) return;
-        foreach (int id in buildingIds) ChangeQueue(id, sender, delta);
+        if (!System.Enum.IsDefined(typeof(UnitType), (UnitType)unitType)) return;
+        foreach (int id in buildingIds) ChangeQueue(id, sender, (UnitType)unitType, delta);
     }
 
     /// <summary>
@@ -648,28 +649,32 @@ public partial class WorldStateManager : NetworkBehaviour
         return EntityManager.GetComponentData<BuildingData>(building).ownerId == owner && EntityManager.HasComponent<SpawnerData>(building);
     }
 
-    /// <summary>Adds or removes one unit on a spawner the sender owns, while Playing, and tells the owner the new count.</summary>
+    /// <summary>
+    /// Adds or removes <paramref name="delta"/> units of a type on a producer the sender owns, while Playing, and
+    /// tells the owner the new counts. <see cref="UnitType.None"/> means the building's first unit. A building
+    /// that can't produce the type is refused.
+    /// </summary>
     [Server]
-    private void ChangeQueue(int buildingId, NetworkConnectionToClient sender, bool enqueue) => ChangeQueue(buildingId, sender, enqueue ? 1 : -1);
-
-    /// <summary>Adds or removes <paramref name="delta"/> units on a spawner the sender owns, while Playing, and tells the owner the new count.</summary>
-    [Server]
-    private void ChangeQueue(int buildingId, NetworkConnectionToClient sender, int delta)
+    private void ChangeQueue(int buildingId, NetworkConnectionToClient sender, UnitType type, int delta)
     {
         if (!TryActingOwner(sender, out int owner) || !TryOwnSpawner(buildingId, owner, out Entity building)) return;
+        BuildingType buildingType = EntityManager.GetComponentData<BuildingData>(building).buildingType;
+        UnitType[] produced = SpawnerRules.Produces(buildingType);
+        if (type == UnitType.None && produced.Length > 0) type = produced[0];
+        if (!SpawnerRules.MayProduce(buildingType, type)) return;
         SpawnerData spawner = EntityManager.GetComponentData<SpawnerData>(building);
-        if (SpawnerRules.Apply(ref spawner.count, delta) == 0) return;
+        if (SpawnerRules.Change(ref spawner.queue, type, delta) == 0) return;
         EntityManager.SetComponentData(building, spawner);
-        SendSpawnerQueue(owner, buildingId, spawner.count);
+        SendSpawnerQueue(owner, buildingId, SpawnerRules.Counts(spawner.queue));
     }
 
     /// <summary>Tells a spawner's owner (only) its queue count.</summary>
     [Server]
-    public void SendSpawnerQueue(int ownerId, int buildingId, int count)
+    public void SendSpawnerQueue(int ownerId, int buildingId, int[] countsByType)
     {
         NetworkConnectionToClient connection = GameCore.Instance?.GetServerPlayerById(ownerId)?.connection;
         if (connection?.identity == null || !connection.identity.TryGetComponent(out ClientPlayer player)) return;
-        player.TargetSpawnerQueue(connection, buildingId, count);
+        player.TargetSpawnerQueue(connection, buildingId, countsByType);
     }
 
     /// <summary>

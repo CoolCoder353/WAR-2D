@@ -110,10 +110,20 @@ public class ClientPlayer : NetworkBehaviour
         upkeepPerSecond = upkeep;
     }
 
-    private readonly System.Collections.Generic.Dictionary<int, int> spawnerQueues = new System.Collections.Generic.Dictionary<int, int>();
+    private readonly System.Collections.Generic.Dictionary<int, int[]> spawnerQueues = new System.Collections.Generic.Dictionary<int, int[]>();
 
-    /// <summary>Units queued on one of the local player's spawners, as last told by the server (0 when unknown).</summary>
-    public int SpawnerQueue(int buildingId) => spawnerQueues.TryGetValue(buildingId, out int count) ? count : 0;
+    /// <summary>Units queued on one of the local player's producers, as last told by the server (0 when unknown).</summary>
+    public int SpawnerQueue(int buildingId)
+    {
+        if (!spawnerQueues.TryGetValue(buildingId, out int[] counts)) return 0;
+        int total = 0;
+        foreach (int c in counts) total += c;
+        return total;
+    }
+
+    /// <summary>Units of one type queued on one of the local player's producers (0 when unknown).</summary>
+    public int SpawnerQueueOf(int buildingId, UnitType type) =>
+        spawnerQueues.TryGetValue(buildingId, out int[] counts) && (int)type < counts.Length ? counts[(int)type] : 0;
 
     /// <summary>Raised when a spawner's queue count arrives: (building id, count).</summary>
     public event System.Action<int, int> SpawnerQueueChanged;
@@ -136,10 +146,12 @@ public class ClientPlayer : NetworkBehaviour
 
     /// <summary>One of the owner's spawners changed its queue. Private: only the owner learns it.</summary>
     [TargetRpc]
-    public void TargetSpawnerQueue(NetworkConnection target, int buildingId, int count)
+    public void TargetSpawnerQueue(NetworkConnection target, int buildingId, int[] countsByType)
     {
+        int count = 0;
+        if (countsByType != null && countsByType.Length <= 64) foreach (int c in countsByType) count += c;
         if (count <= 0) spawnerQueues.Remove(buildingId);
-        else spawnerQueues[buildingId] = count;
+        else spawnerQueues[buildingId] = countsByType;
         SpawnerQueueChanged?.Invoke(buildingId, count);
     }
 

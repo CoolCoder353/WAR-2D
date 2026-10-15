@@ -353,7 +353,9 @@ namespace WAR2D.UI
             if (wsm == null || buildingIds.Count == 0) return;
             var ids = new int[buildingIds.Count];
             for (int i = 0; i < ids.Length; i++) ids[i] = buildingIds[i];
-            wsm.CmdChangeQueues(ids, delta);
+            UnitType[] produced = SpawnerRules.Produces(Selection.BuildingType);
+            if (produced.Length == 0) return;
+            wsm.CmdChangeQueues(ids, (byte)produced[0], delta);
         }
 
         private void OnSquad(int squad)

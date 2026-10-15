@@ -26,6 +26,59 @@ public static class SpawnerRules
         return changed;
     }
 
+    private static readonly UnitType[] NoUnits = System.Array.Empty<UnitType>();
+    private static readonly UnitType[] HqUnits = { UnitType.Builder };
+    private static readonly UnitType[] SpawnerUnits = { UnitType.Tank, UnitType.Digger };
+
+    /// <summary>The units a building may produce, in button order (empty for non-producers).</summary>
+    public static UnitType[] Produces(BuildingType building) => building switch
+    {
+        BuildingType.Base => HqUnits,
+        BuildingType.SmallUnitSpawner => SpawnerUnits,
+        _ => NoUnits,
+    };
+
+    /// <summary>True when the building produces that unit.</summary>
+    public static bool MayProduce(BuildingType building, UnitType unit) => System.Array.IndexOf(Produces(building), unit) >= 0;
+
+    /// <summary>True when the building has a production queue.</summary>
+    public static bool IsProducer(BuildingType building) => Produces(building).Length > 0;
+
+    /// <summary>
+    /// Appends <paramref name="delta"/> units of a type (or removes that many of it, newest first, when
+    /// negative), keeping the whole queue within 0..<see cref="MaxQueue"/>. Returns how much it changed.
+    /// </summary>
+    public static int Change(ref Unity.Collections.FixedList128Bytes<byte> queue, UnitType type, int delta)
+    {
+        int changed = 0;
+        for (; delta > 0 && queue.Length < MaxQueue; delta--, changed++) queue.Add((byte)type);
+        for (; delta < 0; delta++)
+        {
+            int last = -1;
+            for (int i = queue.Length - 1; i >= 0; i--) if (queue[i] == (byte)type) { last = i; break; }
+            if (last < 0) break;
+            queue.RemoveAt(last);
+            changed--;
+        }
+        return changed;
+    }
+
+    /// <summary>Queued units of one type.</summary>
+    public static int CountOf(in Unity.Collections.FixedList128Bytes<byte> queue, UnitType type)
+    {
+        int n = 0;
+        for (int i = 0; i < queue.Length; i++) if (queue[i] == (byte)type) n++;
+        return n;
+    }
+
+    /// <summary>Queued units per type, indexed by <c>(int)UnitType</c>.</summary>
+    public static int[] Counts(in Unity.Collections.FixedList128Bytes<byte> queue)
+    {
+        var counts = new int[System.Enum.GetValues(typeof(UnitType)).Length];
+        for (int i = 0; i < queue.Length; i++) if (queue[i] < counts.Length) counts[queue[i]]++;
+        return counts;
+    }
+
     /// <summary>The unit a spawner building produces (None for buildings that don't spawn).</summary>
     public static UnitType UnitFor(BuildingType building) => building == BuildingType.SmallUnitSpawner ? UnitType.Tank : UnitType.None;
 

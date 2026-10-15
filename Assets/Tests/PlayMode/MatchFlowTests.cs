@@ -94,8 +94,8 @@ public class MatchFlowTests
         yield return WaitUntil(() => local.TryGetRally(spawner, out _), 5f);
         Assert.That(local.TryGetRally(spawner, out int2 told) && told.Equals(rally), Is.True, "the owner is told the rally tile");
 
-        wsm.CmdChangeQueues(new[] { spawner }, 7); // not a button's step: refused
-        wsm.CmdChangeQueues(new[] { spawner }, 10);
+        wsm.CmdChangeQueues(new[] { spawner }, (byte)UnitType.Tank, 7); // not a button's step: refused
+        wsm.CmdChangeQueues(new[] { spawner }, (byte)UnitType.Tank, 10);
         yield return WaitUntil(() => local.SpawnerQueue(spawner) >= 8, 5f);
         Assert.That(local.SpawnerQueue(spawner), Is.InRange(8, 10), "+10 queued (minus any already spawned), the 7 was refused");
 

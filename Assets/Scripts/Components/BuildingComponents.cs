@@ -59,9 +59,8 @@ public static class BuildingFlags
 public struct SpawnerData : IComponentData
 {
     public float2 position;
-    /// <summary>Number of units queued.</summary>
-    public int count;
-    public UnitType unitType;
+    /// <summary>Queued unit types, oldest first (at most <see cref="SpawnerRules.MaxQueue"/>).</summary>
+    public Unity.Collections.FixedList128Bytes<byte> queue;
     public int ownerId;
     /// <summary>Units per second (from BuildingConfig.SpawnRate).</summary>
     public float spawnRate;

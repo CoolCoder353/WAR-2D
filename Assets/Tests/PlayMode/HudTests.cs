@@ -235,7 +235,7 @@ public class HudTests
         using EntityQuery q = em.CreateEntityQuery(typeof(BuildingData), typeof(SpawnerData));
         using Unity.Collections.NativeArray<Entity> entities = q.ToEntityArray(Unity.Collections.Allocator.Temp);
         foreach (Entity e in entities)
-            if (em.GetComponentData<BuildingData>(e).id == buildingId) return em.GetComponentData<SpawnerData>(e).count;
+            if (em.GetComponentData<BuildingData>(e).id == buildingId) return em.GetComponentData<SpawnerData>(e).queue.Length;
         Assert.Fail("spawner not found");
         return -1;
     }

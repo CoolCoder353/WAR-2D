@@ -32,21 +32,21 @@ public partial struct SpawnerSystem : ISystem
             // Clamp the timer to one unit's worth so a spawner that sat idle does not burst out its whole queue.
             float elapsed = spawner.ValueRO.timeSinceLastSpawn + dt;
             spawner.ValueRW.timeSinceLastSpawn = math.min(elapsed, 1f / spawnRate);
-            if (spawner.ValueRO.count <= 0 || !SpawnerRules.CanSpawn(spawner.ValueRO.timeSinceLastSpawn, spawnRate)) continue;
+            if (spawner.ValueRO.queue.Length == 0 || !SpawnerRules.CanSpawn(spawner.ValueRO.timeSinceLastSpawn, spawnRate)) continue;
 
             int2 anchor = (int2)math.round(spawner.ValueRO.position);
             if (!WorldStateManager.Instance.TryFindSpawnTile(anchor, out int2 tile)) continue; // no room; keep the queue
 
             int ownerId = spawner.ValueRO.ownerId;
-            UnitType type = spawner.ValueRO.unitType;
+            UnitType type = (UnitType)spawner.ValueRO.queue[0];
             float cost = config.GetUnit(type).UpfrontCost;
             ServerPlayer owner = GameCore.Instance.GetServerPlayerById(ownerId);
             if (owner == null || !owner.TrySpend(cost)) continue;
 
-            spawner.ValueRW.count--;
+            spawner.ValueRW.queue.RemoveAt(0);
             spawner.ValueRW.timeSinceLastSpawn = 0f;
             int buildingId = building.ValueRO.id;
-            WorldStateManager.Instance.SendSpawnerQueue(ownerId, buildingId, spawner.ValueRO.count);
+            WorldStateManager.Instance.SendSpawnerQueue(ownerId, buildingId, SpawnerRules.Counts(spawner.ValueRO.queue));
             Entity source = entity;
             bool rally = spawner.ValueRO.hasRally;
             int2 rallyTile = spawner.ValueRO.rally;
@@ -67,9 +67,9 @@ public partial struct SpawnerSystem : ISystem
                     owner.Refund(cost);
                     if (!entityManager.Exists(source) || !entityManager.HasComponent<SpawnerData>(source)) return;
                     SpawnerData data = entityManager.GetComponentData<SpawnerData>(source);
-                    data.count++;
+                    if (data.queue.Length < SpawnerRules.MaxQueue) data.queue.Insert(0, (byte)type);
                     entityManager.SetComponentData(source, data);
-                    WorldStateManager.Instance?.SendSpawnerQueue(ownerId, buildingId, data.count);
+                    WorldStateManager.Instance?.SendSpawnerQueue(ownerId, buildingId, SpawnerRules.Counts(data.queue));
                 },
             });
         }

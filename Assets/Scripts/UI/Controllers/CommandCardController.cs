@@ -84,11 +84,11 @@ namespace WAR2D.UI
 
         private void Show()
         {
-            UnitType produces = SpawnerRules.UnitFor(selection.BuildingType);
+            UnitType produces = SpawnerRules.Produces(selection.BuildingType) is { Length: > 0 } produced ? produced[0] : UnitType.None;
             bool spawner = selection.BuildingId != 0 && produces != UnitType.None;
             int spawners = selection.BuildingIds.Count;
             card.EnableInClassList("command-card--building", spawner);
-            title.text = !spawner ? "Commands" : spawners > 1 ? $"Commands: {spawners} Spawners selected" : "Commands: Spawner selected";
+            title.text = !spawner ? "Commands" : spawners > 1 ? $"Commands: {spawners} Spawners selected" : selection.BuildingType == BuildingType.Base ? "Commands: HQ selected" : "Commands: Spawner selected";
             if (spawner)
             {
                 unitName.text = produces.ToString();

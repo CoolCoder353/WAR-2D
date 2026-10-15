@@ -182,4 +182,21 @@ public class FuzzTests
             }
         }
     }
+
+    [Test]
+    public void TypedSpawnerQueue_NeverLeavesItsRange()
+    {
+        var rng = new System.Random(5);
+        var queue = new Unity.Collections.FixedList128Bytes<byte>();
+        var added = new HashSet<byte>();
+        for (int i = 0; i < Iterations; i++)
+        {
+            var type = (UnitType)rng.Next(0, 11);
+            int delta = rng.Next(-60, 60);
+            if (delta > 0) added.Add((byte)type);
+            SpawnerRules.Change(ref queue, type, delta);
+            Assert.That(queue.Length, Is.InRange(0, SpawnerRules.MaxQueue));
+        }
+        for (int i = 0; i < queue.Length; i++) Assert.IsTrue(added.Contains(queue[i]));
+    }
 }
