@@ -204,6 +204,8 @@ namespace WAR2D.Sim
         public NativeArray<float> BuildingSight;
         /// <summary>1 where a fog cell blocks sight (most of its tiles are walls).</summary>
         public NativeArray<byte> Opaque;
+        /// <summary>1 per map tile where <see cref="TileRules.BlocksSight"/>: the tile-resolution line-of-sight grid.</summary>
+        public NativeArray<byte> OpaqueTile;
         /// <summary>Summed-area table of <see cref="Opaque"/>, (FogW + 1) x (FogH + 1), for the open-ground fast path.</summary>
         public NativeArray<int> OpaqueSum;
         /// <summary>1 where the grid's team sees the fog cell now; the previous pass's copy; 1 where it has ever seen it.</summary>
@@ -354,6 +356,8 @@ namespace WAR2D.Sim
             data.BuildingSight = new NativeArray<float>(buildingCapacity, allocator);
             data.Opaque = BuildOpaque(map, fogCell, data.FogW, data.FogH, allocator);
             data.OpaqueSum = BuildSum(data.Opaque, data.FogW, data.FogH, allocator);
+            data.OpaqueTile = new NativeArray<byte>(map.Width * map.Height, allocator);
+            for (int i = 0; i < data.OpaqueTile.Length; i++) data.OpaqueTile[i] = (byte)(TileRules.BlocksSight((TileType)map.Tiles[i]) ? 1 : 0);
             int fogTotal = MaxOwners * data.FogCells;
             data.Visible = new NativeArray<byte>(fogTotal, allocator);
             data.VisiblePrev = new NativeArray<byte>(fogTotal, allocator);
@@ -392,11 +396,11 @@ namespace WAR2D.Sim
             OwnerIdBySlot.Dispose(); TeamBySlot.Dispose(); AttackMask.Dispose(); ShareVisionMask.Dispose(); UpkeepBudget.Dispose(); UpkeepSpent.Dispose(); UnitsBySlot.Dispose();
             ChargedThisTick.Dispose(); LargeGrid.Dispose();
             SightByType.Dispose(); BuildingSightByType.Dispose(); BuildingSight.Dispose();
-            Opaque.Dispose(); OpaqueSum.Dispose(); Visible.Dispose(); VisiblePrev.Dispose(); Explored.Dispose();
+            Opaque.Dispose(); OpaqueSum.Dispose(); OpaqueTile.Dispose(); Visible.Dispose(); VisiblePrev.Dispose(); Explored.Dispose();
             SourceRadius.Dispose(); Sources.Dispose(); FogChanges.Dispose();
         }
 
-        /// <summary>1 per fog cell where at least half its tiles are walls (or the border).</summary>
+        /// <summary>1 per fog cell where any of its tiles blocks sight: only the fast path's "no tile test needed" flag.</summary>
         private static NativeArray<byte> BuildOpaque(in MapGrid map, int cellSize, int w, int h, Allocator allocator)
         {
             var opaque = new NativeArray<byte>(w * h, allocator);
@@ -409,9 +413,9 @@ namespace WAR2D.Sim
                 {
                     tiles++;
                     TileType t = map.TileAt(new int2(x, y));
-                    if (t == TileType.Wall || t == TileType.Border) walls++;
+                    if (TileRules.BlocksSight(t)) walls++;
                 }
-                opaque[cy * w + cx] = (byte)(walls * 2 >= tiles ? 1 : 0);
+                opaque[cy * w + cx] = (byte)(walls > 0 ? 1 : 0);
             }
             return opaque;
         }
@@ -462,6 +466,21 @@ namespace WAR2D.Sim
                 }
                 LargeGrid[t.y * Width + t.x] = value;
             }
+            OpaqueTile[tile.y * Width + tile.x] = (byte)(TileRules.BlocksSight((TileType)Tiles[tile.y * Width + tile.x]) ? 1 : 0);
+            int2 cell = tile / FogCellSize;
+            byte anyBlocks = 0;
+            for (int y = cell.y * FogCellSize; y < math.min(Height, (cell.y + 1) * FogCellSize) && anyBlocks == 0; y++)
+            for (int x = cell.x * FogCellSize; x < math.min(Width, (cell.x + 1) * FogCellSize); x++)
+                if (OpaqueTile[y * Width + x] != 0) { anyBlocks = 1; break; }
+            Opaque[cell.y * FogW + cell.x] = anyBlocks;
+        }
+
+        /// <summary>Refills <see cref="OpaqueSum"/> in place from <see cref="Opaque"/> (after a drain of terrain changes).</summary>
+        public void RebuildOpaqueSum()
+        {
+            for (int y = 1; y <= FogH; y++)
+            for (int x = 1; x <= FogW; x++)
+                OpaqueSum[y * (FogW + 1) + x] = Opaque[(y - 1) * FogW + x - 1] + OpaqueSum[(y - 1) * (FogW + 1) + x] + OpaqueSum[y * (FogW + 1) + x - 1] - OpaqueSum[(y - 1) * (FogW + 1) + x - 1];
         }
 
         /// <summary>The owner id's slot, or <see cref="NoSlot"/>. Scans the slots, so it is Burst-safe.</summary>

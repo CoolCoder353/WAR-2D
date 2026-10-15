@@ -28,6 +28,31 @@ namespace WAR2D.Sim
             return true;
         }
 
+        /// <summary>True when no sight-blocking tile lies strictly between tiles a and b (Bresenham over tiles).</summary>
+        public static bool Tiles(NativeArray<byte> opaqueTile, int width, int2 a, int2 b)
+        {
+            int2 d = math.abs(b - a);
+            int2 step = new int2(a.x < b.x ? 1 : -1, a.y < b.y ? 1 : -1);
+            int err = d.x - d.y;
+            int2 p = a;
+            while (p.x != b.x || p.y != b.y)
+            {
+                int e2 = 2 * err;
+                if (e2 > -d.y) { err -= d.y; p.x += step.x; }
+                if (e2 < d.x) { err += d.x; p.y += step.y; }
+                if (p.x == b.x && p.y == b.y) return true;
+                if (opaqueTile[p.y * width + p.x] != 0) return false;
+            }
+            return true;
+        }
+
+        /// <summary>True when no sight-blocking tile lies strictly between world positions a and b.</summary>
+        public static bool ClearTiles(NativeArray<byte> opaqueTile, int width, int height, float2 a, float2 b)
+        {
+            int2 max = new int2(width - 1, height - 1);
+            return Tiles(opaqueTile, width, math.clamp((int2)math.floor(a), 0, max), math.clamp((int2)math.floor(b), 0, max));
+        }
+
         /// <summary>True when no opaque cell lies strictly between world positions a and b (tiles).</summary>
         public static bool Clear(NativeArray<byte> opaque, int fogW, int fogH, float invFogCellSize, float2 a, float2 b)
         {

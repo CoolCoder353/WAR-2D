@@ -74,10 +74,9 @@ namespace WAR2D.Sim
                 BuildingIds = data.BuildingIds,
                 BuildingSlotOfIndex = data.BuildingSlotOfIndex,
                 BuildingCount = buildings,
-                Opaque = data.Opaque,
-                FogW = data.FogW,
-                FogH = data.FogH,
-                InvFogCellSize = 1f / data.FogCellSize,
+                OpaqueTile = data.OpaqueTile,
+                Width = data.Width,
+                Height = data.Height,
                 Target = data.Target,
                 TargetKind = data.TargetKind,
             }.Schedule(count, 256, state.Dependency);
@@ -106,10 +105,9 @@ namespace WAR2D.Sim
                 SearchCells = data.SearchCells,
                 Tick = clock.Tick % data.Slice,
                 Slice = data.Slice,
-                Opaque = data.Opaque,
-                FogW = data.FogW,
-                FogH = data.FogH,
-                InvFogCellSize = 1f / data.FogCellSize,
+                OpaqueTile = data.OpaqueTile,
+                Width = data.Width,
+                Height = data.Height,
                 Target = data.Target,
                 TargetKind = data.TargetKind,
             }.Schedule(count, 256, state.Dependency);
@@ -180,9 +178,8 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<int> BuildingIds;
         [ReadOnly] public NativeArray<int> BuildingSlotOfIndex;
         public int BuildingCount;
-        [ReadOnly] public NativeArray<byte> Opaque;
-        public int FogW, FogH;
-        public float InvFogCellSize;
+        [ReadOnly] public NativeArray<byte> OpaqueTile;
+        public int Width, Height;
         public NativeArray<int> Target;
         public NativeArray<byte> TargetKind;
 
@@ -201,7 +198,7 @@ namespace WAR2D.Sim
                 int j = IndexOfId[index];
                 if ((uint)j >= (uint)UnitCount || IdOf[j] != id || Health[j] <= 0f || !SimData.Attacks(AttackMask, OwnerSlot[i], OwnerSlot[j]) ||
                     math.distancesq(Positions[i], Positions[j]) > rangeSq ||
-                    !LineOfSight.Clear(Opaque, FogW, FogH, InvFogCellSize, Positions[i], Positions[j])) return;
+                    !LineOfSight.ClearTiles(OpaqueTile, Width, Height, Positions[i], Positions[j])) return;
                 Target[i] = j;
             }
             else
@@ -209,7 +206,7 @@ namespace WAR2D.Sim
                 int j = BuildingSlotOfIndex[index];
                 if ((uint)j >= (uint)BuildingCount || BuildingIds[j] != id || BuildingHealth[j] <= 0f ||
                     !SimData.Attacks(AttackMask, OwnerSlot[i], BuildingOwnerSlot[j]) || math.distancesq(Positions[i], BuildingPositions[j]) > rangeSq ||
-                    !LineOfSight.Clear(Opaque, FogW, FogH, InvFogCellSize, Positions[i], BuildingPositions[j])) return;
+                    !LineOfSight.ClearTiles(OpaqueTile, Width, Height, Positions[i], BuildingPositions[j])) return;
                 Target[i] = j;
             }
         }

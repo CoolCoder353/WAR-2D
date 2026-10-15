@@ -65,8 +65,11 @@ namespace WAR2D.Sim
                 Sources = data.Sources.AsDeferredJobArray(),
                 SourceRadius = data.SourceRadius,
                 Visible = data.Visible,
-                Opaque = data.Opaque,
+                OpaqueTile = data.OpaqueTile,
                 OpaqueSum = data.OpaqueSum,
+                Width = data.Width,
+                Height = data.Height,
+                FogCellSize = data.FogCellSize,
                 FogW = data.FogW,
                 FogH = data.FogH,
                 FogCells = data.FogCells,
@@ -160,9 +163,17 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<int> Sources;
         [NativeDisableParallelForRestriction] public NativeArray<byte> SourceRadius;
         [NativeDisableParallelForRestriction] public NativeArray<byte> Visible;
-        [ReadOnly] public NativeArray<byte> Opaque;
+        [ReadOnly] public NativeArray<byte> OpaqueTile;
         [ReadOnly] public NativeArray<int> OpaqueSum;
-        public int FogW, FogH, FogCells;
+        public int FogW, FogH, FogCells, Width, Height, FogCellSize;
+
+        /// <summary>The tile of fog cell <paramref name="cell"/> closest to the centre of cell <paramref name="towards"/>.</summary>
+        private int2 NearestTile(int2 cell, int2 towards)
+        {
+            int2 lo = cell * FogCellSize;
+            int2 aim = towards * FogCellSize + (FogCellSize - 1) / 2;
+            return math.clamp(math.clamp(aim, lo, lo + FogCellSize - 1), 0, new int2(Width - 1, Height - 1));
+        }
 
         public void Execute(int s)
         {
@@ -185,7 +196,11 @@ namespace WAR2D.Sim
             {
                 int2 d = new int2(x, y) - c;
                 if (d.x * d.x + d.y * d.y > limit) continue;
-                if (opaque > 0 && !LineOfSight.Cells(Opaque, FogW, c, new int2(x, y))) continue;
+                if (opaque > 0)
+                {
+                    int2 from = NearestTile(c, new int2(x, y)), to = NearestTile(new int2(x, y), c);
+                    if (!LineOfSight.Tiles(OpaqueTile, Width, from, to)) continue;
+                }
                 Visible[baseIndex + y * FogW + x] = 1;
             }
         }

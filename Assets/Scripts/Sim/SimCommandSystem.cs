@@ -50,6 +50,7 @@ namespace WAR2D.Sim
 
             List<SimCommand> commands = context.Commands.Drain();
             deferred.Clear();
+            bool terrainChanged = false;
             foreach (SimCommand command in commands)
             {
                 switch (command.Kind)
@@ -59,7 +60,7 @@ namespace WAR2D.Sim
                         PushUnitsOutOf(data, context, command.Building, clock.UnitCount);
                         break;
                     case SimCommandKind.SetTile:
-                        ApplySetTile(data, context, command.Tile, command.TileType, clock.UnitCount);
+                        terrainChanged |= ApplySetTile(data, context, command.Tile, command.TileType, clock.UnitCount);
                         break;
                     case SimCommandKind.KillOwner:
                         KillUnits(data, context, command.OwnerId, all: false);
@@ -81,6 +82,7 @@ namespace WAR2D.Sim
                         break;
                 }
             }
+            if (terrainChanged) data.RebuildOpaqueSum();
             if (deferred.Count > 0) context.Commands.Requeue(deferred);
             if (context.Diplomacy.Dirty) context.Diplomacy.CopyTo(data);
         }

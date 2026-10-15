@@ -60,6 +60,21 @@ public class SimCombatTests
     }
 
     [Test]
+    public void ASingleWallTileBlocksShots()
+    {
+        var rows = new string[32];
+        for (int r = 0; r < 32; r++)
+            rows[r] = r == 0 || r == 31 ? new string('B', 32) : "B" + new string('.', 11) + "#" + new string('.', 18) + "B";
+        using var sim = new SimHarness(MapStore.FromAscii(rows), c => c.Simulation.TargetSearchSliceTicks = 1);
+        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 10.5f));
+        int[] b = sim.Spawn(SimHarness.OwnerB, new float2(14.5f, 10.5f));
+        sim.TickSeconds(3f);
+        float full = sim.Config.GetUnit(UnitType.Tank).Health;
+        Assert.AreEqual(full, sim.UnitById(a[0]).Health);
+        Assert.AreEqual(full, sim.UnitById(b[0]).Health);
+    }
+
+    [Test]
     public void WallsBlockShotsAtBuildings()
     {
         using var sim = WalledSim();

@@ -68,7 +68,7 @@ public class SpatialHashTests
                 BuildingCellStart = BCellStart, BuildingSorted = BSorted,
                 InvCellSize = inv, CellsX = CellsAcross, CellsY = CellsAcross, SearchCells = (int)math.ceil(Range / CellSize),
                 Tick = tick, Slice = slice, Target = Target, TargetKind = TargetKind,
-                Opaque = Opaque, FogW = 1, FogH = 1, InvFogCellSize = 0f, // open ground: one clear cell
+                OpaqueTile = Opaque, Width = 1, Height = 1, // open ground: one clear tile
             }.Schedule(Positions.Length, 64, h);
             h.Complete();
         }

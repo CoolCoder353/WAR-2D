@@ -128,4 +128,34 @@ public class SimVisionTests
         Assert.Greater(data.FogChanges.Count, 0);
         while (data.FogChanges.TryDequeue(out int index)) Assert.AreEqual(grid, index / data.FogCells);
     }
+
+    [Test]
+    public void ASingleWallTileBlocksSightBehindIt()
+    {
+        // A one-tile-thick wall column at x = 20; the per-cell rule (half a 2x2 cell) would see through it.
+        var rows = new string[64];
+        for (int r = 0; r < 64; r++)
+            rows[r] = r == 0 || r == 63 ? new string('B', 64) : "B" + new string('.', 19) + "#" + new string('.', 42) + "B";
+        using var sim = new SimHarness(MapStore.FromAscii(rows));
+        sim.Spawn(SimHarness.OwnerA, new float2(15.5f, 32.5f));
+        Pass(sim);
+        int grid = sim.Context.VisionOf(SimHarness.OwnerA);
+        SimData data = sim.Context.Data;
+        Assert.IsTrue(data.Sees(grid, new float2(20.5f, 32.5f)), "the wall itself is seen");
+        Assert.IsFalse(data.Sees(grid, new float2(23.5f, 32.5f)), "behind a 1-tile wall");
+    }
+
+    [Test]
+    public void AWallRaisedAtTheBoundaryBlocksTheNextVisionPass()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(64));
+        sim.Spawn(SimHarness.OwnerA, new float2(15.5f, 32.5f));
+        Pass(sim);
+        int grid = sim.Context.VisionOf(SimHarness.OwnerA);
+        Assert.IsTrue(sim.Context.Data.Sees(grid, new float2(21.5f, 32.5f)));
+        for (int y = 1; y < 63; y++)
+            sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.SetTile, Tile = new int2(19, y), TileType = TileType.Wall });
+        Pass(sim, 8);
+        Assert.IsFalse(sim.Context.Data.Sees(grid, new float2(21.5f, 32.5f)));
+    }
 }
