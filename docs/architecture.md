@@ -184,6 +184,17 @@ Enums: `UnitType { None, Tank }`, `BuildingType { None, Miner, SmallUnitSpawner,
 
 Every stage declares write access to `Unit`, which chains their jobs without a sync point; no stage completes its own jobs.
 
+## Siege (v0.7)
+
+- **Terrain is mutable.** Walls and dug rock are tiles: `MapStore.SetTile` (queued as a `SimCommand`, applied at the boundary) changes the grid, refuses the border, pushes units off a newly solid tile, refreshes the tile-LOS tables and flags the tile in `ChangedTiles` so the flow fields rebuild. `TileType` gains `WallBlueprint` and `PlayerWall`; `TileRules` decides floor/solid/opaque for each, and a new `TileType` needs its `TileRules` cases. Per-tile wall owner and health live beside the grid.
+- **Terrain reaches clients as deltas.** `TerrainInterest` sends each client a `TerrainBatch` (`Net/Replication/TerrainMessages.cs`) only for tiles in cells its team sees (or saw), into `ClientTerrain`, which `MapView` redraws (index texture: R type, G frame and damage, B owner colour). Join path is unchanged. Known cost: it walks every tile changed since the start (v0.8 item).
+- **Line of sight is per tile** (`Sim/LineOfSight.cs`, `OpaqueTile`); the fog-cell table stays as the fast path and `SetTile` refreshes it.
+- **Work fields and stages.** Three stages join the tick after movement: `SimConstructionSystem` (Builders add build power to blueprints and repair for a cost; repairs stop when the owner is broke, raising `RepairsStopped`), `SimDigSystem` (Diggers dig rock/walls tile by tile, gems pay out) and `SimBombSystem` (bombs trigger on a unit of an attack-mask owner and blast everything in radius, friendlies included, before `SimCombatSystem`). Builders and Diggers share the `OrderKind.Build`/`Repair`/`Dig` work orders.
+- **Buildings as blueprints.** New buildings start as `Construction` entities with health = max x progress; the refund is full for a blueprint and `DemolishRefund` for a finished building. Builders build everything except the HQ.
+- **Bombs are private.** `BuildingInterest` sends a bomb only to its owner and the share-vision set, never as a ghost; the explosion goes to everyone who sees the tile. `LeakTests` cover bombs, terrain, walls and radar pings.
+- **Radar.** `RadarRules` + the Radar building give LOS-free vision over radius `Sight` (it never reveals bombs); one `EnemySpotted` alert per contact, with `RadarClearSeconds` and `RadarAlertCooldownSeconds`; the ping carries only the Radar's tile.
+- **Instanced buildings.** See "Buildings on clients": walls are tiles drawn by `MapView`, everything else by `InstancedBuildingRenderer`.
+
 ## Building systems (`Scripts/Systems/`)
 
 `ISystem` structs in the default world, server only, on building components (no tick job touches them):
