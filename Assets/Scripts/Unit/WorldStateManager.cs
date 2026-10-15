@@ -149,6 +149,13 @@ public partial class WorldStateManager : NetworkBehaviour
             foreach (NetworkIdentity identity in GameCore.Instance.ServerPlayers.Keys)
                 if (identity != null && identity.connectionToClient != null)
                     Replication.OnClientJoined(identity.connectionToClient, BuildingData.UIntToInt(identity.netId));
+        Sim.Income = (ownerId, amount) =>
+        {
+            ServerPlayer p = GameCore.Instance?.GetServerPlayerById(ownerId);
+            if (p == null) return;
+            p.AddIncome(amount);
+            GameCore.Instance.Stats.Mined(ownerId, amount);
+        };
         Sim.BudgetOf = ownerId => GameCore.Instance?.GetServerPlayerById(ownerId)?.Resources ?? 0f;
         Sim.Spend = (ownerId, amount) =>
         {

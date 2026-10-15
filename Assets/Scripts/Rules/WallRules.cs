@@ -23,22 +23,43 @@ public static class WallRules
     /// </summary>
     public static void Line(int2 a, int2 b, List<int2> into)
     {
-        int2 d = math.abs(b - a);
-        int2 step = new int2(a.x < b.x ? 1 : -1, a.y < b.y ? 1 : -1);
-        int2 p = a;
-        into.Add(p);
-        int err = 0;
-        // Walk |dx| + |dy| unit steps, picking the axis that keeps the path closest to the true line.
-        for (int i = 0; i < d.x + d.y; i++)
-        {
-            int ex = err + d.y, ey = err - d.x;
-            if (p.x != b.x && (math.abs(ex) < math.abs(ey) || p.y == b.y)) { p.x += step.x; err = ex; }
-            else { p.y += step.y; err = ey; }
-            into.Add(p);
-        }
+        var line = new Line4(a, b);
+        while (line.Next(out int2 tile)) into.Add(tile);
     }
 
     /// <summary>True when a wall blueprint may go on the tile: plain ground, no building footprint.</summary>
     public static bool CanPlace(int2 tile, Func<int2, TileType> tileAt, Func<int2, bool> isUsed) =>
         tileAt(tile) == TileType.Ground && !isUsed(tile);
+}
+
+/// <summary>Walks the 4-connected line from a to b, both included (see <see cref="WallRules.Line"/>). Burst-safe.</summary>
+public struct Line4
+{
+    private int2 p, b, d, step;
+    private int err, left;
+    private bool started;
+
+    public Line4(int2 a, int2 b)
+    {
+        p = a;
+        this.b = b;
+        d = math.abs(b - a);
+        step = new int2(a.x < b.x ? 1 : -1, a.y < b.y ? 1 : -1);
+        err = 0;
+        left = d.x + d.y;
+        started = false;
+    }
+
+    /// <summary>The next tile, or false after b.</summary>
+    public bool Next(out int2 tile)
+    {
+        if (!started) { started = true; tile = p; return true; }
+        if (left == 0) { tile = p; return false; }
+        int ex = err + d.y, ey = err - d.x;
+        if (p.x != b.x && (math.abs(ex) < math.abs(ey) || p.y == b.y)) { p.x += step.x; err = ex; }
+        else { p.y += step.y; err = ey; }
+        left--;
+        tile = p;
+        return true;
+    }
 }

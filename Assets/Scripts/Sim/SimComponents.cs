@@ -58,6 +58,12 @@ namespace WAR2D.Sim
         /// <summary>One of <see cref="Stances"/>.</summary>
         public byte Stance;
 
+        /// <summary>Seconds spent digging the tile in <see cref="DigAt"/>.</summary>
+        public float DigProgress;
+
+        /// <summary>The tile index being dug (0 when none: tile 0 is the border, which is never dug).</summary>
+        public int DigAt;
+
         /// <summary>Tile index of the work target, valid while <see cref="WorkKind"/> is not None.</summary>
         public int WorkTile;
 

@@ -72,6 +72,12 @@ namespace WAR2D.Sim
         /// <summary>Takes resources an owner's units spent on upkeep; null means nothing is taken (tests).</summary>
         public Action<int, float> Spend;
 
+        /// <summary>True (the game) to refuse wall blueprints on tiles the owner's side doesn't see; tests switch it off.</summary>
+        public bool WallsNeedSight = true;
+
+        /// <summary>Resources an owner earns outside upkeep: dug gems. Null in tests.</summary>
+        public Action<int, float> Income;
+
         /// <summary>Raised at a boundary for each unit that died: (id, position).</summary>
         public event Action<int, float2> UnitDied;
 

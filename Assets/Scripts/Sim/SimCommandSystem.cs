@@ -43,13 +43,14 @@ namespace WAR2D.Sim
             SimClock clock = SystemAPI.GetSingleton<SimClock>();
 
             WriteBackBuildingDamage(data);
-            bool wallsChanged = ApplyWallWork(data, context);
+            bool wallsChanged = ApplyWallWork(data, context) | ApplyDigDone(data, context);
             ApplyBuildingWork(data, context);
             data.PendingOrders.Clear();
             data.PendingMoves.Clear();
             if (clock.Running)
             {
                 ClearFinishedWork(data, context, clock.UnitCount, clock.Tick);
+                ApplyDigMoves(data, context, clock.UnitCount, clock.Tick);
                 AdvanceWaypoints(data, context, clock.UnitCount, clock.Tick);
             }
             else
@@ -117,9 +118,33 @@ namespace WAR2D.Sim
             if (command.Kind == SimCommandKind.SetShareVision) context.RaiseVisionShareChanged(command.OwnerId, command.TargetOwnerId, command.Flag);
         }
 
+        /// <summary>Turns each tile a Digger finished into floor, paying the owner for gems. True when any changed.</summary>
+        private bool ApplyDigDone(SimData data, SimContext context)
+        {
+            bool changed = false;
+            int unitCount = SystemAPI.GetSingleton<SimClock>().UnitCount;
+            while (data.DigDone.TryDequeue(out DigEvent done))
+            {
+                if ((uint)done.Tile >= (uint)data.Tiles.Length) continue;
+                var type = (TileType)data.Tiles[done.Tile];
+                if (type != TileType.Wall && type != TileType.Gem) continue;
+                int2 tile = new int2(done.Tile % data.Width, done.Tile / data.Width);
+                if (!ApplySetTile(data, context, tile, TileType.Ground, unitCount)) continue;
+                changed = true;
+                if (type == TileType.Gem) context.Income?.Invoke(done.OwnerId, context.Config.Siege.GemPayout);
+            }
+            return changed;
+        }
+
         /// <summary>Lays a wall blueprint on a free ground tile for the owner. False when the tile is no longer free.</summary>
         private static bool ApplyPlaceWall(SimData data, SimContext context, int ownerId, int2 tile)
         {
+            // Only on tiles the owner's side sees now: a refusal on an unseen tile must not tell it what stands there.
+            if (context.WallsNeedSight)
+            {
+                int grid = context.VisionOf(ownerId);
+                if (grid < 0 || !data.Sees(grid, (float2)tile + 0.5f)) return false;
+            }
             if (!WallRules.CanPlace(tile, context.Map.Grid.TileAt, context.Map.IsUsed)) return false;
             if (!context.Map.SetTile(tile, TileType.WallBlueprint)) return false;
             int index = context.Map.Grid.Index(tile);

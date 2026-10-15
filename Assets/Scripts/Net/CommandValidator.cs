@@ -22,6 +22,7 @@ public static class CommandValidator
     {
         if (!IsOrderKindValid(kind)) return false;
         OrderKind order = (OrderKind)kind;
+        if (order == OrderKind.Dig) return IsInside(goal, min + 1, max - 1); // never the outer ring (the border)
         return !TargetsTile(order) || IsInside(goal, min, max);
     }
 

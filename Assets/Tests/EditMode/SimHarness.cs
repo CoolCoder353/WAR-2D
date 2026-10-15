@@ -41,6 +41,7 @@ public sealed class SimHarness : IDisposable
         Group.SortSystems();
         SimContext.RunningOverride = true;
         Context = SimContext.Create(World, map, Config);
+        Context.WallsNeedSight = false;
     }
 
     /// <summary>A plain open map of the given size (with a border ring).</summary>

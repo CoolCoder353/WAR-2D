@@ -17,6 +17,9 @@ public static class MinerRules
         }
     }
 
+    /// <summary>True when a Miner facing this tile kind earns (only gems pay).</summary>
+    public static bool Produces(TileType faced) => faced == TileType.Gem;
+
     /// <summary>Rotation about Z in degrees for a 2D (Z-only) rotation quaternion.</summary>
     public static float ZDegrees(quaternion rotation)
     {

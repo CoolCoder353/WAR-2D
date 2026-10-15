@@ -85,6 +85,8 @@ namespace WAR2D.Sim
                 Stance = data.Stance,
                 WorkTile = data.WorkTile,
                 WorkKind = data.WorkKind,
+                DigProgress = data.DigProgress,
+                DigAt = data.DigAt,
                 IdOf = data.IdOf,
                 IndexOfId = data.IndexOfId,
                 Target = data.Target,
@@ -114,6 +116,8 @@ namespace WAR2D.Sim
         [NativeDisableParallelForRestriction] public NativeArray<int> OrderSlot;
         [NativeDisableParallelForRestriction] public NativeArray<byte> Unpaid;
         [NativeDisableParallelForRestriction] public NativeArray<byte> Stance;
+        [NativeDisableParallelForRestriction] public NativeArray<float> DigProgress;
+        [NativeDisableParallelForRestriction] public NativeArray<int> DigAt;
         [NativeDisableParallelForRestriction] public NativeArray<int> WorkTile;
         [NativeDisableParallelForRestriction] public NativeArray<byte> WorkKind;
         [NativeDisableParallelForRestriction] public NativeArray<int> IdOf;
@@ -150,6 +154,8 @@ namespace WAR2D.Sim
             Unpaid[index] = unit.Unpaid;
             Stance[index] = unit.Stance;
             WorkTile[index] = unit.WorkTile;
+            DigProgress[index] = unit.DigProgress;
+            DigAt[index] = unit.DigAt;
             WorkKind[index] = unit.WorkKind;
             IdOf[index] = unit.Id;
             int idIndex = NetIdAllocator.IndexOf(unit.Id);

@@ -7,6 +7,13 @@ using WAR2D.World;
 
 namespace WAR2D.Sim
 {
+    /// <summary>A rock or gem tile a Digger finished.</summary>
+    public struct DigEvent
+    {
+        public int Tile;
+        public int OwnerId;
+    }
+
     /// <summary>Work or damage done to one wall tile, applied at the boundary.</summary>
     public struct TileWork
     {
@@ -127,6 +134,16 @@ namespace WAR2D.Sim
         public NativeArray<byte> WorkKind;
         /// <summary>Ids of units whose work target is gone or done; the boundary clears their work.</summary>
         public NativeQueue<int> WorkFinished;
+        /// <summary>Seconds spent digging, per unit slot.</summary>
+        public NativeArray<float> DigProgress;
+        /// <summary>The tile index being dug, per unit slot (0 when none).</summary>
+        public NativeArray<int> DigAt;
+        /// <summary>Seconds a Digger needs per rock or gem tile.</summary>
+        public float DigTime;
+        /// <summary>Dug rock and gem tiles waiting for the boundary to turn them to floor.</summary>
+        public NativeQueue<DigEvent> DigDone;
+        /// <summary>Diggers that need to walk to a standing tile: (unit id, stand x, stand y).</summary>
+        public NativeQueue<int3> DigMoves;
         /// <summary>Owner slot of each player wall tile (<see cref="NoSlot"/> where there is none).</summary>
         public NativeArray<byte> WallOwnerSlot;
         /// <summary><see cref="WallStates"/> per tile.</summary>
@@ -354,6 +371,11 @@ namespace WAR2D.Sim
                 WorkTile = new NativeArray<int>(capacity, allocator),
                 WorkKind = new NativeArray<byte>(capacity, allocator),
                 WorkFinished = new NativeQueue<int>(allocator),
+                DigProgress = new NativeArray<float>(capacity, allocator),
+                DigAt = new NativeArray<int>(capacity, allocator),
+                DigTime = config.Siege.DigTime,
+                DigDone = new NativeQueue<DigEvent>(allocator),
+                DigMoves = new NativeQueue<int3>(allocator),
                 WallOwnerSlot = new NativeArray<byte>(map.Width * map.Height, allocator),
                 WallState = new NativeArray<byte>(map.Width * map.Height, allocator),
                 WallHealth = new NativeArray<float>(map.Width * map.Height, allocator),
@@ -458,7 +480,7 @@ namespace WAR2D.Sim
             RunningCostByType.Dispose(); DamageTable.Dispose();
             Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Type.Dispose();
             SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose(); LastHitBy.Dispose();
-            OrderSlot.Dispose(); Arrived.Dispose(); WorkTile.Dispose(); WorkKind.Dispose(); WorkFinished.Dispose(); WallOwnerSlot.Dispose(); WallState.Dispose(); WallHealth.Dispose(); WallWork.Dispose(); WallDamage.Dispose(); RepairWork.Dispose(); Unpaid.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
+            OrderSlot.Dispose(); Arrived.Dispose(); WorkTile.Dispose(); WorkKind.Dispose(); WorkFinished.Dispose(); DigProgress.Dispose(); DigAt.Dispose(); DigDone.Dispose(); DigMoves.Dispose(); WallOwnerSlot.Dispose(); WallState.Dispose(); WallHealth.Dispose(); WallWork.Dispose(); WallDamage.Dispose(); RepairWork.Dispose(); Unpaid.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
             Cell.Dispose(); CellStart.Dispose(); Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose();
             BuildingCount.Dispose(); BuildingPositions.Dispose(); BuildingOwnerId.Dispose(); BuildingOwnerSlot.Dispose(); BuildingHealth.Dispose();
             BuildingDamage.Dispose(); BuildingIds.Dispose(); BuildingEntities.Dispose(); BuildingSlotOfIndex.Dispose(); BuildingCell.Dispose();

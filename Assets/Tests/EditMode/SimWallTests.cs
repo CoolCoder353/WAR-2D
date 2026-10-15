@@ -96,4 +96,18 @@ public class SimWallTests
         sim.TickSeconds(8f);
         Assert.Greater(sim.UnitById(id[0]).Position.x, 20f, "the broken wall is a route");
     }
+
+    [Test]
+    public void WallsOnlyGoOnTilesTheOwnerSees()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(64));
+        sim.Context.WallsNeedSight = true;
+        sim.Spawn(SimHarness.OwnerA, new float2(8.5f, 8.5f));
+        for (int i = 0; i < 6; i++) sim.Tick();
+        sim.PlaceWall(SimHarness.OwnerA, new int2(10, 8));  // in sight
+        sim.PlaceWall(SimHarness.OwnerA, new int2(50, 50)); // far out in the fog
+        sim.Tick();
+        Assert.AreEqual(TileType.WallBlueprint, sim.Map.Grid.TileAt(new int2(10, 8)));
+        Assert.AreEqual(TileType.Ground, sim.Map.Grid.TileAt(new int2(50, 50)));
+    }
 }

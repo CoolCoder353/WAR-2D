@@ -157,7 +157,12 @@ namespace WAR2D.Sim
             if (command.Ids == null || !context.Map.Grid.Contains(command.Tile)) return;
             UnitType worker = command.Order == OrderKind.Dig ? UnitType.Digger : UnitType.Builder;
             byte kind = WorkKindOf(command.Order);
-            if (!TryWorkTarget(data, context, command.OwnerId, command.Order, command.Tile, out int2 standGoal)) return;
+            int2 standGoal = command.Tile;
+            if (command.Order == OrderKind.Dig)
+            {
+                if (context.Map.Grid.TileAt(command.Tile) == TileType.Border) return;
+            }
+            else if (!TryWorkTarget(data, context, command.OwnerId, command.Order, command.Tile, out standGoal)) return;
             foreach (List<int> list in moversByClass) list.Clear();
             foreach (int id in command.Ids)
             {
@@ -174,7 +179,11 @@ namespace WAR2D.Sim
             int tick = SystemAPI.GetSingleton<SimClock>().Tick;
             int tileIndex = context.Map.Grid.Index(command.Tile);
             for (int sizeClass = 0; sizeClass < moversByClass.Length; sizeClass++)
-                IssueWork(data, context, moversByClass[sizeClass], sizeClass, standGoal, tick, command.OwnerId, tileIndex, kind);
+            {
+                if (command.Order == OrderKind.Dig) // the dig stage asks for the move to the standing tile on its first tick
+                    AddPending(data, moversByClass[sizeClass], new PendingOrder { Slot = -1, Stance = Stances.Idle, WorkTile = tileIndex, WorkKind = kind });
+                else IssueWork(data, context, moversByClass[sizeClass], sizeClass, standGoal, tick, command.OwnerId, tileIndex, kind);
+            }
         }
 
         private static byte WorkKindOf(OrderKind order) =>
@@ -187,8 +196,15 @@ namespace WAR2D.Sim
         private void StartQueuedWork(SimData data, SimContext context, int slot, int2 tile, byte work, int tick)
         {
             int owner = data.OwnerId[slot];
-            if (!context.Map.Grid.Contains(tile) || !TryWorkTarget(data, context, owner, OrderOf(work), tile, out int2 standGoal)) return;
+            if (!context.Map.Grid.Contains(tile)) return;
             var one = new List<int> { slot };
+            if (work == WorkKinds.Dig)
+            {
+                if (context.Map.Grid.TileAt(tile) == TileType.Border) return;
+                AddPending(data, one, new PendingOrder { Slot = -1, Stance = Stances.Idle, WorkTile = context.Map.Grid.Index(tile), WorkKind = work });
+                return;
+            }
+            if (!TryWorkTarget(data, context, owner, OrderOf(work), tile, out int2 standGoal)) return;
             IssueWork(data, context, one, data.SizeClass[slot] & 1, standGoal, tick, owner, context.Map.Grid.Index(tile), work);
         }
 
@@ -262,6 +278,24 @@ namespace WAR2D.Sim
                     Issue(data, context, one, data.SizeClass[slot] & 1, goal, stance, tick, data.OwnerId[slot]);
                 }
             }
+        }
+
+        private readonly Dictionary<(int2 stand, int tile, int sizeClass, int owner), List<int>> digLegs = new Dictionary<(int2, int, int, int), List<int>>();
+
+        /// <summary>Sends each Digger that asked to a floor tile beside its next rock, keeping its dig target.</summary>
+        private void ApplyDigMoves(SimData data, SimContext context, int unitCount, int tick)
+        {
+            while (data.DigMoves.TryDequeue(out int3 move))
+            {
+                int slot = data.SlotOf(move.x, unitCount);
+                if (slot < 0 || data.Health[slot] <= 0f || data.WorkKind[slot] != WorkKinds.Dig) continue;
+                var key = (new int2(move.y, move.z), data.WorkTile[slot], data.SizeClass[slot] & 1, data.OwnerId[slot]);
+                if (!digLegs.TryGetValue(key, out List<int> list)) digLegs[key] = list = new List<int>();
+                list.Add(slot);
+            }
+            foreach (var leg in digLegs)
+                IssueWork(data, context, leg.Value, leg.Key.sizeClass, leg.Key.stand, tick, leg.Key.owner, leg.Key.tile, WorkKinds.Dig);
+            digLegs.Clear();
         }
 
         private static void AddPending(SimData data, List<int> slots, PendingOrder order)

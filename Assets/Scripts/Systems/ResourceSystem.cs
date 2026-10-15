@@ -40,7 +40,7 @@ public partial struct ResourceSystem : ISystem
 
             int2 anchor = (int2)math.round(transform.ValueRO.Position.xy);
             int2 faced = anchor + MinerRules.FacingOffset(MinerRules.ZDegrees(transform.ValueRO.Rotation));
-            bool active = WorldStateManager.Instance.Map.Grid.TileAt(faced) == TileType.Gem;
+            bool active = MinerRules.Produces(WorldStateManager.Instance.Map.Grid.TileAt(faced));
             mining.ValueRW.isActive = active;
             if (active)
             {
