@@ -33,7 +33,7 @@ public partial struct ResourceSystem : ISystem
             passiveTimer = 0f;
         }
 
-        foreach (var (mining, building, transform) in SystemAPI.Query<RefRW<MiningComponent>, RefRO<BuildingData>, RefRO<LocalTransform>>())
+        foreach (var (mining, building, transform) in SystemAPI.Query<RefRW<MiningComponent>, RefRO<BuildingData>, RefRO<LocalTransform>>().WithNone<Construction>())
         {
             mining.ValueRW.timeSinceLastMining += dt;
             if (mining.ValueRO.timeSinceLastMining < 1f) continue;

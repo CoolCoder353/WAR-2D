@@ -15,6 +15,8 @@ public enum AlertKind : byte
     VisionSharedWithYou,
     /// <summary>Another player stopped sharing vision with the receiver.</summary>
     VisionUnshared,
+    /// <summary>One of the receiver's blueprints was finished (Tile is the building).</summary>
+    ConstructionFinished,
 }
 
 /// <summary>

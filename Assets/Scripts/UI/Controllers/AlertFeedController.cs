@@ -46,7 +46,7 @@ namespace WAR2D.UI
         {
             AlertKind.UnderAttack => "alert__stripe--danger",
             AlertKind.UpkeepUnpaid => "alert__stripe--warning",
-            AlertKind.GiftReceived => "alert__stripe--success",
+            AlertKind.GiftReceived or AlertKind.ConstructionFinished => "alert__stripe--success",
             _ => "alert__stripe--accent",
         };
 

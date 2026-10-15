@@ -84,6 +84,38 @@ namespace WAR2D.Sim
         /// <summary>Raised when a building entity was created: (id, entity).</summary>
         public event Action<int, Entity> BuildingCreated;
 
+        /// <summary>Raised at the boundary when a blueprint is finished: (building id, owner id).</summary>
+        public event Action<int, int> BuildingCompleted;
+
+        internal void RaiseBuildingCompleted(int id, int owner) => BuildingCompleted?.Invoke(id, owner);
+
+        private readonly Dictionary<int, int> buildingAt = new Dictionary<int, int>();
+        private readonly Dictionary<int, List<int>> tilesOfBuilding = new Dictionary<int, List<int>>();
+
+        /// <summary>Footprint tile index → building id, kept by <c>CreateBuilding</c> and <see cref="ForgetBuilding"/>.</summary>
+        public IReadOnlyDictionary<int, int> BuildingAt => buildingAt;
+
+        internal void SetBuildingTiles(int id, IEnumerable<int2> tiles)
+        {
+            ForgetBuilding(id);
+            var indices = new List<int>();
+            foreach (int2 t in tiles)
+            {
+                int i = Map.Grid.Index(t);
+                buildingAt[i] = id;
+                indices.Add(i);
+            }
+            tilesOfBuilding[id] = indices;
+        }
+
+        /// <summary>Drops a destroyed building from <see cref="BuildingAt"/>.</summary>
+        public void ForgetBuilding(int id)
+        {
+            if (!tilesOfBuilding.Remove(id, out List<int> indices)) return;
+            foreach (int i in indices)
+                if (buildingAt.TryGetValue(i, out int at) && at == id) buildingAt.Remove(i);
+        }
+
         private SimContext(Unity.Entities.World world, MapStore map, GameConfigData config)
         {
             World = world;

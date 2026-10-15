@@ -34,6 +34,8 @@ namespace WAR2D.Sim
         public BuildingData Data;
         public float Rotation;
         public BuildingConfig Config;
+        /// <summary>True to skip the blueprint stage (the HQ always does; dev placements do).</summary>
+        public bool Complete;
     }
 
     /// <summary>One request from main-thread code to the simulation, applied at the next tick boundary.</summary>

@@ -26,7 +26,7 @@ public partial struct SpawnerSystem : ISystem
         float dt = SystemAPI.Time.DeltaTime;
         EntityManager entityManager = state.EntityManager;
 
-        foreach (var (spawner, building, entity) in SystemAPI.Query<RefRW<SpawnerData>, RefRO<BuildingData>>().WithEntityAccess())
+        foreach (var (spawner, building, entity) in SystemAPI.Query<RefRW<SpawnerData>, RefRO<BuildingData>>().WithNone<Construction>().WithEntityAccess())
         {
             float spawnRate = spawner.ValueRO.spawnRate;
             // Clamp the timer to one unit's worth so a spawner that sat idle does not burst out its whole queue.

@@ -118,6 +118,11 @@ public partial class WorldStateManager : NetworkBehaviour
         Sim = SimContext.Create(World.DefaultGameObjectInjectionWorld, Map, ConfigLoader.LoadConfig());
         Sim.BuildingCreated += OnBuildingCreated;
         Sim.UnitDied += OnUnitDied;
+        Sim.BuildingCompleted += (id, owner) =>
+        {
+            var (found, _, tile) = BuildingOwnerAndTile(id);
+            if (found) Alerts.Add(owner, new Alert { Kind = AlertKind.ConstructionFinished, Tile = tile });
+        };
         Sim.TeamResolver = ownerId => GameCore.Instance != null ? GameCore.Instance.TeamOf(ownerId) : -ownerId - 1;
         Sim.Settled += OnSettled;
         AlertsConfig alertConfig = ConfigLoader.LoadConfig().Alerts;
@@ -299,6 +304,9 @@ public partial class WorldStateManager : NetworkBehaviour
                 Rotation = (byte)((int)math.round(MinerRules.ZDegrees(transform.Rotation) / 90f) & 3),
                 Health = (int)math.ceil(health.currentHealth),
                 MaxHealth = (int)math.ceil(health.maxHealth),
+                Progress = EntityManager.HasComponent<Construction>(entity)
+                    ? (byte)math.clamp((int)math.floor(EntityManager.GetComponentData<Construction>(entity).Progress * 100f), 0, 99)
+                    : (byte)100,
                 Position = p,
             });
         }
@@ -359,6 +367,7 @@ public partial class WorldStateManager : NetworkBehaviour
             int id = building.id;
             if (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing) GameCore.Instance.Stats.BuildingLost(building.ownerId);
             Buildings.Remove(id);
+            Sim?.ForgetBuilding(id);
             Ids?.Free(id);
             if (buildingFootprints.Remove(id, out List<int2> footprint))
             {
@@ -683,7 +692,7 @@ public partial class WorldStateManager : NetworkBehaviour
             };
         }
         var data = new BuildingData { position = anchor, id = Ids.Allocate(), buildingType = type, ownerId = ownerId, rotation = 0f };
-        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.CreateBuilding, OwnerId = ownerId, Building = new BuildingSpec { Data = data, Rotation = 0f, Config = buildingConfig } });
+        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.CreateBuilding, OwnerId = ownerId, Building = new BuildingSpec { Data = data, Rotation = 0f, Config = buildingConfig, Complete = true } });
         foreach (int2 tile in tiles) Map.QueueUsed(tile, true);
         buildingFootprints[data.id] = tiles;
         return true;

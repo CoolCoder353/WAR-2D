@@ -43,6 +43,7 @@ namespace WAR2D.Sim
             SimClock clock = SystemAPI.GetSingleton<SimClock>();
 
             WriteBackBuildingDamage(data);
+            ApplyBuildingWork(data, context);
             data.PendingOrders.Clear();
             data.PendingMoves.Clear();
             if (clock.Running) AdvanceWaypoints(data, context, clock.UnitCount, clock.Tick);
@@ -98,6 +99,34 @@ namespace WAR2D.Sim
             else context.Diplomacy.SetShareVision(from, to, command.Flag);
             context.RaiseDiplomacyChanged(command.OwnerId, command.TargetOwnerId);
             if (command.Kind == SimCommandKind.SetShareVision) context.RaiseVisionShareChanged(command.OwnerId, command.TargetOwnerId, command.Flag);
+        }
+
+        /// <summary>Applies the last tick's construction work to blueprints, completing them.</summary>
+        private void ApplyBuildingWork(SimData data, SimContext context)
+        {
+            int count = data.BuildingCount[0];
+            for (int b = 0; b < count; b++)
+            {
+                float work = data.BuildingWork[b];
+                if (work <= 0f) continue;
+                data.BuildingWork[b] = 0f;
+                Entity entity = data.BuildingEntities[b];
+                if (!EntityManager.Exists(entity) || !EntityManager.HasComponent<Construction>(entity)) continue;
+                Construction c = EntityManager.GetComponentData<Construction>(entity);
+                HealthComponent h = EntityManager.GetComponentData<HealthComponent>(entity);
+                if (h.currentHealth <= 0f) continue;
+                bool done = ConstructionRules.AddWork(ref c.Progress, ref h.currentHealth, h.maxHealth, work);
+                EntityManager.SetComponentData(entity, h);
+                if (!done) { EntityManager.SetComponentData(entity, c); continue; }
+                EntityManager.RemoveComponent<Construction>(entity);
+                BuildingData building = EntityManager.GetComponentData<BuildingData>(entity);
+                EntityManager.AddComponentData(entity, new UpkeepComponent
+                {
+                    ownerId = building.ownerId,
+                    runningCostPerSecond = context.Config.GetBuilding(building.buildingType).RunningCost,
+                });
+                context.RaiseBuildingCompleted(building.id, building.ownerId);
+            }
         }
 
         /// <summary>Applies the damage the last tick's attacks dealt to buildings.</summary>
@@ -233,18 +262,23 @@ namespace WAR2D.Sim
                 Scale = 1f
             });
 
-            // Every building pays its running cost; unpaid buildings decay.
-            EntityManager.AddComponentData(building, new UpkeepComponent
-            {
-                ownerId = buildingData.ownerId,
-                runningCostPerSecond = buildingConfig.RunningCost,
-            });
+            // The HQ is complete at once and pays its running cost; every other building starts as a
+            // blueprint (one health, no upkeep until Builders finish it).
+            bool blueprint = buildingData.buildingType != BuildingType.Base && !spec.Complete;
+            if (blueprint) EntityManager.AddComponentData(building, new Construction { Progress = 0f });
+            else
+                EntityManager.AddComponentData(building, new UpkeepComponent
+                {
+                    ownerId = buildingData.ownerId,
+                    runningCostPerSecond = buildingConfig.RunningCost,
+                });
             EntityManager.AddComponentData(building, new HealthComponent
             {
                 entityId = buildingData.id,
-                currentHealth = buildingConfig.Health,
+                currentHealth = blueprint ? ConstructionRules.StartHealth : buildingConfig.Health,
                 maxHealth = buildingConfig.Health
             });
+            context.SetBuildingTiles(buildingData.id, Footprint.Tiles((int2)math.round(buildingData.position), buildingConfig.Size));
 
             switch (buildingData.buildingType)
             {

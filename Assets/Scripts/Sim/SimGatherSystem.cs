@@ -45,7 +45,17 @@ namespace WAR2D.Sim
                 data.BuildingOwnerId[b] = building.ValueRO.ownerId;
                 data.BuildingOwnerSlot[b] = data.OwnerSlotOf(building.ValueRO.ownerId);
                 int buildingType = (int)building.ValueRO.buildingType;
-                data.BuildingSight[b] = (uint)buildingType < (uint)data.BuildingSightByType.Length ? data.BuildingSightByType[buildingType] : 0f;
+                bool underConstruction = SystemAPI.HasComponent<Construction>(entity);
+                data.BuildingSight[b] = underConstruction ? ConstructionRules.BlueprintSight
+                    : (uint)buildingType < (uint)data.BuildingSightByType.Length ? data.BuildingSightByType[buildingType] : 0f;
+                byte flags = underConstruction ? BuildingFlags.UnderConstruction : (byte)0;
+                if (building.ValueRO.buildingType == BuildingType.Radar && !underConstruction) flags |= BuildingFlags.SeesThroughWalls;
+                data.BuildingFlag[b] = flags;
+                data.BuildingAnchor[b] = (int2)math.round(transform.ValueRO.Position.xy);
+                data.BuildingSize[b] = (uint)buildingType < (uint)data.BuildingSizeByType.Length ? data.BuildingSizeByType[buildingType] : new int2(1, 1);
+                data.BuildingMaxHealth[b] = health.ValueRO.maxHealth;
+                data.BuildingKind[b] = (byte)buildingType;
+                data.BuildingWork[b] = 0f;
                 data.BuildingHealth[b] = health.ValueRO.currentHealth;
                 data.BuildingDamage[b] = 0f;
                 data.BuildingIds[b] = id;

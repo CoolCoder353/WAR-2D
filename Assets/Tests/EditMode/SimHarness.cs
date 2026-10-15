@@ -103,6 +103,40 @@ public sealed class SimHarness : IDisposable
         }
     }
 
+    /// <summary>Queues a building (placement and payment skipped) and returns its id.</summary>
+    public int PlaceBuilding(int owner, BuildingType type, int2 anchor, bool complete = false)
+    {
+        int id = Context.Ids.Allocate();
+        BuildingConfig config = Config.GetBuilding(type);
+        Context.Commands.Enqueue(new SimCommand
+        {
+            Kind = SimCommandKind.CreateBuilding,
+            OwnerId = owner,
+            Building = new BuildingSpec { Data = new BuildingData { id = id, ownerId = owner, buildingType = type, position = (float2)anchor }, Config = config, Complete = complete },
+        });
+        foreach (int2 t in Footprint.Tiles(anchor, config.Size)) Map.QueueUsed(t, true);
+        return id;
+    }
+
+    /// <summary>The building entity with this id (completes the tick's jobs first).</summary>
+    public Entity BuildingEntity(int id)
+    {
+        Em.CompleteAllTrackedJobs();
+        using var q = Em.CreateEntityQuery(typeof(BuildingData));
+        using var entities = q.ToEntityArray(Allocator.Temp);
+        foreach (Entity e in entities) if (Em.GetComponentData<BuildingData>(e).id == id) return e;
+        return Entity.Null;
+    }
+
+    /// <summary>Adds construction work to a building slot for the next boundary (what Builders do from Task 9).</summary>
+    public void AddWork(int buildingId, float work)
+    {
+        Em.CompleteAllTrackedJobs();
+        SimData data = Context.Data;
+        int slot = data.BuildingSlotOfIndex[NetIdAllocator.IndexOf(buildingId)];
+        data.BuildingWork[slot] += work;
+    }
+
     /// <summary>Completes the tick's jobs (as a boundary would) and returns every unit.</summary>
     public Unit[] Units()
     {

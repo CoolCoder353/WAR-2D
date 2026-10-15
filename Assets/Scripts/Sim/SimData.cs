@@ -146,6 +146,19 @@ namespace WAR2D.Sim
         public NativeArray<Entity> BuildingEntities;
         /// <summary>Building slot by id index; valid only while <c>BuildingIds[slot] == id</c>.</summary>
         public NativeArray<int> BuildingSlotOfIndex;
+        /// <summary>Construction work (health points) Builders added to each building slot last tick; applied at the boundary.</summary>
+        public NativeArray<float> BuildingWork;
+        /// <summary><see cref="BuildingFlags"/> per building slot.</summary>
+        public NativeArray<byte> BuildingFlag;
+        /// <summary>Footprint anchor tile per building slot.</summary>
+        public NativeArray<int2> BuildingAnchor;
+        /// <summary>Footprint size per building slot.</summary>
+        public NativeArray<int2> BuildingSize;
+        public NativeArray<float> BuildingMaxHealth;
+        /// <summary><c>(byte)BuildingType</c> per building slot.</summary>
+        public NativeArray<byte> BuildingKind;
+        /// <summary>Footprint size per building type.</summary>
+        public NativeArray<int2> BuildingSizeByType;
         public NativeArray<int> BuildingCell;
         public NativeArray<int> BuildingCellStart;
         public NativeArray<int> BuildingSorted;
@@ -323,6 +336,12 @@ namespace WAR2D.Sim
                 BuildingIds = new NativeArray<int>(buildingCapacity, allocator),
                 BuildingEntities = new NativeArray<Entity>(buildingCapacity, allocator),
                 BuildingSlotOfIndex = new NativeArray<int>(sim.MaxEntities, allocator),
+                BuildingWork = new NativeArray<float>(buildingCapacity, allocator),
+                BuildingFlag = new NativeArray<byte>(buildingCapacity, allocator),
+                BuildingAnchor = new NativeArray<int2>(buildingCapacity, allocator),
+                BuildingSize = new NativeArray<int2>(buildingCapacity, allocator),
+                BuildingMaxHealth = new NativeArray<float>(buildingCapacity, allocator),
+                BuildingKind = new NativeArray<byte>(buildingCapacity, allocator),
                 BuildingCell = new NativeArray<int>(buildingCapacity, allocator),
                 BuildingCellStart = new NativeArray<int>(cells + 1, allocator),
                 BuildingSorted = new NativeArray<int>(buildingCapacity, allocator),
@@ -351,8 +370,13 @@ namespace WAR2D.Sim
             data.SightByType = new NativeArray<float>(typeCount, allocator);
             int buildingTypes = Enum.GetValues(typeof(BuildingType)).Length;
             data.BuildingSightByType = new NativeArray<float>(buildingTypes + 1, allocator);
+            data.BuildingSizeByType = new NativeArray<int2>(buildingTypes + 1, allocator);
             foreach (var pair in config.Buildings)
-                if ((int)pair.Key >= 0 && (int)pair.Key < data.BuildingSightByType.Length) data.BuildingSightByType[(int)pair.Key] = pair.Value.Sight;
+                if ((int)pair.Key >= 0 && (int)pair.Key < data.BuildingSightByType.Length)
+                {
+                    data.BuildingSightByType[(int)pair.Key] = pair.Value.Sight;
+                    data.BuildingSizeByType[(int)pair.Key] = pair.Value.Size;
+                }
             data.BuildingSight = new NativeArray<float>(buildingCapacity, allocator);
             data.Opaque = BuildOpaque(map, fogCell, data.FogW, data.FogH, allocator);
             data.OpaqueSum = BuildSum(data.Opaque, data.FogW, data.FogH, allocator);
@@ -392,6 +416,7 @@ namespace WAR2D.Sim
             BuildingCount.Dispose(); BuildingPositions.Dispose(); BuildingOwnerId.Dispose(); BuildingOwnerSlot.Dispose(); BuildingHealth.Dispose();
             BuildingDamage.Dispose(); BuildingIds.Dispose(); BuildingEntities.Dispose(); BuildingSlotOfIndex.Dispose(); BuildingCell.Dispose();
             BuildingCellStart.Dispose(); BuildingSorted.Dispose();
+            BuildingWork.Dispose(); BuildingFlag.Dispose(); BuildingAnchor.Dispose(); BuildingSize.Dispose(); BuildingMaxHealth.Dispose(); BuildingKind.Dispose(); BuildingSizeByType.Dispose();
             AttackEvents.Dispose(); Deaths.Dispose(); PendingOrders.Dispose(); PendingMoves.Dispose(); Arrivals.Dispose();
             OwnerIdBySlot.Dispose(); TeamBySlot.Dispose(); AttackMask.Dispose(); ShareVisionMask.Dispose(); UpkeepBudget.Dispose(); UpkeepSpent.Dispose(); UnitsBySlot.Dispose();
             ChargedThisTick.Dispose(); LargeGrid.Dispose();

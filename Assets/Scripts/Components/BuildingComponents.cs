@@ -39,6 +39,23 @@ public enum BuildingType
     Radar
 }
 
+/// <summary>A building under construction (v0.7). Removed when <see cref="Progress"/> reaches 1.</summary>
+public struct Construction : IComponentData
+{
+    /// <summary>Work done over max health, 0..1.</summary>
+    public float Progress;
+}
+
+/// <summary>Per building slot flags in <c>SimData.BuildingFlags</c>.</summary>
+public static class BuildingFlags
+{
+    public const byte UnderConstruction = 1;
+    /// <summary>A hidden bomb: never a target for enemy units and never sent to players who may not know it.</summary>
+    public const byte Hidden = 2;
+    /// <summary>A completed Radar: its sight ignores line of sight.</summary>
+    public const byte SeesThroughWalls = 4;
+}
+
 public struct SpawnerData : IComponentData
 {
     public float2 position;

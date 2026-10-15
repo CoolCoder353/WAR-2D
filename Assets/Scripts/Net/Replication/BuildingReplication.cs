@@ -21,6 +21,8 @@ namespace WAR2D.Net.Replication
         /// <summary>Quarter turns (0..3).</summary>
         public byte Rotation;
         public int Health, MaxHealth;
+        /// <summary>Construction progress in percent, 100 when complete.</summary>
+        public byte Progress;
         /// <summary>Where fog is tested (the anchor's world position).</summary>
         public float2 Position;
     }
@@ -36,6 +38,8 @@ namespace WAR2D.Net.Replication
         Hide = 2,
         /// <summary>The building (or ghost) is gone, and the client is allowed to know it.</summary>
         Gone = 3,
+        /// <summary>A seen building's construction progress (percent) changed.</summary>
+        Progress = 4,
     }
 
     /// <summary>
@@ -49,9 +53,13 @@ namespace WAR2D.Net.Replication
         {
             public bool Live;
             public int Health;
+            public byte Progress;
             public float2 Position;
             public int OwnerId;
         }
+
+        /// <summary>Percent points a building's progress must climb before another Progress record is sent.</summary>
+        private const int ProgressStep = 5;
 
         private readonly Dictionary<int, Known> known = new Dictionary<int, Known>();
         private readonly List<int> scratch = new List<int>();
@@ -83,7 +91,15 @@ namespace WAR2D.Net.Replication
                         BuildingCodec.WriteId(writer, BuildingRecord.Health, v.Id, v.Health);
                         records++;
                     }
-                    known[v.Id] = new Known { Live = true, Health = v.Health, Position = v.Position, OwnerId = v.OwnerId };
+                    byte progress = k.Progress;
+                    if (!wasKnown || !k.Live) progress = v.Progress; // an Enter carries it
+                    else if (v.Progress == 100 ? k.Progress != 100 : v.Progress >= k.Progress + ProgressStep || v.Progress < k.Progress)
+                    {
+                        BuildingCodec.WriteId(writer, BuildingRecord.Progress, v.Id, v.Progress);
+                        records++;
+                        progress = v.Progress;
+                    }
+                    known[v.Id] = new Known { Live = true, Health = v.Health, Progress = progress, Position = v.Position, OwnerId = v.OwnerId };
                     if (writer.Position >= maxBytes) return records;
                 }
                 else if (wasKnown && k.Live)
@@ -135,6 +151,7 @@ namespace WAR2D.Net.Replication
             writer.WriteByte((byte)(v.Rotation & 3));
             VarInt.Write(writer, (uint)math.max(0, v.Health));
             VarInt.Write(writer, (uint)math.max(0, v.MaxHealth));
+            writer.WriteByte(v.Progress);
         }
 
         /// <summary>A Health (with <paramref name="value"/>), Hide or Gone record.</summary>
@@ -142,7 +159,7 @@ namespace WAR2D.Net.Replication
         {
             writer.WriteByte((byte)kind);
             VarInt.Write(writer, (uint)id);
-            if (kind == BuildingRecord.Health) VarInt.Write(writer, (uint)math.max(0, value));
+            if (kind == BuildingRecord.Health || kind == BuildingRecord.Progress) VarInt.Write(writer, (uint)math.max(0, value));
         }
 
         /// <summary>Applies every record to <paramref name="into"/>. False when malformed.</summary>
@@ -163,9 +180,15 @@ namespace WAR2D.Net.Replication
                             int x = (int)VarInt.Read(reader), y = (int)VarInt.Read(reader);
                             byte rotation = reader.ReadByte();
                             int health = (int)VarInt.Read(reader), max = (int)VarInt.Read(reader);
-                            if (!Enum.IsDefined(typeof(BuildingType), type) || rotation > 3) return false;
+                            byte progress = reader.ReadByte();
+                            if (!Enum.IsDefined(typeof(BuildingType), type) || rotation > 3 || progress > 100) return false;
                             into.Enter(new BuildingData { id = id, buildingType = type, ownerId = owner, position = new float2(x, y), rotation = rotation * 90f },
-                                new HealthComponent { entityId = id, currentHealth = health, maxHealth = max });
+                                new HealthComponent { entityId = id, currentHealth = health, maxHealth = max }, progress);
+                            break;
+                        case BuildingRecord.Progress:
+                            uint value = VarInt.Read(reader);
+                            if (value > 100) return false;
+                            into.SetProgress(id, (byte)value);
                             break;
                         case BuildingRecord.Health:
                             into.SetHealth(id, (int)VarInt.Read(reader));
@@ -196,6 +219,8 @@ namespace WAR2D.Net.Replication
         {
             public BuildingData Data;
             public HealthComponent Health;
+            /// <summary>Construction progress in percent; 100 when complete.</summary>
+            public byte Progress;
             /// <summary>True when the building is out of sight: what is shown is how it was last seen.</summary>
             public bool Ghost;
         }
@@ -223,9 +248,20 @@ namespace WAR2D.Net.Replication
         /// <summary>Forgets every building (the match ended).</summary>
         public static void Clear() => Current = new ClientBuildings();
 
-        internal void Enter(BuildingData data, HealthComponent health)
+        /// <summary>Raised when a seen building's construction progress changed: (id, percent).</summary>
+        public event Action<int, byte> ProgressChanged;
+
+        internal void SetProgress(int id, byte progress)
         {
-            Entries[data.id] = new Entry { Data = data, Health = health };
+            if (!Entries.TryGetValue(id, out Entry e)) return;
+            e.Progress = progress;
+            Entries[id] = e;
+            ProgressChanged?.Invoke(id, progress);
+        }
+
+        internal void Enter(BuildingData data, HealthComponent health, byte progress = 100)
+        {
+            Entries[data.id] = new Entry { Data = data, Health = health, Progress = progress };
             Entered?.Invoke(data, health);
         }
 

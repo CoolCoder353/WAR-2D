@@ -71,6 +71,7 @@ namespace WAR2D.UI
             AlertKind.GiftReceived => $"{nameOf(alert.OtherOwnerId)} gifted you {alert.Amount:N0}",
             AlertKind.VisionSharedWithYou => $"{nameOf(alert.OtherOwnerId)} shares vision with you",
             AlertKind.VisionUnshared => $"{nameOf(alert.OtherOwnerId)} stopped sharing vision with you",
+            AlertKind.ConstructionFinished => "Construction finished",
             _ => "",
         };
 
