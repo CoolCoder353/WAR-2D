@@ -435,10 +435,33 @@ namespace WAR2D.Sim
                 byte value = 0;
                 for (int dy = -1; dy <= 1 && value == 0; dy++)
                 for (int dx = -1; dx <= 1; dx++)
-                    if (map.TileAt(new int2(x + dx, y + dy)) != TileType.Ground) { value = 1; break; }
+                    if (!TileRules.IsFloor(map.TileAt(new int2(x + dx, y + dy)))) { value = 1; break; }
                 grid[y * map.Width + x] = value;
             }
             return grid;
+        }
+
+        /// <summary>
+        /// Recomputes what depends on one tile's kind after it changed: the large-unit grid around it and
+        /// (from Task 3) the opaque tile and its fog cell. Boundary only.
+        /// </summary>
+        public void RefreshTerrain(int2 tile)
+        {
+            for (int dy = -1; dy <= 1; dy++)
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                int2 t = tile + new int2(dx, dy);
+                if ((uint)t.x >= (uint)Width || (uint)t.y >= (uint)Height) continue;
+                byte value = 0;
+                for (int ny = -1; ny <= 1 && value == 0; ny++)
+                for (int nx = -1; nx <= 1; nx++)
+                {
+                    int2 n = t + new int2(nx, ny);
+                    bool inside = (uint)n.x < (uint)Width && (uint)n.y < (uint)Height;
+                    if (!inside || !TileRules.IsFloor(Tiles[n.y * Width + n.x])) { value = 1; break; }
+                }
+                LargeGrid[t.y * Width + t.x] = value;
+            }
         }
 
         /// <summary>The owner id's slot, or <see cref="NoSlot"/>. Scans the slots, so it is Burst-safe.</summary>

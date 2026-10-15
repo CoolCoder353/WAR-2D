@@ -182,6 +182,11 @@ namespace WAR2D.Sim
 
         internal void RaiseVisionShareChanged(int fromOwner, int toOwner, bool on) => VisionShareChanged?.Invoke(fromOwner, toOwner, on);
 
+        /// <summary>Raised at the boundary for each tile whose kind changed: (tile).</summary>
+        public event Action<int2> TerrainChanged;
+
+        internal void RaiseTerrainChanged(int2 tile) => TerrainChanged?.Invoke(tile);
+
         internal void RaiseBuildingCreated(int id, Entity entity) => BuildingCreated?.Invoke(id, entity);
 
         /// <summary>Completes the tick's jobs and frees the singletons and their arrays.</summary>

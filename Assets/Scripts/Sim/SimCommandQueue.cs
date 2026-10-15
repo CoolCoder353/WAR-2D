@@ -24,6 +24,8 @@ namespace WAR2D.Sim
         SetAttack,
         /// <summary><see cref="SimCommand.OwnerId"/> starts (Flag) or stops sharing vision with <see cref="SimCommand.TargetOwnerId"/>.</summary>
         SetShareVision,
+        /// <summary>Change the tile at <see cref="SimCommand.Tile"/> to <see cref="SimCommand.TileType"/>.</summary>
+        SetTile,
     }
 
     /// <summary>A building the command system creates; placement, payment and footprint are done already.</summary>
@@ -52,6 +54,8 @@ namespace WAR2D.Sim
         /// <summary>Spawn position.</summary>
         public float2 Position;
         public UnitType UnitType;
+        /// <summary>The new kind of a <see cref="SimCommandKind.SetTile"/> command.</summary>
+        public TileType TileType;
         /// <summary>Unit ids a move applies to; null to use the box.</summary>
         public int[] Ids;
         /// <summary>Inclusive box corners of a box move.</summary>

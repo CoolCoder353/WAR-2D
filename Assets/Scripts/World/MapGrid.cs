@@ -10,6 +10,10 @@ public enum TileType : byte
     Gem = 2,
     /// <summary>The map's outer ring, and anything off the map. Blocks like a wall.</summary>
     Border = 3,
+    /// <summary>A player's wall: blocks movement and sight, has an owner and health (see <c>SimData.WallHealth</c>).</summary>
+    PlayerWall = 4,
+    /// <summary>A planned wall segment: walkable and see-through until a Builder starts it.</summary>
+    WallBlueprint = 5,
 }
 
 namespace WAR2D.World
@@ -45,7 +49,7 @@ namespace WAR2D.World
         public bool IsUsed(int2 t) => Contains(t) && Used[Index(t)] != 0;
 
         /// <summary>Ground with no building on it.</summary>
-        public bool IsWalkable(int2 t) => Contains(t) && Tiles[Index(t)] == (byte)TileType.Ground && Used[Index(t)] == 0;
+        public bool IsWalkable(int2 t) => Contains(t) && TileRules.IsFloor(Tiles[Index(t)]) && Used[Index(t)] == 0;
 
         /// <summary>The opposite of <see cref="IsWalkable"/>.</summary>
         public bool BlocksMovement(int2 t) => !IsWalkable(t);

@@ -325,7 +325,7 @@ namespace WAR2D.Sim
             {
                 if ((uint)x >= (uint)Width || (uint)y >= (uint)Height) return true;
                 int t = y * Width + x;
-                if (Tiles[t] != (byte)TileType.Ground || Used[t] != 0) return true;
+                if (!TileRules.IsFloor(Tiles[t]) || Used[t] != 0) return true;
             }
             return false;
         }

@@ -450,7 +450,7 @@ public partial class WorldStateManager : NetworkBehaviour
     public bool TryFindSpawnTile(int2 origin, out int2 tile)
     {
         MapGrid grid = Map.Grid;
-        return TileSearch.FindNearest(origin, Map.IsWalkable, t => grid.TileAt(t) == TileType.Ground, MaxSpawnSearchTiles, out tile);
+        return TileSearch.FindNearest(origin, Map.IsWalkable, t => TileRules.IsFloor(grid.TileAt(t)), MaxSpawnSearchTiles, out tile);
     }
 
     #endregion

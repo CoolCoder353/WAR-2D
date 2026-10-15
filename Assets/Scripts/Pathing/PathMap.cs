@@ -52,6 +52,6 @@ namespace WAR2D.Pathing
 
         /// <summary>The pathing value of one grid tile.</summary>
         public static byte Blocked(in WAR2D.World.MapGrid grid, int i) =>
-            grid.Tiles[i] != (byte)TileType.Ground || grid.Used[i] != 0 ? Rock : Floor;
+            !TileRules.IsFloor(grid.Tiles[i]) || grid.Used[i] != 0 ? Rock : Floor;
     }
 }

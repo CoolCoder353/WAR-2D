@@ -29,8 +29,35 @@ namespace WAR2D.World
         /// <summary>Tiles whose footprint flag changed since the flow-field cache last drained this list.</summary>
         public List<int2> ChangedTiles { get; } = new List<int2>();
 
+        /// <summary>The tiles as generated (or loaded), before any change: every client's starting copy.</summary>
+        public byte[] InitialTiles { get; }
+
+        private readonly HashSet<int> changedSinceStart = new HashSet<int>();
+
+        /// <summary>Indices of every tile whose kind changed since the map was made (terrain replication walks these).</summary>
+        public IReadOnlyCollection<int> ChangedSinceStart => changedSinceStart;
+
+        /// <summary>
+        /// Changes a tile's kind now and records it for the flow-field cache (<see cref="ChangedTiles"/>) and
+        /// replication (<see cref="ChangedSinceStart"/>). Refuses border tiles, off-map tiles and unknown kinds
+        /// (<see cref="TileRules.MayChange"/>). Tick boundary only: a live match queues
+        /// <c>SimCommandKind.SetTile</c> instead.
+        /// </summary>
+        public bool SetTile(int2 tile, TileType type)
+        {
+            if (!_grid.Contains(tile)) return false;
+            int i = _grid.Index(tile);
+            if (!TileRules.MayChange((TileType)_grid.Tiles[i], type)) return false;
+            NativeArray<byte> tiles = _grid.Tiles;
+            tiles[i] = (byte)type;
+            ChangedTiles.Add(tile);
+            changedSinceStart.Add(i);
+            return true;
+        }
+
         private MapStore(int width, int height, NativeArray<byte> tiles, int2[] hqSites, int2 origin)
         {
+            InitialTiles = tiles.ToArray();
             _grid = new MapGrid
             {
                 Width = width,
@@ -152,7 +179,7 @@ namespace WAR2D.World
         }
 
         /// <summary>True for free ground, counting queued footprint changes.</summary>
-        public bool IsWalkable(int2 tile) => _grid.Contains(tile) && _grid.Tiles[_grid.Index(tile)] == (byte)TileType.Ground && !IsUsed(tile);
+        public bool IsWalkable(int2 tile) => _grid.Contains(tile) && TileRules.IsFloor(_grid.Tiles[_grid.Index(tile)]) && !IsUsed(tile);
 
         /// <summary>Applies the queued footprint changes. Tick boundary only, once the tick's jobs are complete.</summary>
         public void ApplyPendingUsed()

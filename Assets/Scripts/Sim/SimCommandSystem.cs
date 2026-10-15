@@ -58,6 +58,9 @@ namespace WAR2D.Sim
                         CreateBuilding(context, command.Building);
                         PushUnitsOutOf(data, context, command.Building, clock.UnitCount);
                         break;
+                    case SimCommandKind.SetTile:
+                        ApplySetTile(data, context, command.Tile, command.TileType, clock.UnitCount);
+                        break;
                     case SimCommandKind.KillOwner:
                         KillUnits(data, context, command.OwnerId, all: false);
                         break;
@@ -186,13 +189,29 @@ namespace WAR2D.Sim
                 first = false;
             }
             if (first) return;
+            PushUnitsOffTiles(data, context, lo, hi, unitCount);
+        }
+
+        /// <summary>Changes a tile (refusing the border), refreshes what depends on it and moves units off it when it now blocks. True when it changed.</summary>
+        private static bool ApplySetTile(SimData data, SimContext context, int2 tile, TileType type, int unitCount)
+        {
+            if (!context.Map.SetTile(tile, type)) return false;
+            data.RefreshTerrain(tile);
+            if (!TileRules.IsFloor(type)) PushUnitsOffTiles(data, context, tile, tile, unitCount);
+            context.RaiseTerrainChanged(tile);
+            return true;
+        }
+
+        /// <summary>Moves every unit overlapping the inclusive tile box to the nearest free floor tile.</summary>
+        private static void PushUnitsOffTiles(SimData data, SimContext context, int2 lo, int2 hi, int unitCount)
+        {
             WAR2D.World.MapGrid grid = context.Map.Grid;
             for (int slot = 0; slot < unitCount; slot++)
             {
                 float2 p = data.Positions[slot];
                 float r = data.Radius[slot];
                 if (p.x + r < lo.x || p.y + r < lo.y || p.x - r > hi.x + 1 || p.y - r > hi.y + 1) continue;
-                if (!TileSearch.FindNearest((int2)math.floor(p), grid.IsWalkable, t => grid.TileAt(t) == TileType.Ground, 4096, out int2 free)) continue;
+                if (!TileSearch.FindNearest((int2)math.floor(p), grid.IsWalkable, t => TileRules.IsFloor(grid.TileAt(t)), 4096, out int2 free)) continue;
                 if (data.PendingMoves.Capacity <= data.PendingMoves.Count()) data.PendingMoves.Capacity *= 2;
                 data.PendingMoves[data.IdOf[slot]] = (float2)free + 0.5f;
             }
