@@ -21,6 +21,8 @@ public enum AlertKind : byte
     BombTriggered,
     /// <summary>One of the receiver's Radars saw an enemy come into range (Tile is the Radar, never the enemy).</summary>
     EnemySpotted,
+    /// <summary>The receiver's Builders stopped repairing because the receiver ran out of resources (Tile is the target).</summary>
+    RepairsStopped,
 }
 
 /// <summary>

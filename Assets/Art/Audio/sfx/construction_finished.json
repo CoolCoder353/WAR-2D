@@ -1,0 +1,12 @@
+{
+  "wave": "Square",
+  "sustain": 0.08,
+  "decay": 0.25,
+  "frequency": 523,
+  "changeAmount": 1.5,
+  "changeTime": 0.09,
+  "duty": 0.35,
+  "lowPass": 0.8,
+  "volume": 0.45,
+  "seed": 21
+}

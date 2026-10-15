@@ -16,7 +16,7 @@ namespace WAR2D.UI
 
     /// <summary>
     /// The alert feed: the newest alerts (at most <see cref="MaxShown"/>), each shown until dismissed or
-    /// <c>Alerts/ShowSeconds</c> pass. UnderAttack alerts also ask for a minimap ping.
+    /// <c>Alerts/ShowSeconds</c> pass. UnderAttack, BombTriggered and EnemySpotted alerts also ask for a minimap ping.
     /// </summary>
     public sealed class AlertFeedModel
     {
@@ -35,15 +35,18 @@ namespace WAR2D.UI
         /// <summary>Raised when the shown alerts changed.</summary>
         public event Action Changed;
 
-        /// <summary>Raised for an UnderAttack alert: ping this tile on the minimap.</summary>
-        public event Action<int2> PingRequested;
+        /// <summary>Raised for an alert the minimap pings: its tile and kind (the ring's colour).</summary>
+        public event Action<int2, AlertKind> PingRequested;
+
+        /// <summary>True for the alerts the minimap pings.</summary>
+        public static bool Pings(AlertKind kind) => kind == AlertKind.UnderAttack || kind == AlertKind.BombTriggered || kind == AlertKind.EnemySpotted;
 
         /// <summary>Adds an alert with its text, shown from <paramref name="now"/>.</summary>
         public void Add(in Alert alert, string text, float now)
         {
             entries.Add(new AlertEntry { Id = nextId++, Kind = alert.Kind, Text = text, Tile = alert.Tile, Expires = now + showSeconds });
             while (entries.Count > MaxShown) entries.RemoveAt(0);
-            if (alert.Kind == AlertKind.UnderAttack) PingRequested?.Invoke(alert.Tile);
+            if (Pings(alert.Kind)) PingRequested?.Invoke(alert.Tile, alert.Kind);
             Changed?.Invoke();
         }
 
@@ -71,9 +74,10 @@ namespace WAR2D.UI
             AlertKind.GiftReceived => $"{nameOf(alert.OtherOwnerId)} gifted you {alert.Amount:N0}",
             AlertKind.VisionSharedWithYou => $"{nameOf(alert.OtherOwnerId)} shares vision with you",
             AlertKind.VisionUnshared => $"{nameOf(alert.OtherOwnerId)} stopped sharing vision with you",
-            AlertKind.ConstructionFinished => "Construction finished",
-            AlertKind.BombTriggered => "Your bomb went off",
+            AlertKind.ConstructionFinished => nearBuilding != null ? $"Construction finished: {nearBuilding}" : "Construction finished",
+            AlertKind.BombTriggered => "Bomb triggered",
             AlertKind.EnemySpotted => "Enemy spotted by Radar",
+            AlertKind.RepairsStopped => "Out of resources: repairs stopped",
             _ => "",
         };
 

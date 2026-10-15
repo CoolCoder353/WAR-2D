@@ -72,4 +72,50 @@ public class TileAutotileTests
         Assert.Less(gem.g, 4 * WAR2D.Art.ArtManifest.AutotileVariants);
         Assert.AreEqual((byte)TileType.Ground, MapView.IndexOf(g, 2, 0).r);
     }
+
+    [Test]
+    public void PlayerWallsConnectToEachOtherAndBlueprintsAreFloor()
+    {
+        using MapStore map = MapStore.FromAscii(
+            "...",
+            "...",
+            "...");
+        MapGrid g = map.Grid;
+        var tiles = g.Tiles;
+        tiles[1 * 3 + 0] = (byte)TileType.PlayerWall;
+        tiles[1 * 3 + 1] = (byte)TileType.PlayerWall;
+        tiles[1 * 3 + 2] = (byte)TileType.WallBlueprint;
+        Assert.AreEqual(RenderGen.East, TileAutotile.Variant(g, 0, 1), "a wall joins the wall beside it, not the map edge");
+        Assert.AreEqual(RenderGen.West, TileAutotile.Variant(g, 1, 1), "a built wall joins only built walls");
+        Assert.AreEqual(RenderGen.West, TileAutotile.Variant(g, 2, 1), "a blueprint's outline joins walls and blueprints");
+        Assert.IsFalse(TileAutotile.Solid(g, 2, 1), "a wall blueprint is see-through floor: rock doesn't autotile against it");
+        Assert.IsTrue(TileAutotile.Solid(g, 1, 1));
+    }
+
+    [Test]
+    public void WallTexelsCarryOwnerColourAndDamage()
+    {
+        using MapStore map = MapStore.FromAscii("...");
+        MapGrid g = map.Grid;
+        g.Tiles[1] = (byte)TileType.PlayerWall;
+        UnityEngine.Color32 healthy = MapView.IndexOf(g, 1, 0, i => (3, 90));
+        UnityEngine.Color32 cracked = MapView.IndexOf(g, 1, 0, i => (3, 50));
+        UnityEngine.Color32 broken = MapView.IndexOf(g, 1, 0, i => (3, 10));
+        Assert.AreEqual(4, healthy.b, "palette index + 1");
+        Assert.AreEqual(0, healthy.g / WAR2D.Art.ArtManifest.AutotileVariants);
+        Assert.AreEqual(1, cracked.g / WAR2D.Art.ArtManifest.AutotileVariants);
+        Assert.AreEqual(2, broken.g / WAR2D.Art.ArtManifest.AutotileVariants);
+        Assert.AreEqual(0, MapView.IndexOf(g, 0, 0, i => (3, 90)).b, "ground has no owner");
+    }
+
+    [TestCase(100, 0)]
+    [TestCase(66, 0)]
+    [TestCase(65, 1)]
+    [TestCase(33, 1)]
+    [TestCase(32, 2)]
+    [TestCase(0, 2)]
+    public void WallDamageStateFollowsHealth(int percent, int state)
+    {
+        Assert.AreEqual(state, WallRules.DamageState(percent));
+    }
 }

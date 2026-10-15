@@ -67,6 +67,7 @@ public class UnitCommander : NetworkBehaviour
         {
             UnsubscribeBuildings();
             wallDrag?.Dispose();
+            if (radarRing != null) Destroy(radarRing.gameObject);
             Instance = null;
         }
     }
@@ -475,6 +476,7 @@ public class UnitCommander : NetworkBehaviour
         subscribedBuildings.HealthChanged += OnBuildingHealthChanged;
         subscribedBuildings.Hidden += OnBuildingHidden;
         subscribedBuildings.Removed += OnBuildingRemoved;
+        subscribedBuildings.ProgressChanged += OnBuildingProgress;
         Palettes.Changed += Retint;
         foreach (ClientBuildings.Entry entry in subscribedBuildings.Entries.Values)
         {
@@ -491,8 +493,18 @@ public class UnitCommander : NetworkBehaviour
         subscribedBuildings.HealthChanged -= OnBuildingHealthChanged;
         subscribedBuildings.Hidden -= OnBuildingHidden;
         subscribedBuildings.Removed -= OnBuildingRemoved;
+        subscribedBuildings.ProgressChanged -= OnBuildingProgress;
         Palettes.Changed -= Retint;
         subscribedBuildings = null;
+    }
+
+    /// <summary>A seen building's construction moved on: its blueprint look follows.</summary>
+    private void OnBuildingProgress(int id, byte progress)
+    {
+        if (!buildingGameObjects.TryGetValue(id, out GameObject go) || go == null || !go.TryGetComponent(out ConstructionView view)) return;
+        go.TryGetComponent(out SpriteRenderer sprite);
+        int2 size = go.TryGetComponent(out BuildingDataClient data) ? WorldStateManager.GetBuildingSize(data.buildingData.buildingType) : new int2(1, 1);
+        view.Set(sprite, size, progress);
     }
 
     /// <summary>A building is seen: (re)creates its GameObject, replacing a ghost.</summary>
@@ -500,10 +512,22 @@ public class UnitCommander : NetworkBehaviour
     {
         if (buildingGameObjects.ContainsKey(data.id)) BuildingListRemove(0, data);
         BuildingListInsert(0, data);
+        lastBuildingHealth[data.id] = health.currentHealth;
         AddHealthComponent(health);
     }
 
-    private void OnBuildingHealthChanged(HealthComponent health) => AddHealthComponent(health);
+    private readonly Dictionary<int, float> lastBuildingHealth = new Dictionary<int, float>();
+
+    /// <summary>A seen building's health changed: a finished one that gained health is being repaired (sparks).</summary>
+    private void OnBuildingHealthChanged(HealthComponent health)
+    {
+        if (lastBuildingHealth.TryGetValue(health.entityId, out float before) && health.currentHealth > before &&
+            (subscribedBuildings ?? ClientBuildings.Current).Entries.TryGetValue(health.entityId, out ClientBuildings.Entry e) && e.Progress >= 100 &&
+            buildingGameObjects.TryGetValue(health.entityId, out GameObject go) && go != null)
+            Effects.RepairSparks(go.transform.position);
+        lastBuildingHealth[health.entityId] = health.currentHealth;
+        AddHealthComponent(health);
+    }
 
     /// <summary>A building left sight: it stays, grey and see-through, as last seen (and stops animating).</summary>
     private void OnBuildingHidden(int id)
@@ -544,7 +568,34 @@ public class UnitCommander : NetworkBehaviour
             f.gameObject.SetActive(true);
         }
         for (int i = shown; i < buildingMarkers.Count; i++) buildingMarkers[i].Show(0, null, default);
+        ShowRadarRange(ids);
         for (int i = flags; i < rallyFlags.Count; i++) rallyFlags[i].gameObject.SetActive(false);
+    }
+
+    private ClearingRing radarRing;
+    private float radarSight = -1f;
+
+    /// <summary>A selected own Radar shows its range: a dashed ring in its owner's colour (Figma: World look – v0.7).</summary>
+    private void ShowRadarRange(IReadOnlyList<int> ids)
+    {
+        int radar = 0;
+        float2 centre = default;
+        ClientBuildings known = subscribedBuildings ?? ClientBuildings.Current;
+        foreach (int id in ids)
+        {
+            if (!known.Entries.TryGetValue(id, out ClientBuildings.Entry e) || e.Ghost || e.Data.buildingType != BuildingType.Radar) continue;
+            radar = id;
+            centre = Footprint.VisualCenter((int2)math.round(e.Data.position), WorldStateManager.GetBuildingSize(BuildingType.Radar));
+            break;
+        }
+        if (radar == 0)
+        {
+            if (radarRing != null) radarRing.gameObject.SetActive(false);
+            return;
+        }
+        if (radarSight < 0f) radarSight = Config.ConfigLoader.LoadConfig().GetBuilding(BuildingType.Radar).Sight;
+        if (radarRing == null) radarRing = ClearingRing.Create("RadarRange", SortingOrders.ClearingRing);
+        radarRing.Set(centre, radarSight, PlayerPalette.Of(localPlayer != null ? localPlayer.colourIndex : -1));
     }
 
     private static int[] ToArray(IReadOnlyList<int> ids)
@@ -594,6 +645,7 @@ public class UnitCommander : NetworkBehaviour
 
     private void OnBuildingRemoved(int id)
     {
+        lastBuildingHealth.Remove(id);
         Selection.RemoveBuilding(id);
         if (!buildingGameObjects.TryGetValue(id, out GameObject go)) return;
         Destroy(go);
@@ -626,6 +678,8 @@ public class UnitCommander : NetworkBehaviour
         collider.isTrigger = true;
         collider.size = new Vector2(footprint.x, footprint.y);
         go.name = $"Building_{unit.buildingType}_{unit.id}";
+        byte progress = (subscribedBuildings ?? ClientBuildings.Current).Entries.TryGetValue(unit.id, out ClientBuildings.Entry known) ? known.Progress : (byte)100;
+        go.AddComponent<ConstructionView>().Set(buildingSprite, footprint, progress);
 
         //Check if there is a client script for the building type
         Type buildingType = null;
@@ -641,6 +695,8 @@ public class UnitCommander : NetworkBehaviour
             // Add other building types as needed
             case BuildingType.Base:
             case BuildingType.Miner:
+            case BuildingType.Bomb:
+            case BuildingType.Radar:
                 break; // no client-side behaviour
             default:
                 Debug.LogWarning($"No client script mapping found for building type {unit.buildingType}");

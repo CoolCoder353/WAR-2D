@@ -227,6 +227,11 @@ namespace WAR2D.Sim
 
         internal void RaiseBuildingCreated(int id, Entity entity) => BuildingCreated?.Invoke(id, entity);
 
+        /// <summary>Raised at the boundary when a repair found its payer out of resources: (owner, the target's tile).</summary>
+        public event Action<int, int2> RepairStalled;
+
+        internal void RaiseRepairStalled(int owner, int2 tile) => RepairStalled?.Invoke(owner, tile);
+
         /// <summary>
         /// Completes the tick's jobs and frees the singletons and their arrays, then destroys the match's units
         /// and buildings: the ECS world outlives the match, so a leftover building would keep producing (and

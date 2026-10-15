@@ -33,6 +33,12 @@ public sealed class AlertService
         list.Add(alert);
     }
 
+    /// <summary>Queues an alert for one player unless one of its kind went out for the same area within the throttle window.</summary>
+    public void AddThrottled(int ownerId, Alert alert, double now)
+    {
+        if (throttle.Allow(ownerId, alert.Kind, alert.Tile, now)) Add(ownerId, alert);
+    }
+
     /// <summary>
     /// Reads the settled tick's attack events: every damaged target's own owner and tile (units from the
     /// SoA, buildings through <paramref name="building"/>), then the throttled UnderAttack alerts.

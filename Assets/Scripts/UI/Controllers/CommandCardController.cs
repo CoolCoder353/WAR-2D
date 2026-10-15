@@ -169,7 +169,9 @@ namespace WAR2D.UI
             Display(card.Q("builds"), builders);
             Display(buildHint, builders);
             Display(removal, building && Removable);
-            Display(card.Q("production"), building && SpawnerRules.IsProducer(selection.BuildingType));
+            // A blueprint makes nothing yet: production shows once the selected buildings are all finished.
+            bool producing = building && SpawnerRules.IsProducer(selection.BuildingType) && selection.BlueprintCount == 0;
+            Display(card.Q("production"), producing);
             if (building)
             {
                 ShowBuilding(count);
@@ -197,7 +199,7 @@ namespace WAR2D.UI
                 : selection.AllBlueprints ? $"{name} (blueprint) · {selection.BuildingProgress}%"
                 : name;
 
-            if (produced.Length > 0) ShowProduction(produced, count);
+            if (produced.Length > 0 && selection.BlueprintCount == 0) ShowProduction(produced, count);
             if (!Removable) return;
             float cost = buildCosts.TryGetValue(selection.BuildingType, out float c) ? c : 0f;
             float back = selection.RefundFor(cost, demolishShare);

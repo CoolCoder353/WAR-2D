@@ -126,6 +126,7 @@ public partial class WorldStateManager : NetworkBehaviour
             var (found, _, tile) = BuildingOwnerAndTile(id);
             if (found) Alerts.Add(owner, new Alert { Kind = AlertKind.ConstructionFinished, Tile = tile });
         };
+        Sim.RepairStalled += (owner, tile) => Alerts?.AddThrottled(owner, new Alert { Kind = AlertKind.RepairsStopped, Tile = tile }, NetworkTime.localTime);
         Sim.TeamResolver = ownerId => GameCore.Instance != null ? GameCore.Instance.TeamOf(ownerId) : -ownerId - 1;
         Sim.Settled += OnSettled;
         AlertsConfig alertConfig = ConfigLoader.LoadConfig().Alerts;
@@ -230,6 +231,12 @@ public partial class WorldStateManager : NetworkBehaviour
             NativeArray<byte> grid = Map.Grid.Tiles;
             byte[] known = terrain.Tiles;
             foreach (int2 t in tiles) grid[Map.Grid.Index(t)] = known[Map.Grid.Index(t)];
+        }
+        // Rock, a gem or a wall that turned to floor broke up where the player can see it.
+        foreach (int2 t in tiles)
+        {
+            TileType was = MapView.ShownType(t);
+            if (TileRules.IsDiggable(was) && TileRules.IsFloor(Map.Grid.TileAt(t))) Effects.DigDebris(new Vector2(t.x + 0.5f, t.y + 0.5f));
         }
         MapView.Refresh(tiles);
     }

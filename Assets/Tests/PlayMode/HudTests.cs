@@ -562,6 +562,10 @@ public class HudTests
         }
         yield return PlayModeMatch.WaitUntil(() => Tiles(TileType.WallBlueprint) || Tiles(TileType.PlayerWall), 10f);
         yield return PlayModeMatch.WaitUntil(() => Tiles(TileType.PlayerWall), 60f);
+        // The map view draws it in the owner's colour (palette index + 1 in the index texture's blue).
+        Color32 texel = MapView.IndexTexture.GetPixelData<Color32>(0)[start.y * width + start.x];
+        Assert.That(texel.r, Is.EqualTo((byte)TileType.PlayerWall));
+        Assert.That(texel.b, Is.EqualTo((byte)(PlayerPalette.ColourIndexOf(PlayModeMatch.LocalOwner) + 1)));
     }
 
     [UnityTest, Timeout(90000)]

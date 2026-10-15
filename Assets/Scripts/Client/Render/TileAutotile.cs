@@ -8,7 +8,7 @@ namespace WAR2D.Client.Render
     /// <summary>
     /// Which atlas frame each map tile draws: its <see cref="TileType"/> and a variant (the autotile mask of its
     /// rock neighbours, or a random pick from a hash of its position). <see cref="MapView"/> writes these into
-    /// an RG8 index texture (R = type, G = variant) that the terrain shader reads.
+    /// an index texture (R = type, G = variant, B = a player wall's owner colour) that the terrain shader reads.
     /// </summary>
     public static class TileAutotile
     {
@@ -42,11 +42,22 @@ namespace WAR2D.Client.Render
             }
         }
 
-        /// <summary>True for rock-like tiles (walls, gems, the border); off the map counts as rock, so the edge reads as solid.</summary>
+        /// <summary>
+        /// True for rock-like tiles (walls, gems, the border, player walls); off the map counts as rock, so the edge
+        /// reads as solid. A wall blueprint is floor: it is see-through and walkable.
+        /// </summary>
         public static bool Solid(MapGrid grid, int x, int y)
         {
             if ((uint)x >= (uint)grid.Width || (uint)y >= (uint)grid.Height) return true;
-            return grid.Tiles[y * grid.Width + x] != (byte)TileType.Ground;
+            return !TileRules.IsFloor(grid.Tiles[y * grid.Width + x]);
+        }
+
+        /// <summary>True when the tile on the map is one of the listed kinds (off the map: never).</summary>
+        private static bool Is(MapGrid grid, int x, int y, TileType a, TileType b)
+        {
+            if ((uint)x >= (uint)grid.Width || (uint)y >= (uint)grid.Height) return false;
+            byte t = grid.Tiles[y * grid.Width + x];
+            return t == (byte)a || t == (byte)b;
         }
 
         /// <summary>The variant of tile (x, y): its frame within its type's sprite in the <c>Tiles</c> atlas.</summary>
@@ -62,6 +73,12 @@ namespace WAR2D.Client.Render
                     return (byte)(Hash(x, y, RandomVariants) * ArtManifest.AutotileVariants + Mask4((tx, ty) => Solid(grid, tx, ty), x, y));
                 case TileType.Ground:
                     return (byte)Hash(x, y, RandomVariants);
+                case TileType.PlayerWall:
+                    // Built walls join built walls (the damage frame is added by MapView).
+                    return Mask4((tx, ty) => Is(grid, tx, ty, TileType.PlayerWall, TileType.PlayerWall), x, y);
+                case TileType.WallBlueprint:
+                    // A blueprint's outline joins the line it belongs to, built or planned.
+                    return Mask4((tx, ty) => Is(grid, tx, ty, TileType.PlayerWall, TileType.WallBlueprint), x, y);
                 default:
                     return 0;
             }

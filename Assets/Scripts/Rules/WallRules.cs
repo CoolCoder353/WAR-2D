@@ -36,6 +36,9 @@ public static class WallRules
         return span <= maxLine;
     }
 
+    /// <summary>The wall art's damage frame for a health percent (Figma <c>World look – v0.7</c>): 0 from 66 %, 1 from 33 %, else 2.</summary>
+    public static int DamageState(int healthPercent) => healthPercent >= 66 ? 0 : healthPercent >= 33 ? 1 : 2;
+
     /// <summary>True when a wall blueprint may go on the tile: plain ground, no building footprint.</summary>
     public static bool CanPlace(int2 tile, Func<int2, TileType> tileAt, Func<int2, bool> isUsed) =>
         tileAt(tile) == TileType.Ground && !isUsed(tile);

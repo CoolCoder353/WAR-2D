@@ -4,13 +4,14 @@ using UnityEngine;
 namespace WAR2D.Client
 {
     /// <summary>
-    /// The local player's HQ clearing during HQ placement (Figma: HUD / HQ placement – own clearing): a faint
-    /// disc with a dashed rim in the player's colour. Client-only; the clearing is the player's own public
-    /// lobby claim, so it shows nothing hidden.
+    /// A faint disc with a dashed rim in a player's colour. The static one is the local player's HQ clearing during
+    /// HQ placement (Figma: HUD / HQ placement – own clearing); <see cref="Create"/> makes others, such as the
+    /// selected Radar's range (Figma: World look – v0.7). Client-only; each shows only the local player's own data.
     /// </summary>
     public sealed class ClearingRing : MonoBehaviour
     {
-        private const int Dashes = 48, DiscSegments = 64;
+        private const int MinDashes = 48, MaxDashes = 256, DiscSegments = 64;
+        private const float DashSpacing = 0.8f; // tiles of rim per dash and gap
         private const float DashWidth = 0.15f, FillAlpha = 0.06f;
 
         private static ClearingRing instance;
@@ -21,18 +22,29 @@ namespace WAR2D.Client
         /// <summary>Shows (or moves) the ring.</summary>
         public static void Show(float2 centre, float radius, Color32 colour)
         {
-            if (instance == null)
-            {
-                var go = new GameObject("ClearingRing");
-                instance = go.AddComponent<ClearingRing>();
-                instance.filter = go.AddComponent<MeshFilter>();
-                var renderer = go.AddComponent<MeshRenderer>();
-                renderer.sharedMaterial = new Material(Shader.Find("Sprites/Default"));
-                renderer.sortingOrder = WAR2D.Client.Render.SortingOrders.ClearingRing; // above the map, below units, buildings and fog
-            }
-            if (instance.mesh != null && instance.shown.Equals((centre, radius, colour))) return;
-            instance.shown = (centre, radius, colour);
-            instance.Build(centre, radius, colour);
+            if (instance == null) instance = Create("ClearingRing", WAR2D.Client.Render.SortingOrders.ClearingRing); // above the map, below units, buildings and fog
+            instance.Set(centre, radius, colour);
+        }
+
+        /// <summary>A new ring (hidden until <see cref="Set"/>), drawn at <paramref name="sortingOrder"/>.</summary>
+        public static ClearingRing Create(string name, int sortingOrder)
+        {
+            var go = new GameObject(name);
+            ClearingRing ring = go.AddComponent<ClearingRing>();
+            ring.filter = go.AddComponent<MeshFilter>();
+            var renderer = go.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = new Material(Shader.Find("Sprites/Default"));
+            renderer.sortingOrder = sortingOrder;
+            return ring;
+        }
+
+        /// <summary>Shows (or moves) this ring.</summary>
+        public void Set(float2 centre, float radius, Color32 colour)
+        {
+            gameObject.SetActive(true);
+            if (mesh != null && shown.Equals((centre, radius, colour))) return;
+            shown = (centre, radius, colour);
+            Build(centre, radius, colour);
         }
 
         /// <summary>Removes the ring.</summary>
@@ -51,9 +63,10 @@ namespace WAR2D.Client
         private void Build(float2 centre, float radius, Color32 colour)
         {
             if (mesh == null) mesh = new Mesh { name = "ClearingRing" };
-            var vertices = new Vector3[DiscSegments + 1 + Dashes * 4];
+            int dashes = math.clamp((int)math.round(2f * math.PI * radius / DashSpacing), MinDashes, MaxDashes);
+            var vertices = new Vector3[DiscSegments + 1 + dashes * 4];
             var colours = new Color32[vertices.Length];
-            var triangles = new int[DiscSegments * 3 + Dashes * 6];
+            var triangles = new int[DiscSegments * 3 + dashes * 6];
             Color32 fill = colour;
             fill.a = (byte)(255 * FillAlpha);
 
@@ -72,9 +85,9 @@ namespace WAR2D.Client
 
             // The rim: one quad per dash, each covering half its arc.
             int v = DiscSegments + 1, t = DiscSegments * 3;
-            for (int d = 0; d < Dashes; d++)
+            for (int d = 0; d < dashes; d++)
             {
-                float a0 = 2f * math.PI * d / Dashes, a1 = a0 + math.PI / Dashes;
+                float a0 = 2f * math.PI * d / dashes, a1 = a0 + math.PI / dashes;
                 float inner = radius - DashWidth * 0.5f, outer = radius + DashWidth * 0.5f;
                 vertices[v] = Point(centre, a0, inner);
                 vertices[v + 1] = Point(centre, a0, outer);

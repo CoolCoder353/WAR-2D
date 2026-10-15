@@ -343,9 +343,26 @@ namespace WAR2D.UI
 
         private void OnAlerts(Alert[] alerts)
         {
+            string sound = "alert";
             foreach (Alert alert in alerts)
-                Alerts.Add(alert, AlertFeedModel.Text(alert, NameOf, alert.Kind == AlertKind.UnderAttack ? NearestOwnBuilding(alert.Tile) : null), Time.unscaledTime);
-                WAR2D.Audio.AudioService.Ui("alert");
+            {
+                string building = alert.Kind == AlertKind.UnderAttack ? NearestOwnBuilding(alert.Tile)
+                    : alert.Kind == AlertKind.ConstructionFinished ? OwnBuildingAt(alert.Tile) : null;
+                Alerts.Add(alert, AlertFeedModel.Text(alert, NameOf, building), Time.unscaledTime);
+                if (alert.Kind == AlertKind.ConstructionFinished) sound = "construction_finished";
+                if (alert.Kind == AlertKind.EnemySpotted) sound = "radar_ping";
+            }
+            // One sound per batch; a Radar contact or a finished building has its own.
+            WAR2D.Audio.AudioService.Ui(sound);
+        }
+
+        /// <summary>The name of the local player's building whose anchor is the tile, or null.</summary>
+        private string OwnBuildingAt(Unity.Mathematics.int2 tile)
+        {
+            foreach (WAR2D.Net.Replication.ClientBuildings.Entry entry in WAR2D.Net.Replication.ClientBuildings.Current.Entries.Values)
+                if (entry.Data.ownerId == Model.LocalOwnerId && Unity.Mathematics.math.all((Unity.Mathematics.int2)Unity.Mathematics.math.round(entry.Data.position) == tile))
+                    return AlertFeedModel.BuildingName(entry.Data.buildingType);
+            return null;
         }
 
         private const float NearBuildingTiles = 12f;

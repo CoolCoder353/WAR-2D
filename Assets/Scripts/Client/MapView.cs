@@ -8,10 +8,12 @@ using WAR2D.Client.Render;
 using WAR2D.World;
 
 /// <summary>
-/// Draws a <see cref="MapGrid"/> on one quad behind everything else with the <c>Terrain</c> shader: an RG8
-/// index texture (one texel per tile: <see cref="TileType"/> and its <see cref="TileAutotile"/> variant)
-/// picks each tile's frame in the <c>Tiles</c> atlas. <see cref="Refresh"/> rewrites changed tiles (and
-/// their neighbours, whose masks change with them).
+/// Draws a <see cref="MapGrid"/> on one quad behind everything else with the <c>Terrain</c> shader: an RGBA32
+/// index texture (one texel per tile: R = <see cref="TileType"/>, G = its frame: the <see cref="TileAutotile"/>
+/// variant, plus the damage state × 16 for player walls, B = a player wall's owner palette index + 1) picks each
+/// tile's frame in the <c>Tiles</c> atlas, and the shader tints wall team pixels in the owner's colour.
+/// Wall owners and health come from <see cref="WAR2D.Net.Replication.ClientTerrain"/>. <see cref="Refresh"/>
+/// rewrites changed tiles (and their neighbours, whose masks change with them).
 /// </summary>
 public class MapView : MonoBehaviour
 {
@@ -44,6 +46,14 @@ public class MapView : MonoBehaviour
         _instance.Rewrite(tiles);
     }
 
+    /// <summary>The tile kind the view shows at a tile (before a <see cref="Refresh"/> it is the old one); Border when none.</summary>
+    public static TileType ShownType(int2 tile)
+    {
+        if (_instance == null || _instance._index == null || (uint)tile.x >= (uint)_instance._index.width || (uint)tile.y >= (uint)_instance._index.height)
+            return TileType.Border;
+        return (TileType)_instance._index.GetPixelData<Color32>(0)[tile.y * _instance._index.width + tile.x].r;
+    }
+
     /// <summary>Removes the shown map (the menu battle's teardown).</summary>
     public static void Hide()
     {
@@ -69,9 +79,36 @@ public class MapView : MonoBehaviour
         };
     }
 
-    /// <summary>The index texel of tile (x, y): R = type, G = variant.</summary>
-    public static Color32 IndexOf(MapGrid grid, int x, int y) =>
-        new Color32(grid.Tiles[y * grid.Width + x], TileAutotile.Variant(grid, x, y), 0, 255);
+    /// <summary>The number of player colours the shader holds (index 0 of its table is "no owner").</summary>
+    public const int TeamColours = 8;
+
+    /// <summary>
+    /// The index texel of tile (x, y): R = type, G = frame (variant, and for a player wall + 16 × damage state),
+    /// B = for a wall tile its owner's palette index + 1 (0 for none). <paramref name="wall"/> gives a tile index's
+    /// owner palette index (-1 for none) and health percent; null reads the local client's terrain.
+    /// </summary>
+    public static Color32 IndexOf(MapGrid grid, int x, int y, System.Func<int, (int colour, int health)> wall = null)
+    {
+        int i = y * grid.Width + x;
+        byte type = grid.Tiles[i];
+        byte variant = TileAutotile.Variant(grid, x, y);
+        byte owner = 0;
+        if (type == (byte)TileType.PlayerWall || type == (byte)TileType.WallBlueprint)
+        {
+            (int colour, int health) = (wall ?? LocalWall)(i);
+            owner = (byte)(colour < 0 || colour >= TeamColours ? 0 : colour + 1);
+            if (type == (byte)TileType.PlayerWall) variant = (byte)(variant + ArtManifest.AutotileVariants * WallRules.DamageState(health));
+        }
+        return new Color32(type, variant, owner, 255);
+    }
+
+    /// <summary>A wall tile's owner colour and health as the local client knows them.</summary>
+    private static (int colour, int health) LocalWall(int index)
+    {
+        var terrain = WAR2D.Net.Replication.ClientTerrain.Current;
+        int owner = terrain.WallOwner(index);
+        return (owner == 0 ? -1 : PlayerPalette.ColourIndexOf(owner), owner == 0 ? 100 : terrain.WallHealth(index));
+    }
 
     private void Bake(MapGrid grid)
     {
@@ -79,7 +116,7 @@ public class MapView : MonoBehaviour
         if (_index == null || _index.width != grid.Width || _index.height != grid.Height)
         {
             if (_index != null) Destroy(_index);
-            _index = new Texture2D(grid.Width, grid.Height, TextureFormat.RG16, mipChain: false, linear: true)
+            _index = new Texture2D(grid.Width, grid.Height, TextureFormat.RGBA32, mipChain: false, linear: true)
             {
                 filterMode = FilterMode.Point,
                 wrapMode = TextureWrapMode.Clamp,
@@ -87,17 +124,14 @@ public class MapView : MonoBehaviour
             };
         }
 
-        NativeArray<byte> texels = _index.GetPixelData<byte>(0);
+        NativeArray<Color32> texels = _index.GetPixelData<Color32>(0);
         for (int y = 0; y < grid.Height; y++)
         for (int x = 0; x < grid.Width; x++)
-        {
-            int i = y * grid.Width + x;
-            texels[2 * i] = grid.Tiles[i];
-            texels[2 * i + 1] = TileAutotile.Variant(grid, x, y);
-        }
+            texels[y * grid.Width + x] = IndexOf(grid, x, y);
         _index.Apply(false);
 
         if (_material == null) CreateMaterial();
+        SetTeamColours();
         _material.SetTexture("_IndexTex", _index);
         _material.SetVector("_MapSize", new Vector4(grid.Width, grid.Height, 0, 0));
 
@@ -125,6 +159,8 @@ public class MapView : MonoBehaviour
         ArtAtlas atlas = ArtAtlas.Load(ArtAtlas.Tiles);
         if (atlas == null) Debug.LogError($"Resources/{ArtAtlas.Folder}/{ArtAtlas.Tiles} is missing: run WAR-2D/Art/Build all.");
         _material.SetTexture("_AtlasTex", atlas != null ? atlas.Texture : Texture2D.whiteTexture);
+        _material.SetTexture("_MaskTex", atlas != null && atlas.Mask != null ? atlas.Mask : Texture2D.blackTexture);
+        Palettes.Changed += SetTeamColours;
         _material.SetFloat("_TileSize", ArtStyle.TileSize);
 
         Vector4[] rects = InstancedUnitRenderer.UvRects(atlas);
@@ -149,22 +185,35 @@ public class MapView : MonoBehaviour
 
     private void Rewrite(IReadOnlyList<int2> tiles)
     {
-        NativeArray<byte> texels = _index.GetPixelData<byte>(0);
+        NativeArray<Color32> texels = _index.GetPixelData<Color32>(0);
         foreach (int2 tile in tiles)
         for (int dy = -1; dy <= 1; dy++)
         for (int dx = -1; dx <= 1; dx++)
         {
             int x = tile.x + dx, y = tile.y + dy;
             if ((uint)x >= (uint)_grid.Width || (uint)y >= (uint)_grid.Height) continue;
-            int i = y * _grid.Width + x;
-            texels[2 * i] = _grid.Tiles[i];
-            texels[2 * i + 1] = TileAutotile.Variant(_grid, x, y);
+            texels[y * _grid.Width + x] = IndexOf(_grid, x, y);
         }
         _index.Apply(false);
     }
 
+    /// <summary>The owner colours of the current palette (slot 0 is "no owner": grey).</summary>
+    private void SetTeamColours()
+    {
+        if (_material == null) return;
+        var colours = new Vector4[TeamColours + 1];
+        bool linear = QualitySettings.activeColorSpace == ColorSpace.Linear;
+        for (int i = 0; i <= TeamColours; i++)
+        {
+            Color c = PlayerPalette.Of(i - 1);
+            colours[i] = linear ? (Vector4)c.linear : (Vector4)c;
+        }
+        _material.SetVectorArray("_TeamColors", colours);
+    }
+
     private void OnDestroy()
     {
+        Palettes.Changed -= SetTeamColours;
         if (_index != null) Destroy(_index);
         if (_material != null) Destroy(_material);
         if (_mesh != null) Destroy(_mesh);

@@ -3,14 +3,15 @@ using UnityEngine;
 using WAR2D.Art;
 
 /// <summary>
-/// Client-only effects from the <c>Effects</c> atlas: explosions, muzzle flashes and tracers. Each kind has a
+/// Client-only effects from the <c>Effects</c> atlas: explosions, bomb blasts, muzzle flashes, tracers, dig
+/// debris and repair sparks. Each kind has a
 /// fixed pool of sprites made once (no allocation per effect after warm-up); when a pool is full the oldest
 /// effect is recycled. A runner object advances the frames at <see cref="ArtStyle.FramesPerSecond"/>.
 /// </summary>
 public static class Effects
 {
     /// <summary>Pool sizes: the most of each kind on screen at once.</summary>
-    public const int ExplosionPool = 128, FlashPool = 128, TracerPool = 256;
+    public const int ExplosionPool = 128, FlashPool = 128, TracerPool = 256, BlastPool = 16, DebrisPool = 64, SparkPool = 64;
 
     /// <summary>Seconds a tracer takes to reach its target.</summary>
     public const float TracerSeconds = 0.2f;
@@ -39,6 +40,9 @@ public static class Effects
     private static readonly Pool Explosions = new Pool("Explosion", ExplosionPool);
     private static readonly Pool Flashes = new Pool("MuzzleFlash", FlashPool);
     private static readonly Pool Tracers = new Pool("Tracer", TracerPool);
+    private static readonly Pool Blasts = new Pool("BombBlast", BlastPool);
+    private static readonly Pool Debris = new Pool("DigDebris", DebrisPool);
+    private static readonly Pool Sparks = new Pool("RepairSparks", SparkPool);
     private static Runner runner;
     private static ArtAtlas atlas;
 
@@ -55,6 +59,33 @@ public static class Effects
         if (s == null) return;
         s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
         WAR2D.Audio.AudioService.Sfx("explosion_small", position);
+    }
+
+    /// <summary>A bomb going off at <paramref name="position"/> (3 × 3 tiles of blast).</summary>
+    public static void BombBlast(Vector2 position)
+    {
+        Slot s = Take(Blasts);
+        if (s == null) return;
+        s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
+        WAR2D.Audio.AudioService.Sfx("bomb_blast", position);
+    }
+
+    /// <summary>Rock breaking where a tile was dug out (or a wall fell), centred on the tile.</summary>
+    public static void DigDebris(Vector2 position)
+    {
+        Slot s = Take(Debris);
+        if (s == null) return;
+        s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
+        WAR2D.Audio.AudioService.Sfx("dig", position);
+    }
+
+    /// <summary>Sparks on a building being repaired.</summary>
+    public static void RepairSparks(Vector2 position)
+    {
+        Slot s = Take(Sparks);
+        if (s == null) return;
+        s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
+        WAR2D.Audio.AudioService.Sfx("repair", position);
     }
 
     /// <summary>A muzzle flash at <paramref name="position"/>.</summary>
@@ -98,7 +129,7 @@ public static class Effects
     {
         runner = null;
         Created = 0;
-        foreach (Pool p in new[] { Explosions, Flashes, Tracers })
+        foreach (Pool p in new[] { Explosions, Flashes, Tracers, Blasts, Debris, Sparks })
         {
             p.Slots.Clear();
             p.Next = 0;
@@ -156,6 +187,9 @@ public static class Effects
             Animate(Explosions, now, false);
             Animate(Flashes, now, false);
             Animate(Tracers, now, true);
+            Animate(Blasts, now, false);
+            Animate(Debris, now, false);
+            Animate(Sparks, now, false);
         }
 
         private static void Animate(Pool pool, float now, bool tracer)

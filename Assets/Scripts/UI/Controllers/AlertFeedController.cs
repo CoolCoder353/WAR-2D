@@ -44,8 +44,8 @@ namespace WAR2D.UI
 
         private static string StripeClass(AlertKind kind) => kind switch
         {
-            AlertKind.UnderAttack or AlertKind.BombTriggered or AlertKind.EnemySpotted => "alert__stripe--danger",
-            AlertKind.UpkeepUnpaid => "alert__stripe--warning",
+            AlertKind.UnderAttack or AlertKind.EnemySpotted => "alert__stripe--danger",
+            AlertKind.UpkeepUnpaid or AlertKind.BombTriggered or AlertKind.RepairsStopped => "alert__stripe--warning",
             AlertKind.GiftReceived or AlertKind.ConstructionFinished => "alert__stripe--success",
             _ => "alert__stripe--accent",
         };

@@ -1,0 +1,11 @@
+{
+  "wave": "Sine",
+  "sustain": 0.04,
+  "decay": 0.45,
+  "frequency": 1320,
+  "vibratoDepth": 0.04,
+  "vibratoSpeed": 14,
+  "lowPass": 0.9,
+  "volume": 0.4,
+  "seed": 22
+}

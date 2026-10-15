@@ -201,8 +201,13 @@ namespace WAR2D.Sim
                 else if (state == WallStates.Built)
                 {
                     float budget = context.BudgetOf != null ? context.BudgetOf(work.OwnerId) : float.MaxValue;
-                    float restore = ConstructionRules.AffordableRepair(work.Amount, data.WallMaxHealth - data.WallHealth[work.Tile], data.RepairCostPerHealth, budget);
-                    if (restore <= 0f) continue;
+                    float missing = data.WallMaxHealth - data.WallHealth[work.Tile];
+                    float restore = ConstructionRules.AffordableRepair(work.Amount, missing, data.RepairCostPerHealth, budget);
+                    if (restore <= 0f)
+                    {
+                        if (missing > 0f && work.Amount > 0f) context.RaiseRepairStalled(work.OwnerId, new int2(work.Tile % data.Width, work.Tile / data.Width));
+                        continue;
+                    }
                     data.WallHealth[work.Tile] += restore;
                     context.Spend?.Invoke(work.OwnerId, restore * data.RepairCostPerHealth);
                 }
@@ -234,8 +239,13 @@ namespace WAR2D.Sim
                 HealthComponent health = EntityManager.GetComponentData<HealthComponent>(target);
                 if (health.currentHealth <= 0f) continue;
                 float budget = context.BudgetOf != null ? context.BudgetOf(repair.Payer) : float.MaxValue;
-                float restore = ConstructionRules.AffordableRepair(repair.Work, health.maxHealth - health.currentHealth, data.RepairCostPerHealth, budget);
-                if (restore <= 0f) continue;
+                float missing = health.maxHealth - health.currentHealth;
+                float restore = ConstructionRules.AffordableRepair(repair.Work, missing, data.RepairCostPerHealth, budget);
+                if (restore <= 0f)
+                {
+                    if (missing > 0f && repair.Work > 0f) context.RaiseRepairStalled(repair.Payer, data.BuildingAnchor[repair.Slot]);
+                    continue;
+                }
                 health.currentHealth = math.min(health.maxHealth, health.currentHealth + restore);
                 EntityManager.SetComponentData(target, health);
                 context.Spend?.Invoke(repair.Payer, restore * data.RepairCostPerHealth);
