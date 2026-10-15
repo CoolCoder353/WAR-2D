@@ -202,6 +202,8 @@ Every stage declares write access to `Unit`, which chains their jobs without a s
 
 ## Networking reference
 
+**Steam (v0.9).** `GameManager` hosts on a `MultiplexTransport` (KCP plus FizzySteamworks); a client picks one child from a `ConnectionRoute` (`steam:<id>` or `host:port`) in `GameManager.Connect`. Direct routes need `-direct`, `-perf` or the editor. `SteamAuthenticator` verifies Steam auth tickets (`SteamAuthSessions`, 10 s timeout) and records the verified id in `SteamIdentity` / `ServerPlayer.SteamId` (server only). The host's Steam lobby (`SteamLobbyService`, metadata keys in `LobbyInfo`) is opened from the menu's Host, kept current from `MenuController.Update`, and left in `GameManager.OnStopServer`. Everything Steam-specific is behind `ISteamBackend`; the real one is `WAR2D.Steam` (define `WAR2D_STEAM`).
+
 ### Client → server (Mirror `[Command]`)
 
 | Command                                                                 | On                  | Purpose                                                                                           | Budget (burst, /s) | Validation                                                                                                                                                                                                                                                                                                             |

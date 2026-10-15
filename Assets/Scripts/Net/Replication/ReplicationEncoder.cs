@@ -401,8 +401,12 @@ namespace WAR2D.Net.Replication
             return count;
         }
 
-        private byte HealthByte(int slot) =>
-            (byte)math.round(math.saturate(Input.Health[slot] / math.max(1f, Input.MaxHealth[slot])) * 100f);
+        private byte HealthByte(int slot)
+        {
+            float fraction = math.saturate(Input.Health[slot] / math.max(1f, Input.MaxHealth[slot]));
+            byte percent = (byte)math.round(fraction * 100f);
+            return percent == 0 && fraction > 0f ? (byte)1 : percent; // 0 is reserved for dead, never a living sliver
+        }
 
         private void SortLeaves()
         {

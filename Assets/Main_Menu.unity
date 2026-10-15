@@ -577,6 +577,8 @@ GameObject:
   - component: {fileID: 1257436563}
   - component: {fileID: 1257436561}
   - component: {fileID: 1257436562}
+  - component: {fileID: 1257436565}
+  - component: {fileID: 1257436566}
   m_Layer: 0
   m_Name: Game Manager
   m_TagString: Untagged
@@ -674,6 +676,7 @@ MonoBehaviour:
   transports:
   - {fileID: 1257436561}
   - {fileID: 1257436562}
+  - {fileID: 1257436565}
 --- !u!114 &1257436564
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -699,7 +702,7 @@ MonoBehaviour:
   maxConnections: 100
   disconnectInactiveConnections: 0
   disconnectInactiveTimeout: 60
-  authenticator: {fileID: 0}
+  authenticator: {fileID: 1257436566}
   playerPrefab: {fileID: 8563563544802335614, guid: c867b584e82a8a4478aaa210bd9d8e72,
     type: 3}
   autoCreatePlayer: 1
@@ -720,6 +723,42 @@ MonoBehaviour:
   evaluationMethod: 0
   evaluationInterval: 3
   timeInterpolationGui: 0
+  directTransport: {fileID: 0}
+  steamTransport: {fileID: 0}
+--- !u!114 &1257436565
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1257436558}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e6e55fca1f4e4844593a3dd65a3ecb39, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: FizzySteamworks::Mirror.FizzySteam.FizzySteamworks
+  Channels: 0200000001000000
+  Timeout: 25
+  AllowSteamRelay: 1
+  UseNextGenSteamNetworking: 1
+--- !u!114 &1257436566
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1257436558}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 74cc7ffd4c88da6dcb60121d7d118ca4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: WAR2D::WAR2D.Net.Steam.SteamAuthenticator
+  OnServerAuthenticated:
+    m_PersistentCalls:
+      m_Calls: []
+  OnClientAuthenticated:
+    m_PersistentCalls:
+      m_Calls: []
 --- !u!1 &1566362404
 GameObject:
   m_ObjectHideFlags: 0

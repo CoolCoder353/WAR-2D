@@ -6,6 +6,9 @@ public class ServerPlayer
     public NetworkConnectionToClient connection;
     public PlayerState state = PlayerState.Playing;
 
+    /// <summary>Verified Steam ID, 0 for a Direct connection. Server only; never sent to clients.</summary>
+    public ulong SteamId;
+
     public float Resources { get; private set; }
 
     /// <summary>Resources earned (passive and mining) during the last whole second.</summary>

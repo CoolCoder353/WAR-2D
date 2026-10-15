@@ -50,10 +50,10 @@ namespace WAR2D.Audio
             if (cam == null) return;
             float h = cam.orthographicSize * 2f, w = h * cam.aspect;
             var view = new Rect((Vector2)cam.transform.position - new Vector2(w, h) * 0.5f, new Vector2(w, h));
+            AudioClip clip = Clip(id);
+            if (clip == null) return; // a missing clip must not claim (and burn) a voice
             int voice = s.pool.Claim(id, position, view, Time.unscaledTime);
             if (voice < 0) return;
-            AudioClip clip = Clip(id);
-            if (clip == null) return;
             s.voices[voice].PlayOneShot(clip, SfxVoicePool.Volume(position, view));
         }
 

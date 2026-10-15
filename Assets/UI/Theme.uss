@@ -293,13 +293,26 @@
 .menu-button { width: 240px; height: 35px; margin-bottom: var(--space-2); }
 
 /* Play (host or join) */
-.play-panel { width: 440px; }
+.play-panel { width: 560px; }
 .play-panel__content { padding: 20px; }
 .play-panel__content > * { margin-bottom: var(--space-3); }
 .play-panel__heading { font-size: var(--font-size-16); -unity-font-style: normal; padding: 0; }
 .play-panel__state { display: none; }
 .play-panel__state--visible { display: flex; }
 .play-panel .text--secondary { padding: 0; }
+.play-panel__section { display: flex; }
+.play-panel__section > * { margin-bottom: var(--space-3); }
+.play-panel__header { justify-content: space-between; }
+.play-panel__grow { flex-grow: 1; }
+.play-panel__list > * { margin-bottom: var(--space-2); }
+.play-panel__toggle { align-self: flex-start; }
+.game-row { background-color: var(--color-surface-raised); border-width: 1px; border-color: var(--color-border); padding: 8px 12px; align-items: center; }
+.game-row__name { flex-grow: 1; }
+.game-row__meta { color: var(--color-text-secondary); }
+.play-panel__notice { display: none; padding: 12px; border-width: 1px; border-color: var(--color-border); background-color: var(--color-surface-base); white-space: normal; }
+.play-panel__notice--visible { display: flex; }
+.play-panel__notice--warning { border-width: 2px; border-color: var(--color-warning); color: var(--color-warning); }
+.play-panel__notice--danger { border-width: 2px; border-color: var(--color-danger); color: var(--color-danger); }
 
 /* Lobby */
 .lobby { background-color: var(--color-surface-base); }

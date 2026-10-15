@@ -49,7 +49,7 @@ namespace WAR2D.World
                 throw new ArgumentOutOfRangeException(nameof(size), size, $"a generated map must be at least {MinSize} tiles across");
 
             var map = new GenMap(size, new NativeArray<byte>(size * size, allocator, NativeArrayOptions.UninitializedMemory));
-            var rng = new Random(seed);
+            var rng = new Random(seed == 0 ? 1u : seed); // Unity.Mathematics.Random rejects a zero seed
 
             // 1. The interior at 45 % rock; the border ring starts as rock too and becomes Border last.
             for (int i = 0; i < map.Tiles.Length; i++) map.Tiles[i] = Rock;

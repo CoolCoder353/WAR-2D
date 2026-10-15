@@ -1,3 +1,7 @@
+# Playtesting
+
+> **v0.9 (Steam):** host with Play -> Host; friends join through Steam (lobby browser and invites; UI pending Figma approval) or by `steam:<hostSteamId>` in the join field. Release builds accept the old IP join only with `-direct`; `-noSteam` runs without Steam. Logs: Linux `~/.config/unity3d/<company>/<product>/Player.log`, Windows `%USERPROFILE%\AppData\LocalLow\<company>\<product>\Player.log`. Rich presence needs the `#Status` token in the Steamworks dashboard. The sections below describe Direct play (advanced).
+
 # External playtesting (until v0.9)
 
 How to play WAR-2D with people on other networks before Steam arrives. v0.9 replaces all of this with Steam lobbies and Steam's relay, so nobody will need to open ports.

@@ -1,6 +1,43 @@
 # Bug Review
 
-Code-review findings for WAR-2D, newest sections last. The first review (2026-10-14) audited `Assets/Scripts/` (Sim, Net, Systems, Rules, World, Client, UI, Config, Audio, Pathing) plus `GameCore` / `GameManager` / `WorldStateManager`, read-only. The second scan (same day) re-audited the unit system specifically: spawn, orders, movement, combat, upkeep, selection, replication/prediction and rendering. The third scan (same day) diagnosed playtest reports of stuck pathfinding. The fourth scan (same day) diagnosed playtest reports of snappy unit movement. The fifth scan (same day) diagnosed playtest reports of friend joins failing from the Play screen. Nothing here is fixed yet; each item names where to fix it. When an item is fixed, move it to [known-issues.md](known-issues.md) (fixed row) or delete it here.
+Findings from an outside code review (2026-10-14), triaged against the code on 2026-10-15. The review was not taken as fact: each finding was traced in the source. Confirmed bugs are fixed (and logged in [known-issues.md](known-issues.md)); the rest are listed below with why they were not changed.
+
+## Triage (2026-10-15)
+
+### Confirmed and fixed
+
+| Finding | Fix |
+| --- | --- |
+| Join from the Play screen silently did nothing while a client was already active, leaving the UI on "Connecting" (fifth scan). | `GameManager.Connect` stops a lingering client before connecting (and refuses while hosting). |
+| `AudioService.Sfx` claimed a voice before checking the clip exists. | The clip is loaded first. |
+| `MinimapTexture.PlotUnit` / `PlotBuilding` dereferenced a null fog array after `Begin(null)`. | Both return when there is no fog. |
+| `MapGenerator.Generate` threw on seed `0` (`Unity.Mathematics.Random`). | Seed `0` maps to `1`. |
+| Tracers from an attacker the client does not know drew from the origin. | `FireTracers` skips unknown attackers. |
+| A living unit under 0.5 % health replicated as `0` (dead). | `HealthByte` reserves `0` for dead; the living send at least `1`. |
+
+### Not a bug (checked, no change)
+
+- **Null `sender.identity` in `TryActingOwner`, `TryChangeDiplomacy`, `TryAddBuilding`:** every `[Command]` calls `CommandGate.Allow` first, which returns false for a null connection or `conn.identity == null`.
+- **Snapshot pacing blocks all new units at `MaxEntersPerBuild == 0`:** `InterestSets` maps `0` to `int.MaxValue`, and `ReplicationService` sets it to at least 64.
+- **`VisionInterval` of 0:** the config parser enforces `min: 1` and `SimData` applies `math.max(1, ...)`.
+- **Units past the global `Capacity` leak:** `Capacity` equals the id allocator's capacity, and `Allocate` throws at exhaustion, so `Spawn` refuses first.
+- **`NaN` / `Infinity` costs:** `ConfigParser.Float` rejects both; gifts are validated separately.
+- **`CommandGate` leak:** `Forget` is called on both disconnect paths (`GameManager`, `GameCore`).
+- **Multi-spawner commands unbounded:** `CmdChangeQueues` and `CmdSetRally` both refuse over `MaxSpawnersPerCommand`.
+- **`moversByClass` size class:** `SizeClass` is parsed with `max: 1`.
+- **Spawn position unvalidated:** only `DevSpawnUnit` passes a free position, and it is gated by `DevApi.Allowed`.
+- **`IsRightAngle` exact equality:** placement rotation is a canonical value from the client; rejecting `89.9999` is correct.
+- **`::1:7778` taken as a host:** that string is a valid bare IPv6 address, so it is ambiguous by nature; bracket syntax is supported.
+- **Arrival radius grows with unit count (third scan):** it now scales with the square root of the followers, not linearly (`SimMovementSystem`).
+- **Stale `joiningAddress` after cancel (fifth scan):** the cancel handler clears it and `Join` resets `wasConnected`.
+- **Snappy movement (fourth scan):** presentation tuning (render delay, blend time, facing slew), not a defect. The described "snap per batch" does not match the code (units are predicted along their routes and drawn through a blend). Revisit as a polish task if playtests still report it.
+- **Steering straight at the goal until a flow field is ready (third scan):** real, but the wait is one to a few ticks, not a second; it needs a design decision (hold or route-first-waypoint), not a bug fix. A stuck detector is a feature, not a fix.
+
+### Still open (valid, low priority)
+
+Squad counts going stale between 2 s pushes, `ClientBuildings.SetHealth` without a clamp, an embedded unit when a footprint search finds no free tile, no HUD feedback for snapped goals or a full waypoint queue, `Shift` shared by `QueueModifier` and `AppendModifier`, and the other low / hardening bullets below. The original findings follow unedited.
+
+---
 
 ## First review (2026-10-14): general
 

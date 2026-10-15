@@ -1,3 +1,4 @@
+using System.Linq;
 using Config;
 using Mirror;
 using UnityEngine;
@@ -27,6 +28,8 @@ namespace WAR2D.UI
         private VisualElement root;
         private readonly MapPreview preview = new MapPreview();
         private bool wantsPlay;
+        private LobbyListController list;
+        private WAR2D.Net.Steam.SteamJoinFlow joinFlow;
         private string joiningAddress;
         private bool wasConnected;
         private float lobbyTimer;
@@ -50,20 +53,51 @@ namespace WAR2D.UI
             Palettes.ApplyTo(root);
             Palettes.Changed += ApplyPalette;
             root.Query<TemplateContainer>().ForEach(t => t.pickingMode = PickingMode.Ignore);
-            mainScreen = root.Q("main-menu");
-            playScreen = root.Q("host-join");
-            lobbyScreen = root.Q("lobby");
+            VisualElement GetScreen(string instanceName, string innerName)
+            {
+                TemplateContainer instance = root.Q<TemplateContainer>(instanceName);
+                if (instance != null && instance.contentContainer != null)
+                {
+                    VisualElement inner = instance.contentContainer.Q<VisualElement>(innerName);
+                    if (inner != null) return inner;
+                }
+                return root.Q<VisualElement>(innerName) ?? root.Q<VisualElement>(instanceName);
+            }
+
+            mainScreen = GetScreen("main-menu-instance", "main-menu");
+            playScreen = GetScreen("host-join-instance", "host-join");
+            lobbyScreen = GetScreen("lobby-instance", "lobby");
+            if (mainScreen == null || playScreen == null || lobbyScreen == null)
+            {
+                Debug.LogError($"MenuController: failed to bind UI screens. root={root.name}; main={mainScreen != null}; play={playScreen != null}; lobby={lobbyScreen != null}; childNames={string.Join(", ", root.Children().Select(c => c.name))}");
+            }
+            else
+            {
+                Debug.Log($"MenuController: bound screens main={mainScreen.name}, play={playScreen.name}, lobby={lobbyScreen.name}");
+            }
 
             main = new MainMenuController(root);
-            main.PlayClicked += () => wantsPlay = true;
+            main.PlayClicked += () => { wantsPlay = true; Show(Screen.Play); };
             settings = new SettingsController(root);
             main.SettingsClicked += () => { settings.Open(); SettingsRequested?.Invoke(); };
             main.QuitClicked += () => GameManager.Instance?.QuitGame();
 
             play = new HostJoinController(root);
-            play.BackClicked += () => { wantsPlay = false; play.ShowIdle(); };
+            play.BackClicked += () => { wantsPlay = false; play.ShowIdle(); Show(Screen.Main); };
             play.HostClicked += Host;
             play.JoinClicked += Join;
+            play.SetDirectAvailable(GameManager.DirectAllowed);
+            play.SetDirectExpanded(!WAR2D.Net.Steam.SteamServices.Available);
+            joinFlow = new WAR2D.Net.Steam.SteamJoinFlow(WAR2D.Net.Steam.SteamServices.Backend);
+            list = new LobbyListController(play, joinFlow);
+            list.RouteChosen += JoinRoute;
+            if (WAR2D.Net.Steam.SteamServices.Available)
+                joinFlow.ListenForInvites(lobbyId =>
+                {
+                    if (NetworkClient.active || NetworkServer.active) { Debug.Log("[Steam] invite ignored: already in a game."); return; }
+                    wantsPlay = true;
+                    list.Join(lobbyId, "your friend");
+                });
             play.CancelClicked += () => { joiningAddress = null; GameManager.Instance?.StopClient(); play.ShowIdle(); };
 
             GameConfigData config = ConfigLoader.LoadConfig();
@@ -77,6 +111,7 @@ namespace WAR2D.UI
             lobby.HostTeamClicked += (owner, team) => GameCore.Instance?.Cmd_SetTeam((uint)owner, team);
             lobby.ReadyClicked += r => GameCore.Instance?.Cmd_SetReady(r);
             lobby.StartClicked += () => GameCore.Instance?.Cmd_StartGame();
+            lobby.InviteClicked += WAR2D.Net.Steam.SteamHostLobby.OpenInvite;
             lobby.LeaveClicked += () => { wantsPlay = true; GameManager.Instance?.LeaveLobby(); };
             Show(Screen.Main);
         }
@@ -86,6 +121,7 @@ namespace WAR2D.UI
         private void OnDisable()
         {
             Palettes.Changed -= ApplyPalette;
+            joinFlow?.StopListening();
             settings?.Dispose();
             lobby?.Dispose();
             preview.Dispose();
@@ -99,7 +135,9 @@ namespace WAR2D.UI
             if (manager == null) return;
             manager.HostServer();
             // Open the port on the router so players on other networks can join (external playtests).
-            if (NetworkServer.active) HostReachability.Start(manager.DefaultPort);
+            if (NetworkServer.active && !WAR2D.Net.Steam.SteamServices.Available) HostReachability.Start(manager.DefaultPort);
+            if (NetworkServer.active && GameCore.Instance != null)
+                WAR2D.Net.Steam.SteamHostLobby.Open(MenuModel.Nickname, GameCore.Instance.Settings, 1);
         }
 
         private void Join(string address)
@@ -111,8 +149,19 @@ namespace WAR2D.UI
             GameManager.Instance?.ConnectToServer(address);
         }
 
+        private void JoinRoute(WAR2D.Net.Steam.ConnectionRoute route, string label)
+        {
+            MenuBattle.Instance?.TearDown();
+            joiningAddress = route.ToString();
+            wasConnected = false;
+            play.ShowConnecting(label);
+            GameManager.Instance?.Connect(route);
+        }
+
         private void Update()
         {
+            if (playScreen.ClassListContains("menu-screen--visible") && !NetworkClient.active) list.Tick(Time.unscaledDeltaTime);
+            lobby.SetInviteVisible(NetworkServer.active && WAR2D.Net.Steam.SteamHostLobby.CanInvite);
             bool connected = NetworkClient.isConnected;
             if (connected) wasConnected = true;
 
@@ -126,7 +175,10 @@ namespace WAR2D.UI
             }
 
             GameCore core = GameCore.Instance;
+            if (core != null && NetworkServer.active)
+                WAR2D.Net.Steam.SteamHostLobby.Current?.Update(core.CurrentState, core.Settings, NetworkServer.connections.Count);
             bool inLobby = connected && core != null && core.CurrentState == GameState.Lobby && NetworkClient.localPlayer != null;
+            bool inMatch = connected && core != null && core.CurrentState != GameState.Lobby;
             if (inLobby)
             {
                 joiningAddress = null;
@@ -146,12 +198,22 @@ namespace WAR2D.UI
                 }
                 Show(Screen.Lobby);
             }
-            else if (connected || (NetworkClient.active && joiningAddress == null)) Show(Screen.None); // starting or leaving a match
-            else Show(wantsPlay || joiningAddress != null ? Screen.Play : Screen.Main);
+            else if (inMatch) Show(Screen.None); // actual match flow; hide menu overlays
+            else if (wantsPlay || joiningAddress != null) Show(Screen.Play);
+            else Show(Screen.Main);
         }
 
         private void Show(Screen screen)
         {
+            if (mainScreen == null || playScreen == null || lobbyScreen == null)
+            {
+                Debug.LogError($"MenuController: cannot show screen {screen}; some menu elements are null. main={mainScreen != null}; play={playScreen != null}; lobby={lobbyScreen != null}");
+                return;
+            }
+
+            string joinValue = joiningAddress ?? "<null>";
+            string coreState = GameCore.Instance != null ? GameCore.Instance.CurrentState.ToString() : "<null>";
+            Debug.Log($"MenuController: changing screen to {screen} (wantsPlay={wantsPlay}, joiningAddress={joinValue}, connected={NetworkClient.isConnected}, active={NetworkClient.active}, coreState={coreState})");
             mainScreen.EnableInClassList("menu-screen--visible", screen == Screen.Main);
             playScreen.EnableInClassList("menu-screen--visible", screen == Screen.Play);
             lobbyScreen.EnableInClassList("menu-screen--visible", screen == Screen.Lobby);

@@ -40,6 +40,14 @@ namespace WAR2D.UI
         /// <summary>The local player readied up (true) or cancelled (false).</summary>
         public event Action<bool> ReadyClicked;
 
+        private readonly Button invite;
+
+        /// <summary>The host pressed Invite friends.</summary>
+        public event Action InviteClicked;
+
+        /// <summary>Shows or hides Invite friends (only a host with a Steam lobby has it).</summary>
+        public void SetInviteVisible(bool visible) => invite.EnableInClassList("hidden", !visible);
+
         public LobbyController(VisualElement root, LobbyModel model, MapPreview preview, LobbyConfig lobby, Func<string> hostAddress)
         {
             this.model = model;
@@ -68,6 +76,8 @@ namespace WAR2D.UI
             reroll.clicked += () => RerollClicked?.Invoke();
             start.clicked += () => StartClicked?.Invoke();
             root.Q<Button>("leave-button").clicked += () => LeaveClicked?.Invoke();
+            invite = root.Q<Button>("invite-button");
+            invite.clicked += () => InviteClicked?.Invoke();
             ready.clicked += () => ReadyClicked?.Invoke(!model.Local.Ready);
             seed.RegisterCallback<FocusOutEvent>(_ => SubmitSeed());
             seed.RegisterCallback<KeyDownEvent>(e =>

@@ -38,6 +38,8 @@ public class GameManager : NetworkManager
         // If an instance of GameManager already exists, destroy this one and return
         if (Instance != null)
         {
+            // The scene's duplicate: keep its transports (Fizzy schedules Steam work in OnEnable) from starting.
+            foreach (Transport t in GetComponents<Transport>()) { t.CancelInvoke(); t.enabled = false; }
             Destroy(this);
             return;
         }
@@ -53,6 +55,26 @@ public class GameManager : NetworkManager
         headlessStartMode = HeadlessStartOptions.DoNothing;
 
         if (transport is PortTransport scenePort && scenePort.Port != 0) DefaultPort = scenePort.Port;
+
+        // The host listens on the multiplexer (KCP and Steam); a client picks one child by route.
+        hostTransport = transport;
+        if (transport is MultiplexTransport mux && mux.transports != null)
+            foreach (Transport child in mux.transports)
+            {
+                if (child == null) continue;
+                if (child.GetType().Name == "FizzySteamworks") { if (steamTransport == null) steamTransport = child; }
+                else if (directTransport == null) directTransport = child;
+            }
+        // Without Steam (not running, -noSteam, tests) the Steam transport would throw on start: host on KCP only.
+        if (!WAR2D.Net.Steam.SteamServices.Available && transport is MultiplexTransport plain && steamTransport != null)
+        {
+            var kept = new List<Transport>(plain.transports);
+            kept.Remove(steamTransport);
+            plain.transports = kept.ToArray();
+            steamTransport.CancelInvoke(); // Fizzy schedules its relay init in OnEnable
+            steamTransport.enabled = false;
+            steamTransport = null;
+        }
 
         // Load Game Config
         Config.ConfigLoader.LoadConfig();
@@ -103,6 +125,7 @@ public class GameManager : NetworkManager
     public override void OnStopServer()
     {
         WAR2D.Net.HostReachability.Stop(false);
+        WAR2D.Net.Steam.SteamHostLobby.Close();
         base.OnStopServer();
     }
 
@@ -163,6 +186,9 @@ public class GameManager : NetworkManager
         Debug.Log($"Player {conn.connectionId} has disconnected");
 
 
+
+        if (WAR2D.Net.Steam.SteamIdentity.TryGet(conn.connectionId, out ulong steamId)) WAR2D.Net.Steam.SteamServices.Backend?.EndAuthSession(steamId);
+        WAR2D.Net.Steam.SteamIdentity.Forget(conn.connectionId);
 
         base.OnServerDisconnect(conn);
     }
@@ -260,6 +286,34 @@ public class GameManager : NetworkManager
 #endif
     }
 
+    /// <summary>How this client reached (or is reaching) its host.</summary>
+    public WAR2D.Net.Steam.ConnectionRoute ActiveRoute { get; private set; }
+
+    /// <summary>The KCP and Steam children of the multiplexer (found in Awake unless assigned); the host listens on both.</summary>
+    [SerializeField] private Transport directTransport, steamTransport;
+
+    private Transport hostTransport;
+
+    /// <summary>Whether a route may be used right now: Steam routes need Steam, Direct routes need <c>-direct</c> (or the editor / dev API).</summary>
+    internal static bool CanConnect(WAR2D.Net.Steam.ConnectionRoute route, bool steamAvailable, bool directAllowed, out string why)
+    {
+        why = null;
+        if (route.Kind == WAR2D.Net.Steam.RouteKind.Steam && !steamAvailable) { why = "Steam is not running."; return false; }
+        if (route.Kind == WAR2D.Net.Steam.RouteKind.Direct && !directAllowed) { why = "Direct connections are off in this build; start the game with -direct."; return false; }
+        return true;
+    }
+
+    /// <summary>Whether Direct (KCP, no Steam sign-in) play is on in this process.</summary>
+    internal static bool DirectAllowed => WAR2D.Net.Steam.SteamAuthPolicy.DirectAllowed(
+        Application.isEditor, DevApi.Allowed, System.Environment.GetCommandLineArgs());
+
+    private void UseTransport(Transport t)
+    {
+        if (t == null) return; // single-transport scenes (tests): leave the configured one
+        transport = t;
+        Transport.active = t;
+    }
+
     /// <summary>
     /// Starts hosting a server.
     /// </summary>
@@ -272,6 +326,8 @@ public class GameManager : NetworkManager
         }
         if (!NetworkClient.active)
         {
+            UseTransport(hostTransport); // a previous join may have picked one child
+            ActiveRoute = default;
             SetPort(DefaultPort); // a previous join may have used another port
             StartHost();
         }
@@ -285,17 +341,37 @@ public class GameManager : NetworkManager
     /// <param name="address">The address to connect to.</param>
     public void ConnectToServer(string address)
     {
-        if (!WAR2D.Net.JoinAddress.TryParse(address, DefaultPort, out string host, out ushort port))
+        if (!WAR2D.Net.Steam.ConnectionRoute.TryParse(address, DefaultPort, out WAR2D.Net.Steam.ConnectionRoute route))
         {
-            Debug.LogWarning($"Not a server address: '{address}'. Enter a host, or host:port.");
+            Debug.LogWarning($"Not a server address: '{address}'. Enter a host, host:port, or steam:<id>.");
             return;
         }
-        if (!NetworkClient.active)
+        Connect(route);
+    }
+
+    /// <summary>Connects to a host by route: a Steam host over the relay, or an address over KCP.</summary>
+    public void Connect(WAR2D.Net.Steam.ConnectionRoute route)
+    {
+        if (!CanConnect(route, WAR2D.Net.Steam.SteamServices.Available, DirectAllowed, out string why))
         {
-            networkAddress = host;
-            SetPort(port);
-            StartClient();
+            Debug.LogWarning($"Not connecting to {route}: {why}");
+            return;
         }
+        if (NetworkServer.active) return; // hosting: there is nothing to join
+        if (NetworkClient.active) StopClient(); // a lingering connection must not swallow this join
+        ActiveRoute = route;
+        if (route.Kind == WAR2D.Net.Steam.RouteKind.Steam)
+        {
+            UseTransport(steamTransport);
+            networkAddress = route.SteamId.ToString();
+        }
+        else
+        {
+            UseTransport(directTransport);
+            networkAddress = route.Host;
+            SetPort(route.Port);
+        }
+        StartClient();
     }
 
     /// <summary>

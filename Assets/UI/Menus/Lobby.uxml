@@ -58,6 +58,7 @@
             <ui:Button name="leave-button" text="Leave" class="button" />
             <ui:Button name="ready-button" text="Ready" class="button button--primary" />
             <ui:Button name="start-button" text="Start match" class="button button--primary" />
+            <ui:Button name="invite-button" text="Invite friends" class="button hidden" />
             <ui:Label name="lobby-status" text="" class="text lobby__status" />
         </ui:VisualElement>
     </ui:VisualElement>

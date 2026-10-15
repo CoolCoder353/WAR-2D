@@ -80,4 +80,7 @@ public class ServerPlayerTests
         Assert.AreEqual(10f, p.Resources, 1e-4f);
         Assert.AreEqual(0f, p.SpentThisMatch, 1e-4f);
     }
+
+    [Test]
+    public void SteamIdIsZeroByDefault() => Assert.AreEqual(0UL, new ServerPlayer(null, 0f).SteamId);
 }

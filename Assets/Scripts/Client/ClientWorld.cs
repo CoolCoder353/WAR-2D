@@ -316,6 +316,7 @@ namespace WAR2D.Client
             for (int i = start; i < attacks.Count && cam != null; i++)
             {
                 var (attacker, target) = attacks[i];
+                if (!store.IsKnown(attacker)) continue; // an unseen attacker would predict from the origin
                 float2 from = store.PredictOne(attacker, serverTime);
                 Vector3 viewport = cam.WorldToViewportPoint(new Vector3(from.x, from.y, 0));
                 if (viewport.x < 0 || viewport.x > 1 || viewport.y < 0 || viewport.y > 1) continue;
