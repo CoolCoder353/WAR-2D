@@ -178,6 +178,41 @@ namespace WAR2D.Client
                 WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, queue, goal);
         }
 
+        private readonly Dictionary<OrderKind, List<int>> byKind = new Dictionary<OrderKind, List<int>>();
+
+        /// <summary>
+        /// Gives each selected unit the order <paramref name="kindOf"/> picks for it (v0.7: Builders build, Diggers
+        /// dig, the rest move): the plain <see cref="Order"/> when they all take the same one, else one chunked
+        /// order per kind.
+        /// </summary>
+        public void OrderEach(Func<int, OrderKind> kindOf, bool queue, int2 goal)
+        {
+            if (selected.Count == 0 || WorldStateManager.Instance == null) return;
+            foreach (List<int> list in byKind.Values) list.Clear();
+            foreach (int id in Sorted())
+            {
+                OrderKind kind = kindOf(id);
+                if (!byKind.TryGetValue(kind, out List<int> ids)) byKind[kind] = ids = new List<int>();
+                ids.Add(id);
+            }
+            int kinds = 0;
+            OrderKind only = OrderKind.Move;
+            foreach (KeyValuePair<OrderKind, List<int>> pair in byKind) if (pair.Value.Count > 0) { kinds++; only = pair.Key; }
+            if (kinds == 1)
+            {
+                Order(only, queue, goal);
+                return;
+            }
+            foreach (KeyValuePair<OrderKind, List<int>> pair in byKind)
+            {
+                if (pair.Value.Count == 0) continue;
+                ushort token = NextToken();
+                List<byte[]> chunks = OrderIdCodec.EncodeChunks(pair.Value);
+                for (int i = 0; i < chunks.Count; i++)
+                    WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)pair.Key, queue, goal);
+            }
+        }
+
         /// <summary>Drops ids the client no longer knows (dead or out of sight).</summary>
         public void Prune()
         {

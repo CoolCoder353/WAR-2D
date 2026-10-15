@@ -66,6 +66,7 @@ public class UnitCommander : NetworkBehaviour
         if (Instance == this)
         {
             UnsubscribeBuildings();
+            wallDrag?.Dispose();
             Instance = null;
         }
     }
@@ -79,13 +80,13 @@ public class UnitCommander : NetworkBehaviour
     }
 
     /// <summary>
-    /// The command card and the order keys share these paths. Move and AttackMove arm the order for the
-    /// next click; Stop and Hold apply to the selection at once.
+    /// The command card and the order keys share these paths. Move, AttackMove, Repair and Dig arm the order
+    /// for the next click; Stop and Hold apply to the selection at once.
     /// </summary>
     [Client]
     public void Order(OrderKind kind)
     {
-        if (kind == OrderKind.Move || kind == OrderKind.AttackMove) Arm(kind);
+        if (kind == OrderKind.Move || kind == OrderKind.AttackMove || kind == OrderKind.Repair || kind == OrderKind.Dig) Arm(kind);
         else
         {
             ArmedOrder = null;
@@ -105,10 +106,142 @@ public class UnitCommander : NetworkBehaviour
         Selection.Order(kind, queue, goal);
     }
 
-    /// <summary>Arms Move or AttackMove for the next click (only with units selected).</summary>
+    /// <summary>Arms an order for the next click (only with units selected; Repair needs Builders, Dig Diggers).</summary>
     private void Arm(OrderKind kind)
     {
-        if (Selection.Selected.Count > 0) ArmedOrder = kind;
+        if (Selection.Selected.Count == 0) return;
+        if (kind == OrderKind.Repair && !SelectionHas(UnitType.Builder)) return;
+        if (kind == OrderKind.Dig && !SelectionHas(UnitType.Digger)) return;
+        CancelWallDrag();
+        ArmedOrder = kind;
+    }
+
+    /// <summary>True when a selected unit is of the type.</summary>
+    private bool SelectionHas(UnitType type)
+    {
+        ClientWorld world = ClientWorld.Instance;
+        if (world == null) return false;
+        foreach (int id in Selection.Selected)
+            if (world.TryGet(id, out ClientUnitView view) && view.Type == type) return true;
+        return false;
+    }
+
+    /// <summary>The type of a selected unit (None when unknown).</summary>
+    private UnitType TypeOf(int id) => ClientWorld.Instance != null && ClientWorld.Instance.TryGet(id, out ClientUnitView view) ? view.Type : UnitType.None;
+
+    /// <summary>
+    /// Sends the selected Builders to build what was just placed at <paramref name="tile"/> (a blueprint's anchor or
+    /// a wall segment); the rest of the selection is left alone. <paramref name="queue"/> queues it behind their job.
+    /// </summary>
+    [Client]
+    public void OrderBuilders(OrderKind kind, int2 tile, bool queue)
+    {
+        if (!SelectionHas(UnitType.Builder) || WorldStateManager.Instance == null) return;
+        var builders = new List<int>();
+        foreach (int id in Selection.Selected) if (TypeOf(id) == UnitType.Builder) builders.Add(id);
+        builders.Sort();
+        ushort token = (ushort)UnityEngine.Random.Range(0, ushort.MaxValue);
+        List<byte[]> chunks = OrderIdCodec.EncodeChunks(builders);
+        for (int i = 0; i < chunks.Count; i++)
+            WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, queue, tile);
+    }
+
+    private WallDrag wallDrag;
+
+    /// <summary>The wall drag (armed by the Wall button), for the HUD's cost readout.</summary>
+    public WallDrag Wall => wallDrag ??= new WallDrag(
+        t => WorldStateManager.Instance != null && WorldStateManager.Instance.Map != null ? WorldStateManager.Instance.Map.Grid.TileAt(t) : TileType.Border,
+        t => picker.TryPick(t, out _),
+        Config.ConfigLoader.LoadConfig().Siege.MaxWallLine);
+
+    /// <summary>Arms the wall drag: the next press on the map starts a line (the command card's Wall button).</summary>
+    [Client]
+    public void BeginWallDrag()
+    {
+        ArmedOrder = null;
+        BuildingPlacement.Instance?.Cancel();
+        Wall.Arm();
+    }
+
+    /// <summary>Drops an armed wall drag. False when none was armed.</summary>
+    [Client]
+    public bool CancelWallDrag() => wallDrag != null && wallDrag.Cancel();
+
+    /// <summary>
+    /// Runs the wall drag for this frame. Press starts the line, the drag re-routes it, release sends
+    /// <c>CmdPlaceWall</c> and gives the selected Builders a Build order per valid tile (the first replaces their
+    /// job unless Shift is held; the rest queue behind it, up to the waypoint limit). Shift keeps the Wall armed;
+    /// right-click cancels. True when the drag used this frame's clicks.
+    /// </summary>
+    private bool UpdateWallDrag()
+    {
+        if (wallDrag == null || !wallDrag.Armed) return false;
+        if (GameInput.Command.WasPressedThisFrame()) { wallDrag.Cancel(); return true; }
+        Vector3 world = GetMouseWorldPosition();
+        int2 tile = (int2)math.floor(new float2(world.x, world.y));
+        if (!wallDrag.Dragging && GameInput.Select.WasPressedThisFrame() && !GameInput.PointerOverUI) wallDrag.Press(tile);
+        if (wallDrag.Dragging) wallDrag.Move(tile, PlayerPalette.Of(localPlayer != null ? localPlayer.colourIndex : -1));
+        if (wallDrag.Dragging && GameInput.Select.WasReleasedThisFrame()) FinishWallDrag(GameInput.QueueModifier.IsPressed());
+        return true;
+    }
+
+    /// <summary>Places the dragged line and orders the Builders onto it; <paramref name="keep"/> (Shift) keeps the Wall armed.</summary>
+    [Client]
+    public void FinishWallDrag(bool keep)
+    {
+        if (wallDrag == null || !wallDrag.Dragging) return;
+        var placed = new List<int2>();
+        for (int i = 0; i < wallDrag.Line.Count; i++) if (wallDrag.IsValid(i)) placed.Add(wallDrag.Line[i]);
+        if (wallDrag.Release(out int2 from, out int2 to) && WorldStateManager.Instance != null)
+        {
+            WorldStateManager.Instance.CmdPlaceWall(from, to);
+            WAR2D.Audio.AudioService.Ui("building_placed");
+            int orders = Mathf.Min(placed.Count, Config.ConfigLoader.LoadConfig().Orders.MaxQueued + 1);
+            for (int i = 0; i < orders; i++) OrderBuilders(OrderKind.Build, placed[i], keep || i > 0);
+        }
+        wallDrag.ClearLine();
+        if (!keep) wallDrag.Cancel();
+    }
+
+    /// <summary>What the local client knows of a tile, for <see cref="ClickOrders"/>.</summary>
+    private ClickTarget TargetAt(int2 tile)
+    {
+        var target = new ClickTarget { Tile = TileType.Border };
+        WorldStateManager wsm = WorldStateManager.Instance;
+        if (wsm == null || wsm.Map == null || !wsm.Map.Grid.Contains(tile)) return target;
+        target.Tile = wsm.Map.Grid.TileAt(tile);
+        int index = wsm.Map.Grid.Index(tile);
+        target.WallOwner = ClientTerrain.Current.WallOwner(index);
+        target.WallHealth = ClientTerrain.Current.WallHealth(index);
+        if (picker.TryPick(tile, out int id) && (subscribedBuildings ?? ClientBuildings.Current).Entries.TryGetValue(id, out ClientBuildings.Entry e) && !e.Ghost)
+        {
+            target.HasBuilding = true;
+            target.BuildingOwner = e.Data.ownerId;
+            target.Blueprint = e.Progress < 100;
+            target.Damaged = e.Health.currentHealth < e.Health.maxHealth;
+        }
+        return target;
+    }
+
+    /// <summary>True for an owner on the local player's attack mask (the only diplomacy row it knows).</summary>
+    private bool IsEnemy(int owner)
+    {
+        GameCore core = GameCore.Instance;
+        if (core == null || localPlayer == null) return true;
+        int slot = core.PlayerOrder.IndexOf(owner);
+        return slot < 0 || (localPlayer.AttackMask & (1 << slot)) != 0;
+    }
+
+    /// <summary>The right-click: each part of the selection takes the order it can there (<see cref="ClickOrders"/>).</summary>
+    private void OrderClick(int2 goal, bool queue)
+    {
+        (OrderKind builders, OrderKind diggers, OrderKind others) = ClickOrders.For(TargetAt(goal), BuildingData.UIntToInt(localPlayer.netId), IsEnemy);
+        Selection.OrderEach(id => TypeOf(id) switch
+        {
+            UnitType.Builder => builders,
+            UnitType.Digger => diggers,
+            _ => others,
+        }, queue, goal);
     }
 
     /// <summary>Selects one of the local player's buildings (others are ignored).</summary>
@@ -177,13 +310,16 @@ public class UnitCommander : NetworkBehaviour
 
 
         if (GameInput.AttackMove.WasPressedThisFrame()) Arm(OrderKind.AttackMove);
+        if (GameInput.Repair.WasPressedThisFrame()) Arm(OrderKind.Repair);
+        if (GameInput.Dig.WasPressedThisFrame()) Arm(OrderKind.Dig);
         if (GameInput.Stop.WasPressedThisFrame()) Order(OrderKind.Stop);
         if (GameInput.Hold.WasPressedThisFrame()) Order(OrderKind.Hold);
 
         // While placing a building, clicks belong to the placement.
         BuildingPlacement placement = BuildingPlacement.Instance;
         bool clickUsed = placement != null && (placement.IsPlacing || placement.ActiveFrame == Time.frameCount);
-        if (clickUsed) ArmedOrder = null;
+        if (clickUsed) { ArmedOrder = null; CancelWallDrag(); }
+        clickUsed |= UpdateWallDrag();
 
         // With an order armed, the next left or right click sends it instead of selecting or moving.
         if (!clickUsed && ArmedOrder.HasValue && (GameInput.Select.WasPressedThisFrame() || GameInput.Command.WasPressedThisFrame()))
@@ -246,10 +382,10 @@ public class UnitCommander : NetworkBehaviour
                 Selection.SelectBox(lo, hi, me, append);
                 if (Selection.Selected.Count == 0)
                 {
-                    // No unit of ours there: a click on one of our spawners selects it (Shift adds or removes it),
+                    // No unit of ours there: a click on one of our buildings selects it (Shift adds or removes a spawner),
                     // and a box selects our spawners inside it, so their queues and rally points act together.
                     if (append) Selection.SelectBuildings(keptBuildings, false);
-                    if (click && TryOwnSpawnerAt(b, me, out BuildingData spawner)) SelectBuilding(spawner, append);
+                    if (click && TryOwnBuildingAt(b, me, out BuildingData building)) SelectBuilding(building, append);
                     else if (!click) Selection.SelectBuildings(OwnSpawnersIn(lo, hi, me), append);
                 }
                 if (click) { lastClickTime = Time.unscaledTime; lastClickAt = b; }
@@ -263,7 +399,7 @@ public class UnitCommander : NetworkBehaviour
             // With only spawners selected, a right-click sets their rally point.
             if (Selection.Selected.Count == 0 && Selection.SelectedBuildings.Count > 0 && AllSpawners(Selection.SelectedBuildings))
                 WorldStateManager.Instance?.CmdSetRally(ToArray(Selection.SelectedBuildings), goal, false);
-            else Selection.Order(OrderKind.Move, GameInput.QueueModifier.IsPressed(), goal);
+            else OrderClick(goal, GameInput.QueueModifier.IsPressed());
         }
 
         for (int squad = 0; squad < WAR2D.Sim.Squads.Count; squad++)
@@ -442,17 +578,17 @@ public class UnitCommander : NetworkBehaviour
         }
     }
 
-    /// <summary>The local player's spawner (seen now, not a ghost) whose footprint holds the world point.</summary>
-    private bool TryOwnSpawnerAt(float2 point, int ownerId, out BuildingData spawner)
+    /// <summary>The local player's building (seen now, not a ghost) whose footprint holds the world point.</summary>
+    private bool TryOwnBuildingAt(float2 point, int ownerId, out BuildingData building)
     {
         if (picker.TryPick((int2)math.floor(point), out int id) &&
             (subscribedBuildings ?? ClientBuildings.Current).Entries.TryGetValue(id, out ClientBuildings.Entry e) &&
-            !e.Ghost && e.Data.ownerId == ownerId && SpawnerRules.IsProducer(e.Data.buildingType))
+            !e.Ghost && e.Data.ownerId == ownerId)
         {
-            spawner = e.Data;
+            building = e.Data;
             return true;
         }
-        spawner = default;
+        building = default;
         return false;
     }
 

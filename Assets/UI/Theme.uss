@@ -167,6 +167,23 @@
 .spectating__body { padding: var(--space-3); }
 .spectating__leave { width: 150px; margin-top: var(--space-2); }
 .production__rally { flex-direction: row; align-items: center; margin-top: var(--space-2); }
+/* v0.7 command card (Figma: Command card – v0.7) */
+.command-button__cost { color: var(--color-readout); }
+.command-button:disabled .command-button__cost { color: var(--color-text-disabled); }
+.command-card__hint { margin-top: var(--space-2); white-space: normal; max-width: 356px; }
+.command-card--builders { width: 380px; }
+.production__unit { width: 56px; }
+.production__cost { width: 32px; color: var(--color-readout); font-size: var(--font-size-12); }
+.removal { display: none; }
+.command-card--building .removal { display: flex; }
+.removal > * { margin-bottom: var(--space-2); }
+.removal__confirm { display: none; padding: var(--space-3); background-color: var(--color-surface-raised); border-width: 1px; border-color: var(--color-danger); }
+.removal__confirm--open { display: flex; }
+.removal__confirm > * { margin-bottom: var(--space-2); }
+.removal__buttons { flex-direction: row; }
+.removal__buttons > * { margin-right: var(--space-2); }
+.wall-readout { position: absolute; padding: 2px var(--space-2); background-color: rgba(0, 0, 0, 0.55); }
+.wall-readout > Label { padding: 0; margin: 0; font-size: var(--font-size-16); }
 .production__rally-icon { width: 16px; height: 16px; margin-right: var(--space-2); flex-shrink: 0; }
 
 /* Selection panel (Figma: Panel / Selection) */

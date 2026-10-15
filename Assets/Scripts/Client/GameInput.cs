@@ -34,6 +34,12 @@ public static class GameInput
     public static InputAction Stop => Map["Stop"];
     /// <summary>Holds the selection in place (H).</summary>
     public static InputAction Hold => Map["Hold"];
+    /// <summary>Arms Repair for Builders: the next click repairs the building or wall there (F).</summary>
+    public static InputAction Repair => Map["Repair"];
+    /// <summary>Arms Dig for Diggers: the next click digs the tile there (G).</summary>
+    public static InputAction Dig => Map["Dig"];
+    /// <summary>Cancels the selected blueprints, or asks to demolish the selected buildings (Delete).</summary>
+    public static InputAction Cancel => Map["Cancel"];
     /// <summary>Held to drag the camera (middle mouse button).</summary>
     public static InputAction DragPan => Map["DragPan"];
     /// <summary>Opens or closes the in-match menu (Esc).</summary>
@@ -115,6 +121,9 @@ public static class GameInput
         map.AddAction("AttackMove", InputActionType.Button, "<Keyboard>/a");
         map.AddAction("Stop", InputActionType.Button, "<Keyboard>/s");
         map.AddAction("Hold", InputActionType.Button, "<Keyboard>/h");
+        map.AddAction("Repair", InputActionType.Button, "<Keyboard>/f");
+        map.AddAction("Dig", InputActionType.Button, "<Keyboard>/g");
+        map.AddAction("Cancel", InputActionType.Button, "<Keyboard>/delete");
         map.AddAction("QueueModifier", InputActionType.Button, "<Keyboard>/shift");
         map.AddAction("Menu", InputActionType.Button, "<Keyboard>/escape");
         map.AddAction("DragPan", InputActionType.Button, "<Mouse>/middleButton");

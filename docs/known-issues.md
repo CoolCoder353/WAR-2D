@@ -129,10 +129,10 @@ Fixed:
 - **Builders kept working for a former ally.** `BuildWorkJob` checked alliance only when the order was given; it now stops a repair when either side attacks the other.
 - **`WorkReach` was hard-coded** (and silently raised Digger reach from 0.6 to 1.6). It is `Siege.WorkReach` in `GameConfig.xml` now.
 - **A new dig job inherited the old tunnel's last tile and progress.** `DigAt` and `DigProgress` reset when a unit's work target changes.
+- **Diggers couldn't be queued from the HUD.** The production buttons queued only the building's first unit type. The command card now has one production row per type the building makes (Figma `Command card – v0.7`).
 
 Open:
 
-- **Diggers can't be queued from the HUD.** The production buttons queue the building's first unit (`SpawnerRules.Produces(...)[0]`), so a Spawner only makes Tanks there. Needs a Figma design for a unit choice. **v0.7**
 - **Terrain replication walks every changed tile.** `ReplicationService.SendTerrain` checks every tile changed since the match started, per client, on each vision tick, so the cost grows with the match. **v0.8**
 - **Client positions creep after Stop.** Stopped units' predicted positions converge on the server's at about 0.15 tiles/s instead of snapping, so `HudTests.CommandCardStopHalts` (0.3 tiles over 1 s) can fail on timing when the prediction overshot when Stop arrived. **v0.8**
 - **The flow-field sector cell size went from 2 to 1** (`OrderBook`), four times the sector fields. Re-run `tools/perf-run.sh` before release. **v0.7**

@@ -75,15 +75,17 @@ namespace WAR2D.UI
             root.Query<TemplateContainer>().ForEach(t => t.pickingMode = PickingMode.Ignore);
 
             GameConfigData config = ConfigLoader.LoadConfig();
-            var costs = new Dictionary<BuildingType, float>
-            {
-                [BuildingType.Miner] = config.GetBuilding(BuildingType.Miner).UpfrontCost,
-                [BuildingType.SmallUnitSpawner] = config.GetBuilding(BuildingType.SmallUnitSpawner).UpfrontCost,
-            };
+            var costs = new Dictionary<BuildingType, float>();
+            foreach (BuildingType type in new[] { BuildingType.Miner, BuildingType.SmallUnitSpawner, BuildingType.Bomb, BuildingType.Radar })
+                costs[type] = config.GetBuilding(type).UpfrontCost;
+            var unitCosts = new Dictionary<UnitType, float>();
+            foreach (UnitType type in new[] { UnitType.Tank, UnitType.Builder, UnitType.Digger })
+                unitCosts[type] = config.GetUnit(type).UpfrontCost;
 
             topBar = new TopBarController(root, Model);
             selectionPanel = new SelectionPanelController(root, Selection);
-            commandCard = new CommandCardController(root, Selection, Model, costs, config.GetBuilding(BuildingType.SmallUnitSpawner).SpawnRate);
+            commandCard = new CommandCardController(root, Selection, Model, costs, unitCosts, config.Siege.WallCost, config.Siege.DemolishRefund,
+                config.GetBuilding(BuildingType.SmallUnitSpawner).SpawnRate);
             squadBar = new SquadBarController(root, Selection);
             overlay = new HudOverlayController(root);
             minimap = new MinimapController(root);
@@ -123,6 +125,8 @@ namespace WAR2D.UI
             commandCard.OrderClicked += OnOrder;
             commandCard.BuildClicked += OnBuild;
             commandCard.QueueClicked += OnQueue;
+            commandCard.WallClicked += OnWall;
+            commandCard.RemoveConfirmed += OnRemove;
             squadBar.SquadClicked += OnSquad;
         }
 
@@ -178,13 +182,17 @@ namespace WAR2D.UI
             Model.PullResources();
             if (GameInput.Menu.WasPressedThisFrame() && !endScreen.IsShown)
             {
-                if (settings.IsOpen) settings.Close();
+                if (commandCard.CloseConfirm()) { }
+                else if (UnitCommander.Instance != null && UnitCommander.Instance.CancelWallDrag()) { }
+                else if (settings.IsOpen) settings.Close();
                 else if (gift.IsOpen) gift.Close();
                 else if (diplomacy.IsOpen) diplomacy.SetOpen(false);
                 else matchMenu.Toggle();
             }
+            if (GameInput.Cancel.WasPressedThisFrame() && !matchMenu.IsOpen) commandCard.RequestRemove();
             matchMenu.SetCanSurrender(root, GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing && !endScreen.IsShown);
             minimap.Update(Time.unscaledDeltaTime);
+            ShowWallReadout();
             Model.PullDiplomacy();
             Alerts.Expire(Time.unscaledTime);
             SubscribeAlerts();
@@ -284,6 +292,40 @@ namespace WAR2D.UI
             spectatingPanel.style.display = show ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
+        private VisualElement wallReadout;
+        private Label wallCost, wallBlocked;
+        private float wallCostPerTile = -1f;
+
+        /// <summary>The wall drag's readout beside the pointer: valid tiles × WallCost, and the blocked tiles.</summary>
+        private void ShowWallReadout()
+        {
+            WAR2D.Client.WallDrag drag = UnitCommander.Instance != null ? UnitCommander.Instance.Wall : null;
+            bool shown = drag != null && drag.Dragging && drag.Line.Count > 0;
+            if (wallReadout == null)
+            {
+                if (!shown) return;
+                wallReadout = new VisualElement { name = "wall-readout", pickingMode = PickingMode.Ignore };
+                wallReadout.AddToClassList("wall-readout");
+                wallCost = new Label { name = "wall-readout-cost" };
+                wallCost.AddToClassList("text--readout");
+                wallBlocked = new Label { name = "wall-readout-blocked" };
+                wallBlocked.AddToClassList("text--danger");
+                wallReadout.Add(wallCost);
+                wallReadout.Add(wallBlocked);
+                root.Add(wallReadout);
+                wallCostPerTile = ConfigLoader.LoadConfig().Siege.WallCost;
+            }
+            wallReadout.style.display = shown ? DisplayStyle.Flex : DisplayStyle.None;
+            if (!shown || root.panel == null) return;
+            wallCost.text = $"{drag.ValidCount} tile{(drag.ValidCount == 1 ? "" : "s")} · {drag.ValidCount * wallCostPerTile:0}";
+            wallBlocked.text = drag.BlockedCount > 0 ? $"{drag.BlockedCount} blocked" : "";
+            wallBlocked.style.display = drag.BlockedCount > 0 ? DisplayStyle.Flex : DisplayStyle.None;
+            Vector2 screen = GameInput.Point.ReadValue<Vector2>();
+            Vector2 at = RuntimePanelUtils.ScreenToPanel(root.panel, new Vector2(screen.x, Screen.height - screen.y));
+            wallReadout.style.left = at.x + 20f;
+            wallReadout.style.top = at.y + 12f;
+        }
+
         private void ApplyPalette() => Palettes.ApplyTo(root);
 
         /// <summary>The settings screen.</summary>
@@ -347,15 +389,28 @@ namespace WAR2D.UI
 
         private void OnBuild(BuildingType type) => BuildingPlacement.Instance?.BeginPlacement(type);
 
-        private void OnQueue(IReadOnlyList<int> buildingIds, int delta)
+        private void OnQueue(IReadOnlyList<int> buildingIds, UnitType unit, int delta)
         {
             WorldStateManager wsm = WorldStateManager.Instance;
             if (wsm == null || buildingIds.Count == 0) return;
-            var ids = new int[buildingIds.Count];
-            for (int i = 0; i < ids.Length; i++) ids[i] = buildingIds[i];
-            UnitType[] produced = SpawnerRules.Produces(Selection.BuildingType);
-            if (produced.Length == 0) return;
-            wsm.CmdChangeQueues(ids, (byte)produced[0], delta);
+            wsm.CmdChangeQueues(ToArray(buildingIds), (byte)unit, delta);
+        }
+
+        private void OnWall() => UnitCommander.Instance?.BeginWallDrag();
+
+        private void OnRemove(IReadOnlyList<int> buildingIds)
+        {
+            if (buildingIds.Count == 0) return;
+            WorldStateManager.Instance?.CmdCancelBuildings(ToArray(buildingIds));
+            UnitCommander.Instance?.Selection.SelectBuildings(System.Array.Empty<int>(), false);
+            Selection.Pull();
+        }
+
+        private static int[] ToArray(IReadOnlyList<int> ids)
+        {
+            var array = new int[ids.Count];
+            for (int i = 0; i < array.Length; i++) array[i] = ids[i];
+            return array;
         }
 
         private void OnSquad(int squad)

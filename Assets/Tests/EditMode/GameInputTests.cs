@@ -17,6 +17,9 @@ public class GameInputTests
     [TestCase("Stop", "<Keyboard>/s")]
     [TestCase("Hold", "<Keyboard>/h")]
     [TestCase("QueueModifier", "<Keyboard>/shift")]
+    [TestCase("Repair", "<Keyboard>/f")]
+    [TestCase("Dig", "<Keyboard>/g")]
+    [TestCase("Cancel", "<Keyboard>/delete")]
     [TestCase("Squad1", "<Keyboard>/1")]
     [TestCase("Squad0", "<Keyboard>/0")]
     public void ActionHasDefaultBinding(string action, string path)
@@ -48,6 +51,15 @@ public class GameInputTests
         {
             GameInput.Map.RemoveAllBindingOverrides();
         }
+    }
+
+    [TestCase("<Keyboard>/f")]
+    [TestCase("<Keyboard>/g")]
+    [TestCase("<Keyboard>/delete")]
+    public void WorkKeysConflictWithNothing(string path)
+    {
+        int users = GameInput.Map.actions.Count(a => a.bindings.Any(b => b.path == path));
+        Assert.That(users, Is.EqualTo(1), path);
     }
 
     [Test]

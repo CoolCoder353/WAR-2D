@@ -131,7 +131,7 @@ public class HudTests
     private static IEnumerator ProduceUnits(VisualElement root, BuildingData spawner, int count)
     {
         UnitCommander.Instance.SelectBuilding(spawner);
-        yield return PlayModeMatch.WaitUntil(() => root.Q<Label>("command-title").text == "Commands: Spawner selected", 5f);
+        yield return PlayModeMatch.WaitUntil(() => root.Q<Label>("command-title").text == "Spawner", 5f);
         for (int i = 0; i < count; i++)
         {
             Click(root.Q<Button>("production-plus"));
@@ -150,7 +150,7 @@ public class HudTests
 
         VisualElement root = HudRoot();
         UnitCommander.Instance.SelectBuilding(spawner);
-        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q<Label>("command-title").text == "Commands: Spawner selected", 5f);
+        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q<Label>("command-title").text == "Spawner", 5f);
         Assert.That(root.Q<Button>("production-minus").enabledSelf, Is.False, "an empty queue can't go lower");
 
         for (int i = 0; i < 3; i++)
@@ -476,5 +476,168 @@ public class HudTests
         GameCore.Instance.Cmd_GiftResources((uint)PlayModeMatch.LocalOwner, 10f);
         yield return new WaitForSeconds(0.5f);
         Assert.That(GameCore.Instance.Stats.Of(PlayModeMatch.LocalOwner).GiftedOut, Is.EqualTo(250f), "more than you have, or to yourself, is refused");
+    }
+
+    // ---------- v0.7 command card ----------
+
+    /// <summary>Hosts a match and waits for the HQ's first Builder (the HQ is finished at placement).</summary>
+    private IEnumerator WithBuilder(System.Action<int> builder)
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        yield return PlayModeMatch.PlaceHQ(null);
+        int hq = 0;
+        yield return PlayModeMatch.WaitUntil(() => TryOwnBuilding(BuildingType.Base, out hq), 10f);
+        WorldStateManager.Instance.CmdChangeQueues(new[] { hq }, (byte)UnitType.Builder, 1);
+        int found = 0;
+        yield return PlayModeMatch.WaitUntil(() =>
+        {
+            foreach (int id in OwnUnits())
+                if (ClientWorld.Instance.TryGet(id, out ClientUnitView v) && v.Type == UnitType.Builder) { found = id; return true; }
+            return false;
+        }, 30f);
+        builder(found);
+    }
+
+    /// <summary>True when the element and every ancestor are displayed.</summary>
+    private static bool Shown(VisualElement e)
+    {
+        for (; e != null; e = e.parent) if (e.resolvedStyle.display == DisplayStyle.None) return false;
+        return true;
+    }
+
+    [UnityTest, Timeout(120000)]
+    public IEnumerator BuilderSelectionShowsTheBuildRow()
+    {
+        int builder = 0;
+        yield return WithBuilder(b => builder = b);
+        VisualElement root = HudRoot();
+        UnitCommander.Instance.Selection.SelectIds(new List<int> { builder });
+        yield return PlayModeMatch.WaitUntil(() => Shown(root.Q<Button>("build-radar")), 5f);
+        foreach (string name in new[] { "build-miner", "build-spawner", "build-wall", "build-bomb", "build-radar", "cmd-repair" })
+            Assert.That(Shown(root.Q<Button>(name)), Is.True, name);
+        Assert.That(Shown(root.Q<Button>("cmd-dig")), Is.False, "no Diggers selected");
+        Assert.That(root.Q<Label>("build-bomb-cost").text, Is.EqualTo(config.GetBuilding(BuildingType.Bomb).UpfrontCost.ToString("0.##")));
+    }
+
+    [UnityTest, Timeout(120000)]
+    public IEnumerator WallDragPlacesBlueprintsAndTheBuilderRaisesThem()
+    {
+        config.Match.Map.Size = 256; // terrain deltas reach clients of generated maps
+        config.Match.Map.Seed = 5;
+        int builder = 0;
+        yield return WithBuilder(b => builder = b);
+        VisualElement root = HudRoot();
+        UnitCommander commander = UnitCommander.Instance;
+        commander.Selection.SelectIds(new List<int> { builder });
+        yield return PlayModeMatch.WaitUntil(() => Shown(root.Q<Button>("build-wall")), 5f);
+
+        ClientWorld.Instance.TryGet(builder, out ClientUnitView view);
+        WorldStateManager wsm = WorldStateManager.Instance;
+        int2 start = default;
+        bool found = false;
+        for (int r = 3; r <= 10 && !found; r++)
+            for (int dx = -r; dx <= r && !found; dx++)
+            {
+                int2 t = (int2)math.floor(view.Position) + new int2(dx, r);
+                found = true;
+                for (int i = 0; i < 3 && found; i++)
+                    found = wsm.Map.Grid.TileAt(t + new int2(i, 0)) == TileType.Ground && !wsm.Map.IsUsed(t + new int2(i, 0));
+                if (found) start = t;
+            }
+        Assert.That(found, Is.True, "three free ground tiles in a row near the Builder");
+
+        Click(root.Q<Button>("build-wall"));
+        Assert.That(commander.Wall.Armed, Is.True, "the Wall button arms the drag");
+        commander.Wall.Press(start);
+        commander.Wall.Move(start + new int2(2, 0), Color.white);
+        Assert.That(commander.Wall.ValidCount, Is.EqualTo(3));
+        commander.FinishWallDrag(false);
+        Assert.That(commander.Wall.Armed, Is.False);
+
+        int width = wsm.Map.Grid.Width;
+        bool Tiles(TileType type)
+        {
+            for (int i = 0; i < 3; i++) { int2 t = start + new int2(i, 0); if (ClientTerrain.Current.Tiles[t.y * width + t.x] != (byte)type) return false; }
+            return true;
+        }
+        yield return PlayModeMatch.WaitUntil(() => Tiles(TileType.WallBlueprint) || Tiles(TileType.PlayerWall), 10f);
+        yield return PlayModeMatch.WaitUntil(() => Tiles(TileType.PlayerWall), 60f);
+    }
+
+    [UnityTest, Timeout(90000)]
+    public IEnumerator SpawnerShowsTankAndDiggerRows()
+    {
+        BuildingData spawner = default;
+        yield return WithSpawner(config, s => spawner = s);
+        ServerPlayer server = GameCore.Instance.GetServerPlayerById(PlayModeMatch.LocalOwner);
+        bool Broke() { server.TrySpend(server.Resources); return true; }
+        VisualElement root = HudRoot();
+        ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+        UnitCommander.Instance.SelectBuilding(spawner);
+        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q("production-row-Digger") != null, 5f);
+        Assert.That(root.Q("production-row-Tank"), Is.Not.Null);
+        Click(root.Q("production-row-Digger").Q<Button>("production-plus"));
+        yield return PlayModeMatch.WaitUntil(() => Broke() && local.SpawnerQueueOf(spawner.id, UnitType.Digger) == 1, 5f);
+        Assert.That(local.SpawnerQueueOf(spawner.id, UnitType.Tank), Is.EqualTo(0));
+        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q("production-row-Digger").Q<Label>("production-count").text == "1", 5f);
+    }
+
+    [UnityTest, Timeout(90000)]
+    public IEnumerator CancelRefundsABlueprintAndDemolishRefundsHalf()
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        yield return PlayModeMatch.PlaceHQ(null);
+        WorldStateManager wsm = WorldStateManager.Instance;
+        ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+        ServerPlayer server = GameCore.Instance.GetServerPlayerById(PlayModeMatch.LocalOwner);
+        VisualElement root = HudRoot();
+        float cost = config.GetBuilding(BuildingType.Miner).UpfrontCost;
+
+        // A blueprint: Cancel at once, the full cost back.
+        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Miner, 0f, local, out int2 a), Is.True);
+        wsm.TryAddBuilding(a, BuildingType.Miner, 0f);
+        int blueprint = 0;
+        yield return Wait("the Miner blueprint", () => TryOwnBuilding(BuildingType.Miner, out blueprint), 10f);
+        yield return Remove(root, blueprint, server, cost, false);
+
+        // A finished one: Demolish asks first, then half back.
+        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Miner, 0f, local, out int2 b), Is.True);
+        Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.Miner, b), Is.True);
+        int built = 0;
+        yield return Wait("the finished Miner", () => TryOwnBuilding(BuildingType.Miner, out built) && built != blueprint, 10f);
+        yield return Remove(root, built, server, cost * config.Siege.DemolishRefund, true);
+    }
+
+    /// <summary>Selects the building, presses Cancel/Demolish (and the confirm), and checks the refund.</summary>
+    private static IEnumerator Remove(VisualElement root, int id, ServerPlayer server, float refund, bool confirm)
+    {
+        UnitCommander.Instance.Selection.SelectBuilding(id);
+        yield return Wait("the Cancel button", () => Shown(root.Q<Button>("cmd-cancel")), 5f);
+        server.TrySpend(server.Resources);
+        float before = server.Resources;
+        Click(root.Q<Button>("cmd-cancel"));
+        yield return null;
+        Assert.That(root.Q("removal-confirm").ClassListContains("removal__confirm--open"), Is.EqualTo(confirm), confirm ? "Demolish asks first" : "Cancel doesn't ask");
+        if (confirm) Click(root.Q<Button>("removal-yes"));
+        yield return Wait("the building to go", () => !ClientBuildings.Current.Entries.ContainsKey(id) || ClientBuildings.Current.Entries[id].Ghost, 10f);
+        Assert.That(server.Resources - before, Is.InRange(refund, refund + 20f), "the refund (plus a little income)");
+    }
+
+    private static IEnumerator Wait(string what, System.Func<bool> condition, float seconds)
+    {
+        float end = Time.realtimeSinceStartup + seconds;
+        while (!condition())
+        {
+            if (Time.realtimeSinceStartup > end) Assert.Fail("Timed out waiting for " + what);
+            yield return null;
+        }
+    }
+
+    private static bool TryOwnBuilding(BuildingType type, out int id)
+    {
+        foreach (ClientBuildings.Entry e in ClientBuildings.Current.Entries.Values)
+            if (e.Data.buildingType == type && e.Data.ownerId == PlayModeMatch.LocalOwner && !e.Ghost) { id = e.Data.id; return true; }
+        id = 0;
+        return false;
     }
 }

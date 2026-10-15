@@ -45,6 +45,40 @@ namespace WAR2D.UI
         /// <summary>Every selected own building (several only for spawners).</summary>
         public IReadOnlyList<int> BuildingIds => buildingIds;
 
+        private readonly List<int> queueByType = new List<int>();
+
+        /// <summary>Units of one type queued on the selected producers, together.</summary>
+        public int QueueOf(UnitType type) => (int)type >= 0 && (int)type < queueByType.Count ? queueByType[(int)type] : 0;
+
+        /// <summary>How many of the selected own buildings are still blueprints.</summary>
+        public int BlueprintCount { get; private set; }
+
+        /// <summary>True when every selected own building is a blueprint (Cancel, no confirm).</summary>
+        public bool AllBlueprints => buildingIds.Count > 0 && BlueprintCount == buildingIds.Count;
+
+        /// <summary>The first selected building's construction progress in percent (100 when complete).</summary>
+        public int BuildingProgress { get; private set; } = 100;
+
+        /// <summary>
+        /// What cancelling or demolishing the selected buildings refunds, as the server works it out: a blueprint
+        /// its full <paramref name="cost"/>, a finished building <paramref name="cost"/> × <paramref name="demolishShare"/>.
+        /// </summary>
+        public float RefundFor(float cost, float demolishShare) =>
+            ConstructionRules.Refund(true, cost, demolishShare) * BlueprintCount +
+            ConstructionRules.Refund(false, cost, demolishShare) * (buildingIds.Count - BlueprintCount);
+
+        /// <summary>True when the selection holds a Builder.</summary>
+        public bool HasBuilders => Has(UnitType.Builder);
+
+        /// <summary>True when the selection holds a Digger.</summary>
+        public bool HasDiggers => Has(UnitType.Digger);
+
+        private bool Has(UnitType type)
+        {
+            foreach ((UnitType t, int count) in byType) if (t == type && count > 0) return true;
+            return false;
+        }
+
         /// <summary>The order waiting for a click, if any.</summary>
         public OrderKind? ArmedOrder { get; private set; }
 
@@ -77,18 +111,27 @@ namespace WAR2D.UI
         /// <summary>Sets the selected own building (0 for none) and its queue.</summary>
         public void SetBuilding(int id, BuildingType type, int queue) => SetBuildings(id == 0 ? Array.Empty<int>() : new[] { id }, type, queue);
 
-        /// <summary>Sets the selected own buildings (the first one's type stands for all) and their queues together.</summary>
-        public void SetBuildings(IReadOnlyList<int> ids, BuildingType type, int queue)
+        /// <summary>
+        /// Sets the selected own buildings (the first one's type stands for all), their queues together (in all and
+        /// per unit type, indexed by <see cref="UnitType"/>), how many are blueprints, and the first one's progress.
+        /// </summary>
+        public void SetBuildings(IReadOnlyList<int> ids, BuildingType type, int queue, IReadOnlyList<int> byType = null, int blueprints = 0, int progress = 100)
         {
             int id = ids.Count > 0 ? ids[0] : 0;
-            bool sameIds = ids.Count == buildingIds.Count;
-            for (int i = 0; sameIds && i < ids.Count; i++) sameIds = ids[i] == buildingIds[i];
-            if (sameIds && id == BuildingId && type == BuildingType && queue == SpawnerQueue) return;
+            bool same = ids.Count == buildingIds.Count && id == BuildingId && type == BuildingType && queue == SpawnerQueue &&
+                        blueprints == BlueprintCount && progress == BuildingProgress && (byType?.Count ?? 0) == queueByType.Count;
+            for (int i = 0; same && i < ids.Count; i++) same = ids[i] == buildingIds[i];
+            for (int i = 0; same && i < queueByType.Count; i++) same = byType[i] == queueByType[i];
+            if (same) return;
             buildingIds.Clear();
             for (int i = 0; i < ids.Count; i++) buildingIds.Add(ids[i]);
+            queueByType.Clear();
+            if (byType != null) for (int i = 0; i < byType.Count; i++) queueByType.Add(byType[i]);
             BuildingId = id;
             BuildingType = type;
             SpawnerQueue = queue;
+            BlueprintCount = blueprints;
+            BuildingProgress = progress;
             Changed?.Invoke();
         }
 
@@ -128,19 +171,31 @@ namespace WAR2D.UI
 
             int buildingId = selection.SelectedBuilding;
             BuildingType type = BuildingType.None;
-            if (buildingId != 0 && commander.buildingGameObjects.TryGetValue(buildingId, out UnityEngine.GameObject go) &&
-                go.TryGetComponent(out BuildingDataClient data))
-                type = data.buildingData.buildingType;
+            var known = WAR2D.Net.Replication.ClientBuildings.Current.Entries;
+            WAR2D.Net.Replication.ClientBuildings.Entry first = default;
+            if (buildingId != 0 && known.TryGetValue(buildingId, out first) && !first.Ghost) type = first.Data.buildingType;
             if (type == BuildingType.None) SetBuilding(0, BuildingType.None, 0);
             else
             {
-                int queue = 0;
-                foreach (int id in selection.SelectedBuildings) queue += local.SpawnerQueue(id);
-                SetBuildings(selection.SelectedBuildings, type, queue);
+                int queue = 0, blueprints = 0;
+                pulledByType.Clear();
+                foreach (UnitType unit in SpawnerRules.Produces(type))
+                {
+                    while (pulledByType.Count <= (int)unit) pulledByType.Add(0);
+                    foreach (int id in selection.SelectedBuildings) pulledByType[(int)unit] += local.SpawnerQueueOf(id, unit);
+                }
+                foreach (int id in selection.SelectedBuildings)
+                {
+                    queue += local.SpawnerQueue(id);
+                    if (known.TryGetValue(id, out var entry) && entry.Progress < 100) blueprints++;
+                }
+                SetBuildings(selection.SelectedBuildings, type, queue, pulledByType, blueprints, first.Progress);
             }
             SetArmed(commander.ArmedOrder);
             SetSquadCounts(local.SquadCounts);
         }
+
+        private readonly List<int> pulledByType = new List<int>();
 
         private void Apply(List<ClientUnitView> next, int squad)
         {

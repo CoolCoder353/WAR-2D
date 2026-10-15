@@ -83,6 +83,8 @@ namespace WAR2D.UI
             BuildingType.Base => "HQ",
             BuildingType.SmallUnitSpawner => "Spawner",
             BuildingType.Miner => "Miner",
+            BuildingType.Bomb => "Bomb",
+            BuildingType.Radar => "Radar",
             _ => null,
         };
     }

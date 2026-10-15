@@ -63,4 +63,53 @@ public class SelectionModelTests
         Assert.That(raised, Is.EqualTo(4));
         Assert.That(model.SquadCounts[0], Is.EqualTo(1));
     }
+
+    [Test]
+    public void KnowsWhenBuildersOrDiggersAreSelected()
+    {
+        var model = new SelectionModel();
+        model.SetUnits(new List<ClientUnitView> { Unit(1, UnitType.Tank, 1f) }, -1);
+        Assert.That(model.HasBuilders, Is.False);
+        Assert.That(model.HasDiggers, Is.False);
+        model.SetUnits(new List<ClientUnitView> { Unit(1, UnitType.Tank, 1f), Unit(2, UnitType.Builder, 1f) }, -1);
+        Assert.That(model.HasBuilders, Is.True);
+        Assert.That(model.HasDiggers, Is.False);
+        model.SetUnits(new List<ClientUnitView> { Unit(3, UnitType.Digger, 1f) }, -1);
+        Assert.That(model.HasBuilders, Is.False);
+        Assert.That(model.HasDiggers, Is.True);
+    }
+
+    [Test]
+    public void QueueOfFollowsThePerTypeCounts()
+    {
+        var model = new SelectionModel();
+        var counts = new int[(int)UnitType.Digger + 1];
+        counts[(int)UnitType.Tank] = 4;
+        counts[(int)UnitType.Digger] = 2;
+        model.SetBuildings(new[] { 7 }, BuildingType.SmallUnitSpawner, 6, counts, 0);
+        Assert.That(model.QueueOf(UnitType.Tank), Is.EqualTo(4));
+        Assert.That(model.QueueOf(UnitType.Digger), Is.EqualTo(2));
+        Assert.That(model.QueueOf(UnitType.Builder), Is.EqualTo(0));
+
+        int raised = 0;
+        model.Changed += () => raised++;
+        var more = (int[])counts.Clone();
+        more[(int)UnitType.Digger] = 3;
+        model.SetBuildings(new[] { 7 }, BuildingType.SmallUnitSpawner, 7, more, 0);
+        Assert.That(raised, Is.EqualTo(1));
+        Assert.That(model.QueueOf(UnitType.Digger), Is.EqualTo(3));
+    }
+
+    [Test]
+    public void RefundCountsBlueprintsInFullAndFinishedBuildingsByShare()
+    {
+        var model = new SelectionModel();
+        model.SetBuildings(new[] { 1, 2, 3 }, BuildingType.SmallUnitSpawner, 0, null, 1);
+        Assert.That(model.BlueprintCount, Is.EqualTo(1));
+        Assert.That(model.AllBlueprints, Is.False);
+        Assert.That(model.RefundFor(200f, 0.5f), Is.EqualTo(200f + 2 * 100f));
+        model.SetBuildings(new[] { 4 }, BuildingType.Miner, 0, null, 1);
+        Assert.That(model.AllBlueprints, Is.True);
+        Assert.That(model.RefundFor(50f, 0.5f), Is.EqualTo(50f));
+    }
 }

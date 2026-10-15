@@ -62,6 +62,7 @@ public class BuildingPlacement : MonoBehaviour
     public void BeginPlacement(BuildingType type)
     {
         if (type == BuildingType.None) return;
+        UnitCommander.Instance?.CancelWallDrag();
         PlacingType = type;
         SpriteRenderer sprite = previewBuilding.GetComponent<SpriteRenderer>();
         sprite.sprite = WAR2D.Client.Render.TeamSpriteMaterial.Sprite(type);
@@ -148,6 +149,8 @@ public class BuildingPlacement : MonoBehaviour
         {
             WorldStateManager.Instance?.TryAddBuilding(currentAnchor, PlacingType, currentRotation);
             WAR2D.Audio.AudioService.Ui("building_placed");
+            // Selected Builders go and build it (Shift queues it behind their current job).
+            if (PlacingType != BuildingType.Base) UnitCommander.Instance?.OrderBuilders(OrderKind.Build, currentAnchor, GameInput.QueueModifier.IsPressed());
             // Holding the queue modifier (Shift) keeps placing the same type, as it queues unit orders.
             if (PlacingType != BuildingType.Base && GameInput.QueueModifier.IsPressed())
             {
