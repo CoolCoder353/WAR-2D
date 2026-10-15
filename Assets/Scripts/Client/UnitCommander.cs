@@ -37,8 +37,6 @@ public class UnitCommander : NetworkBehaviour
     private Vector3 dragStart;
 
 
-    public Dictionary<int, GameObject> buildingGameObjects = new Dictionary<int, GameObject>();
-
 
     [ClientCallback]
     private void Awake()
@@ -260,8 +258,7 @@ public class UnitCommander : NetworkBehaviour
     private bool AllSpawners(IReadOnlyList<int> ids)
     {
         foreach (int id in ids)
-            if (!buildingGameObjects.TryGetValue(id, out GameObject go) || go == null || !go.TryGetComponent(out BuildingDataClient data) ||
-                !SpawnerRules.IsProducer(data.buildingData.buildingType)) return false;
+            if (!Known.Entries.TryGetValue(id, out ClientBuildings.Entry e) || e.Ghost || !SpawnerRules.IsProducer(e.Data.buildingType)) return false;
         return true;
     }
 
@@ -466,7 +463,10 @@ public class UnitCommander : NetworkBehaviour
     private ClientBuildings subscribedBuildings;
     private readonly BuildingPicker picker = new BuildingPicker(WorldStateManager.GetBuildingSize);
 
-    /// <summary>Mirrors the buildings the server sends (see ClientBuildings) as GameObjects, including ones already known.</summary>
+    /// <summary>The buildings the client knows (the instanced renderer draws them; clicks resolve through the picker).</summary>
+    private ClientBuildings Known => subscribedBuildings ?? ClientBuildings.Current;
+
+    /// <summary>Follows the buildings the server sends (see ClientBuildings), including ones already known.</summary>
     [Client]
     private void SubscribeBuildings()
     {
@@ -474,15 +474,8 @@ public class UnitCommander : NetworkBehaviour
         picker.Attach(subscribedBuildings);
         subscribedBuildings.Entered += OnBuildingEntered;
         subscribedBuildings.HealthChanged += OnBuildingHealthChanged;
-        subscribedBuildings.Hidden += OnBuildingHidden;
         subscribedBuildings.Removed += OnBuildingRemoved;
-        subscribedBuildings.ProgressChanged += OnBuildingProgress;
-        Palettes.Changed += Retint;
-        foreach (ClientBuildings.Entry entry in subscribedBuildings.Entries.Values)
-        {
-            OnBuildingEntered(entry.Data, entry.Health);
-            if (entry.Ghost) OnBuildingHidden(entry.Data.id);
-        }
+        foreach (ClientBuildings.Entry entry in subscribedBuildings.Entries.Values) OnBuildingEntered(entry.Data, entry.Health);
     }
 
     private void UnsubscribeBuildings()
@@ -491,50 +484,31 @@ public class UnitCommander : NetworkBehaviour
         picker.Detach();
         subscribedBuildings.Entered -= OnBuildingEntered;
         subscribedBuildings.HealthChanged -= OnBuildingHealthChanged;
-        subscribedBuildings.Hidden -= OnBuildingHidden;
         subscribedBuildings.Removed -= OnBuildingRemoved;
-        subscribedBuildings.ProgressChanged -= OnBuildingProgress;
-        Palettes.Changed -= Retint;
         subscribedBuildings = null;
     }
 
-    /// <summary>A seen building's construction moved on: its blueprint look follows.</summary>
-    private void OnBuildingProgress(int id, byte progress)
-    {
-        if (!buildingGameObjects.TryGetValue(id, out GameObject go) || go == null || !go.TryGetComponent(out ConstructionView view)) return;
-        go.TryGetComponent(out SpriteRenderer sprite);
-        int2 size = go.TryGetComponent(out BuildingDataClient data) ? WorldStateManager.GetBuildingSize(data.buildingData.buildingType) : new int2(1, 1);
-        view.Set(sprite, size, progress);
-    }
-
-    /// <summary>A building is seen: (re)creates its GameObject, replacing a ghost.</summary>
-    private void OnBuildingEntered(BuildingData data, HealthComponent health)
-    {
-        if (buildingGameObjects.ContainsKey(data.id)) BuildingListRemove(0, data);
-        BuildingListInsert(0, data);
-        lastBuildingHealth[data.id] = health.currentHealth;
-        AddHealthComponent(health);
-    }
+    /// <summary>The visual centre of a building's footprint.</summary>
+    private static float2 CentreOf(in BuildingData data) =>
+        Footprint.VisualCenter((int2)math.round(data.position), WorldStateManager.GetBuildingSize(data.buildingType));
 
     private readonly Dictionary<int, float> lastBuildingHealth = new Dictionary<int, float>();
+
+    private void OnBuildingEntered(BuildingData data, HealthComponent health) => lastBuildingHealth[data.id] = health.currentHealth;
 
     /// <summary>A seen building's health changed: a finished one that gained health is being repaired (sparks).</summary>
     private void OnBuildingHealthChanged(HealthComponent health)
     {
         if (lastBuildingHealth.TryGetValue(health.entityId, out float before) && health.currentHealth > before &&
-            (subscribedBuildings ?? ClientBuildings.Current).Entries.TryGetValue(health.entityId, out ClientBuildings.Entry e) && e.Progress >= 100 &&
-            buildingGameObjects.TryGetValue(health.entityId, out GameObject go) && go != null)
-            Effects.RepairSparks(go.transform.position);
+            Known.Entries.TryGetValue(health.entityId, out ClientBuildings.Entry e) && e.Progress >= 100)
+            Effects.RepairSparks((Vector2)CentreOf(e.Data));
         lastBuildingHealth[health.entityId] = health.currentHealth;
-        AddHealthComponent(health);
     }
 
-    /// <summary>A building left sight: it stays, grey and see-through, as last seen (and stops animating).</summary>
-    private void OnBuildingHidden(int id)
+    private void OnBuildingRemoved(int id)
     {
-        if (!buildingGameObjects.TryGetValue(id, out GameObject go) || !go.TryGetComponent(out SpriteRenderer sprite)) return;
-        if (go.TryGetComponent(out BuildingDataClient data)) sprite.sharedMaterial = TeamSpriteMaterial.For(data.buildingData.ownerId, true);
-        if (go.TryGetComponent(out SpriteFrameAnimator animator)) animator.enabled = false;
+        lastBuildingHealth.Remove(id);
+        Selection.RemoveBuilding(id);
     }
 
     private readonly List<BuildingSelectionMarker> buildingMarkers = new List<BuildingSelectionMarker>();
@@ -549,11 +523,12 @@ public class UnitCommander : NetworkBehaviour
         IReadOnlyList<int> ids = Selection.SelectedBuildings;
         int shown = 0, flags = 0;
         WAR2D.Art.ArtAtlas effects = WAR2D.Art.ArtAtlas.Load(WAR2D.Art.ArtAtlas.Effects);
+        ClientBuildings known = Known;
         for (int i = 0; i < ids.Count; i++)
         {
-            if (!buildingGameObjects.TryGetValue(ids[i], out GameObject go) || go == null || !go.TryGetComponent(out BuildingDataClient data)) continue;
+            if (!known.Entries.TryGetValue(ids[i], out ClientBuildings.Entry e) || e.Ghost) continue;
             if (shown == buildingMarkers.Count) buildingMarkers.Add(new GameObject("BuildingSelection").AddComponent<BuildingSelectionMarker>());
-            buildingMarkers[shown++].Show(ids[i], go, WorldStateManager.GetBuildingSize(data.buildingData.buildingType));
+            buildingMarkers[shown++].Show(ids[i], CentreOf(e.Data), WorldStateManager.GetBuildingSize(e.Data.buildingType));
             if (localPlayer == null || !localPlayer.TryGetRally(ids[i], out int2 rally) || effects == null) continue;
             if (flags == rallyFlags.Count)
             {
@@ -563,11 +538,11 @@ public class UnitCommander : NetworkBehaviour
             }
             SpriteRenderer f = rallyFlags[flags++];
             f.sprite = effects.Sprite("RallyFlag", (int)(Time.time * 2f) % Mathf.Max(1, effects.FrameCount("RallyFlag")));
-            f.sharedMaterial = TeamSpriteMaterial.For(data.buildingData.ownerId, false, ArtAtlas.Effects);
+            f.sharedMaterial = TeamSpriteMaterial.For(e.Data.ownerId, false, ArtAtlas.Effects);
             f.transform.position = new Vector3(rally.x + 0.5f, rally.y + 0.5f, 0f);
             f.gameObject.SetActive(true);
         }
-        for (int i = shown; i < buildingMarkers.Count; i++) buildingMarkers[i].Show(0, null, default);
+        for (int i = shown; i < buildingMarkers.Count; i++) buildingMarkers[i].Hide();
         ShowRadarRange(ids);
         for (int i = flags; i < rallyFlags.Count; i++) rallyFlags[i].gameObject.SetActive(false);
     }
@@ -580,12 +555,11 @@ public class UnitCommander : NetworkBehaviour
     {
         int radar = 0;
         float2 centre = default;
-        ClientBuildings known = subscribedBuildings ?? ClientBuildings.Current;
         foreach (int id in ids)
         {
-            if (!known.Entries.TryGetValue(id, out ClientBuildings.Entry e) || e.Ghost || e.Data.buildingType != BuildingType.Radar) continue;
+            if (!Known.Entries.TryGetValue(id, out ClientBuildings.Entry e) || e.Ghost || e.Data.buildingType != BuildingType.Radar) continue;
             radar = id;
-            centre = Footprint.VisualCenter((int2)math.round(e.Data.position), WorldStateManager.GetBuildingSize(BuildingType.Radar));
+            centre = CentreOf(e.Data);
             break;
         }
         if (radar == 0)
@@ -605,35 +579,10 @@ public class UnitCommander : NetworkBehaviour
         return array;
     }
 
-    /// <summary>Shows a building type's atlas sprite on <paramref name="go"/>, animating its idle frames.</summary>
-    private static void ShowBuildingSprite(GameObject go, SpriteRenderer sprite, BuildingType type, int facing)
-    {
-        ArtAtlas atlas = ArtAtlas.Load(ArtAtlas.Buildings);
-        if (atlas == null) Debug.LogError($"Resources/{ArtAtlas.Folder}/{ArtAtlas.Buildings} is missing: run WAR-2D/Art/Build all.");
-        if (!go.TryGetComponent(out SpriteFrameAnimator animator)) animator = go.AddComponent<SpriteFrameAnimator>();
-        // The spawner's lamp blinks once a second; the drill turns every tick.
-        animator.Play(atlas, type.ToString(), type == BuildingType.SmallUnitSpawner ? ArtStyle.FramesPerSecond / 2 : 1, facing);
-        // Taller buildings stand in front of the ones behind them (the 3/4 view).
-        sprite.sortingOrder = SortingOrders.Building(go.transform.position.y);
-    }
-
-    /// <summary>Re-tints every building for a new palette.</summary>
-    private void Retint()
-    {
-        if (this == null) { Palettes.Changed -= Retint; return; } // destroyed after the client stopped (OnDestroy is client-only)
-        if (subscribedBuildings == null) return;
-        foreach (ClientBuildings.Entry entry in subscribedBuildings.Entries.Values)
-        {
-            if (!buildingGameObjects.TryGetValue(entry.Data.id, out GameObject go) || go == null || !go.TryGetComponent(out SpriteRenderer sprite)) continue;
-            sprite.sharedMaterial = TeamSpriteMaterial.For(entry.Data.ownerId, entry.Ghost);
-        }
-    }
-
     /// <summary>The local player's building (seen now, not a ghost) whose footprint holds the world point.</summary>
     private bool TryOwnBuildingAt(float2 point, int ownerId, out BuildingData building)
     {
-        if (picker.TryPick((int2)math.floor(point), out int id) &&
-            (subscribedBuildings ?? ClientBuildings.Current).Entries.TryGetValue(id, out ClientBuildings.Entry e) &&
+        if (picker.TryPick((int2)math.floor(point), out int id) && Known.Entries.TryGetValue(id, out ClientBuildings.Entry e) &&
             !e.Ghost && e.Data.ownerId == ownerId)
         {
             building = e.Data;
@@ -642,205 +591,6 @@ public class UnitCommander : NetworkBehaviour
         building = default;
         return false;
     }
-
-    private void OnBuildingRemoved(int id)
-    {
-        lastBuildingHealth.Remove(id);
-        Selection.RemoveBuilding(id);
-        if (!buildingGameObjects.TryGetValue(id, out GameObject go)) return;
-        Destroy(go);
-        buildingGameObjects.Remove(id);
-    }
-    //This is called when a unit is added or inserted into the list, returning the index of the list and the unit itself
-    [Client]
-    public void BuildingListInsert(int index, BuildingData unit)
-    {
-        // Debug.Log($"UnitListInsert called with unit id: '{unit.id}', sprite:  '{unit.spriteName}', position : '{unit.position}'");
-        if (buildingGameObjects.ContainsKey(unit.id))
-        {
-            Debug.LogError("BuildingListInsert called with building that already exists in the list. Building id: " + unit.id);
-            return;
-        }
-
-        //Create a new game object
-        GameObject go = new GameObject();
-        int2 anchor = (int2)math.round(unit.position);
-        float2 centre = Footprint.VisualCenter(anchor, WorldStateManager.GetBuildingSize(unit.buildingType));
-        // Upright: the Miner shows its rotation as a rendered facing (the 3/4 view only reads one way up).
-        go.transform.position = new Vector3(centre.x, centre.y, 0);
-
-        SpriteRenderer buildingSprite = go.AddComponent<SpriteRenderer>();
-        buildingSprite.sharedMaterial = TeamSpriteMaterial.For(unit.ownerId, false);
-        ShowBuildingSprite(go, buildingSprite, unit.buildingType, TeamSpriteMaterial.Facing(unit.buildingType, unit.rotation));
-        // Clicks hit the footprint, not the sprite's headroom or shadow.
-        int2 footprint = WorldStateManager.GetBuildingSize(unit.buildingType);
-        BoxCollider2D collider = go.AddComponent<BoxCollider2D>();
-        collider.isTrigger = true;
-        collider.size = new Vector2(footprint.x, footprint.y);
-        go.name = $"Building_{unit.buildingType}_{unit.id}";
-        byte progress = (subscribedBuildings ?? ClientBuildings.Current).Entries.TryGetValue(unit.id, out ClientBuildings.Entry known) ? known.Progress : (byte)100;
-        go.AddComponent<ConstructionView>().Set(buildingSprite, footprint, progress);
-
-        //Check if there is a client script for the building type
-        Type buildingType = null;
-
-        var buildingDataClient = go.AddComponent<BuildingDataClient>();
-        buildingDataClient.buildingData = unit;
-        // Map building types to their corresponding client class names
-        switch (unit.buildingType)
-        {
-            case BuildingType.SmallUnitSpawner:
-                buildingType = typeof(SpawnerClientManager);
-                break;
-            // Add other building types as needed
-            case BuildingType.Base:
-            case BuildingType.Miner:
-            case BuildingType.Bomb:
-            case BuildingType.Radar:
-                break; // no client-side behaviour
-            default:
-                Debug.LogWarning($"No client script mapping found for building type {unit.buildingType}");
-                break;
-        }
-
-        if (buildingType != null)
-        {
-            //Add the component to the game object
-            var clientcomponent = go.AddComponent(buildingType);
-            var field = clientcomponent.GetType().GetField("buildingData");
-            if (field != null)
-            {
-                field.SetValue(clientcomponent, unit);
-            }
-            else
-            {
-                Debug.LogWarning($"Client script '{buildingType.Name}' does not contain a 'buildingData' field. Or it is spelled incorrectly. Most likely the ladder.");
-            }
-        }
-
-        buildingGameObjects.Add(unit.id, go);
-    }
-
-    //Called when a unit is removed from the list, returning the index of the list and the old unit itself
-    [Client]
-    public void BuildingListRemove(int index, BuildingData OldUnit)
-    {
-        //Remove the game object from the list
-        if (buildingGameObjects.ContainsKey(OldUnit.id))
-        {
-            Destroy(buildingGameObjects[OldUnit.id]);
-            buildingGameObjects.Remove(OldUnit.id);
-        }
-    }
-
-    //Called when the enitre list is cleared
-    [Client]
-    public void BuildingListClear()
-    {
-        //Destroy all the game objects
-        foreach (var item in buildingGameObjects)
-        {
-            Destroy(item.Value);
-        }
-        buildingGameObjects.Clear();
-    }
-
-    //Called when an item in the list is set to a new value
-    //Note: I am not sure whether this will be called if something inside the object is changed, or if the object itself is changed
-    [Client]
-    public void BuildingListSet(int index, BuildingData oldUnit, BuildingData newUnit)
-    {
-
-        if (oldUnit.id != newUnit.id)
-        {
-            Debug.LogError("BuildingListSet called with different id for old and new building");
-            return;
-        }
-
-        //If the unit is not in the list, add it, this should not happen but just in case
-        if (!buildingGameObjects.ContainsKey(newUnit.id))
-        {
-            ////UnitListInsert(index, newUnit);
-            return;
-        }
-
-
-        //If only the position is changed, move the game object (buildings do not move once placed)
-        if (oldUnit.position.x != newUnit.position.x || oldUnit.position.y != newUnit.position.y)
-        {
-            if (buildingGameObjects.ContainsKey(oldUnit.id))
-            {
-                int2 anchor = (int2)math.round(newUnit.position);
-                float2 centre = Footprint.VisualCenter(anchor, WorldStateManager.GetBuildingSize(newUnit.buildingType));
-                buildingGameObjects[oldUnit.id].transform.position = new Vector3(centre.x, centre.y, 0);
-            }
-        }
-        //If the sprite is changed, change the sprite
-        if (oldUnit.buildingType != newUnit.buildingType)
-        {
-            if (buildingGameObjects.ContainsKey(oldUnit.id))
-            {
-                GameObject go = buildingGameObjects[oldUnit.id];
-                ShowBuildingSprite(go, go.GetComponent<SpriteRenderer>(), newUnit.buildingType, TeamSpriteMaterial.Facing(newUnit.buildingType, newUnit.rotation));
-            }
-        }
-
-    }
-
-    [Client]
-    public void HealthListInsert(int index, HealthComponent health)
-    {
-        AddHealthComponent(health);
-    }
-    [Client]
-    public void HealthListSet(int index, HealthComponent old, HealthComponent health)
-    {
-        AddHealthComponent(health);
-    }
-    [Client]
-    public void HealthListRemove(int index, HealthComponent health)
-    {
-        AddHealthComponent(health, remove: true);
-    }
-    [Client]
-    public void HealthListClear()
-    {
-        foreach (var buildingGO in buildingGameObjects.Values)
-        {
-            var healthComponent = buildingGO.GetComponent<BuildingDataClient>();
-            if (healthComponent != null)
-            {
-                Destroy(healthComponent);
-            }
-        }
-    }
-    [Client]
-    private void AddHealthComponent(HealthComponent health, bool remove = false)
-    {
-        if (buildingGameObjects.ContainsKey(health.entityId))
-        {
-            var buildingGO = buildingGameObjects[health.entityId];
-            var healthComponent = buildingGO.GetComponent<BuildingDataClient>();
-            if (healthComponent == null && !remove)
-            {
-                healthComponent = buildingGO.AddComponent<BuildingDataClient>();
-            }
-            if (!remove)
-            {
-                healthComponent.healthComponent = health;
-            }
-            else
-            {
-                Destroy(healthComponent);
-            }
-        }
-        else
-        {
-            Debug.LogWarning($"No game object found for entity id {health.entityId} to {(remove ? "remove" : "add")} HealthComponent.This is normal when entitys are being cleaned up.");
-        }
-    }
-
-
 
     #endregion
 }

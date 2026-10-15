@@ -5,7 +5,7 @@ WAR-2D combines two models:
 - **Mirror** handles connections, players, scene changes and all client↔server messaging.
 - **Unity DOTS (Entities)** holds and simulates the game world. Units and buildings are ECS entities that exist **only on the server**.
 
-Clients never see the ECS world. Units reach them through the **replication encoder**: each client gets its own units and the units its fog of war (its sight plus vision shared with it) sees, as routes plus corrections, and predicts and draws them with GPU instancing. Buildings (a few hundred at most) go through the same service as per-client building records (`BuildingBatch`) and are drawn as GameObjects; the fog itself reaches each client as its own team's grid (`FogBatch`).
+Clients never see the ECS world. Units reach them through the **replication encoder**: each client gets its own units and the units its fog of war (its sight plus vision shared with it) sees, as routes plus corrections, and predicts and draws them with GPU instancing. Buildings (a few hundred at most) go through the same service as per-client building records (`BuildingBatch`) and are drawn instanced too (`InstancedBuildingRenderer`); the fog itself reaches each client as its own team's grid (`FogBatch`).
 
 The server simulates units in an **asynchronous 20 Hz tick**: a fixed-rate system group whose Burst jobs run on worker threads between ticks and are settled at the next tick boundary. Main-thread code never touches unit entities; it queues `SimCommand`s that the tick applies at its boundary.
 
@@ -125,10 +125,10 @@ Game code moved into its own assembly in v0.2, which is what lets the test assem
 
 ### `UnitCommander` (`Scripts/Client/UnitCommander.cs`): client presentation and input
 
-- Owns the local `Selection` (`Client/Selection.cs`): left drag selects every own unit in the box (no limit; Shift adds), right click orders the selection, Ctrl+1–0 assigns a squad (an empty selection empties it) and 1–0 selects one; a click that hits none of your units but your spawner's footprint selects the spawner (`SelectBuilding`). `SpawnerClientManager` only marks spawner GameObjects; the commander alone decides what a click selects. Move and Attack-move can be armed (`ArmedOrder`) by the `A` key or the command card, and the next click sends them. Orders go out as chunked id lists, or as one `CmdOrderSquad` when the selection is exactly a squad.
+- Owns the local `Selection` (`Client/Selection.cs`): left drag selects every own unit in the box (no limit; Shift adds), right click orders the selection, Ctrl+1–0 assigns a squad (an empty selection empties it) and 1–0 selects one; a click that hits none of your units but one of your buildings' footprint selects it (`SelectBuilding`; `BuildingPicker` resolves the tile, Shift-click combines spawners), and a box over your spawners selects them. Move and Attack-move can be armed (`ArmedOrder`) by the `A` key or the command card, and the next click sends them. Orders go out as chunked id lists, or as one `CmdOrderSquad` when the selection is exactly a squad.
 - Sends its camera rectangle (padded by `visualAdditionalRange`, clamped to the map) through `UpdateClientView`, only when it changes and at most every 0.1 s.
 - Adds `ClientWorld` on clients and calls `ClientWorld.Draw(selection)` from `LateUpdate`.
-- Buildings: creates a GameObject per building `ClientBuildings` reports (dimmed while a ghost: out of sight, shown as last seen) (sprite loaded by enum name), with `BuildingDataClient` for health and `SpawnerClientManager` on Small Unit Spawners for click-to-spawn.
+- Buildings: no GameObjects. `ClientWorld` draws every building `ClientBuildings` holds with `InstancedBuildingRenderer` (packed by `BuildingPacking`: footprint centre, facing and idle frame from the `Buildings` atlas, team colour, ghosts grey and dim, blueprints fading in under the construction overlay with a progress bar, health bars when damaged, a red flash when hit, farther buildings first). The commander keeps the selection brackets, rally flags and the Radar's range ring, and resolves clicks and boxes with `BuildingPicker`.
 
 ### `ClientWorld` (`Scripts/Client/ClientWorld.cs`): the client's units
 
@@ -281,7 +281,7 @@ sequenceDiagram
 
 ## Buildings on clients
 
-`ReplicationService.SendBuildings` runs at each settled boundary over the list `WorldStateManager.FillBuildingViews` gathers. Per client, `BuildingInterest` remembers what the client knows and writes records: **Enter** when a building becomes visible (or the client's own), **Health** when a seen building's health changes, **Hide** when it leaves sight (the client keeps a dimmed ghost as it was last seen), and **Gone** only once the client's grid sees the spot (or it was the client's own). A building destroyed out of sight therefore stays a ghost until it is scouted again. Clients apply records to `ClientBuildings`, which `UnitCommander` mirrors as GameObjects. v0.7 instances buildings and walls like units.
+`ReplicationService.SendBuildings` runs at each settled boundary over the list `WorldStateManager.FillBuildingViews` gathers. Per client, `BuildingInterest` remembers what the client knows and writes records: **Enter** when a building becomes visible (or the client's own), **Health** when a seen building's health changes, **Hide** when it leaves sight (the client keeps a dimmed ghost as it was last seen), and **Gone** only once the client's grid sees the spot (or it was the client's own). A building destroyed out of sight therefore stays a ghost until it is scouted again. Clients apply records to `ClientBuildings`, which `InstancedBuildingRenderer` draws and `BuildingPicker` indexes by tile. Walls are tiles, drawn by `MapView`.
 
 ## Destruction and death events
 
@@ -430,7 +430,7 @@ The `Menu` object in `Main_Menu` has a `UIDocument` (`Menu.uxml`: `MainMenu`, `H
 ## Rendering and input
 
 - **URP 2D.** `Assets/Settings/Rendering/URP-2D.asset` is the default render pipeline in `ProjectSettings/GraphicsSettings.asset`, with `Renderer2D.asset` and a Global Light 2D in both scenes.
-- **Units** are drawn by `ClientWorld` with GPU instancing (see above); **the map** by `MapView` (one texture, a texel per tile); **buildings** as sprite GameObjects.
+- **Units** are drawn by `ClientWorld` with GPU instancing (see above); **the map** by `MapView` (one texture, a texel per tile); **buildings** by `InstancedBuildingRenderer` (instanced, like units).
 - **Input System only** (`activeInputHandler: 1`). Gameplay input is a code-defined action map in `Scripts/Client/GameInput.cs` (`Pan`, `Zoom`, `FastPan`, `Select`, `Command`, `Rotate`, `Point`, `AssignModifier` (Ctrl), `AppendModifier` (Shift), `QueueModifier` (Shift), `AttackMove`, `Stop`, `Hold`, `DragPan`, `Menu`, `Squad1`–`Squad0`); UI uses `InputSystemUIInputModule`. `GameInput.PointerOverUI` is true only over UI: the camera's `Physics2DRaycaster` also hits building and tilemap colliders, and those clicks belong to the world.
 - **Orthographic camera.** `Character_Controler` pans at a speed scaled by `orthographicSize / 5`, zooms between the configured limits in `CameraZoom` steps, and is clamped to the map. It adds a URP `PixelPerfectCamera` at runtime (not in the scene) and enables it only at whole-number art scales, with a reference resolution of `screen / scale` so the camera's own zoom equals that scale; off it, the size is used as is and the mipmapped atlases downscale smoothly.
 - Client-side placeholder effects (`Effects.Explosion`, `Effects.Tracer`) draw procedural sprites from `ProceduralSprites`; real art is scheduled for v0.8.

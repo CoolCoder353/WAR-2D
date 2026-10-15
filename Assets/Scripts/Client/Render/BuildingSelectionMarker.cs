@@ -14,21 +14,22 @@ namespace WAR2D.Client.Render
         private SpriteRenderer sprite;
         private int shownId;
 
-        /// <summary>Shows the marker on <paramref name="building"/> (footprint <paramref name="size"/> tiles), or hides it for null.</summary>
-        public void Show(int id, GameObject building, int2 size)
+        /// <summary>Shows the marker around a building's footprint (<paramref name="size"/> tiles, centred on <paramref name="centre"/>).</summary>
+        public void Show(int id, float2 centre, int2 size)
         {
             if (sprite == null && !Init()) return;
-            if (building == null)
-            {
-                sprite.enabled = false;
-                shownId = 0;
-                return;
-            }
-            transform.position = new Vector3(building.transform.position.x, building.transform.position.y, 0f);
+            transform.position = new Vector3(centre.x, centre.y, 0f);
             if (shownId == id && sprite.enabled) return;
             shownId = id;
             sprite.size = new Vector2(size.x, size.y);
             sprite.enabled = true;
+        }
+
+        /// <summary>Hides the marker.</summary>
+        public void Hide()
+        {
+            if (sprite != null) sprite.enabled = false;
+            shownId = 0;
         }
 
         private bool Init()

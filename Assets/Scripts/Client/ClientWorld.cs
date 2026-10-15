@@ -50,6 +50,8 @@ namespace WAR2D.Client
         private NativeList<UnitInstance> instances, bars, rings;
         private NativeArray<int> barCount, ringCount;
         private InstancedUnitRenderer unitRenderer;
+        private InstancedBuildingRenderer buildingRenderer;
+        private System.Func<int, uint> buildingColour;
         private readonly List<(int attacker, int target)> attacks = new List<(int, int)>();
         private readonly List<int> selectedIndices = new List<int>();
         private readonly Dictionary<int, uint> colorOfOwner = new Dictionary<int, uint>();
@@ -119,6 +121,7 @@ namespace WAR2D.Client
             ClientTerrain.Clear();
             if (Instance == this) Instance = null;
             unitRenderer?.Dispose();
+            buildingRenderer?.Dispose();
             store?.Dispose();
             if (lastPosition.IsCreated)
             {
@@ -229,13 +232,17 @@ namespace WAR2D.Client
         /// <summary>Predicted positions, parallel to the known list (refreshed every frame).</summary>
         public NativeArray<float2> Positions => store.Predicted;
 
-        /// <summary>Packs every known unit and draws it (and the health bars). Selected ids draw highlighted.</summary>
+        /// <summary>
+        /// Draws the known buildings (instanced), then packs every known unit and draws it (and the health bars).
+        /// Selected ids draw highlighted.
+        /// </summary>
         public void Draw(IReadOnlyCollection<int> selectedIds)
         {
-            int count = store.Count;
-            if (count == 0 || store.Drawn.Length != count) return;
             // A -nographics player (perf clients) has no GPU buffers to draw with.
             if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) return;
+            DrawBuildings();
+            int count = store.Count;
+            if (count == 0 || store.Drawn.Length != count) return;
             if (unitRenderer == null)
             {
                 ArtAtlas atlas = ArtAtlas.Load(ArtAtlas.Units);
@@ -298,6 +305,27 @@ namespace WAR2D.Client
             unitRenderer.DrawHealthBars(bars.AsArray(), barCount[0]);
         }
 
+        /// <summary>Buildings drawn last frame (tests).</summary>
+        public int BuildingsDrawn => buildingRenderer?.LastDrawn ?? 0;
+
+        /// <summary>The team colour (RGB) an owner's building was drawn in last frame (tests).</summary>
+        public uint LastBuildingColour(int ownerId) => buildingRenderer?.LastColourOf(ownerId, ClientBuildings.Current) ?? 0;
+
+        /// <summary>Draws every building the client knows (seen, ghosts, blueprints, known bombs) in one instanced call.</summary>
+        private void DrawBuildings()
+        {
+            ClientBuildings known = ClientBuildings.Current;
+            if (known.Entries.Count == 0) return;
+            if (buildingRenderer == null)
+            {
+                ArtAtlas atlas = ArtAtlas.Load(ArtAtlas.Buildings);
+                if (atlas == null) Debug.LogError($"Resources/{ArtAtlas.Folder}/{ArtAtlas.Buildings} is missing: run WAR-2D/Art/Build all.");
+                buildingRenderer = new InstancedBuildingRenderer(atlas, ArtAtlas.Load(ArtAtlas.Effects));
+                buildingColour = ColorOf;
+            }
+            buildingRenderer.Draw(known, Time.time, buildingColour);
+        }
+
         private uint ColorOf(int ownerId)
         {
             if (colorOfOwner.TryGetValue(ownerId, out uint c)) return c;
@@ -328,9 +356,10 @@ namespace WAR2D.Client
                     float2 t = store.PredictOne(targetIndex, serverTime);
                     to = new Vector3(t.x, t.y, 0);
                 }
-                else if (UnitCommander.Instance != null && UnitCommander.Instance.buildingGameObjects.TryGetValue(target, out GameObject building))
+                else if (ClientBuildings.Current.Entries.TryGetValue(target, out ClientBuildings.Entry building))
                 {
-                    to = building.transform.position;
+                    float2 c = Footprint.VisualCenter((int2)math.round(building.Data.position), WorldStateManager.GetBuildingSize(building.Data.buildingType));
+                    to = new Vector3(c.x, c.y, 0);
                 }
                 else continue;
                 // Face the target: the facing picks the drawn direction, and the fire frames show the barrel.

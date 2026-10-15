@@ -106,11 +106,10 @@ public class HudTests
         BuildingData found = default;
         yield return PlayModeMatch.WaitUntil(() =>
         {
-            foreach (GameObject go in UnitCommander.Instance.buildingGameObjects.Values)
+            foreach (ClientBuildings.Entry e in ClientBuildings.Current.Entries.Values)
             {
-                BuildingData data = go.GetComponent<BuildingDataClient>().buildingData;
-                if (data.buildingType != BuildingType.SmallUnitSpawner) continue;
-                found = data;
+                if (e.Data.buildingType != BuildingType.SmallUnitSpawner || e.Ghost) continue;
+                found = e.Data;
                 return true;
             }
             return false;
