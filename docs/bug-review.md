@@ -173,3 +173,14 @@ Playtesters report joining a friend's tunnel address works from the main menu bu
 | `ConnectToServer` silently drops joins while a client is already active: `if (!NetworkClient.active)` guards `StartClient` with no else path, so a Play-screen Join during a lingering connection does nothing but still shows Connecting. | `GameManager.cs:286-299`, `UI/Controllers/MenuController.cs:105-112` | Fix: if active, `StopClient` first then connect, or disable Join while `NetworkClient.active` with a hint. |
 | Failed or cancelled joins leave stale `joiningAddress` so a second attempt misreports: cancel calls `StopClient` but `Update` only clears on inactive client, causing stuck Connecting or wrong Failed versus Refused text. | `UI/Controllers/MenuController.cs:114-151` | Fix: clear `joiningAddress` on cancel and on disconnect callback, and reset `wasConnected` per attempt. |
 
+
+## v0.7 branch review (2026-10-16, unfixed)
+
+Low severity, deferred from the `/code-review` of the siege client work:
+
+- A ghost that re-enters sight with less health than last seen flashes red as if hit (`InstancedBuildingRenderer.TrackHits`).
+- Repair sparks can fire on the last step of construction (`UnitCommander.OnBuildingHealthChanged`).
+- `BuildingPacking` sorts with the unstable `List.Sort`, so equal-y overlapping buildings may flicker.
+- The Radar range ring (`ClearingRing.Create`) never releases its Material.
+- A wall drag sends Build orders only for the first `Orders/MaxQueued + 1` tiles.
+- `ToArray` is duplicated in `UnitCommander` and `HudController`; `InstancedBuildingRenderer.LastColourOf` is an O(n·m) test hook.
