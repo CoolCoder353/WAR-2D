@@ -251,7 +251,8 @@ Each update below lists its goal, its scope, the key decisions already made, wha
 **Builder and construction**
 
 - Builders are produced from the **HQ**. This may change later.
-- Placing a building creates a **blueprint**. The full cost is taken at placement and **refunded in full if cancelled before construction starts**.
+- Placing a building creates a **blueprint**. The full cost is taken at placement and **refunded in full if the blueprint is cancelled**.
+- Any own building except the HQ can be **demolished** for **half its cost back** (owner, 2026-10-15).
 - Each Builder adds build power, so more Builders build faster. A building under construction has health in proportion to its progress and can be attacked.
 - Builders build everything except the HQ. They don't attack.
 - **Repair:** Builders repair damaged own or allied buildings and walls over time, for a resource cost.
