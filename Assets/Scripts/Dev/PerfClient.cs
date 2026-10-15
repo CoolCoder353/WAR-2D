@@ -93,6 +93,7 @@ public sealed class PerfClient : MonoBehaviour
         go.SetActive(true);
         kcp.enabled = false;
         GameManager.Instance.transport = metered;
+        GameManager.Instance.SetDirectTransport(metered); // joins pick the direct transport since v0.9
         Transport.active = metered;
     }
 
