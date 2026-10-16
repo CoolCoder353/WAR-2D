@@ -35,6 +35,7 @@ namespace Config
         public SiegeConfig Siege = new SiegeConfig();
         /// <summary>Music switching.</summary>
         public AudioConfig Audio = new AudioConfig();
+        public ReplaysConfig Replays = new ReplaysConfig();
         /// <summary>What the host may pick in the lobby.</summary>
         public LobbyConfig Lobby = new LobbyConfig();
         /// <summary>The battle behind the main menu.</summary>
@@ -159,6 +160,15 @@ namespace Config
     {
         /// <summary>Seconds a player waits between gifts.</summary>
         public float CooldownSeconds;
+    }
+
+    /// <summary>Match recordings (v0.10).</summary>
+    public class ReplaysConfig
+    {
+        public bool Enabled;
+        public int MaxMegabytes;
+        public int SendKilobytesPerSecond;
+        public int KeepCount;
     }
 
     /// <summary>Music tuning.</summary>

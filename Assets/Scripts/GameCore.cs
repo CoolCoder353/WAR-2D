@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System.Collections.Generic;
 using System.Linq;
 using Config;
@@ -157,6 +158,7 @@ public partial class GameCore : NetworkBehaviour
     public void OnPlayerLeave(NetworkConnectionToClient conn)
     {
         CommandGate.Forget(conn.connectionId);
+        WorldStateManager.Instance?.ReplaySender?.Cancel(conn);
         if (conn.identity == null || !ServerPlayers.Remove(conn.identity)) return;
 
         ClientPlayer leaving = conn.identity.GetComponent<ClientPlayer>();
@@ -196,7 +198,7 @@ public partial class GameCore : NetworkBehaviour
         }
         serverOwner = conn;
         conn.identity.GetComponent<ClientPlayer>().isServerOwner = true;
-        Debug.Log($"Player {conn.identity.netId} is now the server owner");
+        WarLog.Info(LogCategory.Lobby, $"Player {conn.identity.netId} is now the server owner");
     }
 
     [Server]
@@ -235,6 +237,15 @@ public partial class GameCore : NetworkBehaviour
 
     // ---------- State machine ----------
 
+    /// <summary>Dev only (debug API): applies <paramref name="settings"/> and starts the match as the owner would, skipping the ready checks.</summary>
+    [Server]
+    internal void DevStartMatch(MatchSettings settings)
+    {
+        if (!DevApi.Allowed || CurrentState != GameState.Lobby || !ConfigLoader.IsValid) return;
+        Settings = settings;
+        StartMatchServerSide();
+    }
+
     [Command(requiresAuthority = false)]
     public void Cmd_StartGame(NetworkConnectionToClient sender = null)
     {
@@ -243,6 +254,11 @@ public partial class GameCore : NetworkBehaviour
         // Dev only (perf harness, hosted tests): a solo host may start without the lobby's rules.
         if (!DevApi.Allowed && !LobbyRules.CanStart(LobbyStartState())) return;
 
+        StartMatchServerSide();
+    }
+
+    private void StartMatchServerSide()
+    {
         DiplomacyEnabled = Settings.Diplomacy;
         BeginStats();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
@@ -372,6 +388,7 @@ public partial class GameCore : NetworkBehaviour
     {
         CurrentState = GameState.GameOver;
         SendStats(winners);
+        WorldStateManager.Instance?.MatchEnded(Newtonsoft.Json.JsonConvert.SerializeObject(new { winners }));
         WorldStateManager.Instance?.DestroyAllEntities();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
@@ -390,6 +407,7 @@ public partial class GameCore : NetworkBehaviour
     {
         CurrentState = GameState.GameOver;
         SendStats(null);
+        WorldStateManager.Instance?.MatchEnded(Newtonsoft.Json.JsonConvert.SerializeObject(new { draw = true }));
         WorldStateManager.Instance?.DestroyAllEntities();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {

@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System.Collections.Generic;
 using Mirror;
 using UnityEngine;
@@ -15,6 +16,7 @@ public static class CommandGate
     {
         ["UpdateClientView"] = (20f, 15f),
         ["CmdOrderChunk"] = (40f, 20f),
+        ["CmdReplayWanted"] = (3f, 1f),
         ["CmdAssignSquadChunk"] = (40f, 10f),
         ["CmdOrderSquad"] = (10f, 5f),
         ["TryAddBuilding"] = (10f, 5f),
@@ -56,7 +58,7 @@ public static class CommandGate
         Violations[conn.connectionId] = v;
         if (v.count >= ViolationsBeforeKick)
         {
-            Debug.LogWarning($"Disconnecting connection {conn.connectionId}: repeatedly exceeded command rate limits ({command}){(WAR2D.Net.Steam.SteamIdentity.TryGet(conn.connectionId, out ulong sid) ? $" (Steam {sid})" : "")}.");
+            WarLog.Warn(LogCategory.Net, $"Disconnecting connection {conn.connectionId}: repeatedly exceeded command rate limits ({command}){(WAR2D.Net.Steam.SteamIdentity.TryGet(conn.connectionId, out ulong sid) ? $" (Steam {sid})" : "")}.");
             Forget(conn.connectionId);
             conn.Disconnect();
         }

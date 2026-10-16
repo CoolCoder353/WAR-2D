@@ -177,6 +177,15 @@ namespace Config
                 config.Audio.BattleHoldSeconds = Float(audio, "BattleHoldSeconds", "Audio", errors, min: 1, max: 600);
             }
 
+            XmlNode replays = Require(root, "Replays", errors);
+            if (replays != null)
+            {
+                config.Replays.Enabled = Int(replays, "Enabled", "Replays", errors, min: 0, max: 1) == 1;
+                config.Replays.MaxMegabytes = Int(replays, "MaxMegabytes", "Replays", errors, min: 1, max: 8192);
+                config.Replays.SendKilobytesPerSecond = Int(replays, "SendKilobytesPerSecond", "Replays", errors, min: 16, max: 65536);
+                config.Replays.KeepCount = Int(replays, "KeepCount", "Replays", errors, min: 1, max: 10000);
+            }
+
             XmlNode damage = Require(root, "DamageTable", errors);
             if (damage != null)
             {

@@ -21,7 +21,7 @@ for run in $(seq 1 "$runs"); do
   dir="$(pwd)/$out/run$run"
   mkdir -p "$dir"
   echo "Run $run/$runs..."
-  "$player" -perf -perfClients "$clients" -perfOut "$dir" -screen-width 1920 -screen-height 1080 -screen-fullscreen 0 -logFile "$dir/player.log" &
+  "$player" -perf -perfRecord -perfClients "$clients" -perfOut "$dir" -screen-width 1920 -screen-height 1080 -screen-fullscreen 0 -logFile "$dir/player.log" &
   host=$!
   sleep 5
   for c in $(seq 1 "$clients"); do

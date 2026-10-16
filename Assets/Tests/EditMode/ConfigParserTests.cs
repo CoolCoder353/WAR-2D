@@ -21,6 +21,7 @@ public class ConfigParserTests
   <Alerts><ThrottleSeconds>10</ThrottleSeconds><AreaTiles>32</AreaTiles><ShowSeconds>8</ShowSeconds></Alerts>
   <Siege><BuildPower>25</BuildPower><DemolishRefund>0.5</DemolishRefund><RepairCostPerHealth>0.2</RepairCostPerHealth><WorkReach>1.6</WorkReach><DigTime>1.5</DigTime><GemPayout>150</GemPayout><WallCost>5</WallCost><WallHealth>150</WallHealth><MaxWallLine>64</MaxWallLine><BlastRadius>2.5</BlastRadius><BlastDamage>200</BlastDamage><RadarClearSeconds>5</RadarClearSeconds><RadarAlertCooldownSeconds>30</RadarAlertCooldownSeconds></Siege>
   <Audio><BattleDeathsPerSecond>3</BattleDeathsPerSecond><BattleHoldSeconds>20</BattleHoldSeconds></Audio>
+  <Replays><Enabled>1</Enabled><MaxMegabytes>512</MaxMegabytes><SendKilobytesPerSecond>1024</SendKilobytesPerSecond><KeepCount>50</KeepCount></Replays>
   <DamageTable><Entry attacker=""Tank"" target=""Unit"">1.0</Entry><Entry attacker=""Tank"" target=""Building"">1.0</Entry><Entry attacker=""Tank"" target=""Wall"">0.5</Entry><Entry attacker=""Digger"" target=""Unit"">0.5</Entry><Entry attacker=""Digger"" target=""Wall"">6</Entry></DamageTable>
   <Units>
     <Unit type=""Tank""><Health>100</Health><Damage>10</Damage><Range>5</Range><AttackInterval>1</AttackInterval><MoveSpeed>5</MoveSpeed><Acceleration>5</Acceleration><UpfrontCost>50</UpfrontCost><RunningCost>2</RunningCost><Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>8</Sight></Unit>
@@ -239,6 +240,15 @@ public class ConfigParserTests
         var errors = new List<string>();
         ConfigParser.Parse(xml, errors);
         Assert.That(errors, Has.Some.Contains(field));
+    }
+
+    [Test]
+    public void ReplaysEnabledOutOfRangeIsRefused()
+    {
+        string xml = Regex.Replace(ValidXml, "<Enabled>[^<]*</Enabled>", "<Enabled>2</Enabled>");
+        var errors = new List<string>();
+        ConfigParser.Parse(xml, errors);
+        Assert.That(errors, Has.Some.Contains("Enabled"));
     }
 
     [TestCase("<AreaTiles>0</AreaTiles>", "AreaTiles")]

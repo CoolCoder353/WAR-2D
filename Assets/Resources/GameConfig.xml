@@ -91,6 +91,13 @@
     <BattleHoldSeconds>20.0</BattleHoldSeconds>       <!-- v0.8: how long the battle music holds after that -->
   </Audio>
 
+  <Replays>
+    <Enabled>1</Enabled>                                  <!-- v0.10: record matches (1) or not (0) -->
+    <MaxMegabytes>512</MaxMegabytes>                      <!-- v0.10: a recording stops (and is kept) past this size -->
+    <SendKilobytesPerSecond>1024</SendKilobytesPerSecond> <!-- v0.10: per player, after GameOver -->
+    <KeepCount>50</KeepCount>                             <!-- v0.10: newest replays kept in the Replays folder -->
+  </Replays>
+
   <!-- Damage multiplier per attacker unit type and target class (Unit, Building, Wall); 1.0 when missing. -->
   <DamageTable>
     <Entry attacker="Tank" target="Unit">1.0</Entry>

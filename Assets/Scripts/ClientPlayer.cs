@@ -284,4 +284,15 @@ public class ClientPlayer : NetworkBehaviour
     [TargetRpc]
     public void RpcOnPlayerLost(NetworkConnectionToClient loser) => EndMatch(WAR2D.UI.EndResult.Defeat);
 
+
+    /// <summary>The player accepts (or declines) the match's replay offer. Only in GameOver, only for the current offer.</summary>
+    [Command(requiresAuthority = false)]
+    public void CmdReplayWanted(int id, bool wanted, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(CmdReplayWanted))) return;
+        WorldStateManager world = WorldStateManager.Instance;
+        if (world?.ReplaySender == null || GameCore.Instance == null) return;
+        if (wanted) world.ReplaySender.Accept(sender, id, GameCore.Instance.CurrentState);
+        else world.ReplaySender.Cancel(sender);
+    }
 }

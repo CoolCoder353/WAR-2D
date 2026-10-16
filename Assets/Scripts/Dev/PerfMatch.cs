@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -31,6 +32,8 @@ public sealed class PerfMatch : MonoBehaviour
     private List<int2>[] reinforcementTiles;
     private readonly int[] reinforcementCursor = new int[Owners];
     private readonly long[] botBytesThisSecond = new long[Owners];
+    private WAR2D.Net.Replay.MatchRecorder perfRecorder;
+    private long lastRecordBytes;
     private int[] owners;
     /// <summary>Owners before this index are real players (the host and -perfClients); from it on, bots.</summary>
     private int firstBot = 1;
@@ -122,6 +125,13 @@ public sealed class PerfMatch : MonoBehaviour
         for (int i = 0; i < Owners; i++) reinforcementTiles[i] = new List<int2>(WalkableSpiral(world, sites[i] + new int2(0, 6), ReinforcementTiles));
         world.Sim.UnitDied += (id, _) => { foreach (HashSet<int> army in armyIds) if (army.Remove(id)) break; };
 
+        if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfRecord") >= 0)
+        {
+            var header = new WAR2D.Net.Replay.ReplayHeader { GameVersion = Application.version, MapSize = world.MapSize, Seed = world.MapSeed, TickSeconds = config.Simulation.TickSeconds };
+            string recPath = Path.Combine(ArgValue("-perfOut") ?? Application.persistentDataPath, "perf-record" + WAR2D.Net.Replay.ReplayFile.Extension);
+            perfRecorder = new WAR2D.Net.Replay.MatchRecorder(world.Replication, world.Sim, header, recPath, 1L << 33);
+        }
+
         bool breakdown = Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0;
         for (int i = firstBot; i < Owners; i++)
         {
@@ -143,7 +153,7 @@ public sealed class PerfMatch : MonoBehaviour
             cam.transform.position = new Vector3(armyStart[0].x, armyStart[0].y, cam.transform.position.z);
             cam.orthographicSize = 34f;
         }
-        Debug.Log("[Perf] match ready; sampling");
+        WarLog.Info(LogCategory.Dev, "match ready; sampling");
     }
 
     private void Update()
@@ -164,6 +174,11 @@ public sealed class PerfMatch : MonoBehaviour
                     stats.Add("perf.bw.avg", botBytesThisSecond[i] / secondTimer);
                     stats.Add("perf.bw.peak1s", botBytesThisSecond[i] / secondTimer);
                     botBytesThisSecond[i] = 0;
+                }
+                if (perfRecorder != null)
+                {
+                    stats.Add("perf.recordKBps", (perfRecorder.QueuedBytes - lastRecordBytes) / 1024.0 / secondTimer);
+                    lastRecordBytes = perfRecorder.QueuedBytes;
                 }
                 secondTimer = 0f;
             }
@@ -354,7 +369,7 @@ public sealed class PerfMatch : MonoBehaviour
             ["perf.bw.avg"] = ("mean", 262144.0, true),
             ["perf.bw.peak1s"] = ("max", 786432.0, true),
         });
-        Debug.Log($"[Perf] wrote {path}");
+        WarLog.Info(LogCategory.Dev, $"wrote {path}");
         if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0)
         {
             var lines = new System.Text.StringBuilder("type,bytes,units\n");
@@ -408,7 +423,7 @@ public sealed class PerfMatch : MonoBehaviour
 
     private void Fail(string reason)
     {
-        Debug.LogError($"[Perf] {reason}");
+        WarLog.Error(LogCategory.Dev, $"{reason}");
         Application.Quit(1);
     }
 }

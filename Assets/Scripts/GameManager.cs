@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using Mirror;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -81,7 +82,7 @@ public class GameManager : NetworkManager
 
         // Clients spawn GameCore from its prefab (registered with the client when it starts).
         GameObject core = Resources.Load<GameObject>(GameCorePrefabPath);
-        if (core == null) Debug.LogError($"Resources/{GameCorePrefabPath}.prefab is missing: no match can be hosted or joined.");
+        if (core == null) WarLog.Error(LogCategory.Net, $"Resources/{GameCorePrefabPath}.prefab is missing: no match can be hosted or joined.");
         else if (!spawnPrefabs.Contains(core)) spawnPrefabs.Add(core);
     }
 
@@ -111,14 +112,14 @@ public class GameManager : NetworkManager
         base.OnStartServer();
         if (!Config.ConfigLoader.IsValid)
         {
-            Debug.LogError("Stopping server: GameConfig.xml is invalid.");
+            WarLog.Error(LogCategory.Net, "Stopping server: GameConfig.xml is invalid.");
             StopServer();
             if (Application.isBatchMode) Application.Quit(1);
             return;
         }
         GameObject corePrefab = Resources.Load<GameObject>(GameCorePrefabPath);
         if (GameCore.Instance == null && corePrefab != null) NetworkServer.Spawn(Instantiate(corePrefab));
-        Debug.Log("Server has started");
+        WarLog.Info(LogCategory.Net, "Server has started");
     }
 
     /// <summary>Closes the router port opened for internet players (if the menu's Host opened one).</summary>
@@ -147,7 +148,7 @@ public class GameManager : NetworkManager
         base.OnServerConnect(conn);
         GameCore core = GameCore.Instance;
         if (core == null || LobbyRules.MayJoin(core.CurrentState, NetworkServer.connections.Count)) return;
-        Debug.Log($"Refusing connection {conn.connectionId}: the match is {core.CurrentState} with {NetworkServer.connections.Count - 1} players.");
+        WarLog.Info(LogCategory.Net, $"Refusing connection {conn.connectionId}: the match is {core.CurrentState} with {NetworkServer.connections.Count - 1} players.");
         conn.Disconnect();
     }
 
@@ -165,8 +166,8 @@ public class GameManager : NetworkManager
         GameCore.Instance.AddPlayer(conn, Config.ConfigLoader.LoadConfig().Resources.StartingResources);
 
         // Log the connection
-        Debug.Log($"Player {conn.connectionId} has connected");
-        Debug.Log($"There are now {GameCore.Instance.ServerPlayers.Count} players connected");
+        WarLog.Info(LogCategory.Net, $"Player {conn.connectionId} has connected");
+        WarLog.Info(LogCategory.Net, $"There are now {GameCore.Instance.ServerPlayers.Count} players connected");
     }
 
     /// <summary>
@@ -184,7 +185,7 @@ public class GameManager : NetworkManager
         else CommandGate.Forget(conn.connectionId);
 
         // Log the disconnection
-        Debug.Log($"Player {conn.connectionId} has disconnected");
+        WarLog.Info(LogCategory.Net, $"Player {conn.connectionId} has disconnected");
 
 
 
@@ -206,7 +207,7 @@ public class GameManager : NetworkManager
         base.OnClientError(error, reason);
 
         // Log the error reason
-        Debug.Log($"Error: {reason}");
+        WarLog.Info(LogCategory.Net, $"Error: {reason}");
     }
 
     /// <summary>Registers the unit replication handler (it forwards batches to <see cref="WAR2D.Net.Replication.ReplicationClient"/>).</summary>
@@ -218,6 +219,14 @@ public class GameManager : NetworkManager
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.FogBatch>(WAR2D.Net.Replication.ClientFog.Receive, false);
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.TerrainBatch>(WAR2D.Net.Replication.ClientTerrain.Receive, false);
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.BuildingBatch>(WAR2D.Net.Replication.ClientBuildings.Receive, false);
+        NetworkClient.RegisterHandler<WAR2D.Net.Replay.ReplayOffer>(o =>
+        {
+            WAR2D.Net.Replay.ReplayReceiver.Install(WAR2D.Net.Replay.ReplayLibrary.Folder);
+            bool want = SettingsStore.Current.SaveReplays;
+            WAR2D.Net.Replay.ReplayReceiver.Current.OnOffer(o, want);
+            if (NetworkClient.localPlayer != null && NetworkClient.localPlayer.TryGetComponent(out ClientPlayer me)) me.CmdReplayWanted(o.Id, want);
+        }, false);
+        NetworkClient.RegisterHandler<WAR2D.Net.Replay.ReplayChunk>(c => WAR2D.Net.Replay.ReplayReceiver.Current?.OnChunk(c), false);
     }
 
     /// <summary>Called on the client when it connects to the server.</summary>
@@ -235,7 +244,8 @@ public class GameManager : NetworkManager
     public override void OnClientDisconnect()
     {
         base.OnClientDisconnect();
-        Debug.Log("Disconnected from server");
+        WAR2D.Net.Replay.ReplayReceiver.Clear();
+        WarLog.Info(LogCategory.Net, "Disconnected from server");
     }
 
 
@@ -248,7 +258,7 @@ public class GameManager : NetworkManager
 
         if (NetworkClient.localPlayer && NetworkClient.localPlayer.isServer)
         {
-            Debug.Log($"The game manager ({GameManager.Instance}) is stopping the host ({NetworkClient.localPlayer})");
+            WarLog.Info(LogCategory.Net, $"The game manager ({GameManager.Instance}) is stopping the host ({NetworkClient.localPlayer})");
             GameManager.Instance.StopHost();
 
         }
@@ -326,7 +336,7 @@ public class GameManager : NetworkManager
     {
         if (!Config.ConfigLoader.IsValid)
         {
-            Debug.LogError("Refusing to host: GameConfig.xml is invalid. See [GameConfig] errors above.");
+            WarLog.Error(LogCategory.Net, "Refusing to host: GameConfig.xml is invalid. See [GameConfig] errors above.");
             return;
         }
         if (!NetworkClient.active)
@@ -348,7 +358,7 @@ public class GameManager : NetworkManager
     {
         if (!WAR2D.Net.Steam.ConnectionRoute.TryParse(address, DefaultPort, out WAR2D.Net.Steam.ConnectionRoute route))
         {
-            Debug.LogWarning($"Not a server address: '{address}'. Enter a host, host:port, or steam:<id>.");
+            WarLog.Warn(LogCategory.Net, $"Not a server address: '{address}'. Enter a host, host:port, or steam:<id>.");
             return;
         }
         Connect(route);
@@ -359,7 +369,7 @@ public class GameManager : NetworkManager
     {
         if (!CanConnect(route, WAR2D.Net.Steam.SteamServices.Available, DirectAllowed, out string why))
         {
-            Debug.LogWarning($"Not connecting to {route}: {why}");
+            WarLog.Warn(LogCategory.Net, $"Not connecting to {route}: {why}");
             return;
         }
         if (NetworkServer.active) return; // hosting: there is nothing to join

@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System;
 using System.Collections.Generic;
 using Config;
@@ -59,6 +60,10 @@ namespace WAR2D.Net.Replication
             public NetworkConnectionToClient Connection;
             public Action<ArraySegment<byte>, int> VirtualSink;
             public int OwnerId;
+            /// <summary>The match recorder: sees every unit and building, bombs included.</summary>
+            public bool SeesAll;
+            /// <summary>The recorder's off-boundary unit replication (all-seeing clients only), else null.</summary>
+            public DeferredLane Lane;
             /// <summary>The fog grid the client was last sent a snapshot of, or -1 (send one).</summary>
             public int FogGrid = -1;
             /// <summary>The fog grid terrain was last walked for, or -1.</summary>
@@ -81,10 +86,15 @@ namespace WAR2D.Net.Replication
         private readonly ReplicationEncoder encoder;
         private readonly Client[] clients = new Client[MaxClients];
         private readonly bool[] active = new bool[MaxClients];
+        /// <summary>Clients the boundary encodes (active, without a deferred lane).</summary>
+        private readonly bool[] encodeNow = new bool[MaxClients];
         private readonly NetworkWriter writer = new NetworkWriter();
         private byte[] copy = new byte[64 * 1024];
         private readonly System.Diagnostics.Stopwatch watch = new System.Diagnostics.Stopwatch();
         private bool disposed;
+
+        /// <summary>The tick of the payload a virtual sink is being handed (a deferred lane's is a tick old).</summary>
+        public int SinkTick { get; private set; }
 
         /// <summary>Main-thread milliseconds the last boundary's replication took.</summary>
         public static double LastMilliseconds;
@@ -112,8 +122,8 @@ namespace WAR2D.Net.Replication
         }
 
         /// <summary>A sink that receives a client's bytes without a connection (the perf harness's bot streams).</summary>
-        public void AddVirtualClient(int ownerId, Action<ArraySegment<byte>, int> sink) =>
-            Add(new Client { VirtualSink = sink, OwnerId = ownerId });
+        public void AddVirtualClient(int ownerId, Action<ArraySegment<byte>, int> sink, bool seesAll = false) =>
+            Add(new Client { VirtualSink = sink, OwnerId = ownerId, SeesAll = seesAll });
 
         private void Add(Client client)
         {
@@ -126,9 +136,14 @@ namespace WAR2D.Net.Replication
                 encoder.ResetClient(c);
                 interests.SetClient(c, client.OwnerId, -1); // the grid is set at the next boundary
                 encoder.SetView(c, new int2(int.MinValue / 2), new int2(int.MinValue / 2));
+                if (client.SeesAll)
+                {
+                    client.Lane = new DeferredLane(client.OwnerId, EncoderConfig.From(config), config.Simulation.MaxEntities, interests.MaxEntersPerBuild);
+                    interests.SetClient(c, int.MinValue, -1); // its units go through the lane, not this boundary's sets
+                }
                 return;
             }
-            Debug.LogError("[Replication] no free client slot");
+            WarLog.Error(LogCategory.Replication, "no free client slot");
         }
 
         /// <summary>Stops replicating to a connection.</summary>
@@ -184,6 +199,7 @@ namespace WAR2D.Net.Replication
         private void AfterBoundary(SimData data, int tick, int count)
         {
             watch.Restart();
+            SinkTick = tick;
             bool any = false;
             for (int c = 0; c < MaxClients; c++) any |= active[c];
 
@@ -226,7 +242,10 @@ namespace WAR2D.Net.Replication
                 return;
             }
             for (int c = 0; c < MaxClients; c++)
-                if (active[c]) interests.SetClient(c, clients[c].OwnerId, GridOf(clients[c].OwnerId));
+            {
+                encodeNow[c] = active[c] && clients[c].Lane == null;
+                if (encodeNow[c]) interests.SetClient(c, clients[c].OwnerId, GridFor(clients[c]));
+            }
             SendFog(data);
             SendTerrain(data, tick);
             SendBuildings(data);
@@ -234,7 +253,7 @@ namespace WAR2D.Net.Replication
             handle.Complete(); // the encoder reads the route arena by value, so it must not move under it
             using var attacks = new NativeArray<int2>(data.AttackEvents.AsArray(), Allocator.TempJob);
             using NativeArray<AttackTarget> targets = AttackTargets(data, attacks);
-            encoder.Schedule(tick, input, attacks, targets, active, default).Complete();
+            encoder.Schedule(tick, input, attacks, targets, encodeNow, default).Complete();
 
             for (int c = 0; c < MaxClients; c++)
             {
@@ -243,6 +262,20 @@ namespace WAR2D.Net.Replication
                 if (client.Connection != null && (client.Connection.identity == null || !NetworkServer.connections.ContainsKey(client.Connection.connectionId)))
                 {
                     OnClientLeft(client.Connection);
+                    continue;
+                }
+                if (client.Lane != null)
+                {
+                    // Last tick's units (encoded during this tick), then this tick's copied for the next.
+                    if (client.Lane.PendingTick >= 0)
+                    {
+                        var (r, rs, u, us) = client.Lane.Collect();
+                        SinkTick = client.Lane.PendingTick;
+                        SendSplit(client, SinkTick, r, rs, Channels.Reliable, BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4));
+                        SendSplit(client, SinkTick, u, us, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
+                        SinkTick = tick;
+                    }
+                    client.Lane.Schedule(data, tick, count, routes, attacks, targets);
                     continue;
                 }
                 client.EntersSent += interests.Entered(c).Length;
@@ -286,6 +319,9 @@ namespace WAR2D.Net.Replication
         /// </summary>
         public Func<int, bool> Spectating;
 
+        /// <summary>A client's grid: everything for the recorder, else as <see cref="GridOf"/>.</summary>
+        private int GridFor(Client client) => client.SeesAll ? SimData.SeesAll : GridOf(client.OwnerId);
+
         /// <summary>The fog grid an owner's client is replicated against.</summary>
         private int GridOf(int ownerId) => Spectating != null && Spectating(ownerId) ? SimData.SeesAll : sim.VisionOf(ownerId);
 
@@ -308,7 +344,7 @@ namespace WAR2D.Net.Replication
             {
                 if (!active[c]) continue;
                 Client client = clients[c];
-                int grid = GridOf(client.OwnerId);
+                int grid = GridFor(client);
                 if (grid < 0) continue;
                 if (grid == SimData.SeesAll)
                 {
@@ -358,7 +394,7 @@ namespace WAR2D.Net.Replication
             {
                 if (!active[c]) continue;
                 Client client = clients[c];
-                int grid = GridOf(client.OwnerId);
+                int grid = GridFor(client);
                 if (grid < 0 || (!visionTick && client.TerrainGrid == grid)) continue;
                 client.TerrainGrid = grid;
                 while (true)
@@ -388,9 +424,9 @@ namespace WAR2D.Net.Replication
             {
                 if (!active[c]) continue;
                 Client client = clients[c];
-                int grid = GridOf(client.OwnerId);
+                int grid = GridFor(client);
                 writer.Position = 0;
-                if (client.Buildings.Update(buildingViews, buildingIds, client.OwnerId, p => data.Sees(grid, p), writer, limit, owner => BombRules.MayKnow(client.OwnerId, owner, SharesVision)) == 0) continue;
+                if (client.Buildings.Update(buildingViews, buildingIds, client.OwnerId, p => data.Sees(grid, p), writer, limit, owner => client.SeesAll || BombRules.MayKnow(client.OwnerId, owner, SharesVision)) == 0) continue;
                 ArraySegment<byte> payload = writer.ToArraySegment();
                 client.BytesSent += payload.Count;
                 if (client.VirtualSink != null) client.VirtualSink(payload, BuildingSinkChannel);
@@ -444,6 +480,7 @@ namespace WAR2D.Net.Replication
             disposed = true;
             sim.Settled -= AfterBoundary;
             if (Instance == this) Instance = null;
+            foreach (Client client in clients) client?.Lane?.Dispose();
             routes.Dispose();
             interests.Dispose();
             if (allSeen.IsCreated) allSeen.Dispose();

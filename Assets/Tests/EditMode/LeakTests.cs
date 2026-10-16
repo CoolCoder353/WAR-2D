@@ -410,4 +410,49 @@ public class LeakTests
         Assert.IsFalse(c.Buildings.Entries.ContainsKey(500));
         foreach (Spy s in new[] { a, b, c }) { CollectionAssert.IsEmpty(s.Failures); s.Dispose(); }
     }
+
+    [Test]
+    public void OnlyTheRecorderSeesEveryBombNotASpectator()
+    {
+        using var sim = new SimHarness(Map());
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        replication.Spectating = o => o == OwnerC; // an eliminated player watching the whole map
+        var views = new List<BuildingView>();
+        replication.CollectBuildings = list => list.AddRange(views);
+        var recorder = new ClientBuildings();
+        var spectator = new ClientBuildings();
+        replication.AddVirtualClient(int.MinValue + 1, (p, ch) => { if (ch == ReplicationService.BuildingSinkChannel) BuildingCodec.Apply(recorder, p); }, seesAll: true);
+        replication.AddVirtualClient(OwnerC, (p, ch) => { if (ch == ReplicationService.BuildingSinkChannel) BuildingCodec.Apply(spectator, p); });
+        sim.Spawn(SimHarness.OwnerA, new float2(20, 20));
+        sim.Tick();
+        views.Add(new BuildingView { Id = 500, OwnerId = SimHarness.OwnerA, Type = BuildingType.Bomb, Anchor = new int2(21, 20), Health = 40, MaxHealth = 40, Position = new float2(21, 20), Hidden = true, Progress = 100 });
+        for (int i = 0; i < 8; i++) sim.Tick();
+        Assert.IsTrue(recorder.Entries.ContainsKey(500), "the recorder sees every bomb");
+        Assert.IsFalse(spectator.Entries.ContainsKey(500), "a spectator sees the map, never another player's bombs");
+    }
+
+    [Test]
+    public void NoReplayOfferOrChunkBeforeGameOver()
+    {
+        string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "w2d-leak-" + Guid.NewGuid().ToString("N") + WAR2D.Net.Replay.ReplayFile.Extension);
+        System.IO.File.WriteAllBytes(path, new byte[50_000]);
+        var sender = new WAR2D.Net.Replay.ReplaySender(1, path, 1 << 20, 1f);
+        int offers = 0, chunks = 0;
+        sender.SendOffer = (c, m) => offers++;
+        sender.SendChunk = (c, m) => chunks++;
+        var conn = new Mirror.NetworkConnectionToClient(42);
+        foreach (GameState s in Enum.GetValues(typeof(GameState)))
+        {
+            if (s == GameState.GameOver) continue;
+            sender.Offer(conn, s);
+            sender.Accept(conn, 1, s);
+            sender.Update(1f, s);
+        }
+        Assert.AreEqual(0, offers);
+        Assert.AreEqual(0, chunks);
+        Assert.IsFalse(sender.Busy, "an accept before GameOver is ignored");
+        sender.Offer(conn, GameState.GameOver);
+        Assert.AreEqual(1, offers);
+        System.IO.File.Delete(path);
+    }
 }
