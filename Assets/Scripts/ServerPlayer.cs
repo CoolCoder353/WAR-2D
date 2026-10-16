@@ -38,6 +38,14 @@ public class ServerPlayer
         ResourcesDirty = true;
     }
 
+    /// <summary>Dev only (debug API): sets the balance. Refused unless dev APIs are allowed.</summary>
+    internal void DevSetResources(float amount)
+    {
+        if (!DevApi.Allowed || float.IsNaN(amount) || float.IsInfinity(amount) || amount < 0f) return;
+        Resources = amount;
+        ResourcesDirty = true;
+    }
+
     public void Add(float amount)
     {
         if (!(amount > 0f)) return; // also rejects NaN

@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""WAR-2D control API client. See docs/debugging.md."""
+import argparse, glob, json, os, socket, subprocess, sys, time
+
+def api_dirs():
+    home = os.path.expanduser("~")
+    # Unity's persistentDataPath on Linux: ~/.config/unity3d/<company>/<product>
+    return glob.glob(os.path.join(home, ".config", "unity3d", "*", "*", "debugapi"))
+
+def instances():
+    found = []
+    for d in api_dirs():
+        for f in glob.glob(os.path.join(d, "*.json")):
+            try:
+                info = json.load(open(f))
+                os.kill(info["pid"], 0)  # still running?
+                found.append(info)
+            except (OSError, ValueError, KeyError):
+                pass
+    return sorted(found, key=lambda i: i["port"])
+
+def parse_value(text):
+    try:
+        return json.loads(text)
+    except ValueError:
+        return text
+
+def parse_args(pairs):
+    args = {}
+    for p in pairs:
+        if "=" not in p:
+            raise SystemExit(f"argument '{p}' must be key=value")
+        k, v = p.split("=", 1)
+        args[k] = parse_value(v)
+    return args
+
+class Client:
+    def __init__(self, port):
+        info = next((i for i in instances() if i["port"] == port), None)
+        if info is None:
+            raise SystemExit(f"no WAR-2D debug API on port {port} (run 'war2d list')")
+        self.token = info["token"]
+        self.sock = socket.create_connection(("127.0.0.1", port), timeout=600)
+        self.file = self.sock.makefile("rw", encoding="utf-8", newline="\n")
+        self.next_id = 1
+
+    def call(self, cmd, args):
+        rid = self.next_id; self.next_id += 1
+        self.file.write(json.dumps({"id": rid, "token": self.token, "cmd": cmd, "args": args}) + "\n")
+        self.file.flush()
+        while True:
+            line = self.file.readline()
+            if not line:
+                raise SystemExit("connection closed")
+            reply = json.loads(line)
+            if reply.get("id") == rid:
+                return reply
+
+def show(reply, raw):
+    if raw or not reply.get("ok"):
+        print(json.dumps(reply, indent=None if raw else 2))
+        return 0 if reply.get("ok") else 1
+    result = reply["result"]
+    if isinstance(result, str):
+        print(result)
+    elif isinstance(result, dict) and isinstance(result.get("units"), list):
+        print(f"count {result['count']}" + (f" (tick {result['tick']})" if "tick" in result else ""))
+        for u in result["units"]:
+            if u: print(f"  {u['id']:>9} owner {u['owner']:>7} {u['type']:<8} at {u['pos'][0]:7.2f},{u['pos'][1]:7.2f} hp {u['health']}")
+    else:
+        print(json.dumps(result, indent=2))
+    return 0
+
+def launch(clients):
+    exe = os.path.join(os.path.dirname(__file__), "..", "Builds", "Dev", "WAR-2D.x86_64")
+    if not os.path.exists(exe):
+        raise SystemExit("build it first: WAR-2D > Build > Linux (Dev)")
+    logs = os.path.join(os.path.dirname(exe), "logs"); os.makedirs(logs, exist_ok=True)
+    procs = []
+    for i in range(clients + 1):
+        port = 7790 + i
+        log = os.path.join(logs, f"{'host' if i == 0 else 'client%d' % i}.log")
+        procs.append(subprocess.Popen([exe, "-debugApi", str(port), "-direct", "-noSteam", "-screen-width", "960", "-screen-height", "540", "-screen-fullscreen", "0", "-logFile", log]))
+    deadline = time.time() + 60
+    while time.time() < deadline and len({i["port"] for i in instances()} & set(range(7790, 7791 + clients))) < clients + 1:
+        time.sleep(0.5)
+    for p, i in zip(procs, range(clients + 1)):
+        print(f"{'host' if i == 0 else 'client%d' % i}: pid {p.pid}, port {7790 + i}")
+    return 0
+
+def selftest():
+    assert parse_args(["tile=[1,2]", "type=Tank", "on=true", "n=3"]) == {"tile": [1, 2], "type": "Tank", "on": True, "n": 3}
+    print("ok")
+    return 0
+
+def main():
+    ap = argparse.ArgumentParser(prog="war2d", description="Drive a running WAR-2D (editor play mode or a dev build with -debugApi).")
+    ap.add_argument("--port", type=int, default=7790)
+    ap.add_argument("--json", action="store_true", help="print the raw reply")
+    ap.add_argument("command")
+    ap.add_argument("args", nargs="*", help="key=value (values are JSON when they parse)")
+    ap.add_argument("--clients", type=int, default=1, help="launch: joining clients")
+    o = ap.parse_args()
+    if o.command == "list":
+        for i in instances(): print(f"port {i['port']}  pid {i['pid']}  {i['role']}")
+        return 0
+    if o.command == "launch": return launch(o.clients)
+    if o.command == "selftest": return selftest()
+    client = Client(o.port)
+    if o.command == "shell":
+        while True:
+            try: line = input(f"war2d:{o.port}> ").strip()
+            except EOFError: return 0
+            if not line: continue
+            parts = line.split()
+            try: show(client.call(parts[0], parse_args(parts[1:])), o.json)
+            except SystemExit as e: print(e)
+    return show(client.call(o.command, parse_args(o.args)), o.json)
+
+if __name__ == "__main__":
+    sys.exit(main())

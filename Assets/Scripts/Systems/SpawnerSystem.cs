@@ -21,6 +21,7 @@ public partial struct SpawnerSystem : ISystem
         if (!NetworkServer.active || WorldStateManager.Instance == null || GameCore.Instance == null || GameCore.Instance.CurrentState != GameState.Playing) return;
         SimCommandQueue queue = SimCommandQueue.Instance;
         if (queue == null || WorldStateManager.Instance.Map == null) return;
+        if (WAR2D.Sim.SimContext.Current != null && WAR2D.Sim.SimContext.Current.Pause.Frozen) return;
 
         GameConfigData config = ConfigLoader.LoadConfig();
         float dt = SystemAPI.Time.DeltaTime;
