@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System.Collections.Generic;
 using UnityEngine;
 using WAR2D.Art;
@@ -29,7 +30,7 @@ namespace WAR2D.Client.Render
             Shader shader = Resources.Load<Shader>(ShaderPath);
             if (shader == null)
             {
-                Debug.LogError($"Resources/{ShaderPath}.shader is missing");
+                WarLog.Error(LogCategory.Art, $"Resources/{ShaderPath}.shader is missing");
                 shader = Shader.Find("Sprites/Default");
             }
             ArtAtlas atlas = ArtAtlas.Load(atlasName);

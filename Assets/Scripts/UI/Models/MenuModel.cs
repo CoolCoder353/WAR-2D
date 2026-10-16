@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -43,7 +44,7 @@ namespace WAR2D.UI
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"Could not read this machine's address: {e.Message}");
+                WarLog.Warn(LogCategory.UI, $"Could not read this machine's address: {e.Message}");
             }
             return "this machine's address";
         }

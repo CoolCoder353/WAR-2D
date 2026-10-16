@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System.Collections.Generic;
 using Mirror;
 using UnityEngine;
@@ -71,7 +72,7 @@ namespace WAR2D.Net.Steam
                     if (!accepted) { Reject(w.conn, reason); continue; }
                     ulong steamId = TransportSteamId(connectionId);
                     SteamIdentity.Set(connectionId, steamId);
-                    Debug.Log($"[Steam] connection {connectionId} signed in as Steam {steamId}");
+                    WarLog.Info(LogCategory.Steam, $"connection {connectionId} signed in as Steam {steamId}");
                     w.conn.Send(new SteamAuthResponse { accepted = true });
                     ServerAccept(w.conn);
                 }
@@ -98,7 +99,7 @@ namespace WAR2D.Net.Steam
 
         private void Reject(NetworkConnectionToClient conn, string reason)
         {
-            Debug.LogWarning($"[Steam] rejecting connection {conn.connectionId}: {reason}");
+            WarLog.Warn(LogCategory.Steam, $"rejecting connection {conn.connectionId}: {reason}");
             waiting.Remove(conn.connectionId);
             sessions?.Forget(conn.connectionId);
             conn.Send(new SteamAuthResponse { accepted = false, reason = reason });
@@ -123,7 +124,7 @@ namespace WAR2D.Net.Steam
         private void OnResponse(SteamAuthResponse msg)
         {
             if (msg.accepted) ClientAccept();
-            else { Debug.LogWarning($"[Steam] the host refused you: {msg.reason}"); LastRefusal = msg.reason; ClientReject(); }
+            else { WarLog.Warn(LogCategory.Steam, $"the host refused you: {msg.reason}"); LastRefusal = msg.reason; ClientReject(); }
         }
     }
 }

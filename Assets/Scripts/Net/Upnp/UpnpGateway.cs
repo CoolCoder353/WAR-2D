@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -91,7 +92,7 @@ namespace WAR2D.Net.Upnp
                 catch (Exception e) when (!ct.IsCancellationRequested)
                 {
                     // One bad responder (unreachable, malformed, IPv6) must not stop the search for the real router.
-                    UnityEngine.Debug.Log($"[UPnP] could not use {location}: {e.Message}");
+                    WarLog.Info(LogCategory.Net, $"could not use {location}: {e.Message}");
                 }
             }
             ct.ThrowIfCancellationRequested();

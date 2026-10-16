@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -63,7 +64,7 @@ public sealed class PerfClient : MonoBehaviour
             ["perf.bw.avg"] = ("mean", 262144.0, true),
             ["perf.bw.peak1s"] = ("max", 786432.0, true),
         });
-        Debug.Log($"[PerfClient] wrote {path}");
+        WarLog.Info(LogCategory.Dev, $"wrote {path}");
         Application.Quit();
     }
 
@@ -81,7 +82,7 @@ public sealed class PerfClient : MonoBehaviour
             foreach (Transport t in multiplex.transports) if (t is KcpTransport k) { kcp = k; break; }
         if (kcp == null)
         {
-            Debug.LogError("[PerfClient] the scene has no KCP transport to meter; bandwidth will read 0");
+            WarLog.Error(LogCategory.Dev, "the scene has no KCP transport to meter; bandwidth will read 0");
             return;
         }
         if (kcp is MeteredKcpTransport) return;

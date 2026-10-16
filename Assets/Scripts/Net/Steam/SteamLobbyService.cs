@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 namespace WAR2D.Net.Steam
 {
     /// <summary>Keeps the host's Steam lobby listing in step with the game lobby.</summary>
@@ -19,7 +20,7 @@ namespace WAR2D.Net.Steam
             this.hostName = hostName;
             backend.CreateLobby(LobbyRules.MaxPlayers, id =>
             {
-                if (id == 0) { UnityEngine.Debug.LogWarning("[Steam] could not create a lobby."); return; }
+                if (id == 0) { WarLog.Warn(LogCategory.Steam, "could not create a lobby."); return; }
                 LobbyId = id;
                 open = true;
                 last = default;

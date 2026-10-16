@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System;
 using UnityEngine.InputSystem;
 
@@ -19,7 +20,7 @@ public static class Rebinding
         }
         catch (Exception e)
         {
-            UnityEngine.Debug.LogWarning($"[Rebinding] saved bindings could not be read ({e.Message}); using the defaults.");
+            WarLog.Warn(LogCategory.UI, $"saved bindings could not be read ({e.Message}); using the defaults.");
             map.RemoveAllBindingOverrides();
         }
     }

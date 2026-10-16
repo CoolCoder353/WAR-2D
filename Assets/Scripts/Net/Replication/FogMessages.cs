@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System;
 using System.Collections.Generic;
 using Mirror;
@@ -143,7 +144,7 @@ namespace WAR2D.Net.Replication
         {
             if (!FogCodec.Apply(Current, batch.Payload))
             {
-                UnityEngine.Debug.LogWarning("[Fog] dropped a malformed fog batch");
+                WarLog.Warn(LogCategory.Replication, "dropped a malformed fog batch");
                 return;
             }
             Updated?.Invoke();

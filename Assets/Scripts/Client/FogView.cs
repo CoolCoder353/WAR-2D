@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System.Collections.Generic;
 using UnityEngine;
 using WAR2D.Net.Replication;
@@ -71,7 +72,7 @@ public class FogView : MonoBehaviour
         if (_material == null)
         {
             Shader shader = Resources.Load<Shader>("Shaders/Fog");
-            if (shader == null) Debug.LogError("Resources/Shaders/Fog.shader is missing");
+            if (shader == null) WarLog.Error(LogCategory.Art, "Resources/Shaders/Fog.shader is missing");
             _material = new Material(shader) { renderQueue = 3500 };
             _material.SetFloat("_PixelsPerUnit", WAR2D.Art.ArtStyle.PixelsPerUnit);
             _material.SetFloat("_Explored", Palette[1].a / 255f);
