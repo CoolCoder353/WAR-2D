@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
-# Usage: tools/steam-upload.sh [--no-build] [--login] <branch> [description]
+# Usage: tools/steam-upload.sh [--no-build] <branch> [description]
 # Builds fresh Linux and Windows Steam depots (headless Unity, so the editor must be CLOSED), then uploads
 # them to the given Steam branch through steamcmd.
 #   --no-build  upload the existing Builds/Steam/{linux,windows} without rebuilding
-#   --login     one-time interactive login that caches the Steam session (password + Steam Guard code)
-# Needs steam/steam.env (see steam/steam.env.example). Normal runs never prompt for the password or the
-# Steam Guard code: they reuse the cached login and fail fast if it is missing or expired.
-# This script never sees or stores the password.
+# Needs steam/steam.env (see steam/steam.env.example). steamcmd asks for the password and Steam Guard code
+# when it logs in for the upload; this script never sees or stores them.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-build=1; login=0
+build=1
 while [[ "${1:-}" == --* ]]; do
   case "$1" in
     --no-build) build=0 ;;
-    --login) login=1 ;;
     *) echo "Unknown option $1"; exit 1 ;;
   esac
   shift
@@ -23,26 +20,9 @@ done
 source steam/steam.env
 for v in APP_ID DEPOT_LINUX DEPOT_WINDOWS STEAM_USER; do [[ -n "${!v:-}" ]] || { echo "$v is empty in steam/steam.env"; exit 1; }; done
 STEAMCMD="${STEAMCMD:-steamcmd}"
-# steamcmd keeps its cached login in <its install>/config/config.vdf. Under the default HOME it shares that
-# file with the desktop Steam client (~/.steam/steam), which rewrites it and drops steamcmd's login, so every
-# upload asked for the password again. A HOME of its own gives steamcmd a private install and login cache.
-STEAMCMD_HOME="${STEAMCMD_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/war2d-steamcmd}"
-mkdir -p "$STEAMCMD_HOME"
-run_steamcmd() { HOME="$STEAMCMD_HOME" "$STEAMCMD" "$@"; }
 
-if [[ $login == 1 ]]; then
-  run_steamcmd +login "$STEAM_USER" +quit
-  echo "Login cached in $STEAMCMD_HOME. Run the upload without --login from now on."
-  exit
-fi
-
-branch="${1:?usage: tools/steam-upload.sh [--no-build] [--login] <branch> [description]}"
+branch="${1:?usage: tools/steam-upload.sh [--no-build] <branch> [description]}"
 desc="${2:-v$(grep -m1 'bundleVersion:' ProjectSettings/ProjectSettings.asset | awk '{print $2}') $(git rev-parse --short HEAD)}"
-
-# Check the cached login before spending minutes on the builds.
-# steamcmd's exit code is unreliable, so also look for a failed login in its output.
-check="$(run_steamcmd +@NoPromptForPassword 1 +@ShutdownOnFailedCommand 1 +login "$STEAM_USER" +quit 2>&1)" && ! grep -qE "FAILED|not found" <<<"$check" \
-  || { echo "No cached Steam login (or it expired). Run: tools/steam-upload.sh --login"; grep -E "FAILED|not found" <<<"$check" | tail -3; exit 1; }
 
 if [[ $build == 1 ]]; then
   UNITY="${UNITY_EDITOR:-$HOME/Unity/Hub/Editor/$(grep -m1 m_EditorVersion: ProjectSettings/ProjectVersion.txt | awk '{print $2}')/Editor/Unity}"
@@ -78,8 +58,6 @@ VDF
 cat > "$out/app_build.vdf" <<VDF
 "AppBuild" { "AppID" "$APP_ID" "Desc" "$desc" "BuildOutput" "$out/logs" $setlive "Depots" { "$DEPOT_LINUX" "$out/depot_linux.vdf" "$DEPOT_WINDOWS" "$out/depot_windows.vdf" } }
 VDF
-# No password on the command line: steamcmd reuses the cached login (see --login). NoPromptForPassword
-# makes it fail instead of asking for the password or a Steam Guard code.
-run_steamcmd +@NoPromptForPassword 1 +@ShutdownOnFailedCommand 1 +login "$STEAM_USER" +run_app_build "$out/app_build.vdf" +quit \
-  || { echo "Upload failed (see $out/logs). If the login expired, run: tools/steam-upload.sh --login"; exit 1; }
+"$STEAMCMD" +login "$STEAM_USER" +run_app_build "$out/app_build.vdf" +quit \
+  || { echo "Upload failed (see $out/logs)."; exit 1; }
 echo "Uploaded '$desc' to branch '$branch'."
