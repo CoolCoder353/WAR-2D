@@ -11,6 +11,8 @@ namespace WAR2D.Client.Render
         public const int ClearingRing = -20000;
         public const int Effects = 10000;
         public const int Fog = 20000;
+        /// <summary>Dev overlays: above fog, under selection brackets.</summary>
+        public const int DebugOverlay = 25000;
         public const int BuildingSelection = 30000;
         public const int PlacementPreview = short.MaxValue;
 
