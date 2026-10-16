@@ -4,10 +4,14 @@
     <ui:Template name="HostJoin" src="HostJoin.uxml" />
     <ui:Template name="Lobby" src="Lobby.uxml" />
     <ui:Template name="Settings" src="Settings.uxml" />
+    <ui:Template name="Replays" src="Replays.uxml" />
+    <ui:Template name="ReplayViewer" src="ReplayViewer.uxml" />
     <ui:VisualElement name="menu" class="hud-root" picking-mode="Ignore">
         <ui:Instance template="MainMenu" name="main-menu-instance" class="hud-layer" />
         <ui:Instance template="HostJoin" name="host-join-instance" class="hud-layer" />
         <ui:Instance template="Lobby" name="lobby-instance" class="hud-layer" />
+        <ui:Instance template="Replays" name="replays-instance" class="hud-layer" />
+        <ui:Instance template="ReplayViewer" name="replay-viewer-instance" class="hud-layer" />
         <ui:Instance template="Settings" name="settings-instance" class="hud-layer" />
     </ui:VisualElement>
 </ui:UXML>

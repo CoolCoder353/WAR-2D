@@ -126,6 +126,7 @@ namespace WAR2D.UI
             Slot(graphics, "fullscreen-slot", Widgets.Switch("fullscreen", S.Fullscreen, true, () => { S.Fullscreen = !S.Fullscreen; Changed(); }));
             Slot(graphics, "vsync-slot", Widgets.Switch("vsync", S.VSync, true, () => { S.VSync = !S.VSync; Changed(); }));
             Slot(graphics, "battle-slot", Widgets.Switch("menu-battle", S.MenuBattle, true, () => { S.MenuBattle = !S.MenuBattle; Changed(); }));
+            Slot(graphics, "save-replays-slot", Widgets.Switch("save-replays-toggle", S.SaveReplays, true, () => { S.SaveReplays = !S.SaveReplays; Changed(); }));
             VisualElement fps = graphics.Q("fps-options");
             fps.Clear();
             foreach (int cap in GameSettings.FpsCaps)

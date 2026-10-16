@@ -1,0 +1,15 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="replay-viewer" class="menu-screen replay-viewer" picking-mode="Ignore">
+        <ui:VisualElement name="replay-players" class="panel row replay-viewer__bar replay-viewer__top" />
+        <ui:VisualElement name="replay-controls" class="panel row replay-viewer__bar replay-viewer__bottom">
+            <ui:Button name="replay-play" text="Pause" class="button button--primary replay-viewer__play" />
+            <ui:VisualElement name="replay-speed" class="row replay-viewer__speed" />
+            <ui:VisualElement name="replay-seek" class="replay-viewer__seek">
+                <ui:VisualElement name="replay-seek-fill" class="replay-viewer__seek-fill" picking-mode="Ignore" />
+                <ui:VisualElement name="replay-seek-knob" class="replay-viewer__seek-knob" picking-mode="Ignore" />
+            </ui:VisualElement>
+            <ui:Label name="replay-time" text="0:00 / 0:00" class="text replay-viewer__time" />
+            <ui:Button name="replay-leave" text="Leave" class="button" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

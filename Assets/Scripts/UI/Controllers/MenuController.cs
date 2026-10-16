@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System.Linq;
 using Config;
 using Mirror;
@@ -18,9 +19,12 @@ namespace WAR2D.UI
     {
         private const float LobbyRefreshSeconds = 0.1f;
 
-        private enum Screen { Main, Play, Lobby, None }
+        private enum Screen { Main, Play, Lobby, Replays, Viewer, None }
 
-        private VisualElement mainScreen, playScreen, lobbyScreen;
+        private VisualElement mainScreen, playScreen, lobbyScreen, replaysScreen, viewerScreen;
+        private ReplaysController replays;
+        private ReplayViewerController viewer;
+        private bool wantsReplays;
         private MainMenuController main;
         private HostJoinController play;
         private LobbyController lobby;
@@ -37,6 +41,9 @@ namespace WAR2D.UI
 
         /// <summary>The lobby's data.</summary>
         public LobbyModel Lobby { get; } = new LobbyModel();
+
+        /// <summary>The Replays screen's data.</summary>
+        public ReplaysModel Replays { get; } = new ReplaysModel();
 
         /// <summary>The map preview (tests read its texture).</summary>
         public MapPreview Preview => preview;
@@ -67,17 +74,32 @@ namespace WAR2D.UI
             mainScreen = GetScreen("main-menu-instance", "main-menu");
             playScreen = GetScreen("host-join-instance", "host-join");
             lobbyScreen = GetScreen("lobby-instance", "lobby");
+            replaysScreen = GetScreen("replays-instance", "replays");
+            viewerScreen = GetScreen("replay-viewer-instance", "replay-viewer");
             if (mainScreen == null || playScreen == null || lobbyScreen == null)
             {
-                Debug.LogError($"MenuController: failed to bind UI screens. root={root.name}; main={mainScreen != null}; play={playScreen != null}; lobby={lobbyScreen != null}; childNames={string.Join(", ", root.Children().Select(c => c.name))}");
+                WarLog.Error(LogCategory.UI, $"MenuController: failed to bind UI screens. root={root.name}; main={mainScreen != null}; play={playScreen != null}; lobby={lobbyScreen != null}; childNames={string.Join(", ", root.Children().Select(c => c.name))}");
             }
             else
             {
-                Debug.Log($"MenuController: bound screens main={mainScreen.name}, play={playScreen.name}, lobby={lobbyScreen.name}");
+                WarLog.Info(LogCategory.UI, $"MenuController: bound screens main={mainScreen.name}, play={playScreen.name}, lobby={lobbyScreen.name}");
             }
 
             main = new MainMenuController(root);
-            main.PlayClicked += () => { wantsPlay = true; Show(Screen.Play); };
+            main.PlayClicked += () => { wantsPlay = true; wantsReplays = false; Show(Screen.Play); };
+            main.ReplaysClicked += () => { wantsReplays = true; replays.ShowError(null); Replays.Refresh(); Show(Screen.Replays); };
+            replays = new ReplaysController(root, Replays);
+            replays.BackClicked += () => wantsReplays = false;
+            replays.DeleteConfirmed += path => { WAR2D.Net.Replay.ReplayLibrary.Delete(path); Replays.Refresh(); };
+            replays.WatchClicked += path =>
+            {
+                if (WAR2D.Client.Replay.ReplayPlayer.Open(path, out string error) == null) { replays.ShowError("Can't play this replay: " + error); return; }
+                replays.ShowError(null);
+                viewer.Opened();
+                Show(Screen.Viewer);
+            };
+            viewer = new ReplayViewerController(root);
+            viewer.LeaveClicked += () => { WAR2D.Client.Replay.ReplayPlayer.Instance?.Close(); wantsReplays = true; Replays.Refresh(); };
             settings = new SettingsController(root);
             main.SettingsClicked += () => { settings.Open(); SettingsRequested?.Invoke(); };
             main.QuitClicked += () => GameManager.Instance?.QuitGame();
@@ -94,7 +116,7 @@ namespace WAR2D.UI
             if (WAR2D.Net.Steam.SteamServices.Available)
                 joinFlow.ListenForInvites(lobbyId =>
                 {
-                    if (NetworkClient.active || NetworkServer.active) { Debug.Log("[Steam] invite ignored: already in a game."); return; }
+                    if (NetworkClient.active || NetworkServer.active) { WarLog.Info(LogCategory.UI, "invite ignored: already in a game."); return; }
                     wantsPlay = true;
                     list.Join(lobbyId, "your friend");
                 });
@@ -177,6 +199,12 @@ namespace WAR2D.UI
             GameCore core = GameCore.Instance;
             if (core != null && NetworkServer.active)
                 WAR2D.Net.Steam.SteamHostLobby.Current?.Update(core.CurrentState, core.Settings, NetworkServer.connections.Count);
+            if (WAR2D.Client.Replay.ReplayPlayer.Instance != null)
+            {
+                viewer.Tick(Time.unscaledDeltaTime);
+                Show(Screen.Viewer);
+                return;
+            }
             bool inLobby = connected && core != null && core.CurrentState == GameState.Lobby && NetworkClient.localPlayer != null;
             bool inMatch = connected && core != null && core.CurrentState != GameState.Lobby;
             if (inLobby)
@@ -200,6 +228,7 @@ namespace WAR2D.UI
             }
             else if (inMatch) Show(Screen.None); // actual match flow; hide menu overlays
             else if (wantsPlay || joiningAddress != null) Show(Screen.Play);
+            else if (wantsReplays) Show(Screen.Replays);
             else Show(Screen.Main);
         }
 
@@ -207,16 +236,18 @@ namespace WAR2D.UI
         {
             if (mainScreen == null || playScreen == null || lobbyScreen == null)
             {
-                Debug.LogError($"MenuController: cannot show screen {screen}; some menu elements are null. main={mainScreen != null}; play={playScreen != null}; lobby={lobbyScreen != null}");
+                WarLog.Error(LogCategory.UI, $"MenuController: cannot show screen {screen}; some menu elements are null. main={mainScreen != null}; play={playScreen != null}; lobby={lobbyScreen != null}");
                 return;
             }
 
             string joinValue = joiningAddress ?? "<null>";
             string coreState = GameCore.Instance != null ? GameCore.Instance.CurrentState.ToString() : "<null>";
-            Debug.Log($"MenuController: changing screen to {screen} (wantsPlay={wantsPlay}, joiningAddress={joinValue}, connected={NetworkClient.isConnected}, active={NetworkClient.active}, coreState={coreState})");
+            WarLog.Debug(LogCategory.UI, $"MenuController: changing screen to {screen} (wantsPlay={wantsPlay}, joiningAddress={joinValue}, connected={NetworkClient.isConnected}, active={NetworkClient.active}, coreState={coreState})");
             mainScreen.EnableInClassList("menu-screen--visible", screen == Screen.Main);
             playScreen.EnableInClassList("menu-screen--visible", screen == Screen.Play);
             lobbyScreen.EnableInClassList("menu-screen--visible", screen == Screen.Lobby);
+            replaysScreen?.EnableInClassList("menu-screen--visible", screen == Screen.Replays);
+            viewerScreen?.EnableInClassList("menu-screen--visible", screen == Screen.Viewer);
         }
     }
 }

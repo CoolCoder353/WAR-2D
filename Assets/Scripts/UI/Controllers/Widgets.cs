@@ -38,5 +38,14 @@ namespace WAR2D.UI
             if (!editable) button.pickingMode = PickingMode.Ignore;
             return button;
         }
+
+        /// <summary>A plain button (primary or secondary) with a label.</summary>
+        public static Button TextButton(string name, string text, bool primary, Action clicked)
+        {
+            var button = new Button(clicked) { name = name, text = text };
+            button.AddToClassList("button");
+            if (primary) button.AddToClassList("button--primary");
+            return button;
+        }
     }
 }

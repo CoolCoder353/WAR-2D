@@ -15,7 +15,8 @@ namespace WAR2D.UI
     {
         private static readonly string[] Columns = { "Units built", "Lost", "Killed", "Buildings", "Lost", "Mined", "Spent", "Gifted out", "Gifted in", "Peak army" };
         private readonly VisualElement screen, stats;
-        private readonly Label title, subtitle;
+        private readonly Label title, subtitle, replayLabel;
+        private readonly VisualElement replay, replayBar, replayFill;
 
         public event Action MainMenuClicked, QuitClicked;
 
@@ -25,8 +26,38 @@ namespace WAR2D.UI
             stats = root.Q("end-stats");
             title = root.Q<Label>("end-title");
             subtitle = root.Q<Label>("end-subtitle");
+            replay = root.Q("replay-progress");
+            replayLabel = root.Q<Label>("replay-progress-label");
+            replayBar = root.Q("replay-progress-bar");
+            replayFill = root.Q("replay-progress-fill");
             root.Q<Button>("end-main-menu").clicked += () => MainMenuClicked?.Invoke();
             root.Q<Button>("end-quit").clicked += () => QuitClicked?.Invoke();
+        }
+
+        /// <summary>The replay line under the buttons: hidden for null text; the bar shows only with a fraction.</summary>
+        public void ShowReplay(string text, float? fraction)
+        {
+            if (replay == null) return;
+            replay.EnableInClassList("end-screen__replay--visible", text != null);
+            if (text == null) return;
+            replayLabel.text = text;
+            replayBar.style.display = fraction.HasValue ? DisplayStyle.Flex : DisplayStyle.None;
+            if (fraction.HasValue) replayFill.style.width = Length.Percent(UnityEngine.Mathf.Clamp01(fraction.Value) * 100f);
+        }
+
+        /// <summary>The replay line's text and bar for the current state (the host has the file; a player receives it).</summary>
+        public static (string text, float? fraction) ReplayState(bool host, WAR2D.Net.Replay.MatchRecorder recorder, WAR2D.Net.Replay.ReplayReceiver receiver, bool saveReplays)
+        {
+            const string saved = "Replay saved · watch it from Replays";
+            if (host)
+            {
+                if (recorder == null) return (null, null);
+                return recorder.Finished ? (saved, null) : ("Saving replay…", null);
+            }
+            if (!saveReplays || receiver == null) return (null, null);
+            if (receiver.SavedPath != null) return (saved, null);
+            if (!receiver.Active) return (null, null);
+            return ($"Saving replay… {UnityEngine.Mathf.FloorToInt(receiver.Fraction * 100f)} %", receiver.Fraction);
         }
 
         public bool IsShown => screen.ClassListContains("overlay-screen--visible");

@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System;
 using System.IO;
 using UnityEngine;
@@ -12,6 +13,8 @@ public sealed class GameSettings
     public int FpsCap = 144;
     public float Master = 1f, Music = 1f, Sfx = 1f;
     public bool MenuBattle = true;
+    /// <summary>Accept the match replay the host offers after GameOver.</summary>
+    public bool SaveReplays = true;
     public string Palette = Palettes.Standard;
     public bool EdgeScroll = true;
     /// <summary>The Input System's binding overrides (<see cref="Rebinding"/>).</summary>
@@ -76,7 +79,7 @@ public static class SettingsStore
         }
         catch (Exception e)
         {
-            Debug.LogWarning($"[Settings] {path} could not be read ({e.Message}); using the defaults.");
+            WarLog.Warn(LogCategory.UI, $"{path} could not be read ({e.Message}); using the defaults.");
             settings = new GameSettings();
         }
         settings.Clamp();
@@ -94,7 +97,7 @@ public static class SettingsStore
         }
         catch (Exception e)
         {
-            Debug.LogWarning($"[Settings] could not save {path}: {e.Message}");
+            WarLog.Warn(LogCategory.UI, $"could not save {path}: {e.Message}");
         }
     }
 

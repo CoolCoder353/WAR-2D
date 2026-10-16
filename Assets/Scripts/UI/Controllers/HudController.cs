@@ -191,6 +191,12 @@ namespace WAR2D.UI
             }
             if (GameInput.Cancel.WasPressedThisFrame() && !matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !diplomacy.IsOpen) commandCard.RequestRemove();
             matchMenu.SetCanSurrender(root, GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing && !endScreen.IsShown);
+            if (endScreen.IsShown)
+            {
+                var (replayText, replayFraction) = EndScreenController.ReplayState(NetworkServer.active, WorldStateManager.Instance != null ? WorldStateManager.Instance.Recorder : null,
+                    WAR2D.Net.Replay.ReplayReceiver.Current, SettingsStore.Current.SaveReplays);
+                endScreen.ShowReplay(replayText, replayFraction);
+            }
             minimap.Update(Time.unscaledDeltaTime);
             ShowWallReadout();
             Model.PullDiplomacy();
