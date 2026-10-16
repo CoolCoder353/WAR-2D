@@ -2,6 +2,11 @@
 
 Bugs, mismatches and hygiene problems. The first roadmap (v0.2 to v0.9) is complete; items the new [roadmap](roadmap.md) (v0.10 to v0.13) takes on name their version, the rest are backlog, and the sections after "Open" are the log of what past reviews and playtests found and fixed. Code-review findings that were triaged but not fixed are in [bug-review.md](bug-review.md). See [the archived roadmap](archive/roadmap-v0.2-v0.9.md) for what each version delivered.
 
+
+### v0.10: replays are a tick behind on units
+
+The recorder's units go through `DeferredLane` (encoded during the next tick to keep the boundary inside the perf budget), so a recording's unit records are one tick later than its buildings and terrain. Harmless for playback; don't "fix" it by moving the recorder back onto the boundary (`docs/perf/v0.10/README.md`).
+
 ## Open
 
 | Item | Kind | Detail |

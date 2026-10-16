@@ -16,6 +16,7 @@ A networked, top-down 2D real-time strategy game built in Unity, made for armies
 | [docs/gameplay.md](docs/gameplay.md) | Rules of the game, controls, buildings, units, economy, combat, win/loss |
 | [docs/known-issues.md](docs/known-issues.md) | Open issues and design requests, plus a log of what past reviews fixed |
 | [docs/bug-review.md](docs/bug-review.md) | Code-review findings, how each was triaged, and the low-priority ones still open |
+| [docs/debugging.md](docs/debugging.md) | The control API and `tools/war2d` CLI, overlays, `WarLog`, replays |
 | [docs/playtesting.md](docs/playtesting.md) | How to run a playtest: Steam, and Direct play through a router or tunnel |
 | [docs/roadmap.md](docs/roadmap.md) | The current roadmap (v0.10–v0.13: debug tools and replays, new maps, new units, defences), with a design spec per update |
 | [docs/archive/](docs/archive/roadmap-v0.2-v0.9.md) | The completed v0.2–v0.9 roadmap, its specs, plans, spike and performance results |
