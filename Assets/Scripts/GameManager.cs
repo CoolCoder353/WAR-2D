@@ -178,6 +178,7 @@ public class GameManager : NetworkManager
     public override void OnServerDisconnect(NetworkConnectionToClient conn)
     {
         WAR2D.Net.Replication.ReplicationService.Instance?.OnClientLeft(conn);
+        (authenticator as WAR2D.Net.Steam.SteamAuthenticator)?.OnServerDisconnect(conn); // a sign-in still in progress
         // Remove the disconnected player from the list of players
         if (GameCore.Instance != null) GameCore.Instance.OnPlayerLeave(conn);
         else CommandGate.Forget(conn.connectionId);

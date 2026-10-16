@@ -42,11 +42,12 @@ namespace WAR2D.Sim
             SimData data = SystemAPI.GetSingleton<SimData>();
             SimClock clock = SystemAPI.GetSingleton<SimClock>();
 
+            // Cleared first: a wall rising below applies tiles that push units off them (PushUnitsOffTiles).
+            data.PendingOrders.Clear();
+            data.PendingMoves.Clear();
             WriteBackBuildingDamage(data);
             bool wallsChanged = ApplyWallWork(data, context) | ApplyDigDone(data, context);
             ApplyBuildingWork(data, context);
-            data.PendingOrders.Clear();
-            data.PendingMoves.Clear();
             if (clock.Running)
             {
                 ClearFinishedWork(data, context, clock.UnitCount, clock.Tick);

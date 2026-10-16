@@ -84,6 +84,18 @@ namespace WAR2D.Net.Steam
             }
         }
 
+        /// <summary>
+        /// A connection closed (called from <see cref="GameManager.OnServerDisconnect"/>): drops its sign-in, so a
+        /// verdict that arrives later neither accepts the dead connection nor records its Steam ID, and ends the
+        /// Steam session it opened.
+        /// </summary>
+        public void OnServerDisconnect(NetworkConnectionToClient conn)
+        {
+            if (conn == null) return;
+            waiting.Remove(conn.connectionId);
+            sessions?.Forget(conn.connectionId);
+        }
+
         private void Reject(NetworkConnectionToClient conn, string reason)
         {
             Debug.LogWarning($"[Steam] rejecting connection {conn.connectionId}: {reason}");

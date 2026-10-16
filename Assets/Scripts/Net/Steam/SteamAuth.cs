@@ -35,7 +35,7 @@ namespace WAR2D.Net.Steam
         private readonly string hostVersion;
         private readonly double timeout;
         private readonly Dictionary<ulong, (int conn, double deadline)> pending = new Dictionary<ulong, (int, double)>();
-        private readonly List<(int connectionId, bool accepted, string reason)> finished = new List<(int, bool, string)>();
+        private readonly List<(int connectionId, ulong steamId, bool accepted, string reason)> finished = new List<(int, ulong, bool, string)>();
 
         public SteamAuthSessions(ISteamBackend backend, string hostVersion, double timeoutSeconds = 10)
         {
@@ -59,7 +59,7 @@ namespace WAR2D.Net.Steam
             if (!pending.TryGetValue(steamId, out var p)) return;
             pending.Remove(steamId);
             if (!accepted) backend.EndAuthSession(steamId);
-            finished.Add((p.conn, accepted, accepted ? null : "Steam could not verify you."));
+            finished.Add((p.conn, steamId, accepted, accepted ? null : "Steam could not verify you."));
         }
 
         /// <summary>Verdicts since the last call; also times out sign-ins Steam never answered.</summary>
@@ -70,23 +70,35 @@ namespace WAR2D.Net.Steam
             if (late != null)
                 foreach (ulong id in late)
                 {
-                    finished.Add((pending[id].conn, false, "Steam did not answer in time."));
+                    finished.Add((pending[id].conn, id, false, "Steam did not answer in time."));
                     pending.Remove(id);
                     backend.EndAuthSession(id);
                 }
-            var result = new List<(int connectionId, bool accepted, string reason)>(finished);
+            var result = new List<(int connectionId, bool accepted, string reason)>(finished.Count);
+            foreach (var f in finished) result.Add((f.connectionId, f.accepted, f.reason));
             finished.Clear();
             return result;
         }
 
-        /// <summary>Drops a connection's pending sign-in (it disconnected).</summary>
+        /// <summary>
+        /// Drops a connection's sign-in (it disconnected or was rejected): a pending one, or a verdict not yet
+        /// drained. Ends the Steam session it opened; a refused one was already ended.
+        /// </summary>
         public void Forget(int connectionId)
         {
             ulong key = 0; bool found = false;
             foreach (var kv in pending) if (kv.Value.conn == connectionId) { key = kv.Key; found = true; break; }
-            if (!found) return;
-            pending.Remove(key);
-            backend.EndAuthSession(key);
+            if (found)
+            {
+                pending.Remove(key);
+                backend.EndAuthSession(key);
+            }
+            for (int i = finished.Count - 1; i >= 0; i--)
+            {
+                if (finished[i].connectionId != connectionId) continue;
+                if (finished[i].accepted) backend.EndAuthSession(finished[i].steamId);
+                finished.RemoveAt(i);
+            }
         }
 
         public void Dispose() => backend.AuthSessionResult -= OnResult;

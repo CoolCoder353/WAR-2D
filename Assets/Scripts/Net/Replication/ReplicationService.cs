@@ -233,7 +233,8 @@ namespace WAR2D.Net.Replication
             handle = interests.Schedule(input, handle);
             handle.Complete(); // the encoder reads the route arena by value, so it must not move under it
             using var attacks = new NativeArray<int2>(data.AttackEvents.AsArray(), Allocator.TempJob);
-            encoder.Schedule(tick, input, attacks, active, default).Complete();
+            using NativeArray<AttackTarget> targets = AttackTargets(data, attacks);
+            encoder.Schedule(tick, input, attacks, targets, active, default).Complete();
 
             for (int c = 0; c < MaxClients; c++)
             {
@@ -250,6 +251,29 @@ namespace WAR2D.Net.Replication
                 SendSplit(client, tick, unreliable, unreliableSizes, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
             }
             LastMilliseconds = watch.Elapsed.TotalMilliseconds;
+        }
+
+        /// <summary>The building each attack hit (parallel to <paramref name="attacks"/>), from the tick's building arrays; Id 0 for other targets.</summary>
+        private static NativeArray<AttackTarget> AttackTargets(SimData data, NativeArray<int2> attacks)
+        {
+            var targets = new NativeArray<AttackTarget>(attacks.Length, Allocator.TempJob);
+            int count = math.min(data.BuildingCount[0], data.BuildingCapacity);
+            for (int i = 0; i < attacks.Length; i++)
+            {
+                int id = attacks[i].y;
+                int index = NetIdAllocator.IndexOf(id);
+                if (id <= 0 || (uint)index >= (uint)data.BuildingSlotOfIndex.Length) continue;
+                int b = data.BuildingSlotOfIndex[index];
+                if ((uint)b >= (uint)count || data.BuildingIds[b] != id) continue;
+                targets[i] = new AttackTarget
+                {
+                    Id = id,
+                    OwnerId = data.BuildingOwnerId[b],
+                    Position = data.BuildingPositions[b],
+                    Hidden = (byte)((data.BuildingFlag[b] & global::BuildingFlags.Hidden) != 0 ? 1 : 0),
+                };
+            }
+            return targets;
         }
 
         private readonly Dictionary<int, List<int>> fogChanges = new Dictionary<int, List<int>>();

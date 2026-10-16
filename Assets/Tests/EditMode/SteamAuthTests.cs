@@ -103,6 +103,31 @@ public class SteamAuthTests
     }
 
     [Test]
+    public void AConnectionThatLeftBeforeSteamAnsweredIsNeverAccepted()
+    {
+        var fake = new FakeSteamBackend();
+        var sessions = new SteamAuthSessions(fake, "0.9.0");
+        sessions.OnRequest(5, Req(Alice), Alice, 0, out _);
+        sessions.Forget(5); // it disconnected
+        CollectionAssert.Contains(fake.Ended, Alice, "the session it opened is ended");
+        fake.RaiseAuthResult(Alice, true); // Steam answers late
+        Assert.IsEmpty(sessions.Drain(1));
+        Assert.AreEqual(SteamAuthSessions.Begin.Pending, sessions.OnRequest(6, Req(Alice), Alice, 1, out _), "a retry is not 'already signing in'");
+    }
+
+    [Test]
+    public void AConnectionThatLeftWithAnUndrainedVerdictIsDroppedAndEnded()
+    {
+        var fake = new FakeSteamBackend();
+        var sessions = new SteamAuthSessions(fake, "0.9.0");
+        sessions.OnRequest(5, Req(Alice), Alice, 0, out _);
+        fake.RaiseAuthResult(Alice, true);
+        sessions.Forget(5); // it disconnected before the authenticator drained the verdict
+        Assert.IsEmpty(sessions.Drain(1));
+        CollectionAssert.Contains(fake.Ended, Alice);
+    }
+
+    [Test]
     public void IdentityIsPerConnectionAndForgotten()
     {
         SteamIdentity.Clear();

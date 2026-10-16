@@ -184,3 +184,23 @@ Low severity, deferred from the `/code-review` of the siege client work:
 - The Radar range ring (`ClearingRing.Create`) never releases its Material.
 - A wall drag sends Build orders only for the first `Orders/MaxQueued + 1` tiles.
 - `ToArray` is duplicated in `UnitCommander` and `HudController`; `InstancedBuildingRenderer.LastColourOf` is an O(n·m) test hook.
+
+## Whole-project review (2026-10-16)
+
+A review of the server side (commands and validation, sim tick stages, replication, economy, Steam sign-in, `tools/steam-upload.sh`) found eight issues the sections above did not list. The first three are fixed.
+
+### Fixed
+
+| Finding | Fix |
+| --- | --- |
+| A Steam sign-in still in progress when the client disconnected was never cleaned up: a late "accepted" verdict recorded the dead connection's Steam ID (never forgotten), accepted the dead connection, and never ended the Steam auth session; a retry within 10 s was refused as "Already signing in". | `GameManager.OnServerDisconnect` calls `SteamAuthenticator.OnServerDisconnect`, which drops the connection's wait and its `SteamAuthSessions` entry; `SteamAuthSessions.Forget` also drops an undrained verdict and ends an accepted session (`SteamAuthTests.AConnectionThatLeft*`). |
+| Attack messages named the target to every client that saw the attacker, so a client learned the id of a unit or building in its fog (and that a ghost building was still alive). | The encoder names a target only when the client may know it: a unit in its interest set, or a building it owns or (unless hidden) its grid sees; otherwise the target is sent as 0 and the client draws no tracer (`ReplicationEncoder.MayKnowTarget`, `ReplicationService.AttackTargets`; `ReplicationTests.AttackOnAUnitInTheFogDoesNotNameIt`, `AttackOnABuildingNamesItOnlyToItsOwnerOrWhoSeesIt`). |
+| A unit on a wall tile when the wall rose was not pushed off: `SimCommandSystem` cleared `PendingMoves` after applying wall work, discarding the push. Builders' occupied-tile check hid it. | The pending orders and moves are cleared before the boundary applies any work (`SimWallTests.AUnitOnARisingWallIsPushedOffIt`). |
+
+### Still open (low)
+
+- `TryAddBuilding` charges before `Ids.Allocate()`, which throws when ids run out: the player loses the cost (`WorldStateManager.TryAddBuilding`).
+- Unit upkeep is charged against a budget copied at the boundary while building upkeep and spawners spend from the same balance in between; `Sim.Spend` then takes what is left, so a short player gets some unit upkeep free (`WorldStateManager.OnStartServer`, `Sim.Spend`).
+- Nicknames keep format characters (zero-width space, right-to-left override), so names can be invisible or spoofed; duplicates are allowed (`CommandValidator.TrySanitizeNickname`).
+- Some loops over `ServerPlayers` don't skip a null identity unlike the rest (`GameCore.CheckHQPlacementProgress`, `DeclareWinner`, `DeclareDraw`, `Cmd_StartGame`, `WinLossSystem`). No failing path found: `OnPlayerLeave` removes players first.
+- `tools/steam-upload.sh` writes the description into the VDF unescaped (a `"` breaks it); it builds Windows while `CLAUDE.md` and `known-issues.md` still call Windows deferred; cancelling a blueprint counts as a building lost on the end screen.

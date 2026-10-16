@@ -103,6 +103,12 @@ namespace WAR2D.Net.Replication
             gridOf[client] = grid;
         }
 
+        /// <summary>A client's owner id (int.MinValue when disabled).</summary>
+        public int OwnerOf(int client) => ownerOf[client];
+
+        /// <summary>A client's fog grid (-1: sees only its own units).</summary>
+        public int GridOf(int client) => gridOf[client];
+
         /// <summary>Forgets everything a client knew (it left, or a new client takes its place).</summary>
         public void ResetClient(int client)
         {

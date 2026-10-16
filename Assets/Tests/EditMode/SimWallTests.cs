@@ -40,6 +40,25 @@ public class SimWallTests
     }
 
     [Test]
+    public void AUnitOnARisingWallIsPushedOffIt()
+    {
+        // Builders wait while a body overlaps the tile, so the push is the backstop: give the work by hand.
+        using var sim = new SimHarness(SimHarness.OpenMap(32));
+        var tile = new int2(10, 10);
+        sim.PlaceWall(SimHarness.OwnerA, tile);
+        int[] sitter = sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 10.5f));
+        sim.Tick();
+        sim.Order(SimHarness.OwnerA, OrderKind.Hold, tile, sitter[0]);
+        sim.Tick();
+        sim.Em.CompleteAllTrackedJobs();
+        sim.Context.Data.WallWork.Enqueue(new TileWork { Tile = sim.Map.Grid.Index(tile), Amount = 10f, OwnerId = SimHarness.OwnerA });
+        sim.Tick();
+        Assert.AreEqual(TileType.PlayerWall, sim.Map.Grid.TileAt(tile));
+        float2 p = sim.UnitById(sitter[0]).Position;
+        Assert.IsFalse(math.all((int2)math.floor(p) == tile), $"the unit was left inside the wall at {p}");
+    }
+
+    [Test]
     public void EnemiesOnAttackMoveBreakAWallAndItBecomesGround()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(32));

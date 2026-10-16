@@ -24,6 +24,8 @@ public class ReplicationTests
         public NativeArray<byte> Visible;
         public const int FogSize = 512;
         public NativeList<int2> Attacks = new NativeList<int2>(16, Allocator.Persistent);
+        /// <summary>Each attack's building target, parallel to <see cref="Attacks"/> (may stay empty).</summary>
+        public NativeList<AttackTarget> Targets = new NativeList<AttackTarget>(16, Allocator.Persistent);
         public int Count;
         public RouteStore Routes = new RouteStore(IdCapacity, Allocator.Persistent);
         public InterestSets Interests;
@@ -93,7 +95,7 @@ public class ReplicationTests
         public void Tick(int tick)
         {
             Interests.Build(Input);
-            Encoder.EncodeAll(tick, Input, Attacks.AsArray());
+            Encoder.EncodeAll(tick, Input, Attacks.AsArray(), Targets.AsArray());
             for (int c = 0; c < ClientStores.Length; c++)
             {
                 var (reliable, _, unreliable, _) = Encoder.Output(c);
@@ -105,7 +107,7 @@ public class ReplicationTests
         public void Dispose()
         {
             Positions.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Owner.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
-            Type.Dispose(); Visible.Dispose(); Speeds.Dispose(); Attacks.Dispose(); Routes.Dispose(); Interests.Dispose(); Encoder.Dispose();
+            Type.Dispose(); Visible.Dispose(); Speeds.Dispose(); Attacks.Dispose(); Targets.Dispose(); Routes.Dispose(); Interests.Dispose(); Encoder.Dispose();
             foreach (ClientUnitStore s in ClientStores) s.Dispose();
         }
     }
@@ -286,6 +288,48 @@ public class ReplicationTests
         rig.Tick(2);
         CollectionAssert.IsEmpty(seen[0]);
         CollectionAssert.AreEqual(new[] { 2 }, seen[1]);
+    }
+
+    [Test]
+    public void AttackOnAUnitInTheFogDoesNotNameIt()
+    {
+        using var rig = new Rig(4);
+        rig.Add(2, 2, new float2(10, 10)); // a visible attacker
+        rig.Add(3, 3, new float2(30, 10)); // its target, in client 0's fog
+        rig.Add(4, 3, new float2(12, 10)); // a visible target
+        rig.Watch(0, 1, new int2(0, 0), new int2(20, 20));
+        var targets = new List<int>();
+        rig.ClientStores[0].Attack += (_, target) => targets.Add(target);
+        rig.Tick(1);
+        rig.Attacks.Add(new int2(Rig.Id(2), Rig.Id(3)));
+        rig.Attacks.Add(new int2(Rig.Id(2), Rig.Id(4)));
+        rig.Tick(2);
+        CollectionAssert.AreEqual(new[] { 0, Rig.Id(4) }, targets, "the shot is shown, the hidden target's id is not");
+    }
+
+    [Test]
+    public void AttackOnABuildingNamesItOnlyToItsOwnerOrWhoSeesIt()
+    {
+        using var rig = new Rig(4);
+        rig.Add(2, 2, new float2(10, 10));
+        rig.Watch(0, 1, new int2(0, 0), new int2(20, 20));
+        var targets = new List<int>();
+        rig.ClientStores[0].Attack += (_, target) => targets.Add(target);
+        rig.Tick(1);
+        (int id, int owner, float2 at, byte hidden)[] buildings =
+        {
+            (Rig.Id(50), 3, new float2(30, 10), 0), // in the fog
+            (Rig.Id(51), 3, new float2(11, 11), 0), // seen
+            (Rig.Id(52), 1, new float2(40, 40), 0), // the client's own, in the fog
+            (Rig.Id(53), 3, new float2(12, 12), 1), // a seen tile, but a hidden bomb
+        };
+        foreach (var b in buildings)
+        {
+            rig.Attacks.Add(new int2(Rig.Id(2), b.id));
+            rig.Targets.Add(new AttackTarget { Id = b.id, OwnerId = b.owner, Position = b.at, Hidden = b.hidden });
+        }
+        rig.Tick(2);
+        CollectionAssert.AreEqual(new[] { 0, Rig.Id(51), Rig.Id(52), 0 }, targets);
     }
 
     [Test]
