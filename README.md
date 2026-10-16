@@ -17,7 +17,8 @@ A networked, top-down 2D real-time strategy game built in Unity, made for armies
 | [docs/known-issues.md](docs/known-issues.md) | Open issues and design requests, plus a log of what past reviews fixed |
 | [docs/bug-review.md](docs/bug-review.md) | Code-review findings, how each was triaged, and the low-priority ones still open |
 | [docs/playtesting.md](docs/playtesting.md) | How to run a playtest: Steam, and Direct play through a router or tunnel |
-| [docs/roadmap.md](docs/roadmap.md) | The v0.2–v0.9 plan and its outcome: what each update delivered, why in that order, and how it was measured (complete) |
+| [docs/roadmap.md](docs/roadmap.md) | The current roadmap (v0.10–v0.13: debug tools and replays, new maps, new units, defences), with a design spec per update |
+| [docs/archive/](docs/archive/roadmap-v0.2-v0.9.md) | The completed v0.2–v0.9 roadmap, its specs, plans, spike and performance results |
 | [steam/README.md](steam/README.md) | Uploading builds to Steam with `tools/steam-upload.sh` |
 | [CLAUDE.md](CLAUDE.md) | Guidance for AI coding assistants working in this repo |
 
@@ -55,7 +56,7 @@ The scenes in the build are `Assets/Main_Menu.unity` (index 0) and `Assets/Maps/
 - **Linux** and **Windows:** build profiles are checked in at `Assets/Settings/Build Profiles/` (`Linux.asset`, `Windows.asset`). Open one under *File → Build Profiles* and build.
 - **Steam:** `tools/steam-upload.sh <branch>` builds fresh Linux and Windows depots headless (close the editor first) and uploads them with `steamcmd`. Setup is in [steam/README.md](steam/README.md).
 
-There is no dedicated server: a batch-mode player is a test or perf client, and `GameManager` sets `headlessStartMode` to `DoNothing` so none of them starts hosting on its own. The host is always a player (Mirror host), and when the host leaves the match ends; host migration and a dedicated build are not built (see [roadmap](docs/roadmap.md) section 7). A match takes 2 to 8 players.
+There is no dedicated server: a batch-mode player is a test or perf client, and `GameManager` sets `headlessStartMode` to `DoNothing` so none of them starts hosting on its own. The host is always a player (Mirror host), and when the host leaves the match ends; host migration and a dedicated build are not built (see [roadmap](docs/roadmap.md) section 5). A match takes 2 to 8 players.
 
 ## Tests
 

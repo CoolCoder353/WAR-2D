@@ -1,15 +1,15 @@
 # Known Issues and Tech Debt
 
-Bugs, mismatches and hygiene problems. The roadmap (v0.2 to v0.9) is complete, so nothing here is scheduled to a version any more: open items are backlog, and the sections after "Open" are the log of what past reviews and playtests found and fixed. Code-review findings that were triaged but not fixed are in [bug-review.md](bug-review.md). See [roadmap.md](roadmap.md) for what each version delivered.
+Bugs, mismatches and hygiene problems. The first roadmap (v0.2 to v0.9) is complete; items the new [roadmap](roadmap.md) (v0.10 to v0.13) takes on name their version, the rest are backlog, and the sections after "Open" are the log of what past reviews and playtests found and fixed. Code-review findings that were triaged but not fixed are in [bug-review.md](bug-review.md). See [the archived roadmap](archive/roadmap-v0.2-v0.9.md) for what each version delivered.
 
 ## Open
 
 | Item | Kind | Detail |
 | --- | --- | --- |
 | Enemy units are sent with their whole route | Security, **owner decision** | A modified client can read where visible enemy units are heading beyond the fog. See the v0.8 review table. |
-| Map generation looks boring | Design request | Needs a brainstorm and owner sign-off; any change alters every seed's map and hash. See "Owner-reported issues (2026-10-10)". |
+| Map generation looks boring | Design request, **v0.11** | Brainstormed and agreed 2026-10-16: the region-graph generator in the [v0.11 spec](superpowers/specs/2026-10-16-v0.11-new-ground-design.md). |
 | No hint for squads | UX, needs Figma | Ctrl+number and number work, nothing in the HUD says so. See "Owner playtest bugs". |
-| The host leaving ends the match | Design | Mirror's host is the server. No host migration and no dedicated server were built (roadmap section 7). |
+| The host leaving ends the match | Design | Mirror's host is the server. No host migration and no dedicated server were built ([roadmap](roadmap.md) section 5, not scheduled). |
 | The Play screen's Host text is stale | UX, needs Figma | `HostJoin.uxml` still says "Others join with your IP address on port 7778", but Steam players join from the Friends' games list or an invite. |
 | Terrain replication walks every changed tile | Performance | Each client's terrain pass checks every tile changed since the match started, so the cost grows with the match (`ReplicationService.SendTerrain`). |
 | Client positions creep after Stop | Presentation | Predicted positions converge on the server's at about 0.15 tiles/s instead of snapping; `HudTests.CommandCardStopHalts` can fail on timing. |
@@ -17,7 +17,7 @@ Bugs, mismatches and hygiene problems. The roadmap (v0.2 to v0.9) is complete, s
 | Footprints ignore rotation | Latent | A rotated non-square building would cover the wrong tiles. Every building is square today. |
 | `Acceleration` is parsed and unused | Config | Units reach full speed at once. Use it or drop it. |
 | Rebinding checks hidden actions too | UX | Binding Stop to `1` reports a conflict with the unlisted "Squad1". |
-| The Steam relay was never put through the perf gate | Verification | The gate joins over Direct; `Dev/RelayMeter.cs` can meter the relay. There is no written record of the cross-network playtests. |
+| The Steam relay was never put through the perf gate | Verification, **v0.10** helps | The gate joins over Direct; `Dev/RelayMeter.cs` can meter the relay. There is no written record of the cross-network playtests. |
 | `tools/steam-upload.sh` writes the description into the VDF unescaped | Tooling | A `"` in it breaks the file. |
 | Low-severity review findings | Mixed | The "Still open" lists in [bug-review.md](bug-review.md). |
 
@@ -58,7 +58,7 @@ None open apart from the terrain pass listed under "Open". (Per-building GameObj
 
 ## Owner playtest bugs (v0.8)
 
-Fix plan: [2026-10-11-v0.8-playtest-fixes.md](superpowers/plans/2026-10-11-v0.8-playtest-fixes.md).
+Fix plan: [2026-10-11-v0.8-playtest-fixes.md](archive/superpowers/plans/2026-10-11-v0.8-playtest-fixes.md).
 
 | Report                                                                     | Status                                                                                                                                                                                |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -90,7 +90,7 @@ The owner played the first full Linux match on 2026-10-10 and reported three iss
 
 ## Performance gate (2026-10-10)
 
-Run with `tools/perf-run.sh` (3 runs, 7 real headless clients over KCP on loopback, editor closed, release build): host tick main thread **10.6 ms p95** (budget 25), **243 fps** mean (≥ 60), **162 KB/s** average per client (worst client 206 KB/s; budget 256) and **230 KB/s** worst peak second (budget 768), at 80,000 units including the vision system. Results are in [docs/perf/v0.6](perf/v0.6/). This is the first gate with real clients; it needed three fixes to run at all: Mirror's headless auto-start made every `-perfClient` host on port 7778 (`GameManager` now sets `headlessStartMode` to `DoNothing`), `PerfClient` didn't find the KCP transport inside the scene's `MultiplexTransport` (so it metered nothing), and headless clients threw every frame creating the instanced renderer's GPU buffer. **KCP stays on Mirror's defaults**: bandwidth is within budget and nothing in the gate called for tuning.
+Run with `tools/perf-run.sh` (3 runs, 7 real headless clients over KCP on loopback, editor closed, release build): host tick main thread **10.6 ms p95** (budget 25), **243 fps** mean (≥ 60), **162 KB/s** average per client (worst client 206 KB/s; budget 256) and **230 KB/s** worst peak second (budget 768), at 80,000 units including the vision system. Results are in [docs/perf/v0.6](archive/perf/v0.6/). This is the first gate with real clients; it needed three fixes to run at all: Mirror's headless auto-start made every `-perfClient` host on port 7778 (`GameManager` now sets `headlessStartMode` to `DoNothing`), `PerfClient` didn't find the KCP transport inside the scene's `MultiplexTransport` (so it metered nothing), and headless clients threw every frame creating the instanced renderer's GPU buffer. **KCP stays on Mirror's defaults**: bandwidth is within budget and nothing in the gate called for tuning.
 
 ## Fixed in v0.6 (found by the first two-process run)
 
@@ -152,7 +152,7 @@ Fixed:
 
 Resolved by the v0.7 gate:
 
-- **The flow-field sector cell size went from 2 to 1** (`OrderBook`), four times the sector fields. The v0.7 performance gate (2026-10-16, [docs/perf/v0.7](perf/v0.7/)) ran with it and passed.
+- **The flow-field sector cell size went from 2 to 1** (`OrderBook`), four times the sector fields. The v0.7 performance gate (2026-10-16, [docs/archive/perf/v0.7](archive/perf/v0.7/)) ran with it and passed.
 
 Open (listed under "Open" at the top):
 
