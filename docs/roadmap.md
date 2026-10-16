@@ -1,21 +1,25 @@
 # WAR-2D Roadmap: v0.2 to v0.9
 
-This is the overarching development plan for WAR-2D. It explains **what** each update delivers, **why** it comes in that order, and **how we know it's done**.
+This is the development plan WAR-2D followed, and its record. It explains **what** each update delivered, **why** it came in that order, and **how we knew it was done**.
+
+**Status (2026-10-16): the roadmap is complete.** Every update from v0.2 to v0.9 is on `main`. What is left is the backlog in [known-issues.md](known-issues.md) and [bug-review.md](bug-review.md), and the items in section 7.
 
 - **Design source of truth:** [roadmap design spec](superpowers/specs/2026-10-05-war2d-roadmap-design.md). This document summarises and explains it. If the two ever disagree, the spec wins and this file gets fixed.
-- **Step-by-step plans:** each update gets its own implementation plan in [`docs/superpowers/plans/`](superpowers/plans/), written when that update starts.
+- **Step-by-step plans:** each update has its own implementation plan in [`docs/superpowers/plans/`](superpowers/plans/), written when that update started. They are history now, not instructions.
 - **Current state of the game:** [gameplay.md](gameplay.md), [architecture.md](architecture.md), [known-issues.md](known-issues.md).
 
-| Update | Name         | Status                                                                                                                                                                                                                                                                                                                                                                                                                                          | Detailed plan                                                                                                   |
-| ------ | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| v0.2   | Solid Ground | **Done.** Merged into `main` on 2026-10-05 ([PR #4](https://github.com/CoolCoder353/WAR-2D/pull/4)). The manual 2-player Linux match passed (confirmed by the owner). Windows build profile deferred by the owner                                                                                                                                                                                                                               | [2026-10-05-v0.2-solid-ground.md](superpowers/plans/2026-10-05-v0.2-solid-ground.md)                            |
-| v0.3   | Scale Spike  | **Done** (2026-10-08). Every row of spec §4.6 has a measurement and a decision; the owner raised the bandwidth budget and chose the async tick with async flow-field rebuilds. See [the results](spike/v0.3-results.md)                                                                                                                                                                                                                         | [2026-10-05-v0.3-scale-spike.md](superpowers/plans/2026-10-05-v0.3-scale-spike.md)                              |
-| v0.4   | Legion       | **Implemented** (2026-10-09), awaiting the owner's manual Linux match and the PR. Performance gate passed (8 × 10,000 units, 1024² map, 3 runs, medians): host tick main thread **6.6 ms p95** (budget 25), **561 fps** mean (≥ 60), **102 KB/s** average and **170 KB/s** peak 1 s per client (≤ 256 / 768). See [docs/perf/v0.4](perf/v0.4/)                                                                                                  | [2026-10-08-v0.4-legion.md](superpowers/plans/2026-10-08-v0.4-legion.md)                                        |
-| v0.5   | Fog & Wire   | **Closed** (2026-10-09) by the owner with the performance gate not run, no manual play-test yet and KCP not tuned. All three are carried into v0.6 in [known-issues.md](known-issues.md). Teams, fog of war, fog interest, buildings on the replication service and the leak tests are done; EditMode 223/223 and PlayMode 10/10 pass                                                                                                           | [2026-10-09-v0.5-fog-and-wire.md](superpowers/plans/2026-10-09-v0.5-fog-and-wire.md)                            |
-| v0.6   | Command      | **Done.** Merged into `main` on 2026-10-11. HUD, menus, lobby (colour picks and reserved HQ clearings), settings, new orders and per-player diplomacy; the first manual Linux match was played and its reports fixed; the performance gate passed with 7 real clients (tick **10.6 ms p95**, **243 fps**, **162 KB/s** average per client; [docs/perf/v0.6](perf/v0.6/))                                                                        | [2026-10-09-v0.6-command.md](superpowers/plans/2026-10-09-v0.6-command.md)                                      |
-| v0.8   | New Paint    | **Done** (2026-10-12), owner signed off; PR `release/v0.8` → `main`. Moved ahead of v0.7 so the art style sets how the new units and buildings look; it also delivers the v0.7 art kit                                                                                                                                                                                                                                                          | [2026-10-10-v0.8-new-paint.md](superpowers/plans/2026-10-10-v0.8-new-paint.md)                                  |
-| v0.9   | Steam        | Design approved and plan written (2026-10-12); code for Tasks 1-7, 8 (logic), 10 (meter) and 11 (build/upload scripts) written, untested against real Steam. Lobby browser and Invite button built from the approved Figma. Open: relay test, bandwidth gate, Windows build, playtest. Moved ahead of v0.7 (2026-10-12) so playtests are easier to run before new content lands. Scope: the playtest core only (relay, lobbies, auth, delivery) | [design](superpowers/specs/2026-10-12-v0.9-steam-design.md), [plan](superpowers/plans/2026-10-12-v0.9-steam.md) |
-| v0.7   | Siege        | **Code complete** (2026-10-16) on `release/v0.7`: terrain deltas, tile LOS, Builders and blueprints, walls, Diggers, bombs, Radar, instanced buildings, siege HUD and art. The performance gate passed with 7 real clients and the siege load (tick **20.9 ms p95**, **155 fps**, **187 KB/s** average per client; [docs/perf/v0.7](perf/v0.7/)). Still open: owner sign-off on the numbers, the security review and a manual match. | [design](superpowers/specs/2026-10-10-v0.7-siege-design.md), [plan](superpowers/plans/2026-10-15-v0.7-siege.md) |
+Updates are listed in the order they shipped, which is not numeric order: v0.8 and v0.9 went ahead of v0.7 (see section 2).
+
+| Update | Name         | Outcome                                                                                                                                                                                                                                                                                                                    | Detailed plan                                                                                                   |
+| ------ | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| v0.2   | Solid Ground | **Done** (2026-10-05, [PR #4](https://github.com/CoolCoder353/WAR-2D/pull/4)). The manual 2-player Linux match passed. The Windows build profile was deferred by the owner at the time (it exists now, see v0.9)                                                                                                            | [2026-10-05-v0.2-solid-ground.md](superpowers/plans/2026-10-05-v0.2-solid-ground.md)                            |
+| v0.3   | Scale Spike  | **Done** (2026-10-08). Every row of spec §4.6 has a measurement and a decision; the owner raised the bandwidth budget and chose the async tick with async flow-field rebuilds. See [the results](spike/v0.3-results.md)                                                                                                    | [2026-10-05-v0.3-scale-spike.md](superpowers/plans/2026-10-05-v0.3-scale-spike.md)                              |
+| v0.4   | Legion       | **Done** (2026-10-09). Performance gate passed (8 × 10,000 units, 1024² map, 3 runs, medians): host tick main thread **6.6 ms p95** (budget 25), **561 fps** mean (≥ 60), **102 KB/s** average and **170 KB/s** peak 1 s per client (≤ 256 / 768). See [docs/perf/v0.4](perf/v0.4/)                                         | [2026-10-08-v0.4-legion.md](superpowers/plans/2026-10-08-v0.4-legion.md)                                        |
+| v0.5   | Fog & Wire   | **Done** (2026-10-09). Closed by the owner with the performance gate, the manual match and KCP tuning carried into v0.6, where all three were done. Teams, fog of war, fog interest, buildings on the replication service and the leak tests                                                                              | [2026-10-09-v0.5-fog-and-wire.md](superpowers/plans/2026-10-09-v0.5-fog-and-wire.md)                            |
+| v0.6   | Command      | **Done** (merged 2026-10-11). HUD, menus, lobby (colour picks and reserved HQ clearings), settings, new orders and per-player diplomacy; the first manual Linux match was played and its reports fixed; the gate passed with 7 real clients (tick **10.6 ms p95**, **243 fps**, **162 KB/s** average per client; [docs/perf/v0.6](perf/v0.6/)) | [2026-10-09-v0.6-command.md](superpowers/plans/2026-10-09-v0.6-command.md)                                      |
+| v0.8   | New Paint    | **Done** (2026-10-12), owner signed off. Moved ahead of v0.7 so the art style sets how the new units and buildings look; it also delivered the v0.7 art kit. Code-generated art and audio, no AI art ships                                                                                                                | [2026-10-10-v0.8-new-paint.md](superpowers/plans/2026-10-10-v0.8-new-paint.md)                                  |
+| v0.9   | Steam        | **Done** (merged as [PR #13](https://github.com/CoolCoder353/WAR-2D/pull/13)). Steam relay (FizzySteamworks), lobbies, a lobby browser, invites, auth tickets and SteamPipe upload scripts (`tools/steam-upload.sh`), for the playtest core only. Moved ahead of v0.7 so playtests are easier to run before new content lands | [design](superpowers/specs/2026-10-12-v0.9-steam-design.md), [plan](superpowers/plans/2026-10-12-v0.9-steam.md) |
+| v0.7   | Siege        | **Done** (merged as [PR #14](https://github.com/CoolCoder353/WAR-2D/pull/14), 2026-10-16). Terrain deltas, tile LOS, Builders and blueprints, walls, Diggers, bombs, Radar, instanced buildings, siege HUD and art. The gate passed with 7 real clients and the siege load (tick **20.9 ms p95**, **155 fps**, **187 KB/s** average per client; [docs/perf/v0.7](perf/v0.7/)) | [design](superpowers/specs/2026-10-10-v0.7-siege-design.md), [plan](superpowers/plans/2026-10-15-v0.7-siege.md) |
 
 ---
 
@@ -28,7 +32,7 @@ Two promises shape every technical decision:
 1. **Scale:** 10,000 units per player must run smoothly on an ordinary gaming PC that is both hosting and playing.
 2. **Security:** no player's computer ever receives information their team isn't allowed to know. Hidden bombs stay hidden and fog of war can't be cheated. Every message a client sends is checked by the server.
 
-New gameplay on the way:
+The new gameplay the roadmap delivered:
 
 - **Builder units** that construct everything except the HQ
 - **buildable walls**
@@ -36,11 +40,11 @@ New gameplay on the way:
 - **hidden bombs** only the owning team can see
 - **Radars** that see over walls and rock and ping their owner when an enemy comes into range
 
-Alongside these come a full UI/UX overhaul, a consistent pixel-art and chiptune audio set, and Steam integration.
+Alongside these came a full UI/UX overhaul, a consistent pixel-art and chiptune audio set, and Steam integration.
 
 ### Starting point (v0.1)
 
-Today the game is a working networked prototype. Players host or join by IP, place an HQ, mine gems, build spawners and fight with Tanks until one HQ is left. It's built on Mirror networking and Unity DOTS. The code review in October 2026 found about 30 bugs, mismatches and hygiene problems ([known-issues.md](known-issues.md)). The current design also can't scale anywhere near 10,000 units. Each player's visible list is rebuilt every server tick, every unit runs its own A\* search, combat compares every unit against every possible target, and every unit is drawn as its own GameObject.
+At the start of the roadmap the game was a working networked prototype. Players host or join by IP, place an HQ, mine gems, build spawners and fight with Tanks until one HQ is left. It's built on Mirror networking and Unity DOTS. The code review in October 2026 found about 30 bugs, mismatches and hygiene problems, all fixed in v0.2. That design also couldn't scale anywhere near 10,000 units. Each player's visible list was rebuilt every server tick, every unit ran its own A\* search, combat compared every unit against every possible target, and every unit was drawn as its own GameObject. v0.4 replaced all four.
 
 ---
 
@@ -288,7 +292,7 @@ Each update below lists its goal, its scope, the key decisions already made, wha
 
 **Exit criteria:** rules tests for every feature, and leak tests proving bombs never reach enemy clients.
 
-**Open decisions:** all starting numbers (build power, dig time, gem payout, blast radius and damage, bomb, wall and Radar costs and upkeep, Radar radius and ping timing, repair rate and cost). Proposed values are in the [v0.7 design](superpowers/specs/2026-10-10-v0.7-siege-design.md) §3, Phase 8.
+**Outcome (2026-10-16):** shipped as designed. The starting numbers are in `GameConfig.xml` (`Siege`, `Units`, `Buildings`) and [gameplay.md](gameplay.md#siege); they are meant to be tuned in play. Leak tests cover bombs, terrain, walls and Radar pings. Buildings moved from one GameObject each to instanced drawing and tile picking, as v0.4 had planned. The v0.7 performance gate is in [docs/perf/v0.7](perf/v0.7/). Remaining low-severity review findings are in [bug-review.md](bug-review.md).
 
 **Detailed plan:** [v0.7 implementation plan](superpowers/plans/2026-10-15-v0.7-siege.md).
 
@@ -338,7 +342,7 @@ Scoped on 2026-10-12 to the **playtest core**. Full design: [v0.9 Steam design](
 
 **Exit criteria:** a friends-only Steam playtest on Linux and Windows. Windows verification happens here at the latest.
 
-**Open decisions:** the friends playtest group. App ID 1975300 (to be confirmed in the Steamworks dashboard); the owner says no store page is needed for the playtest.
+**Outcome (2026-10-15):** shipped as scoped. The Steam client is not needed for tests, perf or QA: Direct (KCP) joins stay behind `-direct`, `-perf` and the editor. The Steam app ID is 1975300 (`steam_appid.txt`). `tools/steam-upload.sh` builds fresh Linux and Windows depots and uploads them to a Steam branch; see [steam/README.md](../steam/README.md). The headless dedicated server, the store page and the content survey remain out of scope (section 7). The perf gate runs over Direct, so the Steam relay's bandwidth was never gated (`Dev/RelayMeter.cs` can meter it), and the repo holds no written record of the cross-network playtest results.
 
 ---
 
@@ -410,7 +414,7 @@ These rules apply to every update. They're the "secure and bug-free as possible"
 
 ## 7. Not in this roadmap
 
-These are deliberately out of scope for v0.2–v0.9 and can be planned afterwards: the tutorial and onboarding, ranked matchmaking, player accounts beyond Steam identity, replays, bomb-detection units, AI opponents, and mobile or console platforms.
+These were deliberately out of scope for v0.2–v0.9 and are the candidates for what comes next: the tutorial and onboarding, the headless dedicated server (and host migration), the Steam store page and content survey, ranked matchmaking, player accounts beyond Steam identity, replays, bomb-detection units, AI opponents, and mobile or console platforms. Open bugs and design requests are tracked in [known-issues.md](known-issues.md) and [bug-review.md](bug-review.md).
 
 ---
 
@@ -436,5 +440,7 @@ The full table is in the spec (§2). The decisions that most shape the roadmap:
 | Order (2026-10-10)      | v0.8 New Paint before v0.7 Siege, so the art style sets how the new units and buildings look. v0.8 delivers the v0.7 art kit; v0.7 wires it                                                                          |
 | Art method (2026-10-11) | Code-generated lit models finished as fine pixel art (64 px per tile, "Charcoal" palette, 3/4 view for buildings, 8 rendered facings for units); no AI art ships. See [method-prototype.md](art/method-prototype.md) |
 | HQ size (2026-10-11)    | The HQ is 5×5 (was 3×3), so the art can make it the base's centrepiece                                                                                                                                               |
+| Siege (2026-10-15)      | Radar added (vision over walls, one ping per contact). Cancelling a blueprint refunds it in full; demolishing a finished building refunds 50 %. Bombs are built by Builders and hurt friendlies too                                                          |
+| Delivery (2026-10-12)   | Steam first (relay, lobbies, auth tickets) with KCP kept as Direct for tests, perf and LAN. Dedicated server, store page and content survey deferred                                                                                                                 |
 | Testing                 | Local only, through the live editor; no CI                                                                                                                                                                           |
 | Team                    | The owner plus Claude, in small shippable updates                                                                                                                                                                    |

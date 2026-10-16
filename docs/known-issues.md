@@ -1,20 +1,41 @@
 # Known Issues and Tech Debt
 
-Bugs, mismatches and hygiene problems, newest sections last. The October 2026 code review (v0.2) found roughly 30 and fixed all of them except the items below, which are deliberately deferred; each names the version that should clear it. A second review (v0.8, 2026-10-12) is recorded in the next section. See [roadmap.md](roadmap.md) for what each version delivers.
+Bugs, mismatches and hygiene problems. The roadmap (v0.2 to v0.9) is complete, so nothing here is scheduled to a version any more: open items are backlog, and the sections after "Open" are the log of what past reviews and playtests found and fixed. Code-review findings that were triaged but not fixed are in [bug-review.md](bug-review.md). See [roadmap.md](roadmap.md) for what each version delivered.
 
-## NEW OWNER ISSUES (12-10)
+## Open
 
-Server discoverability doesnt show friends games.
+| Item | Kind | Detail |
+| --- | --- | --- |
+| Enemy units are sent with their whole route | Security, **owner decision** | A modified client can read where visible enemy units are heading beyond the fog. See the v0.8 review table. |
+| Map generation looks boring | Design request | Needs a brainstorm and owner sign-off; any change alters every seed's map and hash. See "Owner-reported issues (2026-10-10)". |
+| No hint for squads | UX, needs Figma | Ctrl+number and number work, nothing in the HUD says so. See "Owner playtest bugs". |
+| The host leaving ends the match | Design | Mirror's host is the server. No host migration and no dedicated server were built (roadmap section 7). |
+| The Play screen's Host text is stale | UX, needs Figma | `HostJoin.uxml` still says "Others join with your IP address on port 7778", but Steam players join from the Friends' games list or an invite. |
+| Terrain replication walks every changed tile | Performance | Each client's terrain pass checks every tile changed since the match started, so the cost grows with the match (`ReplicationService.SendTerrain`). |
+| Client positions creep after Stop | Presentation | Predicted positions converge on the server's at about 0.15 tiles/s instead of snapping; `HudTests.CommandCardStopHalts` can fail on timing. |
+| Authored maps (`Size = 0`) get no client terrain | Test-only | `WorldStateManager.OnStartClient` returns before `ClientTerrain.Init`. Real matches always use generated maps. |
+| Footprints ignore rotation | Latent | A rotated non-square building would cover the wrong tiles. Every building is square today. |
+| `Acceleration` is parsed and unused | Config | Units reach full speed at once. Use it or drop it. |
+| Rebinding checks hidden actions too | UX | Binding Stop to `1` reports a conflict with the unlisted "Squad1". |
+| The Steam relay was never put through the perf gate | Verification | The gate joins over Direct; `Dev/RelayMeter.cs` can meter the relay. There is no written record of the cross-network playtests. |
+| `tools/steam-upload.sh` writes the description into the VDF unescaped | Tooling | A `"` in it breaks the file. |
+| Low-severity review findings | Mixed | The "Still open" lists in [bug-review.md](bug-review.md). |
 
-If trying to join a friend from the play menu, it cracks the shit.
+Developer-tool, networking and hygiene leftovers are further down.
 
-cannot destroy stuff i placed wrong
+## Owner issues (2026-10-12)
+
+| Report | Status |
+| --- | --- |
+| Server discoverability doesn't show friends' games | **Addressed in v0.9:** Steam lobbies and the Friends' games list on the Play screen. Not re-confirmed by the owner. |
+| Joining a friend from the Play menu breaks | **Fixed.** A join during a lingering client did nothing; `GameManager.Connect` now stops it first (see [bug-review.md](bug-review.md), fifth scan). Steam joins go through `SteamJoinFlow`. |
+| Can't destroy things placed wrong | **Fixed in v0.7:** Delete cancels a blueprint (full refund) or demolishes a finished building (half back); the HQ can't be removed. |
 
 ## v0.8 code and security review (2026-10-12)
 
 | Finding                                                                                                                                                                                                                                                                                                                                                                                                      | Where                                                  | Status                                                                                                                                                                                                                                             |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Open (design decision).** Enemy units a client may see are sent with their whole route, so a modified client can read where visible enemy units are heading beyond the fog. Clients need routes to predict movement; the fix would be to send enemy units only the part of the route on cells the team sees (or a short prefix), at the cost of less accurate prediction. `LeakTests` do not cover routes. | `ReplicationEncoder.AppendRoute`, `Messages.ReadRoute` | **Open: needs an owner decision.**                                                                                                                                                                                                                 |
+| **Open (design decision).** Enemy units a client may see are sent with their whole route, so a modified client can read where visible enemy units are heading beyond the fog. Clients need routes to predict movement; the fix would be to send enemy units only the part of the route on cells the team sees (or a short prefix), at the cost of less accurate prediction. `LeakTests` do not cover routes. | `ReplicationEncoder.AppendRoute`, `Messages.ReadRoute` | **Open: needs an owner decision.** Listed under "Open" above.                                                                                                                                                                                                                 |
 | One player could fill the shared order table (256 flow-field orders) with single-unit orders to distinct goals, after which nobody's move orders worked.                                                                                                                                                                                                                                                     | `OrderBook.Issue`                                      | **Fixed.** Each owner may hold `OrderBook.MaxOrdersPerOwner` (32) live orders; queued legs count too. `SimMovementTests.OneOwnerCannotFillTheOrderTable`.                                                                                          |
 | UPnP fetched whatever URL any LAN device named, with no size cap, followed redirects, accepted a control URL on another host and allowed DTDs. One odd responder (an IPv6 location, a bad URI) also ended discovery before the real router answered.                                                                                                                                                         | `UpnpGateway.DiscoverAsync`, `UpnpProtocol`            | **Fixed.** The description and control URLs must be the responder's own address, bodies are capped at 256 KB, redirects are off, DTDs are refused, and a bad responder is skipped. More documentation and benchmarking ranges are non-public.      |
 | A connection without a player could send commands without ever being rate-limited or kicked; its rate-limit buckets were never forgotten.                                                                                                                                                                                                                                                                    | `CommandGate.Allow`, `GameCore.OnPlayerLeave`          | **Fixed.** Such a connection is limited and kicked like any other, and its buckets are dropped on every disconnect. The transport still accepts up to `maxConnections` (100, in the `Main_Menu` scene) before `OnServerConnect` closes the extras. |
@@ -24,7 +45,7 @@ cannot destroy stuff i placed wrong
 
 ## Performance and scale
 
-None open. (Per-building GameObjects on clients were fixed in v0.7; see the v0.7 siege review below.)
+None open apart from the terrain pass listed under "Open". (Per-building GameObjects on clients were fixed in v0.7; see the v0.7 siege review below.)
 
 ## Owner-reported issues (2026-10-10)
 
@@ -55,7 +76,7 @@ Fix plan: [2026-10-11-v0.8-playtest-fixes.md](superpowers/plans/2026-10-11-v0.8-
 | Miner didn't rotate visually                                               | **Fixed.** Rendered in 4 facings; other buildings can't be turned.                                                                                                                    |
 | No valid/invalid placement feedback                                        | **Fixed.** The preview tints green or red, follows the rotation, and ignores responses for a previous spot.                                                                           |
 | Spectate mode for dead players                                             | **Fixed.** An eliminated player sees the whole map until the match ends (`ReplicationService.Spectating`).                                                                            |
-| The host leaving ends the game for everyone                                | **Partly fixed.** Joined players get a "The host left the match" dialog. The match still ends: Mirror's host is the server (host migration or a dedicated server is a v0.9 decision). |
+| The host leaving ends the game for everyone                                | **Partly fixed.** Joined players get a "The host left the match" dialog. The match still ends: Mirror's host is the server, and neither host migration nor a dedicated server was built. |
 
 ## Fixed after the first manual Linux match (2026-10-10)
 
@@ -93,29 +114,28 @@ Besides the owner's reports above:
 
 ## UI
 
-- **`com.unity.ugui` stays installed.** All screens are UI Toolkit since v0.6, but building health bars are still a world-space uGUI slider (`Resources/Ui/HealthBarUI`, `Client/DataClient.cs`) on the per-building GameObjects. They go with instanced buildings. **v0.7**
+- **`com.unity.ugui` stays installed.** All screens are UI Toolkit. Building health bars moved to the instanced renderer in v0.7 and the `HealthBarUI` prefab is gone, but `GameInput` and the scenes still use uGUI's `EventSystem` (`InputSystemUIInputModule`), and `WAR2D.asmdef` references `UnityEngine.UI`. Removing the package means moving that over first.
 
 ## Developer tools
 
 - **Editor crash after `SimData` gains fields.** The first EditMode run after `SimData`'s layout changes can segfault while scheduling a tick job (v0.5: `GatherJob`; v0.6 Task 4: `SimCombatSystem`, in `AtomicSafetyHandle` handle extraction). Restarting the editor fixes it every time, so it is stale Burst code compiled against the old struct layout. Restart the editor after changing `SimData`'s fields, before running the tests.
-- **The editor froze once during a PlayMode run** (2026-10-10, KDE Wayland, Vulkan): after `HudTests`' eighth match the main and render threads sat in futex waits with no CPU use for over 40 minutes, so the pipeline's requests timed out. Killing and reopening the editor fixed it, and the same suite then passed in full. If `tools/unity-test.sh PlayMode` stops reporting progress, check the editor window is visible before suspecting the tests. (no target)
-- **Bots look eliminated in the HUD.** Dev bots (`GameCore.AddBot`, perf harness and tests) have no player object, so the top bar and diplomacy panel list them as "Player (eliminated)" with disabled switches, and their diplomacy bit reaches clients only after `SendAllDiplomacy` is called again (bots join after match start). Dev only; real players are unaffected. (no target)
+- **The editor froze once during a PlayMode run** (2026-10-10, KDE Wayland, Vulkan): after `HudTests`' eighth match the main and render threads sat in futex waits with no CPU use for over 40 minutes, so the pipeline's requests timed out. Killing and reopening the editor fixed it, and the same suite then passed in full. If `tools/unity-test.sh PlayMode` stops reporting progress, check the editor window is visible before suspecting the tests.
+- **Bots look eliminated in the HUD.** Dev bots (`GameCore.AddBot`, perf harness and tests) have no player object, so the top bar and diplomacy panel list them as "Player (eliminated)" with disabled switches, and their diplomacy bit reaches clients only after `SendAllDiplomacy` is called again (bots join after match start). Dev only; real players are unaffected.
 
 ## Networking
 
-- **Internet play is UPnP or a tunnel, no relay (Direct play only).** _Steam players: fixed in v0.9 (Steam relay; the code is in, not yet playtested across networks)._ Join-by-IP reaches hosts on other networks only if their router accepts the UPnP mapping (or they forward UDP 7778 by hand) and has a public IPv4. Hosts on carrier-grade NAT, DS-Lite or behind a second router need a tunnel (see `playtesting.md`). The owner's own router (2026-10-11) answers UPnP but reports no external IPv4, so it falls in this group. There is no NAT punch-through and no relay; Steam relay replaces all of this. **v0.9**
-- **A permanent-lease mapping can outlive a crash.** Routers that only take permanent leases (UPnP error 725) keep the UDP 7778 mapping if the game crashes before `OnStopServer`. Remove it in the router's UPnP page, or host again and leave normally. **v0.9**
+- **Direct play is UPnP or a tunnel, no relay.** _Steam players are unaffected: v0.9's Steam relay needs no open port._ Join-by-IP (the editor, `-direct`) reaches hosts on other networks only if their router accepts the UPnP mapping (or they forward UDP 7778 by hand) and has a public IPv4. Hosts on carrier-grade NAT, DS-Lite or behind a second router need a tunnel (see `playtesting.md`). The owner's own router (2026-10-11) answers UPnP but reports no external IPv4, so it falls in this group. There is no NAT punch-through.
+- **A permanent-lease mapping can outlive a crash.** Routers that only take permanent leases (UPnP error 725) keep the UDP 7778 mapping if the game crashes before `OnStopServer`. Remove it in the router's UPnP page, or host again and leave normally. Direct hosts only.
 
 ## Project and config hygiene
 
 Inert leftovers disclosed in v0.2 and scheduled to be cleaned up together.
 
-- **No Windows build profile.** Only `Assets/Settings/Build Profiles/Linux.asset` is checked in — the owner deferred Windows to a later release. **v0.9**
-- **Vendored Mirror components still call the legacy `Input` API** — `Components/GUIConsole.cs`, `Components/RemoteStatistics.cs` and `Components/Profiling/ToggleHotkey.cs` (the last via its own `GraphCanvas.prefab`). None are used in the shipped scenes, and the project is Input System only (`activeInputHandler: 1`), so they would throw if ever attached. Not shipped; leave vendored code alone (no target).
-- **Vendored Console `Demo/Scripts/DemoPlayer.cs` uses the legacy `Input.GetAxis`.** Demo only; not used by any shipped scene. Not shipped; leave vendored code alone (no target).
-- **Rebinding checks conflicts against hidden actions too.** `Rebinding.ConflictWith` looks at every action in `GameInput.Map`, including ones the Controls page doesn't list (the squad keys, `FastPan` and `AppendModifier`, which share Shift with Queue order). Binding Stop to `1` reports a conflict with "Squad1", and Swap gives that hidden action the old key. Show those actions or skip them in the check. **v0.7**
-- **`Acceleration` is parsed but unused.** `GameConfig.xml` and `gameplay.md` list it, but units reach full speed at once. Use it or drop it with the v0.7 units. **v0.7**
-- **Footprints ignore rotation.** `Footprint.Tiles` and the building sprite's placement assume a square footprint, so a rotated non-square building (Width ≠ Height) would cover the wrong tiles. Every building is square today. **v0.7** (walls and new buildings)
+- **Vendored Mirror components still call the legacy `Input` API** — `Components/GUIConsole.cs`, `Components/RemoteStatistics.cs` and `Components/Profiling/ToggleHotkey.cs` (the last via its own `GraphCanvas.prefab`). None are used in the shipped scenes, and the project is Input System only (`activeInputHandler: 1`), so they would throw if ever attached. Not shipped; leave vendored code alone.
+- **Vendored Console `Demo/Scripts/DemoPlayer.cs` uses the legacy `Input.GetAxis`.** Demo only; not used by any shipped scene. Not shipped; leave vendored code alone.
+- **Rebinding checks conflicts against hidden actions too.** `Rebinding.ConflictWith` looks at every action in `GameInput.Map`, including ones the Controls page doesn't list (the squad keys, `FastPan` and `AppendModifier`, which share Shift with Queue order). Binding Stop to `1` reports a conflict with "Squad1", and Swap gives that hidden action the old key. Show those actions or skip them in the check.
+- **`Acceleration` is parsed but unused.** `GameConfig.xml` and `gameplay.md` list it, but units reach full speed at once (nothing under `Assets/Scripts` outside `Config/` reads it). Use it or drop it.
+- **Footprints ignore rotation.** `Footprint.Tiles` and the building sprite's placement assume a square footprint, so a rotated non-square building (Width ≠ Height) would cover the wrong tiles. Every building is square today, walls included (they are tiles).
 
 ## v0.7 siege review (2026-10-15)
 
@@ -130,9 +150,12 @@ Fixed:
 - **Buildings were one GameObject each on clients.** Fixed in v0.7: instanced (`InstancedBuildingRenderer`, one draw for buildings, one for construction overlays, one for health and progress bars), picked by tile (`BuildingPicker`). The SyncList-era handlers in `UnitCommander` (`BuildingList*`, `HealthList*`), `DataClient`, `BuildingDataClient`, `SpawnerClientManager`, `SpriteFrameAnimator` and the `HealthBarUI` prefab are gone.
 - **Diggers couldn't be queued from the HUD.** The production buttons queued only the building's first unit type. The command card now has one production row per type the building makes (Figma `Command card – v0.7`).
 
-Open:
+Resolved by the v0.7 gate:
 
-- **Terrain replication walks every changed tile.** `ReplicationService.SendTerrain` checks every tile changed since the match started, per client, on each vision tick, so the cost grows with the match. **v0.8**
-- **Client positions creep after Stop.** Stopped units' predicted positions converge on the server's at about 0.15 tiles/s instead of snapping, so `HudTests.CommandCardStopHalts` (0.3 tiles over 1 s) can fail on timing when the prediction overshot when Stop arrived. **v0.8**
-- **The flow-field sector cell size went from 2 to 1** (`OrderBook`), four times the sector fields. Re-run `tools/perf-run.sh` before release. **v0.7**
-- **Authored maps (`Size = 0`) get no client terrain.** `WorldStateManager.OnStartClient` returns before `ClientTerrain.Init` when `MapSize <= 0`, so walls and tunnels are not replicated there (found writing `SiegeMatchTests`, which uses a generated map). Real matches always use generated maps. **v0.7**
+- **The flow-field sector cell size went from 2 to 1** (`OrderBook`), four times the sector fields. The v0.7 performance gate (2026-10-16, [docs/perf/v0.7](perf/v0.7/)) ran with it and passed.
+
+Open (listed under "Open" at the top):
+
+- **Terrain replication walks every changed tile.** `ReplicationService.SendTerrain` checks every tile changed since the match started, per client, on each vision tick, so the cost grows with the match.
+- **Client positions creep after Stop.** Stopped units' predicted positions converge on the server's at about 0.15 tiles/s instead of snapping, so `HudTests.CommandCardStopHalts` (0.3 tiles over 1 s) can fail on timing when the prediction overshot when Stop arrived.
+- **Authored maps (`Size = 0`) get no client terrain.** `WorldStateManager.OnStartClient` returns before `ClientTerrain.Init` when `MapSize <= 0`, so walls and tunnels are not replicated there (found writing `SiegeMatchTests`, which uses a generated map). Real matches always use generated maps.

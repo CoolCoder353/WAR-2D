@@ -1,11 +1,12 @@
 # WAR-2D
 
-A networked, top-down 2D real-time strategy game built in Unity. Any number of players join a lobby, each places a Headquarters (HQ) on the map, then they mine gems, build unit spawners and send tanks to destroy each other's HQ. The last player with an HQ standing wins.
+A networked, top-down 2D real-time strategy game built in Unity, made for armies of up to 10,000 units per player. Two to eight players join a lobby (free-for-all or teams), each places a Headquarters (HQ) in their own clearing of a generated cave map, then they mine gems, build Builders, walls, spawners, hidden bombs and Radars, dig through rock with Diggers and send tanks to destroy each other's HQ. The last side with an HQ standing wins.
 
 - **Engine:** Unity `6000.4.1f1`
 - **Networking:** [Mirror](https://mirror-networking.com/) (server-authoritative, KCP transport)
 - **Simulation:** Unity DOTS / Entities `6.4.0` (units and buildings are ECS entities, not GameObjects)
-- **Target platforms:** Linux standalone for now (the code has no Linux-only parts); a Windows build profile is deferred to a later release (see [known issues](docs/known-issues.md#project-and-config-hygiene))
+- **Target platforms:** Linux and Windows standalone. Build profiles for both are in `Assets/Settings/Build Profiles/`; Linux is the platform the tests and perf gate run on
+- **Online play:** Steam (relay, lobbies, invites) through FizzySteamworks, with Direct (KCP) for tests, LAN and perf runs
 
 ## Documentation
 
@@ -13,8 +14,11 @@ A networked, top-down 2D real-time strategy game built in Unity. Any number of p
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | How the code fits together: scenes, singletons, ECS systems, networking, visibility, config |
 | [docs/gameplay.md](docs/gameplay.md) | Rules of the game, controls, buildings, units, economy, combat, win/loss |
-| [docs/known-issues.md](docs/known-issues.md) | Deferred issues and hygiene leftovers, each with a target version |
-| [docs/roadmap.md](docs/roadmap.md) | Development plan for v0.2–v0.9: what each update delivers, why, and when it's done |
+| [docs/known-issues.md](docs/known-issues.md) | Open issues and design requests, plus a log of what past reviews fixed |
+| [docs/bug-review.md](docs/bug-review.md) | Code-review findings, how each was triaged, and the low-priority ones still open |
+| [docs/playtesting.md](docs/playtesting.md) | How to run a playtest: Steam, and Direct play through a router or tunnel |
+| [docs/roadmap.md](docs/roadmap.md) | The v0.2–v0.9 plan and its outcome: what each update delivered, why in that order, and how it was measured (complete) |
+| [steam/README.md](steam/README.md) | Uploading builds to Steam with `tools/steam-upload.sh` |
 | [CLAUDE.md](CLAUDE.md) | Guidance for AI coding assistants working in this repo |
 
 ## Getting started
@@ -24,7 +28,7 @@ A networked, top-down 2D real-time strategy game built in Unity. Any number of p
 - Unity Hub with editor **6000.4.1f1** (the version pinned in `ProjectSettings/ProjectVersion.txt`)
 - The Linux and/or Windows build support modules, if you want to make builds
 
-All other dependencies are either Unity packages (resolved from `Packages/manifest.json` on first open) or vendored under `Assets/` (Mirror, DOTween, NaughtyAttributes, TIM Console).
+All other dependencies are either Unity packages (resolved from `Packages/manifest.json` on first open, Steamworks.NET included) or vendored under `Assets/` (Mirror, FizzySteamworks, DOTween, NaughtyAttributes, TIM Console).
 
 ### Open and run
 
@@ -32,15 +36,15 @@ All other dependencies are either Unity packages (resolved from `Packages/manife
 2. Let the first import finish (Entities and Burst compilation takes a while).
 3. Open `Assets/Main_Menu.unity` and press **Play**.
 
-### Play a local multiplayer match
+### Play a multiplayer match
 
 Mirror needs two running instances: one host and one or more clients.
 
 1. Make a standalone build (see below), or run a second editor instance on a copy of the project.
-2. In the first instance press **Host**. This starts a server and a local client at the same time.
-3. In the other instance(s) open **Join**, enter the host's IP (`localhost` on the same machine) and connect. Players connect to UDP port **7778** (KCP transport).
+2. In the first instance press **Play**, then **Host**. This starts a server and a local client at the same time.
+3. **With Steam**, friends join from the Play screen's *Friends' games* list or an invite (Steam relay, no port forwarding). **Without Steam** (editor, `-direct` or `-noSteam` runs, tests), open **Join** and enter the host's IP (`localhost` on the same machine). Direct connections use UDP port **7778** (KCP transport); a release build shows the IP field only when started with `-direct`. For play across networks without Steam, see [docs/playtesting.md](docs/playtesting.md).
 4. Players can rename themselves in the lobby. Only the **server owner** (the host, or the next player if the host leaves) sees the **Start Game** button.
-5. Starting the game loads the configured map (`Map_2`), and every player places their HQ. Once everyone has placed one, a 5-second countdown runs and the match begins.
+5. Starting the game loads the configured map (`Map_2`), and every player places their HQ inside their own clearing. Once everyone has placed one, a 5-second countdown runs and the match begins.
 
 See [docs/gameplay.md](docs/gameplay.md#controls) for in-game controls.
 
@@ -48,10 +52,10 @@ See [docs/gameplay.md](docs/gameplay.md#controls) for in-game controls.
 
 The scenes in the build are `Assets/Main_Menu.unity` (index 0) and `Assets/Maps/Map_2.unity` (index 1).
 
-- **Linux:** a build profile is checked in at `Assets/Settings/Build Profiles/Linux.asset`. Open it under *File → Build Profiles* and build.
-- **Windows:** no profile is checked in — the owner deferred Windows to a later release. To build one yourself, create a Windows build profile with the same two scenes.
+- **Linux** and **Windows:** build profiles are checked in at `Assets/Settings/Build Profiles/` (`Linux.asset`, `Windows.asset`). Open one under *File → Build Profiles* and build.
+- **Steam:** `tools/steam-upload.sh <branch>` builds fresh Linux and Windows depots headless (close the editor first) and uploads them with `steamcmd`. Setup is in [steam/README.md](steam/README.md).
 
-There is no dedicated server: a batch-mode player is a test or perf client, and `GameManager` sets `headlessStartMode` to `DoNothing` so none of them starts hosting on its own. The host is always a player (Mirror host); host migration or a dedicated build is a v0.9 decision (see the [roadmap](docs/roadmap.md)). A match takes 2 to 8 players.
+There is no dedicated server: a batch-mode player is a test or perf client, and `GameManager` sets `headlessStartMode` to `DoNothing` so none of them starts hosting on its own. The host is always a player (Mirror host), and when the host leaves the match ends; host migration and a dedicated build are not built (see [roadmap](docs/roadmap.md) section 7). A match takes 2 to 8 players.
 
 ## Tests
 
@@ -62,7 +66,7 @@ tools/unity-test.sh EditMode
 tools/unity-test.sh PlayMode
 ```
 
-`tools/unity-compile.sh` runs a compile check first.
+`tools/unity-compile.sh` runs a compile check first. `tools/qa-smoke.sh` runs a two-process host and join check, and `tools/perf-run.sh` runs the performance gate against a Linux release build.
 
 ## Balancing
 
@@ -88,7 +92,9 @@ Assets/
 │   ├── Building/                Mining component and building placement helpers
 │   ├── Components/              ECS component structs (buildings, health, upkeep)
 │   ├── Systems/                 ECS systems for buildings: resources, spawning, destruction, win/loss
-│   ├── Net/                     Command gate, rate limiter, validator, lobby/match/order commands, UPnP
+│   ├── Net/                     Command gate, rate limiter, validator, lobby/match/order/siege commands, UPnP
+│   ├── Net/Steam/               Connection routes, Steam lobbies, auth tickets, behind ISteamBackend
+│   ├── Steam/                   The real Steamworks backend (own WAR2D.Steam assembly, WAR2D_STEAM define)
 │   ├── Net/Replication/         Per-client interest, encoder, fog and building messages
 │   ├── Client/                  Presentation: UnitCommander, input, camera, instanced rendering, effects
 │   ├── UI/                      UI Toolkit controllers and models (menu, lobby, HUD, settings)
@@ -97,7 +103,7 @@ Assets/
 │   ├── Rules/                   Pure rule helpers (placement, combat, upkeep, win/loss, ...)
 │   └── Dev/                     Perf harness and QA helpers (need `-perf`)
 ├── Tests/                       EditMode and PlayMode test assemblies
-├── 3rd Party/                   TIM Console (+ custom commands), NaughtyAttributes
+├── 3rd Party/                   TIM Console (+ custom commands), FizzySteamworks, NaughtyAttributes
 ├── Mirror/                      Vendored Mirror networking
 └── Plugins/Demigiant/DOTween/   Vendored DOTween (client tweening)
 ```

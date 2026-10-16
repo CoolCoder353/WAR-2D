@@ -1,7 +1,7 @@
 # WAR-2D Roadmap Design (v0.2 – v0.9)
 
 - **Date:** 2026-10-05
-- **Status:** Approved in brainstorming. Waiting for written-spec review.
+- **Status:** Approved, and fully delivered: v0.2 to v0.9 are on `main` (2026-10-16). See [roadmap.md](../../roadmap.md) for the outcome of each update.
 - **Authors:** project owner + Claude
 - **Related:** [architecture.md](../../architecture.md), [gameplay.md](../../gameplay.md), [known-issues.md](../../known-issues.md)
 

@@ -4,7 +4,7 @@ This document describes how WAR-2D plays **as currently implemented**. Every num
 
 ## The goal
 
-WAR-2D is an RTS for any number of players, free-for-all or in teams. Every player has one **Headquarters (HQ)**. If your HQ is destroyed, you're eliminated. The last **team** with an HQ wins (in free-for-all every player is their own team). If every remaining HQ is destroyed in the same check, the match is a draw.
+WAR-2D is an RTS for any number of players, free-for-all or in teams. Every player has one **Headquarters (HQ)**. If your HQ is destroyed, you're eliminated. The match is won when the players who still have an HQ no longer attack each other (see "Win, loss and leaving"; in free-for-all that means one player is left). If every remaining HQ is destroyed in the same check, the match is a draw.
 
 ## Match flow
 
@@ -14,11 +14,11 @@ stateDiagram-v2
     Lobby --> PlacingHQ: Everyone is ready and the host presses Start match\n(server loads Map_2 and generates the map)
     PlacingHQ --> Countdown: Every player has placed an HQ
     Countdown --> Playing: 5 s server timer (Match.CountdownSeconds)
-    Playing --> GameOver: One HQ left (win) or none left (draw)
+    Playing --> GameOver: Survivors at peace (win) or no HQ left (draw)
     GameOver --> [*]: End screen, then Main menu
 ```
 
-1. **Main menu → Play → Lobby** (`Main_Menu` scene). The main menu (Play, Settings, Quit) has a live battle running behind it (`<MenuBattle>`; off in Settings → Graphics). **Play** asks for a nickname (remembered) and either **Host** (others join on your IP, port 7778) or **Join** an address (invalid addresses are flagged; while connecting there is a Cancel; a failed join says so). A lobby holds up to **8 players**, and nobody can join once the match has started (the server refuses the connection and the Play screen says why). In the **lobby** every player (the host included) picks an unused colour (8, from the palette), may claim one of the 8 **HQ clearings** by clicking its free (grey) marker on the map preview, and readies up; in Teams mode they pick Team 1–4 or Solo (the host can also cycle anyone's team). The host (the server owner: the host, or the next player if the host leaves) sets the **match settings**: mode (Free-for-all or Teams), Diplomacy on/off, map size (`Lobby/MapSizes`: 256, 512, 1024) and starting resources (`Lobby/StartingResources`: 500–5000), the map seed (typed, or **Reroll**). Everyone sees the settings and a **map preview** with the 8 HQ clearings: claimed ones in their player's colour (your own ringed, with "You"), free ones grey. When the match starts, every player without a claim gets the lowest-numbered free clearing. Any settings change or reroll clears everyone's ready. **Start match** needs every player ready and at least two teams (so someone attacks someone). Teams are fixed when the match starts.
+1. **Main menu → Play → Lobby** (`Main_Menu` scene). The main menu (Play, Settings, Quit) has a live battle running behind it (`<MenuBattle>`; off in Settings → Graphics). **Play** asks for a nickname (remembered) and either **Host** or join a game. Online play runs through **Steam**: Host opens a Steam lobby (friends see it in the *Friends' games* list, with a Refresh button, or you send an **Invite friends** from the lobby) and everyone connects over Steam's relay, so nobody opens a port. A **Direct (IP)** block (an address, `host:port` or `[ipv6]:port`, UDP 7778) is shown only in the editor or with `-direct`; invalid addresses are flagged, while connecting there is a Cancel, and a failed join says so. Without Steam running, the Play screen says so. A lobby holds up to **8 players**, and nobody can join once the match has started (the server refuses the connection and the Play screen says why). In the **lobby** every player (the host included) picks an unused colour (8, from the palette), may claim one of the 8 **HQ clearings** by clicking its free (grey) marker on the map preview, and readies up; in Teams mode they pick Team 1–4 or Solo (the host can also cycle anyone's team). The host (the server owner: the host, or the next player if the host leaves) sets the **match settings**: mode (Free-for-all or Teams), Diplomacy on/off, map size (`Lobby/MapSizes`: 256, 512, 1024) and starting resources (`Lobby/StartingResources`: 500–5000), the map seed (typed, or **Reroll**). Everyone sees the settings and a **map preview** with the 8 HQ clearings: claimed ones in their player's colour (your own ringed, with "You"), free ones grey. When the match starts, every player without a claim gets the lowest-numbered free clearing. Any settings change or reroll clears everyone's ready. **Start match** needs every player ready and at least two teams (so someone attacks someone). Teams are fixed when the match starts.
 2. **PlacingHQ** (`Map_2`). The map is generated from a seed (see "Map and tiles"). An HQ placement prompt is shown. Each player places a single 5×5 HQ on free ground **inside their own clearing** (ringed in their colour; the camera starts there), The screen shows how many players are still placing.
 3. **Countdown.** When the last HQ is placed, the server starts a **5-second** countdown (`Match.CountdownSeconds`) and every client displays the same remaining time from the synced end time.
 4. **Playing.** Economy, building, spawning and combat run, and win/loss is checked every second.
@@ -51,17 +51,21 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | Command card: Move, Attack-move | Arm the order: the next left- or right-click sends it (the armed button is highlighted) |
 | Command card: Stop, Hold | Same as `S` and `H` |
 | Selection panel: a unit type | Keep only that type selected |
-| Command card: Miner, Spawner | Pick a building (greyed out until you can afford it); a preview follows the cursor. Right-click cancels. |
+| Command card: Miner, Spawner, Wall, Bomb, Radar | With Builders selected, pick a building (greyed out until you can afford it); a preview follows the cursor. Right-click cancels. Each placement is a blueprint the Builders then build. |
+| Left-click and drag (Wall armed) | Lay a straight wall line (horizontal, vertical or diagonal); each tile is its own blueprint |
+| `F`, then click (Builders) | **Repair** the damaged own or allied building or wall you click (the command card has the same button) |
+| `G`, then click (Diggers) | **Dig** toward the rock, gem or wall you click |
+| `Delete` (own buildings selected) | Cancel a blueprint (full refund) or demolish a finished building (half back, after a confirm). The HQ can't be removed. |
 | Minimap: left-click or drag | Move the camera there |
 | Minimap: right-click | Send the selection there (Move, or the armed Attack-move; `Shift` queues) |
 | `R` (while placing a Miner) | Turn the Miner 90° (it draws its auger facing that way); other buildings have one facing |
 | Left-click (while placing) | Place the building. The preview is grey if valid and red if not. During HQ placement the HQ preview appears on its own. |
-| Left-click on your Small Unit Spawner (where none of your units are) | Select it: the command card shows its production queue, where `+`, `+10` and `+50` queue Tanks and `−` removes one (max 100 queued per spawner; nothing is refunded, as the cost is charged at spawn) |
+| Left-click on your HQ or Small Unit Spawner (where none of your units are) | Select it: the command card shows one production row per unit type it makes (HQ: Builders; Spawner: Tanks and Diggers), where `+`, `+10` and `+50` queue units and `−` removes one (max 100 queued per spawner; nothing is refunded, as the cost is charged at spawn) |
 | `Shift` + left-click on your spawners, or drag a box over them (where none of your units are) | Select several spawners: the queue buttons add to (or take from) each of them |
 | Right-click with only spawners selected | Set their **rally point**: each new unit drives there. The flag shows while the spawner is selected; only you see it |
 | `` ` `` (backquote) | Toggle the developer console |
 
-In **Settings → Controls** you can rebind Select, Move, Attack-move, Stop, Hold, Queue order (Shift), the squad-assign modifier (Ctrl), Rotate and Menu: click a binding, press the new key (Esc cancels). A key already in use offers to swap the two bindings. Bindings are saved with the settings. Panning (arrows), the squad number keys, zoom, middle-drag and Shift for fast panning and adding to a box selection are fixed.
+In **Settings → Controls** you can rebind Select, Move, Attack-move, Stop, Hold, Repair, Dig, Cancel, Queue order (Shift), the squad-assign modifier (Ctrl), Rotate and Menu: click a binding, press the new key (Esc cancels). A key already in use offers to swap the two bindings. Bindings are saved with the settings. Panning (arrows), the squad number keys, zoom, middle-drag and Shift for fast panning and adding to a box selection are fixed.
 
 ## Settings
 
@@ -82,10 +86,12 @@ The map is a grid of 1×1 tiles. By default it is **generated from a seed** at t
 |---|---|---|---|
 | Ground (floor) | Yes | Yes | |
 | Wall | No | No | |
-| Gem | No | No | Miners must face a gem tile to produce resources |
-| Border | No | No | The map's outer ring |
+| Gem | No | No | Miners must face a gem tile to produce resources. A Digger can dig it for a payout. |
+| Border | No | No | The map's outer ring. Never dug. |
+| Wall blueprint | Yes | No | A planned wall segment. Units walk through and see through it until a Builder starts it. |
+| Player wall | No | No | A built wall: blocks movement and sight, has an owner and health. A destroyed wall becomes ground. |
 
-A building occupies tiles based on its configured size (5×5 for the HQ, 2×2 for a Small Unit Spawner, 1×1 for a Miner). A building can only be placed when every tile of its footprint is free ground; units standing there are moved to the nearest free tile. Occupied tiles can't be built on again, and units path around buildings.
+Digging turns rock and gems into ground for good. A building occupies tiles based on its configured size (5×5 for the HQ, 2×2 for a Small Unit Spawner or Radar, 1×1 for a Miner or Bomb). A building can only be placed when every tile of its footprint is free ground; units standing there are moved to the nearest free tile. Occupied tiles can't be built on again, and units path around buildings.
 
 ## Economy
 
@@ -103,13 +109,15 @@ Upkeep is charged once per second. Units are charged one by one (oldest slot fir
 
 ## Buildings
 
-Buildings are placed from the HUD and must sit entirely on free ground. Except for the HQ, they can only be placed during *Playing*; the HQ can only be placed during *PlacingHQ*, one per player.
+Buildings are placed from the HUD and must sit entirely on free ground. Except for the HQ, they can only be placed during *Playing*; the HQ can only be placed during *PlacingHQ*, one per player. Every building except the HQ starts as a **blueprint** that Builders finish (see "Siege").
 
 | Building | Size | Health | Upfront cost | Upkeep / s | Function |
 |---|---|---|---|---|---|
-| **Base (HQ)** | 5×5 | 500 | 0 | 0 | Your life. Placed during *PlacingHQ*. |
+| **Base (HQ)** | 5×5 | 500 | 0 | 0 | Your life. Placed during *PlacingHQ*. Click it to queue Builders (1 unit per 2 s, `SpawnRate` 0.5). It can't be demolished. |
 | **Miner** | 1×1 | 50 | 50 | 0 | Produces 10 resources/s while the tile it faces is a gem. Placement is only allowed when it faces a gem. |
-| **Small Unit Spawner** | 2×2 | 300 | 200 | 20 | Click it to queue Tanks (up to 100 queued). Produces **1 unit per second** (`SpawnRate`), charging each Tank's cost as it spawns. |
+| **Small Unit Spawner** | 2×2 | 300 | 200 | 20 | Click it to queue Tanks and Diggers (up to 100 queued). Produces **1 unit per second** (`SpawnRate`), charging each unit's cost as it spawns. |
+| **Bomb** | 1×1 | 40 | 75 | 1 | A hidden trap, walkable. See "Siege". |
+| **Radar** | 2×2 | 200 | 250 | 5 | Sees 20 tiles ignoring walls and rock, and pings you when an enemy comes in range. See "Siege". |
 
 ### Miner facing
 
@@ -127,7 +135,10 @@ A Miner checks the single tile next to it in the direction it faces:
 | Unit | Health | Damage | Range | Attack interval | Speed | Acceleration | Upfront cost | Upkeep / s |
 |---|---|---|---|---|---|---|---|---|
 | **Tank** | 100 | 10 | 5 tiles | 1 s | 5 | 5 | 50 | 2 |
+| **Builder** | 60 | 0 | 1 tile | 1 s | 5 | 5 | 60 | 2 |
+| **Digger** | 120 | 4 | 1.5 tiles | 1 s | 4 | 4 | 120 | 4 |
 
+Speed and Acceleration are in the config, but units reach full speed at once: Acceleration is parsed and not used yet ([known-issues.md](known-issues.md)). Builders never attack (their damage multiplier is 0). The Digger's Radius is 0.4 tiles; the others' is 0.35.
 - A player can own at most **10,000 units** (`Simulation/MaxUnitsPerPlayer`). A spawner at the cap keeps its queue and refunds the unit.
 - A spawner creates a unit on the nearest free walkable tile outside its footprint, then sends it to the spawner's rally point if it has one (a Move order, so a rally on rock snaps to the nearest floor). Units are round bodies (`Radius` 0.35 tiles for the Tank) that push apart when they overlap, so a crowd spreads out on its own.
 - A move order gives the whole group one shared flow field to the goal, so any number of units path around walls and buildings together. The group gathers around the goal and stops within a radius that grows with its size.
@@ -135,11 +146,11 @@ A Miner checks the single tile next to it in the direction it faces:
 
 ## Fog of war, teams and diplomacy
 
-- Each player sees through the eyes of all their units and buildings, plus those of every player sharing vision with them. Teammates share vision with each other from the start. Sight radius (`Sight`) is per unit and building type in `GameConfig.xml`: Tank 8 tiles, HQ 10, Spawner 6, Miner 4.
+- Each player sees through the eyes of all their units and buildings, plus those of every player sharing vision with them. Teammates share vision with each other from the start. Sight radius (`Sight`) is per unit and building type in `GameConfig.xml`: Tank 8 tiles, Builder 6, Digger 6, HQ 10, Spawner 6, Miner 4, Radar 20 (Radar sight ignores walls), Bomb 0.
 - Walls block sight; you can see a wall's face but not what's behind it. Fog is tracked on a grid of 2×2-tile cells and updated 5 times a second.
 - The map shows three states: **unexplored** (black), **explored** (dimmed: you've seen it before), and **visible** (clear).
 - You only receive other players' units standing where you can see now (your own sight plus vision shared with you). Enemy buildings you've seen stay on your map as dimmed **last-seen ghosts** when they go out of sight; you only find out a ghost was destroyed when you see its spot again.
-- Diplomacy is per player and one-way. At the start, teammates don't attack each other and share vision; everyone else attacks and doesn't share. When the match has diplomacy on, each player chooses whom they attack and with whom they share vision (at most one change per command every 2 s, `Diplomacy/ChangeCooldownSeconds`). Stopping sharing keeps what the other player already explored. Nobody learns another player's choices, except that you're told who shares vision with you. Units of players who don't attack each other never damage each other (bomb blasts will be the exception, v0.7). The **Diplomacy** button on the top bar (shown only when the match has diplomacy on) opens a panel with an Attack and a Share-vision switch per player; it also marks who shares vision with you.
+- Diplomacy is per player and one-way. At the start, teammates don't attack each other and share vision; everyone else attacks and doesn't share. When the match has diplomacy on, each player chooses whom they attack and with whom they share vision (at most one change per command every 2 s, `Diplomacy/ChangeCooldownSeconds`). Stopping sharing keeps what the other player already explored. Nobody learns another player's choices, except that you're told who shares vision with you. Units of players who don't attack each other never damage each other (bomb blasts are the exception: they hit everything in range, friends included). The **Diplomacy** button on the top bar (shown only when the match has diplomacy on) opens a panel with an Attack and a Share-vision switch per player; it also marks who shares vision with you.
 
 ### Alerts
 
@@ -148,11 +159,12 @@ The alert feed (top left) shows the newest four alerts for 8 s each (`Alerts/Sho
 - **Under attack near your HQ/Spawner/Miner** (or "Your units are under attack"): one of your units or buildings took damage. The minimap pings the spot. At most one per 32-tile area every 10 s (`Alerts/AreaTiles`, `Alerts/ThrottleSeconds`). It never says who attacked.
 - **Upkeep unpaid**: some of your upkeep first went unpaid (repeats only after a fully paid second).
 - **A player shares vision with you / stopped sharing vision with you**.
-- **A player gifted you N** (gifting arrives with the in-match menu).
+- **A player gifted you N**.
+- **Construction finished** (a blueprint of yours is done), **Bomb triggered** (one of yours went off), **Enemy spotted by Radar** (at the Radar's tile, never the enemy's) and **Out of resources: repairs stopped**.
 
-## Siege (v0.7)
+## Siege
 
-All numbers are starting values in `GameConfig.xml` (`Siege`, `Units`, `Buildings`).
+All numbers are starting values in `GameConfig.xml` (`Siege`, `Units`, `Buildings`), meant to be tuned in play.
 
 - **Builders** (60 cost, 60 health) come from the HQ queue. They build everything except the HQ and never attack. Every building starts as a **blueprint** that charges its full cost and has health in proportion to progress (minimum 1). Each Builder adds `BuildPower` 25 health/s, so a 300-health Spawner takes 12 s with one. Builders work from `WorkReach` 1.6 tiles; Shift queues orders (up to `Orders/MaxQueued`).
 - **Demolish** (Delete, then confirm): a blueprint refunds in full, a finished building refunds `DemolishRefund` 50%.
@@ -165,7 +177,7 @@ All numbers are starting values in `GameConfig.xml` (`Siege`, `Units`, `Building
 ## Combat
 
 - Combat is fully automatic. Every unit picks the **nearest enemy unit** (a unit of any player its owner attacks) within range that it has a clear line to (rock blocks shots as it blocks sight; buildings and units don't), and only when there is none, the nearest enemy **building**. Idle units look for targets every few ticks, so a new enemy is picked up within about 0.4 s.
-- Damage is the attacker's `Damage` times a multiplier from the damage table (`DamageTable`) for what it hits: units, buildings or walls. Every Tank multiplier is 1.0 except walls (0.5, used once walls arrive in v0.7).
+- Damage is the attacker's `Damage` times a multiplier from the damage table (`DamageTable`) for what it hits: units, buildings or walls. The Tank's multipliers are 1.0 except against walls (0.5). The Digger does 0.5 to units, 3 to buildings and 6 to walls; the Builder 0 to everything.
 - It keeps attacking that target every attack interval while the target is alive and in range. When the target dies or leaves range, it picks a new one.
 - Buildings don't attack.
 - Anything at 0 health is destroyed, and **every death plays an explosion**. The server sends each player only the deaths inside their camera view that they can see (their sight plus vision shared with them), at most 1,024 a tick; once the match is over, the end-of-match wipe shows wherever they look.
