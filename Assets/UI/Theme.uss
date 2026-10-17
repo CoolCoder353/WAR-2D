@@ -219,6 +219,10 @@
 .hq-prompt > * { margin-bottom: 6px; }
 .hq-prompt__title { font-size: var(--font-size-20); -unity-font-style: normal; }
 .countdown { padding: 20px 40px; align-items: center; }
+/* Start option badges (Figma: HUD / HQ placement – timed pick, teammate's options) */
+.start-markers { position: absolute; left: 0; top: 44px; right: 0; bottom: 0; }
+.start-badge { position: absolute; flex-direction: row; align-items: center; padding: 1px 6px; border-width: 0; border-radius: 0; margin: 0; }
+.start-badge__text { font-size: var(--font-size-16); color: var(--color-on-accent); padding: 0; margin: 0; -unity-font-style: bold; }
 .countdown__label { font-size: var(--font-size-16); }
 .countdown__value { font-size: 72px; }
 .command-card--building { width: 400px; }
@@ -371,6 +375,7 @@
 .spawn-marker__tooltip { display: none; position: absolute; left: 24px; top: -4px; padding: 4px 8px; border-width: 1px; border-color: var(--color-accent); border-radius: var(--radius-sm); background-color: var(--color-surface-base); font-size: var(--font-size-12); color: var(--color-text-primary); white-space: nowrap; }
 .spawn-marker--free:hover > .spawn-marker__tooltip { display: flex; }
 .lobby__caption { white-space: normal; width: 520px; }
+.lobby__hint { white-space: normal; margin-top: 4px; }
 .lobby__seed-row { align-items: flex-end; }
 .lobby__reroll { height: 35px; }
 .lobby__footer { position: absolute; left: 120px; top: 960px; }

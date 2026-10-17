@@ -90,7 +90,7 @@ public class BuildingPlacement : MonoBehaviour
 
     private readonly System.Collections.Generic.List<WAR2D.Client.ClearingRing> optionRings = new System.Collections.Generic.List<WAR2D.Client.ClearingRing>();
 
-    /// <summary>While the HQ is still to be placed, rings each start option dealt to the local player (and their teammates' options in the teammates' colours).</summary>
+    /// <summary>While the HQ is still to be placed, rings each start option dealt to the local player (and their teammates' options in the teammates' colours, a teammate's pick solid).</summary>
     private void ShowOwnClearing(bool needHQ)
     {
         WorldStateManager wsm = WorldStateManager.Instance;
@@ -104,18 +104,18 @@ public class BuildingPlacement : MonoBehaviour
             {
                 int colour = NetworkClient.spawned.TryGetValue((uint)teammate.Key, out NetworkIdentity id) && id.TryGetComponent(out ClientPlayer other) ? other.colourIndex : localPlayer.colourIndex;
                 foreach (int option in teammate.Value.options)
-                    shown += ShowRing(sites, option, shown, PlayerPalette.Of(colour));
+                    shown += ShowRing(sites, option, shown, PlayerPalette.Of(colour), option == teammate.Value.pick);
             }
         }
         for (int i = shown; i < optionRings.Count; i++) if (optionRings[i] != null) optionRings[i].gameObject.SetActive(false);
     }
 
-    private int ShowRing(int2[] sites, int option, int slot, Color32 colour)
+    private int ShowRing(int2[] sites, int option, int slot, Color32 colour, bool solid = false)
     {
         if (option < 0 || option >= sites.Length) return 0;
         while (optionRings.Count <= slot) optionRings.Add(null);
         if (optionRings[slot] == null) optionRings[slot] = WAR2D.Client.ClearingRing.Create("StartOptionRing", WAR2D.Client.Render.SortingOrders.ClearingRing);
-        optionRings[slot].Set((float2)sites[option] + 0.5f, WAR2D.World.MapGenerator.HqClearRadius, colour);
+        optionRings[slot].Set((float2)sites[option] + 0.5f, WAR2D.World.MapGenerator.HqClearRadius, colour, solid);
         return 1;
     }
 

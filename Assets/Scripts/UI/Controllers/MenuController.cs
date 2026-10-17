@@ -124,7 +124,7 @@ namespace WAR2D.UI
 
             GameConfigData config = ConfigLoader.LoadConfig();
             string lan = MenuModel.LocalAddress();
-            lobby = new LobbyController(root, Lobby, preview, config.Lobby, () => HostReachability.Describe(lan));
+            lobby = new LobbyController(root, Lobby, preview, config.Lobby, config.Match.Map, () => HostReachability.Describe(lan));
             lobby.SettingsChanged += s => GameCore.Instance?.Cmd_SetMatchSettings(s);
             lobby.RerollClicked += () => GameCore.Instance?.Cmd_RerollMap();
             lobby.ColourClicked += c => GameCore.Instance?.Cmd_SetColour((byte)c);

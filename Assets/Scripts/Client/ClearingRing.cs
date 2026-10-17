@@ -17,7 +17,7 @@ namespace WAR2D.Client
         private static ClearingRing instance;
         private MeshFilter filter;
         private Mesh mesh;
-        private (float2 centre, float radius, Color32 colour) shown;
+        private (float2 centre, float radius, Color32 colour, bool solid) shown;
 
         /// <summary>Shows (or moves) the ring.</summary>
         public static void Show(float2 centre, float radius, Color32 colour)
@@ -38,13 +38,13 @@ namespace WAR2D.Client
             return ring;
         }
 
-        /// <summary>Shows (or moves) this ring.</summary>
-        public void Set(float2 centre, float radius, Color32 colour)
+        /// <summary>Shows (or moves) this ring; <paramref name="solid"/> draws an unbroken rim (a teammate's picked start).</summary>
+        public void Set(float2 centre, float radius, Color32 colour, bool solid = false)
         {
             gameObject.SetActive(true);
-            if (mesh != null && shown.Equals((centre, radius, colour))) return;
-            shown = (centre, radius, colour);
-            Build(centre, radius, colour);
+            if (mesh != null && shown.Equals((centre, radius, colour, solid))) return;
+            shown = (centre, radius, colour, solid);
+            Build(centre, radius, colour, solid);
         }
 
         /// <summary>Removes the ring.</summary>
@@ -60,7 +60,7 @@ namespace WAR2D.Client
             if (instance == this) instance = null;
         }
 
-        private void Build(float2 centre, float radius, Color32 colour)
+        private void Build(float2 centre, float radius, Color32 colour, bool solid)
         {
             if (mesh == null) mesh = new Mesh { name = "ClearingRing" };
             int dashes = math.clamp((int)math.round(2f * math.PI * radius / DashSpacing), MinDashes, MaxDashes);
@@ -83,11 +83,11 @@ namespace WAR2D.Client
                 triangles[i * 3 + 2] = 1 + i;
             }
 
-            // The rim: one quad per dash, each covering half its arc.
+            // The rim: one quad per dash, each covering half its arc (all of it when solid).
             int v = DiscSegments + 1, t = DiscSegments * 3;
             for (int d = 0; d < dashes; d++)
             {
-                float a0 = 2f * math.PI * d / dashes, a1 = a0 + math.PI / dashes;
+                float a0 = 2f * math.PI * d / dashes, a1 = a0 + (solid ? 2f : 1f) * math.PI / dashes;
                 float inner = radius - DashWidth * 0.5f, outer = radius + DashWidth * 0.5f;
                 vertices[v] = Point(centre, a0, inner);
                 vertices[v + 1] = Point(centre, a0, outer);

@@ -12,7 +12,7 @@ The recorder's units go through `DeferredLane` (encoded during the next tick to 
 | Item | Kind | Detail |
 | --- | --- | --- |
 | Enemy units are sent with their whole route | Security, **owner decision** | A modified client can read where visible enemy units are heading beyond the fog. See the v0.8 review table. |
-| Start-point and generator numbers untuned | Tuning, **v0.11** | The region counts, lane and chokepoint widths and start distances in `GameConfig.xml` `<Map>` are starting values; tune them in play. The host UI for *Options per player* and *Pick time*, and the numbered option rings with the pick timer, wait for approved Figma frames (the settings have defaults and the rings are plain). |
+| Start-point and generator numbers untuned | Tuning, **v0.11** | The region counts, lane and chokepoint widths and start distances in `GameConfig.xml` `<Map>` are starting values; tune them in play. |
 | No hint for squads | UX, needs Figma | Ctrl+number and number work, nothing in the HUD says so. See "Owner playtest bugs". |
 | The host leaving ends the match | Design | Mirror's host is the server. No host migration and no dedicated server were built ([roadmap](roadmap.md) section 5, not scheduled). |
 | The Play screen's Host text is stale | UX, needs Figma | `HostJoin.uxml` still says "Others join with your IP address on port 7778", but Steam players join from the Friends' games list or an invite. |

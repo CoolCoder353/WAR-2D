@@ -24,7 +24,7 @@ namespace WAR2D.Dev.DebugApi
                 return Wait(() => NetworkClient.isConnected && NetworkClient.localPlayer != null ? "joined" : null, 15);
             });
             r.Add("leave", DebugRole.Any, "leave: stop hosting or leave", _ => { Manager().LeaveLobby(); return "left"; });
-            r.Add("start", DebugRole.Server, "start [size] [seed] [mode]: set match settings and start the match", a =>
+            r.Add("start", DebugRole.Server, "start [size] [seed] [mode] [options] [pick] [team]: set match settings (pick: seconds, 0 random, -1 unlimited; team: put every player on that team) and start the match", a =>
             {
                 GameCore core = GameCore.Instance ?? throw new DebugError("no lobby");
                 if (core.CurrentState != GameState.Lobby) throw new DebugError("not in the lobby");
@@ -32,7 +32,14 @@ namespace WAR2D.Dev.DebugApi
                 if (DebugArgs.Has(a, "size")) s.MapSize = DebugArgs.Int(a, "size");
                 if (DebugArgs.Has(a, "seed")) s.Seed = (uint)DebugArgs.Int(a, "seed");
                 if (DebugArgs.Has(a, "mode")) s.Mode = DebugArgs.Enum<MatchMode>(a, "mode");
-                if (!MatchSettingsRules.IsValid(s, Config.ConfigLoader.LoadConfig().Lobby)) throw new DebugError($"size must be one of {string.Join(", ", Config.ConfigLoader.LoadConfig().Lobby.MapSizes)} and seed non-zero");
+                if (DebugArgs.Has(a, "options")) s.StartOptions = DebugArgs.Int(a, "options");
+                if (DebugArgs.Has(a, "pick")) s.StartPickSeconds = DebugArgs.Int(a, "pick");
+                if (DebugArgs.Has(a, "team"))
+                {
+                    if (s.Mode != MatchMode.Teams) throw new DebugError("team needs mode=Teams");
+                    foreach (NetworkIdentity identity in core.ServerPlayers.Keys) if (identity != null) identity.GetComponent<ClientPlayer>().lobbyTeam = DebugArgs.Int(a, "team");
+                }
+                if (!MatchSettingsRules.IsValid(s, Config.ConfigLoader.LoadConfig().Lobby)) throw new DebugError($"size must be one of {string.Join(", ", Config.ConfigLoader.LoadConfig().Lobby.MapSizes)}, seed non-zero, options and pick from the lobby's lists");
                 if (!Config.ConfigLoader.IsValid) throw new DebugError("GameConfig.xml is invalid");
                 core.DevStartMatch(s);
                 return Wait(() => WorldStateManager.Instance != null && WorldStateManager.Instance.Map != null ? "placing HQs" : null, 30);

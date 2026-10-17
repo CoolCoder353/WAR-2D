@@ -10,7 +10,7 @@ namespace WAR2D.UI
     /// <summary>
     /// Binds the lobby (<c>Assets/UI/Menus/Lobby.uxml</c>): the players with their colour, team and ready
     /// state, the local player's colour and team pickers, the host's match settings (read-only for
-    /// everyone else), the map preview with clickable start markers, seed and Reroll, and Leave / Ready / Start.
+    /// everyone else), the map preview (terrain only: start points are private), seed and Reroll, and Leave / Ready / Start.
     /// Raises events only; <see cref="MenuController"/> sends the commands.
     /// </summary>
     public sealed class LobbyController : IDisposable
@@ -18,11 +18,12 @@ namespace WAR2D.UI
         private readonly LobbyModel model;
         private readonly MapPreview preview;
         private readonly LobbyConfig lobby;
+        private readonly MapConfig map;
         private readonly Func<string> hostAddress;
         private readonly VisualElement rows, colourPicker, teamSection, teamPicker;
-        private readonly VisualElement modeOptions, sizeOptions, resourceOptions, diplomacySlot;
+        private readonly VisualElement modeOptions, sizeOptions, resourceOptions, diplomacySlot, startOptions, pickTimes;
         private readonly VisualElement previewImage, markers;
-        private readonly Label subtitle, playersTitle, settingsTitle, status;
+        private readonly Label subtitle, playersTitle, settingsTitle, status, startOptionsHint;
         private readonly TextField seed;
         private readonly Button reroll, ready, start;
 
@@ -46,8 +47,9 @@ namespace WAR2D.UI
         /// <summary>Shows or hides Invite friends (only a host with a Steam lobby has it).</summary>
         public void SetInviteVisible(bool visible) => invite.EnableInClassList("hidden", !visible);
 
-        public LobbyController(VisualElement root, LobbyModel model, MapPreview preview, LobbyConfig lobby, Func<string> hostAddress)
+        public LobbyController(VisualElement root, LobbyModel model, MapPreview preview, LobbyConfig lobby, MapConfig map, Func<string> hostAddress)
         {
+            this.map = map;
             this.model = model;
             this.preview = preview;
             this.lobby = lobby;
@@ -59,6 +61,9 @@ namespace WAR2D.UI
             modeOptions = root.Q("mode-options");
             sizeOptions = root.Q("size-options");
             resourceOptions = root.Q("resource-options");
+            startOptions = root.Q("start-options-row");
+            pickTimes = root.Q("pick-time-row");
+            startOptionsHint = root.Q<Label>("start-options-hint");
             diplomacySlot = root.Q("diplomacy-switch-slot");
             previewImage = root.Q("preview-image");
             markers = root.Q("preview-markers");
@@ -113,9 +118,10 @@ namespace WAR2D.UI
             ready.text = me.Ready ? "Cancel ready" : "Ready";
             ready.EnableInClassList("button--primary", !me.Ready);
             start.EnableInClassList("hidden", !host);
-            start.SetEnabled(model.CanStart);
-            status.text = model.Status;
-            status.EnableInClassList("text--warning", host && !model.CanStart);
+            bool fits = Fits(s.StartOptions);
+            start.SetEnabled(model.CanStart && fits);
+            status.text = host && model.CanStart && !fits ? "Too many options per player for this map" : model.Status;
+            status.EnableInClassList("text--warning", host && !(model.CanStart && fits));
             status.EnableInClassList("text--muted", !host);
             markers.Clear(); // start points are private (v0.11): the preview shows terrain only
         }
@@ -204,7 +210,49 @@ namespace WAR2D.UI
                 float value = amount;
                 resourceOptions.Add(Widgets.Option("resources-" + amount, amount.ToString("0"), s.StartingResources.Equals(amount), host, () => Change(s, x => x.StartingResources = value)));
             }
+            ShowStartSettings(s, host);
         }
+
+        /// <summary>
+        /// Options per player (values that don't fit the players and map size are disabled, with one hint naming the
+        /// site count) and the HQ pick time (Figma: Menu / Lobby (host) – start points).
+        /// </summary>
+        private void ShowStartSettings(MatchSettings s, bool host)
+        {
+            startOptions.Clear();
+            int unfit = 0;
+            for (int n = lobby.StartOptionsMin; n <= lobby.StartOptionsMax; n++)
+            {
+                int value = n;
+                bool fits = Fits(n);
+                if (!fits && (unfit == 0 || n == s.StartOptions)) unfit = n;
+                startOptions.Add(Widgets.Option("start-options-" + n, n.ToString(), s.StartOptions == n, host && fits, () => Change(s, x => x.Value.StartOptions = value)));
+            }
+            if (!Fits(s.StartOptions)) unfit = s.StartOptions;
+            int players = Math.Max(1, model.Players.Count);
+            startOptionsHint.text = unfit == 0 ? "" :
+                $"{unfit} options need {players * unfit + lobby.SpareStartSites} start sites for {players} {(players == 1 ? "player" : "players")}; a {s.MapSize} map has {Sites(s.MapSize)}.";
+            startOptionsHint.EnableInClassList("hidden", unfit == 0);
+
+            pickTimes.Clear();
+            foreach (int seconds in lobby.StartPickSeconds)
+            {
+                int value = seconds;
+                pickTimes.Add(Widgets.Option("pick-time-" + seconds, seconds == 0 ? "Random" : $"{seconds} s", s.StartPickSeconds == seconds, host, () => Change(s, x => x.Value.StartPickSeconds = value)));
+            }
+            pickTimes.Add(Widgets.Option("pick-time-unlimited", "Unlimited", s.StartPickSeconds == StartPickRules.Unlimited, host,
+                () => Change(s, x => x.Value.StartPickSeconds = StartPickRules.Unlimited)));
+        }
+
+        /// <summary>True when the lobby's players can each be dealt <paramref name="options"/> on the chosen map (the server checks the same at Start).</summary>
+        private bool Fits(int options)
+        {
+            MatchSettings s = model.Settings;
+            s.StartOptions = options;
+            return LobbyRules.FitsMap(Math.Max(1, model.Players.Count), s, map, lobby.SpareStartSites);
+        }
+
+        private int Sites(int size) => map != null && size > 0 ? WAR2D.World.RegionMapGenerator.Counts(map, size).starts : 0;
 
         /// <summary>Sends the settings with one change, filling in list values the server would otherwise reject (the defaults may come from outside the lists).</summary>
         private void Change(MatchSettings s, Action<Box> edit)

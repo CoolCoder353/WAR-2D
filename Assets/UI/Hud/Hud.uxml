@@ -20,10 +20,12 @@
         <ui:Instance template="AlertFeed" name="alert-feed-instance" picking-mode="Ignore" class="hud-layer" />
         <ui:Instance template="DiplomacyPanel" name="diplomacy-panel-instance" picking-mode="Ignore" class="hud-layer" />
         <ui:Instance template="GiftDialog" name="gift-dialog-instance" picking-mode="Ignore" class="hud-layer" />
+        <ui:VisualElement name="start-markers" class="start-markers" picking-mode="Ignore" />
         <ui:VisualElement name="hq-prompt" class="hud-overlay hud-overlay--top" picking-mode="Ignore">
-            <ui:VisualElement class="panel hq-prompt" picking-mode="Ignore">
-                <ui:Label text="Place your HQ" class="text hq-prompt__title" picking-mode="Ignore" />
-                <ui:Label text="Left-click a clear 5×5 spot inside your clearing. R rotates. The preview turns red where you can't build." class="text text--muted" picking-mode="Ignore" />
+            <ui:VisualElement class="panel hq-prompt">
+                <ui:Label name="hq-prompt-title" text="Pick your start" class="text hq-prompt__title" picking-mode="Ignore" />
+                <ui:Label name="hq-prompt-body" text="" class="text text--muted" picking-mode="Ignore" />
+                <ui:VisualElement name="hq-option-buttons" class="row segmented" />
                 <ui:Label name="hq-progress" text="" class="text text--readout" picking-mode="Ignore" />
             </ui:VisualElement>
         </ui:VisualElement>
