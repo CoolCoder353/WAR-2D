@@ -14,8 +14,6 @@ namespace WAR2D.UI
     /// makes, the selected one active, a hover card with its cost, build time and role) above one queue row for
     /// that type; then Cancel (blueprints, full refund) or Demolish (finished, a share back, after an inline
     /// confirm). Raises events only; <see cref="HudController"/> sends them down the same paths as the keys.
-    /// Buttons for types the game doesn't have yet (the Heavy Factory, the Siege Workshop, Detonate) stay hidden
-    /// until the v0.12 plan adds their enum values (found by name, so this compiles before and after).
     /// </summary>
     public sealed class CommandCardController : IDisposable
     {

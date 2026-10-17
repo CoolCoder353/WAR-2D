@@ -14,7 +14,7 @@ public static class Effects
     public const int ExplosionPool = 128, FlashPool = 128, TracerPool = 256, BlastPool = 16, DebrisPool = 64, SparkPool = 64;
 
     /// <summary>Pool sizes for the v0.12 weapons: sniper tracers, artillery shells and their impacts, flame streams.</summary>
-    public const int SniperPool = 64, ShellPool = 64, ImpactPool = 64, StreamPool = 128;
+    public const int SniperPool = 64, ShellPool = 64, ImpactPool = 64, StreamPool = 128, BomberBlastPool = 16;
 
     /// <summary>Seconds a tracer takes to reach its target.</summary>
     public const float TracerSeconds = 0.2f;
@@ -60,6 +60,7 @@ public static class Effects
     private static readonly Pool Shells = new Pool("ArtilleryShell", ShellPool);
     private static readonly Pool Impacts = new Pool("ShellImpact", ImpactPool);
     private static readonly Pool Streams = new Pool("FlameStream", StreamPool);
+    private static readonly Pool BomberBlasts = new Pool("BomberBlast", BomberBlastPool);
     private static Runner runner;
     private static ArtAtlas atlas;
 
@@ -85,6 +86,15 @@ public static class Effects
         if (s == null) return;
         s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
         WAR2D.Audio.AudioService.Sfx("bomb_blast", position);
+    }
+
+    /// <summary>A Suicide bomber going off at <paramref name="position"/> (4 × 4 tiles of blast).</summary>
+    public static void BomberBlast(Vector2 position)
+    {
+        Slot s = Take(BomberBlasts);
+        if (s == null) return;
+        s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
+        WAR2D.Audio.AudioService.Sfx("bomber_blast", position);
     }
 
     /// <summary>Rock breaking where a tile was dug out (or a wall fell), centred on the tile.</summary>
@@ -184,7 +194,7 @@ public static class Effects
     {
         runner = null;
         Created = 0;
-        foreach (Pool p in new[] { Explosions, Flashes, Tracers, Blasts, Debris, Sparks, SniperTracers, Shells, Impacts, Streams })
+        foreach (Pool p in new[] { Explosions, Flashes, Tracers, Blasts, Debris, Sparks, SniperTracers, Shells, Impacts, Streams, BomberBlasts })
         {
             p.Slots.Clear();
             p.Next = 0;
@@ -250,6 +260,7 @@ public static class Effects
             Animate(Impacts, now, false);
             Animate(Streams, now, false);
             Animate(Blasts, now, false);
+            Animate(BomberBlasts, now, false);
             Animate(Debris, now, false);
             Animate(Sparks, now, false);
         }

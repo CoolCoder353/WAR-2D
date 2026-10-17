@@ -164,6 +164,21 @@ public class SimArsenalTests
     }
 
     [Test]
+    public void ABomberRunsAtAnEnemyBuildingAndBlowsUpOnContact()
+    {
+        using var sim = Sim();
+        int factory = sim.PlaceBuilding(SimHarness.OwnerB, BuildingType.HeavyFactory, new int2(16, 10), complete: true);
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(11.5f, 10.5f), UnitType.SuicideBomber);
+        sim.Tick();
+        float before = sim.Em.GetComponentData<HealthComponent>(sim.BuildingEntity(factory)).currentHealth;
+        for (int i = 0; i < 80 && Alive(sim, bomber[0]); i++) sim.Tick();
+        sim.Tick();
+        Assert.IsFalse(Alive(sim, bomber[0]), "the bomber is spent");
+        float after = sim.Em.GetComponentData<HealthComponent>(sim.BuildingEntity(factory)).currentHealth;
+        Assert.AreEqual(before - 150f * 2f, after, 0.01f, "150 blast damage, x2 against buildings");
+    }
+
+    [Test]
     public void TheDetonateOrderBlowsUpEverySelectedBomber()
     {
         using var sim = Sim();
@@ -238,6 +253,21 @@ public class SimLargeClassTests
         sim.Move(SimHarness.OwnerA, new Unity.Mathematics.int2(50, 21), heavy[0]);
         sim.TickSeconds(30f);
         Assert.Greater(sim.UnitById(heavy[0]).Position.x, 40f);
+    }
+
+    [Test]
+    public void AWallRaisedUnderALargeUnitPushesItToAClearSpot()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(64), c => c.Simulation.TargetSearchSliceTicks = 1);
+        int[] heavy = sim.Spawn(SimHarness.OwnerA, new Unity.Mathematics.float2(20.5f, 20.5f), UnitType.Heavy);
+        sim.Tick();
+        // Every tile next to the new wall lacks a large unit's clearance, so the search must walk past them.
+        var wall = new Unity.Mathematics.int2(20, 20);
+        sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.SetTile, Tile = wall, TileType = TileType.PlayerWall });
+        for (int i = 0; i < 4; i++) sim.Tick();
+        Unity.Mathematics.int2 tile = (Unity.Mathematics.int2)Unity.Mathematics.math.floor(sim.UnitById(heavy[0]).Position);
+        Assert.AreNotEqual(wall, tile, "pushed off the wall");
+        Assert.AreEqual(0, sim.Context.Data.LargeGrid[tile.y * sim.Context.Data.Width + tile.x], "onto a tile with a large unit's clearance");
     }
 
     [Test]

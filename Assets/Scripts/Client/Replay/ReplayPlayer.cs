@@ -191,11 +191,12 @@ namespace WAR2D.Client.Replay
                 case ReplayChannel.Terrain: TerrainCodec.Apply(ClientTerrain.Current, payload); break;
                 case ReplayChannel.Explosions:
                 case ReplayChannel.Blasts:
+                case ReplayChannel.BomberBlasts:
                     if (quiet) break;
                     for (int i = 0; i + 8 <= payload.Count; i += 8)
                     {
                         var p = new Vector2(BitConverter.ToSingle(payload.Array, payload.Offset + i), BitConverter.ToSingle(payload.Array, payload.Offset + i + 4));
-                        if (channel == ReplayChannel.Explosions) Effects.Explosion(p); else Effects.BombBlast(p);
+                        if (channel == ReplayChannel.Explosions) Effects.Explosion(p); else if (channel == ReplayChannel.Blasts) Effects.BombBlast(p); else Effects.BomberBlast(p);
                     }
                     break;
                 case ReplayChannel.Timeline:

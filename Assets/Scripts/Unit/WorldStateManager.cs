@@ -384,7 +384,7 @@ public partial class WorldStateManager : NetworkBehaviour
         radars.Update(data, unitCount, radarScratch, NetworkTime.localTime, Alerts.Add);
     }
 
-    private readonly List<float2> blastScratch = new List<float2>();
+    private readonly List<float2> blastScratch = new List<float2>(), bomberScratch = new List<float2>();
 
     /// <summary>Reports the bombs and bombers that went off: an alert for a bomb's owner, and the blast to every client whose team sees the tile.</summary>
     [Server]
@@ -392,22 +392,23 @@ public partial class WorldStateManager : NetworkBehaviour
     {
         if (data.BombBlasts.Count == 0) return;
         blastScratch.Clear();
+        bomberScratch.Clear();
         foreach (BombBlast blast in data.BombBlasts.ToArray(Unity.Collections.Allocator.Temp))
         {
             // A bomber's owner set it off (or sent it in): only hidden bombs alert their owner.
-            if (blast.Bomber == 0) Alerts.Add(blast.OwnerId, new Alert { Kind = AlertKind.BombTriggered, Tile = (int2)math.floor(blast.Position) });
+            if (blast.Bomber != 0) { bomberScratch.Add(blast.Position); continue; }
+            Alerts.Add(blast.OwnerId, new Alert { Kind = AlertKind.BombTriggered, Tile = (int2)math.floor(blast.Position) });
             blastScratch.Add(blast.Position);
         }
         Recorder?.Blasts(Sim.Clock.Tick, blastScratch);
+        Recorder?.BomberBlasts(Sim.Clock.Tick, bomberScratch);
         foreach (KeyValuePair<ClientPlayer, (int2, int2)> view in playerView)
         {
             if (view.Key == null || view.Key.connectionToClient == null) continue;
             int grid = Sim.VisionOf(BuildingData.UIntToInt(view.Key.netId));
-            seenDeaths.Clear();
-            foreach (float2 p in blastScratch) if (data.Sees(grid, p)) seenDeaths.Add(p);
-            if (seenDeaths.Count == 0) continue;
-            List<Vector2> visible = VisibilityRules.Filter(seenDeaths, view.Value.Item1, view.Value.Item2);
-            if (visible.Count > 0) view.Key.TargetPlayBlasts(view.Key.connectionToClient, visible.ToArray());
+            Vector2[] bombs = VisibilityRules.SeenBlasts(data, grid, blastScratch, view.Value.Item1, view.Value.Item2);
+            Vector2[] bombers = VisibilityRules.SeenBlasts(data, grid, bomberScratch, view.Value.Item1, view.Value.Item2);
+            if (bombs != null || bombers != null) view.Key.TargetPlayBlasts(view.Key.connectionToClient, bombs, bombers);
         }
     }
 
@@ -691,7 +692,9 @@ public partial class WorldStateManager : NetworkBehaviour
     public bool TryFindSpawnTile(int2 origin, out int2 tile, bool large = false)
     {
         MapGrid grid = Map.Grid;
-        return TileSearch.FindNearest(origin, Map.IsWalkable, t => TileRules.IsFloor(grid.TileAt(t)) && (!large || HasLargeClearance(t)), MaxSpawnSearchTiles, out tile);
+        // Clearance is part of the goal, not the walk: the search starts inside the producer's footprint,
+        // where no tile has a large unit's clearance, and must cross it to reach open ground.
+        return TileSearch.FindNearest(origin, t => Map.IsWalkable(t) && (!large || HasLargeClearance(t)), t => TileRules.IsFloor(grid.TileAt(t)), MaxSpawnSearchTiles, out tile);
     }
 
     /// <summary>

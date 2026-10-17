@@ -225,16 +225,22 @@ public class ClientPlayer : NetworkBehaviour
         DiplomacyChanged?.Invoke();
     }
 
-    /// <summary>Plays bomb blasts the server has filtered to tiles this player sees.</summary>
+    /// <summary>Plays bomb and Suicide bomber blasts the server has filtered to tiles this player sees.</summary>
     [TargetRpc]
-    public void TargetPlayBlasts(NetworkConnection target, Vector2[] positions)
+    public void TargetPlayBlasts(NetworkConnection target, Vector2[] bombs, Vector2[] bombers)
     {
-        if (positions == null) return;
-        foreach (Vector2 p in positions)
-        {
-            Effects.BombBlast(p);
-            WAR2D.Audio.AudioService.ReportDeath();
-        }
+        if (bombs != null)
+            foreach (Vector2 p in bombs)
+            {
+                Effects.BombBlast(p);
+                WAR2D.Audio.AudioService.ReportDeath();
+            }
+        if (bombers != null)
+            foreach (Vector2 p in bombers)
+            {
+                Effects.BomberBlast(p);
+                WAR2D.Audio.AudioService.ReportDeath();
+            }
     }
 
     /// <summary>Plays death explosions the server has filtered to this player's view.</summary>

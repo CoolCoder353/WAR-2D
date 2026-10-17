@@ -19,6 +19,20 @@ public static class VisibilityRules
     /// </summary>
     public static bool ShowsDeath(GameState state, bool gridSees) => gridSees || state == GameState.GameOver;
 
+    /// <summary>
+    /// The blasts (bombs or Suicide bombers) a viewer is shown: on fog cells its grid sees now and inside its
+    /// view box. Null when there are none, so nothing is sent.
+    /// </summary>
+    public static Vector2[] SeenBlasts(WAR2D.Sim.SimData data, int grid, List<float2> blasts, int2 cornerA, int2 cornerB)
+    {
+        if (blasts.Count == 0) return null;
+        var seen = new List<float2>();
+        foreach (float2 p in blasts) if (data.Sees(grid, p)) seen.Add(p);
+        if (seen.Count == 0) return null;
+        List<Vector2> visible = Filter(seen, cornerA, cornerB);
+        return visible.Count > 0 ? visible.ToArray() : null;
+    }
+
     public static List<Vector2> Filter(List<float2> points, int2 cornerA, int2 cornerB)
     {
         var kept = new List<Vector2>();

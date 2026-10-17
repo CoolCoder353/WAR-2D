@@ -7,7 +7,7 @@ using Newtonsoft.Json;
 
 namespace WAR2D.Net.Replay
 {
-    public enum ReplayChannel : byte { UnitsReliable = 0, UnitsUnreliable = 1, Buildings = 2, Terrain = 3, Fog = 4, Explosions = 10, Blasts = 11, Timeline = 12, End = 13 }
+    public enum ReplayChannel : byte { UnitsReliable = 0, UnitsUnreliable = 1, Buildings = 2, Terrain = 3, Fog = 4, Explosions = 10, Blasts = 11, Timeline = 12, End = 13, BomberBlasts = 14 }
 
     public sealed class ReplayPlayerInfo { public int OwnerId; public string Nickname; public int Colour; public int Team; }
 

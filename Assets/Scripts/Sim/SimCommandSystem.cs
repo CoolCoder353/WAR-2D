@@ -421,8 +421,9 @@ namespace WAR2D.Sim
                 float r = data.Radius[slot];
                 if (p.x + r < lo.x || p.y + r < lo.y || p.x - r > hi.x + 1 || p.y - r > hi.y + 1) continue;
                 // A large unit needs a spot with its clearance (no rock or wall within a tile), not just a free tile.
+                // Clearance is part of the goal, not the walk: the tiles next to the new wall or footprint have none.
                 bool large = data.SizeClass[slot] == WAR2D.Pathing.FlowSizeClass.Large;
-                if (!TileSearch.FindNearest((int2)math.floor(p), grid.IsWalkable, t => TileRules.IsFloor(grid.TileAt(t)) && (!large || data.LargeGrid[t.y * data.Width + t.x] == 0), 4096, out int2 free)) continue;
+                if (!TileSearch.FindNearest((int2)math.floor(p), t => grid.IsWalkable(t) && (!large || data.LargeGrid[t.y * data.Width + t.x] == 0), t => TileRules.IsFloor(grid.TileAt(t)), 4096, out int2 free)) continue;
                 if (data.PendingMoves.Capacity <= data.PendingMoves.Count()) data.PendingMoves.Capacity *= 2;
                 data.PendingMoves[data.IdOf[slot]] = (float2)free + 0.5f;
             }
