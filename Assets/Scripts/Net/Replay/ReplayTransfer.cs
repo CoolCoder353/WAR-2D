@@ -147,7 +147,7 @@ namespace WAR2D.Net.Replay
             if (!accept || o.Bytes <= 0 || o.Bytes > maxBytes || o.Sha256 == null || o.Sha256.Length != 32) return;
             offer = o;
             Directory.CreateDirectory(folder);
-            partPath = Path.Combine(folder, $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-received{ReplayFile.Extension}.part");
+            partPath = Path.Combine(folder, $"{DateTime.UtcNow:yyyyMMdd-HHmmss}{ReplayLibrary.ReceivedTag}{Guid.NewGuid().ToString("N").Substring(0, 8)}{ReplayFile.Extension}.part");
             part = new FileStream(partPath, FileMode.Create, FileAccess.ReadWrite);
             next = 0;
         }
@@ -166,12 +166,27 @@ namespace WAR2D.Net.Replay
             part.Dispose();
             part = null;
             if (!((ReadOnlySpan<byte>)hash).SequenceEqual(offer.Sha256)) { File.Delete(partPath); WarLog.Warn(LogCategory.Replay, "replay transfer failed its hash check"); return; }
+            if (!IsReplay(partPath)) { File.Delete(partPath); WarLog.Warn(LogCategory.Replay, "received file is not a WAR-2D replay: discarded"); return; }
             string final = partPath.Substring(0, partPath.Length - ".part".Length);
             File.Move(partPath, final);
             ReplayLibrary.WriteInfo(final, offer.DurationSeconds);
-            if (keepCount > 0) ReplayLibrary.Prune(folder, keepCount);
+            // Only received replays count towards the cap: a host sending many offers can never evict the player's own recordings.
+            if (keepCount > 0) ReplayLibrary.Prune(folder, keepCount, receivedOnly: true);
             SavedPath = final;
             Saved?.Invoke(final);
+        }
+
+        /// <summary>True when the file opens as a replay (magic, format and header), so nothing else is kept or counted.</summary>
+        private static bool IsReplay(string path)
+        {
+            try
+            {
+                using FileStream f = File.OpenRead(path);
+                if (!ReplayReader.TryOpen(f, out ReplayReader r, out _)) return false;
+                r.Dispose();
+                return true;
+            }
+            catch (IOException) { return false; }
         }
 
         public void Cancel()

@@ -19,6 +19,9 @@ namespace WAR2D.Net.Replay
     /// <summary>The local Replays folder (<c>persistentDataPath/Replays</c>).</summary>
     public static class ReplayLibrary
     {
+        /// <summary>The name part that marks a replay received from a host (rather than recorded here).</summary>
+        public const string ReceivedTag = "-received-";
+
         public static string Folder => System.IO.Path.Combine(Application.persistentDataPath, "Replays");
 
         /// <summary>Every readable replay, newest first (unreadable files are skipped, not deleted).</summary>
@@ -71,11 +74,11 @@ namespace WAR2D.Net.Replay
         /// <summary>Deletes the oldest replays in the Replays folder beyond <paramref name="keep"/>.</summary>
         public static void Prune(int keep) => Prune(Folder, keep);
 
-        /// <summary>Deletes the oldest replays in <paramref name="folder"/> beyond <paramref name="keep"/>.</summary>
-        public static void Prune(string folder, int keep)
+        /// <summary>Deletes the oldest replays in <paramref name="folder"/> beyond <paramref name="keep"/> (only received ones when <paramref name="receivedOnly"/>).</summary>
+        public static void Prune(string folder, int keep, bool receivedOnly = false)
         {
             if (!Directory.Exists(folder)) return;
-            foreach (string old in Directory.GetFiles(folder, "*" + ReplayFile.Extension).OrderByDescending(File.GetLastWriteTimeUtc).Skip(keep))
+            foreach (string old in Directory.GetFiles(folder, (receivedOnly ? "*" + ReceivedTag + "*" : "*") + ReplayFile.Extension).OrderByDescending(File.GetLastWriteTimeUtc).Skip(keep))
                 try { File.Delete(old); if (File.Exists(InfoPath(old))) File.Delete(InfoPath(old)); } catch (IOException) { }
         }
     }

@@ -17,10 +17,9 @@ public class ReplayTransferTests
     {
         string dir = Path.Combine(Path.GetTempPath(), "w2d-xfer-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
-        byte[] data = new byte[100_000];
-        new Random(3).NextBytes(data);
         string src = Path.Combine(dir, "src" + ReplayFile.Extension);
-        File.WriteAllBytes(src, data);
+        WriteReplay(src, 100_000, seed: 3);
+        byte[] data = File.ReadAllBytes(src);
 
         var offer = ReplaySender.MakeOffer(7, src, durationSeconds: 12f);
         var receiver = new ReplayReceiver(Path.Combine(dir, "in"));
@@ -42,6 +41,58 @@ public class ReplayTransferTests
         }
         Assert.IsNull(badSaved, "a corrupted transfer is not saved");
         Directory.Delete(dir, true);
+    }
+
+    [Test]
+    public void AReceivedFileThatIsNotAReplayIsDiscarded()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "w2d-xfer3-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string src = Path.Combine(dir, "junk" + ReplayFile.Extension);
+        var junk = new byte[40_000];
+        new Random(5).NextBytes(junk);
+        File.WriteAllBytes(src, junk);
+        string inbox = Path.Combine(dir, "in");
+        var receiver = new ReplayReceiver(inbox);
+        string saved = null;
+        receiver.Saved += p => saved = p;
+        receiver.OnOffer(ReplaySender.MakeOffer(1, src, 1f), accept: true);
+        foreach (ReplayChunk chunk in ReplaySender.Chunks(1, src, 16 * 1024)) receiver.OnChunk(chunk);
+        Assert.IsNull(saved);
+        Assert.IsEmpty(Directory.GetFiles(inbox));
+        Directory.Delete(dir, true);
+    }
+
+    [Test]
+    public void ManyReceivedReplaysNeverEvictTheLocalRecordings()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "w2d-xfer4-" + Guid.NewGuid().ToString("N"));
+        string inbox = Path.Combine(dir, "in");
+        Directory.CreateDirectory(inbox);
+        string own = Path.Combine(inbox, "20260101-000000-42" + ReplayFile.Extension);
+        WriteReplay(own, 100, seed: 1);
+        File.SetLastWriteTimeUtc(own, new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc)); // the oldest file
+        string src = Path.Combine(dir, "src" + ReplayFile.Extension);
+        WriteReplay(src, 1000, seed: 2);
+        for (int i = 0; i < 5; i++)
+        {
+            var receiver = new ReplayReceiver(inbox, keepCount: 2); // a host sending offer after offer
+            receiver.OnOffer(ReplaySender.MakeOffer(i, src, 1f), accept: true);
+            foreach (ReplayChunk chunk in ReplaySender.Chunks(i, src, 16 * 1024)) receiver.OnChunk(chunk);
+        }
+        Assert.IsTrue(File.Exists(own), "the player's own recording stays");
+        Assert.AreEqual(2, Directory.GetFiles(inbox, "*" + ReplayLibrary.ReceivedTag + "*" + ReplayFile.Extension).Length);
+        Directory.Delete(dir, true);
+    }
+
+    /// <summary>A valid replay file with one record of <paramref name="payloadBytes"/> random bytes.</summary>
+    private static void WriteReplay(string path, int payloadBytes, int seed)
+    {
+        var payload = new byte[payloadBytes];
+        new Random(seed).NextBytes(payload);
+        using FileStream f = File.Create(path);
+        using var w = new ReplayWriter(f, new ReplayHeader { MapSize = 64, Seed = 1, TickSeconds = 0.05f, GameVersion = "t" });
+        w.Write(1, ReplayChannel.Timeline, payload);
     }
 
     [Test]
