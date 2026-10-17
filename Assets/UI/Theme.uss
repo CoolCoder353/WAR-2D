@@ -171,7 +171,7 @@
 .command-button__cost { color: var(--color-readout); }
 .command-button:disabled .command-button__cost { color: var(--color-text-disabled); }
 .command-card__hint { margin-top: var(--space-2); white-space: normal; max-width: 356px; }
-.command-card--builders { width: 380px; }
+.command-card--builders { width: 452px; } /* v0.12: seven build buttons (Figma Command card – v0.12) */
 .production__unit { width: 56px; }
 .production__cost { width: 32px; color: var(--color-readout); font-size: var(--font-size-12); }
 .removal { display: none; }
@@ -225,7 +225,7 @@
 .start-badge__text { font-size: var(--font-size-16); color: var(--color-on-accent); padding: 0; margin: 0; -unity-font-style: bold; }
 .countdown__label { font-size: var(--font-size-16); }
 .countdown__value { font-size: 72px; }
-.command-card--building { width: 400px; }
+.command-card--building { width: 440px; }
 
 /* Exact Figma metrics for HUD panels (UI Toolkit's default label and button padding would add height). */
 .panel__title { height: 33px; padding: 0 var(--space-3); margin: 0; -unity-text-align: middle-left; }
@@ -491,3 +491,12 @@
 .end-screen__replay--visible { display: flex; }
 .end-screen__replay-bar { width: 320px; height: 6px; margin-top: 8px; background-color: var(--color-surface-raised); }
 .end-screen__replay-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background-color: var(--color-accent); }
+
+/* v0.12 Arsenal (Figma page v0.12 Arsenal): the producers' type selector, its info line and hover card, and the selection chips' unit icons. */
+.production__types { margin-top: var(--space-2); }
+.production__info { margin-top: var(--space-2); padding: 0; }
+.production__tooltip { display: none; position: absolute; left: 60px; top: 70px; padding: 8px 10px; background-color: var(--color-surface-raised); border-width: 1px; border-color: var(--color-border); }
+.production__tooltip--open { display: flex; }
+.production__tooltip > Label { padding: 0; margin: 0 0 4px 0; }
+.production__warning { color: var(--color-warning); }
+.selection-type .command-icon { width: 24px; height: 24px; }

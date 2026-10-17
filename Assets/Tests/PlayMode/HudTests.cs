@@ -130,7 +130,7 @@ public class HudTests
     private static IEnumerator ProduceUnits(VisualElement root, BuildingData spawner, int count)
     {
         UnitCommander.Instance.SelectBuilding(spawner);
-        yield return PlayModeMatch.WaitUntil(() => root.Q<Label>("command-title").text == "Spawner", 5f);
+        yield return PlayModeMatch.WaitUntil(() => root.Q<Label>("command-title").text == "Barracks", 5f);
         for (int i = 0; i < count; i++)
         {
             Click(root.Q<Button>("production-plus"));
@@ -149,7 +149,7 @@ public class HudTests
 
         VisualElement root = HudRoot();
         UnitCommander.Instance.SelectBuilding(spawner);
-        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q<Label>("command-title").text == "Spawner", 5f);
+        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q<Label>("command-title").text == "Barracks", 5f);
         Assert.That(root.Q<Button>("production-minus").enabledSelf, Is.False, "an empty queue can't go lower");
 
         for (int i = 0; i < 3; i++)
@@ -512,7 +512,7 @@ public class HudTests
         VisualElement root = HudRoot();
         UnitCommander.Instance.Selection.SelectIds(new List<int> { builder });
         yield return PlayModeMatch.WaitUntil(() => Shown(root.Q<Button>("build-radar")), 5f);
-        foreach (string name in new[] { "build-miner", "build-spawner", "build-wall", "build-bomb", "build-radar", "cmd-repair" })
+        foreach (string name in new[] { "build-miner", "build-barracks", "build-wall", "build-bomb", "build-radar", "cmd-repair" })
             Assert.That(Shown(root.Q<Button>(name)), Is.True, name);
         Assert.That(Shown(root.Q<Button>("cmd-dig")), Is.False, "no Diggers selected");
         Assert.That(root.Q<Label>("build-bomb-cost").text, Is.EqualTo(config.GetBuilding(BuildingType.Bomb).UpfrontCost.ToString("0.##")));
@@ -568,7 +568,7 @@ public class HudTests
     }
 
     [UnityTest, Timeout(90000)]
-    public IEnumerator SpawnerShowsTankAndDiggerRows()
+    public IEnumerator BarracksTypeSelectorPicksTheQueuedType()
     {
         BuildingData spawner = default;
         yield return WithSpawner(config, s => spawner = s);
@@ -577,12 +577,16 @@ public class HudTests
         VisualElement root = HudRoot();
         ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
         UnitCommander.Instance.SelectBuilding(spawner);
-        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q("production-row-Digger") != null, 5f);
-        Assert.That(root.Q("production-row-Tank"), Is.Not.Null);
-        Click(root.Q("production-row-Digger").Q<Button>("production-plus"));
+        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q<Button>("type-Digger") != null, 5f);
+        Assert.That(root.Q<Button>("type-Tank"), Is.Not.Null);
+        Assert.That(root.Q<Button>("type-Tank").ClassListContains("command-button--active"), Is.True, "a new producer starts on its first type");
+        Click(root.Q<Button>("type-Digger"));
+        yield return null;
+        Assert.That(root.Q<Button>("type-Digger").ClassListContains("command-button--active"), Is.True);
+        Click(root.Q<Button>("production-plus"));
         yield return PlayModeMatch.WaitUntil(() => Broke() && local.SpawnerQueueOf(spawner.id, UnitType.Digger) == 1, 5f);
         Assert.That(local.SpawnerQueueOf(spawner.id, UnitType.Tank), Is.EqualTo(0));
-        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q("production-row-Digger").Q<Label>("production-count").text == "1", 5f);
+        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q<Label>("production-count").text == "1", 5f);
     }
 
     [UnityTest, Timeout(90000)]

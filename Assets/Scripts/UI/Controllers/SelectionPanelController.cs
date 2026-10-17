@@ -50,11 +50,18 @@ namespace WAR2D.UI
             types.Clear();
             foreach ((UnitType type, int count) in model.ByType)
             {
-                var chip = new Button(() => model.FilterTo(type)) { name = "type-" + type, tooltip = "Select only " + type };
+                string name = AlertFeedModel.UnitName(type);
+                var chip = new Button(() => model.FilterTo(type)) { name = "type-" + type, tooltip = "Select only " + name };
                 chip.AddToClassList("selection-type");
-                var icon = new VisualElement();
-                icon.AddToClassList("icon-slot");
-                var label = new Label(type.ToString());
+                // The unit's icon (Figma Selection panel: unit icons, v0.12); an empty slot for a type without one.
+                VisualElement icon;
+                if (Enum.TryParse(type.ToString(), out IconKind kind)) icon = new CommandIcon { Icon = kind };
+                else
+                {
+                    icon = new VisualElement();
+                    icon.AddToClassList("icon-slot");
+                }
+                var label = new Label(name);
                 label.AddToClassList("text");
                 var number = new Label($"×{count:N0}");
                 number.AddToClassList("selection-type__count");

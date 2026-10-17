@@ -5,7 +5,12 @@ using WAR2D.Art;
 namespace WAR2D.UI
 {
     /// <summary>The command card's icons (Figma: <c>Icons &amp; cursors – v0.8</c>).</summary>
-    public enum IconKind { Move, AttackMove, Stop, Hold, Miner, Spawner, Wall, Radar, Dig, Cancel, Bomb, Repair, Demolish }
+    public enum IconKind
+    {
+        Move, AttackMove, Stop, Hold, Miner, Spawner, Wall, Radar, Dig, Cancel, Bomb, Repair, Demolish,
+        // v0.12: units (named as UnitType), Detonate and the producers.
+        Builder, Tank, Digger, Scout, Heavy, Artillery, Sniper, Flamethrower, SuicideBomber, Detonate, Barracks, HeavyFactory, SiegeWorkshop,
+    }
 
     /// <summary>
     /// A 16×16 pixel icon from <see cref="PixelIcons"/>, drawn point-filtered at the element's size. Its tint

@@ -85,11 +85,27 @@ namespace WAR2D.UI
         public static string BuildingName(BuildingType type) => type switch
         {
             BuildingType.Base => "HQ",
-            BuildingType.SmallUnitSpawner => "Spawner",
+            BuildingType.SmallUnitSpawner => "Barracks", // v0.12 name (Figma); the enum is renamed by the v0.12 plan
             BuildingType.Miner => "Miner",
             BuildingType.Bomb => "Bomb",
             BuildingType.Radar => "Radar",
             _ => null,
         };
+
+        /// <summary>A unit type as players know it: its name with spaces ("Suicide bomber").</summary>
+        public static string UnitName(UnitType type) => Spaced(type.ToString());
+
+        /// <summary>A PascalCase name with spaces, later words in lower case ("SiegeWorkshop" → "Siege workshop").</summary>
+        public static string Spaced(string name)
+        {
+            var text = new System.Text.StringBuilder(name.Length + 4);
+            for (int i = 0; i < name.Length; i++)
+            {
+                char c = name[i];
+                if (i > 0 && char.IsUpper(c)) text.Append(' ').Append(char.ToLowerInvariant(c));
+                else text.Append(c);
+            }
+            return text.ToString();
+        }
     }
 }

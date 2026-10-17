@@ -27,8 +27,13 @@
                     <war:CommandIcon icon="Dig" />
                     <ui:Label name="cmd-dig-key" text="G" class="command-button__key" />
                 </ui:Button>
+                <ui:Button name="cmd-detonate" class="command-button" tooltip="Detonate: every selected bomber explodes now">
+                    <war:CommandIcon icon="Detonate" />
+                    <ui:Label name="cmd-detonate-key" text="B" class="command-button__key" />
+                </ui:Button>
             </ui:VisualElement>
             <ui:Label name="dig-hint" text="Dig: click rock, a gem or an enemy wall. Right-click on rock digs too." class="text--secondary command-card__hint" />
+            <ui:Label name="detonate-hint" text="Detonate (B): every selected bomber explodes now. Your own units and buildings in the blast are hit too." class="text--secondary command-card__hint" />
             <ui:VisualElement name="divider" class="command-card__divider" />
             <ui:Label name="build-label" text="Build" class="text--secondary" />
             <ui:VisualElement name="builds" class="command-card__row">
@@ -36,9 +41,17 @@
                     <war:CommandIcon icon="Miner" />
                     <ui:Label name="build-miner-cost" text=" " class="command-button__key command-button__cost" />
                 </ui:Button>
-                <ui:Button name="build-spawner" class="command-button" tooltip="Spawner">
-                    <war:CommandIcon icon="Spawner" />
-                    <ui:Label name="build-spawner-cost" text=" " class="command-button__key command-button__cost" />
+                <ui:Button name="build-barracks" class="command-button" tooltip="Barracks: Scouts, Tanks, Flamethrowers">
+                    <war:CommandIcon icon="Barracks" />
+                    <ui:Label name="build-barracks-cost" text=" " class="command-button__key command-button__cost" />
+                </ui:Button>
+                <ui:Button name="build-heavy-factory" class="command-button" tooltip="Heavy Factory: Heavies, Artillery, Snipers">
+                    <war:CommandIcon icon="HeavyFactory" />
+                    <ui:Label name="build-heavy-factory-cost" text=" " class="command-button__key command-button__cost" />
+                </ui:Button>
+                <ui:Button name="build-siege-workshop" class="command-button" tooltip="Siege Workshop: Diggers, Suicide bombers">
+                    <war:CommandIcon icon="SiegeWorkshop" />
+                    <ui:Label name="build-siege-workshop-cost" text=" " class="command-button__key command-button__cost" />
                 </ui:Button>
                 <ui:Button name="build-wall" class="command-button" tooltip="Wall: press and drag on the map to lay a line">
                     <war:CommandIcon icon="Wall" />
@@ -55,12 +68,20 @@
             </ui:VisualElement>
             <ui:Label name="build-hint" text="Wall: press and drag on the map to lay a line." class="text--secondary command-card__hint" />
             <ui:VisualElement name="production" class="production">
-                <ui:Label name="production-label" text="Production queue" class="text--secondary" />
+                <ui:Label name="production-label" text="Production" class="text--secondary" />
+                <ui:VisualElement name="production-types" class="command-card__row production__types" />
+                <ui:Label name="production-info" text=" " class="text production__info" />
+                <ui:Label name="production-mixed" text="These make different units. Select buildings of one kind to set their production." class="text command-card__hint" />
                 <ui:VisualElement name="production-rows" />
-                <ui:Label name="production-help" text="1 per second · cost charged at spawn · max 100" class="text--secondary" />
+                <ui:Label name="production-help" text="max 100 · cost charged at spawn" class="text--secondary" />
                 <ui:VisualElement class="production__rally">
                     <war:RallyIcon class="production__rally-icon" />
-                    <ui:Label text="Rally point: right-click the map with spawners selected. New units drive there." class="text--secondary" />
+                    <ui:Label text="Rally point: right-click the map with producers selected. New units drive there." class="text--secondary" />
+                </ui:VisualElement>
+                <ui:VisualElement name="production-tooltip" class="production__tooltip" picking-mode="Ignore">
+                    <ui:Label name="production-tooltip-title" text=" " class="text" />
+                    <ui:Label name="production-tooltip-role" text=" " class="text--secondary" />
+                    <ui:Label name="production-tooltip-warning" text=" " class="text production__warning" />
                 </ui:VisualElement>
             </ui:VisualElement>
             <ui:VisualElement name="removal" class="removal">
