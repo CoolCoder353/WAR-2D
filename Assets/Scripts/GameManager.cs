@@ -221,7 +221,9 @@ public class GameManager : NetworkManager
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.BuildingBatch>(WAR2D.Net.Replication.ClientBuildings.Receive, false);
         NetworkClient.RegisterHandler<WAR2D.Net.Replay.ReplayOffer>(o =>
         {
-            WAR2D.Net.Replay.ReplayReceiver.Install(WAR2D.Net.Replay.ReplayLibrary.Folder);
+            Config.ReplaysConfig replays = Config.ConfigLoader.LoadConfig().Replays;
+            // The file is gzip of at most MaxMegabytes of records, so anything much larger isn't a real recording.
+            WAR2D.Net.Replay.ReplayReceiver.Install(WAR2D.Net.Replay.ReplayLibrary.Folder, ((long)replays.MaxMegabytes << 20) + (1L << 20), replays.KeepCount);
             bool want = SettingsStore.Current.SaveReplays;
             WAR2D.Net.Replay.ReplayReceiver.Current.OnOffer(o, want);
             if (NetworkClient.localPlayer != null && NetworkClient.localPlayer.TryGetComponent(out ClientPlayer me)) me.CmdReplayWanted(o.Id, want);

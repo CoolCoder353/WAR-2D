@@ -157,6 +157,38 @@ namespace WAR2D.Net.Replication
             encoder.ResetClient(c);
         }
 
+        /// <summary>Stops replicating to a virtual client (the recorder once its file is finished), by owner.</summary>
+        public void RemoveVirtualClient(int ownerId)
+        {
+            if (disposed) return;
+            for (int c = 0; c < MaxClients; c++)
+            {
+                if (clients[c] == null || clients[c].VirtualSink == null || clients[c].OwnerId != ownerId) continue;
+                clients[c].Lane?.Dispose();
+                clients[c] = null;
+                active[c] = false;
+                interests.ResetClient(c);
+                encoder.ResetClient(c);
+            }
+        }
+
+        /// <summary>
+        /// Dev overlay: the units (by id index) the client replicated for <paramref name="ownerId"/> knows after the
+        /// last boundary, pacing included. False when no such client is replicated at this boundary.
+        /// </summary>
+        public bool TryGetKnown(int ownerId, out NativeArray<ulong> known)
+        {
+            known = default;
+            if (disposed) return false;
+            for (int c = 0; c < MaxClients; c++)
+            {
+                if (!active[c] || clients[c].Lane != null || clients[c].OwnerId != ownerId) continue;
+                known = interests.Allowed(c);
+                return true;
+            }
+            return false;
+        }
+
         /// <summary>Sets a client's camera box (inclusive tiles, already clamped to the map). Only tunes correction fidelity.</summary>
         public void SetView(NetworkConnectionToClient conn, int2 min, int2 max)
         {

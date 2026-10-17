@@ -302,7 +302,7 @@ public partial class WorldStateManager : NetworkBehaviour
         RecordingFinished?.Invoke(Recorder.FinishedPath);
     }
     
-    /// <summary>Raised on the server when the match's recording is saved (its path). Task 14 sends it to the players.</summary>
+    /// <summary>Raised on the server when the match's recording is saved (its path); it is then offered to the players.</summary>
     public event System.Action<string> RecordingFinished;
 
     private void OnDestroy()

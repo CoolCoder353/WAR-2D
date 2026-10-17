@@ -140,7 +140,7 @@ namespace WAR2D.Client
             if (!store.Apply(batch.Payload, batch.Tick))
             {
                 MalformedBatches++;
-                WarLog.Warn(LogCategory.Art, $"dropped a malformed batch for tick {batch.Tick}");
+                WarLog.Warn(LogCategory.Replication, $"dropped a malformed batch for tick {batch.Tick}");
                 return;
             }
             if (batch.Tick > lastBatchTick)

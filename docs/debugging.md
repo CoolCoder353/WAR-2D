@@ -34,7 +34,7 @@ Server-role commands refuse on a client. A client answers `units`/`buildings` on
 
 ## Overlays
 
-`overlay layer=Fog on=true owner=1`, or hotkeys: Flow F1, Routes F2, Targets F3, Fog F4, Sectors F5, Hash F6, Footprints F7, Interest F8, Terrain F9. Layers that read server data (all but Routes and, on a client, Fog) draw only in the host process. With every layer off nothing is captured or drawn.
+`overlay layer=Fog on=true owner=1`, or hotkeys: Flow F1, Routes F2, Targets F3, Fog F4, Sectors F5, Hash F6, Footprints F7, Interest F8, Terrain F9. Layers that read server data (all but Routes and, on a client, Fog) draw only in the host process. With every layer off nothing is captured or drawn. Interest (`owner=…`) reads the replication service's real per-client sets, snapshot pacing included, so it shows what that owner's client was actually sent; it draws nothing when no client is replicated for the owner.
 
 ## Logs
 
@@ -42,7 +42,7 @@ Server-role commands refuse on a client. A client answers `units`/`buildings` on
 
 ## Replays
 
-The host records every match from a fog-free virtual spectator (`MatchRecorder`) into `<persistentDataPath>/Replays/*.war2drec` (GZip: header JSON, then tick-stamped records). After *GameOver* it offers the file to each player (`ReplayOffer`, chunked `ReplayChunk`s, hash-checked); players with *Save replays* on keep it. Nothing is sent before *GameOver*. `ReplayPlayer` plays a file offline with speed and seeking (`war2d replay do=open path=…`). Config: `<Replays>` in `GameConfig.xml`.
+The host records every match from a fog-free virtual spectator (`MatchRecorder`) into `<persistentDataPath>/Replays/*.war2drec` (GZip: header JSON, then tick-stamped records). After *GameOver* it offers the file to each player (`ReplayOffer`, chunked `ReplayChunk`s, hash-checked); players with *Save replays* on keep it (offers larger than `<MaxMegabytes>` are refused, and each client keeps its newest `<KeepCount>` replays). The recorder stops replicating once its file is finished. Nothing is sent before *GameOver*. `ReplayPlayer` plays a file offline with speed and seeking (`war2d replay do=open path=…`). Config: `<Replays>` in `GameConfig.xml`.
 
 Players watch them from the main menu's **Replays** screen (Watch, Delete, and a viewer with play/pause, speed, a seek bar and the players' numbers); see `docs/ux/v0.10-figma.md`. Hosted PlayMode tests switch recording off (`PlayModeMatch.Configure`) so they don't fill the real folder.
 

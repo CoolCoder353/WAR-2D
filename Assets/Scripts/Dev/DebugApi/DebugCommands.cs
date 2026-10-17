@@ -17,8 +17,6 @@ namespace WAR2D.Dev.DebugApi
             ScenarioCommands.Register(r);
             ViewCommands.Register(r);
             ReplayCommands.Register(r);
-            // Tasks 6-9 and 14 add: SessionCommands.Register(r); ReadCommands.Register(r); ScenarioCommands.Register(r);
-            // ViewCommands.Register(r); ReplayCommands.Register(r);
         }
     }
 }

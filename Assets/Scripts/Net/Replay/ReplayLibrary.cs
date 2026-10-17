@@ -68,10 +68,14 @@ namespace WAR2D.Net.Replay
             if (File.Exists(InfoPath(full))) File.Delete(InfoPath(full));
         }
 
-        public static void Prune(int keep)
+        /// <summary>Deletes the oldest replays in the Replays folder beyond <paramref name="keep"/>.</summary>
+        public static void Prune(int keep) => Prune(Folder, keep);
+
+        /// <summary>Deletes the oldest replays in <paramref name="folder"/> beyond <paramref name="keep"/>.</summary>
+        public static void Prune(string folder, int keep)
         {
-            if (!Directory.Exists(Folder)) return;
-            foreach (string old in Directory.GetFiles(Folder, "*" + ReplayFile.Extension).OrderByDescending(File.GetLastWriteTimeUtc).Skip(keep))
+            if (!Directory.Exists(folder)) return;
+            foreach (string old in Directory.GetFiles(folder, "*" + ReplayFile.Extension).OrderByDescending(File.GetLastWriteTimeUtc).Skip(keep))
                 try { File.Delete(old); if (File.Exists(InfoPath(old))) File.Delete(InfoPath(old)); } catch (IOException) { }
         }
     }

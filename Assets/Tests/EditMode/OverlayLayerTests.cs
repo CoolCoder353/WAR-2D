@@ -98,9 +98,13 @@ public class OverlayLayerTests
         using var sim = new SimHarness(SimHarness.OpenMap(96));
         sim.Spawn(SimHarness.OwnerA, new float2(5.5f, 5.5f));
         sim.Spawn(SimHarness.OwnerB, new float2(90.5f, 90.5f));
+        using var replication = new WAR2D.Net.Replication.ReplicationService(sim.Context, sim.Config);
+        replication.AddVirtualClient(SimHarness.OwnerA, (p, ch) => { });
         for (int i = 0; i < 8; i++) sim.Tick();
-        var layer = new InterestLayer { Args = Newtonsoft.Json.Linq.JObject.Parse($"{{\"owner\":{SimHarness.OwnerA}}}") };
+        var layer = new InterestLayer { Source = replication, Args = Newtonsoft.Json.Linq.JObject.Parse($"{{\"owner\":{SimHarness.OwnerA}}}") };
         Assert.AreEqual(2, Capture(sim, layer).Lines.Count, "one cross: A's own unit");
+        var nobody = new InterestLayer { Source = replication, Args = Newtonsoft.Json.Linq.JObject.Parse($"{{\"owner\":{SimHarness.OwnerB}}}") };
+        Assert.AreEqual(0, Capture(sim, nobody).Lines.Count, "no client is replicated for B");
     }
 
     [Test]

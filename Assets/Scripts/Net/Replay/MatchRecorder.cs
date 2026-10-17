@@ -109,6 +109,7 @@ namespace WAR2D.Net.Replay
             stopped = false; // the end record always goes in
             Enqueue(ReplayChannel.End, System.Text.Encoding.UTF8.GetBytes(outcomeJson ?? "{}"));
             stopped = true;
+            replication.RemoveVirtualClient(RecorderOwner); // nothing more to record: stop encoding the all-seeing lane
             queue.CompleteAdding();
             thread.Join();
             writer.Dispose();
@@ -146,6 +147,7 @@ namespace WAR2D.Net.Replay
             if (!Finished)
             {
                 stopped = true;
+                replication.RemoveVirtualClient(RecorderOwner);
                 if (!queue.IsAddingCompleted) queue.CompleteAdding();
                 thread.Join();
                 writer.Dispose();

@@ -9,7 +9,7 @@ namespace WAR2D.Dev.DebugApi
                 var rec = WorldStateManager.Instance?.Recorder;
                 return rec == null ? (object)new { recording = false } : new { recording = !rec.Stopped && !rec.Finished, stopped = rec.Stopped, finished = rec.Finished, path = rec.FinishedPath };
             });
-r.Add("replay", DebugRole.Any, "replay (open path | seek seconds | speed x | play | pause | stop | status)", a =>
+            r.Add("replay", DebugRole.Any, "replay (open path | seek seconds | speed x | play | pause | stop | status)", a =>
             {
                 string what = DebugArgs.Str(a, "do");
                 var p = WAR2D.Client.Replay.ReplayPlayer.Instance;

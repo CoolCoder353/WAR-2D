@@ -38,7 +38,7 @@ namespace WAR2D.Dev.DebugApi
                 OverlayHook?.Invoke(DebugArgs.Str(a, "layer"), DebugArgs.Bool(a, "on"), a) ?? throw new DebugError("overlays not available in this build"));
         }
 
-        /// <summary>Set by <c>DebugOverlays</c> (Task 10): toggles a layer and returns the enabled layers.</summary>
+        /// <summary>Set by <c>DebugOverlays</c>: toggles a layer and returns the enabled layers.</summary>
         public static System.Func<string, bool, JObject, object> OverlayHook;
     }
 }

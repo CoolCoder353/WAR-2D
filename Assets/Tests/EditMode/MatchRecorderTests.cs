@@ -20,7 +20,9 @@ public class MatchRecorderTests
         using var sim = new SimHarness(SimHarness.OpenMap(96));
         using var replication = new ReplicationService(sim.Context, sim.Config);
         var live = new ClientUnitStore(sim.Config.Simulation.MaxEntities, sim.Config.Simulation.TickSeconds);
-        replication.AddVirtualClient(-77, (p, ch) => { if (ch >= 0) live.Apply(p, 0); }, seesAll: true);
+        // A live spectator (an eliminated player watching): the normal boundary path, not the recorder's deferred lane.
+        replication.Spectating = owner => owner == -77;
+        replication.AddVirtualClient(-77, (p, ch) => { if (ch >= 0) live.Apply(p, 0); });
         string path = Path.Combine(dir, "m" + ReplayFile.Extension);
         var recorder = new MatchRecorder(replication, sim.Context, new ReplayHeader { MapSize = 96, Seed = 1, TickSeconds = sim.Config.Simulation.TickSeconds, GameVersion = "t" }, path, 64 << 20);
         for (int i = 0; i < 30; i++) sim.Spawn(i % 2 == 0 ? SimHarness.OwnerA : SimHarness.OwnerB, new float2(10.5f + i, 10.5f + i % 7));

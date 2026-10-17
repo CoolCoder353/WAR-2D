@@ -21,6 +21,8 @@ namespace WAR2D.UI
         private readonly Label time;
         private float playersTimer;
         private bool dragging;
+        /// <summary>Where a drag points (seconds) while a backward seek waits for the release, else -1.</summary>
+        private float preview = -1f;
 
         public event Action LeaveClicked;
 
@@ -35,18 +37,32 @@ namespace WAR2D.UI
             time = root.Q<Label>("replay-time");
             play.clicked += () => { if (ReplayPlayer.Instance != null) ReplayPlayer.Instance.Playing = !ReplayPlayer.Instance.Playing; };
             root.Q<Button>("replay-leave").clicked += () => LeaveClicked?.Invoke();
-            seek.RegisterCallback<PointerDownEvent>(e => { dragging = true; seek.CapturePointer(e.pointerId); SeekTo(e.localPosition.x); });
-            seek.RegisterCallback<PointerMoveEvent>(e => { if (dragging) SeekTo(e.localPosition.x); });
-            seek.RegisterCallback<PointerUpEvent>(e => { dragging = false; seek.ReleasePointer(e.pointerId); });
+            seek.RegisterCallback<PointerDownEvent>(e => { dragging = true; seek.CapturePointer(e.pointerId); SeekTo(e.localPosition.x, release: false); });
+            seek.RegisterCallback<PointerMoveEvent>(e => { if (dragging) SeekTo(e.localPosition.x, release: false); });
+            seek.RegisterCallback<PointerUpEvent>(e =>
+            {
+                if (!dragging) return;
+                dragging = false;
+                seek.ReleasePointer(e.pointerId);
+                SeekTo(e.localPosition.x, release: true);
+            });
             BuildSpeeds(1f);
         }
 
-        private void SeekTo(float x)
+        /// <summary>
+        /// Seeks to the bar position. Forward seeks apply while dragging (they only decode ahead); a backward seek
+        /// replays from the start, so during a drag it is only previewed and applied once, on release.
+        /// </summary>
+        private void SeekTo(float x, bool release)
         {
             ReplayPlayer p = ReplayPlayer.Instance;
             float width = seek.resolvedStyle.width;
             if (p == null || !(width > 0f)) return;
-            p.Seek(Mathf.Clamp01(x / width) * p.DurationSeconds);
+            float target = Mathf.Clamp01(x / width) * p.DurationSeconds;
+            if (!release && target < p.Seconds) { preview = target; return; }
+            preview = -1f;
+            if (release && Mathf.Approximately(target, p.Seconds)) return;
+            p.Seek(target);
         }
 
         private void BuildSpeeds(float current)
@@ -71,7 +87,7 @@ namespace WAR2D.UI
             if (p == null) return;
             play.text = p.Playing ? "Pause" : "Play";
             float duration = Mathf.Max(0.001f, p.DurationSeconds);
-            float t = Mathf.Clamp01(p.Seconds / duration);
+            float t = Mathf.Clamp01((dragging && preview >= 0f ? preview : p.Seconds) / duration);
             seekFill.style.width = Length.Percent(t * 100f);
             seekKnob.style.left = Length.Percent(t * 100f);
             time.text = $"{ReplaysModel.Duration(p.Seconds)} / {ReplaysModel.Duration(p.DurationSeconds)}";

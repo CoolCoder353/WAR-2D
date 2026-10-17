@@ -234,23 +234,29 @@ namespace WAR2D.Dev.Overlays
     }
 
     /// <summary>
-    /// Units one owner's client may know (<c>owner</c> argument), by the interest rule: its own units plus any unit
-    /// on a fog cell its grid sees now.
+    /// Units one owner's client knows (<c>owner</c> argument): the replication service's real interest set after
+    /// the last boundary, snapshot pacing included, so it shows what that client was actually sent. Draws nothing
+    /// when no client is replicated for the owner.
     /// </summary>
     public sealed class InterestLayer : OverlayLayer
     {
         public override string Name => "Interest";
         public override KeyCode Hotkey => KeyCode.F8;
+        /// <summary>The service to read (tests); null reads <see cref="ReplicationService.Instance"/>.</summary>
+        public ReplicationService Source;
         private readonly List<float2> inside = new List<float2>();
 
         public override void OnSettled(SimData data, int tick, int count)
         {
             inside.Clear();
             int owner = Args?["owner"]?.Type == JTokenType.Integer ? (int)Args["owner"] : 0;
-            int grid = SimContext.Current != null ? SimContext.Current.VisionOf(owner) : -1;
+            ReplicationService replication = Source ?? ReplicationService.Instance;
+            if (replication == null || !replication.TryGetKnown(owner, out var known)) return;
             for (int i = 0; i < count; i++)
-                if (data.Health[i] > 0f && (data.OwnerId[i] == owner || (grid >= 0 && data.Sees(grid, data.Positions[i]))))
-                    inside.Add(data.Positions[i]);
+            {
+                int index = NetIdAllocator.IndexOf(data.IdOf[i]);
+                if ((uint)(index >> 6) < (uint)known.Length && BitSet.Get(known, index)) inside.Add(data.Positions[i]);
+            }
         }
 
         public override void Draw(OverlayCanvas c)

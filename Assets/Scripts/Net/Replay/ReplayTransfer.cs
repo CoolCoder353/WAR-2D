@@ -123,10 +123,20 @@ namespace WAR2D.Net.Replay
         public event Action<float> Progress;
         public event Action<string> Saved;
 
-        public ReplayReceiver(string folder) { this.folder = folder; }
+        private readonly long maxBytes;
+        private readonly int keepCount;
+
+        /// <param name="maxBytes">Offers above this are refused (a host can't make the client fill its disk).</param>
+        /// <param name="keepCount">Replays kept in <paramref name="folder"/> after a save (0: don't prune).</param>
+        public ReplayReceiver(string folder, long maxBytes = 8L << 30, int keepCount = 0)
+        {
+            this.folder = folder;
+            this.maxBytes = maxBytes;
+            this.keepCount = keepCount;
+        }
 
         /// <summary>Called from GameManager's handler: replaces <see cref="Current"/>.</summary>
-        public static void Install(string folder) { Current?.Cancel(); Current = new ReplayReceiver(folder); }
+        public static void Install(string folder, long maxBytes, int keepCount) { Current?.Cancel(); Current = new ReplayReceiver(folder, maxBytes, keepCount); }
 
         /// <summary>Forgets the transfer (left the game): the next end screen starts with no replay line.</summary>
         public static void Clear() { Current?.Cancel(); Current = null; }
@@ -134,7 +144,7 @@ namespace WAR2D.Net.Replay
         public void OnOffer(ReplayOffer o, bool accept)
         {
             Cancel();
-            if (!accept || o.Bytes <= 0 || o.Bytes > (8L << 30) || o.Sha256 == null || o.Sha256.Length != 32) return;
+            if (!accept || o.Bytes <= 0 || o.Bytes > maxBytes || o.Sha256 == null || o.Sha256.Length != 32) return;
             offer = o;
             Directory.CreateDirectory(folder);
             partPath = Path.Combine(folder, $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-received{ReplayFile.Extension}.part");
@@ -159,6 +169,7 @@ namespace WAR2D.Net.Replay
             string final = partPath.Substring(0, partPath.Length - ".part".Length);
             File.Move(partPath, final);
             ReplayLibrary.WriteInfo(final, offer.DurationSeconds);
+            if (keepCount > 0) ReplayLibrary.Prune(folder, keepCount);
             SavedPath = final;
             Saved?.Invoke(final);
         }
