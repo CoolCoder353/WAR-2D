@@ -7,11 +7,13 @@ using WAR2D.World;
 
 namespace WAR2D.Sim
 {
-    /// <summary>A bomb that went off.</summary>
+    /// <summary>A bomb or a Suicide bomber that went off.</summary>
     public struct BombBlast
     {
         public float2 Position;
         public int OwnerId;
+        /// <summary>1 for a Suicide bomber's blast: drawn like a bomb's, but its owner gets no "bomb triggered" alert.</summary>
+        public byte Bomber;
     }
 
     /// <summary>A rock or gem tile a Digger finished.</summary>
@@ -115,8 +117,18 @@ namespace WAR2D.Sim
         public NativeArray<float> CooldownByType;
         /// <summary>Upkeep per second per unit type.</summary>
         public NativeArray<float> RunningCostByType;
-        /// <summary>Damage multipliers, <c>type * 3 + (int)TargetClass</c> (see <see cref="DamageTable"/>).</summary>
+        /// <summary>Damage multipliers, <c>type * 4 + (int)TargetClass</c> (see <see cref="DamageTable"/>).</summary>
         public NativeArray<float> DamageTable;
+        /// <summary>The <see cref="TargetClass"/> (LightUnit or HeavyUnit) a unit type is hit as.</summary>
+        public NativeArray<byte> ArmourByType;
+        /// <summary>Splash radius in tiles per unit type (0 = none).</summary>
+        public NativeArray<float> SplashByType;
+        /// <summary>Squared minimum range per unit type: targets closer than this are ignored.</summary>
+        public NativeArray<float> MinRangeSqByType;
+        /// <summary>Squared radius a type searches for targets in: its range, or its sight for a bomber (which runs at what it finds).</summary>
+        public NativeArray<float> SearchSqByType;
+        /// <summary>Blast radius in tiles and damage per unit type: non-zero only for the Suicide bomber.</summary>
+        public NativeArray<float> BlastRadiusByType, BlastDamageByType;
 
         // ---- unit SoA ----
         public NativeArray<float2> Positions;
@@ -145,6 +157,8 @@ namespace WAR2D.Sim
         public NativeQueue<BombBlast> BombBlasts;
         /// <summary>Bomb ids to set off this tick regardless of who stands on them (an enemy built over a hidden bomb).</summary>
         public NativeParallelHashSet<int> ForcedBombs;
+        /// <summary>Ids of Suicide bombers ordered to detonate this tick (cleared after the boundary).</summary>
+        public NativeParallelHashSet<int> ForcedBombers;
         public float BlastRadius, BlastDamage;
         /// <summary>Seconds spent digging, per unit slot.</summary>
         public NativeArray<float> DigProgress;
@@ -334,7 +348,7 @@ namespace WAR2D.Sim
             float maxRange = 0f, maxRadius = 0.1f;
             foreach (UnitConfig unit in config.Units.Values)
             {
-                maxRange = math.max(maxRange, unit.Range);
+                maxRange = math.max(maxRange, unit.BlastRadius > 0f ? math.max(unit.Range, unit.Sight) : unit.Range);
                 maxRadius = math.max(maxRadius, unit.Radius);
             }
             int capacity = sim.MaxEntities;
@@ -389,6 +403,13 @@ namespace WAR2D.Sim
                 WorkFinished = new NativeQueue<int>(allocator),
                 BombBlasts = new NativeQueue<BombBlast>(allocator),
                 ForcedBombs = new NativeParallelHashSet<int>(16, allocator),
+                ForcedBombers = new NativeParallelHashSet<int>(16, allocator),
+                ArmourByType = new NativeArray<byte>(typeCount, allocator),
+                SplashByType = new NativeArray<float>(typeCount, allocator),
+                MinRangeSqByType = new NativeArray<float>(typeCount, allocator),
+                SearchSqByType = new NativeArray<float>(typeCount, allocator),
+                BlastRadiusByType = new NativeArray<float>(typeCount, allocator),
+                BlastDamageByType = new NativeArray<float>(typeCount, allocator),
                 BlastRadius = config.Siege.BlastRadius,
                 BlastDamage = config.Siege.BlastDamage,
                 DigProgress = new NativeArray<float>(capacity, allocator),
@@ -487,7 +508,15 @@ namespace WAR2D.Sim
                 if (t >= typeCount) continue;
                 data.SpeedByType[t] = pair.Value.MoveSpeed;
                 data.RangeSqByType[t] = pair.Value.Range * pair.Value.Range;
-                data.DamageByType[t] = pair.Value.Damage;
+                // A bomber's "damage" is its blast, so the stages that skip unarmed units keep it.
+                data.DamageByType[t] = pair.Value.BlastDamage > 0f ? pair.Value.BlastDamage : pair.Value.Damage;
+                data.ArmourByType[t] = (byte)pair.Value.Armour;
+                data.SplashByType[t] = pair.Value.Splash;
+                data.MinRangeSqByType[t] = pair.Value.MinRange * pair.Value.MinRange;
+                data.BlastRadiusByType[t] = pair.Value.BlastRadius;
+                data.BlastDamageByType[t] = pair.Value.BlastDamage;
+                float search = pair.Value.BlastRadius > 0f ? pair.Value.Sight : pair.Value.Range;
+                data.SearchSqByType[t] = search * search;
                 data.CooldownByType[t] = pair.Value.AttackInterval;
                 data.RunningCostByType[t] = pair.Value.RunningCost;
                 data.SightByType[t] = pair.Value.Sight;
@@ -502,7 +531,7 @@ namespace WAR2D.Sim
             RunningCostByType.Dispose(); DamageTable.Dispose();
             Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Type.Dispose();
             SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose(); LastHitBy.Dispose();
-            OrderSlot.Dispose(); Arrived.Dispose(); WorkTile.Dispose(); WorkKind.Dispose(); WorkFinished.Dispose(); BombBlasts.Dispose(); ForcedBombs.Dispose(); DigProgress.Dispose(); DigAt.Dispose(); DigDone.Dispose(); DigMoves.Dispose(); WallOwnerSlot.Dispose(); WallState.Dispose(); WallHealth.Dispose(); WallWork.Dispose(); WallDamage.Dispose(); RepairWork.Dispose(); Unpaid.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
+            OrderSlot.Dispose(); Arrived.Dispose(); WorkTile.Dispose(); WorkKind.Dispose(); WorkFinished.Dispose(); BombBlasts.Dispose(); ForcedBombs.Dispose(); ForcedBombers.Dispose(); ArmourByType.Dispose(); SplashByType.Dispose(); MinRangeSqByType.Dispose(); SearchSqByType.Dispose(); BlastRadiusByType.Dispose(); BlastDamageByType.Dispose(); DigProgress.Dispose(); DigAt.Dispose(); DigDone.Dispose(); DigMoves.Dispose(); WallOwnerSlot.Dispose(); WallState.Dispose(); WallHealth.Dispose(); WallWork.Dispose(); WallDamage.Dispose(); RepairWork.Dispose(); Unpaid.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
             Cell.Dispose(); CellStart.Dispose(); Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose();
             BuildingCount.Dispose(); BuildingPositions.Dispose(); BuildingOwnerId.Dispose(); BuildingOwnerSlot.Dispose(); BuildingHealth.Dispose();
             BuildingDamage.Dispose(); BuildingIds.Dispose(); BuildingEntities.Dispose(); BuildingSlotOfIndex.Dispose(); BuildingCell.Dispose();

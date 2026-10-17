@@ -7,6 +7,17 @@ Bugs, mismatches and hygiene problems. The first roadmap (v0.2 to v0.9) is compl
 
 The recorder's units go through `DeferredLane` (encoded during the next tick to keep the boundary inside the perf budget), so a recording's unit records are one tick later than its buildings and terrain. Harmless for playback; don't "fix" it by moving the recorder back onto the boundary (`docs/perf/v0.10/README.md`).
 
+## v0.12 Arsenal: built; the perf gate needs a re-run
+
+The code, the atlases (`WAR-2D/Art/Build all`, the Barracks now keyed `Barracks`) and the sound effects (`WAR-2D/Audio/Build SFX`) are in. Still open:
+
+- **Numbers are proposals.** All v0.12 unit, armour, splash and producer numbers (the Heavy Factory 400 and Siege Workshop 250 included) are the spec's starting values, untuned.
+- **Bomber blasts draw as bomb blasts.** The bomber's explosion reaches clients as the existing `BombBlast` event (no new message), so it plays the 3×3 bomb effect and sound rather than `BomberBlast`; the effect and sound exist but the event has no unit type to choose them by. On the server the blast is marked `BombBlast.Bomber`, so it raises no "bomb triggered" alert for its owner.
+- **Splash skips the direct target.** The direct hit already landed on it, so a Flamethrower or Artillery target takes one hit, not hit plus 100 % splash.
+- **The perf gate passes, with little headroom.** `perf.tick.main` p95 is 23.8 ms against 25 ms with the spec roster (one of the three runs at 25.1 ms). It got there through three fixes: the per-type target search reach, a Burst Radar scan, and terrain cells read once per tick. The steady replication parts are now most of the tick ([perf/v0.12](perf/v0.12/README.md)).
+- **A 1-wide gap for small units.** `SimLargeClassTests` refuses a Heavy at a 1-wide gap; a Tank sent through the same 1-wide gap in a synthetic map stalled at the wall, so tests only cover 3-wide chokes for small and large units (`RegionMapGenerator` never makes chokes under 3).
+- **Three PlayMode tests fail in batch mode only:** `DebugApiPlayModeTests.ScreenshotWritesAPng`, `LobbyTests.MenuBattleRunsAndIsGoneOnceHostIsPressed` and `HudTests.CommandCardStopHalts` failed under `Unity -batchmode -runTests` (on the v0.11 code too) but pass in the live editor (2026-10-18). Run the suites through `tools/unity-test.sh`.
+
 ## Open
 
 | Item | Kind | Detail |
@@ -20,10 +31,11 @@ The recorder's units go through `DeferredLane` (encoded during the next tick to 
 | Client positions creep after Stop | Presentation | Predicted positions converge on the server's at about 0.15 tiles/s instead of snapping; `HudTests.CommandCardStopHalts` can fail on timing. |
 | Authored maps (`Size = 0`) get no client terrain | Test-only | `WorldStateManager.OnStartClient` returns before `ClientTerrain.Init`. Real matches always use generated maps. |
 | Footprints ignore rotation | Latent | A rotated non-square building would cover the wrong tiles. Every building is square today. |
-| `Acceleration` is parsed and unused | Config | Units reach full speed at once. Use it or drop it. |
-| Rebinding checks hidden actions too | UX | Binding Stop to `1` reports a conflict with the unlisted "Squad1". |
 | The Steam relay was never put through the perf gate | Verification, **v0.10** helps | The gate joins over Direct; `Dev/RelayMeter.cs` can meter the relay. There is no written record of the cross-network playtests. |
-| `tools/steam-upload.sh` writes the description into the VDF unescaped | Tooling | A `"` in it breaks the file. |
+| Blueprints can be placed where you can't see, and grant vision | Gameplay, **owner report** | A building blueprint can be placed on fogged ground and then reveals the area around it. Placement should require a visible (or explored) tile, and a blueprint should give no vision until built. |
+| Builders don't move to blueprints automatically | Gameplay, **owner report** | Placing a blueprint doesn't send a Builder to it; the player has to order one. A selected Builder should walk to the blueprint and build it. |
+| Digging should be a drag command | UX / Gameplay, **owner report** | Digging out walls and terrain should be a drag over an area, with Diggers choosing their own dig spots, instead of picking tiles one by one. |
+| Notifications are hard to notice | UX, **owner report, needs Figma** | Move the alert feed to the right, above the command card UI. |
 | Low-severity review findings | Mixed | The "Still open" lists in [bug-review.md](bug-review.md). |
 
 Developer-tool, networking and hygiene leftovers are further down.
@@ -140,8 +152,8 @@ Inert leftovers disclosed in v0.2 and scheduled to be cleaned up together.
 
 - **Vendored Mirror components still call the legacy `Input` API** — `Components/GUIConsole.cs`, `Components/RemoteStatistics.cs` and `Components/Profiling/ToggleHotkey.cs` (the last via its own `GraphCanvas.prefab`). None are used in the shipped scenes, and the project is Input System only (`activeInputHandler: 1`), so they would throw if ever attached. Not shipped; leave vendored code alone.
 - **Vendored Console `Demo/Scripts/DemoPlayer.cs` uses the legacy `Input.GetAxis`.** Demo only; not used by any shipped scene. Not shipped; leave vendored code alone.
-- **Rebinding checks conflicts against hidden actions too.** `Rebinding.ConflictWith` looks at every action in `GameInput.Map`, including ones the Controls page doesn't list (the squad keys, `FastPan` and `AppendModifier`, which share Shift with Queue order). Binding Stop to `1` reports a conflict with "Squad1", and Swap gives that hidden action the old key. Show those actions or skip them in the check.
-- **`Acceleration` is parsed but unused.** `GameConfig.xml` and `gameplay.md` list it, but units reach full speed at once (nothing under `Assets/Scripts` outside `Config/` reads it). Use it or drop it.
+- **Rebinding conflicts** *(code changed in v0.12, open until the owner confirms)*: Fast pan, Append, Point, Zoom and Drag pan no longer count (Shift is shared on purpose); the squad keys still do, named "Squad N (select)" (`Rebinding.NotRebindable`).
+- **`Acceleration`** *(dropped in v0.12, open until the owner confirms)*: it was parsed and never read, so the setting and its config entries were removed.
 - **Footprints ignore rotation.** `Footprint.Tiles` and the building sprite's placement assume a square footprint, so a rotated non-square building (Width ≠ Height) would cover the wrong tiles. Every building is square today, walls included (they are tiles).
 
 ## v0.7 siege review (2026-10-15)

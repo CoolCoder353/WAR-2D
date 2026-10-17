@@ -101,14 +101,14 @@ public class HudTests
         yield return PlayModeMatch.PlaceHQ(null);
         WorldStateManager wsm = WorldStateManager.Instance;
         ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
-        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.SmallUnitSpawner, 0f, local, out int2 anchor), Is.True);
-        Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.SmallUnitSpawner, anchor), Is.True);
+        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Barracks, 0f, local, out int2 anchor), Is.True);
+        Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.Barracks, anchor), Is.True);
         BuildingData found = default;
         yield return PlayModeMatch.WaitUntil(() =>
         {
             foreach (ClientBuildings.Entry e in ClientBuildings.Current.Entries.Values)
             {
-                if (e.Data.buildingType != BuildingType.SmallUnitSpawner || e.Ghost) continue;
+                if (e.Data.buildingType != BuildingType.Barracks || e.Ghost) continue;
                 found = e.Data;
                 return true;
             }
@@ -131,6 +131,10 @@ public class HudTests
     {
         UnitCommander.Instance.SelectBuilding(spawner);
         yield return PlayModeMatch.WaitUntil(() => root.Q<Label>("command-title").text == "Barracks", 5f);
+        // Tanks, not the Barracks' default Scouts: the callers measure walking and stopping.
+        ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+        WorldStateManager.Instance.CmdSetProduction(new[] { spawner.id }, (byte)UnitType.Tank);
+        yield return PlayModeMatch.WaitUntil(() => local.SpawnerType(spawner.id) == UnitType.Tank, 5f);
         for (int i = 0; i < count; i++)
         {
             Click(root.Q<Button>("production-plus"));
@@ -163,7 +167,7 @@ public class HudTests
 
         // Random and foreign ids are refused without changing anything.
         var rng = new System.Random(5);
-        for (int i = 0; i < 20; i++) WorldStateManager.Instance.CmdDequeueUnit(rng.Next(int.MinValue, int.MaxValue));
+        for (int i = 0; i < 20; i++) WorldStateManager.Instance.CmdChangeQueues(new[] { rng.Next(int.MinValue, int.MaxValue) }, -1);
         float until = Time.realtimeSinceStartup + 0.5f;
         while (Time.realtimeSinceStartup < until) { Broke(); yield return null; }
         Broke();
@@ -235,7 +239,7 @@ public class HudTests
         using EntityQuery q = em.CreateEntityQuery(typeof(BuildingData), typeof(SpawnerData));
         using Unity.Collections.NativeArray<Entity> entities = q.ToEntityArray(Unity.Collections.Allocator.Temp);
         foreach (Entity e in entities)
-            if (em.GetComponentData<BuildingData>(e).id == buildingId) return em.GetComponentData<SpawnerData>(e).queue.Length;
+            if (em.GetComponentData<BuildingData>(e).id == buildingId) return em.GetComponentData<SpawnerData>(e).count;
         Assert.Fail("spawner not found");
         return -1;
     }
@@ -486,7 +490,7 @@ public class HudTests
         yield return PlayModeMatch.PlaceHQ(null);
         int hq = 0;
         yield return PlayModeMatch.WaitUntil(() => TryOwnBuilding(BuildingType.Base, out hq), 10f);
-        WorldStateManager.Instance.CmdChangeQueues(new[] { hq }, (byte)UnitType.Builder, 1);
+        WorldStateManager.Instance.CmdChangeQueues(new[] { hq }, 1);
         int found = 0;
         yield return PlayModeMatch.WaitUntil(() =>
         {
@@ -568,7 +572,7 @@ public class HudTests
     }
 
     [UnityTest, Timeout(90000)]
-    public IEnumerator BarracksTypeSelectorPicksTheQueuedType()
+    public IEnumerator BarracksTypeSwitchClearsTheQueue()
     {
         BuildingData spawner = default;
         yield return WithSpawner(config, s => spawner = s);
@@ -577,16 +581,57 @@ public class HudTests
         VisualElement root = HudRoot();
         ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
         UnitCommander.Instance.SelectBuilding(spawner);
-        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q<Button>("type-Digger") != null, 5f);
-        Assert.That(root.Q<Button>("type-Tank"), Is.Not.Null);
-        Assert.That(root.Q<Button>("type-Tank").ClassListContains("command-button--active"), Is.True, "a new producer starts on its first type");
-        Click(root.Q<Button>("type-Digger"));
-        yield return null;
-        Assert.That(root.Q<Button>("type-Digger").ClassListContains("command-button--active"), Is.True);
+        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q<Button>("type-Tank") != null, 5f);
+        Assert.That(root.Q<Button>("type-Scout"), Is.Not.Null);
+        Assert.That(root.Q<Button>("type-Digger"), Is.Null, "Diggers moved to the Siege Workshop");
+        Assert.That(root.Q<Button>("type-Scout").ClassListContains("command-button--active"), Is.True, "a new producer starts on its first type");
+        Click(root.Q<Button>("type-Tank"));
+        yield return PlayModeMatch.WaitUntil(() => Broke() && local.SpawnerType(spawner.id) == UnitType.Tank, 5f);
         Click(root.Q<Button>("production-plus"));
-        yield return PlayModeMatch.WaitUntil(() => Broke() && local.SpawnerQueueOf(spawner.id, UnitType.Digger) == 1, 5f);
-        Assert.That(local.SpawnerQueueOf(spawner.id, UnitType.Tank), Is.EqualTo(0));
+        yield return PlayModeMatch.WaitUntil(() => Broke() && local.SpawnerQueueOf(spawner.id, UnitType.Tank) == 1, 5f);
+        Click(root.Q<Button>("type-Scout"));
+        yield return PlayModeMatch.WaitUntil(() => Broke() && local.SpawnerType(spawner.id) == UnitType.Scout, 5f);
+        Assert.That(local.SpawnerQueue(spawner.id), Is.EqualTo(0), "switching clears the queue");
+        Assert.That(SpawnerCount(spawner.id), Is.EqualTo(0));
+        Click(root.Q<Button>("production-plus"));
+        yield return PlayModeMatch.WaitUntil(() => Broke() && local.SpawnerQueueOf(spawner.id, UnitType.Scout) == 1, 5f);
         yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q<Label>("production-count").text == "1", 5f);
+    }
+
+    [UnityTest, Timeout(90000)]
+    public IEnumerator ProductionCommandsRefuseWhatIsNotTheirs()
+    {
+        BuildingData spawner = default;
+        yield return WithSpawner(config, s => spawner = s);
+        ServerPlayer server = GameCore.Instance.GetServerPlayerById(PlayModeMatch.LocalOwner);
+        bool Broke() { server.TrySpend(server.Resources); return true; }
+        ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+        WorldStateManager wsm = WorldStateManager.Instance;
+        yield return PlayModeMatch.WaitUntil(() => Broke(), 1f);
+
+        wsm.CmdChangeQueues(new[] { spawner.id }, 10);
+        yield return PlayModeMatch.WaitUntil(() => local.SpawnerQueue(spawner.id) == 10, 5f);
+
+        // A type the Barracks cannot make, an unknown byte, None, a foreign id and an oversize list change nothing.
+        wsm.CmdSetProduction(new[] { spawner.id }, (byte)UnitType.Heavy);
+        wsm.CmdSetProduction(new[] { spawner.id }, 255);
+        wsm.CmdSetProduction(new[] { spawner.id }, 0);
+        wsm.CmdSetProduction(new[] { spawner.id + 100000, -5, int.MaxValue }, (byte)UnitType.Tank);
+        wsm.CmdSetProduction(new int[SpawnerRules.MaxSpawnersPerCommand + 1], (byte)UnitType.Tank);
+        wsm.CmdSetProduction(null, (byte)UnitType.Tank);
+        var rng = new System.Random(11);
+        for (int i = 0; i < 20; i++) wsm.CmdSetProduction(new[] { rng.Next(int.MinValue, int.MaxValue) }, (byte)rng.Next(0, 256));
+        yield return new WaitForSeconds(0.5f);
+        Assert.That(local.SpawnerType(spawner.id), Is.EqualTo(UnitType.Scout));
+        Assert.That(SpawnerCount(spawner.id), Is.EqualTo(10), "the queue was never cleared");
+
+        // The same type again keeps the queue; a real switch clears it.
+        wsm.CmdSetProduction(new[] { spawner.id }, (byte)UnitType.Scout);
+        yield return new WaitForSeconds(0.3f);
+        Assert.That(SpawnerCount(spawner.id), Is.EqualTo(10));
+        wsm.CmdSetProduction(new[] { spawner.id }, (byte)UnitType.Flamethrower);
+        yield return PlayModeMatch.WaitUntil(() => Broke() && local.SpawnerType(spawner.id) == UnitType.Flamethrower, 5f);
+        Assert.That(SpawnerCount(spawner.id), Is.EqualTo(0));
     }
 
     [UnityTest, Timeout(90000)]

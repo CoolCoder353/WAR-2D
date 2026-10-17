@@ -7,7 +7,7 @@ using WAR2D.Net.Replication;
 /// <summary>Tile → building lookup for clicks and box selection.</summary>
 public class BuildingPickerTests
 {
-    private static int2 Size(BuildingType t) => t == BuildingType.SmallUnitSpawner ? new int2(2, 2) : new int2(1, 1);
+    private static int2 Size(BuildingType t) => t == BuildingType.Barracks ? new int2(2, 2) : new int2(1, 1);
 
     private static void Enter(ClientBuildings b, int id, BuildingType type, int2 anchor) =>
         b.Enter(new BuildingData { id = id, buildingType = type, position = anchor, ownerId = 1 },
@@ -19,7 +19,7 @@ public class BuildingPickerTests
         var buildings = new ClientBuildings();
         var picker = new BuildingPicker(Size);
         picker.Attach(buildings);
-        Enter(buildings, 7, BuildingType.SmallUnitSpawner, new int2(10, 10));
+        Enter(buildings, 7, BuildingType.Barracks, new int2(10, 10));
         foreach (int2 tile in Footprint.Tiles(new int2(10, 10), new int2(2, 2)))
         {
             Assert.IsTrue(picker.TryPick(tile, out int id), $"tile {tile}");
@@ -46,7 +46,7 @@ public class BuildingPickerTests
         var buildings = new ClientBuildings();
         var picker = new BuildingPicker(Size);
         picker.Attach(buildings);
-        Enter(buildings, 1, BuildingType.SmallUnitSpawner, new int2(0, 0));
+        Enter(buildings, 1, BuildingType.Barracks, new int2(0, 0));
         Enter(buildings, 2, BuildingType.Miner, new int2(8, 8));
         var found = new List<int>();
         picker.InBox(new int2(0, 0), new int2(4, 4), found);

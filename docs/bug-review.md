@@ -89,7 +89,7 @@ Unit-specific findings from the focused re-scan (spawn, orders, movement, combat
 | --- | --- | --- |
 | `TryAddBuilding` also lacks a sender guard (`sender.identity.GetComponent`), same crash class as the general High items. | `Unit/WorldStateManager.cs:506-518` | Guard `sender?.identity == null` before use. |
 | A unit pushed out of a new footprint with nowhere free stays inside the building (footprint search capped at 4096 tiles). | `Sim/SimCommandSystem.cs:177-199`, `Rules/TileSearch.cs` | Rare on open maps; on a full map the unit is permanently stuck. Fail the placement or destroy the unit instead of leaving it embedded. |
-| Heal/repair path is one-way: `ClientBuildings.SetHealth` ignores unknown ids, and there is no cap check against max, so a stale or forged health record is silently kept or dropped. | `Net/Replication/BuildingReplication.cs` (`ClientBuildings.SetHealth`) | Clamp to `[0, max]` and log unknown ids. |
+| ~~Heal/repair path is one-way: `ClientBuildings.SetHealth` has no cap check against max.~~ **Fixed (v0.12):** the health is clamped to `[0, max]` (unknown ids are still ignored). | `Net/Replication/BuildingReplication.cs` (`ClientBuildings.SetHealth`) | |
 | Health byte quantisation hides near-death: a unit at 0.4% replicates as `0` while alive, so clients draw it dead-but-present. | `Net/Replication/Messages.cs` (`HealthUnit`) | Reserve `0` for dead or quantise `1..100` for the living. |
 | Squad counts can go stale: server-side `Prune` drops dead units, but counts are only pushed when flagged dirty on assign. | `Net/OrderCommands.cs` (`SendSquadCounts`) | Push counts after prune-driven removals (e.g. on `CmdOrderSquad`) or on a slow timer. |
 | Attack tracers from an unknown attacker predict from a default state (origin), drawing a streak from `(0,0)`. | `Client/ClientWorld.cs` (`FireTracers`) | Skip tracers whose attacker index is unknown, as is done for unknown targets. |
@@ -98,7 +98,7 @@ Unit-specific findings from the focused re-scan (spawn, orders, movement, combat
 
 - **Per-tick spawn bursts bypass the cap check within one boundary except via the transient `UnitsBySlot++`.** The increment-then-recount works, but it is load-bearing and uncommented (`Sim/SimCommandSystem.cs:123-135`, `Sim/SimEconomySystem.cs:81-89`). Comment it or enforce the cap against pending spawns explicitly.
 - **`KillUnits` decrements `UnitsBySlot` although the economy recounts it every tick.** Harmless, but the same double-bookkeeping as above; remove or comment.
-- **`moversByClass` only has 2 size-class buckets (`Sim/SimCommandSystem.Move.cs:10`).** A `SizeClass >= 2` is masked with `& 1` and silently joins the wrong flow field. Every config type is `0` today; assert `SizeClass < 2` at spawn.
+- ~~`moversByClass` only has 2 size-class buckets.~~ **Fixed (v0.12):** one bucket per `FlowSizeClass`, no `& 1`, and a spawn with a size class outside `FlowSizeClass.Count` is refused. Spawners and push-outs also respect large-unit clearance (`SimLargeClassTests`).
 - **`OrderBook.GoalSnapRadius` (12) can move a rally or order goal far from what the player clicked** with no client feedback. Show the snapped goal (or reject rock goals for rallies).
 - **`WaypointBook` silently drops waypoints past `MaxQueued` (4).** Intended, but the client shows no "queue full" state; surface it in the HUD.
 - **Box-order edge exclusion (`Sim/SimCommandSystem.Move.cs:45-52`).** Units exactly on the max edge are excluded (`p >= hi`); consistent with inclusive tiles, but drag boxes drawn on tile edges can miss visibly-inside units by a pixel. Inset or round the box before testing.
@@ -180,7 +180,7 @@ Low severity, deferred from the `/code-review` of the siege client work:
 
 - A ghost that re-enters sight with less health than last seen flashes red as if hit (`InstancedBuildingRenderer.TrackHits`).
 - Repair sparks can fire on the last step of construction (`UnitCommander.OnBuildingHealthChanged`).
-- `BuildingPacking` sorts with the unstable `List.Sort`, so equal-y overlapping buildings may flicker.
+- ~~`BuildingPacking` sorts with the unstable `List.Sort`~~ **Fixed (v0.12):** ties break on x.
 - The Radar range ring (`ClearingRing.Create`) never releases its Material.
 - A wall drag sends Build orders only for the first `Orders/MaxQueued + 1` tiles.
 - `ToArray` is duplicated in `UnitCommander` and `HudController`; `InstancedBuildingRenderer.LastColourOf` is an O(n·m) test hook.
@@ -199,8 +199,8 @@ A review of the server side (commands and validation, sim tick stages, replicati
 
 ### Still open (low)
 
-- `TryAddBuilding` charges before `Ids.Allocate()`, which throws when ids run out: the player loses the cost (`WorldStateManager.TryAddBuilding`).
+- ~~`TryAddBuilding` charges before `Ids.Allocate()`, which throws when ids run out~~ **Fixed (v0.12):** the cost is refunded and the placement refused (`WorldStateManager.PlaceBuilding`).
 - Unit upkeep is charged against a budget copied at the boundary while building upkeep and spawners spend from the same balance in between; `Sim.Spend` then takes what is left, so a short player gets some unit upkeep free (`WorldStateManager.OnStartServer`, `Sim.Spend`).
-- Nicknames keep format characters (zero-width space, right-to-left override), so names can be invisible or spoofed; duplicates are allowed (`CommandValidator.TrySanitizeNickname`).
+- ~~Nicknames keep format characters~~ **Fixed (v0.12):** format and line/paragraph separators are dropped (`CommandValidatorTests.Nickname_DropsInvisibleAndDirectionCharacters`). Duplicate names are still allowed.
 - Some loops over `ServerPlayers` don't skip a null identity unlike the rest (`GameCore.CheckHQPlacementProgress`, `DeclareWinner`, `DeclareDraw`, `Cmd_StartGame`, `WinLossSystem`). No failing path found: `OnPlayerLeave` removes players first.
-- `tools/steam-upload.sh` writes the description into the VDF unescaped (a `"` breaks it); cancelling a blueprint counts as a building lost on the end screen. (It built Windows while the docs still called Windows deferred; the docs now say Windows is built.)
+- ~~`tools/steam-upload.sh` writes the description into the VDF unescaped~~ **Fixed (v0.12).** Cancelling a blueprint counts as a building lost on the end screen. (It built Windows while the docs still called Windows deferred; the docs now say Windows is built.)

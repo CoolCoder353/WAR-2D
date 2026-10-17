@@ -85,7 +85,9 @@ namespace WAR2D.UI
         public static string BuildingName(BuildingType type) => type switch
         {
             BuildingType.Base => "HQ",
-            BuildingType.SmallUnitSpawner => "Barracks", // v0.12 name (Figma); the enum is renamed by the v0.12 plan
+            BuildingType.Barracks => "Barracks",
+            BuildingType.HeavyFactory => "Heavy Factory",
+            BuildingType.SiegeWorkshop => "Siege Workshop",
             BuildingType.Miner => "Miner",
             BuildingType.Bomb => "Bomb",
             BuildingType.Radar => "Radar",

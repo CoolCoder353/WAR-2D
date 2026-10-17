@@ -19,7 +19,7 @@ public class SimCombatTests
         int[] b = sim.Spawn(SimHarness.OwnerB, new float2(13, 10));
         for (int i = 0; i < 10; i++) sim.Tick(); // the first attack lands on tick 1; the next one is 1 s later
         float expected = sim.Config.GetUnit(UnitType.Tank).Health - sim.Config.GetUnit(UnitType.Tank).Damage
-                         * sim.Config.Damage.Multiplier(UnitType.Tank, TargetClass.Unit);
+                         * sim.Config.Damage.Multiplier(UnitType.Tank, TargetClass.LightUnit);
         Assert.AreEqual(expected, sim.UnitById(b[0]).Health, 1e-4f);
         Assert.AreEqual(expected, sim.UnitById(a[0]).Health, 1e-4f, "both sides fire");
         Assert.AreEqual(b[0], sim.UnitById(a[0]).TargetId);

@@ -6,7 +6,7 @@ using Unity.Mathematics;
 using WAR2D.Sim;
 
 /// <summary>
-/// Spawner buildings: produce from their queue at <c>SpawnRate</c> while the owner can pay
+/// Spawner buildings: produce their selected type, one unit every <c>BuildSeconds</c>, while the owner can pay
 /// <c>UpfrontCost</c>, on the nearest free walkable tile outside the footprint. The unit itself is
 /// created by the simulation at its next boundary (<see cref="SimCommandKind.SpawnUnit"/>); if the
 /// simulation refuses it (the owner is at the unit cap), the cost is refunded and the queue kept.
@@ -29,25 +29,29 @@ public partial struct SpawnerSystem : ISystem
 
         foreach (var (spawner, building, entity) in SystemAPI.Query<RefRW<SpawnerData>, RefRO<BuildingData>>().WithNone<Construction>().WithEntityAccess())
         {
-            float spawnRate = spawner.ValueRO.spawnRate;
-            // Clamp the timer to one unit's worth so a spawner that sat idle does not burst out its whole queue.
-            float elapsed = spawner.ValueRO.timeSinceLastSpawn + dt;
-            spawner.ValueRW.timeSinceLastSpawn = math.min(elapsed, 1f / spawnRate);
-            if (spawner.ValueRO.queue.Length == 0 || !SpawnerRules.CanSpawn(spawner.ValueRO.timeSinceLastSpawn, spawnRate)) continue;
+            UnitType type = (UnitType)spawner.ValueRO.unitType;
+            if (spawner.ValueRO.count <= 0 || !config.Units.TryGetValue(type, out UnitConfig unitConfig))
+            {
+                spawner.ValueRW.progress = 0f;
+                continue;
+            }
+            // Progress stops at one unit's build time, so a producer that can't place its unit does not store up a burst.
+            float buildSeconds = unitConfig.BuildSeconds;
+            spawner.ValueRW.progress = math.min(spawner.ValueRO.progress + dt, buildSeconds);
+            if (!SpawnerRules.CanSpawn(spawner.ValueRO.progress, buildSeconds)) continue;
 
             int2 anchor = (int2)math.round(spawner.ValueRO.position);
-            if (!WorldStateManager.Instance.TryFindSpawnTile(anchor, out int2 tile)) continue; // no room; keep the queue
+            if (!WorldStateManager.Instance.TryFindSpawnTile(anchor, out int2 tile, unitConfig.SizeClass > 0)) continue; // no room; keep the queue
 
             int ownerId = spawner.ValueRO.ownerId;
-            UnitType type = (UnitType)spawner.ValueRO.queue[0];
-            float cost = config.GetUnit(type).UpfrontCost;
+            float cost = unitConfig.UpfrontCost;
             ServerPlayer owner = GameCore.Instance.GetServerPlayerById(ownerId);
             if (owner == null || !owner.TrySpend(cost)) continue;
 
-            spawner.ValueRW.queue.RemoveAt(0);
-            spawner.ValueRW.timeSinceLastSpawn = 0f;
+            spawner.ValueRW.count--;
+            spawner.ValueRW.progress = 0f;
             int buildingId = building.ValueRO.id;
-            WorldStateManager.Instance.SendSpawnerQueue(ownerId, buildingId, SpawnerRules.Counts(spawner.ValueRO.queue));
+            WorldStateManager.Instance.SendSpawnerQueue(ownerId, buildingId, spawner.ValueRO.unitType, spawner.ValueRO.count);
             Entity source = entity;
             bool rally = spawner.ValueRO.hasRally;
             int2 rallyTile = spawner.ValueRO.rally;
@@ -68,9 +72,10 @@ public partial struct SpawnerSystem : ISystem
                     owner.Refund(cost);
                     if (!entityManager.Exists(source) || !entityManager.HasComponent<SpawnerData>(source)) return;
                     SpawnerData data = entityManager.GetComponentData<SpawnerData>(source);
-                    if (data.queue.Length < SpawnerRules.MaxQueue) data.queue.Insert(0, (byte)type);
+                    // Put the unit back on the queue, unless the owner switched type meanwhile.
+                    if (data.unitType == (byte)type && data.count < SpawnerRules.MaxQueue) data.count++;
                     entityManager.SetComponentData(source, data);
-                    WorldStateManager.Instance?.SendSpawnerQueue(ownerId, buildingId, SpawnerRules.Counts(data.queue));
+                    WorldStateManager.Instance?.SendSpawnerQueue(ownerId, buildingId, data.unitType, data.count);
                 },
             });
         }

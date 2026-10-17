@@ -48,4 +48,6 @@ public enum OrderKind : byte
     Repair = 5,
     /// <summary>Diggers tunnel into the rock, gem or wall at the tile.</summary>
     Dig = 6,
+    /// <summary>Every selected Suicide bomber blows up where it stands.</summary>
+    Detonate = 7,
 }

@@ -22,7 +22,8 @@ public class CommandValidatorTests
     [TestCase(4, true)]
     [TestCase(5, true)]
     [TestCase(6, true)]
-    [TestCase(7, false)]
+    [TestCase(7, true)]
+    [TestCase(8, false)]
     [TestCase(255, false)]
     public void OrderKindRange(int kind, bool valid) =>
         Assert.That(CommandValidator.IsOrderKindValid((byte)kind), Is.EqualTo(valid));
@@ -52,6 +53,14 @@ public class CommandValidatorTests
     [TestCase("<>")]
     public void Nickname_EmptyAfterCleaning_IsRejected(string raw) =>
         Assert.That(CommandValidator.TrySanitizeNickname(raw, out _), Is.False);
+
+    [Test]
+    public void Nickname_DropsInvisibleAndDirectionCharacters()
+    {
+        Assert.That(CommandValidator.TrySanitizeNickname("a\u200Bb\u202Ec\u2028d", out string clean), Is.True);
+        Assert.That(clean, Is.EqualTo("abcd"));
+        Assert.That(CommandValidator.TrySanitizeNickname("\u200B\u200B", out _), Is.False, "nothing visible is left");
+    }
 
     [Test]
     public void Nickname_IsTruncated()

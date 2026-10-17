@@ -312,6 +312,7 @@ public class UnitCommander : NetworkBehaviour
         if (GameInput.Dig.WasPressedThisFrame()) Arm(OrderKind.Dig);
         if (GameInput.Stop.WasPressedThisFrame()) Order(OrderKind.Stop);
         if (GameInput.Hold.WasPressedThisFrame()) Order(OrderKind.Hold);
+        if (GameInput.Detonate.WasPressedThisFrame()) Order(OrderKind.Detonate);
 
         // While placing a building, clicks belong to the placement.
         BuildingPlacement placement = BuildingPlacement.Instance;

@@ -35,7 +35,7 @@ public class SiegeMatchTests
         // The HQ is a blueprint until a Builder finishes it, so start from a finished one.
         int hqId = -1;
         yield return Wait("HQ entity", () => TryFindBuilding(BuildingType.Base, out hqId), 10f);
-        wsm.CmdChangeQueues(new[] { hqId }, (byte)UnitType.Builder, 1);
+        wsm.CmdChangeQueues(new[] { hqId }, 1);
 
         int builder = -1;
         float2 at = default;

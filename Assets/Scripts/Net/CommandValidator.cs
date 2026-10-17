@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Unity.Mathematics;
 
@@ -10,8 +11,8 @@ public static class CommandValidator
     /// <summary>Squad numbers are 0..9 (keys 1..0).</summary>
     public static bool IsSquadIndexValid(int squad) => squad >= 0 && squad < WAR2D.Sim.Squads.Count;
 
-    /// <summary>Order kinds are the <see cref="OrderKind"/> values 0..6.</summary>
-    public static bool IsOrderKindValid(byte kind) => kind <= (byte)OrderKind.Dig;
+    /// <summary>Order kinds are the <see cref="OrderKind"/> values 0..7.</summary>
+    public static bool IsOrderKindValid(byte kind) => kind <= (byte)OrderKind.Detonate;
 
     /// <summary>True for orders that name a tile: moves and work.</summary>
     public static bool TargetsTile(OrderKind kind) =>
@@ -46,6 +47,9 @@ public static class CommandValidator
         foreach (char c in raw.Trim())
         {
             if (char.IsControl(c) || c == '<' || c == '>' || char.IsSurrogate(c)) continue;
+            // Format characters (zero-width spaces, right-to-left overrides) make names invisible or spoofable.
+            UnicodeCategory category = char.GetUnicodeCategory(c);
+            if (category == UnicodeCategory.Format || category == UnicodeCategory.LineSeparator || category == UnicodeCategory.ParagraphSeparator) continue;
             sb.Append(c);
             if (sb.Length == MaxNicknameLength) break;
         }

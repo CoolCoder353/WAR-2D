@@ -5,12 +5,12 @@ namespace WAR2D.Rules
 {
     /// <summary>
     /// The damage table in a Burst-friendly form: one multiplier per (attacker unit type, target class),
-    /// at <c>type * 3 + (int)target</c>. Missing pairs and out-of-range types read as 1.
+    /// at <c>type * 4 + (int)target</c>. Missing pairs and out-of-range types read as 1.
     /// </summary>
     public static class DamageTable
     {
         /// <summary>Target classes per attacker row.</summary>
-        public const int Classes = 3;
+        public const int Classes = 4;
 
         /// <summary>Builds the flat table from config.</summary>
         public static NativeArray<float> Build(DamageTableConfig config, int typeCount, Allocator allocator)

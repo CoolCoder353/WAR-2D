@@ -46,6 +46,10 @@ namespace WAR2D.UI
         public IReadOnlyList<int> BuildingIds => buildingIds;
 
         private readonly List<int> queueByType = new List<int>();
+        private readonly List<UnitType> productionTypes = new List<UnitType>();
+
+        /// <summary>The types the selected producers are making (the server's choice), first selected building first, each once.</summary>
+        public IReadOnlyList<UnitType> ProductionTypes => productionTypes;
 
         /// <summary>Units of one type queued on the selected producers, together.</summary>
         public int QueueOf(UnitType type) => (int)type >= 0 && (int)type < queueByType.Count ? queueByType[(int)type] : 0;
@@ -122,14 +126,19 @@ namespace WAR2D.UI
         /// per unit type, indexed by <see cref="UnitType"/>), how many are blueprints, the first one's progress, and
         /// whether they are of different kinds.
         /// </summary>
-        public void SetBuildings(IReadOnlyList<int> ids, BuildingType type, int queue, IReadOnlyList<int> byType = null, int blueprints = 0, int progress = 100, bool mixedKinds = false)
+        public void SetBuildings(IReadOnlyList<int> ids, BuildingType type, int queue, IReadOnlyList<int> byType = null, int blueprints = 0, int progress = 100, bool mixedKinds = false, IReadOnlyList<UnitType> types = null)
         {
             int id = ids.Count > 0 ? ids[0] : 0;
             bool same = ids.Count == buildingIds.Count && id == BuildingId && type == BuildingType && queue == SpawnerQueue &&
                         blueprints == BlueprintCount && progress == BuildingProgress && mixedKinds == MixedKinds && (byType?.Count ?? 0) == queueByType.Count;
             for (int i = 0; same && i < ids.Count; i++) same = ids[i] == buildingIds[i];
             for (int i = 0; same && i < queueByType.Count; i++) same = byType[i] == queueByType[i];
+            int typeCount = types?.Count ?? 0;
+            same &= typeCount == productionTypes.Count;
+            for (int i = 0; same && i < typeCount; i++) same = types[i] == productionTypes[i];
             if (same) return;
+            productionTypes.Clear();
+            for (int i = 0; i < typeCount; i++) productionTypes.Add(types[i]);
             buildingIds.Clear();
             for (int i = 0; i < ids.Count; i++) buildingIds.Add(ids[i]);
             queueByType.Clear();
@@ -188,6 +197,7 @@ namespace WAR2D.UI
                 int queue = 0, blueprints = 0;
                 bool mixed = false;
                 pulledByType.Clear();
+                inUse.Clear();
                 foreach (UnitType unit in SpawnerRules.Produces(type))
                 {
                     while (pulledByType.Count <= (int)unit) pulledByType.Add(0);
@@ -196,19 +206,23 @@ namespace WAR2D.UI
                 foreach (int id in selection.SelectedBuildings)
                 {
                     queue += local.SpawnerQueue(id);
+                    UnitType making = local.SpawnerType(id);
+                    if (making == UnitType.None && known.TryGetValue(id, out var producer)) making = SpawnerRules.DefaultUnit(producer.Data.buildingType);
+                    if (making != UnitType.None && !inUse.Contains(making)) inUse.Add(making);
                     if (known.TryGetValue(id, out var entry))
                     {
                         if (entry.Progress < 100) blueprints++;
                         mixed |= entry.Data.buildingType != type;
                     }
                 }
-                SetBuildings(selection.SelectedBuildings, type, queue, pulledByType, blueprints, first.Progress, mixed);
+                SetBuildings(selection.SelectedBuildings, type, queue, pulledByType, blueprints, first.Progress, mixed, inUse);
             }
             SetArmed(commander.ArmedOrder);
             SetSquadCounts(local.SquadCounts);
         }
 
         private readonly List<int> pulledByType = new List<int>();
+        private readonly List<UnitType> inUse = new List<UnitType>();
 
         private void Apply(List<ClientUnitView> next, int squad)
         {

@@ -129,6 +129,22 @@ namespace WAR2D.EditorTools
                     return ($"Builder {direction} {frame}", () => RenderGen.Builder(direction * Mathf.PI / 4f, frame), 0f);
                 case "Digger":
                     return ($"Digger {direction} {frame}", () => RenderGen.Digger(direction * Mathf.PI / 4f, frame), 0f);
+                case nameof(UnitType.Scout):
+                    return ($"Scout {direction} {frame}", () => RenderGen.Scout(direction * Mathf.PI / 4f, frame), 0f);
+                case nameof(UnitType.Flamethrower):
+                    return ($"Flamethrower {direction} {frame}", () => RenderGen.Flamethrower(direction * Mathf.PI / 4f, frame), 0f);
+                case nameof(UnitType.Sniper):
+                    return ($"Sniper {direction} {frame}", () => RenderGen.Sniper(direction * Mathf.PI / 4f, frame), 0f);
+                case nameof(UnitType.SuicideBomber):
+                    return ($"SuicideBomber {direction} {frame}", () => RenderGen.SuicideBomber(direction * Mathf.PI / 4f, frame), 0f);
+                case nameof(UnitType.Heavy):
+                    return ($"Heavy {direction} {frame}", () => RenderGen.Heavy(direction * Mathf.PI / 4f, frame), 0f);
+                case nameof(UnitType.Artillery):
+                    return ($"Artillery {direction} {frame}", () => RenderGen.Artillery(direction * Mathf.PI / 4f, frame), 0f);
+                case nameof(BuildingType.HeavyFactory):
+                    return ($"HeavyFactory {frame}", () => RenderGen.HeavyFactory(frame), RenderGen.Lift);
+                case nameof(BuildingType.SiegeWorkshop):
+                    return ($"SiegeWorkshop {frame}", () => RenderGen.SiegeWorkshop(frame), RenderGen.Lift);
                 case "Bomb":
                     return ($"Bomb {frame}", () => RenderGen.Bomb(frame), 0f);
                 case "Radar":
@@ -139,7 +155,7 @@ namespace WAR2D.EditorTools
                     return ($"WallBlueprint {frame}", () => RenderGen.WallBlueprint(frame), 0f);
                 case nameof(BuildingType.Base):
                     return ("Base", RenderGen.Base, RenderGen.Lift);
-                case nameof(BuildingType.SmallUnitSpawner):
+                case nameof(BuildingType.Barracks):
                     return ($"Spawner {frame}", () => RenderGen.Spawner(frame), RenderGen.Lift);
                 case nameof(BuildingType.Miner):
                     return ($"Miner {direction} {frame}", () => RenderGen.Miner(frame, direction), RenderGen.Lift);

@@ -4,39 +4,11 @@ public class SpawnerRulesTests
 {
     [TestCase(0.99f, 1f, false)]
     [TestCase(1.0f, 1f, true)]
-    [TestCase(0.5f, 2f, true)]
+    [TestCase(2.0f, 0.7f, true)]
     [TestCase(10f, 0f, false)]
-    public void CanSpawn_RespectsRate(float elapsed, float rate, bool expected)
+    public void CanSpawn_RespectsBuildSeconds(float progress, float buildSeconds, bool expected)
     {
-        Assert.That(SpawnerRules.CanSpawn(elapsed, rate), Is.EqualTo(expected));
-    }
-
-    [Test]
-    public void DequeueStopsAtZero()
-    {
-        int count = 2;
-        Assert.That(SpawnerRules.TryDequeue(ref count), Is.True);
-        Assert.That(SpawnerRules.TryDequeue(ref count), Is.True);
-        Assert.That(count, Is.EqualTo(0));
-        Assert.That(SpawnerRules.TryDequeue(ref count), Is.False, "an empty queue stays empty");
-        Assert.That(count, Is.EqualTo(0));
-    }
-
-    [Test]
-    public void EnqueueStopsAtMax()
-    {
-        int count = SpawnerRules.MaxQueue - 1;
-        Assert.That(SpawnerRules.TryEnqueue(ref count), Is.True);
-        Assert.That(SpawnerRules.TryEnqueue(ref count), Is.False);
-        Assert.That(count, Is.EqualTo(SpawnerRules.MaxQueue));
-    }
-
-    [Test]
-    public void OnlySpawnersProduceUnits()
-    {
-        Assert.That(SpawnerRules.UnitFor(BuildingType.SmallUnitSpawner), Is.EqualTo(UnitType.Tank));
-        Assert.That(SpawnerRules.UnitFor(BuildingType.Miner), Is.EqualTo(UnitType.None));
-        Assert.That(SpawnerRules.UnitFor(BuildingType.Base), Is.EqualTo(UnitType.None));
+        Assert.That(SpawnerRules.CanSpawn(progress, buildSeconds), Is.EqualTo(expected));
     }
 
     [Test]
@@ -50,30 +22,27 @@ public class SpawnerRulesTests
         Assert.AreEqual(10, SpawnerRules.Apply(ref count, 10));
         Assert.IsTrue(SpawnerRules.IsQueueStep(50) && SpawnerRules.IsQueueStep(-1));
         Assert.IsFalse(SpawnerRules.IsQueueStep(7) || SpawnerRules.IsQueueStep(-50) || SpawnerRules.IsQueueStep(1000));
-        count = -3;
+        count = -4;
         Assert.AreEqual(0, SpawnerRules.Apply(ref count, 10), "an invalid count is left alone");
     }
 
     [Test]
-    public void EachProducerMakesItsOwnUnits()
+    public void EachProducerMakesItsRolesUnits()
     {
         CollectionAssert.AreEqual(new[] { UnitType.Builder }, SpawnerRules.Produces(BuildingType.Base));
-        CollectionAssert.AreEqual(new[] { UnitType.Tank, UnitType.Digger }, SpawnerRules.Produces(BuildingType.SmallUnitSpawner));
+        CollectionAssert.AreEqual(new[] { UnitType.Scout, UnitType.Tank, UnitType.Flamethrower }, SpawnerRules.Produces(BuildingType.Barracks));
+        CollectionAssert.AreEqual(new[] { UnitType.Heavy, UnitType.Artillery, UnitType.Sniper }, SpawnerRules.Produces(BuildingType.HeavyFactory));
+        CollectionAssert.AreEqual(new[] { UnitType.Digger, UnitType.SuicideBomber }, SpawnerRules.Produces(BuildingType.SiegeWorkshop));
         Assert.IsEmpty(SpawnerRules.Produces(BuildingType.Miner));
         Assert.IsFalse(SpawnerRules.MayProduce(BuildingType.Base, UnitType.Tank));
+        Assert.IsFalse(SpawnerRules.MayProduce(BuildingType.Barracks, UnitType.Digger), "Diggers moved to the Siege Workshop");
     }
 
     [Test]
-    public void QueueAddsAndRemovesByTypeWithinTheTotalCap()
+    public void ANewProducerStartsOnItsFirstType()
     {
-        var queue = new Unity.Collections.FixedList128Bytes<byte>();
-        Assert.AreEqual(10, SpawnerRules.Change(ref queue, UnitType.Tank, 10));
-        Assert.AreEqual(50, SpawnerRules.Change(ref queue, UnitType.Digger, 50));
-        Assert.AreEqual(40, SpawnerRules.Change(ref queue, UnitType.Tank, 50), "capped at MaxQueue in total");
-        Assert.AreEqual(SpawnerRules.MaxQueue, queue.Length);
-        Assert.AreEqual(-1, SpawnerRules.Change(ref queue, UnitType.Digger, -1));
-        Assert.AreEqual(49, SpawnerRules.CountOf(queue, UnitType.Digger));
-        Assert.AreEqual(UnitType.Tank, (UnitType)queue[0], "first in, first out");
-        Assert.AreEqual(0, SpawnerRules.Change(ref queue, UnitType.Builder, -1), "removing a type that isn't queued");
+        Assert.AreEqual(UnitType.Builder, SpawnerRules.DefaultUnit(BuildingType.Base));
+        Assert.AreEqual(UnitType.Scout, SpawnerRules.DefaultUnit(BuildingType.Barracks));
+        Assert.AreEqual(UnitType.None, SpawnerRules.DefaultUnit(BuildingType.Radar));
     }
 }

@@ -23,6 +23,9 @@ STEAMCMD="${STEAMCMD:-steamcmd}"
 
 branch="${1:?usage: tools/steam-upload.sh [--no-build] <branch> [description]}"
 desc="${2:-v$(grep -m1 'bundleVersion:' ProjectSettings/ProjectSettings.asset | awk '{print $2}') $(git rev-parse --short HEAD)}"
+# VDF strings are quoted, so a backslash or a double quote in the description must be escaped.
+desc="${desc//\\/\\\\}"
+desc="${desc//\"/\\\"}"
 
 if [[ $build == 1 ]]; then
   UNITY="${UNITY_EDITOR:-$HOME/Unity/Hub/Editor/$(grep -m1 m_EditorVersion: ProjectSettings/ProjectVersion.txt | awk '{print $2}')/Editor/Unity}"

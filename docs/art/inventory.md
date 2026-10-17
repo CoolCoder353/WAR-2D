@@ -11,6 +11,8 @@ The [style guide](style-guide.md) sets the values: 64 px per tile (PPU 64), 8 un
 | `Tank` | 1×1 | 4 (move 2, fire 2) | 8 | yes | `Resources/tank.png` (32 px, one image, rotated quad) |
 | `Builder` | 1×1 | 4 (move 2, build 2) | 8 | yes | none (v0.7) |
 | `Digger` | 1×1 | 4 (move 2, dig 2) | 8 | yes | none (v0.7) |
+| `Scout`, `Flamethrower`, `Sniper`, `SuicideBomber` | 1×1 | 4 (move 2, fire 2) | 8 | yes | `RenderGen.Arsenal.cs` (v0.12) |
+| `Heavy`, `Artillery` | 2×2 (drawn at twice the size; large selection ring) | 4 (move 2, fire 2) | 8 | yes | `RenderGen.Arsenal.cs` (v0.12, 128 px canvases) |
 
 Units draw with pre-drawn facings, not a rotated quad (rotation breaks the pixel grid under Pixel Perfect): `UnitFrames` picks the cell from the facing and state, and `InstancedUnitRenderer` tints the team mask with the owner's colour. A type with no frames in the atlas draws as the Tank.
 
@@ -19,7 +21,9 @@ Units draw with pre-drawn facings, not a rotated quad (rotation breaks the pixel
 | Id | Size | Frames | Team mask | Source today |
 |---|---|---|---|---|
 | `Base` (HQ) | 5×5 (3×3 before v0.8) | 1 | yes | `Resources/Base.png` (64 px, PPU 22) |
-| `SmallUnitSpawner` | 2×2 | 2 (idle: door lamp, each held 5 ticks) | yes | `Resources/SmallUnitSpawner.png` (64 px) |
+| `Barracks` (was `SmallUnitSpawner`) | 2×2 | 2 (idle: door lamp, each held 5 ticks) | yes | `RenderGen.Spawner` (renamed in v0.12, same art) |
+| `HeavyFactory` | 3×3 | 2 | yes | `RenderGen.HeavyFactory` (v0.12) |
+| `SiegeWorkshop` | 2×2 | 2 | yes | `RenderGen.SiegeWorkshop` (v0.12) |
 | `Miner` | 1×1 | 4 (drill loop) × 4 facings | yes | `Resources/miner.png` (32 px) |
 | `Bomb` | 1×1 | 2 (armed blink) | yes | none (v0.7; never sent to enemy clients, so only its owner's team draws it) |
 
@@ -46,6 +50,10 @@ Unused today: `Spawner.asset`, `Test.asset` and the `Pallets` tile palette (remo
 | `BombBlast` | 3×3 | 8 | `Effects` atlas (`EffectGen.Blast`); unused until v0.7 |
 | `MuzzleFlash` | 1×1 | 2 | `Effects` atlas, pooled (128), at the shooter's barrel with each tracer |
 | `Tracer` | 1×1 | 1 | `Effects` atlas, pooled (256), turned to its heading |
+| `SniperTracer` | 1×1 | 1 | `Effects` atlas, pooled (64): the Sniper's shot (v0.12) |
+| `ArtilleryShell` / `ShellImpact` | 1×1 / 4×4 | 2 / 6 | `Effects` atlas, pooled (64 each): the shell flies 0.5 s, then the impact plays (v0.12) |
+| `FlameStream` | 3×1 | 4 | `Effects` atlas, pooled (128), stretched from the nozzle to the target (v0.12) |
+| `BomberBlast` | 4×4 | 8 | `Effects` atlas (v0.12); built but unused: bomber blasts reach clients as `BombBlast` events and draw the bomb's effect |
 | `DigDebris` | 1×1 | 4 | `Effects` atlas; unused until v0.7 |
 | `RepairSparks` | 1×1 | 4 | `Effects` atlas; unused until v0.7 |
 | `ConstructionOverlay` | 1×1 (tiled over the footprint) | 4 | `Effects` atlas; unused until v0.7 |

@@ -53,8 +53,8 @@ public class SelectionModelTests
         model.SetUnits(units, -1);
         model.SetUnits(units, -1);
         Assert.That(raised, Is.EqualTo(1));
-        model.SetBuilding(7, BuildingType.SmallUnitSpawner, 3);
-        model.SetBuilding(7, BuildingType.SmallUnitSpawner, 3);
+        model.SetBuilding(7, BuildingType.Barracks, 3);
+        model.SetBuilding(7, BuildingType.Barracks, 3);
         model.SetArmed(OrderKind.AttackMove);
         model.SetArmed(OrderKind.AttackMove);
         model.SetSquadCounts(new[] { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
@@ -86,7 +86,7 @@ public class SelectionModelTests
         var counts = new int[(int)UnitType.Digger + 1];
         counts[(int)UnitType.Tank] = 4;
         counts[(int)UnitType.Digger] = 2;
-        model.SetBuildings(new[] { 7 }, BuildingType.SmallUnitSpawner, 6, counts, 0);
+        model.SetBuildings(new[] { 7 }, BuildingType.Barracks, 6, counts, 0);
         Assert.That(model.QueueOf(UnitType.Tank), Is.EqualTo(4));
         Assert.That(model.QueueOf(UnitType.Digger), Is.EqualTo(2));
         Assert.That(model.QueueOf(UnitType.Builder), Is.EqualTo(0));
@@ -95,7 +95,7 @@ public class SelectionModelTests
         model.Changed += () => raised++;
         var more = (int[])counts.Clone();
         more[(int)UnitType.Digger] = 3;
-        model.SetBuildings(new[] { 7 }, BuildingType.SmallUnitSpawner, 7, more, 0);
+        model.SetBuildings(new[] { 7 }, BuildingType.Barracks, 7, more, 0);
         Assert.That(raised, Is.EqualTo(1));
         Assert.That(model.QueueOf(UnitType.Digger), Is.EqualTo(3));
     }
@@ -104,7 +104,7 @@ public class SelectionModelTests
     public void RefundCountsBlueprintsInFullAndFinishedBuildingsByShare()
     {
         var model = new SelectionModel();
-        model.SetBuildings(new[] { 1, 2, 3 }, BuildingType.SmallUnitSpawner, 0, null, 1);
+        model.SetBuildings(new[] { 1, 2, 3 }, BuildingType.Barracks, 0, null, 1);
         Assert.That(model.BlueprintCount, Is.EqualTo(1));
         Assert.That(model.AllBlueprints, Is.False);
         Assert.That(model.RefundFor(200f, 0.5f), Is.EqualTo(200f + 2 * 100f));

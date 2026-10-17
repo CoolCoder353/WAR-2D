@@ -116,12 +116,13 @@ namespace WAR2D.UI
             AddOrder(root, "cmd-hold", OrderKind.Hold);
             AddOrder(root, "cmd-repair", OrderKind.Repair);
             AddOrder(root, "cmd-dig", OrderKind.Dig);
-            if (Enum.TryParse("Detonate", out OrderKind kind)) { detonateKind = kind; AddOrder(root, "cmd-detonate", kind); }
-            if (Enum.TryParse("SuicideBomber", out UnitType bomber)) bomberType = bomber;
+            detonateKind = OrderKind.Detonate;
+            AddOrder(root, "cmd-detonate", OrderKind.Detonate);
+            bomberType = UnitType.SuicideBomber;
             AddBuild(root, "build-miner", BuildingType.Miner);
-            AddBuild(root, "build-barracks", BuildingType.SmallUnitSpawner);
-            AddBuildNamed(root, "build-heavy-factory", "HeavyFactory");
-            AddBuildNamed(root, "build-siege-workshop", "SiegeWorkshop");
+            AddBuild(root, "build-barracks", BuildingType.Barracks);
+            AddBuild(root, "build-heavy-factory", BuildingType.HeavyFactory);
+            AddBuild(root, "build-siege-workshop", BuildingType.SiegeWorkshop);
             AddBuild(root, "build-bomb", BuildingType.Bomb);
             AddBuild(root, "build-radar", BuildingType.Radar);
             wall = root.Q<Button>("build-wall");
@@ -151,13 +152,6 @@ namespace WAR2D.UI
             button.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); BuildClicked?.Invoke(type); };
             if (buildCosts.TryGetValue(type, out float cost)) root.Q<Label>(name + "-cost").text = $"{cost:0.##}";
             builds[type] = button;
-        }
-
-        /// <summary>A build button for a type found by name; hidden for good while the game has no such type.</summary>
-        private void AddBuildNamed(VisualElement root, string name, string type)
-        {
-            if (Enum.TryParse(type, out BuildingType parsed)) AddBuild(root, name, parsed);
-            else Display(root.Q<Button>(name), false);
         }
 
         /// <summary>
@@ -278,10 +272,16 @@ namespace WAR2D.UI
             }
             if (rowsFor != selection.BuildingType) BuildProduction(produced);
             UnitType chosen = Chosen();
+            IReadOnlyList<UnitType> inUse = selection.ProductionTypes;
             foreach (KeyValuePair<UnitType, Button> type in typeButtons)
-                type.Value.EnableInClassList("command-button--active", type.Key == chosen);
+            {
+                bool active = inUse.Count > 0 ? ListHas(inUse, type.Key) : type.Key == chosen;
+                type.Value.EnableInClassList("command-button--active", active);
+            }
             string building = AlertFeedModel.BuildingName(selection.BuildingType) ?? AlertFeedModel.Spaced(selection.BuildingType.ToString());
-            info.text = $"{AlertFeedModel.UnitName(chosen)} · {Cost(chosen)} each · {Seconds(chosen)} s per unit";
+            info.text = inUse.Count > 1
+                ? "Mixed: " + string.Join(", ", System.Linq.Enumerable.Select(inUse, t => $"{AlertFeedModel.UnitName(t)} ({selection.QueueOf(t)})"))
+                : $"{AlertFeedModel.UnitName(chosen)} · {Cost(chosen)} each · {Seconds(chosen)} s per unit";
             queueLabel.text = "Production";
             help.text = count > 1
                 ? $"{selection.SpawnerQueue} queued across {count} {Plural(building)} · max {SpawnerRules.MaxQueue} each · cost charged at spawn"
@@ -293,12 +293,20 @@ namespace WAR2D.UI
             foreach (Button add in queueAdds) add.SetEnabled(room);
         }
 
+        private static bool ListHas(IReadOnlyList<UnitType> list, UnitType type)
+        {
+            for (int i = 0; i < list.Count; i++) if (list[i] == type) return true;
+            return false;
+        }
+
         /// <summary>
-        /// The type the queue row works on: the one picked for this kind of building, else the type with the most
-        /// queued (so a producer already making something shows it), else the first it makes.
+        /// The type the queue row works on: the server's choice for the first selected producer, else the one picked
+        /// for this kind of building, else the type with the most queued, else the first it makes.
         /// </summary>
         private UnitType Chosen()
         {
+            // The server's choice for the first selected producer wins over the local pick.
+            if (selection.ProductionTypes.Count > 0 && Array.IndexOf(shownTypes, selection.ProductionTypes[0]) >= 0) return selection.ProductionTypes[0];
             if (chosenTypes.TryGetValue(selection.BuildingType, out UnitType picked) && Array.IndexOf(shownTypes, picked) >= 0) return picked;
             UnitType best = shownTypes[0];
             foreach (UnitType type in shownTypes)
@@ -349,10 +357,10 @@ namespace WAR2D.UI
         private void Pick(UnitType type)
         {
             WAR2D.Audio.AudioService.Ui("ui_click");
-            bool changed = Chosen() != type;
             chosenTypes[selection.BuildingType] = type;
             tooltip.EnableInClassList("production__tooltip--open", false);
-            if (changed) ProductionSelected?.Invoke(selection.BuildingIds, type);
+            // Always sent: the model can lag a frame behind the server, which ignores a pick of the type already made.
+            ProductionSelected?.Invoke(selection.BuildingIds, type);
             Show();
         }
 

@@ -38,6 +38,14 @@ namespace WAR2D.Sim
 
         protected override void OnUpdate()
         {
+            double mark = SimBoundarySystem.TickWatch.Elapsed.TotalMilliseconds;
+            ApplyCommands();
+            SimTiming.LastCommandsMs = SimBoundarySystem.Split(ref mark);
+            SimTiming.CommandsEndMs = mark;
+        }
+
+        private void ApplyCommands()
+        {
             SimContext context = SimContext.Current;
             if (context == null) return;
             SimData data = SystemAPI.GetSingleton<SimData>();
@@ -299,7 +307,7 @@ namespace WAR2D.Sim
         private void Spawn(SimData data, SimContext context, in SimCommand command)
         {
             int slot = context.SlotOf(command.OwnerId);
-            if (slot < 0 || !context.Config.Units.TryGetValue(command.UnitType, out UnitConfig unit))
+            if (slot < 0 || !context.Config.Units.TryGetValue(command.UnitType, out UnitConfig unit) || unit.SizeClass < 0 || unit.SizeClass >= WAR2D.Pathing.FlowSizeClass.Count)
             {
                 command.OnSpawned?.Invoke(-1);
                 return;
@@ -412,7 +420,9 @@ namespace WAR2D.Sim
                 float2 p = data.Positions[slot];
                 float r = data.Radius[slot];
                 if (p.x + r < lo.x || p.y + r < lo.y || p.x - r > hi.x + 1 || p.y - r > hi.y + 1) continue;
-                if (!TileSearch.FindNearest((int2)math.floor(p), grid.IsWalkable, t => TileRules.IsFloor(grid.TileAt(t)), 4096, out int2 free)) continue;
+                // A large unit needs a spot with its clearance (no rock or wall within a tile), not just a free tile.
+                bool large = data.SizeClass[slot] == WAR2D.Pathing.FlowSizeClass.Large;
+                if (!TileSearch.FindNearest((int2)math.floor(p), grid.IsWalkable, t => TileRules.IsFloor(grid.TileAt(t)) && (!large || data.LargeGrid[t.y * data.Width + t.x] == 0), 4096, out int2 free)) continue;
                 if (data.PendingMoves.Capacity <= data.PendingMoves.Count()) data.PendingMoves.Capacity *= 2;
                 data.PendingMoves[data.IdOf[slot]] = (float2)free + 0.5f;
             }
@@ -455,17 +465,19 @@ namespace WAR2D.Sim
                 case BuildingType.Base:
                     EntityManager.AddComponentData(building, new HQComponent { ownerId = buildingData.ownerId });
                     // The HQ produces Builders.
-                    EntityManager.AddComponentData(building, new SpawnerData { ownerId = buildingData.ownerId, position = buildingData.position, spawnRate = buildingConfig.SpawnRate });
+                    EntityManager.AddComponentData(building, new SpawnerData { ownerId = buildingData.ownerId, position = buildingData.position, unitType = (byte)UnitType.Builder });
                     break;
                 case BuildingType.Miner:
                     EntityManager.AddComponentData(building, new MiningComponent { timeSinceLastMining = 0f, isActive = false });
                     break;
-                case BuildingType.SmallUnitSpawner:
+                case BuildingType.Barracks:
+                case BuildingType.HeavyFactory:
+                case BuildingType.SiegeWorkshop:
                     EntityManager.AddComponentData(building, new SpawnerData
                     {
                         ownerId = buildingData.ownerId,
                         position = buildingData.position,
-                        spawnRate = buildingConfig.SpawnRate
+                        unitType = (byte)SpawnerRules.DefaultUnit(buildingData.buildingType),
                     });
                     break;
                 case BuildingType.Bomb:

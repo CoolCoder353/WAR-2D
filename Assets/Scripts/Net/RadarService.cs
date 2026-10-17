@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
 using Unity.Mathematics;
 using WAR2D.Sim;
 
@@ -15,7 +18,7 @@ public struct RadarView
 
 /// <summary>
 /// Server-side Radar contact watch: one alert per enemy contact (see <see cref="RadarRules"/>), to the Radar's
-/// owner only, carrying the Radar's own tile and nothing about the enemy. Main thread, on the settled world.
+/// owner only, carrying the Radar's own tile and nothing about the enemy. On the settled world (the scan is a Burst job).
 /// </summary>
 public sealed class RadarService
 {
@@ -31,37 +34,73 @@ public sealed class RadarService
     /// <summary>Steps every listed Radar and emits <c>EnemySpotted</c> for each one that pings.</summary>
     public void Update(SimData data, int unitCount, IReadOnlyList<RadarView> radars, double now, Action<int, Alert> emit)
     {
-        foreach (RadarView radar in radars)
+        if (radars.Count == 0) return;
+        // The scans run as one Burst job: in managed code, 40 Radars over their owners' packed armies took ~6 ms (docs/perf/v0.12).
+        var centres = new NativeArray<float2>(radars.Count, Allocator.TempJob);
+        var radii = new NativeArray<float>(radars.Count, Allocator.TempJob);
+        var slots = new NativeArray<int>(radars.Count, Allocator.TempJob);
+        var seen = new NativeArray<byte>(radars.Count, Allocator.TempJob);
+        for (int r = 0; r < radars.Count; r++)
         {
+            centres[r] = radars[r].Centre;
+            radii[r] = radars[r].Radius;
+            slots[r] = data.OwnerSlotOf(radars[r].OwnerId);
+        }
+        new EnemyInRangeJob
+        {
+            Centres = centres, Radii = radii, OwnerSlots = slots, Seen = seen, UnitCount = unitCount,
+            CellSize = data.CellSize, CellsX = data.CellsX, CellsY = data.CellsY, CellStart = data.CellStart, Sorted = data.Sorted,
+            Positions = data.Positions, Health = data.Health, OwnerSlot = data.OwnerSlot, AttackMask = data.AttackMask,
+        }.Schedule(radars.Count, 1).Complete();
+        for (int r = 0; r < radars.Count; r++)
+        {
+            RadarView radar = radars[r];
             watches.TryGetValue(radar.Id, out RadarWatch watch);
-            int slot = data.OwnerSlotOf(radar.OwnerId);
-            bool enemy = slot != SimData.NoSlot && EnemyInRange(data, unitCount, radar.Centre, radar.Radius, slot);
-            if (RadarRules.Step(ref watch, enemy, now, clearSeconds, cooldownSeconds))
+            if (RadarRules.Step(ref watch, seen[r] != 0, now, clearSeconds, cooldownSeconds))
                 emit(radar.OwnerId, new Alert { Kind = AlertKind.EnemySpotted, Tile = radar.Tile });
             watches[radar.Id] = watch;
+        }
+        centres.Dispose(); radii.Dispose(); slots.Dispose(); seen.Dispose();
+    }
+
+    /// <summary>One Radar per index: 1 when a living unit of an owner the Radar's owner attacks is within its radius.</summary>
+    [BurstCompile]
+    private struct EnemyInRangeJob : IJobParallelFor
+    {
+        [ReadOnly] public NativeArray<float2> Centres;
+        [ReadOnly] public NativeArray<float> Radii;
+        [ReadOnly] public NativeArray<int> OwnerSlots;
+        public NativeArray<byte> Seen;
+        public int UnitCount, CellSize, CellsX, CellsY;
+        [ReadOnly] public NativeArray<int> CellStart, Sorted;
+        [ReadOnly] public NativeArray<float2> Positions;
+        [ReadOnly] public NativeArray<float> Health;
+        [ReadOnly] public NativeArray<byte> OwnerSlot;
+        [ReadOnly] public NativeArray<ushort> AttackMask;
+
+        public void Execute(int r)
+        {
+            int ownerSlot = OwnerSlots[r];
+            if (ownerSlot == SimData.NoSlot) return;
+            float2 centre = Centres[r];
+            float radius = Radii[r], rSq = radius * radius;
+            int2 lo = math.clamp((int2)math.floor((centre - radius) / CellSize), 0, new int2(CellsX - 1, CellsY - 1));
+            int2 hi = math.clamp((int2)math.floor((centre + radius) / CellSize), 0, new int2(CellsX - 1, CellsY - 1));
+            for (int cy = lo.y; cy <= hi.y; cy++)
+            for (int cx = lo.x; cx <= hi.x; cx++)
+            {
+                int cell = cy * CellsX + cx;
+                for (int k = CellStart[cell]; k < CellStart[cell + 1]; k++)
+                {
+                    int u = Sorted[k];
+                    if (u >= UnitCount || Health[u] <= 0f || !SimData.Attacks(AttackMask, ownerSlot, OwnerSlot[u]) || math.distancesq(Positions[u], centre) > rSq) continue;
+                    Seen[r] = 1;
+                    return;
+                }
+            }
         }
     }
 
     /// <summary>Drops a Radar's state (destroyed).</summary>
     public void Forget(int radarId) => watches.Remove(radarId);
-
-    /// <summary>True when a living unit within <paramref name="radius"/> of the centre belongs to an owner slot that <paramref name="ownerSlot"/> attacks.</summary>
-    public static bool EnemyInRange(SimData data, int unitCount, float2 centre, float radius, int ownerSlot)
-    {
-        float rSq = radius * radius;
-        int2 lo = math.clamp((int2)math.floor((centre - radius) / data.CellSize), 0, new int2(data.CellsX - 1, data.CellsY - 1));
-        int2 hi = math.clamp((int2)math.floor((centre + radius) / data.CellSize), 0, new int2(data.CellsX - 1, data.CellsY - 1));
-        for (int cy = lo.y; cy <= hi.y; cy++)
-        for (int cx = lo.x; cx <= hi.x; cx++)
-        {
-            int cell = cy * data.CellsX + cx;
-            for (int k = data.CellStart[cell]; k < data.CellStart[cell + 1]; k++)
-            {
-                int u = data.Sorted[k];
-                if (u >= unitCount || data.Health[u] <= 0f || math.distancesq(data.Positions[u], centre) > rSq) continue;
-                if (SimData.Attacks(data.AttackMask, ownerSlot, data.OwnerSlot[u])) return true;
-            }
-        }
-        return false;
-    }
 }

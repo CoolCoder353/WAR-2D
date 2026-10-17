@@ -38,14 +38,17 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<byte> Stance;
         [ReadOnly] public NativeArray<int> OrderSlot;
         [ReadOnly] public NativeArray<byte> OrderLive;
-        [ReadOnly] public NativeArray<float> RangeSqByType;
+        [ReadOnly] public NativeArray<float> RangeSqByType, MinRangeSqByType;
         [ReadOnly] public NativeArray<int> CellStart, Sorted;
+        /// <summary>Fog grids (see <see cref="SimData.Visible"/>): a unit fires only at what its owner's grid sees now.</summary>
+        [ReadOnly] public NativeArray<byte> Visible;
+        public int FogCellSize, FogW, FogH, FogCells;
         [ReadOnly] public NativeArray<float2> BuildingPositions;
         [ReadOnly] public NativeArray<byte> BuildingOwnerSlot;
         [ReadOnly] public NativeArray<float> BuildingHealth;
         [ReadOnly] public NativeArray<int> BuildingCellStart, BuildingSorted;
         public float InvCellSize;
-        public int CellsX, CellsY, SearchCells; // SearchCells = ceil(max range / cell size)
+        public int CellsX, CellsY, SearchCells; // SearchCells = ceil(max range / cell size): the cap on any type's reach
         public int Tick, Slice;
         [ReadOnly] public NativeArray<byte> OpaqueTile;
         [ReadOnly] public NativeArray<float> DamageByType;
@@ -64,9 +67,14 @@ namespace WAR2D.Sim
             int slot = OwnerSlot[i];
             int type = Type[i];
             float range = type < RangeSqByType.Length ? RangeSqByType[type] : 0f;
+            float minSq = type < MinRangeSqByType.Length ? MinRangeSqByType[type] : 0f;
+            int grid = slot * FogCells;
             int2 c = (int2)math.floor(p * InvCellSize);
-            int2 lo = math.max(c - SearchCells, 0);
-            int2 hi = math.min(c + SearchCells, new int2(CellsX - 1, CellsY - 1));
+            // Each unit scans only the cells its own range reaches: the longest range (a Sniper's) would
+            // otherwise make every Tank scan nine times the cells.
+            int reach = math.clamp((int)math.ceil(math.sqrt(range) * InvCellSize), 1, SearchCells);
+            int2 lo = math.max(c - reach, 0);
+            int2 hi = math.min(c + reach, new int2(CellsX - 1, CellsY - 1));
 
             float best = range;
             int bestIndex = -1;
@@ -79,7 +87,7 @@ namespace WAR2D.Sim
                     int j = Sorted[k];
                     if (Health[j] <= 0f || !SimData.Attacks(AttackMask, slot, OwnerSlot[j])) continue;
                     float d = math.distancesq(p, Positions[j]);
-                    if (d <= best && LineOfSight.ClearTiles(OpaqueTile, Width, Height, p, Positions[j])) { best = d; bestIndex = j; }
+                    if (d <= best && d >= minSq && Sees(grid, Positions[j]) && LineOfSight.ClearTiles(OpaqueTile, Width, Height, p, Positions[j])) { best = d; bestIndex = j; }
                 }
             }
             if (bestIndex >= 0)
@@ -99,12 +107,21 @@ namespace WAR2D.Sim
                     int j = BuildingSorted[k];
                     if (BuildingHealth[j] <= 0f || (BuildingFlag[j] & BuildingFlags.Hidden) != 0 || !SimData.Attacks(AttackMask, slot, BuildingOwnerSlot[j])) continue;
                     float d = math.distancesq(p, BuildingPositions[j]);
-                    if (d <= best && LineOfSight.ClearTiles(OpaqueTile, Width, Height, p, BuildingPositions[j])) { best = d; bestIndex = j; }
+                    if (d <= best && d >= minSq && Sees(grid, BuildingPositions[j]) && LineOfSight.ClearTiles(OpaqueTile, Width, Height, p, BuildingPositions[j])) { best = d; bestIndex = j; }
                 }
             }
             Target[i] = bestIndex;
             TargetKind[i] = bestIndex >= 0 ? TargetKinds.Building : TargetKinds.Unit;
             if (bestIndex < 0 && Stance[i] == Stances.AttackMove) FindWall(i, p, slot, range);
+        }
+
+        private bool Sees(int grid, float2 position) => Sees(Visible, grid, position, FogCellSize, FogW, FogH);
+
+        /// <summary>True when the fog grid starting at <paramref name="grid"/> (an owner slot times <c>FogCells</c>) sees the point now.</summary>
+        public static bool Sees(NativeArray<byte> visible, int grid, float2 position, int fogCellSize, int fogW, int fogH)
+        {
+            int2 f = math.clamp((int2)math.floor(position / fogCellSize), 0, new int2(fogW - 1, fogH - 1));
+            return visible[grid + f.y * fogW + f.x] != 0;
         }
 
         /// <summary>

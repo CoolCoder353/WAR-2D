@@ -78,9 +78,9 @@ public class FuzzTests
             var goal = new int2(rng.Next(-512, 512), rng.Next(-512, 512));
             bool valid = false;
             Assert.DoesNotThrow(() => valid = CommandValidator.IsOrderValid(kind, goal, min, max));
-            if (kind > (byte)OrderKind.Dig) Assert.IsFalse(valid);
+            if (kind > (byte)OrderKind.Detonate) Assert.IsFalse(valid);
             else if (kind == (byte)OrderKind.Dig) Assert.AreEqual(CommandValidator.IsInside(goal, min + 1, max - 1), valid, "never the outer ring");
-            else if (kind == (byte)OrderKind.Hold || kind == (byte)OrderKind.Stop) Assert.IsTrue(valid, "Stop and Hold ignore the goal");
+            else if (kind == (byte)OrderKind.Hold || kind == (byte)OrderKind.Stop || kind == (byte)OrderKind.Detonate) Assert.IsTrue(valid, "Stop, Hold and Detonate ignore the goal");
             else Assert.AreEqual(CommandValidator.IsInside(goal, min, max), valid);
         }
     }
@@ -111,12 +111,13 @@ public class FuzzTests
     public void SpawnerQueue_NeverLeavesItsRange()
     {
         var rng = new System.Random(31);
+        int[] steps = { -1, 1, 10, 50, 7, -50, int.MinValue, int.MaxValue };
         for (int i = 0; i < Iterations; i++)
         {
             int count = rng.Next(int.MinValue, int.MaxValue);
             int before = count;
-            bool changed = rng.Next(2) == 0 ? SpawnerRules.TryEnqueue(ref count) : SpawnerRules.TryDequeue(ref count);
-            if (!changed) Assert.That(count, Is.EqualTo(before), "a refused change leaves the count alone");
+            int changed = SpawnerRules.Apply(ref count, steps[rng.Next(steps.Length)]);
+            if (changed == 0) Assert.That(count, Is.EqualTo(before), "a refused change leaves the count alone");
             else Assert.That(count, Is.InRange(0, SpawnerRules.MaxQueue));
         }
     }
@@ -216,22 +217,5 @@ public class FuzzTests
             rng.NextBytes(bytes);
             Assert.DoesNotThrow(() => WAR2D.Net.Replication.BuildingCodec.Apply(buildings, new ArraySegment<byte>(bytes)));
         }
-    }
-
-    [Test]
-    public void TypedSpawnerQueue_NeverLeavesItsRange()
-    {
-        var rng = new System.Random(5);
-        var queue = new Unity.Collections.FixedList128Bytes<byte>();
-        var added = new HashSet<byte>();
-        for (int i = 0; i < Iterations; i++)
-        {
-            var type = (UnitType)rng.Next(0, 11);
-            int delta = rng.Next(-60, 60);
-            if (delta > 0) added.Add((byte)type);
-            SpawnerRules.Change(ref queue, type, delta);
-            Assert.That(queue.Length, Is.InRange(0, SpawnerRules.MaxQueue));
-        }
-        for (int i = 0; i < queue.Length; i++) Assert.IsTrue(added.Contains(queue[i]));
     }
 }

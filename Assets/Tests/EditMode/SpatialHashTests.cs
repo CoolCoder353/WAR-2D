@@ -15,9 +15,9 @@ public class SpatialHashTests
     {
         public NativeArray<float2> Positions, BuildingPositions;
         public NativeArray<int> Cell, CellStart, Sorted, Target, BCell, BCellStart, BSorted;
-        public NativeArray<float> Health, BuildingHealth, RangeSqByType, DamageByType;
+        public NativeArray<float> Health, BuildingHealth, RangeSqByType, DamageByType, MinRangeSqByType;
         public NativeArray<byte> WallState = new NativeArray<byte>(1, Allocator.TempJob);
-        public NativeArray<byte> BuildingFlag;
+        public NativeArray<byte> BuildingFlag, Visible;
         /// <summary>Owner slots: 1 and 2 attack each other.</summary>
         public NativeArray<byte> Owner, BuildingOwner;
         public NativeArray<ushort> AttackMask;
@@ -51,10 +51,15 @@ public class SpatialHashTests
             BSorted = new NativeArray<int>(buildings, Allocator.TempJob);
             RangeSqByType = new NativeArray<float>(new[] { 0f, Range * Range }, Allocator.TempJob);
             DamageByType = new NativeArray<float>(new[] { 0f, 1f }, Allocator.TempJob);
+            MinRangeSqByType = new NativeArray<float>(2, Allocator.TempJob);
+            Visible = new NativeArray<byte>(new byte[] { 1, 1, 1 }, Allocator.TempJob);
             for (int i = 0; i < units; i++) { Type[i] = 1; Health[i] = 100f; }
         }
 
         private NativeArray<byte> Opaque = new NativeArray<byte>(1, Allocator.Persistent);
+
+        /// <summary>Hash cells any type may reach (the longest range); defaults to <see cref="Range"/>'s.</summary>
+        public int SearchCells = (int)math.ceil(Range / CellSize);
 
         public void Search(int tick = 0, int slice = 1)
         {
@@ -67,10 +72,11 @@ public class SpatialHashTests
             {
                 Positions = Positions, OwnerSlot = Owner, AttackMask = AttackMask, Health = Health, Type = Type, RangeSqByType = RangeSqByType, DamageByType = DamageByType,
                 Stance = Stance, OrderSlot = OrderSlot, OrderLive = OrderLive,
+                MinRangeSqByType = MinRangeSqByType, Visible = Visible, FogCellSize = 100000, FogW = 1, FogH = 1, FogCells = 1,
                 CellStart = CellStart, Sorted = Sorted,
                 BuildingPositions = BuildingPositions, BuildingOwnerSlot = BuildingOwner, BuildingHealth = BuildingHealth,
                 BuildingCellStart = BCellStart, BuildingSorted = BSorted,
-                InvCellSize = inv, CellsX = CellsAcross, CellsY = CellsAcross, SearchCells = (int)math.ceil(Range / CellSize),
+                InvCellSize = inv, CellsX = CellsAcross, CellsY = CellsAcross, SearchCells = SearchCells,
                 Tick = tick, Slice = slice, Target = Target, TargetKind = TargetKind,
                 OpaqueTile = Opaque, WallState = WallState, WallOwnerSlot = WallState, BuildingFlag = BuildingFlag, Width = 1, Height = 1, // open ground: one clear tile
             }.Schedule(Positions.Length, 64, h);
@@ -82,7 +88,7 @@ public class SpatialHashTests
             Opaque.Dispose();
             Positions.Dispose(); Owner.Dispose(); AttackMask.Dispose(); Health.Dispose(); Type.Dispose(); Stance.Dispose(); OrderSlot.Dispose(); OrderLive.Dispose(); Cell.Dispose(); CellStart.Dispose();
             Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose(); BuildingPositions.Dispose(); BuildingOwner.Dispose();
-            BuildingHealth.Dispose(); BCell.Dispose(); BCellStart.Dispose(); BSorted.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose(); WallState.Dispose(); BuildingFlag.Dispose();
+            BuildingHealth.Dispose(); BCell.Dispose(); BCellStart.Dispose(); BSorted.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose(); MinRangeSqByType.Dispose(); Visible.Dispose(); WallState.Dispose(); BuildingFlag.Dispose();
         }
     }
 
@@ -107,6 +113,41 @@ public class SpatialHashTests
             Assert.AreEqual(expected, math.distancesq(rig.Positions[i], rig.Positions[rig.Target[i]]), 1e-5f);
         }
         Assert.Greater(found, 0);
+    }
+
+    [Test]
+    public void ShortAndLongRangesBothMatchBruteForce()
+    {
+        // A short-range type scans only the cells its range reaches; a long-range type (a Sniper's 16) still finds far targets.
+        const int count = 2000, size = 128;
+        const float longRange = 16f;
+        using var rig = new Rig(count, 0, size);
+        rig.RangeSqByType.Dispose();
+        rig.RangeSqByType = new NativeArray<float>(new[] { 0f, Range * Range, longRange * longRange }, Allocator.TempJob);
+        rig.DamageByType.Dispose();
+        rig.DamageByType = new NativeArray<float>(new[] { 0f, 1f, 1f }, Allocator.TempJob);
+        rig.MinRangeSqByType.Dispose();
+        rig.MinRangeSqByType = new NativeArray<float>(3, Allocator.TempJob);
+        rig.SearchCells = (int)math.ceil(longRange / CellSize);
+        var rng = new Random(20261018u);
+        for (int i = 0; i < count; i++)
+        {
+            rig.Positions[i] = rng.NextFloat2(0f, size);
+            rig.Owner[i] = (byte)(1 + rng.NextInt(2));
+            rig.Type[i] = (byte)(1 + rng.NextInt(2));
+        }
+        rig.Search();
+
+        for (int i = 0; i < count; i++)
+        {
+            float rangeSq = rig.RangeSqByType[rig.Type[i]];
+            float expected = float.PositiveInfinity;
+            for (int j = 0; j < count; j++)
+                if (rig.Owner[j] != rig.Owner[i]) expected = math.min(expected, math.distancesq(rig.Positions[i], rig.Positions[j]));
+            if (expected > rangeSq) { Assert.AreEqual(-1, rig.Target[i], $"unit {i} has no enemy in range"); continue; }
+            Assert.GreaterOrEqual(rig.Target[i], 0, $"unit {i} (type {rig.Type[i]}) missed an enemy {math.sqrt(expected)} away");
+            Assert.AreEqual(expected, math.distancesq(rig.Positions[i], rig.Positions[rig.Target[i]]), 1e-5f);
+        }
     }
 
     [Test]

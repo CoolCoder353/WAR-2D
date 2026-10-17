@@ -244,6 +244,7 @@ namespace WAR2D.UI
         private static string LabelOf(string action)
         {
             foreach ((string label, string name, _) in Bindings) if (name == action) return label;
+            if (action.StartsWith("Squad") && action.Length == 6) return "Squad " + action[5] + " (select)";
             return action;
         }
 

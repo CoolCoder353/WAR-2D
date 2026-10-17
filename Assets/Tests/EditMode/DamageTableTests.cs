@@ -27,7 +27,7 @@ public class DamageTableTests
     {
         var table = Table(out _);
         Assert.AreEqual(0.5f, DamageTable.Get(table, (int)UnitType.Tank, TargetClass.Wall), 1e-6f);
-        Assert.AreEqual(1f, DamageTable.Get(table, (int)UnitType.Tank, TargetClass.Unit), 1e-6f);
+        Assert.AreEqual(1f, DamageTable.Get(table, (int)UnitType.Tank, TargetClass.LightUnit), 1e-6f);
         table.Dispose();
     }
 
@@ -35,8 +35,8 @@ public class DamageTableTests
     public void OutOfRangeAttackerReturnsOne()
     {
         var table = Table(out int types);
-        Assert.AreEqual(1f, DamageTable.Get(table, types + 5, TargetClass.Unit));
-        Assert.AreEqual(1f, DamageTable.Get(table, -1, TargetClass.Unit));
+        Assert.AreEqual(1f, DamageTable.Get(table, types + 5, TargetClass.LightUnit));
+        Assert.AreEqual(1f, DamageTable.Get(table, -1, TargetClass.LightUnit));
         table.Dispose();
     }
 }

@@ -17,7 +17,7 @@ public class SimConstructionTests
         float one, two;
         using (var sim = new SimHarness(SimHarness.OpenMap(48)))
         {
-            int b = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.SmallUnitSpawner, new int2(20, 20)); // 300 health
+            int b = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(20, 20)); // 300 health
             int[] builder = sim.Spawn(SimHarness.OwnerA, new float2(18.5f, 20.5f), UnitType.Builder);
             sim.Tick();
             sim.Order(SimHarness.OwnerA, OrderKind.Build, new int2(20, 20), builder[0]);
@@ -26,7 +26,7 @@ public class SimConstructionTests
         }
         using (var sim = new SimHarness(SimHarness.OpenMap(48)))
         {
-            int b = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.SmallUnitSpawner, new int2(20, 20));
+            int b = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(20, 20));
             int[] a = sim.Spawn(SimHarness.OwnerA, new float2(18.5f, 20.5f), UnitType.Builder);
             int[] c = sim.Spawn(SimHarness.OwnerA, new float2(21.5f, 20.5f), UnitType.Builder);
             sim.Tick();

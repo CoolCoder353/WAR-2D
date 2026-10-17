@@ -82,16 +82,22 @@ namespace WAR2D.UI
             foreach (KeyValuePair<BuildingType, BuildingConfig> building in config.Buildings) costs[building.Key] = building.Value.UpfrontCost;
             var unitCosts = new Dictionary<UnitType, float>();
             foreach (KeyValuePair<UnitType, UnitConfig> unit in config.Units) unitCosts[unit.Key] = unit.Value.UpfrontCost;
-            // Until the v0.12 plan gives each unit its own BuildSeconds, a producer makes one unit every 1 / SpawnRate seconds.
-            float BuildSeconds(UnitType unit, BuildingType at) =>
-                config.Buildings.TryGetValue(at, out BuildingConfig b) && b.SpawnRate > 0f ? 1f / b.SpawnRate : 0f;
-            string RoleOf(UnitType unit) =>
-                config.Units.TryGetValue(unit, out UnitConfig u) && u.Damage > 0 ? $"Range {u.Range:0.#}, health {u.Health:0}" : null;
+            float BuildSeconds(UnitType unit, BuildingType at) => config.Units.TryGetValue(unit, out UnitConfig u) ? u.BuildSeconds : 0f;
+            string RoleOf(UnitType unit)
+            {
+                if (!config.Units.TryGetValue(unit, out UnitConfig u)) return null;
+                if (u.BlastRadius > 0f) return $"Blast {u.BlastRadius:0.#}, health {u.Health:0}";
+                if (u.Damage <= 0) return null;
+                string role = $"Range {u.Range:0.#}";
+                if (u.Splash > 0f) role += $", splash {u.Splash:0.#}";
+                if (u.MinRange > 0f) role += $", can't fire closer than {u.MinRange:0.#}";
+                return role + $", health {u.Health:0}";
+            }
 
             topBar = new TopBarController(root, Model);
             selectionPanel = new SelectionPanelController(root, Selection);
             commandCard = new CommandCardController(root, Selection, Model, costs, unitCosts, config.Siege.WallCost, config.Siege.DemolishRefund,
-                BuildSeconds, RoleOf, switchClearsQueue: false);
+                BuildSeconds, RoleOf, switchClearsQueue: true);
             squadBar = new SquadBarController(root, Selection);
             overlay = new HudOverlayController(root);
             startMarkers = new StartMarkersController(root);
@@ -500,15 +506,16 @@ namespace WAR2D.UI
         {
             WorldStateManager wsm = WorldStateManager.Instance;
             if (wsm == null || buildingIds.Count == 0) return;
-            wsm.CmdChangeQueues(ToArray(buildingIds), (byte)unit, delta);
+            wsm.CmdChangeQueues(ToArray(buildingIds), delta);
         }
 
-        /// <summary>
-        /// A producer's type picked in the selector. Today the server keeps a mixed queue, so the pick only chooses
-        /// which type the queue row changes; the v0.12 plan sends <c>CmdSetProduction</c> here (and turns on the
-        /// command card's switch warning).
-        /// </summary>
-        private void OnProductionSelected(IReadOnlyList<int> buildingIds, UnitType unit) { }
+        /// <summary>A producer's type picked in the selector: the server switches it and clears its queue.</summary>
+        private void OnProductionSelected(IReadOnlyList<int> buildingIds, UnitType unit)
+        {
+            WorldStateManager wsm = WorldStateManager.Instance;
+            if (wsm == null || buildingIds.Count == 0) return;
+            wsm.CmdSetProduction(ToArray(buildingIds), (byte)unit);
+        }
 
         private void OnWall() => UnitCommander.Instance?.BeginWallDrag();
 
