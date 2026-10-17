@@ -120,6 +120,7 @@ public class ArsenalMatchTests
         Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Base, 0f, local, out int2 hq), Is.True);
         wsm.TryAddBuilding(hq, BuildingType.Base, 0f);
         yield return PlayModeMatch.WaitUntil(() => GameCore.Instance.CurrentState == GameState.Playing, 10f);
+        yield return PlayModeMatch.WaitForSight(hq);
         anchorOut?.Invoke(hq);
     }
 

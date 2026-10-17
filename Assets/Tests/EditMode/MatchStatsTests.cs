@@ -25,6 +25,19 @@ public class MatchStatsTests
     }
 
     [Test]
+    public void ACancelledBlueprintIsNeitherBuiltNorLost()
+    {
+        var stats = new MatchStats();
+        stats.BuildingBuilt(3);
+        stats.BuildingBuilt(3);
+        stats.BlueprintCancelled(3);
+        stats.BlueprintCancelled(4); // never below zero
+        Assert.AreEqual(1, stats.Of(3).BuildingsBuilt);
+        Assert.AreEqual(0, stats.Of(3).BuildingsLost);
+        Assert.AreEqual(0, stats.Of(4).BuildingsBuilt);
+    }
+
+    [Test]
     public void PeakArmyKeepsTheLargest()
     {
         var stats = new MatchStats();

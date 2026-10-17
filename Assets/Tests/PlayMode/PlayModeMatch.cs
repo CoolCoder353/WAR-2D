@@ -64,8 +64,16 @@ public static class PlayModeMatch
         Assert.That(WorldStateManager.Instance.TryFindBuildableAnchor(BuildingType.Base, 0f, local, out int2 hq), Is.True);
         WorldStateManager.Instance.TryAddBuilding(hq, BuildingType.Base, 0f);
         yield return WaitUntil(() => GameCore.Instance.CurrentState == GameState.Playing, 10f);
+        yield return WaitForSight(hq);
         anchor?.Invoke(hq);
     }
+
+    /// <summary>
+    /// Waits for the first vision pass to explore the HQ's ground: buildings may only be placed where the
+    /// player's side has explored.
+    /// </summary>
+    public static IEnumerator WaitForSight(int2 hq) =>
+        WaitUntil(() => WorldStateManager.Instance != null && WorldStateManager.Instance.HasExplored(LocalOwner, hq), 10f);
 
     /// <summary>The local player's owner id.</summary>
     public static int LocalOwner => BuildingData.UIntToInt(NetworkClient.localPlayer.netId);

@@ -397,7 +397,7 @@ public class UnitCommander : NetworkBehaviour
             int2 goal = new int2((int)worldPosition.x, (int)worldPosition.y);
             // With only spawners selected, a right-click sets their rally point.
             if (Selection.Selected.Count == 0 && Selection.SelectedBuildings.Count > 0 && AllSpawners(Selection.SelectedBuildings))
-                WorldStateManager.Instance?.CmdSetRally(ToArray(Selection.SelectedBuildings), goal, false);
+                WorldStateManager.Instance?.CmdSetRally(System.Linq.Enumerable.ToArray(Selection.SelectedBuildings), goal, false);
             else OrderClick(goal, GameInput.QueueModifier.IsPressed());
         }
 
@@ -493,17 +493,23 @@ public class UnitCommander : NetworkBehaviour
     private static float2 CentreOf(in BuildingData data) =>
         Footprint.VisualCenter((int2)math.round(data.position), WorldStateManager.GetBuildingSize(data.buildingType));
 
-    private readonly Dictionary<int, float> lastBuildingHealth = new Dictionary<int, float>();
+    /// <summary>Each seen building's health at its last change, and whether it was finished then.</summary>
+    private readonly Dictionary<int, (float health, bool finished)> lastBuildingHealth = new Dictionary<int, (float, bool)>();
 
-    private void OnBuildingEntered(BuildingData data, HealthComponent health) => lastBuildingHealth[data.id] = health.currentHealth;
+    private void OnBuildingEntered(BuildingData data, HealthComponent health) =>
+        lastBuildingHealth[data.id] = (health.currentHealth, Known.Entries.TryGetValue(data.id, out ClientBuildings.Entry e) && e.Progress >= 100);
 
-    /// <summary>A seen building's health changed: a finished one that gained health is being repaired (sparks).</summary>
+    /// <summary>
+    /// A seen building's health changed: one that was already finished at its last change and gained health
+    /// is being repaired (sparks). The construction step that finishes a blueprint raises its health too;
+    /// that is not a repair.
+    /// </summary>
     private void OnBuildingHealthChanged(HealthComponent health)
     {
-        if (lastBuildingHealth.TryGetValue(health.entityId, out float before) && health.currentHealth > before &&
-            Known.Entries.TryGetValue(health.entityId, out ClientBuildings.Entry e) && e.Progress >= 100)
+        bool finished = Known.Entries.TryGetValue(health.entityId, out ClientBuildings.Entry e) && e.Progress >= 100;
+        if (finished && lastBuildingHealth.TryGetValue(health.entityId, out var before) && before.finished && health.currentHealth > before.health)
             Effects.RepairSparks((Vector2)CentreOf(e.Data));
-        lastBuildingHealth[health.entityId] = health.currentHealth;
+        lastBuildingHealth[health.entityId] = (health.currentHealth, finished);
     }
 
     private void OnBuildingRemoved(int id)
@@ -571,13 +577,6 @@ public class UnitCommander : NetworkBehaviour
         if (radarSight < 0f) radarSight = Config.ConfigLoader.LoadConfig().GetBuilding(BuildingType.Radar).Sight;
         if (radarRing == null) radarRing = ClearingRing.Create("RadarRange", SortingOrders.ClearingRing);
         radarRing.Set(centre, radarSight, PlayerPalette.Of(localPlayer != null ? localPlayer.colourIndex : -1));
-    }
-
-    private static int[] ToArray(IReadOnlyList<int> ids)
-    {
-        var array = new int[ids.Count];
-        for (int i = 0; i < array.Length; i++) array[i] = ids[i];
-        return array;
     }
 
     /// <summary>The local player's building (seen now, not a ghost) whose footprint holds the world point.</summary>

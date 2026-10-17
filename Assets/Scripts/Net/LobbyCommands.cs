@@ -105,6 +105,8 @@ public partial class GameCore
         var taken = new List<int>();
         foreach (ClientPlayer player in LobbyClientPlayers()) if (player != joining) taken.Add(player.colourIndex);
         int colour = LobbyRules.FirstFreeColour(taken);
+        if (colour < 0) // LobbyRules.MayJoin keeps the lobby within the palette, so this means that rule broke
+            WAR2D.Dev.Logging.WarLog.Error(WAR2D.Dev.Logging.LogCategory.Lobby, $"no free colour for netId {joining.netId}; sharing colour 0");
         joining.colourIndex = colour < 0 ? 0 : colour;
     }
 

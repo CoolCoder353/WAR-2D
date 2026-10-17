@@ -35,6 +35,7 @@ public class MatchFlowTests
         WorldStateManager.Instance.TryAddBuilding(anchor, BuildingType.Base, 0f);
 
         yield return WaitUntil(() => GameCore.Instance.CurrentState == GameState.Playing, 10f);
+        yield return PlayModeMatch.WaitForSight(anchor);
         Assert.That(local.hasPlacedHQ, Is.True);
         Assert.That(GameCore.Instance.MatchStartPlayerCount, Is.EqualTo(1));
     }
@@ -49,6 +50,7 @@ public class MatchFlowTests
         wsm.TryFindBuildableAnchor(BuildingType.Base, 0f, local, out int2 hq);
         wsm.TryAddBuilding(hq, BuildingType.Base, 0f);
         yield return WaitUntil(() => GameCore.Instance.CurrentState == GameState.Playing, 10f);
+        yield return PlayModeMatch.WaitForSight(hq);
 
         Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Barracks, 0f, local, out int2 spawnerAnchor), Is.True);
         Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.Barracks, spawnerAnchor), Is.True);
@@ -76,6 +78,7 @@ public class MatchFlowTests
         wsm.TryFindBuildableAnchor(BuildingType.Base, 0f, local, out int2 hq);
         wsm.TryAddBuilding(hq, BuildingType.Base, 0f);
         yield return WaitUntil(() => GameCore.Instance.CurrentState == GameState.Playing, 10f);
+        yield return PlayModeMatch.WaitForSight(hq);
         Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Barracks, 0f, local, out int2 spawnerAnchor), Is.True);
         Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.Barracks, spawnerAnchor), Is.True);
         yield return WaitUntil(() => HasBuilding(BuildingType.Barracks), 10f);
@@ -113,6 +116,7 @@ public class MatchFlowTests
         WorldStateManager.Instance.TryFindBuildableAnchor(BuildingType.Base, 0f, local, out int2 hq);
         WorldStateManager.Instance.TryAddBuilding(hq, BuildingType.Base, 0f);
         yield return WaitUntil(() => GameCore.Instance.CurrentState == GameState.Playing, 10f);
+        yield return PlayModeMatch.WaitForSight(hq);
 
         WorldStateManager.Instance.KillAllEntitiesOwnedBy((int)NetworkClient.localPlayer.netId);
 

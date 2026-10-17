@@ -21,6 +21,8 @@ namespace WAR2D.Sim
         private EntityArchetype unitArchetype;
         private EntityQuery unitQuery;
         private readonly List<SimCommand> deferred = new List<SimCommand>();
+        /// <summary>Buildings created in this drain: not in the building arrays until the next gather.</summary>
+        private readonly HashSet<int> createdNow = new HashSet<int>();
 
         protected override void OnCreate()
         {
@@ -71,6 +73,7 @@ namespace WAR2D.Sim
 
             List<SimCommand> commands = context.Commands.Drain();
             deferred.Clear();
+            createdNow.Clear();
             bool terrainChanged = wallsChanged;
             foreach (SimCommand command in commands)
             {
@@ -78,6 +81,7 @@ namespace WAR2D.Sim
                 {
                     case SimCommandKind.CreateBuilding:
                         CreateBuilding(context, command.Building);
+                        createdNow.Add(command.Building.Data.id);
                         PushUnitsOutOf(data, context, command.Building, clock.UnitCount);
                         break;
                     case SimCommandKind.SetTile:
@@ -115,7 +119,7 @@ namespace WAR2D.Sim
                         else deferred.Add(command);
                         break;
                     case SimCommandKind.OrderUnits:
-                        if (clock.Running) ApplyOrder(data, context, command, clock.UnitCount);
+                        if (clock.Running && !TargetsBuildingCreatedNow(context, command)) ApplyOrder(data, context, command, clock.UnitCount);
                         else deferred.Add(command);
                         break;
                 }
@@ -124,6 +128,15 @@ namespace WAR2D.Sim
             if (deferred.Count > 0) context.Commands.Requeue(deferred);
             if (context.Diplomacy.Dirty) context.Diplomacy.CopyTo(data);
         }
+
+        /// <summary>
+        /// True for a Build or Repair order on a building created earlier in this drain. It waits one boundary:
+        /// the gather has not put the building in the arrays its target check reads, so it would be dropped
+        /// (placing a blueprint sends the selected Builders in the same frame).
+        /// </summary>
+        private bool TargetsBuildingCreatedNow(SimContext context, in SimCommand command) =>
+            createdNow.Count > 0 && (command.Order == OrderKind.Build || command.Order == OrderKind.Repair) && context.Map.Grid.Contains(command.Tile) &&
+            context.BuildingAt.TryGetValue(context.Map.Grid.Index(command.Tile), out int id) && createdNow.Contains(id);
 
         /// <summary>Applies a diplomacy change between two owners with slots, and reports it.</summary>
         private static void ApplyDiplomacy(SimContext context, in SimCommand command)
@@ -324,6 +337,8 @@ namespace WAR2D.Sim
                 command.OnSpawned?.Invoke(-1);
                 return;
             }
+            // Load-bearing: the economy job recounts UnitsBySlot every tick, but several spawns can drain in one
+            // boundary, so each counts itself here or a burst would pass the per-player cap check above.
             data.UnitsBySlot[slot]++;
             Entity entity = EntityManager.CreateEntity(unitArchetype);
             EntityManager.SetComponentData(entity, new Unit
@@ -375,6 +390,7 @@ namespace WAR2D.Sim
                 if (!all && units[i].OwnerId != ownerId) continue;
                 doomed.Add(entities[i]);
                 context.Ids.Free(units[i].Id);
+                // The economy recounts this next tick; until then, a spawn later in this same drain sees the room.
                 if (units[i].OwnerSlot < data.UnitsBySlot.Length) data.UnitsBySlot[units[i].OwnerSlot]--;
                 context.RaiseUnitDied(units[i].Id, units[i].Position);
             }
@@ -423,7 +439,14 @@ namespace WAR2D.Sim
                 // A large unit needs a spot with its clearance (no rock or wall within a tile), not just a free tile.
                 // Clearance is part of the goal, not the walk: the tiles next to the new wall or footprint have none.
                 bool large = data.SizeClass[slot] == WAR2D.Pathing.FlowSizeClass.Large;
-                if (!TileSearch.FindNearest((int2)math.floor(p), t => grid.IsWalkable(t) && (!large || data.LargeGrid[t.y * data.Width + t.x] == 0), t => TileRules.IsFloor(grid.TileAt(t)), 4096, out int2 free)) continue;
+                int2 at = (int2)math.floor(p);
+                if (!TileSearch.FindNearest(at, t => grid.IsWalkable(t) && (!large || data.LargeGrid[t.y * data.Width + t.x] == 0), t => TileRules.IsFloor(grid.TileAt(t)), 4096, out int2 free) &&
+                    // No clear spot near: a free tile without the clearance still beats staying inside the wall.
+                    !(large && TileSearch.FindNearest(at, t => grid.IsWalkable(t), t => TileRules.IsFloor(grid.TileAt(t)), 4096, out free)))
+                {
+                    WarLog.Warn(LogCategory.Sim, $"no free tile near {at} for unit {data.IdOf[slot]}; it stays where it is");
+                    continue;
+                }
                 if (data.PendingMoves.Capacity <= data.PendingMoves.Count()) data.PendingMoves.Capacity *= 2;
                 data.PendingMoves[data.IdOf[slot]] = (float2)free + 0.5f;
             }

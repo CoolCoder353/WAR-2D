@@ -11,7 +11,9 @@ public enum PlacementResult
     HQNotPlacedYet,
     TileBlocked,
     MinerMustFaceGem,
-    OutsideStartOptions
+    OutsideStartOptions,
+    /// <summary>Part of the footprint is ground the player's side has never seen.</summary>
+    Unexplored
 }
 
 /// <summary>Server-authoritative building placement rules. Pure: all world access is passed in.</summary>

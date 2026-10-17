@@ -70,7 +70,7 @@ public class UpnpProtocolTests
         Assert.AreEqual(0, UpnpProtocol.ParseErrorCode("garbage"));
     }
 
-    [TestCase("203.0.113.5", true)]
+    [TestCase("203.0.114.5", true)]
     [TestCase("8.8.8.8", true)]
     [TestCase("100.63.255.255", true)]
     [TestCase("172.32.0.1", true)]
@@ -87,6 +87,8 @@ public class UpnpProtocolTests
     [TestCase("2001:db8::1", false)]
     [TestCase("198.18.0.1", false)]
     [TestCase("192.0.2.1", false)]
+    [TestCase("198.51.100.1", false)]
+    [TestCase("203.0.113.5", false)]
     public void ClassifiesPublicAddresses(string address, bool isPublic)
     {
         Assert.AreEqual(isPublic, UpnpProtocol.IsPublic(IPAddress.Parse(address)));

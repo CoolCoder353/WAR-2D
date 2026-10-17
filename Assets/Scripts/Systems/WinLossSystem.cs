@@ -26,6 +26,7 @@ public partial struct WinLossSystem : ISystem
         var statuses = new List<PlayerStatus>();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in GameCore.Instance.ServerPlayers)
         {
+            if (entry.Key == null) continue;
             int id = (int)entry.Key.netId;
             statuses.Add(new PlayerStatus(id, hqOwners.Contains(id), entry.Value.state == PlayerState.Eliminated, GameCore.Instance.TeamOf(id)));
         }

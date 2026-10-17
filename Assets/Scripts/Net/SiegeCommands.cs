@@ -33,10 +33,14 @@ public partial class WorldStateManager
             if (health.currentHealth <= 0f) continue; // already removed this frame (or dying): never refund twice
             float refund = ConstructionRules.Refund(blueprint, config.GetBuilding(building.buildingType).UpfrontCost, config.Siege.DemolishRefund);
             if (refund > 0f) player.Refund(refund);
+            if (blueprint) cancelledBlueprints.Add(id); // not a building lost (OnEntityDestroyed)
             health.currentHealth = 0f; // DestructionSystem removes it, frees the footprint and records the explosion
             EntityManager.SetComponentData(entity, health);
         }
     }
+
+    /// <summary>Blueprints their owner cancelled this frame, so their destruction does not count as a building lost.</summary>
+    private readonly HashSet<int> cancelledBlueprints = new HashSet<int>();
 
     private readonly List<int2> wallScratch = new List<int2>();
 

@@ -109,7 +109,7 @@ Upkeep is charged once per second. Units are charged one by one (oldest slot fir
 
 ## Buildings
 
-Buildings are placed from the HUD and must sit entirely on free ground. Except for the HQ, they can only be placed during *Playing*; the HQ can only be placed during *PlacingHQ*, one per player. Every building except the HQ starts as a **blueprint** that Builders finish (see "Siege").
+Buildings are placed from the HUD and must sit entirely on free ground your side has explored (the HQ excepted: nobody has seen anything when it is placed). Except for the HQ, they can only be placed during *Playing*; the HQ can only be placed during *PlacingHQ*, one per player. Every building except the HQ starts as a **blueprint** that Builders finish (see "Siege").
 
 | Building | Size | Health | Upfront cost | Upkeep / s | Function |
 |---|---|---|---|---|---|
@@ -167,7 +167,7 @@ Units reach full speed at once (the unused `Acceleration` setting was dropped). 
 
 ## Fog of war, teams and diplomacy
 
-- Each player sees through the eyes of all their units and buildings, plus those of every player sharing vision with them. Teammates share vision with each other from the start. Sight radius (`Sight`) is per unit and building type in `GameConfig.xml`: Tank 8 tiles, Builder 6, Digger 6, HQ 10, Spawner 6, Miner 4, Radar 20 (Radar sight ignores walls), Bomb 0.
+- Each player sees through the eyes of all their units and buildings, plus those of every player sharing vision with them. Teammates share vision with each other from the start. Sight radius (`Sight`) is per unit and building type in `GameConfig.xml`: Tank 8 tiles, Builder 6, Digger 6, HQ 10, Spawner 6, Miner 4, Radar 20 (Radar sight ignores walls), Bomb 0. A blueprint sees nothing until it is finished.
 - Walls block sight; you can see a wall's face but not what's behind it. Fog is tracked on a grid of 2×2-tile cells and updated 5 times a second.
 - The map shows three states: **unexplored** (black), **explored** (dimmed: you've seen it before), and **visible** (clear).
 - You only receive other players' units standing where you can see now (your own sight plus vision shared with you). Enemy buildings you've seen stay on your map as dimmed **last-seen ghosts** when they go out of sight; you only find out a ghost was destroyed when you see its spot again.
@@ -187,7 +187,7 @@ The alert feed (top left) shows the newest four alerts for 8 s each (`Alerts/Sho
 
 All numbers are starting values in `GameConfig.xml` (`Siege`, `Units`, `Buildings`), meant to be tuned in play.
 
-- **Builders** (60 cost, 60 health) come from the HQ queue. They build everything except the HQ and never attack. Every building starts as a **blueprint** that charges its full cost and has health in proportion to progress (minimum 1). Each Builder adds `BuildPower` 25 health/s, so a 300-health Spawner takes 12 s with one. Builders work from `WorkReach` 1.6 tiles; Shift queues orders (up to `Orders/MaxQueued`).
+- **Builders** (60 cost, 60 health) come from the HQ queue. They build everything except the HQ and never attack. Every building starts as a **blueprint** that charges its full cost and has health in proportion to progress (minimum 1). Each Builder adds `BuildPower` 25 health/s, so a 300-health Spawner takes 12 s with one. Builders work from `WorkReach` 1.6 tiles; Shift queues orders (up to `Orders/MaxQueued`). Placing a blueprint with Builders selected sends them to build it.
 - **Demolish** (Delete, then confirm): a blueprint refunds in full, a finished building refunds `DemolishRefund` 50%.
 - **Repair** (F): Builders restore own or allied buildings and walls for `RepairCostPerHealth` 0.2 per health; they stop, with an alert, when the owner can't pay.
 - **Walls** (drag): 5 resources and 150 health per segment, 4-connected, up to 64 per drag, no upkeep. Each tile is charged and checked on its own; the wall is built once the tile is empty. Units attack walls by attack-move; a destroyed wall becomes ground.

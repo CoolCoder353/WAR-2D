@@ -54,6 +54,19 @@ public class SimConstructionTests
     }
 
     [Test]
+    public void ABuildOrderInTheSameTickAsItsBlueprintIsKept()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(48));
+        int[] builder = sim.Spawn(SimHarness.OwnerA, new float2(18.5f, 20.5f), UnitType.Builder);
+        sim.Tick();
+        // What placing a blueprint with Builders selected does: the building and the order drain together.
+        int b = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Miner, new int2(20, 20));
+        sim.Order(SimHarness.OwnerA, OrderKind.Build, new int2(20, 20), builder[0]);
+        sim.TickSeconds(4f);
+        Assert.Greater(Progress(sim, b), 0f, "the Builder went to work on the new blueprint");
+    }
+
+    [Test]
     public void OnlyBuildersTakeBuildOrdersAndTanksIgnoreThem()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(48));

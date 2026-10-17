@@ -61,7 +61,7 @@ public partial class WorldStateManager
     {
         if (!CommandGate.Allow(sender, nameof(CmdOrderSquad))) return;
         if (!CommandValidator.IsSquadIndexValid(squad) || !TryActingOwner(sender, out int owner) || !IsOrderValid(kind, goal)) return;
-        Squads.Prune(owner, squad, Ids);
+        if (Squads.Prune(owner, squad, Ids) > 0) squadCountsDirty = true; // the HUD's count went stale
         IReadOnlyList<int> members = Squads.Members(owner, squad);
         if (members.Count == 0) return;
         var ids = new int[members.Count];

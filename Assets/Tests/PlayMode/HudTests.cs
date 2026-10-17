@@ -64,7 +64,9 @@ public class HudTests
         {
             var anchor = new int2(x, y);
             if (grid.TileAt(anchor + MinerRules.FacingOffset(rotation)) != TileType.Gem) continue;
-            if (wsm.CheckPlacement(BuildingType.Miner, anchor, rotation, local) != PlacementResult.Ok) continue;
+            // Placed by the dev API, so ground the side hasn't explored yet will do.
+            PlacementResult result = wsm.CheckPlacement(BuildingType.Miner, anchor, rotation, local);
+            if (result != PlacementResult.Ok && result != PlacementResult.Unexplored) continue;
             Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.Miner, anchor, rotation), Is.True);
             placed = true;
             break;
@@ -643,20 +645,21 @@ public class HudTests
         ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
         ServerPlayer server = GameCore.Instance.GetServerPlayerById(PlayModeMatch.LocalOwner);
         VisualElement root = HudRoot();
-        float cost = config.GetBuilding(BuildingType.Miner).UpfrontCost;
+        float cost = config.GetBuilding(BuildingType.Barracks).UpfrontCost;
 
+        // Any building will do: a Barracks needs no gem, so it fits on the HQ's explored ground.
         // A blueprint: Cancel at once, the full cost back.
-        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Miner, 0f, local, out int2 a), Is.True);
-        wsm.TryAddBuilding(a, BuildingType.Miner, 0f);
+        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Barracks, 0f, local, out int2 a), Is.True);
+        wsm.TryAddBuilding(a, BuildingType.Barracks, 0f);
         int blueprint = 0;
-        yield return Wait("the Miner blueprint", () => TryOwnBuilding(BuildingType.Miner, out blueprint), 10f);
+        yield return Wait("the Barracks blueprint", () => TryOwnBuilding(BuildingType.Barracks, out blueprint), 10f);
         yield return Remove(root, blueprint, server, cost, false);
 
         // A finished one: Demolish asks first, then half back.
-        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Miner, 0f, local, out int2 b), Is.True);
-        Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.Miner, b), Is.True);
+        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Barracks, 0f, local, out int2 b), Is.True);
+        Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.Barracks, b), Is.True);
         int built = 0;
-        yield return Wait("the finished Miner", () => TryOwnBuilding(BuildingType.Miner, out built) && built != blueprint, 10f);
+        yield return Wait("the finished Barracks", () => TryOwnBuilding(BuildingType.Barracks, out built) && built != blueprint, 10f);
         yield return Remove(root, built, server, cost * config.Siege.DemolishRefund, true);
     }
 

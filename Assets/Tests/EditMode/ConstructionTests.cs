@@ -74,7 +74,7 @@ public class ConstructionTests
     }
 
     [Test]
-    public void ABlueprintSeesOneTileOnly()
+    public void ABlueprintSeesNothing()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(64));
         sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(30, 30)); // Sight 6 when built
@@ -82,5 +82,6 @@ public class ConstructionTests
         sim.Em.CompleteAllTrackedJobs();
         int grid = sim.Context.VisionOf(SimHarness.OwnerA);
         Assert.IsFalse(sim.Context.Data.Sees(grid, new float2(35.5f, 30.5f)));
+        Assert.IsFalse(sim.Context.Data.Sees(grid, new float2(30.5f, 30.5f)), "not even its own tile (owner, 2026-10-18)");
     }
 }

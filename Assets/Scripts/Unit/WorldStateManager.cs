@@ -138,6 +138,7 @@ public partial class WorldStateManager : NetworkBehaviour
         Sim.RepairStalled += (owner, tile) => Alerts?.AddThrottled(owner, new Alert { Kind = AlertKind.RepairsStopped, Tile = tile }, NetworkTime.localTime);
         Sim.TeamResolver = ownerId => GameCore.Instance != null ? GameCore.Instance.TeamOf(ownerId) : -ownerId - 1;
         Sim.Settled += OnSettled;
+        explored = null; // the last match's
         WAR2D.Dev.DebugApi.SettledSnapshot.Attach(Sim);
         AlertsConfig alertConfig = ConfigLoader.LoadConfig().Alerts;
         Alerts = new AlertService(alertConfig.ThrottleSeconds, alertConfig.AreaTiles);
@@ -235,7 +236,17 @@ public partial class WorldStateManager : NetworkBehaviour
     [Client]
     public override void OnStartClient()
     {
-        if (MapSize <= 0) return;
+        if (MapSize <= 0)
+        {
+            // An authored (tilemap) map, in test scenes only: a pure client can't rebuild it, but the host's
+            // client still learns the seen walls and tunnels (its own map view is the scene's tilemaps).
+            if (isServer && Map != null)
+            {
+                terrain = ClientTerrain.Current;
+                terrain.Init(Map.Grid);
+            }
+            return;
+        }
         if (!isServer)
         {
             Map = MapStore.Generate(MapSize, MapSeed, ConfigLoader.LoadConfig().Match.Map.GemChance);
@@ -349,7 +360,7 @@ public partial class WorldStateManager : NetworkBehaviour
         double t = PerfSplits.Now;
         FlushBlasts(data);
         PerfSplits.Mark(1, ref t);
-        if ((tick - 1) % data.VisionInterval == 0) WatchRadars(data, count);
+        if ((tick - 1) % data.VisionInterval == 0) { WatchRadars(data, count); SnapshotExplored(data); }
         PerfSplits.Mark(0, ref t);
         FlushDeathEvents(data);
         PerfSplits.Mark(2, ref t);
@@ -572,7 +583,12 @@ public partial class WorldStateManager : NetworkBehaviour
         {
             BuildingData building = EntityManager.GetComponentData<BuildingData>(entity);
             int id = building.id;
-            if (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing) GameCore.Instance.Stats.BuildingLost(building.ownerId);
+            bool cancelled = cancelledBlueprints.Remove(id);
+            if (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing)
+            {
+                if (cancelled) GameCore.Instance.Stats.BlueprintCancelled(building.ownerId);
+                else GameCore.Instance.Stats.BuildingLost(building.ownerId);
+            }
             Buildings.Remove(id);
             if (building.buildingType == BuildingType.Bomb)
             {
@@ -731,9 +747,42 @@ public partial class WorldStateManager : NetworkBehaviour
         ServerPlayer acting = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(player.netId));
         if (acting == null || acting.state != PlayerState.Playing) return PlacementResult.WrongGameState;
 
+        // Only on ground the player's side has seen: a blueprint in the fog would probe it (the HQ is placed before anyone sees).
+        if (type != BuildingType.Base)
+            foreach (int2 tile in Footprint.Tiles(anchor, GetBuildingSize(type)))
+                if (!HasExplored(BuildingData.UIntToInt(player.netId), tile)) return PlacementResult.Unexplored;
+
         return PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
             player.hasPlacedHQ, Map.Grid.TileAt, tile => Map.IsUsed(tile) || KnownBombAt(tile, BuildingData.UIntToInt(player.netId)), tile => false, // units are pushed out of new footprints
             OwnStartOptions(player));
+    }
+
+    private byte[] explored;
+    private int exploredFogW, exploredFogH, exploredCellSize, exploredCells;
+
+    /// <summary>
+    /// Copies every vision grid's explored cells at <c>Settled</c> after a vision pass, so placement checks
+    /// between ticks never read <see cref="SimData"/>.
+    /// </summary>
+    [Server]
+    private void SnapshotExplored(SimData data)
+    {
+        if (explored == null || explored.Length != data.Explored.Length) explored = new byte[data.Explored.Length];
+        data.Explored.CopyTo(explored);
+        exploredFogW = data.FogW;
+        exploredFogH = data.FogH;
+        exploredCellSize = data.FogCellSize;
+        exploredCells = data.FogCells;
+    }
+
+    /// <summary>True when the owner's side has ever seen <paramref name="tile"/> (as of the last vision pass).</summary>
+    [Server]
+    internal bool HasExplored(int ownerId, int2 tile)
+    {
+        if (explored == null || Sim == null || exploredCellSize <= 0 || !Sim.TrySlotOf(ownerId, out int grid)) return false;
+        int2 cell = math.clamp(tile / exploredCellSize, 0, new int2(exploredFogW - 1, exploredFogH - 1));
+        int index = grid * exploredCells + cell.y * exploredFogW + cell.x;
+        return (uint)index < (uint)explored.Length && explored[index] != 0;
     }
 
     /// <summary>The test for "inside one of this player's start options", or null when they have none (dev bots and tilemap maps).</summary>

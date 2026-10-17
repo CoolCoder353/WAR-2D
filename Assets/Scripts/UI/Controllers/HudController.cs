@@ -506,7 +506,7 @@ namespace WAR2D.UI
         {
             WorldStateManager wsm = WorldStateManager.Instance;
             if (wsm == null || buildingIds.Count == 0) return;
-            wsm.CmdChangeQueues(ToArray(buildingIds), delta);
+            wsm.CmdChangeQueues(System.Linq.Enumerable.ToArray(buildingIds), delta);
         }
 
         /// <summary>A producer's type picked in the selector: the server switches it and clears its queue.</summary>
@@ -514,7 +514,7 @@ namespace WAR2D.UI
         {
             WorldStateManager wsm = WorldStateManager.Instance;
             if (wsm == null || buildingIds.Count == 0) return;
-            wsm.CmdSetProduction(ToArray(buildingIds), (byte)unit);
+            wsm.CmdSetProduction(System.Linq.Enumerable.ToArray(buildingIds), (byte)unit);
         }
 
         private void OnWall() => UnitCommander.Instance?.BeginWallDrag();
@@ -522,16 +522,9 @@ namespace WAR2D.UI
         private void OnRemove(IReadOnlyList<int> buildingIds)
         {
             if (buildingIds.Count == 0) return;
-            WorldStateManager.Instance?.CmdCancelBuildings(ToArray(buildingIds));
+            WorldStateManager.Instance?.CmdCancelBuildings(System.Linq.Enumerable.ToArray(buildingIds));
             UnitCommander.Instance?.Selection.SelectBuildings(System.Array.Empty<int>(), false);
             Selection.Pull();
-        }
-
-        private static int[] ToArray(IReadOnlyList<int> ids)
-        {
-            var array = new int[ids.Count];
-            for (int i = 0; i < array.Length; i++) array[i] = ids[i];
-            return array;
         }
 
         private void OnSquad(int squad)

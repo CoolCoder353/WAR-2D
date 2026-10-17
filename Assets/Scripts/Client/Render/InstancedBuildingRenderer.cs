@@ -29,7 +29,7 @@ namespace WAR2D.Client.Render
         private NativeArray<UnitInstance> scratch;
         private readonly BuildingFrames frames;
         private readonly BuildingPacking.Lists lists = new BuildingPacking.Lists();
-        private readonly Dictionary<int, (float health, float flashUntil)> hits = new Dictionary<int, (float, float)>();
+        private readonly Dictionary<int, (float health, float flashUntil, bool ghost)> hits = new Dictionary<int, (float, float, bool)>();
         private readonly HashSet<int> seen = new HashSet<int>();
         private readonly List<int> gone = new List<int>();
         private float now;
@@ -124,7 +124,10 @@ namespace WAR2D.Client.Render
             Submit(lists.Bars, ref bars, ref barCapacity, barMaterial);
         }
 
-        /// <summary>A building whose health dropped since the last frame flashes red briefly (it was hit).</summary>
+        /// <summary>
+        /// A building whose health dropped since the last frame flashes red briefly (it was hit). A ghost that
+        /// comes back into sight with less health than last seen took that damage out of sight: no flash.
+        /// </summary>
         private void TrackHits(ClientBuildings known)
         {
             seen.Clear();
@@ -133,8 +136,8 @@ namespace WAR2D.Client.Render
                 int id = e.Data.id;
                 seen.Add(id);
                 float health = e.Health.currentHealth;
-                if (hits.TryGetValue(id, out var h)) hits[id] = (health, health < h.health && !e.Ghost ? now + FlashSeconds : h.flashUntil);
-                else hits[id] = (health, 0f);
+                if (hits.TryGetValue(id, out var h)) hits[id] = (health, health < h.health && !e.Ghost && !h.ghost ? now + FlashSeconds : h.flashUntil, e.Ghost);
+                else hits[id] = (health, 0f, e.Ghost);
             }
             if (hits.Count == seen.Count) return;
             gone.Clear();
