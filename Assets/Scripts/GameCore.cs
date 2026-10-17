@@ -270,13 +270,13 @@ public partial class GameCore : NetworkBehaviour
         {
             entry.Value.state = PlayerState.Playing;
             entry.Value.ResetResources(Settings.StartingResources);
-            entry.Key.GetComponent<ClientPlayer>().hasPlacedHQ = false;
+            if (entry.Key != null) entry.Key.GetComponent<ClientPlayer>().hasPlacedHQ = false;
         }
         // Captured at launch so a departure before Playing can't stop the survivor from winning.
         MatchStartPlayerCount = ServerPlayers.Count;
         // Join order (ascending net id), as the lobby lists the players and colours their HQ sites.
         var order = new List<int>();
-        foreach (NetworkIdentity identity in ServerPlayers.Keys) order.Add(BuildingData.UIntToInt(identity.netId));
+        foreach (NetworkIdentity identity in ServerPlayers.Keys) if (identity != null) order.Add(BuildingData.UIntToInt(identity.netId));
         order.Sort();
         PlayerOrder.Clear();
         foreach (int owner in order) PlayerOrder.Add(owner);
@@ -311,7 +311,7 @@ public partial class GameCore : NetworkBehaviour
     {
         var choices = new List<(int Owner, int Choice)>();
         foreach (NetworkIdentity identity in ServerPlayers.Keys)
-            choices.Add((BuildingData.UIntToInt(identity.netId), identity.GetComponent<ClientPlayer>().lobbyTeam));
+            if (identity != null) choices.Add((BuildingData.UIntToInt(identity.netId), identity.GetComponent<ClientPlayer>().lobbyTeam));
         Teams.Clear();
         foreach (KeyValuePair<int, int> pair in TeamRules.Assign(choices)) Teams[pair.Key] = pair.Value;
         MatchStartTeamCount = TeamRules.CountTeams(Teams.Values);
@@ -320,7 +320,7 @@ public partial class GameCore : NetworkBehaviour
     [Server]
     public void CheckHQPlacementProgress()
     {
-        int remaining = ServerPlayers.Keys.Count(id => !id.GetComponent<ClientPlayer>().hasPlacedHQ);
+        int remaining = ServerPlayers.Keys.Count(id => id != null && !id.GetComponent<ClientPlayer>().hasPlacedHQ);
         RpcUpdateHQPlacementProgress(remaining);
 
         if (remaining == 0 && CurrentState == GameState.PlacingHQ)
@@ -399,6 +399,7 @@ public partial class GameCore : NetworkBehaviour
         WorldStateManager.Instance?.DestroyAllEntities();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
+            if (entry.Key == null) continue; // left mid-tick; OnPlayerLeave removes them
             ClientPlayer client = entry.Key.GetComponent<ClientPlayer>();
             if (winners.Contains(BuildingData.UIntToInt(entry.Key.netId))) client.RpcOnPlayerWon(entry.Value.connection);
             else
@@ -419,6 +420,7 @@ public partial class GameCore : NetworkBehaviour
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
             entry.Value.state = PlayerState.Eliminated;
+            if (entry.Key == null) continue;
             entry.Key.GetComponent<ClientPlayer>().RpcOnMatchDraw(entry.Value.connection);
         }
     }

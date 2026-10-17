@@ -138,22 +138,19 @@ public class ClientPlayer : NetworkBehaviour
         upkeepPerSecond = upkeep;
     }
 
-    private readonly System.Collections.Generic.Dictionary<int, int[]> spawnerQueues = new System.Collections.Generic.Dictionary<int, int[]>();
+    private readonly System.Collections.Generic.Dictionary<int, (UnitType type, int count)> spawnerQueues = new System.Collections.Generic.Dictionary<int, (UnitType, int)>();
 
     /// <summary>Units queued on one of the local player's producers, as last told by the server (0 when unknown).</summary>
-    public int SpawnerQueue(int buildingId)
-    {
-        if (!spawnerQueues.TryGetValue(buildingId, out int[] counts)) return 0;
-        int total = 0;
-        foreach (int c in counts) total += c;
-        return total;
-    }
+    public int SpawnerQueue(int buildingId) => spawnerQueues.TryGetValue(buildingId, out var q) ? q.count : 0;
 
-    /// <summary>Units of one type queued on one of the local player's producers (0 when unknown).</summary>
+    /// <summary>Units of one type queued on one of the local player's producers (0 when unknown or another type is selected).</summary>
     public int SpawnerQueueOf(int buildingId, UnitType type) =>
-        spawnerQueues.TryGetValue(buildingId, out int[] counts) && (int)type < counts.Length ? counts[(int)type] : 0;
+        spawnerQueues.TryGetValue(buildingId, out var q) && q.type == type ? q.count : 0;
 
-    /// <summary>Raised when a spawner's queue count arrives: (building id, count).</summary>
+    /// <summary>The type one of the local player's producers makes, as last told by the server; None until the server has said (a new producer starts on its building's first type).</summary>
+    public UnitType SpawnerType(int buildingId) => spawnerQueues.TryGetValue(buildingId, out var q) ? q.type : UnitType.None;
+
+    /// <summary>Raised when a producer's type or queue count arrives: (building id, count).</summary>
     public event System.Action<int, int> SpawnerQueueChanged;
 
     private readonly System.Collections.Generic.Dictionary<int, int2> spawnerRallies = new System.Collections.Generic.Dictionary<int, int2>();
@@ -172,14 +169,12 @@ public class ClientPlayer : NetworkBehaviour
     /// <summary>The number of the local player's live units in each squad (0–9), as last told by the server.</summary>
     public int[] SquadCounts { get; private set; } = new int[WAR2D.Sim.Squads.Count];
 
-    /// <summary>One of the owner's spawners changed its queue. Private: only the owner learns it.</summary>
+    /// <summary>One of the owner's producers changed its type or queue count. Private: only the owner learns it.</summary>
     [TargetRpc]
-    public void TargetSpawnerQueue(NetworkConnection target, int buildingId, int[] countsByType)
+    public void TargetSpawnerQueue(NetworkConnection target, int buildingId, byte unitType, int count)
     {
-        int count = 0;
-        if (countsByType != null && countsByType.Length <= 64) foreach (int c in countsByType) count += c;
-        if (count <= 0) spawnerQueues.Remove(buildingId);
-        else spawnerQueues[buildingId] = countsByType;
+        if (!System.Enum.IsDefined(typeof(UnitType), (UnitType)unitType) || count < 0 || count > SpawnerRules.MaxQueue) return;
+        spawnerQueues[buildingId] = ((UnitType)unitType, count);
         SpawnerQueueChanged?.Invoke(buildingId, count);
     }
 
@@ -230,16 +225,22 @@ public class ClientPlayer : NetworkBehaviour
         DiplomacyChanged?.Invoke();
     }
 
-    /// <summary>Plays bomb blasts the server has filtered to tiles this player sees.</summary>
+    /// <summary>Plays bomb and Suicide bomber blasts the server has filtered to tiles this player sees.</summary>
     [TargetRpc]
-    public void TargetPlayBlasts(NetworkConnection target, Vector2[] positions)
+    public void TargetPlayBlasts(NetworkConnection target, Vector2[] bombs, Vector2[] bombers)
     {
-        if (positions == null) return;
-        foreach (Vector2 p in positions)
-        {
-            Effects.BombBlast(p);
-            WAR2D.Audio.AudioService.ReportDeath();
-        }
+        if (bombs != null)
+            foreach (Vector2 p in bombs)
+            {
+                Effects.BombBlast(p);
+                WAR2D.Audio.AudioService.ReportDeath();
+            }
+        if (bombers != null)
+            foreach (Vector2 p in bombers)
+            {
+                Effects.BomberBlast(p);
+                WAR2D.Audio.AudioService.ReportDeath();
+            }
     }
 
     /// <summary>Plays death explosions the server has filtered to this player's view.</summary>

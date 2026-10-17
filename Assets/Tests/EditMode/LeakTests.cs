@@ -309,6 +309,66 @@ public class LeakTests
     }
 
     [Test]
+    public void ArsenalCombatNeverLeaks([Values(1, 2)] int seed)
+    {
+        using var sim = new SimHarness(Map(), c => c.Simulation.TargetSearchSliceTicks = 1);
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        var spies = new[] { new Spy(sim.Context, replication, SimHarness.OwnerA), new Spy(sim.Context, replication, OwnerC) };
+        var random = new Unity.Mathematics.Random((uint)seed);
+        UnitType[] roster = { UnitType.Tank, UnitType.Scout, UnitType.Heavy, UnitType.Artillery, UnitType.Sniper, UnitType.Flamethrower, UnitType.SuicideBomber };
+        var aBoxes = new List<int[]>();
+        var cBoxes = new List<int[]>();
+        for (int u = 0; u < 35; u++)
+        {
+            UnitType type = roster[u % roster.Length];
+            aBoxes.Add(sim.Spawn(SimHarness.OwnerA, new float2(random.NextFloat(4, 40), random.NextFloat(4, 92)), type));
+            cBoxes.Add(sim.Spawn(OwnerC, new float2(random.NextFloat(56, 92), random.NextFloat(4, 92)), type));
+        }
+        sim.Tick(); // the spawns apply, filling the id boxes
+        int[] a = aBoxes.ConvertAll(box => box[0]).ToArray();
+        int[] c = cBoxes.ConvertAll(box => box[0]).ToArray();
+        // Both sides attack-move across the wall line, so splash, walls and blasts happen at the fog's edge.
+        sim.Order(SimHarness.OwnerA, OrderKind.AttackMove, new int2(80, 48), a);
+        sim.Order(OwnerC, OrderKind.AttackMove, new int2(16, 48), c);
+        int blasts = 0;
+        sim.Context.Settled += (data, tick, count) => blasts += data.BombBlasts.Count; // read where the server reads them
+        for (int t = 0; t < 400; t++)
+        {
+            if (t == 300) // whichever bombers are still alive go off where they stand, at the front or behind it
+            {
+                sim.Order(SimHarness.OwnerA, OrderKind.Detonate, default, a);
+                sim.Order(OwnerC, OrderKind.Detonate, default, c);
+            }
+            sim.Tick();
+        }
+        sim.Tick(); // settles the last tick's blasts
+
+        Assert.Greater(blasts, 0, "bombers went off");
+        foreach (Spy spy in spies)
+        {
+            CollectionAssert.IsEmpty(spy.Failures, $"owner {spy.Owner}");
+            Assert.Greater(spy.OthersSeen, 0, "the armies met");
+            spy.Dispose();
+        }
+    }
+
+    [Test]
+    public void BlastsInTheFogAreNotShown()
+    {
+        using var sim = new SimHarness(Map());
+        sim.Spawn(SimHarness.OwnerA, new float2(10, 10));
+        sim.Spawn(OwnerC, new float2(85, 85));
+        for (int t = 0; t < 8; t++) sim.Tick();
+        sim.Em.CompleteAllTrackedJobs();
+        SimData data = sim.Context.Data;
+        var blasts = new List<float2> { new float2(11, 10) };
+        int2 lo = new int2(0, 0), hi = new int2(95, 95);
+        Assert.AreEqual(1, VisibilityRules.SeenBlasts(data, sim.Context.VisionOf(SimHarness.OwnerA), blasts, lo, hi)?.Length, "the owner sees its own blast");
+        Assert.IsNull(VisibilityRules.SeenBlasts(data, sim.Context.VisionOf(OwnerC), blasts, lo, hi), "a blast in C's fog is not sent to C");
+        Assert.IsNull(VisibilityRules.SeenBlasts(data, sim.Context.VisionOf(SimHarness.OwnerA), blasts, new int2(50, 50), new int2(95, 95)), "outside the view box");
+    }
+
+    [Test]
     public void StatsNeverSentBeforeGameOver()
     {
         foreach (GameState state in System.Enum.GetValues(typeof(GameState)))

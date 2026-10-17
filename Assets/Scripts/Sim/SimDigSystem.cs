@@ -88,6 +88,13 @@ namespace WAR2D.Sim
                     int2 lastTile = new int2(last % Width, last / Width);
                     if (math.all(math.abs(lastTile - position) <= 2)) position = lastTile;
                 }
+                // A dig area's Digger is sent to a floor tile beside its target: the line runs from there, so a
+                // wobble on the way or on arrival never cuts a corner into another tile.
+                int order = OrderSlot[i];
+                bool hasOrder = (uint)order < (uint)OrderLive.Length && OrderLive[order] != 0;
+                int2 goalTile = hasOrder ? (int2)math.floor(OrderGoal[order]) : position;
+                bool beside = hasOrder && math.csum(math.abs(goalTile - target)) == 1;
+                if (beside) position = goalTile;
                 DigStep step = DigRules.Next(Tiles, Width, Height, position, target, out int2 dig, out int2 stand);
                 // Keep digging the tile already started while it is solid and in reach, so a wobble across a
                 // tile edge doesn't change the line and reset the progress.
@@ -136,8 +143,7 @@ namespace WAR2D.Sim
                     }
                     continue;
                 }
-                int order = OrderSlot[i];
-                bool live = (uint)order < (uint)OrderLive.Length && OrderLive[order] != 0 && Arrived[i] == 0 && math.all(OrderGoal[order] == (float2)stand + 0.5f);
+                bool live = hasOrder && Arrived[i] == 0 && (beside || math.all(OrderGoal[order] == (float2)stand + 0.5f));
                 if (!live) Moves.Enqueue(new int3(IdOf[i], stand.x, stand.y));
             }
         }

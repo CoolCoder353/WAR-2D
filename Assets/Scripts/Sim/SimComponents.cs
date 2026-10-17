@@ -99,6 +99,19 @@ namespace WAR2D.Sim
         /// <summary>Milliseconds the boundary spent waiting for the previous tick's jobs.</summary>
         public static double LastBoundaryWaitMs;
 
+        /// <summary>
+        /// Main-thread milliseconds of the last tick's parts (the perf gate's split of <see cref="LastMainThreadMs"/>):
+        /// the boundary's dead-unit removal, upkeep, order bookkeeping and <c>Settled</c> handlers (replication and the
+        /// match's own among them), the command stage, and the Burst stages from gather to the end.
+        /// </summary>
+        public static double LastRemoveDeadMs, LastUpkeepMs, LastOrdersMs, LastSettledMs, LastCommandsMs, LastStagesMs;
+
+        /// <summary>Main-thread milliseconds of the match's own <c>Settled</c> handler (<c>WorldStateManager.OnSettled</c>).</summary>
+        public static double LastMatchSettledMs;
+
+        /// <summary>Tick-watch time at which the command stage returned (where <see cref="LastStagesMs"/> starts).</summary>
+        internal static double CommandsEndMs;
+
         /// <summary>Frame on which the last boundary completed, so main-thread readers know the SoA is settled.</summary>
         public static int LastBoundaryFrame = -1;
     }

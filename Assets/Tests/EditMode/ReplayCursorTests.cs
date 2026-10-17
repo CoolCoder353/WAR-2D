@@ -30,4 +30,24 @@ public class ReplayCursorTests
         CollectionAssert.AreEqual(new[] { 0, 20, 40 }, seen);
         File.Delete(path);
     }
+
+    [Test]
+    public void ReachesTheEndOfARecordingWithoutAnEndRecord()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "w2d-cursor-" + Guid.NewGuid().ToString("N") + ReplayFile.Extension);
+        using (var f = File.Create(path))
+        using (var w = new ReplayWriter(f, new ReplayHeader { GameVersion = "t", MapSize = 128, TickSeconds = 0.05f }))
+        {
+            w.Write(0, ReplayChannel.UnitsReliable, new byte[] { 0 });
+            w.Write(20, ReplayChannel.UnitsReliable, new byte[] { 20 }); // cut short: no End record
+        }
+        using var cursor = new ReplayCursor(path);
+        cursor.AdvanceTo(0.5f, (t, c, p) => { });
+        Assert.IsFalse(cursor.AtEnd, "a record is still ahead");
+        cursor.AdvanceTo(1.5f, (t, c, p) => { });
+        Assert.IsTrue(cursor.AtEnd);
+        cursor.Restart();
+        Assert.IsFalse(cursor.AtEnd);
+        File.Delete(path);
+    }
 }

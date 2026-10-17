@@ -203,6 +203,15 @@ public sealed class PerfMatch : MonoBehaviour
         stats.Add("perf.tick.main", SimTiming.LastMainThreadMs - SimTiming.LastBoundaryWaitMs);
         stats.Add("perf.tick.wait", SimTiming.LastBoundaryWaitMs);
         stats.Add("perf.tick.replication", ReplicationService.LastMilliseconds);
+        // The split of tick.main (the boundary's wait excluded): see SimTiming.
+        stats.Add("perf.part.removeDead", SimTiming.LastRemoveDeadMs);
+        stats.Add("perf.part.upkeep", SimTiming.LastUpkeepMs);
+        stats.Add("perf.part.orders", SimTiming.LastOrdersMs);
+        stats.Add("perf.part.settled", SimTiming.LastSettledMs);
+        stats.Add("perf.part.matchSettled", SimTiming.LastMatchSettledMs);
+        stats.Add("perf.part.commands", SimTiming.LastCommandsMs);
+        stats.Add("perf.part.stages", SimTiming.LastStagesMs);
+        for (int s = 0; s < PerfSplits.Names.Length; s++) stats.Add("perf.split." + PerfSplits.Names[s], PerfSplits.Ms[s]);
         stats.Add("perf.units", sim.Clock.UnitCount);
         if (tick - startTick >= SampleTicks) Finish();
     }
@@ -335,10 +344,29 @@ public sealed class PerfMatch : MonoBehaviour
             {
                 pendingSpawns[army]--;
                 if (id > 0) armyIds[army].Add(id);
-            });
+            }, MixedType(spawnCounter++));
             placed++;
         }
         return placed;
+    }
+
+    private int spawnCounter;
+
+    /// <summary>WAR_PERF_TANKS_ONLY=1 deals the old all-Tank armies, to tell the roster's cost from the code's.</summary>
+    private static readonly bool TanksOnly = System.Environment.GetEnvironmentVariable("WAR_PERF_TANKS_ONLY") == "1";
+
+    /// <summary>
+    /// The v0.12 gate roster, dealt by a counter: 60 % Tanks, 15 % Scouts, 10 % Heavies, and 5 % each of
+    /// Artillery, Snipers and Flamethrowers.
+    /// </summary>
+    public static UnitType MixedType(int k)
+    {
+        if (TanksOnly) return UnitType.Tank;
+        int slot = k % 20;
+        if (slot < 12) return UnitType.Tank;
+        if (slot < 15) return UnitType.Scout;
+        if (slot < 17) return UnitType.Heavy;
+        return slot == 17 ? UnitType.Artillery : slot == 18 ? UnitType.Sniper : UnitType.Flamethrower;
     }
 
     /// <summary>Keeps every army at strength while the battle kills it.</summary>

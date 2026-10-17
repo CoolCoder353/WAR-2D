@@ -13,8 +13,17 @@ public static class Effects
     /// <summary>Pool sizes: the most of each kind on screen at once.</summary>
     public const int ExplosionPool = 128, FlashPool = 128, TracerPool = 256, BlastPool = 16, DebrisPool = 64, SparkPool = 64;
 
+    /// <summary>Pool sizes for the v0.12 weapons: sniper tracers, artillery shells and their impacts, flame streams.</summary>
+    public const int SniperPool = 64, ShellPool = 64, ImpactPool = 64, StreamPool = 128, BomberBlastPool = 16;
+
     /// <summary>Seconds a tracer takes to reach its target.</summary>
     public const float TracerSeconds = 0.2f;
+
+    /// <summary>Seconds an artillery shell takes to land.</summary>
+    public const float ShellSeconds = 0.5f;
+
+    /// <summary>Tiles a flame stream sprite is wide; it is stretched to reach the target.</summary>
+    public const float StreamTiles = 3f;
 
 
     /// <summary>One pooled sprite and what it is playing.</summary>
@@ -25,6 +34,10 @@ public static class Effects
         public float Start;
         public Vector3 From, To;
         public bool Active;
+        /// <summary>Seconds a flying effect takes (tracer or shell).</summary>
+        public float Seconds = TracerSeconds;
+        /// <summary>True for a shell: it plays a <see cref="ShellImpact"/> where it lands.</summary>
+        public bool ImpactOnLanding;
     }
 
     private sealed class Pool
@@ -43,6 +56,11 @@ public static class Effects
     private static readonly Pool Blasts = new Pool("BombBlast", BlastPool);
     private static readonly Pool Debris = new Pool("DigDebris", DebrisPool);
     private static readonly Pool Sparks = new Pool("RepairSparks", SparkPool);
+    private static readonly Pool SniperTracers = new Pool("SniperTracer", SniperPool);
+    private static readonly Pool Shells = new Pool("ArtilleryShell", ShellPool);
+    private static readonly Pool Impacts = new Pool("ShellImpact", ImpactPool);
+    private static readonly Pool Streams = new Pool("FlameStream", StreamPool);
+    private static readonly Pool BomberBlasts = new Pool("BomberBlast", BomberBlastPool);
     private static Runner runner;
     private static ArtAtlas atlas;
 
@@ -70,6 +88,15 @@ public static class Effects
         WAR2D.Audio.AudioService.Sfx("bomb_blast", position);
     }
 
+    /// <summary>A Suicide bomber going off at <paramref name="position"/> (4 × 4 tiles of blast).</summary>
+    public static void BomberBlast(Vector2 position)
+    {
+        Slot s = Take(BomberBlasts);
+        if (s == null) return;
+        s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
+        WAR2D.Audio.AudioService.Sfx("bomber_blast", position);
+    }
+
     /// <summary>Rock breaking where a tile was dug out (or a wall fell), centred on the tile.</summary>
     public static void DigDebris(Vector2 position)
     {
@@ -89,25 +116,63 @@ public static class Effects
     }
 
     /// <summary>A muzzle flash at <paramref name="position"/>.</summary>
-    public static void MuzzleFlash(Vector3 position)
+    public static void MuzzleFlash(Vector3 position, string sound = "shot_tank")
     {
         Slot s = Take(Flashes);
         if (s == null) return;
         s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
-        WAR2D.Audio.AudioService.Sfx("shot_tank", position);
+        WAR2D.Audio.AudioService.Sfx(sound, position);
+    }
+
+    /// <summary>The sound a unit type's shot makes (one parameter set per weapon in Art/Audio/sfx).</summary>
+    public static string ShotSound(UnitType attacker) => attacker switch
+    {
+        UnitType.Scout => "shot_scout",
+        UnitType.Flamethrower => "shot_flamethrower",
+        UnitType.Sniper => "shot_sniper",
+        UnitType.Heavy => "shot_heavy",
+        UnitType.Artillery => "shot_artillery",
+        UnitType.Builder => "shot_builder",
+        UnitType.Digger => "shot_digger",
+        _ => "shot_tank",
+    };
+
+    /// <summary>A shell landing at <paramref name="position"/>: the impact sprite and its sound.</summary>
+    public static void ShellImpact(Vector2 position)
+    {
+        Slot s = Take(Impacts);
+        if (s == null) return;
+        s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
+        WAR2D.Audio.AudioService.Sfx("shell_impact", position);
     }
 
     /// <summary>How far from a shooter's centre its barrel ends, in tiles (the muzzle flash goes there).</summary>
     public const float BarrelReach = 0.45f;
 
     /// <summary>A tracer from the shooter to the target (with a muzzle flash at the shooter's barrel).</summary>
-    public static void Tracer(Vector3 from, Vector3 to)
+    public static void Tracer(Vector3 from, Vector3 to, UnitType attacker = UnitType.Tank)
     {
         Vector3 heading = to - from;
         heading.z = 0f;
-        MuzzleFlash(from + (heading.sqrMagnitude > 1e-6f ? heading.normalized * BarrelReach : Vector3.zero));
-        Slot s = Take(Tracers);
+        Vector3 muzzle = from + (heading.sqrMagnitude > 1e-6f ? heading.normalized * BarrelReach : Vector3.zero);
+        if (attacker == UnitType.Flamethrower)
+        {
+            // A stream stretched from the nozzle to the target; no flash.
+            WAR2D.Audio.AudioService.Sfx(ShotSound(attacker), muzzle);
+            Slot stream = Take(Streams);
+            if (stream == null) return;
+            Vector3 reach = to - muzzle;
+            reach.z = 0f;
+            stream.Go.transform.SetPositionAndRotation(new Vector3(muzzle.x, muzzle.y, 0f) + reach * 0.5f, Quaternion.Euler(0f, 0f, Mathf.Atan2(reach.y, reach.x) * Mathf.Rad2Deg));
+            stream.Go.transform.localScale = new Vector3(Mathf.Max(0.1f, reach.magnitude / StreamTiles), 1f, 1f);
+            return;
+        }
+        MuzzleFlash(muzzle, ShotSound(attacker));
+        Pool pool = attacker == UnitType.Sniper ? SniperTracers : attacker == UnitType.Artillery ? Shells : Tracers;
+        Slot s = Take(pool);
         if (s == null) return;
+        s.Seconds = attacker == UnitType.Artillery ? ShellSeconds : TracerSeconds;
+        s.ImpactOnLanding = attacker == UnitType.Artillery;
         s.From = new Vector3(from.x, from.y, 0f);
         s.To = new Vector3(to.x, to.y, 0f);
         Vector3 d = s.To - s.From;
@@ -129,7 +194,7 @@ public static class Effects
     {
         runner = null;
         Created = 0;
-        foreach (Pool p in new[] { Explosions, Flashes, Tracers, Blasts, Debris, Sparks })
+        foreach (Pool p in new[] { Explosions, Flashes, Tracers, Blasts, Debris, Sparks, SniperTracers, Shells, Impacts, Streams, BomberBlasts })
         {
             p.Slots.Clear();
             p.Next = 0;
@@ -172,6 +237,9 @@ public static class Effects
         }
         s.Active = true;
         s.Start = Time.time;
+        s.Go.transform.localScale = Vector3.one;
+        s.ImpactOnLanding = false;
+        s.Seconds = TracerSeconds;
         s.Sprite.sprite = atlas.Sprite(pool.Id, 0);
         s.Go.SetActive(true);
         return s;
@@ -187,7 +255,12 @@ public static class Effects
             Animate(Explosions, now, false);
             Animate(Flashes, now, false);
             Animate(Tracers, now, true);
+            Animate(SniperTracers, now, true);
+            Animate(Shells, now, true);
+            Animate(Impacts, now, false);
+            Animate(Streams, now, false);
             Animate(Blasts, now, false);
+            Animate(BomberBlasts, now, false);
             Animate(Debris, now, false);
             Animate(Sparks, now, false);
         }
@@ -201,8 +274,13 @@ public static class Effects
                 float age = now - s.Start;
                 if (tracer)
                 {
-                    float t = age / TracerSeconds;
-                    if (t >= 1f) { Stop(s); continue; }
+                    float t = age / s.Seconds;
+                    if (t >= 1f)
+                    {
+                        if (s.ImpactOnLanding) ShellImpact(s.To);
+                        Stop(s);
+                        continue;
+                    }
                     s.Go.transform.position = Vector3.Lerp(s.From, s.To, t);
                     continue;
                 }

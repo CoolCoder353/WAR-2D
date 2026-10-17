@@ -78,6 +78,7 @@ namespace WAR2D.Net.Replay
 
         public void Explosions(int tick, IReadOnlyList<float2> positions) => Positions(tick, ReplayChannel.Explosions, positions);
         public void Blasts(int tick, IReadOnlyList<float2> positions) => Positions(tick, ReplayChannel.Blasts, positions);
+        public void BomberBlasts(int tick, IReadOnlyList<float2> positions) => Positions(tick, ReplayChannel.BomberBlasts, positions);
 
         private void Positions(int tick, ReplayChannel channel, IReadOnlyList<float2> positions)
         {

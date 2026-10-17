@@ -92,7 +92,8 @@ public static class SettingsStore
         path = PathOf(path);
         try
         {
-            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
+            string directory = System.IO.Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
             File.WriteAllText(path, JsonUtility.ToJson(settings, true));
         }
         catch (Exception e)

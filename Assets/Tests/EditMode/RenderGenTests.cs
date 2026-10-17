@@ -22,7 +22,7 @@ public class RenderGenTests
     [Test]
     public void BuildingCanvasesFitTheirFootprintsWithHeadroomAbove()
     {
-        foreach (var (canvas, type) in new[] { (RenderGen.Base(), BuildingType.Base), (RenderGen.Spawner(0), BuildingType.SmallUnitSpawner), (RenderGen.Miner(0), BuildingType.Miner) })
+        foreach (var (canvas, type) in new[] { (RenderGen.Base(), BuildingType.Base), (RenderGen.Spawner(0), BuildingType.Barracks), (RenderGen.Miner(0), BuildingType.Miner), (RenderGen.HeavyFactory(0), BuildingType.HeavyFactory), (RenderGen.SiegeWorkshop(0), BuildingType.SiegeWorkshop) })
         {
             Assert.IsTrue(ArtManifest.TryGet(type.ToString(), out ArtEntry entry));
             Assert.AreEqual(entry.WidthTiles * RenderGen.TileSize, canvas.Width, type.ToString());

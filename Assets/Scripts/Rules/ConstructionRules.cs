@@ -6,8 +6,8 @@ public static class ConstructionRules
     /// <summary>A new blueprint's health: it can be attacked and destroyed from the start.</summary>
     public const float StartHealth = 1f;
 
-    /// <summary>Sight radius in tiles of a building under construction.</summary>
-    public const float BlueprintSight = 1f;
+    /// <summary>Sight radius in tiles of a building under construction: none (owner, 2026-10-18), so a blueprint never scouts.</summary>
+    public const float BlueprintSight = 0f;
 
     /// <summary>
     /// What removing an own building refunds (owner, 2026-10-15): a blueprint its whole cost, whatever its

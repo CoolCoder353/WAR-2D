@@ -281,7 +281,8 @@ namespace WAR2D.Net.Replication
         internal void SetHealth(int id, int health)
         {
             if (!Entries.TryGetValue(id, out Entry e)) return;
-            e.Health.currentHealth = health;
+            // A stale or forged record can't take a building past its range.
+            e.Health.currentHealth = e.Health.maxHealth > 0f ? Math.Clamp(health, 0, (int)e.Health.maxHealth) : Math.Max(0, health);
             Entries[id] = e;
             HealthChanged?.Invoke(e.Health);
         }

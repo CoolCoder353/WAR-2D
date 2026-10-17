@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Entities;
@@ -7,7 +8,14 @@ namespace WAR2D.Sim
 {
     public partial class SimCommandSystem
     {
-        private readonly List<int>[] moversByClass = { new List<int>(), new List<int>() };
+        private readonly List<int>[] moversByClass = NewMoverBuckets();
+
+        private static List<int>[] NewMoverBuckets()
+        {
+            var buckets = new List<int>[WAR2D.Pathing.FlowSizeClass.Count];
+            for (int i = 0; i < buckets.Length; i++) buckets[i] = new List<int>();
+            return buckets;
+        }
         private readonly Dictionary<(int2 goal, byte stance, int sizeClass, int owner), List<int>> legs = new Dictionary<(int2, byte, int, int), List<int>>();
         private readonly Stack<List<int>> spareLegs = new Stack<List<int>>();
 
@@ -24,6 +32,11 @@ namespace WAR2D.Sim
             if (command.Order == OrderKind.Build || command.Order == OrderKind.Repair || command.Order == OrderKind.Dig)
             {
                 ApplyWorkOrder(data, context, command, unitCount);
+                return;
+            }
+            if (command.Order == OrderKind.Detonate)
+            {
+                ApplyDetonate(data, command, unitCount);
                 return;
             }
             foreach (List<int> list in moversByClass) list.Clear();
@@ -68,6 +81,27 @@ namespace WAR2D.Sim
                 Issue(data, context, moversByClass[sizeClass], sizeClass, command.Tile, stance, tick, command.OwnerId);
         }
 
+        /// <summary>Sets off the owner's listed Suicide bombers (or those inside the box) at the next combat stage.</summary>
+        private static void ApplyDetonate(SimData data, in SimCommand command, int unitCount)
+        {
+            if (command.Ids != null)
+            {
+                foreach (int id in command.Ids)
+                {
+                    int slot = data.SlotOf(id, unitCount);
+                    if (slot >= 0 && data.OwnerId[slot] == command.OwnerId && data.Health[slot] > 0f && data.BlastRadiusByType[data.Type[slot]] > 0f) data.ForcedBombers.Add(id);
+                }
+                return;
+            }
+            int2 lo = math.min(command.BoxMin, command.BoxMax), hi = math.max(command.BoxMin, command.BoxMax) + 1;
+            for (int slot = 0; slot < unitCount; slot++)
+            {
+                float2 p = data.Positions[slot];
+                if (data.OwnerId[slot] != command.OwnerId || data.Health[slot] <= 0f || data.BlastRadiusByType[data.Type[slot]] <= 0f) continue;
+                if (p.x >= lo.x && p.y >= lo.y && p.x < hi.x && p.y < hi.y) data.ForcedBombers.Add(data.IdOf[slot]);
+            }
+        }
+
         /// <summary>Queues the unit's waypoint, or clears its waypoints and adds it to this order's movers.</summary>
         private void Route(SimData data, SimContext context, int slot, bool queue, int2 goal, byte stance)
         {
@@ -78,7 +112,8 @@ namespace WAR2D.Sim
                 return;
             }
             context.Waypoints.Clear(id);
-            moversByClass[data.SizeClass[slot] & 1].Add(slot);
+            context.DigAreas.Leave(id);
+            moversByClass[data.SizeClass[slot]].Add(slot);
         }
 
         /// <summary>True when the unit follows a live order, works on a target, or was given an order earlier in this boundary.</summary>
@@ -114,7 +149,7 @@ namespace WAR2D.Sim
                     StartQueuedWork(data, context, slot, goal, work, tick);
                     continue;
                 }
-                var key = (goal, stance, data.SizeClass[slot] & 1, data.OwnerId[slot]);
+                var key = (goal, stance, data.SizeClass[slot], data.OwnerId[slot]);
                 if (!legs.TryGetValue(key, out List<int> slots))
                 {
                     slots = spareLegs.Count > 0 ? spareLegs.Pop() : new List<int>();
@@ -174,7 +209,8 @@ namespace WAR2D.Sim
                     continue;
                 }
                 context.Waypoints.Clear(id);
-                moversByClass[data.SizeClass[slot] & 1].Add(slot);
+                context.DigAreas.Leave(id);
+                moversByClass[data.SizeClass[slot]].Add(slot);
             }
             int tick = SystemAPI.GetSingleton<SimClock>().Tick;
             int tileIndex = context.Map.Grid.Index(command.Tile);
@@ -206,6 +242,11 @@ namespace WAR2D.Sim
         private void StartQueuedWork(SimData data, SimContext context, int slot, int2 tile, byte work, int tick)
         {
             int owner = data.OwnerId[slot];
+            if (work == WorkKinds.DigArea)
+            {
+                if (context.DigAreas.Join(data.IdOf[slot], tile.x)) StartAreaDig(data, context, slot);
+                return;
+            }
             if (!context.Map.Grid.Contains(tile)) return;
             List<int> one = One(slot);
             if (work == WorkKinds.Dig)
@@ -215,7 +256,7 @@ namespace WAR2D.Sim
                 return;
             }
             if (!TryWorkTarget(data, context, owner, OrderOf(work), tile, out int2 standGoal)) return;
-            IssueWork(data, context, one, data.SizeClass[slot] & 1, standGoal, tick, owner, context.Map.Grid.Index(tile), work);
+            IssueWork(data, context, one, data.SizeClass[slot], standGoal, tick, owner, context.Map.Grid.Index(tile), work);
         }
 
         /// <summary>
@@ -283,13 +324,84 @@ namespace WAR2D.Sim
                 int slot = data.SlotOf(id, unitCount);
                 if (slot < 0 || data.Health[slot] <= 0f) { context.Waypoints.Forget(id); continue; }
                 AddPending(data, One(slot), new PendingOrder { Slot = -1, Stance = Stances.Idle, WorkKind = WorkKinds.None });
+                if (StartAreaDig(data, context, slot)) continue;
                 if (!context.Waypoints.TryPop(id, out int2 goal, out byte stance, out byte work)) continue;
                 if (work != WorkKinds.None) StartQueuedWork(data, context, slot, goal, work, tick);
                 else
                 {
-                    Issue(data, context, One(slot), data.SizeClass[slot] & 1, goal, stance, tick, data.OwnerId[slot]);
+                    Issue(data, context, One(slot), data.SizeClass[slot], goal, stance, tick, data.OwnerId[slot]);
                 }
             }
+        }
+
+        /// <summary>
+        /// A Dig drag: each listed Digger of the owner joins a new dig area over the box and starts on its nearest
+        /// tile; with <see cref="SimCommand.Queue"/>, a Digger that is busy joins once its current orders are done.
+        /// </summary>
+        private void ApplyDigArea(SimData data, SimContext context, in SimCommand command, int unitCount)
+        {
+            if (command.Ids == null) return;
+            int area = 0;
+            foreach (int id in command.Ids)
+            {
+                int slot = data.SlotOf(id, unitCount);
+                if (slot < 0 || data.OwnerId[slot] != command.OwnerId || data.Health[slot] <= 0f || data.Type[slot] != (byte)UnitType.Digger) continue;
+                if (area == 0) area = context.DigAreas.Create(command.OwnerId, command.BoxMin, command.BoxMax);
+                if (command.Queue && HasLiveOrder(data, slot, id))
+                {
+                    context.Waypoints.Append(id, new int2(area, 0), Stances.Move, WorkKinds.DigArea);
+                    continue;
+                }
+                context.Waypoints.Clear(id);
+                context.DigAreas.Join(id, area);
+                if (!StartAreaDig(data, context, slot)) AddPending(data, One(slot), new PendingOrder { Slot = -1, Stance = Stances.Idle, WorkKind = WorkKinds.None });
+            }
+        }
+
+        /// <summary>
+        /// Gives a dig-area member its next tile as a Dig job, with a move to the floor tile beside it nearest the
+        /// Digger (the dig stage digs nothing else on the way). False when it is in no area or the area has nothing
+        /// left for it.
+        /// </summary>
+        private bool StartAreaDig(SimData data, SimContext context, int slot)
+        {
+            int id = data.IdOf[slot], owner = data.OwnerId[slot];
+            if (context.DigAreas.AreaOf(id) == 0) return false;
+            float2 position = data.Positions[slot];
+            if (!context.DigAreas.TryNext(id, position, t => IsAreaDiggable(data, context, owner, t), (_, t) => TryApproach(context, t, position, out _), out int2 tile)) return false;
+            TryApproach(context, tile, position, out int2 approach);
+            int tick = SystemAPI.GetSingleton<SimClock>().Tick;
+            IssueWork(data, context, One(slot), data.SizeClass[slot], approach, tick, owner, context.Map.Grid.Index(tile), WorkKinds.Dig);
+            return true;
+        }
+
+        private static readonly int2[] Sides = { new int2(1, 0), new int2(-1, 0), new int2(0, 1), new int2(0, -1) };
+
+        /// <summary>The walkable tile beside <paramref name="tile"/> (4-connected) nearest <paramref name="position"/>. False when it has none.</summary>
+        private static bool TryApproach(SimContext context, int2 tile, float2 position, out int2 approach)
+        {
+            approach = tile;
+            float best = float.MaxValue;
+            foreach (int2 side in Sides)
+            {
+                int2 n = tile + side;
+                if (!context.Map.IsWalkable(n)) continue;
+                float d = math.distancesq(position, (float2)n + 0.5f);
+                if (d < best) { best = d; approach = n; }
+            }
+            return best < float.MaxValue;
+        }
+
+        /// <summary>A tile a dig area digs: rock, a gem, or a wall of an owner the digger's side attacks (never the map border, never its own or an ally's wall).</summary>
+        public static bool IsAreaDiggable(SimData data, SimContext context, int owner, int2 tile)
+        {
+            WAR2D.World.MapGrid grid = context.Map.Grid;
+            if (!grid.Contains(tile)) return false;
+            TileType type = grid.TileAt(tile);
+            if (type == TileType.Wall || type == TileType.Gem) return true;
+            if (type != TileType.PlayerWall) return false;
+            int me = context.SlotOf(owner), wall = data.WallOwnerSlot[grid.Index(tile)];
+            return me >= 0 && wall != SimData.NoSlot && wall != me && SimData.Attacks(data.AttackMask, me, wall);
         }
 
         private readonly Dictionary<(int2 stand, int tile, int sizeClass, int owner), List<int>> digLegs = new Dictionary<(int2, int, int, int), List<int>>();
@@ -301,7 +413,7 @@ namespace WAR2D.Sim
             {
                 int slot = data.SlotOf(move.x, unitCount);
                 if (slot < 0 || data.Health[slot] <= 0f || data.WorkKind[slot] != WorkKinds.Dig) continue;
-                var key = (new int2(move.y, move.z), data.WorkTile[slot], data.SizeClass[slot] & 1, data.OwnerId[slot]);
+                var key = (new int2(move.y, move.z), data.WorkTile[slot], data.SizeClass[slot], data.OwnerId[slot]);
                 if (!digLegs.TryGetValue(key, out List<int> list)) digLegs[key] = list = new List<int>();
                 list.Add(slot);
             }

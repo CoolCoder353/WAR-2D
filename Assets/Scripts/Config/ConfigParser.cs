@@ -97,12 +97,17 @@ namespace Config
                         Range = Float(node, "Range", ctx, errors, min: 0.1f),
                         AttackInterval = Float(node, "AttackInterval", ctx, errors, min: 0.01f),
                         MoveSpeed = Float(node, "MoveSpeed", ctx, errors, min: 0.01f),
-                        Acceleration = Float(node, "Acceleration", ctx, errors, min: 0),
                         UpfrontCost = Float(node, "UpfrontCost", ctx, errors, min: 0),
                         RunningCost = Float(node, "RunningCost", ctx, errors, min: 0),
                         Radius = Float(node, "Radius", ctx, errors, min: 0.1f, max: 2),
                         SizeClass = Int(node, "SizeClass", ctx, errors, min: 0, max: 1),
                         Sight = Float(node, "Sight", ctx, errors, min: 1, max: 32),
+                        Armour = Armour(node, ctx, errors),
+                        BuildSeconds = Float(node, "BuildSeconds", ctx, errors, min: 0.1f, max: 600),
+                        Splash = OptionalFloat(node, "Splash", ctx, errors, 0, 8),
+                        MinRange = OptionalFloat(node, "MinRange", ctx, errors, 0, 32),
+                        BlastRadius = OptionalFloat(node, "BlastRadius", ctx, errors, 0, 8),
+                        BlastDamage = OptionalFloat(node, "BlastDamage", ctx, errors, 0, 100000),
                     };
                 }
             }
@@ -138,7 +143,10 @@ namespace Config
 
             XmlNode orders = Require(root, "Orders", errors);
             if (orders != null)
+            {
                 config.Orders.MaxQueued = Int(orders, "MaxQueued", "Orders", errors, min: 0, max: 16);
+                config.Orders.MaxDigArea = Int(orders, "MaxDigArea", "Orders", errors, min: 1, max: 64);
+            }
 
             XmlNode diplomacy = Require(root, "Diplomacy", errors);
             if (diplomacy != null)
@@ -214,6 +222,7 @@ namespace Config
                 config.Replays.KeepCount = Int(replays, "KeepCount", "Replays", errors, min: 1, max: 10000);
             }
 
+            var explicitEntries = new HashSet<(UnitType, TargetClass)>();
             XmlNode damage = Require(root, "DamageTable", errors);
             if (damage != null)
             {
@@ -223,7 +232,10 @@ namespace Config
                     string targetName = node.Attributes?["target"]?.Value;
                     bool attackerOk = Enum.TryParse(attackerName, false, out UnitType attacker) && attacker != UnitType.None
                                       && Enum.IsDefined(typeof(UnitType), attacker);
-                    bool targetOk = Enum.TryParse(targetName, false, out TargetClass target) && Enum.IsDefined(typeof(TargetClass), target);
+                    // "Unit" is shorthand for both unit armour classes.
+                    bool bothUnits = targetName == "Unit";
+                    TargetClass target = TargetClass.LightUnit;
+                    bool targetOk = bothUnits || (Enum.TryParse(targetName, false, out target) && Enum.IsDefined(typeof(TargetClass), target));
                     if (!attackerOk) { errors.Add($"DamageTable: unknown attacker type \"{attackerName}\"."); continue; }
                     if (!targetOk) { errors.Add($"DamageTable: unknown target class \"{targetName}\"."); continue; }
                     string text = node.InnerText?.Trim();
@@ -232,7 +244,17 @@ namespace Config
                         errors.Add($"DamageTable: multiplier \"{text}\" for {attacker} vs {target} must be a number in [0, 100].");
                         continue;
                     }
-                    config.Damage.Entries[(attacker, target)] = m;
+                    if (bothUnits)
+                    {
+                        // An explicit LightUnit or HeavyUnit entry wins over the shorthand, whatever the order.
+                        if (!explicitEntries.Contains((attacker, TargetClass.LightUnit))) config.Damage.Entries[(attacker, TargetClass.LightUnit)] = m;
+                        if (!explicitEntries.Contains((attacker, TargetClass.HeavyUnit))) config.Damage.Entries[(attacker, TargetClass.HeavyUnit)] = m;
+                    }
+                    else
+                    {
+                        config.Damage.Entries[(attacker, target)] = m;
+                        explicitEntries.Add((attacker, target));
+                    }
                 }
             }
 
@@ -255,7 +277,6 @@ namespace Config
                         Height = Int(node, "Height", ctx, errors, min: 1, max: 16),
                         UpfrontCost = Float(node, "UpfrontCost", ctx, errors, min: 0),
                         RunningCost = Float(node, "RunningCost", ctx, errors, min: 0),
-                        SpawnRate = Float(node, "SpawnRate", ctx, errors, min: 0, max: 100),
                         Sight = Float(node, "Sight", ctx, errors, min: 0, max: 32),
                     };
                 }
@@ -271,11 +292,23 @@ namespace Config
                 if (type != BuildingType.None && !config.Buildings.ContainsKey(type))
                     errors.Add($"Buildings: missing <Building type=\"{type}\">.");
             }
-            if (config.Buildings.TryGetValue(BuildingType.SmallUnitSpawner, out BuildingConfig spawner) && spawner.SpawnRate <= 0)
-                errors.Add("Building SmallUnitSpawner: SpawnRate must be greater than 0.");
 
             return config;
         }
+
+        /// <summary>The required &lt;Armour&gt; text: Light or Heavy.</summary>
+        private static TargetClass Armour(XmlNode parent, string ctx, List<string> errors)
+        {
+            string text = parent.SelectSingleNode("Armour")?.InnerText?.Trim();
+            if (text == "Light") return TargetClass.LightUnit;
+            if (text == "Heavy") return TargetClass.HeavyUnit;
+            errors.Add($"{ctx}: <Armour> must be Light or Heavy (got \"{text}\").");
+            return TargetClass.LightUnit;
+        }
+
+        /// <summary>An optional number (0 when the element is missing) in [min, max].</summary>
+        private static float OptionalFloat(XmlNode parent, string name, string ctx, List<string> errors, float min, float max) =>
+            parent.SelectSingleNode(name) == null ? 0f : Float(parent, name, ctx, errors, min, max);
 
         private static XmlNode Require(XmlNode parent, string name, List<string> errors)
         {

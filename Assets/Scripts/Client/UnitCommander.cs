@@ -34,6 +34,9 @@ public class UnitCommander : NetworkBehaviour
 
     /// <summary>The local player's selection and squads.</summary>
     public WAR2D.Client.Selection Selection { get; } = new WAR2D.Client.Selection();
+
+    /// <summary>The world feedback for orders: moved goals, queued goals, the Dig drag and dig marks.</summary>
+    public OrderFeedback Feedback { get; private set; }
     private Vector3 dragStart;
 
 
@@ -51,6 +54,9 @@ public class UnitCommander : NetworkBehaviour
 
             localPlayer = NetworkClient.connection.identity.GetComponent<ClientPlayer>();
             SubscribeBuildings();
+            Feedback = gameObject.AddComponent<OrderFeedback>();
+            Feedback.Init(Config.ConfigLoader.LoadConfig().Orders.MaxQueued, IsDiggableHere, PositionOf);
+            Selection.Ordered += OnOrdered;
         }
         else
         {
@@ -102,7 +108,66 @@ public class UnitCommander : NetworkBehaviour
     {
         OrderKind kind = ArmedOrder ?? OrderKind.Move;
         ArmedOrder = null;
+        if (QueueFull(queue)) return;
         Selection.Order(kind, queue, goal);
+    }
+
+    /// <summary>True when a Shift-queued order would be dropped: the first selected unit already has the most goals (it is not sent).</summary>
+    private bool QueueFull(bool queue) => queue && Feedback != null && Selection.First != 0 && Feedback.Queue.IsFull(Selection.First);
+
+    /// <summary>Where the client draws a unit, or null when it doesn't know it.</summary>
+    private static float2? PositionOf(int id) =>
+        ClientWorld.Instance != null && ClientWorld.Instance.TryGet(id, out ClientUnitView view) ? view.Position : (float2?)null;
+
+    /// <summary>
+    /// A tile a dig area digs, as far as this client knows: rock, a gem, or a wall of a player we attack. Never the
+    /// border ring or our own or an ally's wall (the server's <c>SimCommandSystem.IsAreaDiggable</c>).
+    /// </summary>
+    private bool IsDiggableHere(int2 tile)
+    {
+        WorldStateManager wsm = WorldStateManager.Instance;
+        if (wsm == null || wsm.Map == null || localPlayer == null) return false;
+        (int2 min, int2 max) = wsm.MapBounds;
+        if (!CommandValidator.IsInside(tile, min + 1, max - 1)) return false;
+        TileType type = wsm.Map.Grid.TileAt(tile);
+        if (type == TileType.Wall || type == TileType.Gem) return true;
+        if (type != TileType.PlayerWall) return false;
+        int owner = ClientTerrain.Current.WallOwner(wsm.Map.Grid.Index(tile));
+        return owner != 0 && owner != BuildingData.UIntToInt(localPlayer.netId) && IsEnemy(owner);
+    }
+
+    /// <summary>Follows every order sent: the goals each unit holds, dig marks it replaces, and a goal the server will move off rock.</summary>
+    private void OnOrdered(OrderKind kind, bool queue, int2 goal, IReadOnlyList<int> ids)
+    {
+        if (Feedback == null) return;
+        if (kind == OrderKind.Stop || kind == OrderKind.Hold || kind == OrderKind.Detonate)
+        {
+            Feedback.Queue.Cleared(ids);
+            Feedback.Unmark(ids);
+            return;
+        }
+        int2 to = goal;
+        if ((kind == OrderKind.Move || kind == OrderKind.AttackMove) && TryMovedGoal(goal, out int2 moved))
+        {
+            Feedback.GoalMoved(goal, moved);
+            to = moved;
+        }
+        Feedback.Queue.Sent(ids, (float2)to + 0.5f, queue);
+        if (!queue) Feedback.Unmark(ids);
+    }
+
+    /// <summary>
+    /// The open ground the server will send a goal on rock to (<see cref="WAR2D.Sim.OrderBook.SnapGoal"/> on this
+    /// client's copy of the map, from the selection's centre). False when the goal stays where it is, or has no open
+    /// ground near it.
+    /// </summary>
+    private bool TryMovedGoal(int2 goal, out int2 moved)
+    {
+        moved = goal;
+        WorldStateManager wsm = WorldStateManager.Instance;
+        if (wsm == null || wsm.Map == null || !wsm.Map.Grid.Contains(goal)) return false;
+        int2 from = Selection.TryCentre(out float2 centre) ? (int2)math.floor(centre) : goal;
+        return WAR2D.Sim.OrderBook.SnapGoal(wsm.Map.Grid, goal, from, WAR2D.Sim.OrderBook.GoalSnapRadius, out moved) && !moved.Equals(goal);
     }
 
     /// <summary>Arms an order for the next click (only with units selected; Repair needs Builders, Dig Diggers).</summary>
@@ -112,6 +177,7 @@ public class UnitCommander : NetworkBehaviour
         if (kind == OrderKind.Repair && !SelectionHas(UnitType.Builder)) return;
         if (kind == OrderKind.Dig && !SelectionHas(UnitType.Digger)) return;
         CancelWallDrag();
+        CancelDigDrag();
         ArmedOrder = kind;
     }
 
@@ -143,6 +209,8 @@ public class UnitCommander : NetworkBehaviour
         List<byte[]> chunks = OrderIdCodec.EncodeChunks(builders);
         for (int i = 0; i < chunks.Count; i++)
             WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, queue, tile);
+        Feedback?.Queue.Sent(builders, (float2)tile + 0.5f, queue);
+        if (!queue) Feedback?.Unmark(builders);
     }
 
     private WallDrag wallDrag;
@@ -165,6 +233,92 @@ public class UnitCommander : NetworkBehaviour
     /// <summary>Drops an armed wall drag. False when none was armed.</summary>
     [Client]
     public bool CancelWallDrag() => wallDrag != null && wallDrag.Cancel();
+
+    private bool digDragging;
+    private int2 digFrom;
+
+    /// <summary>True while a Dig drag is under way (Dig armed and the button held on the map).</summary>
+    public bool DigDragging => digDragging;
+
+    /// <summary>Drops a Dig drag under way and disarms Dig. False when none was under way.</summary>
+    [Client]
+    public bool CancelDigDrag()
+    {
+        if (!digDragging) return false;
+        digDragging = false;
+        Feedback?.HideDigPreview();
+        ArmedOrder = null;
+        return true;
+    }
+
+    /// <summary>
+    /// Runs the Dig drag for this frame (Figma <c>Dig – drag an area</c>). With Dig armed, a press on the map starts a box;
+    /// the tiles it would dig light up; release sends it (<see cref="FinishDigDrag"/>). Right-click cancels. True
+    /// when the drag used this frame's clicks.
+    /// </summary>
+    private bool UpdateDigDrag()
+    {
+        if (!digDragging)
+        {
+            if (ArmedOrder != OrderKind.Dig || !GameInput.Select.WasPressedThisFrame() || GameInput.PointerOverUI) return false;
+            digDragging = true;
+            digFrom = MouseTile();
+        }
+        if (GameInput.Command.WasPressedThisFrame()) { CancelDigDrag(); return true; }
+        int2 tile = MouseTile();
+        if (DigBox(digFrom, tile, out int2 lo, out int2 hi, out bool clamped)) Feedback?.ShowDigPreview(lo, hi, clamped);
+        else Feedback?.HideDigPreview();
+        if (GameInput.Select.WasReleasedThisFrame()) FinishDigDrag(tile, GameInput.QueueModifier.IsPressed());
+        return true;
+    }
+
+    private static int2 MouseTile()
+    {
+        Vector3 world = GetMouseWorldPosition();
+        return (int2)math.floor(new float2(world.x, world.y));
+    }
+
+    /// <summary>The drag's box as the server will take it (<see cref="CommandValidator.TryDigArea"/>); <paramref name="clamped"/> when the size cap cut it.</summary>
+    private static bool DigBox(int2 from, int2 to, out int2 lo, out int2 hi, out bool clamped)
+    {
+        lo = hi = from;
+        clamped = false;
+        WorldStateManager wsm = WorldStateManager.Instance;
+        if (wsm == null || wsm.Map == null) return false;
+        int maxSide = Config.ConfigLoader.LoadConfig().Orders.MaxDigArea;
+        (int2 min, int2 max) = wsm.MapBounds;
+        clamped = math.any(math.abs(to - from) + 1 > maxSide);
+        return CommandValidator.TryDigArea(from, to, min, max, maxSide, out lo, out hi);
+    }
+
+    /// <summary>
+    /// Ends the Dig drag at <paramref name="tile"/>: a click without a drag digs that one tile (as before); a box gives the
+    /// selected Diggers a dig area. <paramref name="keep"/> (Shift) queues it and keeps Dig armed.
+    /// </summary>
+    [Client]
+    public void FinishDigDrag(int2 tile, bool keep)
+    {
+        if (!digDragging) return;
+        digDragging = false;
+        Feedback?.HideDigPreview();
+        if (!keep) ArmedOrder = null;
+        if (tile.Equals(digFrom))
+        {
+            if (!QueueFull(keep)) Selection.Order(OrderKind.Dig, keep, tile);
+            return;
+        }
+        if (WorldStateManager.Instance == null || !DigBox(digFrom, tile, out int2 lo, out int2 hi, out _)) return;
+        var diggers = new List<int>();
+        foreach (int id in Selection.Selected) if (TypeOf(id) == UnitType.Digger) diggers.Add(id);
+        if (diggers.Count == 0) return;
+        diggers.Sort();
+        ushort token = (ushort)UnityEngine.Random.Range(0, ushort.MaxValue);
+        List<byte[]> chunks = OrderIdCodec.EncodeChunks(diggers);
+        for (int i = 0; i < chunks.Count; i++)
+            WorldStateManager.Instance.CmdDigAreaChunk(token, chunks[i], i == chunks.Count - 1, keep, digFrom, tile);
+        Feedback?.AddDigMarks(lo, hi, diggers, keep);
+        Feedback?.Queue.Sent(diggers, ((float2)lo + hi + 1f) * 0.5f, keep);
+    }
 
     /// <summary>
     /// Runs the wall drag for this frame. Press starts the line, the drag re-routes it, release sends
@@ -312,12 +466,16 @@ public class UnitCommander : NetworkBehaviour
         if (GameInput.Dig.WasPressedThisFrame()) Arm(OrderKind.Dig);
         if (GameInput.Stop.WasPressedThisFrame()) Order(OrderKind.Stop);
         if (GameInput.Hold.WasPressedThisFrame()) Order(OrderKind.Hold);
+        if (GameInput.Detonate.WasPressedThisFrame()) Order(OrderKind.Detonate);
 
         // While placing a building, clicks belong to the placement.
         BuildingPlacement placement = BuildingPlacement.Instance;
         bool clickUsed = placement != null && (placement.IsPlacing || placement.ActiveFrame == Time.frameCount);
         if (clickUsed) { ArmedOrder = null; CancelWallDrag(); }
+        if (clickUsed) CancelDigDrag();
         clickUsed |= UpdateWallDrag();
+        clickUsed |= UpdateDigDrag();
+        Feedback?.ShowQueueOf(GameInput.QueueModifier.IsPressed() && Selection.Selected.Count > 0 ? Selection.First : 0);
 
         // With an order armed, the next left or right click sends it instead of selecting or moving.
         if (!clickUsed && ArmedOrder.HasValue && (GameInput.Select.WasPressedThisFrame() || GameInput.Command.WasPressedThisFrame()))
@@ -327,7 +485,8 @@ public class UnitCommander : NetworkBehaviour
             if (!GameInput.PointerOverUI)
             {
                 Vector3 target = GetMouseWorldPosition();
-                Selection.Order(kind, GameInput.QueueModifier.IsPressed(), new int2((int)target.x, (int)target.y));
+                bool queue = GameInput.QueueModifier.IsPressed();
+                if (!QueueFull(queue)) Selection.Order(kind, queue, new int2((int)target.x, (int)target.y));
                 clickUsed = true;
             }
         }
@@ -396,8 +555,15 @@ public class UnitCommander : NetworkBehaviour
             int2 goal = new int2((int)worldPosition.x, (int)worldPosition.y);
             // With only spawners selected, a right-click sets their rally point.
             if (Selection.Selected.Count == 0 && Selection.SelectedBuildings.Count > 0 && AllSpawners(Selection.SelectedBuildings))
-                WorldStateManager.Instance?.CmdSetRally(ToArray(Selection.SelectedBuildings), goal, false);
-            else OrderClick(goal, GameInput.QueueModifier.IsPressed());
+            {
+                WorldStateManager.Instance?.CmdSetRally(System.Linq.Enumerable.ToArray(Selection.SelectedBuildings), goal, false);
+                // The server moves a rally on rock to open ground like any goal: show where.
+                WorldStateManager wsm = WorldStateManager.Instance;
+                if (wsm != null && wsm.Map != null && wsm.Map.Grid.Contains(goal) &&
+                    WAR2D.Sim.OrderBook.SnapGoal(wsm.Map.Grid, goal, goal, WAR2D.Sim.OrderBook.GoalSnapRadius, out int2 rally) && !rally.Equals(goal))
+                    Feedback?.GoalMoved(goal, rally);
+            }
+            else if (!QueueFull(GameInput.QueueModifier.IsPressed())) OrderClick(goal, GameInput.QueueModifier.IsPressed());
         }
 
         for (int squad = 0; squad < WAR2D.Sim.Squads.Count; squad++)
@@ -492,17 +658,23 @@ public class UnitCommander : NetworkBehaviour
     private static float2 CentreOf(in BuildingData data) =>
         Footprint.VisualCenter((int2)math.round(data.position), WorldStateManager.GetBuildingSize(data.buildingType));
 
-    private readonly Dictionary<int, float> lastBuildingHealth = new Dictionary<int, float>();
+    /// <summary>Each seen building's health at its last change, and whether it was finished then.</summary>
+    private readonly Dictionary<int, (float health, bool finished)> lastBuildingHealth = new Dictionary<int, (float, bool)>();
 
-    private void OnBuildingEntered(BuildingData data, HealthComponent health) => lastBuildingHealth[data.id] = health.currentHealth;
+    private void OnBuildingEntered(BuildingData data, HealthComponent health) =>
+        lastBuildingHealth[data.id] = (health.currentHealth, Known.Entries.TryGetValue(data.id, out ClientBuildings.Entry e) && e.Progress >= 100);
 
-    /// <summary>A seen building's health changed: a finished one that gained health is being repaired (sparks).</summary>
+    /// <summary>
+    /// A seen building's health changed: one that was already finished at its last change and gained health
+    /// is being repaired (sparks). The construction step that finishes a blueprint raises its health too;
+    /// that is not a repair.
+    /// </summary>
     private void OnBuildingHealthChanged(HealthComponent health)
     {
-        if (lastBuildingHealth.TryGetValue(health.entityId, out float before) && health.currentHealth > before &&
-            Known.Entries.TryGetValue(health.entityId, out ClientBuildings.Entry e) && e.Progress >= 100)
+        bool finished = Known.Entries.TryGetValue(health.entityId, out ClientBuildings.Entry e) && e.Progress >= 100;
+        if (finished && lastBuildingHealth.TryGetValue(health.entityId, out var before) && before.finished && health.currentHealth > before.health)
             Effects.RepairSparks((Vector2)CentreOf(e.Data));
-        lastBuildingHealth[health.entityId] = health.currentHealth;
+        lastBuildingHealth[health.entityId] = (health.currentHealth, finished);
     }
 
     private void OnBuildingRemoved(int id)
@@ -530,6 +702,10 @@ public class UnitCommander : NetworkBehaviour
             if (shown == buildingMarkers.Count) buildingMarkers.Add(new GameObject("BuildingSelection").AddComponent<BuildingSelectionMarker>());
             buildingMarkers[shown++].Show(ids[i], CentreOf(e.Data), WorldStateManager.GetBuildingSize(e.Data.buildingType));
             if (localPlayer == null || !localPlayer.TryGetRally(ids[i], out int2 rally) || effects == null) continue;
+            // A rally on rock sits where its units will go: the open ground the server moves it to.
+            WorldStateManager wsm = WorldStateManager.Instance;
+            if (wsm != null && wsm.Map != null && wsm.Map.Grid.Contains(rally) &&
+                WAR2D.Sim.OrderBook.SnapGoal(wsm.Map.Grid, rally, rally, WAR2D.Sim.OrderBook.GoalSnapRadius, out int2 open)) rally = open;
             if (flags == rallyFlags.Count)
             {
                 var flag = new GameObject("RallyFlag").AddComponent<SpriteRenderer>();
@@ -570,13 +746,6 @@ public class UnitCommander : NetworkBehaviour
         if (radarSight < 0f) radarSight = Config.ConfigLoader.LoadConfig().GetBuilding(BuildingType.Radar).Sight;
         if (radarRing == null) radarRing = ClearingRing.Create("RadarRange", SortingOrders.ClearingRing);
         radarRing.Set(centre, radarSight, PlayerPalette.Of(localPlayer != null ? localPlayer.colourIndex : -1));
-    }
-
-    private static int[] ToArray(IReadOnlyList<int> ids)
-    {
-        var array = new int[ids.Count];
-        for (int i = 0; i < array.Length; i++) array[i] = ids[i];
-        return array;
     }
 
     /// <summary>The local player's building (seen now, not a ghost) whose footprint holds the world point.</summary>

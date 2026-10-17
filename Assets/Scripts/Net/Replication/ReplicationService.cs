@@ -279,14 +279,23 @@ namespace WAR2D.Net.Replication
                 encodeNow[c] = active[c] && clients[c].Lane == null;
                 if (encodeNow[c]) interests.SetClient(c, clients[c].OwnerId, GridFor(clients[c]));
             }
+            double t = PerfSplits.Now;
             SendFog(data);
+            PerfSplits.Mark(8, ref t);
             SendTerrain(data, tick);
+            PerfSplits.Mark(9, ref t);
             SendBuildings(data);
+            PerfSplits.Mark(10, ref t);
+            handle.Complete(); // timed alone: the route upkeep ran alongside the sends above
+            PerfSplits.Mark(7, ref t);
             handle = interests.Schedule(input, handle);
             handle.Complete(); // the encoder reads the route arena by value, so it must not move under it
+            PerfSplits.Mark(11, ref t);
             using var attacks = new NativeArray<int2>(data.AttackEvents.AsArray(), Allocator.TempJob);
             using NativeArray<AttackTarget> targets = AttackTargets(data, attacks);
+            PerfSplits.Mark(12, ref t);
             encoder.Schedule(tick, input, attacks, targets, encodeNow, default).Complete();
+            PerfSplits.Mark(13, ref t);
 
             for (int c = 0; c < MaxClients; c++)
             {
@@ -316,6 +325,7 @@ namespace WAR2D.Net.Replication
                 SendSplit(client, tick, reliable, reliableSizes, Channels.Reliable, BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4));
                 SendSplit(client, tick, unreliable, unreliableSizes, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
             }
+            PerfSplits.Mark(14, ref t);
             LastMilliseconds = watch.Elapsed.TotalMilliseconds;
         }
 
@@ -413,6 +423,8 @@ namespace WAR2D.Net.Replication
             }
         }
 
+        private readonly List<TerrainCell> terrainNow = new List<TerrainCell>();
+
         /// <summary>
         /// Sends every client the changed tiles its grid sees (see <see cref="TerrainInterest"/>). Fog only moves on
         /// vision ticks, so the walk over changed tiles runs then, and whenever a client's fog grid was just sent.
@@ -423,6 +435,7 @@ namespace WAR2D.Net.Replication
             bool visionTick = (tick - 1) % data.VisionInterval == 0;
             int limit = BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4);
             Func<int, TerrainCell> cellOf = TerrainCellOf ?? (i => new TerrainCell { Index = i, Type = data.Tiles[i] });
+            bool read = false;
             for (int c = 0; c < MaxClients; c++)
             {
                 if (!active[c]) continue;
@@ -430,10 +443,17 @@ namespace WAR2D.Net.Replication
                 int grid = GridFor(client);
                 if (grid < 0 || (!visionTick && client.TerrainGrid == grid)) continue;
                 client.TerrainGrid = grid;
+                if (!read)
+                {
+                    // Every changed tile's current cell, read once for all clients.
+                    read = true;
+                    terrainNow.Clear();
+                    foreach (int index in sim.Map.ChangedSinceStart) terrainNow.Add(cellOf(index));
+                }
                 while (true)
                 {
                     writer.Position = 0;
-                    int cells = client.Terrain.Update(sim.Map.ChangedSinceStart, cellOf, p => data.Sees(grid, p), data.Width, sim.Map.InitialTiles, writer, limit);
+                    int cells = client.Terrain.Update(terrainNow, p => data.Sees(grid, p), data.Width, sim.Map.InitialTiles, writer, limit);
                     if (cells == 0) break;
                     ArraySegment<byte> payload = writer.ToArraySegment();
                     client.BytesSent += payload.Count;

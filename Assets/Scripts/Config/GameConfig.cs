@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using Unity.Mathematics;
 
-/// <summary>What an attack hits, for the damage table.</summary>
-public enum TargetClass : byte { Unit, Building, Wall }
+/// <summary>What a hit lands on, for the damage table: a Light or Heavy armoured unit, a building or a wall tile.</summary>
+public enum TargetClass : byte { LightUnit, HeavyUnit, Building, Wall }
 
 namespace Config
 {
@@ -149,6 +149,8 @@ namespace Config
     {
         /// <summary>Shift-queued waypoints kept per unit; extras are dropped.</summary>
         public int MaxQueued;
+        /// <summary>The longest side of a Dig drag's area, in tiles.</summary>
+        public int MaxDigArea;
     }
 
     /// <summary>Diplomacy tuning.</summary>
@@ -296,8 +298,6 @@ namespace Config
         public float AttackInterval;
         /// <summary>Tiles per second.</summary>
         public float MoveSpeed;
-        /// <summary>Parsed but not used yet: units reach full speed at once.</summary>
-        public float Acceleration;
         /// <summary>Resources taken once, when built or spawned.</summary>
         public float UpfrontCost;
         /// <summary>Upkeep in resources per second.</summary>
@@ -308,6 +308,18 @@ namespace Config
         public int SizeClass;
         /// <summary>Sight radius in tiles.</summary>
         public float Sight;
+        /// <summary>The armour class hits against this unit use: <see cref="TargetClass.LightUnit"/> or <see cref="TargetClass.HeavyUnit"/>.</summary>
+        public TargetClass Armour;
+        /// <summary>Seconds a producer takes to make one.</summary>
+        public float BuildSeconds;
+        /// <summary>Splash radius in tiles around the target (0 = none).</summary>
+        public float Splash;
+        /// <summary>Targets closer than this many tiles are ignored (0 = none).</summary>
+        public float MinRange;
+        /// <summary>Suicide bomber blast radius in tiles (0 for other units).</summary>
+        public float BlastRadius;
+        /// <summary>Suicide bomber blast damage before the damage table (0 for other units).</summary>
+        public float BlastDamage;
     }
 
     /// <summary>One building type's stats.</summary>
@@ -323,8 +335,6 @@ namespace Config
         public float UpfrontCost;
         /// <summary>Upkeep in resources per second.</summary>
         public float RunningCost;
-        /// <summary>Units per second a spawner may produce (0 for non-spawners).</summary>
-        public float SpawnRate;
         /// <summary>Sight radius in tiles.</summary>
         public float Sight;
 

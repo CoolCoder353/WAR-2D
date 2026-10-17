@@ -111,10 +111,22 @@ namespace WAR2D.Net.Replication
         /// <summary>Writes one batch of seen, changed tiles; returns how many cells it holds (0 writes nothing).</summary>
         public int Update(IReadOnlyCollection<int> changed, Func<int, TerrainCell> current, Func<float2, bool> sees, int width, byte[] initial, NetworkWriter writer, int maxBytes)
         {
+            var cells = new List<TerrainCell>(changed.Count);
+            foreach (int index in changed) cells.Add(current(index));
+            return Update(cells, sees, width, initial, writer, maxBytes);
+        }
+
+        /// <summary>
+        /// As above, from the changed tiles' current cells, read once per tick and shared by every client (reading them
+        /// per client cost ~8 ms on vision ticks with 9 clients, docs/perf/v0.12).
+        /// </summary>
+        public int Update(IReadOnlyList<TerrainCell> changedNow, Func<float2, bool> sees, int width, byte[] initial, NetworkWriter writer, int maxBytes)
+        {
             scratch.Clear();
-            foreach (int index in changed)
+            for (int i = 0; i < changedNow.Count; i++)
             {
-                TerrainCell now = current(index);
+                TerrainCell now = changedNow[i];
+                int index = now.Index;
                 TerrainCell known = sent.TryGetValue(index, out TerrainCell k) ? k : new TerrainCell { Index = index, Type = initial[index] };
                 if (now.Equals(known)) continue;
                 if (!sees(new float2(index % width + 0.5f, index / width + 0.5f))) continue;

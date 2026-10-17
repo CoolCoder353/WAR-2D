@@ -8,6 +8,13 @@ using UnityEngine.InputSystem;
 /// </summary>
 public static class Rebinding
 {
+    /// <summary>
+    /// Actions that share a key on purpose or that the player never binds (Shift is Fast pan, Append and Queue
+    /// order at once; the pointer and scroll are fixed): they never count as a conflict. The squad keys do,
+    /// since a key bound to Stop would otherwise also select a squad.
+    /// </summary>
+    private static readonly System.Collections.Generic.HashSet<string> NotRebindable = new System.Collections.Generic.HashSet<string> { "FastPan", "AppendModifier", "Point", "Zoom", "DragPan" };
+
     /// <summary>Applies saved overrides to the map (empty or malformed JSON keeps the defaults).</summary>
     public static void Load(InputActionMap map, string json)
     {
@@ -37,7 +44,7 @@ public static class Rebinding
         if (action?.actionMap == null || string.IsNullOrEmpty(bindingPath)) return null;
         foreach (InputAction other in action.actionMap.actions)
         {
-            if (other == action) continue;
+            if (other == action || NotRebindable.Contains(other.name)) continue;
             foreach (InputBinding binding in other.bindings)
                 if (!binding.isComposite && !binding.isPartOfComposite && string.Equals(binding.effectivePath, bindingPath, StringComparison.OrdinalIgnoreCase))
                     return other;

@@ -1,0 +1,12 @@
+{
+  "wave": "Noise",
+  "sustain": 0.08,
+  "punch": 0.85,
+  "decay": 0.5,
+  "frequency": 130,
+  "slide": -1.0,
+  "lowPass": 0.65,
+  "lowPassSweep": -0.5,
+  "volume": 0.75,
+  "seed": 36
+}

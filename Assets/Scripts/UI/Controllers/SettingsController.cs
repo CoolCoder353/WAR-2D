@@ -27,6 +27,7 @@ namespace WAR2D.UI
             ("Hold", "Hold", null),
             ("Repair (Builders)", "Repair", null),
             ("Dig (Diggers)", "Dig", null),
+            ("Detonate (Suicide bombers)", "Detonate", null), // shown once GameInput has the action (v0.12 plan)
             ("Cancel / demolish", "Cancel", null),
             ("Queue order", "QueueModifier", null),
             ("Assign squad", "AssignModifier", null),
@@ -218,6 +219,7 @@ namespace WAR2D.UI
             bindingRows.Clear();
             foreach ((string label, string actionName, string fixedText) in Bindings)
             {
+                if (actionName != null && GameInput.Map.FindAction(actionName) == null) continue;
                 var row = new VisualElement();
                 row.AddToClassList("settings-row");
                 var text = new Label(label);
@@ -242,6 +244,7 @@ namespace WAR2D.UI
         private static string LabelOf(string action)
         {
             foreach ((string label, string name, _) in Bindings) if (name == action) return label;
+            if (action.StartsWith("Squad") && action.Length == 6) return "Squad " + action[5] + " (select)";
             return action;
         }
 

@@ -28,6 +28,7 @@ namespace WAR2D.UI
         private readonly List<string> teammatesPicked = new List<string>();
         private MinimapController minimap;
         private AlertFeedController alertFeed;
+        private OrderTagsController orderTags;
         private DiplomacyPanelController diplomacy;
         private ClientPlayer alertSource;
         private Button diplomacyButton;
@@ -79,16 +80,25 @@ namespace WAR2D.UI
 
             GameConfigData config = ConfigLoader.LoadConfig();
             var costs = new Dictionary<BuildingType, float>();
-            foreach (BuildingType type in new[] { BuildingType.Miner, BuildingType.SmallUnitSpawner, BuildingType.Bomb, BuildingType.Radar })
-                costs[type] = config.GetBuilding(type).UpfrontCost;
+            foreach (KeyValuePair<BuildingType, BuildingConfig> building in config.Buildings) costs[building.Key] = building.Value.UpfrontCost;
             var unitCosts = new Dictionary<UnitType, float>();
-            foreach (UnitType type in new[] { UnitType.Tank, UnitType.Builder, UnitType.Digger })
-                unitCosts[type] = config.GetUnit(type).UpfrontCost;
+            foreach (KeyValuePair<UnitType, UnitConfig> unit in config.Units) unitCosts[unit.Key] = unit.Value.UpfrontCost;
+            float BuildSeconds(UnitType unit, BuildingType at) => config.Units.TryGetValue(unit, out UnitConfig u) ? u.BuildSeconds : 0f;
+            string RoleOf(UnitType unit)
+            {
+                if (!config.Units.TryGetValue(unit, out UnitConfig u)) return null;
+                if (u.BlastRadius > 0f) return $"Blast {u.BlastRadius:0.#}, health {u.Health:0}";
+                if (u.Damage <= 0) return null;
+                string role = $"Range {u.Range:0.#}";
+                if (u.Splash > 0f) role += $", splash {u.Splash:0.#}";
+                if (u.MinRange > 0f) role += $", can't fire closer than {u.MinRange:0.#}";
+                return role + $", health {u.Health:0}";
+            }
 
             topBar = new TopBarController(root, Model);
             selectionPanel = new SelectionPanelController(root, Selection);
             commandCard = new CommandCardController(root, Selection, Model, costs, unitCosts, config.Siege.WallCost, config.Siege.DemolishRefund,
-                config.GetBuilding(BuildingType.SmallUnitSpawner).SpawnRate);
+                BuildSeconds, RoleOf, switchClearsQueue: true);
             squadBar = new SquadBarController(root, Selection);
             overlay = new HudOverlayController(root);
             startMarkers = new StartMarkersController(root);
@@ -97,6 +107,7 @@ namespace WAR2D.UI
             minimap = new MinimapController(root);
             Alerts = new AlertFeedModel(config.Alerts.ShowSeconds);
             alertFeed = new AlertFeedController(root, Alerts);
+            orderTags = new OrderTagsController(root);
             diplomacy = new DiplomacyPanelController(root, Model);
             diplomacyButton = root.Q<Button>("diplomacy-button");
             Model.DiplomacyChanged += ShowDiplomacyButton;
@@ -131,6 +142,7 @@ namespace WAR2D.UI
             commandCard.OrderClicked += OnOrder;
             commandCard.BuildClicked += OnBuild;
             commandCard.QueueClicked += OnQueue;
+            commandCard.ProductionSelected += OnProductionSelected;
             commandCard.WallClicked += OnWall;
             commandCard.RemoveConfirmed += OnRemove;
             squadBar.SquadClicked += OnSquad;
@@ -263,6 +275,7 @@ namespace WAR2D.UI
             {
                 if (commandCard.CloseConfirm()) { }
                 else if (UnitCommander.Instance != null && UnitCommander.Instance.CancelWallDrag()) { }
+                else if (UnitCommander.Instance != null && UnitCommander.Instance.CancelDigDrag()) { }
                 else if (settings.IsOpen) settings.Close();
                 else if (gift.IsOpen) gift.Close();
                 else if (diplomacy.IsOpen) diplomacy.SetOpen(false);
@@ -277,6 +290,7 @@ namespace WAR2D.UI
                 endScreen.ShowReplay(replayText, replayFraction);
             }
             minimap.Update(Time.unscaledDeltaTime);
+            orderTags.Update(UnitCommander.Instance != null ? UnitCommander.Instance.Feedback : null, Camera.main, GameInput.Point.ReadValue<Vector2>());
             ShowWallReadout();
             Model.PullDiplomacy();
             Alerts.Expire(Time.unscaledTime);
@@ -496,7 +510,15 @@ namespace WAR2D.UI
         {
             WorldStateManager wsm = WorldStateManager.Instance;
             if (wsm == null || buildingIds.Count == 0) return;
-            wsm.CmdChangeQueues(ToArray(buildingIds), (byte)unit, delta);
+            wsm.CmdChangeQueues(System.Linq.Enumerable.ToArray(buildingIds), delta);
+        }
+
+        /// <summary>A producer's type picked in the selector: the server switches it and clears its queue.</summary>
+        private void OnProductionSelected(IReadOnlyList<int> buildingIds, UnitType unit)
+        {
+            WorldStateManager wsm = WorldStateManager.Instance;
+            if (wsm == null || buildingIds.Count == 0) return;
+            wsm.CmdSetProduction(System.Linq.Enumerable.ToArray(buildingIds), (byte)unit);
         }
 
         private void OnWall() => UnitCommander.Instance?.BeginWallDrag();
@@ -504,16 +526,9 @@ namespace WAR2D.UI
         private void OnRemove(IReadOnlyList<int> buildingIds)
         {
             if (buildingIds.Count == 0) return;
-            WorldStateManager.Instance?.CmdCancelBuildings(ToArray(buildingIds));
+            WorldStateManager.Instance?.CmdCancelBuildings(System.Linq.Enumerable.ToArray(buildingIds));
             UnitCommander.Instance?.Selection.SelectBuildings(System.Array.Empty<int>(), false);
             Selection.Pull();
-        }
-
-        private static int[] ToArray(IReadOnlyList<int> ids)
-        {
-            var array = new int[ids.Count];
-            for (int i = 0; i < array.Length; i++) array[i] = ids[i];
-            return array;
         }
 
         private void OnSquad(int squad)

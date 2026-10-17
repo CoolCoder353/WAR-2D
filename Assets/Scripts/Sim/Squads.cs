@@ -27,11 +27,11 @@ namespace WAR2D.Sim
             return squads[squad];
         }
 
-        /// <summary>Drops a squad's members that are no longer live.</summary>
-        public void Prune(int ownerId, int squad, NetIdAllocator ids)
+        /// <summary>Drops a squad's members that are no longer live; returns how many were dropped.</summary>
+        public int Prune(int ownerId, int squad, NetIdAllocator ids)
         {
-            if ((uint)squad >= Count || !byOwner.TryGetValue(ownerId, out List<int>[] squads) || squads[squad] == null) return;
-            squads[squad].RemoveAll(id => !ids.IsLive(id));
+            if ((uint)squad >= Count || !byOwner.TryGetValue(ownerId, out List<int>[] squads) || squads[squad] == null) return 0;
+            return squads[squad].RemoveAll(id => !ids.IsLive(id));
         }
 
         /// <summary>

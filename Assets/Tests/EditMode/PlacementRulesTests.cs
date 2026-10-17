@@ -46,36 +46,36 @@ public class PlacementRulesTests
 
     [Test]
     public void OtherBuilding_DuringPlacingHQ_IsWrongState() =>
-        Assert.That(Check(BuildingType.SmallUnitSpawner, int2.zero, 0, 2, GameState.PlacingHQ, true), Is.EqualTo(PlacementResult.WrongGameState));
+        Assert.That(Check(BuildingType.Barracks, int2.zero, 0, 2, GameState.PlacingHQ, true), Is.EqualTo(PlacementResult.WrongGameState));
 
     [Test]
     public void OtherBuilding_WithoutHQ_IsRejected() =>
-        Assert.That(Check(BuildingType.SmallUnitSpawner, int2.zero, 0, 2, GameState.Playing, false), Is.EqualTo(PlacementResult.HQNotPlacedYet));
+        Assert.That(Check(BuildingType.Barracks, int2.zero, 0, 2, GameState.Playing, false), Is.EqualTo(PlacementResult.HQNotPlacedYet));
 
     [Test]
     public void Building_OnWall_IsBlocked()
     {
         SetTile(int2.zero, TileType.Wall);
-        Assert.That(Check(BuildingType.SmallUnitSpawner, int2.zero, 0, 2, GameState.Playing, true), Is.EqualTo(PlacementResult.TileBlocked));
+        Assert.That(Check(BuildingType.Barracks, int2.zero, 0, 2, GameState.Playing, true), Is.EqualTo(PlacementResult.TileBlocked));
     }
 
     [Test]
     public void Building_OnUsedTile_IsBlocked()
     {
         map.SetUsed(new int2(-1, -1) + Offset, true);
-        Assert.That(Check(BuildingType.SmallUnitSpawner, int2.zero, 0, 2, GameState.Playing, true), Is.EqualTo(PlacementResult.TileBlocked));
+        Assert.That(Check(BuildingType.Barracks, int2.zero, 0, 2, GameState.Playing, true), Is.EqualTo(PlacementResult.TileBlocked));
     }
 
     [Test]
     public void Building_OnUnit_IsBlocked()
     {
         units.Add(new int2(0, -1));
-        Assert.That(Check(BuildingType.SmallUnitSpawner, int2.zero, 0, 2, GameState.Playing, true), Is.EqualTo(PlacementResult.TileBlocked));
+        Assert.That(Check(BuildingType.Barracks, int2.zero, 0, 2, GameState.Playing, true), Is.EqualTo(PlacementResult.TileBlocked));
     }
 
     [Test]
     public void OffMap_IsBlocked() =>
-        Assert.That(Check(BuildingType.SmallUnitSpawner, new int2(50, 50), 0, 2, GameState.Playing, true), Is.EqualTo(PlacementResult.TileBlocked));
+        Assert.That(Check(BuildingType.Barracks, new int2(50, 50), 0, 2, GameState.Playing, true), Is.EqualTo(PlacementResult.TileBlocked));
 
     [Test]
     public void Miner_FacingGem_IsOk()
@@ -97,7 +97,7 @@ public class PlacementRulesTests
     [TestCase(float.NaN)]
     [TestCase(float.PositiveInfinity)]
     public void NonRightAngleRotation_IsRejected(float rot) =>
-        Assert.That(Check(BuildingType.SmallUnitSpawner, int2.zero, rot, 2, GameState.Playing, true), Is.EqualTo(PlacementResult.InvalidRotation));
+        Assert.That(Check(BuildingType.Barracks, int2.zero, rot, 2, GameState.Playing, true), Is.EqualTo(PlacementResult.InvalidRotation));
 
     [Test]
     public void UndefinedType_IsRejected()
@@ -112,7 +112,7 @@ public class PlacementRulesTests
     public void NothingCanBeBuilt_OutsidePlacingOrPlaying(GameState state)
     {
         Assert.That(Check(BuildingType.Base, int2.zero, 0, 3, state, false), Is.EqualTo(PlacementResult.WrongGameState));
-        Assert.That(Check(BuildingType.SmallUnitSpawner, int2.zero, 0, 2, state, true), Is.EqualTo(PlacementResult.WrongGameState));
+        Assert.That(Check(BuildingType.Barracks, int2.zero, 0, 2, state, true), Is.EqualTo(PlacementResult.WrongGameState));
     }
 
     [Test]
@@ -142,7 +142,7 @@ public class PlacementRulesTests
     [Test]
     public void Spawner_IgnoresTheClearing()
     {
-        Assert.That(PlacementRules.Check(BuildingType.SmallUnitSpawner, new int2(6, 6), 0, new int2(2, 2), GameState.Playing, true,
+        Assert.That(PlacementRules.Check(BuildingType.Barracks, new int2(6, 6), 0, new int2(2, 2), GameState.Playing, true,
             p => map.Grid.TileAt(p + Offset), p => map.Grid.IsUsed(p + Offset), p => false, t => false), Is.EqualTo(PlacementResult.Ok));
     }
 }

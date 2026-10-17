@@ -43,7 +43,7 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | `Shift` + drag | Add the units in the box to the selection |
 | Right-click | Order the selected units to **Move** to the cursor (they ignore enemies until they arrive) |
 | `A`, then left- or right-click | **Attack-move** to the cursor: move, but stop to fight enemies in range |
-| `Shift` + right-click (or attack-move click) | **Queue** the order after the current one: up to 4 waypoints per unit (`Orders/MaxQueued`). Units without an order start it at once. Stop, Hold or an unqueued order clears the queue. |
+| `Shift` + right-click (or attack-move click) | **Queue** the order after the current one: up to 4 waypoints per unit (`Orders/MaxQueued`). Units without an order start it at once. Stop, Hold or an unqueued order clears the queue. While Shift is held, the first selected unit's goals show as numbered rings; at the limit the cursor says "Queue full (5 orders)" and a Shift-click sends nothing. |
 | `S` | **Stop**: drop the order and stand (still fighting enemies in range) |
 | `H` | **Hold**: stand still, never pushed aside, fighting enemies in range |
 | `Ctrl` + `1`–`0` | Assign the selection to squad 1–10 (squads are kept by the server); with nothing selected, empty that squad |
@@ -55,12 +55,13 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | Left-click and drag (Wall armed) | Lay a straight wall line (horizontal, vertical or diagonal); each tile is its own blueprint |
 | `F`, then click (Builders) | **Repair** the damaged own or allied building or wall you click (the command card has the same button) |
 | `G`, then click (Diggers) | **Dig** toward the rock, gem or wall you click |
+| `G`, then drag a box (Diggers) | **Dig an area**: the selected Diggers share out the rock, gems and enemy walls in the box (lit up while you drag, with a count), each taking the nearest tile no other has, until it is clear. Your own and allies' walls are left alone. At most `Orders/MaxDigArea` (24) tiles a side. Shift queues it and keeps Dig armed; right-click or Esc cancels the drag. |
 | `Delete` (own buildings selected) | Cancel a blueprint (full refund) or demolish a finished building (half back, after a confirm). The HQ can't be removed. |
 | Minimap: left-click or drag | Move the camera there |
 | Minimap: right-click | Send the selection there (Move, or the armed Attack-move; `Shift` queues) |
 | `R` (while placing a Miner) | Turn the Miner 90° (it draws its auger facing that way); other buildings have one facing |
 | Left-click (while placing) | Place the building. The preview is grey if valid and red if not. During HQ placement the HQ preview appears on its own. |
-| Left-click on your HQ or Small Unit Spawner (where none of your units are) | Select it: the command card shows one production row per unit type it makes (HQ: Builders; Spawner: Tanks and Diggers), where `+`, `+10` and `+50` queue units and `−` removes one (max 100 queued per spawner; nothing is refunded, as the cost is charged at spawn) |
+| Left-click on one of your producers (HQ, Barracks, Heavy Factory, Siege Workshop; where none of your units are) | Select it: the command card shows a type selector (one button per unit it makes, the chosen one highlighted) above one queue row, where `+`, `+10` and `+50` queue units of the chosen type and `−` removes one (max 100 queued per producer; nothing is refunded, as the cost is charged at spawn). Picking another type **clears the queue** and the progress on the next unit |
 | `Shift` + left-click on your spawners, or drag a box over them (where none of your units are) | Select several spawners: the queue buttons add to (or take from) each of them |
 | Right-click with only spawners selected | Set their **rally point**: each new unit drives there. The flag shows while the spawner is selected; only you see it |
 | `` ` `` (backquote) | Toggle the developer console |
@@ -91,7 +92,7 @@ The map is a grid of 1×1 tiles. By default it is **generated from a seed** at t
 | Wall blueprint | Yes | No | A planned wall segment. Units walk through and see through it until a Builder starts it. |
 | Player wall | No | No | A built wall: blocks movement and sight, has an owner and health. A destroyed wall becomes ground. |
 
-Digging turns rock and gems into ground for good. A building occupies tiles based on its configured size (5×5 for the HQ, 2×2 for a Small Unit Spawner or Radar, 1×1 for a Miner or Bomb). A building can only be placed when every tile of its footprint is free ground; units standing there are moved to the nearest free tile. Occupied tiles can't be built on again, and units path around buildings.
+Digging turns rock and gems into ground for good. A building occupies tiles based on its configured size (5×5 for the HQ, 2×2 for a Small Unit Spawner or Radar, 1×1 for a Miner or Bomb). An order or rally point on rock goes to the nearest open ground within 12 tiles; the game shows an X where you clicked, a dashed line and a ring at the open ground, and "Moved to open ground". A building can only be placed when every tile of its footprint is free ground; units standing there are moved to the nearest free tile. Occupied tiles can't be built on again, and units path around buildings.
 
 ## Economy
 
@@ -109,13 +110,16 @@ Upkeep is charged once per second. Units are charged one by one (oldest slot fir
 
 ## Buildings
 
-Buildings are placed from the HUD and must sit entirely on free ground. Except for the HQ, they can only be placed during *Playing*; the HQ can only be placed during *PlacingHQ*, one per player. Every building except the HQ starts as a **blueprint** that Builders finish (see "Siege").
+Buildings are placed from the HUD and must sit entirely on free ground your side has explored (the HQ excepted: nobody has seen anything when it is placed). Except for the HQ, they can only be placed during *Playing*; the HQ can only be placed during *PlacingHQ*, one per player. Every building except the HQ starts as a **blueprint** that Builders finish (see "Siege").
 
 | Building | Size | Health | Upfront cost | Upkeep / s | Function |
 |---|---|---|---|---|---|
-| **Base (HQ)** | 5×5 | 500 | 0 | 0 | Your life. Placed during *PlacingHQ*. Click it to queue Builders (1 unit per 2 s, `SpawnRate` 0.5). It can't be demolished. |
+| **Base (HQ)** | 5×5 | 500 | 0 | 0 | Your life. Placed during *PlacingHQ*. Click it to queue Builders (one per `BuildSeconds`, 2 s). It can't be demolished. |
 | **Miner** | 1×1 | 50 | 50 | 0 | Produces 10 resources/s while the tile it faces is a gem. Placement is only allowed when it faces a gem. |
-| **Small Unit Spawner** | 2×2 | 300 | 200 | 20 | Click it to queue Tanks and Diggers (up to 100 queued). Produces **1 unit per second** (`SpawnRate`), charging each unit's cost as it spawns. |
+| **Barracks** | 2×2 | 300 | 200 | 20 | (v0.12: the old Small Unit Spawner.) Makes **Scouts, Tanks and Flamethrowers**, one type at a time. |
+| **Heavy Factory** | 3×3 | 500 | 400 | 30 | (v0.12, proposed numbers.) Makes **Heavies, Artillery and Snipers**; its large units leave on a tile with 2 tiles of clearance. |
+| **Siege Workshop** | 2×2 | 300 | 250 | 20 | (v0.12, proposed numbers.) Makes **Diggers and Suicide bombers**. |
+Every producer makes **one selected type at a time**, one unit per `BuildSeconds` of that type (in the unit table), charging the unit's cost as it spawns. A new producer starts on the first type it makes.
 | **Bomb** | 1×1 | 40 | 75 | 1 | A hidden trap, walkable. See "Siege". |
 | **Radar** | 2×2 | 200 | 250 | 5 | Sees 20 tiles ignoring walls and rock, and pings you when an enemy comes in range. See "Siege". |
 
@@ -132,13 +136,31 @@ A Miner checks the single tile next to it in the direction it faces:
 
 ## Units
 
-| Unit | Health | Damage | Range | Attack interval | Speed | Acceleration | Upfront cost | Upkeep / s |
-|---|---|---|---|---|---|---|---|---|
-| **Tank** | 100 | 10 | 5 tiles | 1 s | 5 | 5 | 50 | 2 |
-| **Builder** | 60 | 0 | 1 tile | 1 s | 5 | 5 | 60 | 2 |
-| **Digger** | 120 | 4 | 1.5 tiles | 1 s | 4 | 4 | 120 | 4 |
+| Unit | Health | Damage | Range | Interval | Speed | Cost | Upkeep / s | Sight | Radius | Armour | Build s | Special |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **Tank** | 100 | 10 | 5 | 1 s | 5 | 50 | 2 | 8 | 0.35 | Light | 1 | |
+| **Builder** | 60 | 0 | 1 | 1 s | 5 | 60 | 2 | 6 | 0.35 | Light | 2 | Never attacks |
+| **Digger** | 120 | 4 | 1.5 | 1 s | 4 | 120 | 4 | 6 | 0.4 | Light | 1 | |
+| **Scout** | 40 | 4 | 4 | 0.5 s | 9 | 30 | 1 | 12 | 0.3 | Light | 0.7 | Widest sight, fastest |
+| **Flamethrower** | 90 | 6 | 2.5 | 0.5 s | 4.5 | 70 | 2 | 6 | 0.35 | Light | 1.5 | Splash 1.5 |
+| **Heavy** | 400 | 30 | 5 | 1.5 s | 2.5 | 200 | 6 | 7 | 0.7 | Heavy | 5 | Large pathing class |
+| **Artillery** | 120 | 40 | 14 | 4 s | 2.5 | 220 | 6 | 7 | 0.7 | Heavy | 6 | Splash 2, can't fire inside 4; large pathing class |
+| **Sniper** | 50 | 60 | 16 | 3 s | 4 | 150 | 4 | 10 | 0.35 | Light | 4 | Can't fire inside 3 |
+| **Suicide bomber** | 30 | (blast 150) | 0.8 | n/a | 8 | 60 | 1 | 6 | 0.3 | Light | 1 | Blast radius 2 |
 
-Speed and Acceleration are in the config, but units reach full speed at once: Acceleration is parsed and not used yet ([known-issues.md](known-issues.md)). Builders never attack (their damage multiplier is 0). The Digger's Radius is 0.4 tiles; the others' is 0.35.
+The v0.12 numbers are starting values to tune in play. Speeds are in tiles per second.
+
+**Armour and damage classes.** Every unit is *Light* or *Heavy* armoured (`<Armour>`); with buildings and walls that gives four target classes (`LightUnit`, `HeavyUnit`, `Building`, `Wall`). The damage table holds one multiplier per attacker and class (`target="Unit"` in the XML means both unit classes). Scouts and Snipers do a quarter or half damage to Heavies; Artillery does double to buildings.
+
+**Fire only at what you see.** A unit only fires at an enemy whose fog cell its owner's side sees now (own units, allies who share vision, Radars). Artillery (range 14) and Snipers (16) outrange their own sight, so Scouts and Radars are what let them fire.
+
+**Splash.** Flamethrower and Artillery hits also damage every *enemy* unit, building and wall within the splash radius of the target (the target itself takes only the direct hit): 100 % at the centre falling to 50 % at the edge, times the multiplier for each target's class. Allies are not hit.
+
+**Minimum range.** Artillery and Snipers ignore targets closer than their minimum range and look for another.
+
+**Suicide bomber.** On an attack-move, or when idle with an enemy in sight, it runs straight at the nearest enemy unit or building and explodes on contact (within 0.8 tiles of the target's edge). The **Detonate** order (key `B`, rebindable) explodes every selected bomber where it stands. The blast hurts every unit, building and wall in its radius, **friends included**, with the damage-table multipliers (buildings ×2, walls ×3). A bomber shot down before contact does not explode.
+
+Units reach full speed at once (the unused `Acceleration` setting was dropped). Builders never attack (their damage multiplier is 0). The Digger's Radius is 0.4 tiles; the others' is 0.35.
 - A player can own at most **10,000 units** (`Simulation/MaxUnitsPerPlayer`). A spawner at the cap keeps its queue and refunds the unit.
 - A spawner creates a unit on the nearest free walkable tile outside its footprint, then sends it to the spawner's rally point if it has one (a Move order, so a rally on rock snaps to the nearest floor). Units are round bodies (`Radius` 0.35 tiles for the Tank) that push apart when they overlap, so a crowd spreads out on its own.
 - A move order gives the whole group one shared flow field to the goal, so any number of units path around walls and buildings together. The group gathers around the goal and stops within a radius that grows with its size.
@@ -146,7 +168,7 @@ Speed and Acceleration are in the config, but units reach full speed at once: Ac
 
 ## Fog of war, teams and diplomacy
 
-- Each player sees through the eyes of all their units and buildings, plus those of every player sharing vision with them. Teammates share vision with each other from the start. Sight radius (`Sight`) is per unit and building type in `GameConfig.xml`: Tank 8 tiles, Builder 6, Digger 6, HQ 10, Spawner 6, Miner 4, Radar 20 (Radar sight ignores walls), Bomb 0.
+- Each player sees through the eyes of all their units and buildings, plus those of every player sharing vision with them. Teammates share vision with each other from the start. Sight radius (`Sight`) is per unit and building type in `GameConfig.xml`: Tank 8 tiles, Builder 6, Digger 6, HQ 10, Spawner 6, Miner 4, Radar 20 (Radar sight ignores walls), Bomb 0. A blueprint sees nothing until it is finished.
 - Walls block sight; you can see a wall's face but not what's behind it. Fog is tracked on a grid of 2×2-tile cells and updated 5 times a second.
 - The map shows three states: **unexplored** (black), **explored** (dimmed: you've seen it before), and **visible** (clear).
 - You only receive other players' units standing where you can see now (your own sight plus vision shared with you). Enemy buildings you've seen stay on your map as dimmed **last-seen ghosts** when they go out of sight; you only find out a ghost was destroyed when you see its spot again.
@@ -166,7 +188,7 @@ The alert feed (top left) shows the newest four alerts for 8 s each (`Alerts/Sho
 
 All numbers are starting values in `GameConfig.xml` (`Siege`, `Units`, `Buildings`), meant to be tuned in play.
 
-- **Builders** (60 cost, 60 health) come from the HQ queue. They build everything except the HQ and never attack. Every building starts as a **blueprint** that charges its full cost and has health in proportion to progress (minimum 1). Each Builder adds `BuildPower` 25 health/s, so a 300-health Spawner takes 12 s with one. Builders work from `WorkReach` 1.6 tiles; Shift queues orders (up to `Orders/MaxQueued`).
+- **Builders** (60 cost, 60 health) come from the HQ queue. They build everything except the HQ and never attack. Every building starts as a **blueprint** that charges its full cost and has health in proportion to progress (minimum 1). Each Builder adds `BuildPower` 25 health/s, so a 300-health Spawner takes 12 s with one. Builders work from `WorkReach` 1.6 tiles; Shift queues orders (up to `Orders/MaxQueued`). Placing a blueprint with Builders selected sends them to build it.
 - **Demolish** (Delete, then confirm): a blueprint refunds in full, a finished building refunds `DemolishRefund` 50%.
 - **Repair** (F): Builders restore own or allied buildings and walls for `RepairCostPerHealth` 0.2 per health; they stop, with an alert, when the owner can't pay.
 - **Walls** (drag): 5 resources and 150 health per segment, 4-connected, up to 64 per drag, no upkeep. Each tile is charged and checked on its own; the wall is built once the tile is empty. Units attack walls by attack-move; a destroyed wall becomes ground.

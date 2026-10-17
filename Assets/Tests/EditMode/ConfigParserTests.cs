@@ -13,7 +13,7 @@ public class ConfigParserTests
   <Match><Scene>Map_2</Scene><CountdownSeconds>5</CountdownSeconds><Map><Size>1024</Size><Seed>0</Seed><GemChance>0.04</GemChance><LayoutSizes>128 256</LayoutSizes><StartSites>8 16</StartSites><Expansions>2 4</Expansions><CentralAreas>1 1</CentralAreas><RegionScale>100 100</RegionScale><LaneScale>100 100</LaneScale><CaveDepth>3 5</CaveDepth><OutcropShare>0.08</OutcropShare><ChokepointShare>0.4</ChokepointShare><LaneWidth>6 10</LaneWidth><ChokeWidth>3 6</ChokeWidth><MinStartDistance>0.1</MinStartDistance><MaxStartDistance>0.6</MaxStartDistance><ExpansionGemTiles>30</ExpansionGemTiles></Map></Match>
   <Simulation><TickRate>20</TickRate><TargetSearchSliceTicks>8</TargetSearchSliceTicks><SeparationIntervalTicks>2</SeparationIntervalTicks><SeparationStrength>1</SeparationStrength><HashCellSize>5</HashCellSize><MaxFieldRebuildsPerTick>2</MaxFieldRebuildsPerTick><MaxUnitsPerPlayer>10000</MaxUnitsPerPlayer><MaxEntities>131072</MaxEntities><FogCellSize>2</FogCellSize><VisionIntervalTicks>4</VisionIntervalTicks></Simulation>
   <Replication><CorrectionIntervalTicks>4</CorrectionIntervalTicks><CorrectionThreshold>0.25</CorrectionThreshold><DeltaScale>8</DeltaScale><OffscreenThreshold>2</OffscreenThreshold><OffscreenIntervalTicks>20</OffscreenIntervalTicks><SnapshotBytesPerSecond>262144</SnapshotBytesPerSecond><RouteTolerance>1</RouteTolerance></Replication>
-  <Orders><MaxQueued>4</MaxQueued></Orders>
+  <Orders><MaxQueued>4</MaxQueued><MaxDigArea>24</MaxDigArea></Orders>
   <Diplomacy><ChangeCooldownSeconds>2</ChangeCooldownSeconds></Diplomacy>
   <Lobby><MapSizes>256 512 1024</MapSizes><StartingResources>500 1000 2500 5000</StartingResources><StartOptions>1 3 4</StartOptions><StartPickSeconds>0 15 45</StartPickSeconds><StartPickDefault>45</StartPickDefault><SpareStartSites>2</SpareStartSites></Lobby>
   <MenuBattle><UnitsPerArmy>1500</UnitsPerArmy><MapSize>512</MapSize><Seed>7</Seed></MenuBattle>
@@ -24,16 +24,24 @@ public class ConfigParserTests
   <Replays><Enabled>1</Enabled><MaxMegabytes>512</MaxMegabytes><SendKilobytesPerSecond>1024</SendKilobytesPerSecond><KeepCount>50</KeepCount></Replays>
   <DamageTable><Entry attacker=""Tank"" target=""Unit"">1.0</Entry><Entry attacker=""Tank"" target=""Building"">1.0</Entry><Entry attacker=""Tank"" target=""Wall"">0.5</Entry><Entry attacker=""Digger"" target=""Unit"">0.5</Entry><Entry attacker=""Digger"" target=""Wall"">6</Entry></DamageTable>
   <Units>
-    <Unit type=""Tank""><Health>100</Health><Damage>10</Damage><Range>5</Range><AttackInterval>1</AttackInterval><MoveSpeed>5</MoveSpeed><Acceleration>5</Acceleration><UpfrontCost>50</UpfrontCost><RunningCost>2</RunningCost><Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>8</Sight></Unit>
-    <Unit type=""Builder""><Health>60</Health><Damage>0</Damage><Range>1</Range><AttackInterval>1</AttackInterval><MoveSpeed>5</MoveSpeed><Acceleration>5</Acceleration><UpfrontCost>60</UpfrontCost><RunningCost>2</RunningCost><Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>6</Sight></Unit>
-    <Unit type=""Digger""><Health>120</Health><Damage>4</Damage><Range>1.5</Range><AttackInterval>1</AttackInterval><MoveSpeed>4</MoveSpeed><Acceleration>4</Acceleration><UpfrontCost>120</UpfrontCost><RunningCost>4</RunningCost><Radius>0.4</Radius><SizeClass>0</SizeClass><Sight>6</Sight></Unit>
+    <Unit type=""Tank""><Health>100</Health><Damage>10</Damage><Range>5</Range><AttackInterval>1</AttackInterval><MoveSpeed>5</MoveSpeed><UpfrontCost>50</UpfrontCost><RunningCost>2</RunningCost><Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>8</Sight><Armour>Light</Armour><BuildSeconds>1</BuildSeconds></Unit>
+    <Unit type=""Builder""><Health>60</Health><Damage>0</Damage><Range>1</Range><AttackInterval>1</AttackInterval><MoveSpeed>5</MoveSpeed><UpfrontCost>60</UpfrontCost><RunningCost>2</RunningCost><Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>6</Sight><Armour>Light</Armour><BuildSeconds>2</BuildSeconds></Unit>
+    <Unit type=""Digger""><Health>120</Health><Damage>4</Damage><Range>1.5</Range><AttackInterval>1</AttackInterval><MoveSpeed>4</MoveSpeed><UpfrontCost>120</UpfrontCost><RunningCost>4</RunningCost><Radius>0.4</Radius><SizeClass>0</SizeClass><Sight>6</Sight><Armour>Light</Armour><BuildSeconds>1</BuildSeconds></Unit>
+    <Unit type=""Scout""><Health>40</Health><Damage>4</Damage><Range>4</Range><AttackInterval>0.5</AttackInterval><MoveSpeed>9</MoveSpeed><UpfrontCost>30</UpfrontCost><RunningCost>1</RunningCost><Radius>0.3</Radius><SizeClass>0</SizeClass><Sight>12</Sight><Armour>Light</Armour><BuildSeconds>0.7</BuildSeconds></Unit>
+    <Unit type=""Heavy""><Health>400</Health><Damage>30</Damage><Range>5</Range><AttackInterval>1.5</AttackInterval><MoveSpeed>2.5</MoveSpeed><UpfrontCost>200</UpfrontCost><RunningCost>6</RunningCost><Radius>0.7</Radius><SizeClass>1</SizeClass><Sight>7</Sight><Armour>Heavy</Armour><BuildSeconds>5</BuildSeconds></Unit>
+    <Unit type=""Artillery""><Health>120</Health><Damage>40</Damage><Range>14</Range><AttackInterval>4</AttackInterval><MoveSpeed>2.5</MoveSpeed><UpfrontCost>220</UpfrontCost><RunningCost>6</RunningCost><Radius>0.7</Radius><SizeClass>1</SizeClass><Sight>7</Sight><Armour>Heavy</Armour><BuildSeconds>6</BuildSeconds><Splash>2</Splash><MinRange>4</MinRange></Unit>
+    <Unit type=""Sniper""><Health>50</Health><Damage>60</Damage><Range>16</Range><AttackInterval>3</AttackInterval><MoveSpeed>4</MoveSpeed><UpfrontCost>150</UpfrontCost><RunningCost>4</RunningCost><Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>10</Sight><Armour>Light</Armour><BuildSeconds>4</BuildSeconds><MinRange>3</MinRange></Unit>
+    <Unit type=""Flamethrower""><Health>90</Health><Damage>6</Damage><Range>2.5</Range><AttackInterval>0.5</AttackInterval><MoveSpeed>4.5</MoveSpeed><UpfrontCost>70</UpfrontCost><RunningCost>2</RunningCost><Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>6</Sight><Armour>Light</Armour><BuildSeconds>1.5</BuildSeconds><Splash>1.5</Splash></Unit>
+    <Unit type=""SuicideBomber""><Health>30</Health><Damage>0</Damage><Range>0.8</Range><AttackInterval>1</AttackInterval><MoveSpeed>8</MoveSpeed><UpfrontCost>60</UpfrontCost><RunningCost>1</RunningCost><Radius>0.3</Radius><SizeClass>0</SizeClass><Sight>6</Sight><Armour>Light</Armour><BuildSeconds>1</BuildSeconds><BlastRadius>2</BlastRadius><BlastDamage>150</BlastDamage></Unit>
   </Units>
   <Buildings>
-    <Building type=""Base""><Health>500</Health><Width>3</Width><Height>3</Height><UpfrontCost>0</UpfrontCost><RunningCost>0</RunningCost><SpawnRate>0</SpawnRate><Sight>4</Sight></Building>
-    <Building type=""Miner""><Health>50</Health><Width>1</Width><Height>1</Height><UpfrontCost>50</UpfrontCost><RunningCost>0</RunningCost><SpawnRate>0</SpawnRate><Sight>4</Sight></Building>
-    <Building type=""SmallUnitSpawner""><Health>300</Health><Width>2</Width><Height>2</Height><UpfrontCost>200</UpfrontCost><RunningCost>20</RunningCost><SpawnRate>1</SpawnRate><Sight>4</Sight></Building>
-    <Building type=""Bomb""><Health>40</Health><Width>1</Width><Height>1</Height><UpfrontCost>75</UpfrontCost><RunningCost>1</RunningCost><SpawnRate>0</SpawnRate><Sight>0</Sight></Building>
-    <Building type=""Radar""><Health>200</Health><Width>2</Width><Height>2</Height><UpfrontCost>250</UpfrontCost><RunningCost>5</RunningCost><SpawnRate>0</SpawnRate><Sight>20</Sight></Building>
+    <Building type=""Base""><Health>500</Health><Width>3</Width><Height>3</Height><UpfrontCost>0</UpfrontCost><RunningCost>0</RunningCost><Sight>4</Sight></Building>
+    <Building type=""Miner""><Health>50</Health><Width>1</Width><Height>1</Height><UpfrontCost>50</UpfrontCost><RunningCost>0</RunningCost><Sight>4</Sight></Building>
+    <Building type=""Barracks""><Health>300</Health><Width>2</Width><Height>2</Height><UpfrontCost>200</UpfrontCost><RunningCost>20</RunningCost><Sight>4</Sight></Building>
+    <Building type=""Bomb""><Health>40</Health><Width>1</Width><Height>1</Height><UpfrontCost>75</UpfrontCost><RunningCost>1</RunningCost><Sight>0</Sight></Building>
+    <Building type=""Radar""><Health>200</Health><Width>2</Width><Height>2</Height><UpfrontCost>250</UpfrontCost><RunningCost>5</RunningCost><Sight>20</Sight></Building>
+    <Building type=""HeavyFactory""><Health>500</Health><Width>3</Width><Height>3</Height><UpfrontCost>400</UpfrontCost><RunningCost>30</RunningCost><Sight>6</Sight></Building>
+    <Building type=""SiegeWorkshop""><Health>300</Health><Width>2</Width><Height>2</Height><UpfrontCost>250</UpfrontCost><RunningCost>20</RunningCost><Sight>6</Sight></Building>
   </Buildings>
 </GameConfig>";
 
@@ -48,7 +56,7 @@ public class ConfigParserTests
         Assert.That(c.Resources.DecayPercentPerSecond, Is.EqualTo(5f));
         Assert.That(c.Match.Scene, Is.EqualTo("Map_2"));
         Assert.That(c.GetUnit(UnitType.Tank).Range, Is.EqualTo(5f));
-        Assert.That(c.GetBuilding(BuildingType.SmallUnitSpawner).UpfrontCost, Is.EqualTo(200f));
+        Assert.That(c.GetBuilding(BuildingType.Barracks).UpfrontCost, Is.EqualTo(200f));
         Assert.That(c.GetBuilding(BuildingType.Base).Size.x, Is.EqualTo(3));
     }
 
@@ -70,7 +78,7 @@ public class ConfigParserTests
         Assert.AreEqual(1, c.GetBuilding(BuildingType.Bomb).Width);
         Assert.AreEqual(0f, c.GetBuilding(BuildingType.Bomb).Sight, "a bomb is never a sight source");
         Assert.Greater(c.GetBuilding(BuildingType.Radar).Sight, c.GetBuilding(BuildingType.Base).Sight);
-        Assert.Greater(c.Damage.Multiplier(UnitType.Digger, TargetClass.Wall), c.Damage.Multiplier(UnitType.Digger, TargetClass.Unit));
+        Assert.Greater(c.Damage.Multiplier(UnitType.Digger, TargetClass.Wall), c.Damage.Multiplier(UnitType.Digger, TargetClass.LightUnit));
     }
 
     [Test]
@@ -189,6 +197,18 @@ public class ConfigParserTests
         GameConfigData c = ConfigParser.Parse(ValidXml, errors);
         Assert.That(errors, Is.Empty);
         Assert.AreEqual(4, c.Orders.MaxQueued);
+        Assert.AreEqual(24, c.Orders.MaxDigArea);
+    }
+
+    [TestCase("<MaxDigArea>0</MaxDigArea>")]
+    [TestCase("<MaxDigArea>65</MaxDigArea>")]
+    [TestCase("")]
+    public void OrdersMaxDigAreaRequiredAndInRange(string replacement)
+    {
+        string xml = Regex.Replace(ValidXml, "<MaxDigArea>[^<]*</MaxDigArea>", replacement);
+        var errors = new List<string>();
+        ConfigParser.Parse(xml, errors);
+        Assert.That(errors, Has.Some.Contains("MaxDigArea"));
     }
 
     [TestCase("<MaxQueued>-1</MaxQueued>")]

@@ -29,6 +29,8 @@ public sealed class MatchStats
 
     public void BuildingBuilt(int owner) => Edit(owner, (ref PlayerStats s) => s.BuildingsBuilt++);
     public void BuildingLost(int owner) => Edit(owner, (ref PlayerStats s) => s.BuildingsLost++);
+    /// <summary>The owner cancelled a blueprint: it was neither built nor lost.</summary>
+    public void BlueprintCancelled(int owner) => Edit(owner, (ref PlayerStats s) => s.BuildingsBuilt = Math.Max(0, s.BuildingsBuilt - 1));
     public void Mined(int owner, float amount) { if (amount > 0f) Edit(owner, (ref PlayerStats s) => s.Mined += amount); }
     public void Spent(int owner, float amount) { if (amount > 0f) Edit(owner, (ref PlayerStats s) => s.Spent += amount); }
 

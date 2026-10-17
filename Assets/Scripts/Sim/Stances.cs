@@ -32,6 +32,8 @@ namespace WAR2D.Sim
         public const byte Build = 1;
         public const byte Repair = 2;
         public const byte Dig = 3;
+        /// <summary>Only in a queued waypoint: join the dig area whose id is the waypoint's <c>goal.x</c> (<see cref="DigAreaBook"/>).</summary>
+        public const byte DigArea = 4;
     }
 }
 
@@ -48,4 +50,6 @@ public enum OrderKind : byte
     Repair = 5,
     /// <summary>Diggers tunnel into the rock, gem or wall at the tile.</summary>
     Dig = 6,
+    /// <summary>Every selected Suicide bomber blows up where it stands.</summary>
+    Detonate = 7,
 }

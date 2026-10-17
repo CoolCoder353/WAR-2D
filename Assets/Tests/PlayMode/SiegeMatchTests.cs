@@ -35,7 +35,7 @@ public class SiegeMatchTests
         // The HQ is a blueprint until a Builder finishes it, so start from a finished one.
         int hqId = -1;
         yield return Wait("HQ entity", () => TryFindBuilding(BuildingType.Base, out hqId), 10f);
-        wsm.CmdChangeQueues(new[] { hqId }, (byte)UnitType.Builder, 1);
+        wsm.CmdChangeQueues(new[] { hqId }, 1);
 
         int builder = -1;
         float2 at = default;
@@ -62,6 +62,51 @@ public class SiegeMatchTests
 
         yield return Wait("wall built on client", () => ClientTerrain.Current.Tiles[index] == (byte)TileType.PlayerWall, 60f);
         Assert.That(ClientTerrain.Current.WallOwner(index), Is.EqualTo(PlayModeMatch.LocalOwner));
+    }
+
+    [UnityTest, Timeout(120000)]
+    public IEnumerator DiggersClearADraggedArea()
+    {
+        config.Match.Map.Size = 256; // terrain deltas reach clients of generated maps
+        config.Match.Map.Seed = 5;
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        int2 hq = default;
+        yield return PlayModeMatch.PlaceHQ(a => hq = a);
+        WorldStateManager wsm = WorldStateManager.Instance;
+
+        // A rock tile with open ground below it, near the HQ: the Digger starts on the open tile.
+        int2 rock = default, stand = default;
+        bool found = false;
+        for (int r = 4; r <= 40 && !found; r++)
+            for (int dx = -r; dx <= r && !found; dx++)
+                foreach (int dy in new[] { -r, r })
+                {
+                    int2 t = hq + new int2(dx, dy);
+                    if (!wsm.Map.Grid.Contains(t + 2) || !wsm.Map.Grid.Contains(t - 2)) continue;
+                    if (wsm.Map.Grid.TileAt(t) != TileType.Wall || !wsm.Map.IsWalkable(t - new int2(0, 1))) continue;
+                    rock = t; stand = t - new int2(0, 1); found = true;
+                    break;
+                }
+        Assert.That(found, Is.True, "rock beside open ground near the HQ");
+
+        int digger = -1;
+        wsm.Sim.Commands.Enqueue(new WAR2D.Sim.SimCommand { Kind = WAR2D.Sim.SimCommandKind.SpawnUnit, OwnerId = PlayModeMatch.LocalOwner, Position = (float2)stand + 0.5f, UnitType = UnitType.Digger, OnSpawned = id => digger = id });
+        yield return Wait("Digger", () => digger > 0, 10f);
+
+        // A 2×1 box over the rock and its neighbour: only the rock tiles in it are dug.
+        int2 from = rock, to = rock + new int2(1, 0);
+        var box = new System.Collections.Generic.List<int>();
+        for (int x = from.x; x <= to.x; x++)
+            if (TileRules.IsDiggable(wsm.Map.Grid.TileAt(new int2(x, rock.y))) && wsm.Map.Grid.TileAt(new int2(x, rock.y)) != TileType.PlayerWall) box.Add(rock.y * wsm.Map.Grid.Width + x);
+        foreach (byte[] chunk in OrderIdCodec.EncodeChunks(new System.Collections.Generic.List<int> { digger }))
+            wsm.CmdDigAreaChunk(2, chunk, true, false, from, to);
+
+        yield return Wait("the area dug out on the client", () =>
+        {
+            foreach (int index in box) if (!TileRules.IsFloor((TileType)ClientTerrain.Current.Tiles[index])) return false;
+            return true;
+        }, 60f);
+        yield return Wait("the area dropped once clear", () => wsm.Sim.DigAreas.Count == 0, 10f);
     }
 
     private static IEnumerator Wait(string what, System.Func<bool> condition, float seconds)

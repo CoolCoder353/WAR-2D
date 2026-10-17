@@ -146,6 +146,8 @@ namespace WAR2D.Net.Upnp
             if (b[0] == 192 && b[1] == 168) return false;
             if (b[0] == 192 && b[1] == 0 && (b[2] == 0 || b[2] == 2)) return false; // IETF protocol and documentation
             if (b[0] == 198 && (b[1] & 0xFE) == 18) return false; // benchmarking
+            if (b[0] == 198 && b[1] == 51 && b[2] == 100) return false; // TEST-NET-2
+            if (b[0] == 203 && b[1] == 0 && b[2] == 113) return false; // TEST-NET-3
             return b[0] < 224; // multicast and reserved
         }
 

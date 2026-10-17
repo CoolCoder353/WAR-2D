@@ -28,6 +28,8 @@ namespace WAR2D.Client.Replay
         public float Seconds { get; private set; }
         public float DurationSeconds { get; }
         public string Error => reader?.Error;
+        /// <summary>True once every record has been read (with or without an <c>End</c> record).</summary>
+        public bool AtEnd { get; private set; }
     
         public ReplayCursor(string path)
         {
@@ -47,7 +49,7 @@ namespace WAR2D.Client.Replay
             Header = reader.Header;
         }
     
-        public void Restart() { Open(); Seconds = 0f; havePending = false; }
+        public void Restart() { Open(); Seconds = 0f; havePending = false; AtEnd = false; }
     
         /// <summary>Applies every record whose tick time is ≤ <paramref name="seconds"/>, in order. Never goes back (use <see cref="Restart"/>).</summary>
         public void AdvanceTo(float seconds, Action<int, ReplayChannel, ArraySegment<byte>> apply)
@@ -58,7 +60,7 @@ namespace WAR2D.Client.Replay
             {
                 if (!havePending)
                 {
-                    if (!reader.TryNext(out pendingTick, out pendingChannel, out ArraySegment<byte> p)) return;
+                    if (!reader.TryNext(out pendingTick, out pendingChannel, out ArraySegment<byte> p)) { AtEnd = true; return; }
                     if (pendingBytes.Length < p.Count) pendingBytes = new byte[Math.Max(p.Count, pendingBytes.Length * 2)];
                     Array.Copy(p.Array, p.Offset, pendingBytes, 0, p.Count);
                     pendingLength = p.Count;
@@ -86,12 +88,18 @@ namespace WAR2D.Client.Replay
         private MapStore map;
         private ClientWorld view;
         private bool quiet;
+        private bool sawEnd;
         private IReadOnlyList<(int owner, float resources, int units, int buildings)> timeline = Array.Empty<(int, float, int, int)>();
 
         public float Speed = 1f;
         public bool Playing = true;
         public float Seconds => cursor != null ? cursor.Seconds : 0f;
         public float DurationSeconds => cursor != null ? cursor.DurationSeconds : 0f;
+        /// <summary>
+        /// True when playback reached the end of the file without an <c>End</c> record: the recording was cut
+        /// short (size cap, full writer queue or a crash). Playback still stops there.
+        /// </summary>
+        public bool Incomplete => cursor != null && cursor.AtEnd && !sawEnd;
         public ReplayHeader Header => cursor?.Header;
         public IReadOnlyList<(int owner, float resources, int units, int buildings)> LatestTimeline => timeline;
 
@@ -136,7 +144,7 @@ namespace WAR2D.Client.Replay
             ClientBuildings.Clear();
             ClientTerrain.Clear();
             ClientTerrain.Current.Init(map.Grid);
-            ClientTerrain.Current.Changed += OnTerrainChanged;
+            ClientTerrain.Current.Changed += OnClientTerrainChanged;
             ReplayHeader header = cursor.Header;
             view = new GameObject("ReplayView").AddComponent<ClientWorld>();
             view.ColourIndexOf = owner =>
@@ -154,7 +162,7 @@ namespace WAR2D.Client.Replay
             }
         }
 
-        private void OnTerrainChanged(IReadOnlyList<int2> tiles)
+        private void OnClientTerrainChanged(IReadOnlyList<int2> tiles)
         {
             if (map == null) return;
             byte[] known = ClientTerrain.Current.Tiles;
@@ -171,7 +179,15 @@ namespace WAR2D.Client.Replay
             {
                 cursor.AdvanceTo(cursor.Seconds + dt, Apply);
                 view.AdvanceClock(dt);
+                if (Playing && cursor.AtEnd) StopAtEndOfFile();
             }
+        }
+
+        /// <summary>A recording without its End record (cut short) stops at its last record instead of playing on forever.</summary>
+        private void StopAtEndOfFile()
+        {
+            Playing = false;
+            if (!sawEnd) WarLog.Warn(LogCategory.Replay, $"the recording ends at {cursor.Seconds:0.0} s without an End record (cut short)");
         }
 
         private void LateUpdate()
@@ -191,11 +207,12 @@ namespace WAR2D.Client.Replay
                 case ReplayChannel.Terrain: TerrainCodec.Apply(ClientTerrain.Current, payload); break;
                 case ReplayChannel.Explosions:
                 case ReplayChannel.Blasts:
+                case ReplayChannel.BomberBlasts:
                     if (quiet) break;
                     for (int i = 0; i + 8 <= payload.Count; i += 8)
                     {
                         var p = new Vector2(BitConverter.ToSingle(payload.Array, payload.Offset + i), BitConverter.ToSingle(payload.Array, payload.Offset + i + 4));
-                        if (channel == ReplayChannel.Explosions) Effects.Explosion(p); else Effects.BombBlast(p);
+                        if (channel == ReplayChannel.Explosions) Effects.Explosion(p); else if (channel == ReplayChannel.Blasts) Effects.BombBlast(p); else Effects.BomberBlast(p);
                     }
                     break;
                 case ReplayChannel.Timeline:
@@ -208,7 +225,7 @@ namespace WAR2D.Client.Replay
                     }
                     catch (Exception e) when (e is Newtonsoft.Json.JsonException || e is NullReferenceException || e is InvalidCastException) { }
                     break;
-                case ReplayChannel.End: Playing = false; break;
+                case ReplayChannel.End: Playing = false; sawEnd = true; break;
             }
         }
 
@@ -218,7 +235,7 @@ namespace WAR2D.Client.Replay
             if (cursor == null) return;
             var watch = System.Diagnostics.Stopwatch.StartNew();
             seconds = Mathf.Clamp(seconds, 0f, cursor.DurationSeconds);
-            if (seconds < cursor.Seconds) { Reset(); cursor.Restart(); }
+            if (seconds < cursor.Seconds) { Reset(); cursor.Restart(); sawEnd = false; }
             quiet = true;
             cursor.AdvanceTo(seconds, Apply);
             quiet = false;
@@ -230,11 +247,11 @@ namespace WAR2D.Client.Replay
         {
             // At once: ClientWorld.OnDestroy clears the client stores, and a second ClientWorld refuses to start while the first exists.
             if (view != null) DestroyImmediate(view.gameObject);
-            ClientTerrain.Current.Changed -= OnTerrainChanged;
+            ClientTerrain.Current.Changed -= OnClientTerrainChanged;
             ClientBuildings.Clear();
             ClientTerrain.Clear();
             ClientTerrain.Current.Init(map.Grid);
-            ClientTerrain.Current.Changed += OnTerrainChanged;
+            ClientTerrain.Current.Changed += OnClientTerrainChanged;
             ReplayHeader header = cursor.Header;
             view = new GameObject("ReplayView").AddComponent<ClientWorld>();
             view.ColourIndexOf = owner => { int i = header.Players.FindIndex(p => p.OwnerId == owner); return i >= 0 ? header.Players[i].Colour : 0; };
@@ -249,7 +266,7 @@ namespace WAR2D.Client.Replay
         {
             if (view != null) DestroyImmediate(view.gameObject);
             view = null;
-            ClientTerrain.Current.Changed -= OnTerrainChanged;
+            ClientTerrain.Current.Changed -= OnClientTerrainChanged;
             MapView.Hide();
             ClientBuildings.Clear();
             ClientTerrain.Clear();

@@ -1,3 +1,4 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Label name="squad-hint" text="Ctrl+1–0 saves the selection as a squad · 1–0 selects it · press twice to centre" class="text--secondary squad-hint" picking-mode="Ignore" />
     <ui:VisualElement name="squad-bar" class="squad-bar" picking-mode="Ignore" />
 </ui:UXML>

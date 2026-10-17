@@ -59,6 +59,7 @@
 
   <Orders>
     <MaxQueued>4</MaxQueued>  <!-- v0.6: Shift-queued waypoints per unit -->
+    <MaxDigArea>24</MaxDigArea>  <!-- 2026-10-18: longest side of a Dig drag's area, in tiles (Figma v0.12 Fixes) -->
   </Orders>
 
   <Diplomacy>
@@ -118,17 +119,44 @@
     <KeepCount>50</KeepCount>                             <!-- v0.10: newest replays kept in the Replays folder -->
   </Replays>
 
-  <!-- Damage multiplier per attacker unit type and target class (Unit, Building, Wall); 1.0 when missing. -->
+  <!-- Damage multiplier per attacker unit type and target class (LightUnit, HeavyUnit, Building, Wall); 1.0 when missing. target="Unit" is shorthand for both unit classes. -->
   <DamageTable>
-    <Entry attacker="Tank" target="Unit">1.0</Entry>
-    <Entry attacker="Tank" target="Building">1.0</Entry>
+    <Entry attacker="Tank" target="LightUnit">1</Entry>
+    <Entry attacker="Tank" target="HeavyUnit">1</Entry>
+    <Entry attacker="Tank" target="Building">1</Entry>
     <Entry attacker="Tank" target="Wall">0.5</Entry>
-    <Entry attacker="Builder" target="Unit">0.0</Entry>
-    <Entry attacker="Builder" target="Building">0.0</Entry>
-    <Entry attacker="Builder" target="Wall">0.0</Entry>
-    <Entry attacker="Digger" target="Unit">0.5</Entry>
-    <Entry attacker="Digger" target="Building">3.0</Entry>
-    <Entry attacker="Digger" target="Wall">6.0</Entry>
+    <Entry attacker="Builder" target="LightUnit">0</Entry>
+    <Entry attacker="Builder" target="HeavyUnit">0</Entry>
+    <Entry attacker="Builder" target="Building">0</Entry>
+    <Entry attacker="Builder" target="Wall">0</Entry>
+    <Entry attacker="Digger" target="LightUnit">0.5</Entry>
+    <Entry attacker="Digger" target="HeavyUnit">0.5</Entry>
+    <Entry attacker="Digger" target="Building">3</Entry>
+    <Entry attacker="Digger" target="Wall">6</Entry>
+    <Entry attacker="Scout" target="LightUnit">1</Entry>
+    <Entry attacker="Scout" target="HeavyUnit">0.25</Entry>
+    <Entry attacker="Scout" target="Building">0.25</Entry>
+    <Entry attacker="Scout" target="Wall">0.1</Entry>
+    <Entry attacker="Flamethrower" target="LightUnit">1.5</Entry>
+    <Entry attacker="Flamethrower" target="HeavyUnit">0.5</Entry>
+    <Entry attacker="Flamethrower" target="Building">0.75</Entry>
+    <Entry attacker="Flamethrower" target="Wall">0.25</Entry>
+    <Entry attacker="Heavy" target="LightUnit">1</Entry>
+    <Entry attacker="Heavy" target="HeavyUnit">1.25</Entry>
+    <Entry attacker="Heavy" target="Building">1.5</Entry>
+    <Entry attacker="Heavy" target="Wall">1</Entry>
+    <Entry attacker="Artillery" target="LightUnit">1</Entry>
+    <Entry attacker="Artillery" target="HeavyUnit">1</Entry>
+    <Entry attacker="Artillery" target="Building">2</Entry>
+    <Entry attacker="Artillery" target="Wall">1.5</Entry>
+    <Entry attacker="Sniper" target="LightUnit">1</Entry>
+    <Entry attacker="Sniper" target="HeavyUnit">0.5</Entry>
+    <Entry attacker="Sniper" target="Building">0.25</Entry>
+    <Entry attacker="Sniper" target="Wall">0.1</Entry>
+    <Entry attacker="SuicideBomber" target="LightUnit">1</Entry>
+    <Entry attacker="SuicideBomber" target="HeavyUnit">1</Entry>
+    <Entry attacker="SuicideBomber" target="Building">2</Entry>
+    <Entry attacker="SuicideBomber" target="Wall">3</Entry>
   </DamageTable>
 
   <Units>
@@ -138,22 +166,66 @@
       <Range>5.0</Range>
       <AttackInterval>1.0</AttackInterval>
       <MoveSpeed>5.0</MoveSpeed>
-      <Acceleration>5.0</Acceleration>
       <UpfrontCost>50.0</UpfrontCost>
       <RunningCost>2.0</RunningCost>
       <Radius>0.35</Radius>       <!-- collision radius in tiles (v0.3 D2) -->
       <SizeClass>0</SizeClass>    <!-- pathing size class: 0 small, 1 large -->
       <Sight>8.0</Sight>          <!-- v0.5: sight radius in tiles -->
+      <Armour>Light</Armour>
+      <BuildSeconds>1.0</BuildSeconds> <!-- v0.12: seconds a producer takes to make one -->
     </Unit>
     <Unit type="Builder">
       <Health>60</Health><Damage>0</Damage><Range>1.0</Range><AttackInterval>1.0</AttackInterval>
-      <MoveSpeed>5.0</MoveSpeed><Acceleration>5.0</Acceleration><UpfrontCost>60.0</UpfrontCost><RunningCost>2.0</RunningCost>
+      <MoveSpeed>5.0</MoveSpeed><UpfrontCost>60.0</UpfrontCost><RunningCost>2.0</RunningCost>
       <Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>6.0</Sight>   <!-- v0.7 -->
+      <Armour>Light</Armour><BuildSeconds>2.0</BuildSeconds>
     </Unit>
     <Unit type="Digger">
       <Health>120</Health><Damage>4</Damage><Range>1.5</Range><AttackInterval>1.0</AttackInterval>
-      <MoveSpeed>4.0</MoveSpeed><Acceleration>4.0</Acceleration><UpfrontCost>120.0</UpfrontCost><RunningCost>4.0</RunningCost>
+      <MoveSpeed>4.0</MoveSpeed><UpfrontCost>120.0</UpfrontCost><RunningCost>4.0</RunningCost>
       <Radius>0.4</Radius><SizeClass>0</SizeClass><Sight>6.0</Sight>    <!-- v0.7 -->
+      <Armour>Light</Armour><BuildSeconds>1.0</BuildSeconds>
+    </Unit>
+    <!-- v0.12 Arsenal: starting numbers from the spec (section 3), to tune in play -->
+    <Unit type="Scout">
+      <Health>40</Health><Damage>4</Damage><Range>4.0</Range><AttackInterval>0.5</AttackInterval>
+      <MoveSpeed>9.0</MoveSpeed><UpfrontCost>30.0</UpfrontCost><RunningCost>1.0</RunningCost>
+      <Radius>0.3</Radius><SizeClass>0</SizeClass><Sight>12.0</Sight>
+      <Armour>Light</Armour><BuildSeconds>0.7</BuildSeconds>
+    </Unit>
+    <Unit type="Flamethrower">
+      <Health>90</Health><Damage>6</Damage><Range>2.5</Range><AttackInterval>0.5</AttackInterval>
+      <MoveSpeed>4.5</MoveSpeed><UpfrontCost>70.0</UpfrontCost><RunningCost>2.0</RunningCost>
+      <Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>6.0</Sight>
+      <Armour>Light</Armour><BuildSeconds>1.5</BuildSeconds>
+      <Splash>1.5</Splash>
+    </Unit>
+    <Unit type="Heavy">
+      <Health>400</Health><Damage>30</Damage><Range>5.0</Range><AttackInterval>1.5</AttackInterval>
+      <MoveSpeed>2.5</MoveSpeed><UpfrontCost>200.0</UpfrontCost><RunningCost>6.0</RunningCost>
+      <Radius>0.7</Radius><SizeClass>1</SizeClass><Sight>7.0</Sight>
+      <Armour>Heavy</Armour><BuildSeconds>5.0</BuildSeconds>
+    </Unit>
+    <Unit type="Artillery">
+      <Health>120</Health><Damage>40</Damage><Range>14.0</Range><AttackInterval>4.0</AttackInterval>
+      <MoveSpeed>2.5</MoveSpeed><UpfrontCost>220.0</UpfrontCost><RunningCost>6.0</RunningCost>
+      <Radius>0.7</Radius><SizeClass>1</SizeClass><Sight>7.0</Sight>
+      <Armour>Heavy</Armour><BuildSeconds>6.0</BuildSeconds>
+      <Splash>2.0</Splash><MinRange>4.0</MinRange>
+    </Unit>
+    <Unit type="Sniper">
+      <Health>50</Health><Damage>60</Damage><Range>16.0</Range><AttackInterval>3.0</AttackInterval>
+      <MoveSpeed>4.0</MoveSpeed><UpfrontCost>150.0</UpfrontCost><RunningCost>4.0</RunningCost>
+      <Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>10.0</Sight>
+      <Armour>Light</Armour><BuildSeconds>4.0</BuildSeconds>
+      <MinRange>3.0</MinRange>
+    </Unit>
+    <Unit type="SuicideBomber">
+      <Health>30</Health><Damage>0</Damage><Range>0.8</Range><AttackInterval>1.0</AttackInterval>
+      <MoveSpeed>8.0</MoveSpeed><UpfrontCost>60.0</UpfrontCost><RunningCost>1.0</RunningCost>
+      <Radius>0.3</Radius><SizeClass>0</SizeClass><Sight>6.0</Sight>
+      <Armour>Light</Armour><BuildSeconds>1.0</BuildSeconds>
+      <BlastRadius>2.0</BlastRadius><BlastDamage>150.0</BlastDamage>
     </Unit>
   </Units>
 
@@ -164,7 +236,6 @@
       <Height>5</Height>
       <UpfrontCost>0.0</UpfrontCost>
       <RunningCost>0.0</RunningCost>
-      <SpawnRate>0.5</SpawnRate>
       <Sight>10.0</Sight>
     </Building>
     <Building type="Miner">
@@ -173,25 +244,27 @@
       <Height>1</Height>
       <UpfrontCost>50.0</UpfrontCost>
       <RunningCost>0.0</RunningCost>
-      <SpawnRate>0.0</SpawnRate>
       <Sight>4.0</Sight>
     </Building>
-    <Building type="SmallUnitSpawner">
+    <Building type="Barracks">
       <Health>300</Health>
       <Width>2</Width>
       <Height>2</Height>
       <UpfrontCost>200.0</UpfrontCost>
       <RunningCost>20.0</RunningCost>
-      <SpawnRate>1.0</SpawnRate>
       <Sight>6.0</Sight>
     </Building>
+    <Building type="HeavyFactory"> <!-- v0.12 proposal: cost from the approved Figma frames -->
+      <Health>500</Health><Width>3</Width><Height>3</Height><UpfrontCost>400.0</UpfrontCost><RunningCost>30.0</RunningCost><Sight>6.0</Sight>
+    </Building>
+    <Building type="SiegeWorkshop"> <!-- v0.12 proposal -->
+      <Health>300</Health><Width>2</Width><Height>2</Height><UpfrontCost>250.0</UpfrontCost><RunningCost>20.0</RunningCost><Sight>6.0</Sight>
+    </Building>
     <Building type="Bomb">
-      <Health>40</Health><Width>1</Width><Height>1</Height><UpfrontCost>75.0</UpfrontCost><RunningCost>1.0</RunningCost>
-      <SpawnRate>0.0</SpawnRate><Sight>0.0</Sight>   <!-- v0.7 -->
+      <Health>40</Health><Width>1</Width><Height>1</Height><UpfrontCost>75.0</UpfrontCost><RunningCost>1.0</RunningCost><Sight>0.0</Sight>   <!-- v0.7 -->
     </Building>
     <Building type="Radar">
-      <Health>200</Health><Width>2</Width><Height>2</Height><UpfrontCost>250.0</UpfrontCost><RunningCost>5.0</RunningCost>
-      <SpawnRate>0.0</SpawnRate><Sight>20.0</Sight>  <!-- v0.7 -->
+      <Health>200</Health><Width>2</Width><Height>2</Height><UpfrontCost>250.0</UpfrontCost><RunningCost>5.0</RunningCost><Sight>20.0</Sight>  <!-- v0.7 -->
     </Building>
   </Buildings>
 </GameConfig>

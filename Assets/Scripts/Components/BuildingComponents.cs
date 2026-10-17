@@ -31,12 +31,16 @@ public enum BuildingType
 {
     None,
     Miner,
-    SmallUnitSpawner,
+    Barracks,
     Base,
     /// <summary>A hidden mine: detonates when an enemy steps on it; visible only to its owner's side.</summary>
     Bomb,
     /// <summary>Sees over walls and pings its owner when an enemy comes into range.</summary>
-    Radar
+    Radar,
+    /// <summary>Makes Heavy, Artillery and Sniper (3x3).</summary>
+    HeavyFactory,
+    /// <summary>Makes Digger and Suicide bomber (2x2).</summary>
+    SiegeWorkshop
 }
 
 /// <summary>A building under construction (v0.7). Removed when <see cref="Progress"/> reaches 1.</summary>
@@ -59,12 +63,13 @@ public static class BuildingFlags
 public struct SpawnerData : IComponentData
 {
     public float2 position;
-    /// <summary>Queued unit types, oldest first (at most <see cref="SpawnerRules.MaxQueue"/>).</summary>
-    public Unity.Collections.FixedList128Bytes<byte> queue;
+    /// <summary>The unit type this producer makes (a <see cref="UnitType"/>); a new producer starts on its first type.</summary>
+    public byte unitType;
+    /// <summary>Units queued of <see cref="unitType"/>, 0..<see cref="SpawnerRules.MaxQueue"/>.</summary>
+    public int count;
     public int ownerId;
-    /// <summary>Units per second (from BuildingConfig.SpawnRate).</summary>
-    public float spawnRate;
-    public float timeSinceLastSpawn;
+    /// <summary>Seconds of build time put into the next unit (reaches the unit's <c>BuildSeconds</c>, then it spawns).</summary>
+    public float progress;
     /// <summary>The rally tile new units are sent to, when <see cref="hasRally"/> is set (the owner's choice).</summary>
     public int2 rally;
     public bool hasRally;

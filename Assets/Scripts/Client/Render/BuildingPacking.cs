@@ -69,7 +69,12 @@ namespace WAR2D.Client.Render
             }
         }
 
-        private static readonly Comparison<UnitInstance> FartherFirst = (a, b) => b.position.y.CompareTo(a.position.y);
+        // Ties break on x, so equal-y neighbours keep a fixed order (List.Sort is not stable) and don't flicker.
+        private static readonly Comparison<UnitInstance> FartherFirst = (a, b) =>
+        {
+            int byY = b.position.y.CompareTo(a.position.y);
+            return byY != 0 ? byY : a.position.x.CompareTo(b.position.x);
+        };
 
         /// <param name="colorOf">An owner's packed team colour.</param>
         /// <param name="flashing">True for a building that was just hit (it flashes red).</param>
@@ -124,7 +129,7 @@ namespace WAR2D.Client.Render
         /// <summary>The idle frame at <paramref name="time"/>: the Spawner's lamp blinks once a second, the rest turn every tick; neighbours are staggered.</summary>
         private static int AnimationFrame(BuildingType type, float2 centre, float time, int frames)
         {
-            int hold = type == BuildingType.SmallUnitSpawner ? math.max(1, ArtStyle.FramesPerSecond / 2) : 1;
+            int hold = type == BuildingType.Barracks ? math.max(1, ArtStyle.FramesPerSecond / 2) : 1;
             float phase = (centre.x * 0.37f + centre.y * 0.61f) % 1f;
             return (int)((time + phase) * ArtStyle.FramesPerSecond) / hold % frames;
         }

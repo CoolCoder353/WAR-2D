@@ -41,6 +41,9 @@ namespace WAR2D.Sim
                 Radius = data.Radius,
                 Type = data.Type,
                 Target = data.Target,
+                TargetKind = data.TargetKind,
+                BuildingPositions = data.BuildingPositions,
+                BlastRadiusByType = data.BlastRadiusByType,
                 OrderSlot = data.OrderSlot,
                 Stance = data.Stance,
                 Arrived = data.Arrived,
@@ -116,6 +119,9 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<float> Radius;
         [ReadOnly] public NativeArray<byte> Type;
         [ReadOnly] public NativeArray<int> Target;
+        [ReadOnly] public NativeArray<byte> TargetKind;
+        [ReadOnly] public NativeArray<float2> BuildingPositions;
+        [ReadOnly] public NativeArray<float> BlastRadiusByType;
         [ReadOnly] public NativeArray<int> OrderSlot;
         [ReadOnly] public NativeArray<byte> Stance;
         public NativeArray<byte> Arrived;
@@ -191,6 +197,15 @@ namespace WAR2D.Sim
                     if (OrderReady[slot] != 0 && (i + Tick) % Slice == 0)
                         RouteMisses.Enqueue(new int2(slot, SectorOf((int2)math.floor(position))));
                 }
+            }
+
+            // A Suicide bomber with a target runs straight at it (it detonates on contact in combat).
+            int target = Target[i];
+            if (target >= 0 && Stance[i] != Stances.Move && Type[i] < BlastRadiusByType.Length && BlastRadiusByType[Type[i]] > 0f)
+            {
+                byte kind = TargetKind[i];
+                float2 at = kind == TargetKinds.Unit ? Positions[target] : kind == TargetKinds.Wall ? new float2(target % Width + 0.5f, target / Width + 0.5f) : BuildingPositions[target];
+                velocity = speed * math.normalizesafe(at - position);
             }
 
             if (SeparationInterval <= 1 || (i + Tick) % SeparationInterval == 0)

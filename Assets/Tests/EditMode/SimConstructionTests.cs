@@ -17,7 +17,7 @@ public class SimConstructionTests
         float one, two;
         using (var sim = new SimHarness(SimHarness.OpenMap(48)))
         {
-            int b = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.SmallUnitSpawner, new int2(20, 20)); // 300 health
+            int b = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(20, 20)); // 300 health
             int[] builder = sim.Spawn(SimHarness.OwnerA, new float2(18.5f, 20.5f), UnitType.Builder);
             sim.Tick();
             sim.Order(SimHarness.OwnerA, OrderKind.Build, new int2(20, 20), builder[0]);
@@ -26,7 +26,7 @@ public class SimConstructionTests
         }
         using (var sim = new SimHarness(SimHarness.OpenMap(48)))
         {
-            int b = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.SmallUnitSpawner, new int2(20, 20));
+            int b = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(20, 20));
             int[] a = sim.Spawn(SimHarness.OwnerA, new float2(18.5f, 20.5f), UnitType.Builder);
             int[] c = sim.Spawn(SimHarness.OwnerA, new float2(21.5f, 20.5f), UnitType.Builder);
             sim.Tick();
@@ -51,6 +51,19 @@ public class SimConstructionTests
         sim.TickSeconds(25f);
         Assert.AreEqual(1f, Progress(sim, b), "walked over and finished");
         Assert.AreEqual(WorkKinds.None, sim.UnitById(builder[0]).WorkKind, "its work is cleared once done");
+    }
+
+    [Test]
+    public void ABuildOrderInTheSameTickAsItsBlueprintIsKept()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(48));
+        int[] builder = sim.Spawn(SimHarness.OwnerA, new float2(18.5f, 20.5f), UnitType.Builder);
+        sim.Tick();
+        // What placing a blueprint with Builders selected does: the building and the order drain together.
+        int b = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Miner, new int2(20, 20));
+        sim.Order(SimHarness.OwnerA, OrderKind.Build, new int2(20, 20), builder[0]);
+        sim.TickSeconds(4f);
+        Assert.Greater(Progress(sim, b), 0f, "the Builder went to work on the new blueprint");
     }
 
     [Test]

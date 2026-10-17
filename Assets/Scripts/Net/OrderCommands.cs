@@ -27,6 +27,7 @@ public partial class WorldStateManager
     private readonly List<(int, ushort, byte)> staleTokens = new List<(int, ushort, byte)>();
     private const byte OrderChunkKind = 0;
     private const byte SquadKindBase = 1; // + squad index
+    private const byte DigAreaChunkKind = 32; // past the squads
 
     /// <summary>
     /// Accumulates one chunk of an order (<see cref="OrderKind"/>); the final chunk queues it. The goal
@@ -41,6 +42,23 @@ public partial class WorldStateManager
         List<int> ids = Accumulate(owner, token, OrderChunkKind, idChunk, final);
         if (ids == null) return;
         Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = (OrderKind)kind, Queue = queue, OwnerId = owner, Tile = goal, Ids = ids.ToArray() });
+    }
+
+    /// <summary>
+    /// Accumulates one chunk of a Dig drag; the final chunk gives the listed Diggers a dig area over the box
+    /// (clamped to the map's inside and to <c>Orders/MaxDigArea</c> tiles a side). <paramref name="queue"/> (Shift)
+    /// queues it after each Digger's current orders.
+    /// </summary>
+    [Command(requiresAuthority = false)]
+    public void CmdDigAreaChunk(ushort token, byte[] idChunk, bool final, bool queue, int2 from, int2 to, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(CmdDigAreaChunk))) return;
+        if (!TryActingOwner(sender, out int owner) || Map == null) return;
+        (int2 min, int2 max) = MapBounds;
+        if (!CommandValidator.TryDigArea(from, to, min, max, ConfigLoader.LoadConfig().Orders.MaxDigArea, out int2 lo, out int2 hi)) return;
+        List<int> ids = Accumulate(owner, token, DigAreaChunkKind, idChunk, final);
+        if (ids == null) return;
+        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.DigArea, Queue = queue, OwnerId = owner, BoxMin = lo, BoxMax = hi, Ids = ids.ToArray() });
     }
 
     /// <summary>Accumulates one chunk of a squad assignment; the final chunk replaces the squad.</summary>
@@ -61,7 +79,7 @@ public partial class WorldStateManager
     {
         if (!CommandGate.Allow(sender, nameof(CmdOrderSquad))) return;
         if (!CommandValidator.IsSquadIndexValid(squad) || !TryActingOwner(sender, out int owner) || !IsOrderValid(kind, goal)) return;
-        Squads.Prune(owner, squad, Ids);
+        if (Squads.Prune(owner, squad, Ids) > 0) squadCountsDirty = true; // the HUD's count went stale
         IReadOnlyList<int> members = Squads.Members(owner, squad);
         if (members.Count == 0) return;
         var ids = new int[members.Count];

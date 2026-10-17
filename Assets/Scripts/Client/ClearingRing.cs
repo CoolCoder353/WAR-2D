@@ -15,6 +15,7 @@ namespace WAR2D.Client
         private const float DashWidth = 0.15f, FillAlpha = 0.06f;
 
         private static ClearingRing instance;
+        private static Material material; // shared by every ring (colours are per vertex), so none leaks one
         private MeshFilter filter;
         private Mesh mesh;
         private (float2 centre, float radius, Color32 colour, bool solid) shown;
@@ -33,7 +34,8 @@ namespace WAR2D.Client
             ClearingRing ring = go.AddComponent<ClearingRing>();
             ring.filter = go.AddComponent<MeshFilter>();
             var renderer = go.AddComponent<MeshRenderer>();
-            renderer.sharedMaterial = new Material(Shader.Find("Sprites/Default"));
+            if (material == null) material = new Material(Shader.Find("Sprites/Default")) { name = "ClearingRing" };
+            renderer.sharedMaterial = material;
             renderer.sortingOrder = sortingOrder;
             return ring;
         }

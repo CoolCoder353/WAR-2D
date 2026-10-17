@@ -47,6 +47,8 @@ namespace WAR2D.Client
         private UnitFrames.Table frames;
         private NativeArray<uint> color;
         private NativeArray<float> health01;
+        private NativeArray<float> drawScale;
+        private float[] scaleByType;
         private NativeArray<byte> selected;
         private NativeList<UnitInstance> instances, bars, rings;
         private NativeArray<int> barCount, ringCount;
@@ -102,6 +104,7 @@ namespace WAR2D.Client
             for (int i = 0; i < capacity; i++) lastAction[i] = float.NegativeInfinity;
             color = new NativeArray<uint>(capacity, Allocator.Persistent);
             health01 = new NativeArray<float>(capacity, Allocator.Persistent);
+            drawScale = new NativeArray<float>(capacity, Allocator.Persistent);
             selected = new NativeArray<byte>(capacity, Allocator.Persistent);
             instances = new NativeList<UnitInstance>(4096, Allocator.Persistent);
             bars = new NativeList<UnitInstance>(1024, Allocator.Persistent);
@@ -126,7 +129,7 @@ namespace WAR2D.Client
             store?.Dispose();
             if (lastPosition.IsCreated)
             {
-                lastPosition.Dispose(); rotation.Dispose(); frame.Dispose(); lastAction.Dispose(); color.Dispose(); health01.Dispose(); selected.Dispose();
+                lastPosition.Dispose(); rotation.Dispose(); frame.Dispose(); lastAction.Dispose(); color.Dispose(); health01.Dispose(); drawScale.Dispose(); selected.Dispose();
                 instances.Dispose(); bars.Dispose(); barCount.Dispose(); rings.Dispose(); ringCount.Dispose();
             }
         }
@@ -282,6 +285,7 @@ namespace WAR2D.Client
                     frame[index] = frames.Cell(store.TypeOf(index), rotation[index], moving, serverTime, serverTime - lastAction[index], index);
                 color[index] = ColorOf(owners[index]);
                 health01[index] = healthBytes[index] / 100f;
+                drawScale[index] = ScaleOf(store.TypeOf(index));
             }
 
             instances.ResizeUninitialized(count);
@@ -295,6 +299,8 @@ namespace WAR2D.Client
                 Frame = frame,
                 Color = color,
                 Health01 = health01,
+                Scale = drawScale,
+                LargeRingFrame = unitRenderer.LargeRingFrame,
                 Selected = selected,
                 UnitHalfSize = 0.4f,
                 RingFrame = unitRenderer.RingFrame,
@@ -307,6 +313,18 @@ namespace WAR2D.Client
             unitRenderer.DrawRings(rings.AsArray(), ringCount[0]);
             unitRenderer.Draw(instances.AsArray(), count);
             unitRenderer.DrawHealthBars(bars.AsArray(), barCount[0]);
+        }
+
+        /// <summary>How many tiles across a unit type is drawn (2 for the large units), from the art manifest.</summary>
+        private float ScaleOf(byte type)
+        {
+            if (scaleByType == null)
+            {
+                scaleByType = new float[System.Enum.GetValues(typeof(UnitType)).Length];
+                for (int t = 0; t < scaleByType.Length; t++)
+                    scaleByType[t] = ArtManifest.TryGet(((UnitType)t).ToString(), out ArtEntry entry) && entry.Kind == ArtKind.Unit ? entry.WidthTiles : 1f;
+            }
+            return type < scaleByType.Length ? scaleByType[type] : 1f;
         }
 
         /// <summary>Buildings drawn last frame (tests).</summary>
@@ -369,7 +387,7 @@ namespace WAR2D.Client
                 // Face the target: the facing picks the drawn direction, and the fire frames show the barrel.
                 if ((uint)attacker < (uint)rotation.Length && (to.x != from.x || to.y != from.y))
                     rotation[attacker] = math.atan2(to.y - from.y, to.x - from.x);
-                Effects.Tracer(new Vector3(from.x, from.y, 0), to);
+                Effects.Tracer(new Vector3(from.x, from.y, 0), to, (UnitType)store.TypeOf(attacker));
             }
             attacks.Clear();
         }

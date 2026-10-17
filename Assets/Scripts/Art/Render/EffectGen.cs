@@ -137,6 +137,100 @@ namespace WAR2D.Art.Render
             return img.Done();
         }
 
+        /// <summary>
+        /// The Sniper's tracer (v0.12): a long, thin, white-hot streak along +x the width of the tile, with a
+        /// dithered heat trail behind it (rotated to its heading when drawn, like <see cref="Tracer"/>).
+        /// </summary>
+        public static EffectFrame SniperTracer()
+        {
+            var img = new Img(T, T);
+            int c = T / 2;
+            for (int x = 2; x < T - 2; x++)
+            {
+                float along = x / (float)T;
+                if (along > 0.55f) img.Set(x, c, along > 0.8f ? new Color32(255, 255, 255, 255) : ArtStyle.FireRamp[0]);
+                else if (along > 0.15f && Bayer(x, c) < (along - 0.15f) * 2.2f) img.Set(x, c, ArtStyle.FireRamp[1]);
+            }
+            return img.Done();
+        }
+
+        /// <summary>
+        /// The Artillery shell in flight (v0.12): a hot slug pointing along +x with a short smoke trail that
+        /// flickers between the two frames (rotated to its heading when drawn).
+        /// </summary>
+        public static EffectFrame ArtilleryShell(int frame)
+        {
+            var img = new Img(T, T);
+            int c = T / 2;
+            for (int y = -2; y <= 2; y++)
+            for (int x = -4; x <= 4; x++)
+            {
+                if ((x + 4) * (x + 4) / 64f + y * y / 6.5f > 1f) continue;
+                img.Set(c + 6 + x, c + y, x > 1 ? ArtStyle.FireRamp[0] : x > -2 ? ArtStyle.FireRamp[1] : ArtStyle.FireRamp[2]);
+            }
+            var rng = new ArtRandom(7 + frame, "shell smoke");
+            for (int k = 0; k < 40; k++)
+            {
+                int x = c - 18 + rng.Range(20), y = c - 2 + rng.Range(5);
+                float fade = 0.25f + (x - (c - 18)) / 20f;
+                if (Bayer(x, y) > fade) continue;
+                img.Set(x, y, rng.Range(2) == 0 ? Role(StylePalette.Body2, 1) : Role(StylePalette.Body3, 1));
+            }
+            img.OutlineWith(Outline);
+            return img.Done();
+        }
+
+        /// <summary>
+        /// The Artillery shell's impact (v0.12), 4 tiles square for its 2-tile splash: a white flash and a
+        /// shockwave ring that runs out to the splash radius and fades, over a fireball that burns down into
+        /// smoke (<see cref="Blast"/>) and a scorch of dithered soot.
+        /// </summary>
+        public static EffectFrame ShellImpact(float t, int seed)
+        {
+            EffectFrame blast = Blast(4, t * 0.85f, seed);
+            var img = new Img(blast.Width, blast.Height);
+            Array.Copy(blast.Pixels, img.Px, img.Px.Length);
+            float c = img.W / 2f, ring = img.W * (0.12f + 0.38f * Mathf.Sqrt(t)), width = 3f - 2f * t;
+            Color32 wave = t < 0.3f ? ArtStyle.FireRamp[1] : t < 0.6f ? ArtStyle.FireRamp[3] : Role(StylePalette.Body3, 2);
+            for (int y = 0; y < img.H; y++)
+            for (int x = 0; x < img.W; x++)
+            {
+                float d = Mathf.Sqrt((x + 0.5f - c) * (x + 0.5f - c) + (y + 0.5f - c) * (y + 0.5f - c));
+                if (Mathf.Abs(d - ring) < width && Bayer(x, y) < 1.1f - t) img.Set(x, y, wave);
+            }
+            if (t < 0.12f)
+                for (int y = -6; y <= 6; y++)
+                for (int x = -6; x <= 6; x++)
+                    if (x * x + y * y <= 36) img.Set((int)c + x, (int)c + y, new Color32(255, 255, 255, 255));
+            return img.Done();
+        }
+
+        /// <summary>
+        /// The Flamethrower's stream (v0.12), 3 tiles long (its 2.5-tile range) by 1 tile, from the nozzle at the
+        /// left edge along +x: a flickering tongue that widens and cools through the fire ramp, ending in a
+        /// rolling burst where it splashes. Rotated to its heading and stretched to the target when drawn.
+        /// </summary>
+        public static EffectFrame FlameStream(int frame)
+        {
+            int w = 3 * T, h = T;
+            var img = new Img(w, h);
+            float c = h / 2f;
+            for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                float along = x / (float)w;
+                float radius = 3f + 9f * along + (along > 0.8f ? (along - 0.8f) * 60f : 0f);
+                float n = Noise.Fbm(x - frame * 9, y, w, 6, 3, 31 + frame) - 0.5f;
+                float d = Mathf.Abs(y + 0.5f - c) / radius;
+                float fire = (1f - d + n * 0.9f) * (1.25f - along * 0.55f) * Mathf.Clamp01((1f - along) * 9f + n);
+                if (fire <= 0.1f) continue;
+                if (along > 0.75f && fire < 0.35f && Bayer(x / 2, y / 2) > fire * 2.5f) continue;
+                int i = fire > 1.05f ? 0 : fire > 0.85f ? 1 : fire > 0.65f ? 2 : fire > 0.48f ? 3 : fire > 0.32f ? 4 : 5;
+                img.Set(x, y, ArtStyle.FireRamp[Mathf.Min(6, i + (along > 0.6f ? 1 : 0))]);
+            }
+            return img.Done();
+        }
+
         /// <summary>The ring under a selected unit: four light arcs with a dark edge.</summary>
         public static EffectFrame SelectionRingSmall()
         {
@@ -273,6 +367,11 @@ namespace WAR2D.Art.Render
                 case "BombBlast": return Blast(3, t, 23);
                 case "MuzzleFlash": return MuzzleFlash(cell);
                 case "Tracer": return Tracer();
+                case "SniperTracer": return SniperTracer();
+                case "ArtilleryShell": return ArtilleryShell(cell);
+                case "ShellImpact": return ShellImpact(t, 37);
+                case "FlameStream": return FlameStream(cell);
+                case "BomberBlast": return Blast(4, t, 29);
                 case "SelectionRingSmall": return SelectionRingSmall();
                 case "SelectionRingLarge": return SelectionRingLarge();
                 case "WaypointFlag": return Flag(cell, false);

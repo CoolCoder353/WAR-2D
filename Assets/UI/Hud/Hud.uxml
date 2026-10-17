@@ -21,6 +21,10 @@
         <ui:Instance template="DiplomacyPanel" name="diplomacy-panel-instance" picking-mode="Ignore" class="hud-layer" />
         <ui:Instance template="GiftDialog" name="gift-dialog-instance" picking-mode="Ignore" class="hud-layer" />
         <ui:VisualElement name="start-markers" class="start-markers" picking-mode="Ignore" />
+        <ui:VisualElement name="order-tags" class="hud-layer" picking-mode="Ignore">
+            <ui:Label name="order-world-tag" class="order-tag" picking-mode="Ignore" />
+            <ui:Label name="order-cursor-tag" class="order-tag" picking-mode="Ignore" />
+        </ui:VisualElement>
         <ui:VisualElement name="hq-prompt" class="hud-overlay hud-overlay--top" picking-mode="Ignore">
             <ui:VisualElement class="panel hq-prompt">
                 <ui:Label name="hq-prompt-title" text="Pick your start" class="text hq-prompt__title" picking-mode="Ignore" />

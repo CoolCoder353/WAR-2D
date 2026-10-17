@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Unity.Mathematics;
 
@@ -10,8 +11,8 @@ public static class CommandValidator
     /// <summary>Squad numbers are 0..9 (keys 1..0).</summary>
     public static bool IsSquadIndexValid(int squad) => squad >= 0 && squad < WAR2D.Sim.Squads.Count;
 
-    /// <summary>Order kinds are the <see cref="OrderKind"/> values 0..6.</summary>
-    public static bool IsOrderKindValid(byte kind) => kind <= (byte)OrderKind.Dig;
+    /// <summary>Order kinds are the <see cref="OrderKind"/> values 0..7.</summary>
+    public static bool IsOrderKindValid(byte kind) => kind <= (byte)OrderKind.Detonate;
 
     /// <summary>True for orders that name a tile: moves and work.</summary>
     public static bool TargetsTile(OrderKind kind) =>
@@ -24,6 +25,25 @@ public static class CommandValidator
         OrderKind order = (OrderKind)kind;
         if (order == OrderKind.Dig) return IsInside(goal, min + 1, max - 1); // never the outer ring (the border)
         return !TargetsTile(order) || IsInside(goal, min, max);
+    }
+
+    /// <summary>
+    /// A Dig drag's box from its two corner tiles: clamped to the map's inside (never the border ring) and to
+    /// <paramref name="maxSide"/> tiles a side, measured from <paramref name="from"/> (where the drag began).
+    /// False when the drag began outside the map.
+    /// </summary>
+    public static bool TryDigArea(int2 from, int2 to, int2 min, int2 max, int maxSide, out int2 lo, out int2 hi)
+    {
+        lo = hi = default;
+        if (maxSide < 1 || !IsInside(from, min, max)) return false;
+        int2 inMin = min + 1, inMax = max - 1;
+        if (math.any(inMin > inMax)) return false;
+        from = math.clamp(from, inMin, inMax);
+        to = math.clamp(to, from - (maxSide - 1), from + (maxSide - 1));
+        to = math.clamp(to, inMin, inMax);
+        lo = math.min(from, to);
+        hi = math.max(from, to);
+        return true;
     }
 
     /// <summary>True when the tile is inside the inclusive bounds.</summary>
@@ -46,6 +66,9 @@ public static class CommandValidator
         foreach (char c in raw.Trim())
         {
             if (char.IsControl(c) || c == '<' || c == '>' || char.IsSurrogate(c)) continue;
+            // Format characters (zero-width spaces, right-to-left overrides) make names invisible or spoofable.
+            UnicodeCategory category = char.GetUnicodeCategory(c);
+            if (category == UnicodeCategory.Format || category == UnicodeCategory.LineSeparator || category == UnicodeCategory.ParagraphSeparator) continue;
             sb.Append(c);
             if (sb.Length == MaxNicknameLength) break;
         }

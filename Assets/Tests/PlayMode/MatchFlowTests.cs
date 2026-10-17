@@ -35,6 +35,7 @@ public class MatchFlowTests
         WorldStateManager.Instance.TryAddBuilding(anchor, BuildingType.Base, 0f);
 
         yield return WaitUntil(() => GameCore.Instance.CurrentState == GameState.Playing, 10f);
+        yield return PlayModeMatch.WaitForSight(anchor);
         Assert.That(local.hasPlacedHQ, Is.True);
         Assert.That(GameCore.Instance.MatchStartPlayerCount, Is.EqualTo(1));
     }
@@ -49,18 +50,19 @@ public class MatchFlowTests
         wsm.TryFindBuildableAnchor(BuildingType.Base, 0f, local, out int2 hq);
         wsm.TryAddBuilding(hq, BuildingType.Base, 0f);
         yield return WaitUntil(() => GameCore.Instance.CurrentState == GameState.Playing, 10f);
+        yield return PlayModeMatch.WaitForSight(hq);
 
-        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.SmallUnitSpawner, 0f, local, out int2 spawnerAnchor), Is.True);
-        Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.SmallUnitSpawner, spawnerAnchor), Is.True);
+        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Barracks, 0f, local, out int2 spawnerAnchor), Is.True);
+        Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.Barracks, spawnerAnchor), Is.True);
         // Host-local Commands travel through Mirror's loopback, which the server drains once per
         // tick (sendInterval), not once per frame - one frame is not enough for the entity to exist.
-        yield return WaitUntil(() => HasBuilding(BuildingType.SmallUnitSpawner), 10f);
+        yield return WaitUntil(() => HasBuilding(BuildingType.Barracks), 10f);
 
-        int spawnerId = FindBuildingId(BuildingType.SmallUnitSpawner);
-        wsm.BuildingClicked(spawnerId);
+        int spawnerId = FindBuildingId(BuildingType.Barracks);
+        wsm.CmdChangeQueues(new[] { spawnerId }, 1);
 
         yield return WaitUntil(() => CountUnits() == 1, 10f);
-        var footprint = Footprint.Tiles(spawnerAnchor, config.GetBuilding(BuildingType.SmallUnitSpawner).Size);
+        var footprint = Footprint.Tiles(spawnerAnchor, config.GetBuilding(BuildingType.Barracks).Size);
         float2 unitPos = FirstUnitPosition();
         int2 unitTile = (int2)math.floor(unitPos);
         Assert.That(footprint, Has.No.Member(unitTile), "the unit spawns outside the footprint");
@@ -76,10 +78,11 @@ public class MatchFlowTests
         wsm.TryFindBuildableAnchor(BuildingType.Base, 0f, local, out int2 hq);
         wsm.TryAddBuilding(hq, BuildingType.Base, 0f);
         yield return WaitUntil(() => GameCore.Instance.CurrentState == GameState.Playing, 10f);
-        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.SmallUnitSpawner, 0f, local, out int2 spawnerAnchor), Is.True);
-        Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.SmallUnitSpawner, spawnerAnchor), Is.True);
-        yield return WaitUntil(() => HasBuilding(BuildingType.SmallUnitSpawner), 10f);
-        int spawner = FindBuildingId(BuildingType.SmallUnitSpawner);
+        yield return PlayModeMatch.WaitForSight(hq);
+        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Barracks, 0f, local, out int2 spawnerAnchor), Is.True);
+        Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.Barracks, spawnerAnchor), Is.True);
+        yield return WaitUntil(() => HasBuilding(BuildingType.Barracks), 10f);
+        int spawner = FindBuildingId(BuildingType.Barracks);
 
         // A rally point on open floor 6–12 tiles away, set before any unit spawns.
         int2 rally = default;
@@ -95,8 +98,8 @@ public class MatchFlowTests
         yield return WaitUntil(() => local.TryGetRally(spawner, out _), 5f);
         Assert.That(local.TryGetRally(spawner, out int2 told) && told.Equals(rally), Is.True, "the owner is told the rally tile");
 
-        wsm.CmdChangeQueues(new[] { spawner }, (byte)UnitType.Tank, 7); // not a button's step: refused
-        wsm.CmdChangeQueues(new[] { spawner }, (byte)UnitType.Tank, 10);
+        wsm.CmdChangeQueues(new[] { spawner }, 7); // not a button's step: refused
+        wsm.CmdChangeQueues(new[] { spawner }, 10);
         yield return WaitUntil(() => local.SpawnerQueue(spawner) >= 8, 5f);
         Assert.That(local.SpawnerQueue(spawner), Is.InRange(8, 10), "+10 queued (minus any already spawned), the 7 was refused");
 
@@ -113,6 +116,7 @@ public class MatchFlowTests
         WorldStateManager.Instance.TryFindBuildableAnchor(BuildingType.Base, 0f, local, out int2 hq);
         WorldStateManager.Instance.TryAddBuilding(hq, BuildingType.Base, 0f);
         yield return WaitUntil(() => GameCore.Instance.CurrentState == GameState.Playing, 10f);
+        yield return PlayModeMatch.WaitForSight(hq);
 
         WorldStateManager.Instance.KillAllEntitiesOwnedBy((int)NetworkClient.localPlayer.netId);
 

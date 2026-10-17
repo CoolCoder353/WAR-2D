@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Collections;
 using System.Collections.Generic;
 using Unity.Entities;
@@ -64,7 +65,9 @@ public class HudTests
         {
             var anchor = new int2(x, y);
             if (grid.TileAt(anchor + MinerRules.FacingOffset(rotation)) != TileType.Gem) continue;
-            if (wsm.CheckPlacement(BuildingType.Miner, anchor, rotation, local) != PlacementResult.Ok) continue;
+            // Placed by the dev API, so ground the side hasn't explored yet will do.
+            PlacementResult result = wsm.CheckPlacement(BuildingType.Miner, anchor, rotation, local);
+            if (result != PlacementResult.Ok && result != PlacementResult.Unexplored) continue;
             Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.Miner, anchor, rotation), Is.True);
             placed = true;
             break;
@@ -101,14 +104,14 @@ public class HudTests
         yield return PlayModeMatch.PlaceHQ(null);
         WorldStateManager wsm = WorldStateManager.Instance;
         ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
-        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.SmallUnitSpawner, 0f, local, out int2 anchor), Is.True);
-        Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.SmallUnitSpawner, anchor), Is.True);
+        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Barracks, 0f, local, out int2 anchor), Is.True);
+        Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.Barracks, anchor), Is.True);
         BuildingData found = default;
         yield return PlayModeMatch.WaitUntil(() =>
         {
             foreach (ClientBuildings.Entry e in ClientBuildings.Current.Entries.Values)
             {
-                if (e.Data.buildingType != BuildingType.SmallUnitSpawner || e.Ghost) continue;
+                if (e.Data.buildingType != BuildingType.Barracks || e.Ghost) continue;
                 found = e.Data;
                 return true;
             }
@@ -130,7 +133,11 @@ public class HudTests
     private static IEnumerator ProduceUnits(VisualElement root, BuildingData spawner, int count)
     {
         UnitCommander.Instance.SelectBuilding(spawner);
-        yield return PlayModeMatch.WaitUntil(() => root.Q<Label>("command-title").text == "Spawner", 5f);
+        yield return PlayModeMatch.WaitUntil(() => root.Q<Label>("command-title").text == "Barracks", 5f);
+        // Tanks, not the Barracks' default Scouts: the callers measure walking and stopping.
+        ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+        WorldStateManager.Instance.CmdSetProduction(new[] { spawner.id }, (byte)UnitType.Tank);
+        yield return PlayModeMatch.WaitUntil(() => local.SpawnerType(spawner.id) == UnitType.Tank, 5f);
         for (int i = 0; i < count; i++)
         {
             Click(root.Q<Button>("production-plus"));
@@ -149,7 +156,7 @@ public class HudTests
 
         VisualElement root = HudRoot();
         UnitCommander.Instance.SelectBuilding(spawner);
-        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q<Label>("command-title").text == "Spawner", 5f);
+        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q<Label>("command-title").text == "Barracks", 5f);
         Assert.That(root.Q<Button>("production-minus").enabledSelf, Is.False, "an empty queue can't go lower");
 
         for (int i = 0; i < 3; i++)
@@ -163,7 +170,7 @@ public class HudTests
 
         // Random and foreign ids are refused without changing anything.
         var rng = new System.Random(5);
-        for (int i = 0; i < 20; i++) WorldStateManager.Instance.CmdDequeueUnit(rng.Next(int.MinValue, int.MaxValue));
+        for (int i = 0; i < 20; i++) WorldStateManager.Instance.CmdChangeQueues(new[] { rng.Next(int.MinValue, int.MaxValue) }, -1);
         float until = Time.realtimeSinceStartup + 0.5f;
         while (Time.realtimeSinceStartup < until) { Broke(); yield return null; }
         Broke();
@@ -202,6 +209,8 @@ public class HudTests
         yield return WithSpawner(config, s => spawner = s);
         VisualElement root = HudRoot();
         Assert.That(root.Q<Label>("squad-count-0").text, Is.EqualTo("–"), "an empty squad shows a dash");
+        Assert.That(root.Q("squad-hint").resolvedStyle.display, Is.EqualTo(DisplayStyle.Flex), "the squad hint shows until a squad is saved");
+        StringAssert.StartsWith("Squad 1 · empty", root.Q<Button>("squad-0").tooltip);
         yield return ProduceUnits(root, spawner, 2);
 
         Selection selection = UnitCommander.Instance.Selection;
@@ -209,6 +218,8 @@ public class HudTests
         selection.AssignSquad(0);
         yield return PlayModeMatch.WaitUntil(() => root.Q<Label>("squad-count-0").text == "2", 5f);
         Assert.That(root.Q<Label>("squad-count-1").text, Is.EqualTo("–"));
+        Assert.That(root.Q("squad-hint").style.display.value, Is.EqualTo(DisplayStyle.None), "saving a squad hides the hint");
+        StringAssert.StartsWith("Squad 1 · 2 units", root.Q<Button>("squad-0").tooltip);
 
         selection.SelectIds(new int[0]);
         Click(root.Q<Button>("squad-0"));
@@ -235,9 +246,30 @@ public class HudTests
         using EntityQuery q = em.CreateEntityQuery(typeof(BuildingData), typeof(SpawnerData));
         using Unity.Collections.NativeArray<Entity> entities = q.ToEntityArray(Unity.Collections.Allocator.Temp);
         foreach (Entity e in entities)
-            if (em.GetComponentData<BuildingData>(e).id == buildingId) return em.GetComponentData<SpawnerData>(e).queue.Length;
+            if (em.GetComponentData<BuildingData>(e).id == buildingId) return em.GetComponentData<SpawnerData>(e).count;
         Assert.Fail("spawner not found");
         return -1;
+    }
+
+    [UnityTest, Timeout(90000)]
+    public IEnumerator AlertFeedSitsAboveTheCommandCardAndHighlightsTheNewest()
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        yield return PlayModeMatch.PlaceHQ(null);
+        HudController hud = Object.FindAnyObjectByType<HudController>();
+        hud.Alerts.Add(new Alert { Kind = AlertKind.GiftReceived }, "first", Time.unscaledTime - 4f);
+        hud.Alerts.Add(new Alert { Kind = AlertKind.UnderAttack }, "second", Time.unscaledTime);
+        yield return null;
+        yield return null;
+        VisualElement root = HudRoot();
+        Rect feed = root.Q("alert-feed").worldBound, card = root.Q("command-card").worldBound;
+        Assert.That(feed.yMax, Is.LessThanOrEqualTo(card.yMin + 0.5f), "the feed sits just above the command card");
+        Assert.That(card.yMin - feed.yMax, Is.LessThan(16f), "and close to it");
+        Assert.That(math.abs(feed.xMax - card.xMax), Is.LessThan(1f), "right-aligned with the card");
+        VisualElement second = root.Q("alert-feed").Children().Last();
+        Assert.IsTrue(second.ClassListContains("alert--new"), "the newest alert is highlighted");
+        Assert.IsTrue(second.ClassListContains("alert--danger"));
+        Assert.IsFalse(root.Q("alert-feed").Children().First().ClassListContains("alert--new"), "an older one is not");
     }
 
     [UnityTest, Timeout(90000)]
@@ -486,7 +518,7 @@ public class HudTests
         yield return PlayModeMatch.PlaceHQ(null);
         int hq = 0;
         yield return PlayModeMatch.WaitUntil(() => TryOwnBuilding(BuildingType.Base, out hq), 10f);
-        WorldStateManager.Instance.CmdChangeQueues(new[] { hq }, (byte)UnitType.Builder, 1);
+        WorldStateManager.Instance.CmdChangeQueues(new[] { hq }, 1);
         int found = 0;
         yield return PlayModeMatch.WaitUntil(() =>
         {
@@ -512,7 +544,7 @@ public class HudTests
         VisualElement root = HudRoot();
         UnitCommander.Instance.Selection.SelectIds(new List<int> { builder });
         yield return PlayModeMatch.WaitUntil(() => Shown(root.Q<Button>("build-radar")), 5f);
-        foreach (string name in new[] { "build-miner", "build-spawner", "build-wall", "build-bomb", "build-radar", "cmd-repair" })
+        foreach (string name in new[] { "build-miner", "build-barracks", "build-wall", "build-bomb", "build-radar", "cmd-repair" })
             Assert.That(Shown(root.Q<Button>(name)), Is.True, name);
         Assert.That(Shown(root.Q<Button>("cmd-dig")), Is.False, "no Diggers selected");
         Assert.That(root.Q<Label>("build-bomb-cost").text, Is.EqualTo(config.GetBuilding(BuildingType.Bomb).UpfrontCost.ToString("0.##")));
@@ -568,7 +600,7 @@ public class HudTests
     }
 
     [UnityTest, Timeout(90000)]
-    public IEnumerator SpawnerShowsTankAndDiggerRows()
+    public IEnumerator BarracksTypeSwitchClearsTheQueue()
     {
         BuildingData spawner = default;
         yield return WithSpawner(config, s => spawner = s);
@@ -577,12 +609,57 @@ public class HudTests
         VisualElement root = HudRoot();
         ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
         UnitCommander.Instance.SelectBuilding(spawner);
-        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q("production-row-Digger") != null, 5f);
-        Assert.That(root.Q("production-row-Tank"), Is.Not.Null);
-        Click(root.Q("production-row-Digger").Q<Button>("production-plus"));
-        yield return PlayModeMatch.WaitUntil(() => Broke() && local.SpawnerQueueOf(spawner.id, UnitType.Digger) == 1, 5f);
-        Assert.That(local.SpawnerQueueOf(spawner.id, UnitType.Tank), Is.EqualTo(0));
-        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q("production-row-Digger").Q<Label>("production-count").text == "1", 5f);
+        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q<Button>("type-Tank") != null, 5f);
+        Assert.That(root.Q<Button>("type-Scout"), Is.Not.Null);
+        Assert.That(root.Q<Button>("type-Digger"), Is.Null, "Diggers moved to the Siege Workshop");
+        Assert.That(root.Q<Button>("type-Scout").ClassListContains("command-button--active"), Is.True, "a new producer starts on its first type");
+        Click(root.Q<Button>("type-Tank"));
+        yield return PlayModeMatch.WaitUntil(() => Broke() && local.SpawnerType(spawner.id) == UnitType.Tank, 5f);
+        Click(root.Q<Button>("production-plus"));
+        yield return PlayModeMatch.WaitUntil(() => Broke() && local.SpawnerQueueOf(spawner.id, UnitType.Tank) == 1, 5f);
+        Click(root.Q<Button>("type-Scout"));
+        yield return PlayModeMatch.WaitUntil(() => Broke() && local.SpawnerType(spawner.id) == UnitType.Scout, 5f);
+        Assert.That(local.SpawnerQueue(spawner.id), Is.EqualTo(0), "switching clears the queue");
+        Assert.That(SpawnerCount(spawner.id), Is.EqualTo(0));
+        Click(root.Q<Button>("production-plus"));
+        yield return PlayModeMatch.WaitUntil(() => Broke() && local.SpawnerQueueOf(spawner.id, UnitType.Scout) == 1, 5f);
+        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q<Label>("production-count").text == "1", 5f);
+    }
+
+    [UnityTest, Timeout(90000)]
+    public IEnumerator ProductionCommandsRefuseWhatIsNotTheirs()
+    {
+        BuildingData spawner = default;
+        yield return WithSpawner(config, s => spawner = s);
+        ServerPlayer server = GameCore.Instance.GetServerPlayerById(PlayModeMatch.LocalOwner);
+        bool Broke() { server.TrySpend(server.Resources); return true; }
+        ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+        WorldStateManager wsm = WorldStateManager.Instance;
+        yield return PlayModeMatch.WaitUntil(() => Broke(), 1f);
+
+        wsm.CmdChangeQueues(new[] { spawner.id }, 10);
+        yield return PlayModeMatch.WaitUntil(() => local.SpawnerQueue(spawner.id) == 10, 5f);
+
+        // A type the Barracks cannot make, an unknown byte, None, a foreign id and an oversize list change nothing.
+        wsm.CmdSetProduction(new[] { spawner.id }, (byte)UnitType.Heavy);
+        wsm.CmdSetProduction(new[] { spawner.id }, 255);
+        wsm.CmdSetProduction(new[] { spawner.id }, 0);
+        wsm.CmdSetProduction(new[] { spawner.id + 100000, -5, int.MaxValue }, (byte)UnitType.Tank);
+        wsm.CmdSetProduction(new int[SpawnerRules.MaxSpawnersPerCommand + 1], (byte)UnitType.Tank);
+        wsm.CmdSetProduction(null, (byte)UnitType.Tank);
+        var rng = new System.Random(11);
+        for (int i = 0; i < 20; i++) wsm.CmdSetProduction(new[] { rng.Next(int.MinValue, int.MaxValue) }, (byte)rng.Next(0, 256));
+        yield return new WaitForSeconds(0.5f);
+        Assert.That(local.SpawnerType(spawner.id), Is.EqualTo(UnitType.Scout));
+        Assert.That(SpawnerCount(spawner.id), Is.EqualTo(10), "the queue was never cleared");
+
+        // The same type again keeps the queue; a real switch clears it.
+        wsm.CmdSetProduction(new[] { spawner.id }, (byte)UnitType.Scout);
+        yield return new WaitForSeconds(0.3f);
+        Assert.That(SpawnerCount(spawner.id), Is.EqualTo(10));
+        wsm.CmdSetProduction(new[] { spawner.id }, (byte)UnitType.Flamethrower);
+        yield return PlayModeMatch.WaitUntil(() => Broke() && local.SpawnerType(spawner.id) == UnitType.Flamethrower, 5f);
+        Assert.That(SpawnerCount(spawner.id), Is.EqualTo(0));
     }
 
     [UnityTest, Timeout(90000)]
@@ -594,20 +671,21 @@ public class HudTests
         ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
         ServerPlayer server = GameCore.Instance.GetServerPlayerById(PlayModeMatch.LocalOwner);
         VisualElement root = HudRoot();
-        float cost = config.GetBuilding(BuildingType.Miner).UpfrontCost;
+        float cost = config.GetBuilding(BuildingType.Barracks).UpfrontCost;
 
+        // Any building will do: a Barracks needs no gem, so it fits on the HQ's explored ground.
         // A blueprint: Cancel at once, the full cost back.
-        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Miner, 0f, local, out int2 a), Is.True);
-        wsm.TryAddBuilding(a, BuildingType.Miner, 0f);
+        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Barracks, 0f, local, out int2 a), Is.True);
+        wsm.TryAddBuilding(a, BuildingType.Barracks, 0f);
         int blueprint = 0;
-        yield return Wait("the Miner blueprint", () => TryOwnBuilding(BuildingType.Miner, out blueprint), 10f);
+        yield return Wait("the Barracks blueprint", () => TryOwnBuilding(BuildingType.Barracks, out blueprint), 10f);
         yield return Remove(root, blueprint, server, cost, false);
 
         // A finished one: Demolish asks first, then half back.
-        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Miner, 0f, local, out int2 b), Is.True);
-        Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.Miner, b), Is.True);
+        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Barracks, 0f, local, out int2 b), Is.True);
+        Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.Barracks, b), Is.True);
         int built = 0;
-        yield return Wait("the finished Miner", () => TryOwnBuilding(BuildingType.Miner, out built) && built != blueprint, 10f);
+        yield return Wait("the finished Barracks", () => TryOwnBuilding(BuildingType.Barracks, out built) && built != blueprint, 10f);
         yield return Remove(root, built, server, cost * config.Siege.DemolishRefund, true);
     }
 

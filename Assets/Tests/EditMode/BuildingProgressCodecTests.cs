@@ -36,6 +36,20 @@ public class BuildingProgressCodecTests
     }
 
     [Test]
+    public void AHealthRecordCannotTakeABuildingPastItsRange()
+    {
+        var interest = new BuildingInterest();
+        var client = new ClientBuildings();
+        var writer = new NetworkWriter();
+        interest.Update(new List<BuildingView> { View(100) }, new HashSet<int> { 5 }, 1, _ => true, writer);
+        Assert.IsTrue(BuildingCodec.Apply(client, writer.ToArraySegment()));
+        client.SetHealth(5, 100000);
+        Assert.AreEqual(50f, client.Entries[5].Health.currentHealth, "clamped to the building's max health");
+        client.SetHealth(5, -7);
+        Assert.AreEqual(0f, client.Entries[5].Health.currentHealth);
+    }
+
+    [Test]
     public void MalformedProgressIsRejected()
     {
         var writer = new NetworkWriter();

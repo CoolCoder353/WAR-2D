@@ -48,7 +48,14 @@ namespace WAR2D.Net
         {
             if (string.IsNullOrEmpty(host) || host.Length > 253) return false;
             if (IPAddress.TryParse(host, out IPAddress ip)) return ip.AddressFamily == AddressFamily.InterNetwork ? host.Split('.').Length == 4 : true;
+            if (LooksNumeric(host)) return false; // a bad IPv4 address (999.999.999.999), not a DNS name
             return Uri.CheckHostName(host) == UriHostNameType.Dns && !host.StartsWith(".") && !host.EndsWith(".");
+        }
+
+        private static bool LooksNumeric(string host)
+        {
+            foreach (char c in host) if (c != '.' && (c < '0' || c > '9')) return false;
+            return true;
         }
 
         private static bool TryPort(string text, out ushort port) =>

@@ -64,6 +64,9 @@ namespace WAR2D.Client.Render
         /// <summary>The selection ring's cell in the <c>Effects</c> atlas (0 without one).</summary>
         public uint RingFrame { get; }
 
+        /// <summary>The 2×2-tile selection ring's cell, for the large units (the small ring's when the atlas lacks it).</summary>
+        public uint LargeRingFrame { get; }
+
         /// <param name="atlas">The <c>Units</c> atlas; without one, every unit draws as a white square.</param>
         public InstancedUnitRenderer(ArtAtlas atlas, int initialCapacity = 4096)
         {
@@ -107,6 +110,7 @@ namespace WAR2D.Client.Render
             ringFrameRects.SetData(ringCells);
             ringMaterial.SetBuffer("_FrameRects", ringFrameRects);
             RingFrame = (uint)Mathf.Max(0, effects != null ? effects.FirstFrame("SelectionRingSmall") : 0);
+            LargeRingFrame = (uint)Mathf.Max(0, effects != null ? effects.FirstFrame("SelectionRingLarge") : 0);
 
             EnsureCapacity(ref instances, ref capacity, initialCapacity, unitMaterial);
             EnsureCapacity(ref barInstances, ref barCapacity, initialCapacity / 4, barMaterial);
@@ -228,9 +232,10 @@ namespace WAR2D.Client.Render
         [ReadOnly] public NativeArray<uint> Frame;       // by index: the atlas cell
         [ReadOnly] public NativeArray<uint> Color;       // by index
         [ReadOnly] public NativeArray<float> Health01;   // by index
+        [ReadOnly] public NativeArray<float> Scale;      // by index: tiles across (2 for large units)
         [ReadOnly] public NativeArray<byte> Selected;    // by index
         public float UnitHalfSize;
-        public uint RingFrame;
+        public uint RingFrame, LargeRingFrame;
         public NativeArray<UnitInstance> Instances;
         public NativeArray<UnitInstance> Bars;
         public NativeArray<int> BarCount;
@@ -244,8 +249,9 @@ namespace WAR2D.Client.Render
             {
                 int index = Known[i];
                 float health = Health01[index];
+                float scale = Scale[index] > 0f ? Scale[index] : 1f;
                 if (Selected[index] != 0)
-                    Rings[rings++] = new UnitInstance { position = Positions[i], frame = RingFrame, color = 0xFFFFFFFFu, scale = 1f };
+                    Rings[rings++] = new UnitInstance { position = Positions[i], frame = scale > 1.5f ? LargeRingFrame : RingFrame, color = 0xFFFFFFFFu, scale = scale > 1.5f ? 2f : 1f };
                 Instances[i] = new UnitInstance
                 {
                     position = Positions[i],
@@ -253,14 +259,14 @@ namespace WAR2D.Client.Render
                     frame = Frame[index],
                     color = Color[index],
                     health = health,
-                    scale = 1f,
+                    scale = scale,
                     pad = Selected[index],
                 };
                 if (health >= 0.999f) continue;
                 int frame = math.clamp((int)math.round(health * (InstancedUnitRenderer.BarFrames - 1)), 0, InstancedUnitRenderer.BarFrames - 1);
                 Bars[bars++] = new UnitInstance
                 {
-                    position = Positions[i] + new float2(0f, UnitHalfSize + 0.175f),
+                    position = Positions[i] + new float2(0f, UnitHalfSize * scale + 0.175f),
                     frame = (uint)frame,
                     color = InstancedUnitRenderer.BarColor(health),
                     health = health,

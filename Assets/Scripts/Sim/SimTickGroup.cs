@@ -53,15 +53,22 @@ namespace WAR2D.Sim
             SimData data = SystemAPI.GetSingleton<SimData>();
             SimContext context = SimContext.Current;
 
+            double mark = TickWatch.Elapsed.TotalMilliseconds;
             RemoveDead(data, context);
+            SimTiming.LastRemoveDeadMs = Split(ref mark);
             SettleUpkeep(data, context);
+            SimTiming.LastUpkeepMs = Split(ref mark);
 
             RefRW<SimClock> clock = SystemAPI.GetSingletonRW<SimClock>();
             context?.Orders.AtBoundary(context.Map, clock.ValueRO.Tick);
+            SimTiming.LastOrdersMs = Split(ref mark);
             if (clock.ValueRO.Running) context?.RaiseSettled(data, clock.ValueRO.Tick, clock.ValueRO.UnitCount);
+            SimTiming.LastSettledMs = Split(ref mark);
+            SimTiming.CommandsEndMs = mark; // until the command stage moves it
             data.AttackEvents.Clear();
             data.BombBlasts.Clear();
             data.ForcedBombs.Clear();
+            data.ForcedBombers.Clear();
             data.FogChanges.Clear();
             bool running = SimContext.RunningOverride ?? (NetworkServer.active && GameCore.Instance != null && RunsIn(GameCore.Instance.CurrentState));
             if (running && context != null && !context.Pause.TryRun()) running = false;
@@ -90,6 +97,14 @@ namespace WAR2D.Sim
                 if (charged && spent > 0f) context?.Spend?.Invoke(owner, spent);
                 data.UpkeepBudget[s] = context?.BudgetOf != null ? context.BudgetOf(owner) : float.MaxValue;
             }
+        }
+
+        /// <summary>Milliseconds since <paramref name="mark"/> on the tick watch; moves the mark to now.</summary>
+        internal static double Split(ref double mark)
+        {
+            double now = TickWatch.Elapsed.TotalMilliseconds, ms = now - mark;
+            mark = now;
+            return ms;
         }
 
         private void RemoveDead(SimData data, SimContext context)
@@ -123,6 +138,7 @@ namespace WAR2D.Sim
             SimContext context = SimContext.Current;
             if (context != null) context.Orders.ScheduleRebuilds(context.Config.Simulation.MaxFieldRebuildsPerTick);
             SimTiming.LastMainThreadMs = SimBoundarySystem.TickWatch.Elapsed.TotalMilliseconds;
+            SimTiming.LastStagesMs = SimTiming.LastMainThreadMs - SimTiming.CommandsEndMs;
         }
     }
 }

@@ -69,6 +69,8 @@ public class GameInputTests
         {
             Assert.That(Rebinding.ConflictWith(GameInput.AttackMove, "<Keyboard>/s"), Is.SameAs(GameInput.Stop));
             Assert.That(Rebinding.ConflictWith(GameInput.AttackMove, "<Keyboard>/f12"), Is.Null);
+            Assert.That(Rebinding.ConflictWith(GameInput.AttackMove, "<Keyboard>/shift"), Is.SameAs(GameInput.QueueModifier), "Fast pan and Append share Shift on purpose: only the listed Queue order counts");
+            Assert.That(Rebinding.ConflictWith(GameInput.Stop, "<Keyboard>/1"), Is.Not.Null.And.Property("name").EqualTo("Squad1"));
             Rebinding.Swap(GameInput.AttackMove, GameInput.Stop);
             Assert.That(GameInput.AttackMove.bindings[0].effectivePath, Is.EqualTo("<Keyboard>/s"));
             Assert.That(GameInput.Stop.bindings[0].effectivePath, Is.EqualTo("<Keyboard>/a"));

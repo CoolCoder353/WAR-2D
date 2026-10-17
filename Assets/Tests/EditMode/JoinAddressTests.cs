@@ -32,6 +32,8 @@ public class JoinAddressTests
     [TestCase("[2001:db8::7]9000")]
     [TestCase("[example.com]:9000")]
     [TestCase(".example.com")]
+    [TestCase("999.999.999.999")]
+    [TestCase("1.2.3.4.5")]
     public void RejectsMalformed(string text)
     {
         Assert.IsFalse(JoinAddress.TryParse(text, 7778, out _, out _));
