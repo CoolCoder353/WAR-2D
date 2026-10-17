@@ -10,7 +10,7 @@ namespace WAR2D.Art.Render
     /// grime and drop shadows. Units are rendered per facing (the light stays fixed, so facings are not
     /// rotated copies). Deterministic per seed.
     /// </summary>
-    public static class RenderGen
+    public static partial class RenderGen
     {
         public const int TileSize = 64;
         public const int North = 1, East = 2, South = 4, West = 8;
@@ -205,26 +205,40 @@ namespace WAR2D.Art.Render
             return c;
         }
 
-        /// <summary>The Builder: a small tracked hauler with a cab and a crane arm at the back. Frames 0–1 move, 2–3 swing the arm.</summary>
+        /// <summary>
+        /// The Builder: a small tracked bulldozer (owner, 2026-10-17, to match its icon) with a team cab, an
+        /// engine deck and exhaust at the back, and a wide blade with a striped edge on push arms in front.
+        /// Frames 0–1 move, 2–3 work the blade (raised and pushed out, then back down).
+        /// </summary>
         public static LitCanvas Builder(float angle, int frame)
         {
             var c = new LitCanvas(TileSize, TileSize);
             float cos = Mathf.Cos(angle), sin = Mathf.Sin(angle), o = TileSize / 2f;
             Func<float, float, float> L(Func<float, float, float> local) =>
                 (x, y) => local((x - o) * cos + (y - o) * sin, -(x - o) * sin + (y - o) * cos);
-            float tread = frame == 1 ? 2f : 0f, swing = frame == 2 ? 5f : frame == 3 ? -5f : 0f;
+            float tread = frame == 1 ? 2f : 0f, reach = frame == 2 ? 2.5f : frame == 3 ? 1f : 0f, lift = frame == 2 ? 3f : 0f;
             foreach (float side in new[] { -1f, 1f })
             {
-                c.Shape(L((x, y) => Box(x, y, 0, side * 13, 19, 5, 2.5f)), Rubber, 5, 2, 3);
-                c.Groove(L((x, y) => Box(x, y, 0, side * 13, 18, 4) > 0 ? 9 : Mathf.Abs(Mod(x + tread, 4) - 2) - 1.1f), 1.1f, 0.7f);
+                c.Shape(L((x, y) => Box(x, y, -3, side * 12, 17, 5, 2.5f)), Rubber, 5, 2, 3);
+                c.Groove(L((x, y) => Box(x, y, -3, side * 12, 16, 4) > 0 ? 9 : Mathf.Abs(Mod(x + tread, 4) - 2) - 1.1f), 1.1f, 0.7f);
             }
-            c.Shape(L((x, y) => Box(x, y, -1, 0, 17, 10, 4)), Hull, 9, 3, 3);
-            c.Shape(L((x, y) => Box(x, y, 7, 0, 8, 8, 3)), Team, 15, 2.5f, 3);
-            c.Shape(L((x, y) => Box(x, y, 10, 0, 3, 5, 1)), Glass, 15.5f, 0.6f, 0.6f, stack: true);
-            // The crane: a boom from the rear deck out behind, with a hook.
-            c.Shape(L((x, y) => Capsule(x, y, -8, 0, -24, swing, 1.8f)), Steel, 13, 1.5f, 2);
-            c.Shape(L((x, y) => Circle(x, y, -24, swing, 2.6f)), Plate, 14, 1, 1.5f);
-            c.Rivet(o + (-8f) * cos, o + (-8f) * sin, 1.4f, 1f);
+            // Hull, then the engine deck with its grille and exhaust, then the cab.
+            c.Shape(L((x, y) => Box(x, y, -4, 0, 15, 9, 3.5f)), Hull, 9, 3, 3);
+            c.Groove(L((x, y) => Box(x, y, -13, 0, 4, 6) > 0 ? 9 : Mathf.Abs(Mod(y, 2) - 1) - 0.45f), 1, 0.45f);
+            c.Shape(L((x, y) => Circle(x, y, -9, -6, 1.8f)), Steel, 15, 0.8f, 1);
+            c.Shape(L((x, y) => Circle(x, y, -9, -6, 0.9f)), Dark, 14, 0.4f, 0.4f);
+            c.Shape(L((x, y) => Box(x, y, 1, 0, 6, 7, 2.5f)), Team, 15, 2.5f, 3);
+            c.Shape(L((x, y) => Box(x, y, 6, 0, 1.2f, 5.5f, 0.6f)), Glass, 0.6f, 0.5f, 0.5f, stack: true);
+            // Push arms and the blade, wider than the tracks, with hazard stripes along its top edge.
+            foreach (float side in new[] { -1f, 1f })
+                c.Shape(L((x, y) => Capsule(x, y, 6, side * 12, 16 + reach, side * 12, 1.8f)), Steel, 8 + lift, 1, 1.2f);
+            Func<float, float, float> blade = L((x, y) => Box(x, y, 20 + reach, 0, 4.5f, 18, 1.5f));
+            c.Shape(blade, Plate, 11 + lift, 1.5f, 2);
+            // Stripes in the dozer's own frame (not the canvas's, as Stripes draws), so they cross the blade in every facing.
+            Func<float, float, float> edge = (x, y) => Box(x, y, 22 + reach, 0, 2.2f, 17, 0.6f);
+            c.Shape(L(edge), Hazard, 11.5f + lift, 0.8f, 0.8f);
+            c.Shape(L((x, y) => Mathf.Max(edge(x, y), Mathf.Abs(Mod(y + x, 8) - 4) - 2)), Dark, 11.5f + lift, 0.4f, 0.3f);
+            c.Rivet(o + (-4f) * cos, o + (-4f) * sin, 1.2f, 0.8f);
             c.Grime(11, 0.3f, 0.12f, 6);
             return c;
         }

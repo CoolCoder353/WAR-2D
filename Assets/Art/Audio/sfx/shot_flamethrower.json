@@ -1,0 +1,14 @@
+{
+  "wave": "Noise",
+  "attack": 0.04,
+  "sustain": 0.3,
+  "punch": 0.2,
+  "decay": 0.25,
+  "frequency": 900,
+  "slide": -0.3,
+  "highPass": 0.05,
+  "vibratoDepth": 0.4,
+  "vibratoSpeed": 22,
+  "volume": 0.5,
+  "seed": 35
+}

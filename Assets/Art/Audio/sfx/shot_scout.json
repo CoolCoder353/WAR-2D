@@ -1,0 +1,11 @@
+{
+  "wave": "Noise",
+  "sustain": 0.02,
+  "punch": 1.0,
+  "decay": 0.07,
+  "frequency": 4500,
+  "slide": -10,
+  "highPass": 0.15,
+  "volume": 0.45,
+  "seed": 31
+}

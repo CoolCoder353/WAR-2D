@@ -10,7 +10,7 @@ The second roadmap. The first one (v0.2 to v0.9: foundations, scale, fog, UI, ar
 | ------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------ |
 | v0.10  | Insight    | A control API and CLI for Claude and the owner, debug overlays, structured logs, and match recordings players watch afterwards | Built; perf gate passes with the recorder on (23.9 ms p95); owner playtest pending | [design](superpowers/specs/2026-10-16-v0.10-insight-design.md)        | [plan](superpowers/plans/2026-10-16-v0.10-insight.md)         |
 | v0.11  | New Ground | A region-graph map generator (lanes, chokepoints, contested expansions) and private start points                               | Built, gated and UI done (Figma approved 2026-10-17) | [design](superpowers/specs/2026-10-16-v0.11-new-ground-design.md)     | Written when v0.11 starts                                    |
-| v0.12  | Arsenal    | Scout, Heavy, Artillery, Sniper, Flamethrower and Suicide bomber; role-based production buildings, one unit type at a time      | Spec written                   | [design](superpowers/specs/2026-10-16-v0.12-arsenal-design.md)        | Written when v0.12 starts                                    |
+| v0.12  | Arsenal    | Scout, Heavy, Artillery, Sniper, Flamethrower and Suicide bomber; role-based production buildings, one unit type at a time      | Spec decisions settled; HUD in Figma review | [design](superpowers/specs/2026-10-16-v0.12-arsenal-design.md), [Figma](ux/v0.12-figma.md) | Written when v0.12 starts                                    |
 | v0.13  | Bastion    | Static defences: the Gun turret and the Jammer                                                                                 | Spec approved                  | [design](superpowers/specs/2026-10-16-v0.13-bastion-design.md)        | Written when v0.13 starts                                    |
 
 The owner set the scope, order and numbering on 2026-10-16 and will review the specs before each update starts. Decisions still open are listed at the end of each spec.
@@ -125,5 +125,6 @@ Carried over as candidates for later: the tutorial, the headless dedicated serve
 | Start points | Dealt privately by the server; options per player and pick time (0 = random to unlimited) set by the host; teammates see each other's |
 | Units | Scout, Heavy, Artillery (direct fire), Sniper, Flamethrower, Suicide bomber (contact and Detonate order) |
 | Production | By role: Barracks, Heavy Factory, Siege Workshop; one type per building; switching clears the queue |
+| v0.12 open decisions (2026-10-17) | Tank and Digger Light armour; the §3 numbers go in as written and are tuned in play; Detonate on B; a full Barracks rename |
 | Defences | One Gun turret (shoots units, buildings and walls) and the Jammer; v0.13 spec approved |
 | Archive | The first roadmap, its specs, plans, spike and perf results moved to `docs/archive/` |
