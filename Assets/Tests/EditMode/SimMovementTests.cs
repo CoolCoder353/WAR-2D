@@ -103,7 +103,7 @@ public class SimMovementTests
     {
         const int size = 128;
         using var sim = new SimHarness(MapStore.Generate(size, seed, 0.05f));
-        int2[] sites = WAR2D.World.MapGenerator.HqSites(size);
+        int2[] sites = WAR2D.World.MapGenerator.Sites(size, seed);
         var boxes = new System.Collections.Generic.List<int[]>();
         for (int k = 0; k < 40; k++) boxes.Add(sim.Spawn(SimHarness.OwnerA, (float2)sites[0] + new float2(k % 8 - 3.5f, k / 8 - 2f)));
         sim.Tick();

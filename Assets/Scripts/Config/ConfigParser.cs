@@ -56,6 +56,25 @@ namespace Config
                         errors.Add($"Map: <Size> {config.Match.Map.Size} must be 0 or in [128, 4096].");
                     config.Match.Map.Seed = UInt(map, "Seed", "Map", errors);
                     config.Match.Map.GemChance = Float(map, "GemChance", "Map", errors, min: 0, max: 1);
+                    MapConfig m = config.Match.Map;
+                    m.LayoutSizes = IntList(map, "LayoutSizes", "Map", errors, 64, 4096);
+                    m.StartSites = IntList(map, "StartSites", "Map", errors, 2, 256);
+                    m.Expansions = IntList(map, "Expansions", "Map", errors, 0, 256);
+                    m.CentralAreas = IntList(map, "CentralAreas", "Map", errors, 0, 64, ascending: false);
+                    m.RegionScale = IntList(map, "RegionScale", "Map", errors, 50, 1000, ascending: false);
+                    m.LaneScale = IntList(map, "LaneScale", "Map", errors, 50, 1000, ascending: false);
+                    m.CaveDepth = IntList(map, "CaveDepth", "Map", errors, 0, 64, ascending: false);
+                    if (m.StartSites.Length != m.LayoutSizes.Length || m.Expansions.Length != m.LayoutSizes.Length || m.CentralAreas.Length != m.LayoutSizes.Length
+                        || m.RegionScale.Length != m.LayoutSizes.Length || m.LaneScale.Length != m.LayoutSizes.Length || m.CaveDepth.Length != m.LayoutSizes.Length)
+                        errors.Add("Map: <LayoutSizes>, <StartSites>, <Expansions>, <CentralAreas>, <RegionScale>, <LaneScale> and <CaveDepth> must have the same number of entries.");
+                    m.OutcropShare = Float(map, "OutcropShare", "Map", errors, min: 0, max: 0.3f);
+                    m.ChokepointShare = Float(map, "ChokepointShare", "Map", errors, min: 0, max: 1);
+                    int[] lane = IntList(map, "LaneWidth", "Map", errors, 2, 64), choke = IntList(map, "ChokeWidth", "Map", errors, 2, 64);
+                    if (lane.Length == 2 && choke.Length == 2 && lane[0] <= lane[1] && choke[0] <= choke[1]) { m.LaneWidthMin = lane[0]; m.LaneWidthMax = lane[1]; m.ChokeWidthMin = choke[0]; m.ChokeWidthMax = choke[1]; }
+                    else errors.Add("Map: <LaneWidth> and <ChokeWidth> need two values each, min then max.");
+                    m.MinStartDistance = Float(map, "MinStartDistance", "Map", errors, min: 0, max: 2);
+                    m.MaxStartDistance = Float(map, "MaxStartDistance", "Map", errors, min: 0, max: 4);
+                    m.ExpansionGemTiles = Int(map, "ExpansionGemTiles", "Map", errors, min: 1, max: 200);
                 }
             }
 
@@ -114,6 +133,7 @@ namespace Config
                 config.Replication.OffscreenThreshold = Float(rep, "OffscreenThreshold", c, errors, min: 0.01f, max: 32);
                 config.Replication.OffscreenIntervalTicks = Int(rep, "OffscreenIntervalTicks", c, errors, min: 1, max: 200);
                 config.Replication.SnapshotBytesPerSecond = Int(rep, "SnapshotBytesPerSecond", c, errors, min: 16384, max: 16777216);
+                config.Replication.RouteTolerance = Float(rep, "RouteTolerance", c, errors, min: 0, max: 4);
             }
 
             XmlNode orders = Require(root, "Orders", errors);
@@ -129,6 +149,14 @@ namespace Config
             {
                 config.Lobby.MapSizes = IntList(lobby, "MapSizes", "Lobby", errors, 128, 4096);
                 config.Lobby.StartingResources = FloatList(lobby, "StartingResources", "Lobby", errors, 0f, 1e7f);
+                int[] options = IntList(lobby, "StartOptions", "Lobby", errors, 1, 8);
+                if (options.Length == 3) { config.Lobby.StartOptionsMin = options[0]; config.Lobby.StartOptionsDefault = options[1]; config.Lobby.StartOptionsMax = options[2]; }
+                else errors.Add("Lobby: <StartOptions> needs three values: min, default, max.");
+                config.Lobby.StartPickSeconds = IntList(lobby, "StartPickSeconds", "Lobby", errors, 0, 3600);
+                config.Lobby.StartPickDefault = Int(lobby, "StartPickDefault", "Lobby", errors, min: 0, max: 3600);
+                if (System.Array.IndexOf(config.Lobby.StartPickSeconds, config.Lobby.StartPickDefault) < 0)
+                    errors.Add("Lobby: <StartPickDefault> must be one of <StartPickSeconds>.");
+                config.Lobby.SpareStartSites = Int(lobby, "SpareStartSites", "Lobby", errors, min: 0, max: 16);
             }
 
             XmlNode menuBattle = Require(root, "MenuBattle", errors);
@@ -175,6 +203,15 @@ namespace Config
             {
                 config.Audio.BattleDeathsPerSecond = Int(audio, "BattleDeathsPerSecond", "Audio", errors, min: 1, max: 1000);
                 config.Audio.BattleHoldSeconds = Float(audio, "BattleHoldSeconds", "Audio", errors, min: 1, max: 600);
+            }
+
+            XmlNode replays = Require(root, "Replays", errors);
+            if (replays != null)
+            {
+                config.Replays.Enabled = Int(replays, "Enabled", "Replays", errors, min: 0, max: 1) == 1;
+                config.Replays.MaxMegabytes = Int(replays, "MaxMegabytes", "Replays", errors, min: 1, max: 8192);
+                config.Replays.SendKilobytesPerSecond = Int(replays, "SendKilobytesPerSecond", "Replays", errors, min: 16, max: 65536);
+                config.Replays.KeepCount = Int(replays, "KeepCount", "Replays", errors, min: 1, max: 10000);
             }
 
             XmlNode damage = Require(root, "DamageTable", errors);
@@ -248,9 +285,9 @@ namespace Config
         }
 
         /// <summary>A required, space-separated, strictly ascending list of whole numbers in [min, max].</summary>
-        private static int[] IntList(XmlNode parent, string name, string ctx, List<string> errors, int min, int max)
+        private static int[] IntList(XmlNode parent, string name, string ctx, List<string> errors, int min, int max, bool ascending = true)
         {
-            float[] values = FloatList(parent, name, ctx, errors, min, max);
+            float[] values = FloatList(parent, name, ctx, errors, min, max, ascending);
             var ints = new int[values.Length];
             for (int i = 0; i < values.Length; i++)
             {
@@ -261,7 +298,7 @@ namespace Config
         }
 
         /// <summary>A required, space-separated, strictly ascending list of numbers in [min, max].</summary>
-        private static float[] FloatList(XmlNode parent, string name, string ctx, List<string> errors, float min, float max)
+        private static float[] FloatList(XmlNode parent, string name, string ctx, List<string> errors, float min, float max, bool ascending = true)
         {
             string text = parent.SelectSingleNode(name)?.InnerText?.Trim();
             if (string.IsNullOrEmpty(text))
@@ -279,7 +316,7 @@ namespace Config
                     errors.Add($"{ctx}: <{name}> value '{parts[i]}' must be a number in [{min}, {max}].");
                     return System.Array.Empty<float>();
                 }
-                if (i > 0 && values[i] <= values[i - 1])
+                if (ascending && i > 0 && values[i] <= values[i - 1])
                 {
                     errors.Add($"{ctx}: <{name}> must be in ascending order.");
                     return System.Array.Empty<float>();

@@ -17,6 +17,7 @@ public partial struct ResourceSystem : ISystem
     {
         if (!NetworkServer.active || GameCore.Instance == null || WorldStateManager.Instance == null) return;
         if (GameCore.Instance.CurrentState != GameState.Playing) return;
+        if (WAR2D.Sim.SimContext.Current != null && WAR2D.Sim.SimContext.Current.Pause.Frozen) return;
 
         GameCore core = GameCore.Instance;
         GameConfigData config = ConfigLoader.LoadConfig();

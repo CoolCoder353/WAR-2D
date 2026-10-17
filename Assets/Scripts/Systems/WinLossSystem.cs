@@ -11,6 +11,7 @@ public partial struct WinLossSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         if (!NetworkServer.active || GameCore.Instance == null || GameCore.Instance.CurrentState != GameState.Playing) return;
+        if (WAR2D.Sim.SimContext.Current != null && WAR2D.Sim.SimContext.Current.Pause.Frozen) return;
 
         checkTimer += SystemAPI.Time.DeltaTime;
         if (checkTimer < 1f) return;

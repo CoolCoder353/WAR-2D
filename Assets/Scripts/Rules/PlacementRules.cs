@@ -11,7 +11,7 @@ public enum PlacementResult
     HQNotPlacedYet,
     TileBlocked,
     MinerMustFaceGem,
-    OutsideHqClearing
+    OutsideStartOptions
 }
 
 /// <summary>Server-authoritative building placement rules. Pure: all world access is passed in.</summary>
@@ -20,7 +20,7 @@ public static class PlacementRules
     public static PlacementResult Check(
         BuildingType type, int2 anchor, float rotation, int2 size, GameState state, bool hasPlacedHQ,
         Func<int2, TileType> tileAt, Func<int2, bool> isUsed, Func<int2, bool> isOccupiedByUnit,
-        Func<int2, bool> inOwnClearing = null)
+        Func<int2, bool> inOwnOptions = null)
     {
         if (type == BuildingType.None || !Enum.IsDefined(typeof(BuildingType), type)) return PlacementResult.InvalidType;
         if (!IsRightAngle(rotation)) return PlacementResult.InvalidRotation;
@@ -36,16 +36,17 @@ public static class PlacementRules
             if (!hasPlacedHQ) return PlacementResult.HQNotPlacedYet;
         }
 
+        // An HQ goes inside one of the player's dealt options (dev bots and tilemap maps have none). This runs before
+        // the free-footprint check, so probing another player's site always answers "outside your options" and never "occupied".
+        if (type == BuildingType.Base && inOwnOptions != null)
+        {
+            foreach (int2 tile in Footprint.Tiles(anchor, size))
+                if (!inOwnOptions(tile)) return PlacementResult.OutsideStartOptions;
+        }
+
         foreach (int2 tile in Footprint.Tiles(anchor, size))
         {
             if (tileAt(tile) != TileType.Ground || isUsed(tile) || isOccupiedByUnit(tile)) return PlacementResult.TileBlocked;
-        }
-
-        // A player with a claimed clearing places their HQ inside it (dev bots and tilemap maps have none).
-        if (type == BuildingType.Base && inOwnClearing != null)
-        {
-            foreach (int2 tile in Footprint.Tiles(anchor, size))
-                if (!inOwnClearing(tile)) return PlacementResult.OutsideHqClearing;
         }
 
         if (type == BuildingType.Miner && tileAt(anchor + MinerRules.FacingOffset(rotation)) != TileType.Gem)

@@ -21,6 +21,7 @@ WAR-2D is a Unity `6000.4.1f1` multiplayer 2D RTS (free-for-all or teams, 2 to 8
 - Game code is in `Assets/Scripts/`. **Don't edit vendored code** in `Assets/Mirror/`, `Assets/Plugins/Demigiant/`, `Assets/3rd Party/NaughtyAttributes-*/` or `Assets/3rd Party/Console/Scripts/` unless asked. Custom console commands go in `Assets/3rd Party/Console/Custom Commands/Custom_Commands.cs`.
 - There's no CI. Compile and test through the **live Unity editor**: `tools/unity-compile.sh` for a compile check, `tools/unity-test.sh EditMode` and `tools/unity-test.sh PlayMode` to run the test suites (both must pass before a change lands). Unity owns the `.csproj`/`.slnx` files; don't hand-edit them.
 - Scene, prefab and `.asset` files are YAML. Avoid hand-editing them. If you must, keep `.meta` GUIDs intact. Every new asset needs its `.meta` (Unity creates it on import).
+- To check behaviour in a running game, use the control API (`tools/war2d`, [docs/debugging.md](docs/debugging.md)) rather than asking the owner to click through it.
 - Gameplay numbers belong in `Assets/Resources/GameConfig.xml`, read through `Config.ConfigLoader.LoadConfig()`. It is the single source of balance values, parsed strictly; don't add new hard-coded balance values, and check `ConfigLoader.IsValid` before hosting.
 
 ## Architecture rules of thumb
@@ -49,5 +50,5 @@ WAR-2D is a Unity `6000.4.1f1` multiplayer 2D RTS (free-for-all or teams, 2 to 8
 ## Style
 
 - Match the surrounding code: XML `/// <summary>` comments on public members, PascalCase methods, Mirror attributes (`[Server]`, `[Client]`, `[ServerCallback]`, `[ClientCallback]`) on every networked method.
-- Logging uses `Debug.Log`. Network-related logs sometimes use `TIM.Console.Log(..., TIM.MessageType.Network)`.
+- Logging uses `WarLog` with a category (`WarLog.Info(LogCategory.Net, ...)`); never `Debug.Log` in game code.
 - Keep the docs in `docs/` up to date when you change behaviour, especially `known-issues.md` when you fix or find an issue.

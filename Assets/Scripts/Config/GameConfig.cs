@@ -35,6 +35,7 @@ namespace Config
         public SiegeConfig Siege = new SiegeConfig();
         /// <summary>Music switching.</summary>
         public AudioConfig Audio = new AudioConfig();
+        public ReplaysConfig Replays = new ReplaysConfig();
         /// <summary>What the host may pick in the lobby.</summary>
         public LobbyConfig Lobby = new LobbyConfig();
         /// <summary>The battle behind the main menu.</summary>
@@ -90,6 +91,29 @@ namespace Config
         public uint Seed;
         /// <summary>Share of floor-facing rock that becomes gem.</summary>
         public float GemChance;
+        /// <summary>Sizes the layout tables below are given for, smallest first; other sizes use the next smaller row.</summary>
+        public int[] LayoutSizes = System.Array.Empty<int>();
+        /// <summary>Start sites per entry of <see cref="LayoutSizes"/>.</summary>
+        public int[] StartSites = System.Array.Empty<int>();
+        /// <summary>Rich expansions per entry of <see cref="LayoutSizes"/>.</summary>
+        public int[] Expansions = System.Array.Empty<int>();
+        /// <summary>Large central areas per entry of <see cref="LayoutSizes"/>.</summary>
+        public int[] CentralAreas = System.Array.Empty<int>();
+        /// <summary>Region radii, in percent of the base sizes, per entry of <see cref="LayoutSizes"/>: larger maps get larger, roomier regions.</summary>
+        public int[] RegionScale = System.Array.Empty<int>();
+        /// <summary>Lane widths (not chokepoints), in percent of <see cref="LaneWidthMin"/>..<see cref="LaneWidthMax"/>, per entry of <see cref="LayoutSizes"/>.</summary>
+        public int[] LaneScale = System.Array.Empty<int>();
+        /// <summary>Depth in tiles of the cave band grown out from every region and lane edge, per entry of <see cref="LayoutSizes"/> (0 = smooth edges).</summary>
+        public int[] CaveDepth = System.Array.Empty<int>();
+        /// <summary>Share of a central area's or expansion's floor given to rock outcrops (cover and flanks inside the open ground).</summary>
+        public float OutcropShare;
+        /// <summary>Share of lanes that get a chokepoint.</summary>
+        public float ChokepointShare;
+        public int LaneWidthMin, LaneWidthMax, ChokeWidthMin, ChokeWidthMax;
+        /// <summary>Path distance band between a start site and its nearest other site, as a share of the map size.</summary>
+        public float MinStartDistance, MaxStartDistance;
+        /// <summary>Gem tiles in each expansion's rich field.</summary>
+        public int ExpansionGemTiles;
     }
 
     /// <summary>Server simulation tuning.</summary>
@@ -152,6 +176,14 @@ namespace Config
         public int[] MapSizes = System.Array.Empty<int>();
         /// <summary>Starting resources the host may pick, smallest first.</summary>
         public float[] StartingResources = System.Array.Empty<float>();
+        /// <summary>Smallest and largest number of start options a player may be dealt.</summary>
+        public int StartOptionsMin, StartOptionsMax, StartOptionsDefault;
+        /// <summary>Timed pick durations the host may choose, in seconds (0 = random, and Unlimited is always allowed).</summary>
+        public int[] StartPickSeconds = System.Array.Empty<int>();
+        /// <summary>The default pick time (a value of <see cref="StartPickSeconds"/>).</summary>
+        public int StartPickDefault;
+        /// <summary>Sites kept undealt, so an enemy's position is never pinned down by elimination.</summary>
+        public int SpareStartSites;
     }
 
     /// <summary>Gifting tuning.</summary>
@@ -159,6 +191,15 @@ namespace Config
     {
         /// <summary>Seconds a player waits between gifts.</summary>
         public float CooldownSeconds;
+    }
+
+    /// <summary>Match recordings (v0.10).</summary>
+    public class ReplaysConfig
+    {
+        public bool Enabled;
+        public int MaxMegabytes;
+        public int SendKilobytesPerSecond;
+        public int KeepCount;
     }
 
     /// <summary>Music tuning.</summary>
@@ -227,6 +268,8 @@ namespace Config
         public int OffscreenIntervalTicks;
         /// <summary>Rate at which a joining client's snapshot is released.</summary>
         public int SnapshotBytesPerSecond;
+        /// <summary>Tiles a sent route may cut across the flow cells it simplifies (0 keeps every turn).</summary>
+        public float RouteTolerance;
     }
 
     /// <summary>Damage multipliers keyed by attacker unit type and target class.</summary>

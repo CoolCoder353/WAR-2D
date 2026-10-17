@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System;
 using System.Net;
 using System.Threading;
@@ -140,10 +141,10 @@ namespace WAR2D.Net
 
                 IPAddress external = null;
                 try { external = await router.GetExternalAddressAsync(ct).ConfigureAwait(false); }
-                catch (Exception e) when (!(e is OperationCanceledException)) { Debug.Log($"[UPnP] no external address: {e.Message}"); }
+                catch (Exception e) when (!(e is OperationCanceledException)) { WarLog.Info(LogCategory.Net, $"no external address: {e.Message}"); }
                 if (external != null && !UpnpProtocol.IsPublic(external))
                 {
-                    Debug.Log($"[UPnP] the router's external address {external} is not public: carrier-grade or double NAT.");
+                    WarLog.Info(LogCategory.Net, $"the router's external address {external} is not public: carrier-grade or double NAT.");
                     Report(Reachability.SharedAddress, ct);
                     return;
                 }
@@ -152,25 +153,25 @@ namespace WAR2D.Net
 
                 int lease = await MapAsync(router, port, LeaseSeconds, ct).ConfigureAwait(false);
                 mapped = true;
-                Debug.Log($"[UPnP] mapped UDP {port} to {router.LocalAddress} (lease {lease} s); internet players join {externalAddress ?? "<public IP>"}:{port}");
+                WarLog.Info(LogCategory.Net, $"mapped UDP {port} to {router.LocalAddress} (lease {lease} s); internet players join {externalAddress ?? "<public IP>"}:{port}");
                 Report(Reachability.Open, ct);
 
                 while (lease > 0)
                 {
                     await Task.Delay(TimeSpan.FromSeconds(lease / 2), ct).ConfigureAwait(false);
                     try { await MapAsync(router, port, lease, ct).ConfigureAwait(false); }
-                    catch (Exception e) when (!(e is OperationCanceledException)) { Debug.LogWarning($"[UPnP] could not renew the mapping: {e.Message}"); }
+                    catch (Exception e) when (!(e is OperationCanceledException)) { WarLog.Warn(LogCategory.Net, $"could not renew the mapping: {e.Message}"); }
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
             catch (UpnpException e)
             {
-                Debug.LogWarning($"[UPnP] {e.Message}");
+                WarLog.Warn(LogCategory.Net, $"{e.Message}");
                 Fail(e.Code == UpnpProtocol.ConflictInMapping ? "the port is already forwarded to another machine" : "the router refused UPnP", ct);
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[UPnP] {e.GetType().Name}: {e.Message}");
+                WarLog.Warn(LogCategory.Net, $"{e.GetType().Name}: {e.Message}");
                 Fail("UPnP failed", ct);
             }
             finally
@@ -181,9 +182,9 @@ namespace WAR2D.Net
                     {
                         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
                         await router.DeleteMappingAsync(Protocol, port, timeout.Token).ConfigureAwait(false);
-                        Debug.Log($"[UPnP] removed the UDP {port} mapping");
+                        WarLog.Info(LogCategory.Net, $"removed the UDP {port} mapping");
                     }
-                    catch (Exception e) { Debug.LogWarning($"[UPnP] could not remove the UDP {port} mapping (it lapses with its lease): {e.Message}"); }
+                    catch (Exception e) { WarLog.Warn(LogCategory.Net, $"could not remove the UDP {port} mapping (it lapses with its lease): {e.Message}"); }
                 }
             }
         }

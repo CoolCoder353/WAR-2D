@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System.Collections.Generic;
 using System.Linq;
 using Config;
@@ -135,6 +136,11 @@ public partial class GameCore : NetworkBehaviour
             MatchStartTime = NetworkTime.time;
             SendAllDiplomacy();
         }
+        else if (CurrentState == GameState.PlacingHQ && HqPlacementEndTime > 0 && NetworkTime.time >= HqPlacementEndTime && WorldStateManager.Instance != null)
+        {
+            HqPlacementEndTime = 0;
+            PlaceRemainingRandomly(WorldStateManager.Instance);
+        }
     }
 
     // ---------- Players and ownership ----------
@@ -157,6 +163,7 @@ public partial class GameCore : NetworkBehaviour
     public void OnPlayerLeave(NetworkConnectionToClient conn)
     {
         CommandGate.Forget(conn.connectionId);
+        WorldStateManager.Instance?.ReplaySender?.Cancel(conn);
         if (conn.identity == null || !ServerPlayers.Remove(conn.identity)) return;
 
         ClientPlayer leaving = conn.identity.GetComponent<ClientPlayer>();
@@ -196,7 +203,7 @@ public partial class GameCore : NetworkBehaviour
         }
         serverOwner = conn;
         conn.identity.GetComponent<ClientPlayer>().isServerOwner = true;
-        Debug.Log($"Player {conn.identity.netId} is now the server owner");
+        WarLog.Info(LogCategory.Lobby, $"Player {conn.identity.netId} is now the server owner");
     }
 
     [Server]
@@ -235,14 +242,28 @@ public partial class GameCore : NetworkBehaviour
 
     // ---------- State machine ----------
 
+    /// <summary>Dev only (debug API): applies <paramref name="settings"/> and starts the match as the owner would, skipping the ready checks.</summary>
+    [Server]
+    internal void DevStartMatch(MatchSettings settings)
+    {
+        if (!DevApi.Allowed || CurrentState != GameState.Lobby || !ConfigLoader.IsValid) return;
+        Settings = settings;
+        StartMatchServerSide();
+    }
+
     [Command(requiresAuthority = false)]
     public void Cmd_StartGame(NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(Cmd_StartGame))) return;
         if (!IsServerOwner(sender) || CurrentState != GameState.Lobby || !ConfigLoader.IsValid) return;
         // Dev only (perf harness, hosted tests): a solo host may start without the lobby's rules.
-        if (!DevApi.Allowed && !LobbyRules.CanStart(LobbyStartState())) return;
+        if (!DevApi.Allowed && (!LobbyRules.CanStart(LobbyStartState()) || !LobbyRules.FitsMap(ServerPlayers.Count, Settings, ConfigLoader.LoadConfig().Match.Map, ConfigLoader.LoadConfig().Lobby.SpareStartSites))) return;
 
+        StartMatchServerSide();
+    }
+
+    private void StartMatchServerSide()
+    {
         DiplomacyEnabled = Settings.Diplomacy;
         BeginStats();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
@@ -260,7 +281,8 @@ public partial class GameCore : NetworkBehaviour
         PlayerOrder.Clear();
         foreach (int owner in order) PlayerOrder.Add(owner);
         AssignTeams();
-        AssignStartSites();
+        HqPlacementEndTime = 0;
+        foreach (ServerPlayer p in ServerPlayers.Values) { p.StartOptions = null; p.StartPick = -1; }
         CurrentState = GameState.PlacingHQ;
         GameManager.Instance.ServerChangeScene(ConfigLoader.LoadConfig().Match.Scene);
     }
@@ -304,6 +326,7 @@ public partial class GameCore : NetworkBehaviour
         if (remaining == 0 && CurrentState == GameState.PlacingHQ)
         {
             CurrentState = GameState.Countdown;
+            HqPlacementEndTime = 0;
             CountdownEndTime = NetworkTime.time + ConfigLoader.LoadConfig().Match.CountdownSeconds;
         }
     }
@@ -372,6 +395,7 @@ public partial class GameCore : NetworkBehaviour
     {
         CurrentState = GameState.GameOver;
         SendStats(winners);
+        WorldStateManager.Instance?.MatchEnded(Newtonsoft.Json.JsonConvert.SerializeObject(new { winners }));
         WorldStateManager.Instance?.DestroyAllEntities();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
@@ -390,6 +414,7 @@ public partial class GameCore : NetworkBehaviour
     {
         CurrentState = GameState.GameOver;
         SendStats(null);
+        WorldStateManager.Instance?.MatchEnded(Newtonsoft.Json.JsonConvert.SerializeObject(new { draw = true }));
         WorldStateManager.Instance?.DestroyAllEntities();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
@@ -404,6 +429,7 @@ public partial class GameCore : NetworkBehaviour
     {
         CurrentState = GameState.Lobby;
         CountdownEndTime = 0;
+        HqPlacementEndTime = 0;
         MatchStartPlayerCount = 0;
         MatchStartTeamCount = 0;
         Teams.Clear();

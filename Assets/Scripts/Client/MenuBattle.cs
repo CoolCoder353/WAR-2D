@@ -74,7 +74,7 @@ namespace WAR2D.Client
         private void Update()
         {
             bool online = NetworkClient.active || NetworkServer.active;
-            bool wanted = Enabled && !online && !Application.isBatchMode && !DevApi.PerfFlag;
+            bool wanted = Enabled && !online && !Application.isBatchMode && !DevApi.PerfFlag && WAR2D.Client.Replay.ReplayPlayer.Instance == null;
             if (!wanted)
             {
                 TearDown();

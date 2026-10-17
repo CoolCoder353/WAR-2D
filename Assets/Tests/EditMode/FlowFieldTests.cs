@@ -162,7 +162,7 @@ public class FlowFieldTests
     public void DirectionsDescend()
     {
         using PathMap map = PathTestMaps.Generate(128, 11);
-        int2 goal = MapGenerator.HqSites(128)[0];
+        int2 goal = MapGenerator.Sites(128, 11)[0];
         using var cost = Cost(map, map.Tiles, Allocator.TempJob, goal);
         using var direction = Directions(map, map.Tiles, cost, Allocator.TempJob);
 

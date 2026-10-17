@@ -87,6 +87,9 @@ namespace WAR2D.Sim
         /// </summary>
         public event Action<SimData, int, int> Settled;
 
+        /// <summary>Dev-only pause and single-step (debug API).</summary>
+        public SimPause Pause { get; } = new SimPause();
+
         /// <summary>Raised when a building entity was created: (id, entity).</summary>
         public event Action<int, Entity> BuildingCreated;
 

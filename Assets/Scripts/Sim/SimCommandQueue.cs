@@ -30,6 +30,9 @@ namespace WAR2D.Sim
         PlaceWall,
         /// <summary>Set off the bomb with building id <see cref="SimCommand.TargetId"/> on <see cref="SimCommand.Tile"/> this tick, if <see cref="SimCommand.OwnerId"/>'s side sees the tile.</summary>
         DetonateBomb,
+
+        /// <summary>Kill the units in <see cref="SimCommand.Ids"/> (dev tools).</summary>
+        KillUnits,
     }
 
     /// <summary>A building the command system creates; placement, payment and footprint are done already.</summary>

@@ -9,5 +9,11 @@
             <ui:Button name="end-main-menu" text="Main menu" class="button button--primary" />
             <ui:Button name="end-quit" text="Quit" class="button" />
         </ui:VisualElement>
+        <ui:VisualElement name="replay-progress" class="end-screen__replay">
+            <ui:Label name="replay-progress-label" text="" class="text end-screen__subtitle" />
+            <ui:VisualElement name="replay-progress-bar" class="end-screen__replay-bar">
+                <ui:VisualElement name="replay-progress-fill" class="end-screen__replay-fill" />
+            </ui:VisualElement>
+        </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

@@ -11,6 +11,7 @@
                     <ui:VisualElement class="settings-row"><ui:Label text="VSync" class="text settings-row__label" /><ui:VisualElement name="vsync-slot" /></ui:VisualElement>
                     <ui:VisualElement class="settings-row"><ui:Label text="FPS cap" class="text settings-row__label" /><ui:VisualElement name="fps-options" class="row segmented" /></ui:VisualElement>
                     <ui:VisualElement class="settings-row"><ui:Label text="Menu background battle" class="text settings-row__label" /><ui:VisualElement name="battle-slot" /></ui:VisualElement>
+                    <ui:VisualElement class="settings-row"><ui:Label text="Save replays" class="text settings-row__label" /><ui:VisualElement name="save-replays-slot" /></ui:VisualElement>
                     <ui:Label text="Colour palette" class="text settings__heading" />
                     <ui:VisualElement name="palette-picker" class="row settings__palettes" />
                 </ui:VisualElement>

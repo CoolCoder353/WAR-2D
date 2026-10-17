@@ -197,9 +197,10 @@ public class ReplicationPlayModeTests
         // must stand) is ~195 tiles away across the map.
         WorldStateManager.Instance.UpdateClientView(new int2(0, 0), new int2(40, 40));
         int2[] sites = WorldStateManager.Instance.Map.HqSites;
-        int own = NetworkClient.localPlayer.GetComponent<ClientPlayer>().startSite;
-        Assert.That(own, Is.GreaterThanOrEqualTo(0), "the host was given a clearing at the start");
-        int2 far = sites[(own + sites.Length / 2) % sites.Length];
+        yield return PlayModeMatch.WaitUntil(() => NetworkClient.localPlayer.GetComponent<ClientPlayer>().OwnStartOptions.Length > 0, 5f);
+        int2 home = sites[NetworkClient.localPlayer.GetComponent<ClientPlayer>().OwnStartOptions[0]];
+        int2 far = home;
+        foreach (int2 site in sites) if (math.distancesq(site, home) > math.distancesq(far, home)) far = site;
         int enemy = -1;
         Spawn(424242, (float2)far + 0.5f, v => enemy = v);
         yield return PlayModeMatch.WaitUntil(() => enemy > 0, 5f);

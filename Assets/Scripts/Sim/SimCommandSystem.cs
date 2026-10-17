@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System.Collections.Generic;
 using Config;
 using Unity.Collections;
@@ -88,6 +89,9 @@ namespace WAR2D.Sim
                         if (sightGrid >= 0 && data.Sees(sightGrid, (float2)command.Tile + 0.5f)) data.ForcedBombs.Add(command.TargetId);
                         break;
                     }
+                    case SimCommandKind.KillUnits:
+                        KillIds(data, context, command.Ids);
+                        break;
                     case SimCommandKind.KillOwner:
                         KillUnits(data, context, command.OwnerId, all: false);
                         break;
@@ -332,6 +336,26 @@ namespace WAR2D.Sim
             command.OnSpawned?.Invoke(id);
         }
 
+        /// <summary>Kills the named units (dev tools), like <see cref="KillUnits"/> for an owner.</summary>
+        private void KillIds(SimData data, SimContext context, int[] ids)
+        {
+            if (ids == null || ids.Length == 0) return;
+            var wanted = new System.Collections.Generic.HashSet<int>(ids);
+            using NativeArray<Entity> entities = unitQuery.ToEntityArray(Allocator.Temp);
+            using NativeArray<Unit> units = unitQuery.ToComponentDataArray<Unit>(Allocator.Temp);
+            var doomed = new NativeList<Entity>(ids.Length, Allocator.Temp);
+            for (int i = 0; i < units.Length; i++)
+            {
+                if (!wanted.Contains(units[i].Id)) continue;
+                doomed.Add(entities[i]);
+                context.Ids.Free(units[i].Id);
+                if (units[i].OwnerSlot < data.UnitsBySlot.Length) data.UnitsBySlot[units[i].OwnerSlot]--;
+                context.RaiseUnitDied(units[i].Id, units[i].Position);
+            }
+            EntityManager.DestroyEntity(doomed.AsArray());
+            doomed.Dispose();
+        }
+
         /// <summary>Destroys every unit of the owner (or every unit), recording each death for its explosion.</summary>
         private void KillUnits(SimData data, SimContext context, int ownerId, bool all)
         {
@@ -448,7 +472,7 @@ namespace WAR2D.Sim
                 case BuildingType.Radar:
                     break; // no components of their own: their stages read the building's slot flags
                 default:
-                    Debug.LogError($"[Sim] no components for building type {buildingData.buildingType}");
+                    WarLog.Error(LogCategory.Sim, $"no components for building type {buildingData.buildingType}");
                     break;
             }
 

@@ -410,4 +410,105 @@ public class LeakTests
         Assert.IsFalse(c.Buildings.Entries.ContainsKey(500));
         foreach (Spy s in new[] { a, b, c }) { CollectionAssert.IsEmpty(s.Failures); s.Dispose(); }
     }
+
+    [Test]
+    public void OnlyTheRecorderSeesEveryBombNotASpectator()
+    {
+        using var sim = new SimHarness(Map());
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        replication.Spectating = o => o == OwnerC; // an eliminated player watching the whole map
+        var views = new List<BuildingView>();
+        replication.CollectBuildings = list => list.AddRange(views);
+        var recorder = new ClientBuildings();
+        var spectator = new ClientBuildings();
+        replication.AddVirtualClient(int.MinValue + 1, (p, ch) => { if (ch == ReplicationService.BuildingSinkChannel) BuildingCodec.Apply(recorder, p); }, seesAll: true);
+        replication.AddVirtualClient(OwnerC, (p, ch) => { if (ch == ReplicationService.BuildingSinkChannel) BuildingCodec.Apply(spectator, p); });
+        sim.Spawn(SimHarness.OwnerA, new float2(20, 20));
+        sim.Tick();
+        views.Add(new BuildingView { Id = 500, OwnerId = SimHarness.OwnerA, Type = BuildingType.Bomb, Anchor = new int2(21, 20), Health = 40, MaxHealth = 40, Position = new float2(21, 20), Hidden = true, Progress = 100 });
+        for (int i = 0; i < 8; i++) sim.Tick();
+        Assert.IsTrue(recorder.Entries.ContainsKey(500), "the recorder sees every bomb");
+        Assert.IsFalse(spectator.Entries.ContainsKey(500), "a spectator sees the map, never another player's bombs");
+    }
+
+    [Test]
+    public void NoReplayOfferOrChunkBeforeGameOver()
+    {
+        string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "w2d-leak-" + Guid.NewGuid().ToString("N") + WAR2D.Net.Replay.ReplayFile.Extension);
+        System.IO.File.WriteAllBytes(path, new byte[50_000]);
+        var sender = new WAR2D.Net.Replay.ReplaySender(1, path, 1 << 20, 1f);
+        int offers = 0, chunks = 0;
+        sender.SendOffer = (c, m) => offers++;
+        sender.SendChunk = (c, m) => chunks++;
+        var conn = new Mirror.NetworkConnectionToClient(42);
+        foreach (GameState s in Enum.GetValues(typeof(GameState)))
+        {
+            if (s == GameState.GameOver) continue;
+            sender.Offer(conn, s);
+            sender.Accept(conn, 1, s);
+            sender.Update(1f, s);
+        }
+        Assert.AreEqual(0, offers);
+        Assert.AreEqual(0, chunks);
+        Assert.IsFalse(sender.Busy, "an accept before GameOver is ignored");
+        sender.Offer(conn, GameState.GameOver);
+        Assert.AreEqual(1, offers);
+        System.IO.File.Delete(path);
+    }
+
+    [Test]
+    public void NoStartOptionOrPickIsEverASyncVar()
+    {
+        // Start points are private (v0.11): they reach a player through TargetRpcs only, never through replicated state.
+        // The pick deadline is public by design (it reveals nothing about the deal).
+        foreach (System.Type type in new[] { typeof(ClientPlayer), typeof(GameCore) })
+        foreach (System.Reflection.MemberInfo member in type.GetMembers(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance))
+        {
+            if (member.GetCustomAttributes(typeof(Mirror.SyncVarAttribute), true).Length == 0) continue;
+            string name = member.Name.ToLowerInvariant();
+            if (name == "hqplacementendtime") continue;
+            Assert.That(name, Does.Not.Contain("startsite").And.Not.Contain("startoption").And.Not.Contain("startpick"), $"{type.Name}.{member.Name} must not be replicated");
+        }
+        Assert.That(typeof(ClientPlayer).GetField("startSite"), Is.Null, "the public start-site SyncVar is gone");
+    }
+
+    /// <summary>Deals six owners (two teams of two and two Solo players) and returns each one's start plus the team map.</summary>
+    private static (List<(int owner, int[] options, int pick)> starts, Dictionary<int, int> teams) DealSix(bool ffa)
+    {
+        var choices = new List<(int Owner, int Choice)> { (11, 0), (12, 0), (13, 1), (14, 1), (15, TeamRules.NoTeam), (16, TeamRules.NoTeam) };
+        if (ffa) for (int i = 0; i < choices.Count; i++) choices[i] = (choices[i].Owner, TeamRules.NoTeam);
+        Dictionary<int, int> teams = TeamRules.Assign(choices);
+        var rng = new System.Random(5);
+        Dictionary<int, int[]> deal = StartPickRules.Deal(20, choices.ConvertAll(c => c.Owner), 3, rng.Next);
+        var starts = new List<(int owner, int[] options, int pick)>();
+        foreach (var c in choices) starts.Add((c.Owner, deal[c.Owner], deal[c.Owner][1]));
+        return (starts, teams);
+    }
+
+    [Test]
+    public void StartOptions_ReachOnlyTheOwnersTeammates()
+    {
+        (List<(int owner, int[] options, int pick)> starts, Dictionary<int, int> teams) = DealSix(ffa: false);
+        bool Mates(int a, int b) => a != b && teams[a] == teams[b];
+        foreach ((int owner, _, _) in starts)
+        {
+            var view = StartPickRules.TeamView(owner, starts, Mates);
+            foreach ((int other, int[] options, int pick) in view)
+            {
+                Assert.That(Mates(owner, other), $"owner {owner} was told non-teammate {other}'s start");
+                Assert.That(options, Is.EqualTo(starts.Find(s => s.owner == other).options));
+            }
+            int expected = starts.FindAll(s => Mates(owner, s.owner)).Count;
+            Assert.AreEqual(expected, view.Count, $"owner {owner} learns every teammate's start and nobody else's");
+        }
+        Assert.IsEmpty(StartPickRules.TeamView(15, starts, Mates), "a Solo player learns nobody's start");
+    }
+
+    [Test]
+    public void StartOptions_InFreeForAll_NobodyLearnsAnotherStart()
+    {
+        (List<(int owner, int[] options, int pick)> starts, Dictionary<int, int> teams) = DealSix(ffa: true);
+        foreach ((int owner, _, _) in starts)
+            Assert.IsEmpty(StartPickRules.TeamView(owner, starts, (a, b) => a != b && teams[a] == teams[b]), $"owner {owner}");
+    }
 }

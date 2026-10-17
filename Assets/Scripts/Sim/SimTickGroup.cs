@@ -64,6 +64,7 @@ namespace WAR2D.Sim
             data.ForcedBombs.Clear();
             data.FogChanges.Clear();
             bool running = SimContext.RunningOverride ?? (NetworkServer.active && GameCore.Instance != null && RunsIn(GameCore.Instance.CurrentState));
+            if (running && context != null && !context.Pause.TryRun()) running = false;
             clock.ValueRW.Running = running;
             if (running) clock.ValueRW.Tick++;
         }

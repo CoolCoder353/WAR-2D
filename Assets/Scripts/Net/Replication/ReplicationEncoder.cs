@@ -132,8 +132,9 @@ namespace WAR2D.Net.Replication
                 RouteCount = routes.Count,
                 RouteGeneration = routes.Generation,
                 Allowed = interests.Allowed(client),
-                Entered = interests.Entered(client).AsArray(),
-                Left = interests.Left(client).AsArray(),
+                // Deferred: the interest build may still be running when this is scheduled (the recorder's lane).
+                Entered = interests.Entered(client).AsDeferredJobArray(),
+                Left = interests.Left(client).AsDeferredJobArray(),
                 Attacks = attacks,
                 AttackTargets = targets.IsCreated ? targets : b.NoTargets,
                 Owner = interests.OwnerOf(client),

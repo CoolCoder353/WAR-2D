@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System;
 using System.Collections.Generic;
 using Mirror;
@@ -168,7 +169,7 @@ namespace WAR2D.Net.Replication
         /// <summary>Applies a received batch to <see cref="Current"/>.</summary>
         public static void Receive(TerrainBatch batch)
         {
-            if (!TerrainCodec.Apply(Current, batch.Payload)) UnityEngine.Debug.LogWarning("[Terrain] dropped a malformed terrain batch");
+            if (!TerrainCodec.Apply(Current, batch.Payload)) WarLog.Warn(LogCategory.Replication, "dropped a malformed terrain batch");
         }
 
         /// <summary>Forgets the terrain (the match ended).</summary>

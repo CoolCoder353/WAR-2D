@@ -1,0 +1,27 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="replays" class="menu-screen menu-screen--centre" picking-mode="Ignore">
+        <ui:VisualElement class="panel play-panel">
+            <ui:Label text="Replays" class="panel__title" />
+            <ui:VisualElement class="play-panel__content">
+                <ui:Label text="Your replays" class="text play-panel__heading" />
+                <ui:Label text="Every match you finish is saved here (Settings › Save replays). The newest 50 are kept." class="text--secondary replays__blurb" />
+                <ui:VisualElement class="divider" />
+                <ui:VisualElement class="row play-panel__header">
+                    <ui:Label text="Newest first" class="text play-panel__heading play-panel__grow" />
+                    <ui:Button name="replays-refresh" text="Refresh" class="button button--primary" />
+                </ui:VisualElement>
+                <ui:ScrollView name="replays-scroll" class="replays__scroll">
+                    <ui:VisualElement name="replays-list" class="play-panel__list" />
+                </ui:ScrollView>
+                <ui:Label name="replays-empty" text="No replays yet. Finish a match and it appears here." class="text play-panel__notice" />
+                <ui:Label name="replays-error" text="" class="text play-panel__notice play-panel__notice--danger" />
+                <ui:VisualElement class="divider" />
+                <ui:Label text="Replays folder" class="text play-panel__heading" />
+                <ui:Label text="A replay shows the whole map, every player and their bombs. Delete asks first." class="text--secondary replays__blurb" />
+                <ui:VisualElement class="row">
+                    <ui:Button name="replays-back" text="Back" class="button" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

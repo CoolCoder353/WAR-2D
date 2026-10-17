@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -38,7 +39,7 @@ namespace Config
             Errors = errors;
             foreach (string error in errors)
             {
-                Debug.LogError($"[GameConfig] {error}");
+                WarLog.Error(LogCategory.Sim, $"{error}");
             }
             return _cached;
         }

@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using Config;
+using WAR2D.World;
 using Mirror;
 using NUnit.Framework;
 using Unity.Entities;
@@ -131,7 +132,7 @@ public class MatchFlowTests
         Assert.That(wsm.MapSize, Is.EqualTo(256));
         Assert.That(wsm.MapSeed, Is.EqualTo(5u));
         Assert.That(wsm.Map.Hash(), Is.EqualTo(wsm.MapHash));
-        Assert.That(wsm.Map.HqSites.Length, Is.EqualTo(8));
+        Assert.That(wsm.Map.HqSites.Length, Is.EqualTo(RegionMapGenerator.Counts(ConfigLoader.LoadConfig().Match.Map, wsm.MapSize).starts));
     }
 
     // ---------- helpers ----------

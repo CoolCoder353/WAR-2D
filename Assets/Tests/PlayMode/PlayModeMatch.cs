@@ -21,6 +21,7 @@ public static class PlayModeMatch
         config.Match.CountdownSeconds = 0.5f;
         config.Resources.StartingResources = 10000f;
         config.Match.Map.Size = 0; // Map_2's authored tilemaps unless a test asks for a generated map
+        config.Replays.Enabled = false; // hosted tests would fill the real Replays folder; the replay tests turn it on
         return config;
     }
 

@@ -23,6 +23,9 @@ namespace WAR2D.UI
         private CommandCardController commandCard;
         private SquadBarController squadBar;
         private HudOverlayController overlay;
+        private StartMarkersController startMarkers;
+        private readonly List<StartMarker> markers = new List<StartMarker>();
+        private readonly List<string> teammatesPicked = new List<string>();
         private MinimapController minimap;
         private AlertFeedController alertFeed;
         private DiplomacyPanelController diplomacy;
@@ -88,6 +91,9 @@ namespace WAR2D.UI
                 config.GetBuilding(BuildingType.SmallUnitSpawner).SpawnRate);
             squadBar = new SquadBarController(root, Selection);
             overlay = new HudOverlayController(root);
+            startMarkers = new StartMarkersController(root);
+            overlay.OptionClicked += FocusOption;
+            startMarkers.Clicked += CentreCamera;
             minimap = new MinimapController(root);
             Alerts = new AlertFeedModel(config.Alerts.ShowSeconds);
             alertFeed = new AlertFeedController(root, Alerts);
@@ -158,8 +164,7 @@ namespace WAR2D.UI
         private bool cameraCentred;
 
         /// <summary>
-        /// Once the match map is ready, puts the camera on the local player's HQ clearing (the one they claimed
-        /// in the lobby, or were given at the start).
+        /// Once the match map is ready, puts the camera on the local player's HQ clearing (their first dealt option).
         /// </summary>
         private void CentreOnOwnClearing()
         {
@@ -167,13 +172,87 @@ namespace WAR2D.UI
             GameCore core = GameCore.Instance;
             WorldStateManager wsm = WorldStateManager.Instance;
             if (core == null || wsm == null || wsm.Map == null || NetworkClient.localPlayer == null) return;
+            if (!NetworkClient.localPlayer.TryGetComponent(out ClientPlayer me) || me.OwnStartOptions.Length == 0) return; // the deal hasn't arrived yet
             cameraCentred = true;
-            int index = NetworkClient.localPlayer.TryGetComponent(out ClientPlayer me) ? me.startSite : -1;
             Unity.Mathematics.int2[] sites = wsm.Map.HqSites;
-            if (index < 0 || sites == null || sites.Length == 0) return;
-            Unity.Mathematics.int2 site = sites[index % sites.Length];
+            int index = me.OwnStartOptions[0];
+            if (sites == null || index < 0 || index >= sites.Length) return;
+            Unity.Mathematics.int2 site = sites[index];
+            CentreCamera(new Vector2(site.x + 0.5f, site.y + 0.5f));
+        }
+
+        private static void CentreCamera(Vector2 point)
+        {
             Camera cam = Camera.main;
-            if (cam != null && cam.TryGetComponent(out Character.Character_Controler controller)) controller.CentreOn(new Vector2(site.x + 0.5f, site.y + 0.5f));
+            if (cam != null && cam.TryGetComponent(out Character.Character_Controler controller)) controller.CentreOn(point);
+        }
+
+        /// <summary>An Option button: move the camera to the local player's option at <paramref name="index"/>.</summary>
+        private void FocusOption(int index)
+        {
+            Unity.Mathematics.int2[] sites = WorldStateManager.Instance != null && WorldStateManager.Instance.Map != null ? WorldStateManager.Instance.Map.HqSites : null;
+            if (sites == null || NetworkClient.localPlayer == null || !NetworkClient.localPlayer.TryGetComponent(out ClientPlayer me)) return;
+            if (index < 0 || index >= me.OwnStartOptions.Length) return;
+            int site = me.OwnStartOptions[index];
+            if (site >= 0 && site < sites.Length) CentreCamera(new Vector2(sites[site].x + 0.5f, sites[site].y + 0.5f));
+        }
+
+        /// <summary>
+        /// The HQ prompt and the option badges from the local player's own deal (and their teammates'), while placing HQs
+        /// (Figma: HUD / HQ placement – timed pick, Unlimited, teammate's options).
+        /// </summary>
+        private PlacementPrompt ShowStartOptions(GameCore core)
+        {
+            var prompt = new PlacementPrompt { Players = players, Placed = placedHQs, Focused = -1, PickSeconds = core.Settings.StartPickSeconds,
+                SecondsLeft = core.HqPlacementEndTime - NetworkTime.time, TeammatesPicked = teammatesPicked };
+            markers.Clear();
+            teammatesPicked.Clear();
+            WorldStateManager wsm = WorldStateManager.Instance;
+            Unity.Mathematics.int2[] sites = wsm != null && wsm.Map != null ? wsm.Map.HqSites : null;
+            ClientPlayer me = null;
+            bool placing = core.CurrentState == GameState.PlacingHQ && sites != null && NetworkClient.localPlayer != null
+                && NetworkClient.localPlayer.TryGetComponent(out me) && !me.hasPlacedHQ;
+            if (me != null)
+            {
+                foreach (var teammate in me.TeammateStarts)
+                    if (teammate.Value.pick >= 0) teammatesPicked.Add(NameOf(teammate.Key));
+                prompt.HasTeammates = me.TeammateStarts.Count > 0;
+            }
+            if (!placing)
+            {
+                startMarkers.Show(markers, null);
+                return prompt;
+            }
+
+            Camera cam = Camera.main;
+            float radius = WAR2D.World.MapGenerator.HqClearRadius;
+            prompt.Options = me.OwnStartOptions.Length;
+            float nearest = float.MaxValue;
+            for (int i = 0; i < me.OwnStartOptions.Length; i++)
+            {
+                int site = me.OwnStartOptions[i];
+                if (site < 0 || site >= sites.Length) continue;
+                var centre = new Vector2(sites[site].x + 0.5f, sites[site].y + 0.5f);
+                markers.Add(new StartMarker { Centre = centre, Radius = radius, Colour = PlayerPalette.Of(me.colourIndex), OnScreen = (i + 1).ToString(), OffScreen = (i + 1).ToString() });
+                if (cam == null) continue;
+                Vector3 view = cam.WorldToViewportPoint(centre);
+                float distance = ((Vector2)view - new Vector2(0.5f, 0.5f)).sqrMagnitude;
+                if (view.x >= 0f && view.x <= 1f && view.y >= 0f && view.y <= 1f && distance < nearest) { nearest = distance; prompt.Focused = i; }
+            }
+            foreach (var teammate in me.TeammateStarts)
+            {
+                string name = NameOf(teammate.Key);
+                Color32 colour = PlayerPalette.Of(NetworkClient.spawned.TryGetValue((uint)teammate.Key, out NetworkIdentity id) && id.TryGetComponent(out ClientPlayer other) ? other.colourIndex : -1);
+                foreach (int site in teammate.Value.options)
+                {
+                    if (site < 0 || site >= sites.Length) continue;
+                    bool picked = site == teammate.Value.pick;
+                    markers.Add(new StartMarker { Centre = new Vector2(sites[site].x + 0.5f, sites[site].y + 0.5f), Radius = radius, Colour = colour,
+                        OnScreen = picked ? $"{name}'s start" : $"{name} · option", OffScreen = name });
+                }
+            }
+            startMarkers.Show(markers, cam);
+            return prompt;
         }
 
         private void Update()
@@ -191,6 +270,12 @@ namespace WAR2D.UI
             }
             if (GameInput.Cancel.WasPressedThisFrame() && !matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !diplomacy.IsOpen) commandCard.RequestRemove();
             matchMenu.SetCanSurrender(root, GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing && !endScreen.IsShown);
+            if (endScreen.IsShown)
+            {
+                var (replayText, replayFraction) = EndScreenController.ReplayState(NetworkServer.active, WorldStateManager.Instance != null ? WorldStateManager.Instance.Recorder : null,
+                    WAR2D.Net.Replay.ReplayReceiver.Current, SettingsStore.Current.SaveReplays);
+                endScreen.ShowReplay(replayText, replayFraction);
+            }
             minimap.Update(Time.unscaledDeltaTime);
             ShowWallReadout();
             Model.PullDiplomacy();
@@ -212,7 +297,8 @@ namespace WAR2D.UI
                 Model.PullPlayers();
                 if (core != null && core.CurrentState == GameState.PlacingHQ) CountPlacedHQs();
             }
-            if (core != null) overlay.Show(core.CurrentState, placedHQs, players, core.CountdownEndTime - NetworkTime.time);
+            if (core != null) overlay.Show(core.CurrentState, ShowStartOptions(core), core.CountdownEndTime - NetworkTime.time);
+            else startMarkers.Show(markers, null);
         }
 
         private void CountPlacedHQs()

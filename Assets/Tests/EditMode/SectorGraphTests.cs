@@ -68,6 +68,48 @@ public class SectorGraphTests
         }
     }
 
+    /// <summary>
+    /// Crossing an open sector costs about its width. Portal costs used to be measured between the portals' nearest
+    /// cells, so the west and east portals of an open sector were 2 apart through the corner cells each shares with the
+    /// south (or north) portal; the search's distances came out far too low and, on cave maps, routes looped round a
+    /// sector corner while units bounced between two sectors' fields (SimMovementTests.CrowdCrossesAGeneratedCaveMap).
+    /// </summary>
+    [Test]
+    public void CrossingAnOpenSectorCostsItsWidth()
+    {
+        const int size = 96;
+        var map = new PathMap(size, size, new NativeArray<byte>(size * size, Allocator.TempJob));
+        try
+        {
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+                map.Tiles[y * size + x] = x == 0 || y == 0 || x == size - 1 || y == size - 1 ? Rock : Floor;
+            using var graph = new SectorGraph(map, Allocator.Persistent);
+            var goals = new NativeArray<int>(1, Allocator.TempJob);
+            goals[0] = Index(map, new int2(85, 48));
+            var starts = new NativeArray<int>(1, Allocator.TempJob);
+            starts[0] = Index(map, new int2(10, 48));
+            SectorFieldSpec[] specs = graph.BuildRoute(FlowSizeClass.Small, goals, starts, out _);
+            goals.Dispose();
+            starts.Dispose();
+
+            int west = graph.SectorOf(new int2(10, 48)), middle = graph.SectorOf(new int2(48, 48));
+            int westCost = -1, middleCost = -1;
+            foreach (SectorFieldSpec spec in specs)
+            {
+                if (spec.Sector == west) westCost = spec.GoalCosts[0];
+                if (spec.Sector == middle) middleCost = spec.GoalCosts[0];
+            }
+            Assert.That(westCost, Is.GreaterThan(0), "the route leaves the west sector");
+            Assert.That(middleCost, Is.GreaterThan(0), "and crosses the middle one");
+            Assert.That(westCost - middleCost, Is.GreaterThanOrEqualTo(250), "crossing the 32-tile middle sector costs about its width");
+        }
+        finally
+        {
+            map.Tiles.Dispose();
+        }
+    }
+
     [Test]
     public void RouteSpecsSeedTheExitPortalAndTheGoalCells()
     {
@@ -205,7 +247,7 @@ public class SectorGraphTests
         {
 
         // A start and a goal the generator guarantees are floor: two of the eight HQ clearings.
-        int2[] sites = MapGenerator.HqSites(256);
+        int2[] sites = MapGenerator.Sites(256, 5);
         var starts = new NativeArray<int>(1, Allocator.TempJob);
         starts[0] = sites[0].y * map.Width + sites[0].x;
         int2 goal = sites[1];
@@ -486,7 +528,7 @@ public class SectorGraphTests
         try
         {
             using var cache = new SectorFieldCache(map, Allocator.Persistent, cellSize: 2);
-            int2[] sites = MapGenerator.HqSites(256);
+            int2[] sites = MapGenerator.Sites(256, 5);
             var starts = new NativeArray<int>(1, Allocator.TempJob);
             starts[0] = sites[0].y * map.Width + sites[0].x;
             int small = cache.Acquire(sites[1], FlowSizeClass.Small, 1, starts);
@@ -531,7 +573,7 @@ public class SectorGraphTests
             var job = new BuildSectorFieldJob
             {
                 Width = Width, Height = Width, Tiles = tiles, WriteDirection = true,
-                ExitDirection = FlowDirections.None, Cost = cost, Direction = direction,
+                Cost = cost, Direction = direction,
             };
             job.Goals.Add(Local(new int2(2, 2)));
             job.GoalCosts.Add(0);
@@ -548,14 +590,14 @@ public class SectorGraphTests
             var swapped = new BuildSectorFieldJob
             {
                 Width = Width, Height = Width, Tiles = tiles, WriteDirection = true,
-                ExitDirection = FlowDirections.None, Cost = cost, Direction = direction,
+                Cost = cost, Direction = direction,
             };
             swapped.Goals.Add(Local(new int2(2, 2)));
             swapped.GoalCosts.Add(300);
             swapped.Goals.Add(Local(new int2(29, 29)));
             swapped.GoalCosts.Add(0);
             swapped.ExitCells.Add(Local(new int2(31, 16)));
-            swapped.ExitDirection = 0; // east
+            swapped.ExitDirections.Add(0); // east
             swapped.Run();
 
             Assert.AreEqual(300, cost[Local(new int2(2, 2))]);

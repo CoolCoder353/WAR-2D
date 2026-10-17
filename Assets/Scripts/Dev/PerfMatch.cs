@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -31,6 +32,8 @@ public sealed class PerfMatch : MonoBehaviour
     private List<int2>[] reinforcementTiles;
     private readonly int[] reinforcementCursor = new int[Owners];
     private readonly long[] botBytesThisSecond = new long[Owners];
+    private WAR2D.Net.Replay.MatchRecorder perfRecorder;
+    private long lastRecordBytes;
     private int[] owners;
     /// <summary>Owners before this index are real players (the host and -perfClients); from it on, bots.</summary>
     private int firstBot = 1;
@@ -98,7 +101,7 @@ public sealed class PerfMatch : MonoBehaviour
             GameCore.Instance.AddBot(owners[i], 1e9f);
         }
 
-        int2[] sites = world.Map.HqSites;
+        int2[] sites = PairedSites(world.Map.HqSites, world.MapSize);
         for (int i = 0; i < Owners; i++)
             if (!PlaceNear(world, owners[i], sites[i])) Fail($"no room for owner {i}'s HQ near {sites[i]}");
         foreach (NetworkIdentity identity in GameCore.Instance.ServerPlayers.Keys) identity.GetComponent<ClientPlayer>().hasPlacedHQ = true;
@@ -122,6 +125,13 @@ public sealed class PerfMatch : MonoBehaviour
         for (int i = 0; i < Owners; i++) reinforcementTiles[i] = new List<int2>(WalkableSpiral(world, sites[i] + new int2(0, 6), ReinforcementTiles));
         world.Sim.UnitDied += (id, _) => { foreach (HashSet<int> army in armyIds) if (army.Remove(id)) break; };
 
+        if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfRecord") >= 0)
+        {
+            var header = new WAR2D.Net.Replay.ReplayHeader { GameVersion = Application.version, MapSize = world.MapSize, Seed = world.MapSeed, TickSeconds = config.Simulation.TickSeconds };
+            string recPath = Path.Combine(ArgValue("-perfOut") ?? Application.persistentDataPath, "perf-record" + WAR2D.Net.Replay.ReplayFile.Extension);
+            perfRecorder = new WAR2D.Net.Replay.MatchRecorder(world.Replication, world.Sim, header, recPath, 1L << 33);
+        }
+
         bool breakdown = Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0;
         for (int i = firstBot; i < Owners; i++)
         {
@@ -143,7 +153,7 @@ public sealed class PerfMatch : MonoBehaviour
             cam.transform.position = new Vector3(armyStart[0].x, armyStart[0].y, cam.transform.position.z);
             cam.orthographicSize = 34f;
         }
-        Debug.Log("[Perf] match ready; sampling");
+        WarLog.Info(LogCategory.Dev, "match ready; sampling");
     }
 
     private void Update()
@@ -164,6 +174,11 @@ public sealed class PerfMatch : MonoBehaviour
                     stats.Add("perf.bw.avg", botBytesThisSecond[i] / secondTimer);
                     stats.Add("perf.bw.peak1s", botBytesThisSecond[i] / secondTimer);
                     botBytesThisSecond[i] = 0;
+                }
+                if (perfRecorder != null)
+                {
+                    stats.Add("perf.recordKBps", (perfRecorder.QueuedBytes - lastRecordBytes) / 1024.0 / secondTimer);
+                    lastRecordBytes = perfRecorder.QueuedBytes;
                 }
                 secondTimer = 0f;
             }
@@ -211,7 +226,7 @@ public sealed class PerfMatch : MonoBehaviour
     {
         siegeSetUp = true;
         WorldStateManager world = WorldStateManager.Instance;
-        int2[] sites = world.Map.HqSites;
+        int2[] sites = PairedSites(world.Map.HqSites, world.MapSize);
         for (int i = 0; i < Owners; i++)
         {
             int owner = owners[i];
@@ -354,7 +369,7 @@ public sealed class PerfMatch : MonoBehaviour
             ["perf.bw.avg"] = ("mean", 262144.0, true),
             ["perf.bw.peak1s"] = ("max", 786432.0, true),
         });
-        Debug.Log($"[Perf] wrote {path}");
+        WarLog.Info(LogCategory.Dev, $"wrote {path}");
         if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0)
         {
             var lines = new System.Text.StringBuilder("type,bytes,units\n");
@@ -363,6 +378,32 @@ public sealed class PerfMatch : MonoBehaviour
         }
         enabled = false;
         Application.Quit();
+    }
+
+    /// <summary>
+    /// The perf layout's eight sites, ordered so that sites (0,1), (2,3), (4,5) and (6,7) are front partners: in each
+    /// quadrant of the map, the site nearest the quadrant's centre and its nearest neighbour in that quadrant. The four
+    /// fronts are separate battles, as on the old circle of clearings (a fixed rule on the seeded map, so the gate's
+    /// layout is stable). Pairing the nearest sites anywhere put three fronts within ~250 tiles of each other.
+    /// </summary>
+    internal static int2[] PairedSites(int2[] all, int size)
+    {
+        var result = new List<int2>();
+        for (int q = 0; q < 4 && result.Count < Owners; q++)
+        {
+            int2 lo = new int2(q % 2 * size / 2, q / 2 * size / 2), hi = lo + size / 2;
+            float2 centre = (float2)(lo + hi) * 0.5f;
+            var inside = new List<int2>();
+            foreach (int2 s in all) if (math.all(s >= lo) && math.all(s < hi)) inside.Add(s);
+            if (inside.Count < 2) continue;
+            inside.Sort((a, b) => math.distancesq(centre, a).CompareTo(math.distancesq(centre, b)));
+            int2 first = inside[0], partner = inside[1];
+            foreach (int2 s in inside)
+                if (!s.Equals(first) && math.distancesq(first, s) < math.distancesq(first, partner)) partner = s;
+            result.Add(first);
+            result.Add(partner);
+        }
+        return result.ToArray();
     }
 
     private static bool PlaceNear(WorldStateManager world, int owner, int2 site)
@@ -408,7 +449,7 @@ public sealed class PerfMatch : MonoBehaviour
 
     private void Fail(string reason)
     {
-        Debug.LogError($"[Perf] {reason}");
+        WarLog.Error(LogCategory.Dev, $"{reason}");
         Application.Quit(1);
     }
 }

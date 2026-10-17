@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System;
 using System.Collections.Generic;
 using Mirror;
@@ -254,7 +255,7 @@ namespace WAR2D.Net.Replication
         /// <summary>Applies a received batch to <see cref="Current"/>.</summary>
         public static void Receive(BuildingBatch batch)
         {
-            if (!BuildingCodec.Apply(Current, batch.Payload)) UnityEngine.Debug.LogWarning("[Buildings] dropped a malformed building batch");
+            if (!BuildingCodec.Apply(Current, batch.Payload)) WarLog.Warn(LogCategory.Replication, "dropped a malformed building batch");
         }
 
         /// <summary>Forgets every building (the match ended).</summary>

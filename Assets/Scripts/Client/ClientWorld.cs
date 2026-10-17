@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System;
 using System.Collections.Generic;
 using Config;
@@ -139,7 +140,7 @@ namespace WAR2D.Client
             if (!store.Apply(batch.Payload, batch.Tick))
             {
                 MalformedBatches++;
-                Debug.LogWarning($"[Replication] dropped a malformed batch for tick {batch.Tick}");
+                WarLog.Warn(LogCategory.Replication, $"dropped a malformed batch for tick {batch.Tick}");
                 return;
             }
             if (batch.Tick > lastBatchTick)
@@ -171,6 +172,9 @@ namespace WAR2D.Client
             store.PredictAll(serverTime);
             FireTracers();
         }
+
+        /// <summary>Copies a known unit's route (dev overlay).</summary>
+        public bool CopyRoute(int id, List<float2> into) => store != null && store.CopyRoute(NetIdAllocator.IndexOf(id), into);
 
         /// <summary>True while the client knows the unit with this id.</summary>
         public bool IsKnownId(int id) => id > 0 && store.IdOf(NetIdAllocator.IndexOf(id)) == id;
@@ -246,7 +250,7 @@ namespace WAR2D.Client
             if (unitRenderer == null)
             {
                 ArtAtlas atlas = ArtAtlas.Load(ArtAtlas.Units);
-                if (atlas == null) Debug.LogError($"Resources/{ArtAtlas.Folder}/{ArtAtlas.Units} is missing: run WAR-2D/Art/Build all.");
+                if (atlas == null) WarLog.Error(LogCategory.Art, $"Resources/{ArtAtlas.Folder}/{ArtAtlas.Units} is missing: run WAR-2D/Art/Build all.");
                 else frames = new UnitFrames.Table(atlas);
                 unitRenderer = new InstancedUnitRenderer(atlas);
             }
@@ -319,7 +323,7 @@ namespace WAR2D.Client
             if (buildingRenderer == null)
             {
                 ArtAtlas atlas = ArtAtlas.Load(ArtAtlas.Buildings);
-                if (atlas == null) Debug.LogError($"Resources/{ArtAtlas.Folder}/{ArtAtlas.Buildings} is missing: run WAR-2D/Art/Build all.");
+                if (atlas == null) WarLog.Error(LogCategory.Art, $"Resources/{ArtAtlas.Folder}/{ArtAtlas.Buildings} is missing: run WAR-2D/Art/Build all.");
                 buildingRenderer = new InstancedBuildingRenderer(atlas, ArtAtlas.Load(ArtAtlas.Effects));
                 buildingColour = ColorOf;
             }

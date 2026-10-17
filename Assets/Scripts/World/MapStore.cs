@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System;
 using System.Collections.Generic;
 using Unity.Collections;
@@ -96,7 +97,7 @@ namespace WAR2D.World
             int2 offset = new int2((int)math.round(originWorld.x), (int)math.round(originWorld.y));
             int2 groundMin = new int2(bounds.xMin - 1, bounds.yMin - 1) + offset;
             if (groundMin.x < 0 || groundMin.y < 0)
-                Debug.LogError($"[Map] scene tilemap {bounds} at offset {offset} reaches negative world tiles; those tiles are dropped. Move the tilemaps.");
+                WarLog.Error(LogCategory.Sim, $"scene tilemap {bounds} at offset {offset} reaches negative world tiles; those tiles are dropped. Move the tilemaps.");
             int width = math.max(1, bounds.xMax + offset.x), height = math.max(1, bounds.yMax + offset.y);
             var tiles = new NativeArray<byte>(width * height, Allocator.Persistent);
             for (int y = 0; y < height; y++)

@@ -363,4 +363,107 @@ public class ReplicationTests
             Assert.DoesNotThrow(() => store.Apply(new ArraySegment<byte>(bytes), i));
         }
     }
+
+    /// <summary>
+    /// A rotation retrace of a unit that has only walked further along its route keeps the route (and its
+    /// generation), so nothing is resent; a retrace that finds a different way ahead replaces it.
+    /// </summary>
+    [Test]
+    public void RetraceAlongTheSameRouteIsNotResent()
+    {
+        const int cells = 16, width = 64, height = 32;
+        var blockOf = new NativeArray<int>(2, Allocator.TempJob);
+        var blocks = new NativeArray<byte>(2 * cells * cells, Allocator.TempJob);
+        blockOf[0] = 0; blockOf[1] = 1;
+        for (int b = 0; b < 2; b++)
+        for (int y = 0; y < cells; y++)
+        for (int x = 0; x < cells; x++)
+            blocks[b * cells * cells + y * cells + x] = b == 1 && x == cells - 1 ? WAR2D.Pathing.FlowDirections.AtGoal : (byte)0; // east to the far column
+        var positions = new NativeArray<float2>(1, Allocator.TempJob);
+        var health = new NativeArray<float>(1, Allocator.TempJob);
+        var idOf = new NativeArray<int>(1, Allocator.TempJob);
+        var orderSlot = new NativeArray<int>(1, Allocator.TempJob);
+        health[0] = 1f; idOf[0] = 1; orderSlot[0] = 0;
+        var routes = new RouteStore(8, Allocator.TempJob);
+        try
+        {
+            void Run(int tick) => new RouteMaintenance
+            {
+                Count = 1, Tick = tick, RetraceBudget = 100, Tolerance = 1f,
+                Positions = positions, Health = health, IdOf = idOf, OrderSlot = orderSlot,
+                BlockOf = blockOf, Blocks = blocks,
+                SectorsX = 2, SectorsY = 1, SectorCount = 2, CellsPerSector = cells, CellSize = 2, Width = width, Height = height,
+                Arena = routes.Arena, Start = routes.Start, RouteCount = routes.Count, Generation = routes.Generation,
+                TracedOrder = routes.TracedOrder, TracedId = routes.TracedId, Counters = routes.Counters,
+            }.Run();
+
+            positions[0] = new float2(5f, 16f);
+            Run(1);
+            int generation = routes.GenerationOf(1);
+            Assert.Greater(routes.CountOf(1), 1, "the unit has a route to the goal");
+
+            positions[0] = new float2(20f, 16f);
+            Run(RouteMaintenance.RetraceEvery - 1); // this tick's rotation retraces index 1
+            Assert.AreEqual(generation, routes.GenerationOf(1), "further along the same route: not resent");
+
+            for (int y = 0; y < cells; y++) blocks[cells * cells + y * cells + cells - 1] = 0;
+            for (int y = 0; y < cells; y++) blocks[cells * cells + y * cells + cells - 4] = WAR2D.Pathing.FlowDirections.AtGoal; // the goal moved
+            Run(2 * RouteMaintenance.RetraceEvery - 1);
+            Assert.AreNotEqual(generation, routes.GenerationOf(1), "a different way ahead replaces the route");
+        }
+        finally
+        {
+            routes.Dispose();
+            blockOf.Dispose(); blocks.Dispose(); positions.Dispose(); health.Dispose(); idOf.Dispose(); orderSlot.Dispose();
+        }
+    }
+
+    /// <summary>A staircase of eight-way flow steps (a slope of one half) is sent as a few straight segments that stay within the tolerance.</summary>
+    [Test]
+    public void StaircaseRoutesAreSimplified()
+    {
+        const int cells = 16, size = 64, cellsAcross = 32;
+        var blockOf = new NativeArray<int>(4, Allocator.TempJob);
+        var blocks = new NativeArray<byte>(4 * cells * cells, Allocator.TempJob);
+        for (int b = 0; b < 4; b++) blockOf[b] = b;
+        for (int y = 0; y < cellsAcross; y++)
+        for (int x = 0; x < cellsAcross; x++)
+        {
+            int block = y / cells * 2 + x / cells;
+            byte d = 2 * y > x ? (byte)0 : (byte)1; // east above the line y = x/2, north-east below it
+            if (x == cellsAcross - 1) d = WAR2D.Pathing.FlowDirections.AtGoal;
+            blocks[block * cells * cells + y % cells * cells + x % cells] = d;
+        }
+        var positions = new NativeArray<float2>(1, Allocator.TempJob);
+        var health = new NativeArray<float>(1, Allocator.TempJob);
+        var idOf = new NativeArray<int>(1, Allocator.TempJob);
+        var orderSlot = new NativeArray<int>(1, Allocator.TempJob);
+        health[0] = 1f; idOf[0] = 1; orderSlot[0] = 0; positions[0] = new float2(1f, 1f);
+        var routes = new RouteStore(8, Allocator.TempJob);
+        try
+        {
+            new RouteMaintenance
+            {
+                Count = 1, Tick = 1, RetraceBudget = 100, Tolerance = 1f,
+                Positions = positions, Health = health, IdOf = idOf, OrderSlot = orderSlot,
+                BlockOf = blockOf, Blocks = blocks,
+                SectorsX = 2, SectorsY = 2, SectorCount = 4, CellsPerSector = cells, CellSize = 2, Width = size, Height = size,
+                Arena = routes.Arena, Start = routes.Start, RouteCount = routes.Count, Generation = routes.Generation,
+                TracedOrder = routes.TracedOrder, TracedId = routes.TracedId, Counters = routes.Counters,
+            }.Run();
+            int first = routes.First(1), count = routes.CountOf(1);
+            Assert.LessOrEqual(count, 5, "the staircase collapses to a few segments");
+            Assert.AreEqual(cellsAcross - 1, (int)(routes.Waypoints[first + count - 1].x / 2), "the route still ends at the goal column");
+            for (int k = first + 1; k < first + count - 1; k++)
+            {
+                float2 w = routes.Waypoints[k];
+                Assert.LessOrEqual(math.abs(w.y - (w.x / 2f)), 3f, "kept waypoints stay near the traced line");
+            }
+        }
+        finally
+        {
+            routes.Dispose();
+            blockOf.Dispose(); blocks.Dispose(); positions.Dispose(); health.Dispose(); idOf.Dispose(); orderSlot.Dispose();
+        }
+    }
 }

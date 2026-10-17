@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Mathematics;
@@ -156,10 +157,10 @@ public class MapView : MonoBehaviour
     private void CreateMaterial()
     {
         Shader shader = Resources.Load<Shader>(ShaderPath);
-        if (shader == null) Debug.LogError($"Resources/{ShaderPath}.shader is missing");
+        if (shader == null) WarLog.Error(LogCategory.Art, $"Resources/{ShaderPath}.shader is missing");
         _material = new Material(shader) { name = "Terrain" };
         ArtAtlas atlas = ArtAtlas.Load(ArtAtlas.Tiles);
-        if (atlas == null) Debug.LogError($"Resources/{ArtAtlas.Folder}/{ArtAtlas.Tiles} is missing: run WAR-2D/Art/Build all.");
+        if (atlas == null) WarLog.Error(LogCategory.Art, $"Resources/{ArtAtlas.Folder}/{ArtAtlas.Tiles} is missing: run WAR-2D/Art/Build all.");
         _material.SetTexture("_AtlasTex", atlas != null ? atlas.Texture : Texture2D.whiteTexture);
         _material.SetTexture("_MaskTex", atlas != null && atlas.Mask != null ? atlas.Mask : Texture2D.blackTexture);
         Palettes.Changed += SetTeamColours;

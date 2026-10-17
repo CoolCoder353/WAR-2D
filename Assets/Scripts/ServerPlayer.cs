@@ -9,6 +9,12 @@ public class ServerPlayer
     /// <summary>Verified Steam ID, 0 for a Direct connection. Server only; never sent to clients.</summary>
     public ulong SteamId;
 
+    /// <summary>Start sites (indices into the map's start sites) dealt to this player. Server only; null until dealt.</summary>
+    public int[] StartOptions;
+
+    /// <summary>The option the player's HQ went into, or -1. Server only.</summary>
+    public int StartPick = -1;
+
     public float Resources { get; private set; }
 
     /// <summary>Resources earned (passive and mining) during the last whole second.</summary>
@@ -35,6 +41,14 @@ public class ServerPlayer
         incomeThisSecond = upkeepThisSecond = 0f;
         IncomeLastSecond = UpkeepLastSecond = 0f;
         SpentThisMatch = 0f;
+        ResourcesDirty = true;
+    }
+
+    /// <summary>Dev only (debug API): sets the balance. Refused unless dev APIs are allowed.</summary>
+    internal void DevSetResources(float amount)
+    {
+        if (!DevApi.Allowed || float.IsNaN(amount) || float.IsInfinity(amount) || amount < 0f) return;
+        Resources = amount;
         ResourcesDirty = true;
     }
 

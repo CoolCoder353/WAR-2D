@@ -58,7 +58,7 @@ public class SteamInviteTests
         try
         {
             Assert.IsFalse(SteamHostLobby.CanInvite);
-            SteamHostLobby.Open("Ann", new MatchSettings { Mode = MatchMode.FreeForAll, MapSize = 128, Seed = 1, StartingResources = 100 }, 1);
+            SteamHostLobby.Open("Ann", new MatchSettings { Mode = MatchMode.FreeForAll, MapSize = 128, Seed = 1, StartingResources = 100, StartOptions = 3 }, 1);
             Assert.IsTrue(SteamHostLobby.CanInvite);
             SteamHostLobby.OpenInvite();
             CollectionAssert.AreEqual(new[] { fake.NextLobbyId - 1 }, fake.InviteDialogs);

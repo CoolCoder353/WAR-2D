@@ -10,6 +10,11 @@ public class Custom_Commands : MonoBehaviour
 
     public static Custom_Commands Instance = null;
     public CmdFormula helpCommand = new CmdFormula();
+
+    public CmdFormula devCommand = new CmdFormula
+    {
+        Parts = new List<CmdFormulaPart> { new CmdFormulaPart("dev"), new CmdFormulaPart(CmdPartType.String, "command and JSON args") },
+    };
     public CmdFormula clientPlayerCountCommand = new CmdFormula();
 
     public CmdFormula serverPlayersCountCommand = new CmdFormula();
@@ -40,6 +45,7 @@ public class Custom_Commands : MonoBehaviour
 
 
         Console.RegisterCommand(helpCommand, HelpCommand);
+        Console.RegisterCommand(devCommand, DevCommand);
         // Console.RegisterCommand(clientPlayerCountCommand, ClientPlayerCountCommand);
         Console.RegisterCommand(serverPlayersCountCommand, ServerPlayerCountCommand);
         //  Console.RegisterCommand(getClientPlayerCommand, GetClientPlayerCommand);
@@ -121,5 +127,21 @@ public class Custom_Commands : MonoBehaviour
     public void IsGameCoreInstanceNullCommand(CmdInputResult result)
     {
         Console.Log("GameCore.Instance is null: " + (GameCore.Instance == null), MessageType.Network);
+    }
+
+    /// <summary>Runs a debug API command from the console: <c>dev spawn {"owner":1,"type":"Tank","tile":[10,10]}</c>.</summary>
+    private void DevCommand(CmdInputResult result)
+    {
+        if (!WAR2D.Dev.DebugApi.DebugApi.Allowed) { Console.Log("dev commands need the editor or a development build.", MessageType.Error); return; }
+        string rest = result.InputString.Length > 3 ? result.InputString.Substring(3).Trim() : "";
+        int space = rest.IndexOf(' ');
+        string name = space < 0 ? rest : rest.Substring(0, space);
+        string args = space < 0 ? "{}" : rest.Substring(space + 1);
+        if (!System.Text.RegularExpressions.Regex.IsMatch(name, "^[a-z]+$")) { Console.Log("usage: dev <command> [JSON args]", MessageType.Error); return; }
+        bool answered = false;
+        var dispatcher = new WAR2D.Dev.DebugApi.DebugDispatcher(WAR2D.Dev.DebugApi.DebugServer.Registry, "console",
+            () => NetworkServer.active, () => NetworkClient.active);
+        dispatcher.Handle("{\"id\":0,\"token\":\"console\",\"cmd\":\"" + name + "\",\"args\":" + args + "}", reply => { answered = true; Console.Log(reply); });
+        if (!answered) Console.Log("that command waits for the game: use tools/war2d for it.", MessageType.Warning);
     }
 }

@@ -13,13 +13,6 @@ public class ClientPlayer : NetworkBehaviour
     [SyncVar]
     public int colourIndex;
 
-    /// <summary>
-    /// The HQ clearing (index into the map's HQ sites) this player claimed in the lobby, or
-    /// <see cref="LobbyRules.NoStartSite"/>. Every player has one once the match starts (<see cref="GameCore.Cmd_SetStartSite"/>).
-    /// </summary>
-    [SyncVar]
-    public int startSite = LobbyRules.NoStartSite;
-
     /// <summary>True once the player readied up in the lobby; any settings change clears it.</summary>
     [SyncVar]
     public bool ready;
@@ -100,6 +93,41 @@ public class ClientPlayer : NetworkBehaviour
 
     /// <summary>Upkeep the local player paid during the last second (local player only).</summary>
     public float upkeepPerSecond { get; private set; }
+
+    /// <summary>This player's dealt start options (indices into the map's start sites); empty until the server sends them. Local player only, never a SyncVar.</summary>
+    public int[] OwnStartOptions { get; private set; } = System.Array.Empty<int>();
+
+    /// <summary>The option this player placed their HQ in, or -1.</summary>
+    public int OwnStartPick { get; private set; } = -1;
+
+    /// <summary>Teammates' start options and picks by owner id (Teams mode); other players never appear here.</summary>
+    public readonly System.Collections.Generic.Dictionary<int, (int[] options, int pick)> TeammateStarts = new System.Collections.Generic.Dictionary<int, (int[] options, int pick)>();
+
+    /// <summary>
+    /// Private start points: the owner's own options and pick, plus each teammate's (<paramref name="teamOptions"/> is
+    /// flat, <paramref name="stride"/> options per teammate). Sent only to this player.
+    /// </summary>
+    [TargetRpc]
+    public void TargetStartOptions(NetworkConnection target, int[] own, int ownPick, int[] teamOwners, int[] teamOptions, int stride, int[] teamPicks)
+    {
+        OwnStartOptions = own ?? System.Array.Empty<int>();
+        OwnStartPick = ownPick;
+        TeammateStarts.Clear();
+        if (teamOwners == null || teamOptions == null || teamPicks == null || stride <= 0) return;
+        for (int i = 0; i < teamOwners.Length && (i + 1) * stride <= teamOptions.Length && i < teamPicks.Length; i++)
+        {
+            var mine = new int[stride];
+            System.Array.Copy(teamOptions, i * stride, mine, 0, stride);
+            TeammateStarts[teamOwners[i]] = (mine, teamPicks[i]);
+        }
+    }
+
+    /// <summary>A teammate placed their HQ in <paramref name="option"/>. Sent only to their teammates.</summary>
+    [TargetRpc]
+    public void TargetTeammatePick(NetworkConnection target, int teammateOwner, int option)
+    {
+        if (TeammateStarts.TryGetValue(teammateOwner, out var known)) TeammateStarts[teammateOwner] = (known.options, option);
+    }
 
     /// <summary>The owning player's own resources and last second's income and upkeep. Private: never a SyncVar.</summary>
     [TargetRpc]
@@ -284,4 +312,15 @@ public class ClientPlayer : NetworkBehaviour
     [TargetRpc]
     public void RpcOnPlayerLost(NetworkConnectionToClient loser) => EndMatch(WAR2D.UI.EndResult.Defeat);
 
+
+    /// <summary>The player accepts (or declines) the match's replay offer. Only in GameOver, only for the current offer.</summary>
+    [Command(requiresAuthority = false)]
+    public void CmdReplayWanted(int id, bool wanted, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(CmdReplayWanted))) return;
+        WorldStateManager world = WorldStateManager.Instance;
+        if (world?.ReplaySender == null || GameCore.Instance == null) return;
+        if (wanted) world.ReplaySender.Accept(sender, id, GameCore.Instance.CurrentState);
+        else world.ReplaySender.Cancel(sender);
+    }
 }

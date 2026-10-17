@@ -10,13 +10,15 @@ namespace WAR2D.EditorTools
         [MenuItem("WAR-2D/Build/Linux (Steam)")] public static void Linux() => Build(BuildTarget.StandaloneLinux64, "Builds/Steam/linux/WAR-2D.x86_64");
         [MenuItem("WAR-2D/Build/Windows (Steam)")] public static void Windows() => Build(BuildTarget.StandaloneWindows64, "Builds/Steam/windows/WAR-2D.exe");
 
-        private static void Build(BuildTarget target, string path)
+        [MenuItem("WAR-2D/Build/Linux (Dev)")] public static void LinuxDev() => Build(BuildTarget.StandaloneLinux64, "Builds/Dev/WAR-2D.x86_64", BuildOptions.Development);
+
+        private static void Build(BuildTarget target, string path, BuildOptions options = BuildOptions.None)
         {
             var scenes = new List<string>();
             foreach (var s in EditorBuildSettings.scenes) if (s.enabled) scenes.Add(s.path);
             BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
             {
-                scenes = scenes.ToArray(), locationPathName = path, target = target, options = BuildOptions.None,
+                scenes = scenes.ToArray(), locationPathName = path, target = target, options = options,
             });
             if (report.summary.result != BuildResult.Succeeded) throw new System.Exception($"Build failed: {report.summary.result}");
             UnityEngine.Debug.Log($"Built {target} to {path} ({report.summary.totalSize / 1048576} MB)");

@@ -1,3 +1,4 @@
+using WAR2D.Dev.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -72,6 +73,12 @@ public partial class WorldStateManager : NetworkBehaviour
     /// </summary>
     private Dictionary<int, Entity> Buildings = new Dictionary<int, Entity>();
 
+    /// <summary>The match's recorder (server, when Replays/Enabled and not a perf run), or null.</summary>
+    public WAR2D.Net.Replay.MatchRecorder Recorder { get; private set; }
+
+    /// <summary>Streams the finished recording to the players who accept it (after GameOver).</summary>
+    public WAR2D.Net.Replay.ReplaySender ReplaySender { get; private set; }
+
     /// <summary>Where each bomb is: bombs do not mark their tile used (units walk over them), so placement looks here.</summary>
     private readonly Dictionary<int2, (int id, int owner)> bombTiles = new Dictionary<int2, (int, int)>();
 
@@ -116,9 +123,11 @@ public partial class WorldStateManager : NetworkBehaviour
         {
             Map = MapStore.FromTilemaps(WalkableTilemap, UnwalkableTilemap);
         }
-        Debug.Log($"[Map] {Map.Grid.Width}x{Map.Grid.Height} map ready in {timer.ElapsedMilliseconds} ms (seed {MapSeed})");
+        WarLog.Info(LogCategory.Sim, $"{Map.Grid.Width}x{Map.Grid.Height} map ready in {timer.ElapsedMilliseconds} ms (seed {MapSeed})");
 
         Sim = SimContext.Create(World.DefaultGameObjectInjectionWorld, Map, ConfigLoader.LoadConfig());
+        // The last settled tick, not the clock: WarLog runs on any thread and must never touch the EntityManager.
+        WAR2D.Dev.Logging.WarLog.TickSource = () => settledTick;
         Sim.BuildingCreated += OnBuildingCreated;
         Sim.UnitDied += OnUnitDied;
         Sim.BuildingCompleted += (id, owner) =>
@@ -129,6 +138,7 @@ public partial class WorldStateManager : NetworkBehaviour
         Sim.RepairStalled += (owner, tile) => Alerts?.AddThrottled(owner, new Alert { Kind = AlertKind.RepairsStopped, Tile = tile }, NetworkTime.localTime);
         Sim.TeamResolver = ownerId => GameCore.Instance != null ? GameCore.Instance.TeamOf(ownerId) : -ownerId - 1;
         Sim.Settled += OnSettled;
+        WAR2D.Dev.DebugApi.SettledSnapshot.Attach(Sim);
         AlertsConfig alertConfig = ConfigLoader.LoadConfig().Alerts;
         Alerts = new AlertService(alertConfig.ThrottleSeconds, alertConfig.AreaTiles);
         SiegeConfig siegeConfig = ConfigLoader.LoadConfig().Siege;
@@ -152,6 +162,34 @@ public partial class WorldStateManager : NetworkBehaviour
             Spectating = owner => GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing &&
                                   GameCore.Instance.GetServerPlayerById(owner)?.state == PlayerState.Eliminated,
         };
+        ReplaysConfig replays = ConfigLoader.LoadConfig().Replays;
+        if (replays.Enabled && !DevApi.PerfFlag && GameCore.Instance != null)
+        {
+            var header = new WAR2D.Net.Replay.ReplayHeader
+            {
+                GameVersion = UnityEngine.Application.version, MapSize = MapSize, Seed = MapSeed,
+                Settings = GameCore.Instance.Settings, TickSeconds = ConfigLoader.LoadConfig().Simulation.TickSeconds,
+                StartedUtc = (System.DateTime.UtcNow - System.DateTime.UnixEpoch).TotalSeconds,
+            };
+            foreach (var p in GameCore.Instance.ServerPlayers)
+            {
+                if (p.Key == null) continue;
+                var cp = p.Key.GetComponent<ClientPlayer>();
+                int owner = BuildingData.UIntToInt(p.Key.netId);
+                header.Players.Add(new WAR2D.Net.Replay.ReplayPlayerInfo { OwnerId = owner, Nickname = cp.nickname, Colour = cp.colourIndex, Team = GameCore.Instance.TeamOf(owner) });
+            }
+            string path = System.IO.Path.Combine(WAR2D.Net.Replay.ReplayLibrary.Folder, $"{System.DateTime.UtcNow:yyyyMMdd-HHmmss}-{MapSeed}{WAR2D.Net.Replay.ReplayFile.Extension}");
+            Recorder = new WAR2D.Net.Replay.MatchRecorder(Replication, Sim, header, path, (long)replays.MaxMegabytes << 20);
+            RecordingFinished += finished =>
+            {
+                WAR2D.Net.Replay.ReplayLibrary.Prune(replays.KeepCount);
+                if (GameCore.Instance == null) return;
+                ReplaySender = new WAR2D.Net.Replay.ReplaySender(1, finished, replays.SendKilobytesPerSecond * 1024, (float)(Sim.Clock.Tick * Sim.Config.Simulation.TickSeconds));
+                foreach (NetworkIdentity id in GameCore.Instance.ServerPlayers.Keys)
+                    if (id != null && id.connectionToClient != null && id.connectionToClient != NetworkServer.localConnection)
+                        ReplaySender.Offer(id.connectionToClient, GameCore.Instance.CurrentState);
+            };
+        }
         if (GameCore.Instance != null)
             foreach (NetworkIdentity identity in GameCore.Instance.ServerPlayers.Keys)
                 if (identity != null && identity.connectionToClient != null)
@@ -172,6 +210,8 @@ public partial class WorldStateManager : NetworkBehaviour
             if (!player.TrySpend(amount)) player.TrySpend(player.Resources);
             player.AddUpkeep(before - player.Resources);
         };
+        // The map and simulation exist: deal each player their private start options and start the pick clock.
+        if (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.PlacingHQ) GameCore.Instance.BeginPlacementPhase(this);
     }
 
     /// <summary>Records a unit the simulation removed, for its explosion.</summary>
@@ -201,7 +241,7 @@ public partial class WorldStateManager : NetworkBehaviour
             Map = MapStore.Generate(MapSize, MapSeed, ConfigLoader.LoadConfig().Match.Map.GemChance);
             if (Map.Hash() != MapHash)
             {
-                Debug.LogError($"[Map] hash mismatch: local {Map.Hash():X16}, server {MapHash:X16}. Disconnecting.");
+                WarLog.Error(LogCategory.Sim, $"hash mismatch: local {Map.Hash():X16}, server {MapHash:X16}. Disconnecting.");
                 NetworkClient.Disconnect();
                 return;
             }
@@ -213,7 +253,7 @@ public partial class WorldStateManager : NetworkBehaviour
         terrain = ClientTerrain.Current;
         terrain.Init(Map.Grid);
         terrain.Changed += OnTerrainBatch;
-        Debug.Log($"[Map] baked the {MapSize}² map texture in {timer.ElapsedMilliseconds} ms");
+        WarLog.Info(LogCategory.Sim, $"baked the {MapSize}² map texture in {timer.ElapsedMilliseconds} ms");
     }
 
     /// <summary>The client terrain this map subscribed to.</summary>
@@ -241,8 +281,36 @@ public partial class WorldStateManager : NetworkBehaviour
         MapView.Refresh(tiles);
     }
 
+    private volatile int settledTick = -1;
+
+    private double recorderEndAt = -1;
+    
+    /// <summary>Called by GameCore when the match ends: the recording finishes 3 s later, after the wipe has settled.</summary>
+    [Server]
+    public void MatchEnded(string outcomeJson)
+    {
+        pendingOutcome = outcomeJson;
+        recorderEndAt = NetworkTime.localTime + 3.0;
+    }
+    private string pendingOutcome;
+    
+    [ServerCallback]
+    private void Update()
+    {
+        ReplaySender?.Update(Time.unscaledDeltaTime, GameCore.Instance != null ? GameCore.Instance.CurrentState : GameState.Lobby);
+        if (Recorder == null || recorderEndAt < 0 || NetworkTime.localTime < recorderEndAt) return;
+        recorderEndAt = -1;
+        Recorder.End(Sim.Clock.Tick, pendingOutcome);
+        RecordingFinished?.Invoke(Recorder.FinishedPath);
+    }
+    
+    /// <summary>Raised on the server when the match's recording is saved (its path); it is then offered to the players.</summary>
+    public event System.Action<string> RecordingFinished;
+
     private void OnDestroy()
     {
+        Recorder?.Dispose();
+        Recorder = null;
         // The instance subscribed to, not Current: ClientWorld may have replaced it already (ClientTerrain.Clear).
         if (terrain != null) terrain.Changed -= OnTerrainBatch;
         Replication?.Dispose();
@@ -251,7 +319,9 @@ public partial class WorldStateManager : NetworkBehaviour
         {
             Sim.BuildingCreated -= OnBuildingCreated;
             Sim.Settled -= OnSettled;
+            WAR2D.Dev.DebugApi.SettledSnapshot.Detach(Sim);
             Sim.UnitDied -= OnUnitDied;
+            WAR2D.Dev.Logging.WarLog.TickSource = null;
             Sim.Dispose();
             Sim = null;
         }
@@ -264,6 +334,8 @@ public partial class WorldStateManager : NetworkBehaviour
     [ServerCallback]
     private void OnSettled(SimData data, int tick, int count)
     {
+        settledTick = tick;
+        Recorder?.OnTick(tick);
         FlushBlasts(data);
         if ((tick - 1) % data.VisionInterval == 0) WatchRadars(data, count);
         FlushDeathEvents(data);
@@ -307,6 +379,7 @@ public partial class WorldStateManager : NetworkBehaviour
             Alerts.Add(blast.OwnerId, new Alert { Kind = AlertKind.BombTriggered, Tile = (int2)math.floor(blast.Position) });
             blastScratch.Add(blast.Position);
         }
+        Recorder?.Blasts(Sim.Clock.Tick, blastScratch);
         foreach (KeyValuePair<ClientPlayer, (int2, int2)> view in playerView)
         {
             if (view.Key == null || view.Key.connectionToClient == null) continue;
@@ -347,6 +420,22 @@ public partial class WorldStateManager : NetworkBehaviour
             core.GetServerPlayerById(owner)?.MarkUnpaid();
         }
         foreach (KeyValuePair<int, int> army in armyScratch) core.Stats.Army(army.Key, army.Value);
+        Recorder?.Timeline(Sim.Clock.Tick, TimelineRows(core, armyScratch));
+    }
+
+    private IEnumerable<(int, float, int, int)> TimelineRows(GameCore core, Dictionary<int, int> armies)
+    {
+        var buildingsBy = new Dictionary<int, int>();
+        foreach (Entity e in Buildings.Values)
+            if (EntityManager.Exists(e)) { int o = EntityManager.GetComponentData<BuildingData>(e).ownerId; buildingsBy.TryGetValue(o, out int n); buildingsBy[o] = n + 1; }
+        foreach (var p in core.ServerPlayers)
+        {
+            if (p.Key == null) continue;
+            int owner = BuildingData.UIntToInt(p.Key.netId);
+            armies.TryGetValue(owner, out int units);
+            buildingsBy.TryGetValue(owner, out int b);
+            yield return (owner, p.Value.Resources, units, b);
+        }
     }
 
     /// <summary>A live building's owner and anchor tile, by id.</summary>
@@ -408,6 +497,7 @@ public partial class WorldStateManager : NetworkBehaviour
     {
         List<float2> deaths = TakeDeathPositions();
         if (deaths.Count == 0) return;
+        Recorder?.Explosions(SimContext.Current.Clock.Tick, deaths);
         GameState state = GameCore.Instance != null ? GameCore.Instance.CurrentState : GameState.Playing;
 
         foreach (KeyValuePair<ClientPlayer, (int2, int2)> view in playerView)
@@ -578,17 +668,21 @@ public partial class WorldStateManager : NetworkBehaviour
 
         return PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
             player.hasPlacedHQ, Map.Grid.TileAt, tile => Map.IsUsed(tile) || KnownBombAt(tile, BuildingData.UIntToInt(player.netId)), tile => false, // units are pushed out of new footprints
-            OwnClearing(player));
+            OwnStartOptions(player));
     }
 
-    /// <summary>The test for "inside this player's claimed HQ clearing", or null when they have none (or the map has no sites).</summary>
-    private System.Func<int2, bool> OwnClearing(ClientPlayer player)
+    /// <summary>The test for "inside one of this player's start options", or null when they have none (dev bots and tilemap maps).</summary>
+    private System.Func<int2, bool> OwnStartOptions(ClientPlayer player)
     {
         int2[] sites = Map.HqSites;
-        int site = player.startSite;
-        if (sites == null || site < 0 || site >= sites.Length) return null;
-        int2 centre = sites[site];
-        return tile => PlacementRules.InClearing(tile, centre, WAR2D.World.MapGenerator.HqClearRadius);
+        int[] options = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(player.netId))?.StartOptions;
+        if (sites == null || options == null) return null;
+        return tile =>
+        {
+            foreach (int option in options)
+                if (option >= 0 && option < sites.Length && PlacementRules.InClearing(tile, sites[option], WAR2D.World.MapGenerator.HqClearRadius)) return true;
+            return false;
+        };
     }
 
     /// <summary>Test helper: first anchor (scanning the map) where the player may place this building.</summary>
@@ -616,19 +710,25 @@ public partial class WorldStateManager : NetworkBehaviour
     public void TryAddBuilding(int2 positon, BuildingType type, float rotation, NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(TryAddBuilding))) return;
-        ClientPlayer placer = sender.identity.GetComponent<ClientPlayer>();
+        PlaceBuilding(sender.identity.GetComponent<ClientPlayer>(), positon, type, rotation);
+    }
+
+    /// <summary>Checks, charges and queues a building for <paramref name="placer"/>. Returns false when the placement is refused.</summary>
+    [Server]
+    internal bool PlaceBuilding(ClientPlayer placer, int2 positon, BuildingType type, float rotation)
+    {
         if (CheckPlacement(type, positon, rotation, placer) != PlacementResult.Ok)
         {
-            return;
+            return false;
         }
 
         BuildingConfig buildingConfig = ConfigLoader.LoadConfig().GetBuilding(type);
 
         // Check the owner can afford the building before it is placed.
-        ServerPlayer owner = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(sender.identity.GetComponent<ClientPlayer>().netId));
+        ServerPlayer owner = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(placer.netId));
         if (owner == null || !owner.TrySpend(buildingConfig.UpfrontCost))
         {
-            return;
+            return false;
         }
 
         BuildingData buildingData = new BuildingData
@@ -636,15 +736,19 @@ public partial class WorldStateManager : NetworkBehaviour
             position = new float2(positon.x, positon.y),
             id = Ids.Allocate(),
             buildingType = type,
-            ownerId = BuildingData.UIntToInt(sender.identity.GetComponent<ClientPlayer>().netId),
+            ownerId = BuildingData.UIntToInt(placer.netId),
             rotation = rotation
         };
 
 
-        Debug.Log($"Placing building of type {type} at position {positon} with rotation {rotation}, owned by player {buildingData.ownerId}");
+        WarLog.Info(LogCategory.Sim, $"Placing building of type {type} at position {positon} with rotation {rotation}, owned by player {buildingData.ownerId}");
 
         // Set at once so a second HQ in the same tick fails the placement check.
-        if (type == BuildingType.Base) placer.hasPlacedHQ = true;
+        if (type == BuildingType.Base)
+        {
+            placer.hasPlacedHQ = true;
+            GameCore.Instance?.OnHqPlaced(placer, positon);
+        }
         Sim.Commands.Enqueue(new SimCommand
         {
             Kind = SimCommandKind.CreateBuilding,
@@ -659,11 +763,12 @@ public partial class WorldStateManager : NetworkBehaviour
         {
             // A bomb's tile is not marked used: units walk over it.
             bombTiles[positon] = (buildingData.id, buildingData.ownerId);
-            return;
+            return true;
         }
         //Set the tiles the building will cover to be used
         foreach (int2 tile in tiles) Map.QueueUsed(tile, true);
         buildingFootprints[buildingData.id] = tiles;
+        return true;
     }
 
     /// <summary>
