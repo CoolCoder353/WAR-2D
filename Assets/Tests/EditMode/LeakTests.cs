@@ -455,4 +455,20 @@ public class LeakTests
         Assert.AreEqual(1, offers);
         System.IO.File.Delete(path);
     }
+
+    [Test]
+    public void NoStartOptionOrPickIsEverASyncVar()
+    {
+        // Start points are private (v0.11): they reach a player through TargetRpcs only, never through replicated state.
+        // The pick deadline is public by design (it reveals nothing about the deal).
+        foreach (System.Type type in new[] { typeof(ClientPlayer), typeof(GameCore) })
+        foreach (System.Reflection.MemberInfo member in type.GetMembers(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance))
+        {
+            if (member.GetCustomAttributes(typeof(Mirror.SyncVarAttribute), true).Length == 0) continue;
+            string name = member.Name.ToLowerInvariant();
+            if (name == "hqplacementendtime") continue;
+            Assert.That(name, Does.Not.Contain("startsite").And.Not.Contain("startoption").And.Not.Contain("startpick"), $"{type.Name}.{member.Name} must not be replicated");
+        }
+        Assert.That(typeof(ClientPlayer).GetField("startSite"), Is.Null, "the public start-site SyncVar is gone");
+    }
 }

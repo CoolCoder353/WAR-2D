@@ -31,8 +31,6 @@ namespace WAR2D.UI
         public event Action RerollClicked, StartClicked, LeaveClicked;
         /// <summary>The local player picked a colour.</summary>
         public event Action<int> ColourClicked;
-        /// <summary>The local player clicked a free HQ clearing's marker (its index in the map's sites).</summary>
-        public event Action<int> StartSiteClicked;
         /// <summary>The local player picked their own team (<see cref="TeamRules.NoTeam"/> = Solo).</summary>
         public event Action<int> TeamClicked;
         /// <summary>The host cycled a player's team: (owner, new team).</summary>
@@ -119,7 +117,7 @@ namespace WAR2D.UI
             status.text = model.Status;
             status.EnableInClassList("text--warning", host && !model.CanStart);
             status.EnableInClassList("text--muted", !host);
-            ShowMarkers();
+            markers.Clear(); // start points are private (v0.11): the preview shows terrain only
         }
 
         private void ShowRows(bool host, bool teams)
@@ -246,44 +244,7 @@ namespace WAR2D.UI
         private void ShowPreview()
         {
             previewImage.style.backgroundImage = preview.Texture != null ? new StyleBackground(preview.Texture) : new StyleBackground();
-            ShowMarkers();
-        }
-
-        /// <summary>
-        /// Start markers (Figma: Menu / Lobby – start picks): a claimed clearing in its player's colour (the
-        /// local player's ringed, with "You"), a free one grey and clickable to claim it.
-        /// </summary>
-        private void ShowMarkers()
-        {
-            markers.Clear();
-            IReadOnlyList<int2> spawns = preview.Spawns;
-            for (int i = 0; i < spawns.Count; i++)
-            {
-                int site = i;
-                bool claimed = model.TryClaimant(i, out LobbyPlayer claimant);
-                bool mine = claimed && claimant.OwnerId == model.LocalOwnerId;
-                var marker = new VisualElement { name = "spawn-" + i, pickingMode = claimed ? PickingMode.Ignore : PickingMode.Position };
-                marker.AddToClassList("spawn-marker");
-                marker.EnableInClassList("spawn-marker--mine", mine);
-                marker.EnableInClassList("spawn-marker--free", !claimed);
-                if (claimed) marker.style.backgroundColor = (UnityEngine.Color)PlayerPalette.Of(claimant.ColourIndex);
-                else
-                {
-                    marker.RegisterCallback<ClickEvent>(_ => StartSiteClicked?.Invoke(site));
-                    var tip = new Label("Click to start here") { pickingMode = PickingMode.Ignore };
-                    tip.AddToClassList("spawn-marker__tooltip");
-                    marker.Add(tip);
-                }
-                if (mine)
-                {
-                    var you = new Label("You") { pickingMode = PickingMode.Ignore };
-                    you.AddToClassList("spawn-marker__you");
-                    marker.Add(you);
-                }
-                marker.style.left = Length.Percent(100f * spawns[i].x / MapPreview.Resolution);
-                marker.style.top = Length.Percent(100f * (1f - (float)spawns[i].y / MapPreview.Resolution));
-                markers.Add(marker);
-            }
+            markers.Clear(); // start points are private (v0.11): the preview shows terrain only
         }
 
         private static string TeamName(int team) => team == TeamRules.NoTeam ? "Solo" : $"Team {team + 1}";

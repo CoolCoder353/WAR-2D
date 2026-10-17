@@ -158,8 +158,7 @@ namespace WAR2D.UI
         private bool cameraCentred;
 
         /// <summary>
-        /// Once the match map is ready, puts the camera on the local player's HQ clearing (the one they claimed
-        /// in the lobby, or were given at the start).
+        /// Once the match map is ready, puts the camera on the local player's HQ clearing (their first dealt option).
         /// </summary>
         private void CentreOnOwnClearing()
         {
@@ -167,11 +166,12 @@ namespace WAR2D.UI
             GameCore core = GameCore.Instance;
             WorldStateManager wsm = WorldStateManager.Instance;
             if (core == null || wsm == null || wsm.Map == null || NetworkClient.localPlayer == null) return;
+            if (!NetworkClient.localPlayer.TryGetComponent(out ClientPlayer me) || me.OwnStartOptions.Length == 0) return; // the deal hasn't arrived yet
             cameraCentred = true;
-            int index = NetworkClient.localPlayer.TryGetComponent(out ClientPlayer me) ? me.startSite : -1;
             Unity.Mathematics.int2[] sites = wsm.Map.HqSites;
-            if (index < 0 || sites == null || sites.Length == 0) return;
-            Unity.Mathematics.int2 site = sites[index % sites.Length];
+            int index = me.OwnStartOptions[0];
+            if (sites == null || index < 0 || index >= sites.Length) return;
+            Unity.Mathematics.int2 site = sites[index];
             Camera cam = Camera.main;
             if (cam != null && cam.TryGetComponent(out Character.Character_Controler controller)) controller.CentreOn(new Vector2(site.x + 0.5f, site.y + 0.5f));
         }

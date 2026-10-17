@@ -88,18 +88,35 @@ public class BuildingPlacement : MonoBehaviour
         currentRotation = 0f;
     }
 
-    /// <summary>While the HQ is still to be placed, rings the clearing it must go in (the player's lobby claim).</summary>
+    private readonly System.Collections.Generic.List<WAR2D.Client.ClearingRing> optionRings = new System.Collections.Generic.List<WAR2D.Client.ClearingRing>();
+
+    /// <summary>While the HQ is still to be placed, rings each start option dealt to the local player (and their teammates' options in the teammates' colours).</summary>
     private void ShowOwnClearing(bool needHQ)
     {
         WorldStateManager wsm = WorldStateManager.Instance;
         int2[] sites = wsm != null && wsm.Map != null ? wsm.Map.HqSites : null;
-        int site = localPlayer.startSite;
-        if (!needHQ || sites == null || site < 0 || site >= sites.Length)
+        int shown = 0;
+        if (needHQ && sites != null)
         {
-            WAR2D.Client.ClearingRing.Hide();
-            return;
+            foreach (int option in localPlayer.OwnStartOptions)
+                shown += ShowRing(sites, option, shown, PlayerPalette.Of(localPlayer.colourIndex));
+            foreach (var teammate in localPlayer.TeammateStarts)
+            {
+                int colour = NetworkClient.spawned.TryGetValue((uint)teammate.Key, out NetworkIdentity id) && id.TryGetComponent(out ClientPlayer other) ? other.colourIndex : localPlayer.colourIndex;
+                foreach (int option in teammate.Value.options)
+                    shown += ShowRing(sites, option, shown, PlayerPalette.Of(colour));
+            }
         }
-        WAR2D.Client.ClearingRing.Show((float2)sites[site] + 0.5f, WAR2D.World.MapGenerator.HqClearRadius, PlayerPalette.Of(localPlayer.colourIndex));
+        for (int i = shown; i < optionRings.Count; i++) if (optionRings[i] != null) optionRings[i].gameObject.SetActive(false);
+    }
+
+    private int ShowRing(int2[] sites, int option, int slot, Color32 colour)
+    {
+        if (option < 0 || option >= sites.Length) return 0;
+        while (optionRings.Count <= slot) optionRings.Add(null);
+        if (optionRings[slot] == null) optionRings[slot] = WAR2D.Client.ClearingRing.Create("StartOptionRing", WAR2D.Client.Render.SortingOrders.ClearingRing);
+        optionRings[slot].Set((float2)sites[option] + 0.5f, WAR2D.World.MapGenerator.HqClearRadius, colour);
+        return 1;
     }
 
     [ClientCallback]

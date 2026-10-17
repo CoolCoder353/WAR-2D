@@ -101,7 +101,7 @@ public sealed class PerfMatch : MonoBehaviour
             GameCore.Instance.AddBot(owners[i], 1e9f);
         }
 
-        int2[] sites = world.Map.HqSites;
+        int2[] sites = PairedSites(world.Map.HqSites);
         for (int i = 0; i < Owners; i++)
             if (!PlaceNear(world, owners[i], sites[i])) Fail($"no room for owner {i}'s HQ near {sites[i]}");
         foreach (NetworkIdentity identity in GameCore.Instance.ServerPlayers.Keys) identity.GetComponent<ClientPlayer>().hasPlacedHQ = true;
@@ -226,7 +226,7 @@ public sealed class PerfMatch : MonoBehaviour
     {
         siegeSetUp = true;
         WorldStateManager world = WorldStateManager.Instance;
-        int2[] sites = world.Map.HqSites;
+        int2[] sites = PairedSites(world.Map.HqSites);
         for (int i = 0; i < Owners; i++)
         {
             int owner = owners[i];
@@ -378,6 +378,32 @@ public sealed class PerfMatch : MonoBehaviour
         }
         enabled = false;
         Application.Quit();
+    }
+
+    /// <summary>
+    /// The perf layout's eight sites, ordered so that sites (0,1), (2,3), (4,5) and (6,7) are front partners: the
+    /// generated map's start sites are paired nearest-first (a fixed rule on the seeded map, so the gate's layout is stable).
+    /// </summary>
+    internal static int2[] PairedSites(int2[] all)
+    {
+        var free = new List<int2>(all);
+        var result = new List<int2>();
+        while (result.Count < Owners && free.Count >= 2)
+        {
+            int bi = 0, bj = 1;
+            float best = float.MaxValue;
+            for (int i = 0; i < free.Count; i++)
+            for (int j = i + 1; j < free.Count; j++)
+            {
+                float d = math.distancesq(free[i], free[j]);
+                if (d < best) { best = d; bi = i; bj = j; }
+            }
+            result.Add(free[bi]);
+            result.Add(free[bj]);
+            free.RemoveAt(bj);
+            free.RemoveAt(bi);
+        }
+        return result.ToArray();
     }
 
     private static bool PlaceNear(WorldStateManager world, int owner, int2 site)

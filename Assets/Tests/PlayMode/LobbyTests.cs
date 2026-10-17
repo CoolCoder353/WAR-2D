@@ -52,7 +52,7 @@ public class LobbyTests
         yield return PlayModeMatch.WaitUntil(() => GameCore.Instance.Settings.MapSize == 256 && menu.Preview.Texture != null && !menu.Preview.Busy, 10f);
         Texture2D texture = menu.Preview.Texture;
         Color32[] before = texture.GetPixels32();
-        Assert.That(root.Q("preview-markers").childCount, Is.EqualTo(8), "one marker per HQ site");
+        Assert.That(root.Q("preview-markers").childCount, Is.EqualTo(0), "start points are private: no markers");
 
         HudTests.Click(root.Q<Button>("mode-teams"));
         yield return PlayModeMatch.WaitUntil(() => GameCore.Instance.Settings.Mode == MatchMode.Teams, 5f);
@@ -115,30 +115,16 @@ public class LobbyTests
 
     /// <summary>Owner reports (2026-10-10): the host couldn't pick a colour or a starting location (Figma approved 2026-10-11).</summary>
     [UnityTest, Timeout(60000)]
-    public IEnumerator HostPicksAColourAndClaimsAClearing()
+    public IEnumerator HostPicksAColourAndThePreviewHasNoStartMarkers()
     {
         yield return HostFromMenu();
         VisualElement root = Root();
         HudTests.Click(root.Q<Button>("colour-3"));
         yield return PlayModeMatch.WaitUntil(() => Local.colourIndex == 3, 5f);
 
-        Assert.That(Local.startSite, Is.EqualTo(LobbyRules.NoStartSite), "nobody has claimed a clearing yet");
-        HudTests.Click(root.Q<Button>("size-256")); // a generated map (the test config uses the scene's tilemaps, which have no clearings)
-        yield return PlayModeMatch.WaitUntil(() => root.Q("spawn-4") != null, 10f);
-        VisualElement marker = root.Q("spawn-4");
-        Assert.That(marker.ClassListContains("spawn-marker--free"), Is.True);
-        using (ClickEvent e = ClickEvent.GetPooled())
-        {
-            e.target = marker;
-            marker.SendEvent(e);
-        }
-        yield return PlayModeMatch.WaitUntil(() => Local.startSite == 4, 5f);
-        yield return PlayModeMatch.WaitUntil(() => root.Q("spawn-4").ClassListContains("spawn-marker--mine"), 5f);
-        Assert.That(root.Q("spawn-4").pickingMode, Is.EqualTo(PickingMode.Ignore), "a claimed clearing can't be clicked again");
-
-        GameCore.Instance.Cmd_SetStartSite(LobbyRules.StartSites);
-        yield return new WaitForSeconds(0.3f);
-        Assert.That(Local.startSite, Is.EqualTo(4), "clearings outside the map's sites are refused");
+        HudTests.Click(root.Q<Button>("size-256")); // a generated map (the test config uses the scene's tilemaps)
+        yield return PlayModeMatch.WaitUntil(() => GameCore.Instance.Settings.MapSize == 256, 5f);
+        Assert.That(root.Q("spawn-0"), Is.Null, "start points are private: the preview has no markers");
     }
 
     [UnityTest, Timeout(60000)]

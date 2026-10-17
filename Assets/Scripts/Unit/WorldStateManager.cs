@@ -210,6 +210,8 @@ public partial class WorldStateManager : NetworkBehaviour
             if (!player.TrySpend(amount)) player.TrySpend(player.Resources);
             player.AddUpkeep(before - player.Resources);
         };
+        // The map and simulation exist: deal each player their private start options and start the pick clock.
+        if (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.PlacingHQ) GameCore.Instance.BeginPlacementPhase(this);
     }
 
     /// <summary>Records a unit the simulation removed, for its explosion.</summary>
@@ -666,17 +668,21 @@ public partial class WorldStateManager : NetworkBehaviour
 
         return PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
             player.hasPlacedHQ, Map.Grid.TileAt, tile => Map.IsUsed(tile) || KnownBombAt(tile, BuildingData.UIntToInt(player.netId)), tile => false, // units are pushed out of new footprints
-            OwnClearing(player));
+            OwnStartOptions(player));
     }
 
-    /// <summary>The test for "inside this player's claimed HQ clearing", or null when they have none (or the map has no sites).</summary>
-    private System.Func<int2, bool> OwnClearing(ClientPlayer player)
+    /// <summary>The test for "inside one of this player's start options", or null when they have none (dev bots and tilemap maps).</summary>
+    private System.Func<int2, bool> OwnStartOptions(ClientPlayer player)
     {
         int2[] sites = Map.HqSites;
-        int site = player.startSite;
-        if (sites == null || site < 0 || site >= sites.Length) return null;
-        int2 centre = sites[site];
-        return tile => PlacementRules.InClearing(tile, centre, WAR2D.World.MapGenerator.HqClearRadius);
+        int[] options = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(player.netId))?.StartOptions;
+        if (sites == null || options == null) return null;
+        return tile =>
+        {
+            foreach (int option in options)
+                if (option >= 0 && option < sites.Length && PlacementRules.InClearing(tile, sites[option], WAR2D.World.MapGenerator.HqClearRadius)) return true;
+            return false;
+        };
     }
 
     /// <summary>Test helper: first anchor (scanning the map) where the player may place this building.</summary>
@@ -704,19 +710,25 @@ public partial class WorldStateManager : NetworkBehaviour
     public void TryAddBuilding(int2 positon, BuildingType type, float rotation, NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(TryAddBuilding))) return;
-        ClientPlayer placer = sender.identity.GetComponent<ClientPlayer>();
+        PlaceBuilding(sender.identity.GetComponent<ClientPlayer>(), positon, type, rotation);
+    }
+
+    /// <summary>Checks, charges and queues a building for <paramref name="placer"/>. Returns false when the placement is refused.</summary>
+    [Server]
+    internal bool PlaceBuilding(ClientPlayer placer, int2 positon, BuildingType type, float rotation)
+    {
         if (CheckPlacement(type, positon, rotation, placer) != PlacementResult.Ok)
         {
-            return;
+            return false;
         }
 
         BuildingConfig buildingConfig = ConfigLoader.LoadConfig().GetBuilding(type);
 
         // Check the owner can afford the building before it is placed.
-        ServerPlayer owner = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(sender.identity.GetComponent<ClientPlayer>().netId));
+        ServerPlayer owner = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(placer.netId));
         if (owner == null || !owner.TrySpend(buildingConfig.UpfrontCost))
         {
-            return;
+            return false;
         }
 
         BuildingData buildingData = new BuildingData
@@ -724,7 +736,7 @@ public partial class WorldStateManager : NetworkBehaviour
             position = new float2(positon.x, positon.y),
             id = Ids.Allocate(),
             buildingType = type,
-            ownerId = BuildingData.UIntToInt(sender.identity.GetComponent<ClientPlayer>().netId),
+            ownerId = BuildingData.UIntToInt(placer.netId),
             rotation = rotation
         };
 
@@ -732,7 +744,11 @@ public partial class WorldStateManager : NetworkBehaviour
         WarLog.Info(LogCategory.Sim, $"Placing building of type {type} at position {positon} with rotation {rotation}, owned by player {buildingData.ownerId}");
 
         // Set at once so a second HQ in the same tick fails the placement check.
-        if (type == BuildingType.Base) placer.hasPlacedHQ = true;
+        if (type == BuildingType.Base)
+        {
+            placer.hasPlacedHQ = true;
+            GameCore.Instance?.OnHqPlaced(placer, positon);
+        }
         Sim.Commands.Enqueue(new SimCommand
         {
             Kind = SimCommandKind.CreateBuilding,
@@ -747,11 +763,12 @@ public partial class WorldStateManager : NetworkBehaviour
         {
             // A bomb's tile is not marked used: units walk over it.
             bombTiles[positon] = (buildingData.id, buildingData.ownerId);
-            return;
+            return true;
         }
         //Set the tiles the building will cover to be used
         foreach (int2 tile in tiles) Map.QueueUsed(tile, true);
         buildingFootprints[buildingData.id] = tiles;
+        return true;
     }
 
     /// <summary>

@@ -86,7 +86,7 @@ namespace WAR2D.Client
             if (!pending || !pendingHandle.IsCompleted) return;
             pendingHandle.Complete();
             LastGenerateMs = pendingMs[0];
-            Show(pendingTiles, MapGenerator.HqSites(pendingKey.size), pendingKey.size);
+            Show(pendingTiles, System.Array.Empty<int2>(), pendingKey.size);
             DropPending();
             Ready?.Invoke();
         }

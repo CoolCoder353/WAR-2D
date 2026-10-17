@@ -123,7 +123,20 @@ public class PlacementRulesTests
         PlacementResult Place(int2 anchor) => PlacementRules.Check(BuildingType.Base, anchor, 0, new int2(3, 3), GameState.PlacingHQ, false,
             p => map.Grid.TileAt(p + Offset), p => map.Grid.IsUsed(p + Offset), p => false, inClearing);
         Assert.That(Place(site), Is.EqualTo(PlacementResult.Ok));
-        Assert.That(Place(new int2(6, 6)), Is.EqualTo(PlacementResult.OutsideHqClearing));
+        Assert.That(Place(new int2(6, 6)), Is.EqualTo(PlacementResult.OutsideStartOptions));
+    }
+
+    [Test]
+    public void HqProbeOutsideOptions_NeverSaysOccupied()
+    {
+        // A site that is not one of the player's options answers "outside" even when its tiles are blocked or used,
+        // so probing cannot reveal where an enemy HQ stands.
+        System.Func<int2, bool> inOptions = t => PlacementRules.InClearing(t, new int2(-6, -6), 4f);
+        PlacementResult Probe(int2 anchor, System.Func<int2, bool> used) => PlacementRules.Check(BuildingType.Base, anchor, 0, new int2(3, 3), GameState.PlacingHQ, false,
+            p => map.Grid.TileAt(p + Offset), used, p => false, inOptions);
+        Assert.That(Probe(new int2(6, 6), p => true), Is.EqualTo(PlacementResult.OutsideStartOptions));
+        Assert.That(Probe(new int2(6, 6), p => false), Is.EqualTo(PlacementResult.OutsideStartOptions));
+        Assert.That(Probe(new int2(-6, -6), p => true), Is.EqualTo(PlacementResult.TileBlocked), "inside an own option, occupied is fine to say");
     }
 
     [Test]

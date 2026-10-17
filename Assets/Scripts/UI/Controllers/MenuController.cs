@@ -128,7 +128,6 @@ namespace WAR2D.UI
             lobby.SettingsChanged += s => GameCore.Instance?.Cmd_SetMatchSettings(s);
             lobby.RerollClicked += () => GameCore.Instance?.Cmd_RerollMap();
             lobby.ColourClicked += c => GameCore.Instance?.Cmd_SetColour((byte)c);
-            lobby.StartSiteClicked += site => GameCore.Instance?.Cmd_SetStartSite(site);
             lobby.TeamClicked += t => GameCore.Instance?.Cmd_SetOwnTeam(t);
             lobby.HostTeamClicked += (owner, team) => GameCore.Instance?.Cmd_SetTeam((uint)owner, team);
             lobby.ReadyClicked += r => GameCore.Instance?.Cmd_SetReady(r);

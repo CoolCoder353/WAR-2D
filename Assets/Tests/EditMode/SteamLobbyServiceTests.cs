@@ -3,7 +3,7 @@ using WAR2D.Net.Steam;
 
 public class SteamLobbyServiceTests
 {
-    private static MatchSettings Settings(int size = 128) => new MatchSettings { Mode = MatchMode.FreeForAll, MapSize = size, Seed = 1, StartingResources = 100 };
+    private static MatchSettings Settings(int size = 128) => new MatchSettings { Mode = MatchMode.FreeForAll, MapSize = size, Seed = 1, StartingResources = 100, StartOptions = 3 };
 
     [Test]
     public void OpenCreatesALobbyWithMetadata()

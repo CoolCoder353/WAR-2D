@@ -3,7 +3,7 @@ using WAR2D.UI;
 
 public class LobbyModelTests
 {
-    private static readonly MatchSettings Settings = new MatchSettings { Mode = MatchMode.Teams, MapSize = 512, Seed = 3, StartingResources = 1000f };
+    private static readonly MatchSettings Settings = new MatchSettings { Mode = MatchMode.Teams, MapSize = 512, Seed = 3, StartingResources = 1000f, StartOptions = 3 };
 
     private static LobbyModel Lobby(params LobbyPlayer[] players)
     {
@@ -55,15 +55,5 @@ public class LobbyModelTests
         Assert.IsFalse(model.IsColourTaken(2), "my own colour is not taken from me");
         Assert.IsTrue(model.LocalIsHost);
         Assert.AreEqual("Waiting for you and Rook to be ready", model.Status);
-    }
-
-    [Test]
-    public void ClaimantIsThePlayerOnThatClearing()
-    {
-        LobbyModel model = Lobby(new LobbyPlayer(1, "Host", 0, TeamRules.NoTeam, false, true, 2), new LobbyPlayer(2, "Rook", 1, TeamRules.NoTeam, false, false));
-        Assert.IsTrue(model.TryClaimant(2, out LobbyPlayer host));
-        Assert.AreEqual(1, host.OwnerId);
-        Assert.IsFalse(model.TryClaimant(0, out _), "a free clearing");
-        Assert.IsFalse(model.TryClaimant(LobbyRules.NoStartSite, out _), "unclaimed players are on no clearing");
     }
 }

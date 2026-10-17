@@ -98,10 +98,11 @@ public class PerformanceTests
     {
         config.Match.Map.Size = 1024; // the default map: a 512² fog grid
         yield return PlayModeMatch.StartMatchAsHost(config);
-        yield return PlayModeMatch.PlaceHQ(null);
+        int2 hq = default;
+        yield return PlayModeMatch.PlaceHQ(p => hq = p);
         WorldStateManager world = WorldStateManager.Instance;
         const int units = 10000;
-        var centre = new int2(world.Map.Grid.Width / 2, world.Map.Grid.Height / 2);
+        var centre = hq; // the start site is open ground; the new map's middle may be rock
         int placed = 0;
         for (int ring = 0; placed < units && ring < 120; ring++)
         for (int i = 0; i < math.max(1, 8 * ring) && placed < units; i++)

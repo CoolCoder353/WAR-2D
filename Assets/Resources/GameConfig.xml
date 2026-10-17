@@ -16,6 +16,17 @@
       <Size>1024</Size>          <!-- tiles per side; 0 = use the scene's tilemaps (Map_2). v0.3 results: map size -->
       <Seed>0</Seed>             <!-- 0 = a new random seed every match -->
       <GemChance>0.04</GemChance> <!-- share of floor-facing rock that becomes gem; tune in play -->
+      <!-- v0.11 region-graph layout, one entry per LayoutSizes row (other sizes use the next smaller row); starting values to tune in play -->
+      <LayoutSizes>128 256 512 1024</LayoutSizes>
+      <StartSites>8 16 28 40</StartSites>
+      <Expansions>2 4 8 14</Expansions>
+      <CentralAreas>1 1 2 4</CentralAreas>
+      <ChokepointShare>0.4</ChokepointShare>
+      <LaneWidth>6 10</LaneWidth>
+      <ChokeWidth>3 6</ChokeWidth>
+      <MinStartDistance>0.1</MinStartDistance>    <!-- path distance to the nearest other start site, share of map size -->
+      <MaxStartDistance>0.6</MaxStartDistance>
+      <ExpansionGemTiles>30</ExpansionGemTiles>
     </Map>
   </Match>
 
@@ -52,6 +63,10 @@
   <Lobby>
     <MapSizes>256 512 1024</MapSizes>                    <!-- v0.6: map sizes the host may pick -->
     <StartingResources>500 1000 2500 5000</StartingResources> <!-- v0.6: starting resources the host may pick -->
+    <StartOptions>1 3 4</StartOptions>                   <!-- v0.11: start points dealt to each player: min, default, max -->
+    <StartPickSeconds>0 15 30 45 60 90</StartPickSeconds> <!-- v0.11: HQ pick time the host may choose (0 = random); Unlimited is always allowed -->
+    <StartPickDefault>45</StartPickDefault>
+    <SpareStartSites>2</SpareStartSites>                 <!-- v0.11: sites left undealt -->
   </Lobby>
 
   <MenuBattle>

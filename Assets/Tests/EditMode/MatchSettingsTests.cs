@@ -1,10 +1,11 @@
+using System.Linq;
 using Config;
 using NUnit.Framework;
 
 public class MatchSettingsTests
 {
-    private static readonly LobbyConfig Lobby = new LobbyConfig { MapSizes = new[] { 256, 512, 1024 }, StartingResources = new[] { 500f, 1000f, 2500f, 5000f } };
-    private static MatchSettings Valid => new MatchSettings { Mode = MatchMode.Teams, Diplomacy = true, MapSize = 512, Seed = 42, StartingResources = 1000f };
+    private static readonly LobbyConfig Lobby = new LobbyConfig { MapSizes = new[] { 256, 512, 1024 }, StartingResources = new[] { 500f, 1000f, 2500f, 5000f }, StartOptionsMin = 1, StartOptionsMax = 4, StartOptionsDefault = 3, StartPickSeconds = new[] { 0, 15, 45 }, StartPickDefault = 45 };
+    private static MatchSettings Valid => new MatchSettings { Mode = MatchMode.Teams, Diplomacy = true, MapSize = 512, Seed = 42, StartingResources = 1000f, StartOptions = 3, StartPickSeconds = 45 };
 
     [Test]
     public void ValidSettingsPass() => Assert.IsTrue(MatchSettingsRules.IsValid(Valid, Lobby));
@@ -66,30 +67,51 @@ public class MatchSettingsTests
     }
 
     [Test]
-    public void StartSiteChoices_AreFreeClearingsOrGivingUp()
+    public void StartOptionsAndPickTime_AcceptOnlyOfferedValues()
     {
-        Assert.IsTrue(LobbyRules.IsStartSiteChoiceValid(3, new[] { 0, 1 }));
-        Assert.IsFalse(LobbyRules.IsStartSiteChoiceValid(1, new[] { 0, 1 }), "taken by someone else");
-        Assert.IsTrue(LobbyRules.IsStartSiteChoiceValid(LobbyRules.NoStartSite, new[] { 0, 1 }), "giving a claim up");
-        Assert.IsFalse(LobbyRules.IsStartSiteChoiceValid(LobbyRules.StartSites, new int[0]));
-        Assert.IsFalse(LobbyRules.IsStartSiteChoiceValid(-2, new int[0]));
+        MatchSettings s = Valid;
+        s.StartOptions = 3; s.StartPickSeconds = 45;
+        Assert.IsTrue(MatchSettingsRules.IsValid(s, Lobby));
+        foreach (int pick in new[] { 0, 15, StartPickRules.Unlimited }) { s.StartPickSeconds = pick; Assert.IsTrue(MatchSettingsRules.IsValid(s, Lobby), $"pick {pick}"); }
+        foreach (int pick in new[] { 1, 16, 91, -2, int.MinValue, int.MaxValue }) { s.StartPickSeconds = pick; Assert.IsFalse(MatchSettingsRules.IsValid(s, Lobby), $"pick {pick}"); }
+        s.StartPickSeconds = 45;
+        foreach (int options in new[] { 0, 5, -1, int.MaxValue }) { s.StartOptions = options; Assert.IsFalse(MatchSettingsRules.IsValid(s, Lobby), $"options {options}"); }
     }
 
     [Test]
-    public void AssignStartSites_KeepsClaimsAndFillsTheRestInOwnerOrder()
+    public void Fits_NeedsOptionsForEveryoneAndTheSpareSites()
     {
-        var sites = LobbyRules.AssignStartSites(new[] { (30, LobbyRules.NoStartSite), (10, 0), (20, LobbyRules.NoStartSite), (40, 5) });
-        Assert.AreEqual(0, sites[10]);
-        Assert.AreEqual(5, sites[40]);
-        Assert.AreEqual(1, sites[20], "lowest free clearing, lower owner first");
-        Assert.AreEqual(2, sites[30]);
+        Assert.IsTrue(StartPickRules.Fits(8, 3, 28, 2));
+        Assert.IsFalse(StartPickRules.Fits(8, 4, 28, 2), "8 x 4 + 2 > 28 is exactly 34");
+        Assert.IsTrue(StartPickRules.Fits(8, 3, 26, 2));
+        Assert.IsFalse(StartPickRules.Fits(8, 3, 25, 2));
     }
 
     [Test]
-    public void AssignStartSites_ResolvesAClashToTheLowerOwner()
+    public void Deal_GivesDistinctSitesUniqueAcrossPlayers()
     {
-        var sites = LobbyRules.AssignStartSites(new[] { (20, 3), (10, 3) });
-        Assert.AreEqual(3, sites[10]);
-        Assert.AreEqual(0, sites[20]);
+        var rng = new System.Random(5);
+        for (int round = 0; round < 50; round++)
+        {
+            var deal = StartPickRules.Deal(16, new[] { 10, 20, 30, 40 }, 3, rng.Next);
+            Assert.AreEqual(4, deal.Count);
+            var seen = new System.Collections.Generic.HashSet<int>();
+            foreach (var pair in deal)
+            {
+                Assert.AreEqual(3, pair.Value.Length);
+                foreach (int site in pair.Value) { Assert.That(site, Is.InRange(0, 15)); Assert.IsTrue(seen.Add(site), "a site was dealt twice"); }
+            }
+        }
+        Assert.IsEmpty(StartPickRules.Deal(5, new[] { 1, 2 }, 3, rng.Next), "too few sites");
+    }
+
+    [Test]
+    public void Deal_DependsOnItsRandomnessOnly()
+    {
+        var a = StartPickRules.Deal(40, new[] { 1, 2, 3 }, 3, new System.Random(1).Next);
+        var a2 = StartPickRules.Deal(40, new[] { 1, 2, 3 }, 3, new System.Random(1).Next);
+        var b = StartPickRules.Deal(40, new[] { 1, 2, 3 }, 3, new System.Random(2).Next);
+        CollectionAssert.AreEqual(a[1], a2[1]);
+        Assert.IsFalse(a[1].SequenceEqual(b[1]) && a[2].SequenceEqual(b[2]) && a[3].SequenceEqual(b[3]), "a different source gives a different deal");
     }
 }

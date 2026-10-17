@@ -136,6 +136,11 @@ public partial class GameCore : NetworkBehaviour
             MatchStartTime = NetworkTime.time;
             SendAllDiplomacy();
         }
+        else if (CurrentState == GameState.PlacingHQ && HqPlacementEndTime > 0 && NetworkTime.time >= HqPlacementEndTime && WorldStateManager.Instance != null)
+        {
+            HqPlacementEndTime = 0;
+            PlaceRemainingRandomly(WorldStateManager.Instance);
+        }
     }
 
     // ---------- Players and ownership ----------
@@ -252,7 +257,7 @@ public partial class GameCore : NetworkBehaviour
         if (!CommandGate.Allow(sender, nameof(Cmd_StartGame))) return;
         if (!IsServerOwner(sender) || CurrentState != GameState.Lobby || !ConfigLoader.IsValid) return;
         // Dev only (perf harness, hosted tests): a solo host may start without the lobby's rules.
-        if (!DevApi.Allowed && !LobbyRules.CanStart(LobbyStartState())) return;
+        if (!DevApi.Allowed && (!LobbyRules.CanStart(LobbyStartState()) || !LobbyRules.FitsMap(ServerPlayers.Count, Settings, ConfigLoader.LoadConfig().Match.Map, ConfigLoader.LoadConfig().Lobby.SpareStartSites))) return;
 
         StartMatchServerSide();
     }
@@ -276,7 +281,8 @@ public partial class GameCore : NetworkBehaviour
         PlayerOrder.Clear();
         foreach (int owner in order) PlayerOrder.Add(owner);
         AssignTeams();
-        AssignStartSites();
+        HqPlacementEndTime = 0;
+        foreach (ServerPlayer p in ServerPlayers.Values) { p.StartOptions = null; p.StartPick = -1; }
         CurrentState = GameState.PlacingHQ;
         GameManager.Instance.ServerChangeScene(ConfigLoader.LoadConfig().Match.Scene);
     }
@@ -320,6 +326,7 @@ public partial class GameCore : NetworkBehaviour
         if (remaining == 0 && CurrentState == GameState.PlacingHQ)
         {
             CurrentState = GameState.Countdown;
+            HqPlacementEndTime = 0;
             CountdownEndTime = NetworkTime.time + ConfigLoader.LoadConfig().Match.CountdownSeconds;
         }
     }
@@ -422,6 +429,7 @@ public partial class GameCore : NetworkBehaviour
     {
         CurrentState = GameState.Lobby;
         CountdownEndTime = 0;
+        HqPlacementEndTime = 0;
         MatchStartPlayerCount = 0;
         MatchStartTeamCount = 0;
         Teams.Clear();

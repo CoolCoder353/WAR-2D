@@ -205,7 +205,7 @@ public class SectorGraphTests
         {
 
         // A start and a goal the generator guarantees are floor: two of the eight HQ clearings.
-        int2[] sites = MapGenerator.HqSites(256);
+        int2[] sites = MapGenerator.Sites(256, 5);
         var starts = new NativeArray<int>(1, Allocator.TempJob);
         starts[0] = sites[0].y * map.Width + sites[0].x;
         int2 goal = sites[1];
@@ -486,7 +486,7 @@ public class SectorGraphTests
         try
         {
             using var cache = new SectorFieldCache(map, Allocator.Persistent, cellSize: 2);
-            int2[] sites = MapGenerator.HqSites(256);
+            int2[] sites = MapGenerator.Sites(256, 5);
             var starts = new NativeArray<int>(1, Allocator.TempJob);
             starts[0] = sites[0].y * map.Width + sites[0].x;
             int small = cache.Acquire(sites[1], FlowSizeClass.Small, 1, starts);
