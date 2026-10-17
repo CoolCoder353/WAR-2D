@@ -156,4 +156,17 @@ public static class StartPickRules
         }
         return result;
     }
+
+    /// <summary>
+    /// What <paramref name="owner"/> may learn of the other players' starts: each teammate's options and pick (in
+    /// <paramref name="starts"/> order), and nobody else's. <paramref name="teammates"/> is true only for two different
+    /// owners on the same team. The server sends exactly this (<c>GameCore.SendStartOptions</c>).
+    /// </summary>
+    public static List<(int owner, int[] options, int pick)> TeamView(int owner, IEnumerable<(int owner, int[] options, int pick)> starts, Func<int, int, bool> teammates)
+    {
+        var view = new List<(int owner, int[] options, int pick)>();
+        foreach ((int other, int[] options, int pick) in starts)
+            if (other != owner && options != null && teammates(owner, other)) view.Add((other, options, pick));
+        return view;
+    }
 }

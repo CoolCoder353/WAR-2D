@@ -63,63 +63,115 @@ namespace WAR2D.Net.Replication
     /// Keeps the routes current: a unit that is new or got a new order is traced at once; units
     /// already on an order are re-traced on a rotation (the field may have been rebuilt), within a
     /// budget per tick. Tracing walks the order's flow cells from the unit and keeps a waypoint where
-    /// the direction changes, ending at the goal or where the field stops.
+    /// the direction changes, ending at the goal or where the field stops. The traces run in parallel
+    /// (<see cref="RouteTraceJob"/>); one job then writes the changed routes into the arena.
     /// </summary>
-    [BurstCompile]
-    public struct RouteMaintenanceJob : IJob
+    public struct RouteMaintenance
     {
         public const int MaxWaypoints = 256;
         public const int RetraceEvery = 40;
 
         public int Count, Tick, RetraceBudget;
+        /// <summary>Tiles the sent route may cut across the traced cells (see <see cref="RouteTraceJob"/>).</summary>
+        public float Tolerance;
+        public NativeArray<float2> Positions;
+        public NativeArray<float> Health;
+        public NativeArray<int> IdOf;
+        public NativeArray<int> OrderSlot;
+        public NativeArray<int> BlockOf;
+        public NativeArray<byte> Blocks;
+        public int SectorsX, SectorsY, SectorCount, CellsPerSector, CellSize, Width, Height;
+
+        public NativeList<float2> Arena;
+        public NativeArray<int> Start, RouteCount, Generation, TracedOrder, TracedId, Counters;
+
+        /// <summary>Schedules the parallel traces and the commit after <paramref name="dependsOn"/>.</summary>
+        public JobHandle Schedule(JobHandle dependsOn)
+        {
+            var stream = new NativeStream(math.max(1, Count), Allocator.TempJob);
+            JobHandle traced = new RouteTraceJob
+            {
+                Tick = Tick, Tolerance = Tolerance, Positions = Positions, Health = Health, IdOf = IdOf, OrderSlot = OrderSlot,
+                BlockOf = BlockOf, Blocks = Blocks, SectorsX = SectorsX, SectorCount = SectorCount, CellsPerSector = CellsPerSector,
+                CellSize = CellSize, Width = Width, Height = Height,
+                Arena = Arena.AsDeferredJobArray(), Start = Start, RouteCount = RouteCount, TracedOrder = TracedOrder, TracedId = TracedId,
+                Out = stream.AsWriter(),
+            }.Schedule(Count, 256, dependsOn);
+            JobHandle committed = new RouteCommitJob
+            {
+                Count = Count, RetraceBudget = RetraceBudget, IdOf = IdOf, OrderSlot = OrderSlot, In = stream.AsReader(),
+                Arena = Arena, Start = Start, RouteCount = RouteCount, Generation = Generation, TracedOrder = TracedOrder, TracedId = TracedId, Counters = Counters,
+            }.Schedule(traced);
+            return stream.Dispose(committed);
+        }
+
+        /// <summary>Runs both jobs to completion (tests and tools).</summary>
+        public void Run() => Schedule(default).Complete();
+    }
+
+    /// <summary>What the trace found for one unit, the first item of its stream entry.</summary>
+    internal enum RouteResult
+    {
+        /// <summary>Traced, and still the route it has.</summary>
+        Same = 1,
+        /// <summary>A new unit or order: a route follows, always written.</summary>
+        Fresh = 2,
+        /// <summary>A rotation found a different route: a route follows, written within the budget.</summary>
+        Rotated = 3,
+        /// <summary>The order ended: keep the route it walked.</summary>
+        Arrived = 4,
+    }
+
+    /// <summary>
+    /// Traces each unit that needs it (see <see cref="RouteMaintenance"/>) and writes the result to its own
+    /// stream entry. It only reads the routes; <see cref="RouteCommitJob"/> writes them.
+    /// </summary>
+    [BurstCompile]
+    internal struct RouteTraceJob : IJobParallelFor
+    {
+        public int Tick;
+        public float Tolerance;
         [ReadOnly] public NativeArray<float2> Positions;
         [ReadOnly] public NativeArray<float> Health;
         [ReadOnly] public NativeArray<int> IdOf;
         [ReadOnly] public NativeArray<int> OrderSlot;
         [ReadOnly] public NativeArray<int> BlockOf;
         [ReadOnly] public NativeArray<byte> Blocks;
-        public int SectorsX, SectorsY, SectorCount, CellsPerSector, CellSize, Width, Height;
+        public int SectorsX, SectorCount, CellsPerSector, CellSize, Width, Height;
+        [ReadOnly] public NativeArray<float2> Arena;
+        [ReadOnly] public NativeArray<int> Start, RouteCount, TracedOrder, TracedId;
+        public NativeStream.Writer Out;
 
-        public NativeList<float2> Arena;
-        public NativeArray<int> Start, RouteCount, Generation, TracedOrder, TracedId, Counters;
-
-        public void Execute()
+        public void Execute(int i)
         {
-            var scratch = new NativeList<float2>(MaxWaypoints, Allocator.Temp);
-            int retraced = 0;
-            for (int i = 0; i < Count; i++)
-            {
-                if (Health[i] <= 0f) continue;
-                int id = IdOf[i];
-                int index = NetIdAllocator.IndexOf(id);
-                if (index >= Start.Length) continue;
-                int order = OrderSlot[i];
-                bool fresh = TracedId[index] != id;
-                bool changed = TracedOrder[index] != order;
-                bool rotate = order >= 0 && (Tick + index) % RetraceEvery == 0 && retraced < RetraceBudget;
-                if (!fresh && !changed && !rotate) continue;
-                if (!fresh && order < 0) { TracedOrder[index] = order; continue; } // arrived: keep the route it walked
-
-                Trace(order, Positions[i], scratch);
-                TracedId[index] = id;
-                TracedOrder[index] = order;
-                if (!fresh && SameRoute(index, scratch)) continue;
-                retraced++;
-                int first = Arena.Length;
-                for (int k = 0; k < scratch.Length; k++) Arena.Add(scratch[k]);
-                Counters[1] += scratch.Length - (fresh ? 0 : RouteCount[index]);
-                Start[index] = first;
-                RouteCount[index] = scratch.Length;
-                Counters[0]++;
-                Generation[index] = Counters[0];
-            }
-            scratch.Dispose();
-            if (Arena.Length > 2 * Counters[1] + 65536) Compact();
+            Out.BeginForEachIndex(i);
+            Classify(i);
+            Out.EndForEachIndex();
         }
 
-        private void Trace(int order, float2 position, NativeList<float2> into)
+        private void Classify(int i)
         {
-            into.Clear();
+            if (Health[i] <= 0f) return;
+            int id = IdOf[i];
+            int index = NetIdAllocator.IndexOf(id);
+            if (index >= Start.Length) return;
+            int order = OrderSlot[i];
+            bool fresh = TracedId[index] != id;
+            bool changed = TracedOrder[index] != order;
+            bool rotate = order >= 0 && (Tick + index) % RouteMaintenance.RetraceEvery == 0;
+            if (!fresh && !changed && !rotate) return;
+            if (!fresh && order < 0) { Out.Write(RouteResult.Arrived); return; }
+
+            var route = new FixedList4096Bytes<float2>();
+            Trace(order, Positions[i], ref route);
+            if (!fresh && SameRoute(index, ref route)) { Out.Write(RouteResult.Same); return; }
+            Out.Write(fresh || changed ? RouteResult.Fresh : RouteResult.Rotated);
+            Out.Write(route.Length);
+            for (int k = 0; k < route.Length; k++) Out.Write(route[k]);
+        }
+
+        private void Trace(int order, float2 position, ref FixedList4096Bytes<float2> into)
+        {
             int2 tile = math.clamp((int2)math.round(position), 0, new int2(Width - 1, Height - 1));
             into.Add(tile);
             if (order < 0) return;
@@ -127,7 +179,7 @@ namespace WAR2D.Net.Replication
             byte walking = DirectionAtCell(order, cell);
             int steps = 4 * math.max(Width, Height) / CellSize;
             bool first = true;
-            while (into.Length < MaxWaypoints && steps-- > 0 && FlowDirections.IsStep(walking))
+            while (into.Length < RouteMaintenance.MaxWaypoints && steps-- > 0 && FlowDirections.IsStep(walking))
             {
                 int2 next = cell + FlowDirections.Step(walking);
                 byte direction = DirectionAtCell(order, next);
@@ -140,7 +192,51 @@ namespace WAR2D.Net.Replication
                 walking = direction;
             }
             float2 end = Centre(cell);
-            if (into.Length < MaxWaypoints && !into[into.Length - 1].Equals(end)) into.Add(end);
+            if (into.Length < RouteMaintenance.MaxWaypoints && !into[into.Length - 1].Equals(end)) into.Add(end);
+            Simplify(ref into);
+        }
+
+        /// <summary>
+        /// Drops turns the route can cut, working back from the goal: from each kept waypoint, the next one kept is
+        /// the turn furthest back whose straight line stays within <see cref="Tolerance"/> of every turn in between
+        /// (the cells between two turns are on a straight line, so the whole traced path stays within it). A
+        /// staircase of eight-way steps across a cave becomes one segment. Working from the goal keeps the same
+        /// waypoints as the unit walks (only the one next to it can change), so <see cref="SameRoute"/> still sees
+        /// the route as unchanged. The unit's own tile, its first cell and the goal are always kept.
+        /// </summary>
+        private void Simplify(ref FixedList4096Bytes<float2> route)
+        {
+            if (Tolerance <= 0f || route.Length <= 3) return;
+            Reverse(ref route, 1, route.Length);
+            float limit = Tolerance * Tolerance;
+            int kept = 2, anchor = 1;
+            while (anchor < route.Length - 1)
+            {
+                int next = anchor + 1;
+                for (int j = anchor + 2; j < route.Length; j++)
+                {
+                    bool fits = true;
+                    for (int k = anchor + 1; k < j && fits; k++) fits = DistanceSq(route[k], route[anchor], route[j]) <= limit;
+                    if (!fits) break;
+                    next = j;
+                }
+                route[kept++] = route[next];
+                anchor = next;
+            }
+            route.Length = kept;
+            Reverse(ref route, 1, kept);
+        }
+
+        private static void Reverse(ref FixedList4096Bytes<float2> list, int from, int to)
+        {
+            for (int i = from, j = to - 1; i < j; i++, j--) (list[i], list[j]) = (list[j], list[i]);
+        }
+
+        internal static float DistanceSq(float2 p, float2 a, float2 b)
+        {
+            float2 ab = b - a;
+            float t = math.saturate(math.dot(p - a, ab) / math.max(1e-6f, math.dot(ab, ab)));
+            return math.lengthsq(a + ab * t - p);
         }
 
         private float2 Centre(int2 cell) => (float2)(cell * CellSize) + CellSize * 0.5f;
@@ -155,12 +251,74 @@ namespace WAR2D.Net.Replication
             return Blocks[block * CellsPerSector * CellsPerSector + cell.y % CellsPerSector * CellsPerSector + cell.x % CellsPerSector];
         }
 
-        private bool SameRoute(int index, NativeList<float2> route)
+        /// <summary>
+        /// True when the retrace only shows the unit further along the route it already has: everything after the
+        /// retrace's first steps (the unit's own tile, the next cell and the waypoint after it, which change as it
+        /// walks) is the end of the old route. The client's prediction already follows that route, so resending it
+        /// would only cost bandwidth (on winding cave routes, nearly every rotation did).
+        /// </summary>
+        private bool SameRoute(int index, ref FixedList4096Bytes<float2> route)
         {
-            if (RouteCount[index] != route.Length) return false;
-            int first = Start[index];
-            for (int k = 1; k < route.Length; k++) if (!Arena[first + k].Equals(route[k])) return false;
-            return true; // the first waypoint is just where the unit stood; it may differ freely
+            int old = RouteCount[index], first = Start[index];
+            if (old <= 0 || route.Length < 2) return false;
+            if (route.Length <= 3) return Arena[first + old - 1].Equals(route[route.Length - 1]);
+            int tail = route.Length - 3; // after the unit's tile, its first cell and the simplified waypoint next to it
+            if (old - tail < 2) return false;
+            for (int k = 0; k < tail; k++) if (!Arena[first + old - tail + k].Equals(route[3 + k])) return false;
+            // ...and the waypoint next to the unit lies on the old route (not round the other side of something).
+            float near = math.max(1f, 2f * Tolerance);
+            for (int k = first; k < first + old - 1; k++) if (DistanceSq(route[2], Arena[k], Arena[k + 1]) <= near * near) return true;
+            return false;
+        }
+    }
+
+    /// <summary>Writes the traced results into the route store, in unit order: new routes into the arena, a new generation each.</summary>
+    [BurstCompile]
+    internal struct RouteCommitJob : IJob
+    {
+        public int Count, RetraceBudget;
+        [ReadOnly] public NativeArray<int> IdOf;
+        [ReadOnly] public NativeArray<int> OrderSlot;
+        public NativeStream.Reader In;
+        public NativeList<float2> Arena;
+        public NativeArray<int> Start, RouteCount, Generation, TracedOrder, TracedId, Counters;
+
+        public void Execute()
+        {
+            int retraced = 0;
+            for (int i = 0; i < Count; i++)
+            {
+                if (In.BeginForEachIndex(i) == 0) { In.EndForEachIndex(); continue; }
+                int id = IdOf[i];
+                int index = NetIdAllocator.IndexOf(id);
+                RouteResult result = In.Read<RouteResult>();
+                if (result == RouteResult.Arrived) TracedOrder[index] = OrderSlot[i];
+                else if (result == RouteResult.Same) { TracedId[index] = id; TracedOrder[index] = OrderSlot[i]; }
+                else
+                {
+                    int length = In.Read<int>();
+                    if (result == RouteResult.Rotated && retraced >= RetraceBudget)
+                    {
+                        for (int k = 0; k < length; k++) In.Read<float2>(); // over budget: the next rotation tries again
+                    }
+                    else
+                    {
+                        bool fresh = TracedId[index] != id;
+                        int first = Arena.Length;
+                        for (int k = 0; k < length; k++) Arena.Add(In.Read<float2>());
+                        Counters[1] += length - (fresh ? 0 : RouteCount[index]);
+                        Start[index] = first;
+                        RouteCount[index] = length;
+                        Counters[0]++;
+                        Generation[index] = Counters[0];
+                        TracedId[index] = id;
+                        TracedOrder[index] = OrderSlot[i];
+                        retraced++;
+                    }
+                }
+                In.EndForEachIndex();
+            }
+            if (Arena.Length > 2 * Counters[1] + 65536) Compact();
         }
 
         private void Compact()

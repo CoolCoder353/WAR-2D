@@ -20,7 +20,11 @@
       <LayoutSizes>128 256 512 1024</LayoutSizes>
       <StartSites>8 16 28 40</StartSites>
       <Expansions>2 4 8 14</Expansions>
-      <CentralAreas>1 1 2 4</CentralAreas>
+      <CentralAreas>1 2 5 12</CentralAreas>
+      <RegionScale>100 110 170 270</RegionScale> <!-- region radii in percent: larger maps get roomier regions (v0.11 perf gate: 80,000 units need the floor) -->
+      <LaneScale>100 110 150 220</LaneScale>     <!-- lane widths in percent (chokepoints keep <ChokeWidth>) -->
+      <CaveDepth>3 6 10 16</CaveDepth>          <!-- tiles of cave-like bays and fingers grown out from region and lane edges (chokepoints excepted) -->
+      <OutcropShare>0.08</OutcropShare>          <!-- share of central and expansion floor turned into rock outcrops -->
       <ChokepointShare>0.4</ChokepointShare>
       <LaneWidth>6 10</LaneWidth>
       <ChokeWidth>3 6</ChokeWidth>
@@ -50,6 +54,7 @@
     <OffscreenThreshold>2.0</OffscreenThreshold>             <!-- v0.3 view tier (tiles) -->
     <OffscreenIntervalTicks>20</OffscreenIntervalTicks>      <!-- v0.3 view tier -->
     <SnapshotBytesPerSecond>262144</SnapshotBytesPerSecond>  <!-- v0.3 snapshot row -->
+    <RouteTolerance>1.0</RouteTolerance>                     <!-- v0.11: tiles a route may cut across the flow cells' turns (winding cave routes) -->
   </Replication>
 
   <Orders>

@@ -65,6 +65,40 @@ public class MapGeneratorTests
         Assert.Greater(differences, 0, "seed 8 produced the same map as seed 7");
     }
 
+    /// <summary>FNV-1a over the tile kinds, as <c>MapStore.Hash</c>.</summary>
+    private static ulong HashOf(MapLayout l)
+    {
+        ulong h = 14695981039346656037UL;
+        for (int i = 0; i < l.Tiles.Length; i++) { h ^= l.Tiles[i]; h *= 1099511628211UL; }
+        return h;
+    }
+
+    /// <summary>
+    /// Every lobby size's map for one seed, against its recorded hash: an accidental change to the generator (or to the
+    /// <c>&lt;Map&gt;</c> numbers) shows here. When the change is meant, record the new hashes.
+    /// </summary>
+    [TestCase(256, 6200578098023691338UL)]
+    [TestCase(512, 2412201922470835925UL)]
+    [TestCase(1024, 11967994763251245253UL)]
+    public void RecordedHashPerSize(int size, ulong expected)
+    {
+        using MapLayout l = Make(size, 12345u);
+        Assert.AreEqual(expected, HashOf(l), $"size {size}: the generator's output changed");
+    }
+
+    /// <summary>The release check (spec §5): 1,000 seeds at every lobby size meet every fairness test. Slow; run by hand.</summary>
+    [Test, Explicit("1,000 seeds per size; run by hand before a release")]
+    public void FairLayoutsOnAThousandSeeds([Values(256, 512, 1024)] int size)
+    {
+        var unfair = new List<uint>();
+        for (uint seed = 1; seed <= 1000; seed++)
+        {
+            using MapLayout l = Make(size, seed);
+            if (!l.Fair) unfair.Add(seed);
+        }
+        Assert.IsEmpty(unfair, $"size {size}: {unfair.Count} of 1000 seeds unfair: {string.Join(",", unfair)}");
+    }
+
     [Test]
     public void BorderIsBlocked([Values(128, 256, 512)] int size)
     {
@@ -107,13 +141,15 @@ public class MapGeneratorTests
     }
 
     [Test]
-    public void FloorIsAMinorityButSubstantial()
+    public void FloorIsAMinorityButSubstantial([Values(256, 512, 1024)] int size)
     {
-        using MapLayout l = (Make(512, Seed));
+        // Roomy enough at every size for the perf gate's 80,000 units on the largest map (v0.11 measured 11.7 % before
+        // regions and lanes scaled with the map, and the tick missed its budget).
+        using MapLayout l = (Make(size, Seed));
         int floor = 0;
         for (int i = 0; i < l.Tiles.Length; i++) if (l.Tiles[i] == (byte)TileType.Ground) floor++;
         float fraction = (float)floor / l.Tiles.Length;
-        Assert.That(fraction, Is.InRange(0.10f, 0.60f), $"floor fraction {fraction:P1}");
+        Assert.That(fraction, Is.InRange(0.25f, 0.60f), $"size {size}: floor fraction {fraction:P1}");
     }
 
     [Test]
@@ -145,8 +181,12 @@ public class MapGeneratorTests
                 if (math.lengthsq(new int2(dx, dy)) <= reach * reach && At(l, size, c + new int2(dx, dy)) == (byte)TileType.Gem) n++;
             return n;
         }
-        foreach (int2 s in l.StartSites) Assert.That(Count(s, RegionMapGenerator.StartRadius + 4), Is.GreaterThanOrEqualTo(6), $"vein at {s}");
-        foreach (int2 e in l.Expansions) Assert.That(Count(e, 28), Is.GreaterThanOrEqualTo(Cfg.ExpansionGemTiles * 3 / 4), $"rich field at {e}");
+        // Veins and rich fields grow on the region's rim (or, in an expansion, on its outcrops), so count within each region's own radius.
+        foreach (MapRegion r in l.Regions)
+        {
+            if (r.Kind == RegionKind.Start) Assert.That(Count(r.Centre, r.Radius + 4), Is.GreaterThanOrEqualTo(6), $"vein at {r.Centre}");
+            if (r.Kind == RegionKind.Expansion) Assert.That(Count(r.Centre, r.Radius + 4), Is.GreaterThanOrEqualTo(Cfg.ExpansionGemTiles * 3 / 4), $"rich field at {r.Centre}");
+        }
     }
 
     [Test]
@@ -156,10 +196,10 @@ public class MapGeneratorTests
         for (uint seed = 1; seed <= 20; seed++)
         {
             using MapLayout l = (Make(512, seed));
-            int chokes = 0;
+            int chokes = 0, scale = RegionMapGenerator.Scales(cfg, 512).lane;
             foreach (MapLane lane in l.Lanes)
             {
-                Assert.That(lane.Width, Is.InRange(cfg.LaneWidthMin, cfg.LaneWidthMax));
+                Assert.That(lane.Width, Is.InRange(cfg.LaneWidthMin * scale / 100, cfg.LaneWidthMax * scale / 100), "lane width, scaled for the map size");
                 if (lane.ChokeWidth == 0) continue;
                 chokes++;
                 Assert.That(lane.ChokeWidth, Is.InRange(cfg.ChokeWidthMin, cfg.ChokeWidthMax));
@@ -210,6 +250,27 @@ public class MapGeneratorTests
         var timer = System.Diagnostics.Stopwatch.StartNew();
         Make(1024, 2u).Tiles.Dispose();
         Assert.Less(timer.ElapsedMilliseconds, 1000, "a 1024 map must generate in under a second");
+    }
+
+    /// <summary>
+    /// The perf gate's four fronts stay separate battles (one per quadrant), as on the old circle of clearings: pairing
+    /// the nearest sites put three fronts within ~250 tiles, so they merged and every client saw three enemy armies.
+    /// </summary>
+    [Test]
+    public void PerfFrontsAreFarApart([Values(1u, 2u, 7u)] uint seed)
+    {
+        using MapLayout l = Make(1024, seed);
+        int2[] sites = PerfMatch.PairedSites(l.StartSites, 1024);
+        Assert.AreEqual(8, sites.Length);
+        var mids = new float2[4];
+        for (int p = 0; p < 4; p++)
+        {
+            mids[p] = ((float2)sites[2 * p] + sites[2 * p + 1]) * 0.5f;
+            Assert.AreNotEqual(sites[2 * p], sites[2 * p + 1]);
+        }
+        for (int a = 0; a < 4; a++)
+        for (int b = a + 1; b < 4; b++)
+            Assert.Greater(math.distance(mids[a], mids[b]), 1024 / 3f, $"seed {seed}: fronts {a} and {b}");
     }
 
     [Test]

@@ -18,7 +18,7 @@ namespace WAR2D.World
         Central,
     }
 
-    /// <summary>One open region of the planned map: a disc of floor.</summary>
+    /// <summary>One open region of the planned map: a core disc of floor and seeded lobes within <see cref="Radius"/>.</summary>
     public readonly struct MapRegion
     {
         public readonly int2 Centre;
@@ -85,6 +85,12 @@ namespace WAR2D.World
         private const int RoughenPercent = 20;
 
         private static readonly int2[] Steps = { new int2(1, 0), new int2(-1, 0), new int2(0, 1), new int2(0, -1) };
+        /// <summary>Sixteen compass directions, x1000 (integer, so every machine carves the same shapes).</summary>
+        private static readonly int2[] Directions =
+        {
+            new int2(1000, 0), new int2(924, 383), new int2(707, 707), new int2(383, 924), new int2(0, 1000), new int2(-383, 924), new int2(-707, 707), new int2(-924, 383),
+            new int2(-1000, 0), new int2(-924, -383), new int2(-707, -707), new int2(-383, -924), new int2(0, -1000), new int2(383, -924), new int2(707, -707), new int2(924, -383),
+        };
         private static readonly int2[] Around =
         {
             new int2(1, 0), new int2(1, 1), new int2(0, 1), new int2(-1, 1), new int2(-1, 0), new int2(-1, -1), new int2(0, -1), new int2(1, -1),
@@ -97,6 +103,25 @@ namespace WAR2D.World
             for (int i = 0; i < cfg.LayoutSizes.Length; i++) if (cfg.LayoutSizes[i] <= size) row = i;
             return (cfg.StartSites[row], cfg.Expansions[row], cfg.CentralAreas[row]);
         }
+
+        /// <summary>Region-radius and lane-width scales (percent) for a map size; 100 when the config has none.</summary>
+        public static (int region, int lane) Scales(MapConfig cfg, int size)
+        {
+            int row = 0;
+            for (int i = 0; i < cfg.LayoutSizes.Length; i++) if (cfg.LayoutSizes[i] <= size) row = i;
+            return (row < cfg.RegionScale.Length ? cfg.RegionScale[row] : 100, row < cfg.LaneScale.Length ? cfg.LaneScale[row] : 100);
+        }
+
+        /// <summary>Depth of the cave band for a map size; 0 when the config has none.</summary>
+        public static int CaveDepth(MapConfig cfg, int size)
+        {
+            int row = 0;
+            for (int i = 0; i < cfg.LayoutSizes.Length; i++) if (cfg.LayoutSizes[i] <= size) row = i;
+            return row < cfg.CaveDepth.Length ? cfg.CaveDepth[row] : 0;
+        }
+
+        /// <summary>Radius of a start region for a region scale: the HQ's core plus room for a base, at most 1.75x the core.</summary>
+        public static int StartRegionRadius(int regionScale) => math.clamp(StartRadius * regionScale / 100, StartRadius, StartRadius * 7 / 4);
 
         /// <summary>Generates the map with the config's layout settings. <paramref name="allocator"/> backs the tiles.</summary>
         public static MapLayout Generate(int size, uint seed, float gemChance, Allocator allocator) =>
@@ -148,11 +173,12 @@ namespace WAR2D.World
             var plan = new Plan();
             (int starts, int expansions, int centrals) = Counts(cfg, size);
 
+            int scale = Scales(cfg, size).region;
             int centralRadius = math.clamp(size / 8, 16, 40);
             // Start sites first: they are the most constrained.
-            for (int i = 0; i < starts; i++) Place(plan.Regions, StartRadius, RegionKind.Start, ref rng, size, (long)(cfg.MinStartDistance * size));
-            for (int i = 0; i < centrals; i++) Place(plan.Regions, centralRadius + rng.NextInt(0, 5), RegionKind.Central, ref rng, size, 0);
-            for (int i = 0; i < expansions; i++) Place(plan.Regions, 16 + rng.NextInt(0, 7), RegionKind.Expansion, ref rng, size, 0);
+            for (int i = 0; i < starts; i++) Place(plan.Regions, StartRegionRadius(scale), RegionKind.Start, ref rng, size, (long)(cfg.MinStartDistance * size));
+            for (int i = 0; i < centrals; i++) Place(plan.Regions, (centralRadius + rng.NextInt(0, 5)) * scale / 100, RegionKind.Central, ref rng, size, 0);
+            for (int i = 0; i < expansions; i++) Place(plan.Regions, (16 + rng.NextInt(0, 7)) * scale / 100, RegionKind.Expansion, ref rng, size, 0);
 
             BuildGraph(plan, size, cfg, ref rng);
             plan.Score = Score(plan, size, cfg);
@@ -246,7 +272,7 @@ namespace WAR2D.World
         private static LanePlan MakeLane(Plan plan, int a, int b, int size, MapConfig cfg, ref Random rng)
         {
             MapRegion ra = plan.Regions[a], rb = plan.Regions[b];
-            var lane = new LanePlan { A = a, B = b, Width = rng.NextInt(cfg.LaneWidthMin, cfg.LaneWidthMax + 1) };
+            var lane = new LanePlan { A = a, B = b, Width = rng.NextInt(cfg.LaneWidthMin, cfg.LaneWidthMax + 1) * Scales(cfg, size).lane / 100 };
             long dx = rb.Centre.x - ra.Centre.x, dy = rb.Centre.y - ra.Centre.y;
             lane.HasM2 = rng.NextInt(0, 2) == 1;
             lane.M1 = Mid(ra.Centre, dx, dy, 1, lane.HasM2 ? 3 : 2, size, ref rng);
@@ -340,9 +366,23 @@ namespace WAR2D.World
             var tiles = new NativeArray<byte>(size * size, allocator, NativeArrayOptions.UninitializedMemory);
             for (int i = 0; i < tiles.Length; i++) tiles[i] = Rock;
 
-            foreach (MapRegion r in plan.Regions) CarveDisc(tiles, size, r.Centre, r.Radius);
-            foreach (LanePlan l in plan.Lanes) CarveLane(tiles, size, plan, l);
-            Roughen(tiles, size, SubSeed(seed, attempt));
+            // Regions as lobed blobs, rock outcrops inside the open ground, the start sites' cores cleared again (a
+            // neighbour's outcrop never lands on an HQ site), then the lanes, which run centre to centre and so cut a
+            // clear way through any outcrop in their path.
+            var shapes = new Random(SubSeed(seed, attempt) ^ 0x51ED27u | 1u);
+            foreach (MapRegion r in plan.Regions) CarveRegion(tiles, size, r, ref shapes);
+            foreach (MapRegion r in plan.Regions)
+                if (r.Kind != RegionKind.Start) AddOutcrops(tiles, size, r, cfg.OutcropShare, ref shapes);
+            foreach (MapRegion r in plan.Regions)
+                if (r.Kind == RegionKind.Start) CarveDisc(tiles, size, r.Centre, StartRadius);
+            // Chokepoints (and a margin around them) are protected, so the cave band never widens them.
+            var protect = new NativeArray<byte>(tiles.Length, Allocator.Temp);
+            int depth = CaveDepth(cfg, size);
+            foreach (LanePlan l in plan.Lanes) CarveLane(tiles, size, plan, l, protect, depth + 2);
+            GrowCaves(tiles, size, protect, depth, SubSeed(seed, attempt));
+            Roughen(tiles, size, SubSeed(seed, attempt), protect);
+            protect.Dispose();
+            FillUnreached(tiles, size, plan.Regions[0].Centre);
 
             var rng = new Random(SubSeed(seed, attempt) ^ 0x9E3779B9u | 1u);
             var starts = new List<int2>();
@@ -375,13 +415,98 @@ namespace WAR2D.World
             return new MapLayout(tiles, plan.Regions.ToArray(), lanes, starts.ToArray(), expansions.ToArray(), plan.Score == 0, attempt);
         }
 
-        private static void CarveDisc(NativeArray<byte> tiles, int size, int2 centre, int radius)
+        private static void CarveDisc(NativeArray<byte> tiles, int size, int2 centre, int radius) => FillDisc(tiles, size, centre, radius, Floor);
+
+        /// <summary>A region's floor: a core disc and three to five seeded lobes, all within its radius. A start site's core is the HQ clearing.</summary>
+        private static void CarveRegion(NativeArray<byte> tiles, int size, MapRegion region, ref Random rng)
+        {
+            int r = region.Radius;
+            uint noiseSeed = rng.NextUInt() | 1u;
+            if (region.Kind == RegionKind.Start) CarveDisc(tiles, size, region.Centre, math.min(r, StartRadius)); // the HQ clearing stays round and whole
+            else CarveCave(tiles, size, region.Centre, math.max(4, r * 55 / 100), noiseSeed);
+            int lobes = 3 + rng.NextInt(0, 3);
+            for (int i = 0; i < lobes; i++)
+            {
+                int lobe = math.max(3, r * rng.NextInt(35, 56) / 100);
+                int reach = rng.NextInt(r / 4, math.max(r / 4, r - lobe) + 1);
+                int2 dir = Directions[rng.NextInt(0, Directions.Length)];
+                CarveCave(tiles, size, region.Centre + dir * reach / 1000, lobe, noiseSeed);
+            }
+        }
+
+        /// <summary>
+        /// A disc whose edge wanders with seeded value noise between about 0.7x and 1.2x <paramref name="radius"/>, so a
+        /// region reads as a cave, not a circle. The middle (half the radius) is always carved, so lanes meeting at the centre connect.
+        /// </summary>
+        private static void CarveCave(NativeArray<byte> tiles, int size, int2 centre, int radius, uint seed)
+        {
+            int outer = radius * 6 / 5 + 1, cell = math.max(6, radius / 2);
+            for (int y = math.max(1, centre.y - outer); y <= math.min(size - 2, centre.y + outer); y++)
+            for (int x = math.max(1, centre.x - outer); x <= math.min(size - 2, centre.x + outer); x++)
+            {
+                long dx = x - centre.x, dy = y - centre.y, d2 = dx * dx + dy * dy;
+                long edge = radius * (700L + ValueNoise(x, y, cell, seed) / 2) / 1000; // 0.7r .. 1.2r
+                if (d2 <= edge * edge || d2 * 4 <= (long)radius * radius) tiles[y * size + x] = Floor;
+            }
+        }
+
+        /// <summary>
+        /// Rock outcrops inside a central area or expansion until about <paramref name="share"/> of its disc is covered: small
+        /// lobed islands, kept apart (a large unit passes between any two) and away from the centre where the lanes meet.
+        /// </summary>
+        private static void AddOutcrops(NativeArray<byte> tiles, int size, MapRegion region, float share, ref Random rng)
+        {
+            int r = region.Radius;
+            long budget = (long)r * r * 314 / 100 * (int)(share * 1000f + 0.5f) / 1000;
+            var placed = new List<(int2 c, int o)>();
+            for (int tries = 0; budget > 0 && tries < 64; tries++)
+            {
+                int o = rng.NextInt(math.max(3, r / 12), math.max(4, r / 6) + 1);
+                int reach = rng.NextInt(math.max(8 + o, r / 5), math.max(9 + o, r * 75 / 100 - o) + 1);
+                int2 c = region.Centre + Directions[rng.NextInt(0, Directions.Length)] * reach / 1000;
+                bool clear = true;
+                foreach ((int2 pc, int po) in placed)
+                {
+                    long dx = c.x - pc.x, dy = c.y - pc.y, gap = o + po + 8;
+                    if (dx * dx + dy * dy < gap * gap) { clear = false; break; }
+                }
+                if (!clear) continue;
+                placed.Add((c, o));
+                FillDisc(tiles, size, c, o, Rock);
+                int bumps = rng.NextInt(1, 4);
+                for (int b = 0; b < bumps; b++) FillDisc(tiles, size, c + Directions[rng.NextInt(0, Directions.Length)] * o / 1000, math.max(1, o * 2 / 3), Rock);
+                budget -= (long)o * o * 314 / 100;
+            }
+        }
+
+        /// <summary>Turns every floor tile not reachable from <paramref name="from"/> (4-connected) into rock, so no pocket is cut off.</summary>
+        private static void FillUnreached(NativeArray<byte> tiles, int size, int2 from)
+        {
+            var seen = new NativeArray<bool>(tiles.Length, Allocator.Temp);
+            var queue = new NativeArray<int>(tiles.Length, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            int head = 0, tail = 0, start = from.y * size + from.x;
+            if (tiles[start] == Floor) { seen[start] = true; queue[tail++] = start; }
+            while (head < tail)
+            {
+                int i = queue[head++];
+                int x = i % size;
+                if (x > 0 && !seen[i - 1] && tiles[i - 1] == Floor) { seen[i - 1] = true; queue[tail++] = i - 1; }
+                if (x < size - 1 && !seen[i + 1] && tiles[i + 1] == Floor) { seen[i + 1] = true; queue[tail++] = i + 1; }
+                if (i >= size && !seen[i - size] && tiles[i - size] == Floor) { seen[i - size] = true; queue[tail++] = i - size; }
+                if (i < tiles.Length - size && !seen[i + size] && tiles[i + size] == Floor) { seen[i + size] = true; queue[tail++] = i + size; }
+            }
+            for (int i = 0; i < tiles.Length; i++) if (tiles[i] == Floor && !seen[i]) tiles[i] = Rock;
+            seen.Dispose();
+            queue.Dispose();
+        }
+
+        private static void FillDisc(NativeArray<byte> tiles, int size, int2 centre, int radius, byte tile)
         {
             for (int y = math.max(1, centre.y - radius); y <= math.min(size - 2, centre.y + radius); y++)
             for (int x = math.max(1, centre.x - radius); x <= math.min(size - 2, centre.x + radius); x++)
             {
                 int dx = x - centre.x, dy = y - centre.y;
-                if (dx * dx + dy * dy <= radius * radius) tiles[y * size + x] = Floor;
+                if (dx * dx + dy * dy <= radius * radius) tiles[y * size + x] = tile;
             }
         }
 
@@ -393,7 +518,7 @@ namespace WAR2D.World
         }
 
         /// <summary>Walks the lane's polyline in integer steps, carving a disc (lane) or a square block (chokepoint) at each.</summary>
-        private static void CarveLane(NativeArray<byte> tiles, int size, Plan plan, LanePlan lane)
+        private static void CarveLane(NativeArray<byte> tiles, int size, Plan plan, LanePlan lane, NativeArray<byte> protect, int margin)
         {
             var points = new List<int2> { plan.Regions[lane.A].Centre, lane.M1 };
             if (lane.HasM2) points.Add(lane.M2);
@@ -414,6 +539,7 @@ namespace WAR2D.World
                         // A diagonal step also carves the corner, so the chokepoint's centre line is 4-connected.
                         if (p.x != previous.x && p.y != previous.y) CarveBlock(tiles, size, new int2(p.x, previous.y), lane.ChokeWidth / 2);
                         CarveBlock(tiles, size, p, lane.ChokeWidth / 2);
+                        MarkBlock(protect, size, p, lane.ChokeWidth / 2 + margin);
                     }
                     else CarveDisc(tiles, size, p, lane.Width / 2);
                     previous = p;
@@ -421,8 +547,91 @@ namespace WAR2D.World
             }
         }
 
-        /// <summary>One pass that bulges the rock edge: rock beside floor turns to floor on a seeded hash. Never narrows a lane.</summary>
-        private static void Roughen(NativeArray<byte> tiles, int size, uint seed)
+        private static void MarkBlock(NativeArray<byte> mask, int size, int2 centre, int half)
+        {
+            for (int y = math.max(0, centre.y - half); y <= math.min(size - 1, centre.y + half); y++)
+            for (int x = math.max(0, centre.x - half); x <= math.min(size - 1, centre.x + half); x++)
+                mask[y * size + x] = 1;
+        }
+
+        /// <summary>
+        /// Cave-like edges: rock within <paramref name="depth"/> tiles of floor turns to floor where seeded value noise
+        /// beats a threshold that rises with the distance, so bays, fingers and alcoves grow out of every region and lane;
+        /// two cellular-automaton passes then smooth them into cave shapes. Only ever widens (planned floor never turns
+        /// to rock) and never touches protected tiles (the chokepoints). Integer arithmetic only.
+        /// </summary>
+        private static void GrowCaves(NativeArray<byte> tiles, int size, NativeArray<byte> protect, int depth, uint seed)
+        {
+            if (depth <= 0) return;
+            // Distance from the planned floor, over rock, up to the band's depth (0 = planned floor, 255 = outside the band).
+            var dist = new NativeArray<byte>(tiles.Length, Allocator.Temp);
+            var queue = new NativeArray<int>(tiles.Length, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            int head = 0, tail = 0;
+            for (int i = 0; i < tiles.Length; i++)
+            {
+                if (tiles[i] == Floor) queue[tail++] = i;
+                else dist[i] = 255;
+            }
+            while (head < tail)
+            {
+                int i = queue[head++];
+                int x = i % size, y = i / size, d = dist[i] + 1;
+                if (d > depth) continue;
+                for (int k = 0; k < 4; k++)
+                {
+                    int nx = x + Steps[k].x, ny = y + Steps[k].y;
+                    if (nx < 2 || ny < 2 || nx > size - 3 || ny > size - 3) continue;
+                    int n = ny * size + nx;
+                    if (dist[n] != 255 || protect[n] != 0) continue;
+                    dist[n] = (byte)d;
+                    queue[tail++] = n;
+                }
+            }
+            queue.Dispose();
+
+            int big = math.max(4, depth * 2), small = math.max(2, depth / 2 + 1);
+            for (int y = 2; y < size - 2; y++)
+            for (int x = 2; x < size - 2; x++)
+            {
+                int i = y * size + x;
+                int d = dist[i];
+                if (d == 0 || d == 255) continue;
+                int noise = (2 * ValueNoise(x, y, big, seed) + ValueNoise(x, y, small, seed ^ 0xA511E9B3u)) / 3;
+                if (noise >= 300 + 600 * d / depth) tiles[i] = Floor;
+            }
+
+            var next = new NativeArray<byte>(tiles.Length, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            for (int pass = 0; pass < 2; pass++)
+            {
+                NativeArray<byte>.Copy(tiles, next, tiles.Length);
+                for (int y = 2; y < size - 2; y++)
+                for (int x = 2; x < size - 2; x++)
+                {
+                    int i = y * size + x;
+                    int d = dist[i];
+                    if (d == 0 || d == 255) continue;
+                    int around = 0;
+                    foreach (int2 a in Around) if (tiles[i + a.y * size + a.x] == Floor) around++;
+                    if (around >= 5) next[i] = Floor;
+                    else if (around <= 2) next[i] = Rock;
+                }
+                NativeArray<byte>.Copy(next, tiles, tiles.Length);
+            }
+            next.Dispose();
+            dist.Dispose();
+        }
+
+        /// <summary>Seeded value noise in [0, 1000): hashed lattice values every <paramref name="cell"/> tiles, bilinearly blended in integers.</summary>
+        private static int ValueNoise(int x, int y, int cell, uint seed)
+        {
+            int cx = x / cell, cy = y / cell, fx = x % cell, fy = y % cell;
+            long h00 = Hash(cx, cy, seed) % 1000, h10 = Hash(cx + 1, cy, seed) % 1000, h01 = Hash(cx, cy + 1, seed) % 1000, h11 = Hash(cx + 1, cy + 1, seed) % 1000;
+            long v = h00 * (cell - fx) * (cell - fy) + h10 * fx * (cell - fy) + h01 * (cell - fx) * fy + h11 * fx * fy;
+            return (int)(v / ((long)cell * cell));
+        }
+
+        /// <summary>One pass that bulges the rock edge: rock beside floor turns to floor on a seeded hash. Never narrows a lane, never touches a protected tile.</summary>
+        private static void Roughen(NativeArray<byte> tiles, int size, uint seed, NativeArray<byte> protect)
         {
             var next = new NativeArray<byte>(tiles.Length, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
             NativeArray<byte>.Copy(tiles, next, tiles.Length);
@@ -430,7 +639,7 @@ namespace WAR2D.World
             for (int x = 1; x < size - 1; x++)
             {
                 int i = y * size + x;
-                if (tiles[i] != Rock) continue;
+                if (tiles[i] != Rock || protect[i] != 0) continue;
                 if (tiles[i - 1] != Floor && tiles[i + 1] != Floor && tiles[i - size] != Floor && tiles[i + size] != Floor) continue;
                 if (Hash(x, y, seed) % 100 < RoughenPercent) next[i] = Floor;
             }

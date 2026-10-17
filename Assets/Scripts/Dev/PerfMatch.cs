@@ -101,7 +101,7 @@ public sealed class PerfMatch : MonoBehaviour
             GameCore.Instance.AddBot(owners[i], 1e9f);
         }
 
-        int2[] sites = PairedSites(world.Map.HqSites);
+        int2[] sites = PairedSites(world.Map.HqSites, world.MapSize);
         for (int i = 0; i < Owners; i++)
             if (!PlaceNear(world, owners[i], sites[i])) Fail($"no room for owner {i}'s HQ near {sites[i]}");
         foreach (NetworkIdentity identity in GameCore.Instance.ServerPlayers.Keys) identity.GetComponent<ClientPlayer>().hasPlacedHQ = true;
@@ -226,7 +226,7 @@ public sealed class PerfMatch : MonoBehaviour
     {
         siegeSetUp = true;
         WorldStateManager world = WorldStateManager.Instance;
-        int2[] sites = PairedSites(world.Map.HqSites);
+        int2[] sites = PairedSites(world.Map.HqSites, world.MapSize);
         for (int i = 0; i < Owners; i++)
         {
             int owner = owners[i];
@@ -381,27 +381,27 @@ public sealed class PerfMatch : MonoBehaviour
     }
 
     /// <summary>
-    /// The perf layout's eight sites, ordered so that sites (0,1), (2,3), (4,5) and (6,7) are front partners: the
-    /// generated map's start sites are paired nearest-first (a fixed rule on the seeded map, so the gate's layout is stable).
+    /// The perf layout's eight sites, ordered so that sites (0,1), (2,3), (4,5) and (6,7) are front partners: in each
+    /// quadrant of the map, the site nearest the quadrant's centre and its nearest neighbour in that quadrant. The four
+    /// fronts are separate battles, as on the old circle of clearings (a fixed rule on the seeded map, so the gate's
+    /// layout is stable). Pairing the nearest sites anywhere put three fronts within ~250 tiles of each other.
     /// </summary>
-    internal static int2[] PairedSites(int2[] all)
+    internal static int2[] PairedSites(int2[] all, int size)
     {
-        var free = new List<int2>(all);
         var result = new List<int2>();
-        while (result.Count < Owners && free.Count >= 2)
+        for (int q = 0; q < 4 && result.Count < Owners; q++)
         {
-            int bi = 0, bj = 1;
-            float best = float.MaxValue;
-            for (int i = 0; i < free.Count; i++)
-            for (int j = i + 1; j < free.Count; j++)
-            {
-                float d = math.distancesq(free[i], free[j]);
-                if (d < best) { best = d; bi = i; bj = j; }
-            }
-            result.Add(free[bi]);
-            result.Add(free[bj]);
-            free.RemoveAt(bj);
-            free.RemoveAt(bi);
+            int2 lo = new int2(q % 2 * size / 2, q / 2 * size / 2), hi = lo + size / 2;
+            float2 centre = (float2)(lo + hi) * 0.5f;
+            var inside = new List<int2>();
+            foreach (int2 s in all) if (math.all(s >= lo) && math.all(s < hi)) inside.Add(s);
+            if (inside.Count < 2) continue;
+            inside.Sort((a, b) => math.distancesq(centre, a).CompareTo(math.distancesq(centre, b)));
+            int2 first = inside[0], partner = inside[1];
+            foreach (int2 s in inside)
+                if (!s.Equals(first) && math.distancesq(first, s) < math.distancesq(first, partner)) partner = s;
+            result.Add(first);
+            result.Add(partner);
         }
         return result.ToArray();
     }

@@ -646,7 +646,7 @@ namespace WAR2D.Pathing
                     Width = graph.SectorCellsSide, Height = graph.SectorCellsSide,
                     Tiles = graph.CropOf(order.SizeClass, spec.Sector), WriteDirection = true,
                     Goals = spec.GoalCells, GoalCosts = spec.GoalCosts,
-                    ExitCells = spec.ExitCells, ExitDirection = spec.ExitDirection,
+                    ExitCells = spec.ExitCells, ExitDirections = spec.ExitDirections,
                     Cost = cost, Direction = direction,
                 };
                 handles.Add(job.Schedule());

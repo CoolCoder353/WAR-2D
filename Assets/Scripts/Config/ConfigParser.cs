@@ -61,8 +61,13 @@ namespace Config
                     m.StartSites = IntList(map, "StartSites", "Map", errors, 2, 256);
                     m.Expansions = IntList(map, "Expansions", "Map", errors, 0, 256);
                     m.CentralAreas = IntList(map, "CentralAreas", "Map", errors, 0, 64, ascending: false);
-                    if (m.StartSites.Length != m.LayoutSizes.Length || m.Expansions.Length != m.LayoutSizes.Length || m.CentralAreas.Length != m.LayoutSizes.Length)
-                        errors.Add("Map: <LayoutSizes>, <StartSites>, <Expansions> and <CentralAreas> must have the same number of entries.");
+                    m.RegionScale = IntList(map, "RegionScale", "Map", errors, 50, 1000, ascending: false);
+                    m.LaneScale = IntList(map, "LaneScale", "Map", errors, 50, 1000, ascending: false);
+                    m.CaveDepth = IntList(map, "CaveDepth", "Map", errors, 0, 64, ascending: false);
+                    if (m.StartSites.Length != m.LayoutSizes.Length || m.Expansions.Length != m.LayoutSizes.Length || m.CentralAreas.Length != m.LayoutSizes.Length
+                        || m.RegionScale.Length != m.LayoutSizes.Length || m.LaneScale.Length != m.LayoutSizes.Length || m.CaveDepth.Length != m.LayoutSizes.Length)
+                        errors.Add("Map: <LayoutSizes>, <StartSites>, <Expansions>, <CentralAreas>, <RegionScale>, <LaneScale> and <CaveDepth> must have the same number of entries.");
+                    m.OutcropShare = Float(map, "OutcropShare", "Map", errors, min: 0, max: 0.3f);
                     m.ChokepointShare = Float(map, "ChokepointShare", "Map", errors, min: 0, max: 1);
                     int[] lane = IntList(map, "LaneWidth", "Map", errors, 2, 64), choke = IntList(map, "ChokeWidth", "Map", errors, 2, 64);
                     if (lane.Length == 2 && choke.Length == 2 && lane[0] <= lane[1] && choke[0] <= choke[1]) { m.LaneWidthMin = lane[0]; m.LaneWidthMax = lane[1]; m.ChokeWidthMin = choke[0]; m.ChokeWidthMax = choke[1]; }
@@ -128,6 +133,7 @@ namespace Config
                 config.Replication.OffscreenThreshold = Float(rep, "OffscreenThreshold", c, errors, min: 0.01f, max: 32);
                 config.Replication.OffscreenIntervalTicks = Int(rep, "OffscreenIntervalTicks", c, errors, min: 1, max: 200);
                 config.Replication.SnapshotBytesPerSecond = Int(rep, "SnapshotBytesPerSecond", c, errors, min: 16384, max: 16777216);
+                config.Replication.RouteTolerance = Float(rep, "RouteTolerance", c, errors, min: 0, max: 4);
             }
 
             XmlNode orders = Require(root, "Orders", errors);

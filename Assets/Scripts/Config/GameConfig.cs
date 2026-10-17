@@ -99,6 +99,14 @@ namespace Config
         public int[] Expansions = System.Array.Empty<int>();
         /// <summary>Large central areas per entry of <see cref="LayoutSizes"/>.</summary>
         public int[] CentralAreas = System.Array.Empty<int>();
+        /// <summary>Region radii, in percent of the base sizes, per entry of <see cref="LayoutSizes"/>: larger maps get larger, roomier regions.</summary>
+        public int[] RegionScale = System.Array.Empty<int>();
+        /// <summary>Lane widths (not chokepoints), in percent of <see cref="LaneWidthMin"/>..<see cref="LaneWidthMax"/>, per entry of <see cref="LayoutSizes"/>.</summary>
+        public int[] LaneScale = System.Array.Empty<int>();
+        /// <summary>Depth in tiles of the cave band grown out from every region and lane edge, per entry of <see cref="LayoutSizes"/> (0 = smooth edges).</summary>
+        public int[] CaveDepth = System.Array.Empty<int>();
+        /// <summary>Share of a central area's or expansion's floor given to rock outcrops (cover and flanks inside the open ground).</summary>
+        public float OutcropShare;
         /// <summary>Share of lanes that get a chokepoint.</summary>
         public float ChokepointShare;
         public int LaneWidthMin, LaneWidthMax, ChokeWidthMin, ChokeWidthMax;
@@ -260,6 +268,8 @@ namespace Config
         public int OffscreenIntervalTicks;
         /// <summary>Rate at which a joining client's snapshot is released.</summary>
         public int SnapshotBytesPerSecond;
+        /// <summary>Tiles a sent route may cut across the flow cells it simplifies (0 keeps every turn).</summary>
+        public float RouteTolerance;
     }
 
     /// <summary>Damage multipliers keyed by attacker unit type and target class.</summary>

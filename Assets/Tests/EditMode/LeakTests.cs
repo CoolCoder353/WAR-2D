@@ -471,4 +471,44 @@ public class LeakTests
         }
         Assert.That(typeof(ClientPlayer).GetField("startSite"), Is.Null, "the public start-site SyncVar is gone");
     }
+
+    /// <summary>Deals six owners (two teams of two and two Solo players) and returns each one's start plus the team map.</summary>
+    private static (List<(int owner, int[] options, int pick)> starts, Dictionary<int, int> teams) DealSix(bool ffa)
+    {
+        var choices = new List<(int Owner, int Choice)> { (11, 0), (12, 0), (13, 1), (14, 1), (15, TeamRules.NoTeam), (16, TeamRules.NoTeam) };
+        if (ffa) for (int i = 0; i < choices.Count; i++) choices[i] = (choices[i].Owner, TeamRules.NoTeam);
+        Dictionary<int, int> teams = TeamRules.Assign(choices);
+        var rng = new System.Random(5);
+        Dictionary<int, int[]> deal = StartPickRules.Deal(20, choices.ConvertAll(c => c.Owner), 3, rng.Next);
+        var starts = new List<(int owner, int[] options, int pick)>();
+        foreach (var c in choices) starts.Add((c.Owner, deal[c.Owner], deal[c.Owner][1]));
+        return (starts, teams);
+    }
+
+    [Test]
+    public void StartOptions_ReachOnlyTheOwnersTeammates()
+    {
+        (List<(int owner, int[] options, int pick)> starts, Dictionary<int, int> teams) = DealSix(ffa: false);
+        bool Mates(int a, int b) => a != b && teams[a] == teams[b];
+        foreach ((int owner, _, _) in starts)
+        {
+            var view = StartPickRules.TeamView(owner, starts, Mates);
+            foreach ((int other, int[] options, int pick) in view)
+            {
+                Assert.That(Mates(owner, other), $"owner {owner} was told non-teammate {other}'s start");
+                Assert.That(options, Is.EqualTo(starts.Find(s => s.owner == other).options));
+            }
+            int expected = starts.FindAll(s => Mates(owner, s.owner)).Count;
+            Assert.AreEqual(expected, view.Count, $"owner {owner} learns every teammate's start and nobody else's");
+        }
+        Assert.IsEmpty(StartPickRules.TeamView(15, starts, Mates), "a Solo player learns nobody's start");
+    }
+
+    [Test]
+    public void StartOptions_InFreeForAll_NobodyLearnsAnotherStart()
+    {
+        (List<(int owner, int[] options, int pick)> starts, Dictionary<int, int> teams) = DealSix(ffa: true);
+        foreach ((int owner, _, _) in starts)
+            Assert.IsEmpty(StartPickRules.TeamView(owner, starts, (a, b) => a != b && teams[a] == teams[b]), $"owner {owner}");
+    }
 }

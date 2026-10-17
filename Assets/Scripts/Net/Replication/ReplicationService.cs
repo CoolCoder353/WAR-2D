@@ -241,11 +241,12 @@ namespace WAR2D.Net.Replication
                 OwnerId = data.OwnerId, Type = data.Type, IdOf = data.IdOf, IndexOfId = data.IndexOfId, SpeedByType = data.SpeedByType,
                 Visible = data.Visible, FogCellSize = data.FogCellSize, FogW = data.FogW, FogH = data.FogH, FogCells = data.FogCells,
             };
-            JobHandle handle = new RouteMaintenanceJob
+            JobHandle handle = new RouteMaintenance
             {
                 Count = count,
                 Tick = tick,
                 RetraceBudget = 4000,
+                Tolerance = config.Replication.RouteTolerance,
                 Positions = data.Positions,
                 Health = data.Health,
                 IdOf = data.IdOf,
@@ -266,7 +267,7 @@ namespace WAR2D.Net.Replication
                 TracedOrder = routes.TracedOrder,
                 TracedId = routes.TracedId,
                 Counters = routes.Counters,
-            }.Schedule();
+            }.Schedule(default);
             if (!any)
             {
                 handle.Complete();

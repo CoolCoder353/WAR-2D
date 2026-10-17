@@ -50,13 +50,12 @@ public partial class GameCore
         var teamOwners = new List<int>();
         var teamOptions = new List<int>();
         var teamPicks = new List<int>();
-        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> other in ServerPlayers)
+        IEnumerable<(int, int[], int)> starts = ServerPlayers.Select(p => (BuildingData.UIntToInt(p.Key.netId), p.Value.StartOptions, p.Value.StartPick));
+        foreach ((int otherOwner, int[] options, int pick) in StartPickRules.TeamView(owner, starts, AreTeammates))
         {
-            int otherOwner = BuildingData.UIntToInt(other.Key.netId);
-            if (otherOwner == owner || other.Value.StartOptions == null || !AreTeammates(owner, otherOwner)) continue;
             teamOwners.Add(otherOwner);
-            teamOptions.AddRange(other.Value.StartOptions);
-            teamPicks.Add(other.Value.StartPick);
+            teamOptions.AddRange(options);
+            teamPicks.Add(pick);
         }
         identity.GetComponent<ClientPlayer>().TargetStartOptions(player.connection, player.StartOptions, player.StartPick,
             teamOwners.ToArray(), teamOptions.ToArray(), player.StartOptions.Length, teamPicks.ToArray());

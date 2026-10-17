@@ -15,15 +15,21 @@ namespace WAR2D.Pathing
         public int Sector;
 
         /// <summary>Crop-local cell indices of the field's goals.</summary>
-        public FixedList128Bytes<int> GoalCells;
+        public FixedList512Bytes<int> GoalCells;
 
         /// <summary>The cost-to-goal each goal cell starts at (0 for an order's own goal cells).</summary>
-        public FixedList128Bytes<ushort> GoalCosts;
+        public FixedList512Bytes<ushort> GoalCosts;
 
-        /// <summary>Cells of the sector's exit portal, written with the crossing step.</summary>
-        public FixedList128Bytes<int> ExitCells;
+        /// <summary>
+        /// Cells of the sector's exit portals, each written with its crossing step (<see cref="ExitDirections"/>).
+        /// A route has one exit per pocket of floor it passes through: a cave sector can hold several.
+        /// </summary>
+        public FixedList512Bytes<int> ExitCells;
 
-        /// <summary>The step every exit cell is written with, or <see cref="FlowDirections.None"/>.</summary>
+        /// <summary>The crossing step of each exit cell, parallel to <see cref="ExitCells"/>.</summary>
+        public FixedList128Bytes<byte> ExitDirections;
+
+        /// <summary>The first exit's crossing step, or <see cref="FlowDirections.None"/> for a sector the route ends in.</summary>
         public byte ExitDirection;
     }
 
@@ -344,11 +350,13 @@ namespace WAR2D.Pathing
             // 2. Seed the search from every goal sector: its portals start at their in-sector distance
             //    to that sector's goal cells, which the same integration job gives us.
             ResetSearch(layer);
+            var goalSeeds = new Dictionary<int, ushort[]>();
             foreach (KeyValuePair<int, List<int>> pair in goalCellsBySector)
             {
                 // BuildInSectorField returns, per portal of the sector, the cost from its cells to the
                 // goal cells: exactly the seed each portal's node starts at.
                 ushort[] toGoals = BuildInSectorField(layer, pair.Key, pair.Value);
+                goalSeeds[pair.Key] = toGoals;
                 for (int p = 0; p < toGoals.Length; p++) Seed(layer, pair.Key, p, toGoals[p]);
             }
 
@@ -359,22 +367,38 @@ namespace WAR2D.Pathing
             UnreachableStartSectors = 0;
             foreach (int start in startSectors)
                 if (!HasSettledPortal(layer, start)) UnreachableStartSectors++;
+            // A sector's field gets one exit per pocket of floor the route passes through: past the start sector the
+            // walk leaves by the exit it can reach from where it came in (a cave sector can hold separate pockets, and
+            // its cheapest portal may be in another one), and a route that comes back through a sector in another
+            // pocket adds that pocket's exit to the same field. A (sector, exit) pair already walked ends the walk.
+            var routeSpecs = new Dictionary<int, SectorFieldSpec>();
+            var walked = new HashSet<int>();
             foreach (int start in startSectors)
             {
-                int sector = start;
-                while (!goalSpecs.ContainsKey(sector))
+                int sector = start, entry = -1;
+                while (true)
                 {
                     Materialize(layer, sector);
-                    SectorState state = layer.Sectors[sector];
-                    int exit = BestPortal(layer, sector);
-                    if (exit < 0 || !covered.Add(sector)) break; // nowhere to leave, or a cycle
-                    specs.Add(RouteSpec(layer, sector, exit));
-                    int neighbour = NeighbourSector(sector, state.Portals[exit].Edge);
+                    bool isGoal = goalSpecs.ContainsKey(sector);
+                    // The goal sector ends the walk unless the route came in through a pocket its goal cells aren't in.
+                    if (isGoal && (entry < 0 || goalSeeds[sector][entry] < Infinite)) break;
+                    int exit = entry >= 0 ? BestExitFrom(layer, sector, entry) : BestCrossing(layer, sector);
+                    if (exit < 0 && !isGoal) exit = BestPortal(layer, sector);
+                    if (exit < 0 || !walked.Add(sector * MaxPortals + exit)) break; // nowhere to leave, or already walked
+                    if (isGoal) goalSpecs[sector] = WithExit(goalSpecs[sector], layer, sector, exit);
+                    else routeSpecs[sector] = WithExit(routeSpecs.TryGetValue(sector, out SectorFieldSpec spec) ? spec : NewSpec(sector), layer, sector, exit);
+                    int neighbour = NeighbourSector(sector, layer.Sectors[sector].Portals[exit].Edge);
                     if (neighbour < 0) break;
+                    entry = Matching(layer, sector, exit);
                     sector = neighbour;
                 }
             }
 
+            foreach (KeyValuePair<int, SectorFieldSpec> pair in routeSpecs)
+            {
+                covered.Add(pair.Key);
+                specs.Add(pair.Value);
+            }
             foreach (KeyValuePair<int, SectorFieldSpec> pair in goalSpecs)
             {
                 covered.Add(pair.Key);
@@ -573,11 +597,13 @@ namespace WAR2D.Pathing
                 for (int p = 0; p < n; p++)
                 for (int q = 0; q < n; q++)
                 {
-                    // Portals that share a corner cell would cost 0 to each other, and a chain of them
-                    // (west → north → east across an open sector) would make every exit tie. A step of
-                    // at least 1 between distinct portals keeps the search's distances strictly ordered,
-                    // so the route walk always leaves by the portal nearest the goal.
-                    ushort cost = MinOverPortal(state, q, fields[p]);
+                    // Centre to centre: a true distance between two points, so the costs obey the triangle
+                    // inequality. Measured between the nearest cells of two portals instead, a wide portal acted
+                    // as a teleporter (west → south → east across an open sector cost 2 through the corner cells
+                    // they share), the search's distances came out far too low, and the route walk looped round
+                    // a sector corner while units bounced between two sectors' fields. At least 1 between
+                    // distinct portals keeps the distances strictly ordered.
+                    ushort cost = fields[p][CentreCell(state, q)];
                     state.Costs[p * n + q] = p != q && cost < Infinite ? (ushort)math.max(1, (int)cost) : cost;
                 }
                 foreach (NativeArray<ushort> field in fields) field.Dispose();
@@ -585,22 +611,20 @@ namespace WAR2D.Pathing
             state.CostsReady = true;
         }
 
+        /// <summary>A portal's single goal for its cost-table field: its centre cell.</summary>
         private static NativeArray<int> GoalsOf(SectorState state, int portal)
         {
-            int length = state.Portals[portal].Length;
-            var goals = new NativeArray<int>(length, Allocator.TempJob);
-            for (int i = 0; i < length; i++) goals[i] = state.PortalCells[state.PortalOffsets[portal] + i];
+            var goals = new NativeArray<int>(1, Allocator.TempJob);
+            goals[0] = CentreCell(state, portal);
             return goals;
         }
 
-        private static ushort MinOverPortal(SectorState state, int portal, NativeArray<ushort> field)
-        {
-            ushort best = Infinite;
-            int offset = state.PortalOffsets[portal];
-            for (int i = 0; i < state.Portals[portal].Length; i++)
-                best = (ushort)math.min((int)best, (int)field[state.PortalCells[offset + i]]);
-            return best;
-        }
+        /// <summary>
+        /// The cell a portal is measured from: the middle of its run. A portal is one contiguous run of open cells along
+        /// the edge, so its centre is reachable from wherever any of its cells is.
+        /// </summary>
+        private static int CentreCell(SectorState state, int portal) =>
+            state.PortalCells[state.PortalOffsets[portal] + state.Portals[portal].Length / 2];
 
         /// <summary>
         /// Runs the integration job over one sector, seeded by <paramref name="goals"/> at cost 0, and
@@ -621,7 +645,7 @@ namespace WAR2D.Pathing
             goalArray.Dispose();
 
             var mins = new ushort[state.Portals.Length];
-            for (int p = 0; p < mins.Length; p++) mins[p] = MinOverPortal(state, p, field);
+            for (int p = 0; p < mins.Length; p++) mins[p] = field[CentreCell(state, p)]; // centre, as the cost table
             field.Dispose();
             return mins;
         }
@@ -729,6 +753,57 @@ namespace WAR2D.Pathing
             return best;
         }
 
+        /// <summary>
+        /// The exit of <paramref name="sector"/> on the cheapest way to the goal from its portal <paramref name="entry"/>:
+        /// in-sector cost from the entry plus the cost of crossing the exit (<see cref="CrossingCostOf"/>), over exits the
+        /// sector connects to the entry. -1 when none is.
+        /// </summary>
+        private int BestExitFrom(Layer layer, int sector, int entry)
+        {
+            EnsureCosts(layer, sector);
+            SectorState state = layer.Sectors[sector];
+            int n = state.Portals.Length;
+            if (entry >= n) return -1;
+            int best = -1, bestCost = int.MaxValue;
+            for (int q = 0; q < n; q++)
+            {
+                if (q == entry) continue;
+                int inside = state.Costs[entry * n + q], onward = CrossingCostOf(layer, sector, q);
+                if (inside >= Infinite || onward >= Infinite) continue;
+                if (inside + onward < bestCost) { bestCost = inside + onward; best = q; }
+            }
+            return best;
+        }
+
+        /// <summary>The portal of <paramref name="sector"/> with the cheapest way to the goal by crossing it, or -1.</summary>
+        private int BestCrossing(Layer layer, int sector)
+        {
+            int n = layer.Sectors[sector].Portals.Length, best = -1, bestCost = Infinite;
+            for (int q = 0; q < n; q++)
+            {
+                int cost = CrossingCostOf(layer, sector, q);
+                if (cost < bestCost) { bestCost = cost; best = q; }
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// Cost to the goal of leaving <paramref name="sector"/> by crossing <paramref name="portal"/>: the crossing plus the
+        /// settled (exact) cost of the matching portal beyond it; <see cref="Infinite"/> when that isn't known. A portal's
+        /// own <see cref="Layer.Distance"/> can come from a way through its sector to another portal instead, so seeding an
+        /// exit with it (and writing the crossing step on it) could send units across where the cheap way doesn't cross, and
+        /// two sectors' fields could then point at each other.
+        /// </summary>
+        private int CrossingCostOf(Layer layer, int sector, int portal)
+        {
+            int matching = Matching(layer, sector, portal);
+            int neighbour = matching >= 0 ? NeighbourSector(sector, layer.Sectors[sector].Portals[portal].Edge) : -1;
+            if (neighbour < 0) return Infinite;
+            int node = neighbour * MaxPortals + matching;
+            if (!layer.Settled[node] || layer.Distance[node] >= Infinite) return Infinite;
+            return math.min(Infinite - 1, layer.Distance[node] + CrossingCost);
+        }
+
         /// <summary>The matching portal on the other side of a portal's edge, or -1.</summary>
         private int Matching(Layer layer, int sector, int portal)
         {
@@ -814,25 +889,27 @@ namespace WAR2D.Pathing
         };
 
         /// <summary>
-        /// A route sector's field: seeded with its exit portal's cells at the portal's cost to the goal,
+        /// Adds an exit to a sector's field: seeded with the exit portal's cells at the portal's cost to the goal,
         /// which is the plan's seeding. The exit cells are also written with the crossing step, so a unit
         /// standing on them steps into the next sector instead of turning around inside this one.
         /// </summary>
-        private SectorFieldSpec RouteSpec(Layer layer, int sector, int exit)
+        private SectorFieldSpec WithExit(SectorFieldSpec spec, Layer layer, int sector, int exit)
         {
             SectorState state = layer.Sectors[sector];
-            ushort cost = layer.Distance[sector * MaxPortals + exit];
-            SectorFieldSpec spec = NewSpec(sector);
+            int crossingCost = CrossingCostOf(layer, sector, exit);
+            ushort cost = crossingCost < Infinite ? (ushort)crossingCost : layer.Distance[sector * MaxPortals + exit];
+            byte crossing = Crossing[state.Portals[exit].Edge];
             int offset = state.PortalOffsets[exit];
             for (int i = 0; i < state.Portals[exit].Length; i++)
             {
                 int cell = state.PortalCells[offset + i];
-                if (spec.GoalCells.Length >= spec.GoalCells.Capacity) break;
+                if (spec.GoalCells.Length >= spec.GoalCells.Capacity || spec.ExitDirections.Length >= spec.ExitDirections.Capacity) break;
                 spec.GoalCells.Add(cell);
                 spec.GoalCosts.Add(cost);
                 spec.ExitCells.Add(cell);
+                spec.ExitDirections.Add(crossing);
             }
-            spec.ExitDirection = Crossing[state.Portals[exit].Edge];
+            if (spec.ExitDirection == FlowDirections.None) spec.ExitDirection = crossing;
             return spec;
         }
 
@@ -865,15 +942,15 @@ namespace WAR2D.Pathing
 
         public int Width, Height;
         [ReadOnly] public NativeArray<byte> Tiles;
-        public FixedList128Bytes<int> Goals;
-        public FixedList128Bytes<ushort> GoalCosts;
+        public FixedList512Bytes<int> Goals;
+        public FixedList512Bytes<ushort> GoalCosts;
 
         /// <summary>False to only fill <see cref="Cost"/> (the route search's seeding pass).</summary>
         public bool WriteDirection;
 
-        /// <summary>Cells the crossing step is written on; ignored when <see cref="ExitDirection"/> is None.</summary>
-        public FixedList128Bytes<int> ExitCells;
-        public byte ExitDirection;
+        /// <summary>Cells a crossing step is written on, each with its step in <see cref="ExitDirections"/>.</summary>
+        public FixedList512Bytes<int> ExitCells;
+        public FixedList128Bytes<byte> ExitDirections;
 
         public NativeArray<ushort> Cost;
         public NativeArray<byte> Direction;
@@ -996,8 +1073,7 @@ namespace WAR2D.Pathing
                 Direction[i] = bestDirection;
             }
 
-            if (ExitDirection == FlowDirections.None) return;
-            for (int i = 0; i < ExitCells.Length; i++) Direction[ExitCells[i]] = ExitDirection;
+            for (int i = 0; i < ExitCells.Length && i < ExitDirections.Length; i++) Direction[ExitCells[i]] = ExitDirections[i];
         }
 
         private static void Push(ref NativeArray<UnsafeList<int>> buckets, int slot, int cell)
