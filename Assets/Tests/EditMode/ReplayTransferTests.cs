@@ -82,6 +82,11 @@ public class ReplayTransferTests
         }
         Assert.IsTrue(File.Exists(own), "the player's own recording stays");
         Assert.AreEqual(2, Directory.GetFiles(inbox, "*" + ReplayLibrary.ReceivedTag + "*" + ReplayFile.Extension).Length);
+
+        // Hosting later prunes only this machine's own recordings: the newer received ones don't count against them.
+        ReplayLibrary.Prune(inbox, 1, received: false);
+        Assert.IsTrue(File.Exists(own), "one own recording is within a cap of one, however many were received");
+        Assert.AreEqual(2, Directory.GetFiles(inbox, "*" + ReplayLibrary.ReceivedTag + "*" + ReplayFile.Extension).Length);
         Directory.Delete(dir, true);
     }
 

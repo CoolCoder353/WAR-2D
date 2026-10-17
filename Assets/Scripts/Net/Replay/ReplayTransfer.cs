@@ -171,7 +171,7 @@ namespace WAR2D.Net.Replay
             File.Move(partPath, final);
             ReplayLibrary.WriteInfo(final, offer.DurationSeconds);
             // Only received replays count towards the cap: a host sending many offers can never evict the player's own recordings.
-            if (keepCount > 0) ReplayLibrary.Prune(folder, keepCount, receivedOnly: true);
+            if (keepCount > 0) ReplayLibrary.Prune(folder, keepCount, received: true);
             SavedPath = final;
             Saved?.Invoke(final);
         }

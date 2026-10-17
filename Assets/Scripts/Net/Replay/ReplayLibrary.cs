@@ -71,14 +71,20 @@ namespace WAR2D.Net.Replay
             if (File.Exists(InfoPath(full))) File.Delete(InfoPath(full));
         }
 
-        /// <summary>Deletes the oldest replays in the Replays folder beyond <paramref name="keep"/>.</summary>
-        public static void Prune(int keep) => Prune(Folder, keep);
+        /// <summary>Deletes the oldest of this machine's own recordings in the Replays folder beyond <paramref name="keep"/>.</summary>
+        public static void Prune(int keep) => Prune(Folder, keep, received: false);
 
-        /// <summary>Deletes the oldest replays in <paramref name="folder"/> beyond <paramref name="keep"/> (only received ones when <paramref name="receivedOnly"/>).</summary>
-        public static void Prune(string folder, int keep, bool receivedOnly = false)
+        /// <summary>
+        /// Deletes the oldest replays of one kind in <paramref name="folder"/> beyond <paramref name="keep"/>: received
+        /// ones, or this machine's own recordings. Each kind has its own cap, so replays a host sends can never push
+        /// out the player's own recordings.
+        /// </summary>
+        public static void Prune(string folder, int keep, bool received)
         {
             if (!Directory.Exists(folder)) return;
-            foreach (string old in Directory.GetFiles(folder, (receivedOnly ? "*" + ReceivedTag + "*" : "*") + ReplayFile.Extension).OrderByDescending(File.GetLastWriteTimeUtc).Skip(keep))
+            foreach (string old in Directory.GetFiles(folder, "*" + ReplayFile.Extension)
+                         .Where(p => System.IO.Path.GetFileName(p).Contains(ReceivedTag) == received)
+                         .OrderByDescending(File.GetLastWriteTimeUtc).Skip(keep))
                 try { File.Delete(old); if (File.Exists(InfoPath(old))) File.Delete(InfoPath(old)); } catch (IOException) { }
         }
     }
