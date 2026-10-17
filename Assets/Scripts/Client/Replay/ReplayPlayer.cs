@@ -144,7 +144,7 @@ namespace WAR2D.Client.Replay
             ClientBuildings.Clear();
             ClientTerrain.Clear();
             ClientTerrain.Current.Init(map.Grid);
-            ClientTerrain.Current.Changed += OnTerrainChanged;
+            ClientTerrain.Current.Changed += OnClientTerrainChanged;
             ReplayHeader header = cursor.Header;
             view = new GameObject("ReplayView").AddComponent<ClientWorld>();
             view.ColourIndexOf = owner =>
@@ -162,7 +162,7 @@ namespace WAR2D.Client.Replay
             }
         }
 
-        private void OnTerrainChanged(IReadOnlyList<int2> tiles)
+        private void OnClientTerrainChanged(IReadOnlyList<int2> tiles)
         {
             if (map == null) return;
             byte[] known = ClientTerrain.Current.Tiles;
@@ -247,11 +247,11 @@ namespace WAR2D.Client.Replay
         {
             // At once: ClientWorld.OnDestroy clears the client stores, and a second ClientWorld refuses to start while the first exists.
             if (view != null) DestroyImmediate(view.gameObject);
-            ClientTerrain.Current.Changed -= OnTerrainChanged;
+            ClientTerrain.Current.Changed -= OnClientTerrainChanged;
             ClientBuildings.Clear();
             ClientTerrain.Clear();
             ClientTerrain.Current.Init(map.Grid);
-            ClientTerrain.Current.Changed += OnTerrainChanged;
+            ClientTerrain.Current.Changed += OnClientTerrainChanged;
             ReplayHeader header = cursor.Header;
             view = new GameObject("ReplayView").AddComponent<ClientWorld>();
             view.ColourIndexOf = owner => { int i = header.Players.FindIndex(p => p.OwnerId == owner); return i >= 0 ? header.Players[i].Colour : 0; };
@@ -266,7 +266,7 @@ namespace WAR2D.Client.Replay
         {
             if (view != null) DestroyImmediate(view.gameObject);
             view = null;
-            ClientTerrain.Current.Changed -= OnTerrainChanged;
+            ClientTerrain.Current.Changed -= OnClientTerrainChanged;
             MapView.Hide();
             ClientBuildings.Clear();
             ClientTerrain.Clear();
