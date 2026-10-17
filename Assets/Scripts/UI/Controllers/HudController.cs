@@ -28,6 +28,7 @@ namespace WAR2D.UI
         private readonly List<string> teammatesPicked = new List<string>();
         private MinimapController minimap;
         private AlertFeedController alertFeed;
+        private OrderTagsController orderTags;
         private DiplomacyPanelController diplomacy;
         private ClientPlayer alertSource;
         private Button diplomacyButton;
@@ -106,6 +107,7 @@ namespace WAR2D.UI
             minimap = new MinimapController(root);
             Alerts = new AlertFeedModel(config.Alerts.ShowSeconds);
             alertFeed = new AlertFeedController(root, Alerts);
+            orderTags = new OrderTagsController(root);
             diplomacy = new DiplomacyPanelController(root, Model);
             diplomacyButton = root.Q<Button>("diplomacy-button");
             Model.DiplomacyChanged += ShowDiplomacyButton;
@@ -273,6 +275,7 @@ namespace WAR2D.UI
             {
                 if (commandCard.CloseConfirm()) { }
                 else if (UnitCommander.Instance != null && UnitCommander.Instance.CancelWallDrag()) { }
+                else if (UnitCommander.Instance != null && UnitCommander.Instance.CancelDigDrag()) { }
                 else if (settings.IsOpen) settings.Close();
                 else if (gift.IsOpen) gift.Close();
                 else if (diplomacy.IsOpen) diplomacy.SetOpen(false);
@@ -287,6 +290,7 @@ namespace WAR2D.UI
                 endScreen.ShowReplay(replayText, replayFraction);
             }
             minimap.Update(Time.unscaledDeltaTime);
+            orderTags.Update(UnitCommander.Instance != null ? UnitCommander.Instance.Feedback : null, Camera.main, GameInput.Point.ReadValue<Vector2>());
             ShowWallReadout();
             Model.PullDiplomacy();
             Alerts.Expire(Time.unscaledTime);

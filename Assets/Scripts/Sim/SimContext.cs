@@ -54,6 +54,9 @@ namespace WAR2D.Sim
         /// <summary>Shift-queued waypoints per unit (main thread, boundary only).</summary>
         public WaypointBook Waypoints { get; }
 
+        /// <summary>Dig areas and the Diggers sharing them (Dig drags).</summary>
+        public DigAreaBook DigAreas { get; } = new DigAreaBook();
+
         /// <summary>The config the sim was built from.</summary>
         public GameConfigData Config { get; }
 
@@ -134,7 +137,7 @@ namespace WAR2D.Sim
             SimData data = SimData.Create(map.Grid, config, Allocator.Persistent);
             Orders = new OrderBook(map.Grid);
             Waypoints = new WaypointBook(config.Orders.MaxQueued);
-            UnitDied += (id, _) => Waypoints.Forget(id);
+            UnitDied += (id, _) => { Waypoints.Forget(id); DigAreas.Leave(id); };
             data.Orders = Orders.Table;
             data.OrderGoal = Orders.Goal;
             data.OrderLive = Orders.Live;

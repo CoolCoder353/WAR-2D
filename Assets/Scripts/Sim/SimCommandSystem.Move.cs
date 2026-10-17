@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Entities;
@@ -111,6 +112,7 @@ namespace WAR2D.Sim
                 return;
             }
             context.Waypoints.Clear(id);
+            context.DigAreas.Leave(id);
             moversByClass[data.SizeClass[slot]].Add(slot);
         }
 
@@ -207,6 +209,7 @@ namespace WAR2D.Sim
                     continue;
                 }
                 context.Waypoints.Clear(id);
+                context.DigAreas.Leave(id);
                 moversByClass[data.SizeClass[slot]].Add(slot);
             }
             int tick = SystemAPI.GetSingleton<SimClock>().Tick;
@@ -239,6 +242,11 @@ namespace WAR2D.Sim
         private void StartQueuedWork(SimData data, SimContext context, int slot, int2 tile, byte work, int tick)
         {
             int owner = data.OwnerId[slot];
+            if (work == WorkKinds.DigArea)
+            {
+                if (context.DigAreas.Join(data.IdOf[slot], tile.x)) StartAreaDig(data, context, slot);
+                return;
+            }
             if (!context.Map.Grid.Contains(tile)) return;
             List<int> one = One(slot);
             if (work == WorkKinds.Dig)
@@ -316,6 +324,7 @@ namespace WAR2D.Sim
                 int slot = data.SlotOf(id, unitCount);
                 if (slot < 0 || data.Health[slot] <= 0f) { context.Waypoints.Forget(id); continue; }
                 AddPending(data, One(slot), new PendingOrder { Slot = -1, Stance = Stances.Idle, WorkKind = WorkKinds.None });
+                if (StartAreaDig(data, context, slot)) continue;
                 if (!context.Waypoints.TryPop(id, out int2 goal, out byte stance, out byte work)) continue;
                 if (work != WorkKinds.None) StartQueuedWork(data, context, slot, goal, work, tick);
                 else
@@ -323,6 +332,76 @@ namespace WAR2D.Sim
                     Issue(data, context, One(slot), data.SizeClass[slot], goal, stance, tick, data.OwnerId[slot]);
                 }
             }
+        }
+
+        /// <summary>
+        /// A Dig drag: each listed Digger of the owner joins a new dig area over the box and starts on its nearest
+        /// tile; with <see cref="SimCommand.Queue"/>, a Digger that is busy joins once its current orders are done.
+        /// </summary>
+        private void ApplyDigArea(SimData data, SimContext context, in SimCommand command, int unitCount)
+        {
+            if (command.Ids == null) return;
+            int area = 0;
+            foreach (int id in command.Ids)
+            {
+                int slot = data.SlotOf(id, unitCount);
+                if (slot < 0 || data.OwnerId[slot] != command.OwnerId || data.Health[slot] <= 0f || data.Type[slot] != (byte)UnitType.Digger) continue;
+                if (area == 0) area = context.DigAreas.Create(command.OwnerId, command.BoxMin, command.BoxMax);
+                if (command.Queue && HasLiveOrder(data, slot, id))
+                {
+                    context.Waypoints.Append(id, new int2(area, 0), Stances.Move, WorkKinds.DigArea);
+                    continue;
+                }
+                context.Waypoints.Clear(id);
+                context.DigAreas.Join(id, area);
+                if (!StartAreaDig(data, context, slot)) AddPending(data, One(slot), new PendingOrder { Slot = -1, Stance = Stances.Idle, WorkKind = WorkKinds.None });
+            }
+        }
+
+        /// <summary>
+        /// Gives a dig-area member its next tile as a Dig job, with a move to the floor tile beside it nearest the
+        /// Digger (the dig stage digs nothing else on the way). False when it is in no area or the area has nothing
+        /// left for it.
+        /// </summary>
+        private bool StartAreaDig(SimData data, SimContext context, int slot)
+        {
+            int id = data.IdOf[slot], owner = data.OwnerId[slot];
+            if (context.DigAreas.AreaOf(id) == 0) return false;
+            float2 position = data.Positions[slot];
+            if (!context.DigAreas.TryNext(id, position, t => IsAreaDiggable(data, context, owner, t), (_, t) => TryApproach(context, t, position, out _), out int2 tile)) return false;
+            TryApproach(context, tile, position, out int2 approach);
+            int tick = SystemAPI.GetSingleton<SimClock>().Tick;
+            IssueWork(data, context, One(slot), data.SizeClass[slot], approach, tick, owner, context.Map.Grid.Index(tile), WorkKinds.Dig);
+            return true;
+        }
+
+        private static readonly int2[] Sides = { new int2(1, 0), new int2(-1, 0), new int2(0, 1), new int2(0, -1) };
+
+        /// <summary>The walkable tile beside <paramref name="tile"/> (4-connected) nearest <paramref name="position"/>. False when it has none.</summary>
+        private static bool TryApproach(SimContext context, int2 tile, float2 position, out int2 approach)
+        {
+            approach = tile;
+            float best = float.MaxValue;
+            foreach (int2 side in Sides)
+            {
+                int2 n = tile + side;
+                if (!context.Map.IsWalkable(n)) continue;
+                float d = math.distancesq(position, (float2)n + 0.5f);
+                if (d < best) { best = d; approach = n; }
+            }
+            return best < float.MaxValue;
+        }
+
+        /// <summary>A tile a dig area digs: rock, a gem, or a wall of an owner the digger's side attacks (never the map border, never its own or an ally's wall).</summary>
+        public static bool IsAreaDiggable(SimData data, SimContext context, int owner, int2 tile)
+        {
+            WAR2D.World.MapGrid grid = context.Map.Grid;
+            if (!grid.Contains(tile)) return false;
+            TileType type = grid.TileAt(tile);
+            if (type == TileType.Wall || type == TileType.Gem) return true;
+            if (type != TileType.PlayerWall) return false;
+            int me = context.SlotOf(owner), wall = data.WallOwnerSlot[grid.Index(tile)];
+            return me >= 0 && wall != SimData.NoSlot && wall != me && SimData.Attacks(data.AttackMask, me, wall);
         }
 
         private readonly Dictionary<(int2 stand, int tile, int sizeClass, int owner), List<int>> digLegs = new Dictionary<(int2, int, int, int), List<int>>();

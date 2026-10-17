@@ -203,6 +203,7 @@
 
 /* Squad bar (Figma: Squad bar) */
 .squad-bar { position: absolute; left: 292px; bottom: 142px; flex-direction: row; }
+.squad-hint { position: absolute; left: 292px; bottom: 186px; font-size: var(--font-size-14); padding: 0; margin: 0; } /* Figma: v0.12 Fixes, Squad bar – hint states */
 .squad { min-width: 30px; height: 38px; padding: 3px 10px; margin: 0 4px 0 0; align-items: center; justify-content: center; background-color: var(--color-surface-panel); border-width: 2px; border-color: var(--color-border); border-top-color: var(--color-bevel-light); border-left-color: var(--color-bevel-light); border-bottom-color: var(--color-bevel-dark); border-right-color: var(--color-bevel-dark); border-radius: var(--radius-sm); }
 .squad:hover { border-color: var(--color-text-primary); }
 .squad--active { border-color: var(--color-accent); }
@@ -242,17 +243,25 @@
 .minimap__camera { position: absolute; border-width: 1px; border-color: var(--color-text-primary); }
 .minimap__pings { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }
 
-/* Alert feed (Figma: HUD / Default, Alert feed) */
-.alert-feed { position: absolute; left: var(--space-4); top: 60px; align-items: flex-start; }
-.alert { flex-direction: row; align-items: center; height: 30px; padding: 0 10px; margin-bottom: 6px; background-color: var(--color-surface-panel); border-width: 1px; border-color: var(--color-border); border-radius: var(--radius-sm); }
-.alert__stripe { width: 3px; height: 16px; margin-right: 10px; }
-.alert__stripe--danger { background-color: var(--color-danger); }
-.alert__stripe--warning { background-color: var(--color-warning); }
-.alert__stripe--accent { background-color: var(--color-accent); }
-.alert__stripe--success { background-color: var(--color-success); }
-.alert__text { font-size: var(--font-size-12); color: var(--color-text-primary); padding: 0; margin: 0 10px 0 0; }
-.alert__dismiss { background-color: rgba(0, 0, 0, 0); border-width: 0; padding: 0 2px; margin: 0; font-size: var(--font-size-12); -unity-font-style: normal; color: var(--color-text-secondary); }
+/* Alert feed (Figma: v0.12 Fixes, HUD – alerts and squad hint): right side, above the command card (AlertFeedController sets bottom) */
+.alert-feed { position: absolute; right: var(--space-4); bottom: 212px; align-items: flex-end; }
+.alert { flex-direction: row; align-items: center; height: 34px; padding: 0 12px; margin-top: 6px; background-color: var(--color-surface-panel); border-width: 2px; border-color: var(--color-border); border-radius: var(--radius-sm); }
+.alert__stripe { width: 4px; height: 20px; margin-right: 10px; }
+.alert--danger .alert__stripe { background-color: var(--color-danger); }
+.alert--warning .alert__stripe { background-color: var(--color-warning); }
+.alert--accent .alert__stripe { background-color: var(--color-accent); }
+.alert--success .alert__stripe { background-color: var(--color-success); }
+.alert--new.alert--danger { border-color: var(--color-danger); }
+.alert--new.alert--warning { border-color: var(--color-warning); }
+.alert--new.alert--accent { border-color: var(--color-accent); }
+.alert--new.alert--success { border-color: var(--color-success); }
+.alert__text { font-size: var(--font-size-14); color: var(--color-text-primary); padding: 0; margin: 0 10px 0 0; }
+.alert__dismiss { background-color: rgba(0, 0, 0, 0); border-width: 0; padding: 0 2px; margin: 0; font-size: var(--font-size-14); -unity-font-style: normal; color: var(--color-text-secondary); }
 .alert__dismiss:hover { color: var(--color-text-primary); }
+
+/* Order feedback tags (Figma: v0.12 Fixes, Orders – goal moved and queue full, Dig – drag an area); OrderTagsController places them */
+.order-tag { position: absolute; display: none; padding: 3px 8px; margin: 0; font-size: var(--font-size-12); color: var(--color-warning); background-color: var(--color-surface-panel); border-width: 1px; border-color: var(--color-warning); border-radius: var(--radius-sm); }
+.order-number { position: absolute; padding: 0; margin: 0; font-size: var(--font-size-12); color: var(--color-text-primary); -unity-text-outline-width: 1px; -unity-text-outline-color: rgba(0, 0, 0, 0.8); }
 
 /* Minimap pings */
 .minimap-ping { position: absolute; width: 22px; height: 22px; margin-left: -11px; margin-top: -11px; border-width: 2px; border-color: var(--color-danger); border-radius: 11px; }

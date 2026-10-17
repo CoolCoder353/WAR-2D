@@ -27,6 +27,25 @@ public static class CommandValidator
         return !TargetsTile(order) || IsInside(goal, min, max);
     }
 
+    /// <summary>
+    /// A Dig drag's box from its two corner tiles: clamped to the map's inside (never the border ring) and to
+    /// <paramref name="maxSide"/> tiles a side, measured from <paramref name="from"/> (where the drag began).
+    /// False when the drag began outside the map.
+    /// </summary>
+    public static bool TryDigArea(int2 from, int2 to, int2 min, int2 max, int maxSide, out int2 lo, out int2 hi)
+    {
+        lo = hi = default;
+        if (maxSide < 1 || !IsInside(from, min, max)) return false;
+        int2 inMin = min + 1, inMax = max - 1;
+        if (math.any(inMin > inMax)) return false;
+        from = math.clamp(from, inMin, inMax);
+        to = math.clamp(to, from - (maxSide - 1), from + (maxSide - 1));
+        to = math.clamp(to, inMin, inMax);
+        lo = math.min(from, to);
+        hi = math.max(from, to);
+        return true;
+    }
+
     /// <summary>True when the tile is inside the inclusive bounds.</summary>
     public static bool IsInside(int2 tile, int2 min, int2 max) =>
         tile.x >= min.x && tile.y >= min.y && tile.x <= max.x && tile.y <= max.y;

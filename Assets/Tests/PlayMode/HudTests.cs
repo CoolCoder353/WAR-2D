@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Collections;
 using System.Collections.Generic;
 using Unity.Entities;
@@ -208,6 +209,8 @@ public class HudTests
         yield return WithSpawner(config, s => spawner = s);
         VisualElement root = HudRoot();
         Assert.That(root.Q<Label>("squad-count-0").text, Is.EqualTo("–"), "an empty squad shows a dash");
+        Assert.That(root.Q("squad-hint").resolvedStyle.display, Is.EqualTo(DisplayStyle.Flex), "the squad hint shows until a squad is saved");
+        StringAssert.StartsWith("Squad 1 · empty", root.Q<Button>("squad-0").tooltip);
         yield return ProduceUnits(root, spawner, 2);
 
         Selection selection = UnitCommander.Instance.Selection;
@@ -215,6 +218,8 @@ public class HudTests
         selection.AssignSquad(0);
         yield return PlayModeMatch.WaitUntil(() => root.Q<Label>("squad-count-0").text == "2", 5f);
         Assert.That(root.Q<Label>("squad-count-1").text, Is.EqualTo("–"));
+        Assert.That(root.Q("squad-hint").style.display.value, Is.EqualTo(DisplayStyle.None), "saving a squad hides the hint");
+        StringAssert.StartsWith("Squad 1 · 2 units", root.Q<Button>("squad-0").tooltip);
 
         selection.SelectIds(new int[0]);
         Click(root.Q<Button>("squad-0"));
@@ -244,6 +249,27 @@ public class HudTests
             if (em.GetComponentData<BuildingData>(e).id == buildingId) return em.GetComponentData<SpawnerData>(e).count;
         Assert.Fail("spawner not found");
         return -1;
+    }
+
+    [UnityTest, Timeout(90000)]
+    public IEnumerator AlertFeedSitsAboveTheCommandCardAndHighlightsTheNewest()
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        yield return PlayModeMatch.PlaceHQ(null);
+        HudController hud = Object.FindAnyObjectByType<HudController>();
+        hud.Alerts.Add(new Alert { Kind = AlertKind.GiftReceived }, "first", Time.unscaledTime - 4f);
+        hud.Alerts.Add(new Alert { Kind = AlertKind.UnderAttack }, "second", Time.unscaledTime);
+        yield return null;
+        yield return null;
+        VisualElement root = HudRoot();
+        Rect feed = root.Q("alert-feed").worldBound, card = root.Q("command-card").worldBound;
+        Assert.That(feed.yMax, Is.LessThanOrEqualTo(card.yMin + 0.5f), "the feed sits just above the command card");
+        Assert.That(card.yMin - feed.yMax, Is.LessThan(16f), "and close to it");
+        Assert.That(math.abs(feed.xMax - card.xMax), Is.LessThan(1f), "right-aligned with the card");
+        VisualElement second = root.Q("alert-feed").Children().Last();
+        Assert.IsTrue(second.ClassListContains("alert--new"), "the newest alert is highlighted");
+        Assert.IsTrue(second.ClassListContains("alert--danger"));
+        Assert.IsFalse(root.Q("alert-feed").Children().First().ClassListContains("alert--new"), "an older one is not");
     }
 
     [UnityTest, Timeout(90000)]

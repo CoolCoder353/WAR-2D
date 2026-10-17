@@ -23,7 +23,7 @@
                     <war:CommandIcon icon="Repair" />
                     <ui:Label name="cmd-repair-key" text="F" class="command-button__key" />
                 </ui:Button>
-                <ui:Button name="cmd-dig" class="command-button" tooltip="Dig: click rock, a gem or an enemy wall">
+                <ui:Button name="cmd-dig" class="command-button" tooltip="Dig: click or drag over rock, gems or enemy walls">
                     <war:CommandIcon icon="Dig" />
                     <ui:Label name="cmd-dig-key" text="G" class="command-button__key" />
                 </ui:Button>
@@ -32,7 +32,7 @@
                     <ui:Label name="cmd-detonate-key" text="B" class="command-button__key" />
                 </ui:Button>
             </ui:VisualElement>
-            <ui:Label name="dig-hint" text="Dig: click rock, a gem or an enemy wall. Right-click on rock digs too." class="text--secondary command-card__hint" />
+            <ui:Label name="dig-hint" text="Dig: click a tile or drag an area. Diggers share the area out. Right-click on rock digs too." class="text--secondary command-card__hint" />
             <ui:Label name="detonate-hint" text="Detonate (B): every selected bomber explodes now. Your own units and buildings in the blast are hit too." class="text--secondary command-card__hint" />
             <ui:VisualElement name="divider" class="command-card__divider" />
             <ui:Label name="build-label" text="Build" class="text--secondary" />

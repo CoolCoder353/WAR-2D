@@ -33,6 +33,11 @@ namespace WAR2D.Sim
 
         /// <summary>Kill the units in <see cref="SimCommand.Ids"/> (dev tools).</summary>
         KillUnits,
+        /// <summary>
+        /// The owner's Diggers in <see cref="SimCommand.Ids"/> share out the diggable tiles in the inclusive box
+        /// <see cref="SimCommand.BoxMin"/>–<see cref="SimCommand.BoxMax"/>; <see cref="SimCommand.Queue"/> queues it.
+        /// </summary>
+        DigArea,
     }
 
     /// <summary>A building the command system creates; placement, payment and footprint are done already.</summary>

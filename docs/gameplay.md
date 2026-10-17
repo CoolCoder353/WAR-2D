@@ -43,7 +43,7 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | `Shift` + drag | Add the units in the box to the selection |
 | Right-click | Order the selected units to **Move** to the cursor (they ignore enemies until they arrive) |
 | `A`, then left- or right-click | **Attack-move** to the cursor: move, but stop to fight enemies in range |
-| `Shift` + right-click (or attack-move click) | **Queue** the order after the current one: up to 4 waypoints per unit (`Orders/MaxQueued`). Units without an order start it at once. Stop, Hold or an unqueued order clears the queue. |
+| `Shift` + right-click (or attack-move click) | **Queue** the order after the current one: up to 4 waypoints per unit (`Orders/MaxQueued`). Units without an order start it at once. Stop, Hold or an unqueued order clears the queue. While Shift is held, the first selected unit's goals show as numbered rings; at the limit the cursor says "Queue full (5 orders)" and a Shift-click sends nothing. |
 | `S` | **Stop**: drop the order and stand (still fighting enemies in range) |
 | `H` | **Hold**: stand still, never pushed aside, fighting enemies in range |
 | `Ctrl` + `1`–`0` | Assign the selection to squad 1–10 (squads are kept by the server); with nothing selected, empty that squad |
@@ -55,6 +55,7 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | Left-click and drag (Wall armed) | Lay a straight wall line (horizontal, vertical or diagonal); each tile is its own blueprint |
 | `F`, then click (Builders) | **Repair** the damaged own or allied building or wall you click (the command card has the same button) |
 | `G`, then click (Diggers) | **Dig** toward the rock, gem or wall you click |
+| `G`, then drag a box (Diggers) | **Dig an area**: the selected Diggers share out the rock, gems and enemy walls in the box (lit up while you drag, with a count), each taking the nearest tile no other has, until it is clear. Your own and allies' walls are left alone. At most `Orders/MaxDigArea` (24) tiles a side. Shift queues it and keeps Dig armed; right-click or Esc cancels the drag. |
 | `Delete` (own buildings selected) | Cancel a blueprint (full refund) or demolish a finished building (half back, after a confirm). The HQ can't be removed. |
 | Minimap: left-click or drag | Move the camera there |
 | Minimap: right-click | Send the selection there (Move, or the armed Attack-move; `Shift` queues) |
@@ -91,7 +92,7 @@ The map is a grid of 1×1 tiles. By default it is **generated from a seed** at t
 | Wall blueprint | Yes | No | A planned wall segment. Units walk through and see through it until a Builder starts it. |
 | Player wall | No | No | A built wall: blocks movement and sight, has an owner and health. A destroyed wall becomes ground. |
 
-Digging turns rock and gems into ground for good. A building occupies tiles based on its configured size (5×5 for the HQ, 2×2 for a Small Unit Spawner or Radar, 1×1 for a Miner or Bomb). A building can only be placed when every tile of its footprint is free ground; units standing there are moved to the nearest free tile. Occupied tiles can't be built on again, and units path around buildings.
+Digging turns rock and gems into ground for good. A building occupies tiles based on its configured size (5×5 for the HQ, 2×2 for a Small Unit Spawner or Radar, 1×1 for a Miner or Bomb). An order or rally point on rock goes to the nearest open ground within 12 tiles; the game shows an X where you clicked, a dashed line and a ring at the open ground, and "Moved to open ground". A building can only be placed when every tile of its footprint is free ground; units standing there are moved to the nearest free tile. Occupied tiles can't be built on again, and units path around buildings.
 
 ## Economy
 

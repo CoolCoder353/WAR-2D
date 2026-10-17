@@ -149,6 +149,8 @@ namespace Config
     {
         /// <summary>Shift-queued waypoints kept per unit; extras are dropped.</summary>
         public int MaxQueued;
+        /// <summary>The longest side of a Dig drag's area, in tiles.</summary>
+        public int MaxDigArea;
     }
 
     /// <summary>Diplomacy tuning.</summary>

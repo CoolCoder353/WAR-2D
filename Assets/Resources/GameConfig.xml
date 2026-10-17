@@ -59,6 +59,7 @@
 
   <Orders>
     <MaxQueued>4</MaxQueued>  <!-- v0.6: Shift-queued waypoints per unit -->
+    <MaxDigArea>24</MaxDigArea>  <!-- 2026-10-18: longest side of a Dig drag's area, in tiles (Figma v0.12 Fixes) -->
   </Orders>
 
   <Diplomacy>

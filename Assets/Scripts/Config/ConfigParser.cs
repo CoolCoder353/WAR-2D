@@ -143,7 +143,10 @@ namespace Config
 
             XmlNode orders = Require(root, "Orders", errors);
             if (orders != null)
+            {
                 config.Orders.MaxQueued = Int(orders, "MaxQueued", "Orders", errors, min: 0, max: 16);
+                config.Orders.MaxDigArea = Int(orders, "MaxDigArea", "Orders", errors, min: 1, max: 64);
+            }
 
             XmlNode diplomacy = Require(root, "Diplomacy", errors);
             if (diplomacy != null)

@@ -35,7 +35,7 @@ Findings from an outside code review (2026-10-14), triaged against the code on 2
 
 ### Still open (valid, low priority)
 
-No HUD feedback for snapped goals or a full waypoint queue (needs Figma), `Shift` shared by `QueueModifier` and `AppendModifier` (kept on purpose, open until the owner confirms; see `known-issues.md`, rebinding), and the low / hardening bullets below that are not struck through. The original findings follow; fixes are marked in place. The 2026-10-18 pass fixed stale squad counts, the embedded large unit, the replay EOF hang, the v0.7 client leftovers, the null-identity loops and most hardening bullets.
+`Shift` shared by `QueueModifier` and `AppendModifier` (kept on purpose, open until the owner confirms; see `known-issues.md`, rebinding), and the low / hardening bullets below that are not struck through. The original findings follow; fixes are marked in place. The 2026-10-18 pass fixed stale squad counts, the embedded large unit, the replay EOF hang, the v0.7 client leftovers, the null-identity loops and most hardening bullets.
 
 ---
 
@@ -99,8 +99,8 @@ Unit-specific findings from the focused re-scan (spawn, orders, movement, combat
 - ~~Per-tick spawn bursts rely on an uncommented `UnitsBySlot++`.~~ **Fixed (2026-10-18):** commented as load-bearing in `SimCommandSystem.Spawn`.
 - ~~`KillUnits` decrements `UnitsBySlot` although the economy recounts it.~~ **Fixed (2026-10-18):** commented; it is not redundant (a spawn later in the same drain needs the room).
 - ~~`moversByClass` only has 2 size-class buckets.~~ **Fixed (v0.12):** one bucket per `FlowSizeClass`, no `& 1`, and a spawn with a size class outside `FlowSizeClass.Count` is refused. Spawners and push-outs also respect large-unit clearance (`SimLargeClassTests`). **Fixed again (2026-10-18):** both searches had the clearance check in the walk instead of the goal, so a search that started inside a footprint, or beside a new wall, could never leave it: a Heavy Factory never spawned a Heavy or Artillery (`TryFindSpawnTile`), and a Heavy under a new wall was never pushed off (`PushUnitsOffTiles`). Covered by `ArsenalMatchTests.EveryProducerMakesEachOfItsUnits` and `SimLargeClassTests.AWallRaisedUnderALargeUnitPushesItToAClearSpot`.
-- **`OrderBook.GoalSnapRadius` (12) can move a rally or order goal far from what the player clicked** with no client feedback. Show the snapped goal (or reject rock goals for rallies).
-- **`WaypointBook` silently drops waypoints past `MaxQueued` (4).** Intended, but the client shows no "queue full" state; surface it in the HUD.
+- ~~**`OrderBook.GoalSnapRadius` (12) can move a rally or order goal far from what the player clicked** with no client feedback.~~ **Fixed (2026-10-18):** the client works out the moved goal and shows it (Figma `v0.12 Fixes`; `OrderFeedback`); a rally flag sits at the moved spot. Show the snapped goal (or reject rock goals for rallies).
+- ~~**`WaypointBook` silently drops waypoints past `MaxQueued` (4).**~~ **Fixed (2026-10-18):** with Shift held the selection's goals show numbered, and past the limit the cursor says "Queue full" and the order is not sent (`OrderQueueTracker`). Intended, but the client shows no "queue full" state; surface it in the HUD.
 - **Box-order edge exclusion (`Sim/SimCommandSystem.Move.cs:45-52`).** Units exactly on the max edge are excluded (`p >= hi`); consistent with inclusive tiles, but drag boxes drawn on tile edges can miss visibly-inside units by a pixel. Inset or round the box before testing. *(2026-10-18: player box selections are made on the client and sent as ids; only the menu battle and dev tools send box orders, so this is not visible in play.)*
 - **Selection has no unit cap.** A 10k-unit box select sends ~5 order chunks under one token (`MaxOpenTokens` 4, token timeout 2 s); a slow connection can strand the pending order. Fine today, revisit with larger armies.
 - ~~Ghost building selection may outlive the building.~~ **Checked (2026-10-18), no change:** a `Gone` record raises `ClientBuildings.Removed`, and `UnitCommander.OnBuildingRemoved` calls `Selection.RemoveBuilding`.
@@ -125,7 +125,7 @@ Playtesters report pathfinding getting stuck randomly at small and large unit co
 
 ### Low / hardening (pathfinding)
 
-- **`OrderBook.GoalSnapRadius` (12) silently relocates rock/footprint goals up to 12 tiles.** Units "stop" somewhere unclicked. Show the snapped goal or reject rock goals for rallies (`Sim/OrderBook.cs:106-130`).
+- ~~**`OrderBook.GoalSnapRadius` (12) silently relocates rock/footprint goals up to 12 tiles.**~~ **Fixed (2026-10-18):** shown on the client, see above. Units "stop" somewhere unclicked. Show the snapped goal or reject rock goals for rallies (`Sim/OrderBook.cs:106-130`).
 - **`MaxStartCells` (512) subsampling leaves armies over 512 units partly off-route from the start.** The rest begin in the route-miss path above (`Pathing/SectorFieldCache.cs:27`, `Sim/OrderBook.cs:83`).
 - **`MaxSearchNodes` (200000) can silently give up on cross-map 1024^2 routes** → uncovered sectors → straight-line fallback (`Pathing/SectorGraph.cs:57`).
 - **Arrival clears AttackMove stance to Idle** instead of holding/fighting (`Sim/SimMovementSystem.cs:373-378`).

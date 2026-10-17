@@ -122,6 +122,10 @@ namespace WAR2D.Sim
                         if (clock.Running && !TargetsBuildingCreatedNow(context, command)) ApplyOrder(data, context, command, clock.UnitCount);
                         else deferred.Add(command);
                         break;
+                    case SimCommandKind.DigArea:
+                        if (clock.Running) ApplyDigArea(data, context, command, clock.UnitCount);
+                        else deferred.Add(command);
+                        break;
                 }
             }
             if (terrainChanged) data.RebuildOpaqueSum();

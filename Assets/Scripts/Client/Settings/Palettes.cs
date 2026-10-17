@@ -48,6 +48,19 @@ public static class Palettes
         return colours[((colourIndex % colours.Length) + colours.Length) % colours.Length];
     }
 
+    private static readonly Dictionary<string, (Color32 accent, Color32 warning)> Ui = new Dictionary<string, (Color32, Color32)>
+    {
+        [Standard] = (Hex("3FD0FF")[0], Hex("FF9A3D")[0]),
+        [Colourblind] = (Hex("3FD0FF")[0], Hex("E69F00")[0]),
+        [HighContrast] = (Hex("00E5FF")[0], Hex("FFB000")[0]),
+    };
+
+    /// <summary>The palette's <c>--color-accent</c> (as <c>Theme.uss</c>), for world overlays drawn outside UI Toolkit.</summary>
+    public static Color32 Accent(string palette) => (Ui.TryGetValue(palette ?? "", out var c) ? c : Ui[Standard]).accent;
+
+    /// <summary>The palette's <c>--color-warning</c> (as <c>Theme.uss</c>), for world overlays drawn outside UI Toolkit.</summary>
+    public static Color32 Warning(string palette) => (Ui.TryGetValue(palette ?? "", out var c) ? c : Ui[Standard]).warning;
+
     /// <summary>The USS class that selects a palette's tokens (none for standard, which is <c>:root</c>).</summary>
     public static string UssClass(string palette) => palette == Standard ? null : "palette-" + palette;
 

@@ -16,6 +16,7 @@ public static class CommandGate
     {
         ["UpdateClientView"] = (20f, 15f),
         ["CmdOrderChunk"] = (40f, 20f),
+        ["CmdDigAreaChunk"] = (40f, 10f),
         ["CmdReplayWanted"] = (3f, 1f),
         ["CmdAssignSquadChunk"] = (40f, 10f),
         ["CmdOrderSquad"] = (10f, 5f),

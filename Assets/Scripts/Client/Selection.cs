@@ -160,6 +160,20 @@ namespace WAR2D.Client
         /// <summary>Orders the selection to the goal: one squad order when it is exactly a squad, chunked ids otherwise.</summary>
         public void OrderMove(int2 goal) => Order(OrderKind.Move, false, goal);
 
+        /// <summary>Raised after an order is sent: its kind, Shift-queued or not, its goal, and the ids (sorted) it went to.</summary>
+        public event Action<OrderKind, bool, int2, IReadOnlyList<int>> Ordered;
+
+        /// <summary>The selected unit with the lowest id (the one whose queued goals the HUD shows), or 0.</summary>
+        public int First
+        {
+            get
+            {
+                int first = 0;
+                foreach (int id in selected) if (first == 0 || id < first) first = id;
+                return first;
+            }
+        }
+
         /// <summary>
         /// Gives the selection an order (the goal matters only for Move and AttackMove): one squad order
         /// when it is exactly a squad, chunked ids otherwise.
@@ -170,12 +184,15 @@ namespace WAR2D.Client
             if (selectedSquad >= 0 && IsExactly(squads[selectedSquad]))
             {
                 WorldStateManager.Instance.CmdOrderSquad((byte)selectedSquad, (byte)kind, queue, goal);
+                Ordered?.Invoke(kind, queue, goal, Sorted());
                 return;
             }
             ushort token = NextToken();
-            List<byte[]> chunks = OrderIdCodec.EncodeChunks(Sorted());
+            List<int> ids = Sorted();
+            List<byte[]> chunks = OrderIdCodec.EncodeChunks(ids);
             for (int i = 0; i < chunks.Count; i++)
                 WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, queue, goal);
+            Ordered?.Invoke(kind, queue, goal, ids);
         }
 
         private readonly Dictionary<OrderKind, List<int>> byKind = new Dictionary<OrderKind, List<int>>();
@@ -210,6 +227,7 @@ namespace WAR2D.Client
                 List<byte[]> chunks = OrderIdCodec.EncodeChunks(pair.Value);
                 for (int i = 0; i < chunks.Count; i++)
                     WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)pair.Key, queue, goal);
+                Ordered?.Invoke(pair.Key, queue, goal, pair.Value);
             }
         }
 

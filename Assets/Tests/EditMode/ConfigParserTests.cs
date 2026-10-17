@@ -13,7 +13,7 @@ public class ConfigParserTests
   <Match><Scene>Map_2</Scene><CountdownSeconds>5</CountdownSeconds><Map><Size>1024</Size><Seed>0</Seed><GemChance>0.04</GemChance><LayoutSizes>128 256</LayoutSizes><StartSites>8 16</StartSites><Expansions>2 4</Expansions><CentralAreas>1 1</CentralAreas><RegionScale>100 100</RegionScale><LaneScale>100 100</LaneScale><CaveDepth>3 5</CaveDepth><OutcropShare>0.08</OutcropShare><ChokepointShare>0.4</ChokepointShare><LaneWidth>6 10</LaneWidth><ChokeWidth>3 6</ChokeWidth><MinStartDistance>0.1</MinStartDistance><MaxStartDistance>0.6</MaxStartDistance><ExpansionGemTiles>30</ExpansionGemTiles></Map></Match>
   <Simulation><TickRate>20</TickRate><TargetSearchSliceTicks>8</TargetSearchSliceTicks><SeparationIntervalTicks>2</SeparationIntervalTicks><SeparationStrength>1</SeparationStrength><HashCellSize>5</HashCellSize><MaxFieldRebuildsPerTick>2</MaxFieldRebuildsPerTick><MaxUnitsPerPlayer>10000</MaxUnitsPerPlayer><MaxEntities>131072</MaxEntities><FogCellSize>2</FogCellSize><VisionIntervalTicks>4</VisionIntervalTicks></Simulation>
   <Replication><CorrectionIntervalTicks>4</CorrectionIntervalTicks><CorrectionThreshold>0.25</CorrectionThreshold><DeltaScale>8</DeltaScale><OffscreenThreshold>2</OffscreenThreshold><OffscreenIntervalTicks>20</OffscreenIntervalTicks><SnapshotBytesPerSecond>262144</SnapshotBytesPerSecond><RouteTolerance>1</RouteTolerance></Replication>
-  <Orders><MaxQueued>4</MaxQueued></Orders>
+  <Orders><MaxQueued>4</MaxQueued><MaxDigArea>24</MaxDigArea></Orders>
   <Diplomacy><ChangeCooldownSeconds>2</ChangeCooldownSeconds></Diplomacy>
   <Lobby><MapSizes>256 512 1024</MapSizes><StartingResources>500 1000 2500 5000</StartingResources><StartOptions>1 3 4</StartOptions><StartPickSeconds>0 15 45</StartPickSeconds><StartPickDefault>45</StartPickDefault><SpareStartSites>2</SpareStartSites></Lobby>
   <MenuBattle><UnitsPerArmy>1500</UnitsPerArmy><MapSize>512</MapSize><Seed>7</Seed></MenuBattle>
@@ -197,6 +197,18 @@ public class ConfigParserTests
         GameConfigData c = ConfigParser.Parse(ValidXml, errors);
         Assert.That(errors, Is.Empty);
         Assert.AreEqual(4, c.Orders.MaxQueued);
+        Assert.AreEqual(24, c.Orders.MaxDigArea);
+    }
+
+    [TestCase("<MaxDigArea>0</MaxDigArea>")]
+    [TestCase("<MaxDigArea>65</MaxDigArea>")]
+    [TestCase("")]
+    public void OrdersMaxDigAreaRequiredAndInRange(string replacement)
+    {
+        string xml = Regex.Replace(ValidXml, "<MaxDigArea>[^<]*</MaxDigArea>", replacement);
+        var errors = new List<string>();
+        ConfigParser.Parse(xml, errors);
+        Assert.That(errors, Has.Some.Contains("MaxDigArea"));
     }
 
     [TestCase("<MaxQueued>-1</MaxQueued>")]

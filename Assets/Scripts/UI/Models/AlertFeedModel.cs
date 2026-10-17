@@ -11,6 +11,7 @@ namespace WAR2D.UI
         public AlertKind Kind;
         public string Text;
         public int2 Tile;
+        public float Added;
         public float Expires;
     }
 
@@ -22,6 +23,9 @@ namespace WAR2D.UI
     {
         /// <summary>Alerts shown at once; older ones drop off.</summary>
         public const int MaxShown = 4;
+
+        /// <summary>How long a new alert keeps its border in its stripe colour (Figma <c>HUD – alerts and squad hint</c>).</summary>
+        public const float HighlightSeconds = 3f;
 
         private readonly List<AlertEntry> entries = new List<AlertEntry>();
         private readonly float showSeconds;
@@ -44,7 +48,7 @@ namespace WAR2D.UI
         /// <summary>Adds an alert with its text, shown from <paramref name="now"/>.</summary>
         public void Add(in Alert alert, string text, float now)
         {
-            entries.Add(new AlertEntry { Id = nextId++, Kind = alert.Kind, Text = text, Tile = alert.Tile, Expires = now + showSeconds });
+            entries.Add(new AlertEntry { Id = nextId++, Kind = alert.Kind, Text = text, Tile = alert.Tile, Added = now, Expires = now + showSeconds });
             while (entries.Count > MaxShown) entries.RemoveAt(0);
             if (Pings(alert.Kind)) PingRequested?.Invoke(alert.Tile, alert.Kind);
             Changed?.Invoke();
