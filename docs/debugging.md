@@ -26,7 +26,7 @@ tools/war2d --json state               # raw reply
 | --- | --- |
 | Session | `ping`, `info`, `host`, `join route=…`, `leave`, `start [size seed mode options pick team]` (`pick=-1` is Unlimited; `team=0` puts every player on one team, Teams mode only), `quit` |
 | Read | `state`, `players`, `units`, `unit id=…`, `buildings`, `tiles box=[x0,y0,x1,y1]`, `fog owner box`, `orders`, `perf`, `log`, `loglevel` |
-| Scenario | `bots n`, `spawn owner type tile count`, `build owner type tile`, `resources`, `order`, `diplomacy`, `kill ids`, `pause`, `resume`, `step`, `wait` |
+| Scenario | `bots n` (Scripted AI seats, owner ids from `AiOwnerIds`), `spawn owner type tile count`, `build owner type tile`, `resources`, `order`, `diplomacy`, `kill ids`, `pause`, `resume`, `step`, `wait` |
 | View | `camera`, `select`, `screenshot`, `overlay layer on` |
 | Replays | `record`, `replays`, `replay do=open/seek/speed/play/pause/stop/status` |
 

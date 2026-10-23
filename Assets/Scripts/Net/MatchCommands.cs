@@ -18,39 +18,52 @@ public partial class GameCore
 
     private readonly Dictionary<int, double> lastGift = new Dictionary<int, double>();
 
-    /// <summary>Leaves the match as if the sender's HQ fell: everything they own is destroyed and they are out.</summary>
+    /// <summary>Leaves the match as if the sender's HQ fell (<see cref="PlayerActions.Surrender"/>).</summary>
     [Command(requiresAuthority = false)]
     public void Cmd_Surrender(NetworkConnectionToClient sender = null)
     {
-        if (!CommandGate.Allow(sender, nameof(Cmd_Surrender))) return;
-        if (CurrentState != GameState.Playing || sender?.identity == null) return;
-        int owner = BuildingData.UIntToInt(sender.identity.netId);
-        ServerPlayer player = GetServerPlayerById(owner);
-        if (player == null || player.state != PlayerState.Playing) return;
-        EliminatePlayer(owner);
+        if (!CommandGate.Allow(sender, nameof(Cmd_Surrender)) || !WorldStateManager.TryOwnerOf(sender, out int owner)) return;
+        PlayerActions.Surrender(owner);
     }
 
-    /// <summary>
-    /// Gives resources to any other live player (ally or enemy). Taken from the sender at once and added to
-    /// the target; one gift per <c>Gifting/CooldownSeconds</c>. Only the two of them are told.
-    /// </summary>
+    /// <summary>Gives resources to any other live player, ally or enemy (<see cref="PlayerActions.Gift"/>).</summary>
     [Command(requiresAuthority = false)]
     public void Cmd_GiftResources(uint targetNetId, float amount, NetworkConnectionToClient sender = null)
     {
-        if (!CommandGate.Allow(sender, nameof(Cmd_GiftResources))) return;
-        if (sender?.identity == null) return;
-        int from = BuildingData.UIntToInt(sender.identity.netId), to = BuildingData.UIntToInt(targetNetId);
+        if (!CommandGate.Allow(sender, nameof(Cmd_GiftResources)) || !WorldStateManager.TryOwnerOf(sender, out int owner)) return;
+        PlayerActions.Gift(owner, BuildingData.UIntToInt(targetNetId), amount);
+    }
+
+    /// <summary>
+    /// Gives resources from <paramref name="from"/> to any other live player. Taken from the giver at once and added to
+    /// the target; one gift per <c>Gifting/CooldownSeconds</c>. Only the two of them are told. Returns whether it was given.
+    /// </summary>
+    [Server]
+    internal bool TryGift(int from, int to, float amount)
+    {
         ServerPlayer giver = GetServerPlayerById(from), receiver = GetServerPlayerById(to);
-        if (giver == null || receiver == null) return;
+        if (giver == null || receiver == null) return false;
         if (!lastGift.TryGetValue(from, out double last)) last = double.NegativeInfinity;
         double now = NetworkTime.localTime;
-        if (!GiftRules.CanGift(CurrentState, giver.state, receiver.state, from, to, now, last, ConfigLoader.LoadConfig().Gifting.CooldownSeconds)) return;
-        if (!GiftRules.IsValid(amount, giver.Resources) || !giver.TrySpend(amount, countAsSpent: false)) return;
+        if (!GiftRules.CanGift(CurrentState, giver.state, receiver.state, from, to, now, last, ConfigLoader.LoadConfig().Gifting.CooldownSeconds)) return false;
+        if (!GiftRules.IsValid(amount, giver.Resources) || !giver.TrySpend(amount, countAsSpent: false)) return false;
         receiver.Add(amount);
         lastGift[from] = now;
         Stats.Gift(from, to, amount);
         foreach (int owner in GiftRules.Recipients(from, to)) SendGiftNotice(owner, from, to, amount);
         WorldStateManager.Instance?.Alerts?.Add(to, new Alert { Kind = AlertKind.GiftReceived, OtherOwnerId = from, Amount = amount });
+        return true;
+    }
+
+    /// <summary>Eliminates the owner as if their HQ fell, while Playing and still in the match. Returns whether they surrendered.</summary>
+    [Server]
+    internal bool TrySurrender(int owner)
+    {
+        if (CurrentState != GameState.Playing) return false;
+        ServerPlayer player = GetServerPlayerById(owner);
+        if (player == null || player.state != PlayerState.Playing) return false;
+        EliminatePlayer(owner);
+        return true;
     }
 
     /// <summary>Tells one party of a gift (sender or recipient only).</summary>

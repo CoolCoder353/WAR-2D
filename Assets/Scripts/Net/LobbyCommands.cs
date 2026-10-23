@@ -44,6 +44,18 @@ public partial class GameCore
             if (settings.Mode == MatchMode.FreeForAll) player.lobbyTeam = TeamRules.NoTeam;
             player.ready = false;
         }
+        if (settings.Mode == MatchMode.FreeForAll) SetAiTeams(TeamRules.NoTeam);
+    }
+
+    /// <summary>Puts every lobby AI on <paramref name="team"/> (Free-for-all forces Solo).</summary>
+    [Server]
+    private void SetAiTeams(int team)
+    {
+        foreach (AiSeat seat in AiPlayers.Values)
+        {
+            seat.LobbyTeam = team;
+            if (seat.Client != null) seat.Client.lobbyTeam = team;
+        }
     }
 
     /// <summary>Picks a new random map seed. Server owner only, in the lobby. Clears every ready flag.</summary>
@@ -64,9 +76,7 @@ public partial class GameCore
     {
         if (!CommandGate.Allow(sender, nameof(Cmd_SetColour))) return;
         if (CurrentState != GameState.Lobby || !TryLobbyPlayer(sender, out ClientPlayer me)) return;
-        var others = new List<int>();
-        foreach (ClientPlayer player in LobbyClientPlayers()) if (player != me) others.Add(player.colourIndex);
-        if (LobbyRules.IsColourFree(colourIndex, others)) me.colourIndex = colourIndex;
+        if (LobbyRules.IsColourFree(colourIndex, TakenColours(me))) me.colourIndex = colourIndex;
     }
 
     /// <summary>Marks the sender ready (or not), in the lobby.</summary>
@@ -95,6 +105,7 @@ public partial class GameCore
         foreach (NetworkIdentity identity in ServerPlayers.Keys)
             if (identity != null && identity.TryGetComponent(out ClientPlayer player))
                 players.Add((BuildingData.UIntToInt(identity.netId), player.ready, player.lobbyTeam));
+        foreach (AiSeat seat in AiPlayers.Values) players.Add((seat.OwnerId, true, seat.LobbyTeam)); // an AI is always ready
         return players;
     }
 
@@ -102,14 +113,13 @@ public partial class GameCore
     [Server]
     private void AssignFreeColour(ClientPlayer joining)
     {
-        var taken = new List<int>();
-        foreach (ClientPlayer player in LobbyClientPlayers()) if (player != joining) taken.Add(player.colourIndex);
-        int colour = LobbyRules.FirstFreeColour(taken);
+        int colour = LobbyRules.FirstFreeColour(TakenColours(joining));
         if (colour < 0) // LobbyRules.MayJoin keeps the lobby within the palette, so this means that rule broke
             WAR2D.Dev.Logging.WarLog.Error(WAR2D.Dev.Logging.LogCategory.Lobby, $"no free colour for netId {joining.netId}; sharing colour 0");
         joining.colourIndex = colour < 0 ? 0 : colour;
     }
 
+    /// <summary>The humans' player objects (AIs are always ready and keep their own seats).</summary>
     private IEnumerable<ClientPlayer> LobbyClientPlayers()
     {
         foreach (NetworkIdentity identity in ServerPlayers.Keys)

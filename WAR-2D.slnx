@@ -13,6 +13,7 @@
   <Project Path="kcp2k.csproj" />
   <Project Path="Mirror.csproj" />
   <Project Path="SimpleWebTransport.csproj" />
+  <Project Path="WAR2D.Ai.csproj" />
   <Project Path="Mirror.Authenticators.csproj" />
   <Project Path="WAR2D.Tests.PlayMode.csproj" />
   <Project Path="EncryptionTransportEditor.csproj" />

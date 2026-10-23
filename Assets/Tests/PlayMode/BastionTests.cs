@@ -17,7 +17,7 @@ using WAR2D.Sim;
 /// </summary>
 public class BastionTests
 {
-    private const int Bot = 1000003;
+    private static readonly int Bot = AiOwnerIds.For(2);
     private GameConfigData config;
 
     [UnitySetUp]
@@ -184,7 +184,7 @@ public class BastionTests
         yield return PlayModeMatch.StartMatchAsHost(config);
         yield return PlayModeMatch.PlaceHQ(a => hq = a);
         DevApi.AllowForTests = true;
-        GameCore.Instance.AddBot(Bot, 1e9f);
+        GameCore.Instance.DevAddScriptedAi(Bot, 1e9f);
         PlaceFar(BuildingType.Base, hq, 1e7f); // keeps the bot in the match
         anchorOut(hq);
     }

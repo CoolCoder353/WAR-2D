@@ -30,11 +30,11 @@ public partial class GameCore
 
         var owners = new List<int>(PlayerOrder);
         Dictionary<int, int[]> deal = StartPickRules.Deal(sites.Length, owners, Settings.StartOptions, System.Security.Cryptography.RandomNumberGenerator.GetInt32);
-        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
+        foreach ((int owner, ServerPlayer player) in AllPlayers())
         {
-            if (deal.TryGetValue(BuildingData.UIntToInt(entry.Key.netId), out int[] options)) { entry.Value.StartOptions = options; entry.Value.StartPick = -1; }
+            if (deal.TryGetValue(owner, out int[] options)) { player.StartOptions = options; player.StartPick = -1; }
         }
-        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers) SendStartOptions(entry.Key, entry.Value);
+        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers) SendStartOptions(entry.Key, entry.Value); // AIs read theirs from their view
         WarLog.Info(LogCategory.Net, $"Dealt {Settings.StartOptions} start options to {deal.Count} players; pick time {Settings.StartPickSeconds}");
 
         if (Settings.StartPickSeconds == 0) PlaceRemainingRandomly(world);
@@ -50,7 +50,7 @@ public partial class GameCore
         var teamOwners = new List<int>();
         var teamOptions = new List<int>();
         var teamPicks = new List<int>();
-        IEnumerable<(int, int[], int)> starts = ServerPlayers.Select(p => (BuildingData.UIntToInt(p.Key.netId), p.Value.StartOptions, p.Value.StartPick));
+        IEnumerable<(int, int[], int)> starts = AllPlayers().Select(p => (p.owner, p.player.StartOptions, p.player.StartPick));
         foreach ((int otherOwner, int[] options, int pick) in StartPickRules.TeamView(owner, starts, AreTeammates))
         {
             teamOwners.Add(otherOwner);
@@ -66,10 +66,10 @@ public partial class GameCore
 
     /// <summary>Called by the server when an HQ is placed: records which option it is in and tells the owner's teammates.</summary>
     [Server]
-    internal void OnHqPlaced(ClientPlayer placer, int2 anchor)
+    internal void OnHqPlaced(int owner, int2 anchor)
     {
         WorldStateManager world = WorldStateManager.Instance;
-        ServerPlayer player = GetServerPlayerById(BuildingData.UIntToInt(placer.netId));
+        ServerPlayer player = GetServerPlayerById(owner);
         if (world == null || player == null || player.StartOptions == null) return;
         int2[] sites = world.Map.HqSites;
         for (int i = 0; i < player.StartOptions.Length; i++)
@@ -79,9 +79,9 @@ public partial class GameCore
             player.StartPick = option;
             break;
         }
-        int owner = BuildingData.UIntToInt(placer.netId);
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> other in ServerPlayers)
         {
+            if (other.Key == null || other.Value.connection == null) continue; // only human teammates have a connection to tell
             int otherOwner = BuildingData.UIntToInt(other.Key.netId);
             if (AreTeammates(owner, otherOwner)) other.Key.GetComponent<ClientPlayer>().TargetTeammatePick(other.Value.connection, owner, player.StartPick);
         }
@@ -91,23 +91,22 @@ public partial class GameCore
     [Server]
     internal void PlaceRemainingRandomly(WorldStateManager world)
     {
-        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers.ToList())
+        foreach ((int owner, ServerPlayer player) in AllPlayers().ToList())
         {
-            ClientPlayer client = entry.Key != null ? entry.Key.GetComponent<ClientPlayer>() : null;
-            ServerPlayer player = entry.Value;
-            if (client == null || client.hasPlacedHQ || player.StartOptions == null || player.StartOptions.Length == 0) continue;
+            if (AiPlayers.TryGetValue(owner, out AiSeat seat) && seat.IsScripted) continue; // its driver places it
+            if (HasPlacedHq(owner) || player.StartOptions == null || player.StartOptions.Length == 0) continue;
             int first = System.Security.Cryptography.RandomNumberGenerator.GetInt32(player.StartOptions.Length);
             for (int k = 0; k < player.StartOptions.Length; k++)
             {
                 int option = player.StartOptions[(first + k) % player.StartOptions.Length];
-                if (TryPlaceHqNear(world, client, world.Map.HqSites[option])) break;
+                if (TryPlaceHqNear(world, owner, world.Map.HqSites[option])) break;
             }
         }
     }
 
     /// <summary>Places the HQ at the free footprint nearest <paramref name="site"/>'s centre, searching outward within the site.</summary>
     [Server]
-    private static bool TryPlaceHqNear(WorldStateManager world, ClientPlayer client, int2 site)
+    private static bool TryPlaceHqNear(WorldStateManager world, int owner, int2 site)
     {
         int r = WAR2D.World.MapGenerator.HqClearRadius;
         var offsets = new List<int2>();
@@ -115,8 +114,8 @@ public partial class GameCore
         for (int dx = -r; dx <= r; dx++) offsets.Add(new int2(dx, dy));
         offsets.Sort((a, b) => math.lengthsq(a).CompareTo(math.lengthsq(b)));
         foreach (int2 offset in offsets)
-            if (world.CheckPlacement(BuildingType.Base, site + offset, 0f, client) == PlacementResult.Ok)
-                return world.PlaceBuilding(client, site + offset, BuildingType.Base, 0f);
+            if (world.CheckPlacement(BuildingType.Base, site + offset, 0f, owner) == PlacementResult.Ok)
+                return world.PlaceBuilding(owner, site + offset, BuildingType.Base, 0f);
         return false;
     }
 }

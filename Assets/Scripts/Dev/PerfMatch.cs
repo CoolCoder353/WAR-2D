@@ -23,7 +23,6 @@ using WAR2D.Sim;
 public sealed class PerfMatch : MonoBehaviour
 {
     public const int Owners = 8, UnitsPerOwner = 10000, WarmupTicks = 100, SampleTicks = 1200, OrderEveryTicks = 40;
-    private const int BotIdBase = 1000001;
 
     private readonly PerfStats stats = new PerfStats();
     private readonly HashSet<int>[] armyIds = new HashSet<int>[Owners];
@@ -100,8 +99,8 @@ public sealed class PerfMatch : MonoBehaviour
         }
         for (int i = firstBot; i < Owners; i++)
         {
-            owners[i] = BotIdBase + i;
-            GameCore.Instance.AddBot(owners[i], 1e9f);
+            owners[i] = AiOwnerIds.For(i);
+            GameCore.Instance.DevAddScriptedAi(owners[i], 1e9f);
         }
 
         int2[] sites = PairedSites(world.Map.HqSites, world.MapSize);

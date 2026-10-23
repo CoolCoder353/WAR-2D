@@ -140,7 +140,7 @@ public class BuildingPlacement : MonoBehaviour
                 shown += ShowRing(sites, option, shown, PlayerPalette.Of(localPlayer.colourIndex));
             foreach (var teammate in localPlayer.TeammateStarts)
             {
-                int colour = NetworkClient.spawned.TryGetValue((uint)teammate.Key, out NetworkIdentity id) && id.TryGetComponent(out ClientPlayer other) ? other.colourIndex : localPlayer.colourIndex;
+                int colour = ClientPlayer.TryFind(teammate.Key, out ClientPlayer other) ? other.colourIndex : localPlayer.colourIndex;
                 foreach (int option in teammate.Value.options)
                     shown += ShowRing(sites, option, shown, PlayerPalette.Of(colour), option == teammate.Value.pick);
             }

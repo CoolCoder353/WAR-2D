@@ -312,7 +312,7 @@ public class HudTests
         yield return PlayModeMatch.WaitUntil(() => math.distance(Centre(selection), goal) < math.distance(start, goal) - 2f, 10f);
     }
 
-    private const int Bot = 1000002;
+    private static readonly int Bot = AiOwnerIds.For(1);
 
     /// <summary>Adds a hostile bot with an indestructible HQ as far from <paramref name="from"/> as fits; returns its anchor.</summary>
     private static bool BotHasABuilding()
@@ -326,7 +326,7 @@ public class HudTests
     private static int2 AddBotWithHQ(int2 from)
     {
         DevApi.AllowForTests = true;
-        GameCore.Instance.AddBot(Bot, 1e9f);
+        GameCore.Instance.DevAddScriptedAi(Bot, 1e9f);
         WorldStateManager wsm = WorldStateManager.Instance;
         (int2 min, int2 max) = wsm.MapBounds;
         int2 far = new int2(from.x < (min.x + max.x) / 2 ? max.x - 6 : min.x + 6, from.y < (min.y + max.y) / 2 ? max.y - 6 : min.y + 6);
@@ -420,11 +420,10 @@ public class HudTests
             yield return null;
             Assert.That(hud.Diplomacy.IsOpen, Is.True, "the Diplomacy button opens the panel");
 
-            // The bot has no player object, so its row shows as eliminated with its switches disabled;
-            // send the attack switch's event the way an enabled switch does.
-            // Bots join after match start, so resend everyone's row once the bot has a slot.
+            // The Scripted seat joined after match start: the server resends every row by itself once it has a
+            // slot (no SendAllDiplomacy here), and its row is a live player's (v0.14: it has a player object).
             yield return PlayModeMatch.WaitUntil(() => sim.TrySlotOf(Bot, out _), 5f);
-            GameCore.Instance.SendAllDiplomacy();
+            yield return PlayModeMatch.WaitUntil(() => hud.Model.Players.Any(p => p.OwnerId == Bot && !p.Eliminated), 5f);
             int botBit = 1 << GameCore.Instance.PlayerOrder.IndexOf(Bot);
             yield return PlayModeMatch.WaitUntil(() => (hud.Model.AttackMask & botBit) != 0, 5f);
             Assert.That(hud.Model.AttackMask & botBit, Is.Not.Zero, "starts attacking the bot");
@@ -502,8 +501,8 @@ public class HudTests
         HudController hud = Object.FindAnyObjectByType<HudController>();
         VisualElement root = HudRoot();
         Click(root.Q<Button>("gift-button"));
-        yield return PlayModeMatch.WaitUntil(() => root.Q<Button>("gift-target-" + Bot) != null, 5f);
-        Assert.That(root.Q<Button>("gift-target-" + Bot).enabledSelf, Is.False, "a bot has no player object, so the dialog lists it as eliminated");
+        yield return PlayModeMatch.WaitUntil(() => root.Q<Button>("gift-target-" + Bot) != null && root.Q<Button>("gift-target-" + Bot).enabledSelf, 5f);
+        Assert.That(root.Q<Button>("gift-target-" + Bot).enabledSelf, Is.True, "a Scripted AI seat has a player object, so the dialog lists it as a live player");
 
         GameCore.Instance.Cmd_GiftResources((uint)Bot, 250f); // the dialog's send path, past the row
         yield return PlayModeMatch.WaitUntil(() => noticed > 0, 5f);

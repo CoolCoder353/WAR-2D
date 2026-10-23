@@ -15,13 +15,23 @@ public class ConfigParserTests
   <Replication><CorrectionIntervalTicks>4</CorrectionIntervalTicks><CorrectionThreshold>0.25</CorrectionThreshold><DeltaScale>8</DeltaScale><OffscreenThreshold>2</OffscreenThreshold><OffscreenIntervalTicks>20</OffscreenIntervalTicks><SnapshotBytesPerSecond>262144</SnapshotBytesPerSecond><RouteTolerance>1</RouteTolerance></Replication>
   <Orders><MaxQueued>4</MaxQueued><MaxDigArea>24</MaxDigArea></Orders>
   <Diplomacy><ChangeCooldownSeconds>2</ChangeCooldownSeconds></Diplomacy>
-  <Lobby><MapSizes>256 512 1024</MapSizes><StartingResources>500 1000 2500 5000</StartingResources><StartOptions>1 3 4</StartOptions><StartPickSeconds>0 15 45</StartPickSeconds><StartPickDefault>45</StartPickDefault><SpareStartSites>2</SpareStartSites></Lobby>
+  <Lobby><MapSizes>256 512 1024</MapSizes><StartingResources>500 1000 2500 5000</StartingResources><StartOptions>1 3 4</StartOptions><StartPickSeconds>0 15 45</StartPickSeconds><StartPickDefault>45</StartPickDefault><SpareStartSites>2</SpareStartSites><Visibility>Friends</Visibility></Lobby>
   <MenuBattle><UnitsPerArmy>1500</UnitsPerArmy><MapSize>512</MapSize><Seed>7</Seed></MenuBattle>
   <Gifting><CooldownSeconds>5</CooldownSeconds></Gifting>
   <Alerts><ThrottleSeconds>10</ThrottleSeconds><AreaTiles>32</AreaTiles><ShowSeconds>8</ShowSeconds></Alerts>
   <Siege><BuildPower>25</BuildPower><DemolishRefund>0.5</DemolishRefund><RepairCostPerHealth>0.2</RepairCostPerHealth><WorkReach>1.6</WorkReach><DigTime>1.5</DigTime><GemPayout>150</GemPayout><WallCost>5</WallCost><WallHealth>150</WallHealth><MaxWallLine>64</MaxWallLine><BlastRadius>2.5</BlastRadius><BlastDamage>200</BlastDamage><RadarClearSeconds>5</RadarClearSeconds><RadarAlertCooldownSeconds>30</RadarAlertCooldownSeconds><JamRadius>12</JamRadius><JamSight>3</JamSight></Siege>
   <Audio><BattleDeathsPerSecond>3</BattleDeathsPerSecond><BattleHoldSeconds>20</BattleHoldSeconds></Audio>
   <Replays><Enabled>1</Enabled><MaxMegabytes>512</MaxMegabytes><SendKilobytesPerSecond>1024</SendKilobytesPerSecond><KeepCount>50</KeepCount></Replays>
+  <Ai><Callsigns>Cmdr. A, Maj. B, Capt. C, Col. D, Lt. E, Maj. F, Capt. G, Cmdr. H, Col. I</Callsigns>
+    <Difficulty name=""Easy""><ThinkSeconds>1.0</ThinkSeconds><ActionsPerMinute>30</ActionsPerMinute><ReactionSeconds>6</ReactionSeconds><Builders>2</Builders><BuildersPerExpansion>0</BuildersPerExpansion><MaxExpansions>1</MaxExpansions><ExpandAfterSeconds>600</ExpandAfterSeconds><KeepsUpkeepPaid>0</KeepsUpkeepPaid><UpkeepReserveSeconds>0</UpkeepReserveSeconds><Counters>None</Counters><Retreats>0</Retreats><RetreatRatio>0.5</RetreatRatio><FocusFire>0</FocusFire><KeepsBacklineBack>0</KeepsBacklineBack><Scouting>Once</Scouting><RescoutSeconds>600</RescoutSeconds><SpecialUse>0.25</SpecialUse><DefendsChokepoints>0</DefendsChokepoints><AttackRatio>1.0</AttackRatio><Peace>Always</Peace><GiftsSurplus>0</GiftsSurplus></Difficulty>
+    <Difficulty name=""Normal""><ThinkSeconds>0.5</ThinkSeconds><ActionsPerMinute>80</ActionsPerMinute><ReactionSeconds>2</ReactionSeconds><Builders>4</Builders><BuildersPerExpansion>1</BuildersPerExpansion><MaxExpansions>2</MaxExpansions><ExpandAfterSeconds>300</ExpandAfterSeconds><KeepsUpkeepPaid>1</KeepsUpkeepPaid><UpkeepReserveSeconds>20</UpkeepReserveSeconds><Counters>Seen</Counters><Retreats>1</Retreats><RetreatRatio>0.6</RetreatRatio><FocusFire>0</FocusFire><KeepsBacklineBack>0</KeepsBacklineBack><Scouting>Regular</Scouting><RescoutSeconds>120</RescoutSeconds><SpecialUse>1</SpecialUse><DefendsChokepoints>0</DefendsChokepoints><AttackRatio>1.2</AttackRatio><Peace>UnlessWinning</Peace><GiftsSurplus>1</GiftsSurplus></Difficulty>
+    <Difficulty name=""Hard""><ThinkSeconds>0.25</ThinkSeconds><ActionsPerMinute>200</ActionsPerMinute><ReactionSeconds>0.5</ReactionSeconds><Builders>5</Builders><BuildersPerExpansion>2</BuildersPerExpansion><MaxExpansions>3</MaxExpansions><ExpandAfterSeconds>180</ExpandAfterSeconds><KeepsUpkeepPaid>1</KeepsUpkeepPaid><UpkeepReserveSeconds>30</UpkeepReserveSeconds><Counters>SeenAndBuildings</Counters><Retreats>1</Retreats><RetreatRatio>0.7</RetreatRatio><FocusFire>1</FocusFire><KeepsBacklineBack>1</KeepsBacklineBack><Scouting>RegularWithRadar</Scouting><RescoutSeconds>60</RescoutSeconds><SpecialUse>1</SpecialUse><DefendsChokepoints>1</DefendsChokepoints><AttackRatio>1.3</AttackRatio><Peace>WhenLosingOrThirdParty</Peace><GiftsSurplus>1</GiftsSurplus></Difficulty>
+    <Style name=""Rusher""><BuildOrder>Miner Barracks Scout Tank</BuildOrder><ArmyMix>Scout:2 Tank:6</ArmyMix><Producers>Barracks:2 HeavyFactory:1</Producers><Miners>4</Miners><MinersPerExpansion>3</MinersPerExpansion><Expansions>1</Expansions><ExpandTiming>1</ExpandTiming><FirstAttackSeconds>200</FirstAttackSeconds><AttackArmySize>10</AttackArmySize><AttackRatioScale>1</AttackRatioScale><AttackIntervalSeconds>90</AttackIntervalSeconds><Turrets>2</Turrets><Jammers>1</Jammers><Bombs>2</Bombs><Walls>0</Walls><Radar>1</Radar></Style>
+    <Style name=""Turtle""><BuildOrder>Miner GunTurret HeavyFactory Heavy</BuildOrder><ArmyMix>Heavy:4 Artillery:4</ArmyMix><Producers>Barracks:1 HeavyFactory:2</Producers><Miners>4</Miners><MinersPerExpansion>3</MinersPerExpansion><Expansions>1</Expansions><ExpandTiming>1</ExpandTiming><FirstAttackSeconds>200</FirstAttackSeconds><AttackArmySize>10</AttackArmySize><AttackRatioScale>1</AttackRatioScale><AttackIntervalSeconds>90</AttackIntervalSeconds><Turrets>2</Turrets><Jammers>1</Jammers><Bombs>2</Bombs><Walls>0</Walls><Radar>1</Radar></Style>
+    <Style name=""Expander""><BuildOrder>Miner Miner Builder Barracks</BuildOrder><ArmyMix>Tank:5 Heavy:2</ArmyMix><Producers>Barracks:2</Producers><Miners>4</Miners><MinersPerExpansion>3</MinersPerExpansion><Expansions>1</Expansions><ExpandTiming>1</ExpandTiming><FirstAttackSeconds>200</FirstAttackSeconds><AttackArmySize>10</AttackArmySize><AttackRatioScale>1</AttackRatioScale><AttackIntervalSeconds>90</AttackIntervalSeconds><Turrets>2</Turrets><Jammers>1</Jammers><Bombs>2</Bombs><Walls>0</Walls><Radar>1</Radar></Style>
+    <Style name=""Balanced""><BuildOrder>Miner Barracks Tank</BuildOrder><ArmyMix>Tank:4 Heavy:2 Digger:1 SuicideBomber:1</ArmyMix><Producers>Barracks:2 HeavyFactory:1 SiegeWorkshop:1</Producers><Miners>4</Miners><MinersPerExpansion>3</MinersPerExpansion><Expansions>1</Expansions><ExpandTiming>1</ExpandTiming><FirstAttackSeconds>200</FirstAttackSeconds><AttackArmySize>10</AttackArmySize><AttackRatioScale>1</AttackRatioScale><AttackIntervalSeconds>90</AttackIntervalSeconds><Turrets>2</Turrets><Jammers>1</Jammers><Bombs>2</Bombs><Walls>0</Walls><Radar>1</Radar></Style>
+    <Diplomacy><PeaceSeconds>60</PeaceSeconds><GrudgeSeconds>180</GrudgeSeconds><WinningRatio>1.5</WinningRatio><LosingRatio>0.8</LosingRatio><GiftSurplus>3000</GiftSurplus><GiftSurplusSeconds>60</GiftSurplusSeconds><GiftShare>0.25</GiftShare><GiftPeaceFactor>0.5</GiftPeaceFactor></Diplomacy>
+    <Concede><MinMinutes>10</MinMinutes><Seconds>60</Seconds><Ratio>0.1</Ratio><SeenWindowSeconds>120</SeenWindowSeconds><IncomeSeconds>60</IncomeSeconds></Concede></Ai>
   <DamageTable><Entry attacker=""Tank"" target=""Unit"">1.0</Entry><Entry attacker=""Tank"" target=""Building"">1.0</Entry><Entry attacker=""Tank"" target=""Wall"">0.5</Entry><Entry attacker=""Digger"" target=""Unit"">0.5</Entry><Entry attacker=""Digger"" target=""Wall"">6</Entry><Entry attacker=""GunTurret"" target=""Unit"">1.5</Entry><Entry attacker=""GunTurret"" target=""HeavyUnit"">0.4</Entry><Entry attacker=""GunTurret"" target=""Building"">0.5</Entry><Entry attacker=""GunTurret"" target=""Wall"">0.5</Entry></DamageTable>
   <Units>
     <Unit type=""Tank""><Health>100</Health><Damage>10</Damage><Range>5</Range><AttackInterval>1</AttackInterval><MoveSpeed>5</MoveSpeed><UpfrontCost>50</UpfrontCost><RunningCost>2</RunningCost><Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>8</Sight><Armour>Light</Armour><BuildSeconds>1</BuildSeconds></Unit>
@@ -417,5 +427,148 @@ public class ConfigParserTests
         Assert.AreEqual(0.4f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.HeavyUnit));
         Assert.AreEqual(0.5f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.Building));
         Assert.AreEqual(0.5f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.Wall));
+    }
+
+    // ---------- v0.14 AI ----------
+
+    [Test]
+    public void AiBlockParses()
+    {
+        var errors = new List<string>();
+        GameConfigData c = ConfigParser.Parse(ValidXml, errors);
+        Assert.That(errors, Is.Empty);
+        Assert.That(c.Ai.Callsigns, Has.Length.EqualTo(9));
+        Assert.That(c.Ai.Callsigns[0], Is.EqualTo("Cmdr. A"));
+        Assert.That(c.Ai.GetDifficulty(AiDifficulty.Hard).ThinkSeconds, Is.EqualTo(0.25f));
+        Assert.That(c.Ai.GetDifficulty(AiDifficulty.Hard).Counters, Is.EqualTo(AiCounters.SeenAndBuildings));
+        Assert.That(c.Ai.GetDifficulty(AiDifficulty.Normal).KeepsUpkeepPaid, Is.True);
+        Assert.That(c.Ai.GetDifficulty(AiDifficulty.Easy).Peace, Is.EqualTo(AiPeace.Always));
+        AiStyleConfig turtle = c.Ai.GetStyle(AiStyle.Turtle);
+        Assert.That(turtle.BuildOrder[1].Building, Is.EqualTo(BuildingType.GunTurret));
+        Assert.That(turtle.BuildOrder[3].Unit, Is.EqualTo(UnitType.Heavy));
+        Assert.That(turtle.ArmyMix[UnitType.Artillery], Is.EqualTo(4f));
+        Assert.That(turtle.Producers[BuildingType.HeavyFactory], Is.EqualTo(2));
+        Assert.That(c.Ai.Diplomacy.GrudgeSeconds, Is.EqualTo(180f));
+        Assert.That(c.Ai.Concede.Ratio, Is.EqualTo(0.1f));
+        Assert.That(c.Lobby.Visibility, Is.EqualTo(LobbyVisibility.Friends));
+        Assert.Throws<KeyNotFoundException>(() => c.Ai.GetDifficulty(AiDifficulty.Scripted), "Scripted has no settings");
+        Assert.Throws<KeyNotFoundException>(() => c.Ai.GetStyle(AiStyle.Random), "Random is resolved before use");
+    }
+
+    [TestCase("Easy")]
+    [TestCase("Normal")]
+    [TestCase("Hard")]
+    public void AMissingDifficultyIsAnError(string name)
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(Regex.Replace(ValidXml, $"<Difficulty name=\"{name}\">.*?</Difficulty>", ""), errors);
+        Assert.That(errors, Has.Some.Contains($"missing <Difficulty name=\"{name}\">"));
+    }
+
+    [TestCase("Rusher")]
+    [TestCase("Turtle")]
+    [TestCase("Expander")]
+    [TestCase("Balanced")]
+    public void AMissingStyleIsAnError(string name)
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(Regex.Replace(ValidXml, $"<Style name=\"{name}\">.*?</Style>", ""), errors);
+        Assert.That(errors, Has.Some.Contains($"missing <Style name=\"{name}\">"));
+    }
+
+    [TestCase("<Difficulty name=\"Easy\">", "<Difficulty name=\"Scripted\">", "unknown difficulty")]
+    [TestCase("<Style name=\"Rusher\">", "<Style name=\"Random\">", "unknown style")]
+    [TestCase("<Peace>Always</Peace>", "<Peace>Sometimes</Peace>", "Peace")]
+    [TestCase("<Counters>None</Counters>", "<Counters>2</Counters>", "Counters")]
+    [TestCase("<Retreats>0</Retreats>", "<Retreats>2</Retreats>", "Retreats")]
+    [TestCase("<ActionsPerMinute>30</ActionsPerMinute>", "<ActionsPerMinute>0</ActionsPerMinute>", "ActionsPerMinute")]
+    [TestCase("<ArmyMix>Scout:2 Tank:6</ArmyMix>", "<ArmyMix>Builder:2</ArmyMix>", "ArmyMix")]
+    [TestCase("<ArmyMix>Scout:2 Tank:6</ArmyMix>", "<ArmyMix>Tank:0</ArmyMix>", "ArmyMix")]
+    [TestCase("<ArmyMix>Scout:2 Tank:6</ArmyMix>", "<ArmyMix>Tank</ArmyMix>", "ArmyMix")]
+    [TestCase("<Producers>Barracks:2 HeavyFactory:1</Producers>", "<Producers>Miner:2</Producers>", "Producers")]
+    [TestCase("<Producers>Barracks:2 HeavyFactory:1</Producers>", "<Producers>Barracks:1.5</Producers>", "Producers")]
+    [TestCase("<BuildOrder>Miner Barracks Scout Tank</BuildOrder>", "<BuildOrder>Miner Base</BuildOrder>", "BuildOrder")]
+    [TestCase("<BuildOrder>Miner Barracks Scout Tank</BuildOrder>", "<BuildOrder>Miner Castle</BuildOrder>", "BuildOrder")]
+    [TestCase("<GrudgeSeconds>180</GrudgeSeconds>", "", "GrudgeSeconds")]
+    [TestCase("<Ratio>0.1</Ratio>", "<Ratio>2</Ratio>", "Ratio")]
+    [TestCase("<Visibility>Friends</Visibility>", "<Visibility>Everyone</Visibility>", "Visibility")]
+    [TestCase("<Visibility>Friends</Visibility>", "", "Visibility")]
+    public void BadAiValuesAreErrors(string from, string to, string expected)
+    {
+        var errors = new List<string>();
+        Assert.That(ValidXml, Does.Contain(from), "the test's anchor");
+        ConfigParser.Parse(ReplaceFirst(ValidXml, from, to), errors);
+        Assert.That(errors, Has.Some.Contains(expected));
+    }
+
+    [Test]
+    public void DuplicateCallsignsAreAnError()
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(ValidXml.Replace("Maj. B,", "Cmdr. a,"), errors);
+        Assert.That(errors, Has.Some.Contains("listed twice"));
+    }
+
+    [Test]
+    public void TooFewCallsignsAreAnError()
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(Regex.Replace(ValidXml, "<Callsigns>[^<]*</Callsigns>", "<Callsigns>Cmdr. A, Maj. B</Callsigns>"), errors);
+        Assert.That(errors, Has.Some.Contains($"at least {ConfigParser.MinCallsigns}"));
+    }
+
+    [Test]
+    public void ACallsignLongerThanANicknameIsAnError()
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(ValidXml.Replace("Cmdr. A,", "Commander Alexandra Vasquez-Okafor,"), errors);
+        Assert.That(errors, Has.Some.Contains("valid nickname"));
+    }
+
+    [Test]
+    public void AMissingAiBlockIsAnError()
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(Regex.Replace(ValidXml, "<Ai>.*?</Ai>", "", RegexOptions.Singleline), errors);
+        Assert.That(errors, Has.Some.Contains("Missing <Ai> section"));
+    }
+
+    [Test]
+    public void ShippedConfigHasTheAiSpecNumbers()
+    {
+        ConfigLoader.ResetForTests();
+        GameConfigData c = ConfigLoader.LoadConfig();
+        Assert.IsTrue(ConfigLoader.IsValid, string.Join("\n", ConfigLoader.Errors));
+        Assert.That(c.Ai.Callsigns.Length, Is.GreaterThanOrEqualTo(ConfigParser.MinCallsigns));
+        Assert.That(c.Ai.Callsigns, Does.Contain("Cmdr. Vasquez"));
+        // Spec §6's starting values.
+        Assert.AreEqual((1.0f, 30, 6.0f), Row(c.Ai.GetDifficulty(AiDifficulty.Easy)));
+        Assert.AreEqual((0.5f, 80, 2.0f), Row(c.Ai.GetDifficulty(AiDifficulty.Normal)));
+        Assert.AreEqual((0.25f, 200, 0.5f), Row(c.Ai.GetDifficulty(AiDifficulty.Hard)));
+        Assert.IsFalse(c.Ai.GetDifficulty(AiDifficulty.Easy).KeepsUpkeepPaid, "Easy may go unpaid");
+        Assert.IsTrue(c.Ai.GetDifficulty(AiDifficulty.Normal).KeepsUpkeepPaid && c.Ai.GetDifficulty(AiDifficulty.Hard).KeepsUpkeepPaid, "Normal and Hard never");
+        Assert.AreEqual((60f, 180f), (c.Ai.Diplomacy.PeaceSeconds, c.Ai.Diplomacy.GrudgeSeconds));
+        Assert.AreEqual((10f, 60f, 0.1f), (c.Ai.Concede.MinMinutes, c.Ai.Concede.Seconds, c.Ai.Concede.Ratio));
+        Assert.AreEqual((3000f, 0.25f, 0.5f), (c.Ai.Diplomacy.GiftSurplus, c.Ai.Diplomacy.GiftShare, c.Ai.Diplomacy.GiftPeaceFactor));
+        foreach (AiStyle style in new[] { AiStyle.Rusher, AiStyle.Turtle, AiStyle.Expander, AiStyle.Balanced })
+        {
+            AiStyleConfig s = c.Ai.GetStyle(style);
+            Assert.That(s.BuildOrder, Is.Not.Empty, $"{style} has an opening");
+            foreach (UnitType unit in s.ArmyMix.Keys)
+            {
+                bool made = false;
+                foreach (var producer in s.Producers) if (producer.Value > 0 && SpawnerRules.MayProduce(producer.Key, unit)) made = true;
+                Assert.IsTrue(made, $"{style} keeps a producer for every unit in its mix ({unit})");
+            }
+        }
+        Assert.That(c.Lobby.Visibility, Is.EqualTo(LobbyVisibility.Friends), "Friends is today's behaviour and the default");
+    }
+
+    private static (float, int, float) Row(AiDifficultyConfig d) => (d.ThinkSeconds, d.ActionsPerMinute, d.ReactionSeconds);
+
+    private static string ReplaceFirst(string text, string from, string to)
+    {
+        int at = text.IndexOf(from, System.StringComparison.Ordinal);
+        return at < 0 ? text : text.Substring(0, at) + to + text.Substring(at + from.Length);
     }
 }

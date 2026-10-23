@@ -13,7 +13,7 @@ using WAR2D.Net.Replication;
 /// <summary>v0.13 on the client: a Gun turret shooting the local player's unit turns its head and fires a tracer there.</summary>
 public class BastionClientTests
 {
-    private const int Bot = 1000003;
+    private static readonly int Bot = AiOwnerIds.For(2);
     private GameConfigData config;
 
     [UnitySetUp]
@@ -40,7 +40,7 @@ public class BastionClientTests
         yield return PlayModeMatch.WaitForSight(hq);
         WorldStateManager wsm = WorldStateManager.Instance;
         DevApi.AllowForTests = true;
-        GameCore.Instance.AddBot(Bot, 1e9f);
+        GameCore.Instance.DevAddScriptedAi(Bot, 1e9f);
         PlaceFar(BuildingType.Base, hq, 1e7f); // keeps the bot in the match
 
         // An enemy turret out of range of the HQ (so our unit is its only target), and a unit of ours 4 tiles east of it

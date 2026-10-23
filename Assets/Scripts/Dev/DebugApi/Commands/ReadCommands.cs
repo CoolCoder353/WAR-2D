@@ -135,7 +135,7 @@ namespace WAR2D.Dev.DebugApi
                 int owner = BuildingData.UIntToInt(p.Key.netId);
                 list.Add(new { owner, nickname = cp?.nickname, colour = cp?.colourIndex, team = core.TeamOf(owner), state = p.Value.state.ToString(), resources = p.Value.Resources, bot = false });
             }
-            foreach (var b in core.Bots) list.Add(new { owner = b.Key, nickname = "bot", colour = (int?)null, team = core.TeamOf(b.Key), state = b.Value.state.ToString(), resources = b.Value.Resources, bot = true });
+            foreach (var b in core.AiPlayers) list.Add(new { owner = b.Key, nickname = b.Value.Callsign, colour = (int?)b.Value.Colour, team = core.TeamOf(b.Key), state = b.Value.Player.state.ToString(), resources = b.Value.Player.Resources, bot = true, difficulty = b.Value.Difficulty.ToString() });
             return list;
         }
 

@@ -10,7 +10,7 @@ namespace WAR2D.Dev.DebugApi
     {
         public static void Register(DebugRegistry r)
         {
-            r.Add("bots", DebugRole.Server, "bots n [resources]: add n bot players (lobby or placing)", a =>
+            r.Add("bots", DebugRole.Server, "bots n [resources]: add n Scripted AI seats (placing or playing)", a =>
             {
                 GameCore core = GameCore.Instance ?? throw new DebugError("no GameCore");
                 int n = math.clamp(DebugArgs.Int(a, "n"), 1, 7);
@@ -18,8 +18,9 @@ namespace WAR2D.Dev.DebugApi
                 var added = new System.Collections.Generic.List<int>();
                 for (int i = 0; i < n; i++)
                 {
-                    int id = 1_000_000 + core.Bots.Count + 1;
-                    core.AddBot(id, res);
+                    int id = AiOwnerIds.For(0);
+                    for (int k = 0; core.AiPlayers.ContainsKey(id) && k < AiOwnerIds.Count - 1; k++) id = AiOwnerIds.For(k + 1);
+                    if (core.DevAddScriptedAi(id, res) == null) throw new DebugError("could not add a Scripted AI seat");
                     added.Add(id);
                 }
                 return added;

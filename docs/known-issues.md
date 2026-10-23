@@ -150,9 +150,10 @@ Besides the owner's reports above:
 
 ## Developer tools
 
+- **Fixed (v0.14): bots looked eliminated in the HUD.** Dev bots had no player object, so the top bar, diplomacy panel and gift dialog listed them as "Player (eliminated)". They are now Scripted AI seats (`GameCore.DevAddScriptedAi`) with a server-owned `ClientPlayer` (callsign, colour, `isAi`), shown alive until their HQ falls, and the server resends everyone's diplomacy row once a seat added mid-match has a simulation slot (`AiSeatPlayModeTests.AScriptedSeatIsAlivePlayerInTheHud`, `HudTests.GiftToEnemyMovesResources`).
+
 - **Editor crash after `SimData` gains fields.** The first EditMode run after `SimData`'s layout changes can segfault while scheduling a tick job (v0.5: `GatherJob`; v0.6 Task 4: `SimCombatSystem`, in `AtomicSafetyHandle` handle extraction). Restarting the editor fixes it every time, so it is stale Burst code compiled against the old struct layout. Restart the editor after changing `SimData`'s fields, before running the tests.
 - **The editor froze once during a PlayMode run** (2026-10-10, KDE Wayland, Vulkan): after `HudTests`' eighth match the main and render threads sat in futex waits with no CPU use for over 40 minutes, so the pipeline's requests timed out. Killing and reopening the editor fixed it, and the same suite then passed in full. If `tools/unity-test.sh PlayMode` stops reporting progress, check the editor window is visible before suspecting the tests.
-- **Bots look eliminated in the HUD.** Dev bots (`GameCore.AddBot`, perf harness and tests) have no player object, so the top bar and diplomacy panel list them as "Player (eliminated)" with disabled switches, and their diplomacy bit reaches clients only after `SendAllDiplomacy` is called again (bots join after match start). Dev only; real players are unaffected.
 
 ## Networking
 

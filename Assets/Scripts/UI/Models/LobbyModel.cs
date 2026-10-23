@@ -115,7 +115,7 @@ namespace WAR2D.UI
             foreach (NetworkIdentity identity in NetworkClient.spawned.Values)
             {
                 if (identity == null || !identity.TryGetComponent(out ClientPlayer p)) continue;
-                scratch.Add(new LobbyPlayer((int)identity.netId, string.IsNullOrEmpty(p.nickname) ? "Player" : p.nickname, p.colourIndex, p.lobbyTeam, p.ready, p.isServerOwner));
+                scratch.Add(new LobbyPlayer(p.OwnerId, string.IsNullOrEmpty(p.nickname) ? "Player" : p.nickname, p.colourIndex, p.lobbyTeam, p.ready, p.isServerOwner));
             }
             scratch.Sort((a, b) => a.OwnerId.CompareTo(b.OwnerId)); // join order
             Set(scratch, core.Settings, (int)NetworkClient.localPlayer.netId);

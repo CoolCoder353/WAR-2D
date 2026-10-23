@@ -140,8 +140,7 @@ namespace WAR2D.UI
             {
                 int owner = core.PlayerOrder[i];
                 ClientPlayer player = null;
-                if (NetworkClient.spawned.TryGetValue((uint)owner, out NetworkIdentity identity) && identity != null)
-                    player = identity.GetComponent<ClientPlayer>();
+                ClientPlayer.TryFind(owner, out player); // a human by netId, an AI by its owner id
                 // A player who left has no object; one whose HQ fell lost hasPlacedHQ while Playing.
                 bool eliminated = player == null || (core.CurrentState == GameState.Playing && !player.hasPlacedHQ);
                 string name = player != null && !string.IsNullOrEmpty(player.nickname) ? player.nickname : "Player";

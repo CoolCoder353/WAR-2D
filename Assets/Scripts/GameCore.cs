@@ -37,7 +37,8 @@ public partial class GameCore : NetworkBehaviour
     /// <summary>Server-only player records, keyed by player object identity.</summary>
     public Dictionary<NetworkIdentity, ServerPlayer> ServerPlayers = new Dictionary<NetworkIdentity, ServerPlayer>();
 
-    public IEnumerable<ServerPlayer> serverPlayers => ServerPlayers.Values.Concat(Bots.Values);
+    /// <summary>Every player's server record: humans, then AIs.</summary>
+    public IEnumerable<ServerPlayer> serverPlayers => ServerPlayers.Values.Concat(AiPlayers.Values.Select(seat => seat.Player));
 
     /// <summary>Players present when Playing began (used for the win rule).</summary>
     public int MatchStartPlayerCount { get; private set; }
@@ -90,7 +91,7 @@ public partial class GameCore : NetworkBehaviour
     {
         base.OnStopServer();
         ServerPlayers.Clear();
-        Bots.Clear();
+        AiPlayers.Clear(); // Mirror's shutdown destroys their player objects with every other spawned object
         serverOwner = null;
         CurrentState = GameState.Lobby;
         MatchStartPlayerCount = 0;
@@ -111,6 +112,12 @@ public partial class GameCore : NetworkBehaviour
                 entry.Value.RollSecond();
                 if (entry.Value.BecameUnpaid && entry.Key != null)
                     WorldStateManager.Instance?.Alerts?.Add(BuildingData.UIntToInt(entry.Key.netId), new Alert { Kind = AlertKind.UpkeepUnpaid });
+            }
+            // AIs count income and upkeep by the second like anyone; their alerts go to their view, never to a connection.
+            foreach (KeyValuePair<int, AiSeat> seat in AiPlayers)
+            {
+                seat.Value.Player.RollSecond();
+                if (seat.Value.Player.BecameUnpaid) WorldStateManager.Instance?.Alerts?.Add(seat.Key, new Alert { Kind = AlertKind.UpkeepUnpaid });
             }
         }
 
@@ -141,6 +148,7 @@ public partial class GameCore : NetworkBehaviour
             HqPlacementEndTime = 0;
             PlaceRemainingRandomly(WorldStateManager.Instance);
         }
+        ResendDiplomacyWhenSlotted();
     }
 
     // ---------- Players and ownership ----------
@@ -209,30 +217,10 @@ public partial class GameCore : NetworkBehaviour
     [Server]
     public bool IsServerOwner(NetworkConnectionToClient conn) => conn != null && serverOwner == conn;
 
-    /// <summary>Connectionless players (the performance harness's bots), by owner id.</summary>
-    public readonly Dictionary<int, ServerPlayer> Bots = new Dictionary<int, ServerPlayer>();
-
-    /// <summary>
-    /// Adds a bot: a player with no connection, counted in the player order and the match's player count.
-    /// Dev only (the performance harness); refused unless dev APIs are enabled.
-    /// </summary>
-    [Server]
-    internal void AddBot(int ownerId, float startingResources)
-    {
-        if (!DevApi.Allowed || Bots.ContainsKey(ownerId)) return;
-        Bots[ownerId] = new ServerPlayer(null, startingResources);
-        PlayerOrder.Add(ownerId);
-        MatchStartPlayerCount++;
-        int team = 0;
-        foreach (int t in Teams.Values) team = Mathf.Max(team, t + 1);
-        Teams[ownerId] = team; // bots are free-for-all
-        MatchStartTeamCount = TeamRules.CountTeams(Teams.Values);
-    }
-
     [Server]
     public ServerPlayer GetServerPlayerById(int ownerId)
     {
-        if (Bots.TryGetValue(ownerId, out ServerPlayer bot)) return bot;
+        if (AiPlayers.TryGetValue(ownerId, out AiSeat seat)) return seat.Player;
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
             if (entry.Key != null && entry.Key.netId == (uint)ownerId) return entry.Value;
@@ -257,7 +245,7 @@ public partial class GameCore : NetworkBehaviour
         if (!CommandGate.Allow(sender, nameof(Cmd_StartGame))) return;
         if (!IsServerOwner(sender) || CurrentState != GameState.Lobby || !ConfigLoader.IsValid) return;
         // Dev only (perf harness, hosted tests): a solo host may start without the lobby's rules.
-        if (!DevApi.Allowed && (!LobbyRules.CanStart(LobbyStartState()) || !LobbyRules.FitsMap(ServerPlayers.Count, Settings, ConfigLoader.LoadConfig().Match.Map, ConfigLoader.LoadConfig().Lobby.SpareStartSites))) return;
+        if (!DevApi.Allowed && (!LobbyRules.CanStart(LobbyStartState()) || !LobbyRules.FitsMap(SeatCount, Settings, ConfigLoader.LoadConfig().Match.Map, ConfigLoader.LoadConfig().Lobby.SpareStartSites))) return;
 
         StartMatchServerSide();
     }
@@ -272,11 +260,13 @@ public partial class GameCore : NetworkBehaviour
             entry.Value.ResetResources(Settings.StartingResources);
             if (entry.Key != null) entry.Key.GetComponent<ClientPlayer>().hasPlacedHQ = false;
         }
-        // Captured at launch so a departure before Playing can't stop the survivor from winning.
-        MatchStartPlayerCount = ServerPlayers.Count;
-        // Join order (ascending net id), as the lobby lists the players and colours their HQ sites.
+        StartAiSeats();
+        // Captured at launch so a departure before Playing can't stop the survivor from winning. AIs count like humans.
+        MatchStartPlayerCount = SeatCount;
+        // Join order (ascending net id, AIs after the humans), as the lobby lists the players and colours their HQ sites.
         var order = new List<int>();
         foreach (NetworkIdentity identity in ServerPlayers.Keys) if (identity != null) order.Add(BuildingData.UIntToInt(identity.netId));
+        order.AddRange(AiPlayers.Keys);
         order.Sort();
         PlayerOrder.Clear();
         foreach (int owner in order) PlayerOrder.Add(owner);
@@ -312,6 +302,7 @@ public partial class GameCore : NetworkBehaviour
         var choices = new List<(int Owner, int Choice)>();
         foreach (NetworkIdentity identity in ServerPlayers.Keys)
             if (identity != null) choices.Add((BuildingData.UIntToInt(identity.netId), identity.GetComponent<ClientPlayer>().lobbyTeam));
+        foreach (AiSeat seat in AiPlayers.Values) choices.Add((seat.OwnerId, seat.LobbyTeam));
         Teams.Clear();
         foreach (KeyValuePair<int, int> pair in TeamRules.Assign(choices)) Teams[pair.Key] = pair.Value;
         MatchStartTeamCount = TeamRules.CountTeams(Teams.Values);
@@ -320,7 +311,9 @@ public partial class GameCore : NetworkBehaviour
     [Server]
     public void CheckHQPlacementProgress()
     {
-        int remaining = ServerPlayers.Keys.Count(id => id != null && !id.GetComponent<ClientPlayer>().hasPlacedHQ);
+        // Scripted seats are placed by whoever drives them (the perf harness, tests), so they never hold up the countdown.
+        int remaining = ServerPlayers.Keys.Count(id => id != null && !id.GetComponent<ClientPlayer>().hasPlacedHQ)
+                        + AiPlayers.Values.Count(seat => !seat.IsScripted && !HasPlacedHq(seat.OwnerId));
         RpcUpdateHQPlacementProgress(remaining);
 
         if (remaining == 0 && CurrentState == GameState.PlacingHQ)
@@ -357,6 +350,11 @@ public partial class GameCore : NetworkBehaviour
     [Server]
     private void SetEliminatedState(int playerId)
     {
+        if (AiPlayers.TryGetValue(playerId, out AiSeat seat))
+        {
+            seat.Player.state = PlayerState.Eliminated;
+            return;
+        }
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
             if (entry.Key != null && entry.Key.netId == (uint)playerId && entry.Value.state != PlayerState.Eliminated)
@@ -370,11 +368,12 @@ public partial class GameCore : NetworkBehaviour
     [Server]
     public void EliminatePlayer(int playerId)
     {
-        if (Bots.TryGetValue(playerId, out ServerPlayer bot))
+        if (AiPlayers.TryGetValue(playerId, out AiSeat seat))
         {
-            if (bot.state == PlayerState.Eliminated) return;
-            bot.state = PlayerState.Eliminated;
+            if (seat.Player.state == PlayerState.Eliminated) return;
+            seat.Player.state = PlayerState.Eliminated;
             WorldStateManager.Instance?.KillAllEntitiesOwnedBy(playerId);
+            if (seat.Client != null) seat.Client.hasPlacedHQ = false; // shown eliminated, like a human; no connection to tell
             return;
         }
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
@@ -397,6 +396,8 @@ public partial class GameCore : NetworkBehaviour
         SendStats(winners);
         WorldStateManager.Instance?.MatchEnded(Newtonsoft.Json.JsonConvert.SerializeObject(new { winners }));
         WorldStateManager.Instance?.DestroyAllEntities();
+        foreach (AiSeat seat in AiPlayers.Values)
+            if (!winners.Contains(seat.OwnerId)) seat.Player.state = PlayerState.Eliminated;
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
             if (entry.Key == null) continue; // left mid-tick; OnPlayerLeave removes them
@@ -417,6 +418,7 @@ public partial class GameCore : NetworkBehaviour
         SendStats(null);
         WorldStateManager.Instance?.MatchEnded(Newtonsoft.Json.JsonConvert.SerializeObject(new { draw = true }));
         WorldStateManager.Instance?.DestroyAllEntities();
+        foreach (AiSeat seat in AiPlayers.Values) seat.Player.state = PlayerState.Eliminated;
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
             entry.Value.state = PlayerState.Eliminated;
@@ -437,7 +439,7 @@ public partial class GameCore : NetworkBehaviour
         Teams.Clear();
         ForgetDiplomacyCooldowns();
         DiplomacyEnabled = false;
-        Bots.Clear();
+        ClearAiPlayers();
         foreach (ClientPlayer player in LobbyClientPlayers()) player.ready = false;
         if (SceneManager.GetActiveScene().name != LobbyScene && NetworkServer.active)
         {

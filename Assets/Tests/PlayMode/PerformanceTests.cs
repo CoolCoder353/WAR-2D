@@ -39,8 +39,8 @@ public class PerformanceTests
         yield return PlayModeMatch.StartMatchAsHost(config);
         yield return PlayModeMatch.PlaceHQ(null);
         WorldStateManager world = WorldStateManager.Instance;
-        const int bot = 1000002, perOwner = 2000;
-        GameCore.Instance.AddBot(bot, 1e9f);
+        int bot = AiOwnerIds.For(1); const int perOwner = 2000;
+        GameCore.Instance.DevAddScriptedAi(bot, 1e9f);
         bool hqPlaced = false; // the bot needs an HQ, or win/loss ends the match at once
         foreach (int2 site in world.Map.HqSites)
         {

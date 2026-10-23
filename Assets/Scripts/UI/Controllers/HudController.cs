@@ -280,7 +280,7 @@ namespace WAR2D.UI
             foreach (var teammate in me.TeammateStarts)
             {
                 string name = NameOf(teammate.Key);
-                Color32 colour = PlayerPalette.Of(NetworkClient.spawned.TryGetValue((uint)teammate.Key, out NetworkIdentity id) && id.TryGetComponent(out ClientPlayer other) ? other.colourIndex : -1);
+                Color32 colour = PlayerPalette.Of(ClientPlayer.TryFind(teammate.Key, out ClientPlayer other) ? other.colourIndex : -1);
                 foreach (int site in teammate.Value.options)
                 {
                     if (site < 0 || site >= sites.Length) continue;

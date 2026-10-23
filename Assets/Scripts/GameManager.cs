@@ -147,7 +147,8 @@ public class GameManager : NetworkManager
     {
         base.OnServerConnect(conn);
         GameCore core = GameCore.Instance;
-        if (core == null || LobbyRules.MayJoin(core.CurrentState, NetworkServer.connections.Count)) return;
+        // AI seats take places too: humans and AIs together are at most MaxPlayers (v0.14).
+        if (core == null || LobbyRules.MayJoin(core.CurrentState, NetworkServer.connections.Count + core.AiPlayers.Count)) return;
         WarLog.Info(LogCategory.Net, $"Refusing connection {conn.connectionId}: the match is {core.CurrentState} with {NetworkServer.connections.Count - 1} players.");
         conn.Disconnect();
     }

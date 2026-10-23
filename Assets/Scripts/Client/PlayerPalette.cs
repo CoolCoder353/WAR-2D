@@ -11,13 +11,11 @@ public static class PlayerPalette
 
     /// <summary>
     /// A player's colour index: the colour they picked in the lobby (public, <see cref="ClientPlayer.colourIndex"/>),
-    /// or for a bot without a player object, its place in the player order. -1 when unknown.
+    /// AIs included, or for a player without an object (one who left), its place in the player order. -1 when unknown.
     /// </summary>
     public static int ColourIndexOf(int ownerId)
     {
-        if (Mirror.NetworkClient.spawned.TryGetValue((uint)ownerId, out Mirror.NetworkIdentity identity) && identity != null &&
-            identity.TryGetComponent(out ClientPlayer player))
-            return player.colourIndex;
+        if (ClientPlayer.TryFind(ownerId, out ClientPlayer player)) return player.colourIndex;
         return GameCore.Instance != null ? GameCore.Instance.PlayerOrder.IndexOf(ownerId) : -1;
     }
 

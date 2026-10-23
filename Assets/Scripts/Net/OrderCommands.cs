@@ -41,7 +41,7 @@ public partial class WorldStateManager
         if (!TryActingOwner(sender, out int owner) || !IsOrderValid(kind, goal)) return;
         List<int> ids = Accumulate(owner, token, OrderChunkKind, idChunk, final);
         if (ids == null) return;
-        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = (OrderKind)kind, Queue = queue, OwnerId = owner, Tile = goal, Ids = ids.ToArray() });
+        PlayerActions.Order(owner, ids, (OrderKind)kind, queue, goal);
     }
 
     /// <summary>
@@ -58,7 +58,7 @@ public partial class WorldStateManager
         if (!CommandValidator.TryDigArea(from, to, min, max, ConfigLoader.LoadConfig().Orders.MaxDigArea, out int2 lo, out int2 hi)) return;
         List<int> ids = Accumulate(owner, token, DigAreaChunkKind, idChunk, final);
         if (ids == null) return;
-        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.DigArea, Queue = queue, OwnerId = owner, BoxMin = lo, BoxMax = hi, Ids = ids.ToArray() });
+        PlayerActions.DigArea(owner, ids, queue, lo, hi);
     }
 
     /// <summary>Accumulates one chunk of a squad assignment; the final chunk replaces the squad.</summary>
@@ -69,8 +69,7 @@ public partial class WorldStateManager
         if (!CommandValidator.IsSquadIndexValid(squad) || !TryActingOwner(sender, out int owner)) return;
         List<int> ids = Accumulate(owner, token, (byte)(SquadKindBase + squad), idChunk, final);
         if (ids == null) return;
-        Squads.Assign(owner, squad, ids);
-        squadCountsDirty = true;
+        PlayerActions.AssignSquad(owner, squad, ids);
     }
 
     /// <summary>Gives a squad's living members an order (<see cref="OrderKind"/>), as <see cref="CmdOrderChunk"/>.</summary>
@@ -79,12 +78,7 @@ public partial class WorldStateManager
     {
         if (!CommandGate.Allow(sender, nameof(CmdOrderSquad))) return;
         if (!CommandValidator.IsSquadIndexValid(squad) || !TryActingOwner(sender, out int owner) || !IsOrderValid(kind, goal)) return;
-        if (Squads.Prune(owner, squad, Ids) > 0) squadCountsDirty = true; // the HUD's count went stale
-        IReadOnlyList<int> members = Squads.Members(owner, squad);
-        if (members.Count == 0) return;
-        var ids = new int[members.Count];
-        for (int i = 0; i < ids.Length; i++) ids[i] = members[i];
-        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = (OrderKind)kind, Queue = queue, OwnerId = owner, Tile = goal, Ids = ids });
+        PlayerActions.OrderSquad(owner, squad, (OrderKind)kind, queue, goal);
     }
 
     private const int SquadCountTicks = 40; // 2 s at 20 Hz
@@ -118,17 +112,30 @@ public partial class WorldStateManager
     }
 
     /// <summary>The sender's owner id, when they may give orders now (Playing, still in the match).</summary>
-    private bool TryActingOwner(NetworkConnectionToClient sender, out int owner)
+    private bool TryActingOwner(NetworkConnectionToClient sender, out int owner) => TryOwnerOf(sender, out owner) && MayAct(owner);
+
+    /// <summary>The sender's owner id (its player object's <c>netId</c>), when it has one.</summary>
+    internal static bool TryOwnerOf(NetworkConnectionToClient sender, out int owner)
     {
         owner = 0;
-        if (Sim == null || GameCore.Instance == null || GameCore.Instance.CurrentState != GameState.Playing) return false;
+        if (sender?.identity == null) return false;
         owner = BuildingData.UIntToInt(sender.identity.netId);
+        return true;
+    }
+
+    /// <summary>True when the owner (human or AI) may act on the world now: Playing, and still in the match.</summary>
+    internal bool MayAct(int owner)
+    {
+        if (Sim == null || GameCore.Instance == null || GameCore.Instance.CurrentState != GameState.Playing) return false;
         ServerPlayer acting = GameCore.Instance.GetServerPlayerById(owner);
         return acting != null && acting.state == PlayerState.Playing;
     }
 
+    /// <summary>Marks the squad counts for sending at the next settled boundary.</summary>
+    internal void MarkSquadCountsDirty() => squadCountsDirty = true;
+
     /// <summary>A known order kind, with a goal inside the map when the order moves.</summary>
-    private bool IsOrderValid(byte kind, int2 goal)
+    internal bool IsOrderValid(byte kind, int2 goal)
     {
         (int2 min, int2 max) = MapBounds;
         return Map != null && CommandValidator.IsOrderValid(kind, goal, min, max);

@@ -231,8 +231,8 @@ Reviewed the server-authoritative control surfaces: `CommandGate`, `CommandValid
 
 ### Low / hardening
 
-- **Dev-only bots are intentionally outside the civilian player count.** `MatchStartPlayerCount` is set from `ServerPlayers.Count` only, while bots are accounted for in `WinLossSystem` and in the lobby-only server-owner checks. This is a dev/perf choice rather than a gameplay bug, but it is worth keeping explicit if user-facing bots are ever added.
-- **`ResetToLobby` clears both the live player list and the bot table.** This is deliberate for a clean lobby reset, but it means a dev/perf bot run disappears as soon as the last real player leaves. It is a lifecycle choice, not a mismatch, and it should remain documented if bot matches become a normal mode.
+- ~~**Dev-only bots are intentionally outside the civilian player count.**~~ **Resolved (v0.14):** bots became AI seats; `MatchStartPlayerCount` counts humans plus AIs at launch (`SeatCount`), and a Scripted seat added mid-match adds one.
+- **`ResetToLobby` clears both the live player list and the AI seats** (v0.14: `ClearAiPlayers`, which also destroys their player objects). Deliberate: a server whose last human left returns to an empty lobby, AIs included.
 - ~~`DeclareWinner` / `DeclareDraw` assume populated `ServerPlayers` entries.~~ **Fixed (2026-10-18):** both skip a null identity.
 
 The reviewed command, lobby and lifecycle surfaces are now covered in this ledger; no high-confidence bug remains in the server-owned control path as inspected.

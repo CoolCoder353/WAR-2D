@@ -42,6 +42,8 @@ namespace Config
         public MenuBattleConfig MenuBattle = new MenuBattleConfig();
         /// <summary>Damage multipliers per attacker type and target class.</summary>
         public DamageTableConfig Damage = new DamageTableConfig();
+        /// <summary>AI players (v0.14).</summary>
+        public AiConfig Ai = new AiConfig();
 
         /// <summary>Returns the config for a unit type. Throws if it is missing (validation guarantees presence).</summary>
         public UnitConfig GetUnit(UnitType type)
@@ -186,6 +188,8 @@ namespace Config
         public int StartPickDefault;
         /// <summary>Sites kept undealt, so an enemy's position is never pinned down by elimination.</summary>
         public int SpareStartSites;
+        /// <summary>The lobby's default visibility (v0.14): Public, Friends or Private.</summary>
+        public LobbyVisibility Visibility = LobbyVisibility.Friends;
     }
 
     /// <summary>Gifting tuning.</summary>
