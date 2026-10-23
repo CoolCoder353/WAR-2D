@@ -433,6 +433,17 @@ namespace Config
                 config.Concede.SeenWindowSeconds = Float(concede, "SeenWindowSeconds", c, errors, min: 1, max: 3600);
                 config.Concede.IncomeSeconds = Float(concede, "IncomeSeconds", c, errors, min: 0, max: 3600);
             }
+
+            XmlNode brain = Require(ai, "Brain", errors);
+            if (brain != null)
+            {
+                const string c = "Ai brain";
+                config.Brain.BudgetBurstSeconds = Float(brain, "BudgetBurstSeconds", c, errors, min: 0, max: 60);
+                config.Brain.ProposalWaitSeconds = Float(brain, "ProposalWaitSeconds", c, errors, min: 0, max: 600);
+                config.Brain.ThreatRadius = Float(brain, "ThreatRadius", c, errors, min: 1, max: 256);
+                config.Brain.ArmyMemorySeconds = Float(brain, "ArmyMemorySeconds", c, errors, min: 1, max: 3600);
+                config.Brain.EventMemorySeconds = Float(brain, "EventMemorySeconds", c, errors, min: 1, max: 3600);
+            }
         }
 
         /// <summary>A style's opening: building and unit names in order (not the HQ, which the opening places first).</summary>

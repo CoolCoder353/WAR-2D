@@ -31,7 +31,7 @@ public class ConfigParserTests
     <Style name=""Expander""><BuildOrder>Miner Miner Builder Barracks</BuildOrder><ArmyMix>Tank:5 Heavy:2</ArmyMix><Producers>Barracks:2</Producers><Miners>4</Miners><MinersPerExpansion>3</MinersPerExpansion><Expansions>1</Expansions><ExpandTiming>1</ExpandTiming><FirstAttackSeconds>200</FirstAttackSeconds><AttackArmySize>10</AttackArmySize><AttackRatioScale>1</AttackRatioScale><AttackIntervalSeconds>90</AttackIntervalSeconds><Turrets>2</Turrets><Jammers>1</Jammers><Bombs>2</Bombs><Walls>0</Walls><Radar>1</Radar></Style>
     <Style name=""Balanced""><BuildOrder>Miner Barracks Tank</BuildOrder><ArmyMix>Tank:4 Heavy:2 Digger:1 SuicideBomber:1</ArmyMix><Producers>Barracks:2 HeavyFactory:1 SiegeWorkshop:1</Producers><Miners>4</Miners><MinersPerExpansion>3</MinersPerExpansion><Expansions>1</Expansions><ExpandTiming>1</ExpandTiming><FirstAttackSeconds>200</FirstAttackSeconds><AttackArmySize>10</AttackArmySize><AttackRatioScale>1</AttackRatioScale><AttackIntervalSeconds>90</AttackIntervalSeconds><Turrets>2</Turrets><Jammers>1</Jammers><Bombs>2</Bombs><Walls>0</Walls><Radar>1</Radar></Style>
     <Diplomacy><PeaceSeconds>60</PeaceSeconds><GrudgeSeconds>180</GrudgeSeconds><WinningRatio>1.5</WinningRatio><LosingRatio>0.8</LosingRatio><GiftSurplus>3000</GiftSurplus><GiftSurplusSeconds>60</GiftSurplusSeconds><GiftShare>0.25</GiftShare><GiftPeaceFactor>0.5</GiftPeaceFactor></Diplomacy>
-    <Concede><MinMinutes>10</MinMinutes><Seconds>60</Seconds><Ratio>0.1</Ratio><SeenWindowSeconds>120</SeenWindowSeconds><IncomeSeconds>60</IncomeSeconds></Concede></Ai>
+    <Concede><MinMinutes>10</MinMinutes><Seconds>60</Seconds><Ratio>0.1</Ratio><SeenWindowSeconds>120</SeenWindowSeconds><IncomeSeconds>60</IncomeSeconds></Concede><Brain><BudgetBurstSeconds>5</BudgetBurstSeconds><ProposalWaitSeconds>10</ProposalWaitSeconds><ThreatRadius>14</ThreatRadius><ArmyMemorySeconds>180</ArmyMemorySeconds><EventMemorySeconds>30</EventMemorySeconds></Brain></Ai>
   <DamageTable><Entry attacker=""Tank"" target=""Unit"">1.0</Entry><Entry attacker=""Tank"" target=""Building"">1.0</Entry><Entry attacker=""Tank"" target=""Wall"">0.5</Entry><Entry attacker=""Digger"" target=""Unit"">0.5</Entry><Entry attacker=""Digger"" target=""Wall"">6</Entry><Entry attacker=""GunTurret"" target=""Unit"">1.5</Entry><Entry attacker=""GunTurret"" target=""HeavyUnit"">0.4</Entry><Entry attacker=""GunTurret"" target=""Building"">0.5</Entry><Entry attacker=""GunTurret"" target=""Wall"">0.5</Entry></DamageTable>
   <Units>
     <Unit type=""Tank""><Health>100</Health><Damage>10</Damage><Range>5</Range><AttackInterval>1</AttackInterval><MoveSpeed>5</MoveSpeed><UpfrontCost>50</UpfrontCost><RunningCost>2</RunningCost><Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>8</Sight><Armour>Light</Armour><BuildSeconds>1</BuildSeconds></Unit>
@@ -534,6 +534,17 @@ public class ConfigParserTests
     }
 
     [Test]
+    public void TheAiBrainBlockIsRequiredAndRangeChecked()
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(Regex.Replace(ValidXml, "<Brain>.*?</Brain>", "", RegexOptions.Singleline), errors);
+        Assert.That(errors, Has.Some.Contains("Brain"), "the block is required");
+        errors.Clear();
+        ConfigParser.Parse(Regex.Replace(ValidXml, "<ThreatRadius>[^<]*</ThreatRadius>", "<ThreatRadius>0</ThreatRadius>"), errors);
+        Assert.That(errors, Has.Some.Contains("ThreatRadius"));
+    }
+
+    [Test]
     public void ShippedConfigHasTheAiSpecNumbers()
     {
         ConfigLoader.ResetForTests();
@@ -549,6 +560,7 @@ public class ConfigParserTests
         Assert.IsTrue(c.Ai.GetDifficulty(AiDifficulty.Normal).KeepsUpkeepPaid && c.Ai.GetDifficulty(AiDifficulty.Hard).KeepsUpkeepPaid, "Normal and Hard never");
         Assert.AreEqual((60f, 180f), (c.Ai.Diplomacy.PeaceSeconds, c.Ai.Diplomacy.GrudgeSeconds));
         Assert.AreEqual((10f, 60f, 0.1f), (c.Ai.Concede.MinMinutes, c.Ai.Concede.Seconds, c.Ai.Concede.Ratio));
+        Assert.AreEqual((5f, 10f, 14f), (c.Ai.Brain.BudgetBurstSeconds, c.Ai.Brain.ProposalWaitSeconds, c.Ai.Brain.ThreatRadius));
         Assert.AreEqual((3000f, 0.25f, 0.5f), (c.Ai.Diplomacy.GiftSurplus, c.Ai.Diplomacy.GiftShare, c.Ai.Diplomacy.GiftPeaceFactor));
         foreach (AiStyle style in new[] { AiStyle.Rusher, AiStyle.Turtle, AiStyle.Expander, AiStyle.Balanced })
         {

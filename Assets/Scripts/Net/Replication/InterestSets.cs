@@ -31,6 +31,14 @@ namespace WAR2D.Net.Replication
         [ReadOnly] public NativeArray<byte> Visible;
         public int FogCellSize, FogW, FogH, FogCells;
 
+        /// <summary>The settled simulation's units and fog, as replication (and the AI's team view) read them.</summary>
+        public static ReplicationInput From(WAR2D.Sim.SimData data, int count) => new ReplicationInput
+        {
+            Count = count, Positions = data.Positions, Health = data.Health, MaxHealth = data.MaxHealth,
+            OwnerId = data.OwnerId, Type = data.Type, IdOf = data.IdOf, IndexOfId = data.IndexOfId, SpeedByType = data.SpeedByType,
+            Visible = data.Visible, FogCellSize = data.FogCellSize, FogW = data.FogW, FogH = data.FogH, FogCells = data.FogCells,
+        };
+
         /// <summary>True when fog grid <paramref name="grid"/> sees <paramref name="p"/>.</summary>
         public bool Sees(int grid, float2 p)
         {
@@ -192,8 +200,7 @@ namespace WAR2D.Net.Replication
             {
                 for (int i = 0; i < Input.Count; i++)
                 {
-                    if (Input.Health[i] <= 0f) continue;
-                    if (Input.OwnerId[i] != Owner && !Input.Sees(Grid, Input.Positions[i])) continue;
+                    if (!InterestRules.UnitVisible(Input, i, Owner, Grid)) continue;
                     int index = NetIdAllocator.IndexOf(Input.IdOf[i]);
                     if (index < KnownId.Length) BitSet.Set(Allowed, index);
                 }

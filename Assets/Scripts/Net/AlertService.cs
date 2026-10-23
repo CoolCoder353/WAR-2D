@@ -68,6 +68,12 @@ public sealed class AlertService
         }
     }
 
+    /// <summary>
+    /// Sees every player's alerts as they are sent (v0.14: the AI's team view collects its owner's from here, so it is
+    /// told exactly what a client of that owner would be). Null for none.
+    /// </summary>
+    public Action<int, IReadOnlyList<Alert>> Observer;
+
     /// <summary>Sends each player their queued alerts.</summary>
     public void Flush()
     {
@@ -75,6 +81,8 @@ public sealed class AlertService
         foreach (KeyValuePair<int, List<Alert>> pair in pending)
         {
             if (pair.Value.Count == 0) continue;
+            Observer?.Invoke(pair.Key, pair.Value);
+            if (AiOwnerIds.IsAi(pair.Key)) { pair.Value.Clear(); continue; } // no connection to send to: its view has them
             send(pair.Key, pair.Value.ToArray());
             pair.Value.Clear();
         }

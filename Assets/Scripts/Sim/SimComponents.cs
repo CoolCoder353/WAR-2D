@@ -118,6 +118,9 @@ namespace WAR2D.Sim
         /// <summary>Main-thread milliseconds of the match's own <c>Settled</c> handler (<c>WorldStateManager.OnSettled</c>).</summary>
         public static double LastMatchSettledMs;
 
+        /// <summary>Main-thread milliseconds the AI players spent on the last step: the one think's view build and brain (v0.14, <c>perf.part.ai</c>).</summary>
+        public static double LastAiMs;
+
         /// <summary>Tick-watch time at which the command stage returned (where <see cref="LastStagesMs"/> starts).</summary>
         internal static double CommandsEndMs;
 

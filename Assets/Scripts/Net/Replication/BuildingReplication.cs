@@ -84,35 +84,64 @@ namespace WAR2D.Net.Replication
         public void Reset() => known.Clear();
 
         /// <summary>
+        /// True when a player may know a building now (v0.14: shared by replication and the AI's team view): its own, or
+        /// on a fog cell its grid sees; a hidden building (a bomb) only when it is its own or <paramref name="mayKnowHidden"/>
+        /// allows its owner (vision shared with the player).
+        /// </summary>
+        public static bool MayKnow(in BuildingView v, int ownerId, Func<float2, bool> sees, Func<int, bool> mayKnowHidden)
+        {
+            bool allowed = v.OwnerId == ownerId || sees(v.Position);
+            if (v.Hidden) allowed = allowed && (v.OwnerId == ownerId || (mayKnowHidden != null && mayKnowHidden(v.OwnerId)));
+            return allowed;
+        }
+
+        /// <summary>
+        /// True when a player may learn that a building it knew is gone: a hidden one at once (never a ghost of a bomb), its
+        /// own, or once its grid sees the spot again. Otherwise it keeps the last-seen ghost.
+        /// </summary>
+        public static bool MayLearnGone(bool hidden, int buildingOwner, float2 position, int ownerId, Func<float2, bool> sees) =>
+            hidden || buildingOwner == ownerId || sees(position);
+
+        /// <summary>
         /// Writes the records that take the client from what it knew to what it may know now; returns how
         /// many were written. <paramref name="sees"/> answers whether the client's grid sees a position.
         /// Stops once the writer holds <paramref name="maxBytes"/>; the rest follows on the next update.
         /// </summary>
         public int Update(List<BuildingView> views, HashSet<int> present, int ownerId, Func<float2, bool> sees, NetworkWriter writer, int maxBytes = int.MaxValue, Func<int, bool> mayKnowHidden = null)
         {
+            var sink = new WriterSink { Writer = writer, MaxBytes = maxBytes };
+            return Update(views, present, ownerId, sees, ref sink, mayKnowHidden);
+        }
+
+        /// <summary>
+        /// As above, handing each record to <paramref name="sink"/> instead of a writer (the AI's team view applies them
+        /// straight to its own store). Stops once the sink is full.
+        /// </summary>
+        public int Update<TSink>(List<BuildingView> views, HashSet<int> present, int ownerId, Func<float2, bool> sees, ref TSink sink, Func<int, bool> mayKnowHidden = null)
+            where TSink : struct, IBuildingRecordSink
+        {
             int records = 0;
             foreach (BuildingView v in views)
             {
-                bool allowed = v.OwnerId == ownerId || sees(v.Position);
-                if (v.Hidden) allowed = allowed && (v.OwnerId == ownerId || (mayKnowHidden != null && mayKnowHidden(v.OwnerId)));
+                bool allowed = MayKnow(v, ownerId, sees, mayKnowHidden);
                 bool wasKnown = known.TryGetValue(v.Id, out Known k);
                 if (allowed)
                 {
                     if (!wasKnown || !k.Live)
                     {
-                        BuildingCodec.WriteEnter(writer, v);
+                        sink.Enter(v);
                         records++;
                     }
                     else if (k.Health != v.Health)
                     {
-                        BuildingCodec.WriteId(writer, BuildingRecord.Health, v.Id, v.Health);
+                        sink.Record(BuildingRecord.Health, v.Id, v.Health);
                         records++;
                     }
                     byte progress = k.Progress;
                     if (!wasKnown || !k.Live) progress = v.Progress; // an Enter carries it
                     else if (v.Progress == 100 ? k.Progress != 100 : v.Progress >= k.Progress + ProgressStep || v.Progress < k.Progress)
                     {
-                        BuildingCodec.WriteId(writer, BuildingRecord.Progress, v.Id, v.Progress);
+                        sink.Record(BuildingRecord.Progress, v.Id, v.Progress);
                         records++;
                         progress = v.Progress;
                     }
@@ -120,28 +149,28 @@ namespace WAR2D.Net.Replication
                     bool unpaid = wasKnown && k.Live && k.Unpaid;
                     if (v.OwnerId == ownerId && v.Unpaid != unpaid)
                     {
-                        BuildingCodec.WriteId(writer, BuildingRecord.Unpaid, v.Id, v.Unpaid ? 1 : 0);
+                        sink.Record(BuildingRecord.Unpaid, v.Id, v.Unpaid ? 1 : 0);
                         records++;
                         unpaid = v.Unpaid;
                     }
                     known[v.Id] = new Known { Live = true, Health = v.Health, Progress = progress, Hidden = v.Hidden, Unpaid = unpaid, Position = v.Position, OwnerId = v.OwnerId };
-                    if (writer.Position >= maxBytes) return records;
+                    if (sink.Full) return records;
                 }
                 else if (wasKnown && k.Hidden)
                 {
                     // It may no longer be known (vision sharing stopped): gone at once, never a ghost of a bomb.
-                    BuildingCodec.WriteId(writer, BuildingRecord.Gone, v.Id, 0);
+                    sink.Record(BuildingRecord.Gone, v.Id, 0);
                     records++;
                     known.Remove(v.Id);
-                    if (writer.Position >= maxBytes) return records;
+                    if (sink.Full) return records;
                 }
                 else if (wasKnown && k.Live)
                 {
-                    BuildingCodec.WriteId(writer, BuildingRecord.Hide, v.Id, 0);
+                    sink.Record(BuildingRecord.Hide, v.Id, 0);
                     records++;
                     k.Live = false;
                     known[v.Id] = k;
-                    if (writer.Position >= maxBytes) return records;
+                    if (sink.Full) return records;
                 }
             }
 
@@ -151,16 +180,16 @@ namespace WAR2D.Net.Replication
             foreach (int id in scratch)
             {
                 Known k = known[id];
-                if (k.Hidden || k.OwnerId == ownerId || sees(k.Position))
+                if (MayLearnGone(k.Hidden, k.OwnerId, k.Position, ownerId, sees))
                 {
-                    BuildingCodec.WriteId(writer, BuildingRecord.Gone, id, 0);
+                    sink.Record(BuildingRecord.Gone, id, 0);
                     records++;
                     known.Remove(id);
                 }
                 else if (k.Live)
                 {
                     // It died out of sight: the client keeps the last-seen ghost.
-                    BuildingCodec.WriteId(writer, BuildingRecord.Hide, id, 0);
+                    sink.Record(BuildingRecord.Hide, id, 0);
                     records++;
                     k.Live = false;
                     known[id] = k;
@@ -168,6 +197,27 @@ namespace WAR2D.Net.Replication
             }
             return records;
         }
+
+        /// <summary>The network form: records written with <see cref="BuildingCodec"/>, full past a byte limit.</summary>
+        private struct WriterSink : IBuildingRecordSink
+        {
+            public NetworkWriter Writer;
+            public int MaxBytes;
+            public void Enter(in BuildingView v) => BuildingCodec.WriteEnter(Writer, v);
+            public void Record(BuildingRecord kind, int id, int value) => BuildingCodec.WriteId(Writer, kind, id, value);
+            public bool Full => Writer.Position >= MaxBytes;
+        }
+    }
+
+    /// <summary>Where <see cref="BuildingInterest.Update{TSink}"/> puts its records: a network writer, or the AI's own store.</summary>
+    public interface IBuildingRecordSink
+    {
+        /// <summary>An Enter record: the building is seen (full data, replacing any ghost).</summary>
+        void Enter(in BuildingView v);
+        /// <summary>A Health, Progress or Unpaid (with <paramref name="value"/>), Hide or Gone record.</summary>
+        void Record(BuildingRecord kind, int id, int value);
+        /// <summary>True once no more records fit this update (the rest follow on the next).</summary>
+        bool Full { get; }
     }
 
     /// <summary>Encodes and decodes building records. Pure.</summary>

@@ -38,6 +38,9 @@ namespace WAR2D.World
         /// <summary>Indices of every tile whose kind changed since the map was made (terrain replication walks these).</summary>
         public IReadOnlyCollection<int> ChangedSinceStart => changedSinceStart;
 
+        /// <summary>The same tiles as <see cref="ChangedSinceStart"/>, for a walk without an enumerator allocation (the AI's team view).</summary>
+        internal HashSet<int> ChangedSinceStartSet => changedSinceStart;
+
         /// <summary>
         /// Changes a tile's kind now and records it for the flow-field cache (<see cref="ChangedTiles"/>) and
         /// replication (<see cref="ChangedSinceStart"/>). Refuses border tiles, off-map tiles and unknown kinds

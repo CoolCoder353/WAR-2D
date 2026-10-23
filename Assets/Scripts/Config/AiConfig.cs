@@ -74,6 +74,7 @@ namespace Config
         public Dictionary<AiStyle, AiStyleConfig> Styles = new Dictionary<AiStyle, AiStyleConfig>();
         public AiDiplomacyConfig Diplomacy = new AiDiplomacyConfig();
         public AiConcedeConfig Concede = new AiConcedeConfig();
+        public AiBrainConfig Brain = new AiBrainConfig();
 
         /// <summary>A difficulty's settings. Throws for Scripted or a missing entry (validation guarantees Easy, Normal and Hard).</summary>
         public AiDifficultyConfig GetDifficulty(AiDifficulty difficulty)
@@ -204,6 +205,21 @@ namespace Config
         public float GiftShare;
         /// <summary>Factor applied once to <see cref="PeaceSeconds"/> by a gift from a non-teammate.</summary>
         public float GiftPeaceFactor;
+    }
+
+    /// <summary>The brain's own bookkeeping (plan Task 6): the action budget, proposals, threats and memory. The same for every difficulty.</summary>
+    public class AiBrainConfig
+    {
+        /// <summary>Seconds of its actions per minute the budget may save up (a burst after a quiet spell).</summary>
+        public float BudgetBurstSeconds;
+        /// <summary>Seconds a proposal the budget couldn't afford waits before it is dropped (managers propose again).</summary>
+        public float ProposalWaitSeconds;
+        /// <summary>Tiles from its own buildings within which a seen enemy unit is a threat.</summary>
+        public float ThreatRadius;
+        /// <summary>Seconds a last-seen enemy army is remembered.</summary>
+        public float ArmyMemorySeconds;
+        /// <summary>Seconds an event (an alert, a threat) stays on the blackboard.</summary>
+        public float EventMemorySeconds;
     }
 
     /// <summary>When the AI surrenders (spec §8).</summary>

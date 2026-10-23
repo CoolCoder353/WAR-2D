@@ -163,6 +163,16 @@ public partial class WorldStateManager : NetworkBehaviour
             Spectating = owner => GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing &&
                                   GameCore.Instance.GetServerPlayerById(owner)?.state == PlayerState.Eliminated,
         };
+        // v0.14: AI players' team views (the same interest rules as replication) and the director that runs their thinks.
+        AiViews = new WAR2D.AiView.TeamViewBuilder(Sim, new WAR2D.AiView.GameCoreFacts())
+        {
+            CollectBuildings = CollectBuildingsForAi,
+            TerrainCellOf = TerrainCellAt,
+            SharesVision = SharesVision,
+        };
+        AiRunner = new WAR2D.AiView.AiRunner(Sim, AiViews, AiBrains.Director?.Invoke());
+        AiViews.Clock = () => AiRunner != null ? AiRunner.Now : 0;
+        Alerts.Observer = AiViews.ReportAlerts;
         ReplaysConfig replays = ConfigLoader.LoadConfig().Replays;
         if (replays.Enabled && !DevApi.PerfFlag && GameCore.Instance != null)
         {
@@ -307,9 +317,29 @@ public partial class WorldStateManager : NetworkBehaviour
     }
     private string pendingOutcome;
     
+    /// <summary>The AI players' team views (server only, v0.14).</summary>
+    public WAR2D.AiView.TeamViewBuilder AiViews { get; private set; }
+
+    /// <summary>Runs the AI director (server only, v0.14).</summary>
+    public WAR2D.AiView.AiRunner AiRunner { get; private set; }
+
+    /// <summary>The live buildings for an AI's view: replication's list of this boundary when it has one, else walked now.</summary>
+    [Server]
+    private void CollectBuildingsForAi(List<BuildingView> into)
+    {
+        if (Replication != null && GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing &&
+            Replication.TryGetBuildingViews(settledTick, out IReadOnlyList<BuildingView> views))
+        {
+            for (int i = 0; i < views.Count; i++) into.Add(views[i]); // by index: no enumerator per think
+            return;
+        }
+        FillBuildingViews(into);
+    }
+
     [ServerCallback]
     private void Update()
     {
+        AiRunner?.Update(Time.unscaledDeltaTime);
         ReplaySender?.Update(Time.unscaledDeltaTime, GameCore.Instance != null ? GameCore.Instance.CurrentState : GameState.Lobby);
         if (Recorder == null || recorderEndAt < 0 || NetworkTime.localTime < recorderEndAt) return;
         recorderEndAt = -1;
@@ -326,6 +356,10 @@ public partial class WorldStateManager : NetworkBehaviour
         Recorder = null;
         // The instance subscribed to, not Current: ClientWorld may have replaced it already (ClientTerrain.Clear).
         if (terrain != null) terrain.Changed -= OnTerrainBatch;
+        AiRunner?.Dispose();
+        AiRunner = null;
+        AiViews?.Dispose();
+        AiViews = null;
         Replication?.Dispose();
         Replication = null;
         if (Sim != null)
@@ -551,6 +585,7 @@ public partial class WorldStateManager : NetworkBehaviour
     {
         List<float2> deaths = TakeDeathPositions();
         if (deaths.Count == 0) return;
+        if (AiViews != null) foreach (float2 death in deaths) AiViews.ReportDeath(death); // each AI keeps those its grid sees
         Recorder?.Explosions(SimContext.Current.Clock.Tick, deaths);
         GameState state = GameCore.Instance != null ? GameCore.Instance.CurrentState : GameState.Playing;
 

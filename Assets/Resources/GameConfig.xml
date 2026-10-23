@@ -288,6 +288,13 @@
       <SeenWindowSeconds>120</SeenWindowSeconds>   <!-- that force seen within this long -->
       <IncomeSeconds>60</IncomeSeconds>            <!-- resources plus this much income to afford a unit -->
     </Concede>
+    <Brain>  <!-- the brain's bookkeeping, the same at every difficulty -->
+      <BudgetBurstSeconds>5</BudgetBurstSeconds>    <!-- the action budget saves up at most this many seconds of its APM -->
+      <ProposalWaitSeconds>10</ProposalWaitSeconds> <!-- an unaffordable proposal waits this long, then managers propose again -->
+      <ThreatRadius>14</ThreatRadius>               <!-- tiles from its buildings where a seen enemy is a threat -->
+      <ArmyMemorySeconds>180</ArmyMemorySeconds>    <!-- a last-seen enemy army is remembered this long -->
+      <EventMemorySeconds>30</EventMemorySeconds>   <!-- alerts and threats stay on the blackboard this long -->
+    </Brain>
   </Ai>
 
   <!-- Damage multiplier per attacker unit type and target class (LightUnit, HeavyUnit, Building, Wall); 1.0 when missing. target="Unit" is shorthand for both unit classes. -->

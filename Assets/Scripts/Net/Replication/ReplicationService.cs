@@ -50,6 +50,17 @@ namespace WAR2D.Net.Replication
         /// <summary>Fills the list with every live building (set by the world; null sends no buildings).</summary>
         public Action<List<BuildingView>> CollectBuildings;
         private readonly List<BuildingView> buildingViews = new List<BuildingView>();
+        private int buildingViewsTick = -1;
+
+        /// <summary>
+        /// The live buildings collected at <paramref name="tick"/>'s boundary, when replication collected them then (the AI's
+        /// team view reuses them rather than walking every building again). False otherwise.
+        /// </summary>
+        public bool TryGetBuildingViews(int tick, out IReadOnlyList<BuildingView> views)
+        {
+            views = buildingViews;
+            return tick >= 0 && buildingViewsTick == tick;
+        }
         private readonly HashSet<int> buildingIds = new HashSet<int>();
         private const int EnterBytesEstimate = 24;
         /// <summary>Room a ReplicationBatch needs around its payload (tick, flags, length prefix).</summary>
@@ -235,12 +246,7 @@ namespace WAR2D.Net.Replication
             bool any = false;
             for (int c = 0; c < MaxClients; c++) any |= active[c];
 
-            var input = new ReplicationInput
-            {
-                Count = count, Positions = data.Positions, Health = data.Health, MaxHealth = data.MaxHealth,
-                OwnerId = data.OwnerId, Type = data.Type, IdOf = data.IdOf, IndexOfId = data.IndexOfId, SpeedByType = data.SpeedByType,
-                Visible = data.Visible, FogCellSize = data.FogCellSize, FogW = data.FogW, FogH = data.FogH, FogCells = data.FogCells,
-            };
+            ReplicationInput input = ReplicationInput.From(data, count);
             JobHandle handle = new RouteMaintenance
             {
                 Count = count,
@@ -331,7 +337,7 @@ namespace WAR2D.Net.Replication
         }
 
         /// <summary>The building each attack hit (parallel to <paramref name="attacks"/>), from the tick's building arrays; Id 0 for other targets.</summary>
-        private static NativeArray<AttackTarget> AttackTargets(SimData data, NativeArray<int2> attacks)
+        internal static NativeArray<AttackTarget> AttackTargets(SimData data, NativeArray<int2> attacks)
         {
             var targets = new NativeArray<AttackTarget>(attacks.Length, Allocator.TempJob);
             for (int i = 0; i < attacks.Length; i++) targets[i] = BuildingOf(data, attacks[i].y);
@@ -339,7 +345,7 @@ namespace WAR2D.Net.Replication
         }
 
         /// <summary>This tick's building attacks (v0.13), each with its attacking building and (when a building) its target.</summary>
-        private static NativeArray<BuildingAttack> BuildingAttacks(SimData data)
+        internal static NativeArray<BuildingAttack> BuildingAttacks(SimData data)
         {
             var attacks = new NativeArray<BuildingAttack>(data.BuildingAttackEvents.Length, Allocator.TempJob);
             for (int i = 0; i < attacks.Length; i++)
@@ -351,7 +357,7 @@ namespace WAR2D.Net.Replication
         }
 
         /// <summary>A building as the encoder's may-know rule needs it, from the tick's building arrays; Id 0 when the id is not a live building.</summary>
-        private static AttackTarget BuildingOf(SimData data, int id)
+        internal static AttackTarget BuildingOf(SimData data, int id)
         {
             int count = math.min(data.BuildingCount[0], data.BuildingCapacity);
             int index = NetIdAllocator.IndexOf(id);
@@ -486,6 +492,7 @@ namespace WAR2D.Net.Replication
             buildingViews.Clear();
             buildingIds.Clear();
             CollectBuildings(buildingViews);
+            buildingViewsTick = SinkTick;
             foreach (BuildingView v in buildingViews) buildingIds.Add(v.Id);
             int limit = BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4);
             for (int c = 0; c < MaxClients; c++)

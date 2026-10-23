@@ -26,10 +26,18 @@ public static class AiOwnerIds
 
 /// <summary>
 /// An AI player's brain, implemented in the <c>WAR2D.Ai</c> assembly (which references this one, so this one can't
-/// reference it back). The think contract is added with the director (plan Task 6); Scripted seats have none.
+/// reference it back). Scripted seats have none.
 /// </summary>
 public interface IAiBrain
 {
+    /// <summary>Seconds between two of its thinks (its difficulty's <c>ThinkSeconds</c>).</summary>
+    float ThinkSeconds { get; }
+
+    /// <summary>
+    /// One think: reads its <see cref="WAR2D.AiView.TeamView"/> (everything it may know, built just now) and acts only
+    /// through <see cref="PlayerActions"/>. Main thread, on the settled world.
+    /// </summary>
+    void Think(WAR2D.AiView.TeamView view);
 }
 
 /// <summary>Where <c>WAR2D.Ai</c> registers itself at load: the game creates each seat's brain through this, never by naming the AI types.</summary>
@@ -37,6 +45,9 @@ public static class AiBrains
 {
     /// <summary>Makes a brain for a seat at match start (its style resolved); null until the AI assembly registers, and never called for Scripted seats.</summary>
     public static System.Func<AiSeat, IAiBrain> Factory;
+
+    /// <summary>Makes the director that schedules the brains' thinks (one per match); null until the AI assembly registers.</summary>
+    public static System.Func<WAR2D.AiView.IAiDirector> Director;
 }
 
 /// <summary>One AI player on the server: its connectionless <see cref="ServerPlayer"/>, its settings and its server-owned player object.</summary>

@@ -211,6 +211,7 @@ public sealed class PerfMatch : MonoBehaviour
         stats.Add("perf.part.orders", SimTiming.LastOrdersMs);
         stats.Add("perf.part.settled", SimTiming.LastSettledMs);
         stats.Add("perf.part.matchSettled", SimTiming.LastMatchSettledMs);
+        stats.Add("perf.part.ai", SimTiming.LastAiMs); // v0.14: AI thinking (view build and brain) on the main thread
         stats.Add("perf.part.commands", SimTiming.LastCommandsMs);
         stats.Add("perf.part.stages", SimTiming.LastStagesMs);
         // v0.13: the combat and vision stages' job chains on the workers (the turrets' jobs, the jam rebuild and stamping).

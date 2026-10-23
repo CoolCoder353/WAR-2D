@@ -62,7 +62,7 @@ public partial class GameCore
     }
 
     /// <summary>True for two different owners on the same team (Solo players are on teams of their own).</summary>
-    private bool AreTeammates(int a, int b) => a != b && TeamOf(a) == TeamOf(b);
+    internal bool AreTeammates(int a, int b) => a != b && TeamOf(a) == TeamOf(b);
 
     /// <summary>Called by the server when an HQ is placed: records which option it is in and tells the owner's teammates.</summary>
     [Server]

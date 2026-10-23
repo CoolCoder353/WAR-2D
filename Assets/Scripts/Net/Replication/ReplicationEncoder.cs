@@ -359,28 +359,14 @@ namespace WAR2D.Net.Replication
             // Attacks whose attacker this client can see in its view.
             for (int i = 0; i < Attacks.Length; i++)
             {
-                int2 attack = Attacks[i];
-                int index = NetIdAllocator.IndexOf(attack.x);
-                if (!BitSet.Get(Allowed, index)) continue;
-                int slot = Input.SlotOfIndex(index);
-                if (slot < 0 || !InView(view, Input.Positions[slot])) continue;
-                AttackOut.Add(new AttackEvent { AttackerIndex = index, TargetId = MayKnowTarget(attack.y, i < AttackTargets.Length ? AttackTargets[i] : default) ? attack.y : 0 });
+                AttackTarget target = i < AttackTargets.Length ? AttackTargets[i] : default;
+                if (InterestRules.UnitAttack(Input, Allowed, view, Attacks[i], target, Owner, Grid, out AttackEvent shown)) AttackOut.Add(shown);
             }
 
             // Building attacks (v0.13): only from a building the client may know, in its view (its own buildings
             // wherever the camera is: the owner's turret status must not depend on it); the target as above.
             for (int i = 0; i < BuildingAttacks.Length; i++)
-            {
-                BuildingAttack attack = BuildingAttacks[i];
-                if (!MayKnowBuilding(attack.Attacker)) continue;
-                if (attack.Attacker.OwnerId != Owner && !InView(view, attack.Attacker.Position)) continue;
-                AttackOut.Add(new AttackEvent
-                {
-                    AttackerKind = AttackerKinds.Building,
-                    AttackerId = attack.Attacker.Id,
-                    TargetId = MayKnowTarget(attack.TargetId, attack.Target) ? attack.TargetId : 0,
-                });
-            }
+                if (InterestRules.BuildingAttack(Input, Allowed, view, BuildingAttacks[i], Owner, Grid, out AttackEvent shown)) AttackOut.Add(shown);
 
             FlushLeaves();
             FlushEnters();
@@ -412,7 +398,7 @@ namespace WAR2D.Net.Replication
             state.Speed = state.FullSpeed;
         }
 
-        private static bool InView(int4 view, float2 p) => p.x >= view.x && p.y >= view.y && p.x < view.z + 1 && p.y < view.w + 1;
+        private static bool InView(int4 view, float2 p) => InterestRules.InView(view, p);
 
         private void CheckCorrection(int slot, int index, ref PredictState state, float now, bool inView)
         {
@@ -570,28 +556,6 @@ namespace WAR2D.Net.Replication
                 UnreliableSizes.Add(sink.Position - before);
             }
         }
-
-        /// <summary>
-        /// True when the client may know an attack's target: a unit in its interest set, or a building it owns or
-        /// (unless hidden) its grid sees (<paramref name="building"/>, the target when it is a building). Anything else
-        /// would name what the fog hides.
-        /// </summary>
-        private bool MayKnowTarget(int target, in AttackTarget building)
-        {
-            if (target <= 0) return false;
-            int index = NetIdAllocator.IndexOf(target);
-            if ((uint)index < (uint)Input.IndexOfId.Length)
-            {
-                int slot = Input.IndexOfId[index];
-                if ((uint)slot < (uint)Input.Count && Input.IdOf[slot] == target) // a unit (alive or killed by this shot)
-                    return (uint)index < (uint)(Allowed.Length * 64) && BitSet.Get(Allowed, index);
-            }
-            return building.Id == target && MayKnowBuilding(building);
-        }
-
-        /// <summary>True when the client may know a building: it owns it, or its grid sees it now and it isn't hidden.</summary>
-        private bool MayKnowBuilding(in AttackTarget building) =>
-            building.Id > 0 && (building.OwnerId == Owner || (building.Hidden == 0 && Input.Sees(Grid, building.Position)));
 
         private void FlushAttacks()
         {
