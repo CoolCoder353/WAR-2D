@@ -370,6 +370,80 @@ public class SimBastionTests
         Assert.IsTrue(alerts.Any(a => a.owner == SimHarness.OwnerA && a.alert.Kind == AlertKind.UnderAttack && math.all(a.alert.Tile == TurretAt)), "the turret's owner, at the turret");
     }
 
+    [Test]
+    public void AWallShotIsABuildingAttackEventWithNoTarget()
+    {
+        using var sim = Sim();
+        int turret = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.GunTurret, TurretAt, complete: true);
+        sim.Spawn(SimHarness.OwnerB, new float2(55f, 55f), UnitType.Builder); // B exists, far out of range
+        int2 wall = new int2(18, 20);
+        sim.PlaceWall(SimHarness.OwnerB, wall);
+        sim.Tick();
+        sim.ForceBuiltWall(wall);
+        var targets = new List<int>();
+        sim.Context.Settled += (data, tick, n) =>
+        {
+            foreach (int2 e in data.BuildingAttackEvents) if (e.x == turret) targets.Add(e.y);
+        };
+        for (int i = 0; i < 30; i++) sim.Tick();
+        Assert.AreEqual(TargetKinds.Wall, Weapon(sim, turret).TargetKind, "the turret shoots the wall");
+        Assert.Greater(targets.Count, 0, "each wall shot is an event, so clients see the turret fire");
+        CollectionAssert.AreEqual(Enumerable.Repeat(0, targets.Count), targets, "naming no target (a wall tile is no entity)");
+    }
+
+    [Test]
+    public void WithTheDefaultSliceATurretHoldsItsTargetWhileSlotsAheadOfItMove()
+    {
+        // The default TargetSearchSliceTicks: the turret re-searches on some ticks and keeps its target between them.
+        using var sim = new SimHarness(SimHarness.OpenMap(64));
+        Assert.Greater(sim.Context.Data.Slice, 1, "the default config slices the search");
+        int miner = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Miner, new int2(40, 40), complete: true); // a slot ahead of the turret
+        int turret = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.GunTurret, TurretAt, complete: true);
+        int[] heavy = sim.Spawn(SimHarness.OwnerB, new float2(26f, 20.5f), UnitType.Heavy);
+        sim.Spawn(SimHarness.OwnerB, new float2(28.5f, 22.5f), UnitType.Heavy); // a second enemy, farther, in range
+        var shots = new List<int>();
+        sim.Context.Settled += (data, tick, n) =>
+        {
+            foreach (int2 e in data.BuildingAttackEvents) if (e.x == turret) shots.Add(e.y);
+        };
+        for (int i = 0; i < 20; i++) sim.Tick();
+        Assert.AreEqual(heavy[0], Weapon(sim, turret).TargetId, "the nearest Heavy");
+        int slotBefore = SlotOf(sim, turret);
+
+        sim.Em.DestroyEntity(sim.BuildingEntity(miner)); // destroyed between ticks: the turret's slot moves
+        sim.Tick();
+        Assert.AreNotEqual(slotBefore, SlotOf(sim, turret), "the turret changed slots");
+        int created = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Miner, new int2(44, 44), complete: true);
+        int firedBefore = shots.Count;
+        for (int i = 0; i < 60; i++)
+        {
+            sim.Tick();
+            Assert.AreEqual(heavy[0], Weapon(sim, turret).TargetId, $"tick {i}: the same target across search and non-search ticks");
+        }
+        Assert.IsTrue(sim.Em.Exists(sim.BuildingEntity(created)));
+        int interval = (int)math.round(sim.Config.GetBuilding(BuildingType.GunTurret).AttackInterval * sim.Config.Simulation.TickRate);
+        Assert.GreaterOrEqual(shots.Count - firedBefore, 60 / interval - 1, "and it kept firing");
+        CollectionAssert.AreEqual(Enumerable.Repeat(heavy[0], shots.Count), shots, "every shot at that one id");
+    }
+
+    [Test]
+    public void ATurretInsideAnEnemyJamSeesAndShootsOnlyWithinJamSight()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(96), c => c.Simulation.TargetSearchSliceTicks = 1);
+        sim.PlaceBuilding(SimHarness.OwnerB, BuildingType.Jammer, new int2(40, 40), complete: true);
+        int turret = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.GunTurret, new int2(36, 44), complete: true); // centre (36.5, 44.5)
+        int[] far = sim.Spawn(SimHarness.OwnerB, new float2(42.5f, 44.5f), UnitType.Heavy); // 6 away: in range 7, beyond JamSight 3
+        int[] shots = CountShots(sim, turret);
+        for (int i = 0; i < 30; i++) sim.Tick();
+        Assert.IsTrue(Jammed(sim, SimHarness.OwnerA, new float2(42.5f, 44.5f)), "the target stands in B's jam");
+        Assert.AreEqual(0, shots[0], "jammed: the turret doesn't see it, so doesn't fire");
+        Assert.AreEqual(sim.Config.GetUnit(UnitType.Heavy).Health, Health(sim, far[0]));
+
+        sim.Spawn(SimHarness.OwnerB, new float2(38.5f, 44.5f), UnitType.Heavy); // 2 away: within JamSight
+        for (int i = 0; i < 20; i++) sim.Tick();
+        Assert.Greater(shots[0], 0, "within JamSight it sees and fires");
+    }
+
     // ---- Task 6: the jam ----
 
     /// <summary>B's Jammer, complete, centred on (40, 40) (anchor (40, 40), 2x2), radius 12.</summary>
@@ -485,6 +559,24 @@ public class SimBastionTests
         Pass(sim);
         Assert.IsTrue(Sees(sim, SimHarness.OwnerA, JammerCentre), "up close it is seen");
         Assert.IsTrue(sim.Em.Exists(sim.BuildingEntity(jammer)));
+    }
+
+    [Test]
+    public void JamSightIsMeasuredBetweenTheCellsClosestTilesNotTheirCentres()
+    {
+        // Fog cells are 2 tiles. The Tank stands in cell x = 15 (tiles 30..31), the targets in cells two away.
+        using var sim = new SimHarness(SimHarness.OpenMap(96));
+        sim.Spawn(SimHarness.OwnerA, new float2(31.9f, 41f));
+        sim.PlaceBuilding(SimHarness.OwnerB, BuildingType.Jammer, JammerAt, complete: true);
+        Pass(sim);
+        float2 straight = new float2(34.1f, 41f); // 2.2 tiles away; the cells' centres are 4 apart, closest tiles 3
+        Assert.IsTrue(Jammed(sim, SimHarness.OwnerA, straight));
+        Assert.IsTrue(Sees(sim, SimHarness.OwnerA, straight), "a target 2.2 tiles away is within JamSight 3");
+        float2 diagonal = new float2(34.1f, 45.1f); // cells (2, 2) away: closest tiles (3, 3) apart, 4.2 > 3
+        Assert.IsTrue(Jammed(sim, SimHarness.OwnerA, diagonal));
+        Assert.IsFalse(Sees(sim, SimHarness.OwnerA, diagonal), "a diagonal cell whose closest tile is beyond JamSight is not seen");
+        float2 knight = new float2(34.1f, 43.1f); // cells (2, 1) away: closest tiles (3, 1) apart, 3.2 > 3
+        Assert.IsFalse(Sees(sim, SimHarness.OwnerA, knight), "nor one just beyond it");
     }
 
     [Test]

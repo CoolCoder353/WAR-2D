@@ -52,6 +52,8 @@ namespace WAR2D.Sim
             if (StageClock.Enabled)
             {
                 SimTiming.LastCombatJobsMs = StageClock.Take(StageClock.CombatStart, StageClock.CombatEnd);
+                // The vision stage runs every VisionInterval ticks: only those ticks have a vision sample.
+                SimTiming.LastVisionRan = StageClock.Ran(StageClock.VisionStart, StageClock.VisionEnd);
                 SimTiming.LastVisionJobsMs = StageClock.Take(StageClock.VisionStart, StageClock.VisionEnd);
             }
 

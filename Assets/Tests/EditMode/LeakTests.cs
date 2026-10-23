@@ -32,6 +32,8 @@ public class LeakTests
         /// <summary>Building attack events received (v0.13), and the building ids they named.</summary>
         public int BuildingAttacks;
         public readonly HashSet<int> Attackers = new HashSet<int>();
+        /// <summary>The targets those events named (0: unnamed, or a wall).</summary>
+        public readonly List<int> AttackTargets = new List<int>();
         /// <summary>Other players' unit ids this client was ever told about.</summary>
         public readonly HashSet<int> OthersKnown = new HashSet<int>();
         private readonly SimContext sim;
@@ -51,6 +53,7 @@ public class LeakTests
         {
             BuildingAttacks++;
             Attackers.Add(building);
+            AttackTargets.Add(target);
             SimData data = sim.Data;
             int grid = sim.VisionOf(Owner);
             int b = BuildingSlot(data, building);
@@ -780,6 +783,76 @@ public class LeakTests
         Assert.Less(sim.UnitById(victim[0]).Health, sim.Config.GetUnit(UnitType.Heavy).Health, "the turret hit C's Heavy");
         Assert.AreEqual(0, spy.BuildingAttacks, "C never learns the jammed turret fired");
         Assert.IsFalse(spy.Buildings.Entries.ContainsKey(turret));
+        CollectionAssert.IsEmpty(spy.Failures);
+        spy.Dispose();
+    }
+
+    [Test]
+    public void AnOwnerSeesItsTurretFireWhereverItsCameraIs()
+    {
+        using var sim = new SimHarness(Map(), c => c.Simulation.TargetSearchSliceTicks = 1);
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        replication.CollectBuildings = list => SimBuildings(sim, list);
+        var a = new Spy(sim.Context, replication, SimHarness.OwnerA);
+        var c = new Spy(sim.Context, replication, OwnerC);
+        // Both cameras far from the turret.
+        foreach (int owner in new[] { SimHarness.OwnerA, OwnerC }) replication.SetVirtualView(owner, new int2(60, 60), new int2(95, 95));
+        int turret = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.GunTurret, new int2(20, 20), complete: true);
+        sim.Spawn(OwnerC, new float2(26.5f, 20.5f), UnitType.Heavy); // sees the turret, outside its own range
+        for (int t = 0; t < 60; t++) sim.Tick();
+        Assert.Greater(a.BuildingAttacks, 0, "the owner's turret status doesn't depend on its camera");
+        CollectionAssert.AreEquivalent(new[] { turret }, a.Attackers);
+        Assert.AreEqual(0, c.BuildingAttacks, "an enemy who sees the turret still needs it in view");
+        foreach (Spy spy in new[] { a, c }) { CollectionAssert.IsEmpty(spy.Failures, $"owner {spy.Owner}"); spy.Dispose(); }
+    }
+
+    [Test]
+    public void ATurretsWallShotReachesWhoMayKnowTheTurretNamingNoTarget()
+    {
+        using var sim = new SimHarness(Map(), c => c.Simulation.TargetSearchSliceTicks = 1);
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        replication.CollectBuildings = list => SimBuildings(sim, list);
+        var a = new Spy(sim.Context, replication, SimHarness.OwnerA);
+        var c = new Spy(sim.Context, replication, OwnerC);
+        foreach (int owner in new[] { SimHarness.OwnerA, OwnerC }) replication.SetVirtualView(owner, new int2(0, 0), new int2(95, 95));
+        sim.Spawn(OwnerC, new float2(80.5f, 80.5f), UnitType.Builder); // C exists, far from the turret: it can't see it
+        int turret = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.GunTurret, new int2(20, 20), complete: true);
+        int2 wall = new int2(17, 20);
+        sim.PlaceWall(OwnerC, wall);
+        sim.Tick();
+        sim.ForceBuiltWall(wall);
+        for (int t = 0; t < 40; t++) sim.Tick();
+        Assert.Greater(a.BuildingAttacks, 0, "the owner sees its turret shoot the wall");
+        CollectionAssert.AreEqual(Enumerable(0, a.AttackTargets.Count), a.AttackTargets, "with no target named");
+        Assert.AreEqual(0, c.BuildingAttacks, "the wall's owner doesn't see the turret: no event");
+        foreach (Spy spy in new[] { a, c }) { CollectionAssert.IsEmpty(spy.Failures, $"owner {spy.Owner}"); spy.Dispose(); }
+
+        static List<int> Enumerable(int value, int count) { var l = new List<int>(); for (int i = 0; i < count; i++) l.Add(value); return l; }
+    }
+
+    [Test]
+    public void AJammerGhostStaysAGhostUntilItsSpotIsSeen()
+    {
+        using var sim = new SimHarness(Map());
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        replication.CollectBuildings = list => SimBuildings(sim, list);
+        var spy = new Spy(sim.Context, replication, SimHarness.OwnerA);
+        int jammer = sim.PlaceBuilding(OwnerC, BuildingType.Jammer, new int2(30, 30), complete: true);
+        int[] tank = sim.Spawn(SimHarness.OwnerA, new float2(33.5f, 31.5f)); // up close: within JamSight
+        for (int t = 0; t < 8; t++) sim.Tick();
+        Assert.IsTrue(spy.Buildings.Entries.ContainsKey(jammer) && !spy.Buildings.Entries[jammer].Ghost, "seen up close");
+
+        sim.Teleport(tank[0], new float2(37.5f, 31.5f)); // 6 away: in sight 8 but for the jam
+        for (int t = 0; t < 8; t++) sim.Tick();
+        sim.Em.CompleteAllTrackedJobs();
+        Assert.IsTrue(sim.Context.Data.Jammed(sim.Context.VisionOf(SimHarness.OwnerA), new float2(31f, 31f)));
+        Assert.IsTrue(spy.Buildings.Entries[jammer].Ghost, "jammed out of sight: a ghost");
+        for (int t = 0; t < 40; t++) sim.Tick();
+        Assert.IsTrue(spy.Buildings.Entries.ContainsKey(jammer) && spy.Buildings.Entries[jammer].Ghost, "and it stays one, though the Tank is within its sight");
+
+        sim.Teleport(tank[0], new float2(33.5f, 31.5f));
+        for (int t = 0; t < 8; t++) sim.Tick();
+        Assert.IsFalse(spy.Buildings.Entries[jammer].Ghost, "seen again up close: live");
         CollectionAssert.IsEmpty(spy.Failures);
         spy.Dispose();
     }

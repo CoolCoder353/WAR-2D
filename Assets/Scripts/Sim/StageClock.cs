@@ -9,7 +9,8 @@ namespace WAR2D.Sim
     /// threads (v0.13, so the Gun turret's jobs and the jam rebuild show up in <c>perf.csv</c> as
     /// <c>perf.part.combat</c> and <c>perf.part.vision</c>). A tiny managed job stamps the clock in the chain just
     /// before a stage's first job and after its last one; the boundary that settles the tick reads the difference
-    /// (<see cref="SimTiming.LastCombatJobsMs"/>, <see cref="SimTiming.LastVisionJobsMs"/>). Off without the flag.
+    /// (<see cref="SimTiming.LastCombatJobsMs"/>, <see cref="SimTiming.LastVisionJobsMs"/>). The vision stamps run only
+    /// on ticks the vision stage runs, so a vision sample is never a skipped tick's 0. Off without the flag.
     /// </summary>
     public static class StageClock
     {
@@ -20,6 +21,9 @@ namespace WAR2D.Sim
 
         /// <summary>True while the harness measures (the <c>-perf</c> flag).</summary>
         public static bool Enabled => DevApi.PerfFlag;
+
+        /// <summary>Whether both stamps ran in the last settled tick (read before <see cref="Take"/> clears them).</summary>
+        internal static bool Ran(int start, int end) => Stamps[start] != 0 && Stamps[end] >= Stamps[start];
 
         /// <summary>Milliseconds between two stamps of the last settled tick (0 when either didn't run), and clears them.</summary>
         internal static double Take(int start, int end)
@@ -103,7 +107,8 @@ namespace WAR2D.Sim
 
         protected override void OnUpdate()
         {
-            if (!SystemAPI.GetSingleton<SimClock>().Running) return;
+            SimClock clock = SystemAPI.GetSingleton<SimClock>();
+            if (!clock.Running || !SimVisionSystem.RunsOn(clock.Tick, SystemAPI.GetSingleton<SimData>().VisionInterval)) return;
             JobHandle dependency = Dependency;
             StageClock.Stamp(ref dependency, StageClock.VisionStart);
             Dependency = dependency;
@@ -124,7 +129,8 @@ namespace WAR2D.Sim
 
         protected override void OnUpdate()
         {
-            if (!SystemAPI.GetSingleton<SimClock>().Running) return;
+            SimClock clock = SystemAPI.GetSingleton<SimClock>();
+            if (!clock.Running || !SimVisionSystem.RunsOn(clock.Tick, SystemAPI.GetSingleton<SimData>().VisionInterval)) return;
             JobHandle dependency = Dependency;
             StageClock.Stamp(ref dependency, StageClock.VisionEnd);
             Dependency = dependency;

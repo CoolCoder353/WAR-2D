@@ -50,7 +50,8 @@ public sealed class AlertService
         seenTargets.Clear();
         foreach (int2 attack in data.AttackEvents) Damaged(data, unitCount, building, attack.y);
         // A turret's victims are attacked like any other (v0.13); a turret being hit is a building target above.
-        foreach (int2 attack in data.BuildingAttackEvents) Damaged(data, unitCount, building, attack.y);
+        foreach (int2 attack in data.BuildingAttackEvents)
+            if (attack.y > 0) Damaged(data, unitCount, building, attack.y); // 0: a wall shot, no alert (as for units)
         AlertRules.UnderAttack(damaged, throttle, now, add);
     }
 

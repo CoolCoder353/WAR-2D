@@ -367,11 +367,13 @@ namespace WAR2D.Net.Replication
                 AttackOut.Add(new AttackEvent { AttackerIndex = index, TargetId = MayKnowTarget(attack.y, i < AttackTargets.Length ? AttackTargets[i] : default) ? attack.y : 0 });
             }
 
-            // Building attacks (v0.13): only from a building the client may know, in its view; the target as above.
+            // Building attacks (v0.13): only from a building the client may know, in its view (its own buildings
+            // wherever the camera is: the owner's turret status must not depend on it); the target as above.
             for (int i = 0; i < BuildingAttacks.Length; i++)
             {
                 BuildingAttack attack = BuildingAttacks[i];
-                if (!MayKnowBuilding(attack.Attacker) || !InView(view, attack.Attacker.Position)) continue;
+                if (!MayKnowBuilding(attack.Attacker)) continue;
+                if (attack.Attacker.OwnerId != Owner && !InView(view, attack.Attacker.Position)) continue;
                 AttackOut.Add(new AttackEvent
                 {
                     AttackerKind = AttackerKinds.Building,

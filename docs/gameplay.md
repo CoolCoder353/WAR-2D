@@ -51,7 +51,7 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | Command card: Move, Attack-move | Arm the order: the next left- or right-click sends it (the armed button is highlighted) |
 | Command card: Stop, Hold | Same as `S` and `H` |
 | Selection panel: a unit type | Keep only that type selected |
-| Command card: Miner, Spawner, Wall, Bomb, Radar | With Builders selected, pick a building (greyed out until you can afford it); a preview follows the cursor. Right-click cancels. Each placement is a blueprint the Builders then build. |
+| Command card: Miner, Spawner, Wall, Bomb, Radar, Gun turret, Jammer | With Builders selected, pick a building (greyed out until you can afford it); a preview follows the cursor. Right-click cancels. Each placement is a blueprint the Builders then build. |
 | Left-click and drag (Wall armed) | Lay a straight wall line (horizontal, vertical or diagonal); each tile is its own blueprint |
 | `F`, then click (Builders) | **Repair** the damaged own or allied building or wall you click (the command card has the same button) |
 | `G`, then click (Diggers) | **Dig** toward the rock, gem or wall you click |
@@ -122,6 +122,8 @@ Buildings are placed from the HUD and must sit entirely on free ground your side
 Every producer makes **one selected type at a time**, one unit per `BuildSeconds` of that type (in the unit table), charging the unit's cost as it spawns. A new producer starts on the first type it makes.
 | **Bomb** | 1×1 | 40 | 75 | 1 | A hidden trap, walkable. See "Siege". |
 | **Radar** | 2×2 | 200 | 250 | 5 | Sees 20 tiles ignoring walls and rock, and pings you when an enemy comes in range. See "Siege". |
+| **Gun turret** | 1×1 | 350 | 150 | 4 | (v0.13.) Shoots enemy units in range 7, else buildings, else walls: 8 damage every 0.4 s. Sight 8. See "Siege". |
+| **Jammer** | 2×2 | 200 | 200 | 6 | (v0.13.) Hides the area within 12 tiles from enemies: they see in it only from 3 tiles, and their Radars not at all. Sight 6. See "Siege". |
 
 ### Miner facing
 
@@ -168,8 +170,9 @@ Units reach full speed at once (the unused `Acceleration` setting was dropped). 
 
 ## Fog of war, teams and diplomacy
 
-- Each player sees through the eyes of all their units and buildings, plus those of every player sharing vision with them. Teammates share vision with each other from the start. Sight radius (`Sight`) is per unit and building type in `GameConfig.xml`: Tank 8 tiles, Builder 6, Digger 6, HQ 10, Spawner 6, Miner 4, Radar 20 (Radar sight ignores walls), Bomb 0. A blueprint sees nothing until it is finished.
+- Each player sees through the eyes of all their units and buildings, plus those of every player sharing vision with them. Teammates share vision with each other from the start. Sight radius (`Sight`) is per unit and building type in `GameConfig.xml`: Tank 8 tiles, Builder 6, Digger 6, HQ 10, Spawner 6, Miner 4, Radar 20 (Radar sight ignores walls), Bomb 0, Gun turret 8, Jammer 6. A blueprint sees nothing until it is finished.
 - Walls block sight; you can see a wall's face but not what's behind it. Fog is tracked on a grid of 2×2-tile cells and updated 5 times a second.
+- **Jams (v0.13).** Inside a finished, paid enemy Jammer's radius (`Siege/JamRadius`, 12 tiles), your side sees a fog cell only when one of your sources is within `Siege/JamSight` (3 tiles) of it, measured between the closest tiles of the source's cell and that cell (line of sight still applies), and your Radars see nothing there and never ping for a contact in it. Units, buildings, wall and terrain changes, explosions and alerts in the jam follow what you see, so a building there stays a ghost until you come close. A Jammer never jams its owner or anyone its owner shares vision with. Its dark disc does show roughly where it is.
 - The map shows three states: **unexplored** (black), **explored** (dimmed: you've seen it before), and **visible** (clear).
 - You only receive other players' units standing where you can see now (your own sight plus vision shared with you). Enemy buildings you've seen stay on your map as dimmed **last-seen ghosts** when they go out of sight; you only find out a ghost was destroyed when you see its spot again.
 - Diplomacy is per player and one-way. At the start, teammates don't attack each other and share vision; everyone else attacks and doesn't share. When the match has diplomacy on, each player chooses whom they attack and with whom they share vision (at most one change per command every 2 s, `Diplomacy/ChangeCooldownSeconds`). Stopping sharing keeps what the other player already explored. Nobody learns another player's choices, except that you're told who shares vision with you. Units of players who don't attack each other never damage each other (bomb blasts are the exception: they hit everything in range, friends included). The **Diplomacy** button on the top bar (shown only when the match has diplomacy on) opens a panel with an Attack and a Share-vision switch per player; it also marks who shares vision with you.
@@ -195,13 +198,15 @@ All numbers are starting values in `GameConfig.xml` (`Siege`, `Units`, `Building
 - **Diggers** (120 cost, 120 health) come from the Spawner queue. Dig (G) removes a rock tile in `DigTime` 1.5 s; walls take damage instead (x6). A gem tile pays `GemPayout` 150 and stops Miners on it. The map border is never dug. Diggers fight back if attacked (x0.5 on units, x3 on buildings).
 - **Bombs** (75 cost, 1x1, walkable): only the owner and anyone they share vision with ever see one. A unit of any player you attack triggers it; the blast (radius 2.5, 200 damage) hits everything, friendlies too. Everyone who sees the tile sees the explosion, and the owner gets an alert.
 - **Radar** (250 cost, 2x2, 5 upkeep): sees 20 tiles ignoring walls and rock, never bombs. It pings its owner once when an enemy enters its range, again only after the area has been clear `RadarClearSeconds` 5 s and `RadarAlertCooldownSeconds` 30 s have passed.
+- **Gun turret** (v0.13; 150 cost, 1x1, 350 health, 4 upkeep, sight 8): the only building that attacks. It fights like a unit that can't move: the nearest enemy unit in `Range` 7 it sees and has a clear line to, else the nearest enemy building, else an enemy wall tile, for `Damage` 8 every `AttackInterval` 0.4 s times the damage table (`GunTurret` row: light units 1.5, heavy units 0.4, buildings 0.5, walls 0.5). Strong against Scouts, weak against Heavies. It doesn't fire as a blueprint or while its upkeep is unpaid (the owner's panel says "Unpaid: not firing"). Enemies who see a turret see it fire; its victims' owners get the usual Under-attack alert, and a turret being shot raises its owner's.
+- **Jammer** (v0.13; 200 cost, 2x2, 200 health, 6 upkeep, sight 6): while finished and paid, jams `JamRadius` 12 tiles for every player its owner doesn't share vision with (see "Fog of war"). It stops jamming while unpaid or destroyed. Its owner sees the jam radius as a ring while it is selected.
 
 ## Combat
 
 - Combat is fully automatic. Every unit picks the **nearest enemy unit** (a unit of any player its owner attacks) within range that it has a clear line to (rock blocks shots as it blocks sight; buildings and units don't), and only when there is none, the nearest enemy **building**. Idle units look for targets every few ticks, so a new enemy is picked up within about 0.4 s.
 - Damage is the attacker's `Damage` times a multiplier from the damage table (`DamageTable`) for what it hits: units, buildings or walls. The Tank's multipliers are 1.0 except against walls (0.5). The Digger does 0.5 to units, 3 to buildings and 6 to walls; the Builder 0 to everything.
 - It keeps attacking that target every attack interval while the target is alive and in range. When the target dies or leaves range, it picks a new one.
-- Buildings don't attack.
+- Buildings don't attack, except the **Gun turret** (v0.13, see "Siege").
 - Anything at 0 health is destroyed, and **every death plays an explosion**. The server sends each player only the deaths inside their camera view that they can see (their sight plus vision shared with them), at most 1,024 a tick; once the match is over, the end-of-match wipe shows wherever they look.
 - Clients see a short yellow tracer for each attack whose attacker is on screen, and a health bar over every damaged unit or building.
 

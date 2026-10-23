@@ -4,17 +4,35 @@ using Mirror;
 
 namespace WAR2D.Net.Steam
 {
-    public struct SteamAuthRequest : NetworkMessage { public string version; public ulong steamId; public byte[] ticket; }
+    public struct SteamAuthRequest : NetworkMessage { public string version; public ulong steamId; public byte[] ticket; public int protocol; }
     public struct SteamAuthResponse : NetworkMessage { public bool accepted; public string reason; }
+
+    /// <summary>A Direct (KCP) client's first message: its wire protocol and build version, checked before it is let in.</summary>
+    public struct VersionHello : NetworkMessage { public int protocol; public string version; }
+
+    /// <summary>The version check a Direct (KCP) join must pass. Pure.</summary>
+    public static class DirectHandshake
+    {
+        public static bool Check(int hostProtocol, string hostVersion, VersionHello hello, out string reason)
+        {
+            if (hello.protocol != hostProtocol) { reason = GameVersion.MismatchReason(hostVersion, hostProtocol); return false; }
+            reason = null;
+            return true;
+        }
+    }
 
     /// <summary>The rules a Steam sign-in must pass before Steam is even asked. Pure.</summary>
     public static class SteamAuthPolicy
     {
         public const int MaxTicketBytes = 1024;
 
-        public static bool Check(string hostVersion, SteamAuthRequest req, ulong transportSteamId, out string reason)
+        public static bool Check(string hostVersion, SteamAuthRequest req, ulong transportSteamId, out string reason) =>
+            Check(hostVersion, GameVersion.Protocol, req, transportSteamId, out reason);
+
+        public static bool Check(string hostVersion, int hostProtocol, SteamAuthRequest req, ulong transportSteamId, out string reason)
         {
-            if (!GameVersion.IsCompatible(hostVersion, req.version)) { reason = $"Wrong game version (host {hostVersion})."; return false; }
+            if (!GameVersion.IsCompatible(hostVersion, req.version) || req.protocol != hostProtocol)
+            { reason = GameVersion.MismatchReason(hostVersion, hostProtocol); return false; }
             if (transportSteamId == 0 || req.steamId != transportSteamId) { reason = "Steam identity does not match the connection."; return false; }
             if (req.ticket == null || req.ticket.Length == 0 || req.ticket.Length > MaxTicketBytes) { reason = "Bad Steam ticket."; return false; }
             reason = null;

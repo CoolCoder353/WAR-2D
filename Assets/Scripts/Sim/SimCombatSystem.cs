@@ -304,7 +304,8 @@ namespace WAR2D.Sim
     }
 
     /// <summary>
-    /// The attacker buildings' target search, sliced over ticks like the units' (<c>(slot + Tick) % Slice</c>): the
+    /// The attacker buildings' target search, sliced over ticks like the units' on the building's stable id index
+    /// (<c>(IndexOf(id) + Tick) % Slice</c>, not its slot, which moves when an earlier slot is freed): the
     /// nearest enemy unit, else building, else wall tile in range (spec §2.1: walls always, like a unit on Attack-move).
     /// </summary>
     [BurstCompile]
@@ -319,7 +320,7 @@ namespace WAR2D.Sim
         public void Execute(int i)
         {
             int b = Weapon.Attackers[i];
-            if (Slice > 1 && (b + Tick) % Slice != 0) return;
+            if (Slice > 1 && (NetIdAllocator.IndexOf(Search.BuildingIds[b]) + Tick) % Slice != 0) return;
             if (!BuildingWeaponInput.Armed(Search, b)) { Target[b] = -1; return; }
             TargetSearch.Nearest(Search, Weapon.Centre(b), Search.BuildingOwnerSlot[b], Weapon.RangeSq(b), 0f, true, out int target, out byte kind);
             Target[b] = target;
@@ -330,7 +331,8 @@ namespace WAR2D.Sim
     /// <summary>
     /// Fires each attacker building at its resolved target when its cooldown allows: a <see cref="DamageHit"/> of the
     /// type's damage times the damage table's multiplier (<see cref="WAR2D.Rules.DamageTable.BuildingAttacker(int)"/>
-    /// row) for the target's class, into the shared queue, and a building attack event (not for walls, as for units).
+    /// row) for the target's class, into the shared queue, and a building attack event: for a wall shot it names
+    /// target 0 (a wall tile is no entity; its damage travels in the terrain delta), so clients still see the shot.
     /// Then it turns the target back into a stable id for the boundary's write-back to <see cref="BuildingWeapon"/>.
     /// </summary>
     [BurstCompile]
@@ -361,8 +363,7 @@ namespace WAR2D.Sim
                     TargetClass targetClass = kind == TargetKinds.Unit ? (TargetClass)ArmourByType[Type[target]] : kind == TargetKinds.Wall ? TargetClass.Wall : TargetClass.Building;
                     float multiplier = WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.BuildingAttacker(type), targetClass);
                     Hits.Enqueue(new DamageHit { Kind = kind, Slot = target, Amount = DamageByType[type] * multiplier, AttackerOwner = BuildingOwnerId[b] });
-                    if (kind != TargetKinds.Wall) // a wall's damage travels in the terrain delta, as for units
-                        Events.Add(new int2(BuildingIds[b], kind == TargetKinds.Unit ? IdOf[target] : BuildingIds[target]));
+                    Events.Add(new int2(BuildingIds[b], kind == TargetKinds.Unit ? IdOf[target] : kind == TargetKinds.Wall ? 0 : BuildingIds[target]));
                     cooldown = IntervalByType[type];
                 }
                 Cooldown[b] = cooldown;

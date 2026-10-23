@@ -32,13 +32,16 @@ namespace WAR2D.Sim
             units = state.GetEntityQuery(ComponentType.ReadWrite<Unit>());
         }
 
+        /// <summary>Whether the stage runs on tick <paramref name="tick"/> (every <paramref name="interval"/> ticks; the perf stamps follow it).</summary>
+        public static bool RunsOn(int tick, int interval) => (tick - 1) % interval == 0;
+
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
             SimClock clock = SystemAPI.GetSingleton<SimClock>();
             if (!clock.Running) return;
             SimData data = SystemAPI.GetSingleton<SimData>();
-            if ((clock.Tick - 1) % data.VisionInterval != 0) return;
+            if (!RunsOn(clock.Tick, data.VisionInterval)) return;
             int total = SimData.MaxOwners * data.FogCells;
 
             state.Dependency = new RollVisionJob { Visible = data.Visible, VisiblePrev = data.VisiblePrev }
@@ -285,7 +288,7 @@ namespace WAR2D.Sim
 
     /// <summary>
     /// Marks what one source sees. Sources write the same value (1), so overlapping writes are harmless. A jammed cell
-    /// of the source's grid is marked only when the source is within <see cref="JamSightSq"/> of it (centre to centre).
+    /// of the source's grid is marked only when the two cells' closest tiles are within <see cref="JamSightSq"/> of each other.
     /// </summary>
     [BurstCompile]
     public struct StampVisionJob : IJobParallelForDefer
@@ -305,6 +308,13 @@ namespace WAR2D.Sim
             math.clamp(Aim(towards), cell * FogCellSize, math.min(cell * FogCellSize + FogCellSize - 1, new int2(Width - 1, Height - 1)));
 
         private int2 Aim(int2 towards) => towards * FogCellSize + (FogCellSize - 1) / 2;
+
+        /// <summary>
+        /// Per axis, the tiles between the closest tiles of two fog cells <paramref name="d"/> cells apart (0 for the same
+        /// row or column): the jam's <see cref="JamSightSq"/> is measured on this, so a target within JamSight tiles of a
+        /// source is never refused because the two cells' centres are further apart.
+        /// </summary>
+        private int2 NearestTileGap(int2 d) => math.max(math.abs(d) * FogCellSize - (FogCellSize - 1), 0);
 
         /// <summary>
         /// The open tile of fog cell <paramref name="cell"/> closest to the centre of cell <paramref name="towards"/>, or
@@ -368,7 +378,7 @@ namespace WAR2D.Sim
             {
                 int2 d = new int2(x, y) - c;
                 if (d.x * d.x + d.y * d.y > limit) continue;
-                if (JamMask[baseIndex + y * FogW + x] != 0 && math.lengthsq((float2)d * FogCellSize) > JamSightSq) continue;
+                if (JamMask[baseIndex + y * FogW + x] != 0 && math.lengthsq((float2)NearestTileGap(d)) > JamSightSq) continue;
                 if (opaque > 0)
                 {
                     if (!SeesCell(c, new int2(x, y))) continue;

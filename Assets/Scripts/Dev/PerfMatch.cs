@@ -216,7 +216,7 @@ public sealed class PerfMatch : MonoBehaviour
         stats.Add("perf.part.stages", SimTiming.LastStagesMs);
         // v0.13: the combat and vision stages' job chains on the workers (the turrets' jobs, the jam rebuild and stamping).
         stats.Add("perf.part.combat", SimTiming.LastCombatJobsMs);
-        stats.Add("perf.part.vision", SimTiming.LastVisionJobsMs);
+        if (SimTiming.LastVisionRan) stats.Add("perf.part.vision", SimTiming.LastVisionJobsMs); // only ticks the stage ran
         for (int s = 0; s < PerfSplits.Names.Length; s++) stats.Add("perf.split." + PerfSplits.Names[s], PerfSplits.Ms[s]);
         stats.Add("perf.units", sim.Clock.UnitCount);
         if (tick - startTick >= SampleTicks) Finish();

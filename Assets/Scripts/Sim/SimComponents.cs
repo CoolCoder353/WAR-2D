@@ -112,6 +112,9 @@ namespace WAR2D.Sim
         /// </summary>
         public static double LastCombatJobsMs, LastVisionJobsMs;
 
+        /// <summary>Perf harness only: whether the last settled tick ran the vision stage (it runs every <c>VisionInterval</c> ticks), so <see cref="LastVisionJobsMs"/> is a sample.</summary>
+        public static bool LastVisionRan;
+
         /// <summary>Main-thread milliseconds of the match's own <c>Settled</c> handler (<c>WorldStateManager.OnSettled</c>).</summary>
         public static double LastMatchSettledMs;
 

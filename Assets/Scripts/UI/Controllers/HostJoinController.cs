@@ -167,7 +167,9 @@ namespace WAR2D.UI
                 ShowFriendsNotice(SteamAuthenticator.LastRefusal ?? "Game full or already started.");
                 return;
             }
-            failed.text = $"{to} closed the connection: its match has already started, or it is full ({LobbyRules.MaxPlayers} players).";
+            failed.text = SteamAuthenticator.LastRefusal != null
+                ? $"{to} refused the connection: {SteamAuthenticator.LastRefusal}"
+                : $"{to} closed the connection: its match has already started, or it is full ({LobbyRules.MaxPlayers} players).";
             failed.AddToClassList("play-panel__state--visible");
         }
     }
