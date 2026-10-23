@@ -169,6 +169,7 @@ public partial class WorldStateManager : NetworkBehaviour
             CollectBuildings = CollectBuildingsForAi,
             TerrainCellOf = TerrainCellAt,
             SharesVision = SharesVision,
+            SpawnerOf = SpawnerForAi,
         };
         AiRunner = new WAR2D.AiView.AiRunner(Sim, AiViews, AiBrains.Director?.Invoke());
         AiViews.Clock = () => AiRunner != null ? AiRunner.Now : 0;
@@ -334,6 +335,23 @@ public partial class WorldStateManager : NetworkBehaviour
             return;
         }
         FillBuildingViews(into);
+    }
+
+    /// <summary>An AI's own producer's queue and rally (what <see cref="SendSpawnerQueue"/> and <see cref="SendSpawnerRally"/> tell a human owner).</summary>
+    [Server]
+    private bool SpawnerForAi(int buildingId, out UnitType producing, out int queued, out bool hasRally, out int2 rally)
+    {
+        producing = UnitType.None;
+        queued = 0;
+        hasRally = false;
+        rally = default;
+        if (!TryGetBuilding(buildingId, out Entity entity) || !EntityManager.HasComponent<SpawnerData>(entity)) return false;
+        SpawnerData spawner = EntityManager.GetComponentData<SpawnerData>(entity);
+        producing = (UnitType)spawner.unitType;
+        queued = spawner.count;
+        hasRally = spawner.hasRally;
+        rally = spawner.rally;
+        return true;
     }
 
     [ServerCallback]

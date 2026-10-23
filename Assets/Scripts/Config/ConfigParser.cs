@@ -364,6 +364,7 @@ namespace Config
                     RetreatRatio = Float(node, "RetreatRatio", c, errors, min: 0, max: 1),
                     FocusFire = Flag(node, "FocusFire", c, errors),
                     KeepsBacklineBack = Flag(node, "KeepsBacklineBack", c, errors),
+                    DigsPastWalls = Flag(node, "DigsPastWalls", c, errors),
                     Scouting = Named(node, "Scouting", c, errors, AiScouting.Once),
                     RescoutSeconds = Float(node, "RescoutSeconds", c, errors, min: 10, max: 3600),
                     SpecialUse = Float(node, "SpecialUse", c, errors, min: 0, max: 1),
@@ -404,6 +405,7 @@ namespace Config
                     Bombs = Int(node, "Bombs", c, errors, min: 0, max: 64),
                     Walls = Flag(node, "Walls", c, errors),
                     Radar = Flag(node, "Radar", c, errors),
+                    HoldsChokes = Flag(node, "HoldsChokes", c, errors),
                 };
             }
             foreach (AiStyle s in new[] { AiStyle.Rusher, AiStyle.Turtle, AiStyle.Expander, AiStyle.Balanced })
@@ -443,6 +445,95 @@ namespace Config
                 config.Brain.ThreatRadius = Float(brain, "ThreatRadius", c, errors, min: 1, max: 256);
                 config.Brain.ArmyMemorySeconds = Float(brain, "ArmyMemorySeconds", c, errors, min: 1, max: 3600);
                 config.Brain.EventMemorySeconds = Float(brain, "EventMemorySeconds", c, errors, min: 1, max: 3600);
+            }
+
+            XmlNode play = Require(ai, "Play", errors);
+            if (play != null)
+            {
+                const string c = "Ai play";
+                AiPlayConfig p = config.Play;
+                p.OptionRadius = Float(play, "OptionRadius", c, errors, min: 1, max: 128);
+                p.OptionGemWeight = Float(play, "OptionGemWeight", c, errors, min: 0, max: 1000);
+                p.OptionOpenWeight = Float(play, "OptionOpenWeight", c, errors, min: 0, max: 1000);
+                p.OptionExpansionWeight = Float(play, "OptionExpansionWeight", c, errors, min: 0, max: 100000);
+                p.OptionExpansionReach = Float(play, "OptionExpansionReach", c, errors, min: 1, max: 4096);
+                p.OptionTeammateWeight = Float(play, "OptionTeammateWeight", c, errors, min: 0, max: 1000);
+                p.OpeningSeconds = Float(play, "OpeningSeconds", c, errors, min: 0, max: 3600);
+                p.BaseRadius = Float(play, "BaseRadius", c, errors, min: 4, max: 128);
+                p.BuildingGap = Int(play, "BuildingGap", c, errors, min: 0, max: 4);
+                p.PlacementTriesPerThink = Int(play, "PlacementTriesPerThink", c, errors, min: 1, max: 100000);
+                p.PendingSeconds = Float(play, "PendingSeconds", c, errors, min: 0, max: 60);
+                p.BlockedSeconds = Float(play, "BlockedSeconds", c, errors, min: 0, max: 3600);
+                p.SearchRetrySeconds = Float(play, "SearchRetrySeconds", c, errors, min: 0, max: 3600);
+                p.ReplanSeconds = Float(play, "ReplanSeconds", c, errors, min: 1, max: 3600);
+                p.DefenceSpread = Float(play, "DefenceSpread", c, errors, min: 1, max: 64);
+                p.BuildersPerBlueprint = Int(play, "BuildersPerBlueprint", c, errors, min: 1, max: 32);
+                p.AssignSeconds = Float(play, "AssignSeconds", c, errors, min: 0, max: 600);
+                p.RepairBelow = Float(play, "RepairBelow", c, errors, min: 0, max: 1);
+                p.QueueAhead = Int(play, "QueueAhead", c, errors, min: 1, max: SpawnerRules.MaxQueue);
+                p.QueueBatch = Int(play, "QueueBatch", c, errors, min: 1, max: SpawnerRules.MaxQueue);
+                if (!SpawnerRules.IsQueueStep(p.QueueBatch)) errors.Add($"{c}: <QueueBatch> {p.QueueBatch} must be a queue button's step ({string.Join(", ", SpawnerRules.QueueSteps)}).");
+                p.UpkeepIncomeShare = Float(play, "UpkeepIncomeShare", c, errors, min: 0, max: 1);
+                p.UpkeepFloorSeconds = Float(play, "UpkeepFloorSeconds", c, errors, min: 0, max: 600);
+                p.UpkeepBankSeconds = Float(play, "UpkeepBankSeconds", c, errors, min: 0, max: 3600);
+                p.UpkeepHeadroom = Float(play, "UpkeepHeadroom", c, errors, min: 0, max: 10000);
+                p.CappedExpandResources = Float(play, "CappedExpandResources", c, errors, min: 0, max: 1e7f);
+                p.GatherDistance = Float(play, "GatherDistance", c, errors, min: 0, max: 256);
+                p.ArmyRadius = Float(play, "ArmyRadius", c, errors, min: 1, max: 256);
+                p.OrderSeconds = Float(play, "OrderSeconds", c, errors, min: 0, max: 600);
+                p.ReinforceSize = Int(play, "ReinforceSize", c, errors, min: 1, max: 10000);
+                p.DefendRadius = Float(play, "DefendRadius", c, errors, min: 1, max: 4096);
+                p.CounterShift = Float(play, "CounterShift", c, errors, min: 0, max: 1);
+                p.BuildingCounterWeight = Float(play, "BuildingCounterWeight", c, errors, min: 0, max: 100);
+                p.LightTurretShare = Float(play, "LightTurretShare", c, errors, min: 0, max: 1);
+                p.BacklineDistance = Float(play, "BacklineDistance", c, errors, min: 0, max: 64);
+                p.BomberClump = Int(play, "BomberClump", c, errors, min: 1, max: 1000);
+                p.BomberChecks = Int(play, "BomberChecks", c, errors, min: 1, max: 10000);
+                p.ScoutAfterSeconds = Float(play, "ScoutAfterSeconds", c, errors, min: 0, max: 3600);
+                p.DefenceAfterSeconds = Float(play, "DefenceAfterSeconds", c, errors, min: 0, max: 7200);
+                p.DefenceDistance = Float(play, "DefenceDistance", c, errors, min: 0, max: 128);
+                p.MaxDefendedSpots = Int(play, "MaxDefendedSpots", c, errors, min: 0, max: 16);
+                p.WallGap = Int(play, "WallGap", c, errors, min: 0, max: 16);
+                p.RetreatSeconds = Float(play, "RetreatSeconds", c, errors, min: 1, max: 600);
+                p.TurretStrength = Float(play, "TurretStrength", c, errors, min: 0, max: 100);
+            }
+
+            XmlNode counters = Require(ai, "Counters", errors);
+            if (counters != null) Counters(counters, config, errors);
+        }
+
+        /// <summary>
+        /// &lt;Counters&gt;: each &lt;Counter seen="Unit"&gt; or &lt;Counter building="Building"&gt; lists combat units weighted
+        /// against that enemy unit or what that building makes (<c>Type:weight</c>, weights in (0, 100]).
+        /// </summary>
+        private static void Counters(XmlNode counters, AiConfig config, List<string> errors)
+        {
+            foreach (XmlNode node in counters.SelectNodes("Counter"))
+            {
+                string seen = node.Attributes?["seen"]?.Value, building = node.Attributes?["building"]?.Value;
+                if ((seen == null) == (building == null)) { errors.Add("Ai counters: a <Counter> needs exactly one of seen=\"Unit\" or building=\"Building\"."); continue; }
+                string c = seen != null ? $"Ai counter seen={seen}" : $"Ai counter building={building}";
+                var weights = new Dictionary<UnitType, float>();
+                foreach ((string name, float weight) in Pairs(node, ".", c, errors))
+                {
+                    if (!Enum.TryParse(name, false, out UnitType unit) || !Enum.IsDefined(typeof(UnitType), unit) || unit == UnitType.None || unit == UnitType.Builder)
+                        errors.Add($"{c}: \"{name}\" is not a combat unit type.");
+                    else if (!(weight > 0f) || weight > 100f) errors.Add($"{c}: weight {weight} for {name} must be in (0, 100].");
+                    else if (weights.ContainsKey(unit)) errors.Add($"{c}: lists {name} twice.");
+                    else weights[unit] = weight;
+                }
+                if (seen != null)
+                {
+                    if (!Enum.TryParse(seen, false, out UnitType unit) || !Enum.IsDefined(typeof(UnitType), unit) || unit == UnitType.None) errors.Add($"{c}: \"{seen}\" is not a unit type.");
+                    else if (config.SeenCounters.ContainsKey(unit)) errors.Add($"{c}: listed twice.");
+                    else config.SeenCounters[unit] = weights;
+                }
+                else
+                {
+                    if (!Enum.TryParse(building, false, out BuildingType type) || !Enum.IsDefined(typeof(BuildingType), type) || type == BuildingType.None) errors.Add($"{c}: \"{building}\" is not a building type.");
+                    else if (config.BuildingCounters.ContainsKey(type)) errors.Add($"{c}: listed twice.");
+                    else config.BuildingCounters[type] = weights;
+                }
             }
         }
 

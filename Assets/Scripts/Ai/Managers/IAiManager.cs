@@ -16,14 +16,16 @@ namespace WAR2D.Ai
     /// <summary>What a manager sees and how it proposes, for one think (one per brain, reused).</summary>
     public sealed class AiContext
     {
-        internal AiContext(int owner, AiDifficultyConfig difficulty, AiStyleConfig style, AiConfig config, Blackboard board, ActionBudget budget)
+        internal AiContext(int owner, AiDifficultyConfig difficulty, AiStyleConfig style, AiConfig config, GameConfigData game, Blackboard board, ActionBudget budget)
         {
             Owner = owner;
             Difficulty = difficulty;
             Style = style;
             Config = config;
+            Game = game;
             Board = board;
             Budget = budget;
+            State = new AiState(this);
         }
 
         /// <summary>The AI's owner id.</summary>
@@ -37,8 +39,14 @@ namespace WAR2D.Ai
         /// <summary>Every AI number (<c>GameConfig.xml</c> &lt;Ai&gt;).</summary>
         public AiConfig Config { get; }
 
+        /// <summary>The game's public numbers (unit and building costs, sizes, upkeep): what every client's config holds.</summary>
+        public GameConfigData Game { get; }
+
         /// <summary>Its memory.</summary>
         public Blackboard Board { get; }
+
+        /// <summary>What the managers share within a think: counts, economy, requests, placements (plan Task 7).</summary>
+        public AiState State { get; }
 
         public ActionBudget Budget { get; }
 

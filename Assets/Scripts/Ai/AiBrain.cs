@@ -9,22 +9,31 @@ namespace WAR2D.Ai
     /// asks every manager for proposals, and spends its <see cref="ActionBudget"/> on them, highest priority first.
     /// It acts only through <see cref="AiAction.Execute"/> (that is, <see cref="PlayerActions"/>).
     /// </summary>
-    public sealed class AiBrain : IAiBrain
+    public sealed class AiBrain : IAiBrain, IAiBrainStatus
     {
         private readonly IAiManager[] managers;
 
         /// <param name="managers">The managers in order (null: the standard set).</param>
-        public AiBrain(int owner, AiDifficulty difficulty, AiStyle style, AiConfig config, IAiManager[] managers = null)
+        public AiBrain(int owner, AiDifficulty difficulty, AiStyle style, AiConfig config, IAiManager[] managers = null, GameConfigData game = null)
         {
+            game ??= ConfigLoader.LoadConfig();
             Owner = owner;
             Difficulty = config.GetDifficulty(difficulty);
             Style = config.GetStyle(style == AiStyle.Random ? AiStyle.Balanced : style);
             Budget = new ActionBudget(Difficulty.ActionsPerMinute, config.Brain.BudgetBurstSeconds, config.Brain.ProposalWaitSeconds);
             Board = new Blackboard(owner, Difficulty.ReactionSeconds, config.Brain);
-            Context = new AiContext(owner, Difficulty, Style, config, Board, Budget);
+            Context = new AiContext(owner, Difficulty, Style, config, game, Board, Budget);
             this.managers = managers ?? StandardManagers();
             Execute = action => action.Execute(Owner);
+            take = action =>
+            {
+                bool accepted = Execute(action);
+                Context.State.OnExecuted(action, accepted);
+                return accepted;
+            };
         }
+
+        private readonly Func<AiAction, bool> take;
 
         /// <summary>A brain for a seat at match start (its style resolved), from the loaded config.</summary>
         public static AiBrain For(AiSeat seat) => new AiBrain(seat.OwnerId, seat.Difficulty, seat.ResolvedStyle, ConfigLoader.LoadConfig().Ai);
@@ -51,6 +60,34 @@ namespace WAR2D.Ai
 
         public float ThinkSeconds => Difficulty.ThinkSeconds;
 
+        /// <summary>The manager of a type in this brain, or null.</summary>
+        public T Manager<T>() where T : class, IAiManager
+        {
+            foreach (IAiManager m in managers) if (m is T t) return t;
+            return null;
+        }
+
+        /// <summary>What it is doing, for the control API's <c>aistate</c> (dev only).</summary>
+        public System.Collections.Generic.Dictionary<string, object> Status()
+        {
+            AiState s = Context.State;
+            ArmyManager army = Manager<ArmyManager>();
+            var units = new System.Collections.Generic.Dictionary<string, int>();
+            for (int t = 1; t < s.UnitCount.Length; t++) if (s.UnitCount[t] > 0) units[((UnitType)t).ToString()] = s.UnitCount[t];
+            var buildings = new System.Collections.Generic.Dictionary<string, int>();
+            for (int t = 1; t < s.BuildingCount.Length; t++) if (s.BuildingCount[t] > 0) buildings[((BuildingType)t).ToString()] = s.BuildingCount[t];
+            return new System.Collections.Generic.Dictionary<string, object>
+            {
+                ["thinks"] = Thinks, ["actions"] = Budget.Spent, ["accepted"] = Budget.Accepted, ["waiting"] = Budget.Pending,
+                ["openingDone"] = s.OpeningDone, ["playing"] = s.PlayingSeconds, ["incomeEst"] = s.Income, ["upkeepEst"] = s.Upkeep,
+                ["units"] = units, ["buildings"] = buildings,
+                ["army"] = army != null ? army.Mode.ToString() : "", ["attacks"] = army?.Attacks ?? 0, ["group"] = army?.Group.Count ?? 0,
+                ["target"] = army != null ? $"{army.Target.x},{army.Target.y} (owner {army.TargetOwner}, building {army.TargetId})" : "",
+                ["gather"] = $"{s.GatherPoint.x},{s.GatherPoint.y}", ["knownEnemyBuildings"] = Board.EnemyBuildings.Count,
+                ["knownEnemyBases"] = Board.EnemyBases.Count,
+            };
+        }
+
         public void Think(TeamView view)
         {
             if (view == null) return;
@@ -58,8 +95,9 @@ namespace WAR2D.Ai
             Context.View = view;
             Budget.Refill(view.Time);
             Board.Observe(view);
+            Context.State.Update(view);
             foreach (IAiManager manager in managers) manager.Think(Context);
-            Budget.Spend(view.Time, Execute);
+            Budget.Spend(view.Time, take);
         }
     }
 }

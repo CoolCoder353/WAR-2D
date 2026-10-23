@@ -24,6 +24,16 @@ namespace WAR2D.World
         /// <summary>Generator HQ clearings; empty for scene maps.</summary>
         public int2[] HqSites { get; }
 
+        /// <summary>
+        /// The generated map's plan (v0.11 region graph): its regions (start sites, expansions, central areas) and the lanes
+        /// joining them. Empty for scene and test maps. Static data every client regenerates from the seed too (the AI's
+        /// team view copies it).
+        /// </summary>
+        public MapRegion[] Regions { get; private set; } = Array.Empty<MapRegion>();
+
+        /// <summary>The lanes between <see cref="Regions"/> (indices into it), with their chokepoint widths. Empty for scene maps.</summary>
+        public MapLane[] Lanes { get; private set; } = Array.Empty<MapLane>();
+
         /// <summary>World tile of grid tile (0, 0). Zero for generated maps.</summary>
         public int2 Origin { get; }
 
@@ -76,8 +86,12 @@ namespace WAR2D.World
         /// <summary>Generates a <paramref name="size"/>² cave map. A pure function of its arguments.</summary>
         public static MapStore Generate(int size, uint seed, float gemChance)
         {
-            var (tiles, sites) = MapGenerator.Generate(size, seed, gemChance, Allocator.Persistent);
-            return new MapStore(size, size, tiles, sites, int2.zero);
+            MapLayout layout = RegionMapGenerator.Generate(size, seed, gemChance, Allocator.Persistent);
+            return new MapStore(size, size, layout.Tiles, layout.StartSites, int2.zero)
+            {
+                Regions = layout.Regions ?? Array.Empty<MapRegion>(),
+                Lanes = layout.Lanes ?? Array.Empty<MapLane>(),
+            };
         }
 
         /// <summary>Wraps tile kinds the caller already built (scene maps and tests). Takes ownership of <paramref name="tiles"/>.</summary>

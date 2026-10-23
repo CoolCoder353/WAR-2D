@@ -235,21 +235,56 @@ namespace WAR2D.Ai
             }
         }
 
+        // Enemy units seen now, bucketed by threat-radius cells (sorted by cell), so each own building looks only at
+        // the 3x3 cells around it: a big army in sight never costs buildings x units per think.
+        private long[] cellKeys = new long[64];
+        private float2[] cellPositions = new float2[64];
+
+        private long CellKey(float2 p)
+        {
+            int2 c = (int2)math.floor(p / math.max(1f, threatRadius));
+            return ((long)c.x << 32) | (uint)c.y;
+        }
+
         private void ObserveThreats(TeamView view)
         {
             float r2 = threatRadius * threatRadius;
+            int n = 0;
+            foreach (AiUnit unit in view.OtherUnits)
+            {
+                if (!view.IsEnemy(unit.OwnerId)) continue;
+                if (n == cellKeys.Length)
+                {
+                    System.Array.Resize(ref cellKeys, n * 2);
+                    System.Array.Resize(ref cellPositions, n * 2);
+                }
+                cellKeys[n] = CellKey(unit.Position);
+                cellPositions[n] = unit.Position;
+                n++;
+            }
+            if (n > 1) System.Array.Sort(cellKeys, cellPositions, 0, n);
             foreach (AiBuilding own in view.Buildings)
             {
+                if (n == 0) break;
                 if (own.OwnerId != Owner) continue;
                 float2 at = own.Anchor;
                 int count = 0;
                 float2 sum = 0;
-                foreach (AiUnit unit in view.OtherUnits)
-                {
-                    if (!view.IsEnemy(unit.OwnerId) || math.distancesq(unit.Position, at) > r2) continue;
-                    count++;
-                    sum += unit.Position;
-                }
+                int2 c = (int2)math.floor(at / math.max(1f, threatRadius));
+                for (int dy = -1; dy <= 1; dy++)
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        long key = ((long)(c.x + dx) << 32) | (uint)(c.y + dy);
+                        int i = System.Array.BinarySearch(cellKeys, 0, n, key);
+                        if (i < 0) continue;
+                        while (i > 0 && cellKeys[i - 1] == key) i--;
+                        for (; i < n && cellKeys[i] == key; i++)
+                        {
+                            if (math.distancesq(cellPositions[i], at) > r2) continue;
+                            count++;
+                            sum += cellPositions[i];
+                        }
+                    }
                 if (count == 0) continue;
                 Threats.TryGetValue(own.Id, out Threat threat);
                 if (threat.Count == 0) threat.FirstSeen = Now;

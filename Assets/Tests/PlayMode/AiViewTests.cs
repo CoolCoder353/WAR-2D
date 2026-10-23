@@ -83,9 +83,9 @@ public class AiViewTests
         Assert.That(ai.Brain, Is.Not.Null, "the AI assembly registered its brain");
 
         WorldStateManager world = WorldStateManager.Instance;
-        Assert.That(world.TryFindBuildableAnchor(BuildingType.Base, 0f, ai.OwnerId, out int2 aiHq), Is.True);
-        Assert.That(PlayerActions.PlaceHq(ai.OwnerId, aiHq), Is.True);
-        yield return PlayModeMatch.WaitUntil(() => AiSeatPlayModeTests.HasBuilding(ai.OwnerId, BuildingType.Base), 5f);
+        // Its brain places its HQ (and from then on plays: its own units and buildings come and go like a human's).
+        yield return PlayModeMatch.WaitUntil(() => AiSeatPlayModeTests.HasBuilding(ai.OwnerId, BuildingType.Base), 10f);
+        int2 aiHq = AiSeatPlayModeTests.BuildingAnchor(ai.OwnerId, BuildingType.Base);
         int2 hq = default;
         yield return PlayModeMatch.PlaceHQ(a => hq = a);
 
@@ -129,7 +129,7 @@ public class AiViewTests
         var clientUnits = new HashSet<int>();
         for (int k = 0; k < store.Count; k++) clientUnits.Add(store.IdOf(store.IndexAt(k)));
         Assert.That(viewUnits, Is.EquivalentTo(clientUnits), $"units at tick {viewTick}");
-        Assert.That(view.OwnUnits.Select(u => u.Id), Is.EquivalentTo(theirs), "its own units");
+        Assert.That(view.OwnUnits.Select(u => u.Id), Is.SupersetOf(theirs), "its own units (with any its brain made)");
         Assert.That(viewUnits, Is.SupersetOf(mine).And.SupersetOf(nearThird), "its teammate's, and the third player's in sight");
         Assert.That(viewUnits.Intersect(farThird), Is.Empty, "never the ones out of sight");
 

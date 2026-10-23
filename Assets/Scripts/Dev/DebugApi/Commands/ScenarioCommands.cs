@@ -25,6 +25,46 @@ namespace WAR2D.Dev.DebugApi
                 }
                 return added;
             });
+            r.Add("ai", DebugRole.Server, "ai difficulty [style] [team] [colour]: add a lobby AI seat (Easy, Normal, Hard; Random, Rusher, Turtle, Expander, Balanced)", a =>
+            {
+                GameCore core = GameCore.Instance ?? throw new DebugError("no GameCore");
+                if (core.CurrentState != GameState.Lobby) throw new DebugError("not in the lobby");
+                AiDifficulty difficulty = DebugArgs.Enum<AiDifficulty>(a, "difficulty");
+                AiStyle style = DebugArgs.Has(a, "style") ? DebugArgs.Enum<AiStyle>(a, "style") : AiStyle.Random;
+                AiSeat seat = core.AddAi(difficulty, style, DebugArgs.Int(a, "colour", -1), DebugArgs.Int(a, "team", TeamRules.NoTeam));
+                if (seat == null) throw new DebugError("refused (Scripted, a full lobby, a taken colour or a team the mode doesn't offer)");
+                return new { owner = seat.OwnerId, callsign = seat.Callsign, difficulty = seat.Difficulty.ToString(), style = seat.Style.ToString(), colour = seat.Colour };
+            });
+            r.Add("aistate", DebugRole.Server, "aistate [owner]: what each AI is doing (its resolved style, plans and counts; dev only)", a =>
+            {
+                GameCore core = GameCore.Instance ?? throw new DebugError("no GameCore");
+                var list = new System.Collections.Generic.List<object>();
+                foreach (AiSeat seat in core.AiPlayers.Values)
+                {
+                    if (DebugArgs.Has(a, "owner") && seat.OwnerId != DebugArgs.Int(a, "owner")) continue;
+                    var status = new System.Collections.Generic.Dictionary<string, object>
+                    {
+                        ["owner"] = seat.OwnerId, ["callsign"] = seat.Callsign, ["difficulty"] = seat.Difficulty.ToString(),
+                        ["style"] = seat.ResolvedStyle.ToString(), ["state"] = seat.Player.state.ToString(), ["resources"] = seat.Player.Resources,
+                        ["income"] = seat.Player.IncomeLastSecond, ["upkeep"] = seat.Player.UpkeepLastSecond, ["unpaidSeconds"] = seat.Player.UnpaidSeconds,
+                    };
+                    if (seat.Brain is IAiBrainStatus brain)
+                        foreach (var entry in brain.Status()) status[entry.Key] = entry.Value;
+                    list.Add(status);
+                }
+                return list;
+            });
+            r.Add("timescale", DebugRole.Server, "timescale [n]: run the match n times faster (the tick runs up to n times per frame; dev only); no n answers the current scale", a =>
+            {
+                if (!DevApi.Allowed) throw new DebugError("dev only (-perf, the editor or a dev build)");
+                if (!DebugArgs.Has(a, "n")) return UnityEngine.Time.timeScale;
+                float n = DebugArgs.Float(a, "n");
+                if (!(n >= 0.1f && n <= 32f)) throw new DebugError("n must be in [0.1, 32]");
+                UnityEngine.Time.timeScale = n;
+                // A frame's scaled time may then cover several ticks: let the catch-up run them (a slow frame never runs more than n).
+                UnityEngine.Time.maximumDeltaTime = math.max(1f / 3f, 0.05f * n);
+                return n;
+            });
             r.Add("spawn", DebugRole.Server, "spawn owner type tile [count]: free units at a tile", a =>
             {
                 WorldStateManager w = World();

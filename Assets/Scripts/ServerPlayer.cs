@@ -41,6 +41,7 @@ public class ServerPlayer
         incomeThisSecond = upkeepThisSecond = 0f;
         IncomeLastSecond = UpkeepLastSecond = 0f;
         SpentThisMatch = 0f;
+        UnpaidSeconds = 0;
         ResourcesDirty = true;
     }
 
@@ -86,6 +87,9 @@ public class ServerPlayer
     /// <summary>True for the second in which some of the player's upkeep first went unpaid (after <see cref="RollSecond"/>).</summary>
     public bool BecameUnpaid { get; private set; }
 
+    /// <summary>Seconds of this match in which some of the player's upkeep went unpaid (statistics, tests and the AI bench).</summary>
+    public int UnpaidSeconds { get; private set; }
+
     /// <summary>Records that some of the player's upkeep (units or buildings) went unpaid this second.</summary>
     public void MarkUnpaid() => unpaidThisSecond = true;
 
@@ -93,6 +97,7 @@ public class ServerPlayer
     public void RollSecond()
     {
         BecameUnpaid = unpaidThisSecond && !unpaidLastSecond;
+        if (unpaidThisSecond) UnpaidSeconds++;
         unpaidLastSecond = unpaidThisSecond;
         unpaidThisSecond = false;
         if (incomeThisSecond != IncomeLastSecond || upkeepThisSecond != UpkeepLastSecond) ResourcesDirty = true;

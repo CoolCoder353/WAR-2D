@@ -40,6 +40,13 @@ public interface IAiBrain
     void Think(WAR2D.AiView.TeamView view);
 }
 
+/// <summary>A brain that can describe what it is doing (dev only: the control API's <c>aistate</c>).</summary>
+public interface IAiBrainStatus
+{
+    /// <summary>Its plans and counts as plain values (serialised to JSON by the control API).</summary>
+    System.Collections.Generic.Dictionary<string, object> Status();
+}
+
 /// <summary>Where <c>WAR2D.Ai</c> registers itself at load: the game creates each seat's brain through this, never by naming the AI types.</summary>
 public static class AiBrains
 {

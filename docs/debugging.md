@@ -26,7 +26,7 @@ tools/war2d --json state               # raw reply
 | --- | --- |
 | Session | `ping`, `info`, `host`, `join route=…`, `leave`, `start [size seed mode options pick team]` (`pick=-1` is Unlimited; `team=0` puts every player on one team, Teams mode only), `quit` |
 | Read | `state`, `players`, `units`, `unit id=…`, `buildings`, `tiles box=[x0,y0,x1,y1]`, `fog owner box`, `orders`, `perf`, `log`, `loglevel` |
-| Scenario | `bots n` (Scripted AI seats, owner ids from `AiOwnerIds`), `spawn owner type tile count`, `build owner type tile`, `resources`, `order`, `diplomacy`, `kill ids`, `pause`, `resume`, `step`, `wait` |
+| Scenario | `ai difficulty [style] [team] [colour]` (a lobby AI seat), `aistate [owner]` (each AI's style, plans, counts, actions and unpaid seconds), `timescale [n]` (run the match n times faster, 0.1–32; the tick catches up several ticks per frame; dev only), `bots n` (Scripted AI seats, owner ids from `AiOwnerIds`), `spawn owner type tile count`, `build owner type tile`, `resources`, `order`, `diplomacy`, `kill ids`, `pause`, `resume`, `step`, `wait` |
 | View | `camera`, `select`, `screenshot`, `overlay layer on` |
 | Replays | `record`, `replays`, `replay do=open/seek/speed/play/pause/stop/status` |
 
@@ -45,6 +45,17 @@ Server-role commands refuse on a client. A client answers `units`/`buildings` on
 The host records every match from a fog-free virtual spectator (`MatchRecorder`) into `<persistentDataPath>/Replays/*.war2drec` (GZip: header JSON, then tick-stamped records). After *GameOver* it offers the file to each player (`ReplayOffer`, chunked `ReplayChunk`s, hash-checked); players with *Save replays* on keep it (offers larger than `<MaxMegabytes>` are refused, a received file must open as a replay, and received replays and the machine's own recordings each keep their newest `<KeepCount>`, counted separately, so a host can never push out the player's own recordings). The recorder stops replicating once its file is finished. Nothing is sent before *GameOver*. `ReplayPlayer` plays a file offline with speed and seeking (`war2d replay do=open path=…`). Config: `<Replays>` in `GameConfig.xml`.
 
 Players watch them from the main menu's **Replays** screen (Watch, Delete, and a viewer with play/pause, speed, a seek bar and the players' numbers); see `docs/ux/v0.10-figma.md`. Hosted PlayMode tests switch recording off (`PlayModeMatch.Configure`) so they don't fill the real folder.
+
+## Example: watch two AIs play
+
+```bash
+tools/war2d host
+tools/war2d ai difficulty=Normal style=Balanced
+tools/war2d ai difficulty=Easy style=Rusher
+tools/war2d start size=256 seed=21 pick=15   # the host's HQ is placed at random when the pick time ends
+tools/war2d wait state=Playing && tools/war2d timescale n=8
+tools/war2d aistate                           # repeat; GameOver when one side is left
+```
 
 ## Example: reproduce a pathing bug
 

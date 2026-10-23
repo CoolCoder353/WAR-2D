@@ -69,6 +69,9 @@ namespace WAR2D.Dev.DebugApi
                 tickMs = SimTiming.LastMainThreadMs,
                 boundaryWaitMs = SimTiming.LastBoundaryWaitMs,
                 replicationMs = ReplicationService.LastMilliseconds,
+                aiMs = SimTiming.LastAiMs,
+                aiP95Ms = WorldStateManager.Instance?.AiRunner?.RecentMs().p95 ?? 0,
+                aiMaxMs = WorldStateManager.Instance?.AiRunner?.RecentMs().max ?? 0,
             });
             r.Add("log", DebugRole.Any, "log [max] [category] [level] [after]: recent log entries", a =>
             {

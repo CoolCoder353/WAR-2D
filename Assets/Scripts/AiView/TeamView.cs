@@ -101,6 +101,37 @@ namespace WAR2D.AiView
         public bool Ghost;
         /// <summary>Own buildings only: its upkeep went unpaid at the last charge.</summary>
         public bool Unpaid;
+        /// <summary>
+        /// Own finished producers only (what <c>ClientPlayer.TargetSpawnerQueue</c> and <c>TargetSpawnerRally</c> tell the
+        /// owner's client): the unit type it makes, how many are queued, and its rally tile when it has one.
+        /// </summary>
+        public UnitType Producing;
+        public int Queued;
+        public bool HasRally;
+        public int2 Rally;
+    }
+
+    /// <summary>What a region of the generated map is for (v0.11, <c>RegionKind</c>).</summary>
+    public enum AiRegionKind : byte
+    {
+        Start,
+        Expansion,
+        Central,
+    }
+
+    /// <summary>One region of the generated map's plan: static data a client regenerates from the seed too.</summary>
+    public struct AiRegion
+    {
+        public int2 Centre;
+        public int Radius;
+        public AiRegionKind Kind;
+    }
+
+    /// <summary>A lane of the map's plan between two regions (indices into <see cref="TeamView.Regions"/>), and its chokepoint width (0: none).</summary>
+    public struct AiLane
+    {
+        public int A, B;
+        public int Width, ChokeWidth;
     }
 
     /// <summary>An alert the AI's owner was sent (as <c>ClientPlayer.TargetAlerts</c> gives a client), with when it arrived.</summary>
@@ -196,6 +227,11 @@ namespace WAR2D.AiView
         public readonly ViewList<AiPlayer> Players = new ViewList<AiPlayer>(8);
         /// <summary>The map's start sites (the client regenerates them from the seed too).</summary>
         public int2[] HqSites = System.Array.Empty<int2>();
+        /// <summary>Tiles from a start site's centre an HQ's footprint must stay within (<c>MapGenerator.HqClearRadius</c>).</summary>
+        public int HqClearRadius;
+        /// <summary>The generated map's regions and lanes (v0.11 region graph; empty on scene maps): static, from the seed.</summary>
+        public AiRegion[] Regions = System.Array.Empty<AiRegion>();
+        public AiLane[] Lanes = System.Array.Empty<AiLane>();
 
         // ---- its own economy (what ClientPlayer.TargetUpdateResources sends) ----
         public float Resources, Income, Upkeep;

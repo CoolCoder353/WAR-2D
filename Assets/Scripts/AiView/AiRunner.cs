@@ -106,6 +106,20 @@ namespace WAR2D.AiView
             stepCount = count;
             director.Step(this);
             SimTiming.LastAiMs = director.LastStepMs;
+            if (state == GameState.Playing) { recent[recentNext] = director.LastStepMs; recentNext = (recentNext + 1) % recent.Length; recentCount = Math.Min(recentCount + 1, recent.Length); }
+        }
+
+        private readonly double[] recent = new double[1200];
+        private readonly double[] sorted = new double[1200];
+        private int recentNext, recentCount;
+
+        /// <summary>The AI's main-thread milliseconds per Playing step over the last minute of steps: p95 and max (dev reads).</summary>
+        public (double p95, double max, int steps) RecentMs()
+        {
+            if (recentCount == 0) return (0, 0, 0);
+            Array.Copy(recent, sorted, recentCount);
+            Array.Sort(sorted, 0, recentCount);
+            return (sorted[Math.Min(recentCount - 1, (int)(recentCount * 0.95))], sorted[recentCount - 1], recentCount);
         }
 
         /// <summary>The seats with a brain that are still playing, tracked by the view builder (an eliminated one is dropped).</summary>

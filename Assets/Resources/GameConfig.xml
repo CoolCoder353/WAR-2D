@@ -143,6 +143,7 @@
       <RetreatRatio>0.5</RetreatRatio>
       <FocusFire>0</FocusFire>
       <KeepsBacklineBack>0</KeepsBacklineBack>
+      <DigsPastWalls>0</DigsPastWalls>
       <Scouting>Once</Scouting>
       <RescoutSeconds>600</RescoutSeconds>
       <SpecialUse>0.25</SpecialUse>                  <!-- rarely -->
@@ -166,6 +167,7 @@
       <RetreatRatio>0.6</RetreatRatio>
       <FocusFire>0</FocusFire>
       <KeepsBacklineBack>0</KeepsBacklineBack>
+      <DigsPastWalls>0</DigsPastWalls>
       <Scouting>Regular</Scouting>
       <RescoutSeconds>120</RescoutSeconds>
       <SpecialUse>1.0</SpecialUse>                   <!-- as the style wants -->
@@ -189,6 +191,7 @@
       <RetreatRatio>0.7</RetreatRatio>
       <FocusFire>1</FocusFire>
       <KeepsBacklineBack>1</KeepsBacklineBack>
+      <DigsPastWalls>1</DigsPastWalls>
       <Scouting>RegularWithRadar</Scouting>
       <RescoutSeconds>60</RescoutSeconds>
       <SpecialUse>1.0</SpecialUse>
@@ -216,6 +219,7 @@
       <Bombs>0</Bombs>
       <Walls>0</Walls>
       <Radar>0</Radar>
+      <HoldsChokes>0</HoldsChokes>
     </Style>
     <Style name="Turtle">  <!-- walls, turrets, Jammers and bombs at its chokepoints; a big Heavy and Artillery army later -->
       <BuildOrder>Miner Miner Builder Miner Barracks GunTurret GunTurret Miner Builder HeavyFactory Radar Jammer</BuildOrder>
@@ -234,6 +238,7 @@
       <Bombs>8</Bombs>
       <Walls>1</Walls>
       <Radar>1</Radar>
+      <HoldsChokes>1</HoldsChokes>
     </Style>
     <Style name="Expander">  <!-- takes expansions early, more Miners, a mid-game army -->
       <BuildOrder>Miner Miner Builder Miner Miner Builder Barracks Miner Tank Tank Scout</BuildOrder>
@@ -252,6 +257,7 @@
       <Bombs>2</Bombs>
       <Walls>0</Walls>
       <Radar>1</Radar>
+      <HoldsChokes>0</HoldsChokes>
     </Style>
     <Style name="Balanced">  <!-- a bit of each; what Random picks by default -->
       <BuildOrder>Miner Miner Builder Barracks Miner Scout Tank Tank Miner HeavyFactory Tank Heavy</BuildOrder>
@@ -270,6 +276,7 @@
       <Bombs>4</Bombs>
       <Walls>0</Walls>
       <Radar>1</Radar>
+      <HoldsChokes>0</HoldsChokes>
     </Style>
     <Diplomacy>  <!-- only when the match has Diplomacy on -->
       <PeaceSeconds>60</PeaceSeconds>              <!-- a non-teammate sharing vision who hasn't hit it this long is offered peace -->
@@ -295,6 +302,65 @@
       <ArmyMemorySeconds>180</ArmyMemorySeconds>    <!-- a last-seen enemy army is remembered this long -->
       <EventMemorySeconds>30</EventMemorySeconds>   <!-- alerts and threats stay on the blackboard this long -->
     </Brain>
+    <Play>  <!-- plan Task 7: how every AI plays, the same at every difficulty and style (sizes and pacing; behaviour is above) -->
+      <OptionRadius>18</OptionRadius>                  <!-- tiles around a start option counted for gems and open ground -->
+      <OptionGemWeight>1.0</OptionGemWeight>           <!-- score per gem tile there -->
+      <OptionOpenWeight>0.05</OptionOpenWeight>        <!-- score per ground tile there -->
+      <OptionExpansionWeight>40</OptionExpansionWeight> <!-- score per rich field (expansion) in reach, falling to 0 at the reach -->
+      <OptionExpansionReach>140</OptionExpansionReach>
+      <OptionTeammateWeight>0.3</OptionTeammateWeight> <!-- score lost per tile from the nearest teammate's pick -->
+      <OpeningSeconds>300</OpeningSeconds>             <!-- the build order is dropped after this, done or not -->
+      <BaseRadius>24</BaseRadius>                      <!-- tiles from the HQ buildings go within -->
+      <BuildingGap>1</BuildingGap>                     <!-- free tiles kept around producers, Radars and Jammers -->
+      <PlacementTriesPerThink>600</PlacementTriesPerThink> <!-- anchors a placement search tries per think; longer searches go on next think -->
+      <PendingSeconds>5</PendingSeconds>               <!-- a placed building's footprint is reserved this long until its view shows it -->
+      <BlockedSeconds>60</BlockedSeconds>              <!-- an anchor where a placement was refused stays out of its search this long -->
+      <SearchRetrySeconds>5</SearchRetrySeconds>       <!-- a request whose search found no spot is searched again after this -->
+      <ReplanSeconds>30</ReplanSeconds>                <!-- defended spots and the gathering point are re-planned this often -->
+      <DefenceSpread>6</DefenceSpread>                 <!-- tiles around a defended spot its turrets, bombs and Jammers go -->
+      <BuildersPerBlueprint>2</BuildersPerBlueprint>
+      <AssignSeconds>4</AssignSeconds>                 <!-- a blueprint, repair or scout target is not re-assigned sooner -->
+      <RepairBelow>0.6</RepairBelow>                   <!-- health share below which a finished building is repaired -->
+      <QueueAhead>2</QueueAhead>                       <!-- units kept queued per producer -->
+      <QueueBatch>10</QueueBatch>                      <!-- units queued at once on an empty army producer it can pay for (a queue step) -->
+      <UpkeepIncomeShare>0.95</UpkeepIncomeShare>      <!-- Normal, Hard: upkeep kept under this share of income ... -->
+      <UpkeepFloorSeconds>3</UpkeepFloorSeconds>        <!-- Normal, Hard: seconds of upkeep always kept in hand -->
+      <UpkeepBankSeconds>60</UpkeepBankSeconds>        <!-- ... unless its balance covers this long of the deficit -->
+      <UpkeepHeadroom>25</UpkeepHeadroom>              <!-- income left over upkeep below which it builds Miners beyond its style's -->
+      <CappedExpandResources>600</CappedExpandResources> <!-- with upkeep up to its income and this much banked, it expands early -->
+      <GatherDistance>12</GatherDistance>              <!-- the army gathers this far from the HQ towards the enemy -->
+      <ArmyRadius>14</ArmyRadius>                      <!-- tiles around an army's centre that count as its fight -->
+      <OrderSeconds>3</OrderSeconds>                   <!-- a group is re-ordered at most this often -->
+      <ReinforceSize>4</ReinforceSize>                 <!-- units gathered at home sent on to an attack -->
+      <DefendRadius>40</DefendRadius>                  <!-- home units within this of the HQ come to defend -->
+      <CounterShift>0.5</CounterShift>                 <!-- share of the mix moved to counters (spec 5.5) -->
+      <BuildingCounterWeight>0.5</BuildingCounterWeight> <!-- Hard: building counters against unit counters -->
+      <LightTurretShare>0.6</LightTurretShare>         <!-- massed light enemies above this share add a turret per defended spot -->
+      <BacklineDistance>6</BacklineDistance>           <!-- Hard: Artillery and Snipers stay this far behind the front -->
+      <BomberClump>3</BomberClump>                     <!-- visible enemies in a bomber's blast that make it detonate -->
+      <BomberChecks>16</BomberChecks>                  <!-- bombers checked for a detonation per think -->
+      <ScoutAfterSeconds>20</ScoutAfterSeconds>        <!-- with no Scout by then, any unit scouts -->
+      <DefenceAfterSeconds>240</DefenceAfterSeconds>   <!-- defences beyond the build order's only after this much play -->
+      <DefenceDistance>3</DefenceDistance>             <!-- tiles past the start region's edge along a lane for a chokepoint defence -->
+      <MaxDefendedSpots>2</MaxDefendedSpots>
+      <WallGap>2</WallGap>                             <!-- tiles left open in a chokepoint wall for its own army -->
+      <RetreatSeconds>15</RetreatSeconds>              <!-- a retreat lasts at most this long -->
+      <TurretStrength>2.0</TurretStrength>             <!-- a Gun turret counts as this many times its cost in a strength estimate -->
+    </Play>
+    <Counters>  <!-- spec 5.5: units weighted against each enemy unit seen (Normal, Hard) and what each enemy building makes (Hard) -->
+      <Counter seen="Heavy">Sniper:2 Artillery:2 Heavy:1</Counter>
+      <Counter seen="Artillery">Scout:1 Tank:2 SuicideBomber:1</Counter>
+      <Counter seen="Sniper">Scout:2 Tank:2</Counter>
+      <Counter seen="Tank">Flamethrower:3 Heavy:1</Counter>
+      <Counter seen="Scout">Flamethrower:2 Tank:1</Counter>
+      <Counter seen="Flamethrower">Artillery:1 Sniper:2 Heavy:1</Counter>
+      <Counter seen="SuicideBomber">Tank:2 Sniper:1</Counter>
+      <Counter seen="Digger">Tank:2</Counter>
+      <Counter building="Barracks">Flamethrower:2 Tank:1</Counter>
+      <Counter building="HeavyFactory">Sniper:2 Artillery:2</Counter>
+      <Counter building="SiegeWorkshop">Tank:2 Sniper:1</Counter>
+      <Counter building="GunTurret">Artillery:3 Heavy:1</Counter>
+    </Counters>
   </Ai>
 
   <!-- Damage multiplier per attacker unit type and target class (LightUnit, HeavyUnit, Building, Wall); 1.0 when missing. target="Unit" is shorthand for both unit classes. -->

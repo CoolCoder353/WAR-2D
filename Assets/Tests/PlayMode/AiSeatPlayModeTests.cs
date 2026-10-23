@@ -98,12 +98,11 @@ public class AiSeatPlayModeTests
         Assert.That(ai.ResolvedStyle, Is.Not.EqualTo(AiStyle.Random), "Random resolves on the server at match start");
         Assert.That(ai.Client.aiStyle, Is.EqualTo(AiStyle.Random), "and never reaches the clients");
 
-        // The AI places its HQ through the same action a player's command uses; the countdown waits for it.
+        // The AI's brain places its HQ through the same action a player's command uses; the countdown waits for it.
         WorldStateManager world = WorldStateManager.Instance;
-        Assert.That(world.TryFindBuildableAnchor(BuildingType.Base, 0f, ai.OwnerId, out int2 aiHq), Is.True);
-        Assert.That(PlayerActions.PlaceHq(ai.OwnerId, aiHq), Is.True);
+        yield return PlayModeMatch.WaitUntil(() => HasBuilding(ai.OwnerId, BuildingType.Base), 10f);
+        int2 aiHq = BuildingAnchor(ai.OwnerId, BuildingType.Base);
         Assert.That(PlayerActions.PlaceHq(ai.OwnerId, aiHq + new int2(20, 0)), Is.False, "one HQ");
-        yield return PlayModeMatch.WaitUntil(() => HasBuilding(ai.OwnerId, BuildingType.Base), 5f);
         Assert.That(core.CurrentState, Is.EqualTo(GameState.PlacingHQ), "the host hasn't placed yet");
         yield return PlayModeMatch.PlaceHQ(null);
 
@@ -169,6 +168,15 @@ public class AiSeatPlayModeTests
     }
 
     internal static bool HasBuilding(int owner, BuildingType type) => BuildingId(owner, type) != 0;
+
+    /// <summary>The anchor tile of an owner's first building of a type (default when it has none).</summary>
+    internal static int2 BuildingAnchor(int owner, BuildingType type)
+    {
+        using var q = PlayModeMatch.Em.CreateEntityQuery(typeof(BuildingData));
+        using var buildings = q.ToComponentDataArray<BuildingData>(Allocator.Temp);
+        foreach (BuildingData b in buildings) if (b.ownerId == owner && b.buildingType == type) return (int2)math.round(b.position);
+        return default;
+    }
 
     internal static int BuildingId(int owner, BuildingType type)
     {

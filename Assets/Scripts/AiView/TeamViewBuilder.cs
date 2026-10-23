@@ -50,6 +50,15 @@ namespace WAR2D.AiView
         /// <summary>Fills the list with every live building (as replication's); null: no buildings.</summary>
         public Action<List<BuildingView>> CollectBuildings;
 
+        /// <summary>
+        /// Reads an own finished producer's queue and rally (what its owner's client is sent by <c>TargetSpawnerQueue</c>
+        /// and <c>TargetSpawnerRally</c>); null: none known.
+        /// </summary>
+        public SpawnerLookup SpawnerOf;
+
+        /// <summary>A producer's selected type, queue count and rally (false when the id is no producer).</summary>
+        public delegate bool SpawnerLookup(int buildingId, out UnitType producing, out int queued, out bool hasRally, out int2 rally);
+
         /// <summary>The AI clock now (seconds), stamped on events; null uses the tick time.</summary>
         public Func<double> Clock;
 
@@ -108,6 +117,16 @@ namespace WAR2D.AiView
             seat.View.Height = sim.Map.Grid.Height;
             seat.View.Tiles = (byte[])initial.Clone(); // the generated map, which a client regenerates from the seed
             seat.View.HqSites = sim.Map.HqSites != null ? (int2[])sim.Map.HqSites.Clone() : Array.Empty<int2>();
+            seat.View.HqClearRadius = WAR2D.World.MapGenerator.HqClearRadius;
+            // The map's plan, as a client regenerates it from the seed (static, never live state).
+            var regions = sim.Map.Regions;
+            seat.View.Regions = new AiRegion[regions.Length];
+            for (int i = 0; i < regions.Length; i++)
+                seat.View.Regions[i] = new AiRegion { Centre = regions[i].Centre, Radius = regions[i].Radius, Kind = (AiRegionKind)regions[i].Kind };
+            var lanes = sim.Map.Lanes;
+            seat.View.Lanes = new AiLane[lanes.Length];
+            for (int i = 0; i < lanes.Length; i++)
+                seat.View.Lanes[i] = new AiLane { A = lanes[i].A, B = lanes[i].B, Width = lanes[i].Width, ChokeWidth = lanes[i].ChokeWidth };
             seats[owner] = seat;
             seatList.Add(seat);
         }
@@ -337,7 +356,24 @@ namespace WAR2D.AiView
             seat.Buildings.Update(buildingViews, buildingIds, seat.Owner, seat.Sees, ref sink, seat.MayKnowHidden);
             ViewList<AiBuilding> into = seat.View.Buildings;
             into.Clear();
-            foreach (AiBuilding b in seat.Known.Values) into.Add(b);
+            foreach (AiBuilding known in seat.Known.Values)
+            {
+                AiBuilding b = known;
+                b.Producing = UnitType.None;
+                b.Queued = 0;
+                b.HasRally = false;
+                b.Rally = default;
+                // Its own producers' queues and rallies, as its client is told them.
+                if (b.OwnerId == seat.Owner && b.Progress >= 100 && SpawnerOf != null && SpawnerRules.IsProducer(b.Type) &&
+                    SpawnerOf(b.Id, out UnitType producing, out int queued, out bool hasRally, out int2 rally))
+                {
+                    b.Producing = producing;
+                    b.Queued = queued;
+                    b.HasRally = hasRally;
+                    b.Rally = rally;
+                }
+                into.Add(b);
+            }
         }
 
         private void BuildFog(TeamView view, SimData data, int grid)

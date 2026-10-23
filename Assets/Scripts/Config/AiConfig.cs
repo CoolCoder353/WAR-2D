@@ -75,6 +75,14 @@ namespace Config
         public AiDiplomacyConfig Diplomacy = new AiDiplomacyConfig();
         public AiConcedeConfig Concede = new AiConcedeConfig();
         public AiBrainConfig Brain = new AiBrainConfig();
+        /// <summary>How every AI plays, whatever its difficulty and style (plan Task 7's managers).</summary>
+        public AiPlayConfig Play = new AiPlayConfig();
+        /// <summary>
+        /// Counters (spec §5.5): per enemy unit type seen, the combat units weighted against it (Normal and Hard)...
+        /// </summary>
+        public Dictionary<UnitType, Dictionary<UnitType, float>> SeenCounters = new Dictionary<UnitType, Dictionary<UnitType, float>>();
+        /// <summary>... and per enemy building type seen, the units weighted against what it makes (Hard).</summary>
+        public Dictionary<BuildingType, Dictionary<UnitType, float>> BuildingCounters = new Dictionary<BuildingType, Dictionary<UnitType, float>>();
 
         /// <summary>A difficulty's settings. Throws for Scripted or a missing entry (validation guarantees Easy, Normal and Hard).</summary>
         public AiDifficultyConfig GetDifficulty(AiDifficulty difficulty)
@@ -122,6 +130,8 @@ namespace Config
         public bool FocusFire;
         /// <summary>True when it keeps Artillery and Snipers behind its front line.</summary>
         public bool KeepsBacklineBack;
+        /// <summary>True when its Diggers tunnel through enemy walls near its attacking army (Hard).</summary>
+        public bool DigsPastWalls;
         /// <summary>How it scouts.</summary>
         public AiScouting Scouting;
         /// <summary>Seconds between re-scouting runs (Regular scouting).</summary>
@@ -184,6 +194,102 @@ namespace Config
         public bool Walls;
         /// <summary>True when it builds a Radar.</summary>
         public bool Radar;
+        /// <summary>True when its army holds its chokepoint (Hold) while it isn't attacking (Turtle).</summary>
+        public bool HoldsChokes;
+    }
+
+    /// <summary>
+    /// How every AI plays (&lt;Ai&gt;&lt;Play&gt;, plan Task 7): the managers' shared numbers, the same at every difficulty and
+    /// style. Difficulty and style change behaviour through their own blocks; these only size and pace it.
+    /// </summary>
+    public class AiPlayConfig
+    {
+        /// <summary>Tiles around a start option counted for its gems and open ground.</summary>
+        public float OptionRadius;
+        /// <summary>Score per gem tile within <see cref="OptionRadius"/> of an option.</summary>
+        public float OptionGemWeight;
+        /// <summary>Score per ground tile within <see cref="OptionRadius"/>.</summary>
+        public float OptionOpenWeight;
+        /// <summary>Score per rich field (expansion) within <see cref="OptionExpansionReach"/>, falling to 0 at the reach.</summary>
+        public float OptionExpansionWeight;
+        /// <summary>Tiles within which an expansion counts for an option.</summary>
+        public float OptionExpansionReach;
+        /// <summary>Score lost per tile from the nearest teammate's pick (Teams).</summary>
+        public float OptionTeammateWeight;
+        /// <summary>Match seconds after which the style's build order is dropped, done or not.</summary>
+        public float OpeningSeconds;
+        /// <summary>Tiles from the HQ (or an expansion's centre, by its radius) within which buildings are placed.</summary>
+        public float BaseRadius;
+        /// <summary>Free tiles kept around a new producer, Radar or Jammer, so paths stay open (not Miners, turrets or bombs).</summary>
+        public int BuildingGap;
+        /// <summary>Candidate anchors a placement search tries per think (a longer search goes on next think).</summary>
+        public int PlacementTriesPerThink;
+        /// <summary>Seconds a placed building's footprint stays reserved until the building shows up in its view.</summary>
+        public float PendingSeconds;
+        /// <summary>Seconds an anchor where a placement was refused (or never showed up) stays out of its search.</summary>
+        public float BlockedSeconds;
+        /// <summary>Seconds before a building request whose search found no spot is searched again.</summary>
+        public float SearchRetrySeconds;
+        /// <summary>Seconds between two re-plans of its defended spots and gathering point.</summary>
+        public float ReplanSeconds;
+        /// <summary>Tiles around a defended spot its turrets, bombs and Jammers go within.</summary>
+        public float DefenceSpread;
+        /// <summary>Builders sent to each blueprint.</summary>
+        public int BuildersPerBlueprint;
+        /// <summary>Seconds before the same blueprint, repair or scout target is assigned again.</summary>
+        public float AssignSeconds;
+        /// <summary>Health share below which a finished building is repaired.</summary>
+        public float RepairBelow;
+        /// <summary>Units kept queued on each producer.</summary>
+        public int QueueAhead;
+        /// <summary>Units queued at once on an empty army producer when it can pay for them all (a queue button's step).</summary>
+        public int QueueBatch;
+        /// <summary>Share of its income its upkeep may reach (upkeep-keeping difficulties), without a bank.</summary>
+        public float UpkeepIncomeShare;
+        /// <summary>Seconds of its upkeep Normal and Hard always keep in hand.</summary>
+        public float UpkeepFloorSeconds;
+        /// <summary>Seconds of an upkeep deficit its balance must cover before it accepts one.</summary>
+        public float UpkeepBankSeconds;
+        /// <summary>Income left over its upkeep (per second) below which it builds Miners beyond its style's count.</summary>
+        public float UpkeepHeadroom;
+        /// <summary>Balance above which an AI whose upkeep has caught up with its income expands before its time.</summary>
+        public float CappedExpandResources;
+        /// <summary>Tiles from the HQ towards the enemy where the army gathers.</summary>
+        public float GatherDistance;
+        /// <summary>Tiles around an army's centre that count as its fight (strength on both sides).</summary>
+        public float ArmyRadius;
+        /// <summary>Seconds between two re-orders of the same group.</summary>
+        public float OrderSeconds;
+        /// <summary>Units gathered at home sent on as reinforcements to an attack.</summary>
+        public int ReinforceSize;
+        /// <summary>Tiles from the HQ within which home units come to defend.</summary>
+        public float DefendRadius;
+        /// <summary>Share (0..1) of the army mix moved to counters when it has seen enemy units.</summary>
+        public float CounterShift;
+        /// <summary>Weight of the building counters against the unit counters (Hard).</summary>
+        public float BuildingCounterWeight;
+        /// <summary>Share of light units among the enemies seen above which it adds a turret per defended spot (Normal, Hard).</summary>
+        public float LightTurretShare;
+        /// <summary>Tiles behind the front its Artillery and Snipers stay (Hard).</summary>
+        public float BacklineDistance;
+        /// <summary>Visible enemy units within a bomber's blast that make it detonate.</summary>
+        public int BomberClump;
+        /// <summary>Suicide bombers it checks for a detonation per think (a bound on its work in a huge fight).</summary>
+        public int BomberChecks;
+        /// <summary>Match seconds before it scouts with any unit when it has no Scout.</summary>
+        public float ScoutAfterSeconds;
+        /// <summary>Match seconds before it builds defences beyond its build order's.</summary>
+        public float DefenceAfterSeconds;
+        /// <summary>Tiles past its start region's edge along a lane where a chokepoint defence goes.</summary>
+        public float DefenceDistance;
+        /// <summary>Most chokepoints it defends.</summary>
+        public int MaxDefendedSpots;
+        /// <summary>Tiles left open in the middle of a chokepoint wall for its own army.</summary>
+        public int WallGap;
+        /// <summary>Most seconds a retreat lasts.</summary>
+        public float RetreatSeconds;
+        /// <summary>A Gun turret's strength as a share of its cost (it can't move, but hits hard).</summary>
+        public float TurretStrength;
     }
 
     /// <summary>The AI's diplomacy (spec §7, O5, O6).</summary>
