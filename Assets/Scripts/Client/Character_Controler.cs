@@ -35,7 +35,7 @@ namespace Character
         /// Sets the zoom; at a whole-number scale the Pixel Perfect Camera takes over with a reference
         /// resolution that gives exactly that scale, otherwise it is off and the size is used as is.
         /// </summary>
-        private void SetSize(float size)
+        internal void SetSize(float size)
         {
             int ppu = ArtStyle.PixelsPerUnit;
             lastScreenHeight = Screen.height;

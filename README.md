@@ -18,7 +18,7 @@ A networked, top-down 2D real-time strategy game built in Unity, made for armies
 | [docs/bug-review.md](docs/bug-review.md) | Code-review findings, how each was triaged, and the low-priority ones still open |
 | [docs/debugging.md](docs/debugging.md) | The control API and `tools/war2d` CLI, overlays, `WarLog`, replays |
 | [docs/playtesting.md](docs/playtesting.md) | How to run a playtest: Steam, and Direct play through a router or tunnel |
-| [docs/roadmap.md](docs/roadmap.md) | The current roadmap (v0.10–v0.13: debug tools and replays, new maps, new units, defences), with a design spec per update |
+| [docs/roadmap.md](docs/roadmap.md) | The current roadmap (v0.10–v0.14: debug tools and replays, new maps, new units, defences, AI opponents), with a design spec per update |
 | [docs/archive/](docs/archive/roadmap-v0.2-v0.9.md) | The completed v0.2–v0.9 roadmap, its specs, plans, spike and performance results |
 | [steam/README.md](steam/README.md) | Uploading builds to Steam with `tools/steam-upload.sh` |
 | [CLAUDE.md](CLAUDE.md) | Guidance for AI coding assistants working in this repo |

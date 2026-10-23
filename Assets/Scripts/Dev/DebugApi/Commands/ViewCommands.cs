@@ -17,7 +17,13 @@ namespace WAR2D.Dev.DebugApi
                 var p = new Vector2(DebugArgs.Float(a, "x"), DebugArgs.Float(a, "y"));
                 if (controller != null) controller.CentreOn(p);
                 else cam.transform.position = new Vector3(p.x, p.y, cam.transform.position.z);
-                if (DebugArgs.Has(a, "zoom")) cam.orthographicSize = Mathf.Clamp(DebugArgs.Float(a, "zoom"), 3f, 30f);
+                if (DebugArgs.Has(a, "zoom"))
+                {
+                    // Through the controller, so the Pixel Perfect Camera is switched off between whole-number scales.
+                    float size = Mathf.Clamp(DebugArgs.Float(a, "zoom"), 3f, 30f);
+                    if (controller != null) controller.SetSize(size);
+                    else cam.orthographicSize = size;
+                }
                 return new { x = p.x, y = p.y, zoom = cam.orthographicSize };
             });
             r.Add("select", DebugRole.Client, "select ids: replace the local selection", a =>

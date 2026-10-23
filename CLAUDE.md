@@ -4,7 +4,7 @@ Guidance for AI coding assistants working in this repository.
 
 ## What this is
 
-WAR-2D is a Unity `6000.4.1f1` multiplayer 2D RTS (free-for-all or teams, 2 to 8 players, Linux and Windows builds; the tests and perf gate run on Linux). It uses **Mirror** for networking (server-authoritative; Steam relay through FizzySteamworks for online play, KCP on port 7778 as "Direct" for tests, perf and LAN) and **Unity Entities (DOTS)** for the simulation. The current plan is [docs/roadmap.md](docs/roadmap.md) (v0.10 to v0.13), with a design spec per update in `docs/superpowers/specs/`; the completed v0.2 to v0.9 roadmap and its specs and plans are in `docs/archive/`. Read these before making non-trivial changes:
+WAR-2D is a Unity `6000.4.1f1` multiplayer 2D RTS (free-for-all or teams, 2 to 8 players, Linux and Windows builds; the tests and perf gate run on Linux). It uses **Mirror** for networking (server-authoritative; Steam relay through FizzySteamworks for online play, KCP on port 7778 as "Direct" for tests, perf and LAN) and **Unity Entities (DOTS)** for the simulation. The current plan is [docs/roadmap.md](docs/roadmap.md) (v0.10 to v0.14), with a design spec per update in `docs/superpowers/specs/`; the completed v0.2 to v0.9 roadmap and its specs and plans are in `docs/archive/`. Read these before making non-trivial changes:
 
 - [docs/architecture.md](docs/architecture.md): how the systems connect, the networking reference, the ECS data model
 - [docs/gameplay.md](docs/gameplay.md): intended rules and numbers
