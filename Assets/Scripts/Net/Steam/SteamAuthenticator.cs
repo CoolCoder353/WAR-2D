@@ -44,6 +44,8 @@ namespace WAR2D.Net.Steam
         public override void OnServerAuthenticate(NetworkConnectionToClient conn)
         {
             if (conn is LocalConnectionToClient) { ServerAccept(conn); return; } // the host's own client
+            // A Private lobby (v0.14) takes nobody else: say why before GameManager.OnServerConnect would close it.
+            if (GameCore.Instance != null && GameCore.Instance.Settings.Visibility == LobbyVisibility.Private) { Reject(conn, LobbyRules.PrivateRefusal); return; }
             if (TransportSteamId(conn.connectionId) == 0)
             {
                 // A KCP connection: no Steam identity to verify, only its version (its hello is on its way).

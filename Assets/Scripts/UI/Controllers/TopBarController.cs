@@ -50,9 +50,9 @@ namespace WAR2D.UI
                 var swatch = new VisualElement();
                 swatch.AddToClassList("swatch");
                 swatch.AddToClassList(row.Eliminated ? "swatch--eliminated" : "player-" + (row.ColourIndex % 8 + 1));
-                var label = new Label(row.Eliminated ? row.Nickname + " (eliminated)" : row.Nickname);
-                label.AddToClassList("top-bar__name");
-                if (row.Eliminated) label.AddToClassList("top-bar__name--eliminated");
+                // The AI tag follows an AI's callsign; "(eliminated)" goes last, greyed like a human (Figma 95:563).
+                VisualElement label = PlayerNameLabel.Build(row.Nickname, row.AiTag, "top-bar__name", row.Eliminated ? "(eliminated)" : null, row.Eliminated);
+                if (row.Eliminated) label.Q<Label>("player-name-text").AddToClassList("top-bar__name--eliminated");
                 chip.Add(swatch);
                 chip.Add(label);
                 players.Add(chip);

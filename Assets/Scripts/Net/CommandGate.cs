@@ -40,6 +40,9 @@ public static class CommandGate
         ["Cmd_SetAttack"] = (10f, 2f),
         ["Cmd_SetShareVision"] = (10f, 2f),
         ["CmdSetMenuPause"] = (6f, 2f),
+        ["Cmd_AddAi"] = (10f, 4f),
+        ["Cmd_SetAi"] = (20f, 8f),
+        ["Cmd_RemoveAi"] = (10f, 4f),
     }, (10f, 5f));
 
     private static readonly Dictionary<int, (int count, double windowStart)> Violations = new Dictionary<int, (int, double)>();

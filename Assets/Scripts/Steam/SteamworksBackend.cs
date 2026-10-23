@@ -51,10 +51,19 @@ namespace WAR2D.Steam
 
         public void EndAuthSession(ulong steamId) => SteamUser.EndAuthSession(new CSteamID(steamId));
 
-        // Friends-only for the playtest: the browser lists friends' lobbies. Switch to k_ELobbyTypePublic for public games.
-        public void CreateLobby(int maxPlayers, Action<ulong> done) =>
-            created.Set(SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypeFriendsOnly, maxPlayers),
+        public void CreateLobby(int maxPlayers, LobbyVisibility visibility, Action<ulong> done) =>
+            created.Set(SteamMatchmaking.CreateLobby(TypeOf(visibility), maxPlayers),
                 (r, ioFailure) => done(!ioFailure && r.m_eResult == EResult.k_EResultOK ? r.m_ulSteamIDLobby : 0));
+
+        public void SetLobbyType(ulong lobbyId, LobbyVisibility visibility) => SteamMatchmaking.SetLobbyType(new CSteamID(lobbyId), TypeOf(visibility));
+
+        /// <summary>Public and Friends map to Steam's types; Private (never asked for: a Private match has no lobby) to a private one.</summary>
+        private static ELobbyType TypeOf(LobbyVisibility visibility) => visibility switch
+        {
+            LobbyVisibility.Public => ELobbyType.k_ELobbyTypePublic,
+            LobbyVisibility.Friends => ELobbyType.k_ELobbyTypeFriendsOnly,
+            _ => ELobbyType.k_ELobbyTypePrivate,
+        };
 
         public void SetLobbyData(ulong lobbyId, IDictionary<string, string> data)
         {

@@ -188,7 +188,7 @@ public partial class WorldStateManager : NetworkBehaviour
             {
                 ClientPlayer cp = GameCore.Instance.ClientPlayerOf(owner);
                 if (cp == null) continue;
-                header.Players.Add(new WAR2D.Net.Replay.ReplayPlayerInfo { OwnerId = owner, Nickname = cp.nickname, Colour = cp.colourIndex, Team = GameCore.Instance.TeamOf(owner) });
+                header.Players.Add(new WAR2D.Net.Replay.ReplayPlayerInfo { OwnerId = owner, Nickname = cp.nickname, Colour = cp.colourIndex, Team = GameCore.Instance.TeamOf(owner), IsAi = cp.isAi, Difficulty = cp.aiDifficulty });
             }
             string path = System.IO.Path.Combine(WAR2D.Net.Replay.ReplayLibrary.Folder, $"{System.DateTime.UtcNow:yyyyMMdd-HHmmss}-{MapSeed}{WAR2D.Net.Replay.ReplayFile.Extension}");
             Recorder = new WAR2D.Net.Replay.MatchRecorder(Replication, Sim, header, path, (long)replays.MaxMegabytes << 20);

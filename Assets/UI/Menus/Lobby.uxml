@@ -2,11 +2,15 @@
     <ui:VisualElement name="lobby" class="menu-screen lobby">
         <ui:Label text="Lobby" class="lobby__title" />
         <ui:Label name="lobby-subtitle" text="" class="text text--muted lobby__subtitle" />
-        <ui:VisualElement class="lobby__left">
+        <ui:ScrollView name="lobby-left" mode="Vertical" horizontal-scroller-visibility="Hidden" class="lobby__left">
             <ui:VisualElement class="panel">
                 <ui:Label name="players-title" text="Players" class="panel__title" />
                 <ui:VisualElement class="lobby__players">
                     <ui:VisualElement name="player-rows" />
+                    <ui:VisualElement name="add-ai-row" class="row lobby__add-ai">
+                        <ui:Button name="add-ai-button" text="Add AI" class="button" />
+                        <ui:Label name="add-ai-hint" text="AIs are always ready. Shown while a seat is free (8 at most)." class="text--secondary lobby__add-ai-hint" />
+                    </ui:VisualElement>
                     <ui:VisualElement name="local-pickers">
                         <ui:Label text="Your colour (taken colours are crossed out)" class="text--secondary lobby__label" />
                         <ui:VisualElement name="colour-picker" class="row lobby__colours" />
@@ -20,6 +24,11 @@
             <ui:VisualElement class="panel lobby__settings">
                 <ui:Label name="settings-title" text="Match settings" class="panel__title" />
                 <ui:VisualElement class="lobby__settings-content">
+                    <ui:VisualElement name="visibility-group" class="option-group">
+                        <ui:Label text="Visibility" class="text--secondary lobby__label" />
+                        <ui:VisualElement name="visibility-row" class="row segmented" />
+                        <ui:Label name="visibility-hint" text="" class="text--secondary lobby__hint" />
+                    </ui:VisualElement>
                     <ui:VisualElement class="row lobby__mode-row">
                         <ui:VisualElement class="option-group">
                             <ui:Label text="Mode" class="text--secondary lobby__label" />
@@ -47,7 +56,7 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
-        </ui:VisualElement>
+        </ui:ScrollView>
         <ui:VisualElement class="panel lobby__preview">
             <ui:Label text="Map preview" class="panel__title" />
             <ui:VisualElement class="lobby__preview-content">

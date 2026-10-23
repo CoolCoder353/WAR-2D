@@ -402,7 +402,7 @@ namespace WAR2D.UI
             bool won = System.Array.IndexOf(result.Winners, Model.LocalOwnerId) >= 0;
             EndResult mine = result.Winners.Length == 0 ? EndResult.Draw : won ? EndResult.Victory : EndResult.Defeat;
             endScreen.Show(mine, EndScreenController.Line(mine, winners, result.DurationSeconds));
-            endScreen.ShowStats(result, NameOf, PlayerPalette.ColourIndexOf);
+            endScreen.ShowStats(result, NameOf, PlayerPalette.ColourIndexOf, owner => ResultTagOf(owner, result));
         }
 
         private VisualElement spectatingPanel;
@@ -493,7 +493,10 @@ namespace WAR2D.UI
             {
                 string building = alert.Kind == AlertKind.UnderAttack ? NearestOwnBuilding(alert.Tile)
                     : alert.Kind == AlertKind.ConstructionFinished ? OwnBuildingAt(alert.Tile) : null;
-                Alerts.Add(alert, AlertFeedModel.Text(alert, NameOf, building), Time.unscaledTime);
+                // An AI named by the alert gets its tag after its callsign (Figma 95:563); Under attack never names anyone.
+                bool names = AlertFeedModel.NamesAPlayer(alert.Kind);
+                Alerts.Add(alert, AlertFeedModel.Text(alert, NameOf, building), Time.unscaledTime,
+                    names ? NameOf(alert.OtherOwnerId) : null, names ? AiTagOf(alert.OtherOwnerId) : null);
                 if (alert.Kind == AlertKind.ConstructionFinished) sound = building == AlertFeedModel.BuildingName(BuildingType.Jammer) ? "jammer_online" : "construction_finished";
                 if (alert.Kind == AlertKind.EnemySpotted) sound = "radar_ping";
             }
@@ -526,6 +529,22 @@ namespace WAR2D.UI
                 name = AlertFeedModel.BuildingName(entry.Data.buildingType) ?? name;
             }
             return name;
+        }
+
+        /// <summary>A player's AI tag ("AI · Hard"), or null for a human or an unknown owner.</summary>
+        private string AiTagOf(int ownerId)
+        {
+            foreach (PlayerRow row in Model.Players) if (row.OwnerId == ownerId) return row.AiTag;
+            return null;
+        }
+
+        /// <summary>An AI's tag on the end screen: difficulty and the style it played, "(random)" when the host left it on Random.</summary>
+        private string ResultTagOf(int ownerId, MatchResult result)
+        {
+            foreach (PlayerRow row in Model.Players)
+                if (row.OwnerId == ownerId)
+                    return row.IsAi ? PlayerNameLabel.ResultTagText(row.Difficulty, row.PickedStyle, result.PlayedStyle(ownerId)) : null;
+            return null;
         }
 
         /// <summary>A player's public nickname.</summary>

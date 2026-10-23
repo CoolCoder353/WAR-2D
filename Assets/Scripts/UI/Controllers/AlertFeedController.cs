@@ -54,11 +54,22 @@ namespace WAR2D.UI
                 if (fadesAt > now) { row.AddToClassList("alert--new"); nextFade = Mathf.Min(nextFade, fadesAt); }
                 var stripe = new VisualElement();
                 stripe.AddToClassList("alert__stripe");
-                var text = new Label(entry.Text) { name = "alert-text" };
+                row.Add(stripe);
+                if (entry.Subject != null)
+                {
+                    // "Cmdr. Vasquez [icon] AI · Hard gifted you 500": the callsign, its tag, then the rest.
+                    var subject = new Label(entry.Subject) { name = "alert-subject" };
+                    subject.AddToClassList("alert__text");
+                    subject.AddToClassList("alert__subject");
+                    row.Add(subject);
+                    VisualElement tag = PlayerNameLabel.Tag(entry.SubjectTag);
+                    tag.AddToClassList("alert__tag");
+                    row.Add(tag);
+                }
+                var text = new Label(entry.Subject != null ? entry.Text.Substring(entry.Subject.Length).TrimStart() : entry.Text) { name = "alert-text" };
                 text.AddToClassList("alert__text");
                 var dismiss = new Button(() => model.Dismiss(id)) { text = "×", name = "alert-dismiss", tooltip = "Dismiss" };
                 dismiss.AddToClassList("alert__dismiss");
-                row.Add(stripe);
                 row.Add(text);
                 row.Add(dismiss);
                 feed.Add(row);

@@ -139,19 +139,27 @@ public class GameManager : NetworkManager
 
     /// <summary>
     /// Called on the server when a client connects. Only the lobby takes new players, and only up to
-    /// <see cref="LobbyRules.MaxPlayers"/>: a player joining a running match would have no team, colour
-    /// slot, HQ or replication, so the server closes the connection (the joining client says so).
+    /// <see cref="LobbyRules.MaxPlayers"/> seats (AIs included): a player joining a running match would have no team,
+    /// colour slot, HQ or replication, so the server closes the connection (the joining client says so). A Private
+    /// lobby (v0.14) refuses every connection but the host's own (the authenticator tells the client why first).
     /// </summary>
     [Server]
     public override void OnServerConnect(NetworkConnectionToClient conn)
     {
         base.OnServerConnect(conn);
         GameCore core = GameCore.Instance;
-        // AI seats take places too: humans and AIs together are at most MaxPlayers (v0.14).
-        if (core == null || LobbyRules.MayJoin(core.CurrentState, NetworkServer.connections.Count + core.AiPlayers.Count)) return;
-        WarLog.Info(LogCategory.Net, $"Refusing connection {conn.connectionId}: the match is {core.CurrentState} with {NetworkServer.connections.Count - 1} players.");
+        // AI seats take places too: humans and AIs together are at most MaxPlayers; a Private lobby takes only the host (v0.14).
+        if (core == null || LobbyRules.MayConnect(core.Settings.Visibility, conn is LocalConnectionToClient, core.CurrentState,
+                NetworkServer.connections.Count + core.AiPlayers.Count, out string refusal)) return;
+        WarLog.Info(LogCategory.Net, refusal != null
+            ? $"Refusing connection {conn.connectionId}: {refusal}"
+            : $"Refusing connection {conn.connectionId}: the match is {core.CurrentState} with {NetworkServer.connections.Count - 1} players.");
+        LastRefusedConnection = conn.connectionId;
         conn.Disconnect();
     }
+
+    /// <summary>The connection id <see cref="OnServerConnect"/> last refused (tests read it); -1 for none.</summary>
+    internal static int LastRefusedConnection { get; set; } = -1;
 
     /// <summary>
     /// Called on the server when a new player has connected.

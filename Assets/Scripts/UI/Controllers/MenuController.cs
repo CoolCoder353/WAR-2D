@@ -132,6 +132,9 @@ namespace WAR2D.UI
             lobby.HostTeamClicked += (owner, team) => GameCore.Instance?.Cmd_SetTeam((uint)owner, team);
             lobby.ReadyClicked += r => GameCore.Instance?.Cmd_SetReady(r);
             lobby.StartClicked += () => GameCore.Instance?.Cmd_StartGame();
+            lobby.AddAiClicked += () => GameCore.Instance?.Cmd_AddAi(AiDifficulty.Normal, AiStyle.Random);
+            lobby.AiChanged += (owner, difficulty, style, colour, team) => GameCore.Instance?.Cmd_SetAi(owner, difficulty, style, colour, team);
+            lobby.AiRemoved += owner => GameCore.Instance?.Cmd_RemoveAi(owner);
             lobby.InviteClicked += WAR2D.Net.Steam.SteamHostLobby.OpenInvite;
             lobby.LeaveClicked += () => { wantsPlay = true; GameManager.Instance?.LeaveLobby(); };
             Show(Screen.Main);
@@ -197,7 +200,7 @@ namespace WAR2D.UI
 
             GameCore core = GameCore.Instance;
             if (core != null && NetworkServer.active)
-                WAR2D.Net.Steam.SteamHostLobby.Current?.Update(core.CurrentState, core.Settings, NetworkServer.connections.Count);
+                WAR2D.Net.Steam.SteamHostLobby.Current?.Update(core.CurrentState, core.Settings, core.SeatCount);
             if (WAR2D.Client.Replay.ReplayPlayer.Instance != null)
             {
                 viewer.Tick(Time.unscaledDeltaTime);

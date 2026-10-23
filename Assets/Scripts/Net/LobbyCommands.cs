@@ -26,6 +26,7 @@ public partial class GameCore
             StartingResources = config.Resources.StartingResources,
             StartOptions = config.Lobby.StartOptionsDefault,
             StartPickSeconds = config.Lobby.StartPickDefault,
+            Visibility = config.Lobby.Visibility,
         };
     }
 
@@ -38,7 +39,11 @@ public partial class GameCore
         if (!CommandGate.Allow(sender, nameof(Cmd_SetMatchSettings))) return;
         if (!IsServerOwner(sender) || CurrentState != GameState.Lobby) return;
         if (!MatchSettingsRules.IsValid(settings, ConfigLoader.LoadConfig().Lobby)) return;
+        // Going Private with another human connected is refused (the host's lobby shows "Remove the other players first").
+        if (!LobbyRules.MayChangeVisibility(Settings.Visibility, settings.Visibility, ServerPlayers.Count)) return;
+        bool reseeded = settings.Seed != Settings.Seed;
         Settings = settings;
+        if (reseeded) RedrawCallsigns();
         foreach (ClientPlayer player in LobbyClientPlayers())
         {
             if (settings.Mode == MatchMode.FreeForAll) player.lobbyTeam = TeamRules.NoTeam;
@@ -67,7 +72,45 @@ public partial class GameCore
         MatchSettings settings = Settings;
         settings.Seed = NewSeed();
         Settings = settings;
+        RedrawCallsigns();
         foreach (ClientPlayer player in LobbyClientPlayers()) player.ready = false;
+    }
+
+    /// <summary>
+    /// Adds an AI seat (v0.14): server owner only, in the lobby, Easy/Normal/Hard and a known style. It takes the first
+    /// unused colour and, in Teams mode, the team with the fewest players. Refused past the seat limit. Clears every ready flag.
+    /// </summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_AddAi(AiDifficulty difficulty, AiStyle style, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_AddAi))) return;
+        if (!IsServerOwner(sender) || CurrentState != GameState.Lobby) return;
+        if (!AiLobbyRules.IsValidChoice(difficulty, style) || !AiLobbyRules.HasFreeSeat(SeatCount)) return;
+        var teams = new List<int>();
+        foreach (ClientPlayer player in LobbyClientPlayers()) teams.Add(player.lobbyTeam);
+        foreach (AiSeat seat in AiPlayers.Values) teams.Add(seat.LobbyTeam);
+        AddAi(difficulty, style, -1, LobbyRules.FewestPlayersTeam(Settings.Mode, teams));
+    }
+
+    /// <summary>
+    /// Changes a lobby AI (v0.14): server owner only, in the lobby, for an existing (not Scripted) AI, with a valid
+    /// difficulty and style, a colour nobody else has and a team the mode offers. Clears every ready flag on a change.
+    /// </summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_SetAi(int ownerId, AiDifficulty difficulty, AiStyle style, int colour, int team, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_SetAi))) return;
+        if (!IsServerOwner(sender)) return;
+        SetAi(ownerId, difficulty, style, colour, team);
+    }
+
+    /// <summary>Removes a lobby AI (v0.14): server owner only, in the lobby. Clears every ready flag.</summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_RemoveAi(int ownerId, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_RemoveAi))) return;
+        if (!IsServerOwner(sender)) return;
+        RemoveAi(ownerId);
     }
 
     /// <summary>Takes a palette colour nobody else has, in the lobby.</summary>

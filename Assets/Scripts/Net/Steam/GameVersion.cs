@@ -9,9 +9,10 @@ namespace WAR2D.Net.Steam
         /// <summary>
         /// The wire-protocol version: bump it whenever a message, the replication format or a recording changes
         /// shape. Host and client must match exactly; Direct (KCP) joins check only this, Steam joins this and
-        /// <see cref="Current"/>. 13: v0.13 (building attack events, attacker kinds).
+        /// <see cref="Current"/>. 13: v0.13 (building attack events, attacker kinds). 14: v0.14 (AI players, lobby
+        /// Visibility, the end screen's AI styles).
         /// </summary>
-        public const int Protocol = 13;
+        public const int Protocol = 14;
 
         public static string Current => UnityEngine.Application.version;
 

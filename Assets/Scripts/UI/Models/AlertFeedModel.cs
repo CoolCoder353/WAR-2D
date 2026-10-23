@@ -13,6 +13,8 @@ namespace WAR2D.UI
         public int2 Tile;
         public float Added;
         public float Expires;
+        /// <summary>v0.14: the player the text starts with (its nickname) when that player is an AI, and its tag ("AI · Hard"); null otherwise.</summary>
+        public string Subject, SubjectTag;
     }
 
     /// <summary>
@@ -46,9 +48,14 @@ namespace WAR2D.UI
         public static bool Pings(AlertKind kind) => kind == AlertKind.UnderAttack || kind == AlertKind.BombTriggered || kind == AlertKind.EnemySpotted;
 
         /// <summary>Adds an alert with its text, shown from <paramref name="now"/>.</summary>
-        public void Add(in Alert alert, string text, float now)
+        public void Add(in Alert alert, string text, float now, string subject = null, string subjectTag = null)
         {
-            entries.Add(new AlertEntry { Id = nextId++, Kind = alert.Kind, Text = text, Tile = alert.Tile, Added = now, Expires = now + showSeconds });
+            bool tagged = subject != null && subjectTag != null && text != null && text.StartsWith(subject, StringComparison.Ordinal);
+            entries.Add(new AlertEntry
+            {
+                Id = nextId++, Kind = alert.Kind, Text = text, Tile = alert.Tile, Added = now, Expires = now + showSeconds,
+                Subject = tagged ? subject : null, SubjectTag = tagged ? subjectTag : null,
+            });
             while (entries.Count > MaxShown) entries.RemoveAt(0);
             if (Pings(alert.Kind)) PingRequested?.Invoke(alert.Tile, alert.Kind);
             Changed?.Invoke();
@@ -84,6 +91,10 @@ namespace WAR2D.UI
             AlertKind.RepairsStopped => "Out of resources: repairs stopped",
             _ => "",
         };
+
+        /// <summary>True for the alerts whose text starts with another player's name (<see cref="Alert.OtherOwnerId"/>).</summary>
+        public static bool NamesAPlayer(AlertKind kind) =>
+            kind == AlertKind.GiftReceived || kind == AlertKind.VisionSharedWithYou || kind == AlertKind.VisionUnshared;
 
         /// <summary>A building type as players know it.</summary>
         public static string BuildingName(BuildingType type) => type switch

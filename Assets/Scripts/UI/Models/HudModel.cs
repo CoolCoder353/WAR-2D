@@ -15,9 +15,21 @@ namespace WAR2D.UI
         public readonly int OrderIndex;
         public readonly int StartTeam;
         public readonly bool Eliminated;
+        /// <summary>v0.14: an AI player, and its difficulty (public: the AI tag shows it).</summary>
+        public readonly bool IsAi;
+        public readonly AiDifficulty Difficulty;
+        /// <summary>The style the host picked (Random stays Random: what it became is revealed only by the end screen).</summary>
+        public readonly AiStyle PickedStyle;
 
-        public PlayerRow(int ownerId, string nickname, int colourIndex, int startTeam, bool eliminated, int orderIndex = -1)
+        /// <summary>The AI tag's text ("AI · Hard"), or null for a human.</summary>
+        public string AiTag => IsAi ? PlayerNameLabel.TagText(Difficulty) : null;
+
+        public PlayerRow(int ownerId, string nickname, int colourIndex, int startTeam, bool eliminated, int orderIndex = -1,
+            bool isAi = false, AiDifficulty difficulty = default, AiStyle pickedStyle = default)
         {
+            IsAi = isAi;
+            Difficulty = difficulty;
+            PickedStyle = pickedStyle;
             OwnerId = ownerId;
             Nickname = nickname;
             ColourIndex = colourIndex;
@@ -27,7 +39,8 @@ namespace WAR2D.UI
         }
 
         public bool Equals(PlayerRow other) => OwnerId == other.OwnerId && Nickname == other.Nickname &&
-            ColourIndex == other.ColourIndex && OrderIndex == other.OrderIndex && StartTeam == other.StartTeam && Eliminated == other.Eliminated;
+            ColourIndex == other.ColourIndex && OrderIndex == other.OrderIndex && StartTeam == other.StartTeam && Eliminated == other.Eliminated
+            && IsAi == other.IsAi && Difficulty == other.Difficulty && PickedStyle == other.PickedStyle;
 
         public override bool Equals(object obj) => obj is PlayerRow other && Equals(other);
 
@@ -145,7 +158,8 @@ namespace WAR2D.UI
                 bool eliminated = player == null || (core.CurrentState == GameState.Playing && !player.hasPlacedHQ);
                 string name = player != null && !string.IsNullOrEmpty(player.nickname) ? player.nickname : "Player";
                 int colour = player != null ? player.colourIndex : i;
-                scratch.Add(new PlayerRow(owner, name, colour, core.TeamOf(owner), eliminated, i));
+                scratch.Add(new PlayerRow(owner, name, colour, core.TeamOf(owner), eliminated, i,
+                    player != null && player.isAi, player != null ? player.aiDifficulty : default, player != null ? player.aiStyle : default));
             }
             SetPlayers(scratch);
         }

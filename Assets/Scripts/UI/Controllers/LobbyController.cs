@@ -22,6 +22,13 @@ namespace WAR2D.UI
         private readonly Func<string> hostAddress;
         private readonly VisualElement rows, colourPicker, teamSection, teamPicker;
         private readonly VisualElement modeOptions, sizeOptions, resourceOptions, diplomacySlot, startOptions, pickTimes;
+        private readonly VisualElement visibilityOptions, addAiRow;
+        private readonly Label visibilityHint, addAiHint;
+        private readonly Button addAi;
+        /// <summary>Set when the host clicked Private with another human connected: the hint says so until the selection or the players change.</summary>
+        private bool privateRefused;
+        private int refusedAtPlayers = -1;
+        private LobbyVisibility refusedAtVisibility;
         private readonly VisualElement previewImage, markers;
         private readonly Label subtitle, playersTitle, settingsTitle, status, startOptionsHint;
         private readonly TextField seed;
@@ -38,6 +45,18 @@ namespace WAR2D.UI
         public event Action<int, int> HostTeamClicked;
         /// <summary>The local player readied up (true) or cancelled (false).</summary>
         public event Action<bool> ReadyClicked;
+        /// <summary>The host pressed Add AI (the server picks Normal, Random, the first free colour and the emptiest team).</summary>
+        public event Action AddAiClicked;
+        /// <summary>The host changed an AI's row: (owner, difficulty, style, colour, team).</summary>
+        public event Action<int, AiDifficulty, AiStyle, int, int> AiChanged;
+        /// <summary>The host removed an AI (its ×).</summary>
+        public event Action<int> AiRemoved;
+
+        /// <summary>Hint texts under Visibility (Figma 93:94, 93:343, 94:618).</summary>
+        public const string FriendsHint = "Friends: your Steam friends see this game and can join. Public: anyone can find it. Private: single-player.";
+        public const string PublicHint = "Public: anyone on Steam can find this game and join. Friends: only your Steam friends. Private: single-player.";
+        public const string PrivateHint = "Private: single-player, nobody can join. No Steam lobby is made; Invite and the join address are hidden.";
+        public const string PrivateRefusedHint = "Remove the other players first";
 
         private readonly Button invite;
 
@@ -45,7 +64,7 @@ namespace WAR2D.UI
         public event Action InviteClicked;
 
         /// <summary>Shows or hides Invite friends (only a host with a Steam lobby has it).</summary>
-        public void SetInviteVisible(bool visible) => invite.EnableInClassList("hidden", !visible);
+        public void SetInviteVisible(bool visible) => invite.EnableInClassList("hidden", !visible || model.Settings.Visibility == LobbyVisibility.Private);
 
         public LobbyController(VisualElement root, LobbyModel model, MapPreview preview, LobbyConfig lobby, MapConfig map, Func<string> hostAddress)
         {
@@ -68,6 +87,12 @@ namespace WAR2D.UI
             previewImage = root.Q("preview-image");
             markers = root.Q("preview-markers");
             subtitle = root.Q<Label>("lobby-subtitle");
+            visibilityOptions = root.Q("visibility-row");
+            visibilityHint = root.Q<Label>("visibility-hint");
+            addAiRow = root.Q("add-ai-row");
+            addAiHint = root.Q<Label>("add-ai-hint");
+            addAi = root.Q<Button>("add-ai-button");
+            addAi.clicked += () => AddAiClicked?.Invoke();
             playersTitle = root.Q<Label>("players-title");
             settingsTitle = root.Q<Label>("settings-title");
             status = root.Q<Label>("lobby-status");
@@ -103,11 +128,16 @@ namespace WAR2D.UI
 
             string hostName = "the host";
             foreach (LobbyPlayer p in model.Players) if (p.IsHost) hostName = p.Nickname;
-            subtitle.text = host ? $"You are hosting · {hostAddress()}" : $"Hosted by {hostName} · you are {me.Nickname}";
-            playersTitle.text = $"Players ({model.Players.Count})";
+            bool isPrivate = s.Visibility == LobbyVisibility.Private;
+            // Private hides the join line (the Direct addresses): nobody can join (Figma 93:343).
+            subtitle.text = host ? (isPrivate ? "You are hosting a private match · single-player: nobody can join" : $"You are hosting · {hostAddress()}")
+                : $"Hosted by {hostName} · you are {me.Nickname}";
+            playersTitle.text = $"Players ({model.Players.Count} of {LobbyRules.MaxPlayers})";
+            if (isPrivate) invite.AddToClassList("hidden");
             settingsTitle.text = host ? "Match settings" : "Match settings (host only)";
 
             ShowRows(host, teams);
+            ShowAddAi(host, isPrivate);
             ShowPickers(host, teams, me);
             ShowSettings(s, host);
 
@@ -120,7 +150,8 @@ namespace WAR2D.UI
             start.EnableInClassList("hidden", !host);
             bool fits = Fits(s.StartOptions);
             start.SetEnabled(model.CanStart && fits);
-            status.text = host && model.CanStart && !fits ? "Too many options per player for this map" : model.Status;
+            status.text = host && model.CanStart && !fits ? "Too many options per player for this map"
+                : host && isPrivate && model.CanStart ? "Single-player: start when you like" : model.Status;
             status.EnableInClassList("text--warning", host && !(model.CanStart && fits));
             status.EnableInClassList("text--muted", !host);
             markers.Clear(); // start points are private (v0.11): the preview shows terrain only
@@ -131,6 +162,7 @@ namespace WAR2D.UI
             rows.Clear();
             foreach (LobbyPlayer p in model.Players)
             {
+                if (p.IsAi) { rows.Add(AiRow(p, host, teams)); continue; }
                 var row = new VisualElement { name = "lobby-row-" + p.OwnerId };
                 row.AddToClassList("lobby-row");
                 row.EnableInClassList("lobby-row--ready", p.Ready);
@@ -166,6 +198,106 @@ namespace WAR2D.UI
             }
         }
 
+        /// <summary>
+        /// An AI's row (Figma 93:94 host, 93:592 joined). Host: swatch (click: the next free colour), callsign, the tag
+        /// ("AI"), Difficulty and Style dropdowns, Team (Teams mode), Ready, ×. Everyone else: callsign with "AI · Hard",
+        /// the style as text (Random stays "Random"), team and Ready.
+        /// </summary>
+        private VisualElement AiRow(LobbyPlayer p, bool host, bool teams)
+        {
+            int owner = p.OwnerId;
+            var row = new VisualElement { name = "lobby-row-" + owner };
+            row.AddToClassList("lobby-row");
+            row.AddToClassList("ai-row");
+            row.AddToClassList("lobby-row--ready");
+            string colourClass = "player-" + (p.ColourIndex % LobbyRules.Colours + 1);
+            if (host)
+            {
+                var swatch = new Button(() => AiChanged?.Invoke(owner, p.Difficulty, p.Style, model.NextFreeColour(owner, p.ColourIndex), p.Team))
+                    { name = "ai-colour-" + owner, tooltip = "Change colour" };
+                swatch.AddToClassList("lobby-row__swatch-button");
+                swatch.AddToClassList(colourClass);
+                row.Add(swatch);
+            }
+            else
+            {
+                var swatch = new VisualElement();
+                swatch.AddToClassList("lobby-row__swatch");
+                swatch.AddToClassList(colourClass);
+                row.Add(swatch);
+            }
+            VisualElement name = PlayerNameLabel.Build(p.Nickname, host ? "AI" : PlayerNameLabel.TagText(p.Difficulty), "lobby-row__name");
+            name.AddToClassList("lobby-row__name-box");
+            row.Add(name);
+            if (host)
+            {
+                var difficulty = Pill("ai-difficulty-" + owner, AiLobbyRules.DifficultyName(p.Difficulty) + " ▾");
+                difficulty.clicked += () => Menu(difficulty, new[] { AiDifficulty.Easy, AiDifficulty.Normal, AiDifficulty.Hard }, p.Difficulty, AiLobbyRules.DifficultyName,
+                    d => AiChanged?.Invoke(owner, d, p.Style, p.ColourIndex, p.Team));
+                row.Add(difficulty);
+                var style = Pill("ai-style-" + owner, AiLobbyRules.StyleName(p.Style) + " ▾");
+                style.clicked += () => Menu(style, new[] { AiStyle.Random, AiStyle.Rusher, AiStyle.Turtle, AiStyle.Expander, AiStyle.Balanced }, p.Style, AiLobbyRules.StyleName,
+                    st => AiChanged?.Invoke(owner, p.Difficulty, st, p.ColourIndex, p.Team));
+                row.Add(style);
+                if (teams)
+                {
+                    int next = NextTeam(p.Team);
+                    var team = new Button(() => AiChanged?.Invoke(owner, p.Difficulty, p.Style, p.ColourIndex, next)) { text = TeamName(p.Team) + " ▾", name = "team-" + owner };
+                    team.AddToClassList("lobby-row__pill");
+                    row.Add(team);
+                }
+            }
+            else
+            {
+                var style = new Label(AiLobbyRules.StyleName(p.Style)) { name = "ai-style-" + owner };
+                style.AddToClassList("lobby-row__text");
+                row.Add(style);
+                if (teams)
+                {
+                    var team = new Label(TeamName(p.Team)) { name = "team-" + owner };
+                    team.AddToClassList("lobby-row__text");
+                    row.Add(team);
+                }
+            }
+            var ready = new Label("Ready");
+            ready.AddToClassList("lobby-row__ready");
+            ready.AddToClassList("lobby-row__ready--yes");
+            row.Add(ready);
+            if (host)
+            {
+                var remove = new Button(() => AiRemoved?.Invoke(owner)) { text = "×", name = "ai-remove-" + owner, tooltip = "Remove" };
+                remove.AddToClassList("lobby-row__remove");
+                row.Add(remove);
+            }
+            return row;
+        }
+
+        private static Button Pill(string name, string text)
+        {
+            var pill = new Button { name = name, text = text };
+            pill.AddToClassList("lobby-row__pill");
+            return pill;
+        }
+
+        /// <summary>The dropdown under an AI row's pill: one item per value, the current one checked.</summary>
+        private static void Menu<T>(VisualElement anchor, T[] values, T current, Func<T, string> label, Action<T> picked)
+        {
+            var menu = new GenericDropdownMenu();
+            foreach (T value in values)
+            {
+                T v = value;
+                menu.AddItem(label(v), Equals(v, current), () => { if (!Equals(v, current)) picked(v); });
+            }
+            menu.DropDown(anchor.worldBound, anchor, false);
+        }
+
+        /// <summary>Add AI and its hint: the host's, while a seat is free (decision 4).</summary>
+        private void ShowAddAi(bool host, bool isPrivate)
+        {
+            addAiRow.EnableInClassList("hidden", !host || !model.HasFreeSeat);
+            addAiHint.text = isPrivate ? "Add AIs to play against; you need two teams to start." : "AIs are always ready. Shown while a seat is free (8 at most).";
+        }
+
         private void ShowPickers(bool host, bool teams, LobbyPlayer me)
         {
             colourPicker.Clear();
@@ -193,6 +325,7 @@ namespace WAR2D.UI
 
         private void ShowSettings(MatchSettings s, bool host)
         {
+            ShowVisibility(s, host);
             modeOptions.Clear();
             modeOptions.Add(Widgets.Option("mode-ffa", "Free-for-all", s.Mode == MatchMode.FreeForAll, host, () => Change(s, x => x.Mode = MatchMode.FreeForAll)));
             modeOptions.Add(Widgets.Option("mode-teams", "Teams", s.Mode == MatchMode.Teams, host, () => Change(s, x => x.Mode = MatchMode.Teams)));
@@ -211,6 +344,41 @@ namespace WAR2D.UI
                 resourceOptions.Add(Widgets.Option("resources-" + amount, amount.ToString("0"), s.StartingResources.Equals(amount), host, () => Change(s, x => x.StartingResources = value)));
             }
             ShowStartSettings(s, host);
+        }
+
+        /// <summary>
+        /// Visibility, the first setting (Figma 93:94): Public / Friends / Private with one hint for the selected value;
+        /// Private's in the warning colour. Going Private with another human connected changes nothing and says
+        /// "Remove the other players first" until the selection or the players change (94:618; the server refuses it too).
+        /// </summary>
+        private void ShowVisibility(MatchSettings s, bool host)
+        {
+            if (privateRefused && (model.Players.Count != refusedAtPlayers || s.Visibility != refusedAtVisibility)) privateRefused = false;
+            visibilityOptions.Clear();
+            foreach (LobbyVisibility v in new[] { LobbyVisibility.Public, LobbyVisibility.Friends, LobbyVisibility.Private })
+            {
+                LobbyVisibility value = v;
+                visibilityOptions.Add(Widgets.Option("visibility-" + v.ToString().ToLowerInvariant(), v.ToString(), s.Visibility == v, host, () => PickVisibility(s, value)));
+            }
+            bool warn = privateRefused || s.Visibility == LobbyVisibility.Private;
+            visibilityHint.text = privateRefused ? PrivateRefusedHint
+                : s.Visibility == LobbyVisibility.Private ? PrivateHint
+                : s.Visibility == LobbyVisibility.Public ? PublicHint : FriendsHint;
+            visibilityHint.EnableInClassList("lobby__visibility-hint--warning", warn);
+        }
+
+        private void PickVisibility(MatchSettings s, LobbyVisibility value)
+        {
+            if (value == s.Visibility) return;
+            if (!LobbyRules.MayChangeVisibility(s.Visibility, value, model.Humans))
+            {
+                privateRefused = true;
+                refusedAtPlayers = model.Players.Count;
+                refusedAtVisibility = s.Visibility;
+                Show();
+                return;
+            }
+            Change(s, x => x.Value.Visibility = value);
         }
 
         /// <summary>

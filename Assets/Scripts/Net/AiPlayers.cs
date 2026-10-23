@@ -188,6 +188,68 @@ public partial class GameCore
         return seat;
     }
 
+    /// <summary>
+    /// Changes a lobby AI's difficulty, style, colour and team (host only: <see cref="Cmd_SetAi"/> checks that). Refused
+    /// outside the lobby, for an unknown or Scripted seat, Scripted or unknown enums, a colour another player or AI holds,
+    /// or a team the mode doesn't offer (Free-for-all is Solo only). A change clears everyone's ready. True when applied.
+    /// </summary>
+    [Server]
+    public bool SetAi(int ownerId, AiDifficulty difficulty, AiStyle style, int colour, int lobbyTeam)
+    {
+        if (CurrentState != GameState.Lobby || !AiPlayers.TryGetValue(ownerId, out AiSeat seat) || seat.IsScripted) return false;
+        if (!AiLobbyRules.IsValidChoice(difficulty, style)) return false;
+        var taken = new List<int>();
+        foreach (ClientPlayer player in LobbyClientPlayers()) taken.Add(player.colourIndex);
+        foreach (AiSeat other in AiPlayers.Values) if (other != seat) taken.Add(other.Colour);
+        if (!LobbyRules.IsColourFree(colour, taken)) return false;
+        if (Settings.Mode == MatchMode.FreeForAll && lobbyTeam != TeamRules.NoTeam) return false;
+        if (!LobbyRules.IsTeamChoiceValid(Settings.Mode, lobbyTeam)) return false;
+        if (seat.Difficulty == difficulty && seat.Style == style && seat.Colour == colour && seat.LobbyTeam == lobbyTeam) return true;
+
+        seat.Difficulty = difficulty;
+        seat.Style = style;
+        seat.ResolvedStyle = style; // Random is resolved again at match start
+        seat.Colour = colour;
+        seat.LobbyTeam = lobbyTeam;
+        if (seat.Client != null)
+        {
+            seat.Client.aiDifficulty = difficulty;
+            seat.Client.aiStyle = style; // the picked style: Random stays Random on the wire
+            seat.Client.colourIndex = colour;
+            seat.Client.lobbyTeam = lobbyTeam;
+        }
+        foreach (ClientPlayer player in LobbyClientPlayers()) player.ready = false;
+        return true;
+    }
+
+    /// <summary>
+    /// Draws every lobby AI's callsign again from the lobby seed (a reroll or a new seed), in owner-id order, without
+    /// repeats. Scripted seats keep theirs.
+    /// </summary>
+    [Server]
+    private void RedrawCallsigns()
+    {
+        if (!ConfigLoader.IsValid || AiPlayers.Count == 0) return;
+        var owners = new List<int>(AiPlayers.Keys);
+        owners.Sort();
+        var taken = new HashSet<string>();
+        foreach (int owner in owners) if (AiPlayers[owner].IsScripted) taken.Add(AiPlayers[owner].Callsign);
+        foreach (int owner in owners)
+        {
+            AiSeat seat = AiPlayers[owner];
+            if (seat.IsScripted) continue;
+            string callsign = AiCallsigns.Draw(ConfigLoader.LoadConfig().Ai.Callsigns, Settings.Seed, taken);
+            if (callsign == null) continue;
+            taken.Add(callsign);
+            seat.Callsign = callsign;
+            if (seat.Client != null)
+            {
+                seat.Client.nickname = callsign;
+                seat.Client.gameObject.name = $"AI {callsign}";
+            }
+        }
+    }
+
     /// <summary>Removes an AI seat in the lobby (host only, checked by the lobby Command). Clears everyone's ready.</summary>
     [Server]
     public bool RemoveAi(int ownerId)

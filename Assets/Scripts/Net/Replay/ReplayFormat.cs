@@ -9,7 +9,12 @@ namespace WAR2D.Net.Replay
 {
     public enum ReplayChannel : byte { UnitsReliable = 0, UnitsUnreliable = 1, Buildings = 2, Terrain = 3, Fog = 4, Explosions = 10, Blasts = 11, Timeline = 12, End = 13, BomberBlasts = 14 }
 
-    public sealed class ReplayPlayerInfo { public int OwnerId; public string Nickname; public int Colour; public int Team; }
+    public sealed class ReplayPlayerInfo
+    {
+        public int OwnerId; public string Nickname; public int Colour; public int Team;
+        /// <summary>v0.14: an AI player and its difficulty (the viewer shows the AI tag). Never its style: the file exists while the match runs.</summary>
+        public bool IsAi; public AiDifficulty Difficulty;
+    }
 
     /// <summary>A recording's header: what the viewer needs to rebuild the map and label the players. Never Steam IDs.</summary>
     public sealed class ReplayHeader

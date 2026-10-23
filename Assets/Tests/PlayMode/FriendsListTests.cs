@@ -22,7 +22,8 @@ public class FriendsListTests
         public bool TryGetAuthTicket(out byte[] ticket) { ticket = null; return false; }
         public bool BeginAuthSession(ulong steamId, byte[] ticket) => false;
         public void EndAuthSession(ulong steamId) { }
-        public void CreateLobby(int maxPlayers, Action<ulong> done) => done(0);
+        public void CreateLobby(int maxPlayers, LobbyVisibility visibility, Action<ulong> done) => done(0);
+        public void SetLobbyType(ulong lobbyId, LobbyVisibility visibility) { }
         public void SetLobbyData(ulong lobbyId, IDictionary<string, string> data) { }
         public void SetLobbyJoinable(ulong lobbyId, bool joinable) { }
         public void LeaveLobby(ulong lobbyId) { }

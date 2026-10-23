@@ -96,14 +96,27 @@ public partial class GameCore
             if (player != null) Stats.Spent(owner, player.SpentThisMatch);
         }
         var won = new List<int>(winners ?? new int[0]);
-        RpcMatchStats(owners, Stats.Snapshot(owners), won.ToArray(), (float)(NetworkTime.time - MatchStartTime));
+        RpcMatchStats(owners, Stats.Snapshot(owners), won.ToArray(), (float)(NetworkTime.time - MatchStartTime), ResolvedStyles(owners));
     }
 
-    /// <summary>The end screen's statistics, for every player (public once the match is over).</summary>
-    [ClientRpc]
-    public void RpcMatchStats(int[] owners, PlayerStats[] stats, int[] winners, float durationSeconds)
+    /// <summary>
+    /// Each owner's played AI style (v0.14; <see cref="AiStyle.Random"/> for humans), by <paramref name="owners"/>. This
+    /// is the only message that carries what a Random style became, sent once the match is over.
+    /// </summary>
+    [Server]
+    private AiStyle[] ResolvedStyles(int[] owners)
     {
-        LastMatchStats = new MatchResult { Owners = owners, Stats = stats, Winners = winners, DurationSeconds = durationSeconds };
+        var styles = new AiStyle[owners.Length];
+        for (int i = 0; i < owners.Length; i++)
+            if (AiPlayers.TryGetValue(owners[i], out AiSeat seat)) styles[i] = seat.ResolvedStyle;
+        return styles;
+    }
+
+    /// <summary>The end screen's statistics, for every player (public once the match is over), with each AI's played style.</summary>
+    [ClientRpc]
+    public void RpcMatchStats(int[] owners, PlayerStats[] stats, int[] winners, float durationSeconds, AiStyle[] aiStyles)
+    {
+        LastMatchStats = new MatchResult { Owners = owners, Stats = stats, Winners = winners, DurationSeconds = durationSeconds, AiStyles = aiStyles };
         MatchStatsReceived?.Invoke(LastMatchStats);
     }
 
@@ -124,6 +137,16 @@ public sealed class MatchResult
     public PlayerStats[] Stats;
     public int[] Winners;
     public float DurationSeconds;
+    /// <summary>Each owner's played AI style (by <see cref="Owners"/>; Random for humans), revealed at GameOver.</summary>
+    public AiStyle[] AiStyles;
+
+    /// <summary>What <paramref name="owner"/>'s AI played; Random for a human or when unknown.</summary>
+    public AiStyle PlayedStyle(int owner)
+    {
+        if (Owners == null || AiStyles == null) return AiStyle.Random;
+        int i = System.Array.IndexOf(Owners, owner);
+        return i >= 0 && i < AiStyles.Length ? AiStyles[i] : AiStyle.Random;
+    }
 }
 
 /// <summary>When match statistics may leave the server. Pure.</summary>

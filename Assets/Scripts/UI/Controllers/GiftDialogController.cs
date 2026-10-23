@@ -73,7 +73,7 @@ namespace WAR2D.UI
                 var swatch = new VisualElement();
                 swatch.AddToClassList("list-row__swatch");
                 swatch.AddToClassList(player.Eliminated ? "swatch--eliminated" : "player-" + (player.ColourIndex % 8 + 1));
-                var label = new Label(player.Nickname);
+                VisualElement label = PlayerNameLabel.Build(player.Nickname, player.AiTag, null); // AIs are gift targets like anyone (decision 13)
                 label.AddToClassList("list-row__label");
                 var trailing = new Label(player.Eliminated ? "Eliminated" : enemy ? "Enemy" : "Ally");
                 trailing.AddToClassList("list-row__trailing");

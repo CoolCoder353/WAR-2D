@@ -114,4 +114,71 @@ public class MatchSettingsTests
         CollectionAssert.AreEqual(a[1], a2[1]);
         Assert.IsFalse(a[1].SequenceEqual(b[1]) && a[2].SequenceEqual(b[2]) && a[3].SequenceEqual(b[3]), "a different source gives a different deal");
     }
+
+    // ---- v0.14: Visibility and lobby AIs ----
+
+    [Test]
+    public void VisibilityIsValidatedAndFriendsIsTheDefault()
+    {
+        Assert.That(default(MatchSettings).Visibility, Is.EqualTo(LobbyVisibility.Friends), "a default settings struct keeps today's behaviour");
+        foreach (LobbyVisibility v in new[] { LobbyVisibility.Public, LobbyVisibility.Friends, LobbyVisibility.Private })
+        {
+            MatchSettings ok = Valid;
+            ok.Visibility = v;
+            Assert.IsTrue(MatchSettingsRules.IsValid(ok, Lobby), v.ToString());
+        }
+        MatchSettings s = Valid;
+        s.Visibility = (LobbyVisibility)9;
+        Assert.IsFalse(MatchSettingsRules.IsValid(s, Lobby));
+        MatchSettings other = Valid;
+        other.Visibility = LobbyVisibility.Private;
+        Assert.IsFalse(Valid.Equals(other), "a Visibility change is a settings change");
+    }
+
+    [Test]
+    public void PrivateTakesOnlyTheHostsOwnConnection()
+    {
+        Assert.IsTrue(LobbyRules.MayConnect(LobbyVisibility.Private, true, GameState.Lobby, 1, out _), "the host's own client");
+        Assert.IsFalse(LobbyRules.MayConnect(LobbyVisibility.Private, false, GameState.Lobby, 2, out string why), "anyone else");
+        StringAssert.Contains("Private match", why);
+        Assert.IsTrue(LobbyRules.MayConnect(LobbyVisibility.Friends, false, GameState.Lobby, 2, out why));
+        Assert.IsNull(why);
+        Assert.IsTrue(LobbyRules.MayConnect(LobbyVisibility.Public, false, GameState.Lobby, LobbyRules.MaxPlayers, out _));
+        Assert.IsFalse(LobbyRules.MayConnect(LobbyVisibility.Public, false, GameState.Lobby, LobbyRules.MaxPlayers + 1, out why), "AIs fill seats too");
+        Assert.IsNull(why, "a full lobby keeps the old refusal");
+        Assert.IsFalse(LobbyRules.MayConnect(LobbyVisibility.Friends, false, GameState.Playing, 2, out _));
+    }
+
+    [Test]
+    public void GoingPrivateIsRefusedWithAnotherHumanOnly()
+    {
+        Assert.IsTrue(LobbyRules.MayChangeVisibility(LobbyVisibility.Friends, LobbyVisibility.Private, 1), "AIs never block Private");
+        Assert.IsFalse(LobbyRules.MayChangeVisibility(LobbyVisibility.Friends, LobbyVisibility.Private, 2));
+        Assert.IsFalse(LobbyRules.MayChangeVisibility(LobbyVisibility.Public, LobbyVisibility.Private, 3));
+        Assert.IsTrue(LobbyRules.MayChangeVisibility(LobbyVisibility.Private, LobbyVisibility.Private, 2), "staying Private (other settings change)");
+        Assert.IsTrue(LobbyRules.MayChangeVisibility(LobbyVisibility.Private, LobbyVisibility.Friends, 1));
+        Assert.IsTrue(LobbyRules.MayChangeVisibility(LobbyVisibility.Friends, LobbyVisibility.Public, 5));
+    }
+
+    [Test]
+    public void AddedAisJoinTheTeamWithFewestPlayers()
+    {
+        Assert.AreEqual(TeamRules.NoTeam, LobbyRules.FewestPlayersTeam(MatchMode.FreeForAll, new[] { 0, 0 }));
+        Assert.AreEqual(0, LobbyRules.FewestPlayersTeam(MatchMode.Teams, new int[0]));
+        Assert.AreEqual(1, LobbyRules.FewestPlayersTeam(MatchMode.Teams, new[] { 0, TeamRules.NoTeam }), "the lowest of the empty teams");
+        Assert.AreEqual(3, LobbyRules.FewestPlayersTeam(MatchMode.Teams, new[] { 0, 1, 2, 0, 1, 2 }));
+        Assert.AreEqual(0, LobbyRules.FewestPlayersTeam(MatchMode.Teams, null));
+    }
+
+    [Test]
+    public void TheHostPicksOnlyRealDifficultiesAndStyles()
+    {
+        Assert.IsTrue(AiLobbyRules.IsValidChoice(AiDifficulty.Easy, AiStyle.Random));
+        Assert.IsTrue(AiLobbyRules.IsValidChoice(AiDifficulty.Hard, AiStyle.Balanced));
+        Assert.IsFalse(AiLobbyRules.IsValidChoice(AiDifficulty.Scripted, AiStyle.Rusher), "Scripted is dev only");
+        Assert.IsFalse(AiLobbyRules.IsValidChoice((AiDifficulty)40, AiStyle.Rusher));
+        Assert.IsFalse(AiLobbyRules.IsValidChoice(AiDifficulty.Normal, (AiStyle)40));
+        Assert.IsTrue(AiLobbyRules.HasFreeSeat(LobbyRules.MaxPlayers - 1));
+        Assert.IsFalse(AiLobbyRules.HasFreeSeat(LobbyRules.MaxPlayers));
+    }
 }

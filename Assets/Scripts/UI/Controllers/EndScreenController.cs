@@ -75,7 +75,8 @@ namespace WAR2D.UI
         }
 
         /// <summary>Fills the statistics table: one row per player, with their result.</summary>
-        public void ShowStats(MatchResult result, Func<int, string> nameOf, Func<int, int> colourOf)
+        /// <param name="tagOf">An AI's end-screen tag ("AI · Hard · Turtle (random)"); null for a human.</param>
+        public void ShowStats(MatchResult result, Func<int, string> nameOf, Func<int, int> colourOf, Func<int, string> tagOf = null)
         {
             stats.Clear();
             var header = new VisualElement();
@@ -97,8 +98,7 @@ namespace WAR2D.UI
                 var swatch = new VisualElement();
                 swatch.AddToClassList("swatch");
                 swatch.AddToClassList("player-" + (colourOf(owner) % 8 + 1));
-                var name = new Label(nameOf(owner));
-                name.AddToClassList("stats-cell__name");
+                VisualElement name = PlayerNameLabel.Build(nameOf(owner), tagOf?.Invoke(owner), "stats-cell__name");
                 bool won = winners.Contains(owner);
                 var outcome = new Label(winners.Count == 0 ? "Draw" : won ? "Win" : "Lose");
                 outcome.AddToClassList("stats-cell__result");

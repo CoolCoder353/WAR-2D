@@ -54,9 +54,8 @@ namespace WAR2D.UI
                 swatch.AddToClassList(player.Eliminated ? "swatch--eliminated" : "player-" + (player.ColourIndex % 8 + 1));
                 var name = new VisualElement();
                 name.AddToClassList("diplomacy-row__name");
-                var nick = new Label(player.Eliminated ? player.Nickname + " (eliminated)" : player.Nickname);
-                nick.AddToClassList("text");
-                if (player.Eliminated) nick.AddToClassList("text--disabled");
+                VisualElement nick = PlayerNameLabel.Build(player.Nickname, player.AiTag, "text", player.Eliminated ? "(eliminated)" : null, player.Eliminated);
+                if (player.Eliminated) nick.Q<Label>("player-name-text").AddToClassList("text--disabled");
                 name.Add(nick);
                 if (!player.Eliminated && (model.SharedWithMe & bit) != 0)
                 {

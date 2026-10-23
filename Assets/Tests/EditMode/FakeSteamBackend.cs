@@ -21,7 +21,22 @@ public sealed class FakeSteamBackend : ISteamBackend
     public void RaiseAuthResult(ulong steamId, bool accepted) => AuthSessionResult?.Invoke(steamId, accepted);
     public void RaiseInvite(ulong lobbyId) => InviteAccepted?.Invoke(lobbyId);
 
-    public void CreateLobby(int maxPlayers, Action<ulong> done) { ulong id = NextLobbyId++; LobbyData[id] = new Dictionary<string, string>(); done(id); }
+    /// <summary>Every lobby created and every retype, in order: (lobby id, type).</summary>
+    public readonly List<(ulong lobby, LobbyVisibility type)> Created = new List<(ulong, LobbyVisibility)>(), Retyped = new List<(ulong, LobbyVisibility)>();
+    /// <summary>True to hold CreateLobby's answer until <see cref="FinishCreate"/> (Steam answers later).</summary>
+    public bool DeferCreate;
+    private Action<ulong> pendingCreate;
+    public void CreateLobby(int maxPlayers, LobbyVisibility visibility, Action<ulong> done)
+    {
+        ulong id = NextLobbyId++;
+        LobbyData[id] = new Dictionary<string, string>();
+        Created.Add((id, visibility));
+        if (DeferCreate) { pendingCreate = _ => done(id); return; }
+        done(id);
+    }
+    /// <summary>Answers a deferred CreateLobby.</summary>
+    public void FinishCreate() { Action<ulong> d = pendingCreate; pendingCreate = null; d?.Invoke(0); }
+    public void SetLobbyType(ulong lobbyId, LobbyVisibility visibility) => Retyped.Add((lobbyId, visibility));
     public void SetLobbyData(ulong lobbyId, IDictionary<string, string> data) { foreach (var kv in data) LobbyData[lobbyId][kv.Key] = kv.Value; }
     public readonly Dictionary<ulong, bool> Joinable = new Dictionary<ulong, bool>();
     public void SetLobbyJoinable(ulong lobbyId, bool joinable) => Joinable[lobbyId] = joinable;

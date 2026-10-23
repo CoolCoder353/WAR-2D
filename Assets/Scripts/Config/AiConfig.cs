@@ -20,12 +20,15 @@ public enum AiStyle : byte
     Balanced,
 }
 
-/// <summary>Who may join the host's lobby (v0.14): a public or friends-only Steam lobby, or a private match nobody can join.</summary>
+/// <summary>
+/// Who may join the host's lobby (v0.14): a public or friends-only Steam lobby, or a private match nobody can join.
+/// Friends is 0 so a default <see cref="MatchSettings"/> (dev starts, older replay headers) keeps today's behaviour.
+/// </summary>
 public enum LobbyVisibility : byte
 {
-    Public,
-    Friends,
-    Private,
+    Public = 1,
+    Friends = 0,
+    Private = 2,
 }
 
 namespace Config
