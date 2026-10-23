@@ -551,6 +551,26 @@ public class HudTests
     }
 
     [UnityTest, Timeout(120000)]
+    public IEnumerator BuilderCardShowsTheDefencesWithTheirCosts()
+    {
+        int builder = 0;
+        yield return WithBuilder(b => builder = b);
+        VisualElement root = HudRoot();
+        UnitCommander.Instance.Selection.SelectIds(new List<int> { builder });
+        yield return PlayModeMatch.WaitUntil(() => Shown(root.Q<Button>("build-gun-turret")), 5f);
+        // v0.13 layout B: Make over Defend, the defences last in the Defend row; the card stays 452 px.
+        foreach ((string name, BuildingType type) in new[] { ("build-gun-turret", BuildingType.GunTurret), ("build-jammer", BuildingType.Jammer) })
+        {
+            Button button = root.Q<Button>(name);
+            Assert.That(Shown(button), Is.True, name);
+            Assert.That(button.parent.name, Is.EqualTo("builds-defend"), name);
+            Assert.That(root.Q<Label>(name + "-cost").text, Is.EqualTo(config.GetBuilding(type).UpfrontCost.ToString("0.##")), name);
+        }
+        Assert.That(root.Q<Button>("build-miner").parent.name, Is.EqualTo("builds-make"));
+        Assert.That(root.Q("command-card").ClassListContains("command-card--builders"), Is.True, "the Builders' card keeps its 452 px width (Theme.uss)");
+    }
+
+    [UnityTest, Timeout(120000)]
     public IEnumerator WallDragPlacesBlueprintsAndTheBuilderRaisesThem()
     {
         config.Match.Map.Size = 256; // terrain deltas reach clients of generated maps

@@ -9,8 +9,9 @@ namespace WAR2D.UI
     /// Binds the command card (<c>Assets/UI/Hud/CommandCard.uxml</c>, Figma <c>Command card – v0.7</c> and
     /// <c>Command card – v0.12</c>): the order buttons (Move, Attack-move, Stop, Hold, and Repair with Builders,
     /// Dig with Diggers or Detonate with Suicide bombers selected; the armed order shows as active), the build row
-    /// with Builders selected (Miner, the producers, Wall, Bomb, Radar, with their costs, disabled while the player
-    /// can't afford them), and, with own producers selected, the type selector (one button per type the building
+    /// with Builders selected (v0.13, Figma <c>Command card – v0.13</c> layout B: Make — Miner and the producers —
+    /// over Defend — Wall, Bomb, Radar, Gun turret, Jammer — with their costs, disabled while the player can't afford
+    /// them, and one hover card for every build button: name and cost, role, footprint and upkeep), and, with own producers selected, the type selector (one button per type the building
     /// makes, the selected one active, a hover card with its cost, build time and role) above one queue row for
     /// that type; then Cancel (blueprints, full refund) or Demolish (finished, a share back, after an inline
     /// confirm). Raises events only; <see cref="HudController"/> sends them down the same paths as the keys.
@@ -28,6 +29,9 @@ namespace WAR2D.UI
         private readonly VisualElement card, divider, rows, removal, confirm, production, typesRow, tooltip;
         private readonly Label title, help, queueLabel, buildLabel, buildHint, digHint, detonateHint, refund, question, cancelKey;
         private readonly Label info, mixedHint, tipTitle, tipRole, tipWarning;
+        private readonly VisualElement buildTip, buildArea;
+        private readonly Label buildTipTitle, buildTipRole, buildTipDetail;
+        private readonly Func<BuildingType, (string role, string detail)> buildInfo;
         private readonly CommandIcon cancelIcon;
         private readonly Button cancel, wall, detonate;
         private readonly OrderKind? detonateKind;
@@ -68,10 +72,12 @@ namespace WAR2D.UI
         /// <param name="buildSeconds">Seconds to make one unit of a type at a building, for the info line and hover card.</param>
         /// <param name="roleOf">A short role line per unit type for the hover card (range, splash and so on).</param>
         /// <param name="switchClearsQueue">True once the server clears a producer's queue when its type changes (v0.12 plan): the hover card then warns.</param>
+        /// <param name="buildInfo">A build button's hover card lines below its name and cost: the role, and the footprint, range and upkeep (v0.13); null shows the name and cost only.</param>
         public CommandCardController(VisualElement root, SelectionModel selection, HudModel hud, IReadOnlyDictionary<BuildingType, float> buildCosts,
             IReadOnlyDictionary<UnitType, float> unitCosts, float wallCost, float demolishShare, Func<UnitType, BuildingType, float> buildSeconds,
-            Func<UnitType, string> roleOf, bool switchClearsQueue)
+            Func<UnitType, string> roleOf, bool switchClearsQueue, Func<BuildingType, (string role, string detail)> buildInfo = null)
         {
+            this.buildInfo = buildInfo;
             this.buildSeconds = buildSeconds;
             this.roleOf = roleOf;
             this.switchClearsQueue = switchClearsQueue;
@@ -107,6 +113,11 @@ namespace WAR2D.UI
             tipWarning = root.Q<Label>("production-tooltip-warning");
             detonateHint = root.Q<Label>("detonate-hint");
             detonate = root.Q<Button>("cmd-detonate");
+            buildArea = root.Q("builds");
+            buildTip = root.Q("build-tooltip");
+            buildTipTitle = root.Q<Label>("build-tooltip-title");
+            buildTipRole = root.Q<Label>("build-tooltip-role");
+            buildTipDetail = root.Q<Label>("build-tooltip-detail");
 
             AddOrder(root, "cmd-move", OrderKind.Move);
             AddOrder(root, "cmd-attack-move", OrderKind.AttackMove);
@@ -123,8 +134,11 @@ namespace WAR2D.UI
             AddBuild(root, "build-siege-workshop", BuildingType.SiegeWorkshop);
             AddBuild(root, "build-bomb", BuildingType.Bomb);
             AddBuild(root, "build-radar", BuildingType.Radar);
+            AddBuild(root, "build-gun-turret", BuildingType.GunTurret);
+            AddBuild(root, "build-jammer", BuildingType.Jammer);
             wall = root.Q<Button>("build-wall");
             wall.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); WallClicked?.Invoke(); };
+            HoverCard(wall, BuildingType.None);
             root.Q<Label>("build-wall-cost").text = $"{wallCost:0.##}/tile";
             buildHint.text = $"Wall: press and drag on the map to lay a line ({wallCost:0.##} per tile).";
 
@@ -150,6 +164,38 @@ namespace WAR2D.UI
             button.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); BuildClicked?.Invoke(type); };
             if (buildCosts.TryGetValue(type, out float cost)) root.Q<Label>(name + "-cost").text = $"{cost:0.##}";
             builds[type] = button;
+            HoverCard(button, type);
+        }
+
+        /// <summary>The shared hover card over a build button (<see cref="BuildingType.None"/> is the Wall).</summary>
+        private void HoverCard(Button button, BuildingType type)
+        {
+            button.RegisterCallback<PointerEnterEvent>(_ => ShowBuildTip(type, button));
+            button.RegisterCallback<PointerLeaveEvent>(_ => buildTip.EnableInClassList("build-tooltip--open", false));
+        }
+
+        /// <summary>The card's text for a build button: "Name · cost", the role line and the detail line.</summary>
+        public (string title, string role, string detail) BuildTip(BuildingType type)
+        {
+            string name = type == BuildingType.None ? "Wall" : AlertFeedModel.BuildingName(type) ?? AlertFeedModel.Spaced(type.ToString());
+            string cost = type == BuildingType.None ? $"{wallCost:0.##} per tile" : buildCosts.TryGetValue(type, out float c) ? $"{c:0.##}" : "";
+            (string role, string detail) = buildInfo != null ? buildInfo(type) : (null, null);
+            return (cost.Length > 0 ? $"{name} · {cost}" : name, role ?? "", detail ?? "");
+        }
+
+        /// <summary>Opens the hover card centred over <paramref name="button"/>, just above it (Figma: Hover: Gun turret, Hover: Jammer).</summary>
+        private void ShowBuildTip(BuildingType type, Button button)
+        {
+            (string title, string role, string detail) = BuildTip(type);
+            buildTipTitle.text = title;
+            buildTipRole.text = role;
+            buildTipDetail.text = detail;
+            Display(buildTipRole, role.Length > 0);
+            Display(buildTipDetail, detail.Length > 0);
+            Rect at = button.worldBound, area = buildArea.worldBound;
+            buildTip.style.left = at.xMin - area.xMin + at.width / 2f;
+            buildTip.style.top = at.yMin - area.yMin - 6f;
+            buildTip.EnableInClassList("build-tooltip--open", true);
         }
 
         /// <summary>
@@ -202,7 +248,8 @@ namespace WAR2D.UI
             // The build row is the Builders' (v0.7): without them, nothing can build.
             Display(divider, builders);
             Display(buildLabel, builders);
-            Display(card.Q("builds"), builders);
+            Display(buildArea, builders);
+            if (!builders) buildTip.EnableInClassList("build-tooltip--open", false);
             Display(buildHint, builders);
             Display(removal, building && Removable);
             // A blueprint makes nothing yet: production shows once the selected buildings are all finished.

@@ -10,6 +10,11 @@
                 </ui:VisualElement>
                 <ui:Label name="selection-health" text="0%" class="text--secondary text--readout" />
             </ui:VisualElement>
+            <ui:VisualElement name="selection-upkeep-row" class="selection-panel__upkeep">
+                <ui:Label text="Upkeep" class="text--secondary" />
+                <ui:Label name="selection-upkeep" text=" " class="text--secondary" />
+            </ui:VisualElement>
+            <ui:Label name="selection-status" text=" " class="text selection-status" />
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

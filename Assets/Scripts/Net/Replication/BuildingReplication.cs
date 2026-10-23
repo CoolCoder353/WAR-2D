@@ -243,6 +243,44 @@ namespace WAR2D.Net.Replication
 
         public readonly Dictionary<int, Entry> Entries = new Dictionary<int, Entry>();
 
+        /// <summary>A Gun turret's head as this client last saw it (v0.13): its facing and when it last fired.</summary>
+        public struct TurretHead
+        {
+            /// <summary>One of 8 facings, 45° apart anticlockwise from east (as units).</summary>
+            public byte Facing;
+            /// <summary>Client time (<c>Time.time</c>) of the last shot the client was told about.</summary>
+            public float FiredAt;
+        }
+
+        /// <summary>
+        /// Per turret, the head's facing, turned toward the last target the client was told about (a building's
+        /// attack event: <c>ClientUnitStore.BuildingAttack</c>). A turret that hasn't fired yet faces east.
+        /// </summary>
+        public readonly Dictionary<int, TurretHead> Heads = new Dictionary<int, TurretHead>();
+
+        /// <summary>The facing (of 8) closest to the direction <paramref name="dx"/>, <paramref name="dy"/>.</summary>
+        public static byte FacingOf(float dx, float dy)
+        {
+            float steps = (float)Math.Round(Math.Atan2(dy, dx) / (Math.PI / 4));
+            return (byte)(((int)steps % 8 + 8) % 8);
+        }
+
+        /// <summary>
+        /// Records a shot by turret <paramref name="id"/> at <paramref name="time"/>, turning its head to
+        /// <paramref name="facing"/> (null keeps the facing: the target wasn't named to this client).
+        /// </summary>
+        public void Fired(int id, byte? facing, float time)
+        {
+            if (!Entries.ContainsKey(id)) return;
+            Heads.TryGetValue(id, out TurretHead head);
+            if (facing.HasValue) head.Facing = facing.Value;
+            head.FiredAt = time;
+            Heads[id] = head;
+        }
+
+        /// <summary>The head of turret <paramref name="id"/> (facing east, never fired, when unknown).</summary>
+        public TurretHead HeadOf(int id) => Heads.TryGetValue(id, out TurretHead head) ? head : new TurretHead { FiredAt = float.NegativeInfinity };
+
         /// <summary>Raised for a building seen (again): its data and health.</summary>
         public event Action<BuildingData, HealthComponent> Entered;
         /// <summary>Raised when a seen building's health changes.</summary>
@@ -297,6 +335,7 @@ namespace WAR2D.Net.Replication
 
         internal void Remove(int id)
         {
+            Heads.Remove(id);
             if (Entries.Remove(id)) Removed?.Invoke(id);
         }
     }

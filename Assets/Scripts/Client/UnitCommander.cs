@@ -71,7 +71,7 @@ public class UnitCommander : NetworkBehaviour
         {
             UnsubscribeBuildings();
             wallDrag?.Dispose();
-            if (radarRing != null) Destroy(radarRing.gameObject);
+            foreach (ClearingRing ring in rangeRings) if (ring != null) Destroy(ring.gameObject);
             Instance = null;
         }
     }
@@ -719,33 +719,41 @@ public class UnitCommander : NetworkBehaviour
             f.gameObject.SetActive(true);
         }
         for (int i = shown; i < buildingMarkers.Count; i++) buildingMarkers[i].Hide();
-        ShowRadarRange(ids);
+        ShowRangeRings(ids);
         for (int i = flags; i < rallyFlags.Count; i++) rallyFlags[i].gameObject.SetActive(false);
     }
 
-    private ClearingRing radarRing;
-    private float radarSight = -1f;
+    private readonly List<ClearingRing> rangeRings = new List<ClearingRing>();
 
-    /// <summary>A selected own Radar shows its range: a dashed ring in its owner's colour (Figma: World look – v0.7).</summary>
-    private void ShowRadarRange(IReadOnlyList<int> ids)
+    /// <summary>Most range rings shown at once (one per selected Radar, Gun turret or Jammer).</summary>
+    private const int MaxRangeRings = 32;
+
+    /// <summary>A ring drawn for a building that isn't working (a blueprint, or unpaid) is this opaque (Figma: Range rings – v0.13).</summary>
+    public const float IdleRingOpacity = 0.4f;
+
+    /// <summary>
+    /// Selected own Radars, Gun turrets and Jammers show their range: a dashed ring in the owner's colour at the
+    /// Radar's sight, the turret's range or the jam radius (Figma: World look – v0.7, Range rings – v0.13), at
+    /// 40% while the building is a blueprint or looks unpaid.
+    /// </summary>
+    private void ShowRangeRings(IReadOnlyList<int> ids)
     {
-        int radar = 0;
-        float2 centre = default;
+        int shown = 0;
+        Color32 colour = PlayerPalette.Of(localPlayer != null ? localPlayer.colourIndex : -1);
+        int own = localPlayer != null ? BuildingData.UIntToInt(localPlayer.netId) : int.MinValue;
         foreach (int id in ids)
         {
-            if (!Known.Entries.TryGetValue(id, out ClientBuildings.Entry e) || e.Ghost || e.Data.buildingType != BuildingType.Radar) continue;
-            radar = id;
-            centre = CentreOf(e.Data);
-            break;
+            if (shown >= MaxRangeRings) break;
+            if (!Known.Entries.TryGetValue(id, out ClientBuildings.Entry e) || e.Ghost || e.Data.ownerId != own) continue;
+            float radius = DefenceView.RingRadius(e.Data.buildingType);
+            if (radius <= 0f) continue;
+            bool idle = e.Progress < 100 || (e.Data.buildingType != BuildingType.Radar && DefenceView.LooksUnpaid(e));
+            Color32 c = colour;
+            c.a = (byte)(idle ? 255 * IdleRingOpacity : 255);
+            if (shown == rangeRings.Count) rangeRings.Add(ClearingRing.Create("RangeRing", SortingOrders.ClearingRing));
+            rangeRings[shown++].Set(CentreOf(e.Data), radius, c);
         }
-        if (radar == 0)
-        {
-            if (radarRing != null) radarRing.gameObject.SetActive(false);
-            return;
-        }
-        if (radarSight < 0f) radarSight = Config.ConfigLoader.LoadConfig().GetBuilding(BuildingType.Radar).Sight;
-        if (radarRing == null) radarRing = ClearingRing.Create("RadarRange", SortingOrders.ClearingRing);
-        radarRing.Set(centre, radarSight, PlayerPalette.Of(localPlayer != null ? localPlayer.colourIndex : -1));
+        for (int i = shown; i < rangeRings.Count; i++) if (rangeRings[i] != null) rangeRings[i].gameObject.SetActive(false);
     }
 
     /// <summary>The local player's building (seen now, not a ghost) whose footprint holds the world point.</summary>

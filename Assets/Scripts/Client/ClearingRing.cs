@@ -6,7 +6,7 @@ namespace WAR2D.Client
     /// <summary>
     /// A faint disc with a dashed rim in a player's colour. The static one is the local player's HQ clearing during
     /// HQ placement (Figma: HUD / HQ placement – own clearing); <see cref="Create"/> makes others, such as the
-    /// selected Radar's range (Figma: World look – v0.7). Client-only; each shows only the local player's own data.
+    /// selected Radar's range (Figma: World look – v0.7) and the Gun turret's and Jammer's (Figma: Range rings – v0.13). Client-only; each shows only the local player's own data.
     /// </summary>
     public sealed class ClearingRing : MonoBehaviour
     {
@@ -70,7 +70,7 @@ namespace WAR2D.Client
             var colours = new Color32[vertices.Length];
             var triangles = new int[DiscSegments * 3 + dashes * 6];
             Color32 fill = colour;
-            fill.a = (byte)(255 * FillAlpha);
+            fill.a = (byte)(colour.a * FillAlpha); // a faded ring (alpha below 255) fades its fill with it
 
             // The disc: a fan around the centre.
             vertices[0] = new Vector3(centre.x, centre.y, 0f);

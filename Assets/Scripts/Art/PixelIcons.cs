@@ -6,7 +6,8 @@ namespace WAR2D.Art
     /// <summary>
     /// The approved v0.8 pixel icons and cursors (Figma page <c>v0.8 New Paint</c>, <c>docs/ux/v0.8-figma.md</c>) and the
     /// v0.7 command icons (page <c>v0.7 Siege</c>, <c>docs/ux/v0.7-figma.md</c>) and the v0.12 unit, Detonate and producer
-    /// icons (page <c>v0.12 Arsenal</c>, <c>docs/ux/v0.12-figma.md</c>):
+    /// icons (page <c>v0.12 Arsenal</c>, <c>docs/ux/v0.12-figma.md</c>) and the v0.13 Gun turret and Jammer icons (page
+    /// <c>v0.13 Bastion</c>, <c>docs/ux/v0.13-figma.md</c>):
     /// 16×16 bitmaps where <c>#</c> is the body, <c>+</c> the accent and <c>.</c> empty, with a 1 px dark outline
     /// added around every lit pixel. Built at runtime as point-filtered textures (no mipmaps), so they stay crisp
     /// at the UI's whole-number scales. Icon bodies are white so a USS tint colours them by button state.
@@ -591,6 +592,44 @@ namespace WAR2D.Art
                 ".....++++++.....",
                 "................",
             },
+            ["IconGunTurret"] = new[]
+            {
+                "................",
+                "................",
+                "................",
+                ".....####.......",
+                "....##########+.",
+                "....##########+.",
+                "....######......",
+                "......##........",
+                "...##########...",
+                "..############..",
+                "..#++######++#..",
+                "..############..",
+                ".##############.",
+                "................",
+                "................",
+                "................",
+            },
+            ["IconJammer"] = new[]
+            {
+                "................",
+                "........+++.....",
+                "...........+....",
+                ".##.....++..+...",
+                ".###......+..+..",
+                ".####......+.+..",
+                ".#####..#..+.+..",
+                ".#######........",
+                "..######........",
+                "...######.......",
+                "....#####.......",
+                "......##........",
+                "......##........",
+                "....######......",
+                "...########.....",
+                "................",
+            },
             ["IconRallyFlag"] = new[]
             {
                 "................",
@@ -637,6 +676,8 @@ namespace WAR2D.Art
             ["IconBarracks"] = (White, new Color32(0xE0, 0x40, 0x5A, 255)),
             ["IconHeavyFactory"] = (White, new Color32(0xF2, 0xC1, 0x4E, 255)),
             ["IconSiegeWorkshop"] = (White, new Color32(0xF2, 0xC1, 0x4E, 255)),
+            ["IconGunTurret"] = (White, new Color32(0xE0, 0x40, 0x5A, 255)),
+            ["IconJammer"] = (White, new Color32(0x4F, 0xC3, 0xF7, 255)),
             ["CursorAttack"] = (Cursor, new Color32(0xE0, 0x40, 0x5A, 255)),
             ["CursorInvalid"] = (Cursor, new Color32(0xE0, 0x40, 0x5A, 255)),
         };

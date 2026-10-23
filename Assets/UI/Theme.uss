@@ -509,3 +509,16 @@
 .production__tooltip > Label { padding: 0; margin: 0 0 4px 0; }
 .production__warning { color: var(--color-warning); }
 .selection-type .command-icon { width: 24px; height: 24px; }
+
+/* v0.13 Bastion (Figma page v0.13 Bastion): the Builders' build area in two rows by role, the hover card every build button shares, and the selected building's Upkeep and status lines. */
+.command-card__builds { position: relative; }
+.command-card__row--second { margin-top: var(--space-2); }
+.build-tooltip { display: none; position: absolute; translate: -50% -100%; padding: 8px 10px; background-color: var(--color-surface-raised); border-width: 1px; border-color: var(--color-border); }
+.build-tooltip--open { display: flex; }
+.build-tooltip > Label { padding: 0; margin: 0 0 4px 0; white-space: nowrap; }
+.selection-panel__upkeep { flex-direction: row; margin-top: var(--space-2); }
+.selection-panel__upkeep > Label { padding: 0; margin: 0 var(--space-2) 0 0; }
+.selection-upkeep--unpaid { color: var(--color-warning); }
+.selection-status { padding: 0; margin: var(--space-2) 0 0 0; color: var(--color-success); }
+.selection-status--danger { color: var(--color-danger); }
+.selection-status--idle { color: var(--color-text-secondary); }

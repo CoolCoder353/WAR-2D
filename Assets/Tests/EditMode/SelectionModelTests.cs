@@ -112,4 +112,37 @@ public class SelectionModelTests
         Assert.That(model.AllBlueprints, Is.True);
         Assert.That(model.RefundFor(50f, 0.5f), Is.EqualTo(50f));
     }
+
+    private static SelectionModel.BuildingRow Row(BuildingType type, bool blueprint = false, bool unpaid = false, bool firing = false, float upkeep = 4f) =>
+        new SelectionModel.BuildingRow { Type = type, Health01 = 1f, Upkeep = blueprint ? 0f : upkeep, Blueprint = blueprint, Unpaid = unpaid, Firing = firing };
+
+    [Test]
+    public void DefenceStatusLinesFollowTheApprovedFrames()
+    {
+        (string, SelectionModel.StatusTone) Status(params SelectionModel.BuildingRow[] rows) => SelectionModel.StatusOf(rows, 7f, 12f);
+        Assert.That(Status(Row(BuildingType.GunTurret, firing: true)), Is.EqualTo(("Firing: range 7", SelectionModel.StatusTone.Working)));
+        Assert.That(Status(Row(BuildingType.GunTurret)), Is.EqualTo(("Idle: range 7", SelectionModel.StatusTone.Idle)));
+        Assert.That(Status(Row(BuildingType.GunTurret, unpaid: true, firing: true)), Is.EqualTo(("Unpaid: not firing", SelectionModel.StatusTone.Danger)));
+        Assert.That(Status(Row(BuildingType.Jammer, upkeep: 6f)), Is.EqualTo(("Jamming: radius 12", SelectionModel.StatusTone.Working)));
+        Assert.That(Status(Row(BuildingType.Jammer, unpaid: true)), Is.EqualTo(("Unpaid: not jamming", SelectionModel.StatusTone.Danger)));
+        Assert.That(Status(Row(BuildingType.Jammer, blueprint: true)), Is.EqualTo(("Blueprint: works when built", SelectionModel.StatusTone.Idle)));
+        Assert.That(Status(Row(BuildingType.GunTurret), Row(BuildingType.Jammer)).Item1, Is.Empty, "mixed types: no status line");
+        Assert.That(Status(Row(BuildingType.Radar)).Item1, Is.Empty);
+    }
+
+    [Test]
+    public void SelectedBuildingsSumTheirUpkeepAndChipByType()
+    {
+        var model = new SelectionModel();
+        int changes = 0;
+        model.Changed += () => changes++;
+        var rows = new List<SelectionModel.BuildingRow> { Row(BuildingType.GunTurret), Row(BuildingType.GunTurret, unpaid: true), Row(BuildingType.Jammer, blueprint: true) };
+        model.SetBuildingRows(rows, 7f, 12f);
+        Assert.That(model.BuildingUpkeep, Is.EqualTo(8f), "blueprints pay none");
+        Assert.That(model.BuildingUnpaid, Is.True);
+        Assert.That(model.BuildingKinds, Is.EqualTo(new[] { (BuildingType.GunTurret, 2), (BuildingType.Jammer, 1) }));
+        Assert.That(model.BuildingStatus, Is.Empty);
+        model.SetBuildingRows(rows, 7f, 12f);
+        Assert.That(changes, Is.EqualTo(1), "unchanged: no event");
+    }
 }

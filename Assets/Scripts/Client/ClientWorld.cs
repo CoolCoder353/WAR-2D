@@ -56,6 +56,12 @@ namespace WAR2D.Client
         private InstancedBuildingRenderer buildingRenderer;
         private System.Func<int, uint> buildingColour;
         private readonly List<(int attacker, int target)> attacks = new List<(int, int)>();
+        private readonly List<(int building, int target)> buildingAttacks = new List<(int, int)>();
+        private readonly Dictionary<int, float> nextPulse = new Dictionary<int, float>();
+        private readonly List<int> pulseGone = new List<int>();
+
+        /// <summary>Seconds between a Jammer's pulses.</summary>
+        public const float PulseSeconds = 2.5f;
         private readonly List<int> selectedIndices = new List<int>();
         private readonly Dictionary<int, uint> colorOfOwner = new Dictionary<int, uint>();
 
@@ -97,6 +103,8 @@ namespace WAR2D.Client
                 attacks.Add((attacker, target));
                 if ((uint)attacker < (uint)lastAction.Length) lastAction[attacker] = serverTime;
             };
+            // A building's attack (v0.13): only a client that may know the building is sent one.
+            store.BuildingAttack += (building, target) => buildingAttacks.Add((building, target));
             lastPosition = new NativeArray<float2>(capacity, Allocator.Persistent);
             rotation = new NativeArray<float>(capacity, Allocator.Persistent);
             frame = new NativeArray<uint>(capacity, Allocator.Persistent);
@@ -174,6 +182,7 @@ namespace WAR2D.Client
             AdvanceClock(Time.unscaledDeltaTime);
             store.PredictAll(serverTime);
             FireTracers();
+            FireTurrets();
         }
 
         /// <summary>Copies a known unit's route (dev overlay).</summary>
@@ -346,6 +355,88 @@ namespace WAR2D.Client
                 buildingColour = ColorOf;
             }
             buildingRenderer.Draw(known, Time.time, buildingColour);
+            PulseJammers(known);
+        }
+
+        /// <summary>
+        /// The <c>JamPulse</c> on every finished Jammer the client sees now (not ghosts, not blueprints; the local
+        /// player's own only while it looks paid), every <see cref="PulseSeconds"/>, staggered per Jammer.
+        /// </summary>
+        private void PulseJammers(ClientBuildings known)
+        {
+            float now = Time.time;
+            foreach (ClientBuildings.Entry e in known.Entries.Values)
+            {
+                if (e.Data.buildingType != BuildingType.Jammer) continue;
+                int id = e.Data.id;
+                if (e.Ghost || e.Progress < 100 || DefenceView.LooksUnpaid(e))
+                {
+                    nextPulse.Remove(id);
+                    continue;
+                }
+                if (!nextPulse.TryGetValue(id, out float at))
+                {
+                    nextPulse[id] = now + (uint)id % 10 * (PulseSeconds / 10f);
+                    continue;
+                }
+                if (now < at) continue;
+                nextPulse[id] = now + PulseSeconds;
+                Effects.JamPulse(Footprint.VisualCenter((int2)math.round(e.Data.position), WorldStateManager.GetBuildingSize(BuildingType.Jammer)));
+            }
+            if (nextPulse.Count == 0) return;
+            pulseGone.Clear();
+            foreach (int id in nextPulse.Keys) if (!known.Entries.ContainsKey(id)) pulseGone.Add(id);
+            foreach (int id in pulseGone) nextPulse.Remove(id);
+        }
+
+        /// <summary>Where a target named by an attack event is now: a known unit's prediction or a known building's centre.</summary>
+        private bool TryTargetPosition(int target, out Vector3 to)
+        {
+            int targetIndex = NetIdAllocator.IndexOf(target);
+            if (target > 0 && store.IdOf(targetIndex) == target)
+            {
+                float2 t = store.PredictOne(targetIndex, serverTime);
+                to = new Vector3(t.x, t.y, 0);
+                return true;
+            }
+            if (target != 0 && ClientBuildings.Current.Entries.TryGetValue(target, out ClientBuildings.Entry building))
+            {
+                float2 c = Footprint.VisualCenter((int2)math.round(building.Data.position), WorldStateManager.GetBuildingSize(building.Data.buildingType));
+                to = new Vector3(c.x, c.y, 0);
+                return true;
+            }
+            to = default;
+            return false;
+        }
+
+        /// <summary>
+        /// This frame's turret shots (v0.13): each turns its turret's head toward the target the client was told
+        /// about (<see cref="ClientBuildings.Fired"/>), and, on screen, plays the muzzle flash, <c>shot_turret</c>
+        /// and a tracer to the target (no tracer when the target wasn't named). A turret the client doesn't see
+        /// (a ghost, or none) draws nothing.
+        /// </summary>
+        private void FireTurrets()
+        {
+            if (buildingAttacks.Count == 0) return;
+            Camera cam = ViewCamera != null ? ViewCamera : Camera.main;
+            ClientBuildings known = ClientBuildings.Current;
+            float now = Time.time;
+            int start = math.max(0, buildingAttacks.Count - MaxTracersPerFrame);
+            for (int i = start; i < buildingAttacks.Count; i++)
+            {
+                var (building, target) = buildingAttacks[i];
+                if (!known.Entries.TryGetValue(building, out ClientBuildings.Entry e) || e.Ghost || e.Data.buildingType != BuildingType.GunTurret) continue;
+                float2 centre = Footprint.VisualCenter((int2)math.round(e.Data.position), WorldStateManager.GetBuildingSize(e.Data.buildingType));
+                bool named = TryTargetPosition(target, out Vector3 to);
+                byte? facing = named && (to.x != centre.x || to.y != centre.y) ? ClientBuildings.FacingOf(to.x - centre.x, to.y - centre.y) : (byte?)null;
+                known.Fired(building, facing, now);
+                if (cam == null) continue;
+                Vector3 viewport = cam.WorldToViewportPoint(new Vector3(centre.x, centre.y, 0));
+                if (viewport.x < 0 || viewport.x > 1 || viewport.y < 0 || viewport.y > 1) continue;
+                float angle = known.HeadOf(building).Facing * math.PI / 4f;
+                Effects.TurretShot(new Vector2(centre.x, centre.y), angle, named ? to : (Vector3?)null);
+            }
+            buildingAttacks.Clear();
         }
 
         private uint ColorOf(int ownerId)
@@ -371,19 +462,7 @@ namespace WAR2D.Client
                 float2 from = store.PredictOne(attacker, serverTime);
                 Vector3 viewport = cam.WorldToViewportPoint(new Vector3(from.x, from.y, 0));
                 if (viewport.x < 0 || viewport.x > 1 || viewport.y < 0 || viewport.y > 1) continue;
-                Vector3 to;
-                int targetIndex = NetIdAllocator.IndexOf(target);
-                if (store.IdOf(targetIndex) == target && target > 0)
-                {
-                    float2 t = store.PredictOne(targetIndex, serverTime);
-                    to = new Vector3(t.x, t.y, 0);
-                }
-                else if (ClientBuildings.Current.Entries.TryGetValue(target, out ClientBuildings.Entry building))
-                {
-                    float2 c = Footprint.VisualCenter((int2)math.round(building.Data.position), WorldStateManager.GetBuildingSize(building.Data.buildingType));
-                    to = new Vector3(c.x, c.y, 0);
-                }
-                else continue;
+                if (!TryTargetPosition(target, out Vector3 to)) continue;
                 // Face the target: the facing picks the drawn direction, and the fire frames show the barrel.
                 if ((uint)attacker < (uint)rotation.Length && (to.x != from.x || to.y != from.y))
                     rotation[attacker] = math.atan2(to.y - from.y, to.x - from.x);

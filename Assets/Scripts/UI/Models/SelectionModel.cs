@@ -98,6 +98,107 @@ namespace WAR2D.UI
         /// <summary>Raised when anything shown changed.</summary>
         public event Action Changed;
 
+        // ---- The selected buildings in the selection panel (v0.13, Figma: Selected building – v0.13) ----
+
+        private readonly List<(BuildingType type, int count)> buildingKinds = new List<(BuildingType, int)>();
+        private readonly List<(BuildingType type, int count)> scratchKinds = new List<(BuildingType, int)>();
+
+        /// <summary>The selected own buildings per type (the panel's chips), in <see cref="global::BuildingType"/> order.</summary>
+        public IReadOnlyList<(BuildingType type, int count)> BuildingKinds => buildingKinds;
+
+        /// <summary>The mean health (0–1) of the selected own buildings.</summary>
+        public float BuildingHealth01 { get; private set; }
+
+        /// <summary>The running cost per second of the selected finished buildings, together (blueprints pay none).</summary>
+        public float BuildingUpkeep { get; private set; }
+
+        /// <summary>True when one of the selected finished buildings looks unpaid (the local budget can't cover it).</summary>
+        public bool BuildingUnpaid { get; private set; }
+
+        /// <summary>The status line under Upkeep (empty when hidden: mixed types, or a type without one).</summary>
+        public string BuildingStatus { get; private set; } = "";
+
+        /// <summary>How the status line reads: working (success), idle or a blueprint (secondary), unpaid (danger).</summary>
+        public StatusTone BuildingStatusTone { get; private set; }
+
+        /// <summary>The status line's colour role.</summary>
+        public enum StatusTone { Working, Idle, Danger }
+
+        /// <summary>One selected own building as the panel reads it.</summary>
+        public struct BuildingRow
+        {
+            public BuildingType Type;
+            public float Health01;
+            /// <summary>Running cost per second (0 for a blueprint).</summary>
+            public float Upkeep;
+            public bool Blueprint, Unpaid;
+            /// <summary>A Gun turret that shot just now.</summary>
+            public bool Firing;
+        }
+
+        /// <summary>
+        /// The status line for selected buildings of one type (decisions 6 and 7 of <c>docs/ux/v0.13-figma.md</c>):
+        /// Gun turrets "Firing: range 7" / "Idle: range 7" / "Unpaid: not firing"; Jammers "Jamming: radius 12" /
+        /// "Unpaid: not jamming"; either still a blueprint "Blueprint: works when built". Empty for other types and
+        /// for a mix of types.
+        /// </summary>
+        public static (string text, StatusTone tone) StatusOf(IReadOnlyList<BuildingRow> rows, float turretRange, float jamRadius)
+        {
+            if (rows.Count == 0) return ("", StatusTone.Idle);
+            BuildingType type = rows[0].Type;
+            bool built = false, unpaid = false, firing = false;
+            foreach (BuildingRow r in rows)
+            {
+                if (r.Type != type) return ("", StatusTone.Idle);
+                if (r.Blueprint) continue;
+                built = true;
+                unpaid |= r.Unpaid;
+                firing |= r.Firing;
+            }
+            if (type != BuildingType.GunTurret && type != BuildingType.Jammer) return ("", StatusTone.Idle);
+            if (!built) return ("Blueprint: works when built", StatusTone.Idle);
+            if (type == BuildingType.GunTurret)
+                return unpaid ? ("Unpaid: not firing", StatusTone.Danger)
+                    : firing ? ($"Firing: range {turretRange:0.#}", StatusTone.Working)
+                    : ($"Idle: range {turretRange:0.#}", StatusTone.Idle);
+            return unpaid ? ("Unpaid: not jamming", StatusTone.Danger) : ($"Jamming: radius {jamRadius:0.#}", StatusTone.Working);
+        }
+
+        /// <summary>Sets what the panel shows for the selected own buildings (empty <paramref name="rows"/>: none).</summary>
+        public void SetBuildingRows(IReadOnlyList<BuildingRow> rows, float turretRange, float jamRadius)
+        {
+            scratchKinds.Clear();
+            float health = 0f, upkeep = 0f;
+            bool unpaid = false;
+            foreach (BuildingRow r in rows)
+            {
+                health += r.Health01;
+                upkeep += r.Upkeep;
+                unpaid |= r.Unpaid && !r.Blueprint;
+                int at = scratchKinds.FindIndex(k => k.type == r.Type);
+                if (at < 0) scratchKinds.Add((r.Type, 1));
+                else scratchKinds[at] = (r.Type, scratchKinds[at].count + 1);
+            }
+            scratchKinds.Sort((a, b) => a.type.CompareTo(b.type));
+            float combined = rows.Count > 0 ? health / rows.Count : 0f;
+            (string status, StatusTone tone) = StatusOf(rows, turretRange, jamRadius);
+
+            bool same = combined == BuildingHealth01 && upkeep == BuildingUpkeep && unpaid == BuildingUnpaid && status == BuildingStatus &&
+                        tone == BuildingStatusTone && scratchKinds.Count == buildingKinds.Count;
+            for (int i = 0; same && i < buildingKinds.Count; i++) same = scratchKinds[i] == buildingKinds[i];
+            if (same) return;
+            buildingKinds.Clear();
+            buildingKinds.AddRange(scratchKinds);
+            BuildingHealth01 = combined;
+            BuildingUpkeep = upkeep;
+            BuildingUnpaid = unpaid;
+            BuildingStatus = status;
+            BuildingStatusTone = tone;
+            Changed?.Invoke();
+        }
+
+        private readonly List<BuildingRow> pulledRows = new List<BuildingRow>();
+
         /// <summary>Raised by <see cref="FilterTo"/>: the selection should keep only this type.</summary>
         public event Action<UnitType> FilterRequested;
 
@@ -217,8 +318,32 @@ namespace WAR2D.UI
                 }
                 SetBuildings(selection.SelectedBuildings, type, queue, pulledByType, blueprints, first.Progress, mixed, inUse);
             }
+            PullBuildingRows(selection, known);
             SetArmed(commander.ArmedOrder);
             SetSquadCounts(local.SquadCounts);
+        }
+
+        /// <summary>The selected own buildings as the selection panel reads them (health, upkeep, unpaid, firing).</summary>
+        private void PullBuildingRows(Selection selection, Dictionary<int, WAR2D.Net.Replication.ClientBuildings.Entry> known)
+        {
+            pulledRows.Clear();
+            Config.GameConfigData config = Config.ConfigLoader.LoadConfig();
+            float now = UnityEngine.Time.time;
+            foreach (int id in selection.SelectedBuildings)
+            {
+                if (!known.TryGetValue(id, out var e) || e.Ghost) continue;
+                bool blueprint = e.Progress < 100;
+                pulledRows.Add(new BuildingRow
+                {
+                    Type = e.Data.buildingType,
+                    Health01 = e.Health.maxHealth > 0f ? Math.Clamp(e.Health.currentHealth / e.Health.maxHealth, 0f, 1f) : 1f,
+                    Upkeep = blueprint ? 0f : config.GetBuilding(e.Data.buildingType).RunningCost,
+                    Blueprint = blueprint,
+                    Unpaid = DefenceView.LooksUnpaid(e),
+                    Firing = e.Data.buildingType == BuildingType.GunTurret && DefenceView.Firing(WAR2D.Net.Replication.ClientBuildings.Current, id, now),
+                });
+            }
+            SetBuildingRows(pulledRows, config.GetBuilding(BuildingType.GunTurret).Range, config.Siege.JamRadius);
         }
 
         private readonly List<int> pulledByType = new List<int>();

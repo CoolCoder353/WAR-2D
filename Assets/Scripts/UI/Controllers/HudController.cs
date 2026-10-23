@@ -95,10 +95,36 @@ namespace WAR2D.UI
                 return role + $", health {u.Health:0}";
             }
 
+            // The build buttons' hover card (v0.13, Figma: Hover: Gun turret, Hover: Jammer): role, then footprint, reach and upkeep.
+            (string role, string detail) BuildInfo(BuildingType type)
+            {
+                string role = type switch
+                {
+                    BuildingType.None => "Press and drag on the map to lay a line",
+                    BuildingType.Miner => "Income: mines the gem tile it faces (R turns it)",
+                    BuildingType.Barracks => "Makes Scouts, Tanks, Flamethrowers",
+                    BuildingType.HeavyFactory => "Makes Heavies, Artillery, Snipers",
+                    BuildingType.SiegeWorkshop => "Makes Diggers, Suicide bombers",
+                    BuildingType.Bomb => "Hidden from your enemies",
+                    BuildingType.Radar => "Sees over walls",
+                    BuildingType.GunTurret => "Defence: shoots units, then buildings and walls",
+                    BuildingType.Jammer => "Hides an area from enemies",
+                    _ => null,
+                };
+                if (type == BuildingType.None) return (role, "1 tile each");
+                if (!config.Buildings.TryGetValue(type, out BuildingConfig b)) return (role, null);
+                string detail = $"{b.Width}×{b.Height}";
+                if (type == BuildingType.GunTurret) detail += $" · range {b.Range:0.#}";
+                else if (type == BuildingType.Jammer) detail += $" · jams {config.Siege.JamRadius:0.#} tiles";
+                else if (type == BuildingType.Radar) detail += $" · sight {b.Sight:0.#}";
+                if (b.RunningCost > 0f) detail += $" · upkeep {b.RunningCost:0.#}/s";
+                return (role, detail);
+            }
+
             topBar = new TopBarController(root, Model);
             selectionPanel = new SelectionPanelController(root, Selection);
             commandCard = new CommandCardController(root, Selection, Model, costs, unitCosts, config.Siege.WallCost, config.Siege.DemolishRefund,
-                BuildSeconds, RoleOf, switchClearsQueue: true);
+                BuildSeconds, RoleOf, switchClearsQueue: true, BuildInfo);
             squadBar = new SquadBarController(root, Selection);
             overlay = new HudOverlayController(root);
             startMarkers = new StartMarkersController(root);
@@ -449,10 +475,10 @@ namespace WAR2D.UI
                 string building = alert.Kind == AlertKind.UnderAttack ? NearestOwnBuilding(alert.Tile)
                     : alert.Kind == AlertKind.ConstructionFinished ? OwnBuildingAt(alert.Tile) : null;
                 Alerts.Add(alert, AlertFeedModel.Text(alert, NameOf, building), Time.unscaledTime);
-                if (alert.Kind == AlertKind.ConstructionFinished) sound = "construction_finished";
+                if (alert.Kind == AlertKind.ConstructionFinished) sound = building == AlertFeedModel.BuildingName(BuildingType.Jammer) ? "jammer_online" : "construction_finished";
                 if (alert.Kind == AlertKind.EnemySpotted) sound = "radar_ping";
             }
-            // One sound per batch; a Radar contact or a finished building has its own.
+            // One sound per batch; a Radar contact or a finished building has its own (a Jammer coming online hums, v0.13).
             WAR2D.Audio.AudioService.Ui(sound);
         }
 

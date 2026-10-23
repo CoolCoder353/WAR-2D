@@ -149,6 +149,12 @@ namespace WAR2D.EditorTools
                     return ($"Bomb {frame}", () => RenderGen.Bomb(frame), 0f);
                 case "Radar":
                     return ($"Radar {frame}", () => RenderGen.Radar(frame), RenderGen.Lift);
+                case nameof(BuildingType.GunTurret):
+                    return ($"GunTurret {frame}", () => RenderGen.GunTurretBase(frame), RenderGen.Lift);
+                case ArtManifest.TurretHead:
+                    return ($"GunTurretHead {direction} {frame}", () => RenderGen.GunTurretHead(direction * Mathf.PI / 4f, frame), RenderGen.Lift);
+                case nameof(BuildingType.Jammer):
+                    return ($"Jammer {frame}", () => RenderGen.Jammer(frame), RenderGen.Lift);
                 case "PlayerWall":
                     return ($"PlayerWall {frame}", () => RenderGen.PlayerWall(Seed, frame % ArtManifest.AutotileVariants, frame / ArtManifest.AutotileVariants), 0f);
                 case "WallBlueprint":
