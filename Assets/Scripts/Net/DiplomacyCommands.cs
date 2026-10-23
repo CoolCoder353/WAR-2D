@@ -41,7 +41,7 @@ public partial class GameCore
     {
         SimContext sim = WorldStateManager.Instance != null ? WorldStateManager.Instance.Sim : null;
         if (sim == null) return false;
-        double now = NetworkTime.localTime;
+        double now = MatchClock.Now; // match time: a pause stops the cooldown
         if (!lastDiplomacyChange.TryGetValue((owner, kind), out double last)) last = double.NegativeInfinity;
         float cooldown = ConfigLoader.LoadConfig().Diplomacy.ChangeCooldownSeconds;
         if (!DiplomacyRules.CanChange(DiplomacyEnabled, CurrentState, GetServerPlayerById(owner)?.state,

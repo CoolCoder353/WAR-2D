@@ -40,6 +40,18 @@ public sealed class AiSandbox
     public readonly Dictionary<int, double> FirstSeen = new Dictionary<int, double>();
     public readonly TeamView View = new TeamView();
     public AiBrain Brain;
+
+    // ---- diplomacy (plan Task 8): the AI's own row and what reaches it, as the server would send them ----
+    public bool DiplomacyOn;
+    /// <summary>Every player but the AI (team 0): the enemy on team 1 by default.</summary>
+    public readonly List<AiPlayer> Others = new List<AiPlayer>();
+    /// <summary>Its own row: whom it attacks and shares vision with; and who shares vision with it.</summary>
+    public readonly HashSet<int> AiAttacks = new HashSet<int>(), AiShares = new HashSet<int>(), SharesWithAi = new HashSet<int>();
+    /// <summary>Alerts and attack events for its next view.</summary>
+    public readonly List<AiAlert> PendingAlerts = new List<AiAlert>();
+    public readonly List<AiAttack> PendingAttacks = new List<AiAttack>();
+    public readonly List<(int to, float amount)> Gifts = new List<(int, float)>();
+    public bool Surrendered;
     /// <summary>Seconds a blueprint takes once placed (the sandbox doesn't model Builders' work).</summary>
     public float BlueprintSeconds = 12f;
 
@@ -72,6 +84,35 @@ public sealed class AiSandbox
         explored = new byte[fogW * fogH];
         visible = new byte[fogW * fogH];
         Resources = Game.Resources.StartingResources;
+        Others.Add(new AiPlayer { OwnerId = Enemy, Team = 1 });
+        AiAttacks.Add(Enemy);
+    }
+
+    /// <summary>Adds another player (a teammate on team 0, else an enemy it attacks) and returns its owner id.</summary>
+    public int AddPlayer(int owner, int team)
+    {
+        Others.Add(new AiPlayer { OwnerId = owner, Team = team });
+        if (team != 0) AiAttacks.Add(owner);
+        else AiShares.Add(owner);
+        return owner;
+    }
+
+    /// <summary>Marks a player out of the match.</summary>
+    public void Eliminate(int owner)
+    {
+        for (int i = 0; i < Others.Count; i++)
+            if (Others[i].OwnerId == owner) { AiPlayer p = Others[i]; p.Eliminated = true; Others[i] = p; }
+    }
+
+    /// <summary>The AI's side is told that <paramref name="attacker"/> hit <paramref name="target"/> (ids).</summary>
+    public void ReportAttack(int attacker, int target) => PendingAttacks.Add(new AiAttack { AttackerId = attacker, TargetId = target, Time = Time });
+
+    /// <summary>A brain with only the given managers (diplomacy and concede tests).</summary>
+    public AiBrain MakeBrain(AiDifficulty difficulty, AiStyle style, params IAiManager[] managers)
+    {
+        Brain = new AiBrain(Ai, difficulty, style, Game.Ai, managers.Length > 0 ? managers : null, Game);
+        Brain.Execute = Execute;
+        return Brain;
     }
 
     /// <summary>Makes the AI's brain; its actions come to <see cref="Execute"/>.</summary>
@@ -270,6 +311,27 @@ public sealed class AiSandbox
                 }
                 return any;
             }
+            case AiActionKind.SetAttack:
+            case AiActionKind.SetShareVision:
+            {
+                if (!DiplomacyOn || State != GameState.Playing || a.Value == Ai || !Others.Exists(p => p.OwnerId == a.Value && !p.Eliminated)) return false;
+                HashSet<int> row = a.Kind == AiActionKind.SetAttack ? AiAttacks : AiShares;
+                if (a.Flag) row.Add(a.Value); else row.Remove(a.Value);
+                return true;
+            }
+            case AiActionKind.Gift:
+            {
+                if (State != GameState.Playing || a.Amount <= 0f || a.Amount > Resources || !Others.Exists(p => p.OwnerId == a.Value && !p.Eliminated)) return false;
+                Resources -= a.Amount;
+                Gifts.Add((a.Value, a.Amount));
+                return true;
+            }
+            case AiActionKind.Surrender:
+            {
+                if (State != GameState.Playing || Surrendered) return false;
+                Surrendered = true;
+                return true;
+            }
             case AiActionKind.PlaceWall:
             case AiActionKind.DigArea:
             case AiActionKind.Detonate:
@@ -458,11 +520,16 @@ public sealed class AiSandbox
         v.Resources = Resources;
         v.Income = LastIncome;
         v.Upkeep = LastUpkeep;
+        v.DiplomacyOn = DiplomacyOn;
         v.Players.Clear();
-        v.Players.Add(new AiPlayer { OwnerId = Ai, Team = 0, IsAi = true });
-        v.Players.Add(new AiPlayer { OwnerId = Enemy, Team = 1 });
+        v.Players.Add(new AiPlayer { OwnerId = Ai, Team = 0, IsAi = true, Eliminated = Surrendered });
+        foreach (AiPlayer p in Others) v.Players.Add(p);
         v.Attacking.Clear();
-        v.Attacking.Add(Enemy);
+        foreach (int o in AiAttacks) v.Attacking.Add(o);
+        v.SharingWith.Clear();
+        foreach (int o in AiShares) v.SharingWith.Add(o);
+        v.SharedWithMe.Clear();
+        foreach (int o in SharesWithAi) v.SharedWithMe.Add(o);
         v.StartOptions.Clear();
         foreach (int o in Options) v.StartOptions.Add(new AiStartOption { OwnerId = Ai, Site = o, Centre = Sites[o] });
         v.OwnUnits.Clear();
@@ -498,5 +565,9 @@ public sealed class AiSandbox
         v.Alerts.Clear();
         v.Attacks.Clear();
         v.Blasts.Clear();
+        foreach (AiAlert alert in PendingAlerts) v.Alerts.Add(alert);
+        foreach (AiAttack attack in PendingAttacks) v.Attacks.Add(attack);
+        PendingAlerts.Clear();
+        PendingAttacks.Clear();
     }
 }

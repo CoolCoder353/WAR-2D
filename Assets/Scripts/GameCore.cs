@@ -98,12 +98,14 @@ public partial class GameCore : NetworkBehaviour
         MatchStartTeamCount = 0;
         Teams.Clear();
         ForgetDiplomacyCooldowns();
+        ResetPause();
     }
 
     [ServerCallback]
     public void LateUpdate()
     {
-        rollTimer += Time.deltaTime;
+        // Income and upkeep are counted by match second: nothing rolls while the match is paused.
+        if (!MatchPause.Paused) rollTimer += Time.deltaTime;
         if (rollTimer >= 1f)
         {
             rollTimer -= 1f;
@@ -137,6 +139,7 @@ public partial class GameCore : NetworkBehaviour
     [ServerCallback]
     public void Update()
     {
+        UpdatePause();
         if (CurrentState == GameState.Countdown && NetworkTime.time >= CountdownEndTime)
         {
             CurrentState = GameState.Playing;
@@ -253,6 +256,8 @@ public partial class GameCore : NetworkBehaviour
     private void StartMatchServerSide()
     {
         DiplomacyEnabled = Settings.Diplomacy;
+        ResetPause();
+        ForgetDiplomacyCooldowns(); // they count on the match clock, which starts again at 0
         BeginStats();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
@@ -432,6 +437,7 @@ public partial class GameCore : NetworkBehaviour
     private void ResetToLobby()
     {
         CurrentState = GameState.Lobby;
+        ResetPause();
         CountdownEndTime = 0;
         HqPlacementEndTime = 0;
         MatchStartPlayerCount = 0;

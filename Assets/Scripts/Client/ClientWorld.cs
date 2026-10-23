@@ -179,7 +179,8 @@ namespace WAR2D.Client
 
         private void Update()
         {
-            AdvanceClock(Time.unscaledDeltaTime);
+            // A paused match sends no ticks: the prediction clock waits with it, so units don't run ahead along their routes.
+            AdvanceClock(GameCore.Instance != null && GameCore.Instance.IsPaused ? 0f : Time.unscaledDeltaTime);
             store.PredictAll(serverTime);
             FireTracers();
             FireTurrets();

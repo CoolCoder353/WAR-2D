@@ -44,7 +44,7 @@ public partial class GameCore
         ServerPlayer giver = GetServerPlayerById(from), receiver = GetServerPlayerById(to);
         if (giver == null || receiver == null) return false;
         if (!lastGift.TryGetValue(from, out double last)) last = double.NegativeInfinity;
-        double now = NetworkTime.localTime;
+        double now = MatchClock.Now; // match time: a pause stops the cooldown
         if (!GiftRules.CanGift(CurrentState, giver.state, receiver.state, from, to, now, last, ConfigLoader.LoadConfig().Gifting.CooldownSeconds)) return false;
         if (!GiftRules.IsValid(amount, giver.Resources) || !giver.TrySpend(amount, countAsSpent: false)) return false;
         receiver.Add(amount);

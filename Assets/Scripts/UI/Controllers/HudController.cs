@@ -293,6 +293,24 @@ namespace WAR2D.UI
             return prompt;
         }
 
+        private bool menuPauseSent;
+
+        /// <summary>
+        /// Asks the server to pause while the in-match menu (or Settings opened from it) is open, and to resume when it
+        /// closes; the server accepts only when this is the one human connected. The menu shows the server's answer.
+        /// </summary>
+        private void SyncMenuPause()
+        {
+            GameCore core = GameCore.Instance;
+            bool want = (matchMenu.IsOpen || settings.IsOpen) && !endScreen.IsShown;
+            if (core != null && NetworkClient.active && want != menuPauseSent)
+            {
+                menuPauseSent = want;
+                core.CmdSetMenuPause(want);
+            }
+            matchMenu.ShowPaused(core != null && core.IsMenuPaused && want);
+        }
+
         private void Update()
         {
             CentreOnOwnClearing();
@@ -309,6 +327,7 @@ namespace WAR2D.UI
             }
             if (GameInput.Cancel.WasPressedThisFrame() && !matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !diplomacy.IsOpen) commandCard.RequestRemove();
             matchMenu.SetCanSurrender(root, GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing && !endScreen.IsShown);
+            SyncMenuPause();
             if (endScreen.IsShown)
             {
                 var (replayText, replayFraction) = EndScreenController.ReplayState(NetworkServer.active, WorldStateManager.Instance != null ? WorldStateManager.Instance.Recorder : null,

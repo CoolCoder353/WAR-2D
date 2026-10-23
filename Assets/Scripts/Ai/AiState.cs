@@ -51,7 +51,8 @@ namespace WAR2D.Ai
         }
 
         public const int Hq = 1, Place = 2, Build = 3, Repair = 4, Produce = 5, Queue = 6, Rally = 7, Army = 8, Scout = 9,
-            Expand = 10, Cancel = 11, Wall = 12, Dig = 13, Detonate = 14, Backline = 15, Hold = 16, Defend = 17;
+            Expand = 10, Cancel = 11, Wall = 12, Dig = 13, Detonate = 14, Backline = 15, Hold = 16, Defend = 17,
+            Attack = 18, Share = 19, Gift = 20, Surrender = 21;
     }
 
     /// <summary>

@@ -135,7 +135,7 @@ public partial class WorldStateManager : NetworkBehaviour
             var (found, _, tile) = BuildingOwnerAndTile(id);
             if (found) Alerts.Add(owner, new Alert { Kind = AlertKind.ConstructionFinished, Tile = tile });
         };
-        Sim.RepairStalled += (owner, tile) => Alerts?.AddThrottled(owner, new Alert { Kind = AlertKind.RepairsStopped, Tile = tile }, NetworkTime.localTime);
+        Sim.RepairStalled += (owner, tile) => Alerts?.AddThrottled(owner, new Alert { Kind = AlertKind.RepairsStopped, Tile = tile }, GameCore.MatchNow);
         Sim.TeamResolver = ownerId => GameCore.Instance != null ? GameCore.Instance.TeamOf(ownerId) : -ownerId - 1;
         Sim.Settled += OnSettled;
         explored = null; // the last match's
@@ -173,6 +173,7 @@ public partial class WorldStateManager : NetworkBehaviour
         };
         AiRunner = new WAR2D.AiView.AiRunner(Sim, AiViews, AiBrains.Director?.Invoke());
         AiViews.Clock = () => AiRunner != null ? AiRunner.Now : 0;
+        WAR2D.AiView.AiRunner.MatchPaused = () => GameCore.Instance != null && GameCore.Instance.MatchPause.Paused;
         Alerts.Observer = AiViews.ReportAlerts;
         ReplaysConfig replays = ConfigLoader.LoadConfig().Replays;
         if (replays.Enabled && !DevApi.PerfFlag && GameCore.Instance != null)
@@ -422,7 +423,7 @@ public partial class WorldStateManager : NetworkBehaviour
         PerfSplits.Mark(3, ref t);
         if (tick % UnpaidScanTicks == 0) MarkUnpaidOwners(data, count);
         PerfSplits.Mark(4, ref t);
-        Alerts.CollectDamage(data, count, BuildingOwnerAndTile, NetworkTime.localTime);
+        Alerts.CollectDamage(data, count, BuildingOwnerAndTile, GameCore.MatchNow);
         PerfSplits.Mark(5, ref t);
         Alerts.Flush();
         PerfSplits.Mark(6, ref t);
@@ -446,7 +447,7 @@ public partial class WorldStateManager : NetworkBehaviour
             int2 anchor = (int2)math.round(building.position);
             radarScratch.Add(new RadarView { Id = building.id, OwnerId = building.ownerId, Tile = anchor, Centre = Footprint.VisualCenter(anchor, radarConfig.Size), Radius = radarConfig.Sight });
         }
-        radars.Update(data, unitCount, radarScratch, NetworkTime.localTime, Alerts.Add);
+        radars.Update(data, unitCount, radarScratch, GameCore.MatchNow, Alerts.Add);
     }
 
     private readonly List<float2> blastScratch = new List<float2>(), bomberScratch = new List<float2>();

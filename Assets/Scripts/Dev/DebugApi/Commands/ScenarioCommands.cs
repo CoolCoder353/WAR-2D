@@ -132,8 +132,8 @@ namespace WAR2D.Dev.DebugApi
                 Sim().Commands.Enqueue(new SimCommand { Kind = SimCommandKind.KillUnits, Ids = ids.Select(t => (int)t).ToArray() });
                 return "queued";
             });
-            r.Add("pause", DebugRole.Server, "pause: stop the tick", _ => { Sim().Pause.Paused = true; return "paused"; });
-            r.Add("resume", DebugRole.Server, "resume: run the tick again", _ => { Sim().Pause.Paused = false; return "running"; });
+            r.Add("pause", DebugRole.Server, "pause: stop the tick (and every match timer, as the one-human menu pause does)", _ => { DevPause(true); return "paused"; });
+            r.Add("resume", DebugRole.Server, "resume: run the tick again", _ => { DevPause(false); return "running"; });
             r.Add("step", DebugRole.Server, "step [ticks]: run ticks while paused, answer when done", a =>
             {
                 SimContext sim = Sim();
@@ -170,5 +170,13 @@ namespace WAR2D.Dev.DebugApi
 
         private static WorldStateManager World() => WorldStateManager.Instance ?? throw new DebugError("no match loaded");
         private static SimContext Sim() => SimContext.Current ?? throw new DebugError("no match running");
+
+        /// <summary>The dev pause goes through the match's pause (v0.14 <c>MatchPause</c>), so it stops every match timer too.</summary>
+        private static void DevPause(bool on)
+        {
+            SimContext sim = Sim();
+            if (GameCore.Instance != null) GameCore.Instance.SetDevPause(on);
+            else sim.Pause.Paused = on;
+        }
     }
 }

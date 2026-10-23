@@ -1,13 +1,17 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
     <ui:VisualElement name="in-match-menu" class="overlay-screen">
         <ui:VisualElement name="match-menu-panel" class="panel match-menu">
-            <ui:Label text="Menu" class="panel__title" />
+            <ui:Label name="match-menu-title" text="Menu" class="panel__title" />
             <ui:VisualElement class="match-menu__content">
+                <ui:VisualElement name="match-menu-paused" class="match-menu__paused">
+                    <ui:Label text="Paused" class="match-menu__paused-title" />
+                    <ui:Label text="You&apos;re the only player" class="text--secondary match-menu__paused-text" />
+                </ui:VisualElement>
                 <ui:Button name="resume-button" text="Resume" class="button button--primary match-menu__button" />
                 <ui:Button name="match-settings-button" text="Settings" class="button match-menu__button" />
                 <ui:Button name="surrender-button" text="Surrender" class="button button--danger match-menu__button" />
                 <ui:Button name="leave-match-button" text="Leave match" class="button button--danger match-menu__button" />
-                <ui:Label text="The match keeps running while this is open." class="text--secondary" />
+                <ui:Label name="match-menu-note" text="The match keeps running while this is open." class="text--secondary match-menu__note" />
             </ui:VisualElement>
         </ui:VisualElement>
         <ui:VisualElement name="surrender-panel" class="panel surrender">

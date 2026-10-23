@@ -402,6 +402,11 @@
 .match-menu__content { padding: 20px; }
 .match-menu__content > * { margin-bottom: var(--space-2); }
 .match-menu__button { width: 278px; height: 35px; }
+.match-menu__paused { display: none; flex-direction: row; align-items: center; width: 278px; padding: 6px 10px; background-color: var(--color-surface-raised); border-width: 1px; border-color: var(--color-warning); }
+.in-match-menu--paused .match-menu__paused { display: flex; }
+.match-menu__paused-title { color: var(--color-warning); font-size: 22px; padding: 0; margin-right: var(--space-2); }
+.match-menu__paused-text { padding: 0; }
+.match-menu__note { width: 278px; white-space: normal; }
 .surrender { width: 400px; display: none; }
 .surrender__content { padding: 20px; }
 .surrender__content > * { margin-bottom: var(--space-3); }

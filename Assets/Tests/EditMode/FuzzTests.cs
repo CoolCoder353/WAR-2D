@@ -108,6 +108,20 @@ public class FuzzTests
     }
 
     [Test]
+    public void MenuPause_NeverThrows_AndNeedsExactlyOneHuman()
+    {
+        var rng = new System.Random(77);
+        for (int i = 0; i < Iterations; i++)
+        {
+            var state = (GameState)rng.Next(-3, 9);
+            int humans = rng.Next(int.MinValue, int.MaxValue) % 12;
+            bool own = rng.Next(2) == 0;
+            bool may = PauseRules.MayMenuPause(state, humans, own);
+            if (may) Assert.That(humans == 1 && own, Is.True);
+        }
+    }
+
+    [Test]
     public void SpawnerQueue_NeverLeavesItsRange()
     {
         var rng = new System.Random(31);
