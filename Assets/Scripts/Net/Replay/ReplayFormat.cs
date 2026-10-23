@@ -27,7 +27,8 @@ namespace WAR2D.Net.Replay
     /// <summary>File layout: GZip of ("W2DR", u16 format, u32 header length, header JSON, records). Record: varint tick delta, u8 channel, varint length, payload.</summary>
     public static class ReplayFile
     {
-        public const int Format = 1;
+        /// <summary>2 since v0.13: attack events carry the attacker kind (a building's attacks), so older players can't read the units stream.</summary>
+        public const int Format = 2;
         public const string Extension = ".war2drec";
         public static readonly byte[] Magic = { (byte)'W', (byte)'2', (byte)'D', (byte)'R' };
         public const int MaxRecordBytes = 4 << 20;

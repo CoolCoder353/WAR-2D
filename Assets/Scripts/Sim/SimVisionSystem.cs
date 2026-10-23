@@ -14,6 +14,10 @@ namespace WAR2D.Sim
     /// line but are themselves seen). Open ground skips the line tests (summed-area table of opaque cells).
     /// Cells whose visibility changed are queued on <see cref="SimData.FogChanges"/> for replication, and
     /// seen cells are added to <see cref="SimData.Explored"/>.
+    /// <para>The jam (v0.13): <see cref="RebuildJamJob"/> keeps <see cref="SimData.JamMask"/> per grid, rebuilt only when
+    /// the set of jamming Jammers or the share-vision masks changed. A grid's sources see a jammed cell only from within
+    /// <see cref="SimData.JamSight"/>, and its Radars don't see it at all. Everything clients learn follows the grids,
+    /// so the jam needs no special case anywhere else.</para>
     /// </summary>
     [UpdateInGroup(typeof(SimTickGroup))]
     [UpdateAfter(typeof(SimMovementSystem))]
@@ -62,11 +66,32 @@ namespace WAR2D.Sim
                 BuildingFlag = data.BuildingFlag,
                 RadarSources = data.RadarSources,
             }.Schedule(state.Dependency);
+            state.Dependency = new RebuildJamJob
+            {
+                BuildingCount = math.min(data.BuildingCount[0], data.BuildingCapacity),
+                BuildingFlag = data.BuildingFlag,
+                BuildingHealth = data.BuildingHealth,
+                BuildingOwnerSlot = data.BuildingOwnerSlot,
+                BuildingAnchor = data.BuildingAnchor,
+                BuildingSize = data.BuildingSize,
+                ShareVisionMask = data.ShareVisionMask,
+                JamMask = data.JamMask,
+                JamSources = data.JamSources,
+                JamShare = data.JamShare,
+                JamDirty = data.JamDirty,
+                JamRadius = data.JamRadius,
+                FogCellSize = data.FogCellSize,
+                FogW = data.FogW,
+                FogH = data.FogH,
+                FogCells = data.FogCells,
+            }.Schedule(state.Dependency);
             state.Dependency = new StampVisionJob
             {
                 Sources = data.Sources.AsDeferredJobArray(),
                 SourceRadius = data.SourceRadius,
                 Visible = data.Visible,
+                JamMask = data.JamMask,
+                JamSightSq = data.JamSight * data.JamSight,
                 OpaqueTile = data.OpaqueTile,
                 OpaqueSum = data.OpaqueSum,
                 Width = data.Width,
@@ -80,6 +105,7 @@ namespace WAR2D.Sim
             {
                 Sources = data.RadarSources.AsDeferredJobArray(),
                 Visible = data.Visible,
+                JamMask = data.JamMask,
                 FogW = data.FogW,
                 FogH = data.FogH,
                 FogCells = data.FogCells,
@@ -185,13 +211,91 @@ namespace WAR2D.Sim
         }
     }
 
-    /// <summary>Marks what one source sees. Sources write the same value (1), so overlapping writes are harmless.</summary>
+    /// <summary>
+    /// Rebuilds the jam mask (v0.13) when it is stale: the jamming Jammers (complete, paid and alive, see
+    /// <see cref="BuildingFlags.Jams"/>) or the share-vision masks differ from the ones it was built from, or
+    /// <see cref="SimData.JamDirty"/> is set. A Jammer finishing, dying, going unpaid or paid again, being built
+    /// complete, and a share-vision change at the boundary all show up as such a difference, so no event needs a hook.
+    /// A cell of grid g is jammed when its centre lies within the radius of a Jammer whose owner slot is not g and
+    /// doesn't share vision with g. Most passes only compare the lists.
+    /// </summary>
+    [BurstCompile]
+    public struct RebuildJamJob : IJob
+    {
+        public int BuildingCount;
+        [ReadOnly] public NativeArray<byte> BuildingFlag, BuildingOwnerSlot;
+        [ReadOnly] public NativeArray<float> BuildingHealth;
+        [ReadOnly] public NativeArray<int2> BuildingAnchor, BuildingSize;
+        [ReadOnly] public NativeArray<ushort> ShareVisionMask;
+        public NativeArray<byte> JamMask;
+        public NativeList<int3> JamSources;
+        public NativeArray<ushort> JamShare;
+        public NativeArray<byte> JamDirty;
+        public float JamRadius;
+        public int FogCellSize, FogW, FogH, FogCells;
+
+        /// <summary>True for a slot that jams now.</summary>
+        private bool Jams(int b) =>
+            (BuildingFlag[b] & (BuildingFlags.Jams | BuildingFlags.UnderConstruction | BuildingFlags.Unpaid)) == BuildingFlags.Jams &&
+            BuildingHealth[b] > 0f && BuildingOwnerSlot[b] < SimData.MaxOwners;
+
+        public void Execute()
+        {
+            bool dirty = JamDirty[0] != 0;
+            for (int s = 0; s < SimData.MaxOwners && !dirty; s++) dirty = ShareVisionMask[s] != JamShare[s];
+            int n = 0;
+            for (int b = 0; b < BuildingCount; b++)
+            {
+                if (!Jams(b)) continue;
+                var source = new int3(BuildingOwnerSlot[b], BuildingAnchor[b]);
+                if (!dirty && (n >= JamSources.Length || !math.all(JamSources[n] == source))) dirty = true;
+                n++;
+            }
+            if (!dirty && n == JamSources.Length) return;
+
+            JamDirty[0] = 0;
+            for (int s = 0; s < SimData.MaxOwners; s++) JamShare[s] = ShareVisionMask[s];
+            JamSources.Clear();
+            for (int i = 0; i < JamMask.Length; i++) JamMask[i] = 0;
+            float radiusSq = JamRadius * JamRadius;
+            int reach = (int)math.ceil(JamRadius / FogCellSize) + 1;
+            for (int b = 0; b < BuildingCount; b++)
+            {
+                if (!Jams(b)) continue;
+                int slot = BuildingOwnerSlot[b];
+                JamSources.Add(new int3(slot, BuildingAnchor[b]));
+                float2 centre = Footprint.VisualCenter(BuildingAnchor[b], BuildingSize[b]);
+                int2 c = math.clamp((int2)math.floor(centre / FogCellSize), 0, new int2(FogW - 1, FogH - 1));
+                int2 lo = math.max(c - reach, 0), hi = math.min(c + reach, new int2(FogW - 1, FogH - 1));
+                for (int g = 0; g < SimData.MaxOwners; g++)
+                {
+                    // Never the Jammer's own grid, nor a grid it shares vision with (its allies see what it sees).
+                    if (g == slot || (ShareVisionMask[slot] >> g & 1) != 0) continue;
+                    int baseIndex = g * FogCells;
+                    for (int y = lo.y; y <= hi.y; y++)
+                    for (int x = lo.x; x <= hi.x; x++)
+                    {
+                        float2 cell = (new float2(x, y) + 0.5f) * FogCellSize;
+                        if (math.distancesq(cell, centre) <= radiusSq) JamMask[baseIndex + y * FogW + x] = 1;
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Marks what one source sees. Sources write the same value (1), so overlapping writes are harmless. A jammed cell
+    /// of the source's grid is marked only when the source is within <see cref="JamSightSq"/> of it (centre to centre).
+    /// </summary>
     [BurstCompile]
     public struct StampVisionJob : IJobParallelForDefer
     {
         [ReadOnly] public NativeArray<int> Sources;
         [NativeDisableParallelForRestriction] public NativeArray<byte> SourceRadius;
         [NativeDisableParallelForRestriction] public NativeArray<byte> Visible;
+        /// <summary>The jam mask (same layout as <see cref="Visible"/>) and the squared sight, in tiles, that still reaches into it.</summary>
+        [ReadOnly] public NativeArray<byte> JamMask;
+        public float JamSightSq;
         [ReadOnly] public NativeArray<byte> OpaqueTile;
         [ReadOnly] public NativeArray<int> OpaqueSum;
         public int FogW, FogH, FogCells, Width, Height, FogCellSize;
@@ -225,6 +329,7 @@ namespace WAR2D.Sim
             {
                 int2 d = new int2(x, y) - c;
                 if (d.x * d.x + d.y * d.y > limit) continue;
+                if (JamMask[baseIndex + y * FogW + x] != 0 && math.lengthsq((float2)d * FogCellSize) > JamSightSq) continue;
                 if (opaque > 0)
                 {
                     int2 from = NearestTile(c, new int2(x, y)), to = NearestTile(new int2(x, y), c);
@@ -235,12 +340,13 @@ namespace WAR2D.Sim
         }
     }
 
-    /// <summary>Marks what one Radar sees: its whole circle, walls or not.</summary>
+    /// <summary>Marks what one Radar sees: its whole circle, walls or not, except the cells jammed for its grid.</summary>
     [BurstCompile]
     public struct StampRadarJob : IJobParallelForDefer
     {
         [ReadOnly] public NativeArray<int3> Sources;
         [NativeDisableParallelForRestriction] public NativeArray<byte> Visible;
+        [ReadOnly] public NativeArray<byte> JamMask;
         public int FogW, FogH, FogCells;
 
         public void Execute(int s)
@@ -256,7 +362,7 @@ namespace WAR2D.Sim
             for (int x = lo.x; x <= hi.x; x++)
             {
                 int2 d = new int2(x, y) - c;
-                if (d.x * d.x + d.y * d.y <= limit) Visible[baseIndex + y * FogW + x] = 1;
+                if (d.x * d.x + d.y * d.y <= limit && JamMask[baseIndex + y * FogW + x] == 0) Visible[baseIndex + y * FogW + x] = 1;
             }
         }
     }

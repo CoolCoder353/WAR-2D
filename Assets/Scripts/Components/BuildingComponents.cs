@@ -40,7 +40,12 @@ public enum BuildingType
     /// <summary>Makes Heavy, Artillery and Sniper (3x3).</summary>
     HeavyFactory,
     /// <summary>Makes Digger and Suicide bomber (2x2).</summary>
-    SiegeWorkshop
+    SiegeWorkshop,
+    // v0.13: appended, so the bytes already on the wire and in replays keep their meaning.
+    /// <summary>A static defence (1x1): shoots units, then buildings, then walls, like a unit that can't move.</summary>
+    GunTurret,
+    /// <summary>Jams its radius (2x2): enemies see in it only up close, and their Radars not at all.</summary>
+    Jammer
 }
 
 /// <summary>A building under construction (v0.7). Removed when <see cref="Progress"/> reaches 1.</summary>
@@ -58,7 +63,30 @@ public static class BuildingFlags
     public const byte Hidden = 2;
     /// <summary>A completed Radar: its sight ignores line of sight.</summary>
     public const byte SeesThroughWalls = 4;
+    /// <summary>Its upkeep went unpaid at the last charge (<see cref="UpkeepComponent.unpaid"/>): a turret doesn't fire, a Jammer doesn't jam (v0.13).</summary>
+    public const byte Unpaid = 8;
+    /// <summary>A completed Jammer (it has the <see cref="Jammer"/> tag): its radius is jammed while it is paid (v0.13).</summary>
+    public const byte Jams = 16;
 }
+
+/// <summary>
+/// The weapon state of a building that attacks (v0.13: the Gun turret; any building whose config has
+/// <c>Damage</c> above 0). Building slots are refilled every tick, so the state lives here between ticks: the
+/// gather copies it into <c>SimData.BuildingTarget</c>/<c>BuildingTargetKind</c>/<c>BuildingCooldown</c> and the
+/// next boundary writes it back (<c>SimCommandSystem.WriteBackBuildingWeapons</c>).
+/// </summary>
+public struct BuildingWeapon : IComponentData
+{
+    /// <summary>The target as a stable id: a unit or building id, or a wall tile index (see <see cref="TargetKind"/>); -1 for none.</summary>
+    public int TargetId;
+    /// <summary>What <see cref="TargetId"/> names (<c>WAR2D.Sim.TargetKinds</c>).</summary>
+    public byte TargetKind;
+    /// <summary>Seconds until it may fire again.</summary>
+    public float Cooldown;
+}
+
+/// <summary>Tags a Jammer (v0.13): the gather marks its slot <see cref="BuildingFlags.Jams"/> once it is complete, which the jam rebuild reads.</summary>
+public struct Jammer : IComponentData { }
 
 public struct SpawnerData : IComponentData
 {

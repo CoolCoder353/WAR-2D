@@ -105,6 +105,8 @@
     <BlastDamage>200.0</BlastDamage>                    <!-- v0.7 -->
     <RadarClearSeconds>5.0</RadarClearSeconds>          <!-- v0.7: radius clear this long before it may ping again -->
     <RadarAlertCooldownSeconds>30.0</RadarAlertCooldownSeconds> <!-- v0.7: least time between two pings from one Radar -->
+    <JamRadius>12.0</JamRadius>                         <!-- v0.13 starting value: tiles a complete, paid Jammer jams for players its owner doesn't share vision with -->
+    <JamSight>3.0</JamSight>                            <!-- v0.13 starting value: inside the jam, those players see a fog cell only from this close -->
   </Siege>
 
   <Audio>
@@ -157,6 +159,11 @@
     <Entry attacker="SuicideBomber" target="HeavyUnit">1</Entry>
     <Entry attacker="SuicideBomber" target="Building">2</Entry>
     <Entry attacker="SuicideBomber" target="Wall">3</Entry>
+    <!-- v0.13 building attackers, starting values (spec section 2.1) -->
+    <Entry attacker="GunTurret" target="LightUnit">1.5</Entry>
+    <Entry attacker="GunTurret" target="HeavyUnit">0.4</Entry>
+    <Entry attacker="GunTurret" target="Building">0.5</Entry>
+    <Entry attacker="GunTurret" target="Wall">0.5</Entry>
   </DamageTable>
 
   <Units>
@@ -265,6 +272,15 @@
     </Building>
     <Building type="Radar">
       <Health>200</Health><Width>2</Width><Height>2</Height><UpfrontCost>250.0</UpfrontCost><RunningCost>5.0</RunningCost><Sight>20.0</Sight>  <!-- v0.7 -->
+    </Building>
+    <!-- v0.13 Bastion: starting values from the spec (section 5), to tune in play -->
+    <Building type="GunTurret"> <!-- attacks like a unit that can't move: units, then buildings, then walls -->
+      <Health>350</Health><Width>1</Width><Height>1</Height><UpfrontCost>150.0</UpfrontCost><RunningCost>4.0</RunningCost>
+      <Sight>8.0</Sight><Damage>8</Damage><Range>7.0</Range><AttackInterval>0.4</AttackInterval>
+    </Building>
+    <Building type="Jammer"> <!-- jams Siege/JamRadius for players its owner doesn't share vision with -->
+      <Health>200</Health><Width>2</Width><Height>2</Height><UpfrontCost>200.0</UpfrontCost><RunningCost>6.0</RunningCost>
+      <Sight>6.0</Sight>
     </Building>
   </Buildings>
 </GameConfig>

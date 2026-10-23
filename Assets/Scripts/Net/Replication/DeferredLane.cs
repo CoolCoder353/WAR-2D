@@ -23,6 +23,7 @@ namespace WAR2D.Net.Replication
         private NativeArray<byte> type, noFog;
         private NativeArray<int2> attacks;
         private NativeArray<AttackTarget> targets;
+        private NativeArray<BuildingAttack> buildingAttacks;
         private JobHandle handle;
         private bool disposed;
 
@@ -48,7 +49,7 @@ namespace WAR2D.Net.Replication
         }
 
         /// <summary>Copies the settled world and schedules this tick's interest build and encode (not completed).</summary>
-        public void Schedule(SimData data, int tick, int count, RouteStore live, NativeArray<int2> tickAttacks, NativeArray<AttackTarget> tickTargets)
+        public void Schedule(SimData data, int tick, int count, RouteStore live, NativeArray<int2> tickAttacks, NativeArray<AttackTarget> tickTargets, NativeArray<BuildingAttack> tickBuildingAttacks = default)
         {
             handle.Complete();
             Copy(data.Positions, ref positions, count);
@@ -68,6 +69,8 @@ namespace WAR2D.Net.Replication
             if (targets.IsCreated) targets.Dispose();
             attacks = new NativeArray<int2>(tickAttacks, Allocator.Persistent);
             targets = new NativeArray<AttackTarget>(tickTargets, Allocator.Persistent);
+            if (buildingAttacks.IsCreated) buildingAttacks.Dispose();
+            buildingAttacks = tickBuildingAttacks.IsCreated ? new NativeArray<BuildingAttack>(tickBuildingAttacks, Allocator.Persistent) : new NativeArray<BuildingAttack>(0, Allocator.Persistent);
 
             var input = new ReplicationInput
             {
@@ -77,7 +80,7 @@ namespace WAR2D.Net.Replication
             };
             JobHandle built = interests.Schedule(input, default);
             handle = built; // completed by Dispose even if the encoder refuses to schedule
-            handle = encoder.Schedule(tick, input, attacks, targets, null, built);
+            handle = encoder.Schedule(tick, input, attacks, targets, buildingAttacks, null, built);
             JobHandle.ScheduleBatchedJobs();
             PendingTick = tick;
         }
@@ -110,6 +113,7 @@ namespace WAR2D.Net.Replication
             if (type.IsCreated) type.Dispose();
             if (attacks.IsCreated) attacks.Dispose();
             if (targets.IsCreated) targets.Dispose();
+            if (buildingAttacks.IsCreated) buildingAttacks.Dispose();
             noFog.Dispose();
         }
     }

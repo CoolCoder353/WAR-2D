@@ -66,6 +66,7 @@ namespace WAR2D.Sim
             SimTiming.LastSettledMs = Split(ref mark);
             SimTiming.CommandsEndMs = mark; // until the command stage moves it
             data.AttackEvents.Clear();
+            data.BuildingAttackEvents.Clear();
             data.BombBlasts.Clear();
             data.ForcedBombs.Clear();
             data.ForcedBombers.Clear();

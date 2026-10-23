@@ -95,6 +95,8 @@ namespace WAR2D.UI
             BuildingType.Miner => "Miner",
             BuildingType.Bomb => "Bomb",
             BuildingType.Radar => "Radar",
+            BuildingType.GunTurret => "Gun turret",
+            BuildingType.Jammer => "Jammer",
             _ => null,
         };
 

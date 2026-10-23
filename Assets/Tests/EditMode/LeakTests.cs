@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using NUnit.Framework;
+using Unity.Collections;
+using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Transforms;
 using WAR2D.Client;
 using WAR2D.Net.Replication;
 using WAR2D.Sim;
@@ -26,6 +29,11 @@ public class LeakTests
         public readonly ClientTerrain Terrain = new ClientTerrain();
         public readonly List<string> Failures = new List<string>();
         public int UnitsSeen, OthersSeen, FogPayloads, BuildingPayloads, TerrainPayloads;
+        /// <summary>Building attack events received (v0.13), and the building ids they named.</summary>
+        public int BuildingAttacks;
+        public readonly HashSet<int> Attackers = new HashSet<int>();
+        /// <summary>Other players' unit ids this client was ever told about.</summary>
+        public readonly HashSet<int> OthersKnown = new HashSet<int>();
         private readonly SimContext sim;
 
         public Spy(SimContext sim, ReplicationService replication, int owner)
@@ -34,7 +42,34 @@ public class LeakTests
             Owner = owner;
             Units = new ClientUnitStore(sim.Config.Simulation.MaxEntities, sim.Config.Simulation.TickSeconds);
             Terrain.Init(sim.Map.Grid); // before any tick: the map is still as generated
+            Units.BuildingAttack += OnBuildingAttack;
             replication.AddVirtualClient(owner, Receive);
+        }
+
+        /// <summary>A building's attack (v0.13) may only come from a building this client owns or its grid sees now, and name only a target it may know.</summary>
+        private void OnBuildingAttack(int building, int target)
+        {
+            BuildingAttacks++;
+            Attackers.Add(building);
+            SimData data = sim.Data;
+            int grid = sim.VisionOf(Owner);
+            int b = BuildingSlot(data, building);
+            if (b < 0) { Failures.Add($"attack by building {building}, which isn't live"); return; }
+            if (data.BuildingOwnerId[b] != Owner && !data.Sees(grid, data.BuildingPositions[b])) Failures.Add($"attack by building {building} sent to {Owner} while unseen");
+            if (target == 0) return;
+            int unit = data.SlotOf(target, sim.Clock.UnitCount);
+            int tb = BuildingSlot(data, target);
+            bool known = unit >= 0 ? data.OwnerId[unit] == Owner || data.Sees(grid, data.Positions[unit])
+                : tb >= 0 && (data.BuildingOwnerId[tb] == Owner || data.Sees(grid, data.BuildingPositions[tb]));
+            if (!known) Failures.Add($"building attack names target {target} unknown to {Owner}");
+        }
+
+        private static int BuildingSlot(SimData data, int id)
+        {
+            int index = NetIdAllocator.IndexOf(id);
+            if (id <= 0 || index >= data.BuildingSlotOfIndex.Length) return -1;
+            int b = data.BuildingSlotOfIndex[index];
+            return b < data.BuildingCount[0] && data.BuildingIds[b] == id ? b : -1;
         }
 
         private void Receive(ArraySegment<byte> payload, int channel)
@@ -84,11 +119,33 @@ public class LeakTests
                 UnitsSeen++;
                 if (data.OwnerId[slot] != Owner && !data.Sees(grid, data.Positions[slot]))
                     Failures.Add($"unit {id} of owner {data.OwnerId[slot]} known to {Owner} while unseen");
-                if (data.OwnerId[slot] != Owner) OthersSeen++;
+                if (data.OwnerId[slot] != Owner) { OthersSeen++; OthersKnown.Add(id); }
             }
         }
 
         public void Dispose() => Units.Dispose();
+    }
+
+    /// <summary>Every live building in the sim world, as <c>WorldStateManager.FillBuildingViews</c> reports them.</summary>
+    private static void SimBuildings(SimHarness sim, List<BuildingView> views)
+    {
+        using EntityQuery q = sim.Em.CreateEntityQuery(typeof(BuildingData), typeof(HealthComponent), typeof(LocalTransform));
+        using NativeArray<Entity> entities = q.ToEntityArray(Allocator.Temp);
+        foreach (Entity e in entities)
+        {
+            BuildingData building = sim.Em.GetComponentData<BuildingData>(e);
+            HealthComponent health = sim.Em.GetComponentData<HealthComponent>(e);
+            if (health.currentHealth <= 0f) continue;
+            float2 p = sim.Em.GetComponentData<LocalTransform>(e).Position.xy;
+            views.Add(new BuildingView
+            {
+                Id = building.id, OwnerId = building.ownerId, Type = building.buildingType, Anchor = (int2)math.round(p),
+                Health = (int)math.ceil(health.currentHealth), MaxHealth = (int)math.ceil(health.maxHealth),
+                Hidden = building.buildingType == BuildingType.Bomb,
+                Progress = sim.Em.HasComponent<Construction>(e) ? (byte)0 : (byte)100,
+                Position = p,
+            });
+        }
     }
 
     private static MapStore Map()
@@ -570,5 +627,123 @@ public class LeakTests
         (List<(int owner, int[] options, int pick)> starts, Dictionary<int, int> teams) = DealSix(ffa: true);
         foreach ((int owner, _, _) in starts)
             Assert.IsEmpty(StartPickRules.TeamView(owner, starts, (a, b) => a != b && teams[a] == teams[b]), $"owner {owner}");
+    }
+
+    // ---- v0.13 Bastion ----
+
+    [Test]
+    public void ATurretsAttackReachesOnlyClientsThatMayKnowTheTurret()
+    {
+        // C's Builder sees 2 tiles: the turret 6 away shoots it from C's fog.
+        using var sim = new SimHarness(Map(), c => { c.Simulation.TargetSearchSliceTicks = 1; c.Units[UnitType.Builder].Sight = 2f; });
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        replication.CollectBuildings = list => SimBuildings(sim, list);
+        var a = new Spy(sim.Context, replication, SimHarness.OwnerA);
+        var c = new Spy(sim.Context, replication, OwnerC);
+        foreach (int owner in new[] { SimHarness.OwnerA, OwnerC }) replication.SetVirtualView(owner, new int2(0, 0), new int2(95, 95));
+        int turret = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.GunTurret, new int2(20, 20), complete: true);
+        int[] victim = sim.Spawn(OwnerC, new float2(26.5f, 20.5f), UnitType.Builder);
+        for (int t = 0; t < 30; t++) sim.Tick(); // about four shots: the Builder survives
+
+        Assert.Less(sim.UnitById(victim[0]).Health, sim.Config.GetUnit(UnitType.Builder).Health, "the turret hit C's Builder");
+        int index = NetIdAllocator.IndexOf(victim[0]);
+        Assert.IsTrue(c.Units.IsKnown(index) && c.Units.Health01(index) < 1f, "C learns the damage through its own unit's health");
+        Assert.AreEqual(0, c.BuildingAttacks, "but never the attack event");
+        Assert.IsFalse(c.Buildings.Entries.ContainsKey(turret), "nor the turret");
+        Assert.Greater(a.BuildingAttacks, 0, "the owner sees its turret fire");
+        CollectionAssert.AreEquivalent(new[] { turret }, a.Attackers);
+        foreach (Spy spy in new[] { a, c }) { CollectionAssert.IsEmpty(spy.Failures, $"owner {spy.Owner}"); spy.Dispose(); }
+    }
+
+    [Test]
+    public void ATurretsAttackIsSentOnceItsTargetsSideSeesTheTurret()
+    {
+        using var sim = new SimHarness(Map(), c => c.Simulation.TargetSearchSliceTicks = 1);
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        replication.CollectBuildings = list => SimBuildings(sim, list);
+        var c = new Spy(sim.Context, replication, OwnerC);
+        replication.SetVirtualView(OwnerC, new int2(0, 0), new int2(95, 95));
+        int turret = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.GunTurret, new int2(20, 20), complete: true);
+        sim.Spawn(OwnerC, new float2(26.5f, 20.5f), UnitType.Heavy); // sight 7: sees the turret 6 away, outside its own range 5
+        for (int t = 0; t < 60; t++) sim.Tick();
+        Assert.Greater(c.BuildingAttacks, 0, "C sees the turret, so it is told the turret fired");
+        CollectionAssert.AreEquivalent(new[] { turret }, c.Attackers);
+        CollectionAssert.IsEmpty(c.Failures);
+        c.Dispose();
+    }
+
+    /// <summary>
+    /// A's Jammer at (30, 30) (radius 12) with A's and B's units inside it; C's Tank 6 tiles from them (sight 8,
+    /// JamSight 3): without the jam, C would see both units.
+    /// </summary>
+    private static void JammedArea(SimHarness sim, ReplicationService replication, out int jammer, out int[] aUnit, out int[] bUnit, out int[] cTank)
+    {
+        sim.Context.TeamResolver = owner => owner == OwnerC ? 1 : owner == SimHarness.OwnerB ? 2 : 0; // three sides
+        replication.CollectBuildings = list => SimBuildings(sim, list);
+        jammer = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Jammer, new int2(30, 30), complete: true);
+        aUnit = sim.Spawn(SimHarness.OwnerA, new float2(32.5f, 34.5f), UnitType.Builder);
+        bUnit = sim.Spawn(SimHarness.OwnerB, new float2(33.5f, 27.5f), UnitType.Builder); // a third player's unit in the area
+        cTank = sim.Spawn(OwnerC, new float2(38.5f, 30.5f), UnitType.Tank);
+    }
+
+    [Test]
+    public void NothingInAJamBeyondJamSightReachesTheEnemyClient()
+    {
+        using var sim = new SimHarness(Map(), c => c.Simulation.TargetSearchSliceTicks = 1);
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        var spy = new Spy(sim.Context, replication, OwnerC);
+        replication.SetVirtualView(OwnerC, new int2(0, 0), new int2(95, 95));
+        JammedArea(sim, replication, out int jammer, out int[] aUnit, out int[] bUnit, out int[] cUnit);
+        sim.Tick();
+        int2 tile = new int2(33, 33);
+        int tileIndex = sim.Map.Grid.Index(tile);
+        for (int t = 0; t < 40; t++)
+        {
+            if (t == 10) sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.SetTile, Tile = tile, TileType = TileType.Wall });
+            sim.Tick();
+        }
+        sim.Em.CompleteAllTrackedJobs();
+        SimData data = sim.Context.Data;
+        int gridC = sim.Context.VisionOf(OwnerC);
+        Assert.IsTrue(data.Jammed(gridC, new float2(32.5f, 34.5f)), "the area is jammed for C");
+        Assert.IsFalse(spy.OthersKnown.Contains(aUnit[0]), "no record of the Jammer owner's unit");
+        Assert.IsFalse(spy.OthersKnown.Contains(bUnit[0]), "nor of a third player's unit in the area");
+        Assert.IsFalse(spy.Buildings.Entries.ContainsKey(jammer), "nor of the Jammer, not even a ghost");
+        Assert.AreEqual((byte)TileType.Ground, spy.Terrain.Tiles[tileIndex], "nor of a tile that changed in the jam");
+        var blasts = new List<float2> { new float2(32.5f, 34.5f) };
+        Assert.IsNull(VisibilityRules.SeenBlasts(data, gridC, blasts, new int2(0, 0), new int2(95, 95)), "nor an explosion there");
+
+        var pings = new List<Alert>();
+        var radars = new RadarService(0f, 0f);
+        var radar = new RadarView { Id = 999, OwnerId = OwnerC, Tile = new int2(40, 30), Centre = new float2(40f, 30f), Radius = 20f };
+        for (int i = 0; i < 3; i++) radars.Update(data, sim.Context.Clock.UnitCount, new[] { radar }, i, (o, alert) => pings.Add(alert));
+        CollectionAssert.IsEmpty(pings, "nor a Radar ping: every contact is jammed");
+        CollectionAssert.IsEmpty(spy.Failures);
+
+        // Within JamSight the jam lets C see: the test isn't passing by accident.
+        sim.Teleport(cUnit[0], new float2(34.5f, 34.5f));
+        for (int t = 0; t < 12; t++) sim.Tick();
+        Assert.IsTrue(spy.OthersKnown.Contains(aUnit[0]), "2 tiles away: seen");
+        CollectionAssert.IsEmpty(spy.Failures);
+        spy.Dispose();
+    }
+
+    [Test]
+    public void AJammedTurretsAttackOnAnEnemyNeverReachesIt()
+    {
+        using var sim = new SimHarness(Map(), c => c.Simulation.TargetSearchSliceTicks = 1);
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        replication.CollectBuildings = list => SimBuildings(sim, list);
+        var spy = new Spy(sim.Context, replication, OwnerC);
+        replication.SetVirtualView(OwnerC, new int2(0, 0), new int2(95, 95));
+        sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Jammer, new int2(30, 30), complete: true);
+        int turret = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.GunTurret, new int2(30, 34), complete: true);
+        int[] victim = sim.Spawn(OwnerC, new float2(36.5f, 34.5f), UnitType.Heavy); // 6 from the turret: sees it but for the jam
+        for (int t = 0; t < 60; t++) sim.Tick();
+        Assert.Less(sim.UnitById(victim[0]).Health, sim.Config.GetUnit(UnitType.Heavy).Health, "the turret hit C's Heavy");
+        Assert.AreEqual(0, spy.BuildingAttacks, "C never learns the jammed turret fired");
+        Assert.IsFalse(spy.Buildings.Entries.ContainsKey(turret));
+        CollectionAssert.IsEmpty(spy.Failures);
+        spy.Dispose();
     }
 }

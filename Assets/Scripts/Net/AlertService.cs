@@ -45,22 +45,26 @@ public sealed class AlertService
     /// </summary>
     public void CollectDamage(SimData data, int unitCount, Func<int, (bool found, int owner, int2 tile)> building, double now)
     {
-        if (data.AttackEvents.Length == 0) return;
+        if (data.AttackEvents.Length == 0 && data.BuildingAttackEvents.Length == 0) return;
         damaged.Clear();
         seenTargets.Clear();
-        foreach (int2 attack in data.AttackEvents)
-        {
-            int target = attack.y;
-            if (!seenTargets.Add(target)) continue;
-            int slot = data.SlotOf(target, unitCount);
-            if (slot >= 0) damaged.Add((data.OwnerId[slot], (int2)math.floor(data.Positions[slot])));
-            else
-            {
-                (bool found, int owner, int2 tile) = building(target);
-                if (found) damaged.Add((owner, tile));
-            }
-        }
+        foreach (int2 attack in data.AttackEvents) Damaged(data, unitCount, building, attack.y);
+        // A turret's victims are attacked like any other (v0.13); a turret being hit is a building target above.
+        foreach (int2 attack in data.BuildingAttackEvents) Damaged(data, unitCount, building, attack.y);
         AlertRules.UnderAttack(damaged, throttle, now, add);
+    }
+
+    /// <summary>Adds a hit target's own owner and tile, once per target.</summary>
+    private void Damaged(SimData data, int unitCount, Func<int, (bool found, int owner, int2 tile)> building, int target)
+    {
+        if (!seenTargets.Add(target)) return;
+        int slot = data.SlotOf(target, unitCount);
+        if (slot >= 0) damaged.Add((data.OwnerId[slot], (int2)math.floor(data.Positions[slot])));
+        else
+        {
+            (bool found, int owner, int2 tile) = building(target);
+            if (found) damaged.Add((owner, tile));
+        }
     }
 
     /// <summary>Sends each player their queued alerts.</summary>

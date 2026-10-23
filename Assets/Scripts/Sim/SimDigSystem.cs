@@ -128,7 +128,7 @@ namespace WAR2D.Sim
                     if ((TileType)Tiles[tile] == TileType.PlayerWall)
                     {
                         if (Cooldown[i] > 0f) continue;
-                        float damage = DamageByType[Digger] * WAR2D.Rules.DamageTable.Get(DamageTable, Digger, TargetClass.Wall);
+                        float damage = DamageByType[Digger] * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(Digger), TargetClass.Wall);
                         WallDamage.Enqueue(new TileWork { Tile = tile, Amount = damage, OwnerId = OwnerId[i] });
                         Cooldown[i] = CooldownByType[Digger];
                         continue;

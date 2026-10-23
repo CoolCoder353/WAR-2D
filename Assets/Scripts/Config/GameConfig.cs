@@ -242,6 +242,10 @@ namespace Config
         public float RadarClearSeconds;
         /// <summary>Least seconds between two pings from one Radar.</summary>
         public float RadarAlertCooldownSeconds;
+        /// <summary>Radius in tiles a complete, paid Jammer jams for owners its owner doesn't share vision with (v0.13).</summary>
+        public float JamRadius;
+        /// <summary>Tiles from which such an owner's sources still see a jammed fog cell (less than <see cref="JamRadius"/>).</summary>
+        public float JamSight;
     }
 
     /// <summary>Alert tuning.</summary>
@@ -274,15 +278,28 @@ namespace Config
         public float RouteTolerance;
     }
 
-    /// <summary>Damage multipliers keyed by attacker unit type and target class.</summary>
+    /// <summary>Damage multipliers keyed by attacker (unit or building) type and target class.</summary>
     public class DamageTableConfig
     {
-        /// <summary>Multipliers read from the &lt;DamageTable&gt; entries.</summary>
+        /// <summary>Multipliers read from the &lt;DamageTable&gt; entries for unit attackers.</summary>
         public Dictionary<(UnitType, TargetClass), float> Entries = new Dictionary<(UnitType, TargetClass), float>();
+        /// <summary>Multipliers read from the &lt;DamageTable&gt; entries for building attackers (v0.13: the Gun turret).</summary>
+        public Dictionary<(BuildingType, TargetClass), float> BuildingEntries = new Dictionary<(BuildingType, TargetClass), float>();
 
         /// <summary>The multiplier for an attacker hitting a target class; 1 when no entry exists.</summary>
         public float Multiplier(UnitType attacker, TargetClass target)
             => Entries.TryGetValue((attacker, target), out float m) ? m : 1f;
+
+        /// <summary>The multiplier for a building attacker hitting a target class; 1 when no entry exists.</summary>
+        public float Multiplier(BuildingType attacker, TargetClass target)
+            => BuildingEntries.TryGetValue((attacker, target), out float m) ? m : 1f;
+
+        /// <summary>True when the table has at least one entry for the building attacker.</summary>
+        public bool HasRow(BuildingType attacker)
+        {
+            foreach (var key in BuildingEntries.Keys) if (key.Item1 == attacker) return true;
+            return false;
+        }
     }
 
     /// <summary>One unit type's stats.</summary>
@@ -337,6 +354,15 @@ namespace Config
         public float RunningCost;
         /// <summary>Sight radius in tiles.</summary>
         public float Sight;
+        /// <summary>Damage per attack before the damage table; 0 for a building that doesn't attack (v0.13).</summary>
+        public int Damage;
+        /// <summary>Attack range in tiles (attackers only).</summary>
+        public float Range;
+        /// <summary>Seconds between attacks (attackers only).</summary>
+        public float AttackInterval;
+
+        /// <summary>True for a building that attacks (<see cref="Damage"/> &gt; 0): the Gun turret.</summary>
+        public bool IsAttacker => Damage > 0;
 
         /// <summary>The footprint in tiles.</summary>
         public int2 Size => new int2(Width, Height);

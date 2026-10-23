@@ -204,6 +204,10 @@ namespace Config
                 config.Siege.BlastDamage = Float(siege, "BlastDamage", s, errors, min: 0, max: 100000);
                 config.Siege.RadarClearSeconds = Float(siege, "RadarClearSeconds", s, errors, min: 0, max: 600);
                 config.Siege.RadarAlertCooldownSeconds = Float(siege, "RadarAlertCooldownSeconds", s, errors, min: 0, max: 600);
+                config.Siege.JamRadius = Float(siege, "JamRadius", s, errors, min: 0.5f, max: 64);
+                config.Siege.JamSight = Float(siege, "JamSight", s, errors, min: 0.5f, max: 32);
+                if (config.Siege.JamSight >= config.Siege.JamRadius)
+                    errors.Add($"Siege: <JamSight> {config.Siege.JamSight} must be less than <JamRadius> {config.Siege.JamRadius}.");
             }
 
             XmlNode audio = Require(root, "Audio", errors);
@@ -223,6 +227,7 @@ namespace Config
             }
 
             var explicitEntries = new HashSet<(UnitType, TargetClass)>();
+            var explicitBuildingEntries = new HashSet<(BuildingType, TargetClass)>();
             XmlNode damage = Require(root, "DamageTable", errors);
             if (damage != null)
             {
@@ -230,31 +235,30 @@ namespace Config
                 {
                     string attackerName = node.Attributes?["attacker"]?.Value;
                     string targetName = node.Attributes?["target"]?.Value;
-                    bool attackerOk = Enum.TryParse(attackerName, false, out UnitType attacker) && attacker != UnitType.None
-                                      && Enum.IsDefined(typeof(UnitType), attacker);
+                    // The attacker is a unit type or (v0.13) a building type; the names don't overlap.
+                    bool unitAttacker = Enum.TryParse(attackerName, false, out UnitType attacker) && attacker != UnitType.None
+                                        && Enum.IsDefined(typeof(UnitType), attacker);
+                    BuildingType building = BuildingType.None;
+                    bool buildingAttacker = !unitAttacker && Enum.TryParse(attackerName, false, out building) && building != BuildingType.None
+                                            && Enum.IsDefined(typeof(BuildingType), building);
                     // "Unit" is shorthand for both unit armour classes.
                     bool bothUnits = targetName == "Unit";
                     TargetClass target = TargetClass.LightUnit;
                     bool targetOk = bothUnits || (Enum.TryParse(targetName, false, out target) && Enum.IsDefined(typeof(TargetClass), target));
-                    if (!attackerOk) { errors.Add($"DamageTable: unknown attacker type \"{attackerName}\"."); continue; }
+                    if (!unitAttacker && !buildingAttacker) { errors.Add($"DamageTable: unknown attacker type \"{attackerName}\"."); continue; }
                     if (!targetOk) { errors.Add($"DamageTable: unknown target class \"{targetName}\"."); continue; }
                     string text = node.InnerText?.Trim();
                     if (!float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out float m) || float.IsNaN(m) || m < 0 || m > 100)
                     {
-                        errors.Add($"DamageTable: multiplier \"{text}\" for {attacker} vs {target} must be a number in [0, 100].");
+                        errors.Add($"DamageTable: multiplier \"{text}\" for {attackerName} vs {targetName} must be a number in [0, 100].");
                         continue;
                     }
-                    if (bothUnits)
+                    if (buildingAttacker)
                     {
-                        // An explicit LightUnit or HeavyUnit entry wins over the shorthand, whatever the order.
-                        if (!explicitEntries.Contains((attacker, TargetClass.LightUnit))) config.Damage.Entries[(attacker, TargetClass.LightUnit)] = m;
-                        if (!explicitEntries.Contains((attacker, TargetClass.HeavyUnit))) config.Damage.Entries[(attacker, TargetClass.HeavyUnit)] = m;
+                        AddEntry(config.Damage.BuildingEntries, explicitBuildingEntries, building, bothUnits, target, m);
+                        continue;
                     }
-                    else
-                    {
-                        config.Damage.Entries[(attacker, target)] = m;
-                        explicitEntries.Add((attacker, target));
-                    }
+                    AddEntry(config.Damage.Entries, explicitEntries, attacker, bothUnits, target, m);
                 }
             }
 
@@ -270,7 +274,7 @@ namespace Config
                         continue;
                     }
                     string ctx = $"Building {type}";
-                    config.Buildings[type] = new BuildingConfig
+                    var building = new BuildingConfig
                     {
                         Health = Int(node, "Health", ctx, errors, min: 1),
                         Width = Int(node, "Width", ctx, errors, min: 1, max: 16),
@@ -279,7 +283,17 @@ namespace Config
                         RunningCost = Float(node, "RunningCost", ctx, errors, min: 0),
                         Sight = Float(node, "Sight", ctx, errors, min: 0, max: 32),
                     };
+                    Weapon(node, ctx, errors, building);
+                    config.Buildings[type] = building;
                 }
+            }
+
+            // A building that attacks needs its own damage-table row; a building that doesn't may not have one.
+            foreach (var pair in config.Buildings)
+            {
+                bool row = config.Damage.HasRow(pair.Key);
+                if (pair.Value.IsAttacker && !row) errors.Add($"DamageTable: building attacker {pair.Key} has no <Entry attacker=\"{pair.Key}\">.");
+                if (!pair.Value.IsAttacker && row) errors.Add($"DamageTable: {pair.Key} has entries but does not attack (no <Damage> above 0).");
             }
 
             foreach (UnitType type in Enum.GetValues(typeof(UnitType)))
@@ -294,6 +308,43 @@ namespace Config
             }
 
             return config;
+        }
+
+        /// <summary>Adds one damage-table entry; the "Unit" shorthand sets both unit classes unless one was given explicitly.</summary>
+        private static void AddEntry<T>(Dictionary<(T, TargetClass), float> entries, HashSet<(T, TargetClass)> explicitEntries, T attacker, bool bothUnits, TargetClass target, float m)
+        {
+            if (bothUnits)
+            {
+                // An explicit LightUnit or HeavyUnit entry wins over the shorthand, whatever the order.
+                if (!explicitEntries.Contains((attacker, TargetClass.LightUnit))) entries[(attacker, TargetClass.LightUnit)] = m;
+                if (!explicitEntries.Contains((attacker, TargetClass.HeavyUnit))) entries[(attacker, TargetClass.HeavyUnit)] = m;
+            }
+            else
+            {
+                entries[(attacker, target)] = m;
+                explicitEntries.Add((attacker, target));
+            }
+        }
+
+        /// <summary>
+        /// A building's optional weapon (v0.13): &lt;Damage&gt;, &lt;Range&gt; and &lt;AttackInterval&gt;, all three or none.
+        /// Damage above 0 makes it an attacker, which then needs a positive range and interval.
+        /// </summary>
+        private static void Weapon(XmlNode node, string ctx, List<string> errors, BuildingConfig building)
+        {
+            int present = (node.SelectSingleNode("Damage") != null ? 1 : 0) + (node.SelectSingleNode("Range") != null ? 1 : 0) + (node.SelectSingleNode("AttackInterval") != null ? 1 : 0);
+            if (present == 0) return;
+            if (present != 3)
+            {
+                errors.Add($"{ctx}: a weapon needs all of <Damage>, <Range> and <AttackInterval>, or none.");
+                return;
+            }
+            building.Damage = Int(node, "Damage", ctx, errors, min: 0, max: 100000);
+            building.Range = Float(node, "Range", ctx, errors, max: 32);
+            building.AttackInterval = Float(node, "AttackInterval", ctx, errors, max: 600);
+            if (!building.IsAttacker) return;
+            if (building.Range <= 0f) errors.Add($"{ctx}: <Range> {building.Range} must be above 0 for a building that attacks.");
+            if (building.AttackInterval <= 0f) errors.Add($"{ctx}: <AttackInterval> {building.AttackInterval} must be above 0 for a building that attacks.");
         }
 
         /// <summary>The required &lt;Armour&gt; text: Light or Heavy.</summary>

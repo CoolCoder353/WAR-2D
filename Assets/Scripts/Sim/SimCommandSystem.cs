@@ -57,6 +57,7 @@ namespace WAR2D.Sim
             data.PendingOrders.Clear();
             data.PendingMoves.Clear();
             WriteBackBuildingDamage(data);
+            WriteBackBuildingWeapons(data);
             bool wallsChanged = ApplyWallWork(data, context) | ApplyDigDone(data, context);
             ApplyBuildingWork(data, context);
             if (clock.Running)
@@ -321,6 +322,28 @@ namespace WAR2D.Sim
             }
         }
 
+        /// <summary>
+        /// Keeps each attacker building's target (as a stable id, see <c>BuildingAttackJob</c>) and cooldown on its
+        /// <see cref="BuildingWeapon"/>, since the next gather refills the slots in a new order.
+        /// </summary>
+        private void WriteBackBuildingWeapons(SimData data)
+        {
+            int count = data.BuildingCount[0];
+            for (int i = 0; i < data.AttackerBuildings.Length; i++)
+            {
+                int b = data.AttackerBuildings[i];
+                if ((uint)b >= (uint)count) continue;
+                Entity entity = data.BuildingEntities[b];
+                if (!EntityManager.Exists(entity) || !EntityManager.HasComponent<BuildingWeapon>(entity)) continue;
+                EntityManager.SetComponentData(entity, new BuildingWeapon
+                {
+                    TargetId = data.BuildingTarget[b],
+                    TargetKind = data.BuildingTargetKind[b],
+                    Cooldown = data.BuildingCooldown[b],
+                });
+            }
+        }
+
         private void Spawn(SimData data, SimContext context, in SimCommand command)
         {
             int slot = context.SlotOf(command.OwnerId);
@@ -510,11 +533,18 @@ namespace WAR2D.Sim
                     break;
                 case BuildingType.Bomb:
                 case BuildingType.Radar:
-                    break; // no components of their own: their stages read the building's slot flags
+                case BuildingType.GunTurret:
+                    break; // no components of their own: their stages read the building's slot flags (the turret's weapon is added below)
+                case BuildingType.Jammer:
+                    EntityManager.AddComponent<Jammer>(building);
+                    break;
                 default:
                     WarLog.Error(LogCategory.Sim, $"no components for building type {buildingData.buildingType}");
                     break;
             }
+
+            // Any building with a weapon in the config attacks once complete (v0.13: the Gun turret).
+            if (buildingConfig.IsAttacker) EntityManager.AddComponentData(building, new BuildingWeapon { TargetId = -1 });
 
             context.RaiseBuildingCreated(buildingData.id, building);
         }

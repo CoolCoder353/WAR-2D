@@ -165,6 +165,42 @@ public class ReplicationTests
     }
 
     [Test]
+    public void AttackEventsCarryTheAttackerKind()
+    {
+        using var bytes = new NativeList<byte>(256, Allocator.Temp);
+        var sink = new NativeSink(bytes);
+        int building = Rig.Id(1000, 5);
+        using var attacks = new NativeArray<AttackEvent>(new[]
+        {
+            new AttackEvent { AttackerIndex = 9, TargetId = Rig.Id(2) },
+            new AttackEvent { AttackerKind = AttackerKinds.Building, AttackerId = building, TargetId = Rig.Id(3) },
+            new AttackEvent { AttackerIndex = 4, TargetId = 77 }, // the unit delta chain skips the building event
+            new AttackEvent { AttackerKind = AttackerKinds.Building, AttackerId = int.MaxValue, TargetId = 0 },
+        }, Allocator.Temp);
+        Messages.EncodeAttack(ref sink, attacks);
+        NetworkReader reader = Reader(bytes);
+        var a = new List<AttackEvent>();
+        Messages.DecodeAttack(reader, a);
+        Assert.AreEqual(0, reader.Remaining);
+        Assert.AreEqual((AttackerKinds.Unit, 9, Rig.Id(2)), (a[0].AttackerKind, a[0].AttackerIndex, a[0].TargetId));
+        Assert.AreEqual((AttackerKinds.Building, building, Rig.Id(3)), (a[1].AttackerKind, a[1].AttackerId, a[1].TargetId));
+        Assert.AreEqual((AttackerKinds.Unit, 4, 77), (a[2].AttackerKind, a[2].AttackerIndex, a[2].TargetId));
+        Assert.AreEqual((AttackerKinds.Building, int.MaxValue, 0), (a[3].AttackerKind, a[3].AttackerId, a[3].TargetId));
+    }
+
+    [Test]
+    public void ABuildingAttackWithIdZeroIsRefused()
+    {
+        var writer = new NetworkWriter();
+        writer.WriteByte((byte)MessageType.Attack);
+        VarInt.Write(writer, 1);
+        VarInt.Write(writer, 1u); // building kind, id 0
+        VarInt.Write(writer, 5);
+        var reader = new NetworkReader(writer.ToArraySegment());
+        Assert.Throws<System.IO.InvalidDataException>(() => Messages.DecodeAttack(reader, new List<AttackEvent>()));
+    }
+
+    [Test]
     public void ClientPredictionMatchesTheServerBitForBit()
     {
         using var rig = new Rig(4);

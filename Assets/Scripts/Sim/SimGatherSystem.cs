@@ -35,6 +35,7 @@ namespace WAR2D.Sim
             clock.ValueRW.UnitCount = count;
 
             // Buildings: no tick job touches building components, so the main thread reads them here.
+            data.AttackerBuildings.Clear();
             int b = 0;
             foreach (var (building, health, transform, entity) in
                      SystemAPI.Query<RefRO<BuildingData>, RefRO<HealthComponent>, RefRO<LocalTransform>>().WithEntityAccess())
@@ -51,7 +52,24 @@ namespace WAR2D.Sim
                 byte flags = underConstruction ? BuildingFlags.UnderConstruction : (byte)0;
                 if (building.ValueRO.buildingType == BuildingType.Radar && !underConstruction) flags |= BuildingFlags.SeesThroughWalls;
                 if (building.ValueRO.buildingType == BuildingType.Bomb) flags |= BuildingFlags.Hidden;
+                if (SystemAPI.HasComponent<UpkeepComponent>(entity) && SystemAPI.GetComponent<UpkeepComponent>(entity).unpaid) flags |= BuildingFlags.Unpaid;
+                if (!underConstruction && SystemAPI.HasComponent<Jammer>(entity)) flags |= BuildingFlags.Jams;
                 data.BuildingFlag[b] = flags;
+                // Weapon state (v0.13): every slot is written, so a reused slot never inherits a target.
+                if (SystemAPI.HasComponent<BuildingWeapon>(entity))
+                {
+                    BuildingWeapon weapon = SystemAPI.GetComponent<BuildingWeapon>(entity);
+                    data.BuildingTarget[b] = weapon.TargetId;
+                    data.BuildingTargetKind[b] = weapon.TargetKind;
+                    data.BuildingCooldown[b] = weapon.Cooldown;
+                    if (!underConstruction && health.ValueRO.currentHealth > 0f) data.AttackerBuildings.Add(b);
+                }
+                else
+                {
+                    data.BuildingTarget[b] = -1;
+                    data.BuildingTargetKind[b] = 0;
+                    data.BuildingCooldown[b] = 0f;
+                }
                 data.BuildingAnchor[b] = (int2)math.round(transform.ValueRO.Position.xy);
                 data.BuildingSize[b] = (uint)buildingType < (uint)data.BuildingSizeByType.Length ? data.BuildingSizeByType[buildingType] : new int2(1, 1);
                 data.BuildingMaxHealth[b] = health.ValueRO.maxHealth;

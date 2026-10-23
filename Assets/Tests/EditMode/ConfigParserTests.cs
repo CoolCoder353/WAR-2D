@@ -19,10 +19,10 @@ public class ConfigParserTests
   <MenuBattle><UnitsPerArmy>1500</UnitsPerArmy><MapSize>512</MapSize><Seed>7</Seed></MenuBattle>
   <Gifting><CooldownSeconds>5</CooldownSeconds></Gifting>
   <Alerts><ThrottleSeconds>10</ThrottleSeconds><AreaTiles>32</AreaTiles><ShowSeconds>8</ShowSeconds></Alerts>
-  <Siege><BuildPower>25</BuildPower><DemolishRefund>0.5</DemolishRefund><RepairCostPerHealth>0.2</RepairCostPerHealth><WorkReach>1.6</WorkReach><DigTime>1.5</DigTime><GemPayout>150</GemPayout><WallCost>5</WallCost><WallHealth>150</WallHealth><MaxWallLine>64</MaxWallLine><BlastRadius>2.5</BlastRadius><BlastDamage>200</BlastDamage><RadarClearSeconds>5</RadarClearSeconds><RadarAlertCooldownSeconds>30</RadarAlertCooldownSeconds></Siege>
+  <Siege><BuildPower>25</BuildPower><DemolishRefund>0.5</DemolishRefund><RepairCostPerHealth>0.2</RepairCostPerHealth><WorkReach>1.6</WorkReach><DigTime>1.5</DigTime><GemPayout>150</GemPayout><WallCost>5</WallCost><WallHealth>150</WallHealth><MaxWallLine>64</MaxWallLine><BlastRadius>2.5</BlastRadius><BlastDamage>200</BlastDamage><RadarClearSeconds>5</RadarClearSeconds><RadarAlertCooldownSeconds>30</RadarAlertCooldownSeconds><JamRadius>12</JamRadius><JamSight>3</JamSight></Siege>
   <Audio><BattleDeathsPerSecond>3</BattleDeathsPerSecond><BattleHoldSeconds>20</BattleHoldSeconds></Audio>
   <Replays><Enabled>1</Enabled><MaxMegabytes>512</MaxMegabytes><SendKilobytesPerSecond>1024</SendKilobytesPerSecond><KeepCount>50</KeepCount></Replays>
-  <DamageTable><Entry attacker=""Tank"" target=""Unit"">1.0</Entry><Entry attacker=""Tank"" target=""Building"">1.0</Entry><Entry attacker=""Tank"" target=""Wall"">0.5</Entry><Entry attacker=""Digger"" target=""Unit"">0.5</Entry><Entry attacker=""Digger"" target=""Wall"">6</Entry></DamageTable>
+  <DamageTable><Entry attacker=""Tank"" target=""Unit"">1.0</Entry><Entry attacker=""Tank"" target=""Building"">1.0</Entry><Entry attacker=""Tank"" target=""Wall"">0.5</Entry><Entry attacker=""Digger"" target=""Unit"">0.5</Entry><Entry attacker=""Digger"" target=""Wall"">6</Entry><Entry attacker=""GunTurret"" target=""Unit"">1.5</Entry><Entry attacker=""GunTurret"" target=""HeavyUnit"">0.4</Entry><Entry attacker=""GunTurret"" target=""Building"">0.5</Entry><Entry attacker=""GunTurret"" target=""Wall"">0.5</Entry></DamageTable>
   <Units>
     <Unit type=""Tank""><Health>100</Health><Damage>10</Damage><Range>5</Range><AttackInterval>1</AttackInterval><MoveSpeed>5</MoveSpeed><UpfrontCost>50</UpfrontCost><RunningCost>2</RunningCost><Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>8</Sight><Armour>Light</Armour><BuildSeconds>1</BuildSeconds></Unit>
     <Unit type=""Builder""><Health>60</Health><Damage>0</Damage><Range>1</Range><AttackInterval>1</AttackInterval><MoveSpeed>5</MoveSpeed><UpfrontCost>60</UpfrontCost><RunningCost>2</RunningCost><Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>6</Sight><Armour>Light</Armour><BuildSeconds>2</BuildSeconds></Unit>
@@ -42,6 +42,8 @@ public class ConfigParserTests
     <Building type=""Radar""><Health>200</Health><Width>2</Width><Height>2</Height><UpfrontCost>250</UpfrontCost><RunningCost>5</RunningCost><Sight>20</Sight></Building>
     <Building type=""HeavyFactory""><Health>500</Health><Width>3</Width><Height>3</Height><UpfrontCost>400</UpfrontCost><RunningCost>30</RunningCost><Sight>6</Sight></Building>
     <Building type=""SiegeWorkshop""><Health>300</Health><Width>2</Width><Height>2</Height><UpfrontCost>250</UpfrontCost><RunningCost>20</RunningCost><Sight>6</Sight></Building>
+    <Building type=""GunTurret""><Health>350</Health><Width>1</Width><Height>1</Height><UpfrontCost>150</UpfrontCost><RunningCost>4</RunningCost><Sight>8</Sight><Damage>8</Damage><Range>7</Range><AttackInterval>0.4</AttackInterval></Building>
+    <Building type=""Jammer""><Health>200</Health><Width>2</Width><Height>2</Height><UpfrontCost>200</UpfrontCost><RunningCost>6</RunningCost><Sight>6</Sight></Building>
   </Buildings>
 </GameConfig>";
 
@@ -300,5 +302,120 @@ public class ConfigParserTests
         var errors = new List<string>();
         ConfigParser.Parse(xml, errors);
         Assert.That(errors, Has.Some.Contains("Ship"));
+    }
+
+    // ---- v0.13 Bastion ----
+
+    private const string TurretWeapon = "<Damage>8</Damage><Range>7</Range><AttackInterval>0.4</AttackInterval>";
+
+    [Test]
+    public void BuildingWeaponsAndTheJamParse()
+    {
+        var errors = new List<string>();
+        GameConfigData c = ConfigParser.Parse(ValidXml, errors);
+        Assert.That(errors, Is.Empty);
+        BuildingConfig turret = c.GetBuilding(BuildingType.GunTurret);
+        Assert.AreEqual((8, 7f, 0.4f), (turret.Damage, turret.Range, turret.AttackInterval));
+        Assert.IsTrue(turret.IsAttacker);
+        Assert.IsFalse(c.GetBuilding(BuildingType.Jammer).IsAttacker, "no weapon block: not an attacker");
+        Assert.AreEqual(0, c.GetBuilding(BuildingType.Radar).Damage);
+        Assert.AreEqual((12f, 3f), (c.Siege.JamRadius, c.Siege.JamSight));
+    }
+
+    [TestCase("<Damage>8</Damage><Range>7</Range>")]
+    [TestCase("<Damage>8</Damage>")]
+    [TestCase("<Range>7</Range><AttackInterval>0.4</AttackInterval>")]
+    public void APartialWeaponBlockIsAnError(string partial)
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(ValidXml.Replace(TurretWeapon, partial), errors);
+        Assert.That(errors, Has.Some.Matches<string>(e => e.Contains("GunTurret") && e.Contains("all of")));
+    }
+
+    [TestCase("<Damage>8</Damage><Range>0</Range><AttackInterval>0.4</AttackInterval>", "Range")]
+    [TestCase("<Damage>8</Damage><Range>7</Range><AttackInterval>0</AttackInterval>", "AttackInterval")]
+    [TestCase("<Damage>8</Damage><Range>-1</Range><AttackInterval>0.4</AttackInterval>", "Range")]
+    public void AnAttackerNeedsAPositiveRangeAndInterval(string weapon, string field)
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(ValidXml.Replace(TurretWeapon, weapon), errors);
+        Assert.That(errors, Has.Some.Contains(field));
+    }
+
+    [Test]
+    public void AZeroDamageWeaponIsNotAnAttacker()
+    {
+        var errors = new List<string>();
+        string xml = ValidXml.Replace(TurretWeapon, "<Damage>0</Damage><Range>0</Range><AttackInterval>0</AttackInterval>");
+        xml = Regex.Replace(xml, @"<Entry attacker=""GunTurret""[^>]*>[^<]*</Entry>", "");
+        GameConfigData c = ConfigParser.Parse(xml, errors);
+        Assert.That(errors, Is.Empty);
+        Assert.IsFalse(c.GetBuilding(BuildingType.GunTurret).IsAttacker);
+    }
+
+    [Test]
+    public void ABuildingAttackerWithoutATableRowIsAnError()
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(Regex.Replace(ValidXml, @"<Entry attacker=""GunTurret""[^>]*>[^<]*</Entry>", ""), errors);
+        Assert.That(errors, Has.Some.Contains("building attacker GunTurret"));
+    }
+
+    [Test]
+    public void ARowForABuildingThatDoesNotAttackIsAnError()
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(ValidXml.Replace("<DamageTable>", @"<DamageTable><Entry attacker=""Jammer"" target=""Unit"">1</Entry>"), errors);
+        Assert.That(errors, Has.Some.Matches<string>(e => e.Contains("Jammer") && e.Contains("does not attack")));
+    }
+
+    [Test]
+    public void TheUnitShorthandWorksForBuildingRowsAndAnExplicitClassWins()
+    {
+        var errors = new List<string>();
+        GameConfigData c = ConfigParser.Parse(ValidXml, errors); // GunTurret: "Unit" 1.5, then HeavyUnit 0.4
+        Assert.That(errors, Is.Empty);
+        Assert.AreEqual(1.5f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.LightUnit), 1e-6f);
+        Assert.AreEqual(0.4f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.HeavyUnit), 1e-6f, "the explicit class beats the shorthand");
+        Assert.AreEqual(0.5f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.Wall), 1e-6f);
+        Assert.AreEqual(1f, c.Damage.Multiplier(UnitType.Scout, TargetClass.LightUnit), "building rows don't touch unit rows");
+    }
+
+    [TestCase("<JamSight>12</JamSight>", "JamSight")]  // not less than the radius
+    [TestCase("<JamSight>0</JamSight>", "JamSight")]
+    [TestCase("", "JamSight")]
+    public void JamSightIsRequiredAndBelowTheRadius(string replacement, string field)
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(Regex.Replace(ValidXml, "<JamSight>[^<]*</JamSight>", replacement), errors);
+        Assert.That(errors, Has.Some.Contains(field));
+    }
+
+    [TestCase("<JamRadius>0</JamRadius>")]
+    [TestCase("")]
+    public void JamRadiusIsRequiredAndPositive(string replacement)
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(Regex.Replace(ValidXml, "<JamRadius>[^<]*</JamRadius>", replacement), errors);
+        Assert.That(errors, Has.Some.Contains("JamRadius"));
+    }
+
+    [Test]
+    public void ShippedConfigHasTheBastionSpecNumbers()
+    {
+        ConfigLoader.ResetForTests();
+        GameConfigData c = ConfigLoader.LoadConfig();
+        Assert.IsTrue(ConfigLoader.IsValid);
+        BuildingConfig turret = c.GetBuilding(BuildingType.GunTurret);
+        Assert.AreEqual((350, 1, 1, 150f, 4f, 8f), (turret.Health, turret.Width, turret.Height, turret.UpfrontCost, turret.RunningCost, turret.Sight));
+        Assert.AreEqual((8, 7f, 0.4f), (turret.Damage, turret.Range, turret.AttackInterval));
+        BuildingConfig jammer = c.GetBuilding(BuildingType.Jammer);
+        Assert.AreEqual((200, 2, 2, 200f, 6f, 6f), (jammer.Health, jammer.Width, jammer.Height, jammer.UpfrontCost, jammer.RunningCost, jammer.Sight));
+        Assert.IsFalse(jammer.IsAttacker);
+        Assert.AreEqual((12f, 3f), (c.Siege.JamRadius, c.Siege.JamSight));
+        Assert.AreEqual(1.5f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.LightUnit));
+        Assert.AreEqual(0.4f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.HeavyUnit));
+        Assert.AreEqual(0.5f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.Building));
+        Assert.AreEqual(0.5f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.Wall));
     }
 }

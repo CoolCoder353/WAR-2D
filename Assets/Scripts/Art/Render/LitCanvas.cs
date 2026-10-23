@@ -50,7 +50,7 @@ namespace WAR2D.Art.Render
         /// </summary>
         public float Scale { get; set; } = 1f;
         private readonly int rw, rh;       // render pixels
-        private readonly float[] height, alpha, spec, gloss, glow, team;
+        private readonly float[] height, alpha, spec, gloss, glow, team, thick;
         private readonly Color[] albedo;
 
         /// <summary>Light direction (toward the light): from the top left and above.</summary>
@@ -72,6 +72,7 @@ namespace WAR2D.Art.Render
             gloss = new float[n];
             glow = new float[n];
             team = new float[n];
+            thick = new float[n];
             albedo = new Color[n];
         }
 
@@ -79,9 +80,11 @@ namespace WAR2D.Art.Render
         /// Draws a shape: <paramref name="sdf"/> (output pixels, negative inside) gets a flat top at
         /// <paramref name="top"/> with its rim bevelled down by <paramref name="bevelDrop"/> over
         /// <paramref name="bevel"/> pixels. Later shapes cover earlier ones. With <paramref name="stack"/> the
-        /// height adds to what's underneath (a plate on a hull) instead of replacing it.
+        /// height adds to what's underneath (a plate on a hull) instead of replacing it. A positive
+        /// <paramref name="thickness"/> makes the part float in the 3/4 view (<see cref="Render"/>'s lift): its
+        /// south wall is only that many height units deep, not a column down to the ground (a barrel, a head on a mount).
         /// </summary>
-        public void Shape(Func<float, float, float> sdf, Material m, float top, float bevel = 1.5f, float bevelDrop = 2f, bool stack = false)
+        public void Shape(Func<float, float, float> sdf, Material m, float top, float bevel = 1.5f, float bevelDrop = 2f, bool stack = false, float thickness = 0f)
         {
             float s = 1f / (Supersample * Scale);
             for (int y = 0; y < rh; y++)
@@ -101,6 +104,7 @@ namespace WAR2D.Art.Render
                 gloss[i] = m.Gloss;
                 glow[i] = m.Glow;
                 team[i] = m.Team ? 1 : 0;
+                if (!stack) thick[i] = thickness * Scale;
             }
         }
 
@@ -281,7 +285,8 @@ namespace WAR2D.Art.Render
                 int i = y * rw + x;
                 if (top[i].a <= 0 || height[i] <= 0.01f) continue;
                 int rise = Mathf.RoundToInt(height[i] * lift * Supersample);
-                for (int k = 0; k <= rise; k++)
+                int from = thick[i] > 0 ? Mathf.Max(0, rise - Mathf.RoundToInt(thick[i] * lift * Supersample)) : 0;
+                for (int k = from; k <= rise; k++)
                 {
                     int yy = y + k;
                     if (yy >= rh) break;

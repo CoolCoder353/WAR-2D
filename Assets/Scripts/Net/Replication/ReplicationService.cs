@@ -293,8 +293,9 @@ namespace WAR2D.Net.Replication
             PerfSplits.Mark(11, ref t);
             using var attacks = new NativeArray<int2>(data.AttackEvents.AsArray(), Allocator.TempJob);
             using NativeArray<AttackTarget> targets = AttackTargets(data, attacks);
+            using NativeArray<BuildingAttack> buildingAttacks = BuildingAttacks(data);
             PerfSplits.Mark(12, ref t);
-            encoder.Schedule(tick, input, attacks, targets, encodeNow, default).Complete();
+            encoder.Schedule(tick, input, attacks, targets, buildingAttacks, encodeNow, default).Complete();
             PerfSplits.Mark(13, ref t);
 
             for (int c = 0; c < MaxClients; c++)
@@ -317,7 +318,7 @@ namespace WAR2D.Net.Replication
                         SendSplit(client, SinkTick, u, us, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
                         SinkTick = tick;
                     }
-                    client.Lane.Schedule(data, tick, count, routes, attacks, targets);
+                    client.Lane.Schedule(data, tick, count, routes, attacks, targets, buildingAttacks);
                     continue;
                 }
                 client.EntersSent += interests.Entered(c).Length;
@@ -333,23 +334,37 @@ namespace WAR2D.Net.Replication
         private static NativeArray<AttackTarget> AttackTargets(SimData data, NativeArray<int2> attacks)
         {
             var targets = new NativeArray<AttackTarget>(attacks.Length, Allocator.TempJob);
-            int count = math.min(data.BuildingCount[0], data.BuildingCapacity);
+            for (int i = 0; i < attacks.Length; i++) targets[i] = BuildingOf(data, attacks[i].y);
+            return targets;
+        }
+
+        /// <summary>This tick's building attacks (v0.13), each with its attacking building and (when a building) its target.</summary>
+        private static NativeArray<BuildingAttack> BuildingAttacks(SimData data)
+        {
+            var attacks = new NativeArray<BuildingAttack>(data.BuildingAttackEvents.Length, Allocator.TempJob);
             for (int i = 0; i < attacks.Length; i++)
             {
-                int id = attacks[i].y;
-                int index = NetIdAllocator.IndexOf(id);
-                if (id <= 0 || (uint)index >= (uint)data.BuildingSlotOfIndex.Length) continue;
-                int b = data.BuildingSlotOfIndex[index];
-                if ((uint)b >= (uint)count || data.BuildingIds[b] != id) continue;
-                targets[i] = new AttackTarget
-                {
-                    Id = id,
-                    OwnerId = data.BuildingOwnerId[b],
-                    Position = data.BuildingPositions[b],
-                    Hidden = (byte)((data.BuildingFlag[b] & global::BuildingFlags.Hidden) != 0 ? 1 : 0),
-                };
+                int2 attack = data.BuildingAttackEvents[i];
+                attacks[i] = new BuildingAttack { Attacker = BuildingOf(data, attack.x), TargetId = attack.y, Target = BuildingOf(data, attack.y) };
             }
-            return targets;
+            return attacks;
+        }
+
+        /// <summary>A building as the encoder's may-know rule needs it, from the tick's building arrays; Id 0 when the id is not a live building.</summary>
+        private static AttackTarget BuildingOf(SimData data, int id)
+        {
+            int count = math.min(data.BuildingCount[0], data.BuildingCapacity);
+            int index = NetIdAllocator.IndexOf(id);
+            if (id <= 0 || (uint)index >= (uint)data.BuildingSlotOfIndex.Length) return default;
+            int b = data.BuildingSlotOfIndex[index];
+            if ((uint)b >= (uint)count || data.BuildingIds[b] != id) return default;
+            return new AttackTarget
+            {
+                Id = id,
+                OwnerId = data.BuildingOwnerId[b],
+                Position = data.BuildingPositions[b],
+                Hidden = (byte)((data.BuildingFlag[b] & global::BuildingFlags.Hidden) != 0 ? 1 : 0),
+            };
         }
 
         private readonly Dictionary<int, List<int>> fogChanges = new Dictionary<int, List<int>>();

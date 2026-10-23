@@ -241,9 +241,38 @@ namespace WAR2D.Sim
         public NativeArray<int> BuildingCellStart;
         public NativeArray<int> BuildingSorted;
 
+        // ---- building weapons (v0.13; see BuildingWeapon) ----
+        /// <summary>Damage per attack per building type (0 for a building that doesn't attack).</summary>
+        public NativeArray<float> BuildingDamageByType;
+        /// <summary>Squared attack range per building type.</summary>
+        public NativeArray<float> BuildingRangeSqByType;
+        /// <summary>Seconds between attacks per building type.</summary>
+        public NativeArray<float> BuildingIntervalByType;
+        /// <summary>
+        /// Combat target per building slot: a stable id from the gather (from <see cref="BuildingWeapon"/>), a slot
+        /// after resolution, a stable id again after the attack (for the boundary's write-back), or -1.
+        /// Every slot is refilled by the gather, so a freed or reused slot never keeps another building's target.
+        /// </summary>
+        public NativeArray<int> BuildingTarget;
+        /// <summary>What <see cref="BuildingTarget"/> names (<see cref="TargetKinds"/>).</summary>
+        public NativeArray<byte> BuildingTargetKind;
+        /// <summary>Seconds until each building slot may fire again.</summary>
+        public NativeArray<float> BuildingCooldown;
+        /// <summary>
+        /// Slots of the complete, living attacker buildings, rebuilt by the gather with the slots it fills (slots are
+        /// dense and refilled every tick, so completion, death and reuse all show up there). The turret jobs run over
+        /// this list, a few hundred at most, not <see cref="BuildingCapacity"/>.
+        /// </summary>
+        public NativeList<int> AttackerBuildings;
+
         // ---- events and edits ----
-        /// <summary>(attackerId, targetId) per attack this tick, for clients' tracers.</summary>
+        /// <summary>(attackerId, targetId) per unit attack this tick, for clients' tracers.</summary>
         public NativeList<int2> AttackEvents;
+        /// <summary>
+        /// (building id, targetId) per building attack this tick (v0.13: turrets). Kept apart from
+        /// <see cref="AttackEvents"/> so the readers of unit attacks are unchanged; the wire carries the kind.
+        /// </summary>
+        public NativeList<int2> BuildingAttackEvents;
         /// <summary>Units the lifecycle found dead this tick.</summary>
         public NativeQueue<DeathRecord> Deaths;
         /// <summary>Position to move a unit to (out of a new building's footprint), applied by the next gather.</summary>
@@ -308,6 +337,21 @@ namespace WAR2D.Sim
         /// <summary>Radar sight sources (grid, fog cell, radius in cells): stamped without a line-of-sight test.</summary>
         public NativeList<int3> RadarSources;
         /// <summary>
+        /// Per grid and fog cell (same layout as <see cref="Visible"/>), 1 where the cell is jammed for that grid: it lies
+        /// within <see cref="JamRadius"/> of a complete, paid Jammer whose owner is not the grid's and doesn't share vision
+        /// with it (v0.13). The grid's sources see a jammed cell only from within <see cref="JamSight"/>, and its Radars not at all.
+        /// </summary>
+        public NativeArray<byte> JamMask;
+        /// <summary>The jammers the mask was last built from (owner slot, anchor x, anchor y), to tell when it must be rebuilt.</summary>
+        public NativeList<int3> JamSources;
+        /// <summary>The share-vision masks the jam mask was last built with.</summary>
+        public NativeArray<ushort> JamShare;
+        /// <summary>1 forces the next vision pass to rebuild the jam mask (set at creation).</summary>
+        public NativeArray<byte> JamDirty;
+        /// <summary>Jam radius and the sight that still reaches into a jam, in tiles.</summary>
+        public float JamRadius, JamSight;
+
+        /// <summary>
         /// Indices (grid * FogCells + cell) whose <see cref="Visible"/> value changed in the last vision
         /// pass. Read by replication at <c>Settled</c>, then cleared at the boundary.
         /// </summary>
@@ -334,6 +378,10 @@ namespace WAR2D.Sim
         public bool Sees(int grid, float2 position) =>
             grid == SeesAll || (grid >= 0 && Visible[grid * FogCells + FogCellOf(position)] != 0);
 
+        /// <summary>True when <paramref name="position"/>'s fog cell is jammed for vision grid <paramref name="grid"/> (never for <see cref="SeesAll"/>).</summary>
+        public bool Jammed(int grid, float2 position) =>
+            grid >= 0 && grid < MaxOwners && JamMask[grid * FogCells + FogCellOf(position)] != 0;
+
         /// <summary>
         /// A grid value that sees everything: what replication gives a defeated player who stays to spectate
         /// (never a live one; see <c>ReplicationService.Spectating</c>).
@@ -351,6 +399,8 @@ namespace WAR2D.Sim
                 maxRange = math.max(maxRange, unit.BlastRadius > 0f ? math.max(unit.Range, unit.Sight) : unit.Range);
                 maxRadius = math.max(maxRadius, unit.Radius);
             }
+            foreach (BuildingConfig building in config.Buildings.Values)
+                if (building.IsAttacker) maxRange = math.max(maxRange, building.Range);
             int capacity = sim.MaxEntities;
             int buildingCapacity = 4096;
             int cellsX = (map.Width + sim.HashCellSize - 1) / sim.HashCellSize;
@@ -455,6 +505,11 @@ namespace WAR2D.Sim
                 BuildingCellStart = new NativeArray<int>(cells + 1, allocator),
                 BuildingSorted = new NativeArray<int>(buildingCapacity, allocator),
                 AttackEvents = new NativeList<int2>(1024, allocator),
+                BuildingAttackEvents = new NativeList<int2>(64, allocator),
+                BuildingTarget = new NativeArray<int>(buildingCapacity, allocator),
+                BuildingTargetKind = new NativeArray<byte>(buildingCapacity, allocator),
+                BuildingCooldown = new NativeArray<float>(buildingCapacity, allocator),
+                AttackerBuildings = new NativeList<int>(256, allocator),
                 Deaths = new NativeQueue<DeathRecord>(allocator),
                 PendingOrders = new NativeParallelHashMap<int, PendingOrder>(1024, allocator),
                 PendingMoves = new NativeParallelHashMap<int, float2>(64, allocator),
@@ -482,11 +537,18 @@ namespace WAR2D.Sim
             int buildingTypes = Enum.GetValues(typeof(BuildingType)).Length;
             data.BuildingSightByType = new NativeArray<float>(buildingTypes + 1, allocator);
             data.BuildingSizeByType = new NativeArray<int2>(buildingTypes + 1, allocator);
+            data.BuildingDamageByType = new NativeArray<float>(buildingTypes + 1, allocator);
+            data.BuildingRangeSqByType = new NativeArray<float>(buildingTypes + 1, allocator);
+            data.BuildingIntervalByType = new NativeArray<float>(buildingTypes + 1, allocator);
             foreach (var pair in config.Buildings)
                 if ((int)pair.Key >= 0 && (int)pair.Key < data.BuildingSightByType.Length)
                 {
                     data.BuildingSightByType[(int)pair.Key] = pair.Value.Sight;
                     data.BuildingSizeByType[(int)pair.Key] = pair.Value.Size;
+                    if (!pair.Value.IsAttacker) continue;
+                    data.BuildingDamageByType[(int)pair.Key] = pair.Value.Damage;
+                    data.BuildingRangeSqByType[(int)pair.Key] = pair.Value.Range * pair.Value.Range;
+                    data.BuildingIntervalByType[(int)pair.Key] = pair.Value.AttackInterval;
                 }
             data.BuildingSight = new NativeArray<float>(buildingCapacity, allocator);
             data.Opaque = BuildOpaque(map, fogCell, data.FogW, data.FogH, allocator);
@@ -501,6 +563,13 @@ namespace WAR2D.Sim
             data.Sources = new NativeList<int>(4096, allocator);
             data.RadarSources = new NativeList<int3>(64, allocator);
             data.FogChanges = new NativeQueue<int>(allocator);
+            data.JamMask = new NativeArray<byte>(fogTotal, allocator);
+            data.JamSources = new NativeList<int3>(16, allocator);
+            data.JamShare = new NativeArray<ushort>(MaxOwners, allocator);
+            data.JamDirty = new NativeArray<byte>(1, allocator);
+            data.JamDirty[0] = 1;
+            data.JamRadius = config.Siege.JamRadius;
+            data.JamSight = config.Siege.JamSight;
 
             foreach (var pair in config.Units)
             {
@@ -537,12 +606,15 @@ namespace WAR2D.Sim
             BuildingDamage.Dispose(); BuildingIds.Dispose(); BuildingEntities.Dispose(); BuildingSlotOfIndex.Dispose(); BuildingCell.Dispose();
             BuildingCellStart.Dispose(); BuildingSorted.Dispose();
             BuildingWork.Dispose(); BuildingFlag.Dispose(); BuildingAnchor.Dispose(); BuildingSize.Dispose(); BuildingMaxHealth.Dispose(); BuildingKind.Dispose(); BuildingSizeByType.Dispose();
-            AttackEvents.Dispose(); Deaths.Dispose(); PendingOrders.Dispose(); PendingMoves.Dispose(); Arrivals.Dispose();
+            AttackEvents.Dispose(); BuildingAttackEvents.Dispose(); Deaths.Dispose(); PendingOrders.Dispose(); PendingMoves.Dispose(); Arrivals.Dispose();
             OwnerIdBySlot.Dispose(); TeamBySlot.Dispose(); AttackMask.Dispose(); ShareVisionMask.Dispose(); UpkeepBudget.Dispose(); UpkeepSpent.Dispose(); UnitsBySlot.Dispose();
             ChargedThisTick.Dispose(); LargeGrid.Dispose();
             SightByType.Dispose(); BuildingSightByType.Dispose(); BuildingSight.Dispose();
             Opaque.Dispose(); OpaqueSum.Dispose(); OpaqueTile.Dispose(); Visible.Dispose(); VisiblePrev.Dispose(); Explored.Dispose();
             SourceRadius.Dispose(); Sources.Dispose(); RadarSources.Dispose(); FogChanges.Dispose();
+            BuildingDamageByType.Dispose(); BuildingRangeSqByType.Dispose(); BuildingIntervalByType.Dispose();
+            BuildingTarget.Dispose(); BuildingTargetKind.Dispose(); BuildingCooldown.Dispose(); AttackerBuildings.Dispose();
+            JamMask.Dispose(); JamSources.Dispose(); JamShare.Dispose(); JamDirty.Dispose();
         }
 
         /// <summary>1 per fog cell where any of its tiles blocks sight: only the fast path's "no tile test needed" flag.</summary>

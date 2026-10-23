@@ -57,74 +57,33 @@ namespace WAR2D.Sim
             int buildings = math.min(data.BuildingCount[0], data.BuildingCapacity);
             if (data.AttackEvents.Capacity < count) data.AttackEvents.Capacity = count;
 
+            SearchInput search = SearchInput.From(data, count, buildings);
             state.Dependency = new ResolveTargetsJob
             {
-                Positions = data.Positions,
-                OwnerSlot = data.OwnerSlot,
-                AttackMask = data.AttackMask,
-                Health = data.Health,
+                Search = search,
                 Type = data.Type,
                 Stance = data.Stance,
                 OrderSlot = data.OrderSlot,
                 OrderLive = data.OrderLive,
                 RangeSqByType = data.SearchSqByType,
                 MinRangeSqByType = data.MinRangeSqByType,
-                IdOf = data.IdOf,
-                IndexOfId = data.IndexOfId,
-                UnitCount = count,
-                BuildingPositions = data.BuildingPositions,
-                BuildingOwnerSlot = data.BuildingOwnerSlot,
-                BuildingHealth = data.BuildingHealth,
-                BuildingIds = data.BuildingIds,
-                BuildingSlotOfIndex = data.BuildingSlotOfIndex,
-                BuildingCount = buildings,
-                OpaqueTile = data.OpaqueTile,
                 DamageByType = data.DamageByType,
-                WallState = data.WallState,
-                WallOwnerSlot = data.WallOwnerSlot,
-                BuildingFlag = data.BuildingFlag,
-                Width = data.Width,
-                Height = data.Height,
-                Visible = data.Visible,
-                FogCellSize = data.FogCellSize, FogW = data.FogW, FogH = data.FogH, FogCells = data.FogCells,
                 Target = data.Target,
                 TargetKind = data.TargetKind,
             }.Schedule(count, 256, state.Dependency);
 
             state.Dependency = new NearestEnemyJob
             {
-                Positions = data.Positions,
-                OwnerSlot = data.OwnerSlot,
-                AttackMask = data.AttackMask,
-                Health = data.Health,
+                Search = search,
                 Type = data.Type,
                 Stance = data.Stance,
                 OrderSlot = data.OrderSlot,
                 OrderLive = data.OrderLive,
                 RangeSqByType = data.SearchSqByType,
                 MinRangeSqByType = data.MinRangeSqByType,
-                CellStart = data.CellStart,
-                Sorted = data.Sorted,
-                BuildingPositions = data.BuildingPositions,
-                BuildingOwnerSlot = data.BuildingOwnerSlot,
-                BuildingHealth = data.BuildingHealth,
-                BuildingCellStart = data.BuildingCellStart,
-                BuildingSorted = data.BuildingSorted,
-                InvCellSize = 1f / data.CellSize,
-                CellsX = data.CellsX,
-                CellsY = data.CellsY,
-                SearchCells = data.SearchCells,
-                Visible = data.Visible,
-                FogCellSize = data.FogCellSize, FogW = data.FogW, FogH = data.FogH, FogCells = data.FogCells,
+                DamageByType = data.DamageByType,
                 Tick = clock.Tick % data.Slice,
                 Slice = data.Slice,
-                OpaqueTile = data.OpaqueTile,
-                DamageByType = data.DamageByType,
-                WallState = data.WallState,
-                WallOwnerSlot = data.WallOwnerSlot,
-                BuildingFlag = data.BuildingFlag,
-                Width = data.Width,
-                Height = data.Height,
                 Target = data.Target,
                 TargetKind = data.TargetKind,
             }.Schedule(count, 256, state.Dependency);
@@ -193,6 +152,55 @@ namespace WAR2D.Sim
                 ArmourByType = data.ArmourByType, DamageTable = data.DamageTable,
             }.Schedule(state.Dependency);
 
+            // Attacker buildings (v0.13: Gun turrets), with the units' rules (TargetSearch); their hits go
+            // through the same queue, so ApplyDamageJob stays the single writer.
+            NativeArray<int> attackers = data.AttackerBuildings.AsArray();
+            if (attackers.Length > 0)
+            {
+                var turret = new BuildingWeaponInput
+                {
+                    Attackers = attackers,
+                    BuildingAnchor = data.BuildingAnchor,
+                    BuildingSize = data.BuildingSize,
+                    BuildingKind = data.BuildingKind,
+                    RangeSqByType = data.BuildingRangeSqByType,
+                };
+                state.Dependency = new ResolveBuildingTargetsJob
+                {
+                    Search = search,
+                    Weapon = turret,
+                    Target = data.BuildingTarget,
+                    TargetKind = data.BuildingTargetKind,
+                }.Schedule(attackers.Length, 32, state.Dependency);
+                state.Dependency = new BuildingTargetJob
+                {
+                    Search = search,
+                    Weapon = turret,
+                    Tick = clock.Tick % data.Slice,
+                    Slice = data.Slice,
+                    Target = data.BuildingTarget,
+                    TargetKind = data.BuildingTargetKind,
+                }.Schedule(attackers.Length, 32, state.Dependency);
+                state.Dependency = new BuildingAttackJob
+                {
+                    Weapon = turret,
+                    BuildingOwnerId = data.BuildingOwnerId,
+                    BuildingIds = data.BuildingIds,
+                    IdOf = data.IdOf,
+                    Type = data.Type,
+                    ArmourByType = data.ArmourByType,
+                    DamageByType = data.BuildingDamageByType,
+                    IntervalByType = data.BuildingIntervalByType,
+                    DamageTable = data.DamageTable,
+                    Dt = data.Dt,
+                    Target = data.BuildingTarget,
+                    TargetKind = data.BuildingTargetKind,
+                    Cooldown = data.BuildingCooldown,
+                    Hits = hits,
+                    Events = data.BuildingAttackEvents,
+                }.Schedule(state.Dependency);
+            }
+
             state.Dependency = new ApplyDamageJob
             {
                 Hits = hits,
@@ -219,39 +227,20 @@ namespace WAR2D.Sim
 
     /// <summary>
     /// Turns each unit's stored target id into this tick's slot, dropping targets that died, left range,
-    /// changed hands, are no longer attacked (diplomacy), went into the fog of the attacker's side or no longer exist,
-    /// and the targets of units on a live Move order.
+    /// changed hands, are no longer attacked (diplomacy), went into the fog of the attacker's side or no longer exist
+    /// (<see cref="TargetSearch.Keep"/>), and the targets of units on a live Move order.
     /// </summary>
     [BurstCompile]
     public struct ResolveTargetsJob : IJobParallelFor
     {
-        [ReadOnly] public NativeArray<float2> Positions;
-        [ReadOnly] public NativeArray<byte> OwnerSlot;
-        [ReadOnly] public NativeArray<ushort> AttackMask;
-        [ReadOnly] public NativeArray<float> Health;
+        [ReadOnly] public SearchInput Search;
         [ReadOnly] public NativeArray<byte> Type;
         [ReadOnly] public NativeArray<byte> Stance;
         [ReadOnly] public NativeArray<int> OrderSlot;
         [ReadOnly] public NativeArray<byte> OrderLive;
         [ReadOnly] public NativeArray<float> RangeSqByType;
         [ReadOnly] public NativeArray<float> MinRangeSqByType;
-        [ReadOnly] public NativeArray<int> IdOf;
-        [ReadOnly] public NativeArray<int> IndexOfId;
-        public int UnitCount;
-        [ReadOnly] public NativeArray<float2> BuildingPositions;
-        [ReadOnly] public NativeArray<byte> BuildingOwnerSlot;
-        [ReadOnly] public NativeArray<float> BuildingHealth;
-        [ReadOnly] public NativeArray<int> BuildingIds;
-        [ReadOnly] public NativeArray<int> BuildingSlotOfIndex;
-        public int BuildingCount;
-        [ReadOnly] public NativeArray<byte> OpaqueTile;
         [ReadOnly] public NativeArray<float> DamageByType;
-        [ReadOnly] public NativeArray<byte> WallState, WallOwnerSlot;
-        [ReadOnly] public NativeArray<byte> BuildingFlag;
-        public int Width, Height;
-        /// <summary>Fog grids: a kept unit or building target must still be seen by the attacker's side, as in the search.</summary>
-        [ReadOnly] public NativeArray<byte> Visible;
-        public int FogCellSize, FogW, FogH, FogCells;
         public NativeArray<int> Target;
         public NativeArray<byte> TargetKind;
 
@@ -259,39 +248,125 @@ namespace WAR2D.Sim
         {
             int id = Target[i];
             Target[i] = -1;
-            if (Health[i] <= 0f || id <= 0 || TargetKinds.IgnoresEnemies(Stance[i], OrderSlot[i], OrderLive) || DamageByType[Type[i]] <= 0f) return;
+            if (Search.Health[i] <= 0f || id <= 0 || TargetKinds.IgnoresEnemies(Stance[i], OrderSlot[i], OrderLive) || DamageByType[Type[i]] <= 0f) return;
             int type = Type[i];
             float rangeSq = type < RangeSqByType.Length ? RangeSqByType[type] : 0f;
             float minSq = type < MinRangeSqByType.Length ? MinRangeSqByType[type] : 0f;
-            int index = TargetKind[i] == TargetKinds.Wall ? 0 : NetIdAllocator.IndexOf(id);
-            if (index >= IndexOfId.Length) return;
+            Target[i] = TargetSearch.Keep(Search, Search.Positions[i], Search.OwnerSlot[i], rangeSq, minSq, id, TargetKind[i]);
+        }
+    }
 
-            if (TargetKind[i] == TargetKinds.Wall)
+    /// <summary>What the attacker-building jobs read about each turret (v0.13).</summary>
+    public struct BuildingWeaponInput
+    {
+        /// <summary>The slots of the complete, living attacker buildings (<see cref="SimData.AttackerBuildings"/>).</summary>
+        [ReadOnly] public NativeArray<int> Attackers;
+        [ReadOnly] public NativeArray<int2> BuildingAnchor, BuildingSize;
+        [ReadOnly] public NativeArray<byte> BuildingKind;
+        [ReadOnly] public NativeArray<float> RangeSqByType;
+
+        /// <summary>Where a building fires from: its footprint's centre.</summary>
+        public float2 Centre(int b) => Footprint.VisualCenter(BuildingAnchor[b], BuildingSize[b]);
+
+        /// <summary>The building's squared range (0 for a type without a weapon).</summary>
+        public float RangeSq(int b) => BuildingKind[b] < RangeSqByType.Length ? RangeSqByType[BuildingKind[b]] : 0f;
+
+        /// <summary>
+        /// True when the building may hold or look for a target: alive, complete and paid, with an owner slot (every
+        /// building gets one at creation). Blueprints never reach the attacker list; upkeep can stop a finished one.
+        /// </summary>
+        public static bool Armed(in SearchInput s, int b) =>
+            s.BuildingHealth[b] > 0f && (s.BuildingFlag[b] & (BuildingFlags.UnderConstruction | BuildingFlags.Unpaid)) == 0 && s.BuildingOwnerSlot[b] < SimData.MaxOwners;
+    }
+
+    /// <summary>
+    /// Turns each attacker building's stored target id into this tick's slot, with the units' checks
+    /// (<see cref="TargetSearch.Keep"/>): it drops a target that died, left range, lost the line of fire, went into
+    /// the fog of the turret owner's grid, changed hands or is no longer attacked. An unpaid turret drops its target.
+    /// </summary>
+    [BurstCompile]
+    public struct ResolveBuildingTargetsJob : IJobParallelFor
+    {
+        [ReadOnly] public SearchInput Search;
+        [ReadOnly] public BuildingWeaponInput Weapon;
+        // Each index writes its own building slot (the attacker list holds each slot once).
+        [NativeDisableParallelForRestriction] public NativeArray<int> Target;
+        [NativeDisableParallelForRestriction] public NativeArray<byte> TargetKind;
+
+        public void Execute(int i)
+        {
+            int b = Weapon.Attackers[i];
+            int id = Target[b];
+            Target[b] = -1;
+            if (id <= 0 || !BuildingWeaponInput.Armed(Search, b)) return;
+            Target[b] = TargetSearch.Keep(Search, Weapon.Centre(b), Search.BuildingOwnerSlot[b], Weapon.RangeSq(b), 0f, id, TargetKind[b]);
+        }
+    }
+
+    /// <summary>
+    /// The attacker buildings' target search, sliced over ticks like the units' (<c>(slot + Tick) % Slice</c>): the
+    /// nearest enemy unit, else building, else wall tile in range (spec §2.1: walls always, like a unit on Attack-move).
+    /// </summary>
+    [BurstCompile]
+    public struct BuildingTargetJob : IJobParallelFor
+    {
+        [ReadOnly] public SearchInput Search;
+        [ReadOnly] public BuildingWeaponInput Weapon;
+        public int Tick, Slice;
+        [NativeDisableParallelForRestriction] public NativeArray<int> Target;
+        [NativeDisableParallelForRestriction] public NativeArray<byte> TargetKind;
+
+        public void Execute(int i)
+        {
+            int b = Weapon.Attackers[i];
+            if (Slice > 1 && (b + Tick) % Slice != 0) return;
+            if (!BuildingWeaponInput.Armed(Search, b)) { Target[b] = -1; return; }
+            TargetSearch.Nearest(Search, Weapon.Centre(b), Search.BuildingOwnerSlot[b], Weapon.RangeSq(b), 0f, true, out int target, out byte kind);
+            Target[b] = target;
+            TargetKind[b] = kind;
+        }
+    }
+
+    /// <summary>
+    /// Fires each attacker building at its resolved target when its cooldown allows: a <see cref="DamageHit"/> of the
+    /// type's damage times the damage table's multiplier (<see cref="WAR2D.Rules.DamageTable.BuildingAttacker(int)"/>
+    /// row) for the target's class, into the shared queue, and a building attack event (not for walls, as for units).
+    /// Then it turns the target back into a stable id for the boundary's write-back to <see cref="BuildingWeapon"/>.
+    /// </summary>
+    [BurstCompile]
+    public struct BuildingAttackJob : IJob
+    {
+        [ReadOnly] public BuildingWeaponInput Weapon;
+        [ReadOnly] public NativeArray<int> BuildingOwnerId, BuildingIds, IdOf;
+        [ReadOnly] public NativeArray<byte> Type, ArmourByType;
+        [ReadOnly] public NativeArray<float> DamageByType, IntervalByType, DamageTable;
+        public float Dt;
+        public NativeArray<int> Target;
+        public NativeArray<byte> TargetKind;
+        public NativeArray<float> Cooldown;
+        public NativeQueue<DamageHit> Hits;
+        public NativeList<int2> Events;
+
+        public void Execute()
+        {
+            for (int i = 0; i < Weapon.Attackers.Length; i++)
             {
-                if ((uint)id >= (uint)WallState.Length || WallState[id] == WallStates.None || !SimData.Attacks(AttackMask, OwnerSlot[i], WallOwnerSlot[id])) return;
-                float2 centre = new float2(id % Width + 0.5f, id / Width + 0.5f);
-                if (math.distancesq(Positions[i], centre) > rangeSq || !LineOfSight.ClearTiles(OpaqueTile, Width, Height, Positions[i], centre)) return;
-                Target[i] = id;
-                return;
-            }
-            if (TargetKind[i] == TargetKinds.Unit)
-            {
-                int j = IndexOfId[index];
-                if ((uint)j >= (uint)UnitCount || IdOf[j] != id || Health[j] <= 0f || !SimData.Attacks(AttackMask, OwnerSlot[i], OwnerSlot[j]) ||
-                    math.distancesq(Positions[i], Positions[j]) > rangeSq || math.distancesq(Positions[i], Positions[j]) < minSq ||
-                    !NearestEnemyJob.Sees(Visible, OwnerSlot[i] * FogCells, Positions[j], FogCellSize, FogW, FogH) ||
-                    !LineOfSight.ClearTiles(OpaqueTile, Width, Height, Positions[i], Positions[j])) return;
-                Target[i] = j;
-            }
-            else
-            {
-                int j = BuildingSlotOfIndex[index];
-                if ((uint)j >= (uint)BuildingCount || BuildingIds[j] != id || BuildingHealth[j] <= 0f || (BuildingFlag[j] & BuildingFlags.Hidden) != 0 ||
-                    !SimData.Attacks(AttackMask, OwnerSlot[i], BuildingOwnerSlot[j]) || math.distancesq(Positions[i], BuildingPositions[j]) > rangeSq ||
-                    math.distancesq(Positions[i], BuildingPositions[j]) < minSq ||
-                    !NearestEnemyJob.Sees(Visible, OwnerSlot[i] * FogCells, BuildingPositions[j], FogCellSize, FogW, FogH) ||
-                    !LineOfSight.ClearTiles(OpaqueTile, Width, Height, Positions[i], BuildingPositions[j])) return;
-                Target[i] = j;
+                int b = Weapon.Attackers[i];
+                int type = Weapon.BuildingKind[b];
+                float cooldown = math.max(0f, Cooldown[b] - Dt);
+                int target = Target[b];
+                byte kind = TargetKind[b];
+                if (target >= 0 && cooldown <= 0f && type < DamageByType.Length && DamageByType[type] > 0f)
+                {
+                    TargetClass targetClass = kind == TargetKinds.Unit ? (TargetClass)ArmourByType[Type[target]] : kind == TargetKinds.Wall ? TargetClass.Wall : TargetClass.Building;
+                    float multiplier = WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.BuildingAttacker(type), targetClass);
+                    Hits.Enqueue(new DamageHit { Kind = kind, Slot = target, Amount = DamageByType[type] * multiplier, AttackerOwner = BuildingOwnerId[b] });
+                    if (kind != TargetKinds.Wall) // a wall's damage travels in the terrain delta, as for units
+                        Events.Add(new int2(BuildingIds[b], kind == TargetKinds.Unit ? IdOf[target] : BuildingIds[target]));
+                    cooldown = IntervalByType[type];
+                }
+                Cooldown[b] = cooldown;
+                Target[b] = target < 0 ? -1 : kind == TargetKinds.Unit ? IdOf[target] : kind == TargetKinds.Wall ? target : BuildingIds[target];
             }
         }
     }
@@ -352,7 +427,7 @@ namespace WAR2D.Sim
             }
             byte kind = TargetKind[i];
             TargetClass targetClass = kind == TargetKinds.Unit ? (TargetClass)ArmourByType[Type[target]] : kind == TargetKinds.Wall ? TargetClass.Wall : TargetClass.Building;
-            float multiplier = WAR2D.Rules.DamageTable.Get(DamageTable, type, targetClass);
+            float multiplier = WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(type), targetClass);
             float baseDamage = type < DamageByType.Length ? DamageByType[type] : 0f;
             Hits.Enqueue(new DamageHit { Kind = kind, Slot = target, Amount = baseDamage * multiplier, AttackerOwner = OwnerId[i] });
             float splash = type < SplashByType.Length ? SplashByType[type] : 0f;
@@ -412,7 +487,7 @@ namespace WAR2D.Sim
                         if (UnitHealth[u] <= 0f || (r.PrimaryKind == TargetKinds.Unit && r.PrimarySlot == u) || !SimData.Attacks(AttackMask, r.AttackerSlot, OwnerSlot[u])) continue;
                         float dSq = math.distancesq(Positions[u], r.Centre);
                         if (dSq > rSq) continue;
-                        float amount = r.Damage * Falloff(math.sqrt(dSq), r.Radius) * WAR2D.Rules.DamageTable.Get(DamageTable, r.AttackerType, (TargetClass)ArmourByType[Type[u]]);
+                        float amount = r.Damage * Falloff(math.sqrt(dSq), r.Radius) * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(r.AttackerType), (TargetClass)ArmourByType[Type[u]]);
                         Hits.Enqueue(new DamageHit { Kind = TargetKinds.Unit, Slot = u, Amount = amount, AttackerOwner = r.AttackerOwner });
                     }
                 }
@@ -432,7 +507,7 @@ namespace WAR2D.Sim
                         float2 gap = math.max(math.max(lo - r.Centre, r.Centre - hi), 0f);
                         float gapSq = math.lengthsq(gap);
                         if (gapSq > rSq) continue;
-                        float amount = r.Damage * Falloff(math.sqrt(gapSq), r.Radius) * WAR2D.Rules.DamageTable.Get(DamageTable, r.AttackerType, TargetClass.Building);
+                        float amount = r.Damage * Falloff(math.sqrt(gapSq), r.Radius) * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(r.AttackerType), TargetClass.Building);
                         Hits.Enqueue(new DamageHit { Kind = TargetKinds.Building, Slot = b, Amount = amount, AttackerOwner = r.AttackerOwner });
                     }
                 }
@@ -446,7 +521,7 @@ namespace WAR2D.Sim
                     if (WallState[w] == WallStates.None || (r.PrimaryKind == TargetKinds.Wall && r.PrimarySlot == w) || !SimData.Attacks(AttackMask, r.AttackerSlot, WallOwnerSlot[w])) continue;
                     float dSq = math.distancesq(new float2(x + 0.5f, y + 0.5f), r.Centre);
                     if (dSq > rSq) continue;
-                    float amount = r.Damage * Falloff(math.sqrt(dSq), r.Radius) * WAR2D.Rules.DamageTable.Get(DamageTable, r.AttackerType, TargetClass.Wall);
+                    float amount = r.Damage * Falloff(math.sqrt(dSq), r.Radius) * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(r.AttackerType), TargetClass.Wall);
                     Hits.Enqueue(new DamageHit { Kind = TargetKinds.Wall, Slot = w, Amount = amount, AttackerOwner = r.AttackerOwner });
                 }
             }
@@ -522,12 +597,12 @@ namespace WAR2D.Sim
                 {
                     int u = Sorted[k];
                     if (u == bomber || UnitHealth[u] <= 0f || math.distancesq(Positions[u], centre) > rSq) continue;
-                    float amount = damage * WAR2D.Rules.DamageTable.Get(DamageTable, type, (TargetClass)ArmourByType[Type[u]]);
+                    float amount = damage * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(type), (TargetClass)ArmourByType[Type[u]]);
                     Hits.Enqueue(new DamageHit { Kind = TargetKinds.Unit, Slot = u, Amount = amount, AttackerOwner = owner });
                 }
             }
 
-            float buildingAmount = damage * WAR2D.Rules.DamageTable.Get(DamageTable, type, TargetClass.Building);
+            float buildingAmount = damage * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(type), TargetClass.Building);
             for (int b = 0; b < BuildingCount; b++)
             {
                 if (BuildingHealth[b] <= 0f) continue;
@@ -536,7 +611,7 @@ namespace WAR2D.Sim
                 Hits.Enqueue(new DamageHit { Kind = TargetKinds.Building, Slot = b, Amount = buildingAmount, AttackerOwner = owner });
             }
 
-            float wallAmount = damage * WAR2D.Rules.DamageTable.Get(DamageTable, type, TargetClass.Wall);
+            float wallAmount = damage * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(type), TargetClass.Wall);
             int2 tile = (int2)math.floor(centre);
             int r = (int)math.ceil(radius);
             for (int y = math.max(tile.y - r, 0); y <= math.min(tile.y + r, Height - 1); y++)

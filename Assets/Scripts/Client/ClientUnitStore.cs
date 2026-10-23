@@ -57,6 +57,9 @@ namespace WAR2D.Client
 
         /// <summary>Raised for each attack event: (attacker id index, target id).</summary>
         public event Action<int, int> Attack;
+
+        /// <summary>A building attacked (v0.13): (building id, target id or 0). Raised for every one the server sent, which only a client that may know the building gets.</summary>
+        public event Action<int, int> BuildingAttack;
         /// <summary>Raised for each unit that left because it died: (index, last predicted position).</summary>
         public event Action<int, float2> Died;
 
@@ -194,7 +197,12 @@ namespace WAR2D.Client
                 case MessageType.Attack:
                     attacks.Clear();
                     Messages.DecodeAttack(reader, attacks);
-                    foreach (AttackEvent a in attacks) if (IsKnown(a.AttackerIndex)) Attack?.Invoke(a.AttackerIndex, a.TargetId);
+                    foreach (AttackEvent a in attacks)
+                    {
+                        // A building's attack (v0.13) names the building by id; nothing draws it yet (Task 5, after the art approval).
+                        if (a.AttackerKind == AttackerKinds.Building) BuildingAttack?.Invoke(a.AttackerId, a.TargetId);
+                        else if (IsKnown(a.AttackerIndex)) Attack?.Invoke(a.AttackerIndex, a.TargetId);
+                    }
                     break;
                 default:
                     throw new InvalidDataException("unknown replication message");
