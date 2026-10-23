@@ -59,4 +59,18 @@ public class BuildingProgressCodecTests
         BuildingCodec.WriteId(writer, BuildingRecord.Progress, 5, 200);
         Assert.IsFalse(BuildingCodec.Apply(new ClientBuildings(), writer.ToArraySegment()));
     }
+
+    [Test]
+    public void TheUnpaidRecordRoundTripsAndRejectsOtherValues()
+    {
+        var writer = new NetworkWriter();
+        BuildingCodec.WriteEnter(writer, View(100));
+        BuildingCodec.WriteId(writer, BuildingRecord.Unpaid, View(100).Id, 1);
+        var into = new ClientBuildings();
+        Assert.IsTrue(BuildingCodec.Apply(into, writer.ToArraySegment()));
+        Assert.IsTrue(into.Entries[View(100).Id].Unpaid);
+        writer.Position = 0;
+        BuildingCodec.WriteId(writer, BuildingRecord.Unpaid, View(100).Id, 2);
+        Assert.IsFalse(BuildingCodec.Apply(into, writer.ToArraySegment()));
+    }
 }

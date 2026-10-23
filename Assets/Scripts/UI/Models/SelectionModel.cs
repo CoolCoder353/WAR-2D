@@ -112,7 +112,7 @@ namespace WAR2D.UI
         /// <summary>The running cost per second of the selected finished buildings, together (blueprints pay none).</summary>
         public float BuildingUpkeep { get; private set; }
 
-        /// <summary>True when one of the selected finished buildings looks unpaid (the local budget can't cover it).</summary>
+        /// <summary>True when one of the selected finished buildings is unpaid (the server's flag, sent to the owner only).</summary>
         public bool BuildingUnpaid { get; private set; }
 
         /// <summary>The status line under Upkeep (empty when hidden: mixed types, or a type without one).</summary>
@@ -339,7 +339,7 @@ namespace WAR2D.UI
                     Health01 = e.Health.maxHealth > 0f ? Math.Clamp(e.Health.currentHealth / e.Health.maxHealth, 0f, 1f) : 1f,
                     Upkeep = blueprint ? 0f : config.GetBuilding(e.Data.buildingType).RunningCost,
                     Blueprint = blueprint,
-                    Unpaid = DefenceView.LooksUnpaid(e),
+                    Unpaid = DefenceView.Unpaid(e),
                     Firing = e.Data.buildingType == BuildingType.GunTurret && DefenceView.Firing(WAR2D.Net.Replication.ClientBuildings.Current, id, now),
                 });
             }

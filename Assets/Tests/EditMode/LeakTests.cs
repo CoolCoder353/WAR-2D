@@ -198,6 +198,43 @@ public class LeakTests
     }
 
     [Test]
+    public void OnlyTheOwnerLearnsABuildingIsUnpaid()
+    {
+        using var sim = new SimHarness(Map());
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        var views = new List<BuildingView>();
+        replication.CollectBuildings = list => list.AddRange(views);
+        var owner = new Spy(sim.Context, replication, SimHarness.OwnerA);
+        var enemy = new Spy(sim.Context, replication, OwnerC);
+        sim.Spawn(SimHarness.OwnerA, new float2(20, 20));
+        sim.Spawn(OwnerC, new float2(23, 20)); // C stands next to A's turret and sees it
+        sim.Tick();
+        var turret = new BuildingView { Id = 77, OwnerId = SimHarness.OwnerA, Type = BuildingType.GunTurret, Anchor = new int2(21, 20), Health = 350, MaxHealth = 350, Progress = 100, Position = new float2(21, 20) };
+        views.Add(turret);
+        for (int i = 0; i < 6; i++) sim.Tick();
+        Assert.IsTrue(enemy.Buildings.Entries.ContainsKey(77), "C sees the turret");
+        Assert.IsFalse(owner.Buildings.Entries[77].Unpaid);
+
+        int enemyPayloads = enemy.BuildingPayloads;
+        turret.Unpaid = true;
+        views[0] = turret;
+        for (int i = 0; i < 6; i++) sim.Tick();
+        Assert.IsTrue(owner.Buildings.Entries[77].Unpaid, "the owner is told it went unpaid");
+        Assert.IsFalse(enemy.Buildings.Entries[77].Unpaid, "C is not");
+        Assert.AreEqual(enemyPayloads, enemy.BuildingPayloads, "C is sent no record at all for it");
+
+        turret.Unpaid = false;
+        views[0] = turret;
+        for (int i = 0; i < 6; i++) sim.Tick();
+        Assert.IsFalse(owner.Buildings.Entries[77].Unpaid, "paid again");
+        Assert.AreEqual(enemyPayloads, enemy.BuildingPayloads);
+        CollectionAssert.IsEmpty(owner.Failures);
+        CollectionAssert.IsEmpty(enemy.Failures);
+        owner.Dispose();
+        enemy.Dispose();
+    }
+
+    [Test]
     public void EnemyBuildingIsHiddenThenGhostedNotRemoved()
     {
         using var sim = new SimHarness(Map());

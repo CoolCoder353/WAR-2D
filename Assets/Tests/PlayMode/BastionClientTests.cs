@@ -52,7 +52,7 @@ public class BastionClientTests
         for (int i = 0; i < 8 * ring && !placed; i++)
         {
             int2 at = Ring(hq, ring, i), east = at + new int2(4, 0);
-            if (math.any(at < min + 4) || math.any(east > max - 4)) continue; // clear of the border
+            if (math.any(at < min) || math.any(east > max)) continue; // the border rows are fine (fog traces skip the rock half of a cell)
             if (!wsm.Map.Grid.IsWalkable(east) || !wsm.Map.Grid.IsWalkable(at)) continue;
             if (!LineClear(wsm, at, east)) continue;
             placed = wsm.DevPlaceBuilding(Bot, BuildingType.GunTurret, at);

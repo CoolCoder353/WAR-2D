@@ -106,6 +106,12 @@ namespace WAR2D.Sim
         /// </summary>
         public static double LastRemoveDeadMs, LastUpkeepMs, LastOrdersMs, LastSettledMs, LastCommandsMs, LastStagesMs;
 
+        /// <summary>
+        /// Perf harness only (<see cref="StageClock"/>): worker wall-clock milliseconds of the last settled tick's combat
+        /// and vision job chains (not main-thread time; their cost reaches <c>tick.main</c> only through the boundary wait).
+        /// </summary>
+        public static double LastCombatJobsMs, LastVisionJobsMs;
+
         /// <summary>Main-thread milliseconds of the match's own <c>Settled</c> handler (<c>WorldStateManager.OnSettled</c>).</summary>
         public static double LastMatchSettledMs;
 

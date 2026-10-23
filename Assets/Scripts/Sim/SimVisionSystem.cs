@@ -301,11 +301,50 @@ namespace WAR2D.Sim
         public int FogW, FogH, FogCells, Width, Height, FogCellSize;
 
         /// <summary>The tile of fog cell <paramref name="cell"/> closest to the centre of cell <paramref name="towards"/>.</summary>
-        private int2 NearestTile(int2 cell, int2 towards)
+        private int2 NearestTile(int2 cell, int2 towards) =>
+            math.clamp(Aim(towards), cell * FogCellSize, math.min(cell * FogCellSize + FogCellSize - 1, new int2(Width - 1, Height - 1)));
+
+        private int2 Aim(int2 towards) => towards * FogCellSize + (FogCellSize - 1) / 2;
+
+        /// <summary>
+        /// The open tile of fog cell <paramref name="cell"/> closest to the centre of cell <paramref name="towards"/>, or
+        /// <see cref="NearestTile"/> when that is open or the whole cell is opaque. The border rows and columns are half rock
+        /// (fog cells are 2 tiles), and a trace from or to a cell's rock half runs along the rock and sees nothing.
+        /// </summary>
+        private int2 OpenTile(int2 cell, int2 towards)
         {
-            int2 lo = cell * FogCellSize;
-            int2 aim = towards * FogCellSize + (FogCellSize - 1) / 2;
-            return math.clamp(math.clamp(aim, lo, lo + FogCellSize - 1), 0, new int2(Width - 1, Height - 1));
+            int2 nearest = NearestTile(cell, towards);
+            if (OpaqueTile[nearest.y * Width + nearest.x] == 0) return nearest;
+            int2 lo = cell * FogCellSize, hi = math.min(lo + FogCellSize - 1, new int2(Width - 1, Height - 1)), aim = Aim(towards);
+            int best = int.MaxValue;
+            int2 open = nearest;
+            for (int y = lo.y; y <= hi.y; y++)
+            for (int x = lo.x; x <= hi.x; x++)
+            {
+                if (OpaqueTile[y * Width + x] != 0) continue;
+                int2 d = new int2(x, y) - aim;
+                int distance = d.x * d.x + d.y * d.y;
+                if (distance < best) { best = distance; open = new int2(x, y); }
+            }
+            return open;
+        }
+
+        /// <summary>
+        /// True when the source cell sees cell <paramref name="target"/>: a clear trace between the two cells' tiles nearest
+        /// each other (the end tiles are never tested, so a wall face is seen). When that is blocked and an end tile is
+        /// rock, the trace is tried again from or to that cell's nearest open tile instead, so the half-rock border rows and
+        /// columns see along themselves. Never sees less than the first trace alone.
+        /// </summary>
+        private bool SeesCell(int2 c, int2 target)
+        {
+            int2 from = NearestTile(c, target), to = NearestTile(target, c);
+            if (LineOfSight.Tiles(OpaqueTile, Width, from, to)) return true;
+            int2 openFrom = OpaqueTile[from.y * Width + from.x] != 0 ? OpenTile(c, target) : from;
+            int2 openTo = OpaqueTile[to.y * Width + to.x] != 0 ? OpenTile(target, c) : to;
+            bool fromMoved = math.any(openFrom != from), toMoved = math.any(openTo != to);
+            if (fromMoved && LineOfSight.Tiles(OpaqueTile, Width, openFrom, to)) return true;
+            if (toMoved && LineOfSight.Tiles(OpaqueTile, Width, from, openTo)) return true;
+            return fromMoved && toMoved && LineOfSight.Tiles(OpaqueTile, Width, openFrom, openTo);
         }
 
         public void Execute(int s)
@@ -332,8 +371,7 @@ namespace WAR2D.Sim
                 if (JamMask[baseIndex + y * FogW + x] != 0 && math.lengthsq((float2)d * FogCellSize) > JamSightSq) continue;
                 if (opaque > 0)
                 {
-                    int2 from = NearestTile(c, new int2(x, y)), to = NearestTile(new int2(x, y), c);
-                    if (!LineOfSight.Tiles(OpaqueTile, Width, from, to)) continue;
+                    if (!SeesCell(c, new int2(x, y))) continue;
                 }
                 Visible[baseIndex + y * FogW + x] = 1;
             }

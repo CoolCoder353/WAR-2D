@@ -43,6 +43,9 @@ public sealed class PerfMatch : MonoBehaviour
 
     // v0.7 siege load per owner: walls, Radars, bombs, Builders on the walls and Diggers on the rock.
     public const int WallsPerOwner = 200, RadarsPerOwner = 5, BombsPerOwner = 20, BuildersPerOwner = 50, DiggersPerOwner = 20, SiegeSetupTick = 60;
+    // v0.13 defences per owner (owner decision O4): Gun turrets in a double row across the front, facing the opposing
+    // army, and Jammers (two at the front, two by the HQ). Free and sturdy (1e6 health), so the load stays all run.
+    public const int TurretsPerOwner = 40, JammersPerOwner = 4;
     private bool siegeSetUp;
     private readonly List<int>[] builderIds = new List<int>[Owners], diggerIds = new List<int>[Owners];
     private readonly List<int2>[] wallTiles = new List<int2>[Owners], rockTiles = new List<int2>[Owners];
@@ -211,6 +214,9 @@ public sealed class PerfMatch : MonoBehaviour
         stats.Add("perf.part.matchSettled", SimTiming.LastMatchSettledMs);
         stats.Add("perf.part.commands", SimTiming.LastCommandsMs);
         stats.Add("perf.part.stages", SimTiming.LastStagesMs);
+        // v0.13: the combat and vision stages' job chains on the workers (the turrets' jobs, the jam rebuild and stamping).
+        stats.Add("perf.part.combat", SimTiming.LastCombatJobsMs);
+        stats.Add("perf.part.vision", SimTiming.LastVisionJobsMs);
         for (int s = 0; s < PerfSplits.Names.Length; s++) stats.Add("perf.split." + PerfSplits.Names[s], PerfSplits.Ms[s]);
         stats.Add("perf.units", sim.Clock.UnitCount);
         if (tick - startTick >= SampleTicks) Finish();
@@ -230,7 +236,10 @@ public sealed class PerfMatch : MonoBehaviour
         }
     }
 
-    /// <summary>Places each owner's walls (blueprints), Radars and bombs near its HQ and spawns its Builders and Diggers.</summary>
+    /// <summary>
+    /// Places each owner's walls (blueprints), Radars and bombs near its HQ, its Gun turrets and Jammers (v0.13), and
+    /// spawns its Builders and Diggers.
+    /// </summary>
     private void SetUpSiege(SimContext sim)
     {
         siegeSetUp = true;
@@ -251,6 +260,7 @@ public sealed class PerfMatch : MonoBehaviour
                 if (radars < RadarsPerOwner && step % 37 == 0 && world.DevPlaceBuilding(owner, BuildingType.Radar, tile, 1e6f)) radars++;
                 else if (bombs < BombsPerOwner && step % 11 == 0 && world.DevPlaceBuilding(owner, BuildingType.Bomb, tile, 1e6f)) bombs++;
             }
+            PlaceDefences(world, i);
             int walls = 0;
             foreach (int2 tile in WalkableSpiral(world, site, 600))
             {
@@ -271,6 +281,41 @@ public sealed class PerfMatch : MonoBehaviour
             for (int k = 0; k < BuildersPerOwner; k++) { List<int> ids = builderIds[i]; world.DevSpawnUnit(owner, (float2)site + new float2(-3 + k % 8, -7 - k / 8), id => { if (id > 0) ids.Add(id); }, UnitType.Builder); }
             for (int k = 0; k < DiggersPerOwner; k++) { List<int> ids = diggerIds[i]; world.DevSpawnUnit(owner, (float2)site + new float2(-3 + k % 8, -12 - k / 8), id => { if (id > 0) ids.Add(id); }, UnitType.Digger); }
         }
+    }
+
+    /// <summary>
+    /// Owner <paramref name="i"/>'s v0.13 defences: <see cref="TurretsPerOwner"/> Gun turrets in two rows 6 and 8 tiles
+    /// in front of its army's start, toward its front partner (the battle is at the midpoint, 12 tiles ahead, inside their
+    /// range of 7 from the front row), spread 2 tiles apart across the front; and <see cref="JammersPerOwner"/> Jammers,
+    /// half at the front's flanks and half by the HQ.
+    /// </summary>
+    private void PlaceDefences(WorldStateManager world, int i)
+    {
+        int owner = owners[i];
+        float2 start = armyStart[i];
+        float2 forward = math.normalizesafe((float2)armyStart[i ^ 1] - start);
+        float2 across = new float2(-forward.y, forward.x);
+        int turrets = 0;
+        for (int k = 0; turrets < TurretsPerOwner && k < TurretsPerOwner * 8; k++)
+        {
+            int row = k % 2, column = k / 2;
+            float lateral = (column % 2 == 0 ? 1f : -1f) * ((column + 1) / 2) * 2f; // 0, -2, 2, -4, 4, ...
+            int2 tile = (int2)math.round(start + forward * (6f + 2f * row) + across * lateral);
+            if (world.DevPlaceBuilding(owner, BuildingType.GunTurret, tile, 1e6f)) turrets++;
+        }
+        int jammers = 0;
+        for (int k = 0; jammers < JammersPerOwner / 2 && k < 40; k++)
+        {
+            float lateral = (k % 2 == 0 ? 1f : -1f) * (24f + k / 2);
+            if (world.DevPlaceBuilding(owner, BuildingType.Jammer, (int2)math.round(start + across * lateral), 1e6f)) jammers++;
+        }
+        int step = 0;
+        foreach (int2 tile in WalkableSpiral(world, PairedSites(world.Map.HqSites, world.MapSize)[i], 900))
+        {
+            if (jammers >= JammersPerOwner) break;
+            if (++step % 53 == 0 && world.DevPlaceBuilding(owner, BuildingType.Jammer, tile, 1e6f)) jammers++;
+        }
+        WarLog.Info(LogCategory.Dev, $"owner {i}: {turrets} Gun turrets, {jammers} Jammers");
     }
 
     /// <summary>Keeps the Builders building walls and the Diggers digging rock, in batches of ten.</summary>

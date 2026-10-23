@@ -58,7 +58,7 @@ Unused today: `Spawner.asset`, `Test.asset` and the `Pallets` tile palette (remo
 | `FlameStream` | 3×1 | 4 | `Effects` atlas, pooled (128), stretched from the nozzle to the target (v0.12) |
 | `BomberBlast` | 4×4 | 8 | `Effects` atlas (v0.12); built but unused: bomber blasts reach clients as `BombBlast` events and draw the bomb's effect |
 | `TurretMuzzle` | 1×1 | 3 | `Effects` atlas, pooled (64): at the turret's muzzle (`RenderGen.TurretMuzzleReach`/`Height`), turned to the head's facing, with a tracer to the target (v0.13) |
-| `JamPulse` | 3×3 | 6 | `Effects` atlas, pooled (32): every 2.5 s over each finished Jammer the client sees (its own only while it looks paid) (v0.13) |
+| `JamPulse` | 3×3 | 6 | `Effects` atlas, pooled (32): every 2.5 s over each finished Jammer the client sees (its own only while paid) (v0.13) |
 | `DigDebris` | 1×1 | 4 | `Effects` atlas; unused until v0.7 |
 | `RepairSparks` | 1×1 | 4 | `Effects` atlas; unused until v0.7 |
 | `ConstructionOverlay` | 1×1 (tiled over the footprint) | 4 | `Effects` atlas; unused until v0.7 |

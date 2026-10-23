@@ -49,6 +49,11 @@ namespace WAR2D.Sim
             waitWatch.Stop();
             SimTiming.LastBoundaryWaitMs = waitWatch.Elapsed.TotalMilliseconds;
             SimTiming.LastBoundaryFrame = UnityEngine.Time.frameCount;
+            if (StageClock.Enabled)
+            {
+                SimTiming.LastCombatJobsMs = StageClock.Take(StageClock.CombatStart, StageClock.CombatEnd);
+                SimTiming.LastVisionJobsMs = StageClock.Take(StageClock.VisionStart, StageClock.VisionEnd);
+            }
 
             SimData data = SystemAPI.GetSingleton<SimData>();
             SimContext context = SimContext.Current;

@@ -21,7 +21,10 @@ for run in $(seq 1 "$runs"); do
   dir="$(pwd)/$out/run$run"
   mkdir -p "$dir"
   echo "Run $run/$runs..."
-  "$player" -perf -perfRecord -perfClients "$clients" -perfOut "$dir" -screen-width 1920 -screen-height 1080 -screen-fullscreen 0 -logFile "$dir/player.log" &
+  # WAR_PERF_HEADLESS_HOST=1 runs the host without a window too (when no display can open one); fps is then meaningless.
+  hostArgs=(-screen-width 1920 -screen-height 1080 -screen-fullscreen 0)
+  if [[ "${WAR_PERF_HEADLESS_HOST:-0}" == "1" ]]; then hostArgs=(-batchmode -nographics); fi
+  "$player" -perf -perfRecord -perfClients "$clients" -perfOut "$dir" "${hostArgs[@]}" -logFile "$dir/player.log" &
   host=$!
   sleep 5
   for c in $(seq 1 "$clients"); do

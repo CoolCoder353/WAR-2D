@@ -151,6 +151,24 @@ public class SimBastionTests
     // ---- Task 4: targeting and firing ----
 
     [Test]
+    public void ATurretByTheBorderSwitchesFromABuildingToAUnitEnteringRange()
+    {
+        // One row above the bottom border: the fog row (tiles y = 0..1) is half border rock. The turret first holds an
+        // enemy building in range, then an enemy unit stops 4 tiles east on the same row: units come first.
+        using var sim = Sim();
+        int2 at = new int2(10, 1);
+        int turret = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.GunTurret, at, complete: true);
+        int miner = sim.PlaceBuilding(SimHarness.OwnerB, BuildingType.Miner, new int2(10, 5), complete: true);
+        for (int i = 0; i < 12; i++) sim.Tick();
+        Assert.AreEqual((miner, TargetKinds.Building), (Weapon(sim, turret).TargetId, Weapon(sim, turret).TargetKind), "the building first");
+
+        int[] heavy = sim.Spawn(SimHarness.OwnerB, new float2(14.5f, 1.5f), UnitType.Heavy);
+        for (int i = 0; i < 12; i++) sim.Tick();
+        Assert.AreEqual((heavy[0], TargetKinds.Unit), (Weapon(sim, turret).TargetId, Weapon(sim, turret).TargetKind), "then the unit in range");
+        Assert.Less(Health(sim, heavy[0]), sim.Config.GetUnit(UnitType.Heavy).Health, "and shoots it");
+    }
+
+    [Test]
     public void ATurretFiresAtAnEnemyUnitInRangeAndSight()
     {
         using var sim = Sim();

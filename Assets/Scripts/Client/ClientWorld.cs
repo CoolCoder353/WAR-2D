@@ -360,7 +360,7 @@ namespace WAR2D.Client
 
         /// <summary>
         /// The <c>JamPulse</c> on every finished Jammer the client sees now (not ghosts, not blueprints; the local
-        /// player's own only while it looks paid), every <see cref="PulseSeconds"/>, staggered per Jammer.
+        /// player's own only while paid), every <see cref="PulseSeconds"/>, staggered per Jammer.
         /// </summary>
         private void PulseJammers(ClientBuildings known)
         {
@@ -369,7 +369,7 @@ namespace WAR2D.Client
             {
                 if (e.Data.buildingType != BuildingType.Jammer) continue;
                 int id = e.Data.id;
-                if (e.Ghost || e.Progress < 100 || DefenceView.LooksUnpaid(e))
+                if (e.Ghost || e.Progress < 100 || DefenceView.Unpaid(e))
                 {
                     nextPulse.Remove(id);
                     continue;

@@ -734,7 +734,7 @@ public class UnitCommander : NetworkBehaviour
     /// <summary>
     /// Selected own Radars, Gun turrets and Jammers show their range: a dashed ring in the owner's colour at the
     /// Radar's sight, the turret's range or the jam radius (Figma: World look – v0.7, Range rings – v0.13), at
-    /// 40% while the building is a blueprint or looks unpaid.
+    /// 40% while the building is a blueprint or is unpaid.
     /// </summary>
     private void ShowRangeRings(IReadOnlyList<int> ids)
     {
@@ -747,7 +747,7 @@ public class UnitCommander : NetworkBehaviour
             if (!Known.Entries.TryGetValue(id, out ClientBuildings.Entry e) || e.Ghost || e.Data.ownerId != own) continue;
             float radius = DefenceView.RingRadius(e.Data.buildingType);
             if (radius <= 0f) continue;
-            bool idle = e.Progress < 100 || (e.Data.buildingType != BuildingType.Radar && DefenceView.LooksUnpaid(e));
+            bool idle = e.Progress < 100 || (e.Data.buildingType != BuildingType.Radar && DefenceView.Unpaid(e));
             Color32 c = colour;
             c.a = (byte)(idle ? 255 * IdleRingOpacity : 255);
             if (shown == rangeRings.Count) rangeRings.Add(ClearingRing.Create("RangeRing", SortingOrders.ClearingRing));

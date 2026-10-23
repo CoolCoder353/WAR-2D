@@ -5,10 +5,10 @@ using WAR2D.Net.Replication;
 namespace WAR2D.Client
 {
     /// <summary>
-    /// What the client shows about its own defences (v0.13) from state it already has, with nothing new sent:
+    /// What the client shows about its own defences (v0.13):
     /// the range a building's ring draws at (the Radar's sight, the Gun turret's range, the Jammer's jam radius,
-    /// all from the config), whether one of the local player's buildings looks unpaid, and whether a turret is
-    /// firing (it shot within the last moments).
+    /// all from the config), whether one of the local player's buildings is unpaid (the server's flag, which only
+    /// the owner's records carry), and whether a turret is firing (it shot within the last moments).
     /// </summary>
     public static class DefenceView
     {
@@ -32,17 +32,10 @@ namespace WAR2D.Client
         public static ClientPlayer Local => NetworkClient.localPlayer != null ? NetworkClient.localPlayer.GetComponent<ClientPlayer>() : null;
 
         /// <summary>
-        /// True when a finished building of the local player's looks unpaid: the player's resources (sent to it
-        /// after each second's charges) can't cover its running cost, so its last charge failed or the next will.
-        /// The server's per-building flag never reaches clients; this is the client's reading of its own budget.
+        /// True when one of the local player's finished buildings is unpaid now: the server's flag, sent in the owner's
+        /// own building records only (<see cref="BuildingRecord.Unpaid"/>), so it is never set on anyone else's.
         /// </summary>
-        public static bool LooksUnpaid(in ClientBuildings.Entry e)
-        {
-            ClientPlayer local = Local;
-            if (local == null || e.Ghost || e.Progress < 100 || e.Data.ownerId != BuildingData.UIntToInt(local.netId)) return false;
-            float cost = ConfigLoader.LoadConfig().GetBuilding(e.Data.buildingType).RunningCost;
-            return cost > 0f && local.currentResources < cost;
-        }
+        public static bool Unpaid(in ClientBuildings.Entry e) => e.Unpaid && !e.Ghost && e.Progress >= 100;
 
         /// <summary>True when turret <paramref name="id"/> shot within its attack interval plus <see cref="FiringGraceSeconds"/> of <paramref name="time"/> (<c>Time.time</c>).</summary>
         public static bool Firing(ClientBuildings known, int id, float time)

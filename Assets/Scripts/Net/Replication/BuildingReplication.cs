@@ -26,6 +26,11 @@ namespace WAR2D.Net.Replication
         public byte Progress;
         /// <summary>A hidden building (a bomb): only its owner and the players its owner shares vision with may know it.</summary>
         public bool Hidden;
+        /// <summary>
+        /// The building's upkeep went unpaid at its last charge (it decays; a turret doesn't fire, a Jammer doesn't jam).
+        /// Private to the owner: only the owner's own records carry it (<see cref="BuildingRecord.Unpaid"/>).
+        /// </summary>
+        public bool Unpaid;
         /// <summary>Where fog is tested (the anchor's world position).</summary>
         public float2 Position;
     }
@@ -43,6 +48,11 @@ namespace WAR2D.Net.Replication
         Gone = 3,
         /// <summary>A seen building's construction progress (percent) changed.</summary>
         Progress = 4,
+        /// <summary>
+        /// One of the receiver's own buildings went unpaid (1) or paid again (0) (v0.13). Sent only to the owner: whether
+        /// a building is paid tells its owner's budget, so no other client ever gets this record.
+        /// </summary>
+        Unpaid = 5,
     }
 
     /// <summary>
@@ -58,6 +68,8 @@ namespace WAR2D.Net.Replication
             public int Health;
             public byte Progress;
             public bool Hidden;
+            /// <summary>The unpaid state last sent (only ever set for the receiver's own buildings).</summary>
+            public bool Unpaid;
             public float2 Position;
             public int OwnerId;
         }
@@ -104,7 +116,15 @@ namespace WAR2D.Net.Replication
                         records++;
                         progress = v.Progress;
                     }
-                    known[v.Id] = new Known { Live = true, Health = v.Health, Progress = progress, Hidden = v.Hidden, Position = v.Position, OwnerId = v.OwnerId };
+                    // The unpaid flag goes to the owner alone. An Enter leaves the client's flag clear, so it follows when set.
+                    bool unpaid = wasKnown && k.Live && k.Unpaid;
+                    if (v.OwnerId == ownerId && v.Unpaid != unpaid)
+                    {
+                        BuildingCodec.WriteId(writer, BuildingRecord.Unpaid, v.Id, v.Unpaid ? 1 : 0);
+                        records++;
+                        unpaid = v.Unpaid;
+                    }
+                    known[v.Id] = new Known { Live = true, Health = v.Health, Progress = progress, Hidden = v.Hidden, Unpaid = unpaid, Position = v.Position, OwnerId = v.OwnerId };
                     if (writer.Position >= maxBytes) return records;
                 }
                 else if (wasKnown && k.Hidden)
@@ -167,12 +187,12 @@ namespace WAR2D.Net.Replication
             writer.WriteByte(v.Progress);
         }
 
-        /// <summary>A Health (with <paramref name="value"/>), Hide or Gone record.</summary>
+        /// <summary>A Health, Progress or Unpaid (with <paramref name="value"/>), Hide or Gone record.</summary>
         public static void WriteId(NetworkWriter writer, BuildingRecord kind, int id, int value)
         {
             writer.WriteByte((byte)kind);
             VarInt.Write(writer, (uint)id);
-            if (kind == BuildingRecord.Health || kind == BuildingRecord.Progress) VarInt.Write(writer, (uint)math.max(0, value));
+            if (kind == BuildingRecord.Health || kind == BuildingRecord.Progress || kind == BuildingRecord.Unpaid) VarInt.Write(writer, (uint)math.max(0, value));
         }
 
         /// <summary>Applies every record to <paramref name="into"/>. False when malformed.</summary>
@@ -206,6 +226,11 @@ namespace WAR2D.Net.Replication
                         case BuildingRecord.Health:
                             into.SetHealth(id, (int)VarInt.Read(reader));
                             break;
+                        case BuildingRecord.Unpaid:
+                            uint flag = VarInt.Read(reader);
+                            if (flag > 1) return false;
+                            into.SetUnpaid(id, flag != 0);
+                            break;
                         case BuildingRecord.Hide:
                             into.Hide(id);
                             break;
@@ -236,6 +261,11 @@ namespace WAR2D.Net.Replication
             public byte Progress;
             /// <summary>True when the building is out of sight: what is shown is how it was last seen.</summary>
             public bool Ghost;
+            /// <summary>
+            /// The server's unpaid flag (v0.13): set only on the local player's own buildings (no other client is sent it),
+            /// while the last upkeep charge failed.
+            /// </summary>
+            public bool Unpaid;
         }
 
         /// <summary>The local client's buildings.</summary>
@@ -314,6 +344,13 @@ namespace WAR2D.Net.Replication
         {
             Entries[data.id] = new Entry { Data = data, Health = health, Progress = progress };
             Entered?.Invoke(data, health);
+        }
+
+        internal void SetUnpaid(int id, bool unpaid)
+        {
+            if (!Entries.TryGetValue(id, out Entry e)) return;
+            e.Unpaid = unpaid;
+            Entries[id] = e;
         }
 
         internal void SetHealth(int id, int health)

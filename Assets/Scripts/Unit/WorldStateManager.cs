@@ -521,6 +521,7 @@ public partial class WorldStateManager : NetworkBehaviour
                 Health = (int)math.ceil(health.currentHealth),
                 MaxHealth = (int)math.ceil(health.maxHealth),
                 Hidden = building.buildingType == BuildingType.Bomb,
+                Unpaid = EntityManager.HasComponent<UpkeepComponent>(entity) && EntityManager.GetComponentData<UpkeepComponent>(entity).unpaid,
                 Progress = EntityManager.HasComponent<Construction>(entity)
                     ? (byte)math.clamp((int)math.floor(EntityManager.GetComponentData<Construction>(entity).Progress * 100f), 0, 99)
                     : (byte)100,
@@ -1015,6 +1016,8 @@ public partial class WorldStateManager : NetworkBehaviour
             {
                 Health = (int)health, Width = buildingConfig.Width, Height = buildingConfig.Height,
                 UpfrontCost = 0f, RunningCost = 0f,
+                // Free and sturdy, but still armed: a turret keeps its weapon (v0.13).
+                Sight = buildingConfig.Sight, Damage = buildingConfig.Damage, Range = buildingConfig.Range, AttackInterval = buildingConfig.AttackInterval,
             };
         }
         var data = new BuildingData { position = anchor, id = Ids.Allocate(), buildingType = type, ownerId = ownerId, rotation = rotation };

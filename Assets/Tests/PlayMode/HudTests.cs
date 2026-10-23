@@ -315,6 +315,14 @@ public class HudTests
     private const int Bot = 1000002;
 
     /// <summary>Adds a hostile bot with an indestructible HQ as far from <paramref name="from"/> as fits; returns its anchor.</summary>
+    private static bool BotHasABuilding()
+    {
+        using var q = PlayModeMatch.Em.CreateEntityQuery(typeof(BuildingData));
+        using var buildings = q.ToComponentDataArray<BuildingData>(Unity.Collections.Allocator.Temp);
+        foreach (BuildingData b in buildings) if (b.ownerId == Bot) return true;
+        return false;
+    }
+
     private static int2 AddBotWithHQ(int2 from)
     {
         DevApi.AllowForTests = true;
@@ -454,6 +462,8 @@ public class HudTests
         int2 hq = default;
         yield return PlayModeMatch.PlaceHQ(a => hq = a);
         AddBotWithHQ(hq);
+        // The bot's HQ is created at the next tick boundary; surrendering before it exists would leave no one standing (a draw).
+        yield return PlayModeMatch.WaitUntil(() => BotHasABuilding(), 5f);
         VisualElement root = HudRoot();
         HudController hud = Object.FindAnyObjectByType<HudController>();
 
