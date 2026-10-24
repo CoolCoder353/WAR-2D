@@ -87,6 +87,10 @@ namespace WAR2D.Client.Replay
         private ReplayCursor cursor;
         private MapStore map;
         private ClientWorld view;
+        private Camera replayCamera;
+        private Character.Character_Settings cameraSettings;
+        private Vector3? dragOrigin;
+        private float panHeldSeconds;
         private bool quiet;
         private bool sawEnd;
         private IReadOnlyList<(int owner, float resources, int units, int buildings)> timeline = Array.Empty<(int, float, int, int)>();
@@ -125,9 +129,17 @@ namespace WAR2D.Client.Replay
                 cursor.Dispose();
                 return null;
             }
+            Character.Character_Settings cameraSettings = Resources.Load<Character.Character_Settings>("Character_Settings");
+            if (cameraSettings == null)
+            {
+                error = "camera settings are missing";
+                cursor.Dispose();
+                return null;
+            }
             MenuBattle.Instance?.TearDown();
             var player = new GameObject("ReplayPlayer").AddComponent<ReplayPlayer>();
             player.cursor = cursor;
+            player.cameraSettings = cameraSettings;
             player.Build();
             return player;
         }
@@ -153,6 +165,7 @@ namespace WAR2D.Client.Replay
                 return i >= 0 ? header.Players[i].Colour : 0;
             };
             Camera cam = Camera.main != null ? Camera.main : FindAnyObjectByType<Camera>();
+            replayCamera = cam;
             view.ViewCamera = cam;
             if (cam != null)
             {
@@ -174,6 +187,7 @@ namespace WAR2D.Client.Replay
         private void Update()
         {
             if (cursor == null) return;
+            UpdateCamera();
             float dt = Mathf.Min(Time.unscaledDeltaTime, 0.1f) * Speed; // a hitch slows playback rather than skipping it
             if (Playing)
             {
@@ -181,6 +195,54 @@ namespace WAR2D.Client.Replay
                 view.AdvanceClock(dt);
                 if (Playing && cursor.AtEnd) StopAtEndOfFile();
             }
+        }
+
+        private void UpdateCamera()
+        {
+            Camera cam = replayCamera;
+            if (cam == null || cameraSettings == null || map == null) return;
+
+            Vector3 next = cam.transform.position;
+            float scroll = GameInput.Zoom.ReadValue<float>();
+            bool pointerOverUI = GameInput.PointerOverUI;
+            if (scroll != 0f && !pointerOverUI)
+            {
+                Vector2 pointer = GameInput.Point.ReadValue<Vector2>();
+                Vector3 before = cam.ScreenToWorldPoint(new Vector3(pointer.x, pointer.y, -cam.transform.position.z));
+                cam.orthographicSize = CameraZoom.Step(cam.orthographicSize, scroll, WAR2D.Art.ArtStyle.PixelsPerUnit,
+                    Screen.height, cameraSettings.zoomScale.x, cameraSettings.zoomScale.y);
+                Vector3 after = cam.ScreenToWorldPoint(new Vector3(pointer.x, pointer.y, -cam.transform.position.z));
+                next += new Vector3(before.x - after.x, before.y - after.y, 0f);
+            }
+
+            Vector2 panInput = GameInput.Pan.ReadValue<Vector2>();
+            panHeldSeconds = panInput.sqrMagnitude > 0f ? panHeldSeconds + Time.unscaledDeltaTime : 0f;
+            Vector2 pan = Vector2.ClampMagnitude(panInput, 1f);
+            float multiplier = GameInput.FastPan.IsPressed() ? cameraSettings.shiftSpeedMultiplyer : 1f;
+            float acceleration = Mathf.Lerp(1f, 4f, Mathf.Clamp01(panHeldSeconds / 1.25f));
+            next += (Vector3)(pan * cameraSettings.speed * multiplier * acceleration * (cam.orthographicSize / 5f) * Time.unscaledDeltaTime);
+
+            if (GameInput.DragPan.WasPressedThisFrame() && !pointerOverUI)
+                dragOrigin = PointerWorld(cam);
+            else if (!GameInput.DragPan.IsPressed())
+                dragOrigin = null;
+            if (dragOrigin.HasValue)
+            {
+                Vector3 now = PointerWorld(cam);
+                next += new Vector3(dragOrigin.Value.x - now.x, dragOrigin.Value.y - now.y, 0f);
+            }
+
+            next.x = Mathf.Clamp(next.x, 0f, map.Grid.Width);
+            next.y = Mathf.Clamp(next.y, 0f, map.Grid.Height);
+            cam.transform.position = next;
+        }
+
+        private static Vector3 PointerWorld(Camera cam)
+        {
+            Vector2 pointer = GameInput.Point.ReadValue<Vector2>();
+            Vector3 world = cam.ScreenToWorldPoint(new Vector3(pointer.x, pointer.y, -cam.transform.position.z));
+            world.z = 0f;
+            return world;
         }
 
         /// <summary>A recording without its End record (cut short) stops at its last record instead of playing on forever.</summary>
@@ -266,6 +328,10 @@ namespace WAR2D.Client.Replay
         {
             if (view != null) DestroyImmediate(view.gameObject);
             view = null;
+            replayCamera = null;
+            cameraSettings = null;
+            dragOrigin = null;
+            panHeldSeconds = 0f;
             ClientTerrain.Current.Changed -= OnClientTerrainChanged;
             MapView.Hide();
             ClientBuildings.Clear();

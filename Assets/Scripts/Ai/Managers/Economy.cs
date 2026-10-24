@@ -33,13 +33,18 @@ namespace WAR2D.Ai
             AiPlayConfig play = ai.Config.Play;
 
             KeepUpkeepPaid(ai, view, state);
-            // Upkeep caught up with income: more Miners, as many at once as its Builders staff (a Miner being built already counts for its income).
+            // Upkeep caught up with income (Normal, Hard; Easy just goes unpaid): more Miners, as many at once as its Builders staff (a Miner being built already counts for its income).
             int minersBuilding = state.BuildingCount[(int)BuildingType.Miner] - state.CompleteCount[(int)BuildingType.Miner];
             float incomeSoon = state.Income + minersBuilding * ai.Game.Resources.MiningRate;
             // As many Miner blueprints at once as its Builders staff (one at a time would let a far one hold up the rest).
             int minersAtOnce = math.max(1, state.Builders.Count / math.max(1, play.BuildersPerBlueprint));
-            bool capped = incomeSoon * play.UpkeepIncomeShare - state.Upkeep < play.UpkeepHeadroom && minersBuilding < minersAtOnce;
-            int held = UpdateExpansions(ai, view, state, capped);
+            bool capped = ai.Difficulty.KeepsUpkeepPaid && incomeSoon * play.UpkeepIncomeShare - state.Upkeep < play.UpkeepHeadroom && minersBuilding < minersAtOnce;
+            // Normal, Hard: Miners on every gem it can reach, as many at once as its Builders staff (they cost no upkeep
+            // and pay for themselves in seconds); an area whose search found no spot is full for a while.
+            bool more = ai.Difficulty.SaturatesMiners && minersBuilding < minersAtOnce;
+            int baseKey = AiKeys.Of(AiKeys.Place, (int)BuildingType.Miner, -1);
+            bool baseFull = state.IsSaturated(baseKey);
+            int held = UpdateExpansions(ai, view, state, capped, baseFull);
             Held = held;
 
             int builders = ai.Difficulty.Builders + ai.Difficulty.BuildersPerExpansion * held;
@@ -48,20 +53,21 @@ namespace WAR2D.Ai
 
             // The style's Miners, and more while its income barely covers its upkeep (it builds Miners before anything else that costs upkeep).
             float baseRadius = play.BaseRadius;
-            if (state.CountNear(BuildingType.Miner, state.Home, baseRadius + 4f) < ai.Style.Miners || capped)
-                state.RequestBuilding(BuildingType.Miner, state.Hq.Anchor, baseRadius, AiPriority.High - 2f, AiKeys.Of(AiKeys.Place, (int)BuildingType.Miner, -1));
+            if (state.CountNear(BuildingType.Miner, state.Home, baseRadius + 4f) < ai.Style.Miners || ((capped || more) && !baseFull))
+                state.RequestBuilding(BuildingType.Miner, state.Hq.Anchor, baseRadius, AiPriority.High - 2f, baseKey);
 
             foreach (int index in claimed)
             {
                 AiRegion region = view.Regions[index];
                 if (!state.Placement.Explored(region.Centre)) { SendBuilder(ai, state, region.Centre, index); continue; }
-                if (state.CountNear(BuildingType.Miner, region.Centre, region.Radius + 4f) < ai.Style.MinersPerExpansion || capped)
-                    state.RequestBuilding(BuildingType.Miner, region.Centre, region.Radius + 4f, AiPriority.Normal + 5f, AiKeys.Of(AiKeys.Place, (int)BuildingType.Miner, index));
+                int key = AiKeys.Of(AiKeys.Place, (int)BuildingType.Miner, index);
+                if (state.CountNear(BuildingType.Miner, region.Centre, region.Radius + 4f) < ai.Style.MinersPerExpansion || ((capped || more) && !state.IsSaturated(key)))
+                    state.RequestBuilding(BuildingType.Miner, region.Centre, region.Radius + 4f, ai.Difficulty.SaturatesMiners ? AiPriority.High - 2f : AiPriority.Normal + 5f, key);
             }
         }
 
         /// <summary>Claims and drops expansions; returns how many it holds (a Miner of its own there).</summary>
-        private int UpdateExpansions(AiContext ai, TeamView view, AiState state, bool capped)
+        private int UpdateExpansions(AiContext ai, TeamView view, AiState state, bool capped, bool baseFull)
         {
             AiRegion[] regions = view.Regions;
             for (int i = claimed.Count - 1; i >= 0; i--)
@@ -79,7 +85,10 @@ namespace WAR2D.Ai
             bool squeezed = capped && state.Free >= ai.Config.Play.CappedExpandResources;
             // Upkeep-capped with money to spare, it takes more than its style's (up to its difficulty's most): money banked is wasted.
             if (squeezed && onTime) wanted = ai.Difficulty.MaxExpansions;
-            if (claimed.Count >= wanted || !(onTime || squeezed)) return held;
+            // Normal, Hard: its base and every expansion it holds full of Miners, it takes the next one (up to its difficulty's most).
+            bool full = ai.Difficulty.SaturatesMiners && baseFull && AllHeldFull(state);
+            if (full) wanted = ai.Difficulty.MaxExpansions;
+            if (claimed.Count >= wanted || !(onTime || squeezed || full)) return held;
             if (state.BuildingCount[(int)BuildingType.Miner] < ai.Style.Miners || state.Free < 2f * state.CostOf(BuildingType.Miner)) return held;
             int best = -1;
             float bestD = float.MaxValue;
@@ -92,6 +101,13 @@ namespace WAR2D.Ai
             }
             if (best >= 0) claimed.Add(best);
             return held;
+        }
+
+        private bool AllHeldFull(AiState state)
+        {
+            foreach (int index in claimed)
+                if (!state.IsSaturated(AiKeys.Of(AiKeys.Place, (int)BuildingType.Miner, index))) return false;
+            return true;
         }
 
         private static bool EnemyBuildingNear(AiContext ai, int2 at, float radius)

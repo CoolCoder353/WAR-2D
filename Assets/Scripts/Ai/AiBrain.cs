@@ -89,8 +89,17 @@ namespace WAR2D.Ai
                 ["scout"] = Manager<ScoutingManager>()?.Stops ?? "",
                 ["armyLog"] = army != null ? army.Log.ToArray() : new string[0],
                 ["blueprints"] = s.Blueprints.Count, ["idleBuilders"] = s.IdleBuilders.Count, ["requests"] = s.BuildRequests.Count,
+                ["requestList"] = RequestList(s), ["free"] = s.Free,
                 ["expansions"] = $"{Manager<EconomyManager>()?.Held ?? 0}/{Manager<EconomyManager>()?.Claimed.Count ?? 0}",
             };
+        }
+
+        private static string RequestList(AiState s)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (BuildRequest r in s.BuildRequests) { if (sb.Length > 0) sb.Append(','); sb.Append(r.Type); if (s.IsSaturated(r.Key)) sb.Append("(full)"); }
+            foreach (UnitRequest r in s.UnitRequests) { if (sb.Length > 0) sb.Append(','); sb.Append('u').Append(r.Type); }
+            return sb.ToString();
         }
 
         public void Think(TeamView view)

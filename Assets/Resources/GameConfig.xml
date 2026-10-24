@@ -151,6 +151,7 @@
       <DefendsChokepoints>0</DefendsChokepoints>
       <EarlyTurrets>0</EarlyTurrets>
       <IncomePerProducer>0</IncomePerProducer>
+      <SaturatesMiners>0</SaturatesMiners>
       <AttackRatio>1.0</AttackRatio>
       <Peace>Always</Peace>
       <GiftsSurplus>0</GiftsSurplus>
@@ -178,6 +179,7 @@
       <DefendsChokepoints>0</DefendsChokepoints>
       <EarlyTurrets>0</EarlyTurrets>
       <IncomePerProducer>0</IncomePerProducer>
+      <SaturatesMiners>1</SaturatesMiners>          <!-- Miners on every gem it reaches, expanding when full -->
       <AttackRatio>1.2</AttackRatio>
       <Peace>UnlessWinning</Peace>
       <GiftsSurplus>1</GiftsSurplus>
@@ -205,6 +207,7 @@
       <DefendsChokepoints>1</DefendsChokepoints>     <!-- defences at chokepoints -->
       <EarlyTurrets>3</EarlyTurrets>                 <!-- turrets in front of its HQ early, against a rush -->
       <IncomePerProducer>120</IncomePerProducer>           <!-- another producer only with this much income per producer it has -->
+      <SaturatesMiners>1</SaturatesMiners>
       <AttackRatio>1.1</AttackRatio>
       <Peace>WhenLosingOrThirdParty</Peace>
       <GiftsSurplus>1</GiftsSurplus>
@@ -366,6 +369,11 @@
       <CounterAttackRatio>3</CounterAttackRatio>       <!-- defending a threat it outweighs this many times over, the rest of its army counter-attacks -->
       <StuckBlueprintSeconds>60</StuckBlueprintSeconds> <!-- a blueprint with no progress this long is cancelled and its spot avoided -->
       <RecallShare>0.3</RecallShare>                   <!-- a threat at its base worth this share of its attack group (and more than home holds) calls the attack back -->
+      <MarchSlack>1.5</MarchSlack>                     <!-- the staging wait starts at the latest after the slowest unit's travel time times this -->
+      <MaxDefenceBlueprints>2</MaxDefenceBlueprints>   <!-- defence blueprints standing at once (more would hold Builders off Miners) -->
+      <RegroupShare>0.5</RegroupShare>                 <!-- a lost fight at the front holding under this share of the group regroups instead of retreating -->
+      <SaturatedSeconds>45</SaturatedSeconds>          <!-- a Miner search with no spot and nothing to explore marks that area full this long -->
+      <StuckPatch>4</StuckPatch>                       <!-- anchors this far around a cancelled stuck blueprint stay out of the search -->
     </Play>
     <Counters>  <!-- spec 5.5: units weighted against each enemy unit seen (Normal, Hard) and what each enemy building makes (Hard) -->
       <Counter seen="Heavy">Sniper:2 Artillery:2 Heavy:1</Counter>

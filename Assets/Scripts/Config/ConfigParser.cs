@@ -372,6 +372,7 @@ namespace Config
                     EarlyTurrets = Int(node, "EarlyTurrets", c, errors, min: 0, max: 20),
                     IncomePerProducer = Float(node, "IncomePerProducer", c, errors, min: 0, max: 10000),
                     Scouts = Int(node, "Scouts", c, errors, min: 1, max: 8),
+                    SaturatesMiners = Flag(node, "SaturatesMiners", c, errors),
                     AttackRatio = Float(node, "AttackRatio", c, errors, min: 0.1f, max: 10),
                     Peace = Named(node, "Peace", c, errors, AiPeace.Always),
                     GiftsSurplus = Flag(node, "GiftsSurplus", c, errors),
@@ -510,6 +511,11 @@ namespace Config
                 p.EarlyTurretSeconds = Float(play, "EarlyTurretSeconds", c, errors, min: 0, max: 3600);
                 p.ScoutsFullMapSize = Int(play, "ScoutsFullMapSize", c, errors, min: 1, max: 100000);
                 p.ScoutStopSeconds = Float(play, "ScoutStopSeconds", c, errors, min: 5, max: 3600);
+                p.MarchSlack = Float(play, "MarchSlack", c, errors, min: 1, max: 10);
+                p.MaxDefenceBlueprints = Int(play, "MaxDefenceBlueprints", c, errors, min: 1, max: 64);
+                p.RegroupShare = Float(play, "RegroupShare", c, errors, min: 0, max: 1);
+                p.SaturatedSeconds = Float(play, "SaturatedSeconds", c, errors, min: 1, max: 3600);
+                p.StuckPatch = Int(play, "StuckPatch", c, errors, min: 0, max: 32);
             }
 
             XmlNode counters = Require(ai, "Counters", errors);

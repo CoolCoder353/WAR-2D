@@ -199,7 +199,7 @@ public sealed class AiBench : MonoBehaviour
         if (played >= r.nextMinute * 60f && seat.Player.state == PlayerState.Playing)
         {
             int Count(string key) => status.TryGetValue("buildings", out object bs) && bs is Dictionary<string, int> d && d.TryGetValue(key, out int n) ? n : 0;
-            r.timeline.Add($"{r.nextMinute}m res {seat.Player.Resources:F0} inc {Convert.ToSingle(status["incomeEst"]):F0} upk {Convert.ToSingle(status["upkeepEst"]):F0} army {army} bld {buildings} min {Count("Miner")} bar {Count("Barracks")} hf {Count("HeavyFactory")} sw {Count("SiegeWorkshop")} tur {Count("GunTurret")} exp {status["expansions"]} bp {status["blueprints"]} idle {status["idleBuilders"]} req {status["requests"]} eb {status["knownEnemyBases"]} sc {status["scout"]} {status["army"]}");
+            r.timeline.Add($"{r.nextMinute}m res {seat.Player.Resources:F0} inc {Convert.ToSingle(status["incomeEst"]):F0} upk {Convert.ToSingle(status["upkeepEst"]):F0} army {army} bld {buildings} min {Count("Miner")} bar {Count("Barracks")} hf {Count("HeavyFactory")} sw {Count("SiegeWorkshop")} tur {Count("GunTurret")} exp {status["expansions"]} bp {status["blueprints"]} idle {status["idleBuilders"]} req {status["requests"]} eb {status["knownEnemyBases"]} sc {status["scout"]} {status["army"]} free {Convert.ToSingle(status["free"]):F0} rq [{status["requestList"]}]");
             r.nextMinute++;
         }
     }

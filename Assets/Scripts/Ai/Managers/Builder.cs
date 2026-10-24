@@ -59,7 +59,11 @@ namespace WAR2D.Ai
                 if (!blueprintProgress.TryGetValue(b.Id, out var seen) || seen.progress != b.Progress) { blueprintProgress[b.Id] = ((byte)b.Progress, now); continue; }
                 if (now - seen.since < limit || stuck.Count >= SpawnerRules.MaxSpawnersPerCommand) continue;
                 stuck.Add(b.Id);
-                state.Block(b.Anchor, now);
+                // Its Builders couldn't get there: the ground around it is likely as unreachable (a cave pocket), so the
+                // search keeps off the whole patch for a while, not only that anchor.
+                int patch = ai.Config.Play.StuckPatch;
+                for (int y = -patch; y <= patch; y++)
+                    for (int x = -patch; x <= patch; x++) state.Block(b.Anchor + new int2(x, y), now);
                 blueprintProgress[b.Id] = ((byte)b.Progress, now); // once per limit, if the cancel is refused
             }
             if (stuck.Count > 0) ai.Propose(AiPriority.High, AiAction.CancelBuildings(stuck), AiKeys.Of(AiKeys.Cancel, 1));
@@ -79,6 +83,7 @@ namespace WAR2D.Ai
             AiPlayConfig play = ai.Config.Play;
             if (ai.Difficulty.EarlyTurrets <= 0 || state.PlayingSeconds < play.EarlyTurretSeconds) return;
             if (state.CountNear(BuildingType.GunTurret, state.Home, play.BaseRadius) >= ai.Difficulty.EarlyTurrets) return;
+            if (DefenceBlueprints(ai.View, state) >= play.MaxDefenceBlueprints) return;
             state.RequestBuilding(BuildingType.GunTurret, Front(state, 0, play.GatherDistance * 0.5f), play.DefenceSpread, AiPriority.High - 3f, AiKeys.Of(AiKeys.Place, (int)BuildingType.GunTurret, 100));
         }
 
@@ -116,8 +121,9 @@ namespace WAR2D.Ai
             if ((ai.Style.Radar || ai.Difficulty.Scouting == AiScouting.RegularWithRadar) && state.BuildingCount[(int)BuildingType.Radar] == 0)
                 state.RequestBuilding(BuildingType.Radar, Front(state, 0, play.DefenceSpread), play.BaseRadius / 2f, AiPriority.Low, AiKeys.Of(AiKeys.Place, (int)BuildingType.Radar), play.BuildingGap);
 
-            // Defences: per spot, one missing piece at a time (cheap first), once its army has had its start.
-            if (state.PlayingSeconds < play.DefenceAfterSeconds) return;
+            // Defences: per spot, one missing piece at a time (cheap first), once its army has had its start, and only a
+            // few blueprints at once (its Builders are for Miners first).
+            if (state.PlayingSeconds < play.DefenceAfterSeconds || DefenceBlueprints(view, state) >= play.MaxDefenceBlueprints) return;
             int turrets = ai.Style.Turrets + (LightEnemies(ai) ? 1 : 0);
             int jammers = (int)math.round(ai.Style.Jammers * ai.Difficulty.SpecialUse);
             int bombs = (int)math.round(ai.Style.Bombs * ai.Difficulty.SpecialUse);
@@ -134,6 +140,16 @@ namespace WAR2D.Ai
                     state.RequestBuilding(BuildingType.Jammer, (int2)math.floor(back), spread, AiPriority.Low, AiKeys.Of(AiKeys.Place, (int)BuildingType.Jammer, s), play.BuildingGap);
                 else if (ai.Style.Walls && ai.Difficulty.DefendsChokepoints) Wall(ai, state, spot, dir, s);
             }
+        }
+
+        private static bool IsDefence(BuildingType t) => t == BuildingType.GunTurret || t == BuildingType.Bomb || t == BuildingType.Jammer;
+
+        private static int DefenceBlueprints(TeamView view, AiState state)
+        {
+            int n = 0;
+            foreach (int i in state.Blueprints) if (IsDefence(view.Buildings[i].Type)) n++;
+            foreach (PendingBuilding p in state.Pending) if (IsDefence(p.Type)) n++;
+            return n;
         }
 
         /// <summary>A point in front of its HQ (towards its first defended spot or gathering point), <paramref name="distance"/> tiles out.</summary>
@@ -259,7 +275,10 @@ namespace WAR2D.Ai
                 requestKeys.Add(r.Key);
                 if (failedUntil.TryGetValue(r.Key, out double until) && ai.Now < until) continue;
                 float cost = state.CostOf(r.Type), upkeep = state.UpkeepOf(r.Type);
-                if (!state.TrySpend(cost, upkeep))
+                // A Miner adds no upkeep and pays for itself in seconds: it may use the upkeep reserve (an AI whose upkeep
+                // has caught up with its income would otherwise never afford the Miners that free it).
+                bool earner = r.Type == BuildingType.Miner && upkeep <= 0f;
+                if (earner ? !state.TrySpendEarner(cost) : !state.TrySpend(cost, upkeep))
                 {
                     if (r.Save && state.MayAddUpkeep(upkeep)) state.Reserve(cost); // saves up: nothing after it is bought
                     continue;
@@ -275,7 +294,8 @@ namespace WAR2D.Ai
                 {
                     state.Release(cost, upkeep);
                     failedUntil[r.Key] = ai.Now + ai.Config.Play.SearchRetrySeconds;
-                    Explore(ai, state, r);
+                    // No Miner spot and no gem left to explore there: that area is full (saturation, expansions).
+                    if (!Explore(ai, state, r) && r.Type == BuildingType.Miner) state.SaturatedUntil[r.Key] = ai.Now + ai.Config.Play.SaturatedSeconds;
                     continue;
                 }
                 ai.Propose(r.Priority, AiAction.PlaceBuilding(r.Type, anchor, rotation), r.Key);
@@ -291,9 +311,9 @@ namespace WAR2D.Ai
         /// No spot on the ground it has seen: an idle Builder walks to the nearest ground in the request's area its side
         /// hasn't explored (for a Miner, beside the nearest gem it knows of from the map, as every client does).
         /// </summary>
-        private void Explore(AiContext ai, AiState state, in BuildRequest r)
+        /// <returns>False when there is no unexplored ground (or gem) left in the area to explore.</returns>
+        private bool Explore(AiContext ai, AiState state, in BuildRequest r)
         {
-            if (state.IdleBuilders.Count == 0) return;
             TeamView view = ai.View;
             int radius = (int)math.ceil(r.Radius);
             int2 goal = default;
@@ -306,11 +326,13 @@ namespace WAR2D.Ai
                     TileType kind = view.TileAt(t);
                     if (r.Type == BuildingType.Miner ? kind == TileType.Gem : kind == TileType.Ground) { goal = t; found = true; }
                 }
-            if (!found) return;
+            if (!found) return false;
+            if (state.IdleBuilders.Count == 0) return true;
             Pick(view, state, (float2)goal + 0.5f, 1);
-            if (ids.Count == 0) return;
+            if (ids.Count == 0) return true;
             goal = state.GroundNear((float2)goal + 0.5f, 3);
             ai.Propose(AiPriority.Normal, AiAction.OrderUnits(ids, OrderKind.Move, goal), AiKeys.Of(AiKeys.Expand, r.Key));
+            return true;
         }
 
         // ---- Builders ----
@@ -320,7 +342,21 @@ namespace WAR2D.Ai
             AiPlayConfig play = ai.Config.Play;
             if (state.IdleBuilders.Count == 0) return;
             float reach = ai.Game.Siege.WorkReach + 1.5f;
-            foreach (int index in state.Blueprints)
+            // Miners first (income), then producers and the rest, defences last; nearest its HQ first within a rank.
+            order.Clear();
+            order.AddRange(state.Blueprints);
+            if (order.Count > 1)
+            {
+                float2 home = state.Home;
+                order.Sort((a, b) =>
+                {
+                    AiBuilding x = view.Buildings[a], y = view.Buildings[b];
+                    int rx = Rank(x.Type), ry = Rank(y.Type);
+                    if (rx != ry) return rx.CompareTo(ry);
+                    return math.distancesq((float2)x.Anchor, home).CompareTo(math.distancesq((float2)y.Anchor, home));
+                });
+            }
+            foreach (int index in order)
             {
                 if (state.IdleBuilders.Count == 0) return;
                 AiBuilding b = view.Buildings[index];
@@ -371,6 +407,10 @@ namespace WAR2D.Ai
             }
             if (assignedAt.Count > 512) assignedAt.Clear();
         }
+
+        private readonly List<int> order = new List<int>(16);
+
+        private static int Rank(BuildingType t) => t == BuildingType.Miner ? 0 : IsDefence(t) ? 2 : 1;
 
         /// <summary>Fills <see cref="ids"/> with up to <paramref name="count"/> idle Builders nearest a point, taking them off the idle list.</summary>
         private void Pick(TeamView view, AiState state, float2 at, int count)

@@ -42,6 +42,7 @@ namespace WAR2D.Ai
         private bool attackedOnce, engaged, hasThreat;
         private int2 stage;
         private double marchStarted, lastMarchNote, targetSince;
+        private float marchLimit;
         private float threatStrength, homeStrength;
         private float2 threatAt;
 
@@ -266,6 +267,16 @@ namespace WAR2D.Ai
             engaged = false;
             stagedAt = ai.Now;
             marchStarted = ai.Now;
+            // The staging wait starts at the latest once its slowest unit could have got there (with slack).
+            float slowest = float.MaxValue;
+            foreach (int i in state.Combat)
+            {
+                AiUnit u = view.OwnUnits[i];
+                if (!group.Contains(u.Id)) continue;
+                UnitConfig c = state.UnitOf(u.Type);
+                if (c != null && c.MoveSpeed > 0f) slowest = math.min(slowest, c.MoveSpeed);
+            }
+            marchLimit = math.max(play.MarchSeconds, slowest < float.MaxValue ? math.distance(from, (float2)stage + 0.5f) / slowest * play.MarchSlack : 0f);
             GroupIds(view, state, false);
             if (ids.Count > 0) ai.Propose(AiPriority.High, AiAction.OrderUnits(ids, OrderKind.AttackMove, stage), AiKeys.Of(AiKeys.Army));
             orderedAt[AiKeys.Army] = ai.Now;
@@ -346,18 +357,37 @@ namespace WAR2D.Ai
             if (ai.Difficulty.Retreats)
             {
                 centre = front;
-                float ours = 0f;
+                float ours = 0f, all = 0f;
                 // Engaged: the group within two fight radii (what can join the fight). Marching to its staging point: the whole
                 // group (a strung-out march meeting a defence is not a lost fight; it gathers at the stage first).
                 float r2 = engaged ? 4f * play.ArmyRadius * play.ArmyRadius : float.MaxValue;
                 foreach (int i in state.Combat)
                 {
                     AiUnit u = view.OwnUnits[i];
-                    if (group.Contains(u.Id) && math.distancesq(u.Position, centre) <= r2) ours += StrengthEstimate.Of(ai.Game, u);
+                    if (!group.Contains(u.Id)) continue;
+                    float v = StrengthEstimate.Of(ai.Game, u);
+                    all += v;
+                    if (math.distancesq(u.Position, centre) <= r2) ours += v;
                 }
                 float theirs = StrengthEstimate.EnemyNear(ai.Game, view, centre, play.ArmyRadius, play.TurretStrength);
                 // Maxed out (no upkeep room, money piling up), a trade costs it nothing it can't rebuild: it fights on.
                 bool maxed = ai.Difficulty.KeepsUpkeepPaid && state.Free >= play.MaxedAttackResources && !state.MayAddUpkeep(state.UpkeepOf(UnitType.Tank));
+                if (!maxed && engaged && theirs > 0f && ours < theirs * ai.Difficulty.RetreatRatio && ours < all * play.RegroupShare && all >= theirs * ai.Difficulty.RetreatRatio)
+                {
+                    // Only its vanguard is in the fight (the group strung out): the front falls back to the main body and
+                    // the group stages there again, rather than the whole army going home.
+                    float2 body = GroupCentre(view, false);
+                    Note(ai, $"regroup at {body.x:F0},{body.y:F0}: front {ours:F0} of {all:F0}, theirs {theirs:F0}");
+                    stage = state.GroundNear(body, (int)play.StageDistance);
+                    engaged = false;
+                    stagedAt = ai.Now;
+                    marchStarted = ai.Now;
+                    marchLimit = play.StageSeconds;
+                    GroupIds(view, state, false);
+                    if (ids.Count > 0) ai.Propose(AiPriority.High, AiAction.OrderUnits(ids, OrderKind.Move, stage), AiKeys.Of(AiKeys.Army));
+                    orderedAt[AiKeys.Army] = ai.Now;
+                    return;
+                }
                 if (!maxed && theirs > 0f && ours < theirs * ai.Difficulty.RetreatRatio)
                 {
                     Note(ai, $"retreat group {group.Count} ours {ours:F0} theirs {theirs:F0}");
@@ -403,7 +433,7 @@ namespace WAR2D.Ai
                     Note(ai, $"march: {n} at {c.x:F0},{c.y:F0} to {stage.x},{stage.y}, {there} there, {ordered} ordered, {working} working, {held} holding");
                 }
                 // The wait starts when the first unit gets there (a long march is not a wait), at most MarchSeconds in all.
-                if (there == 0 && ai.Now - marchStarted < play.MarchSeconds) stagedAt = ai.Now;
+                if (there == 0 && ai.Now - marchStarted < marchLimit) stagedAt = ai.Now;
                 if (there >= group.Count * play.StageShare || ai.Now - stagedAt > play.StageSeconds)
                 {
                     int moving = 0;
@@ -684,17 +714,21 @@ namespace WAR2D.Ai
             double newest = double.NegativeInfinity;
             Blackboard board = ai.Board;
             float recent = ai.Config.Play.OrderSeconds + board.ReactionSeconds;
+            // The current threat nearest its HQ first (an HQ falls in seconds; an outpost can wait).
+            float nearest = float.MaxValue;
             foreach (Threat t in board.Threats.Values)
             {
                 if (!board.IsActionable(t) || board.Now - t.LastSeen > recent) continue;
-                if (t.LastSeen > newest) { newest = t.LastSeen; at = t.Position; }
+                float d = math.distancesq(t.Position, state.Home);
+                if (d < nearest) { nearest = d; newest = t.LastSeen; at = t.Position; }
             }
             if (newest > double.NegativeInfinity) return true;
             board.Alerts.Ready(board.Now, alerts);
             foreach (AiAlert a in alerts)
             {
                 if (a.Kind != AlertKind.UnderAttack || board.Now - a.Time > board.ReactionSeconds + recent) continue;
-                if (a.Time > newest) { newest = a.Time; at = (float2)a.Tile + 0.5f; }
+                float d = math.distancesq((float2)a.Tile + 0.5f, state.Home);
+                if (d < nearest) { nearest = d; newest = a.Time; at = (float2)a.Tile + 0.5f; }
             }
             return newest > double.NegativeInfinity;
         }

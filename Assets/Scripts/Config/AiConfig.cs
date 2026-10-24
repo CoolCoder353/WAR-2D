@@ -149,6 +149,8 @@ namespace Config
         public float IncomePerProducer;
         /// <summary>Scouts it keeps running its scouting route at once.</summary>
         public int Scouts;
+        /// <summary>True when it keeps putting Miners on every gem it can reach at its base and expansions (and expands when they are full), not only its style's count.</summary>
+        public bool SaturatesMiners;
         /// <summary>Its strength over the enemy's (as seen) it needs before attacking; the style scales it.</summary>
         public float AttackRatio;
         /// <summary>When it accepts peace (spec §7).</summary>
@@ -321,6 +323,16 @@ namespace Config
         public int ScoutsFullMapSize;
         /// <summary>A scout gives up a route stop it hasn't reached or seen in this long.</summary>
         public float ScoutStopSeconds;
+        /// <summary>A march's staging wait starts at the latest after its slowest unit's travel time times this (and never before <see cref="MarchSeconds"/>).</summary>
+        public float MarchSlack;
+        /// <summary>Defence blueprints (turrets, bombs, Jammers) it keeps standing at once: more would hold its Builders off Miners.</summary>
+        public int MaxDefenceBlueprints;
+        /// <summary>A losing fight at the front whose units are under this share of the attack group's strength is a strung-out vanguard: the group regroups instead of retreating.</summary>
+        public float RegroupShare;
+        /// <summary>A Miner search that found no spot (and nothing to explore) marks that area full for this long (Miner saturation, expansions).</summary>
+        public float SaturatedSeconds;
+        /// <summary>Half-side of the patch of anchors kept out of its search around a stuck blueprint it cancelled (its Builders couldn't reach it).</summary>
+        public int StuckPatch;
     }
 
     /// <summary>The AI's diplomacy (spec §7, O5, O6).</summary>

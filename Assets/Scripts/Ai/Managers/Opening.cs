@@ -148,11 +148,21 @@ namespace WAR2D.Ai
                 int units = state.UnitCount[(int)step.Unit] + state.QueuedCount[(int)step.Unit];
                 if (units >= needed) continue;
                 if (!state.MayAddUpkeep(state.UpkeepOf(step.Unit))) { pending = true; continue; }
+                // Nothing finished makes it yet (its producer is still a blueprint): the steps after it go on meanwhile,
+                // so a slow blueprint never holds up the whole opening.
+                if (!CanProduce(state, step.Unit)) { pending = true; continue; }
                 state.RequestUnit(step.Unit, AiPriority.High);
                 state.Reserve(state.CostOf(step.Unit)); // saves up for it
                 return;
             }
             if (!pending) state.OpeningDone = true;
+        }
+
+        private static bool CanProduce(AiState state, UnitType unit)
+        {
+            foreach (int i in state.Producers)
+                if (SpawnerRules.MayProduce(state.View.Buildings[i].Type, unit)) return true;
+            return false;
         }
 
         private static void RequestStep(AiContext ai, AiState state, BuildingType type, int step)

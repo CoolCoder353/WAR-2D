@@ -120,6 +120,8 @@ namespace WAR2D.Ai
         public float Income, Upkeep;
         /// <summary>Money the managers may still claim this think (its balance less what it keeps back and what is claimed).</summary>
         public float Free;
+        /// <summary>Money it keeps back this think for its upkeep (Normal, Hard).</summary>
+        public float UpkeepReserve;
         /// <summary>Upkeep the managers added this think.</summary>
         public float UpkeepAdded;
         /// <summary>True while its upkeep runs ahead of its income and its balance is short (it stops adding upkeep).</summary>
@@ -249,6 +251,7 @@ namespace WAR2D.Ai
             // the second, so an empty balance leaves some unpaid), more while their upkeep runs ahead of their income.
             float reserve = d.KeepsUpkeepPaid ? math.max(d.UpkeepReserveSeconds * shortfall, Play.UpkeepFloorSeconds * Upkeep) : 0f;
             Free = view.Resources - reserve;
+            UpkeepReserve = reserve;
             UpkeepTight = d.KeepsUpkeepPaid && Upkeep > Income && view.Resources < (Upkeep - Income) * math.max(1f, d.UpkeepReserveSeconds);
 
             Placement.Refresh(view);
@@ -274,6 +277,24 @@ namespace WAR2D.Ai
             UpkeepAdded += upkeep;
             return true;
         }
+
+        /// <summary>
+        /// Claims money for something that adds no upkeep and earns (a Miner): it may dip into the upkeep reserve, since
+        /// it adds nothing to pay and pays itself back in seconds. False (nothing claimed) when even that can't cover it.
+        /// </summary>
+        public bool TrySpendEarner(float cost)
+        {
+            if (Free < cost && Free + UpkeepReserve < cost) return false;
+            Free -= cost;
+            return true;
+        }
+
+        // ---- full areas ----
+        /// <summary>Request keys whose Miner search found no spot and nothing to explore, with when that stops counting (set by the Builder manager).</summary>
+        public readonly Dictionary<int, double> SaturatedUntil = new Dictionary<int, double>();
+
+        /// <summary>True while the Miner request under this key has found its area full.</summary>
+        public bool IsSaturated(int key) => SaturatedUntil.TryGetValue(key, out double until) && ai.Now < until;
 
         /// <summary>Holds money back for something it saves up for (nothing cheaper is bought before it).</summary>
         public void Reserve(float cost) => Free -= cost;
