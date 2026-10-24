@@ -84,7 +84,12 @@ namespace WAR2D.Ai
                 ["army"] = army != null ? army.Mode.ToString() : "", ["attacks"] = army?.Attacks ?? 0, ["group"] = army?.Group.Count ?? 0,
                 ["target"] = army != null ? $"{army.Target.x},{army.Target.y} (owner {army.TargetOwner}, building {army.TargetId})" : "",
                 ["gather"] = $"{s.GatherPoint.x},{s.GatherPoint.y}", ["knownEnemyBuildings"] = Board.EnemyBuildings.Count,
-                ["knownEnemyBases"] = Board.EnemyBases.Count,
+                ["knownEnemyBases"] = Board.EnemyBases.Count, ["retreats"] = army?.Retreats ?? 0,
+                ["conceded"] = Manager<ConcedeManager>()?.Conceded ?? false,
+                ["scout"] = Manager<ScoutingManager>()?.Stops ?? "",
+                ["armyLog"] = army != null ? army.Log.ToArray() : new string[0],
+                ["blueprints"] = s.Blueprints.Count, ["idleBuilders"] = s.IdleBuilders.Count, ["requests"] = s.BuildRequests.Count,
+                ["expansions"] = $"{Manager<EconomyManager>()?.Held ?? 0}/{Manager<EconomyManager>()?.Claimed.Count ?? 0}",
             };
         }
 

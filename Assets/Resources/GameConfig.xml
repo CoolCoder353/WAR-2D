@@ -58,7 +58,7 @@
   </Replication>
 
   <Orders>
-    <MaxQueued>4</MaxQueued>  <!-- v0.6: Shift-queued waypoints per unit -->
+    <MaxQueued>30</MaxQueued>  <!-- v0.6: Shift-queued waypoints per unit -->
     <MaxDigArea>24</MaxDigArea>  <!-- 2026-10-18: longest side of a Dig drag's area, in tiles (Figma v0.12 Fixes) -->
   </Orders>
 
@@ -146,8 +146,11 @@
       <DigsPastWalls>0</DigsPastWalls>
       <Scouting>Once</Scouting>
       <RescoutSeconds>600</RescoutSeconds>
+      <Scouts>1</Scouts>                             <!-- scouts on its route at once -->
       <SpecialUse>0.25</SpecialUse>                  <!-- rarely -->
       <DefendsChokepoints>0</DefendsChokepoints>
+      <EarlyTurrets>0</EarlyTurrets>
+      <IncomePerProducer>0</IncomePerProducer>
       <AttackRatio>1.0</AttackRatio>
       <Peace>Always</Peace>
       <GiftsSurplus>0</GiftsSurplus>
@@ -170,8 +173,11 @@
       <DigsPastWalls>0</DigsPastWalls>
       <Scouting>Regular</Scouting>
       <RescoutSeconds>120</RescoutSeconds>
+      <Scouts>2</Scouts>
       <SpecialUse>1.0</SpecialUse>                   <!-- as the style wants -->
       <DefendsChokepoints>0</DefendsChokepoints>
+      <EarlyTurrets>0</EarlyTurrets>
+      <IncomePerProducer>0</IncomePerProducer>
       <AttackRatio>1.2</AttackRatio>
       <Peace>UnlessWinning</Peace>
       <GiftsSurplus>1</GiftsSurplus>
@@ -180,23 +186,26 @@
       <ThinkSeconds>0.25</ThinkSeconds>
       <ActionsPerMinute>200</ActionsPerMinute>
       <ReactionSeconds>0.5</ReactionSeconds>
-      <Builders>5</Builders>                         <!-- full, plus extra for expansions -->
-      <BuildersPerExpansion>2</BuildersPerExpansion>
-      <MaxExpansions>3</MaxExpansions>               <!-- early, as the style wants -->
-      <ExpandAfterSeconds>180</ExpandAfterSeconds>
+      <Builders>7</Builders>                         <!-- full, plus extra for expansions -->
+      <BuildersPerExpansion>1</BuildersPerExpansion>
+      <MaxExpansions>4</MaxExpansions>               <!-- early, as the style wants -->
+      <ExpandAfterSeconds>120</ExpandAfterSeconds>
       <KeepsUpkeepPaid>1</KeepsUpkeepPaid>
-      <UpkeepReserveSeconds>30</UpkeepReserveSeconds>
+      <UpkeepReserveSeconds>15</UpkeepReserveSeconds>
       <Counters>SeenAndBuildings</Counters>
       <Retreats>1</Retreats>
-      <RetreatRatio>0.7</RetreatRatio>
-      <FocusFire>1</FocusFire>
+      <RetreatRatio>0.35</RetreatRatio>
+      <FocusFire>0</FocusFire>
       <KeepsBacklineBack>1</KeepsBacklineBack>
       <DigsPastWalls>1</DigsPastWalls>
       <Scouting>RegularWithRadar</Scouting>
       <RescoutSeconds>60</RescoutSeconds>
+      <Scouts>3</Scouts>
       <SpecialUse>1.0</SpecialUse>
       <DefendsChokepoints>1</DefendsChokepoints>     <!-- defences at chokepoints -->
-      <AttackRatio>1.3</AttackRatio>
+      <EarlyTurrets>3</EarlyTurrets>                 <!-- turrets in front of its HQ early, against a rush -->
+      <IncomePerProducer>120</IncomePerProducer>           <!-- another producer only with this much income per producer it has -->
+      <AttackRatio>1.1</AttackRatio>
       <Peace>WhenLosingOrThirdParty</Peace>
       <GiftsSurplus>1</GiftsSurplus>
     </Difficulty>
@@ -343,9 +352,20 @@
       <DefenceAfterSeconds>240</DefenceAfterSeconds>   <!-- defences beyond the build order's only after this much play -->
       <DefenceDistance>3</DefenceDistance>             <!-- tiles past the start region's edge along a lane for a chokepoint defence -->
       <MaxDefendedSpots>2</MaxDefendedSpots>
-      <WallGap>2</WallGap>                             <!-- tiles left open in a chokepoint wall for its own army -->
+      <WallGap>6</WallGap>                             <!-- tiles left open in a chokepoint wall for its own army (2 trapped big armies behind it) -->
       <RetreatSeconds>15</RetreatSeconds>              <!-- a retreat lasts at most this long -->
       <TurretStrength>2.0</TurretStrength>             <!-- a Gun turret counts as this many times its cost in a strength estimate -->
+      <StageDistance>18</StageDistance>                <!-- an attack group gathers this far short of its target before it engages ... -->
+      <StageShare>0.7</StageShare>                     <!-- ... until this share of it is there ... -->
+      <StageSeconds>45</StageSeconds>                  <!-- ... or this long has passed since the first got there -->
+      <MarchSeconds>240</MarchSeconds>                 <!-- the staging wait starts after this long marching, even with nobody there -->
+      <EarlyTurretSeconds>90</EarlyTurretSeconds>      <!-- a difficulty's EarlyTurrets go up from this much play -->
+      <ScoutStopSeconds>90</ScoutStopSeconds>          <!-- a scout gives up a route stop it hasn't reached or seen in this long -->
+      <ScoutsFullMapSize>1024</ScoutsFullMapSize>      <!-- a difficulty's Scouts all run on maps this big; smaller maps get fewer, at least one -->
+      <MaxedAttackResources>1500</MaxedAttackResources> <!-- Normal, Hard: no upkeep room for another unit and this much in hand: attack without the strength check -->
+      <CounterAttackRatio>3</CounterAttackRatio>       <!-- defending a threat it outweighs this many times over, the rest of its army counter-attacks -->
+      <StuckBlueprintSeconds>60</StuckBlueprintSeconds> <!-- a blueprint with no progress this long is cancelled and its spot avoided -->
+      <RecallShare>0.3</RecallShare>                   <!-- a threat at its base worth this share of its attack group (and more than home holds) calls the attack back -->
     </Play>
     <Counters>  <!-- spec 5.5: units weighted against each enemy unit seen (Normal, Hard) and what each enemy building makes (Hard) -->
       <Counter seen="Heavy">Sniper:2 Artillery:2 Heavy:1</Counter>

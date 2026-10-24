@@ -202,6 +202,8 @@ public class AiManagerTests
             world.Units.RemoveAll(u => u.Id == spotter);
             world.Run(10.0);
         }
+        // It stages short of the target first, then engages (at most StageSeconds later).
+        for (int t = 0; t < world.Game.Ai.Play.StageSeconds + 30 && !world.Actions.Any(a => a.Kind == AiActionKind.Order && a.Order == OrderKind.AttackMove && a.Tile.Equals(enemyHq)); t++) world.Run(1.0);
         Assert.That(army.Attacks, Is.GreaterThanOrEqualTo(1), $"it attacks the building it has seen (seen {world.FirstSeen.ContainsKey(enemyId)}, known {world.Brain.Board.EnemyBuildings.Count}, mode {army.Mode}, playing {world.Brain.Context.State.PlayingSeconds}, combat {world.Brain.Context.State.Combat.Count}, scouts {world.Brain.Context.State.Scouts.Count})");
         Assert.That(army.TargetId, Is.EqualTo(enemyId), "the enemy HQ");
         double seen = world.FirstSeen[enemyId];
@@ -210,7 +212,7 @@ public class AiManagerTests
                 Assert.That(world.ActionTimes[i], Is.GreaterThanOrEqualTo(seen), "never sent at the HQ before its side saw it");
         Assert.That(world.Actions.Any(a => a.Kind == AiActionKind.Order && a.Order == OrderKind.AttackMove && a.Tile.Equals(enemyHq)), Is.True, "attack-moving at its anchor");
         foreach (AiAction a in world.Actions.Where(a => a.Kind == AiActionKind.Order && a.Order == OrderKind.AttackMove))
-            Assert.That(world.View.Buildings.Any(b => b.OwnerId == world.Enemy && b.Anchor.Equals(a.Tile)) || math.distance(a.Tile, world.Brain.Context.State.GatherPoint) < 20f || math.distance(a.Tile, enemyHq) < 20f,
+            Assert.That(world.View.Buildings.Any(b => b.OwnerId == world.Enemy && b.Anchor.Equals(a.Tile)) || math.distance(a.Tile, world.Brain.Context.State.GatherPoint) < 20f || math.distance(a.Tile, enemyHq) < world.Game.Ai.Play.StageDistance + world.Game.Ai.Play.DefenceSpread + 2f,
                 Is.True, $"every attack-move goes at what it knows ({a.Tile})");
     }
 

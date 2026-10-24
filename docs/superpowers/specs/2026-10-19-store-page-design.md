@@ -9,7 +9,7 @@ Owner decisions (2026-10-19):
 | Store name | **War: Weaponry and Resources** (keep the existing name and fix the "Weaponary" typo; "WAR" is the acronym, and WAR-2D stays the build and repo name) |
 | Release model | **Early Access** |
 | Price | **Free to play, for good**: free in Early Access and at full release, and the Early Access answer says so (2026-10-22, after Valve asked for a pricing direction) |
-| Single-player | **AI opponents are added before launch** as roadmap update **v0.14**, so the page can list Single-player (see §6) |
+| Single-player | **AI opponents are built** (roadmap update **v0.14**, 2026-10-24): **ready to list** Single-player and Co-op: Online once a build with v0.14 is the one Valve reviews (see §6) |
 | Release date | **None set yet.** The dashboard keeps "To Be Announced" |
 | Early Access length | **Roughly 18 to 24 months** (changed 2026-10-22 from "indefinite" after Valve asked for an estimate) |
 | Trailer | **Claude makes it** (§4.2) |
@@ -87,7 +87,7 @@ The final wording lives in [docs/store/store-text.md](../../store/store-text.md)
 
 - **App type:** Game. **Genres:** Strategy (primary), Indie, Free to Play, Early Access (Steam adds the last two from the release settings).
 - **Platforms:** Windows, Linux + SteamOS. Not macOS.
-- **Players:** Multi-player; PvP: Online. **Single-player** and **Co-op: Online** once §6 ships (Co-op is left out until then so players don't expect PvE; changed 2026-10-22). Don't tick **LAN** or **Cross-Platform Multiplayer** until they're tested and visible to players (Direct/LAN needs the `-direct` flag today; Windows and Linux players meet over the Steam relay, which should be tested before ticking cross-platform).
+- **Players:** Multi-player; PvP: Online; **Single-player** and **Co-op: Online**: **ready to list** (v0.14 built, 2026-10-24: a Private lobby against AIs is single-player and works without Steam; humans and AI allies can team up against AIs). Tick them when the uploaded build Valve reviews contains v0.14. Don't tick **LAN** or **Cross-Platform Multiplayer** until they're tested and visible to players (Direct/LAN needs the `-direct` flag today; Windows and Linux players meet over the Steam relay, which should be tested before ticking cross-platform).
 - **Languages:** English (Interface). No audio language.
 - **Supported features:** none of Achievements, Cloud or Workshop. Leave them unticked.
 - **Steam Deck:** don't claim compatibility; the game needs a mouse and keyboard.
@@ -181,7 +181,7 @@ Sizes as Steamworks listed them in 2025; **check the Graphical Assets tab before
 
 ## 6. AI opponents before launch (v0.14)
 
-Today bots exist only for the perf harness (`DevApi.Allowed`, `-perf`). For Single-player and co-op against AI, the game needs real AI opponents: a lobby setting to add AI slots with a difficulty, an AI that builds an economy, makes an army and attacks, and the matching tests. That's roadmap update **v0.14**, after Bastion; it needs its own design spec. The store page lists Single-player only when the AI is in the build Valve reviews.
+**Built (v0.14, 2026-10-24):** the host adds AI players in the lobby (Easy, Normal, Hard; Rusher, Turtle, Expander, Balanced or Random), a Private lobby is single-player without Steam, AIs play as allies or enemies, and a one-human match pauses from the menu ([design](2026-10-23-v0.14-ai-opponents-design.md), [gameplay](../../gameplay.md)). **Single-player and Co-op: Online are ready to list**; tick them once the uploaded build Valve reviews contains v0.14 (the build must contain every feature the page describes). How hard each level feels to a person is still tuned in the owner's playtests ([AI bench](../../perf/v0.14/ai-bench.md)).
 
 ---
 

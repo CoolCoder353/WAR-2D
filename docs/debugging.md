@@ -57,6 +57,14 @@ tools/war2d wait state=Playing && tools/war2d timescale n=8
 tools/war2d aistate                           # repeat; GameOver when one side is left
 ```
 
+## The AI bench (v0.14)
+
+`tools/ai-bench.sh [seeds=6] [jobs=4] [player=Builds/Linux/WAR-2D.x86_64]` plays AI-vs-AI 1v1 matches and writes [perf/v0.14/ai-bench.md](perf/v0.14/ai-bench.md): per pairing (Hard-Normal, Normal-Easy and the mirrors) and map size (256, 512, 1024), the stronger side's win rate, draws, matches still running at the time cap (40 match minutes: a failure), errors and lengths, then results by style, how each difficulty played (first attack, attacks, retreats, peak army, highest balance, unpaid seconds, concessions), the failures and the upsets. Each match is its own headless player (`-batchmode -nographics -perf -noSteam -aiBench <result.json>`, `Dev/AiBench.cs`): it hosts, adds the two AIs, starts a Free-for-all with the host sitting out (it places no HQ, so the win/loss rules drop it), fast-forwards (`AI_BENCH_SCALE`, 32) and writes the result with a minute-by-minute timeline per AI (balance, estimated income and upkeep, army, buildings, Miners, producers, turrets, army mode). `jobs` run at once, each on its own KCP port (`-port n`, dev only; the WebSocket listener moves to n + 1000). Styles are drawn per seat from a seeded generator, the same pair for a seed in every pairing; the seat order alternates by seed. Environment: `AI_BENCH_SIZES`, `AI_BENCH_PAIRINGS`, `AI_BENCH_STYLES`, `AI_BENCH_CAP`, `AI_BENCH_SCALE`, `AI_BENCH_SEED0`, `AI_BENCH_OUT` (`-` prints only) and `AI_BENCH_CONFIG` (a `GameConfig.xml` to play instead of the built one, through the dev-only `-configFile <path>`: `<Ai>` tuning without a rebuild). `tools/ai-bench.sh report <dir>...` rewrites the report from finished runs (`PerfResults/ai-bench-*`). Logs are kept only for failed matches.
+
+## Perf runs (v0.14 additions)
+
+`WAR_PERF_AI=Hard tools/perf-run.sh 3` runs the gate's AI form (seven lobby AIs on the 1024 map, the host sitting out, `perf.part.ai` ≤ 2 ms p95; `WAR_PERF_AI_WARMUP` minutes of fast-forwarded play first, default 12). `WAR_PERF_HOST_ARGS="…"` adds host arguments for experiments, e.g. `-configFile <path>` to try a config without a rebuild. Results: [perf/v0.14](perf/v0.14/README.md).
+
 ## Example: reproduce a pathing bug
 
 ```bash

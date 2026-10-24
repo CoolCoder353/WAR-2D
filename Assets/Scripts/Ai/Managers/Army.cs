@@ -38,8 +38,24 @@ namespace WAR2D.Ai
         private readonly List<int> ids = new List<int>(256), back = new List<int>(32), stale = new List<int>(32);
         private readonly List<AiAlert> alerts = new List<AiAlert>(8);
         private readonly Dictionary<int, double> orderedAt = new Dictionary<int, double>();
-        private double lastAttackEnd = double.NegativeInfinity, retreatStarted, nextGather = double.NegativeInfinity;
-        private bool attackedOnce;
+        private double lastAttackEnd = double.NegativeInfinity, retreatStarted, nextGather = double.NegativeInfinity, stagedAt;
+        private bool attackedOnce, engaged, hasThreat;
+        private int2 stage;
+        private double marchStarted, lastMarchNote, targetSince;
+        private float threatStrength, homeStrength;
+        private float2 threatAt;
+
+        /// <summary>What the army did (dev reads: the bench and <c>aistate</c>), newest last, at most 40 lines.</summary>
+        public readonly List<string> Log = new List<string>(40);
+
+        private void Note(AiContext ai, string what)
+        {
+            if (Log.Count >= 40) Log.RemoveAt(0);
+            Log.Add($"{ai.State.PlayingSeconds / 60.0:F1}m {what}");
+        }
+
+        /// <summary>True once the attack group has gathered at its staging point and goes for the target.</summary>
+        public bool Engaged => engaged;
 
         public ArmyMode Mode { get; private set; }
 
@@ -73,6 +89,9 @@ namespace WAR2D.Ai
             foreach (int id in stale) holding.Remove(id);
 
             Defend(ai, view, state);
+            // Defending against a threat it outweighs well: the rest of the army may counter-attack (the units at the threat stay).
+            if (Mode == ArmyMode.Defend && hasThreat && homeStrength >= threatStrength * ai.Config.Play.CounterAttackRatio)
+                TryStartAttack(ai, view, state, CountArmy(view, state), true);
             switch (Mode)
             {
                 case ArmyMode.Attack: Fight(ai, view, state); break;
@@ -92,7 +111,7 @@ namespace WAR2D.Ai
             float2 point = ai.Style.HoldsChokes && state.DefenceSpots.Count > 0
                 ? state.DefenceSpots[0] - state.DefenceDirs[0] * play.DefenceSpread * 0.5f
                 : state.Home + dir * play.GatherDistance;
-            state.GatherPoint = state.GroundNear(point, (int)play.DefenceSpread);
+            state.GatherPoint = state.GroundNear(point, (int)math.max(play.DefenceSpread, play.GatherDistance));
             state.HasGatherPoint = true;
         }
 
@@ -100,7 +119,8 @@ namespace WAR2D.Ai
         {
             AiPlayConfig play = ai.Config.Play;
             int army = CountArmy(view, state);
-            if (TryStartAttack(ai, view, state, army)) return;
+            if (TryStartAttack(ai, view, state, army, false)) return;
+            if (Sweep(ai, view, state, army)) return;
 
             // Units away from the gathering point with nothing to do go there; Turtle holds it.
             float2 g = (float2)state.GatherPoint + 0.5f;
@@ -122,6 +142,58 @@ namespace WAR2D.Ai
             }
         }
 
+        private readonly HashSet<long> swept = new HashSet<long>();
+        private int2 sweepSite;
+        private bool sweeping;
+
+        /// <summary>
+        /// Ready to attack but with nothing it knows to attack (no enemy building, remembered HQ or army): the army itself
+        /// goes to look, moving (not attacking) to the nearest start site of the map (public map data) it doesn't see now
+        /// and hasn't swept, so a base its scouts missed is found. Once anything is known, the normal attack takes over.
+        /// </summary>
+        private bool Sweep(AiContext ai, TeamView view, AiState state, int army)
+        {
+            if (state.PlayingSeconds < ai.Style.FirstAttackSeconds || army < ai.Style.AttackArmySize) { sweeping = false; return false; }
+            foreach (AiBuilding b in ai.Board.EnemyBuildings.Values) if (b.Type != BuildingType.Bomb) { sweeping = false; return false; }
+            if (ai.Board.KnownHqs.Count > 0 || ai.Board.Armies.Count > 0) { sweeping = false; return false; }
+            float2 centre = GroupCentreOf(view, state);
+            if (sweeping && (view.FogAt((float2)sweepSite + 0.5f) == 2 || math.distancesq(centre, (float2)sweepSite) < ai.Config.Play.ArmyRadius * ai.Config.Play.ArmyRadius))
+            {
+                swept.Add(((long)sweepSite.x << 32) | (uint)sweepSite.y);
+                sweeping = false;
+            }
+            if (!sweeping)
+            {
+                float best = float.MaxValue;
+                foreach (int2 site in view.HqSites)
+                {
+                    if (math.distance(site, state.Home) < view.HqClearRadius * 2f || swept.Contains(((long)site.x << 32) | (uint)site.y)) continue;
+                    if (view.FogAt((float2)site + 0.5f) == 2) continue;
+                    float d = math.distancesq((float2)site, centre);
+                    if (d < best) { best = d; sweepSite = site; sweeping = true; }
+                }
+                if (!sweeping) { swept.Clear(); return false; } // all swept: start over next time
+                Note(ai, $"sweep to {sweepSite.x},{sweepSite.y} with {army}");
+            }
+            ids.Clear();
+            foreach (int i in state.Combat)
+            {
+                AiUnit u = view.OwnUnits[i];
+                if (state.Scouts.Contains(u.Id) || (u.HasOrder && math.distancesq(u.OrderGoal, sweepSite) < 64f)) continue;
+                ids.Add(u.Id);
+            }
+            if (ids.Count > 0 && Due(ai, AiKeys.Army)) ai.Propose(AiPriority.Low, AiAction.OrderUnits(ids, OrderKind.Move, state.GroundNear((float2)sweepSite + 0.5f, view.HqClearRadius)), AiKeys.Of(AiKeys.Army));
+            return true;
+        }
+
+        private static float2 GroupCentreOf(TeamView view, AiState state)
+        {
+            float2 sum = 0;
+            int n = 0;
+            foreach (int i in state.Combat) { sum += view.OwnUnits[i].Position; n++; }
+            return n > 0 ? sum / n : state.Home;
+        }
+
         private int CountArmy(TeamView view, AiState state)
         {
             int n = 0;
@@ -131,29 +203,72 @@ namespace WAR2D.Ai
 
         // ---- attacking ----
 
-        private bool TryStartAttack(AiContext ai, TeamView view, AiState state, int army)
+        /// <param name="counter">A counter-attack from Defend: the units at the threat stay to hold it.</param>
+        private bool TryStartAttack(AiContext ai, TeamView view, AiState state, int army, bool counter)
         {
+            AiPlayConfig play = ai.Config.Play;
             if (state.PlayingSeconds < ai.Style.FirstAttackSeconds || army < ai.Style.AttackArmySize) return false;
             if (attackedOnce && ai.Now - lastAttackEnd < ai.Style.AttackIntervalSeconds) return false;
             if (!ChooseTarget(ai, state.Home, -1, true, out int id, out int owner, out int2 target)) return false;
             float ours = StrengthEstimate.Own(ai.Game, view, default, 0f);
-            float theirs = StrengthEstimate.Enemy(ai.Game, ai.Board, owner, target, ai.Config.Play.ArmyRadius * 2f, ai.Config.Play.TurretStrength);
-            if (ours < theirs * ai.Difficulty.AttackRatio * ai.Style.AttackRatioScale) return false;
+            float theirs = StrengthEstimate.Enemy(ai.Game, ai.Board, owner, target, play.ArmyRadius * 2f, play.TurretStrength);
+            // Maxed out (Normal, Hard: no upkeep room for another unit, money piling up): a player attacks with what they have.
+            bool maxed = ai.Difficulty.KeepsUpkeepPaid && state.Free >= play.MaxedAttackResources && !state.MayAddUpkeep(state.UpkeepOf(UnitType.Tank));
+            if (!maxed && ours < theirs * ai.Difficulty.AttackRatio * ai.Style.AttackRatioScale) return false;
             group.Clear();
             holding.Clear();
+            float keep2 = play.ArmyRadius * play.ArmyRadius;
             foreach (int i in state.Combat)
             {
-                int uid = view.OwnUnits[i].Id;
-                if (!state.Scouts.Contains(uid)) group.Add(uid);
+                AiUnit u = view.OwnUnits[i];
+                if (state.Scouts.Contains(u.Id)) continue;
+                if (counter && math.distancesq(u.Position, threatAt) <= keep2) continue;
+                group.Add(u.Id);
             }
+            if (group.Count == 0) return false;
+            Note(ai, $"from {GroupCentre(view, false).x:F0},{GroupCentre(view, false).y:F0} home {state.Home.x:F0},{state.Home.y:F0}");
+            Note(ai, $"attack {(counter ? "(counter) " : maxed ? "(maxed) " : "")}group {group.Count} ours {ours:F0} theirs {theirs:F0} target {target.x},{target.y} building {id != 0}");
             Mode = ArmyMode.Attack;
             TargetId = id;
             TargetOwner = owner;
             Target = target;
+            targetSince = ai.Now;
             attackedOnce = true;
             Attacks++;
-            OrderGroup(ai, view, state, true);
+            BeginStage(ai, view, state);
             return true;
+        }
+
+        /// <summary>
+        /// Sends the group to a staging point <c>StageDistance</c> short of the target, on the side it comes from, so it
+        /// arrives together instead of strung out along the route; a target that close engages at once.
+        /// </summary>
+        private void BeginStage(AiContext ai, TeamView view, AiState state)
+        {
+            AiPlayConfig play = ai.Config.Play;
+            float2 from = GroupCentre(view, false);
+            float2 to = (float2)Target + 0.5f;
+            float d = math.distance(from, to);
+            if (play.StageDistance <= 0f || d <= play.StageDistance * 1.5f)
+            {
+                engaged = true;
+                OrderGroup(ai, view, state, true);
+                return;
+            }
+            stage = state.GroundNear(to + (from - to) / d * play.StageDistance, (int)play.StageDistance);
+            if (view.TileAt(stage) != TileType.Ground)
+            {
+                // No open ground there (rock all round): no staging, it goes straight in.
+                engaged = true;
+                OrderGroup(ai, view, state, true);
+                return;
+            }
+            engaged = false;
+            stagedAt = ai.Now;
+            marchStarted = ai.Now;
+            GroupIds(view, state, false);
+            if (ids.Count > 0) ai.Propose(AiPriority.High, AiAction.OrderUnits(ids, OrderKind.AttackMove, stage), AiKeys.Of(AiKeys.Army));
+            orderedAt[AiKeys.Army] = ai.Now;
         }
 
         /// <summary>
@@ -181,6 +296,14 @@ namespace WAR2D.Ai
                 }
             }
             if (id != 0) return true;
+            // An HQ it saw that its view doesn't show any more (a Jammer hides it): its remembered spot (id -1).
+            foreach (KeyValuePair<int, int2> hq in ai.Board.KnownHqs)
+            {
+                if (preferOwner >= 0 && hq.Key != preferOwner && ai.Board.KnownHqs.ContainsKey(preferOwner)) continue;
+                float d = math.distancesq((float2)hq.Value, from);
+                if (d < best) { best = d; id = -1; owner = hq.Key; target = hq.Value; }
+            }
+            if (id != 0) return true;
             foreach (ArmySighting army in ai.Board.Armies.Values)
             {
                 float d = math.distancesq(army.Centre, from);
@@ -192,18 +315,30 @@ namespace WAR2D.Ai
         private void Fight(AiContext ai, TeamView view, AiState state)
         {
             AiPlayConfig play = ai.Config.Play;
-            if (group.Count == 0) { EndAttack(ai, state, false); return; }
+            if (group.Count == 0) { Note(ai, "attack over: group gone"); EndAttack(ai, state, false); return; }
             float2 centre = GroupCentre(view, false);
 
             // The target is gone (seen gone, or the army moved on): the next one, nearest the army.
-            bool known = TargetId != 0 ? ai.Board.EnemyBuildings.ContainsKey(TargetId) : ai.Board.Armies.ContainsKey(TargetOwner);
-            if (!known || (TargetId == 0 && math.distancesq(centre, Target) < play.ArmyRadius * play.ArmyRadius && EnemiesNear(view, centre, play.ArmyRadius) == 0))
+            bool known = TargetId > 0 ? ai.Board.EnemyBuildings.ContainsKey(TargetId)
+                : TargetId < 0 ? ai.Board.KnownHqs.TryGetValue(TargetOwner, out int2 hqAt) && hqAt.Equals(Target)
+                : ai.Board.Armies.ContainsKey(TargetOwner);
+            bool reachedEmpty = TargetId == 0 && math.distancesq(centre, Target) < play.ArmyRadius * play.ArmyRadius && EnemiesNear(view, centre, play.ArmyRadius) == 0;
+            // A last-seen army it reached and doesn't find there any more: it forgets that sighting (else it picks it again).
+            if (reachedEmpty) ai.Board.Armies.Remove(TargetOwner);
+            // Chasing a last-seen army that long without reaching it: it drops that sighting and picks again.
+            if (TargetId == 0 && ai.Now - targetSince > play.MarchSeconds) { ai.Board.Armies.Remove(TargetOwner); known = false; }
+            // A building it now sees beats a remembered HQ spot.
+            if (TargetId < 0 && ai.Board.EnemyBuildings.Count > 0) known = false;
+            if (!known || reachedEmpty)
             {
-                if (!ChooseTarget(ai, centre, TargetOwner, false, out int id, out int owner, out int2 target)) { EndAttack(ai, state, true); return; }
+                if (!ChooseTarget(ai, centre, TargetOwner, false, out int id, out int owner, out int2 target)) { Note(ai, $"attack over: no target left, group {group.Count}"); EndAttack(ai, state, true); return; }
+                Note(ai, $"next target {target.x},{target.y} building {id != 0}");
                 TargetId = id;
                 TargetOwner = owner;
                 Target = target;
-                OrderGroup(ai, view, state, true);
+                targetSince = ai.Now;
+                if (engaged) OrderGroup(ai, view, state, true);
+                else BeginStage(ai, view, state);
             }
 
             // The fight is at the front (the group strings out between home and the target): the units nearest the target.
@@ -212,21 +347,86 @@ namespace WAR2D.Ai
             {
                 centre = front;
                 float ours = 0f;
-                float r2 = play.ArmyRadius * play.ArmyRadius;
+                // Engaged: the group within two fight radii (what can join the fight). Marching to its staging point: the whole
+                // group (a strung-out march meeting a defence is not a lost fight; it gathers at the stage first).
+                float r2 = engaged ? 4f * play.ArmyRadius * play.ArmyRadius : float.MaxValue;
                 foreach (int i in state.Combat)
                 {
                     AiUnit u = view.OwnUnits[i];
                     if (group.Contains(u.Id) && math.distancesq(u.Position, centre) <= r2) ours += StrengthEstimate.Of(ai.Game, u);
                 }
                 float theirs = StrengthEstimate.EnemyNear(ai.Game, view, centre, play.ArmyRadius, play.TurretStrength);
-                if (theirs > 0f && ours < theirs * ai.Difficulty.RetreatRatio)
+                // Maxed out (no upkeep room, money piling up), a trade costs it nothing it can't rebuild: it fights on.
+                bool maxed = ai.Difficulty.KeepsUpkeepPaid && state.Free >= play.MaxedAttackResources && !state.MayAddUpkeep(state.UpkeepOf(UnitType.Tank));
+                if (!maxed && theirs > 0f && ours < theirs * ai.Difficulty.RetreatRatio)
                 {
+                    Note(ai, $"retreat group {group.Count} ours {ours:F0} theirs {theirs:F0}");
                     Mode = ArmyMode.Retreat;
                     Retreats++;
                     retreatStarted = ai.Now;
                     lastAttackEnd = ai.Now;
                     GroupIds(view, state, false);
                     ai.Propose(AiPriority.High, AiAction.OrderUnits(ids, OrderKind.Move, state.GatherPoint), AiKeys.Of(AiKeys.Army));
+                    return;
+                }
+            }
+
+            if (!engaged)
+            {
+                // Staging: engage once most of the group is there (or it has waited long enough); stragglers come on.
+                float2 s = (float2)stage + 0.5f;
+                float sr2 = play.ArmyRadius * play.ArmyRadius;
+                int there = 0;
+                ids.Clear();
+                foreach (int i in state.Combat)
+                {
+                    AiUnit u = view.OwnUnits[i];
+                    if (!group.Contains(u.Id)) continue;
+                    if (math.distancesq(u.Position, s) <= sr2) there++;
+                    else if (!u.HasOrder) ids.Add(u.Id);
+                }
+                if (ai.Now - lastMarchNote >= 60.0)
+                {
+                    lastMarchNote = ai.Now;
+                    float2 sum = 0;
+                    int n = 0, ordered = 0, working = 0, held = 0;
+                    foreach (int i in state.Combat)
+                    {
+                        AiUnit u = view.OwnUnits[i];
+                        if (!group.Contains(u.Id)) continue;
+                        sum += u.Position; n++;
+                        if (u.HasOrder) ordered++;
+                        if (u.Work != 0) working++;
+                        if (u.Stance == 3) held++;
+                    }
+                    float2 c = n > 0 ? sum / n : 0;
+                    Note(ai, $"march: {n} at {c.x:F0},{c.y:F0} to {stage.x},{stage.y}, {there} there, {ordered} ordered, {working} working, {held} holding");
+                }
+                // The wait starts when the first unit gets there (a long march is not a wait), at most MarchSeconds in all.
+                if (there == 0 && ai.Now - marchStarted < play.MarchSeconds) stagedAt = ai.Now;
+                if (there >= group.Count * play.StageShare || ai.Now - stagedAt > play.StageSeconds)
+                {
+                    int moving = 0;
+                    float2 sum = 0;
+                    float far = 0f;
+                    foreach (int i in state.Combat)
+                    {
+                        AiUnit u = view.OwnUnits[i];
+                        if (!group.Contains(u.Id)) continue;
+                        if (u.HasOrder) moving++;
+                        sum += u.Position;
+                        far = math.max(far, math.distance(u.Position, s));
+                    }
+                    float2 c = group.Count > 0 ? sum / group.Count : 0;
+                    Note(ai, $"engage: {there} of {group.Count} staged at {stage.x},{stage.y} (tile {ai.View.TileAt(stage)}), centre {c.x:F0},{c.y:F0}, farthest {far:F0}, {moving} ordered, target {Target.x},{Target.y}");
+                    engaged = true;
+                    OrderGroup(ai, view, state, true);
+                }
+                else
+                {
+                    if (ids.Count > 0 && Due(ai, AiKeys.Army)) ai.Propose(AiPriority.Normal, AiAction.OrderUnits(ids, OrderKind.AttackMove, stage), AiKeys.Of(AiKeys.Army));
+                    Reinforce(ai, view, state);
+                    Detonate(ai, view, state);
                     return;
                 }
             }
@@ -315,7 +515,7 @@ namespace WAR2D.Ai
             }
             if (ids.Count < ai.Config.Play.ReinforceSize) return;
             foreach (int id in ids) group.Add(id);
-            ai.Propose(AiPriority.Normal, AiAction.OrderUnits(ids, OrderKind.AttackMove, Target), AiKeys.Of(AiKeys.Army, 1));
+            ai.Propose(AiPriority.Normal, AiAction.OrderUnits(ids, OrderKind.AttackMove, engaged ? Target : stage), AiKeys.Of(AiKeys.Army, 1));
         }
 
         /// <summary>Hard: the most damaged enemy unit it sees near its army.</summary>
@@ -423,6 +623,7 @@ namespace WAR2D.Ai
         private void Defend(AiContext ai, TeamView view, AiState state)
         {
             AiPlayConfig play = ai.Config.Play;
+            hasThreat = false;
             if (!FindThreat(ai, state, out float2 threat))
             {
                 if (Mode == ArmyMode.Defend)
@@ -432,7 +633,8 @@ namespace WAR2D.Ai
                 }
                 return;
             }
-            if (math.distance(threat, state.Home) > play.DefendRadius) return;
+            // A threat at an expansion is met too: home units near their base or near the threat come (a threat it
+            // ignored would hold the army in Defend for good).
             float theirs = StrengthEstimate.EnemyNear(ai.Game, view, threat, play.ArmyRadius, play.TurretStrength);
             float home = 0f;
             ids.Clear();
@@ -440,13 +642,30 @@ namespace WAR2D.Ai
             foreach (int i in state.Combat)
             {
                 AiUnit u = view.OwnUnits[i];
-                if (group.Contains(u.Id) || state.Scouts.Contains(u.Id) || math.distancesq(u.Position, state.Home) > d2) continue;
+                if (group.Contains(u.Id) || state.Scouts.Contains(u.Id)) continue;
+                if (math.distancesq(u.Position, state.Home) > d2 && math.distancesq(u.Position, threat) > d2) continue;
                 home += StrengthEstimate.Of(ai.Game, u);
                 // Only those not already on their way there (an order is a click: it isn't repeated for nothing).
                 if (!u.HasOrder || math.distancesq(u.OrderGoal, threat) > play.ArmyRadius * play.ArmyRadius) ids.Add(u.Id);
             }
-            if (Mode == ArmyMode.Attack && home < theirs)
+            hasThreat = true;
+            threatAt = threat;
+            threatStrength = theirs;
+            homeStrength = home;
+            // Home can't hold a real attack on its base (not a scout or a raid on an outpost): the attack comes back,
+            // unless it is already at its target (a base trade it may win).
+            float groupStrength = 0f;
+            if (Mode == ArmyMode.Attack)
+                foreach (int i in state.Combat)
+                {
+                    AiUnit u = view.OwnUnits[i];
+                    if (group.Contains(u.Id)) groupStrength += StrengthEstimate.Of(ai.Game, u);
+                }
+            bool serious = theirs >= groupStrength * play.RecallShare && math.distance(threat, state.Home) <= play.DefendRadius;
+            bool atTarget = engaged && math.distancesq(FrontCentre(view, state, play.ArmyRadius), Target) <= 4f * play.ArmyRadius * play.ArmyRadius;
+            if (Mode == ArmyMode.Attack && home < theirs && serious && !atTarget)
             {
+                Note(ai, $"recalled: home {home:F0} threat {theirs:F0}");
                 // Home can't hold: the attack comes back.
                 foreach (int id in group) ids.Add(id);
                 group.Clear();

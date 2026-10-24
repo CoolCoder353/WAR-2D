@@ -166,6 +166,13 @@ namespace WAR2D.Ai
         /// <summary>Last-seen army per enemy owner (forgotten after <c>ArmyMemorySeconds</c>).</summary>
         public readonly Dictionary<int, ArmySighting> Armies = new Dictionary<int, ArmySighting>();
 
+        /// <summary>
+        /// Where it last saw each enemy's HQ (a building or ghost it saw), kept while the view no longer shows it (a Jammer
+        /// can hide a base it has seen): forgotten when its units stand by that spot and see no HQ there, or the owner is
+        /// no longer an enemy.
+        /// </summary>
+        public readonly Dictionary<int, int2> KnownHqs = new Dictionary<int, int2>();
+
         /// <summary>Threats near its own buildings, by building id.</summary>
         public readonly Dictionary<int, Threat> Threats = new Dictionary<int, Threat>();
 
@@ -225,14 +232,37 @@ namespace WAR2D.Ai
         {
             EnemyBuildings.Clear();
             EnemyBases.Clear();
+            ForgetHqs(view);
             foreach (AiBuilding b in view.Buildings)
             {
                 if (b.OwnerId == Owner || !view.IsEnemy(b.OwnerId)) continue;
                 EnemyBuildings[b.Id] = b;
                 bool hq = b.Type == BuildingType.Base;
+                if (hq) KnownHqs[b.OwnerId] = b.Anchor;
                 if (EnemyBases.TryGetValue(b.OwnerId, out EnemyBase known) && (known.IsHq || !hq)) continue;
                 EnemyBases[b.OwnerId] = new EnemyBase { OwnerId = b.OwnerId, Anchor = b.Anchor, IsHq = hq, Ghost = b.Ghost, LastSeen = Now };
             }
+        }
+
+        private readonly List<int> forget = new List<int>(4);
+
+        /// <summary>Drops remembered HQs of owners no longer enemies, and those its own units stand by and see no HQ at.</summary>
+        private void ForgetHqs(TeamView view)
+        {
+            if (KnownHqs.Count == 0) return;
+            forget.Clear();
+            foreach (KeyValuePair<int, int2> hq in KnownHqs)
+            {
+                if (!view.IsEnemy(hq.Key)) { forget.Add(hq.Key); continue; }
+                float2 centre = (float2)hq.Value + 2.5f;
+                bool near = false;
+                foreach (AiUnit u in view.OwnUnits) if (math.distancesq(u.Position, centre) < 9f) { near = true; break; }
+                if (!near) continue;
+                bool there = false;
+                foreach (AiBuilding b in view.Buildings) if (b.OwnerId == hq.Key && b.Type == BuildingType.Base && b.Anchor.Equals(hq.Value)) { there = true; break; }
+                if (!there) forget.Add(hq.Key);
+            }
+            foreach (int owner in forget) KnownHqs.Remove(owner);
         }
 
         // Enemy units seen now, bucketed by threat-radius cells (sorted by cell), so each own building looks only at

@@ -143,6 +143,12 @@ namespace Config
         public float SpecialUse;
         /// <summary>True when it puts defences at chokepoints between its base and known enemies (else beside its buildings).</summary>
         public bool DefendsChokepoints;
+        /// <summary>Gun turrets it puts up in front of its HQ early (from <c>EarlyTurretSeconds</c>), against an early rush.</summary>
+        public int EarlyTurrets;
+        /// <summary>Income it needs per producer it already has before it adds another (0: the style's producers whatever its income): a producer's upkeep is many units' worth.</summary>
+        public float IncomePerProducer;
+        /// <summary>Scouts it keeps running its scouting route at once.</summary>
+        public int Scouts;
         /// <summary>Its strength over the enemy's (as seen) it needs before attacking; the style scales it.</summary>
         public float AttackRatio;
         /// <summary>When it accepts peace (spec §7).</summary>
@@ -293,6 +299,28 @@ namespace Config
         public float RetreatSeconds;
         /// <summary>A Gun turret's strength as a share of its cost (it can't move, but hits hard).</summary>
         public float TurretStrength;
+        /// <summary>Tiles short of its target where an attack group stages (gathers) before it engages.</summary>
+        public float StageDistance;
+        /// <summary>Share of the group at the staging point that starts the engagement ...</summary>
+        public float StageShare;
+        /// <summary>... or after this long staging, whichever comes first.</summary>
+        public float StageSeconds;
+        /// <summary>Normal, Hard: upkeep-capped (no room for another unit) with this much in hand, it attacks without the strength check.</summary>
+        public float MaxedAttackResources;
+        /// <summary>Defending: its home strength over the threat's above which the rest of its army counter-attacks.</summary>
+        public float CounterAttackRatio;
+        /// <summary>A blueprint that makes no progress this long is cancelled (unreachable, or never staffed).</summary>
+        public float StuckBlueprintSeconds;
+        /// <summary>A threat to its base worth at least this share of its attack group (and more than home holds) calls the attack back.</summary>
+        public float RecallShare;
+        /// <summary>Most seconds an attack group marches to its staging point before the staging wait starts anyway.</summary>
+        public float MarchSeconds;
+        /// <summary>Seconds of play after which a difficulty's <c>EarlyTurrets</c> go up.</summary>
+        public float EarlyTurretSeconds;
+        /// <summary>Map size (tiles a side) at which a difficulty runs all its <c>Scouts</c>; smaller maps get proportionally fewer (at least one).</summary>
+        public int ScoutsFullMapSize;
+        /// <summary>A scout gives up a route stop it hasn't reached or seen in this long.</summary>
+        public float ScoutStopSeconds;
     }
 
     /// <summary>The AI's diplomacy (spec §7, O5, O6).</summary>

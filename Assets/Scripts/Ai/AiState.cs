@@ -334,7 +334,7 @@ namespace WAR2D.Ai
             Block(action.Tile, ai.Now);
         }
 
-        private void Block(int2 anchor, double now) => Blocked[Pack(anchor)] = now + Play.BlockedSeconds;
+        internal void Block(int2 anchor, double now) => Blocked[Pack(anchor)] = now + Play.BlockedSeconds;
 
         public bool IsBlocked(int2 anchor) => Blocked.Count > 0 && Blocked.ContainsKey(Pack(anchor));
 

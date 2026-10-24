@@ -52,7 +52,7 @@ public sealed class PerfMatch : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Boot()
     {
-        if (!DevApi.PerfFlag || ArgValue("-perfClient") != null) return;
+        if (!DevApi.PerfFlag || ArgValue("-perfClient") != null || AiBench.Requested) return;
         var go = new GameObject("PerfMatch");
         DontDestroyOnLoad(go);
         go.AddComponent<PerfMatch>();
@@ -65,6 +65,14 @@ public sealed class PerfMatch : MonoBehaviour
         yield return new WaitUntil(() => GameManager.Instance != null);
 
         GameConfigData config = ConfigLoader.LoadConfig();
+        if (AiRun)
+        {
+            // The AI run plays a real match: the lobby's resources, no free money.
+            config.Replays.Enabled = false;
+            config.Match.CountdownSeconds = 0.5f;
+            yield return StartAiRun(config);
+            yield break;
+        }
         config.Match.Map.Size = 1024;
         config.Match.Map.Seed = 1;
         config.Match.CountdownSeconds = 0.5f;
@@ -160,6 +168,7 @@ public sealed class PerfMatch : MonoBehaviour
 
     private void Update()
     {
+        if (AiRun) { UpdateAiRun(); return; }
         SimContext sim = SimContext.Current;
         if (owners == null || armyStart == null || sim == null) return;
         int tick = sim.Clock.Tick;
@@ -435,13 +444,15 @@ public sealed class PerfMatch : MonoBehaviour
     {
         string dir = ArgValue("-perfOut") ?? Path.Combine(Application.persistentDataPath, "PerfResults");
         string path = Path.Combine(dir, "perf.csv");
-        stats.WriteCsv(path, new Dictionary<string, (string, double, bool)>
+        var budgets = new Dictionary<string, (string, double, bool)>
         {
             ["perf.tick.main"] = ("p95", 25.0, true),
             ["perf.fps"] = ("mean", 60.0, false),
             ["perf.bw.avg"] = ("mean", 262144.0, true),
             ["perf.bw.peak1s"] = ("max", 786432.0, true),
-        });
+        };
+        if (AiRun) budgets["perf.part.ai"] = ("p95", 2.0, true); // v0.14 spec §12: AI thinking with 7 Hard AIs
+        stats.WriteCsv(path, budgets);
         WarLog.Info(LogCategory.Dev, $"wrote {path}");
         if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0)
         {
@@ -477,6 +488,88 @@ public sealed class PerfMatch : MonoBehaviour
             result.Add(partner);
         }
         return result.ToArray();
+    }
+
+    // ---- v0.14: the AI run (-perfAi [difficulty]) ----
+
+    /// <summary>
+    /// True with <c>-perfAi</c>: the gate's second run (v0.14 spec §12). Seven lobby AI seats of the given difficulty
+    /// (Hard by default, Random styles) play a real Free-for-all on the 1024² map (seed 1) with the host sitting out (no
+    /// HQ); the match is fast-forwarded (<c>-perfAiScale</c>, 8) through <c>-perfAiWarmupMinutes</c> (12) of play, so the
+    /// AIs have bases and armies, then runs at normal speed for <see cref="SampleTicks"/> ticks, recording the tick and
+    /// <c>perf.part.ai</c> (budget 2 ms p95). No bots, armies or virtual clients: the AIs make the load.
+    /// </summary>
+    private static bool AiRun => ArgValue("-perfAi") != null || Array.IndexOf(Environment.GetCommandLineArgs(), "-perfAi") >= 0;
+
+    private float aiRunWarmupSeconds;
+    private bool aiRunPlaying;
+    private double aiRunPlayingSince = double.NaN;
+
+    private IEnumerator StartAiRun(GameConfigData config)
+    {
+        string named = ArgValue("-perfAi");
+        AiDifficulty difficulty = named != null && !named.StartsWith("-") && Enum.TryParse(named, out AiDifficulty d) && d != AiDifficulty.Scripted ? d : AiDifficulty.Hard;
+        aiRunWarmupSeconds = 60f * (float.TryParse(ArgValue("-perfAiWarmupMinutes"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float m) ? math.max(0f, m) : 12f);
+        float scale = float.TryParse(ArgValue("-perfAiScale"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float s) ? math.clamp(s, 1f, 32f) : 8f;
+
+        GameManager.Instance.HostServer();
+        yield return new WaitUntil(() => NetworkClient.isConnected && NetworkClient.localPlayer != null && GameCore.Instance != null);
+        GameCore core = GameCore.Instance;
+        MatchSettings settings = core.Settings;
+        settings.Mode = MatchMode.FreeForAll;
+        settings.MapSize = 1024;
+        settings.Seed = 1;
+        settings.StartPickSeconds = StartPickRules.Unlimited;
+        core.Settings = settings;
+        for (int i = 1; i < Owners; i++)
+            if (core.AddAi(difficulty, AiStyle.Random) == null) Fail($"could not add AI seat {i}");
+        core.DevStartMatch(settings);
+        yield return new WaitUntil(() => WorldStateManager.Instance != null && WorldStateManager.Instance.Sim != null && core.CurrentState == GameState.PlacingHQ);
+        // The host sits out (no HQ): the AIs place theirs from their dealt options.
+        NetworkClient.localPlayer.GetComponent<ClientPlayer>().hasPlacedHQ = true;
+        core.CheckHQPlacementProgress();
+        yield return new WaitUntil(() => core.CurrentState == GameState.Playing);
+        Time.timeScale = scale;
+        Time.maximumDeltaTime = math.max(1f / 3f, 0.05f * scale);
+        aiRunPlaying = true;
+        WarLog.Info(LogCategory.Dev, $"AI run: 7 {difficulty} AIs playing; warming up {aiRunWarmupSeconds / 60f:F0} min at {scale}x");
+    }
+
+    private void UpdateAiRun()
+    {
+        SimContext sim = SimContext.Current;
+        WorldStateManager world = WorldStateManager.Instance;
+        if (!aiRunPlaying || sim == null || world == null || world.AiRunner == null) return;
+        if (GameCore.Instance == null || GameCore.Instance.CurrentState != GameState.Playing) { Fail("the AI match ended before sampling finished"); aiRunPlaying = false; return; }
+        double now = world.AiRunner.Now;
+        if (double.IsNaN(aiRunPlayingSince)) aiRunPlayingSince = now;
+        int tick = sim.Clock.Tick;
+        if (startTick < 0)
+        {
+            if (now - aiRunPlayingSince < aiRunWarmupSeconds) return;
+            Time.timeScale = 1f;
+            Time.maximumDeltaTime = 1f / 3f;
+            startTick = tick;
+            lastTick = tick;
+            WarLog.Info(LogCategory.Dev, $"AI run: sampling at {sim.Clock.UnitCount} units");
+            return;
+        }
+        stats.Add("perf.fps", 1.0 / Math.Max(1e-6, Time.unscaledDeltaTime));
+        stats.Add("perf.frame.ms", Time.unscaledDeltaTime * 1000.0);
+        if (tick == lastTick) return;
+        lastTick = tick;
+        stats.Add("perf.tick.main", SimTiming.LastMainThreadMs - SimTiming.LastBoundaryWaitMs);
+        stats.Add("perf.tick.wait", SimTiming.LastBoundaryWaitMs);
+        stats.Add("perf.tick.replication", ReplicationService.LastMilliseconds);
+        stats.Add("perf.part.settled", SimTiming.LastSettledMs);
+        stats.Add("perf.part.matchSettled", SimTiming.LastMatchSettledMs);
+        stats.Add("perf.part.ai", SimTiming.LastAiMs);
+        stats.Add("perf.part.commands", SimTiming.LastCommandsMs);
+        stats.Add("perf.part.stages", SimTiming.LastStagesMs);
+        stats.Add("perf.part.combat", SimTiming.LastCombatJobsMs);
+        if (SimTiming.LastVisionRan) stats.Add("perf.part.vision", SimTiming.LastVisionJobsMs);
+        stats.Add("perf.units", sim.Clock.UnitCount);
+        if (tick - startTick >= SampleTicks) { aiRunPlaying = false; Finish(); }
     }
 
     private static bool PlaceNear(WorldStateManager world, int owner, int2 site)

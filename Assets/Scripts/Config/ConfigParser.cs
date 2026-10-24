@@ -144,7 +144,7 @@ namespace Config
             XmlNode orders = Require(root, "Orders", errors);
             if (orders != null)
             {
-                config.Orders.MaxQueued = Int(orders, "MaxQueued", "Orders", errors, min: 0, max: 16);
+                config.Orders.MaxQueued = Int(orders, "MaxQueued", "Orders", errors, min: 0, max: 516);
                 config.Orders.MaxDigArea = Int(orders, "MaxDigArea", "Orders", errors, min: 1, max: 64);
             }
 
@@ -369,6 +369,9 @@ namespace Config
                     RescoutSeconds = Float(node, "RescoutSeconds", c, errors, min: 10, max: 3600),
                     SpecialUse = Float(node, "SpecialUse", c, errors, min: 0, max: 1),
                     DefendsChokepoints = Flag(node, "DefendsChokepoints", c, errors),
+                    EarlyTurrets = Int(node, "EarlyTurrets", c, errors, min: 0, max: 20),
+                    IncomePerProducer = Float(node, "IncomePerProducer", c, errors, min: 0, max: 10000),
+                    Scouts = Int(node, "Scouts", c, errors, min: 1, max: 8),
                     AttackRatio = Float(node, "AttackRatio", c, errors, min: 0.1f, max: 10),
                     Peace = Named(node, "Peace", c, errors, AiPeace.Always),
                     GiftsSurplus = Flag(node, "GiftsSurplus", c, errors),
@@ -496,6 +499,17 @@ namespace Config
                 p.WallGap = Int(play, "WallGap", c, errors, min: 0, max: 16);
                 p.RetreatSeconds = Float(play, "RetreatSeconds", c, errors, min: 1, max: 600);
                 p.TurretStrength = Float(play, "TurretStrength", c, errors, min: 0, max: 100);
+                p.StageDistance = Float(play, "StageDistance", c, errors, min: 0, max: 200);
+                p.StageShare = Float(play, "StageShare", c, errors, min: 0, max: 1);
+                p.StageSeconds = Float(play, "StageSeconds", c, errors, min: 0, max: 600);
+                p.MaxedAttackResources = Float(play, "MaxedAttackResources", c, errors, min: 0, max: 1e7f);
+                p.CounterAttackRatio = Float(play, "CounterAttackRatio", c, errors, min: 1, max: 100);
+                p.StuckBlueprintSeconds = Float(play, "StuckBlueprintSeconds", c, errors, min: 5, max: 3600);
+                p.RecallShare = Float(play, "RecallShare", c, errors, min: 0, max: 10);
+                p.MarchSeconds = Float(play, "MarchSeconds", c, errors, min: 0, max: 3600);
+                p.EarlyTurretSeconds = Float(play, "EarlyTurretSeconds", c, errors, min: 0, max: 3600);
+                p.ScoutsFullMapSize = Int(play, "ScoutsFullMapSize", c, errors, min: 1, max: 100000);
+                p.ScoutStopSeconds = Float(play, "ScoutStopSeconds", c, errors, min: 5, max: 3600);
             }
 
             XmlNode counters = Require(ai, "Counters", errors);

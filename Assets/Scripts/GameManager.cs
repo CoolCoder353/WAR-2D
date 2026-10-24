@@ -66,6 +66,17 @@ public class GameManager : NetworkManager
                 if (child.GetType().Name == "FizzySteamworks") { if (steamTransport == null) steamTransport = child; }
                 else if (directTransport == null) directTransport = child;
             }
+        // Dev only (-perf, e.g. tools/ai-bench.sh's parallel hosts): -port n moves the KCP port off the scene's.
+        if (DevApi.PerfFlag && ushort.TryParse(PerfMatch.ArgValue("-port"), out ushort devPort) && devPort != 0)
+        {
+            DefaultPort = devPort;
+            if (directTransport is PortTransport kcp) kcp.Port = devPort;
+            else if (transport is PortTransport single) single.Port = devPort;
+            // The host listens on every child, so the multiplexer's other port transports (WebSocket) move too, 1000 up.
+            if (transport is MultiplexTransport all && all.transports != null)
+                foreach (Transport child in all.transports)
+                    if (child != directTransport && child is PortTransport other) other.Port = (ushort)Mathf.Min(ushort.MaxValue, devPort + 1000);
+        }
         // Without Steam (not running, -noSteam, tests) the Steam transport would throw on start: host on KCP only.
         if (!WAR2D.Net.Steam.SteamServices.Available && transport is MultiplexTransport plain && steamTransport != null)
         {

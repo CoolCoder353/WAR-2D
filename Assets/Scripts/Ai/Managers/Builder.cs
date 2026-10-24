@@ -27,6 +27,8 @@ namespace WAR2D.Ai
         private readonly HashSet<long> walledSpots = new HashSet<long>();
         private static readonly System.Comparison<BuildRequest> HighestFirst = (a, b) => b.Priority.CompareTo(a.Priority);
         private double nextSpots;
+        private readonly Dictionary<int, (byte progress, double since)> blueprintProgress = new Dictionary<int, (byte, double)>();
+        private readonly List<int> stuck = new List<int>(4);
 
         public void Think(AiContext ai)
         {
@@ -34,12 +36,51 @@ namespace WAR2D.Ai
             AiState state = ai.State;
             if (view.State != GameState.Playing || !state.HasHq) return;
             if (ai.Now >= nextSpots) { FindDefenceSpots(ai, view, state); nextSpots = ai.Now + ai.Config.Play.ReplanSeconds; }
+            EarlyTurrets(ai, state);
             if (state.OpeningDone) WantBuildings(ai, view, state);
             ServeRequests(ai, state);
+            CancelStuck(ai, view, state);
             AssignBuilders(ai, view, state);
         }
 
+        /// <summary>
+        /// A blueprint that hasn't moved on for <c>StuckBlueprintSeconds</c> (its Builders can't reach it, or keep being
+        /// pulled away) is cancelled and its ground kept out of the search for a while, so it never holds up the rest
+        /// (a Miner blueprint standing stops the Economy's next Miner).
+        /// </summary>
+        private void CancelStuck(AiContext ai, TeamView view, AiState state)
+        {
+            stuck.Clear();
+            double now = ai.Now;
+            float limit = ai.Config.Play.StuckBlueprintSeconds;
+            foreach (int index in state.Blueprints)
+            {
+                AiBuilding b = view.Buildings[index];
+                if (!blueprintProgress.TryGetValue(b.Id, out var seen) || seen.progress != b.Progress) { blueprintProgress[b.Id] = ((byte)b.Progress, now); continue; }
+                if (now - seen.since < limit || stuck.Count >= SpawnerRules.MaxSpawnersPerCommand) continue;
+                stuck.Add(b.Id);
+                state.Block(b.Anchor, now);
+                blueprintProgress[b.Id] = ((byte)b.Progress, now); // once per limit, if the cancel is refused
+            }
+            if (stuck.Count > 0) ai.Propose(AiPriority.High, AiAction.CancelBuildings(stuck), AiKeys.Of(AiKeys.Cancel, 1));
+            if (blueprintProgress.Count > 256)
+            {
+                stale.Clear();
+                foreach (KeyValuePair<int, (byte, double)> e in blueprintProgress) if (now - e.Value.Item2 > limit * 4f) stale.Add(e.Key);
+                foreach (int id in stale) blueprintProgress.Remove(id);
+            }
+        }
+
         // ---- what it wants ----
+
+        /// <summary>Its difficulty's early Gun turrets, in front of its HQ towards the enemy (where its army gathers), from <c>EarlyTurretSeconds</c>.</summary>
+        private static void EarlyTurrets(AiContext ai, AiState state)
+        {
+            AiPlayConfig play = ai.Config.Play;
+            if (ai.Difficulty.EarlyTurrets <= 0 || state.PlayingSeconds < play.EarlyTurretSeconds) return;
+            if (state.CountNear(BuildingType.GunTurret, state.Home, play.BaseRadius) >= ai.Difficulty.EarlyTurrets) return;
+            state.RequestBuilding(BuildingType.GunTurret, Front(state, 0, play.GatherDistance * 0.5f), play.DefenceSpread, AiPriority.High - 3f, AiKeys.Of(AiKeys.Place, (int)BuildingType.GunTurret, 100));
+        }
 
         private static readonly BuildingType[] ProducerOrder = { BuildingType.Barracks, BuildingType.HeavyFactory, BuildingType.SiegeWorkshop };
 
@@ -49,8 +90,15 @@ namespace WAR2D.Ai
             int2 hq = state.Hq.Anchor;
             // Producers: one at a time (no producer blueprint standing), the type furthest below the style's count.
             bool producerBuilding = false;
-            foreach (BuildingType t in ProducerOrder) if (state.BuildingCount[(int)t] > state.CompleteCount[(int)t]) producerBuilding = true;
-            if (!producerBuilding)
+            int producers = 0;
+            foreach (BuildingType t in ProducerOrder)
+            {
+                if (state.BuildingCount[(int)t] > state.CompleteCount[(int)t]) producerBuilding = true;
+                producers += state.BuildingCount[(int)t];
+            }
+            // Hard: another producer only once its income carries one more (a producer's upkeep is many units' worth).
+            bool affordable = ai.Difficulty.IncomePerProducer <= 0f || state.Income >= ai.Difficulty.IncomePerProducer * producers;
+            if (!producerBuilding && affordable)
             {
                 BuildingType next = BuildingType.None;
                 float lowest = 1f;

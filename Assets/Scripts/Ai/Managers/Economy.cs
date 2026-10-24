@@ -22,6 +22,9 @@ namespace WAR2D.Ai
         /// <summary>The expansions (region indices) it has claimed.</summary>
         public IReadOnlyList<int> Claimed => claimed;
 
+        /// <summary>How many of them it holds (a Miner of its own there), as of its last think.</summary>
+        public int Held { get; private set; }
+
         public void Think(AiContext ai)
         {
             TeamView view = ai.View;
@@ -30,11 +33,14 @@ namespace WAR2D.Ai
             AiPlayConfig play = ai.Config.Play;
 
             KeepUpkeepPaid(ai, view, state);
-            // Upkeep caught up with income: more Miners, one at a time (a Miner being built already counts for its income).
+            // Upkeep caught up with income: more Miners, as many at once as its Builders staff (a Miner being built already counts for its income).
             int minersBuilding = state.BuildingCount[(int)BuildingType.Miner] - state.CompleteCount[(int)BuildingType.Miner];
             float incomeSoon = state.Income + minersBuilding * ai.Game.Resources.MiningRate;
-            bool capped = incomeSoon * play.UpkeepIncomeShare - state.Upkeep < play.UpkeepHeadroom && minersBuilding == 0;
+            // As many Miner blueprints at once as its Builders staff (one at a time would let a far one hold up the rest).
+            int minersAtOnce = math.max(1, state.Builders.Count / math.max(1, play.BuildersPerBlueprint));
+            bool capped = incomeSoon * play.UpkeepIncomeShare - state.Upkeep < play.UpkeepHeadroom && minersBuilding < minersAtOnce;
             int held = UpdateExpansions(ai, view, state, capped);
+            Held = held;
 
             int builders = ai.Difficulty.Builders + ai.Difficulty.BuildersPerExpansion * held;
             if (state.UnitCount[(int)UnitType.Builder] + state.QueuedCount[(int)UnitType.Builder] < builders)
@@ -71,6 +77,8 @@ namespace WAR2D.Ai
             // On time (by difficulty and style), or sooner when its upkeep has caught up with its income and it has money to spare.
             bool onTime = state.PlayingSeconds >= ai.Difficulty.ExpandAfterSeconds * ai.Style.ExpandTiming;
             bool squeezed = capped && state.Free >= ai.Config.Play.CappedExpandResources;
+            // Upkeep-capped with money to spare, it takes more than its style's (up to its difficulty's most): money banked is wasted.
+            if (squeezed && onTime) wanted = ai.Difficulty.MaxExpansions;
             if (claimed.Count >= wanted || !(onTime || squeezed)) return held;
             if (state.BuildingCount[(int)BuildingType.Miner] < ai.Style.Miners || state.Free < 2f * state.CostOf(BuildingType.Miner)) return held;
             int best = -1;
