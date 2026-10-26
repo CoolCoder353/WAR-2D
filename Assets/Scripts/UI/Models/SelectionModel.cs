@@ -71,6 +71,21 @@ namespace WAR2D.UI
             ConstructionRules.Refund(true, cost, demolishShare) * BlueprintCount +
             ConstructionRules.Refund(false, cost, demolishShare) * (buildingIds.Count - BlueprintCount);
 
+        /// <summary>How many own wall tiles (blueprints included) are selected.</summary>
+        public int WallCount { get; private set; }
+
+        /// <summary>How many of the selected wall tiles are still blueprints.</summary>
+        public int WallBlueprints { get; private set; }
+
+        /// <summary>Sets the selected wall tiles and how many of them are blueprints.</summary>
+        public void SetWalls(int count, int blueprints)
+        {
+            if (count == WallCount && blueprints == WallBlueprints) return;
+            WallCount = count;
+            WallBlueprints = blueprints;
+            Changed?.Invoke();
+        }
+
         /// <summary>True when the selection holds a Builder.</summary>
         public bool HasBuilders => Has(UnitType.Builder);
 
@@ -318,6 +333,11 @@ namespace WAR2D.UI
                 }
                 SetBuildings(selection.SelectedBuildings, type, queue, pulledByType, blueprints, first.Progress, mixed, inUse);
             }
+            int wallBlueprints = 0;
+            WorldStateManager wsm = WorldStateManager.Instance;
+            foreach (Unity.Mathematics.int2 tile in selection.SelectedWalls)
+                if (wsm != null && wsm.Map != null && wsm.Map.Grid.Contains(tile) && wsm.Map.Grid.TileAt(tile) == TileType.WallBlueprint) wallBlueprints++;
+            SetWalls(selection.SelectedWalls.Count, wallBlueprints);
             PullBuildingRows(selection, known);
             SetArmed(commander.ArmedOrder);
             SetSquadCounts(local.SquadCounts);

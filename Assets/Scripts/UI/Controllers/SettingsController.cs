@@ -119,7 +119,8 @@ namespace WAR2D.UI
         {
             VisualElement resolutions = graphics.Q("resolution-options");
             resolutions.Clear();
-            foreach (Vector2Int r in GameSettings.Resolutions)
+            resolutions.style.flexWrap = Wrap.Wrap;
+            foreach (Vector2Int r in GameSettings.ResolutionChoices(new Vector2Int(S.Width, S.Height)))
             {
                 Vector2Int res = r;
                 resolutions.Add(Widgets.Option($"resolution-{r.x}", $"{r.x}×{r.y}", S.Width == r.x && S.Height == r.y, true, () => { S.Width = res.x; S.Height = res.y; Changed(); }));

@@ -1,5 +1,6 @@
 using WAR2D.Dev.Logging;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 
@@ -21,7 +22,29 @@ public sealed class GameSettings
     public string Bindings = "";
 
     /// <summary>The resolutions the settings offer.</summary>
-    public static readonly Vector2Int[] Resolutions = { new Vector2Int(1280, 720), new Vector2Int(1920, 1080), new Vector2Int(2560, 1440) };
+    public static readonly Vector2Int[] Resolutions =
+    {
+        new Vector2Int(1280, 720), new Vector2Int(1366, 768), new Vector2Int(1600, 900), new Vector2Int(1920, 1080),
+        new Vector2Int(2560, 1080), new Vector2Int(2560, 1440), new Vector2Int(3440, 1440), new Vector2Int(3840, 2160),
+    };
+
+    /// <summary>
+    /// The resolutions to list: the common ones, plus the monitor's own and the one in use when they are not among them,
+    /// smallest first.
+    /// </summary>
+    public static List<Vector2Int> ResolutionChoices(Vector2Int current)
+    {
+        var choices = new List<Vector2Int>(Resolutions);
+        void Include(Vector2Int r) { if (r.x >= 640 && r.y >= 360 && !choices.Contains(r)) choices.Add(r); }
+        if (!Application.isBatchMode)
+        {
+            Resolution desktop = Screen.currentResolution;
+            Include(new Vector2Int(desktop.width, desktop.height));
+        }
+        Include(current);
+        choices.Sort((a, b) => a.x != b.x ? a.x.CompareTo(b.x) : a.y.CompareTo(b.y));
+        return choices;
+    }
 
     /// <summary>The FPS caps the settings offer (0 = none).</summary>
     public static readonly int[] FpsCaps = { 60, 120, 144, 0 };

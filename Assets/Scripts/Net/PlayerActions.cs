@@ -101,6 +101,29 @@ public static class PlayerActions
         return true;
     }
 
+    /// <summary>
+    /// Queues the removal of each named wall tile the owner has: a blueprint refunds <c>Siege.WallCost</c> in full, a
+    /// started or finished wall <c>Siege.DemolishRefund</c> of it. The sim checks the tile is the owner's own wall.
+    /// Lists over <see cref="WorldStateManager.MaxWallsPerRemove"/> are refused. True when the removals were queued.
+    /// </summary>
+    public static bool RemoveWalls(int owner, IReadOnlyList<int2> tiles)
+    {
+        WorldStateManager world = World;
+        if (tiles == null || tiles.Count > WorldStateManager.MaxWallsPerRemove || !MayAct(owner) || world.Map == null) return false;
+        ServerPlayer player = GameCore.Instance.GetServerPlayerById(owner);
+        if (player == null) return false;
+        SiegeConfig siege = ConfigLoader.LoadConfig().Siege;
+        foreach (int2 tile in tiles)
+        {
+            world.Sim.Commands.Enqueue(new SimCommand
+            {
+                Kind = SimCommandKind.RemoveWall, OwnerId = owner, Tile = tile,
+                OnWallRemoved = was => player.Refund(ConstructionRules.Refund(was == WallStates.Blueprint, siege.WallCost, siege.DemolishRefund)),
+            });
+        }
+        return true;
+    }
+
     // ---------- Production ----------
 
     /// <summary>

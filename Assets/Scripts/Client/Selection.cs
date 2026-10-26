@@ -57,6 +57,27 @@ namespace WAR2D.Client
             foreach (int id in ids) if (!buildings.Contains(id)) buildings.Add(id);
         }
 
+        private readonly List<int2> walls = new List<int2>();
+
+        /// <summary>The selected own wall tiles and wall blueprints (they cancel or demolish; never with units or buildings).</summary>
+        public IReadOnlyList<int2> SelectedWalls => walls;
+
+        /// <summary>Selects these own wall tiles (a click or a box), dropping the unit and building selection; <paramref name="append"/> keeps the current walls.</summary>
+        public void SelectWalls(IEnumerable<int2> tiles, bool append)
+        {
+            selected.Clear();
+            selectedSquad = -1;
+            buildings.Clear();
+            if (!append) walls.Clear();
+            foreach (int2 t in tiles) if (!walls.Contains(t)) walls.Add(t);
+        }
+
+        /// <summary>Clears the wall selection.</summary>
+        public void ClearWalls() => walls.Clear();
+
+        /// <summary>Drops one wall tile from the selection (it is gone).</summary>
+        public void RemoveWall(int2 tile) => walls.Remove(tile);
+
         /// <summary>Clears the building selection.</summary>
         public void ClearBuilding() => buildings.Clear();
 

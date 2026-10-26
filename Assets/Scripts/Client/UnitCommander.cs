@@ -416,6 +416,40 @@ public class UnitCommander : NetworkBehaviour
         return true;
     }
 
+    /// <summary>Most wall tiles one selection holds.</summary>
+    private const int MaxSelectedWalls = 512;
+
+    /// <summary>True when the tile is one of this owner's walls or wall blueprints, as far as this client knows.</summary>
+    private static bool IsOwnWall(int2 tile, int ownerId, out bool blueprint)
+    {
+        blueprint = false;
+        WorldStateManager wsm = WorldStateManager.Instance;
+        if (wsm == null || wsm.Map == null || !wsm.Map.Grid.Contains(tile)) return false;
+        TileType type = wsm.Map.Grid.TileAt(tile);
+        if (type != TileType.PlayerWall && type != TileType.WallBlueprint) return false;
+        blueprint = type == TileType.WallBlueprint;
+        return ClientTerrain.Current.WallOwner(wsm.Map.Grid.Index(tile)) == ownerId;
+    }
+
+    /// <summary>The own wall tiles and blueprints inside the inclusive tile box.</summary>
+    private static List<int2> OwnWallsIn(float2 lo, float2 hi, int ownerId)
+    {
+        var found = new List<int2>();
+        for (int y = (int)lo.y; y <= (int)hi.y && found.Count < MaxSelectedWalls; y++)
+            for (int x = (int)lo.x; x <= (int)hi.x && found.Count < MaxSelectedWalls; x++)
+                if (IsOwnWall(new int2(x, y), ownerId, out _)) found.Add(new int2(x, y));
+        return found;
+    }
+
+    /// <summary>Cancels or demolishes the selected walls and blueprints (the server refunds them).</summary>
+    [Client]
+    public void RemoveSelectedWalls()
+    {
+        if (Selection.SelectedWalls.Count == 0 || WorldStateManager.Instance == null) return;
+        WorldStateManager.Instance.CmdRemoveWalls(System.Linq.Enumerable.ToArray(Selection.SelectedWalls));
+        Selection.ClearWalls();
+    }
+
     /// <summary>The ids of our spawners (seen now) with a footprint tile inside the box.</summary>
     private List<int> OwnSpawnersIn(float2 lo, float2 hi, int ownerId)
     {
@@ -535,6 +569,7 @@ public class UnitCommander : NetworkBehaviour
             else
             {
                 bool append = GameInput.AppendModifier.IsPressed();
+                if (!append) Selection.ClearWalls();
                 var keptBuildings = new List<int>(append ? Selection.SelectedBuildings : System.Array.Empty<int>());
                 Selection.SelectBox(lo, hi, me, append);
                 if (Selection.Selected.Count == 0)
@@ -544,6 +579,12 @@ public class UnitCommander : NetworkBehaviour
                     if (append) Selection.SelectBuildings(keptBuildings, false);
                     if (click && TryOwnBuildingAt(b, me, out BuildingData building)) SelectBuilding(building, append);
                     else if (!click) Selection.SelectBuildings(OwnSpawnersIn(lo, hi, me), append);
+                }
+                if (Selection.Selected.Count == 0 && Selection.SelectedBuildings.Count == 0)
+                {
+                    // Nothing else there: own walls and wall blueprints (they can be cancelled or demolished).
+                    var wallsHit = OwnWallsIn(click ? math.floor(b) : math.floor(lo + 0.5f), click ? math.floor(b) : math.floor(hi - 0.5f), me);
+                    if (wallsHit.Count > 0 || !append) Selection.SelectWalls(wallsHit, append);
                 }
                 if (click) { lastClickTime = Time.unscaledTime; lastClickAt = b; }
             }
@@ -572,6 +613,7 @@ public class UnitCommander : NetworkBehaviour
             if (GameInput.AssignModifier.IsPressed()) Selection.AssignSquad(squad);
             else
             {
+                Selection.ClearWalls();
                 Selection.SelectSquad(squad);
                 // Double-tapping a squad key centres the camera on the squad.
                 if (squad == lastSquadTap && Time.unscaledTime - lastSquadTapTime < DoubleTapSeconds && Selection.TryCentre(out float2 centre))
@@ -718,9 +760,27 @@ public class UnitCommander : NetworkBehaviour
             f.transform.position = new Vector3(rally.x + 0.5f, rally.y + 0.5f, 0f);
             f.gameObject.SetActive(true);
         }
+        ShowWallSelection(ref shown);
         for (int i = shown; i < buildingMarkers.Count; i++) buildingMarkers[i].Hide();
         ShowRangeRings(ids);
         for (int i = flags; i < rallyFlags.Count; i++) rallyFlags[i].gameObject.SetActive(false);
+    }
+
+    /// <summary>Brackets on each selected wall tile; drops tiles that are no longer our walls (destroyed, or removed).</summary>
+    private void ShowWallSelection(ref int shown)
+    {
+        if (localPlayer == null || Selection.SelectedWalls.Count == 0) return;
+        int me = BuildingData.UIntToInt(localPlayer.netId);
+        for (int i = Selection.SelectedWalls.Count - 1; i >= 0; i--)
+            if (!IsOwnWall(Selection.SelectedWalls[i], me, out _)) Selection.RemoveWall(Selection.SelectedWalls[i]);
+        int limit = System.Math.Min(Selection.SelectedWalls.Count, MaxSelectedWalls);
+        for (int i = 0; i < limit; i++)
+        {
+            int2 tile = Selection.SelectedWalls[i];
+            if (shown == buildingMarkers.Count) buildingMarkers.Add(new GameObject("BuildingSelection").AddComponent<BuildingSelectionMarker>());
+            // Negative ids keep wall markers apart from building ids.
+            buildingMarkers[shown++].Show(-(1 + tile.y * 65536 + tile.x), new float2(tile.x + 0.5f, tile.y + 0.5f), new int2(1, 1));
+        }
     }
 
     private readonly List<ClearingRing> rangeRings = new List<ClearingRing>();

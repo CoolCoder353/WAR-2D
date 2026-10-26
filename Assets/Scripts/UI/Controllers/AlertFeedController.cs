@@ -50,6 +50,12 @@ namespace WAR2D.UI
                 var row = new VisualElement { name = "alert-" + id };
                 row.AddToClassList("alert");
                 row.AddToClassList(KindClass(entry.Kind));
+                if (AlertFeedModel.HasPlace(entry.Kind))
+                {
+                    row.AddToClassList("alert--clickable");
+                    row.tooltip = "Go there";
+                    row.RegisterCallback<ClickEvent>(_ => model.Focus(id));
+                }
                 float fadesAt = entry.Added + AlertFeedModel.HighlightSeconds;
                 if (fadesAt > now) { row.AddToClassList("alert--new"); nextFade = Mathf.Min(nextFade, fadesAt); }
                 var stripe = new VisualElement();
@@ -70,6 +76,7 @@ namespace WAR2D.UI
                 text.AddToClassList("alert__text");
                 var dismiss = new Button(() => model.Dismiss(id)) { text = "×", name = "alert-dismiss", tooltip = "Dismiss" };
                 dismiss.AddToClassList("alert__dismiss");
+                dismiss.RegisterCallback<ClickEvent>(e => e.StopPropagation());
                 row.Add(text);
                 row.Add(dismiss);
                 feed.Add(row);

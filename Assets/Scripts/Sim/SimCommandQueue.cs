@@ -28,6 +28,8 @@ namespace WAR2D.Sim
         SetTile,
         /// <summary>Lay a wall blueprint for <see cref="SimCommand.OwnerId"/> on <see cref="SimCommand.Tile"/>.</summary>
         PlaceWall,
+        /// <summary>Remove the wall or wall blueprint of <see cref="SimCommand.OwnerId"/> on <see cref="SimCommand.Tile"/> (cancel or demolish).</summary>
+        RemoveWall,
         /// <summary>Set off the bomb with building id <see cref="SimCommand.TargetId"/> on <see cref="SimCommand.Tile"/> this tick, if <see cref="SimCommand.OwnerId"/>'s side sees the tile.</summary>
         DetonateBomb,
 
@@ -81,6 +83,8 @@ namespace WAR2D.Sim
         public System.Action<int> OnSpawned;
         /// <summary>Called after a <see cref="SimCommandKind.PlaceWall"/> is applied (true) or refused (false).</summary>
         public System.Action<bool> OnApplied;
+        /// <summary>Called after a <see cref="SimCommandKind.RemoveWall"/> removed a tile, with the <see cref="WallStates"/> it was in (nothing is called when refused).</summary>
+        public System.Action<byte> OnWallRemoved;
         /// <summary>
         /// Pays for a <see cref="SimCommandKind.PlaceWall"/>, called only once the tile is seen and free (so a refusal on
         /// an unseen tile never touches the budget). False refuses the wall. Null places it free.

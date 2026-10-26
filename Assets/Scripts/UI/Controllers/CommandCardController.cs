@@ -64,6 +64,9 @@ namespace WAR2D.UI
         /// <summary>Raised when the selected buildings are to be cancelled or demolished (after the confirm, for finished ones).</summary>
         public event Action<IReadOnlyList<int>> RemoveConfirmed;
 
+        /// <summary>Raised when the selected wall tiles are to be cancelled or demolished (after the confirm, unless all are blueprints).</summary>
+        public event Action RemoveWallsConfirmed;
+
         /// <summary>True while the Demolish confirm is showing.</summary>
         public bool ConfirmOpen { get; private set; }
 
@@ -205,7 +208,7 @@ namespace WAR2D.UI
         public void RequestRemove()
         {
             if (!Removable) return;
-            if (selection.AllBlueprints || ConfirmOpen) Remove();
+            if (WallsOnly ? selection.WallBlueprints == selection.WallCount : selection.AllBlueprints || ConfirmOpen) Remove();
             else
             {
                 ConfirmOpen = true;
@@ -225,16 +228,20 @@ namespace WAR2D.UI
         private void Remove()
         {
             ConfirmOpen = false;
-            if (Removable) RemoveConfirmed?.Invoke(selection.BuildingIds);
+            if (WallsOnly) RemoveWallsConfirmed?.Invoke();
+            else if (Removable) RemoveConfirmed?.Invoke(selection.BuildingIds);
             Show();
         }
 
         /// <summary>True when the selected own buildings may be cancelled or demolished (never the HQ).</summary>
-        private bool Removable => selection.BuildingId != 0 && selection.BuildingType != BuildingType.Base;
+        private bool Removable => WallsOnly || (selection.BuildingId != 0 && selection.BuildingType != BuildingType.Base);
+
+        /// <summary>True when own walls or wall blueprints are selected and nothing else.</summary>
+        private bool WallsOnly => selection.WallCount > 0 && selection.BuildingId == 0 && selection.Count == 0;
 
         private void Show()
         {
-            bool building = selection.BuildingId != 0;
+            bool building = selection.BuildingId != 0 || WallsOnly;
             int count = selection.BuildingIds.Count;
             bool units = selection.Count > 0;
             bool builders = !building && selection.HasBuilders, diggers = !building && selection.HasDiggers;
@@ -276,8 +283,24 @@ namespace WAR2D.UI
             wall.SetEnabled(hud.Resources >= wallCost);
         }
 
+        private void ShowWalls()
+        {
+            int count = selection.WallCount, blueprints = selection.WallBlueprints;
+            bool allBlueprints = blueprints == count;
+            float back = ConstructionRules.Refund(true, wallCost, demolishShare) * blueprints +
+                         ConstructionRules.Refund(false, wallCost, demolishShare) * (count - blueprints);
+            title.text = count > 1 ? $"Walls: {count} selected" : allBlueprints ? "Wall (blueprint)" : "Wall";
+            cancelIcon.Icon = allBlueprints ? IconKind.Cancel : IconKind.Demolish;
+            cancel.tooltip = allBlueprints ? "Cancel" : "Demolish";
+            refund.text = allBlueprints ? $"Cancel: refunds {back:0} (the full cost) while they are blueprints."
+                : $"Demolish: refunds {back:0} (blueprints in full, built walls {demolishShare:P0} of their cost).";
+            confirm.EnableInClassList("removal__confirm--open", ConfirmOpen);
+            question.text = count > 1 ? $"Demolish {count} walls? You get {back:0} back." : $"Demolish this wall? You get {back:0} back.";
+        }
+
         private void ShowBuilding(int count)
         {
+            if (WallsOnly) { ShowWalls(); return; }
             UnitType[] produced = SpawnerRules.Produces(selection.BuildingType);
             string name = AlertFeedModel.BuildingName(selection.BuildingType) ?? AlertFeedModel.Spaced(selection.BuildingType.ToString());
             title.text = selection.MixedKinds ? $"Commands: {count} producers selected"

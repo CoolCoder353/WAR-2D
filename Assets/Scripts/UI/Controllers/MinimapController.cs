@@ -36,6 +36,19 @@ namespace WAR2D.UI
             image.RegisterCallback<PointerUpEvent>(OnPointerUp);
         }
 
+        private System.Collections.Generic.List<(float2 centre, Color32 colour)> starts;
+
+        /// <summary>
+        /// While choosing an HQ site nothing sees anything, so the minimap shows the whole terrain dimmed with the start
+        /// options marked; null (or none) goes back to the fog. Call every frame.
+        /// </summary>
+        public void ShowStarts(System.Collections.Generic.List<(float2 centre, Color32 colour)> options)
+        {
+            bool before = starts != null;
+            starts = options != null && options.Count > 0 ? options : null;
+            if (before != (starts != null)) redrawTimer = 0f;
+        }
+
         /// <summary>The world size the minimap covers (fog grid × cell size), or zero before the first fog.</summary>
         public float2 WorldSize => texture == null ? float2.zero : new float2(texture.Width, texture.Height) * texture.CellSize;
 
@@ -102,12 +115,14 @@ namespace WAR2D.UI
         /// <summary>Redraws the texture now: terrain under fog, buildings and ghosts, then units.</summary>
         public void Redraw(ClientFog fog)
         {
-            texture.Begin(fog.State);
+            texture.Begin(fog.State, starts != null);
             foreach (ClientBuildings.Entry entry in ClientBuildings.Current.Entries.Values)
             {
                 texture.PlotBuilding(entry.Data.position, PlayerPalette.OfOwner(entry.Data.ownerId), entry.Ghost);
             }
             ClientWorld.Instance?.PlotOn(texture);
+            if (starts != null)
+                foreach ((float2 centre, Color32 colour) in starts) texture.PlotMarker(centre, colour, 2);
             texture.End();
         }
 

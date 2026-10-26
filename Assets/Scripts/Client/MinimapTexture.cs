@@ -55,18 +55,31 @@ namespace WAR2D.Client
             };
         }
 
-        /// <summary>Starts a redraw: terrain by fog state (<see cref="FogState"/> per cell; null draws everything unexplored).</summary>
-        public void Begin(byte[] fogState)
+        /// <summary>
+        /// Starts a redraw: terrain by fog state (<see cref="FogState"/> per cell; null draws everything unexplored).
+        /// <paramref name="revealTerrain"/> draws unexplored cells as explored terrain (choosing an HQ site, when no
+        /// unit or building sees anything yet; the client already holds the whole map).
+        /// </summary>
+        public void Begin(byte[] fogState, bool revealTerrain = false)
         {
             fog = fogState != null && fogState.Length == visible.Length ? fogState : null;
             pixels = Texture.GetPixelData<Color32>(0);
             if (fog == null)
             {
-                for (int i = 0; i < pixels.Length; i++) pixels[i] = Unexplored;
+                for (int i = 0; i < pixels.Length; i++) pixels[i] = revealTerrain ? explored[i] : Unexplored;
                 return;
             }
             fogCopy.CopyFrom(fog);
-            new FillJob { Fog = fogCopy, Visible = visible, Explored = explored, Pixels = pixels }.Run();
+            new FillJob { Fog = fogCopy, Visible = visible, Explored = explored, Pixels = pixels, Reveal = revealTerrain }.Run();
+        }
+
+        /// <summary>Plots a square of cells around a world position whatever the fog (an HQ start option), <paramref name="radius"/> cells out.</summary>
+        public void PlotMarker(float2 position, Color32 colour, int radius)
+        {
+            int cx = (int)math.floor(position.x / CellSize), cy = (int)math.floor(position.y / CellSize);
+            for (int y = cy - radius; y <= cy + radius; y++)
+            for (int x = cx - radius; x <= cx + radius; x++)
+                if ((uint)x < (uint)Width && (uint)y < (uint)Height) pixels[y * Width + x] = colour;
         }
 
         /// <summary>Terrain under fog for every cell (Burst: the default map has 262,144 cells).</summary>
@@ -76,6 +89,7 @@ namespace WAR2D.Client
             [ReadOnly] public NativeArray<byte> Fog;
             [ReadOnly] public NativeArray<Color32> Visible, Explored;
             public NativeArray<Color32> Pixels;
+            public bool Reveal;
 
             public void Execute()
             {
@@ -83,7 +97,7 @@ namespace WAR2D.Client
                 for (int i = 0; i < Pixels.Length; i++)
                 {
                     byte f = Fog[i];
-                    Pixels[i] = f == (byte)FogState.Visible ? Visible[i] : f == (byte)FogState.Explored ? Explored[i] : black;
+                    Pixels[i] = f == (byte)FogState.Visible ? Visible[i] : f == (byte)FogState.Explored || Reveal ? Explored[i] : black;
                 }
             }
         }

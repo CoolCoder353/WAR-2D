@@ -18,13 +18,14 @@ namespace WAR2D.UI
     }
 
     /// <summary>
-    /// The alert feed: the newest alerts (at most <see cref="MaxShown"/>), each shown until dismissed or
-    /// <c>Alerts/ShowSeconds</c> pass. UnderAttack, BombTriggered and EnemySpotted alerts also ask for a minimap ping.
+    /// The alert feed: the newest alerts (at most <see cref="MaxShown"/>), each shown until dismissed (v0.14: the HUD no
+    /// longer expires them; <see cref="Expire"/> is for callers that want a time limit). Clicking one with a place
+    /// (<see cref="HasPlace"/>) asks the camera to go there (<see cref="FocusRequested"/>). UnderAttack, BombTriggered and EnemySpotted alerts also ask for a minimap ping.
     /// </summary>
     public sealed class AlertFeedModel
     {
         /// <summary>Alerts shown at once; older ones drop off.</summary>
-        public const int MaxShown = 4;
+        public const int MaxShown = 6;
 
         /// <summary>How long a new alert keeps its border in its stripe colour (Figma <c>HUD – alerts and squad hint</c>).</summary>
         public const float HighlightSeconds = 3f;
@@ -43,6 +44,21 @@ namespace WAR2D.UI
 
         /// <summary>Raised for an alert the minimap pings: its tile and kind (the ring's colour).</summary>
         public event Action<int2, AlertKind> PingRequested;
+
+        /// <summary>Raised when an alert with a place is clicked: its tile.</summary>
+        public event Action<int2> FocusRequested;
+
+        /// <summary>True for the alerts that happened somewhere on the map, so clicking them moves the camera there.</summary>
+        public static bool HasPlace(AlertKind kind) =>
+            kind == AlertKind.UnderAttack || kind == AlertKind.BombTriggered || kind == AlertKind.EnemySpotted ||
+            kind == AlertKind.ConstructionFinished || kind == AlertKind.RepairsStopped;
+
+        /// <summary>Asks the camera to go to an alert's place (its row was clicked). Does nothing for alerts without one.</summary>
+        public void Focus(int id)
+        {
+            foreach (AlertEntry e in entries)
+                if (e.Id == id) { if (HasPlace(e.Kind)) FocusRequested?.Invoke(e.Tile); return; }
+        }
 
         /// <summary>True for the alerts the minimap pings.</summary>
         public static bool Pings(AlertKind kind) => kind == AlertKind.UnderAttack || kind == AlertKind.BombTriggered || kind == AlertKind.EnemySpotted;

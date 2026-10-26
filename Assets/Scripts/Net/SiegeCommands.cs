@@ -38,6 +38,20 @@ public partial class WorldStateManager
         PlayerActions.PlaceWall(owner, from, to);
     }
 
+    /// <summary>Most wall tiles one <see cref="CmdRemoveWalls"/> may name.</summary>
+    public const int MaxWallsPerRemove = 512;
+
+    /// <summary>
+    /// Cancels (blueprint: full refund) or demolishes (finished: <c>Siege.DemolishRefund</c> of its cost back) each
+    /// named wall tile the sender owns. Tiles that are not the sender's walls are skipped.
+    /// </summary>
+    [Command(requiresAuthority = false)]
+    public void CmdRemoveWalls(int2[] tiles, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(CmdRemoveWalls)) || !TryOwnerOf(sender, out int owner)) return;
+        PlayerActions.RemoveWalls(owner, tiles);
+    }
+
     /// <summary>True when owner <paramref name="from"/> shares vision with owner <paramref name="to"/> (main thread, settled).</summary>
     private bool SharesVision(int from, int to) =>
         Sim != null && Sim.TrySlotOf(from, out int a) && Sim.TrySlotOf(to, out int b) && Sim.Diplomacy.SharesVisionWith(a, b);

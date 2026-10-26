@@ -72,7 +72,7 @@ In **Settings → Controls** you can rebind Select, Move, Attack-move, Stop, Hol
 
 Settings (main menu, or the in-match menu) apply at once and are saved on this machine (`settings.json` in the player's data folder):
 
-- **Graphics:** resolution (1280×720, 1920×1080, 2560×1440), fullscreen, VSync, FPS cap (60, 120, 144, none), the battle behind the main menu, and the **colour palette**: Standard, Colourblind (Okabe–Ito; every pair at least ΔE2000 20 apart) or High contrast (every player colour at least 4.5:1 against the map floor). The palette recolours units, buildings, the minimap and the whole UI at once.
+- **Graphics:** resolution (1280×720, 1366×768, 1600×900, 1920×1080, 2560×1080, 2560×1440, 3440×1440, 3840×2160, plus your monitor's own size and the current one if they are not listed), fullscreen, VSync, FPS cap (60, 120, 144, none), the battle behind the main menu, and the **colour palette**: Standard, Colourblind (Okabe–Ito; every pair at least ΔE2000 20 apart) or High contrast (every player colour at least 4.5:1 against the map floor). The palette recolours units, buildings, the minimap and the whole UI at once.
 - **Audio:** master, music and sound-effect volumes (the `Main` mixer's groups).
 - **Controls:** rebinding and edge scrolling.
 - **Reset to defaults** restores everything, bindings included.
@@ -179,7 +179,7 @@ Units reach full speed at once (the unused `Acceleration` setting was dropped). 
 
 ### Alerts
 
-The alert feed (top left) shows the newest four alerts for 8 s each (`Alerts/ShowSeconds`); × dismisses one. You're told only about your own things and choices made towards you:
+The alert feed shows the newest six alerts and keeps each until you dismiss it with ×. Clicking an alert that happened somewhere (Under attack, Bomb triggered, Enemy spotted, Construction finished, Repairs stopped) moves the camera there. (`Alerts/ShowSeconds` is no longer used by the HUD.) You're told only about your own things and choices made towards you:
 
 - **Under attack near your HQ/Spawner/Miner** (or "Your units are under attack"): one of your units or buildings took damage. The minimap pings the spot. At most one per 32-tile area every 10 s (`Alerts/AreaTiles`, `Alerts/ThrottleSeconds`). It never says who attacked.
 - **Upkeep unpaid**: some of your upkeep first went unpaid (repeats only after a fully paid second).
@@ -194,6 +194,7 @@ All numbers are starting values in `GameConfig.xml` (`Siege`, `Units`, `Building
 - **Builders** (60 cost, 60 health) come from the HQ queue. They build everything except the HQ and never attack. Every building starts as a **blueprint** that charges its full cost and has health in proportion to progress (minimum 1). Each Builder adds `BuildPower` 25 health/s, so a 300-health Spawner takes 12 s with one. Builders work from `WorkReach` 1.6 tiles; Shift queues orders (up to `Orders/MaxQueued`). Placing a blueprint with Builders selected sends them to build it.
 - **Demolish** (Delete, then confirm): a blueprint refunds in full, a finished building refunds `DemolishRefund` 50%.
 - **Repair** (F): Builders restore own or allied buildings and walls for `RepairCostPerHealth` 0.2 per health; they stop, with an alert, when the owner can't pay.
+- **Selecting walls (v0.14):** click or box-select your own walls and wall blueprints (with no units or buildings under the pointer); the command card offers Cancel (blueprints, full refund at once) or Demolish (built walls, `Siege/DemolishRefund` back, after a confirm). `Esc`/the Cancel key work as for buildings.
 - **Walls** (drag): 5 resources and 150 health per segment, 4-connected, up to 64 per drag, no upkeep. Each tile is charged and checked on its own; the wall is built once the tile is empty. Units attack walls by attack-move; a destroyed wall becomes ground.
 - **Diggers** (120 cost, 120 health) come from the Spawner queue. Dig (G) removes a rock tile in `DigTime` 1.5 s; walls take damage instead (x6). A gem tile pays `GemPayout` 150 and stops Miners on it. The map border is never dug. Diggers fight back if attacked (x0.5 on units, x3 on buildings).
 - **Bombs** (75 cost, 1x1, walkable): only the owner and anyone they share vision with ever see one. A unit of any player you attack triggers it; the blast (radius 2.5, 200 damage) hits everything, friendlies too. Everyone who sees the tile sees the explosion, and the owner gets an alert.

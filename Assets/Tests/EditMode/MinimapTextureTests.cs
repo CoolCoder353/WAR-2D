@@ -32,6 +32,16 @@ public class MinimapTextureTests
     }
 
     [Test]
+    public void RevealedTerrainShowsUnexploredCellsAndMarkersIgnoreFog()
+    {
+        map.Begin(Fog(FogState.Unexplored), revealTerrain: true);
+        map.PlotMarker(new float2(1, 1), Red, 0);
+        map.End();
+        Assert.That(map.Pixel(3, 3), Is.Not.EqualTo(MinimapTexture.Unexplored), "terrain is drawn");
+        Assert.That(map.Pixel(0, 0), Is.EqualTo(Red), "the start option shows");
+    }
+
+    [Test]
     public void UnitOnUnseenCellIsNotDrawn()
     {
         byte[] fog = Fog(FogState.Explored);

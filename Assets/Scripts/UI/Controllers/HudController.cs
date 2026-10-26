@@ -140,6 +140,11 @@ namespace WAR2D.UI
             ShowDiplomacyButton();
 
             Alerts.PingRequested += minimap.Ping;
+            Alerts.FocusRequested += tile =>
+            {
+                Camera cam = Camera.main;
+                if (cam != null && cam.TryGetComponent(out Character.Character_Controler controller)) controller.CentreOn(new Unity.Mathematics.float2(tile.x + 0.5f, tile.y + 0.5f));
+            };
             topBar.DiplomacyClicked += diplomacy.Toggle;
             diplomacy.AttackToggled += SetAttack;
             diplomacy.ShareToggled += SetShareVision;
@@ -171,6 +176,7 @@ namespace WAR2D.UI
             commandCard.ProductionSelected += OnProductionSelected;
             commandCard.WallClicked += OnWall;
             commandCard.RemoveConfirmed += OnRemove;
+            commandCard.RemoveWallsConfirmed += () => { UnitCommander.Instance?.RemoveSelectedWalls(); Selection.Pull(); };
             squadBar.SquadClicked += OnSquad;
         }
 
@@ -200,6 +206,7 @@ namespace WAR2D.UI
         }
 
         private bool cameraCentred;
+        private readonly List<(Unity.Mathematics.float2 centre, Color32 colour)> starts = new List<(Unity.Mathematics.float2, Color32)>();
 
         /// <summary>
         /// Once the match map is ready, puts the camera on the local player's HQ clearing (their first dealt option).
@@ -258,6 +265,7 @@ namespace WAR2D.UI
             }
             if (!placing)
             {
+                minimap?.ShowStarts(null);
                 startMarkers.Show(markers, null);
                 return prompt;
             }
@@ -290,6 +298,9 @@ namespace WAR2D.UI
                 }
             }
             startMarkers.Show(markers, cam);
+            starts.Clear();
+            foreach (StartMarker marker in markers) starts.Add((new Unity.Mathematics.float2(marker.Centre.x, marker.Centre.y), marker.Colour));
+            minimap?.ShowStarts(starts);
             return prompt;
         }
 
@@ -338,7 +349,6 @@ namespace WAR2D.UI
             orderTags.Update(UnitCommander.Instance != null ? UnitCommander.Instance.Feedback : null, Camera.main, GameInput.Point.ReadValue<Vector2>());
             ShowWallReadout();
             Model.PullDiplomacy();
-            Alerts.Expire(Time.unscaledTime);
             SubscribeAlerts();
 
             selectionTimer -= Time.unscaledDeltaTime;

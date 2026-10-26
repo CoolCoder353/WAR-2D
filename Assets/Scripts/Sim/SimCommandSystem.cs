@@ -95,6 +95,13 @@ namespace WAR2D.Sim
                         command.OnApplied?.Invoke(placed);
                         break;
                     }
+                    case SimCommandKind.RemoveWall:
+                    {
+                        byte was = ApplyRemoveOwnWall(data, context, command.OwnerId, command.Tile, clock.UnitCount);
+                        terrainChanged |= was != WallStates.None;
+                        if (was != WallStates.None) command.OnWallRemoved?.Invoke(was);
+                        break;
+                    }
                     case SimCommandKind.DetonateBomb:
                     {
                         // Only where the placer's side sees the tile, so building at random never probes for bombs.
@@ -198,6 +205,21 @@ namespace WAR2D.Sim
             data.RefreshTerrain(tile);
             context.RaiseTerrainChanged(tile);
             return true;
+        }
+
+        /// <summary>
+        /// Cancels or demolishes the owner's own wall tile (it becomes ground). Returns the <see cref="WallStates"/> it was in,
+        /// or <see cref="WallStates.None"/> when the tile is not that owner's wall.
+        /// </summary>
+        private static byte ApplyRemoveOwnWall(SimData data, SimContext context, int ownerId, int2 tile, int unitCount)
+        {
+            int slot = context.SlotOf(ownerId);
+            if (slot < 0 || !context.Map.Grid.Contains(tile)) return WallStates.None;
+            int index = context.Map.Grid.Index(tile);
+            byte state = data.WallState[index];
+            if (state == WallStates.None || data.WallOwnerSlot[index] != (byte)slot) return WallStates.None;
+            RemoveWall(data, context, index, unitCount);
+            return state;
         }
 
         /// <summary>Removes a wall tile: it becomes ground again.</summary>

@@ -34,6 +34,17 @@ The code, the atlases (`WAR-2D/Art/Build all`, the Barracks now keyed `Barracks`
   - *`perf.part.vision` sampled 0 on the ticks the vision stage skips* (it runs every `VisionIntervalTicks`); only ticks it ran are sampled now. The v0.13 perf numbers in `docs/perf/v0.13/` predate this, so their vision column is diluted.
 - **Accepted by design:** a jam's dark disc on the enemy's map shows roughly where the Jammer is; a visible turret firing at an unnamed target reveals that there is a contact within its range (the rule for unit attackers too).
 
+## Owner playtest fixes (2026-10-26, v0.14)
+
+| Report | Status |
+| ------ | ------ |
+| Settings offered only 720p, 1080p and 1440p; no 4K | **Fixed.** `GameSettings.Resolutions` lists 1280×720 to 3840×2160 (incl. 1366×768, 1600×900, ultrawide); `ResolutionChoices` adds the monitor's own and the current size, and the row wraps. |
+| Walls and wall blueprints could not be selected, so a misplaced one could not be removed | **Fixed.** They are terrain tiles, not buildings, so `BuildingPicker` never saw them. `Selection.SelectedWalls` (click or box), `CmdRemoveWalls` → `PlayerActions.RemoveWalls` → `SimCommandKind.RemoveWall` (owner-checked in the sim; refund: blueprint in full, built `DemolishRefund`). The command card shows Cancel/Demolish for them. |
+| The Steam lobby list never showed a friend who was hosting | **Fixed.** Steam's lobby search returns only Public lobbies and the default Visibility is Friends, so friends' lobbies never came back. `SteamworksBackend.RequestLobbyList` now also reads the lobby each friend playing this game is in (`GetFriendGamePlayed`, then `RequestLobbyData`, 3 s limit). **Not verified against live Steam** (needs two Steam accounts). |
+| Alerts vanished after 8 s and did nothing when clicked | **Fixed.** The HUD no longer expires alerts (× dismisses; the feed holds six); clicking one with a place centres the camera there (`AlertFeedModel.FocusRequested`). |
+| The minimap was black while placing the HQ | **Fixed.** Nothing sees anything before the HQ exists, so the fog-only minimap was all unexplored. While placing, it draws the whole terrain dimmed (the client already holds the map) with the start options marked (`MinimapTexture.Begin(..., revealTerrain)`, `PlotMarker`). |
+| `Character_Settings.asset` unparseable (found while testing) | **Open.** Commit f810e03 reformatted `---` / `!u!114` onto two lines, so Unity logs "Failed to parse" and every PlayMode test fails on the unhandled error. Restore the single `--- !u!114 &11400000` line (values are unchanged). |
+
 ## Open
 
 | Item                                                           | Kind                              | Detail                                                                                                                                                                                                                                             |
