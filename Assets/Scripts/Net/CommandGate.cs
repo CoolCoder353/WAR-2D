@@ -62,10 +62,16 @@ public static class CommandGate
         {
             WarLog.Warn(LogCategory.Net, $"Disconnecting connection {conn.connectionId}: repeatedly exceeded command rate limits ({command}){(WAR2D.Net.Steam.SteamIdentity.TryGet(conn.connectionId, out ulong sid) ? $" (Steam {sid})" : "")}.");
             Forget(conn.connectionId);
+            Kicked.Add(conn.connectionId); // a kick is not a drop: the seat is not kept for a rejoin
             conn.Disconnect();
         }
         return false;
     }
+
+    private static readonly HashSet<int> Kicked = new HashSet<int>();
+
+    /// <summary>True (once) when this gate disconnected the connection for exceeding its limits.</summary>
+    public static bool TakeKicked(int connectionId) => Kicked.Remove(connectionId);
 
     public static void Forget(int connectionId)
     {

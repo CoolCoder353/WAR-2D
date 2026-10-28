@@ -217,7 +217,7 @@ public partial class WorldStateManager : NetworkBehaviour
             ServerPlayer player = GameCore.Instance?.GetServerPlayerById(ownerId);
             if (player == null) return;
             float before = player.Resources;
-            if (!player.TrySpend(amount)) player.TrySpend(player.Resources);
+            if (!player.TryPayUpkeep(amount)) player.TrySpend(player.Resources);
             player.AddUpkeep(before - player.Resources);
         };
         // The map and simulation exist: deal each player their private start options and start the pick clock.
@@ -265,6 +265,7 @@ public partial class WorldStateManager : NetworkBehaviour
             if (Map.Hash() != MapHash)
             {
                 WarLog.Error(LogCategory.Sim, $"hash mismatch: local {Map.Hash():X16}, server {MapHash:X16}. Disconnecting.");
+                WAR2D.Net.Rejoin.RejoinTicket.Clear(); // the same map would mismatch again: this is no drop to rejoin
                 NetworkClient.Disconnect();
                 return;
             }
@@ -1050,6 +1051,24 @@ public partial class WorldStateManager : NetworkBehaviour
         NetworkConnectionToClient connection = GameCore.Instance?.GetServerPlayerById(ownerId)?.connection;
         if (connection?.identity == null || !connection.identity.TryGetComponent(out ClientPlayer player)) return;
         player.TargetSpawnerQueue(connection, buildingId, unitType, count);
+    }
+
+    /// <summary>
+    /// Tells a player who came back (v0.15 rejoin) every queue and rally of their producers: the new client starts with none,
+    /// and the server only sends them when they change.
+    /// </summary>
+    [Server]
+    public void SendOwnProducers(int ownerId)
+    {
+        foreach (KeyValuePair<int, Entity> pair in Buildings)
+        {
+            Entity entity = pair.Value;
+            if (!EntityManager.Exists(entity) || !EntityManager.HasComponent<SpawnerData>(entity)) continue;
+            SpawnerData spawner = EntityManager.GetComponentData<SpawnerData>(entity);
+            if (spawner.ownerId != ownerId) continue;
+            SendSpawnerQueue(ownerId, pair.Key, spawner.unitType, spawner.count);
+            if (spawner.hasRally) SendSpawnerRally(ownerId, pair.Key, spawner.rally, true);
+        }
     }
 
     /// <summary>

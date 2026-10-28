@@ -41,6 +41,14 @@ namespace WAR2D.Net.Rejoin
             awayUntil.Remove(ownerId);
         }
 
+        /// <summary>Forgets every ticket and away seat (a new match, or the server stopped).</summary>
+        public void RevokeAll()
+        {
+            ownerByToken.Clear();
+            tokenByOwner.Clear();
+            awayUntil.Clear();
+        }
+
         /// <summary>The owner's token, or null.</summary>
         public string TokenOf(int ownerId) => tokenByOwner.TryGetValue(ownerId, out string t) ? t : null;
 
@@ -70,6 +78,19 @@ namespace WAR2D.Net.Rejoin
             ownerId = owner;
             return true;
         }
+
+        /// <summary>
+        /// The owner a token belongs to, whether or not they are away (a player coming back before the server noticed the
+        /// drop presents a token for a seat that still has its old connection). False for an unknown token.
+        /// </summary>
+        public bool TryOwnerOf(string token, out int ownerId)
+        {
+            ownerId = 0;
+            return !string.IsNullOrEmpty(token) && ownerByToken.TryGetValue(token, out ownerId);
+        }
+
+        /// <summary>How many tickets are out (a running match takes new connections only while some are).</summary>
+        public int TicketCount => tokenByOwner.Count;
 
         /// <summary>The owner is back: the away state ends and the old token is replaced by a new one, which is returned.</summary>
         public string Return(int ownerId)

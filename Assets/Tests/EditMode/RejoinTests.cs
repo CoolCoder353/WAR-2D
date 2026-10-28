@@ -107,12 +107,82 @@ public class RejoinTests
         player.Add(100f);
         player.AddIncome(50f);
         Assert.AreEqual(500f, player.Resources, "nothing is earned while away");
-        Assert.IsTrue(player.TrySpend(10_000f), "upkeep is frozen, never missed");
+        Assert.IsTrue(player.TryPayUpkeep(10_000f), "upkeep is frozen, never missed");
         Assert.AreEqual(500f, player.Resources, "and nothing is charged");
         player.Away = false;
         player.Add(100f);
         Assert.AreEqual(600f, player.Resources);
-        Assert.IsFalse(player.TrySpend(10_000f), "back to normal");
+        Assert.IsFalse(player.TryPayUpkeep(10_000f), "back to normal");
+    }
+
+    [Test]
+    public void NothingIsBoughtForAnAwayPlayerButRefundsStillLand()
+    {
+        var player = new ServerPlayer(null, 500f);
+        Assert.IsTrue(player.TrySpend(100f));
+        player.Away = true;
+        Assert.IsFalse(player.TrySpend(10f), "a wall or building queued before the drop is not free");
+        Assert.AreEqual(400f, player.Resources);
+        player.Refund(100f);
+        Assert.AreEqual(500f, player.Resources, "a refund is the player's own money and lands while away");
+        Assert.AreEqual(0f, player.SpentThisMatch);
+    }
+
+    [Test]
+    public void ATokenNamesItsOwnerWhetherOrNotTheyAreAway()
+    {
+        AwayRegistry book = Registry();
+        string token = book.Issue(4);
+        Assert.IsTrue(book.TryOwnerOf(token, out int owner), "a seat whose old connection is still open can be taken over");
+        Assert.AreEqual(4, owner);
+        Assert.IsFalse(book.TryOwnerOf("nope", out _));
+        Assert.IsFalse(book.TryOwnerOf(null, out _));
+        Assert.AreEqual(1, book.TicketCount);
+    }
+
+    [Test]
+    public void ANewMatchOrAStoppedServerTearsUpEveryTicket()
+    {
+        AwayRegistry book = Registry();
+        string a = book.Issue(1);
+        book.Issue(2);
+        book.MarkAway(1, 0.0, 60f);
+        book.RevokeAll();
+        Assert.AreEqual(0, book.TicketCount);
+        Assert.AreEqual(0, book.AwayCount);
+        Assert.IsFalse(book.TryOwnerOf(a, out _));
+        Assert.IsFalse(book.TryClaim(a, 1.0, out _));
+    }
+
+    [Test]
+    public void ARevokedTicketCannotBeMarkedAwaySoALeaverIsNotKept()
+    {
+        AwayRegistry book = Registry();
+        book.Issue(9);
+        book.Revoke(9); // LeaveMatch, a kick, or an elimination while away
+        Assert.IsFalse(book.MarkAway(9, 0.0, 60f));
+    }
+
+    [Test]
+    public void AConnectionLetInToRejoinIsClosedIfItNeverComesBack()
+    {
+        var grace = new RejoinGrace();
+        grace.Track(1, 100.0);
+        grace.Track(2, 110.0);
+        var expired = new List<int>();
+        grace.TakeExpired(100.0 + RejoinGrace.Seconds + 1.0, expired);
+        CollectionAssert.AreEqual(new[] { 1 }, expired);
+        Assert.AreEqual(1, grace.Count, "taken once");
+        grace.Forget(2); // it got its player
+        expired.Clear();
+        grace.TakeExpired(1000.0, expired);
+        Assert.IsEmpty(expired);
+    }
+
+    [Test]
+    public void NoConnectionReadsAsKickedUntilTheGateKicksIt()
+    {
+        Assert.IsFalse(CommandGate.TakeKicked(12345), "nobody was kicked");
     }
 
     [Test]

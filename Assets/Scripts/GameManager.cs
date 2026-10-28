@@ -131,7 +131,9 @@ public class GameManager : NetworkManager
         GameObject corePrefab = Resources.Load<GameObject>(GameCorePrefabPath);
         if (GameCore.Instance == null && corePrefab != null) NetworkServer.Spawn(Instantiate(corePrefab));
         pendingRejoin.Clear();
+        rejoinGrace.Clear();
         NetworkServer.RegisterHandler<WAR2D.Net.Rejoin.RejoinRequest>(OnRejoinRequest, true);
+        NetworkServer.RegisterHandler<WAR2D.Net.Rejoin.LeaveMatch>(OnLeaveMatch, true);
         WarLog.Info(LogCategory.Net, "Server has started");
     }
 
@@ -161,8 +163,13 @@ public class GameManager : NetworkManager
     {
         base.OnServerConnect(conn);
         GameCore core = GameCore.Instance;
-        // v0.15: a running match takes a connection only while a seat is away, and only keeps it if it brings that seat's ticket.
-        if (core != null && !(conn is LocalConnectionToClient) && core.CurrentState == GameState.Playing && core.HasAwayPlayers) return;
+        // v0.15: a running match takes a connection only while some human holds a rejoin ticket (they may come back before the
+        // server noticed the drop), and only keeps it if it brings a valid token within RejoinGrace.Seconds.
+        if (core != null && !(conn is LocalConnectionToClient) && core.CurrentState == GameState.Playing && core.MayRejoin)
+        {
+            rejoinGrace.Track(conn.connectionId, NetworkTime.localTime);
+            return;
+        }
         // AI seats take places too: humans and AIs together are at most MaxPlayers; a Private lobby takes only the host (v0.14).
         if (core == null || LobbyRules.MayConnect(core.Settings.Visibility, conn is LocalConnectionToClient, core.CurrentState,
                 NetworkServer.connections.Count + core.AiPlayers.Count, out string refusal)) return;
@@ -174,6 +181,33 @@ public class GameManager : NetworkManager
     }
 
     private readonly Dictionary<int, string> pendingRejoin = new Dictionary<int, string>();
+
+    private readonly WAR2D.Net.Rejoin.RejoinGrace rejoinGrace = new WAR2D.Net.Rejoin.RejoinGrace();
+    private readonly List<int> graceExpired = new List<int>();
+
+    /// <summary>Closes the connections a running match let in that never came back as a player (server only).</summary>
+    public override void Update()
+    {
+        base.Update();
+        if (!NetworkServer.active || rejoinGrace.Count == 0) return;
+        graceExpired.Clear();
+        rejoinGrace.TakeExpired(NetworkTime.localTime, graceExpired);
+        foreach (int id in graceExpired)
+        {
+            if (!NetworkServer.connections.TryGetValue(id, out NetworkConnectionToClient conn) || conn.identity != null) continue;
+            WarLog.Info(LogCategory.Net, $"Refusing connection {id}: it did not come back as a player within {WAR2D.Net.Rejoin.RejoinGrace.Seconds:0} s");
+            LastRefusedConnection = id;
+            conn.Disconnect();
+        }
+    }
+
+    /// <summary>A client leaving the running match on purpose: its seat is not kept for a rejoin (<see cref="GameCore.OnLeaveMatch"/>).</summary>
+    [Server]
+    private void OnLeaveMatch(NetworkConnectionToClient conn, WAR2D.Net.Rejoin.LeaveMatch _)
+    {
+        if (GameCore.Instance != null) GameCore.Instance.OnLeaveMatch(conn);
+        else conn.Disconnect();
+    }
 
     /// <summary>A client that is coming back sends its ticket's token before anything else; the seat is given at its add-player request.</summary>
     [Server]
@@ -197,6 +231,7 @@ public class GameManager : NetworkManager
         if (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing && !(conn is LocalConnectionToClient))
         {
             pendingRejoin.Remove(conn.connectionId, out string token);
+            rejoinGrace.Forget(conn.connectionId);
             if (!GameCore.Instance.TryRejoin(conn, token))
             {
                 WarLog.Info(LogCategory.Net, $"Refusing connection {conn.connectionId}: no seat to come back to");
@@ -233,6 +268,7 @@ public class GameManager : NetworkManager
         (authenticator as WAR2D.Net.Steam.SteamAuthenticator)?.OnServerDisconnect(conn); // a sign-in still in progress
         // Remove the disconnected player from the list of players
         pendingRejoin.Remove(conn.connectionId);
+        rejoinGrace.Forget(conn.connectionId);
         bool keptAway = GameCore.Instance != null ? GameCore.Instance.OnPlayerLeave(conn) : ForgetGate(conn);
         // A player whose seat is kept for them to come back to keeps their object: Mirror's default would destroy it with the connection.
         if (keptAway) NetworkServer.RemovePlayerForConnection(conn, RemovePlayerOptions.KeepActive);
@@ -339,8 +375,38 @@ public class GameManager : NetworkManager
     /// </summary>
     public void LeaveLobby()
     {
+        if (leavePending) return; // already on the way out
+        // v0.15: a joined client in a running match (it holds a rejoin ticket) tells the server first, so its seat is not kept
+        // for a rejoin, and leaves once the server closes the connection (so the message is sent) or after LeaveWaitSeconds.
+        bool tell = !NetworkServer.active && NetworkClient.isConnected && !string.IsNullOrEmpty(WAR2D.Net.Rejoin.RejoinTicket.Token);
         leaving = true;
         WAR2D.Net.Rejoin.RejoinTicket.Clear();
+        if (tell)
+        {
+            leavePending = true;
+            NetworkClient.Send(new WAR2D.Net.Rejoin.LeaveMatch());
+            StartCoroutine(LeaveOnceClosed());
+            return;
+        }
+        FinishLeave();
+    }
+
+    /// <summary>Longest a leaving client waits for the server to close its connection after <see cref="WAR2D.Net.Rejoin.LeaveMatch"/>.</summary>
+    public const float LeaveWaitSeconds = 1f;
+
+    private bool leavePending;
+
+    private System.Collections.IEnumerator LeaveOnceClosed()
+    {
+        float until = Time.realtimeSinceStartup + LeaveWaitSeconds;
+        while (NetworkClient.isConnected && Time.realtimeSinceStartup < until) yield return null;
+        leavePending = false;
+        FinishLeave();
+    }
+
+    /// <summary>Stops the host or the client, resets the GameCore and the world, and reloads the main menu.</summary>
+    private void FinishLeave()
+    {
 
         if (NetworkClient.localPlayer && NetworkClient.localPlayer.isServer)
         {

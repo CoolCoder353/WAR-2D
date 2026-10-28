@@ -12,6 +12,14 @@ namespace WAR2D.Net.Rejoin
     }
 
     /// <summary>
+    /// Sent by a client that leaves a running match on purpose, just before it disconnects: the server tears up its ticket, so
+    /// its seat is not kept for a rejoin, and closes the connection (which the client waits for, so the message is sent).
+    /// </summary>
+    public struct LeaveMatch : NetworkMessage
+    {
+    }
+
+    /// <summary>
     /// What a client keeps so it can come back to a match it dropped out of (in memory only: it does not survive closing the
     /// game). The server sends a fresh token at match start and after every rejoin.
     /// </summary>

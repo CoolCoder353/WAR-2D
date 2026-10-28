@@ -70,7 +70,9 @@ public class ServerPlayer
     public void Refund(float amount)
     {
         if (!(amount > 0f)) return;
-        Add(amount);
+        // Not Add: a refund is the player's own money coming back, so it lands even while they are away.
+        Resources += amount;
+        ResourcesDirty = true;
         SpentThisMatch = SpentThisMatch > amount ? SpentThisMatch - amount : 0f;
     }
 
@@ -119,7 +121,7 @@ public class ServerPlayer
     /// <summary>Takes <paramref name="amount"/> if the player can afford it; it counts as spent unless <paramref name="countAsSpent"/> is false (gifts).</summary>
     public bool TrySpend(float amount, bool countAsSpent = true)
     {
-        if (Away) return true; // frozen: upkeep for an away player is neither charged nor missed
+        if (Away) return false; // nothing is bought for an away player (upkeep goes through TryPayUpkeep)
         float balance = Resources;
         if (!UpkeepRules.TryCharge(ref balance, amount)) return false;
         if (balance != Resources)
@@ -130,6 +132,12 @@ public class ServerPlayer
         }
         return true;
     }
+
+    /// <summary>
+    /// Charges upkeep: <see cref="TrySpend"/>, except that an away player's upkeep is frozen (neither charged nor missed,
+    /// so true without taking anything).
+    /// </summary>
+    public bool TryPayUpkeep(float amount) => Away || TrySpend(amount);
 
     /// <summary>Sends the balance again at the next sync (a player who came back has none of it).</summary>
     public void MarkDirty() => ResourcesDirty = true;
