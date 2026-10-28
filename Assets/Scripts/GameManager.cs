@@ -255,6 +255,7 @@ public class GameManager : NetworkManager
 
     private static bool ForgetGate(NetworkConnectionToClient conn)
     {
+        CommandGate.TakeKicked(conn.connectionId);
         CommandGate.Forget(conn.connectionId);
         return false;
     }

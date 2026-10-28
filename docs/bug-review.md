@@ -39,6 +39,21 @@ Findings from an outside code review (2026-10-14), triaged against the code on 2
 
 ---
 
+## Sixth scan (2026-10-28): v0.15 reconnect and QoL
+
+All fixed in v0.15.1 (see [known-issues.md](known-issues.md), "Reconnect review fixes"); UI states on the Figma page `v0.15.1 Hotkeys and polish`.
+
+| Finding | Fix |
+| ------- | --- |
+| Leave match kept the seat 60 s (`gameplay.md` promised it never would): the server cannot tell a leave from a drop. | `LeaveMatch` message first; the server revokes the ticket and closes the connection. |
+| A `CommandGate` kick went through `TryMarkAway`, so the kicked client was offered a working Rejoin. | `CommandGate.TakeKicked`; a kicked seat is never kept. |
+| An away player eliminated by an HQ loss kept a valid ticket; `RpcOnPlayerLost` was skipped (no connection), so a rejoin landed with no HQ and no Defeat screen. | `EliminatePlayer` ends the away seat at once. |
+| A rejoin before the server noticed the drop was refused (no away seat yet), until the server's own timeout. | `TryTakeOver`: a valid token takes the seat from the old connection. |
+| While a seat was away, any connection was let in and could sit without a player forever. | `RejoinGrace` (15 s). |
+| `ServerPlayer.TrySpend` returned true without charging an away player, so a purchase applied after the drop was free; `Refund` went through `Add`, which drops money while away. | `TrySpend` refuses while away; upkeep uses `TryPayUpkeep`; `Refund` bypasses the freeze. |
+| Producer queues and rallies were not resent on rejoin. | `WorldStateManager.SendOwnProducers`. |
+| A map-hash mismatch disconnect counted as a drop. | It clears the ticket. |
+
 ## First review (2026-10-14): general
 
 ### High
