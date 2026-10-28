@@ -12,6 +12,7 @@
   <Match>
     <Scene>Map_2</Scene>
     <CountdownSeconds>5.0</CountdownSeconds>
+    <ReconnectSeconds>60</ReconnectSeconds> <!-- v0.15: how long a dropped player has to rejoin; 0 = no rejoin -->
     <Map>
       <Size>1024</Size>          <!-- tiles per side; 0 = use the scene's tilemaps (Map_2). v0.3 results: map size -->
       <Seed>0</Seed>             <!-- 0 = a new random seed every match -->

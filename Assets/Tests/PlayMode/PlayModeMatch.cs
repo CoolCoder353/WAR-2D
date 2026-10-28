@@ -25,6 +25,18 @@ public static class PlayModeMatch
         return config;
     }
 
+    /// <summary>
+    /// Makes every frame advance exactly <paramref name="ticksPerFrame"/> sim ticks of game time, however long the
+    /// frame took in real time (<c>Time.captureDeltaTime</c>). Tests then see the same number of ticks per frame on
+    /// every run and machine, and run as fast as the frames render instead of waiting on the wall clock.
+    /// </summary>
+    public static void FastForward(int ticksPerFrame)
+    {
+        float tick = ConfigLoader.LoadConfig().Simulation.TickSeconds;
+        Time.maximumDeltaTime = math.max(1f / 3f, tick * ticksPerFrame * 1.5f);
+        Time.captureDeltaTime = tick * ticksPerFrame;
+    }
+
     public static IEnumerator LoadMenu()
     {
         SceneManager.LoadScene("Main_Menu");
@@ -34,6 +46,9 @@ public static class PlayModeMatch
 
     public static IEnumerator TearDown()
     {
+        Time.captureDeltaTime = 0f;
+        Time.timeScale = 1f;
+        Time.maximumDeltaTime = 1f / 3f;
         if (NetworkServer.active || NetworkClient.active) GameManager.Instance.StopHost();
         yield return WaitUntil(() => !NetworkServer.active && !NetworkClient.active, 10f);
         foreach (GameObject root in DontDestroyRoots()) UnityEngine.Object.Destroy(root);
@@ -78,12 +93,12 @@ public static class PlayModeMatch
     /// <summary>The local player's owner id.</summary>
     public static int LocalOwner => BuildingData.UIntToInt(NetworkClient.localPlayer.netId);
 
-    public static IEnumerator WaitUntil(Func<bool> condition, float timeoutSeconds)
+    public static IEnumerator WaitUntil(Func<bool> condition, float timeoutSeconds, Func<string> describe = null)
     {
         float end = Time.realtimeSinceStartup + timeoutSeconds;
         while (!condition())
         {
-            if (Time.realtimeSinceStartup > end) Assert.Fail($"Timed out after {timeoutSeconds}s");
+            if (Time.realtimeSinceStartup > end) Assert.Fail($"Timed out after {timeoutSeconds}s" + (describe != null ? ": " + describe() : ""));
             yield return null;
         }
     }

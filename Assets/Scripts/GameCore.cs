@@ -91,6 +91,7 @@ public partial class GameCore : NetworkBehaviour
     {
         base.OnStopServer();
         ServerPlayers.Clear();
+        foreach (int owner in new List<int>(Rejoin.Away)) Rejoin.Revoke(owner);
         AiPlayers.Clear(); // Mirror's shutdown destroys their player objects with every other spawned object
         serverOwner = null;
         CurrentState = GameState.Lobby;
@@ -130,7 +131,7 @@ public partial class GameCore : NetworkBehaviour
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
             ServerPlayer player = entry.Value;
-            if (!player.ResourcesDirty || entry.Key == null) continue;
+            if (!player.ResourcesDirty || entry.Key == null || player.connection == null) continue; // an away player has no connection
             entry.Key.GetComponent<ClientPlayer>().TargetUpdateResources(player.connection, player.Resources, player.IncomeLastSecond, player.UpkeepLastSecond);
             player.MarkSynced();
         }
@@ -145,6 +146,7 @@ public partial class GameCore : NetworkBehaviour
             CurrentState = GameState.Playing;
             MatchStartTime = NetworkTime.time;
             SendAllDiplomacy();
+            IssueRejoinTickets();
         }
         else if (CurrentState == GameState.PlacingHQ && HqPlacementEndTime > 0 && NetworkTime.time >= HqPlacementEndTime && WorldStateManager.Instance != null)
         {
@@ -152,6 +154,7 @@ public partial class GameCore : NetworkBehaviour
             PlaceRemainingRandomly(WorldStateManager.Instance);
         }
         ResendDiplomacyWhenSlotted();
+        UpdateAway();
     }
 
     // ---------- Players and ownership ----------
@@ -170,12 +173,16 @@ public partial class GameCore : NetworkBehaviour
         }
     }
 
+    /// <summary>
+    /// A connection is gone. Returns true when the player's seat was kept for them to come back to (they dropped out of a running
+    /// match with a ticket, <see cref="TryMarkAway"/>): the caller then only disowns the player object instead of destroying it.
+    /// </summary>
     [Server]
-    public void OnPlayerLeave(NetworkConnectionToClient conn)
+    public bool OnPlayerLeave(NetworkConnectionToClient conn)
     {
         CommandGate.Forget(conn.connectionId);
-        WorldStateManager.Instance?.ReplaySender?.Cancel(conn);
-        if (conn.identity == null || !ServerPlayers.Remove(conn.identity)) return;
+        if (TryMarkAway(conn)) return true;
+        if (conn.identity == null || !ServerPlayers.Remove(conn.identity)) return false;
 
         ClientPlayer leaving = conn.identity.GetComponent<ClientPlayer>();
         if (WorldStateManager.Instance != null)
@@ -190,9 +197,9 @@ public partial class GameCore : NetworkBehaviour
             if (conn is LocalConnectionToClient)
             {
                 // The host is leaving: the server goes with it.
-                return;
+                return false;
             }
-            if (ServerPlayers.Count > 0) SetServerOwner(ServerPlayers.Values.First().connection);
+            HandOverServerOwner();
         }
 
         if (ServerPlayers.Count == 0)
@@ -203,7 +210,132 @@ public partial class GameCore : NetworkBehaviour
         {
             CheckHQPlacementProgress();
         }
+        return false;
     }
+
+    /// <summary>Gives server ownership to the first player who is connected (not away), if any.</summary>
+    [Server]
+    private void HandOverServerOwner()
+    {
+        foreach (ServerPlayer player in ServerPlayers.Values)
+            if (player.connection != null && !player.Away) { SetServerOwner(player.connection); return; }
+    }
+
+    // ---------- Rejoin (v0.15) ----------
+
+    /// <summary>The rejoin tickets and the players who are away (server only).</summary>
+    public readonly WAR2D.Net.Rejoin.AwayRegistry Rejoin = new WAR2D.Net.Rejoin.AwayRegistry();
+
+    /// <summary>
+    /// Gives every connected human (the host's own connection excepted: when the host goes the match ends) a ticket and tells them
+    /// its token, so that a drop later in the match can be rejoined. Called when play starts.
+    /// </summary>
+    [Server]
+    private void IssueRejoinTickets()
+    {
+        float window = ConfigLoader.LoadConfig().Match.ReconnectSeconds;
+        if (window <= 0f) return;
+        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
+        {
+            if (entry.Key == null || entry.Value.connection == null || entry.Value.connection is LocalConnectionToClient) continue;
+            string token = Rejoin.Issue(BuildingData.UIntToInt(entry.Key.netId));
+            entry.Key.GetComponent<ClientPlayer>().TargetRejoinTicket(entry.Value.connection, token, window);
+        }
+    }
+
+    /// <summary>
+    /// A human with a ticket dropped out of the running match: keep their seat for <c>Match/ReconnectSeconds</c>. Their units hold
+    /// position, nothing is earned, charged or produced for them, and others see them marked away. False when they are not eligible
+    /// (the match isn't being played, they're out, or they have no ticket): the caller removes them as before.
+    /// </summary>
+    [Server]
+    private bool TryMarkAway(NetworkConnectionToClient conn)
+    {
+        if (CurrentState != GameState.Playing || conn.identity == null || conn is LocalConnectionToClient) return false;
+        if (!ServerPlayers.TryGetValue(conn.identity, out ServerPlayer player) || player.state != PlayerState.Playing) return false;
+        ClientPlayer client = conn.identity.GetComponent<ClientPlayer>();
+        if (!client.hasPlacedHQ) return false;
+        int owner = BuildingData.UIntToInt(conn.identity.netId);
+        if (!Rejoin.MarkAway(owner, NetworkTime.time, ConfigLoader.LoadConfig().Match.ReconnectSeconds)) return false;
+
+        player.connection = null;
+        player.Away = true;
+        client.isAway = true;
+        client.awayUntil = Rejoin.UntilOf(owner);
+        WorldStateManager.Instance?.HoldAll(owner);
+        if (serverOwner == conn)
+        {
+            serverOwner = null;
+            client.isServerOwner = false;
+            HandOverServerOwner();
+        }
+        WarLog.Info(LogCategory.Net, $"Player {owner} dropped out; their seat is kept for {ConfigLoader.LoadConfig().Match.ReconnectSeconds:0} s");
+        return true;
+    }
+
+    /// <summary>The away player's window closed (or the match ended): they are removed as a player who left.</summary>
+    [Server]
+    private void EndAway(int owner)
+    {
+        Rejoin.Revoke(owner);
+        NetworkIdentity identity = null;
+        foreach (NetworkIdentity key in ServerPlayers.Keys) if (key != null && key.netId == (uint)owner) { identity = key; break; }
+        if (identity == null) return;
+        ClientPlayer leaving = identity.GetComponent<ClientPlayer>();
+        ServerPlayers.Remove(identity);
+        if (WorldStateManager.Instance != null)
+        {
+            WorldStateManager.Instance.RemovePlayerView(leaving);
+            WorldStateManager.Instance.KillAllEntitiesOwnedBy(owner);
+        }
+        NetworkServer.Destroy(identity.gameObject);
+        WarLog.Info(LogCategory.Net, $"Player {owner} did not come back; they are out");
+        if (ServerPlayers.Count == 0) ResetToLobby();
+    }
+
+    private readonly List<int> expiredAway = new List<int>();
+
+    /// <summary>Closes the windows that ran out; once the match is no longer being played every away seat closes.</summary>
+    [Server]
+    private void UpdateAway()
+    {
+        if (Rejoin.AwayCount == 0) return;
+        expiredAway.Clear();
+        if (CurrentState != GameState.Playing) foreach (int owner in new List<int>(Rejoin.Away)) expiredAway.Add(owner);
+        else Rejoin.CollectExpired(NetworkTime.time, expiredAway);
+        foreach (int owner in expiredAway) EndAway(owner);
+    }
+
+    /// <summary>
+    /// A connection presents the token of an away seat: if it is valid (and the window open) the connection becomes that player,
+    /// who gets everything the server holds for them sent again. False when the token is unknown or too late.
+    /// </summary>
+    [Server]
+    public bool TryRejoin(NetworkConnectionToClient conn, string token)
+    {
+        if (CurrentState != GameState.Playing || !Rejoin.TryClaim(token, NetworkTime.time, out int owner)) return false;
+        NetworkIdentity identity = null;
+        foreach (NetworkIdentity key in ServerPlayers.Keys) if (key != null && key.netId == (uint)owner) { identity = key; break; }
+        if (identity == null || !NetworkServer.AddPlayerForConnection(conn, identity.gameObject)) return false;
+        ServerPlayer player = ServerPlayers[identity];
+        ClientPlayer client = identity.GetComponent<ClientPlayer>();
+        player.connection = conn;
+        player.Away = false;
+        player.MarkDirty();
+        client.isAway = false;
+        client.awayUntil = 0;
+        if (WAR2D.Net.Steam.SteamIdentity.TryGet(conn.connectionId, out ulong sid)) player.SteamId = sid;
+        string fresh = Rejoin.Return(owner);
+        client.TargetRejoinTicket(conn, fresh, ConfigLoader.LoadConfig().Match.ReconnectSeconds);
+        WAR2D.Net.Replication.ReplicationService.Instance?.OnClientJoined(conn, owner);
+        if (serverOwner == null) SetServerOwner(conn);
+        SendAllDiplomacy();
+        WarLog.Info(LogCategory.Net, $"Player {owner} came back");
+        return true;
+    }
+
+    /// <summary>True when any seat is away and so a new connection might be a player coming back.</summary>
+    public bool HasAwayPlayers => Rejoin.AwayCount > 0;
 
     [Server]
     public void SetServerOwner(NetworkConnectionToClient conn)
@@ -388,7 +520,7 @@ public partial class GameCore : NetworkBehaviour
             WorldStateManager.Instance?.KillAllEntitiesOwnedBy(playerId);
             ClientPlayer client = entry.Key.GetComponent<ClientPlayer>();
             client.hasPlacedHQ = false;
-            client.RpcOnPlayerLost(entry.Value.connection);
+            if (entry.Value.connection != null) client.RpcOnPlayerLost(entry.Value.connection);
             return;
         }
     }
@@ -407,6 +539,12 @@ public partial class GameCore : NetworkBehaviour
         {
             if (entry.Key == null) continue; // left mid-tick; OnPlayerLeave removes them
             ClientPlayer client = entry.Key.GetComponent<ClientPlayer>();
+            if (entry.Value.connection == null)
+            {
+                // Away: nobody to show a screen to.
+                if (!winners.Contains(BuildingData.UIntToInt(entry.Key.netId))) entry.Value.state = PlayerState.Eliminated;
+                continue;
+            }
             if (winners.Contains(BuildingData.UIntToInt(entry.Key.netId))) client.RpcOnPlayerWon(entry.Value.connection);
             else
             {
@@ -428,7 +566,7 @@ public partial class GameCore : NetworkBehaviour
         {
             entry.Value.state = PlayerState.Eliminated;
             if (entry.Key == null) continue;
-            entry.Key.GetComponent<ClientPlayer>().RpcOnMatchDraw(entry.Value.connection);
+            if (entry.Value.connection != null) entry.Key.GetComponent<ClientPlayer>().RpcOnMatchDraw(entry.Value.connection);
         }
     }
 

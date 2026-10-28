@@ -1,5 +1,6 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
     <Style src="../Theme.uss" />
+    <Style src="../Reconnect.uss" />
     <ui:Template name="TopBar" src="TopBar.uxml" />
     <ui:Template name="SquadBar" src="SquadBar.uxml" />
     <ui:Template name="SelectionPanel" src="SelectionPanel.uxml" />
@@ -18,6 +19,7 @@
         <ui:Instance template="CommandCard" name="command-card-instance" picking-mode="Ignore" class="hud-layer" />
         <ui:Instance template="Minimap" name="minimap-instance" picking-mode="Ignore" class="hud-layer" />
         <ui:Instance template="AlertFeed" name="alert-feed-instance" picking-mode="Ignore" class="hud-layer" />
+        <ui:VisualElement name="reconnect-banners" class="reconnect-banners" picking-mode="Ignore" />
         <ui:Instance template="DiplomacyPanel" name="diplomacy-panel-instance" picking-mode="Ignore" class="hud-layer" />
         <ui:Instance template="GiftDialog" name="gift-dialog-instance" picking-mode="Ignore" class="hud-layer" />
         <ui:VisualElement name="start-markers" class="start-markers" picking-mode="Ignore" />

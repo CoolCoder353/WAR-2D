@@ -55,6 +55,18 @@ namespace WAR2D.Client
         private InstancedUnitRenderer unitRenderer;
         private InstancedBuildingRenderer buildingRenderer;
         private System.Func<int, uint> buildingColour;
+        private System.Func<int, bool> buildingSelected;
+        private int tracerSerial; // counts tracers for the Reduced setting (every second one drawn)
+
+        /// <summary>True for one of the local player's selected buildings (the SelectedOnly health bars).</summary>
+        private static bool IsSelectedBuilding(int id)
+        {
+            UnitCommander commander = UnitCommander.Instance;
+            if (commander == null) return false;
+            IReadOnlyList<int> ids = commander.Selection.SelectedBuildings;
+            for (int i = 0; i < ids.Count; i++) if (ids[i] == id) return true;
+            return false;
+        }
         private readonly List<(int attacker, int target)> attacks = new List<(int, int)>();
         private readonly List<(int building, int target)> buildingAttacks = new List<(int, int)>();
         private readonly Dictionary<int, float> nextPulse = new Dictionary<int, float>();
@@ -208,6 +220,37 @@ namespace WAR2D.Client
             return true;
         }
 
+        /// <summary>True while the client knows the unit and it still has a route to follow (it is moving).</summary>
+        public bool IsMoving(int id) => id > 0 && store.IdOf(NetIdAllocator.IndexOf(id)) == id && store.HasRoute(NetIdAllocator.IndexOf(id));
+
+        /// <summary>Adds the ids of every unit the client knows of the owner (all of them, not only those on screen), optionally of one type.</summary>
+        public void CollectOwn(int ownerId, List<int> into, UnitType type = UnitType.None)
+        {
+            NativeArray<int> known = store.Known;
+            for (int i = 0; i < known.Length; i++)
+            {
+                int index = known[i];
+                if (store.OwnerOf(index) != ownerId) continue;
+                if (type != UnitType.None && (UnitType)store.TypeOf(index) != type) continue;
+                into.Add(store.IdOf(index));
+            }
+        }
+
+        /// <summary>Adds the ids of every known unit within <paramref name="radius"/> of a point that is not <paramref name="excludeOwner"/>'s (the enemy brackets of a range ring).</summary>
+        public void CollectInRadius(float2 centre, float radius, int excludeOwner, List<int> into)
+        {
+            NativeArray<int> known = store.Known;
+            NativeArray<float2> predicted = store.Predicted;
+            int n = math.min(known.Length, predicted.Length);
+            float r2 = radius * radius;
+            for (int i = 0; i < n; i++)
+            {
+                int index = known[i];
+                if (store.OwnerOf(index) == excludeOwner) continue;
+                if (math.distancesq(predicted[i], centre) <= r2) into.Add(store.IdOf(index));
+            }
+        }
+
         /// <summary>Adds the ids of the owner's units inside the box (inclusive) to <paramref name="into"/>.</summary>
         public void QueryBox(float2 min, float2 max, int ownerId, List<int> into)
         {
@@ -311,6 +354,7 @@ namespace WAR2D.Client
                 Health01 = health01,
                 Scale = drawScale,
                 LargeRingFrame = unitRenderer.LargeRingFrame,
+                BarMode = SettingsStore.Current.HealthBars,
                 Selected = selected,
                 UnitHalfSize = 0.4f,
                 RingFrame = unitRenderer.RingFrame,
@@ -355,7 +399,8 @@ namespace WAR2D.Client
                 buildingRenderer = new InstancedBuildingRenderer(atlas, ArtAtlas.Load(ArtAtlas.Effects));
                 buildingColour = ColorOf;
             }
-            buildingRenderer.Draw(known, Time.time, buildingColour);
+            buildingSelected ??= IsSelectedBuilding;
+            buildingRenderer.Draw(known, Time.time, buildingColour, SettingsStore.Current.HealthBars, buildingSelected);
             PulseJammers(known);
         }
 
@@ -423,6 +468,7 @@ namespace WAR2D.Client
             ClientBuildings known = ClientBuildings.Current;
             float now = Time.time;
             int start = math.max(0, buildingAttacks.Count - MaxTracersPerFrame);
+            int tracerMode = SettingsStore.Current.Tracers;
             for (int i = start; i < buildingAttacks.Count; i++)
             {
                 var (building, target) = buildingAttacks[i];
@@ -435,7 +481,8 @@ namespace WAR2D.Client
                 Vector3 viewport = cam.WorldToViewportPoint(new Vector3(centre.x, centre.y, 0));
                 if (viewport.x < 0 || viewport.x > 1 || viewport.y < 0 || viewport.y > 1) continue;
                 float angle = known.HeadOf(building).Facing * math.PI / 4f;
-                Effects.TurretShot(new Vector2(centre.x, centre.y), angle, named ? to : (Vector3?)null);
+                bool line = named && Overlays.OverlayRules.KeepTracer(tracerMode, tracerSerial++);
+                Effects.TurretShot(new Vector2(centre.x, centre.y), angle, line ? to : (Vector3?)null);
             }
             buildingAttacks.Clear();
         }
@@ -456,6 +503,7 @@ namespace WAR2D.Client
             if (attacks.Count == 0) return;
             Camera cam = ViewCamera != null ? ViewCamera : Camera.main;
             int start = math.max(0, attacks.Count - MaxTracersPerFrame);
+            int tracerMode = SettingsStore.Current.Tracers;
             for (int i = start; i < attacks.Count && cam != null; i++)
             {
                 var (attacker, target) = attacks[i];
@@ -467,7 +515,8 @@ namespace WAR2D.Client
                 // Face the target: the facing picks the drawn direction, and the fire frames show the barrel.
                 if ((uint)attacker < (uint)rotation.Length && (to.x != from.x || to.y != from.y))
                     rotation[attacker] = math.atan2(to.y - from.y, to.x - from.x);
-                Effects.Tracer(new Vector3(from.x, from.y, 0), to, (UnitType)store.TypeOf(attacker));
+                // The Gameplay setting thins or hides the tracer lines; the flash, sound, shells and flame streams stay.
+                Effects.Tracer(new Vector3(from.x, from.y, 0), to, (UnitType)store.TypeOf(attacker), Overlays.OverlayRules.KeepTracer(tracerMode, tracerSerial++));
             }
             attacks.Clear();
         }

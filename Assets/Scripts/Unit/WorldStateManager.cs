@@ -77,7 +77,6 @@ public partial class WorldStateManager : NetworkBehaviour
     public WAR2D.Net.Replay.MatchRecorder Recorder { get; private set; }
 
     /// <summary>Streams the finished recording to the players who accept it (after GameOver).</summary>
-    public WAR2D.Net.Replay.ReplaySender ReplaySender { get; private set; }
 
     /// <summary>Where each bomb is: bombs do not mark their tile used (units walk over them), so placement looks here.</summary>
     private readonly Dictionary<int2, (int id, int owner)> bombTiles = new Dictionary<int2, (int, int)>();
@@ -195,11 +194,6 @@ public partial class WorldStateManager : NetworkBehaviour
             RecordingFinished += finished =>
             {
                 WAR2D.Net.Replay.ReplayLibrary.Prune(replays.KeepCount);
-                if (GameCore.Instance == null) return;
-                ReplaySender = new WAR2D.Net.Replay.ReplaySender(1, finished, replays.SendKilobytesPerSecond * 1024, (float)(Sim.Clock.Tick * Sim.Config.Simulation.TickSeconds));
-                foreach (NetworkIdentity id in GameCore.Instance.ServerPlayers.Keys)
-                    if (id != null && id.connectionToClient != null && id.connectionToClient != NetworkServer.localConnection)
-                        ReplaySender.Offer(id.connectionToClient, GameCore.Instance.CurrentState);
             };
         }
         if (GameCore.Instance != null)
@@ -213,7 +207,11 @@ public partial class WorldStateManager : NetworkBehaviour
             p.AddIncome(amount);
             GameCore.Instance.Stats.Mined(ownerId, amount);
         };
-        Sim.BudgetOf = ownerId => GameCore.Instance?.GetServerPlayerById(ownerId)?.Resources ?? 0f;
+        Sim.BudgetOf = ownerId =>
+        {
+            ServerPlayer p = GameCore.Instance?.GetServerPlayerById(ownerId);
+            return p == null ? 0f : p.Away ? float.MaxValue / 4f : p.Resources; // an away player's upkeep is frozen, not unpaid
+        };
         Sim.Spend = (ownerId, amount) =>
         {
             ServerPlayer player = GameCore.Instance?.GetServerPlayerById(ownerId);
@@ -359,7 +357,6 @@ public partial class WorldStateManager : NetworkBehaviour
     private void Update()
     {
         AiRunner?.Update(Time.unscaledDeltaTime);
-        ReplaySender?.Update(Time.unscaledDeltaTime, GameCore.Instance != null ? GameCore.Instance.CurrentState : GameState.Lobby);
         if (Recorder == null || recorderEndAt < 0 || NetworkTime.localTime < recorderEndAt) return;
         recorderEndAt = -1;
         Recorder.End(Sim.Clock.Tick, pendingOutcome);
@@ -1009,6 +1006,27 @@ public partial class WorldStateManager : NetworkBehaviour
     {
         if (!Buildings.TryGetValue(buildingId, out building) || !EntityManager.Exists(building)) return false;
         return EntityManager.GetComponentData<BuildingData>(building).ownerId == owner && EntityManager.HasComponent<SpawnerData>(building);
+    }
+
+    /// <summary>Orders every unit of the owner to hold position (an away player's army stands where it is, never pushed aside).</summary>
+    [Server]
+    public void HoldAll(int ownerId) =>
+        Sim?.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.Hold, OwnerId = ownerId, BoxMin = int2.zero, BoxMax = new int2(1 << 20, 1 << 20) });
+
+    /// <summary>True when <paramref name="tile"/> is inside the footprint of an unfinished building (a blueprint) owned by <paramref name="owner"/>.</summary>
+    [Server]
+    internal bool IsOwnBlueprintAt(int owner, int2 tile)
+    {
+        foreach (KeyValuePair<int, Entity> pair in Buildings)
+        {
+            Entity entity = pair.Value;
+            if (!EntityManager.Exists(entity) || !EntityManager.HasComponent<Construction>(entity)) continue;
+            BuildingData data = EntityManager.GetComponentData<BuildingData>(entity);
+            if (data.ownerId != owner) continue;
+            foreach (int2 t in Footprint.Tiles((int2)math.round(data.position), GetBuildingSize(data.buildingType)))
+                if (t.Equals(tile)) return true;
+        }
+        return false;
     }
 
     /// <summary>A live building's entity by id.</summary>

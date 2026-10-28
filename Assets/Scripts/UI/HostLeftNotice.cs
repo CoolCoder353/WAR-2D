@@ -69,6 +69,8 @@ namespace WAR2D.UI
             Watch(); // in case the menu loaded before the watcher's next frame
             if (!Pending || scene.name != MenuScene) return;
             Pending = false;
+            // v0.15 item 19: a drop that left a seat to come back to shows the Play screen's Rejoin card instead of this dialog.
+            if (GameManager.Instance != null && GameManager.Instance.CanRejoin) return;
             UIDocument menu = Object.FindAnyObjectByType<UIDocument>();
             if (menu == null || menu.panelSettings == null) return;
             var go = new GameObject("HostLeftNotice");

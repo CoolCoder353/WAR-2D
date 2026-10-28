@@ -19,7 +19,14 @@ namespace WAR2D.Client
         /// <summary>The colour of an unexplored cell.</summary>
         public static readonly Color32 Unexplored = new Color32(0, 0, 0, 255);
 
-        private NativeArray<Color32> visible, explored;
+        private NativeArray<Color32> visible, explored, visibleNoGems, exploredNoGems;
+
+        /// <summary>
+        /// The layers drawn over the terrain (Settings → Gameplay, or the minimap's filter toggles): Gems are the gem tiles' colour,
+        /// Army the units, Buildings the seen buildings, Ghosts the last-seen ones. They change only what is drawn, never what is known.
+        /// Read from the settings at every <see cref="Begin"/>.
+        /// </summary>
+        public MinimapLayers Layers { get; private set; } = MinimapLayers.All;
         private NativeArray<byte> fogCopy;
         private byte[] fog;
         private NativeArray<Color32> pixels;
@@ -39,13 +46,20 @@ namespace WAR2D.Client
             CellSize = cellSize;
             visible = new NativeArray<Color32>(width * height, Allocator.Persistent);
             explored = new NativeArray<Color32>(width * height, Allocator.Persistent);
+            visibleNoGems = new NativeArray<Color32>(width * height, Allocator.Persistent);
+            exploredNoGems = new NativeArray<Color32>(width * height, Allocator.Persistent);
             fogCopy = new NativeArray<byte>(width * height, Allocator.Persistent);
             for (int y = 0; y < height; y++)
             for (int x = 0; x < width; x++)
             {
-                Color32 tile = MapView.TileColor(tileAt(new int2(x * cellSize + cellSize / 2, y * cellSize + cellSize / 2)));
+                TileType type = tileAt(new int2(x * cellSize + cellSize / 2, y * cellSize + cellSize / 2));
+                Color32 tile = MapView.TileColor(type);
                 visible[y * width + x] = Scale(tile, 1.6f);
                 explored[y * width + x] = Scale(tile, 0.75f);
+                // With the Gems layer off a gem cell reads as plain ground.
+                Color32 plain = type == TileType.Gem ? MapView.TileColor(TileType.Ground) : tile;
+                visibleNoGems[y * width + x] = Scale(plain, 1.6f);
+                exploredNoGems[y * width + x] = Scale(plain, 0.75f);
             }
             Texture = new Texture2D(width, height, TextureFormat.RGBA32, mipChain: false)
             {
@@ -64,13 +78,16 @@ namespace WAR2D.Client
         {
             fog = fogState != null && fogState.Length == visible.Length ? fogState : null;
             pixels = Texture.GetPixelData<Color32>(0);
+            Layers = (MinimapLayers)SettingsStore.Current.MinimapFilters;
+            NativeArray<Color32> terrainVisible = (Layers & MinimapLayers.Gems) != 0 ? visible : visibleNoGems;
+            NativeArray<Color32> terrainExplored = (Layers & MinimapLayers.Gems) != 0 ? explored : exploredNoGems;
             if (fog == null)
             {
-                for (int i = 0; i < pixels.Length; i++) pixels[i] = revealTerrain ? explored[i] : Unexplored;
+                for (int i = 0; i < pixels.Length; i++) pixels[i] = revealTerrain ? terrainExplored[i] : Unexplored;
                 return;
             }
             fogCopy.CopyFrom(fog);
-            new FillJob { Fog = fogCopy, Visible = visible, Explored = explored, Pixels = pixels, Reveal = revealTerrain }.Run();
+            new FillJob { Fog = fogCopy, Visible = terrainVisible, Explored = terrainExplored, Pixels = pixels, Reveal = revealTerrain }.Run();
         }
 
         /// <summary>Plots a square of cells around a world position whatever the fog (an HQ start option), <paramref name="radius"/> cells out.</summary>
@@ -105,6 +122,7 @@ namespace WAR2D.Client
         /// <summary>Plots a unit at a world position, only if its cell is visible now.</summary>
         public void PlotUnit(float2 position, Color32 colour)
         {
+            if ((Layers & MinimapLayers.Army) == 0) return;
             int cell = CellOf(position);
             if (fog != null && cell >= 0 && fog[cell] == (byte)FogState.Visible) pixels[cell] = colour;
         }
@@ -112,6 +130,7 @@ namespace WAR2D.Client
         /// <summary>Plots a building at a world position on any explored cell; a ghost (last seen) is dimmed.</summary>
         public void PlotBuilding(float2 position, Color32 colour, bool ghost)
         {
+            if ((Layers & (ghost ? MinimapLayers.Ghosts : MinimapLayers.Buildings)) == 0) return;
             int cell = CellOf(position);
             if (fog == null || cell < 0 || fog[cell] == (byte)FogState.Unexplored) return;
             pixels[cell] = ghost ? Scale(colour, 0.5f) : colour;
@@ -148,6 +167,8 @@ namespace WAR2D.Client
         {
             if (visible.IsCreated) visible.Dispose();
             if (explored.IsCreated) explored.Dispose();
+            if (visibleNoGems.IsCreated) visibleNoGems.Dispose();
+            if (exploredNoGems.IsCreated) exploredNoGems.Dispose();
             if (fogCopy.IsCreated) fogCopy.Dispose();
             if (Texture == null) return;
             if (Application.isPlaying) UnityEngine.Object.Destroy(Texture);

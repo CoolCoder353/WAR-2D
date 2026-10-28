@@ -1,8 +1,30 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <Style src="../Reconnect.uss" />
     <ui:VisualElement name="host-join" class="menu-screen menu-screen--centre" picking-mode="Ignore">
         <ui:VisualElement class="panel play-panel">
             <ui:Label text="Play" class="panel__title" />
             <ui:VisualElement class="play-panel__content">
+                <ui:VisualElement name="rejoin-block" class="play-panel__section hidden">
+                    <ui:VisualElement name="rejoin-card" class="rejoin-card">
+                        <ui:VisualElement class="rejoin-card__stripe" />
+                        <ui:VisualElement name="rejoin-icon" class="reconnect-icon" />
+                        <ui:VisualElement class="rejoin-card__body">
+                            <ui:Label name="rejoin-title" text="Your match is still running" class="rejoin-card__title" />
+                            <ui:VisualElement class="rejoin-card__meta">
+                                <ui:VisualElement name="rejoin-swatch" class="swatch player-1" />
+                                <ui:Label name="rejoin-match" text="Your match" class="rejoin-card__match" />
+                                <ui:Label name="rejoin-time" text="" class="rejoin-card__time" />
+                            </ui:VisualElement>
+                            <ui:VisualElement class="reconnect-bar">
+                                <ui:VisualElement name="rejoin-bar-fill" class="reconnect-bar__fill" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                        <ui:Button name="rejoin-button" text="Rejoin" class="button button--primary" />
+                        <ui:Button name="rejoin-cancel" text="Cancel" class="button hidden" />
+                    </ui:VisualElement>
+                    <ui:Label name="rejoin-failed" text="" class="text text--danger play-panel__state" />
+                    <ui:VisualElement class="divider" />
+                </ui:VisualElement>
                 <ui:VisualElement class="input">
                     <ui:Label text="Nickname" class="input__label" />
                     <ui:TextField name="nickname-field" max-length="24" class="input__field" />

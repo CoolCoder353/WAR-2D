@@ -98,8 +98,11 @@ namespace WAR2D.Client.Render
         /// <param name="colorOf">An owner's packed team colour.</param>
         /// <param name="flashing">True for a building that was just hit (it flashes red).</param>
         /// <param name="headOf">A Gun turret's head (facing and last shot, on the <paramref name="time"/> clock); null faces every head east.</param>
+        /// <param name="barMode">The Gameplay setting's <see cref="HealthBarMode"/>: which finished buildings get a health bar.</param>
+        /// <param name="selected">True for a selected building (SelectedOnly); null when none is.</param>
         public static void Pack(IEnumerable<ClientBuildings.Entry> entries, BuildingFrames frames, Func<int, uint> colorOf, Func<BuildingType, int2> sizeOf,
-            float time, Func<int, bool> flashing, Lists into, Func<int, ClientBuildings.TurretHead> headOf = null)
+            float time, Func<int, bool> flashing, Lists into, Func<int, ClientBuildings.TurretHead> headOf = null,
+            int barMode = (int)HealthBarMode.DamagedOnly, Func<int, bool> selected = null)
         {
             into.Clear();
             foreach (ClientBuildings.Entry e in entries)
@@ -145,7 +148,7 @@ namespace WAR2D.Client.Render
                     into.Bars.Add(Bar(centre - new float2(0f, size.y * 0.5f + BarGap), size, progress, ProgressColor));
                     continue;
                 }
-                if (!e.Ghost && health < 0.999f) into.Bars.Add(Bar(centre + new float2(0f, size.y * 0.5f + BarGap), size, health, InstancedUnitRenderer.BarColor(health)));
+                if (!e.Ghost && WAR2D.Client.Overlays.OverlayRules.ShowHealthBar(barMode, health, selected != null && selected(d.id))) into.Bars.Add(Bar(centre + new float2(0f, size.y * 0.5f + BarGap), size, health, InstancedUnitRenderer.BarColor(health)));
             }
             into.Buildings.Sort(FartherFirst);
         }

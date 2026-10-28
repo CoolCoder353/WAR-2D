@@ -1,4 +1,5 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <Style src="SettingsGameplay.uss" />
     <ui:VisualElement name="settings" class="overlay-screen settings-screen">
         <ui:VisualElement class="panel settings">
             <ui:Label text="Settings" class="panel__title" />
@@ -11,7 +12,6 @@
                     <ui:VisualElement class="settings-row"><ui:Label text="VSync" class="text settings-row__label" /><ui:VisualElement name="vsync-slot" /></ui:VisualElement>
                     <ui:VisualElement class="settings-row"><ui:Label text="FPS cap" class="text settings-row__label" /><ui:VisualElement name="fps-options" class="row segmented" /></ui:VisualElement>
                     <ui:VisualElement class="settings-row"><ui:Label text="Menu background battle" class="text settings-row__label" /><ui:VisualElement name="battle-slot" /></ui:VisualElement>
-                    <ui:VisualElement class="settings-row"><ui:Label text="Save replays" class="text settings-row__label" /><ui:VisualElement name="save-replays-slot" /></ui:VisualElement>
                     <ui:Label text="Colour palette" class="text settings__heading" />
                     <ui:VisualElement name="palette-picker" class="row settings__palettes" />
                 </ui:VisualElement>
@@ -22,7 +22,7 @@
                 </ui:VisualElement>
                 <ui:VisualElement name="settings-controls" class="settings__page">
                     <ui:VisualElement name="binding-rows" />
-                    <ui:VisualElement class="settings-row"><ui:Label text="Edge scrolling" class="text settings-row__label" /><ui:VisualElement name="edge-slot" /></ui:VisualElement>
+                    <ui:VisualElement class="settings-row"><ui:Label text="Edge scrolling" class="text settings-row__label" /><ui:Button name="edge-link" text="See Gameplay ›" class="settings-gameplay__link" /></ui:VisualElement>
                     <ui:Label name="rebind-hint" text="" class="text--secondary settings__hint" />
                     <ui:VisualElement name="conflict" class="settings__conflict">
                         <ui:Label name="conflict-text" text="" class="text" />
@@ -31,6 +31,40 @@
                             <ui:Button name="conflict-cancel" text="Cancel" class="button" />
                             <ui:Button name="conflict-swap" text="Swap bindings" class="button button--primary" />
                         </ui:VisualElement>
+                    </ui:VisualElement>
+                </ui:VisualElement>
+                <ui:VisualElement name="settings-gameplay" class="settings__page settings-gameplay">
+                    <ui:VisualElement class="settings-gameplay__column">
+                        <ui:Label text="Interface" class="text settings-gameplay__heading" />
+                        <ui:VisualElement class="settings-gameplay__rule" />
+                        <ui:VisualElement class="settings-row"><ui:Label text="UI scale" class="text settings-row__label" /><ui:VisualElement name="ui-scale-slot" /></ui:VisualElement>
+                        <ui:VisualElement class="settings-row"><ui:Label text="Health bars" class="text settings-row__label" /><ui:VisualElement name="health-bar-options" class="row segmented" /></ui:VisualElement>
+                        <ui:VisualElement class="settings-row"><ui:Label text="Tracers" class="text settings-row__label" /><ui:VisualElement name="tracer-options" class="row segmented" /></ui:VisualElement>
+                        <ui:VisualElement class="settings-row"><ui:Label text="Tooltip delay" class="text settings-row__label" /><ui:VisualElement name="tooltip-options" class="row segmented" /></ui:VisualElement>
+                        <ui:Label text="Camera" class="text settings-gameplay__heading" />
+                        <ui:VisualElement class="settings-gameplay__rule" />
+                        <ui:VisualElement class="settings-row"><ui:Label text="Pan speed" class="text settings-row__label" /><ui:Button name="pan-speed-reset" text="Reset" class="settings-gameplay__reset" /><ui:VisualElement name="pan-speed-slot" /></ui:VisualElement>
+                        <ui:VisualElement class="settings-row"><ui:Label text="Edge scrolling" class="text settings-row__label" /><ui:VisualElement name="edge-slot" /></ui:VisualElement>
+                        <ui:VisualElement class="settings-row"><ui:Label name="edge-speed-label" text="Edge-scroll speed" class="text settings-row__label" /><ui:Button name="edge-speed-reset" text="Reset" class="settings-gameplay__reset" /><ui:VisualElement name="edge-speed-slot" /></ui:VisualElement>
+                        <ui:VisualElement class="settings-row"><ui:Label text="Zoom speed" class="text settings-row__label" /><ui:Button name="zoom-speed-reset" text="Reset" class="settings-gameplay__reset" /><ui:VisualElement name="zoom-speed-slot" /></ui:VisualElement>
+                        <ui:VisualElement class="settings-row"><ui:Label text="Shift pan multiplier" class="text settings-row__label" /><ui:Button name="shift-multiplier-reset" text="Reset" class="settings-gameplay__reset" /><ui:VisualElement name="shift-multiplier-slot" /></ui:VisualElement>
+                        <ui:Label text="Confirmations" class="text settings-gameplay__heading" />
+                        <ui:VisualElement class="settings-gameplay__rule" />
+                        <ui:VisualElement class="settings-row"><ui:Label text="Confirm demolish" class="text settings-row__label" /><ui:VisualElement name="confirm-demolish-slot" /></ui:VisualElement>
+                        <ui:VisualElement class="settings-row"><ui:Label name="confirm-surrender-label" text="Confirm surrender" class="text settings-row__label" /><ui:VisualElement name="confirm-surrender-slot" /></ui:VisualElement>
+                        <ui:Label name="confirm-surrender-hint" text="Always on in a team match with other players." class="text--secondary settings-gameplay__hint" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="settings-gameplay__column settings-gameplay__column--right">
+                        <ui:Label text="Alerts" class="text settings-gameplay__heading" />
+                        <ui:VisualElement class="settings-gameplay__rule" />
+                        <ui:VisualElement class="alert-filter__head">
+                            <ui:Label text="Alert" class="text--secondary alert-filter__name" />
+                            <ui:Label text="Show" class="text--secondary alert-filter__cell" />
+                            <ui:Label text="Sound" class="text--secondary alert-filter__cell" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="alert-filter-rows" />
+                        <ui:Label text="Under attack and Upkeep unpaid always keep Show or Sound: the last one left on is locked." class="text--secondary settings-gameplay__hint" />
+                        <ui:Label name="next-alert-hint" text="" class="text--secondary settings-gameplay__hint" />
                     </ui:VisualElement>
                 </ui:VisualElement>
                 <ui:VisualElement class="row settings__footer">

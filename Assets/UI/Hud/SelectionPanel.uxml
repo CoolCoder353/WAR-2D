@@ -1,6 +1,9 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
     <ui:VisualElement name="selection-panel" class="panel selection-panel">
-        <ui:Label name="selection-title" text="Selection" class="panel__title" />
+        <ui:VisualElement class="panel__title selection-panel__title">
+            <ui:Label name="selection-title" text="Selection" class="selection-panel__title-text" />
+            <ui:Label name="selection-map-wide" text="Map-wide" class="map-wide-tag" />
+        </ui:VisualElement>
         <ui:VisualElement class="selection-panel__content">
             <ui:VisualElement name="selection-types" class="selection-panel__types" />
             <ui:VisualElement class="selection-panel__health">

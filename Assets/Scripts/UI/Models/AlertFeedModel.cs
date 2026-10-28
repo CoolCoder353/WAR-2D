@@ -13,6 +13,8 @@ namespace WAR2D.UI
         public int2 Tile;
         public float Added;
         public float Expires;
+        /// <summary>True once the camera has been taken to this alert's place (its row was clicked, or Next alert reached it).</summary>
+        public bool Visited;
         /// <summary>v0.14: the player the text starts with (its nickname) when that player is an AI, and its tag ("AI · Hard"); null otherwise.</summary>
         public string Subject, SubjectTag;
     }
@@ -57,7 +59,40 @@ namespace WAR2D.UI
         public void Focus(int id)
         {
             foreach (AlertEntry e in entries)
-                if (e.Id == id) { if (HasPlace(e.Kind)) FocusRequested?.Invoke(e.Tile); return; }
+                if (e.Id == id)
+                {
+                    if (!HasPlace(e.Kind)) return;
+                    if (!e.Visited) { e.Visited = true; Changed?.Invoke(); }
+                    FocusRequested?.Invoke(e.Tile);
+                    return;
+                }
+        }
+
+        /// <summary>How many alerts with a place the camera has not been taken to yet (the next-alert chip's count).</summary>
+        public int UnvisitedCount
+        {
+            get
+            {
+                int n = 0;
+                foreach (AlertEntry e in entries) if (HasPlace(e.Kind) && !e.Visited) n++;
+                return n;
+            }
+        }
+
+        /// <summary>
+        /// Next alert (Space): takes the camera to the newest alert with a place that has not been visited, then, pressed
+        /// again, the one before it. Returns false when there is none.
+        /// </summary>
+        public bool FocusNextUnvisited()
+        {
+            for (int i = entries.Count - 1; i >= 0; i--)
+            {
+                AlertEntry e = entries[i];
+                if (!HasPlace(e.Kind) || e.Visited) continue;
+                Focus(e.Id);
+                return true;
+            }
+            return false;
         }
 
         /// <summary>True for the alerts the minimap pings.</summary>
@@ -66,6 +101,12 @@ namespace WAR2D.UI
         /// <summary>Adds an alert with its text, shown from <paramref name="now"/>.</summary>
         public void Add(in Alert alert, string text, float now, string subject = null, string subjectTag = null)
         {
+            // Settings → Gameplay → Alerts: a kind switched off stays out of the feed (its minimap ping still goes out).
+            if (!SettingsStore.Current.ShowsAlert(alert.Kind))
+            {
+                if (Pings(alert.Kind)) PingRequested?.Invoke(alert.Tile, alert.Kind);
+                return;
+            }
             bool tagged = subject != null && subjectTag != null && text != null && text.StartsWith(subject, StringComparison.Ordinal);
             entries.Add(new AlertEntry
             {
@@ -105,12 +146,16 @@ namespace WAR2D.UI
             AlertKind.BombTriggered => "Bomb triggered",
             AlertKind.EnemySpotted => "Enemy spotted by Radar",
             AlertKind.RepairsStopped => "Out of resources: repairs stopped",
+            AlertKind.ResourcesLow => "Resources will run out in 1:00",
+            AlertKind.PlayerDisconnected => $"{nameOf(alert.OtherOwnerId)} disconnected",
+            AlertKind.PlayerReturned => $"{nameOf(alert.OtherOwnerId)} returned",
             _ => "",
         };
 
         /// <summary>True for the alerts whose text starts with another player's name (<see cref="Alert.OtherOwnerId"/>).</summary>
         public static bool NamesAPlayer(AlertKind kind) =>
-            kind == AlertKind.GiftReceived || kind == AlertKind.VisionSharedWithYou || kind == AlertKind.VisionUnshared;
+            kind == AlertKind.GiftReceived || kind == AlertKind.VisionSharedWithYou || kind == AlertKind.VisionUnshared ||
+            kind == AlertKind.PlayerDisconnected || kind == AlertKind.PlayerReturned;
 
         /// <summary>A building type as players know it.</summary>
         public static string BuildingName(BuildingType type) => type switch

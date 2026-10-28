@@ -316,6 +316,17 @@ namespace WAR2D.Net.Replication
             /// while the last upkeep charge failed.
             /// </summary>
             public bool Unpaid;
+            /// <summary>Client time (<c>Time.time</c>) the building went out of sight; 0 while it is in sight (the ghost card's "last seen").</summary>
+            public float LastSeenAt;
+        }
+
+        /// <summary>The first building of this type owned by <paramref name="ownerId"/> that is not a ghost; false when none.</summary>
+        public bool TryFindOwn(int ownerId, BuildingType type, out Entry found)
+        {
+            foreach (Entry e in Entries.Values)
+                if (e.Data.ownerId == ownerId && e.Data.buildingType == type && !e.Ghost) { found = e; return true; }
+            found = default;
+            return false;
         }
 
         /// <summary>The local client's buildings.</summary>
@@ -416,6 +427,7 @@ namespace WAR2D.Net.Replication
         {
             if (!Entries.TryGetValue(id, out Entry e)) return;
             e.Ghost = true;
+            e.LastSeenAt = UnityEngine.Time.time;
             Entries[id] = e;
             Hidden?.Invoke(id);
         }

@@ -236,6 +236,8 @@ namespace WAR2D.Client.Render
         [ReadOnly] public NativeArray<byte> Selected;    // by index
         public float UnitHalfSize;
         public uint RingFrame, LargeRingFrame;
+        /// <summary>The Gameplay setting's <see cref="HealthBarMode"/>: which units get a bar.</summary>
+        public int BarMode;
         public NativeArray<UnitInstance> Instances;
         public NativeArray<UnitInstance> Bars;
         public NativeArray<int> BarCount;
@@ -262,7 +264,7 @@ namespace WAR2D.Client.Render
                     scale = scale,
                     pad = Selected[index],
                 };
-                if (health >= 0.999f) continue;
+                if (!WAR2D.Client.Overlays.OverlayRules.ShowHealthBar(BarMode, health, Selected[index] != 0)) continue;
                 int frame = math.clamp((int)math.round(health * (InstancedUnitRenderer.BarFrames - 1)), 0, InstancedUnitRenderer.BarFrames - 1);
                 Bars[bars++] = new UnitInstance
                 {

@@ -80,6 +80,11 @@ namespace Config
         public string Scene = "Map_2";
         /// <summary>Seconds between the last HQ placed and the start of play.</summary>
         public float CountdownSeconds;
+        /// <summary>
+        /// Seconds a player who drops out of a running match has to come back (v0.15). Their units hold position and
+        /// nothing is produced or charged meanwhile; at zero they are removed like a player who left.
+        /// </summary>
+        public float ReconnectSeconds;
         /// <summary>The match map: generated from a seed, or the scene's tilemaps.</summary>
         public MapConfig Map = new MapConfig();
     }

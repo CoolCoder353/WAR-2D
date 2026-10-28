@@ -111,6 +111,9 @@ namespace WAR2D.Client
             return true;
         }
 
+        /// <summary>True while a known unit still has a route to follow (it is moving).</summary>
+        public bool HasRoute(int index) => IsKnown(index) && routeCount[index] > 0;
+
         public bool IsKnown(int index) => (uint)index < (uint)knownSlot.Length && knownSlot[index] >= 0;
         public int IdOf(int index) => IsKnown(index) ? states[index].Id : 0;
         public int OwnerOf(int index) => owner[index];

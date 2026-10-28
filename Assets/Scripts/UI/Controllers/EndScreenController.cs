@@ -45,8 +45,8 @@ namespace WAR2D.UI
             if (fraction.HasValue) replayFill.style.width = Length.Percent(UnityEngine.Mathf.Clamp01(fraction.Value) * 100f);
         }
 
-        /// <summary>The replay line's text and bar for the current state (the host has the file; a player receives it).</summary>
-        public static (string text, float? fraction) ReplayState(bool host, WAR2D.Net.Replay.MatchRecorder recorder, WAR2D.Net.Replay.ReplayReceiver receiver, bool saveReplays)
+        /// <summary>The replay line's text and bar for the current state (only the host records, so a joined player has none).</summary>
+        public static (string text, float? fraction) ReplayState(bool host, WAR2D.Net.Replay.MatchRecorder recorder)
         {
             const string saved = "Replay saved · watch it from Replays";
             if (host)
@@ -54,10 +54,7 @@ namespace WAR2D.UI
                 if (recorder == null) return (null, null);
                 return recorder.Finished ? (saved, null) : ("Saving replay…", null);
             }
-            if (!saveReplays || receiver == null) return (null, null);
-            if (receiver.SavedPath != null) return (saved, null);
-            if (!receiver.Active) return (null, null);
-            return ($"Saving replay… {UnityEngine.Mathf.FloorToInt(receiver.Fraction * 100f)} %", receiver.Fraction);
+            return (null, null);
         }
 
         public bool IsShown => screen.ClassListContains("overlay-screen--visible");

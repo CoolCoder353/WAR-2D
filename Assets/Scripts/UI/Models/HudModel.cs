@@ -67,6 +67,9 @@ namespace WAR2D.UI
         /// <summary>The local player's upkeep during the last second.</summary>
         public float UpkeepPerSecond { get; private set; }
 
+        /// <summary>The top bar's net-income readout (v0.15), fed every time the numbers are pulled.</summary>
+        public EconomyReadout Economy { get; } = new EconomyReadout();
+
         /// <summary>Every player in match order.</summary>
         public IReadOnlyList<PlayerRow> Players => players;
 
@@ -79,6 +82,7 @@ namespace WAR2D.UI
         /// <summary>Sets the local player's own numbers.</summary>
         public void SetResources(float resources, float incomePerSecond, float upkeepPerSecond)
         {
+            Economy.Feed(resources, incomePerSecond, upkeepPerSecond, UnityEngine.Time.unscaledTime);
             if (resources == Resources && incomePerSecond == IncomePerSecond && upkeepPerSecond == UpkeepPerSecond) return;
             Resources = resources;
             IncomePerSecond = incomePerSecond;

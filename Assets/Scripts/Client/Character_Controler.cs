@@ -54,13 +54,15 @@ namespace Character
         }
 
         /// <summary>Panning from the pointer at a screen edge (when edge scrolling is on and the window has focus).</summary>
+        private float zoomNotches;
+
         private static Vector2 EdgePan()
         {
             if (!SettingsStore.Current.EdgeScroll || !Application.isFocused || Application.isBatchMode) return Vector2.zero;
             Vector2 p = GameInput.Point.ReadValue<Vector2>();
             if (p.x < 0 || p.y < 0 || p.x > Screen.width || p.y > Screen.height) return Vector2.zero;
             return new Vector2(p.x <= EdgePixels ? -1 : p.x >= Screen.width - EdgePixels ? 1 : 0,
-                               p.y <= EdgePixels ? -1 : p.y >= Screen.height - EdgePixels ? 1 : 0);
+                               p.y <= EdgePixels ? -1 : p.y >= Screen.height - EdgePixels ? 1 : 0) * SettingsStore.Current.EdgeScrollSpeed;
         }
 
         /// <summary>Centres the camera on a world point, kept inside the map (the minimap's click).</summary>
@@ -93,14 +95,21 @@ namespace Character
             {
                 // Zoom towards the cursor: the world point under it stays under it.
                 Vector3 before = GameInput.PointerWorld();
-                SetSize(CameraZoom.Step(playerCamera.orthographicSize, scroll, ArtStyle.PixelsPerUnit, Screen.height, settings.zoomScale.x, settings.zoomScale.y));
+                // The zoom-speed setting scales the notches: below 1 it takes several to step, above 1 one notch steps more.
+                zoomNotches += Mathf.Sign(scroll) * SettingsStore.Current.ZoomSpeed;
+                while (Mathf.Abs(zoomNotches) >= 1f)
+                {
+                    float step = Mathf.Sign(zoomNotches);
+                    SetSize(CameraZoom.Step(playerCamera.orthographicSize, step, ArtStyle.PixelsPerUnit, Screen.height, settings.zoomScale.x, settings.zoomScale.y));
+                    zoomNotches -= step;
+                }
                 Vector3 after = GameInput.PointerWorld();
                 next += new Vector3(before.x - after.x, before.y - after.y, 0f);
             }
 
-            Vector2 pan = GameInput.Pan.ReadValue<Vector2>() + EdgePan();
-            pan = Vector2.ClampMagnitude(pan, 1f);
-            float multiplier = GameInput.FastPan.IsPressed() ? settings.shiftSpeedMultiplyer : 1f;
+            Vector2 pan = GameInput.Pan.ReadValue<Vector2>() * SettingsStore.Current.PanSpeed + EdgePan();
+            pan = Vector2.ClampMagnitude(pan, 2f);
+            float multiplier = GameInput.FastPan.IsPressed() ? SettingsStore.Current.ShiftMultiplier : 1f;
             float zoomFactor = playerCamera.orthographicSize / ReferenceSize;
             next += (Vector3)(pan * settings.speed * multiplier * zoomFactor * Time.unscaledDeltaTime);
 

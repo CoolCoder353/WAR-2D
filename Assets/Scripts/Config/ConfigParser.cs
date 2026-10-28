@@ -48,6 +48,7 @@ namespace Config
                 if (string.IsNullOrEmpty(scene)) errors.Add("Match: <Scene> is missing or empty.");
                 else config.Match.Scene = scene;
                 config.Match.CountdownSeconds = Float(match, "CountdownSeconds", "Match", errors, min: 0, max: 60);
+                config.Match.ReconnectSeconds = Float(match, "ReconnectSeconds", "Match", errors, min: 0, max: 600);
                 XmlNode map = Require(match, "Map", errors);
                 if (map != null)
                 {

@@ -26,14 +26,17 @@ namespace WAR2D.UI
         private readonly Func<UnitType, BuildingType, float> buildSeconds;
         private readonly Func<UnitType, string> roleOf;
         private readonly bool switchClearsQueue;
-        private readonly VisualElement card, divider, rows, removal, confirm, production, typesRow, tooltip;
+        private readonly VisualElement card, divider, rows, removal, confirm, production, typesRow;
         private readonly Label title, help, queueLabel, buildLabel, buildHint, digHint, detonateHint, refund, question, cancelKey;
-        private readonly Label info, mixedHint, tipTitle, tipRole, tipWarning;
-        private readonly VisualElement buildTip, buildArea;
-        private readonly Label buildTipTitle, buildTipRole, buildTipDetail;
-        private readonly Func<BuildingType, (string role, string detail)> buildInfo;
+        private readonly Label info, mixedHint;
+        private readonly VisualElement buildArea;
+        private readonly Func<BuildingType, HoverCardContent> buildCard;
+        private readonly Func<UnitType, HoverCardContent> unitCard;
+        private readonly WAR2D.UI.HoverCard hover;
+        private readonly float repairCostPerHealth;
         private readonly CommandIcon cancelIcon;
-        private readonly Button cancel, wall, detonate;
+        private readonly Button cancel, wall, detonate, rallyAll;
+        private readonly Dictionary<Label, Func<UnityEngine.InputSystem.InputAction>> keyLabels = new Dictionary<Label, Func<UnityEngine.InputSystem.InputAction>>();
         private readonly OrderKind? detonateKind;
         private readonly UnitType? bomberType;
         private readonly Dictionary<OrderKind, Button> orders = new Dictionary<OrderKind, Button>();
@@ -67,6 +70,9 @@ namespace WAR2D.UI
         /// <summary>Raised when the selected wall tiles are to be cancelled or demolished (after the confirm, unless all are blueprints).</summary>
         public event Action RemoveWallsConfirmed;
 
+        /// <summary>Raised by the Rally all button in the production card's Rally point row (v0.15, frame 8).</summary>
+        public event Action RallyAllClicked;
+
         /// <summary>True while the Demolish confirm is showing.</summary>
         public bool ConfirmOpen { get; private set; }
 
@@ -75,12 +81,18 @@ namespace WAR2D.UI
         /// <param name="buildSeconds">Seconds to make one unit of a type at a building, for the info line and hover card.</param>
         /// <param name="roleOf">A short role line per unit type for the hover card (range, splash and so on).</param>
         /// <param name="switchClearsQueue">True once the server clears a producer's queue when its type changes (v0.12 plan): the hover card then warns.</param>
-        /// <param name="buildInfo">A build button's hover card lines below its name and cost: the role, and the footprint, range and upkeep (v0.13); null shows the name and cost only.</param>
+        /// <param name="buildCard">A build button's hover card (v0.15: role, then Cost, Upkeep, Size and reach); null shows the name and cost only.</param>
+        /// <param name="unitCard">A production type's hover card (role, Cost, Build, Health, Damage, Range); null shows the name only.</param>
+        /// <param name="hover">The shared hover card (v0.15, frame 3), opened left of the command card; null for none.</param>
         public CommandCardController(VisualElement root, SelectionModel selection, HudModel hud, IReadOnlyDictionary<BuildingType, float> buildCosts,
             IReadOnlyDictionary<UnitType, float> unitCosts, float wallCost, float demolishShare, Func<UnitType, BuildingType, float> buildSeconds,
-            Func<UnitType, string> roleOf, bool switchClearsQueue, Func<BuildingType, (string role, string detail)> buildInfo = null)
+            Func<UnitType, string> roleOf, bool switchClearsQueue, Func<BuildingType, HoverCardContent> buildCard = null,
+            Func<UnitType, HoverCardContent> unitCard = null, WAR2D.UI.HoverCard hover = null, float repairCostPerHealth = 0f)
         {
-            this.buildInfo = buildInfo;
+            this.buildCard = buildCard;
+            this.unitCard = unitCard;
+            this.hover = hover;
+            this.repairCostPerHealth = repairCostPerHealth;
             this.buildSeconds = buildSeconds;
             this.roleOf = roleOf;
             this.switchClearsQueue = switchClearsQueue;
@@ -110,26 +122,18 @@ namespace WAR2D.UI
             typesRow = root.Q("production-types");
             info = root.Q<Label>("production-info");
             mixedHint = root.Q<Label>("production-mixed");
-            tooltip = root.Q("production-tooltip");
-            tipTitle = root.Q<Label>("production-tooltip-title");
-            tipRole = root.Q<Label>("production-tooltip-role");
-            tipWarning = root.Q<Label>("production-tooltip-warning");
             detonateHint = root.Q<Label>("detonate-hint");
             detonate = root.Q<Button>("cmd-detonate");
             buildArea = root.Q("builds");
-            buildTip = root.Q("build-tooltip");
-            buildTipTitle = root.Q<Label>("build-tooltip-title");
-            buildTipRole = root.Q<Label>("build-tooltip-role");
-            buildTipDetail = root.Q<Label>("build-tooltip-detail");
 
-            AddOrder(root, "cmd-move", OrderKind.Move);
-            AddOrder(root, "cmd-attack-move", OrderKind.AttackMove);
-            AddOrder(root, "cmd-stop", OrderKind.Stop);
-            AddOrder(root, "cmd-hold", OrderKind.Hold);
-            AddOrder(root, "cmd-repair", OrderKind.Repair);
-            AddOrder(root, "cmd-dig", OrderKind.Dig);
+            AddOrder(root, "cmd-move", OrderKind.Move, () => GameInput.Command);
+            AddOrder(root, "cmd-attack-move", OrderKind.AttackMove, () => GameInput.AttackMove);
+            AddOrder(root, "cmd-stop", OrderKind.Stop, () => GameInput.Stop);
+            AddOrder(root, "cmd-hold", OrderKind.Hold, () => GameInput.Hold);
+            AddOrder(root, "cmd-repair", OrderKind.Repair, () => GameInput.Repair);
+            AddOrder(root, "cmd-dig", OrderKind.Dig, () => GameInput.Dig);
             detonateKind = OrderKind.Detonate;
-            AddOrder(root, "cmd-detonate", OrderKind.Detonate);
+            AddOrder(root, "cmd-detonate", OrderKind.Detonate, () => GameInput.Detonate);
             bomberType = UnitType.SuicideBomber;
             AddBuild(root, "build-miner", BuildingType.Miner);
             AddBuild(root, "build-barracks", BuildingType.Barracks);
@@ -141,11 +145,20 @@ namespace WAR2D.UI
             AddBuild(root, "build-jammer", BuildingType.Jammer);
             wall = root.Q<Button>("build-wall");
             wall.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); WallClicked?.Invoke(); };
-            HoverCard(wall, BuildingType.None);
+            AttachBuildCard(wall, BuildingType.None);
             root.Q<Label>("build-wall-cost").text = $"{wallCost:0.##}/tile";
             buildHint.text = $"Wall: press and drag on the map to lay a line ({wallCost:0.##} per tile).";
 
             cancel.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); RequestRemove(); };
+            keyLabels[cancelKey] = () => GameInput.Cancel;
+            hover?.Attach(cancel, RemoveCard, WAR2D.UI.HoverCard.Side.Left, card);
+            rallyAll = root.Q<Button>("cmd-rally-all");
+            if (rallyAll != null)
+            {
+                rallyAll.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); RallyAllClicked?.Invoke(); };
+                hover?.Attach(rallyAll, () => HoverText.RallyAll(RallyAllKey()), WAR2D.UI.HoverCard.Side.Left, card);
+            }
+            ShowKeys();
             root.Q<Button>("removal-yes").clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); Remove(); };
             root.Q<Button>("removal-no").clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); CloseConfirm(); };
 
@@ -154,11 +167,53 @@ namespace WAR2D.UI
             Show();
         }
 
-        private void AddOrder(VisualElement root, string name, OrderKind kind)
+        private void AddOrder(VisualElement root, string name, OrderKind kind, Func<UnityEngine.InputSystem.InputAction> action)
         {
             Button button = root.Q<Button>(name);
             button.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); OrderClicked?.Invoke(kind); };
             orders[kind] = button;
+            Label key = root.Q<Label>(name + "-key");
+            if (key != null) keyLabels[key] = action;
+            hover?.Attach(button, () => OrderCard(kind, action()), WAR2D.UI.HoverCard.Side.Left, card);
+        }
+
+        /// <summary>An order button's card: its words, the current key, and why it is greyed out.</summary>
+        private HoverCardContent OrderCard(OrderKind kind, UnityEngine.InputSystem.InputAction action)
+        {
+            HoverCardContent c = HoverText.Order(kind, WAR2D.UI.HoverCard.KeyOf(action), WAR2D.UI.HoverCard.KeyOf(GameInput.QueueModifier), repairCostPerHealth);
+            c.Reason = HoverText.OrderReason(kind, selection.Count > 0);
+            return c;
+        }
+
+        /// <summary>The Rally all key text: the assign modifier and the order button ("Ctrl RMB").</summary>
+        private static string RallyAllKey() => $"{WAR2D.UI.HoverCard.KeyOf(GameInput.AssignModifier)} {WAR2D.UI.HoverCard.KeyOf(GameInput.Command)}";
+
+        /// <summary>
+        /// Writes the players' current bindings into the command buttons' key slots (a rebind in Settings shows at once).
+        /// The HUD calls it when Settings closes.
+        /// </summary>
+        public void ShowKeys()
+        {
+            foreach (KeyValuePair<Label, Func<UnityEngine.InputSystem.InputAction>> pair in keyLabels)
+            {
+                string text = WAR2D.UI.HoverCard.KeyOf(pair.Value());
+                if (text.Length > 0) pair.Key.text = text;
+            }
+            Label rallyKey = rallyAll?.Q<Label>("cmd-rally-all-key");
+            if (rallyKey != null) rallyKey.text = RallyAllKey();
+        }
+
+        /// <summary>Shows Rally all as active while it waits for its click.</summary>
+        public void ShowRallyAllArmed(bool armed) => rallyAll?.EnableInClassList("command-button--active", armed);
+
+        /// <summary>The Cancel/Demolish button's card.</summary>
+        private HoverCardContent RemoveCard()
+        {
+            string key = WAR2D.UI.HoverCard.KeyOf(GameInput.Cancel);
+            bool blueprints = WallsOnly ? selection.WallBlueprints == selection.WallCount : selection.AllBlueprints;
+            if (blueprints) return new HoverCardContent("Cancel", key, "Take the blueprint back.").Pair("Refund", "full cost", HoverTone.Cost);
+            return new HoverCardContent("Demolish", key, "Tear this building down, after a confirm.")
+                .Pair("Refund", $"{demolishShare:P0}", HoverTone.Cost).Line("Blueprint: Cancel, full refund");
         }
 
         private void AddBuild(VisualElement root, string name, BuildingType type)
@@ -167,38 +222,31 @@ namespace WAR2D.UI
             button.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); BuildClicked?.Invoke(type); };
             if (buildCosts.TryGetValue(type, out float cost)) root.Q<Label>(name + "-cost").text = $"{cost:0.##}";
             builds[type] = button;
-            HoverCard(button, type);
+            AttachBuildCard(button, type);
         }
 
         /// <summary>The shared hover card over a build button (<see cref="BuildingType.None"/> is the Wall).</summary>
-        private void HoverCard(Button button, BuildingType type)
-        {
-            button.RegisterCallback<PointerEnterEvent>(_ => ShowBuildTip(type, button));
-            button.RegisterCallback<PointerLeaveEvent>(_ => buildTip.EnableInClassList("build-tooltip--open", false));
-        }
+        private void AttachBuildCard(Button button, BuildingType type) => hover?.Attach(button, () => BuildTip(type), WAR2D.UI.HoverCard.Side.Left, card);
 
-        /// <summary>The card's text for a build button: "Name · cost", the role line and the detail line.</summary>
-        public (string title, string role, string detail) BuildTip(BuildingType type)
+        /// <summary>
+        /// The card for a build button (frame 3, Gun turret): name, role, then Cost (gold, or red when it is what greys the
+        /// button out), Upkeep, Size and reach, and "Need 150 (you have 90)" when the player can't afford it.
+        /// </summary>
+        public HoverCardContent BuildTip(BuildingType type)
         {
             string name = type == BuildingType.None ? "Wall" : AlertFeedModel.BuildingName(type) ?? AlertFeedModel.Spaced(type.ToString());
-            string cost = type == BuildingType.None ? $"{wallCost:0.##} per tile" : buildCosts.TryGetValue(type, out float c) ? $"{c:0.##}" : "";
-            (string role, string detail) = buildInfo != null ? buildInfo(type) : (null, null);
-            return (cost.Length > 0 ? $"{name} · {cost}" : name, role ?? "", detail ?? "");
-        }
-
-        /// <summary>Opens the hover card centred over <paramref name="button"/>, just above it (Figma: Hover: Gun turret, Hover: Jammer).</summary>
-        private void ShowBuildTip(BuildingType type, Button button)
-        {
-            (string title, string role, string detail) = BuildTip(type);
-            buildTipTitle.text = title;
-            buildTipRole.text = role;
-            buildTipDetail.text = detail;
-            Display(buildTipRole, role.Length > 0);
-            Display(buildTipDetail, detail.Length > 0);
-            Rect at = button.worldBound, area = buildArea.worldBound;
-            buildTip.style.left = at.xMin - area.xMin + at.width / 2f;
-            buildTip.style.top = at.yMin - area.yMin - 6f;
-            buildTip.EnableInClassList("build-tooltip--open", true);
+            float cost = type == BuildingType.None ? wallCost : buildCosts.TryGetValue(type, out float c) ? c : 0f;
+            HoverCardContent from = buildCard?.Invoke(type);
+            var tip = new HoverCardContent(name, null, from?.Role);
+            bool afford = hud.Resources >= cost;
+            tip.Pair("Cost", type == BuildingType.None ? $"{cost:0.##} per tile" : $"{cost:0.##}", afford ? HoverTone.Cost : HoverTone.Danger);
+            if (from != null)
+            {
+                foreach ((string label, string value, HoverTone tone) in from.Pairs) if (label != "Cost") tip.Pair(label, value, tone);
+                foreach (string line in from.Lines) tip.Line(line);
+            }
+            tip.Reason = HoverText.Afford(cost, hud.Resources);
+            return tip;
         }
 
         /// <summary>
@@ -208,7 +256,7 @@ namespace WAR2D.UI
         public void RequestRemove()
         {
             if (!Removable) return;
-            if (WallsOnly ? selection.WallBlueprints == selection.WallCount : selection.AllBlueprints || ConfirmOpen) Remove();
+            if ((WallsOnly ? selection.WallBlueprints == selection.WallCount : selection.AllBlueprints) || ConfirmOpen || !SettingsStore.Current.ConfirmDemolish) Remove();
             else
             {
                 ConfirmOpen = true;
@@ -256,13 +304,12 @@ namespace WAR2D.UI
             Display(divider, builders);
             Display(buildLabel, builders);
             Display(buildArea, builders);
-            if (!builders) buildTip.EnableInClassList("build-tooltip--open", false);
             Display(buildHint, builders);
             Display(removal, building && Removable);
             // A blueprint makes nothing yet: production shows once the selected buildings are all finished.
             bool producing = building && SpawnerRules.IsProducer(selection.BuildingType) && selection.BlueprintCount == 0;
             Display(production, producing);
-            if (!producing) tooltip.EnableInClassList("production__tooltip--open", false);
+            hover?.Refresh();
             if (building)
             {
                 ShowBuilding(count);
@@ -333,11 +380,7 @@ namespace WAR2D.UI
             Display(rows, !mixed);
             Display(help, !mixed);
             Display(mixedHint, mixed);
-            if (mixed)
-            {
-                tooltip.EnableInClassList("production__tooltip--open", false);
-                return;
-            }
+            if (mixed) return;
             if (rowsFor != selection.BuildingType) BuildProduction(produced);
             UnitType chosen = Chosen();
             IReadOnlyList<UnitType> inUse = selection.ProductionTypes;
@@ -400,8 +443,7 @@ namespace WAR2D.UI
                 cost.AddToClassList("command-button__key");
                 cost.AddToClassList("command-button__cost");
                 button.Add(cost);
-                button.RegisterCallback<PointerEnterEvent>(_ => ShowTip(type, button));
-                button.RegisterCallback<PointerLeaveEvent>(_ => tooltip.EnableInClassList("production__tooltip--open", false));
+                hover?.Attach(button, () => TypeTip(type), WAR2D.UI.HoverCard.Side.Left, card);
                 typesRow.Add(button);
                 typeButtons[type] = button;
             }
@@ -426,28 +468,21 @@ namespace WAR2D.UI
         {
             WAR2D.Audio.AudioService.Ui("ui_click");
             chosenTypes[selection.BuildingType] = type;
-            tooltip.EnableInClassList("production__tooltip--open", false);
+            hover?.Hide();
             // Always sent: the model can lag a frame behind the server, which ignores a pick of the type already made.
             ProductionSelected?.Invoke(selection.BuildingIds, type);
             Show();
         }
 
-        /// <summary>The hover card under a type button: cost, build time, role, and a warning when switching would clear a queue.</summary>
-        private void ShowTip(UnitType type, Button button)
+        /// <summary>The hover card of a type button (frame 3, Heavy): role, cost, build time and stats, and a warning when switching would clear a queue.</summary>
+        public HoverCardContent TypeTip(UnitType type)
         {
-            tipTitle.text = $"{AlertFeedModel.UnitName(type)} · {Cost(type)} · {Seconds(type)} s per unit";
-            string role = roleOf?.Invoke(type);
-            tipRole.text = role ?? "";
-            Display(tipRole, !string.IsNullOrEmpty(role));
+            HoverCardContent tip = unitCard?.Invoke(type) ?? new HoverCardContent(AlertFeedModel.UnitName(type), null, roleOf?.Invoke(type))
+                .Pair("Cost", Cost(type), HoverTone.Cost).Pair("Build", $"{Seconds(type)} s");
             UnitType chosen = Chosen();
             int queued = selection.SpawnerQueue;
-            bool warn = switchClearsQueue && type != chosen && queued > 0;
-            tipWarning.text = warn ? $"Switching clears the queue ({queued} {AlertFeedModel.UnitName(chosen)})" : "";
-            Display(tipWarning, warn);
-            Rect at = button.worldBound, area = production.worldBound;
-            tooltip.style.left = at.xMin - area.xMin + at.width / 2f;
-            tooltip.style.top = at.yMax - area.yMin + 4f;
-            tooltip.EnableInClassList("production__tooltip--open", true);
+            if (switchClearsQueue && type != chosen && queued > 0) tip.Warning = $"Switching clears the queue ({queued} {AlertFeedModel.UnitName(chosen)})";
+            return tip;
         }
 
         private string Cost(UnitType type) => unitCosts.TryGetValue(type, out float cost) ? $"{cost:0}" : "";

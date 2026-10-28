@@ -21,6 +21,18 @@ public class ClientPlayer : NetworkBehaviour
     [SyncVar(hook = nameof(OnHasPlacedHQ))]
     public bool hasPlacedHQ = false;
 
+    /// <summary>v0.15: this human dropped out of the running match and has until <see cref="awayUntil"/> to come back; their units hold meanwhile.</summary>
+    [SyncVar]
+    public bool isAway;
+
+    /// <summary>When the away window closes, in network time (<c>NetworkTime.time</c>); 0 when not away.</summary>
+    [SyncVar]
+    public double awayUntil;
+
+    /// <summary>The ticket this client presents to get its seat back after a drop (v0.15). Private: sent to the owner only.</summary>
+    [TargetRpc]
+    public void TargetRejoinTicket(NetworkConnection target, string token, float window) => WAR2D.Net.Rejoin.RejoinTicket.Set(token, window);
+
     /// <summary>A new HQ means a new match: its end screen may show again.</summary>
     private void OnHasPlacedHQ(bool before, bool now)
     {
@@ -314,6 +326,7 @@ public class ClientPlayer : NetworkBehaviour
     /// <summary>Shows the local end screen once per match.</summary>
     private void EndMatch(WAR2D.UI.EndResult result)
     {
+        WAR2D.Net.Rejoin.RejoinTicket.Clear(); // the match is over for this player: nothing to rejoin
         if (gameOverDeclared) return;
         gameOverDeclared = true;
         MatchEnded?.Invoke(result);
@@ -359,15 +372,4 @@ public class ClientPlayer : NetworkBehaviour
     [TargetRpc]
     public void RpcOnPlayerLost(NetworkConnectionToClient loser) => EndMatch(WAR2D.UI.EndResult.Defeat);
 
-
-    /// <summary>The player accepts (or declines) the match's replay offer. Only in GameOver, only for the current offer.</summary>
-    [Command(requiresAuthority = false)]
-    public void CmdReplayWanted(int id, bool wanted, NetworkConnectionToClient sender = null)
-    {
-        if (!CommandGate.Allow(sender, nameof(CmdReplayWanted))) return;
-        WorldStateManager world = WorldStateManager.Instance;
-        if (world?.ReplaySender == null || GameCore.Instance == null) return;
-        if (wanted) world.ReplaySender.Accept(sender, id, GameCore.Instance.CurrentState);
-        else world.ReplaySender.Cancel(sender);
-    }
 }

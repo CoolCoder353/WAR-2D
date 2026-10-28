@@ -1,0 +1,14 @@
+{
+  "wave": "Saw",
+  "sustain": 0.12,
+  "punch": 0.3,
+  "decay": 0.18,
+  "frequency": 196,
+  "changeAmount": 0.84,
+  "changeTime": 0.14,
+  "vibratoDepth": 0.03,
+  "vibratoSpeed": 7,
+  "lowPass": 0.55,
+  "volume": 0.6,
+  "seed": 31
+}

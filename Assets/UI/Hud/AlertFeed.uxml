@@ -1,3 +1,6 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
-    <ui:VisualElement name="alert-feed" class="alert-feed" picking-mode="Ignore" />
+    <ui:VisualElement name="alert-column" class="alert-column" picking-mode="Ignore">
+        <ui:VisualElement name="next-alert-slot" class="next-alert-slot" picking-mode="Ignore" />
+        <ui:VisualElement name="alert-feed" class="alert-feed" picking-mode="Ignore" />
+    </ui:VisualElement>
 </ui:UXML>

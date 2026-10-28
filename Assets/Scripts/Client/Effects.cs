@@ -154,8 +154,11 @@ public static class Effects
     /// <summary>How far from a shooter's centre its barrel ends, in tiles (the muzzle flash goes there).</summary>
     public const float BarrelReach = 0.45f;
 
-    /// <summary>A tracer from the shooter to the target (with a muzzle flash at the shooter's barrel).</summary>
-    public static void Tracer(Vector3 from, Vector3 to, UnitType attacker = UnitType.Tank)
+    /// <summary>
+    /// A tracer from the shooter to the target (with a muzzle flash at the shooter's barrel). Without <paramref name="line"/>
+    /// (the Tracers setting thinning them out) only the flash and sound play; Artillery shells and flame streams always draw.
+    /// </summary>
+    public static void Tracer(Vector3 from, Vector3 to, UnitType attacker = UnitType.Tank, bool line = true)
     {
         Vector3 heading = to - from;
         heading.z = 0f;
@@ -173,6 +176,7 @@ public static class Effects
             return;
         }
         MuzzleFlash(muzzle, ShotSound(attacker));
+        if (!line && attacker != UnitType.Artillery) return;
         Pool pool = attacker == UnitType.Sniper ? SniperTracers : attacker == UnitType.Artillery ? Shells : Tracers;
         Slot s = Take(pool);
         if (s == null) return;

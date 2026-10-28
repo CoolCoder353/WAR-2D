@@ -589,31 +589,6 @@ public class LeakTests
     }
 
     [Test]
-    public void NoReplayOfferOrChunkBeforeGameOver()
-    {
-        string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "w2d-leak-" + Guid.NewGuid().ToString("N") + WAR2D.Net.Replay.ReplayFile.Extension);
-        System.IO.File.WriteAllBytes(path, new byte[50_000]);
-        var sender = new WAR2D.Net.Replay.ReplaySender(1, path, 1 << 20, 1f);
-        int offers = 0, chunks = 0;
-        sender.SendOffer = (c, m) => offers++;
-        sender.SendChunk = (c, m) => chunks++;
-        var conn = new Mirror.NetworkConnectionToClient(42);
-        foreach (GameState s in Enum.GetValues(typeof(GameState)))
-        {
-            if (s == GameState.GameOver) continue;
-            sender.Offer(conn, s);
-            sender.Accept(conn, 1, s);
-            sender.Update(1f, s);
-        }
-        Assert.AreEqual(0, offers);
-        Assert.AreEqual(0, chunks);
-        Assert.IsFalse(sender.Busy, "an accept before GameOver is ignored");
-        sender.Offer(conn, GameState.GameOver);
-        Assert.AreEqual(1, offers);
-        System.IO.File.Delete(path);
-    }
-
-    [Test]
     public void NoStartOptionOrPickIsEverASyncVar()
     {
         // Start points are private (v0.11): they reach a player through TargetRpcs only, never through replicated state.

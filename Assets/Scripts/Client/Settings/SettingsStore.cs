@@ -4,7 +4,23 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 
-/// <summary>The player's settings (Settings: Graphics, Audio, Controls). Saved as JSON on this machine.</summary>
+/// <summary>When a health bar is drawn over a unit or building.</summary>
+public enum HealthBarMode { Always, DamagedOnly, SelectedOnly }
+
+/// <summary>How many attack tracers are drawn (visual only: the server sends the same events).</summary>
+public enum TracerMode { Full, Reduced, Off }
+
+/// <summary>How soon a hover card shows.</summary>
+public enum TooltipDelayMode { Fast, Normal, Off }
+
+/// <summary>The minimap's size (160, 224, 304 px at 1080p).</summary>
+public enum MinimapSize { Small, Medium, Large }
+
+/// <summary>What the minimap draws on top of the terrain and fog; they change only what is drawn, never what is known.</summary>
+[Flags]
+public enum MinimapLayers { Gems = 1, Ghosts = 2, Army = 4, Buildings = 8, All = 15 }
+
+/// <summary>The player's settings (Settings: Graphics, Audio, Controls, Gameplay). Saved as JSON on this machine.</summary>
 [Serializable]
 public sealed class GameSettings
 {
@@ -14,10 +30,30 @@ public sealed class GameSettings
     public int FpsCap = 144;
     public float Master = 1f, Music = 1f, Sfx = 1f;
     public bool MenuBattle = true;
-    /// <summary>Accept the match replay the host offers after GameOver.</summary>
-    public bool SaveReplays = true;
     public string Palette = Palettes.Standard;
     public bool EdgeScroll = true;
+
+    // ---- Gameplay tab (v0.15 QoL). Every value is clamped by Clamp(); old files without them keep the defaults.
+    /// <summary>HUD and menu scale, 0.75–1.5.</summary>
+    public float UiScale = 1f;
+    /// <summary>A <see cref="HealthBarMode"/>.</summary>
+    public int HealthBars = (int)HealthBarMode.DamagedOnly;
+    /// <summary>A <see cref="TracerMode"/>.</summary>
+    public int Tracers = (int)TracerMode.Full;
+    /// <summary>A <see cref="TooltipDelayMode"/>.</summary>
+    public int TooltipDelay = (int)TooltipDelayMode.Normal;
+    /// <summary>Multipliers on the camera's pan, edge-scroll and zoom speeds (0.5–2) and the Shift pan multiplier (1.5–4).</summary>
+    public float PanSpeed = 1f, EdgeScrollSpeed = 1f, ZoomSpeed = 1f, ShiftMultiplier = 2.5f;
+    /// <summary>Per <see cref="AlertKind"/>: whether it shows in the feed and whether it plays its sound (null or short = all on).</summary>
+    public bool[] AlertShow = AllOn(), AlertSound = AllOn();
+
+    private static bool[] AllOn() { var on = new bool[AlertSlots]; for (int i = 0; i < on.Length; i++) on[i] = true; return on; }
+    /// <summary>Whether demolishing and surrendering ask first (surrender always asks in a match with other humans).</summary>
+    public bool ConfirmDemolish = true, ConfirmSurrender = true;
+    /// <summary>A <see cref="MinimapSize"/>.</summary>
+    public int MinimapScale = (int)MinimapSize.Medium;
+    /// <summary>Minimap layers drawn, a <see cref="MinimapLayers"/> bit set.</summary>
+    public int MinimapFilters = (int)MinimapLayers.All;
     /// <summary>The Input System's binding overrides (<see cref="Rebinding"/>).</summary>
     public string Bindings = "";
 
@@ -62,7 +98,46 @@ public sealed class GameSettings
         foreach (string name in Palettes.Names) known |= name == Palette;
         if (!known) Palette = Palettes.Standard;
         Bindings ??= "";
+        UiScale = Finite(UiScale, 1f, 0.75f, 1.5f);
+        HealthBars = Mathf.Clamp(HealthBars, 0, 2);
+        Tracers = Mathf.Clamp(Tracers, 0, 2);
+        TooltipDelay = Mathf.Clamp(TooltipDelay, 0, 2);
+        PanSpeed = Finite(PanSpeed, 1f, 0.5f, 2f);
+        EdgeScrollSpeed = Finite(EdgeScrollSpeed, 1f, 0.5f, 2f);
+        ZoomSpeed = Finite(ZoomSpeed, 1f, 0.5f, 2f);
+        ShiftMultiplier = Finite(ShiftMultiplier, 2.5f, 1.5f, 4f);
+        MinimapScale = Mathf.Clamp(MinimapScale, 0, 2);
+        MinimapFilters &= (int)MinimapLayers.All;
+        AlertShow = AlertFlags(AlertShow);
+        AlertSound = AlertFlags(AlertSound);
+        // The two alerts that lose games when missed keep at least one of Show and Sound.
+        foreach (AlertKind must in MustHear)
+            if (!AlertShow[(int)must] && !AlertSound[(int)must]) AlertShow[(int)must] = true;
     }
+
+    /// <summary>Alert kinds the settings never let the player silence completely.</summary>
+    public static readonly AlertKind[] MustHear = { AlertKind.UnderAttack, AlertKind.UpkeepUnpaid };
+
+    /// <summary>Slots in the per-alert switches (room for kinds added later).</summary>
+    public const int AlertSlots = 16;
+
+    private static bool[] AlertFlags(bool[] flags)
+    {
+        var fixedUp = new bool[AlertSlots];
+        for (int i = 0; i < fixedUp.Length; i++) fixedUp[i] = flags == null || i >= flags.Length || flags[i];
+        return fixedUp;
+    }
+
+    private static float Finite(float v, float fallback, float min, float max) => float.IsNaN(v) || float.IsInfinity(v) ? fallback : Mathf.Clamp(v, min, max);
+
+    /// <summary>True when alerts of this kind show in the feed.</summary>
+    public bool ShowsAlert(AlertKind kind) => AlertShow == null || (int)kind >= AlertShow.Length || AlertShow[(int)kind];
+
+    /// <summary>True when alerts of this kind play their sound.</summary>
+    public bool SoundsAlert(AlertKind kind) => AlertSound == null || (int)kind >= AlertSound.Length || AlertSound[(int)kind];
+
+    /// <summary>True when the minimap draws this layer.</summary>
+    public bool ShowsLayer(MinimapLayers layer) => (MinimapFilters & (int)layer) != 0;
 
     private static float Clamp01(float v) => float.IsNaN(v) ? 1f : Mathf.Clamp01(v);
 }
@@ -125,7 +200,7 @@ public static class SettingsStore
         }
     }
 
-    /// <summary>Applies the settings: display, frame rate, volume, palette, bindings and the menu battle.</summary>
+    /// <summary>Applies the settings: display, frame rate, volume, palette, bindings, the menu battle and the UI scale.</summary>
     public static void Apply(GameSettings s)
     {
         if (!Application.isBatchMode)
@@ -145,6 +220,7 @@ public static class SettingsStore
         }
         Palettes.Current = s.Palette;
         Rebinding.Load(GameInput.Map, s.Bindings);
+        UiScaling.Apply(s.UiScale);
     }
 
     private static UnityEngine.Audio.AudioMixer mixer;

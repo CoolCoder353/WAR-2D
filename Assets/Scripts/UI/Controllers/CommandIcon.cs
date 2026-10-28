@@ -14,6 +14,8 @@ namespace WAR2D.UI
         GunTurret, Jammer,
         // v0.14: the AI player tag.
         Ai,
+        // v0.15 QoL: Jump to HQ, the quick-select counts, Rally all and the minimap filters.
+        Hq, IdleBuilders, Army, RallyAll, Eye,
     }
 
     /// <summary>

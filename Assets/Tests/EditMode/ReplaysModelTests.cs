@@ -48,8 +48,7 @@ public class ReplaysModelTests
     [Test]
     public void EndScreenReplayLine()
     {
-        Assert.IsNull(EndScreenController.ReplayState(false, null, null, saveReplays: true).text, "no offer yet");
-        Assert.IsNull(EndScreenController.ReplayState(false, null, new ReplayReceiver("x"), saveReplays: false).text, "saving is off");
-        Assert.IsNull(EndScreenController.ReplayState(true, null, null, saveReplays: true).text, "the host isn't recording");
+        Assert.IsNull(EndScreenController.ReplayState(false, null).text, "a joined player has no recording");
+        Assert.IsNull(EndScreenController.ReplayState(true, null).text, "the host isn't recording");
     }
 }

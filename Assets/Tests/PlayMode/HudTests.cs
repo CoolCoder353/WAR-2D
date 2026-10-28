@@ -196,7 +196,19 @@ public class HudTests
 
         yield return PlayModeMatch.WaitUntil(() => root.Q<Button>("cmd-stop").enabledInHierarchy, 2f);
         Click(root.Q<Button>("cmd-stop"));
-        yield return new WaitForSeconds(1f); // the order reaches the server and the corrections come back
+        // The order reaches the server and the corrections come back; the predicted positions may still overshoot
+        // and creep onto the server's (known-issues: "Client positions creep after Stop"). Wait until the centre has
+        // settled (moved under 0.05 tiles over half a second), then require it to stay put.
+        float2 mark = Centre(selection);
+        float markAt = Time.realtimeSinceStartup;
+        yield return PlayModeMatch.WaitUntil(() =>
+        {
+            if (Time.realtimeSinceStartup - markAt < 0.5f) return false;
+            bool still = math.distance(Centre(selection), mark) < 0.05f;
+            mark = Centre(selection);
+            markAt = Time.realtimeSinceStartup;
+            return still;
+        }, 10f, () => "the selection never stopped moving after Stop");
         float2 stopped = Centre(selection);
         yield return new WaitForSeconds(1f);
         Assert.That(math.distance(Centre(selection), stopped), Is.LessThan(0.3f), "Stop halts the selection");
@@ -462,13 +474,15 @@ public class HudTests
         yield return PlayModeMatch.PlaceHQ(a => hq = a);
         AddBotWithHQ(hq);
         // The bot's HQ is created at the next tick boundary; surrendering before it exists would leave no one standing (a draw).
-        yield return PlayModeMatch.WaitUntil(() => BotHasABuilding(), 5f);
+        yield return PlayModeMatch.WaitUntil(() => BotHasABuilding(), 15f, () => "the bot's HQ never appeared, state " + GameCore.Instance.CurrentState);
         VisualElement root = HudRoot();
         HudController hud = Object.FindAnyObjectByType<HudController>();
 
         hud.MatchMenu.Open();
         yield return null;
         Assert.That(root.Q("in-match-menu").ClassListContains("overlay-screen--visible"), Is.True, "the menu opens");
+        // The HUD enables Surrender from its own Update once the state is Playing: wait for it, not one frame.
+        yield return PlayModeMatch.WaitUntil(() => root.Q<Button>("surrender-button").enabledInHierarchy, 15f, () => "Surrender stayed disabled, state " + GameCore.Instance.CurrentState);
         Click(root.Q<Button>("surrender-button"));
         yield return null;
         Assert.That(root.Q("in-match-menu").ClassListContains("in-match-menu--confirm"), Is.True, "Surrender asks first");

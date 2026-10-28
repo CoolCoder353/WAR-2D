@@ -56,6 +56,69 @@ namespace WAR2D.UI
             root.Q<Button>("back-button").clicked += () => BackClicked?.Invoke();
             root.Q<Button>("cancel-button").clicked += () => CancelClicked?.Invoke();
             root.Q<Button>("join-button").clicked += Join;
+
+            rejoinBlock = root.Q("rejoin-block");
+            rejoinCard = root.Q("rejoin-card");
+            rejoinTitle = root.Q<Label>("rejoin-title");
+            rejoinMatch = root.Q<Label>("rejoin-match");
+            rejoinTime = root.Q<Label>("rejoin-time");
+            rejoinFailed = root.Q<Label>("rejoin-failed");
+            rejoinSwatch = root.Q("rejoin-swatch");
+            rejoinFill = root.Q("rejoin-bar-fill");
+            rejoinButton = root.Q<Button>("rejoin-button");
+            rejoinCancel = root.Q<Button>("rejoin-cancel");
+            VisualElement icon = root.Q("rejoin-icon");
+            if (icon != null) icon.style.backgroundImage = new StyleBackground(WAR2D.Art.PixelIcons.Texture("IconReconnect", 2));
+            if (rejoinButton != null) rejoinButton.clicked += () => RejoinClicked?.Invoke();
+            if (rejoinCancel != null) rejoinCancel.clicked += () => RejoinCancelClicked?.Invoke();
+        }
+
+        // v0.15 item 19: the Rejoin card on the first row (Figma E2 124:15855, states 135:1509 / 135:1524 / 135:1546).
+        private readonly VisualElement rejoinBlock, rejoinCard, rejoinSwatch, rejoinFill;
+        private readonly Label rejoinTitle, rejoinMatch, rejoinTime, rejoinFailed;
+        private readonly Button rejoinButton, rejoinCancel;
+        private int rejoinColourClass = -1;
+
+        /// <summary>Raised by the Rejoin card's Rejoin button.</summary>
+        public event Action RejoinClicked;
+
+        /// <summary>Raised by the Rejoin card's Cancel button (while rejoining).</summary>
+        public event Action RejoinCancelClicked;
+
+        /// <summary>
+        /// Shows the Rejoin card while a dropped match can be rejoined (<paramref name="secondsLeft"/> of <paramref name="window"/>),
+        /// in its Rejoining… state with Cancel when <paramref name="rejoining"/>, in the danger style in the last 10 s; hides it when
+        /// <paramref name="available"/> is false. <paramref name="host"/> and <paramref name="hostColour"/> name the match (null and -1 when unknown).
+        /// </summary>
+        public void ShowRejoin(bool available, float secondsLeft, float window, bool rejoining, string host, int hostColour)
+        {
+            if (rejoinBlock == null) return;
+            rejoinBlock.EnableInClassList("hidden", !available);
+            if (!available) { ShowRejoinFailed(null); return; }
+            rejoinCard.EnableInClassList("reconnect--danger", ReconnectText.IsDanger(secondsLeft));
+            rejoinTitle.text = ReconnectText.RejoinTitle(rejoining, host);
+            rejoinMatch.text = ReconnectText.MatchOf(host);
+            rejoinTime.text = ReconnectText.RejoinLeft(secondsLeft);
+            rejoinFill.style.width = Length.Percent(ReconnectText.Fraction(secondsLeft, window) * 100f);
+            int colour = hostColour < 0 ? -1 : hostColour % 8 + 1;
+            if (colour != rejoinColourClass)
+            {
+                if (rejoinColourClass > 0) rejoinSwatch.RemoveFromClassList("player-" + rejoinColourClass);
+                else rejoinSwatch.RemoveFromClassList("player-1");
+                rejoinColourClass = colour;
+                rejoinSwatch.AddToClassList(colour > 0 ? "player-" + colour : "swatch--eliminated");
+                if (colour > 0) rejoinSwatch.RemoveFromClassList("swatch--eliminated");
+            }
+            rejoinButton.EnableInClassList("hidden", rejoining);
+            rejoinCancel.EnableInClassList("hidden", !rejoining);
+        }
+
+        /// <summary>Says under the Rejoin card that the last attempt failed; null clears it.</summary>
+        public void ShowRejoinFailed(string message)
+        {
+            if (rejoinFailed == null) return;
+            rejoinFailed.text = message ?? "";
+            rejoinFailed.EnableInClassList("play-panel__state--visible", !string.IsNullOrEmpty(message));
         }
 
         /// <summary>Shows the friends' list: the rows, or the empty state when there are none.</summary>

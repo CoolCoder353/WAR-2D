@@ -27,7 +27,13 @@ namespace WAR2D.UI
             note = root.Q<Label>("match-menu-note");
             root.Q<Button>("resume-button").clicked += Close;
             root.Q<Button>("match-settings-button").clicked += () => SettingsClicked?.Invoke();
-            root.Q<Button>("surrender-button").clicked += () => screen.AddToClassList("in-match-menu--confirm");
+            root.Q<Button>("surrender-button").clicked += () =>
+            {
+                // Settings → Gameplay can skip the confirm, except where a misclick would give up for a side (SettingsController.SurrenderAlwaysConfirms).
+                bool locked = SettingsController.SurrenderAlwaysConfirms != null && SettingsController.SurrenderAlwaysConfirms();
+                if (!SettingsStore.Current.ConfirmSurrender && !locked) { Close(); SurrenderConfirmed?.Invoke(); return; }
+                screen.AddToClassList("in-match-menu--confirm");
+            };
             root.Q<Button>("surrender-cancel").clicked += () => screen.RemoveFromClassList("in-match-menu--confirm");
             root.Q<Button>("surrender-confirm").clicked += () => { Close(); SurrenderConfirmed?.Invoke(); };
             root.Q<Button>("leave-match-button").clicked += () => { Close(); LeaveClicked?.Invoke(); };

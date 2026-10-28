@@ -1,13 +1,34 @@
-<ui:UXML xmlns:ui="UnityEngine.UIElements">
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:war="WAR2D.UI">
     <ui:VisualElement name="top-bar" class="top-bar">
         <ui:VisualElement name="players" class="top-bar__players" />
         <ui:VisualElement name="resources" class="top-bar__resources">
             <ui:Label text="Resources" class="text--secondary" />
             <ui:Label name="resources-value" text="0" class="text text--readout top-bar__resources-value" />
-            <ui:Label name="income-value" text="+0/s income" class="text--success" />
-            <ui:Label name="upkeep-value" text="−0/s upkeep" class="text--secondary" />
+            <ui:Label name="net-value" text="+0/s net" class="top-bar__net top-bar__net--healthy" />
+            <ui:Label name="net-select" text="· select" class="top-bar__net-select" />
+            <ui:Label name="income-value" text="+0 income" class="text--secondary top-bar__breakdown" />
+            <ui:Label name="upkeep-value" text="−0 upkeep" class="text--secondary top-bar__breakdown" />
+        </ui:VisualElement>
+        <ui:VisualElement name="quick-select" class="quick-select">
+            <ui:Button name="select-idle-builders" class="quick-select__chip">
+                <war:CommandIcon icon="IdleBuilders" class="quick-select__icon" />
+                <ui:Label name="select-idle-builders-count" text="0" class="quick-select__count quick-select__count--gold" />
+                <ui:Label text="idle" class="quick-select__unit" />
+            </ui:Button>
+            <ui:Button name="select-all-builders" class="quick-select__chip">
+                <war:CommandIcon icon="Builder" class="quick-select__icon" />
+                <ui:Label name="select-all-builders-count" text="0" class="quick-select__count" />
+            </ui:Button>
+            <ui:Button name="select-army" class="quick-select__chip">
+                <war:CommandIcon icon="Army" class="quick-select__icon" />
+                <ui:Label name="select-army-count" text="0" class="quick-select__count" />
+            </ui:Button>
         </ui:VisualElement>
         <ui:VisualElement name="actions" class="top-bar__actions">
+            <ui:Button name="hq-button" class="button top-bar__hq">
+                <war:CommandIcon icon="Hq" class="top-bar__hq-icon" />
+                <ui:Label text="HQ" class="top-bar__hq-label" />
+            </ui:Button>
             <ui:Button name="gift-button" text="Gift" class="button" />
             <ui:Button name="diplomacy-button" text="Diplomacy" class="button" />
             <ui:Button name="menu-button" text="Menu (Esc)" class="button" />

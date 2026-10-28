@@ -244,7 +244,9 @@
 .minimap__pings { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }
 
 /* Alert feed (Figma: v0.12 Fixes, HUD – alerts and squad hint): right side, above the command card (AlertFeedController sets bottom) */
-.alert-feed { position: absolute; right: var(--space-4); bottom: 212px; align-items: flex-end; }
+.alert-column { position: absolute; right: var(--space-4); bottom: 212px; align-items: flex-end; } /* v0.15: the next-alert bar over the feed */
+.alert-feed { align-items: flex-end; }
+.next-alert-slot { align-items: flex-end; }
 .alert { flex-direction: row; align-items: center; height: 34px; padding: 0 12px; margin-top: 6px; background-color: var(--color-surface-panel); border-width: 2px; border-color: var(--color-border); border-radius: var(--radius-sm); }
 .alert__stripe { width: 4px; height: 20px; margin-right: 10px; }
 .alert--danger .alert__stripe { background-color: var(--color-danger); }
@@ -571,3 +573,106 @@
 .unity-base-dropdown__label { font-size: var(--font-size-12); color: var(--color-text-primary); }
 .unity-base-dropdown__checkmark { -unity-background-image-tint-color: var(--color-accent); }
 .diplomacy-row__name .player-name { flex-wrap: wrap; }
+
+/* ---------- v0.15 QoL HUD (Figma: v0.15 QoL – redesign, node 116:2; docs/ux/v0.15-qol-figma.md) ---------- */
+/* The shared hover card (command-tooltip, frame 3) and the key chip (component 120:402). */
+.hover-card { position: absolute; display: none; flex-direction: column; min-width: 160px; max-width: 280px; padding: 10px 12px 4px 12px; background-color: var(--color-surface-base); border-width: 1px; border-color: var(--color-border); border-radius: var(--radius-sm); }
+.hover-card--open { display: flex; }
+.hover-card > * { margin: 0 0 6px 0; }
+.hover-card__head { flex-direction: row; align-items: center; }
+.hover-card__title { flex-grow: 1; flex-shrink: 1; font-size: var(--font-size-16); color: var(--color-text-primary); padding: 0; margin: 0 12px 0 0; white-space: normal; }
+.key-chip { flex-direction: row; flex-shrink: 0; padding: 1px 6px; background-color: var(--color-surface-base); border-width: 1px; border-color: var(--color-border); border-radius: var(--radius-sm); }
+.key-chip__text { font-size: var(--font-size-12); color: var(--color-readout); padding: 0; margin: 0; white-space: nowrap; }
+.hover-card__role { font-size: var(--font-size-12); color: var(--color-text-primary); padding: 0; white-space: normal; }
+.hover-card__pairs { flex-direction: row; flex-wrap: wrap; }
+.hover-card__pair { flex-direction: row; align-items: flex-end; margin-right: 10px; }
+.hover-card__label { font-size: var(--font-size-12); color: var(--color-text-secondary); padding: 0; margin: 0 4px 0 0; }
+.hover-card__value { font-size: var(--font-size-12); color: var(--color-text-primary); padding: 0; margin: 0; }
+.hover-card__value--cost { color: var(--color-readout); }
+.hover-card__value--danger { color: var(--color-danger); }
+.hover-card__line { font-size: var(--font-size-12); color: var(--color-text-secondary); padding: 0; margin: 0 0 6px 0; white-space: normal; }
+.hover-card__warning { font-size: var(--font-size-12); color: var(--color-warning); padding: 0; white-space: normal; }
+.hover-card__reason { font-size: var(--font-size-12); color: var(--color-danger); padding: 0; white-space: normal; }
+
+/* Top bar: net income as the main rate, income and upkeep as the breakdown (frame 4). */
+.top-bar__net { font-size: var(--font-size-14); padding: 0; -unity-font-style: normal; }
+.top-bar__net--healthy { color: var(--color-success); }
+.top-bar__net--negative { color: var(--color-warning); }
+.top-bar__net--danger { color: var(--color-danger); }
+.top-bar__net-select { display: none; font-size: var(--font-size-12); color: var(--color-danger); padding: 0; }
+.top-bar__net-select:hover { color: var(--color-text-primary); }
+.top-bar__breakdown { font-size: var(--font-size-12); padding: 0; }
+.top-bar__resources-value { padding: 0 4px; border-width: 1px; border-color: rgba(0, 0, 0, 0); }
+.top-bar__resources-value--danger { border-color: var(--color-danger); }
+/* Quick-select counts right of the resources (frame 1). */
+.quick-select { flex-direction: row; align-items: center; margin-left: var(--space-3); }
+.quick-select__chip { flex-direction: row; align-items: center; height: 29px; padding: 0 7px; margin: 0 4px 0 0; background-color: var(--color-surface-panel); border-width: 1px; border-color: var(--color-border); border-radius: var(--radius-sm); }
+.quick-select__chip:hover { background-color: var(--color-surface-raised); border-color: var(--color-text-primary); }
+.quick-select__chip--pulse { border-color: var(--color-readout); border-width: 2px; }
+.quick-select__icon { width: 16px; height: 16px; margin-right: 6px; }
+.quick-select__count { font-size: var(--font-size-14); color: var(--color-text-primary); padding: 0; margin: 0; }
+.quick-select__count--gold { color: var(--color-readout); }
+.quick-select__unit { font-size: var(--font-size-12); color: var(--color-text-secondary); padding: 0; margin: 0 0 0 3px; }
+.quick-select__chip:disabled .quick-select__count, .quick-select__chip:disabled .quick-select__unit { color: var(--color-text-disabled); }
+.quick-select__chip:disabled .command-icon { -unity-background-image-tint-color: var(--color-text-disabled); }
+/* Jump to HQ, first in the actions row (frame 2). */
+.top-bar__hq { flex-direction: row; align-items: center; }
+.top-bar__hq-icon { width: 16px; height: 16px; margin-right: 6px; }
+.top-bar__hq-label { font-size: var(--font-size-14); color: var(--color-text-primary); padding: 0; margin: 0; }
+/* Reconnect (item 19): an away player's timer after the greyed name (TopBarController.SetAway). */
+.top-bar__away { font-size: var(--font-size-12); color: var(--color-text-secondary); padding: 0; margin-left: 6px; }
+
+/* Command card: the Rally point row with Rally all (frame 8). */
+.production__rally { padding: var(--space-2) var(--space-3); background-color: var(--color-surface-raised); border-width: 1px; border-color: var(--color-border); }
+.production__rally-text { flex-grow: 1; flex-shrink: 1; margin-right: var(--space-3); }
+.production__rally-title { padding: 0; margin: 0 0 2px 0; }
+.production__rally-text > Label { white-space: normal; }
+.production__rally-all { width: 64px; margin: 0; }
+.production__rally-all .command-button__key { white-space: nowrap; }
+
+/* Selection panel: selected / on the map, and the Map-wide tag (frame 5). */
+.selection-panel__title { flex-direction: row; align-items: center; }
+.selection-panel__title-text { font-size: var(--font-size-14); color: var(--color-text-primary); padding: 0; margin: 0; }
+.map-wide-tag { display: none; font-size: var(--font-size-12); color: var(--color-accent); padding: 0 6px; margin: 0 0 0 10px; border-width: 1px; border-color: var(--color-accent); }
+.selection-type__total { font-size: var(--font-size-12); color: var(--color-text-secondary); padding: 0; margin: 0; }
+
+/* Squad bar: a building group shows the producer's icon and count (frame 6). */
+.squad__line { flex-direction: row; align-items: center; height: 15px; flex-shrink: 0; }
+.squad__line > * { flex-shrink: 0; }
+.squad__icon { width: 12px; height: 12px; margin-right: 2px; display: none; }
+.squad__count--group { color: var(--color-text-primary); }
+
+/* Minimap: eye popover and S/M/L in the title bar (frame 13). The frame's size is set by MinimapController. */
+.minimap__title { flex-direction: row; align-items: center; padding-right: 6px; }
+.minimap__title-text { flex-grow: 1; font-size: var(--font-size-14); color: var(--color-text-primary); padding: 0; margin: 0; }
+.minimap__eye { width: 24px; height: 20px; padding: 0; margin: 0 6px 0 0; align-items: center; justify-content: center; background-color: var(--color-surface-base); border-width: 1px; border-color: var(--color-border); border-radius: var(--radius-sm); }
+.minimap__eye:hover { border-color: var(--color-text-primary); }
+.minimap__eye--filtered { border-color: var(--color-readout); }
+.minimap__eye--open { background-color: var(--color-accent); }
+.minimap__eye--open .command-icon { -unity-background-image-tint-color: var(--color-on-accent); }
+.minimap__eye-icon { width: 16px; height: 16px; }
+.minimap__scale { flex-direction: row; }
+.minimap__size { width: 18px; height: 20px; padding: 0; margin: 0 0 0 2px; font-size: var(--font-size-12); color: var(--color-text-secondary); background-color: var(--color-surface-base); border-width: 1px; border-color: var(--color-border); border-radius: var(--radius-sm); -unity-text-align: middle-center; }
+.minimap__size:hover { border-color: var(--color-text-primary); }
+.minimap__size--on { background-color: var(--color-accent); color: var(--color-on-accent); }
+.minimap-popover { position: absolute; display: none; width: 200px; padding: 10px 12px; background-color: var(--color-surface-base); border-width: 1px; border-color: var(--color-border); }
+.minimap-popover--open { display: flex; }
+.minimap-popover__title { padding: 0; margin: 0 0 6px 0; }
+.minimap-popover__row { flex-direction: row; align-items: center; height: 24px; }
+.minimap-popover__swatch { width: 10px; height: 10px; margin-right: 8px; }
+.minimap-popover__swatch--small { width: 4px; height: 4px; margin: 3px 11px 3px 3px; }
+.minimap-popover__label { flex-grow: 1; font-size: var(--font-size-12); color: var(--color-text-primary); padding: 0; margin: 0; }
+.minimap-popover__label--off { color: var(--color-text-secondary); }
+.minimap-popover__row .switch { min-width: 0; margin: 0; }
+.minimap-popover__row .switch__label { display: none; }
+
+/* Alert feed: the next-alert bar and visited rows (frame 11). */
+.next-alert { flex-direction: row; align-items: center; height: 30px; padding: 0 8px; margin: 6px 0 0 0; background-color: var(--color-surface-panel); border-width: 2px; border-color: var(--color-border); border-radius: var(--radius-sm); }
+.next-alert:hover { border-color: var(--color-text-primary); }
+.next-alert > * { margin-right: 8px; }
+.next-alert__text { font-size: var(--font-size-14); color: var(--color-text-primary); padding: 0; }
+.next-alert__count { font-size: var(--font-size-12); color: var(--color-on-accent); background-color: var(--color-readout); padding: 0 6px; margin-right: 0; }
+.alert--visited { opacity: 0.6; }
+
+/* The HUD's cursor tag ("No idle Builders", "Rally all producers (4)"). */
+.cursor-notice { color: var(--color-text-primary); border-color: var(--color-border); }

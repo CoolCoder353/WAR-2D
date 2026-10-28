@@ -113,6 +113,81 @@ namespace WAR2D.UI
         /// <summary>Raised when anything shown changed.</summary>
         public event Action Changed;
 
+        // ---- v0.15 QoL (Figma v0.15 QoL – redesign, frames 5 and 6) ----
+
+        private readonly int[] slotBuildings = new int[Sim.Squads.Count];
+        private readonly BuildingType[] slotBuildingTypes = new BuildingType[Sim.Squads.Count];
+        private readonly List<(UnitType type, int total)> totals = new List<(UnitType, int)>();
+        private readonly List<(UnitType type, int total)> scratchTotals = new List<(UnitType, int)>();
+
+        /// <summary>True while the selection is exactly what a map-wide type selection picked (the "Map-wide" tag).</summary>
+        public bool MapWide { get; private set; }
+
+        /// <summary>How many buildings each squad slot holds as a building group (0 for a unit squad or an empty slot).</summary>
+        public IReadOnlyList<int> SlotBuildings => slotBuildings;
+
+        /// <summary>The kind of the first building in each building-group slot (its icon on the squad bar).</summary>
+        public IReadOnlyList<BuildingType> SlotBuildingTypes => slotBuildingTypes;
+
+        /// <summary>How many own units of a selected type the client knows of on the whole map (the "10 / 1,840" on a type chip).</summary>
+        public int TotalOf(UnitType type)
+        {
+            foreach ((UnitType t, int total) in totals) if (t == type) return total;
+            return 0;
+        }
+
+        /// <summary>Raised by <see cref="SelectEverywhere"/>: select every own unit of this type on the map.</summary>
+        public event Action<UnitType> EverywhereRequested;
+
+        /// <summary>A type chip double-clicked: every own unit of the type anywhere on the map.</summary>
+        public void SelectEverywhere(UnitType type) => EverywhereRequested?.Invoke(type);
+
+        /// <summary>Sets the map-wide flag and the per-type totals of the selected types.</summary>
+        public void SetQuick(bool mapWide, IReadOnlyList<(UnitType type, int total)> typeTotals)
+        {
+            bool same = mapWide == MapWide && typeTotals.Count == totals.Count;
+            for (int i = 0; same && i < totals.Count; i++) same = totals[i] == typeTotals[i];
+            if (same) return;
+            MapWide = mapWide;
+            totals.Clear();
+            for (int i = 0; i < typeTotals.Count; i++) totals.Add(typeTotals[i]);
+            Changed?.Invoke();
+        }
+
+        /// <summary>Sets the building-group slots: how many buildings each holds and the first one's kind.</summary>
+        public void SetSlotBuildings(IReadOnlyList<int> counts, IReadOnlyList<BuildingType> types)
+        {
+            if (counts == null || types == null || counts.Count != slotBuildings.Length || types.Count != slotBuildings.Length) return;
+            bool same = true;
+            for (int i = 0; i < slotBuildings.Length; i++) same &= slotBuildings[i] == counts[i] && slotBuildingTypes[i] == types[i];
+            if (same) return;
+            for (int i = 0; i < slotBuildings.Length; i++)
+            {
+                slotBuildings[i] = counts[i];
+                slotBuildingTypes[i] = types[i];
+            }
+            Changed?.Invoke();
+        }
+
+        private readonly int[] pulledSlotCounts = new int[Sim.Squads.Count];
+        private readonly BuildingType[] pulledSlotTypes = new BuildingType[Sim.Squads.Count];
+
+        /// <summary>Reads the v0.15 selection data: building-group slots, the map-wide flag and the selected types' map totals.</summary>
+        private void PullQuick(Selection selection, int ownerId)
+        {
+            var known = WAR2D.Net.Replication.ClientBuildings.Current.Entries;
+            for (int i = 0; i < pulledSlotCounts.Length; i++)
+            {
+                pulledSlotCounts[i] = selection.BuildingGroupCount(i);
+                int first = pulledSlotCounts[i] > 0 ? selection.FirstOfBuildingGroup(i) : 0;
+                pulledSlotTypes[i] = first != 0 && known.TryGetValue(first, out var entry) ? entry.Data.buildingType : BuildingType.None;
+            }
+            SetSlotBuildings(pulledSlotCounts, pulledSlotTypes);
+            scratchTotals.Clear();
+            foreach ((UnitType type, int _) in byType) scratchTotals.Add((type, selection.CountEverywhere(type, ownerId)));
+            SetQuick(selection.MapWide, scratchTotals);
+        }
+
         // ---- The selected buildings in the selection panel (v0.13, Figma: Selected building – v0.13) ----
 
         private readonly List<(BuildingType type, int count)> buildingKinds = new List<(BuildingType, int)>();
@@ -341,6 +416,7 @@ namespace WAR2D.UI
             PullBuildingRows(selection, known);
             SetArmed(commander.ArmedOrder);
             SetSquadCounts(local.SquadCounts);
+            PullQuick(selection, BuildingData.UIntToInt(local.netId));
         }
 
         /// <summary>The selected own buildings as the selection panel reads them (health, upkeep, unpaid, firing).</summary>

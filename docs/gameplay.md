@@ -56,6 +56,13 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | `F`, then click (Builders) | **Repair** the damaged own or allied building or wall you click (the command card has the same button) |
 | `G`, then click (Diggers) | **Dig** toward the rock, gem or wall you click |
 | `G`, then drag a box (Diggers) | **Dig an area**: the selected Diggers share out the rock, gems and enemy walls in the box (lit up while you drag, with a count), each taking the nearest tile no other has, until it is clear. Your own and allies' walls are left alone. At most `Orders/MaxDigArea` (24) tiles a side. Shift queues it and keeps Dig armed; right-click or Esc cancels the drag. |
+| `.` | Select your **idle Builders** (not moving, with no own blueprint or damaged own building within 5 tiles; the client cannot see Builder work, so this is a guess). Pressed again it centres the camera on the next one. `Ctrl` + `.` selects every Builder |
+| `,` | Select your **army**: every own unit that can attack. Pressed again it adds Diggers and Suicide bombers |
+| `Backspace` | Centre the camera on your HQ; twice quickly it also selects it |
+| `Space` | Centre the camera on the newest alert you have not visited yet |
+| `Ctrl` + double-click a unit | Select every own unit of that type **anywhere on the map** |
+| `Ctrl` + `1`–`0` (buildings selected) | Save a **building group** in that slot (kept on this client only; assigning units to the slot replaces it). `1`–`0` selects it, twice centres the camera |
+| `Ctrl` + right-click (producers selected) | **Rally all** your producers to the cursor. A rally onto an own blueprint makes new Builders build it |
 | `Delete` (own buildings selected) | Cancel a blueprint (full refund) or demolish a finished building (half back, after a confirm). The HQ can't be removed. |
 | Minimap: left-click or drag | Move the camera there |
 | Minimap: right-click | Send the selection there (Move, or the armed Attack-move; `Shift` queues) |
@@ -66,7 +73,7 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | Right-click with only spawners selected | Set their **rally point**: each new unit drives there. The flag shows while the spawner is selected; only you see it |
 | `` ` `` (backquote) | Toggle the developer console |
 
-In **Settings → Controls** you can rebind Select, Move, Attack-move, Stop, Hold, Repair, Dig, Cancel, Queue order (Shift), the squad-assign modifier (Ctrl), Rotate and Menu: click a binding, press the new key (Esc cancels). A key already in use offers to swap the two bindings. Bindings are saved with the settings. Panning (arrows), the squad number keys, zoom, middle-drag and Shift for fast panning and adding to a box selection are fixed.
+In **Settings → Controls** you can rebind Select, Move, Attack-move, Stop, Hold, Repair, Dig, Cancel, Queue order (Shift), the squad-assign modifier (Ctrl), Rotate, Menu, Select idle Builders, Select army, Jump to HQ and Next alert: click a binding, press the new key (Esc cancels). A key already in use offers to swap the two bindings. Bindings are saved with the settings. Panning (arrows), the squad number keys, zoom, middle-drag and Shift for fast panning and adding to a box selection are fixed.
 
 ## Settings
 
@@ -75,9 +82,10 @@ Settings (main menu, or the in-match menu) apply at once and are saved on this m
 - **Graphics:** resolution (1280×720, 1366×768, 1600×900, 1920×1080, 2560×1080, 2560×1440, 3440×1440, 3840×2160, plus your monitor's own size and the current one if they are not listed), fullscreen, VSync, FPS cap (60, 120, 144, none), the battle behind the main menu, and the **colour palette**: Standard, Colourblind (Okabe–Ito; every pair at least ΔE2000 20 apart) or High contrast (every player colour at least 4.5:1 against the map floor). The palette recolours units, buildings, the minimap and the whole UI at once.
 - **Audio:** master, music and sound-effect volumes (the `Main` mixer's groups).
 - **Controls:** rebinding and edge scrolling.
+- **Gameplay (v0.15):** UI scale (0.75–1.5, applies at once), health bars (always, damaged only, selected only), attack tracers (full, reduced, off), hover-card delay, camera pan / edge-scroll / zoom speed and the Shift pan multiplier, confirm before demolishing or surrendering (surrender always asks in a match with other humans), the minimap's size and layers (gems, ghosts, army, buildings), and which alerts show and sound. Under Attack and Upkeep unpaid can never be switched off completely.
 - **Reset to defaults** restores everything, bindings included.
 
-Camera settings (speed, zoom range, shift multiplier) are in `Assets/Character_Settings.asset`; the zoom steps are in `CameraZoom`.
+Base camera values (speed, zoom range) are in `Assets/Character_Settings.asset` and the zoom steps in `CameraZoom`; the Gameplay tab scales them.
 
 ## Map and tiles
 
@@ -219,6 +227,7 @@ All numbers are starting values in `GameConfig.xml` (`Siege`, `Units`, `Building
 - If nobody has an HQ, it's a **draw**, and everyone sees a Draw screen.
 - **Esc** (or Menu on the top bar) opens the **in-match menu**: Resume, Settings, Surrender and Leave match. **Pause (v0.14):** when you're the only human connected (AIs don't count), the menu pauses the match while it, or Settings opened from it, is open: it reads "Menu · Paused" with a "Paused · You're the only player" banner, and the tick, income, upkeep, production, the AI, win/loss checks, the countdown, the HQ pick timer and every cooldown stop. Resume (or Esc) continues. With two or more humans nothing pauses and the menu says so. There is no speed control. A replay of a paused match plays straight through. **Surrender** asks to confirm, then eliminates you exactly as losing your HQ.
 - **Gifting.** Gift (top bar) sends resources to any other live player, ally or enemy (marked from whom you attack): an amount from 1 up to what you have, one gift every 5 s (`Gifting/CooldownSeconds`). It is taken from you and given at once; only you and the recipient are told (the recipient gets an alert).
+- **Reconnecting (v0.15).** If your connection drops mid-match, your seat is kept for `Match/ReconnectSeconds` (60 s). You get a rejoin ticket when the match starts; the Play screen offers **Rejoin** while it is valid. While you are away your economy is frozen (no income, no upkeep, nothing charged), your units hold position, your producers pause, gifts to or from you are refused, and the others see you marked away with a countdown. Rejoining resends the world you can see. If the time runs out you are out, as if you had left. Leaving on purpose never keeps a seat.
 - When a player disconnects mid-match, they're removed from the player list, their units and buildings are destroyed, and the lobby UI updates. If the **server owner** leaves, ownership passes to another player; if the host itself leaves, the server shuts down and everyone returns to the main menu.
 
 ## AI players (v0.14)
@@ -238,4 +247,4 @@ AI players run on the host and play by a player's rules: they see only what thei
 
 ## Replays (v0.10)
 
-The host records every match. When it ends, each player whose **Save replays** setting is on (Settings › Graphics, on by default) receives the recording in the background; it is kept in the local Replays folder (the newest 50). A replay shows the whole match without fog: every player, every unit and building, bombs included. The end screen shows "Saving replay… n %" while it arrives, then "Replay saved". **Replays** on the main menu lists them newest first (date, map, mode, players, length, size) with **Watch** and **Delete** (asks first). The viewer has play/pause, speeds 0.5× to 8×, a seek bar (seeking back replays from the start, quietly) and each player's resources and units.
+The host records every match. When it ends, it is kept in the host's local Replays folder (the newest 50); joined players get no copy and there is no setting for it. A replay shows the whole match without fog: every player, every unit and building, bombs included. The end screen shows "Saving replay… n %" while it arrives, then "Replay saved". **Replays** on the main menu lists them newest first (date, map, mode, players, length, size) with **Watch** and **Delete** (asks first). The viewer has play/pause, speeds 0.5× to 8×, a seek bar (seeking back replays from the start, quietly) and each player's resources and units.

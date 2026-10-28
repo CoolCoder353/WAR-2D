@@ -49,6 +49,15 @@ public static class GameInput
     /// <summary>Held while ordering to queue the order after the current one (Shift).</summary>
     public static InputAction QueueModifier => Map["QueueModifier"];
 
+    /// <summary>Selects the idle Builders (.); with the assign modifier held, every Builder.</summary>
+    public static InputAction SelectIdleBuilders => Map["SelectIdleBuilders"];
+    /// <summary>Selects the army: every own unit that can attack (,). Pressed again it adds Diggers and Suicide bombers.</summary>
+    public static InputAction SelectArmy => Map["SelectArmy"];
+    /// <summary>Centres the camera on your HQ; twice quickly it also selects it (Backspace).</summary>
+    public static InputAction JumpToHq => Map["JumpToHq"];
+    /// <summary>Centres the camera on the newest alert you have not visited (Space).</summary>
+    public static InputAction NextAlert => Map["NextAlert"];
+
     /// <summary>Squad keys: index 0 is key 1, index 9 is key 0.</summary>
     public static InputAction Squad(int index) => Map[$"Squad{(index + 1) % 10}"];
 
@@ -129,6 +138,10 @@ public static class GameInput
         map.AddAction("Cancel", InputActionType.Button, "<Keyboard>/delete");
         map.AddAction("QueueModifier", InputActionType.Button, "<Keyboard>/shift");
         map.AddAction("Menu", InputActionType.Button, "<Keyboard>/escape");
+        map.AddAction("SelectIdleBuilders", InputActionType.Button, "<Keyboard>/period");
+        map.AddAction("SelectArmy", InputActionType.Button, "<Keyboard>/comma");
+        map.AddAction("JumpToHq", InputActionType.Button, "<Keyboard>/backspace");
+        map.AddAction("NextAlert", InputActionType.Button, "<Keyboard>/space");
         map.AddAction("DragPan", InputActionType.Button, "<Mouse>/middleButton");
         for (int key = 0; key <= 9; key++) map.AddAction($"Squad{key}", InputActionType.Button, $"<Keyboard>/{key}");
 
