@@ -170,6 +170,11 @@
 /* v0.7 command card (Figma: Command card – v0.7) */
 .command-button__cost { color: var(--color-readout); }
 .command-button:disabled .command-button__cost { color: var(--color-text-disabled); }
+/* v0.15.1 card-slot key, top-left of build and production buttons (Figma v0.15.1 Hotkeys and polish, H1) */
+.command-button__hotkey { position: absolute; left: 3px; top: 0; font-size: var(--font-size-12); -unity-font-style: normal; color: var(--color-text-secondary); padding: 0; margin: 0; }
+.command-button:hover .command-button__hotkey { color: var(--color-text-primary); }
+.command-button:disabled .command-button__hotkey { color: var(--color-text-disabled); }
+.command-button--active .command-button__hotkey { color: var(--color-on-accent); }
 .command-card__hint { margin-top: var(--space-2); white-space: normal; max-width: 356px; }
 .command-card--builders { width: 452px; } /* v0.12: seven build buttons (Figma Command card – v0.12) */
 .production__unit { width: 56px; }

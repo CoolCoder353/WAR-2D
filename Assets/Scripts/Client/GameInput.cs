@@ -58,6 +58,22 @@ public static class GameInput
     /// <summary>Centres the camera on the newest alert you have not visited (Space).</summary>
     public static InputAction NextAlert => Map["NextAlert"];
 
+    /// <summary>
+    /// v0.15.1 card slots (Figma <c>v0.15.1 Hotkeys and polish</c>, H1–H3): the command card's top row (Make with Builders, the unit
+    /// types with producers) is <c>CardTop1</c>–<c>CardTop4</c> (Q W E T) and its bottom row (Defend) <c>CardBottom1</c>–<c>CardBottom5</c>
+    /// (Z X C V N), skipping R (Rotate) and B (Detonate).
+    /// </summary>
+    public const int CardTopSlots = 4, CardBottomSlots = 5;
+
+    /// <summary>The top-row card slot <paramref name="slot"/> (0-based).</summary>
+    public static InputAction CardTop(int slot) => Map[$"CardTop{slot + 1}"];
+
+    /// <summary>The bottom-row card slot <paramref name="slot"/> (0-based).</summary>
+    public static InputAction CardBottom(int slot) => Map[$"CardBottom{slot + 1}"];
+
+    /// <summary>The default keys of the card slots, in slot order.</summary>
+    public static readonly string[] CardTopKeys = { "q", "w", "e", "t" }, CardBottomKeys = { "z", "x", "c", "v", "n" };
+
     /// <summary>Squad keys: index 0 is key 1, index 9 is key 0.</summary>
     public static InputAction Squad(int index) => Map[$"Squad{(index + 1) % 10}"];
 
@@ -142,6 +158,8 @@ public static class GameInput
         map.AddAction("SelectArmy", InputActionType.Button, "<Keyboard>/comma");
         map.AddAction("JumpToHq", InputActionType.Button, "<Keyboard>/backspace");
         map.AddAction("NextAlert", InputActionType.Button, "<Keyboard>/space");
+        for (int slot = 0; slot < CardTopSlots; slot++) map.AddAction($"CardTop{slot + 1}", InputActionType.Button, $"<Keyboard>/{CardTopKeys[slot]}");
+        for (int slot = 0; slot < CardBottomSlots; slot++) map.AddAction($"CardBottom{slot + 1}", InputActionType.Button, $"<Keyboard>/{CardBottomKeys[slot]}");
         map.AddAction("DragPan", InputActionType.Button, "<Mouse>/middleButton");
         for (int key = 0; key <= 9; key++) map.AddAction($"Squad{key}", InputActionType.Button, $"<Keyboard>/{key}");
 

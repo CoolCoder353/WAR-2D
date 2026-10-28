@@ -13,6 +13,7 @@ namespace WAR2D.Net.Rejoin
         private readonly Dictionary<string, int> ownerByToken = new Dictionary<string, int>();
         private readonly Dictionary<int, string> tokenByOwner = new Dictionary<int, string>();
         private readonly Dictionary<int, double> awayUntil = new Dictionary<int, double>();
+        private readonly Dictionary<string, RejoinRefusal> refused = new Dictionary<string, RejoinRefusal>();
         private readonly Func<string> makeToken;
 
         /// <param name="makeToken">Makes a fresh unguessable token (a GUID by default).</param>
@@ -34,12 +35,20 @@ namespace WAR2D.Net.Rejoin
             return token;
         }
 
-        /// <summary>Forgets the owner's ticket and away state (they left for good).</summary>
-        public void Revoke(int ownerId)
+        /// <summary>Forgets the owner's ticket and away state (they left for good), remembering <paramref name="why"/> for its token.</summary>
+        public void Revoke(int ownerId, RejoinRefusal why = RejoinRefusal.Unknown)
         {
-            if (tokenByOwner.Remove(ownerId, out string token)) ownerByToken.Remove(token);
+            if (tokenByOwner.Remove(ownerId, out string token))
+            {
+                ownerByToken.Remove(token);
+                refused[token] = why;
+            }
             awayUntil.Remove(ownerId);
         }
+
+        /// <summary>Why a token no longer gets a seat (what <see cref="Revoke"/> was told), or <see cref="RejoinRefusal.Unknown"/>.</summary>
+        public RejoinRefusal RefusalOf(string token) =>
+            !string.IsNullOrEmpty(token) && refused.TryGetValue(token, out RejoinRefusal why) ? why : RejoinRefusal.Unknown;
 
         /// <summary>Forgets every ticket and away seat (a new match, or the server stopped).</summary>
         public void RevokeAll()
@@ -47,6 +56,7 @@ namespace WAR2D.Net.Rejoin
             ownerByToken.Clear();
             tokenByOwner.Clear();
             awayUntil.Clear();
+            refused.Clear();
         }
 
         /// <summary>The owner's token, or null.</summary>

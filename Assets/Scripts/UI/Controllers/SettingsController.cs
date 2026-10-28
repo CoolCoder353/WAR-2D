@@ -39,6 +39,16 @@ namespace WAR2D.UI
             ("Select army", "SelectArmy", null),
             ("Jump to HQ", "JumpToHq", null),
             ("Next alert", "NextAlert", null),
+            // v0.15.1 card slots (Figma H3): what each does with Builders / with producers selected.
+            ("Card top 1 · Miner / 1st unit type", "CardTop1", null),
+            ("Card top 2 · Barracks / 2nd unit type", "CardTop2", null),
+            ("Card top 3 · Heavy Factory / 3rd unit type", "CardTop3", null),
+            ("Card top 4 · Siege Workshop", "CardTop4", null),
+            ("Card bottom 1 · Wall", "CardBottom1", null),
+            ("Card bottom 2 · Bomb", "CardBottom2", null),
+            ("Card bottom 3 · Radar", "CardBottom3", null),
+            ("Card bottom 4 · Gun turret", "CardBottom4", null),
+            ("Card bottom 5 · Jammer", "CardBottom5", null),
         };
 
         /// <summary>The alert kinds in the Gameplay tab's table, in the frame's order, with their names.</summary>

@@ -234,9 +234,12 @@ public class GameManager : NetworkManager
             rejoinGrace.Forget(conn.connectionId);
             if (!GameCore.Instance.TryRejoin(conn, token))
             {
-                WarLog.Info(LogCategory.Net, $"Refusing connection {conn.connectionId}: no seat to come back to");
+                WAR2D.Net.Rejoin.RejoinRefusal why = GameCore.Instance.RefusalFor(token);
+                WarLog.Info(LogCategory.Net, $"Refusing connection {conn.connectionId}: no seat to come back to ({why})");
                 LastRefusedConnection = conn.connectionId;
-                conn.Disconnect();
+                // v0.15.1: say why first; the client leaves on receipt, and the grace clock closes the connection if it does not.
+                conn.Send(new WAR2D.Net.Rejoin.RejoinRefused { Reason = why });
+                rejoinGrace.Track(conn.connectionId, NetworkTime.localTime, WAR2D.Net.Rejoin.RejoinGrace.RefusedSeconds);
             }
             return;
         }
@@ -308,6 +311,7 @@ public class GameManager : NetworkManager
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.FogBatch>(WAR2D.Net.Replication.ClientFog.Receive, false);
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.TerrainBatch>(WAR2D.Net.Replication.ClientTerrain.Receive, false);
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.BuildingBatch>(WAR2D.Net.Replication.ClientBuildings.Receive, false);
+        NetworkClient.RegisterHandler<WAR2D.Net.Rejoin.RejoinRefused>(OnRejoinRefused, false);
     }
 
     /// <summary>Called on the client when it connects to the server.</summary>
@@ -326,6 +330,15 @@ public class GameManager : NetworkManager
     }
 
     private bool rejoining;
+
+    /// <summary>The server will not give the seat back (v0.15.1): the ticket is dead, the Play screen says why, and the client leaves.</summary>
+    [Client]
+    private void OnRejoinRefused(WAR2D.Net.Rejoin.RejoinRefused message)
+    {
+        WarLog.Info(LogCategory.Net, $"The server refused the rejoin ({message.Reason})");
+        WAR2D.Net.Rejoin.RejoinTicket.Refuse(message.Reason);
+        StopClient();
+    }
 
     /// <summary>Set when this client rejoined a match: the camera starts at the map's corner, so the commander centres it on the HQ once the HQ is known.</summary>
     public bool CentreOnHqPending { get; set; }

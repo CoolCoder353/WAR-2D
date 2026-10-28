@@ -366,6 +366,12 @@ namespace WAR2D.UI
             if (GameInput.Cancel.WasPressedThisFrame() && !matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !diplomacy.IsOpen) commandCard.RequestRemove();
             // Next alert (Space, rebindable): the newest unvisited alert with a place, then the one before it.
             if (GameInput.NextAlert.WasPressedThisFrame() && !matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !endScreen.IsShown) Alerts.FocusNextUnvisited();
+            // v0.15.1 card-slot keys (Figma H1–H2): build and production, not while a menu or dialog has the keyboard.
+            if (!matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !diplomacy.IsOpen && !endScreen.IsShown && !Spectating)
+            {
+                string why = commandCard.HandleHotkeys();
+                if (why != null) OnNotice(why);
+            }
             SubscribeNotices();
             ShowCursorNotice();
             matchMenu.SetCanSurrender(root, GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing && !endScreen.IsShown);

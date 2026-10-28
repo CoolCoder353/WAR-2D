@@ -15,12 +15,13 @@
                                 <ui:Label name="rejoin-match" text="Your match" class="rejoin-card__match" />
                                 <ui:Label name="rejoin-time" text="" class="rejoin-card__time" />
                             </ui:VisualElement>
-                            <ui:VisualElement class="reconnect-bar">
+                            <ui:VisualElement name="rejoin-bar" class="reconnect-bar">
                                 <ui:VisualElement name="rejoin-bar-fill" class="reconnect-bar__fill" />
                             </ui:VisualElement>
                         </ui:VisualElement>
                         <ui:Button name="rejoin-button" text="Rejoin" class="button button--primary" />
                         <ui:Button name="rejoin-cancel" text="Cancel" class="button hidden" />
+                        <ui:Button name="rejoin-dismiss" text="Dismiss" class="button hidden" />
                     </ui:VisualElement>
                     <ui:Label name="rejoin-failed" text="" class="text text--danger play-panel__state" />
                     <ui:VisualElement class="divider" />

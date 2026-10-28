@@ -116,7 +116,7 @@ namespace WAR2D.UI
         /// <summary>One banner (Figma <c>reconnect-banner</c>, 135:1454 / 135:1467 / 135:1483).</summary>
         public static VisualElement Build(ReconnectBanner banner, float window)
         {
-            bool danger = banner.Kind == ReconnectBannerKind.DidNotReturn ||
+            bool danger = banner.Kind == ReconnectBannerKind.DidNotReturn || banner.Kind == ReconnectBannerKind.Left ||
                           (banner.Kind == ReconnectBannerKind.Away && ReconnectText.IsDanger(banner.SecondsLeft));
             var root = new VisualElement { name = "reconnect-banner-" + banner.OwnerId, pickingMode = PickingMode.Ignore };
             root.AddToClassList("reconnect-banner");

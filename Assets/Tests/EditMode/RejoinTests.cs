@@ -155,6 +155,32 @@ public class RejoinTests
     }
 
     [Test]
+    public void ARevokedTokenRemembersWhyItNoLongerGetsASeat()
+    {
+        AwayRegistry book = Registry();
+        string a = book.Issue(1), b = book.Issue(2);
+        book.MarkAway(1, 0.0, 60f);
+        book.Revoke(1, RejoinRefusal.Eliminated);
+        book.Revoke(2, RejoinRefusal.Kicked);
+        Assert.AreEqual(RejoinRefusal.Eliminated, book.RefusalOf(a));
+        Assert.AreEqual(RejoinRefusal.Kicked, book.RefusalOf(b));
+        Assert.AreEqual(RejoinRefusal.Unknown, book.RefusalOf("never issued"));
+        Assert.AreEqual(RejoinRefusal.Unknown, book.RefusalOf(null));
+        book.RevokeAll();
+        Assert.AreEqual(RejoinRefusal.Unknown, book.RefusalOf(a), "a new match forgets the old reasons");
+    }
+
+    [Test]
+    public void ARefusedConnectionGetsAShortGrace()
+    {
+        var grace = new RejoinGrace();
+        grace.Track(5, 0.0, RejoinGrace.RefusedSeconds);
+        var expired = new List<int>();
+        grace.TakeExpired(RejoinGrace.RefusedSeconds + 0.1, expired);
+        CollectionAssert.AreEqual(new[] { 5 }, expired);
+    }
+
+    [Test]
     public void ARevokedTicketCannotBeMarkedAwaySoALeaverIsNotKept()
     {
         AwayRegistry book = Registry();

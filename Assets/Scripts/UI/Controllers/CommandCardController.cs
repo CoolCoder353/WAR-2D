@@ -48,6 +48,16 @@ namespace WAR2D.UI
         private Button[] queueAdds = Array.Empty<Button>();
         private UnitType[] shownTypes = Array.Empty<UnitType>();
         private BuildingType rowsFor = BuildingType.None;
+        private readonly List<Label> typeKeyLabels = new List<Label>();
+
+        /// <summary>
+        /// The build buttons by card slot (v0.15.1, Figma <c>v0.15.1 Hotkeys and polish</c> H1): the top row (Make) and the bottom row
+        /// (Defend); <see cref="BuildingType.None"/> is the Wall.
+        /// </summary>
+        public static readonly BuildingType[] TopBuilds = { BuildingType.Miner, BuildingType.Barracks, BuildingType.HeavyFactory, BuildingType.SiegeWorkshop };
+
+        /// <inheritdoc cref="TopBuilds"/>
+        public static readonly BuildingType[] BottomBuilds = { BuildingType.None, BuildingType.Bomb, BuildingType.Radar, BuildingType.GunTurret, BuildingType.Jammer };
 
         /// <summary>Raised by an order button (Move and AttackMove arm, Repair and Dig arm, Stop and Hold act).</summary>
         public event Action<OrderKind> OrderClicked;
@@ -143,6 +153,7 @@ namespace WAR2D.UI
             AddBuild(root, "build-radar", BuildingType.Radar);
             AddBuild(root, "build-gun-turret", BuildingType.GunTurret);
             AddBuild(root, "build-jammer", BuildingType.Jammer);
+            AddSlotKeys(root);
             wall = root.Q<Button>("build-wall");
             wall.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); WallClicked?.Invoke(); };
             AttachBuildCard(wall, BuildingType.None);
@@ -199,6 +210,7 @@ namespace WAR2D.UI
                 string text = WAR2D.UI.HoverCard.KeyOf(pair.Value());
                 if (text.Length > 0) pair.Key.text = text;
             }
+            for (int slot = 0; slot < typeKeyLabels.Count; slot++) typeKeyLabels[slot].text = WAR2D.UI.HoverCard.KeyOf(GameInput.CardTop(slot));
             Label rallyKey = rallyAll?.Q<Label>("cmd-rally-all-key");
             if (rallyKey != null) rallyKey.text = RallyAllKey();
         }
@@ -214,6 +226,89 @@ namespace WAR2D.UI
             if (blueprints) return new HoverCardContent("Cancel", key, "Take the blueprint back.").Pair("Refund", "full cost", HoverTone.Cost);
             return new HoverCardContent("Demolish", key, "Tear this building down, after a confirm.")
                 .Pair("Refund", $"{demolishShare:P0}", HoverTone.Cost).Line("Blueprint: Cancel, full refund");
+        }
+
+        /// <summary>The build button's element name for a slot's building (<see cref="BuildingType.None"/>: the Wall).</summary>
+        private static string BuildName(BuildingType type) => type switch
+        {
+            BuildingType.None => "build-wall",
+            BuildingType.HeavyFactory => "build-heavy-factory",
+            BuildingType.SiegeWorkshop => "build-siege-workshop",
+            BuildingType.GunTurret => "build-gun-turret",
+            _ => "build-" + type.ToString().ToLowerInvariant(),
+        };
+
+        /// <summary>Puts the card-slot keys on the build buttons' corners (a rebind shows through <see cref="ShowKeys"/>).</summary>
+        private void AddSlotKeys(VisualElement root)
+        {
+            for (int slot = 0; slot < TopBuilds.Length; slot++)
+            {
+                int s = slot;
+                Label key = root.Q<Label>(BuildName(TopBuilds[slot]) + "-key");
+                if (key != null) keyLabels[key] = () => GameInput.CardTop(s);
+            }
+            for (int slot = 0; slot < BottomBuilds.Length; slot++)
+            {
+                int s = slot;
+                Label key = root.Q<Label>(BuildName(BottomBuilds[slot]) + "-key");
+                if (key != null) keyLabels[key] = () => GameInput.CardBottom(s);
+            }
+        }
+
+        /// <summary>The key of the card slot holding a build button, or null.</summary>
+        private static string BuildKey(BuildingType type)
+        {
+            int top = Array.IndexOf(TopBuilds, type), bottom = Array.IndexOf(BottomBuilds, type);
+            if (top >= 0) return WAR2D.UI.HoverCard.KeyOf(GameInput.CardTop(top));
+            return bottom >= 0 ? WAR2D.UI.HoverCard.KeyOf(GameInput.CardBottom(bottom)) : null;
+        }
+
+        /// <summary>The first slot (0-based) whose key went down this frame, or -1.</summary>
+        private static int PressedSlot(int slots, Func<int, UnityEngine.InputSystem.InputAction> action)
+        {
+            for (int slot = 0; slot < slots; slot++) if (action(slot).WasPressedThisFrame()) return slot;
+            return -1;
+        }
+
+        /// <summary>
+        /// The card-slot keys (v0.15.1, Figma H1–H2), once a frame while the HUD has the keyboard. With Builders selected a key does what
+        /// its build button does (place that building, or arm the Wall drag). With own producers of one kind selected the top-row keys
+        /// work the type selector: on the type being made a key adds one to every selected producer's queue (ten with the queue
+        /// modifier), on another type it switches to it, as a click does. Returns the cursor notice when the key's button is greyed
+        /// out ("Radar: need 250 (you have 90)", "Queue full"), else null.
+        /// </summary>
+        public string HandleHotkeys()
+        {
+            int top = PressedSlot(GameInput.CardTopSlots, GameInput.CardTop);
+            int bottom = top >= 0 ? -1 : PressedSlot(GameInput.CardBottomSlots, GameInput.CardBottom);
+            if (top < 0 && bottom < 0) return null;
+            bool building = selection.BuildingId != 0 || WallsOnly;
+            if (!building && selection.HasBuilders)
+            {
+                if (top >= TopBuilds.Length || bottom >= BottomBuilds.Length) return null;
+                return Build(top >= 0 ? TopBuilds[top] : BottomBuilds[bottom]);
+            }
+            bool producing = building && !WallsOnly && SpawnerRules.IsProducer(selection.BuildingType) && selection.BlueprintCount == 0 && !selection.MixedKinds;
+            if (!producing || top < 0 || rowsFor != selection.BuildingType || top >= shownTypes.Length) return null;
+            UnitType type = shownTypes[top];
+            if (type != Chosen()) { Pick(type); return null; }
+            if (selection.SpawnerQueue >= SpawnerRules.MaxQueue * selection.BuildingIds.Count) return "Queue full";
+            WAR2D.Audio.AudioService.Ui("ui_click");
+            QueueClicked?.Invoke(selection.BuildingIds, type, GameInput.QueueModifier.IsPressed() ? 10 : 1);
+            return null;
+        }
+
+        /// <summary>A build key: the button's click when it is enabled, else why not.</summary>
+        private string Build(BuildingType type)
+        {
+            bool isWall = type == BuildingType.None;
+            float cost = isWall ? wallCost : buildCosts.TryGetValue(type, out float c) ? c : float.PositiveInfinity;
+            string name = isWall ? "Wall" : AlertFeedModel.BuildingName(type) ?? AlertFeedModel.Spaced(type.ToString());
+            if (hud.Resources < cost) return $"{name}: need {cost:0.##} (you have {Math.Floor(hud.Resources):0})";
+            WAR2D.Audio.AudioService.Ui("ui_click");
+            if (isWall) WallClicked?.Invoke();
+            else BuildClicked?.Invoke(type);
+            return null;
         }
 
         private void AddBuild(VisualElement root, string name, BuildingType type)
@@ -237,7 +332,7 @@ namespace WAR2D.UI
             string name = type == BuildingType.None ? "Wall" : AlertFeedModel.BuildingName(type) ?? AlertFeedModel.Spaced(type.ToString());
             float cost = type == BuildingType.None ? wallCost : buildCosts.TryGetValue(type, out float c) ? c : 0f;
             HoverCardContent from = buildCard?.Invoke(type);
-            var tip = new HoverCardContent(name, null, from?.Role);
+            var tip = new HoverCardContent(name, BuildKey(type), from?.Role);
             bool afford = hud.Resources >= cost;
             tip.Pair("Cost", type == BuildingType.None ? $"{cost:0.##} per tile" : $"{cost:0.##}", afford ? HoverTone.Cost : HoverTone.Danger);
             if (from != null)
@@ -432,10 +527,19 @@ namespace WAR2D.UI
             shownTypes = produced;
             typesRow.Clear();
             typeButtons.Clear();
+            typeKeyLabels.Clear();
             foreach (UnitType type in produced)
             {
                 var button = new Button(() => Pick(type)) { name = "type-" + type };
                 button.AddToClassList("command-button");
+                if (typeKeyLabels.Count < GameInput.CardTopSlots)
+                {
+                    // v0.15.1 (Figma H2): the top-row card slot that works this type.
+                    var key = new Label(WAR2D.UI.HoverCard.KeyOf(GameInput.CardTop(typeKeyLabels.Count))) { name = "type-key", pickingMode = PickingMode.Ignore };
+                    key.AddToClassList("command-button__hotkey");
+                    button.Add(key);
+                    typeKeyLabels.Add(key);
+                }
                 var icon = new CommandIcon();
                 if (Enum.TryParse(type.ToString(), out IconKind kind)) icon.Icon = kind;
                 button.Add(icon);
@@ -479,6 +583,8 @@ namespace WAR2D.UI
         {
             HoverCardContent tip = unitCard?.Invoke(type) ?? new HoverCardContent(AlertFeedModel.UnitName(type), null, roleOf?.Invoke(type))
                 .Pair("Cost", Cost(type), HoverTone.Cost).Pair("Build", $"{Seconds(type)} s");
+            int slot = Array.IndexOf(shownTypes, type);
+            if (slot >= 0 && slot < GameInput.CardTopSlots) tip.Key = WAR2D.UI.HoverCard.KeyOf(GameInput.CardTop(slot));
             UnitType chosen = Chosen();
             int queued = selection.SpawnerQueue;
             if (switchClearsQueue && type != chosen && queued > 0) tip.Warning = $"Switching clears the queue ({queued} {AlertFeedModel.UnitName(chosen)})";

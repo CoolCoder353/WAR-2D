@@ -99,20 +99,58 @@ public class ReconnectUiTests
     }
 
     [Test]
-    public void VanishingWhileAwayShowsDidNotReturnAndLeavingNormallyShowsNothing()
+    public void VanishingWhileAwayShowsDidNotReturnAndLeavingNormallyShowsLeft()
     {
         var model = new ReconnectModel();
-        int timedOut = 0;
+        int timedOut = 0, left = 0;
         model.TimedOut += (_, _) => timedOut++;
+        model.Left += (_, _) => left++;
         model.Update(new[] { Seen(7, false), Seen(8, false) }, 0f);
         model.Update(new[] { Seen(7, true, 1f), Seen(8, false) }, 1f);
         model.Update(new List<AwaySighting>(), 2f);
         Assert.AreEqual(1, timedOut);
-        Assert.AreEqual(1, model.Banners.Count);
+        Assert.AreEqual(1, left, "v0.15.1: a player who leaves on purpose no longer keeps a seat, so they are gone at once");
+        Assert.AreEqual(2, model.Banners.Count);
         Assert.AreEqual(7, model.Banners[0].OwnerId);
         Assert.AreEqual(ReconnectBannerKind.DidNotReturn, model.Banners[0].Kind);
+        Assert.AreEqual(8, model.Banners[1].OwnerId);
+        Assert.AreEqual(ReconnectBannerKind.Left, model.Banners[1].Kind);
         model.Update(new List<AwaySighting>(), 6f);
         Assert.AreEqual(0, model.Banners.Count);
+    }
+
+    [Test]
+    public void TheLeftBannerSaysThePlayerLeftWithNoCountdown()
+    {
+        Assert.AreEqual("Claude left the match", ReconnectText.Title(ReconnectBannerKind.Left, "Claude"));
+        Assert.IsNull(ReconnectText.Tail(ReconnectBannerKind.Left, 0f));
+        Assert.AreEqual("Their units and buildings are removed.", ReconnectText.Detail(ReconnectBannerKind.Left));
+    }
+
+    [Test]
+    public void ARefusedRejoinKillsTheTicketAndKeepsTheReasonUntilDismissed()
+    {
+        RejoinTicket.Set("abc", 60f);
+        RejoinTicket.MarkDropped(0f);
+        RejoinTicket.Refuse(WAR2D.Net.Rejoin.RejoinRefusal.Eliminated);
+        Assert.IsFalse(RejoinTicket.Available(1f), "Rejoin is no longer offered");
+        Assert.IsNull(RejoinTicket.Token);
+        Assert.AreEqual(WAR2D.Net.Rejoin.RejoinRefusal.Eliminated, RejoinTicket.Refusal);
+        Assert.AreEqual("· you were eliminated while away", ReconnectText.RefusalTail(RejoinTicket.Refusal.Value));
+        RejoinTicket.DismissRefusal();
+        Assert.IsNull(RejoinTicket.Refusal);
+        RejoinTicket.Refuse(WAR2D.Net.Rejoin.RejoinRefusal.TimedOut);
+        RejoinTicket.Set("def", 60f);
+        Assert.IsNull(RejoinTicket.Refusal, "a new match's ticket clears an old refusal");
+        RejoinTicket.Clear();
+    }
+
+    [Test]
+    public void EveryRefusalHasItsOwnReason()
+    {
+        var tails = new HashSet<string>();
+        foreach (WAR2D.Net.Rejoin.RejoinRefusal reason in System.Enum.GetValues(typeof(WAR2D.Net.Rejoin.RejoinRefusal)))
+            Assert.IsTrue(tails.Add(ReconnectText.RefusalTail(reason)), reason.ToString());
     }
 
     [Test]

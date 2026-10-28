@@ -123,6 +123,7 @@ namespace WAR2D.UI
             play.CancelClicked += () => { joiningAddress = null; GameManager.Instance?.StopClient(); play.ShowIdle(); };
             play.RejoinClicked += Rejoin;
             play.RejoinCancelClicked += () => { rejoining = false; GameManager.Instance?.StopClient(); };
+            play.RejoinDismissClicked += WAR2D.Net.Rejoin.RejoinTicket.DismissRefusal;
             rejoinOffered = false; // a menu that opens with a Rejoin on offer (the connection just dropped) goes straight to Play
 
             GameConfigData config = ConfigLoader.LoadConfig();
@@ -210,6 +211,12 @@ namespace WAR2D.UI
             {
                 rejoining = false;
                 if (available) play.ShowRejoinFailed("Couldn't get back into the match. Try again while the timer runs.");
+            }
+            // v0.15.1: the server refused the ticket and said why; Rejoin is no longer offered.
+            if (!available && WAR2D.Net.Rejoin.RejoinTicket.Refusal is WAR2D.Net.Rejoin.RejoinRefusal refusal)
+            {
+                play.ShowRejoinRefused(ReconnectText.RefusalTail(refusal), RejoinMatch.HostName, RejoinMatch.HostColour);
+                return;
             }
             play.ShowRejoin(available, available ? manager.RejoinSecondsLeft : 0f, WAR2D.Net.Rejoin.RejoinTicket.Window,
                 rejoining, RejoinMatch.HostName, RejoinMatch.HostColour);

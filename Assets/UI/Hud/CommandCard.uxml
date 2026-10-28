@@ -39,40 +39,49 @@
             <ui:VisualElement name="builds" class="command-card__builds">
                 <ui:VisualElement name="builds-make" class="command-card__row">
                     <ui:Button name="build-miner" class="command-button">
+                        <ui:Label name="build-miner-key" text="Q" class="command-button__hotkey" />
                         <war:CommandIcon icon="Miner" />
                         <ui:Label name="build-miner-cost" text=" " class="command-button__key command-button__cost" />
                     </ui:Button>
                     <ui:Button name="build-barracks" class="command-button">
+                        <ui:Label name="build-barracks-key" text="W" class="command-button__hotkey" />
                         <war:CommandIcon icon="Barracks" />
                         <ui:Label name="build-barracks-cost" text=" " class="command-button__key command-button__cost" />
                     </ui:Button>
                     <ui:Button name="build-heavy-factory" class="command-button">
+                        <ui:Label name="build-heavy-factory-key" text="E" class="command-button__hotkey" />
                         <war:CommandIcon icon="HeavyFactory" />
                         <ui:Label name="build-heavy-factory-cost" text=" " class="command-button__key command-button__cost" />
                     </ui:Button>
                     <ui:Button name="build-siege-workshop" class="command-button">
+                        <ui:Label name="build-siege-workshop-key" text="T" class="command-button__hotkey" />
                         <war:CommandIcon icon="SiegeWorkshop" />
                         <ui:Label name="build-siege-workshop-cost" text=" " class="command-button__key command-button__cost" />
                     </ui:Button>
                 </ui:VisualElement>
                 <ui:VisualElement name="builds-defend" class="command-card__row command-card__row--second">
                     <ui:Button name="build-wall" class="command-button">
+                        <ui:Label name="build-wall-key" text="Z" class="command-button__hotkey" />
                         <war:CommandIcon icon="Wall" />
                         <ui:Label name="build-wall-cost" text=" " class="command-button__key command-button__cost" />
                     </ui:Button>
                     <ui:Button name="build-bomb" class="command-button">
+                        <ui:Label name="build-bomb-key" text="X" class="command-button__hotkey" />
                         <war:CommandIcon icon="Bomb" />
                         <ui:Label name="build-bomb-cost" text=" " class="command-button__key command-button__cost" />
                     </ui:Button>
                     <ui:Button name="build-radar" class="command-button">
+                        <ui:Label name="build-radar-key" text="C" class="command-button__hotkey" />
                         <war:CommandIcon icon="Radar" />
                         <ui:Label name="build-radar-cost" text=" " class="command-button__key command-button__cost" />
                     </ui:Button>
                     <ui:Button name="build-gun-turret" class="command-button">
+                        <ui:Label name="build-gun-turret-key" text="V" class="command-button__hotkey" />
                         <war:CommandIcon icon="GunTurret" />
                         <ui:Label name="build-gun-turret-cost" text=" " class="command-button__key command-button__cost" />
                     </ui:Button>
                     <ui:Button name="build-jammer" class="command-button">
+                        <ui:Label name="build-jammer-key" text="N" class="command-button__hotkey" />
                         <war:CommandIcon icon="Jammer" />
                         <ui:Label name="build-jammer-cost" text=" " class="command-button__key command-button__cost" />
                     </ui:Button>

@@ -12,6 +12,11 @@ namespace WAR2D.UI
         Returned,
         /// <summary>The window ran out and the player is out (danger; closes after <see cref="ReconnectModel.ResultSeconds"/>).</summary>
         DidNotReturn,
+        /// <summary>
+        /// v0.15.1 (Figma <c>v0.15.1 Hotkeys and polish</c>, R1): the player left the match on purpose, or was removed, without being
+        /// away first (danger; closes after <see cref="ReconnectModel.ResultSeconds"/>).
+        /// </summary>
+        Left,
     }
 
     /// <summary>One banner under the top bar.</summary>
@@ -74,6 +79,9 @@ namespace WAR2D.UI
         /// <summary>Raised when an away player's window ran out: owner, name.</summary>
         public event Action<int, string> TimedOut;
 
+        /// <summary>Raised when a player who was not away leaves the match (v0.15.1): owner, name.</summary>
+        public event Action<int, string> Left;
+
         /// <summary>Applies one tick's sightings of the other human players at <paramref name="now"/>.</summary>
         public void Update(IReadOnlyList<AwaySighting> sightings, float now)
         {
@@ -118,7 +126,13 @@ namespace WAR2D.UI
             {
                 Track track = tracks[owner];
                 tracks.Remove(owner);
-                if (!track.Away) continue; // left normally (or was never away): nothing to say
+                if (!track.Away)
+                {
+                    // Left on purpose or removed (v0.15.1): no seat was kept, so there is no countdown, only the news.
+                    Close(owner, track, ReconnectBannerKind.Left, now);
+                    Left?.Invoke(owner, track.Name);
+                    continue;
+                }
                 Close(owner, track, ReconnectBannerKind.DidNotReturn, now);
                 TimedOut?.Invoke(owner, track.Name);
             }
@@ -171,6 +185,7 @@ namespace WAR2D.UI
         {
             ReconnectBannerKind.Away => $"{name} disconnected",
             ReconnectBannerKind.Returned => $"{name} returned",
+            ReconnectBannerKind.Left => $"{name} left the match",
             _ => $"{name} did not return",
         };
 
@@ -187,6 +202,7 @@ namespace WAR2D.UI
         {
             ReconnectBannerKind.Away => "Their units hold position and stop producing; their upkeep is paused.",
             ReconnectBannerKind.Returned => "Their units take orders again.",
+            ReconnectBannerKind.Left => "Their units and buildings are removed.",
             _ => "Eliminated exactly as before; their units and buildings are removed.",
         };
 
@@ -195,6 +211,20 @@ namespace WAR2D.UI
 
         /// <summary>The Play screen's countdown ("· 0:42 left to rejoin").</summary>
         public static string RejoinLeft(float seconds) => $"· {Clock(seconds)} left to rejoin";
+
+        /// <summary>The refused card's headline (v0.15.1, Figma R1).</summary>
+        public const string RefusedTitle = "You can’t rejoin this match";
+
+        /// <summary>The refused card's tail after the match name: why the seat is gone.</summary>
+        public static string RefusalTail(WAR2D.Net.Rejoin.RejoinRefusal reason) => reason switch
+        {
+            WAR2D.Net.Rejoin.RejoinRefusal.Eliminated => "· you were eliminated while away",
+            WAR2D.Net.Rejoin.RejoinRefusal.TimedOut => "· your time ran out",
+            WAR2D.Net.Rejoin.RejoinRefusal.Kicked => "· you were removed for flooding commands",
+            WAR2D.Net.Rejoin.RejoinRefusal.Left => "· you left the match",
+            WAR2D.Net.Rejoin.RejoinRefusal.MatchOver => "· the match is over",
+            _ => "· the host no longer knows this ticket",
+        };
 
         /// <summary>The Play screen card's headline, idle or rejoining.</summary>
         public static string RejoinTitle(bool rejoining, string host) =>

@@ -19,6 +19,32 @@ namespace WAR2D.Net.Rejoin
     {
     }
 
+    /// <summary>Why the server will not give a seat back (v0.15.1, Figma <c>v0.15.1 Hotkeys and polish</c> R1).</summary>
+    public enum RejoinRefusal : byte
+    {
+        /// <summary>The server does not know the ticket (a new match, or a ticket replaced by a later one).</summary>
+        Unknown,
+        /// <summary>The away window ran out.</summary>
+        TimedOut,
+        /// <summary>The player's HQ fell while they were away.</summary>
+        Eliminated,
+        /// <summary>The server removed the player for flooding commands.</summary>
+        Kicked,
+        /// <summary>The player left the match on purpose.</summary>
+        Left,
+        /// <summary>The match is no longer being played.</summary>
+        MatchOver,
+    }
+
+    /// <summary>
+    /// Sent to a connection whose rejoin the server refuses, before it closes it: the client stops offering Rejoin and says why. The
+    /// client disconnects on receipt; the server closes the connection shortly after if it has not (<see cref="RejoinGrace.RefusedSeconds"/>).
+    /// </summary>
+    public struct RejoinRefused : NetworkMessage
+    {
+        public RejoinRefusal Reason;
+    }
+
     /// <summary>
     /// What a client keeps so it can come back to a match it dropped out of (in memory only: it does not survive closing the
     /// game). The server sends a fresh token at match start and after every rejoin.
@@ -37,6 +63,9 @@ namespace WAR2D.Net.Rejoin
         /// <summary>True when this client dropped out unasked (not by leaving) and may still be inside the window.</summary>
         public static bool Dropped { get; private set; }
 
+        /// <summary>Why the server refused the last rejoin (the Play screen shows it until dismissed), or null.</summary>
+        public static RejoinRefusal? Refusal { get; private set; }
+
         private static float droppedAt;
 
         /// <summary>Remembers how the client joined (called by every connect).</summary>
@@ -48,7 +77,18 @@ namespace WAR2D.Net.Rejoin
             Token = token;
             Window = window;
             Dropped = false; // a fresh ticket means the client is in the match
+            Refusal = null;
         }
+
+        /// <summary>The server refused the rejoin: the ticket is dead, so Rejoin is no longer offered, and the reason is kept to show.</summary>
+        public static void Refuse(RejoinRefusal reason)
+        {
+            Clear();
+            Refusal = reason;
+        }
+
+        /// <summary>The player read the refusal (the Play screen's Dismiss).</summary>
+        public static void DismissRefusal() => Refusal = null;
 
         /// <summary>The connection broke while a match was running (not the player leaving): start the clock.</summary>
         public static void MarkDropped(float now)

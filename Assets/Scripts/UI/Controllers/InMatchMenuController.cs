@@ -36,7 +36,15 @@ namespace WAR2D.UI
             };
             root.Q<Button>("surrender-cancel").clicked += () => screen.RemoveFromClassList("in-match-menu--confirm");
             root.Q<Button>("surrender-confirm").clicked += () => { Close(); SurrenderConfirmed?.Invoke(); };
-            root.Q<Button>("leave-match-button").clicked += () => { Close(); LeaveClicked?.Invoke(); };
+            Button leave = root.Q<Button>("leave-match-button");
+            leave.clicked += () =>
+            {
+                // v0.15.1 (Figma R1): a joined player waits up to a second for the server to let go of the seat, so the menu stays
+                // open with every button greyed out and Leave reading "Leaving…" (a host or a finished match leaves at once).
+                screen.Query<Button>().ForEach(b => b.SetEnabled(false));
+                leave.text = "Leaving…";
+                LeaveClicked?.Invoke();
+            };
         }
 
         public bool IsOpen => screen.ClassListContains("overlay-screen--visible");

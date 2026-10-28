@@ -185,7 +185,7 @@ public partial class GameCore : NetworkBehaviour
         if (!kicked && TryMarkAway(conn)) return true;
         if (conn.identity == null || !ServerPlayers.Remove(conn.identity)) return false;
 
-        Rejoin.Revoke(BuildingData.UIntToInt(conn.identity.netId));
+        Rejoin.Revoke(BuildingData.UIntToInt(conn.identity.netId), kicked ? WAR2D.Net.Rejoin.RejoinRefusal.Kicked : WAR2D.Net.Rejoin.RejoinRefusal.Left);
         ClientPlayer leaving = conn.identity.GetComponent<ClientPlayer>();
         if (WorldStateManager.Instance != null)
         {
@@ -290,9 +290,9 @@ public partial class GameCore : NetworkBehaviour
     /// left, and their ticket is torn up.
     /// </summary>
     [Server]
-    private void EndAway(int owner, string why = "did not come back")
+    private void EndAway(int owner, WAR2D.Net.Rejoin.RejoinRefusal why)
     {
-        Rejoin.Revoke(owner);
+        Rejoin.Revoke(owner, why);
         NetworkIdentity identity = IdentityOf(owner);
         if (identity == null) return;
         ClientPlayer leaving = identity.GetComponent<ClientPlayer>();
@@ -303,7 +303,7 @@ public partial class GameCore : NetworkBehaviour
             WorldStateManager.Instance.KillAllEntitiesOwnedBy(owner);
         }
         NetworkServer.Destroy(identity.gameObject);
-        WarLog.Info(LogCategory.Net, $"Player {owner} {why}; they are out");
+        WarLog.Info(LogCategory.Net, $"Player {owner} is out while away ({why})");
         if (ServerPlayers.Count == 0) ResetToLobby();
     }
 
@@ -315,9 +315,10 @@ public partial class GameCore : NetworkBehaviour
     {
         if (Rejoin.AwayCount == 0) return;
         expiredAway.Clear();
-        if (CurrentState != GameState.Playing) foreach (int owner in new List<int>(Rejoin.Away)) expiredAway.Add(owner);
+        bool over = CurrentState != GameState.Playing;
+        if (over) foreach (int owner in new List<int>(Rejoin.Away)) expiredAway.Add(owner);
         else Rejoin.CollectExpired(NetworkTime.time, expiredAway);
-        foreach (int owner in expiredAway) EndAway(owner);
+        foreach (int owner in expiredAway) EndAway(owner, over ? WAR2D.Net.Rejoin.RejoinRefusal.MatchOver : WAR2D.Net.Rejoin.RejoinRefusal.TimedOut);
     }
 
     /// <summary>
@@ -376,9 +377,14 @@ public partial class GameCore : NetworkBehaviour
     [Server]
     public void OnLeaveMatch(NetworkConnectionToClient conn)
     {
-        if (conn.identity != null) Rejoin.Revoke(BuildingData.UIntToInt(conn.identity.netId));
+        if (conn.identity != null) Rejoin.Revoke(BuildingData.UIntToInt(conn.identity.netId), WAR2D.Net.Rejoin.RejoinRefusal.Left);
         conn.Disconnect();
     }
+
+    /// <summary>Why <see cref="TryRejoin"/> refused a token (sent to the client in <see cref="WAR2D.Net.Rejoin.RejoinRefused"/>).</summary>
+    [Server]
+    public WAR2D.Net.Rejoin.RejoinRefusal RefusalFor(string token) =>
+        CurrentState != GameState.Playing ? WAR2D.Net.Rejoin.RejoinRefusal.MatchOver : Rejoin.RefusalOf(token);
 
     /// <summary>True when any seat is away and so a new connection might be a player coming back.</summary>
     public bool HasAwayPlayers => Rejoin.AwayCount > 0;
@@ -579,7 +585,7 @@ public partial class GameCore : NetworkBehaviour
         }
         // Eliminated while away: there is no seat left to come back to (a rejoin would land in a match with no HQ and no
         // Defeat screen), so they are out now, as when their window runs out.
-        if (outWhileAway) EndAway(playerId, "was eliminated while away");
+        if (outWhileAway) EndAway(playerId, WAR2D.Net.Rejoin.RejoinRefusal.Eliminated);
     }
 
     /// <summary>Ends the match: every player in <paramref name="winners"/> wins, everyone else loses.</summary>

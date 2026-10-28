@@ -67,6 +67,9 @@ namespace WAR2D.UI
             rejoinFill = root.Q("rejoin-bar-fill");
             rejoinButton = root.Q<Button>("rejoin-button");
             rejoinCancel = root.Q<Button>("rejoin-cancel");
+            rejoinDismiss = root.Q<Button>("rejoin-dismiss");
+            rejoinBar = root.Q("rejoin-bar");
+            if (rejoinDismiss != null) rejoinDismiss.clicked += () => RejoinDismissClicked?.Invoke();
             VisualElement icon = root.Q("rejoin-icon");
             if (icon != null) icon.style.backgroundImage = new StyleBackground(WAR2D.Art.PixelIcons.Texture("IconReconnect", 2));
             if (rejoinButton != null) rejoinButton.clicked += () => RejoinClicked?.Invoke();
@@ -76,7 +79,8 @@ namespace WAR2D.UI
         // v0.15 item 19: the Rejoin card on the first row (Figma E2 124:15855, states 135:1509 / 135:1524 / 135:1546).
         private readonly VisualElement rejoinBlock, rejoinCard, rejoinSwatch, rejoinFill;
         private readonly Label rejoinTitle, rejoinMatch, rejoinTime, rejoinFailed;
-        private readonly Button rejoinButton, rejoinCancel;
+        private readonly Button rejoinButton, rejoinCancel, rejoinDismiss;
+        private readonly VisualElement rejoinBar;
         private int rejoinColourClass = -1;
 
         /// <summary>Raised by the Rejoin card's Rejoin button.</summary>
@@ -84,6 +88,9 @@ namespace WAR2D.UI
 
         /// <summary>Raised by the Rejoin card's Cancel button (while rejoining).</summary>
         public event Action RejoinCancelClicked;
+
+        /// <summary>Raised by the refused card's Dismiss button (v0.15.1).</summary>
+        public event Action RejoinDismissClicked;
 
         /// <summary>
         /// Shows the Rejoin card while a dropped match can be rejoined (<paramref name="secondsLeft"/> of <paramref name="window"/>),
@@ -100,6 +107,36 @@ namespace WAR2D.UI
             rejoinMatch.text = ReconnectText.MatchOf(host);
             rejoinTime.text = ReconnectText.RejoinLeft(secondsLeft);
             rejoinFill.style.width = Length.Percent(ReconnectText.Fraction(secondsLeft, window) * 100f);
+            rejoinBar?.EnableInClassList("hidden", false);
+            rejoinDismiss?.EnableInClassList("hidden", true);
+            ShowSwatch(hostColour);
+            rejoinButton.EnableInClassList("hidden", rejoining);
+            rejoinCancel.EnableInClassList("hidden", !rejoining);
+        }
+
+        /// <summary>
+        /// The refused card (v0.15.1, Figma <c>v0.15.1 Hotkeys and polish</c> R1): the server will not give the seat back, so the card
+        /// turns danger, says why after the match name, drops its countdown and offers only Dismiss.
+        /// </summary>
+        public void ShowRejoinRefused(string reasonTail, string host, int hostColour)
+        {
+            if (rejoinBlock == null) return;
+            ShowRejoinFailed(null);
+            rejoinBlock.EnableInClassList("hidden", false);
+            rejoinCard.EnableInClassList("reconnect--danger", true);
+            rejoinTitle.text = ReconnectText.RefusedTitle;
+            rejoinMatch.text = ReconnectText.MatchOf(host);
+            rejoinTime.text = reasonTail;
+            rejoinBar?.EnableInClassList("hidden", true);
+            ShowSwatch(hostColour);
+            rejoinButton.EnableInClassList("hidden", true);
+            rejoinCancel.EnableInClassList("hidden", true);
+            rejoinDismiss?.EnableInClassList("hidden", false);
+        }
+
+        /// <summary>Colours the match swatch with the host's palette slot (grey when unknown).</summary>
+        private void ShowSwatch(int hostColour)
+        {
             int colour = hostColour < 0 ? -1 : hostColour % 8 + 1;
             if (colour != rejoinColourClass)
             {
@@ -109,8 +146,6 @@ namespace WAR2D.UI
                 rejoinSwatch.AddToClassList(colour > 0 ? "player-" + colour : "swatch--eliminated");
                 if (colour > 0) rejoinSwatch.RemoveFromClassList("swatch--eliminated");
             }
-            rejoinButton.EnableInClassList("hidden", rejoining);
-            rejoinCancel.EnableInClassList("hidden", !rejoining);
         }
 
         /// <summary>Says under the Rejoin card that the last attempt failed; null clears it.</summary>
