@@ -20,7 +20,8 @@
 //   objective  { kind: "stronger" }: the stronger side's win rate over the non-mirror pairings (default), or
 //              { kind: "style", style: "Turtle" | "*", target: 0.5 }: in the mirror pairings (same difficulty), a style's
 //              win rate against other styles as close to target as it gets ("*": the worst style's distance).
-//              Both subtract failurePenalty (default 0.5) times the share of matches that didn't finish.
+//              Both subtract failurePenalty (default 0.5) times the share of matches that didn't finish. Or
+//              { kind: "finish" }: the share of matches that end (no cap, draw or error), any pairing.
 //   passes     coordinate-search passes (default 2; stops early when a pass changes nothing)
 //   minGain    how much a score must beat the best to replace it (default 0)
 //   confirm    { top, seeds, seed0 }: candidates replayed on fresh seeds (default 3, 16, 1001); top 0 skips it
@@ -84,7 +85,12 @@ function scoreOf(summary, objective) {
     const desc = worst.map((x) => `${x.st} ${pct(x.rate)} (${x.versusOtherWins}/${x.versusOther})`).join(', ');
     return { score: -Math.abs(worst[0].rate - target) - penalty, detail: `vs other styles: ${desc}${unfinished}` };
   }
-  throw new Error(`unknown objective kind "${objective.kind}" (stronger or style)`);
+  if (objective.kind === 'finish') {
+    const done = summary.matches - (summary.failures.caps + summary.failures.draws + summary.failures.errors);
+    const [lo, hi] = bench.wilson(done, summary.matches);
+    return { score: summary.matches ? done / summary.matches : 0, detail: `finished ${done}/${summary.matches} (95% ${pct(lo)}–${pct(hi)}; caps ${summary.failures.caps}, draws ${summary.failures.draws}, errors ${summary.failures.errors})` };
+  }
+  throw new Error(`unknown objective kind "${objective.kind}" (stronger, style or finish)`);
 }
 
 /** Runs tools/ai-bench.sh; on a terminal it shows the matches finished so far on one line (stderr) while they play. */
