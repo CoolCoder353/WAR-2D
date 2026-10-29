@@ -76,9 +76,13 @@ If every match is "same", a before-and-after comparison on the same seeds is a p
 - the median match length (pacing);
 - unfinished matches (caps at `AI_BENCH_CAP` minutes are failures, usually an army stuck at a turret line or a base never found);
 - the stronger side's wins by its style;
-- the mean highest balance per difficulty (money it never spent).
+- per difficulty, the economy at minute 10 (bank, income, upkeep, army) and the mean highest balance;
+- for each capped match, both seats' state at the end (army, buildings, enemy bases known, army mode) and the army's last log line, so a cap can be told apart as "never found the base" (knows 0), "stuck or held off" (an Attack that goes nowhere) or "never attacked" (Gather);
+- which config it played, and the values that differ from the repo's.
 
-A rising balance with flat win rates points at spending (producers, queues, `IncomePerProducer`), not fighting.
+The highest balance grows with match length (a capped match runs 40 minutes), so compare spending at minute 10 instead: a big bank there with flat win rates points at spending (producers, queues, `IncomePerProducer`), not fighting.
+
+**Compare runs from the same build.** A results directory says which config it played, but not which build. A report from an older build (such as the committed [perf/v0.14/ai-bench.md](perf/v0.14/ai-bench.md) after later AI changes) is no baseline: run the base config again on the current build, the same seeds, and compare those two.
 
 ## Recipes
 
@@ -128,8 +132,10 @@ There is no formation depth, kiting, retreat or focus fire, so fights between ar
 `tools/ai-bench.sh --brief [seeds] [jobs] [player]` is the bench ([debugging.md](debugging.md#the-ai-bench-v014)) with an eight-line summary instead of the full report:
 - per pairing, the stronger side's win rate with its interval (per map size when there are several) and the unfinished matches;
 - the stronger side's wins by its style, and mirror wins by style;
-- the mean highest balance and unpaid seconds per difficulty;
-- the error messages, if any matches errored.
+- per difficulty, the economy at minute 10, the mean highest balance and unpaid seconds;
+- the error messages, if any matches errored;
+- for each capped match, both seats' state at the end and the army's last log line;
+- which config it played (the build's own, or an `AI_BENCH_CONFIG` copy and the values that differ from the repo's).
 
 Its exit code is the full report's (0 when the exit criteria are met, 2 when not). The full report goes to `report.md` in the results directory, so a quick run never overwrites [perf/v0.14/ai-bench.md](perf/v0.14/ai-bench.md) (set `AI_BENCH_OUT` to choose). `tools/ai-bench.sh brief <dir>...` prints the brief of finished runs, merged.
 
