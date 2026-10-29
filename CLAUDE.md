@@ -23,6 +23,7 @@ WAR-2D is a Unity `6000.4.1f1` multiplayer 2D RTS (free-for-all or teams, 2 to 8
 - Scene, prefab and `.asset` files are YAML. Avoid hand-editing them. If you must, keep `.meta` GUIDs intact. Every new asset needs its `.meta` (Unity creates it on import).
 - To check behaviour in a running game, use the control API (`tools/war2d`, [docs/debugging.md](docs/debugging.md)) rather than asking the owner to click through it.
 - Gameplay numbers belong in `Assets/Resources/GameConfig.xml`, read through `Config.ConfigLoader.LoadConfig()`. It is the single source of balance values, parsed strictly; don't add new hard-coded balance values, and check `ConfigLoader.IsValid` before hosting.
+- **Balance and AI tuning:** start with `node tools/balance-sheet.js` (from the config alone, under a second; read its Flags), then measure with `tools/ai-bench.sh --brief` or tune unattended with `node tools/ai-tune.js <spec.json>` (both need a Linux build; see [docs/debugging.md](docs/debugging.md)). Read the brief and the tune's `summary.md`, not match logs or the full report.
 
 ## Architecture rules of thumb
 

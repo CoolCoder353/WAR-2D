@@ -3,8 +3,13 @@
 # player process (Dev/AiBench.cs: -perf -aiBench, the host sits out, the match fast-forwarded), several at once, and
 # writes the report (winners, lengths, failures, styles) to docs/perf/v0.14/ai-bench.md.
 #
-# Usage: tools/ai-bench.sh [seeds=6] [jobs=4] [player=Builds/Linux/WAR-2D.x86_64]
+# Usage: tools/ai-bench.sh [--brief] [seeds=6] [jobs=4] [player=Builds/Linux/WAR-2D.x86_64]
 #        tools/ai-bench.sh report <results-dir>...   (rewrite the report from finished runs, merged)
+#        tools/ai-bench.sh brief <results-dir>...    (the short summary of finished runs, merged)
+# --brief prints one line to start and about eight at the end (tools/ai-bench-brief.js, needs node: win rates with a
+# 95% interval, unfinished matches, wins by style, mean highest balance) instead of a line per match and the full
+# report, and writes the full report into the results directory rather than over docs/perf/v0.14/ai-bench.md (unless
+# AI_BENCH_OUT is set). Use it for quick tuning runs; tools/ai-tune.js runs it for every candidate config.
 # Environment:
 #   AI_BENCH_SIZES      map sizes (default "256 512 1024")
 #   AI_BENCH_PAIRINGS   difficulty pairings (default "Hard-Normal Normal-Easy Hard-Hard Normal-Normal Easy-Easy")
@@ -13,7 +18,8 @@
 #   AI_BENCH_SCALE      fast-forward (default 32)
 #   AI_BENCH_SEED0      first map seed (default 101)
 #   AI_BENCH_CONFIG     a GameConfig.xml to play with instead of the built one (-configFile; tuning without a rebuild)
-#   AI_BENCH_OUT        the report (default docs/perf/v0.14/ai-bench.md; "-" prints it only)
+#   AI_BENCH_OUT        the report (default docs/perf/v0.14/ai-bench.md, with --brief <results>/report.md; "-" prints it only)
+#   AI_BENCH_DIR        the results directory (default PerfResults/ai-bench-<date-time>)
 # Styles: each seat's style is drawn from a seeded generator per (size, seed), so a seed's style pair is the same in
 # every pairing (comparable) and the bench is reproducible; the report splits results by style. The seat order
 # (which side is the first owner) alternates by seed. The player must be a build with Dev/AiBench.cs (any build
@@ -126,6 +132,12 @@ PY
 
 out="${AI_BENCH_OUT:-docs/perf/v0.14/ai-bench.md}"
 if [[ "${1:-}" == "report" ]]; then shift; report "$@" "$out"; exit $?; fi
+if [[ "${1:-}" == "brief" ]]; then shift; exec node tools/ai-bench-brief.js "$@"; fi
+brief=0
+if [[ "${1:-}" == "--brief" ]]; then
+  brief=1; shift
+  command -v node >/dev/null || { echo "--brief needs node (tools/ai-bench-brief.js)."; exit 1; }
+fi
 
 seeds="${1:-6}"
 jobs="${2:-4}"
@@ -138,8 +150,9 @@ styles="${AI_BENCH_STYLES:-Rusher Turtle Expander Balanced}"
 cap="${AI_BENCH_CAP:-40}"
 scale="${AI_BENCH_SCALE:-32}"
 seed0="${AI_BENCH_SEED0:-101}"
-dir="$(pwd)/PerfResults/ai-bench-$(date +%Y%m%d-%H%M%S)"
+dir="$(realpath -m "${AI_BENCH_DIR:-PerfResults/ai-bench-$(date +%Y%m%d-%H%M%S)}")"
 mkdir -p "$dir"
+if (( brief )) && [[ -z "${AI_BENCH_OUT:-}" ]]; then out="$dir/report.md"; fi
 extra=()
 if [[ -n "${AI_BENCH_CONFIG:-}" ]]; then cp "$AI_BENCH_CONFIG" "$dir/GameConfig.xml"; extra=(-configFile "$dir/GameConfig.xml"); fi
 
@@ -179,6 +192,15 @@ export -f run_job
 export player dir cap scale
 export extraArgs="${extra[*]:-}"
 trap 'kill 0' INT TERM
+if (( brief )); then
+  # A line per match goes to matches.txt only; the brief follows, its exit code the full report's.
+  nl -w1 -s' ' "$dir/jobs.txt" | xargs -P "$jobs" -L 1 bash -c 'run_job "$@"' _ > "$dir/matches.txt"
+  status=0
+  report "$dir" "$out" > /dev/null || status=$?
+  node tools/ai-bench-brief.js "$dir" || true
+  [[ "$out" == "-" ]] || echo "  Full report: $out"
+  exit "$status"
+fi
 nl -w1 -s' ' "$dir/jobs.txt" | xargs -P "$jobs" -L 1 bash -c 'run_job "$@"' _
 
 report "$dir" "$out"
