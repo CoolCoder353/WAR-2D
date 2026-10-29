@@ -193,7 +193,9 @@ async function tune(specFile, outArg, dryRun) {
   const screened = [...new Map(log.filter((e) => e.seeds === b.seeds && e.seed0 === b.seed0).map((e) => [keyOf(e.values), e])).values()].sort((x, y) => y.score - x.score || nChanged(x.values) - nChanged(y.values));
   let ranked;
   if (spec.confirm.top > 0) {
-    const picks = screened.slice(0, spec.confirm.top);
+    // Runs tied with the last pick are ones the screen couldn't tell apart: confirm them too, up to twice top.
+    const cut = screened[Math.min(spec.confirm.top, screened.length) - 1].score;
+    const picks = screened.filter((e, i) => i < spec.confirm.top || (e.score >= cut && i < 2 * spec.confirm.top));
     if (!picks.some((e) => keyOf(e.values) === keyOf(baseValues))) picks.push(screened.find((e) => keyOf(e.values) === keyOf(baseValues)));
     ranked = [];
     for (const e of picks) ranked.push({ screen: e, confirm: await evaluate(e.values, 'confirm', spec.confirm.seeds, spec.confirm.seed0) });
@@ -209,6 +211,8 @@ async function tune(specFile, outArg, dryRun) {
     ...ranked.map((r, i) => `| ${i + 1} | ${(r.confirm || r.screen).id} | ${changes(r.screen.values)} | ${r.screen.score.toFixed(3)} | ${r.confirm ? `${r.confirm.score.toFixed(3)}: ${r.confirm.detail}` : '–'} |`),
   ];
   const top = ranked[0].confirm || ranked[0].screen;
+  const tied = screened.filter((e) => e.score === screened[0].score).length;
+  if (tied > 1) lines.push('', `${tied} screen runs tied at the top score (${screened[0].score.toFixed(3)}): the screen couldn't tell them apart. More seeds, or a harder slice (more sizes or styles), would.`);
   lines.push('', keyOf(top.values) === keyOf(baseValues)
     ? 'No candidate beat the base config.'
     : `Best: ${changes(top.values)}. Apply it with \`node tools/ai-tune.js apply ${shown(out)} ${top.id}\`.`);

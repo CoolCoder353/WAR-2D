@@ -163,7 +163,7 @@ The spec is JSON; the header of `tools/ai-tune.js` lists every field and default
   - `{ "kind": "stronger" }` (default) scores the stronger side's win rate over the non-mirror pairings.
   - `{ "kind": "style", "style": "Turtle", "target": 0.5 }` scores how close a style's win rate against other styles, in the mirror pairings (same difficulty), gets to `target`. With `"style": "*"` it scores the worst style.
   - Both subtract `failurePenalty` (default 0.5) times the share of matches that didn't finish.
-- `passes` (default 2), `minGain` (how much a score must beat the best to replace it, default 0) and `confirm` (`top`, `seeds`, `seed0`: default 3, 16, 1001; `top` 0 skips the confirm stage).
+- `passes` (default 2), `minGain` (how much a score must beat the best to replace it, default 0) and `confirm` (`top`, `seeds`, `seed0`: default 3, 16, 1001; `top` 0 skips the confirm stage). Screen runs tied with the last pick are confirmed too (up to twice `top`), and the summary says when the top of the screen tied: a screen that saturates (several candidates at 100%) can't rank them, so use more seeds or a harder slice next time.
 
 **Cost:** a run's matches are seeds × sizes × pairings, so a screen run is cheap at 8 seeds, one size and one pairing. `--dry-run` prints the most matches a spec can play (152 for the example), and each result line ends with that run's wall time.
 
