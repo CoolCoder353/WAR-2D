@@ -1,6 +1,6 @@
 # Bug Review
 
-Findings from an outside code review (2026-10-14), triaged against the code on 2026-10-15. The review was not taken as fact: each finding was traced in the source. Confirmed bugs are fixed (and logged in [known-issues.md](known-issues.md)); the rest are listed below with why they were not changed.
+Findings from code reviews and scans, from an outside review (2026-10-14, triaged against the code on 2026-10-15) to the sixth scan (2026-10-28, the v0.15 reconnect and QoL). The review was not taken as fact: each finding was traced in the source. Confirmed bugs are fixed (and logged in [known-issues.md](known-issues.md)); the rest are listed below with why they were not changed.
 
 ## Triage (2026-10-15)
 

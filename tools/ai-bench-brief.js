@@ -117,7 +117,12 @@ function summarise(games) {
   }
   return {
     matches: games.length, sizes, met, rows, strongerByStyle, mirrorByStyle, byDifficulty,
-    failures: { caps: fails.filter((g) => g.outcome === 'cap').length, draws: fails.filter((g) => g.outcome === 'draw').length, errors: fails.filter((g) => g.outcome === 'error').length, files: fails.map((g) => g.file.slice(0, -5)) },
+    failures: {
+      caps: fails.filter((g) => g.outcome === 'cap').length, draws: fails.filter((g) => g.outcome === 'draw').length,
+      errors: fails.filter((g) => g.outcome === 'error').length, files: fails.map((g) => g.file.slice(0, -5)),
+      // Why matches errored, most common first: [message, count].
+      errorMessages: Object.entries(fails.filter((g) => g.outcome === 'error').reduce((m, g) => { const e = g.error || 'no message'; m[e] = (m[e] || 0) + 1; return m; }, {})).sort((a, b) => b[1] - a[1]),
+    },
   };
 }
 
@@ -140,6 +145,7 @@ function formatBrief(s) {
   if (diff.length) out.push(`  Mean highest balance: ${diff.map(([d, x]) => `${d} ${Math.round(x.highestBalance)}`).join(' · ')}; unpaid s: ${diff.map(([d, x]) => `${d} ${Math.round(x.unpaidSeconds)}`).join(' · ')}`);
   const f = s.failures;
   if (f.files.length) out.push(`  Unfinished: ${f.caps} caps, ${f.draws} draws, ${f.errors} errors (${f.files.slice(0, 4).join(', ')}${f.files.length > 4 ? ', …' : ''})`);
+  if (f.errorMessages.length) out.push(`  Errors: ${f.errorMessages.slice(0, 3).map(([e, n]) => `"${e}" ×${n}`).join(' · ')} (each match's log is kept in the results directory)`);
   return out.join('\n');
 }
 

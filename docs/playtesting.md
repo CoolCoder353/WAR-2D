@@ -52,4 +52,4 @@ Press **Play**, type the host's address in **Join** (`1.2.3.4`, `1.2.3.4:7778`, 
 
 - The port mapping is leased for 2 hours and renewed while you host, so it closes on its own if the game crashes. Leaving the lobby removes it.
 - Start the game with `-noUpnp` to stop it from touching the router.
-- The lobby is limited to 8 players, and players can't join a match that has started.
+- The lobby is limited to 8 players (AI seats included), and players can't join a match that has started. A player who drops out can rejoin their own seat within `ReconnectSeconds` (60 s; see [gameplay.md](gameplay.md), Reconnecting).

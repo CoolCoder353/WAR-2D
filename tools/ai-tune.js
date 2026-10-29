@@ -163,7 +163,10 @@ async function tune(specFile, outArg, dryRun) {
     const t0 = Date.now();
     const r = await runBench(['--brief', String(seeds), String(b.jobs), spec.player], env, dir, perRun(seeds), `${id} ${stage} ${changes(values)}`);
     if (r.status !== 0 && r.status !== 2) throw new Error(`ai-bench.sh failed (${r.status ?? r.signal}) for ${id}:\n${r.output.split('\n').slice(-12).join('\n')}`);
-    const { score, detail } = scoreOf(bench.summarise(bench.loadGames([dir])), spec.objective);
+    const summary = bench.summarise(bench.loadGames([dir]));
+    // Every match failing means the candidate config or the build is broken, not that it played badly.
+    if (summary.matches && summary.failures.errors === summary.matches) throw new Error(`${id}: every match failed (${summary.failures.errorMessages.map(([e, n]) => `"${e}" ×${n}`).join(', ')}); config ${cfgFile}, logs in ${dir}`);
+    const { score, detail } = scoreOf(summary, spec.objective);
     const entry = { id, stage, seeds, seed0, values, score, detail, wallSeconds: Math.round((Date.now() - t0) / 1000) };
     fs.appendFileSync(logFile, `${JSON.stringify(entry)}\n`);
     log.push(entry);
