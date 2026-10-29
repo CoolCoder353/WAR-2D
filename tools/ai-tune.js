@@ -154,6 +154,7 @@ async function tune(specFile, outArg, dryRun) {
     const cfgFile = path.join(out, `${id}.xml`);
     fs.writeFileSync(cfgFile, xml.setValues(baseSrc, values));
     const dir = path.join(out, id);
+    fs.rmSync(dir, { recursive: true, force: true }); // what an interrupted attempt at this run left
     const env = {
       ...process.env, AI_BENCH_CONFIG: cfgFile, AI_BENCH_DIR: dir, AI_BENCH_OUT: path.join(dir, 'report.md'),
       AI_BENCH_SIZES: b.sizes, AI_BENCH_PAIRINGS: b.pairings, AI_BENCH_STYLES: b.styles, AI_BENCH_CAP: String(b.cap),
