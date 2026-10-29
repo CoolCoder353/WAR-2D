@@ -27,7 +27,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { spawn } = require('child_process');
 const xml = require('./lib/config-xml');
 const bench = require('./ai-bench-brief');
 
@@ -87,7 +87,29 @@ function scoreOf(summary, objective) {
   throw new Error(`unknown objective kind "${objective.kind}" (stronger or style)`);
 }
 
-function tune(specFile, outArg, dryRun) {
+/** Runs tools/ai-bench.sh; on a terminal it shows the matches finished so far on one line (stderr) while they play. */
+function runBench(args, env, dir, total, label) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('bash', ['tools/ai-bench.sh', ...args], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    child.stdout.on('data', (d) => { output += d; });
+    child.stderr.on('data', (d) => { output += d; });
+    const t0 = Date.now();
+    const timer = process.stderr.isTTY && setInterval(() => {
+      let done = 0;
+      try { done = fs.readdirSync(dir).filter((f) => f.endsWith('.json')).length; } catch { /* not created yet */ }
+      const line = `  ${done}/${total} matches, ${Math.round((Date.now() - t0) / 1000)} s: ${label}`;
+      process.stderr.write(`\r\x1b[K${line.slice(0, (process.stderr.columns || 100) - 1)}`);
+    }, 2000);
+    child.on('error', reject);
+    child.on('close', (status, signal) => {
+      if (timer) { clearInterval(timer); process.stderr.write('\r\x1b[K'); }
+      resolve({ status, signal, output });
+    });
+  });
+}
+
+async function tune(specFile, outArg, dryRun) {
   const spec = loadSpec(specFile);
   process.chdir(ROOT);
   const baseSrc = fs.readFileSync(spec.config, 'utf8');
@@ -121,10 +143,11 @@ function tune(specFile, outArg, dryRun) {
   const log = fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
   const memo = new Map(log.map((e) => [`${e.seeds}@${e.seed0}|${keyOf(e.values)}`, e]));
   if (log.length) console.log(`Resuming ${out}: ${log.length} runs already played`);
+  console.log(`Playing in ${shown(out)}: one line per run when its matches finish (a screen run is ${perRun(b.seeds)}). Ctrl-C stops; the same --out resumes.`);
   const nChanged = (values) => Object.entries(values).filter(([k, v]) => v !== baseValues[k]).length;
   const changes = (values) => Object.entries(values).filter(([k, v]) => v !== baseValues[k]).map(([k, v]) => `${k}=${v}`).join(' ') || '(base config)';
 
-  function evaluate(values, stage, seeds, seed0) {
+  async function evaluate(values, stage, seeds, seed0) {
     const key = `${seeds}@${seed0}|${keyOf(values)}`;
     if (memo.has(key)) return memo.get(key);
     const id = `c${String(log.length + 1).padStart(3, '0')}`;
@@ -137,8 +160,8 @@ function tune(specFile, outArg, dryRun) {
       AI_BENCH_SCALE: String(b.scale), AI_BENCH_SEED0: String(seed0),
     };
     const t0 = Date.now();
-    const r = spawnSync('bash', ['tools/ai-bench.sh', '--brief', String(seeds), String(b.jobs), spec.player], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 << 20 });
-    if (r.status !== 0 && r.status !== 2) throw new Error(`ai-bench.sh failed (${r.status ?? r.signal}) for ${id}:\n${(r.stdout + r.stderr).split('\n').slice(-12).join('\n')}`);
+    const r = await runBench(['--brief', String(seeds), String(b.jobs), spec.player], env, dir, perRun(seeds), `${id} ${stage} ${changes(values)}`);
+    if (r.status !== 0 && r.status !== 2) throw new Error(`ai-bench.sh failed (${r.status ?? r.signal}) for ${id}:\n${r.output.split('\n').slice(-12).join('\n')}`);
     const { score, detail } = scoreOf(bench.summarise(bench.loadGames([dir])), spec.objective);
     const entry = { id, stage, seeds, seed0, values, score, detail, wallSeconds: Math.round((Date.now() - t0) / 1000) };
     fs.appendFileSync(logFile, `${JSON.stringify(entry)}\n`);
@@ -149,13 +172,13 @@ function tune(specFile, outArg, dryRun) {
   }
 
   // Screen: coordinate search from the base config.
-  let best = evaluate(baseValues, 'screen', b.seeds, b.seed0);
+  let best = await evaluate(baseValues, 'screen', b.seeds, b.seed0);
   for (let pass = 1; pass <= spec.passes; pass++) {
     let changed = false;
     for (const k of knobs) {
       for (const v of k.values) {
         if (v === best.values[k.path]) continue;
-        const e = evaluate({ ...best.values, [k.path]: v }, 'screen', b.seeds, b.seed0);
+        const e = await evaluate({ ...best.values, [k.path]: v }, 'screen', b.seeds, b.seed0);
         if (e.score > best.score + spec.minGain) { best = e; changed = true; }
       }
     }
@@ -168,7 +191,9 @@ function tune(specFile, outArg, dryRun) {
   if (spec.confirm.top > 0) {
     const picks = screened.slice(0, spec.confirm.top);
     if (!picks.some((e) => keyOf(e.values) === keyOf(baseValues))) picks.push(screened.find((e) => keyOf(e.values) === keyOf(baseValues)));
-    ranked = picks.map((e) => ({ screen: e, confirm: evaluate(e.values, 'confirm', spec.confirm.seeds, spec.confirm.seed0) })).sort((x, y) => y.confirm.score - x.confirm.score);
+    ranked = [];
+    for (const e of picks) ranked.push({ screen: e, confirm: await evaluate(e.values, 'confirm', spec.confirm.seeds, spec.confirm.seed0) });
+    ranked.sort((x, y) => y.confirm.score - x.confirm.score);
   } else {
     ranked = screened.slice(0, 5).map((e) => ({ screen: e, confirm: null }));
   }
@@ -214,7 +239,7 @@ if (require.main === module) {
       const spec = args.find((a) => !a.startsWith('--') && args[args.indexOf(a) - 1] !== '--out');
       if (!spec) throw new Error('Usage: node tools/ai-tune.js <spec.json> [--out <dir>] [--dry-run]\n       node tools/ai-tune.js apply <tune-dir> [candidate-id]');
       const o = args.indexOf('--out');
-      tune(path.resolve(spec), o >= 0 ? path.resolve(args[o + 1]) : null, args.includes('--dry-run'));
+      tune(path.resolve(spec), o >= 0 ? path.resolve(args[o + 1]) : null, args.includes('--dry-run')).catch((e) => { console.error(e.message); process.exit(1); });
     }
   } catch (e) {
     console.error(e.message);

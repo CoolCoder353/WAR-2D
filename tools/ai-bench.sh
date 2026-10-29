@@ -193,8 +193,17 @@ export player dir cap scale
 export extraArgs="${extra[*]:-}"
 trap 'kill 0' INT TERM
 if (( brief )); then
-  # A line per match goes to matches.txt only; the brief follows, its exit code the full report's.
-  nl -w1 -s' ' "$dir/jobs.txt" | xargs -P "$jobs" -L 1 bash -c 'run_job "$@"' _ > "$dir/matches.txt"
+  # A line per match goes to matches.txt only (on a terminal, a count of them shows meanwhile); the brief follows, its
+  # exit code the full report's.
+  if [[ -t 1 ]]; then
+    nl -w1 -s' ' "$dir/jobs.txt" | xargs -P "$jobs" -L 1 bash -c 'run_job "$@"' _ | {
+      n=0
+      while IFS= read -r line; do echo "$line" >> "$dir/matches.txt"; n=$((n + 1)); printf '\r  %d/%d matches' "$n" "$total"; done
+      printf '\r\033[K'
+    }
+  else
+    nl -w1 -s' ' "$dir/jobs.txt" | xargs -P "$jobs" -L 1 bash -c 'run_job "$@"' _ > "$dir/matches.txt"
+  fi
   status=0
   report "$dir" "$out" > /dev/null || status=$?
   node tools/ai-bench-brief.js "$dir" || true
