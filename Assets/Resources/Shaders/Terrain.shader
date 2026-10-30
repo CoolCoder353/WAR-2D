@@ -58,13 +58,23 @@ Shader "WAR2D/Terrain"
             }
 
             // Natural ground and rock (not player walls or blueprints) drift lighter and darker, warmer and cooler, in patches a few
-            // to a dozen tiles across, so a field of the same tiles doesn't read as a repeating grid.
+            // to a dozen tiles across, so a field of the same tiles doesn't read as a repeating grid. Over that, the map falls into
+            // zones a few dozen tiles across (warped so their edges wander): dusty brown ground, cool dark slate, and the bare grey
+            // stone between. Every natural type gets the same tint at a point, since a rock tile's edge is floor art that must
+            // match the floor tile beside it.
             half3 Weathered(half3 col, float2 tile)
             {
-                float broad = ValueNoise(tile / 11.0), fine = ValueNoise(tile / 3.7 + 17.0);
-                float light = 0.9 + 0.16 * broad + 0.06 * (fine - 0.5);
+                float2 p = tile + 9.0 * (float2(ValueNoise(tile / 19.0 + 3.0), ValueNoise(tile / 19.0 + 91.0)) - 0.5);
+                float dust = smoothstep(0.52, 0.72, ValueNoise(p / 27.0 + 5.0));
+                float slate = smoothstep(0.55, 0.75, ValueNoise(p / 33.0 + 63.0)) * (1 - dust);
+                float broad = ValueNoise(p / 11.0), fine = ValueNoise(tile / 3.7 + 17.0), mottle = ValueNoise(tile * 1.3 + 29.0);
+                float light = 0.88 + 0.18 * broad + 0.08 * (fine - 0.5) + 0.06 * (mottle - 0.5);
                 float warm = ValueNoise(tile / 17.0 + 41.0) - 0.5;
-                return col * light * half3(1 + 0.06 * warm, 1, 1 - 0.06 * warm);
+                half3 tint = half3(1 + 0.06 * warm, 1, 1 - 0.06 * warm);
+                tint = lerp(tint, half3(1.16, 1.03, 0.82), dust);
+                tint = lerp(tint, half3(0.86, 0.95, 1.12), slate);
+                light *= 1 + 0.05 * dust - 0.08 * slate;
+                return col * light * tint;
             }
 
             struct appdata { float3 vertex : POSITION; float2 uv : TEXCOORD0; };

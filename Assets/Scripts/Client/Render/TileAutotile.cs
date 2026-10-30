@@ -73,7 +73,7 @@ namespace WAR2D.Client.Render
                     // Variant-major, as ArtBuild lays the gem frames out: 4 variants × 16 masks.
                     return (byte)(Hash(x, y, RandomVariants) * ArtManifest.AutotileVariants + Mask4((tx, ty) => Solid(grid, tx, ty), x, y));
                 case TileType.Ground:
-                    return (byte)Hash(x, y, RenderGen.FloorVariants);
+                    return (byte)RenderGen.FloorVariant(Hash(x, y, RenderGen.FloorPicks));
                 case TileType.PlayerWall:
                     // Built walls join built walls (the damage frame is added by MapView).
                     return Mask4((tx, ty) => Is(grid, tx, ty, TileType.PlayerWall, TileType.PlayerWall), x, y);

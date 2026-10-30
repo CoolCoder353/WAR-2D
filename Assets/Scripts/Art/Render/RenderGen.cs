@@ -428,27 +428,95 @@ namespace WAR2D.Art.Render
             var rng = new ArtRandom(seed, "pebbles" + variant);
             for (int k = 0; k < 6; k++) c.Rivet(4 + rng.Range(TileSize - 8), 4 + rng.Range(TileSize - 8), 0.8f + rng.Range(2) * 0.6f, 0.9f, 0.05f);
             // Variants 4 and up add one feature each in the tile's middle, faded out before the edges so tiles still meet
-            // (playtest 2026-10-30: the ground looked too even): loose stones, a damp stain, a sandy patch, a deeper crack.
-            switch (variant)
+            // (playtest 2026-10-30: the ground looked too even): loose stones, a damp stain, a sandy patch, a crack,
+            // a gravel spill, a small crater, a split slab and a few boulders. Each feature has two frames (4–11, 12–19)
+            // drawn from different seeds, so the same crater doesn't sit a few tiles from its twin.
+            switch (variant < 4 ? variant : 4 + (variant - 4) % FloorFeatures)
             {
                 case 4:
-                    for (int k = 0; k < 5; k++) c.Rivet(14 + rng.Range(TileSize - 28), 14 + rng.Range(TileSize - 28), 1.6f + rng.Range(3) * 0.5f, 1.4f, 0.12f);
+                    for (int k = 0; k < 6; k++) c.Rivet(14 + rng.Range(TileSize - 28), 14 + rng.Range(TileSize - 28), 1.8f + rng.Range(3) * 0.6f, 1.8f, 0.14f);
                     break;
                 case 5:
-                    c.Tint((x, y, col) => col * (1f - 0.18f * Patch(x, y, s + 31)));
+                    c.Tint((x, y, col) => col * (1f - 0.24f * Patch(x, y, s + 31)));
                     break;
                 case 6:
-                    c.Tint((x, y, col) => Color.Lerp(col, C(StylePalette.Floor2), 0.35f * Patch(x, y, s + 37)));
+                    c.Tint((x, y, col) => Color.Lerp(col, C(StylePalette.Floor2), 0.6f * Patch(x, y, s + 37)));
                     break;
                 case 7:
-                    c.Groove((x, y) => Interior(x, y) < 0.3f ? 9 : (Mathf.Abs(Noise.Fbm(x, y, TileSize, 2, 2, s + 41) - 0.5f) - 0.01f) * 40, 1.6f, 0.8f);
+                {
+                    // A crack: one deep wandering line across the middle.
+                    float a = rng.Range(180) * Mathf.Deg2Rad, o = rng.Range(20) - 10;
+                    c.Groove((x, y) => Interior(x, y) < 0.4f ? 9 : Mathf.Abs((x - TileSize / 2f) * Mathf.Cos(a) + (y - TileSize / 2f) * Mathf.Sin(a) - o
+                        + 6f * (Noise.Fbm(x, y, TileSize, 2, 3, s + 41) - 0.5f)) - 0.5f, 2f, 1f);
                     break;
+                }
+                case 8:
+                {
+                    // Gravel: a lighter patch thick with small stones.
+                    c.Tint((x, y, col) => Color.Lerp(col, C(StylePalette.Floor2), 0.4f * Patch(x, y, s + 43)));
+                    for (int k = 0; k < 40; k++)
+                    {
+                        float gx = 10 + rng.Range(TileSize - 20), gy = 10 + rng.Range(TileSize - 20);
+                        if (Patch(gx, gy, s + 43) > 0.25f) c.Rivet(gx, gy, 0.8f + rng.Range(3) * 0.4f, 1f, 0.1f);
+                    }
+                    break;
+                }
+                case 9:
+                {
+                    // A shallow crater: a dished, darker floor inside a low rim.
+                    float cx = 26 + rng.Range(12), cy = 26 + rng.Range(12), r = 9 + rng.Range(4);
+                    c.Displace((x, y) =>
+                    {
+                        float d = new Vector2(x - cx, y - cy).magnitude / r;
+                        return d < 1 ? -2.2f * (1 - d * d) : 1.4f * Mathf.Max(0, 1 - (d - 1) * 2.5f);
+                    });
+                    c.Tint((x, y, col) => col * (1f - 0.22f * Mathf.Clamp01(1.1f - new Vector2(x - cx, y - cy).magnitude / r)));
+                    break;
+                }
+                case 10:
+                {
+                    // A split slab: one wandering crack across the middle and a branch off one side of it.
+                    float a = rng.Range(180) * Mathf.Deg2Rad, b = a + (50 + rng.Range(80)) * Mathf.Deg2Rad;
+                    float o1 = rng.Range(16) - 8, o2 = rng.Range(16) - 8;
+                    float Line(float x, float y, float ang, float off) =>
+                        (x - TileSize / 2f) * Mathf.Cos(ang) + (y - TileSize / 2f) * Mathf.Sin(ang) - off
+                        + 3f * (Noise.Fbm(x, y, TileSize, 3, 2, s + 47) - 0.5f);
+                    c.Groove((x, y) => Interior(x, y) < 0.5f ? 9
+                        : Mathf.Min(Mathf.Abs(Line(x, y, a, o1)), Line(x, y, a, o1) > 0 ? Mathf.Abs(Line(x, y, b, o2)) : 9) - 0.4f, 1.6f, 0.9f);
+                    break;
+                }
+                case 11:
+                {
+                    // Boulders: two or three fallen rocks.
+                    var rock = new Material(C(StylePalette.Rock1), 0.08f, 10);
+                    int n = 2 + rng.Range(2);
+                    for (int k = 0; k < n; k++)
+                    {
+                        float bx = 18 + rng.Range(TileSize - 36), by = 18 + rng.Range(TileSize - 36), br = 3 + rng.Range(3);
+                        int sides = 5 + rng.Range(2);
+                        float turn = rng.Range(70) * Mathf.Deg2Rad;
+                        c.Shape((x, y) => Polygon(x, y, bx, by, br, sides, turn), rock, 3 + br, br * 0.7f, br);
+                    }
+                    break;
+                }
             }
             return c;
         }
 
-        /// <summary>Floor variants (<see cref="Floor"/>): four plain, four with a feature.</summary>
-        public const int FloorVariants = 8;
+        /// <summary>Floor features (<see cref="Floor"/> variants 4 and up), each drawn in two frames.</summary>
+        public const int FloorFeatures = 8;
+
+        /// <summary>Floor variants (<see cref="Floor"/>): four plain, then two frames of each feature.</summary>
+        public const int FloorVariants = 4 + 2 * FloorFeatures;
+
+        /// <summary>
+        /// The floor variant of a tile from its position hash in [0, <see cref="FloorPicks"/>): the plain variants 0–3 take
+        /// the first 24 picks, each feature frame (4–19) one pick, so 40 % of the floor carries a feature.
+        /// </summary>
+        public static int FloorVariant(int pick) => pick < 24 ? pick & 3 : 4 + (pick - 24) % (FloorVariants - 4);
+
+        /// <summary>The number of position-hash picks <see cref="FloorVariant"/> maps to variants.</summary>
+        public const int FloorPicks = 40;
 
         /// <summary>Rock variants per autotile mask (<see cref="Rock"/>): the same edges, different tops.</summary>
         public const int RockVariants = 3;
