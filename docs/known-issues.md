@@ -41,9 +41,26 @@ The code, the atlases (`WAR-2D/Art/Build all`, the Barracks now keyed `Barracks`
 | Settings offered only 720p, 1080p and 1440p; no 4K | **Fixed.** `GameSettings.Resolutions` lists 1280×720 to 3840×2160 (incl. 1366×768, 1600×900, ultrawide); `ResolutionChoices` adds the monitor's own and the current size, and the row wraps. |
 | Walls and wall blueprints could not be selected, so a misplaced one could not be removed | **Fixed.** They are terrain tiles, not buildings, so `BuildingPicker` never saw them. `Selection.SelectedWalls` (click or box), `CmdRemoveWalls` → `PlayerActions.RemoveWalls` → `SimCommandKind.RemoveWall` (owner-checked in the sim; refund: blueprint in full, built `DemolishRefund`). The command card shows Cancel/Demolish for them. |
 | The Steam lobby list never showed a friend who was hosting | **Fixed.** Steam's lobby search returns only Public lobbies and the default Visibility is Friends, so friends' lobbies never came back. `SteamworksBackend.RequestLobbyList` now also reads the lobby each friend playing this game is in (`GetFriendGamePlayed`, then `RequestLobbyData`, 3 s limit). **Not verified against live Steam** (needs two Steam accounts). |
-| Alerts vanished after 8 s and did nothing when clicked | **Fixed.** The HUD no longer expires alerts (× dismisses; the feed holds six); clicking one with a place centres the camera there (`AlertFeedModel.FocusRequested`). |
+| Alerts vanished after 8 s and did nothing when clicked | **Fixed** (expiry restored on 2026-10-30, see above). The HUD no longer expired alerts (× dismissed; the feed held six); clicking one with a place centres the camera there (`AlertFeedModel.FocusRequested`). |
 | The minimap was black while placing the HQ | **Fixed.** Nothing sees anything before the HQ exists, so the fog-only minimap was all unexplored. While placing, it draws the whole terrain dimmed (the client already holds the map) with the start options marked (`MinimapTexture.Begin(..., revealTerrain)`, `PlotMarker`). |
 | `Character_Settings.asset` unparseable (found while testing) | **Fixed** in commit 27904e7: the single `--- !u!114 &11400000` line is restored (values were unchanged). |
+
+## Owner playtest fixes (2026-10-30, polish branch)
+
+| Report | Status |
+| ------ | ------ |
+| Tread marks looked odd zoomed right in, faded too fast and vanished at medium zoom | **Fixed.** A mark is turned to the vehicle's exact heading instead of the nearest 45° (no staircase); the bands are solid and wider (`EffectGen.Tracks`); they hold 12 s and fade over 10 s (pool 2048). |
+| Too many notifications | **Fixed.** Alerts expire after `Alerts/ShowSeconds` (12 s) again, held while the pointer is over the feed; a right click dismisses; repeats join their row with a count; the feed holds five. |
+| AI names overlapped in the top bar | **Fixed.** Player chips shrink with an ellipsis, the AI tag shows as its icon only, and the full name is the chip's tooltip. Not yet seen with eight players. |
+| Miner sounds | **Fixed.** `gem_mined` plays only at 2:1 zoom or closer, for a Miner within 3 tiles of the screen's centre, at 35 % volume (`WorldEffects.GemSound*`). |
+| Music too loud by default | **Fixed.** The default music volume is 50 %. Saved settings keep their value. |
+| AI (Turtle above all) defends badly | **Changed.** HQ turret ring (`HomeTurrets`), earlier chokepoint defences (`DefenceStart`), a Turtle always recalls its attack to a serious base threat (gameplay.md). **Not yet measured** with `tools/ai-bench.sh`. |
+| The Builders chip selected every Builder | **Changed.** A click moves the camera to the next Builder without touching the selection; Ctrl + click (or Ctrl + `.`) still selects them all. |
+| HQ flags on the minimap | **Added.** A flag in the owner's colour over each HQ the player has found (dimmed for a ghost), drawn into the minimap texture. |
+| A roam / scout mode | **Added.** `J` (rebindable) or the Roam command button: client-side `Roam` sends each roaming unit to random unscouted ground with ordinary Move orders. Roaming units wear a dashed gold ring. HUD from the approved Figma page ([record](ux/playtest-2026-10-30-figma.md)), with its other approved upgrades: alert timer bars, a player hover card, the Builders chip's "4 / 12" read-out and an HQs minimap filter. |
+| Ground and rock looked uniform | **Fixed.** Eight floor variants (four with a feature), three rock variants per autotile mask (interiors differ, edges match), and large-scale light and warmth patches in `Terrain.shader`. |
+| Units blurry at high zoom | **Fixed.** The unit, building and team-sprite shaders snap texels when magnified (`SharpUv`); zoomed out, the trilinear mips are unchanged. |
+| Wrecks; building rubble should last longer | **Added / changed.** A dead unit (not a Suicide bomber) leaves its sprite at its last facing, charred, for 60 s, fading over 15 s; scorch holds 60 s, rubble 180 s. |
 
 ## Reconnect review fixes (2026-10-28, v0.15.1)
 

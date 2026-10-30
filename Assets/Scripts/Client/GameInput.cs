@@ -34,6 +34,8 @@ public static class GameInput
     public static InputAction Stop => Map["Stop"];
     /// <summary>Holds the selection in place (H).</summary>
     public static InputAction Hold => Map["Hold"];
+    /// <summary>Sends the selected units roaming: each scouts random ground not seen lately until given another order (J).</summary>
+    public static InputAction Roam => Map["Roam"];
     /// <summary>Sets off the selected Suicide bombers (B).</summary>
     public static InputAction Detonate => Map["Detonate"];
     /// <summary>Arms Repair for Builders: the next click repairs the building or wall there (F).</summary>
@@ -149,6 +151,7 @@ public static class GameInput
         map.AddAction("Stop", InputActionType.Button, "<Keyboard>/s");
         map.AddAction("Hold", InputActionType.Button, "<Keyboard>/h");
         map.AddAction("Detonate", InputActionType.Button, "<Keyboard>/b");
+        map.AddAction("Roam", InputActionType.Button, "<Keyboard>/j");
         map.AddAction("Repair", InputActionType.Button, "<Keyboard>/f");
         map.AddAction("Dig", InputActionType.Button, "<Keyboard>/g");
         map.AddAction("Cancel", InputActionType.Button, "<Keyboard>/delete");

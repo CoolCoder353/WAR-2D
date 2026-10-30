@@ -29,7 +29,7 @@ A unit whose replicated health drops flashes red for 0.15 s, as buildings do. `C
 
 ### 3. Wrecks and scorch marks
 
-New ground-mark layer, `Decals` (pooled sprites at `SortingOrders.Decals`, under the clearing ring and everything else). A known unit that dies (`ClientUnitStore.Died`) leaves a `Scorch` (`ScorchLarge` under Heavies and Artillery) that holds 15 s and dithers out over 10 s. A destroyed finished building leaves rubble the size of its footprint (`Rubble1/2/3/5`, 4 tiles uses the 3-tile one), holding 25 s and fading over 10 s.
+New ground-mark layer, `Decals` (pooled sprites at `SortingOrders.Decals`, under the clearing ring and everything else). A known unit that dies (`ClientUnitStore.Died`) leaves a `Scorch` (`ScorchLarge` under Heavies and Artillery) that holds 60 s and dithers out over 20 s, and (playtest 2026-10-30) its wreck: its own sprite at its last facing, tinted charred, holding 60 s and fading over 15 s (not a Suicide bomber). A destroyed finished building leaves rubble the size of its footprint (`Rubble1/2/3/5`, 4 tiles uses the 3-tile one), holding 180 s and fading over 30 s.
 
 ### B. Building deaths scaled to size
 
@@ -49,7 +49,7 @@ A unit's or building's bar keeps the lost part as a pale segment that holds 0.25
 
 ### G. Track marks
 
-Tanks, Heavies and Artillery on screen lay a `Tracks` mark every half tile moved, in the nearest of 4 directions. Marks hold 3 s and fade over 4 s. A jump of more than 2 tiles (a correction) lays none. The pool is 768.
+Tanks, Heavies and Artillery on screen lay a `Tracks` mark every half tile moved, turned to the exact heading (playtest 2026-10-30; it was the nearest of 4 directions). Marks hold 12 s and fade over 10 s. A jump of more than 2 tiles (a correction) lays none. The pool is 2048.
 
 ### H. Fog fades in and out
 

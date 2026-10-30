@@ -161,6 +161,12 @@ namespace WAR2D.UI
             topBar.DiplomacyClicked += diplomacy.Toggle;
             topBar.HqClicked += () => { UnitCommander.Instance?.JumpToHq(); Selection.Pull(); };
             topBar.BuildersClicked += all => { UnitCommander.Instance?.SelectIdleBuilders(all); Selection.Pull(); };
+            topBar.ShowBuilderClicked += () =>
+            {
+                if (UnitCommander.Instance == null) return;
+                (int position, int count) = UnitCommander.Instance.ShowNextBuilder();
+                topBar.ShowBuilderPosition(position, count);
+            };
             topBar.ArmyClicked += () => { UnitCommander.Instance?.SelectArmy(); Selection.Pull(); };
             topBar.DecayingClicked += SelectDecaying;
             diplomacy.AttackToggled += SetAttack;
@@ -191,6 +197,7 @@ namespace WAR2D.UI
             Selection.EverywhereRequested += OnEverywhere;
             commandCard.RallyAllClicked += () => UnitCommander.Instance?.ArmRallyAll();
             commandCard.OrderClicked += OnOrder;
+            commandCard.RoamClicked += () => { UnitCommander.Instance?.StartRoaming(); Selection.Pull(); };
             commandCard.BuildClicked += OnBuild;
             commandCard.QueueClicked += OnQueue;
             commandCard.ProductionSelected += OnProductionSelected;
@@ -366,6 +373,9 @@ namespace WAR2D.UI
                 else matchMenu.Toggle();
             }
             if (GameInput.Cancel.WasPressedThisFrame() && !matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !diplomacy.IsOpen) commandCard.RequestRemove();
+            // Alerts leave after Alerts.ShowSeconds, but not from under the pointer (playtest 2026-10-30).
+            if (alertFeed != null && alertFeed.Hovered) Alerts.Hold(Time.unscaledDeltaTime);
+            else Alerts.Expire(Time.unscaledTime);
             // Next alert (Space, rebindable): the newest unvisited alert with a place, then the one before it.
             if (GameInput.NextAlert.WasPressedThisFrame() && !matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !endScreen.IsShown) Alerts.FocusNextUnvisited();
             // v0.15.1 card-slot keys (Figma H1–H2): build and production, not while a menu or dialog has the keyboard.

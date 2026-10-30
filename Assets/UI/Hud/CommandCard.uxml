@@ -19,6 +19,10 @@
                     <war:CommandIcon icon="Hold" />
                     <ui:Label name="cmd-hold-key" text="H" class="command-button__key" />
                 </ui:Button>
+                <ui:Button name="cmd-roam" class="command-button">
+                    <war:CommandIcon icon="Roam" />
+                    <ui:Label name="cmd-roam-key" text="J" class="command-button__key" />
+                </ui:Button>
                 <ui:Button name="cmd-repair" class="command-button">
                     <war:CommandIcon icon="Repair" />
                     <ui:Label name="cmd-repair-key" text="F" class="command-button__key" />

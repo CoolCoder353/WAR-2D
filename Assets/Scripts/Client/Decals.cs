@@ -7,21 +7,28 @@ using WAR2D.Art.Render;
 /// Client-only ground marks from the <c>Effects</c> atlas (polish items 3 and G): scorch where a unit died, rubble over a
 /// destroyed building's footprint, and tread marks behind vehicles. Each mark holds, then fades through its dithered frames
 /// and goes. Like <see cref="Effects"/>, each kind has a fixed pool of sprites made once; when a pool is full the oldest mark
-/// is reused. Marks only follow deaths and movement the client already draws.
+/// is reused. Marks only follow deaths and movement the client already draws. A destroyed unit also leaves its wreck (its own
+/// sprite at its last facing, charred), which fades out by alpha (playtest 2026-10-30: wrecks, and longer-lasting marks).
 /// </summary>
 public static class Decals
 {
     /// <summary>Pool sizes: the most of each kind on the map at once.</summary>
-    public const int ScorchPool = 256, LargeScorchPool = 64, RubblePool = 24, LargeRubblePool = 8, TrackPool = 768;
+    public const int ScorchPool = 256, LargeScorchPool = 64, RubblePool = 48, LargeRubblePool = 16, TrackPool = 2048, WreckPool = 192;
 
     /// <summary>Seconds a scorch holds before it fades, and the seconds the fade takes.</summary>
-    public const float ScorchHold = 15f, ScorchFade = 10f;
+    public const float ScorchHold = 60f, ScorchFade = 20f;
 
     /// <summary>Seconds rubble holds before it fades, and the seconds the fade takes.</summary>
-    public const float RubbleHold = 25f, RubbleFade = 10f;
+    public const float RubbleHold = 180f, RubbleFade = 30f;
 
     /// <summary>Seconds a tread mark holds before it fades, and the seconds the fade takes.</summary>
-    public const float TrackHold = 3f, TrackFade = 4f;
+    public const float TrackHold = 12f, TrackFade = 10f;
+
+    /// <summary>Seconds a unit's wreck holds before it fades, and the seconds the fade takes.</summary>
+    public const float WreckHold = 60f, WreckFade = 15f;
+
+    /// <summary>The tint on a wreck's sprite: charred, dark and a little warm.</summary>
+    public static readonly Color WreckTint = new Color(0.32f, 0.29f, 0.27f, 1f);
 
     private sealed class Slot
     {
@@ -30,6 +37,8 @@ public static class Decals
         public float Start;
         public int Direction, Frame;
         public bool Active;
+        /// <summary>A wreck: drawn from another atlas and faded by alpha rather than through dithered frames.</summary>
+        public bool Wreck;
     }
 
     private sealed class Pool
@@ -50,7 +59,8 @@ public static class Decals
     private static readonly Pool Rubble3 = new Pool("Rubble3", RubblePool, RubbleHold, RubbleFade);
     private static readonly Pool Rubble5 = new Pool("Rubble5", LargeRubblePool, RubbleHold, RubbleFade);
     private static readonly Pool Tracks = new Pool("Tracks", TrackPool, TrackHold, TrackFade);
-    private static readonly Pool[] All = { Scorches, LargeScorches, Rubble1, Rubble2, Rubble3, Rubble5, Tracks };
+    private static readonly Pool Wrecks = new Pool("Wreck", WreckPool, WreckHold, WreckFade);
+    private static readonly Pool[] All = { Scorches, LargeScorches, Rubble1, Rubble2, Rubble3, Rubble5, Tracks, Wrecks };
     private static Runner runner;
     private static ArtAtlas atlas;
 
@@ -65,6 +75,12 @@ public static class Decals
 
     /// <summary>Tread marks on the map now.</summary>
     public static int ActiveTracks => Count(Tracks);
+
+    /// <summary>Unit wrecks on the map now.</summary>
+    public static int ActiveWrecks => Count(Wrecks);
+
+    /// <summary>A wreck's alpha <paramref name="age"/> seconds after it was left: 1 while it holds, then down to 0; below 0 once it is gone.</summary>
+    public static float WreckAlpha(float age) => age < WreckHold ? 1f : 1f - (age - WreckHold) / WreckFade;
 
     /// <summary>
     /// The fade frame a mark shows <paramref name="age"/> seconds after it was made: 0 while it holds, then one frame per equal
@@ -85,15 +101,23 @@ public static class Decals
     public static void Rubble(Vector2 centre, int tiles) =>
         Place(tiles >= 5 ? Rubble5 : tiles >= 3 ? Rubble3 : tiles == 2 ? Rubble2 : Rubble1, centre, 0);
 
-    /// <summary>The tread mark direction (0 = east–west, then 45° steps anticlockwise) for a heading in radians.</summary>
-    public static int TrackDirection(float heading)
+    /// <summary>
+    /// A tread mark centred on <paramref name="position"/>, laid along <paramref name="heading"/> (radians). The east–west mark is
+    /// turned to the exact heading (playtest 2026-10-30: marks snapped to 45° steps made a staircase behind a vehicle).
+    /// </summary>
+    public static void Track(Vector2 position, float heading)
     {
-        int d = Mathf.RoundToInt(heading / (Mathf.PI / 4f));
-        return ((d % EffectGen.TrackDirections) + EffectGen.TrackDirections) % EffectGen.TrackDirections;
+        Slot s = Place(Tracks, position, 0);
+        if (s != null) s.Go.transform.rotation = Quaternion.Euler(0f, 0f, heading * Mathf.Rad2Deg);
     }
 
-    /// <summary>A tread mark centred on <paramref name="position"/>, laid along <paramref name="heading"/> (radians).</summary>
-    public static void Track(Vector2 position, float heading) => Place(Tracks, position, TrackDirection(heading));
+    /// <summary>The wreck a destroyed unit leaves at <paramref name="position"/>: <paramref name="sprite"/> (its last facing), charred.</summary>
+    public static void Wreck(Vector2 position, Sprite sprite)
+    {
+        if (sprite == null) return;
+        Slot s = Place(Wrecks, position, 0, sprite);
+        if (s != null) s.Sprite.color = WreckTint;
+    }
 
     /// <summary>Destroys every pooled sprite (tests, and the end of a match).</summary>
     public static void Clear()
@@ -124,7 +148,7 @@ public static class Decals
         return n;
     }
 
-    private static void Place(Pool pool, Vector2 position, int direction)
+    private static Slot Place(Pool pool, Vector2 position, int direction, Sprite own = null)
     {
         if (runner == null)
         {
@@ -132,15 +156,15 @@ public static class Decals
             runner = new GameObject("Decals").AddComponent<Runner>();
         }
         if (atlas == null || atlas.Texture == null) atlas = ArtAtlas.Load(ArtAtlas.Effects);
-        if (atlas == null || !atlas.Contains(pool.Id)) return;
+        if (own == null && (atlas == null || !atlas.Contains(pool.Id))) return null;
 
         Slot s;
         if (pool.Slots.Count < pool.Size)
         {
             var go = new GameObject(pool.Id);
             go.transform.SetParent(runner.transform, false);
-            s = new Slot { Go = go, Sprite = go.AddComponent<SpriteRenderer>() };
-            s.Sprite.sortingOrder = WAR2D.Client.Render.SortingOrders.Decals;
+            s = new Slot { Go = go, Sprite = go.AddComponent<SpriteRenderer>(), Wreck = own != null };
+            s.Sprite.sortingOrder = WAR2D.Client.Render.SortingOrders.Decals + (own != null ? 1 : 0); // a wreck lies on its scorch
             pool.Slots.Add(s);
             Created++;
         }
@@ -153,9 +177,10 @@ public static class Decals
         s.Start = Time.time;
         s.Direction = direction;
         s.Frame = 0;
-        s.Sprite.sprite = atlas.Sprite(pool.Id, direction * atlas.Frames(pool.Id));
+        s.Sprite.sprite = own != null ? own : atlas.Sprite(pool.Id, direction * atlas.Frames(pool.Id));
         s.Go.transform.position = new Vector3(position.x, position.y, 0f);
         s.Go.SetActive(true);
+        return s;
     }
 
     /// <summary>Steps every mark through its fade; hides the ones that are gone.</summary>
@@ -163,10 +188,23 @@ public static class Decals
     {
         private void Update()
         {
-            if (atlas == null) return;
             float now = Time.time;
+            foreach (Slot s in Wrecks.Slots)
+            {
+                if (!s.Active) continue;
+                float alpha = WreckAlpha(now - s.Start);
+                if (alpha <= 0f)
+                {
+                    s.Active = false;
+                    s.Go.SetActive(false);
+                    continue;
+                }
+                if (alpha < 1f) s.Sprite.color = new Color(WreckTint.r, WreckTint.g, WreckTint.b, alpha);
+            }
+            if (atlas == null) return;
             foreach (Pool pool in All)
             {
+                if (pool == Wrecks) continue;
                 int frames = atlas.Frames(pool.Id);
                 foreach (Slot s in pool.Slots)
                 {

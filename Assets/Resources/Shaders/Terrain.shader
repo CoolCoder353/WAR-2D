@@ -42,6 +42,31 @@ Shader "WAR2D/Terrain"
             float4 _MapSize;
             float _TileSize, _MaxLod, _FlatFrom, _FlatTo, _TeamGain;
 
+            // Large-scale variation (playtest 2026-10-30: ground and rock looked too even): smooth value noise over the tile grid.
+            float Hash21(float2 p)
+            {
+                p = frac(p * float2(0.1031, 0.1030));
+                p += dot(p, p.yx + 33.33);
+                return frac((p.x + p.y) * p.x);
+            }
+
+            float ValueNoise(float2 p)
+            {
+                float2 i = floor(p), f = frac(p);
+                f = f * f * (3 - 2 * f);
+                return lerp(lerp(Hash21(i), Hash21(i + float2(1, 0)), f.x), lerp(Hash21(i + float2(0, 1)), Hash21(i + float2(1, 1)), f.x), f.y);
+            }
+
+            // Natural ground and rock (not player walls or blueprints) drift lighter and darker, warmer and cooler, in patches a few
+            // to a dozen tiles across, so a field of the same tiles doesn't read as a repeating grid.
+            half3 Weathered(half3 col, float2 tile)
+            {
+                float broad = ValueNoise(tile / 11.0), fine = ValueNoise(tile / 3.7 + 17.0);
+                float light = 0.9 + 0.16 * broad + 0.06 * (fine - 0.5);
+                float warm = ValueNoise(tile / 17.0 + 41.0) - 0.5;
+                return col * light * half3(1 + 0.06 * warm, 1, 1 - 0.06 * warm);
+            }
+
             struct appdata { float3 vertex : POSITION; float2 uv : TEXCOORD0; };
             struct v2f { float4 pos : SV_POSITION; float2 tile : TEXCOORD0; };
 
@@ -78,7 +103,9 @@ Shader "WAR2D/Terrain"
                 }
 
                 half flat = (half)saturate((artPerPixel - _FlatFrom) / max(_FlatTo - _FlatFrom, 1e-3));
-                return half4(lerp(art.rgb, _TileFlat[type].rgb, flat), 1);
+                half3 col = lerp(art.rgb, _TileFlat[type].rgb, flat);
+                if (type <= 3u) col = Weathered(col, i.tile);
+                return half4(col, 1);
             }
             ENDHLSL
         }

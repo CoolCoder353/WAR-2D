@@ -87,8 +87,8 @@ namespace WAR2D.Art
             new ArtEntry(nameof(BuildingType.Jammer), ArtKind.Building, 2, 2, 2, 1, true),
 
             // Tiles: frames are variants (random for floor and gems, autotile masks for walls).
-            new ArtEntry(nameof(TileType.Ground), ArtKind.Tile, 1, 1, 4, 1, false),
-            new ArtEntry(nameof(TileType.Wall), ArtKind.Tile, 1, 1, AutotileVariants, 1, false),
+            new ArtEntry(nameof(TileType.Ground), ArtKind.Tile, 1, 1, Render.RenderGen.FloorVariants, 1, false),
+            new ArtEntry(nameof(TileType.Wall), ArtKind.Tile, 1, 1, Render.RenderGen.RockVariants * AutotileVariants, 1, false), // variants × 16 masks, variant-major
             new ArtEntry(nameof(TileType.Gem), ArtKind.Tile, 1, 1, 4 * AutotileVariants, 1, false), // 4 variants × 16 masks, variant-major
             new ArtEntry(nameof(TileType.Border), ArtKind.Tile, 1, 1, 1, 1, false),
             new ArtEntry("PlayerWall", ArtKind.Tile, 1, 1, AutotileVariants * WallDamageStates, 1, true),
@@ -109,6 +109,7 @@ namespace WAR2D.Art
             new ArtEntry("ConstructionOverlay", ArtKind.Effect, 1, 1, 4, 1, false),
             new ArtEntry("SelectionRingSmall", ArtKind.Effect, 1, 1, 1, 1, false),
             new ArtEntry("SelectionRingLarge", ArtKind.Effect, 2, 2, 1, 1, false),
+            new ArtEntry("RoamRing", ArtKind.Effect, 1, 1, 1, 1, false), // playtest 2026-10-30: under a roaming unit
             new ArtEntry("WaypointFlag", ArtKind.Effect, 1, 1, 2, 1, false),
             new ArtEntry("RallyFlag", ArtKind.Effect, 1, 1, 2, 1, true),
             new ArtEntry("HealthBar", ArtKind.Effect, 1, 1, 2, 1, false),

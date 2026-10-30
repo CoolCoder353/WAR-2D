@@ -49,6 +49,7 @@ namespace WAR2D.Client
         private NativeArray<float> health01;
         private NativeArray<float> drawScale;
         private float[] scaleByType;
+        private ArtAtlas unitAtlas;
         private NativeArray<byte> selected;
         // Hit feedback (HitFeedback), by index: whose health is tracked (an index is reused with a new id), its health last frame,
         // when it was last hit, its bar's trail, and whether it flashes now.
@@ -127,7 +128,7 @@ namespace WAR2D.Client
             // A building's attack (v0.13): only a client that may know the building is sent one.
             store.BuildingAttack += (building, target) => buildingAttacks.Add((building, target));
             worldEffects = new WorldEffects(capacity);
-            store.Died += (index, at) => worldEffects.UnitDied(new Vector2(at.x, at.y), ScaleOf(store.TypeOf(index)) > 1.5f);
+            store.Died += OnUnitDied;
             store.Appeared += (index, at) => worldEffects.UnitAppeared(new Vector2(at.x, at.y), store.OwnerOf(index), Time.time - firstBatchAt);
             lastPosition = new NativeArray<float2>(capacity, Allocator.Persistent);
             rotation = new NativeArray<float>(capacity, Allocator.Persistent);
@@ -314,9 +315,9 @@ namespace WAR2D.Client
 
         /// <summary>
         /// Draws the known buildings (instanced), then packs every known unit and draws it (and the health bars).
-        /// Selected ids draw highlighted.
+        /// Selected ids draw highlighted; roaming ids (Roam, J) get the dashed roaming ring.
         /// </summary>
-        public void Draw(IReadOnlyCollection<int> selectedIds)
+        public void Draw(IReadOnlyCollection<int> selectedIds, IEnumerable<int> roamingIds = null)
         {
             // A -nographics player (perf clients) has no GPU buffers to draw with.
             if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) return;
@@ -328,6 +329,7 @@ namespace WAR2D.Client
                 ArtAtlas atlas = ArtAtlas.Load(ArtAtlas.Units);
                 if (atlas == null) WarLog.Error(LogCategory.Art, $"Resources/{ArtAtlas.Folder}/{ArtAtlas.Units} is missing: run WAR-2D/Art/Build all.");
                 else frames = new UnitFrames.Table(atlas);
+                unitAtlas = atlas;
                 unitRenderer = new InstancedUnitRenderer(atlas);
             }
 
@@ -340,6 +342,15 @@ namespace WAR2D.Client
                     if (store.IdOf(index) != id) continue;
                     selected[index] = 1;
                     selectedIndices.Add(index);
+                }
+            // Bit 2: roaming (Figma "Playtest fixes" item 11).
+            if (roamingIds != null)
+                foreach (int id in roamingIds)
+                {
+                    int index = NetIdAllocator.IndexOf(id);
+                    if (store.IdOf(index) != id) continue;
+                    if (selected[index] == 0) selectedIndices.Add(index);
+                    selected[index] |= 2;
                 }
 
             NativeArray<int> known = store.Known;
@@ -368,7 +379,7 @@ namespace WAR2D.Client
 
             instances.ResizeUninitialized(count);
             bars.ResizeUninitialized(count);
-            rings.ResizeUninitialized(count);
+            rings.ResizeUninitialized(count * 2); // a selected roaming unit has both rings
             new PackUnitsJob
             {
                 Known = known,
@@ -385,6 +396,7 @@ namespace WAR2D.Client
                 Trail = trail,
                 UnitHalfSize = 0.4f,
                 RingFrame = unitRenderer.RingFrame,
+                RoamRingFrame = unitRenderer.RoamRingFrame,
                 Instances = instances.AsArray(),
                 Bars = bars.AsArray(),
                 BarCount = barCount,
@@ -417,6 +429,19 @@ namespace WAR2D.Client
         }
 
         /// <summary>How many tiles across a unit type is drawn (2 for the large units), from the art manifest.</summary>
+        /// <summary>A known unit died: its scorch, and its wreck at its last facing (not a Suicide bomber, which blew itself up).</summary>
+        private void OnUnitDied(int index, float2 at)
+        {
+            byte type = store.TypeOf(index);
+            var position = new Vector2(at.x, at.y);
+            worldEffects.UnitDied(position, ScaleOf(type) > 1.5f);
+            if (unitAtlas == null || type == (byte)UnitType.SuicideBomber || (uint)index >= (uint)rotation.Length) return;
+            string id = ((UnitType)type).ToString();
+            int directions = unitAtlas.Directions(id);
+            if (directions <= 0) return;
+            Decals.Wreck(position, unitAtlas.Sprite(id, UnitFrames.Direction(rotation[index], directions) * unitAtlas.Frames(id)));
+        }
+
         private float ScaleOf(byte type)
         {
             if (scaleByType == null)

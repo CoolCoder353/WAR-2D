@@ -107,6 +107,27 @@ namespace WAR2D.UI
         /// <summary>The order waiting for a click, if any.</summary>
         public OrderKind? ArmedOrder { get; private set; }
 
+        /// <summary>How many of the selected units are roaming (Roam, J): the title's "· 4 roaming" and the button's Active state.</summary>
+        public int Roaming { get; private set; }
+
+        /// <summary>True when every selected unit that can roam is roaming (Builders never roam).</summary>
+        public bool AllRoaming => Roaming > 0 && Roaming >= Count - CountOf(UnitType.Builder);
+
+        /// <summary>Selected units of <paramref name="type"/>.</summary>
+        public int CountOf(UnitType type)
+        {
+            foreach ((UnitType t, int count) in byType) if (t == type) return count;
+            return 0;
+        }
+
+        /// <summary>Sets how many selected units roam.</summary>
+        public void SetRoaming(int roaming)
+        {
+            if (roaming == Roaming) return;
+            Roaming = roaming;
+            Changed?.Invoke();
+        }
+
         /// <summary>The local player's live units in each squad (index 0–9 is squad key 1–9, 0).</summary>
         public IReadOnlyList<int> SquadCounts => squadCounts;
 
@@ -415,6 +436,9 @@ namespace WAR2D.UI
             SetWalls(selection.SelectedWalls.Count, wallBlueprints);
             PullBuildingRows(selection, known);
             SetArmed(commander.ArmedOrder);
+            int roaming = 0;
+            foreach (int id in selection.Selected) if (commander.Roaming.IsRoaming(id)) roaming++;
+            SetRoaming(roaming);
             SetSquadCounts(local.SquadCounts);
             PullQuick(selection, BuildingData.UIntToInt(local.netId));
         }

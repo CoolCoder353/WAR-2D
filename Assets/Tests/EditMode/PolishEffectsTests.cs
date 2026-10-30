@@ -77,20 +77,26 @@ public class PolishEffectsTests
     }
 
     [Test]
-    public void TrackMarksPickTheNearestOfFourDirections()
+    public void AWreckHoldsThenFadesOut()
     {
-        Assert.AreEqual(0, Decals.TrackDirection(0f));
-        Assert.AreEqual(0, Decals.TrackDirection(math.PI), "driving west lays the same mark as east");
-        Assert.AreEqual(1, Decals.TrackDirection(math.PI / 4f));
-        Assert.AreEqual(2, Decals.TrackDirection(-math.PI / 2f));
-        Assert.AreEqual(3, Decals.TrackDirection(-math.PI / 4f));
-        Assert.AreEqual(1, Decals.TrackDirection(math.radians(50f)));
+        Assert.AreEqual(1f, Decals.WreckAlpha(0f));
+        Assert.AreEqual(1f, Decals.WreckAlpha(Decals.WreckHold - 0.1f));
+        Assert.AreEqual(0.5f, Decals.WreckAlpha(Decals.WreckHold + Decals.WreckFade / 2f), 1e-4f);
+        Assert.LessOrEqual(Decals.WreckAlpha(Decals.WreckHold + Decals.WreckFade), 0f, "gone");
+    }
+
+    [Test]
+    public void ATrackMarkTurnsToTheExactHeading()
+    {
+        Decals.Track(new Vector2(3, 3), math.radians(20f));
+        var mark = GameObject.Find("Decals").transform.GetChild(0);
+        Assert.AreEqual(20f, mark.eulerAngles.z, 0.01f, "no snapping to 45° steps");
     }
 
     [Test]
     public void ThousandsOfMarksNeverExceedThePools()
     {
-        for (int i = 0; i < 2000; i++)
+        for (int i = 0; i < Decals.TrackPool + 500; i++)
         {
             Decals.Scorch(new Vector2(i, 0), i % 3 == 0);
             Decals.Track(new Vector2(i, 1), i * 0.1f);

@@ -367,6 +367,10 @@ namespace Config
         public float AttackIntervalSeconds;
         /// <summary>Gun turrets it keeps per defended spot.</summary>
         public int Turrets;
+        /// <summary>Gun turrets it rings its HQ with, spread round it (playtest 2026-10-30: Turtles left their HQ open from the sides).</summary>
+        public int HomeTurrets;
+        /// <summary>Scales <see cref="AiPlayConfig.DefenceAfterSeconds"/>: below 1 it starts its defences sooner.</summary>
+        public float DefenceStart;
         /// <summary>Jammers it keeps per defended spot.</summary>
         public int Jammers;
         /// <summary>Bombs it keeps per defended spot.</summary>

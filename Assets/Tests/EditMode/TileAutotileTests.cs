@@ -28,7 +28,7 @@ public class TileAutotileTests
         MapGrid g = map.Grid;
         // FromAscii rows run top-down: '#' is at (0, 1), the top-left tile, open to the east and south.
         Assert.AreEqual((byte)TileType.Wall, g.Tiles[g.Index(new Unity.Mathematics.int2(0, 1))]);
-        Assert.AreEqual(RenderGen.North | RenderGen.West, TileAutotile.Variant(g, 0, 1));
+        Assert.AreEqual(RenderGen.North | RenderGen.West, TileAutotile.Variant(g, 0, 1) % WAR2D.Art.ArtManifest.AutotileVariants);
         Assert.IsTrue(TileAutotile.Solid(g, -1, 0));
         Assert.IsTrue(TileAutotile.Solid(g, 0, 2));
         Assert.IsFalse(TileAutotile.Solid(g, 1, 1));

@@ -90,7 +90,7 @@
   <Alerts>
     <ThrottleSeconds>10.0</ThrottleSeconds>  <!-- v0.6: one Under-attack alert per area per window -->
     <AreaTiles>32</AreaTiles>                <!-- v0.6: side of an alert area, in tiles -->
-    <ShowSeconds>8.0</ShowSeconds>           <!-- v0.6: how long an alert stays in the feed -->
+    <ShowSeconds>12.0</ShowSeconds>          <!-- v0.6: how long an alert stays in the feed (playtest 2026-10-30: auto-dismiss again) -->
   </Alerts>
 
   <Siege>
@@ -180,6 +180,8 @@
       <AttackRatioScale>0.8</AttackRatioScale>
       <AttackIntervalSeconds>60</AttackIntervalSeconds>
       <Turrets>1</Turrets>
+      <HomeTurrets>0</HomeTurrets>
+      <DefenceStart>1.0</DefenceStart>
       <Jammers>0</Jammers>
       <Bombs>0</Bombs>
       <Walls>0</Walls>
@@ -201,6 +203,8 @@
       <AttackRatioScale>1.5</AttackRatioScale>
       <AttackIntervalSeconds>180</AttackIntervalSeconds>
       <Turrets>6</Turrets>
+      <HomeTurrets>4</HomeTurrets>  <!-- playtest 2026-10-30: turrets ringed round its HQ -->
+      <DefenceStart>0.4</DefenceStart>  <!-- factor on Play DefenceAfterSeconds: Turtle defends from ~1:36 -->
       <Jammers>2</Jammers>
       <Bombs>8</Bombs>
       <Walls>1</Walls>
@@ -222,6 +226,8 @@
       <AttackRatioScale>1.2</AttackRatioScale>
       <AttackIntervalSeconds>120</AttackIntervalSeconds>
       <Turrets>2</Turrets>
+      <HomeTurrets>1</HomeTurrets>
+      <DefenceStart>1.0</DefenceStart>
       <Jammers>0</Jammers>
       <Bombs>2</Bombs>
       <Walls>0</Walls>
@@ -244,6 +250,8 @@
       <AttackRatioScale>1.0</AttackRatioScale>
       <AttackIntervalSeconds>120</AttackIntervalSeconds>
       <Turrets>3</Turrets>
+      <HomeTurrets>1</HomeTurrets>
+      <DefenceStart>1.0</DefenceStart>
       <Jammers>1</Jammers>
       <Bombs>4</Bombs>
       <Walls>0</Walls>

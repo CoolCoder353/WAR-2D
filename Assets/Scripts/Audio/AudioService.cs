@@ -43,8 +43,8 @@ namespace WAR2D.Audio
             }
         }
 
-        /// <summary>Plays sound effect <paramref name="id"/> at a world position, if the pool allows it.</summary>
-        public static void Sfx(string id, Vector2 position)
+        /// <summary>Plays sound effect <paramref name="id"/> at a world position, if the pool allows it, at <paramref name="gain"/> of its volume.</summary>
+        public static void Sfx(string id, Vector2 position, float gain = 1f)
         {
             AudioService s = Instance;
             if (s == null || s.pool.Cooling(id, Time.unscaledTime)) return; // most calls in a battle stop here
@@ -58,7 +58,7 @@ namespace WAR2D.Audio
             if (voice < 0) return;
             // A claimed voice is idle, so its pan only moves this sound.
             s.voices[voice].panStereo = SfxVoicePool.Pan(position, view);
-            s.voices[voice].PlayOneShot(clip, SfxVoicePool.Volume(position, view));
+            s.voices[voice].PlayOneShot(clip, SfxVoicePool.Volume(position, view) * gain);
         }
 
         /// <summary>

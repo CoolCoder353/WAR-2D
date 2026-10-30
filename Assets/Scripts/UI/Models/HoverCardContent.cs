@@ -108,6 +108,10 @@ namespace WAR2D.UI
             }
         }
 
+        /// <summary>The Roam button's card (playtest 2026-10-30, Figma "Playtest fixes" item 3).</summary>
+        public static HoverCardContent Roam(string key) =>
+            new HoverCardContent("Roam", key, "Scout on their own: each unit drives to ground you haven’t seen lately.").Line("Any other order ends it. Builders don’t roam.");
+
         /// <summary>Why an order button is greyed out, or null.</summary>
         public static string OrderReason(OrderKind kind, bool units)
         {
@@ -172,7 +176,7 @@ namespace WAR2D.UI
             new HoverCardContent("Idle Builders", key, "Builders with nothing to do.").Line("Press again: next idle Builder").Line($"{assignKey} + {key}: all Builders");
 
         public static HoverCardContent AllBuilders(string key, string assignKey) =>
-            new HoverCardContent("All Builders", $"{assignKey} {key}", "Selects every Builder you own.");
+            new HoverCardContent("All Builders", null, "Shows your Builders: each click moves the camera to the next.").Line($"{assignKey} + click: select them all ({assignKey} + {key})");
 
         public static HoverCardContent Army(string key) =>
             new HoverCardContent("Army", key, "Every unit that can attack.").Line("Press again: add Diggers and bombers");

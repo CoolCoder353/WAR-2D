@@ -12,7 +12,7 @@ namespace WAR2D.Client.Render
     /// </summary>
     public static class TileAutotile
     {
-        /// <summary>Random variants of floor and gem tiles.</summary>
+        /// <summary>Random variants of gem tiles.</summary>
         public const int RandomVariants = 4;
 
         /// <summary>
@@ -67,12 +67,13 @@ namespace WAR2D.Client.Render
             switch (type)
             {
                 case TileType.Wall:
-                    return Mask4((tx, ty) => Solid(grid, tx, ty), x, y);
+                    // Variant-major, as ArtBuild lays the rock frames out: RockVariants × 16 masks.
+                    return (byte)(Hash(x, y, RenderGen.RockVariants) * ArtManifest.AutotileVariants + Mask4((tx, ty) => Solid(grid, tx, ty), x, y));
                 case TileType.Gem:
                     // Variant-major, as ArtBuild lays the gem frames out: 4 variants × 16 masks.
                     return (byte)(Hash(x, y, RandomVariants) * ArtManifest.AutotileVariants + Mask4((tx, ty) => Solid(grid, tx, ty), x, y));
                 case TileType.Ground:
-                    return (byte)Hash(x, y, RandomVariants);
+                    return (byte)Hash(x, y, RenderGen.FloorVariants);
                 case TileType.PlayerWall:
                     // Built walls join built walls (the damage frame is added by MapView).
                     return Mask4((tx, ty) => Is(grid, tx, ty, TileType.PlayerWall, TileType.PlayerWall), x, y);

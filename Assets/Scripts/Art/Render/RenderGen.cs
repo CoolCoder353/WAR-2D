@@ -427,26 +427,67 @@ namespace WAR2D.Art.Render
             c.Groove((x, y) => Noise.Fbm(x, y, TileSize, 2, 2, s + 9) < 0.55f ? 9 : (Mathf.Abs(Noise.Fbm(x, y, TileSize, 5, 3, s + 5) - 0.5f) - 0.006f) * 60, 0.9f, 0.45f);
             var rng = new ArtRandom(seed, "pebbles" + variant);
             for (int k = 0; k < 6; k++) c.Rivet(4 + rng.Range(TileSize - 8), 4 + rng.Range(TileSize - 8), 0.8f + rng.Range(2) * 0.6f, 0.9f, 0.05f);
+            // Variants 4 and up add one feature each in the tile's middle, faded out before the edges so tiles still meet
+            // (playtest 2026-10-30: the ground looked too even): loose stones, a damp stain, a sandy patch, a deeper crack.
+            switch (variant)
+            {
+                case 4:
+                    for (int k = 0; k < 5; k++) c.Rivet(14 + rng.Range(TileSize - 28), 14 + rng.Range(TileSize - 28), 1.6f + rng.Range(3) * 0.5f, 1.4f, 0.12f);
+                    break;
+                case 5:
+                    c.Tint((x, y, col) => col * (1f - 0.18f * Patch(x, y, s + 31)));
+                    break;
+                case 6:
+                    c.Tint((x, y, col) => Color.Lerp(col, C(StylePalette.Floor2), 0.35f * Patch(x, y, s + 37)));
+                    break;
+                case 7:
+                    c.Groove((x, y) => Interior(x, y) < 0.3f ? 9 : (Mathf.Abs(Noise.Fbm(x, y, TileSize, 2, 2, s + 41) - 0.5f) - 0.01f) * 40, 1.6f, 0.8f);
+                    break;
+            }
             return c;
         }
+
+        /// <summary>Floor variants (<see cref="Floor"/>): four plain, four with a feature.</summary>
+        public const int FloorVariants = 8;
+
+        /// <summary>Rock variants per autotile mask (<see cref="Rock"/>): the same edges, different tops.</summary>
+        public const int RockVariants = 3;
+
+        /// <summary>0 at a tile's edges rising to 1 from 16 px in: where a variant may differ without making a seam.</summary>
+        private static float Interior(float x, float y) =>
+            Mathf.SmoothStep(0f, 1f, Mathf.Min(Mathf.Min(x, TileSize - x), Mathf.Min(y, TileSize - y)) / 16f);
+
+        /// <summary>A soft noisy blob in a tile's middle, 0–1 (a variant's stain or patch).</summary>
+        private static float Patch(float x, float y, int seed) =>
+            Interior(x, y) * Mathf.SmoothStep(0.45f, 0.7f, Noise.Fbm(x, y, TileSize, 2, 3, seed));
 
         /// <summary>
         /// Rock for a 4-neighbour mask (bit set = that neighbour is rock): a craggy raised mass whose cliffs
         /// face the open sides, with rounded outside corners and a noisy (but tile-matching) edge.
         /// </summary>
-        public static LitCanvas Rock(int seed, int mask)
+        public static LitCanvas Rock(int seed, int mask, int variant = 0)
         {
             LitCanvas c = Floor(seed, mask & 3);
             var rock = new Material(C(StylePalette.Rock2) * 1.35f, 0.08f, 10);
             float Inside(float x, float y) => EdgeDistance(x, y, mask) - 6 - 5 * Noise.Fbm(x, y, TileSize, 4, 3, seed + 41);
             c.Shape((x, y) => -Inside(x, y), rock, 22, 12, 20);
-            // Craggy top: ridged noise lit from above, darker in the cracks.
-            float Ridge(float x, float y) => 1 - Mathf.Abs(Noise.Fbm(x, y, TileSize, 4, 4, seed + 77) * 2 - 1);
-            c.Displace((x, y) => Inside(x, y) <= 0 ? 0 : Mathf.Min(1, Inside(x, y) / 10) * 10 * Ridge(x, y));
+            // Craggy top: ridged noise lit from above, darker in the cracks. A variant (playtest 2026-10-30) blends in its own
+            // ridges and shading away from the tile's edges, so neighbouring variants still meet without a seam.
+            int vs = seed + variant * 131;
+            float Blend(float x, float y) => variant == 0 ? 0f : Interior(x, y);
+            float Ridge(float x, float y)
+            {
+                float a = 1 - Mathf.Abs(Noise.Fbm(x, y, TileSize, 4, 4, seed + 77) * 2 - 1);
+                if (variant == 0) return a;
+                float b = 1 - Mathf.Abs(Noise.Fbm(x, y, TileSize, 3 + variant, 4, vs + 77) * 2 - 1);
+                return Mathf.Lerp(a, b, Blend(x, y));
+            }
+            c.Displace((x, y) => Inside(x, y) <= 0 ? 0 : Mathf.Min(1, Inside(x, y) / 10) * (10 + 3 * variant * Blend(x, y)) * Ridge(x, y));
             // Crevices darker and browner, ridges lighter.
             Color crevice = C(StylePalette.Rock0) * 1.4f;
+            float Shade(float x, float y) => Mathf.Lerp(Noise.Fbm(x, y, TileSize, 6, 3, seed + 99), Noise.Fbm(x, y, TileSize, 5, 3, vs + 99), Blend(x, y));
             c.Tint((x, y, col) => Inside(x, y) <= 0 ? col
-                : Color.Lerp(crevice, col * (0.9f + 0.25f * Noise.Fbm(x, y, TileSize, 6, 3, seed + 99)), Mathf.SmoothStep(0.15f, 0.75f, Ridge(x, y))));
+                : Color.Lerp(crevice, col * (0.9f + 0.25f * Shade(x, y)), Mathf.SmoothStep(0.15f, 0.75f, Ridge(x, y))));
             return c;
         }
 

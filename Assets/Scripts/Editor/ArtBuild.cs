@@ -168,7 +168,8 @@ namespace WAR2D.EditorTools
                 case nameof(TileType.Ground):
                     return ($"Floor {frame}", () => RenderGen.Floor(Seed, frame), 0f);
                 case nameof(TileType.Wall):
-                    return ($"Rock {frame}", () => RenderGen.Rock(Seed, frame), 0f);
+                    // Variant-major: RockVariants × 16 autotile masks.
+                    return ($"Rock {frame}", () => RenderGen.Rock(Seed, frame % ArtManifest.AutotileVariants, frame / ArtManifest.AutotileVariants), 0f);
                 case nameof(TileType.Gem):
                     // Variant-major: 4 variants × 16 autotile masks.
                     return ($"Gem {frame}", () => RenderGen.Gem(Seed, frame / ArtManifest.AutotileVariants, frame % ArtManifest.AutotileVariants), 0f);

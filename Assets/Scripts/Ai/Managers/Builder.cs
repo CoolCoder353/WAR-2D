@@ -37,6 +37,7 @@ namespace WAR2D.Ai
             if (view.State != GameState.Playing || !state.HasHq) return;
             if (ai.Now >= nextSpots) { FindDefenceSpots(ai, view, state); nextSpots = ai.Now + ai.Config.Play.ReplanSeconds; }
             EarlyTurrets(ai, state);
+            HomeTurrets(ai, state);
             if (state.OpeningDone) WantBuildings(ai, view, state);
             ServeRequests(ai, state);
             CancelStuck(ai, view, state);
@@ -85,10 +86,41 @@ namespace WAR2D.Ai
             int wanted = ai.Difficulty.EarlyTurrets + state.ExtraTurrets;
             if (wanted <= 0 || (state.PlayingSeconds < play.EarlyTurretSeconds && !state.RushExpected)) return;
             if (state.CountNear(BuildingType.GunTurret, state.Home, play.BaseRadius) >= wanted) return;
-            if (DefenceBlueprints(ai.View, state) >= play.MaxDefenceBlueprints) return;
+            if (DefenceBlueprints(ai.View, state) >= MaxDefenceBlueprints(ai)) return;
             float priority = state.RushExpected ? AiPriority.High : AiPriority.High - 3f;
             state.RequestBuilding(BuildingType.GunTurret, Front(state, 0, play.GatherDistance * 0.5f), play.DefenceSpread, priority, AiKeys.Of(AiKeys.Place, (int)BuildingType.GunTurret, 100));
         }
+
+        /// <summary>
+        /// Its style's HQ ring (playtest 2026-10-30: a Turtle's turrets all stood at its chokepoints, so an attack from another
+        /// side met none): <c>HomeTurrets</c> Gun turrets spaced evenly round its HQ, the first towards the enemy, one missing
+        /// one at a time, from <c>EarlyTurretSeconds</c> and once it has a producer.
+        /// </summary>
+        private static void HomeTurrets(AiContext ai, AiState state)
+        {
+            AiPlayConfig play = ai.Config.Play;
+            int wanted = ai.Style.HomeTurrets;
+            if (wanted <= 0 || state.PlayingSeconds < play.EarlyTurretSeconds || !HasProducer(state)) return;
+            if (DefenceBlueprints(ai.View, state) >= MaxDefenceBlueprints(ai)) return;
+            float2 towards = math.normalizesafe(EnemyDirectionPoint(ai, ai.View, state) - state.Home, new float2(1f, 0f));
+            float start = math.atan2(towards.y, towards.x);
+            float reach = state.SizeOf(BuildingType.Base).x + play.DefenceSpread * 0.5f;
+            for (int k = 0; k < wanted; k++)
+            {
+                float a = start + k * 2f * math.PI / wanted;
+                float2 spot = state.Home + new float2(math.cos(a), math.sin(a)) * reach;
+                if (state.CountNear(BuildingType.GunTurret, spot, play.DefenceSpread * 0.5f + 1f) > 0) continue;
+                state.RequestBuilding(BuildingType.GunTurret, (int2)math.floor(spot), play.DefenceSpread * 0.5f, AiPriority.Low + 3f, AiKeys.Of(AiKeys.Place, (int)BuildingType.GunTurret, 200 + k));
+                return;
+            }
+        }
+
+        /// <summary>True once it has finished a unit producer.</summary>
+        private static bool HasProducer(AiState state) =>
+            state.CompleteCount[(int)BuildingType.Barracks] + state.CompleteCount[(int)BuildingType.HeavyFactory] + state.CompleteCount[(int)BuildingType.SiegeWorkshop] > 0;
+
+        /// <summary>Defence blueprints it lets stand at once: one more for a style that holds its chokes (its Builders put defence first).</summary>
+        private static int MaxDefenceBlueprints(AiContext ai) => ai.Config.Play.MaxDefenceBlueprints + (ai.Style.HoldsChokes ? 1 : 0);
 
         private static readonly BuildingType[] ProducerOrder = { BuildingType.Barracks, BuildingType.HeavyFactory, BuildingType.SiegeWorkshop };
 
@@ -131,15 +163,14 @@ namespace WAR2D.Ai
                 }
                 if (next != BuildingType.None) state.RequestBuilding(next, hq, play.BaseRadius, AiPriority.Normal, AiKeys.Of(AiKeys.Place, (int)next), play.BuildingGap);
             }
-            bool hasProducer = state.CompleteCount[(int)BuildingType.Barracks] + state.CompleteCount[(int)BuildingType.HeavyFactory] + state.CompleteCount[(int)BuildingType.SiegeWorkshop] > 0;
-            if (!hasProducer) return;
+            if (!HasProducer(state)) return;
 
             if ((ai.Style.Radar || ai.Difficulty.Scouting == AiScouting.RegularWithRadar) && state.BuildingCount[(int)BuildingType.Radar] == 0)
                 state.RequestBuilding(BuildingType.Radar, Front(state, 0, play.DefenceSpread), play.BaseRadius / 2f, AiPriority.Low, AiKeys.Of(AiKeys.Place, (int)BuildingType.Radar), play.BuildingGap);
 
-            // Defences: per spot, one missing piece at a time (cheap first), once its army has had its start, and only a
-            // few blueprints at once (its Builders are for Miners first).
-            if (state.PlayingSeconds < play.DefenceAfterSeconds || DefenceBlueprints(view, state) >= play.MaxDefenceBlueprints) return;
+            // Defences: per spot, one missing piece at a time (cheap first), once its army has had its start (sooner for a
+            // style with a DefenceStart under 1), and only a few blueprints at once (its Builders are for Miners first).
+            if (state.PlayingSeconds < play.DefenceAfterSeconds * ai.Style.DefenceStart || DefenceBlueprints(view, state) >= MaxDefenceBlueprints(ai)) return;
             int turrets = ai.Style.Turrets + (LightEnemies(ai) ? 1 : 0);
             int jammers = (int)math.round(ai.Style.Jammers * ai.Difficulty.SpecialUse);
             int bombs = (int)math.round(ai.Style.Bombs * ai.Difficulty.SpecialUse);

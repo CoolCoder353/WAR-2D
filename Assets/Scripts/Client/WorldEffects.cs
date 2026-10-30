@@ -30,6 +30,13 @@ namespace WAR2D.Client
         /// <summary>Fewest seconds between two <c>gem_mined</c> sounds, however many Miners are on screen.</summary>
         public const float GemSoundSeconds = 0.4f;
 
+        /// <summary>
+        /// <c>gem_mined</c> plays only zoomed right in, at <see cref="GemSoundScale"/> screen pixels per art pixel or more, for a
+        /// Miner within <see cref="GemSoundReach"/> tiles of the screen's centre, at <see cref="GemSoundGain"/> of its volume
+        /// (playtest 2026-10-30: a base full of Miners ticking was maddening).
+        /// </summary>
+        public const float GemSoundScale = 2f, GemSoundReach = 3f, GemSoundGain = 0.35f;
+
         /// <summary>Seconds after a blueprint's last progress record that it still counts as being built (the loop plays).</summary>
         public const float BuildingWindowSeconds = 3f;
 
@@ -215,9 +222,16 @@ namespace WAR2D.Client
             if (index >= terrain.Tiles.Length || terrain.Tiles[index] != (byte)TileType.Gem) return;
             var at = new Vector2(tile.x + 0.5f, tile.y + 0.5f);
             Effects.GemSparkle(at);
-            if (now - lastGemSound < GemSoundSeconds) return;
+            if (now - lastGemSound < GemSoundSeconds || !GemSoundAudible(AudioService.View != null ? AudioService.View : Camera.main, at)) return;
             lastGemSound = now;
-            AudioService.Sfx("gem_mined", at);
+            AudioService.Sfx("gem_mined", at, GemSoundGain);
+        }
+
+        /// <summary>True when a Miner's <c>gem_mined</c> at <paramref name="at"/> can be heard: zoomed right in and close to the screen's centre.</summary>
+        public static bool GemSoundAudible(Camera cam, Vector2 at)
+        {
+            if (cam == null || CameraZoom.Scale(cam.orthographicSize, WAR2D.Art.ArtStyle.PixelsPerUnit, Screen.height) < GemSoundScale - 1e-3f) return false;
+            return ((Vector2)cam.transform.position - at).sqrMagnitude <= GemSoundReach * GemSoundReach;
         }
 
         /// <summary>Subscribes to the stores in use now (each match makes new ones).</summary>

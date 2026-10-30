@@ -67,6 +67,9 @@ namespace WAR2D.Client.Render
         /// <summary>The 2×2-tile selection ring's cell, for the large units (the small ring's when the atlas lacks it).</summary>
         public uint LargeRingFrame { get; }
 
+        /// <summary>The cell of the dashed ring under a roaming unit (<c>RoamRing</c>), in the ring material's cells.</summary>
+        public uint RoamRingFrame { get; }
+
         /// <param name="atlas">The <c>Units</c> atlas; without one, every unit draws as a white square.</param>
         public InstancedUnitRenderer(ArtAtlas atlas, int initialCapacity = 4096)
         {
@@ -112,6 +115,7 @@ namespace WAR2D.Client.Render
             ringMaterial.SetBuffer("_FrameRects", ringFrameRects);
             RingFrame = (uint)Mathf.Max(0, effects != null ? effects.FirstFrame("SelectionRingSmall") : 0);
             LargeRingFrame = (uint)Mathf.Max(0, effects != null ? effects.FirstFrame("SelectionRingLarge") : 0);
+            RoamRingFrame = (uint)Mathf.Max(0, effects != null ? effects.FirstFrame("RoamRing") : 0);
 
             EnsureCapacity(ref instances, ref capacity, initialCapacity, unitMaterial);
             EnsureCapacity(ref barInstances, ref barCapacity, initialCapacity / 4, barMaterial);
@@ -234,11 +238,11 @@ namespace WAR2D.Client.Render
         [ReadOnly] public NativeArray<uint> Color;       // by index
         [ReadOnly] public NativeArray<float> Health01;   // by index
         [ReadOnly] public NativeArray<float> Scale;      // by index: tiles across (2 for large units)
-        [ReadOnly] public NativeArray<byte> Selected;    // by index
+        [ReadOnly] public NativeArray<byte> Selected;    // by index: bit 1 selected, bit 2 roaming
         [ReadOnly] public NativeArray<byte> Flash;       // by index: 1 while the unit flashes from a hit
         [ReadOnly] public NativeArray<float> Trail;      // by index: the health bar's recent-damage level
         public float UnitHalfSize;
-        public uint RingFrame, LargeRingFrame;
+        public uint RingFrame, LargeRingFrame, RoamRingFrame;
         /// <summary>The Gameplay setting's <see cref="HealthBarMode"/>: which units get a bar.</summary>
         public int BarMode;
         public NativeArray<UnitInstance> Instances;
@@ -255,8 +259,11 @@ namespace WAR2D.Client.Render
                 int index = Known[i];
                 float health = Health01[index];
                 float scale = Scale[index] > 0f ? Scale[index] : 1f;
-                if (Selected[index] != 0)
+                bool selected = (Selected[index] & 1) != 0;
+                if (selected)
                     Rings[rings++] = new UnitInstance { position = Positions[i], frame = scale > 1.5f ? LargeRingFrame : RingFrame, color = 0xFFFFFFFFu, scale = scale > 1.5f ? 2f : 1f };
+                if ((Selected[index] & 2) != 0)
+                    Rings[rings++] = new UnitInstance { position = Positions[i], frame = RoamRingFrame, color = 0xFFFFFFFFu, scale = scale > 1.5f ? 2f : 1f };
                 Instances[i] = new UnitInstance
                 {
                     position = Positions[i],
@@ -265,9 +272,9 @@ namespace WAR2D.Client.Render
                     color = Color[index],
                     health = health,
                     scale = scale,
-                    pad = Selected[index] | Flash[index] << 1,
+                    pad = (uint)(Selected[index] & 1) | (uint)Flash[index] << 1,
                 };
-                if (!WAR2D.Client.Overlays.OverlayRules.ShowHealthBar(BarMode, health, Selected[index] != 0)) continue;
+                if (!WAR2D.Client.Overlays.OverlayRules.ShowHealthBar(BarMode, health, selected)) continue;
                 int frame = math.clamp((int)math.round(health * (InstancedUnitRenderer.BarFrames - 1)), 0, InstancedUnitRenderer.BarFrames - 1);
                 Bars[bars++] = new UnitInstance
                 {

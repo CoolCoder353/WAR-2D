@@ -17,17 +17,20 @@ namespace WAR2D.UI
         public bool Visited;
         /// <summary>v0.14: the player the text starts with (its nickname) when that player is an AI, and its tag ("AI · Hard"); null otherwise.</summary>
         public string Subject, SubjectTag;
+        /// <summary>How many alerts this row stands for: a repeat of a shown alert (same kind and text) joins its row.</summary>
+        public int Count = 1;
     }
 
     /// <summary>
-    /// The alert feed: the newest alerts (at most <see cref="MaxShown"/>), each shown until dismissed (v0.14: the HUD no
-    /// longer expires them; <see cref="Expire"/> is for callers that want a time limit). Clicking one with a place
+    /// The alert feed: the newest alerts (at most <see cref="MaxShown"/>), each shown until dismissed (× or a right click) or
+    /// until its time is up (<see cref="Expire"/>, which the HUD calls every frame; playtest 2026-10-30: the feed was too busy).
+    /// A repeat of a shown alert (same kind and text) joins that row as the newest, counting up, rather than adding another. Clicking one with a place
     /// (<see cref="HasPlace"/>) asks the camera to go there (<see cref="FocusRequested"/>). UnderAttack, BombTriggered and EnemySpotted alerts also ask for a minimap ping.
     /// </summary>
     public sealed class AlertFeedModel
     {
         /// <summary>Alerts shown at once; older ones drop off.</summary>
-        public const int MaxShown = 6;
+        public const int MaxShown = 5;
 
         /// <summary>How long a new alert keeps its border in its stripe colour (Figma <c>HUD – alerts and squad hint</c>).</summary>
         public const float HighlightSeconds = 3f;
@@ -37,6 +40,12 @@ namespace WAR2D.UI
         private int nextId = 1;
 
         public AlertFeedModel(float showSeconds) => this.showSeconds = showSeconds;
+
+        /// <summary>Seconds an alert stays shown (<c>Alerts/ShowSeconds</c>).</summary>
+        public float ShowSeconds => showSeconds;
+
+        /// <summary>The share of an alert's time left at <paramref name="now"/>, 0–1 (its timer bar).</summary>
+        public float Left(AlertEntry e, float now) => showSeconds > 0f ? UnityEngine.Mathf.Clamp01((e.Expires - now) / showSeconds) : 0f;
 
         /// <summary>Shown alerts, oldest first.</summary>
         public IReadOnlyList<AlertEntry> Entries => entries;
@@ -108,17 +117,25 @@ namespace WAR2D.UI
                 return;
             }
             bool tagged = subject != null && subjectTag != null && text != null && text.StartsWith(subject, StringComparison.Ordinal);
+            int count = 1;
+            for (int i = entries.Count - 1; i >= 0; i--)
+            {
+                if (entries[i].Kind != alert.Kind || entries[i].Text != text) continue;
+                count += entries[i].Count;
+                entries.RemoveAt(i);
+                break;
+            }
             entries.Add(new AlertEntry
             {
                 Id = nextId++, Kind = alert.Kind, Text = text, Tile = alert.Tile, Added = now, Expires = now + showSeconds,
-                Subject = tagged ? subject : null, SubjectTag = tagged ? subjectTag : null,
+                Subject = tagged ? subject : null, SubjectTag = tagged ? subjectTag : null, Count = count,
             });
             while (entries.Count > MaxShown) entries.RemoveAt(0);
             if (Pings(alert.Kind)) PingRequested?.Invoke(alert.Tile, alert.Kind);
             Changed?.Invoke();
         }
 
-        /// <summary>Removes an alert (its × button).</summary>
+        /// <summary>Removes an alert (its × button, or a right click on its row).</summary>
         public void Dismiss(int id)
         {
             if (entries.RemoveAll(e => e.Id == id) > 0) Changed?.Invoke();
@@ -128,6 +145,12 @@ namespace WAR2D.UI
         public void Expire(float now)
         {
             if (entries.RemoveAll(e => e.Expires <= now) > 0) Changed?.Invoke();
+        }
+
+        /// <summary>Pushes every shown alert's expiry back by <paramref name="seconds"/> (the pointer is over the feed, so nothing leaves under it).</summary>
+        public void Hold(float seconds)
+        {
+            foreach (AlertEntry e in entries) e.Expires += seconds;
         }
 
         /// <summary>

@@ -326,6 +326,26 @@ namespace WAR2D.Art.Render
             return img.Done();
         }
 
+        /// <summary>
+        /// The ring under a roaming unit (Roam, J; Figma "Playtest fixes" item 11): twelve short gold dashes with a dark edge, a
+        /// little outside the selection ring so both read together.
+        /// </summary>
+        public static EffectFrame RoamRing()
+        {
+            var img = new Img(T, T);
+            float c = T / 2f;
+            Color32 ring = Role(StylePalette.Warn);
+            for (int y = 0; y < T; y++)
+            for (int x = 0; x < T; x++)
+            {
+                float dx = x + 0.5f - c, dy = y + 0.5f - c, d = Mathf.Sqrt(dx * dx + dy * dy);
+                float a = Mathf.Repeat(Mathf.Atan2(dy, dx) * Mathf.Rad2Deg, 30f);
+                if (d >= 29.5f && d <= 31f && a > 8f && a < 22f) img.Set(x, y, ring);
+            }
+            img.OutlineWith(Outline);
+            return img.Done();
+        }
+
         /// <summary>Corner brackets for a selected building, drawn 9-sliced (borders <see cref="RingBorder"/>) over its footprint.</summary>
         public static EffectFrame SelectionRingLarge()
         {
@@ -511,7 +531,8 @@ namespace WAR2D.Art.Render
 
         /// <summary>
         /// Tread marks (polish item G), half a tile long, for <paramref name="direction"/> (0 = east–west, then 45° steps
-        /// anticlockwise), fading over <see cref="DecalFrames"/> frames: two dithered tread bands with cleat gaps.
+        /// anticlockwise), fading over <see cref="DecalFrames"/> frames: two solid tread bands crossed by lighter cleats. Decals draws
+        /// direction 0 turned to the vehicle's exact heading.
         /// </summary>
         public static EffectFrame Tracks(int direction, int frame)
         {
@@ -525,10 +546,12 @@ namespace WAR2D.Art.Render
                 float along = px * cos + py * sin, across = -px * sin + py * cos;
                 if (Mathf.Abs(along) > 16f) continue;
                 float band = Mathf.Abs(Mathf.Abs(across) - 10f);
-                if (band > 2f) continue;
-                if (Mathf.Repeat(along, 4f) < 1.2f) continue; // the cleats' gaps
-                if (Bayer(x, y) > 0.7f || !Kept(x, y, frame)) continue;
-                img.Set(x, y, band < 1f ? rut : edge);
+                if (band > 3f) continue;
+                // Solid bands, wide enough to survive the mipmaps at medium zoom (playtest 2026-10-30: the old dithered ones
+                // looked noisy up close and vanished further out); the cleats are lighter cross-bars, not holes.
+                if (!Kept(x, y, frame)) continue;
+                bool cleat = Mathf.Repeat(along, 6f) < 2f;
+                img.Set(x, y, band < 2f && !cleat ? rut : edge);
             }
             return img.Done();
         }
@@ -622,6 +645,7 @@ namespace WAR2D.Art.Render
                 case "JamPulse": return JamPulse(t);
                 case "SelectionRingSmall": return SelectionRingSmall();
                 case "SelectionRingLarge": return SelectionRingLarge();
+                case "RoamRing": return RoamRing();
                 case "WaypointFlag": return Flag(cell, false);
                 case "RallyFlag": return Flag(cell, true);
                 case "DigDebris": return DigDebris(cell);

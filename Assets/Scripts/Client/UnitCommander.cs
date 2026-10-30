@@ -35,6 +35,27 @@ public class UnitCommander : NetworkBehaviour
     /// <summary>The local player's selection and squads.</summary>
     public WAR2D.Client.Selection Selection { get; } = new WAR2D.Client.Selection();
 
+    /// <summary>The units scouting on their own (Roam, J); any other order to one of them ends it.</summary>
+    public WAR2D.Client.Roam Roaming { get; } = new WAR2D.Client.Roam();
+
+    /// <summary>
+    /// Roam (playtest 2026-10-30): the selected own units, Builders aside, scout random ground not seen lately until ordered
+    /// otherwise.
+    /// </summary>
+    public void StartRoaming()
+    {
+        ClientWorld world = ClientWorld.Instance;
+        if (world == null || Selection.Selected.Count == 0) return;
+        int me = LocalOwner();
+        var ids = new List<int>();
+        foreach (int id in Selection.Selected)
+            if (world.TryGet(id, out ClientUnitView view) && view.OwnerId == me && view.Type != UnitType.Builder) ids.Add(id);
+        if (ids.Count == 0) { Notice?.Invoke("Nothing to roam with"); return; }
+        ArmedOrder = null;
+        Roaming.Start(ids);
+        Notice?.Invoke(ids.Count == 1 ? "Roaming" : $"{ids.Count} units roaming");
+    }
+
     /// <summary>The world feedback for orders: moved goals, queued goals, the Dig drag and dig marks.</summary>
     public OrderFeedback Feedback { get; private set; }
     private Vector3 dragStart;
@@ -82,7 +103,7 @@ public class UnitCommander : NetworkBehaviour
     private void LateUpdate()
     {
         Selection.Prune();
-        WAR2D.Client.ClientWorld.Instance?.Draw(Selection.Selected);
+        WAR2D.Client.ClientWorld.Instance?.Draw(Selection.Selected, Roaming.Count > 0 ? Roaming.Ids : null);
     }
 
     /// <summary>
@@ -140,6 +161,7 @@ public class UnitCommander : NetworkBehaviour
     /// <summary>Follows every order sent: the goals each unit holds, dig marks it replaces, and a goal the server will move off rock.</summary>
     private void OnOrdered(OrderKind kind, bool queue, int2 goal, IReadOnlyList<int> ids)
     {
+        Roaming.Stop(ids); // a player's order ends roaming (Roam's own orders don't raise Ordered)
         if (Feedback == null) return;
         if (kind == OrderKind.Stop || kind == OrderKind.Hold || kind == OrderKind.Detonate)
         {
@@ -525,7 +547,7 @@ public class UnitCommander : NetworkBehaviour
     /// <summary>Raised with a short message to show at the cursor ("No idle Builders") when a shortcut found nothing to select.</summary>
     public event System.Action<string> Notice;
 
-    private int idleCycle;
+    private int idleCycle, builderCycle = -1;
     private float lastHqJumpTime = -1f;
 
     private static void CentreCamera(float2 at)
@@ -581,6 +603,24 @@ public class UnitCommander : NetworkBehaviour
     /// <summary>The chips' entry points: the same actions as the keys, for the local player.</summary>
     public void SelectIdleBuilders(bool all) => SelectBuilders(LocalOwner(), all);
 
+    /// <summary>
+    /// The all-Builders chip (playtest 2026-10-30): shows your Builders one at a time, the camera moving to the next on each
+    /// click, without touching the selection. <see cref="SelectIdleBuilders"/> with all still selects them. Returns the one shown
+    /// (1-based) and how many there are, or (0, 0) with none.
+    /// </summary>
+    public (int position, int count) ShowNextBuilder()
+    {
+        ClientWorld world = ClientWorld.Instance;
+        if (world == null) return (0, 0);
+        var ids = new List<int>();
+        world.CollectOwn(LocalOwner(), ids, UnitType.Builder);
+        if (ids.Count == 0) { Notice?.Invoke("No Builders"); return (0, 0); }
+        ids.Sort();
+        builderCycle = (builderCycle + 1) % ids.Count;
+        if (world.TryGet(ids[builderCycle], out ClientUnitView view)) CentreCamera(view.Position);
+        return (builderCycle + 1, ids.Count);
+    }
+
     /// <summary>The Army chip.</summary>
     public void SelectArmy() => SelectArmy(LocalOwner());
 
@@ -612,6 +652,9 @@ public class UnitCommander : NetworkBehaviour
         if (GameInput.Stop.WasPressedThisFrame()) Order(OrderKind.Stop);
         if (GameInput.Hold.WasPressedThisFrame()) Order(OrderKind.Hold);
         if (GameInput.Detonate.WasPressedThisFrame()) Order(OrderKind.Detonate);
+        if (GameInput.Roam.WasPressedThisFrame()) StartRoaming();
+        Roaming.Update(Time.unscaledTime, WorldStateManager.Instance.MapBounds.Item1, WorldStateManager.Instance.MapBounds.Item2,
+            (ids, goal) => Selection.OrderIds(OrderKind.Move, ids, goal));
 
         // While placing a building, clicks belong to the placement.
         BuildingPlacement placement = BuildingPlacement.Instance;

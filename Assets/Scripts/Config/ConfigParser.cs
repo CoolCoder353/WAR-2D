@@ -393,6 +393,8 @@ namespace Config
                     AttackRatioScale = Float(node, "AttackRatioScale", c, errors, min: 0.1f, max: 10),
                     AttackIntervalSeconds = Float(node, "AttackIntervalSeconds", c, errors, min: 5, max: 3600),
                     Turrets = Int(node, "Turrets", c, errors, min: 0, max: 64),
+                    HomeTurrets = Int(node, "HomeTurrets", c, errors, min: 0, max: 16),
+                    DefenceStart = Float(node, "DefenceStart", c, errors, min: 0, max: 4),
                     Jammers = Int(node, "Jammers", c, errors, min: 0, max: 16),
                     Bombs = Int(node, "Bombs", c, errors, min: 0, max: 64),
                     Walls = Flag(node, "Walls", c, errors),

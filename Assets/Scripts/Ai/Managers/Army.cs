@@ -960,7 +960,9 @@ namespace WAR2D.Ai
             float groupValue = Mode == ArmyMode.Attack ? AiForces.Own(ai, group).Value : 0f;
             bool serious = theirs.Value >= groupValue * play.RecallShare && atBase;
             bool atTarget = engaged && math.distancesq(FrontCentre(view, state, play.ArmyRadius), Target) <= 4f * play.ArmyRadius * play.ArmyRadius;
-            if (Mode == ArmyMode.Attack && homeAdvantage < 1f && serious && !atTarget)
+            // A style that holds its chokes (Turtle) always comes home to a serious threat at its base: it lives by its base
+            // (playtest 2026-10-30: Turtles lost their HQ while their army traded at the enemy's).
+            if (Mode == ArmyMode.Attack && homeAdvantage < 1f && serious && (!atTarget || ai.Style.HoldsChokes))
             {
                 Note(ai, $"recalled: home advantage {Shown(homeAdvantage)}, threat {theirs.Value:F0}");
                 EndRecord(ai, state);

@@ -88,92 +88,98 @@
             "directions": 1
         },
         {
-            "id": "WaypointFlag",
+            "id": "RoamRing",
             "first": 52,
+            "frames": 1,
+            "directions": 1
+        },
+        {
+            "id": "WaypointFlag",
+            "first": 53,
             "frames": 2,
             "directions": 1
         },
         {
             "id": "RallyFlag",
-            "first": 54,
+            "first": 55,
             "frames": 2,
             "directions": 1
         },
         {
             "id": "HealthBar",
-            "first": 56,
+            "first": 57,
             "frames": 2,
             "directions": 1
         },
         {
             "id": "TurretMuzzle",
-            "first": 58,
+            "first": 59,
             "frames": 3,
             "directions": 1
         },
         {
             "id": "JamPulse",
-            "first": 61,
+            "first": 62,
             "frames": 6,
             "directions": 1
         },
         {
             "id": "Scorch",
-            "first": 67,
+            "first": 68,
             "frames": 4,
             "directions": 1
         },
         {
             "id": "ScorchLarge",
-            "first": 71,
+            "first": 72,
             "frames": 4,
             "directions": 1
         },
         {
             "id": "Rubble1",
-            "first": 75,
+            "first": 76,
             "frames": 4,
             "directions": 1
         },
         {
             "id": "Rubble2",
-            "first": 79,
+            "first": 80,
             "frames": 4,
             "directions": 1
         },
         {
             "id": "Rubble3",
-            "first": 83,
+            "first": 84,
             "frames": 4,
             "directions": 1
         },
         {
             "id": "Rubble5",
-            "first": 87,
+            "first": 88,
             "frames": 4,
             "directions": 1
         },
         {
             "id": "Tracks",
-            "first": 91,
+            "first": 92,
             "frames": 4,
             "directions": 4
         },
         {
             "id": "Smoke",
-            "first": 107,
+            "first": 108,
             "frames": 6,
             "directions": 1
         },
         {
             "id": "Fire",
-            "first": 113,
+            "first": 114,
             "frames": 4,
             "directions": 1
         },
         {
             "id": "GemSparkle",
-            "first": 117,
+            "first": 118,
             "frames": 4,
             "directions": 1
         }
@@ -668,6 +674,14 @@
             "pivotY": 32.0
         },
         {
+            "x": 1648,
+            "y": 1358,
+            "w": 64,
+            "h": 64,
+            "pivotX": 32.0,
+            "pivotY": 32.0
+        },
+        {
             "x": 972,
             "y": 840,
             "w": 192,
@@ -716,14 +730,6 @@
             "pivotY": 96.0
         },
         {
-            "x": 1648,
-            "y": 1358,
-            "w": 64,
-            "h": 64,
-            "pivotX": 32.0,
-            "pivotY": 32.0
-        },
-        {
             "x": 1714,
             "y": 1358,
             "w": 64,
@@ -741,6 +747,14 @@
         },
         {
             "x": 1846,
+            "y": 1358,
+            "w": 64,
+            "h": 64,
+            "pivotX": 32.0,
+            "pivotY": 32.0
+        },
+        {
+            "x": 1912,
             "y": 1358,
             "w": 64,
             "h": 64,
@@ -780,14 +794,6 @@
             "pivotY": 64.0
         },
         {
-            "x": 1912,
-            "y": 1358,
-            "w": 64,
-            "h": 64,
-            "pivotX": 32.0,
-            "pivotY": 32.0
-        },
-        {
             "x": 1978,
             "y": 1358,
             "w": 64,
@@ -805,6 +811,14 @@
         },
         {
             "x": 68,
+            "y": 1424,
+            "w": 64,
+            "h": 64,
+            "pivotX": 32.0,
+            "pivotY": 32.0
+        },
+        {
+            "x": 134,
             "y": 1424,
             "w": 64,
             "h": 64,
@@ -906,14 +920,6 @@
             "h": 320,
             "pivotX": 160.0,
             "pivotY": 160.0
-        },
-        {
-            "x": 134,
-            "y": 1424,
-            "w": 64,
-            "h": 64,
-            "pivotX": 32.0,
-            "pivotY": 32.0
         },
         {
             "x": 200,
@@ -1141,6 +1147,14 @@
         },
         {
             "x": 2,
+            "y": 1490,
+            "w": 64,
+            "h": 64,
+            "pivotX": 32.0,
+            "pivotY": 32.0
+        },
+        {
+            "x": 68,
             "y": 1490,
             "w": 64,
             "h": 64,
