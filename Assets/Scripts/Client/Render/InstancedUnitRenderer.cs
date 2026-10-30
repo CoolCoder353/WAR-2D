@@ -14,8 +14,8 @@ namespace WAR2D.Client.Render
     /// One unit's draw data, the 32 bytes the shader's <c>StructuredBuffer&lt;UnitInstance&gt;</c> declares:
     /// <c>float2 position; float rotation; uint frame; uint color; float health; float scale; float pad</c>.
     /// <c>frame</c> is the atlas cell (<see cref="UnitFrames"/>: the facing picks a rendered direction, the
-    /// shader doesn't rotate the quad), <c>color</c> the owner's colour for the team mask, and <c>pad</c> the
-    /// selection highlight (1 = selected).
+    /// shader doesn't rotate the quad), <c>color</c> the owner's colour for the team mask, and <c>pad</c> flags (bit 1
+    /// selected, bit 2 hit flash). A health bar's <c>rotation</c> is its recent-damage trail (<see cref="HitFeedback"/>).
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public struct UnitInstance
@@ -87,6 +87,7 @@ namespace WAR2D.Client.Render
             barMaterial.SetFloat("_TeamGain", 1f);
             barMaterial.SetTexture("_MainTex", barAtlas);
             barMaterial.SetTexture("_MaskTex", Texture2D.whiteTexture); // the whole bar takes the bar colour
+            barMaterial.SetFloat("_Trail", 1f);
             Vector4[] cells = UvRects(atlas);
             unitFrameRects = new GraphicsBuffer(GraphicsBuffer.Target.Structured, cells.Length, 16);
             unitFrameRects.SetData(cells);
@@ -234,6 +235,8 @@ namespace WAR2D.Client.Render
         [ReadOnly] public NativeArray<float> Health01;   // by index
         [ReadOnly] public NativeArray<float> Scale;      // by index: tiles across (2 for large units)
         [ReadOnly] public NativeArray<byte> Selected;    // by index
+        [ReadOnly] public NativeArray<byte> Flash;       // by index: 1 while the unit flashes from a hit
+        [ReadOnly] public NativeArray<float> Trail;      // by index: the health bar's recent-damage level
         public float UnitHalfSize;
         public uint RingFrame, LargeRingFrame;
         /// <summary>The Gameplay setting's <see cref="HealthBarMode"/>: which units get a bar.</summary>
@@ -262,13 +265,14 @@ namespace WAR2D.Client.Render
                     color = Color[index],
                     health = health,
                     scale = scale,
-                    pad = Selected[index],
+                    pad = Selected[index] | Flash[index] << 1,
                 };
                 if (!WAR2D.Client.Overlays.OverlayRules.ShowHealthBar(BarMode, health, Selected[index] != 0)) continue;
                 int frame = math.clamp((int)math.round(health * (InstancedUnitRenderer.BarFrames - 1)), 0, InstancedUnitRenderer.BarFrames - 1);
                 Bars[bars++] = new UnitInstance
                 {
                     position = Positions[i] + new float2(0f, UnitHalfSize * scale + 0.175f),
+                    rotation = Trail[index],
                     frame = (uint)frame,
                     color = InstancedUnitRenderer.BarColor(health),
                     health = health,

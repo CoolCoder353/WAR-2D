@@ -435,6 +435,174 @@ namespace WAR2D.Art.Render
             return img.Done();
         }
 
+        /// <summary>Frames a ground mark (scorch, rubble, tracks) fades through: frame 0 whole, the last a quarter left.</summary>
+        public const int DecalFrames = 4;
+
+        /// <summary>True when a ground mark keeps the pixel at (x, y) in fade frame <paramref name="frame"/> (dithered away a quarter at a time).</summary>
+        private static bool Kept(int x, int y, int frame) => Bayer(x, y) < 1f - frame / (float)DecalFrames;
+
+        /// <summary>
+        /// The soot left where a unit died (polish item 3), <paramref name="tiles"/> square, fading over <see cref="DecalFrames"/>
+        /// frames: a dark blotch with a ragged dithered rim and a few charred flecks flung out.
+        /// </summary>
+        public static EffectFrame Scorch(int tiles, int frame, int seed)
+        {
+            int s = tiles * T;
+            var img = new Img(s, s);
+            float c = s / 2f, r = s * 0.3f;
+            Color32 soot = Role(StylePalette.Body0), ash = Role(StylePalette.Body1, 1);
+            for (int y = 0; y < s; y++)
+            for (int x = 0; x < s; x++)
+            {
+                float dx = x + 0.5f - c, dy = (y + 0.5f - c) * 1.25f; // flattened: the ground in the 3/4 view
+                float d = Mathf.Sqrt(dx * dx + dy * dy) / r + (Noise.Fbm(x, y, s, 4, 3, seed) - 0.5f) * 0.6f;
+                if (d > 1.15f) continue;
+                bool rim = d > 0.75f;
+                if (rim && Bayer(x, y) > (1.15f - d) * 2.2f) continue;
+                if (!Kept(x, y, frame)) continue;
+                img.Set(x, y, d < 0.45f || Noise.Fbm(x, y, s, 3, 2, seed + 5) > 0.62f ? soot : ash);
+            }
+            var rng = new ArtRandom(seed, "scorch flecks");
+            for (int k = 0; k < 5 * tiles; k++)
+            {
+                float a = rng.Range(360) * Mathf.Deg2Rad, d = r * (1.1f + rng.Range(40) / 100f);
+                int x = (int)(c + Mathf.Cos(a) * d), y = (int)(c + Mathf.Sin(a) * d * 0.8f);
+                if (Kept(x, y, frame)) img.Set(x, y, soot);
+            }
+            return img.Done();
+        }
+
+        /// <summary>
+        /// What a destroyed building leaves over its footprint (polish item 3), <paramref name="tiles"/> square, fading over
+        /// <see cref="DecalFrames"/> frames: a soot patch strewn with outlined chunks of rock and machine plating.
+        /// </summary>
+        public static EffectFrame Rubble(int tiles, int frame, int seed)
+        {
+            int s = tiles * T;
+            EffectFrame soot = Scorch(tiles, 0, seed);
+            var img = new Img(s, s);
+            // A thinner soot bed than a unit's scorch, so the chunks read on it.
+            for (int y = 0; y < s; y++)
+            for (int x = 0; x < s; x++)
+                if (soot.Pixels[y * s + x].a > 0 && Bayer(x + 1, y + 2) < 0.6f) img.Set(x, y, soot.Pixels[y * s + x]);
+            var chunks = new Img(s, s);
+            var rng = new ArtRandom(seed, "rubble");
+            Color32[] stone = { Role(StylePalette.Rock1, 2), Role(StylePalette.Rock3, 2), Role(StylePalette.Body1), Role(StylePalette.Body2, 1) };
+            for (int k = 0; k < 7 * tiles * tiles; k++)
+            {
+                int w = 3 + rng.Range(4 + tiles), h = 2 + rng.Range(3 + tiles);
+                int x0 = rng.Range(s - w - 4) + 2, y0 = rng.Range(s - h - 4) + 2;
+                Color32 col = stone[rng.Range(stone.Length)];
+                for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    if ((x + y) < w + h - 3) chunks.Set(x0 + x, y0 + y, y == h - 1 ? Role(StylePalette.Rock3, 2) : col); // lit top edge, cut corner
+            }
+            chunks.OutlineWith(Outline);
+            for (int y = 0; y < s; y++)
+            for (int x = 0; x < s; x++)
+                if (chunks.Px[y * s + x].a > 0) img.Set(x, y, chunks.Px[y * s + x]);
+            for (int i = 0; i < img.Px.Length; i++)
+                if (img.Px[i].a > 0 && !Kept(i % s, i / s, frame)) img.Px[i] = default;
+            return img.Done();
+        }
+
+        /// <summary>Facings drawn for track marks: 45° apart through a half turn (a mark looks the same driven either way).</summary>
+        public const int TrackDirections = 4;
+
+        /// <summary>
+        /// Tread marks (polish item G), half a tile long, for <paramref name="direction"/> (0 = east–west, then 45° steps
+        /// anticlockwise), fading over <see cref="DecalFrames"/> frames: two dithered tread bands with cleat gaps.
+        /// </summary>
+        public static EffectFrame Tracks(int direction, int frame)
+        {
+            var img = new Img(T, T);
+            float a = direction * Mathf.PI / 4f, cos = Mathf.Cos(a), sin = Mathf.Sin(a), c = T / 2f;
+            Color32 rut = Role(StylePalette.Body0), edge = Role(StylePalette.Body1, 1);
+            for (int y = 0; y < T; y++)
+            for (int x = 0; x < T; x++)
+            {
+                float px = x + 0.5f - c, py = y + 0.5f - c;
+                float along = px * cos + py * sin, across = -px * sin + py * cos;
+                if (Mathf.Abs(along) > 16f) continue;
+                float band = Mathf.Abs(Mathf.Abs(across) - 10f);
+                if (band > 2f) continue;
+                if (Mathf.Repeat(along, 4f) < 1.2f) continue; // the cleats' gaps
+                if (Bayer(x, y) > 0.7f || !Kept(x, y, frame)) continue;
+                img.Set(x, y, band < 1f ? rut : edge);
+            }
+            return img.Done();
+        }
+
+        /// <summary>
+        /// A puff of smoke from a damaged building (polish item C) at <paramref name="t"/> (0 = new, 1 = gone): a dithered grey
+        /// ball that grows and thins as it rises (the drawing drifts it upward).
+        /// </summary>
+        public static EffectFrame Smoke(float t, int seed)
+        {
+            var img = new Img(T, T);
+            float c = T / 2f, r = T * (0.12f + 0.16f * t), density = 1.1f - t * 0.95f;
+            for (int y = 0; y < T; y++)
+            for (int x = 0; x < T; x++)
+            {
+                float dx = x + 0.5f - c, dy = y + 0.5f - c;
+                float n = Noise.Fbm(x, y + t * 20f, T, 4, 2, seed) - 0.5f;
+                float puff = (1f - Mathf.Sqrt(dx * dx + dy * dy) / r + n * 0.8f) * density * 1.5f;
+                if (puff > Bayer(x / 2, y / 2))
+                    img.Set(x, y, n > 0.08f ? Role(StylePalette.Body3, 1) : n > -0.12f ? Role(StylePalette.Body2, 1) : Role(StylePalette.Body1, 1));
+            }
+            return img.Done();
+        }
+
+        /// <summary>
+        /// A tongue of flame on a badly damaged building (polish item C), frame <paramref name="frame"/> of 4: it licks up, peaks,
+        /// gutters and leaves a wisp.
+        /// </summary>
+        public static EffectFrame Fire(int frame)
+        {
+            var img = new Img(T, T);
+            float[] height = { 12f, 20f, 15f, 7f }, width = { 5f, 6.5f, 5.5f, 3.5f };
+            float h = height[frame % 4], w = width[frame % 4], cx = T / 2f, by = T / 2f - 8f;
+            for (int y = 0; y < T; y++)
+            for (int x = 0; x < T; x++)
+            {
+                float up = (y + 0.5f - by) / h;
+                if (up < 0f || up > 1f) continue;
+                float sway = Mathf.Sin(up * 3f + frame * 1.7f) * 1.5f * up;
+                float half = w * (1f - up * up) + (Noise.Fbm(x, y, T, 4, 2, 81 + frame) - 0.5f) * 3f;
+                float d = Mathf.Abs(x + 0.5f - cx - sway) / Mathf.Max(0.5f, half);
+                if (d > 1f) continue;
+                float heat = (1f - d) * (1.2f - up);
+                int i = heat > 0.85f ? 0 : heat > 0.6f ? 1 : heat > 0.4f ? 2 : heat > 0.22f ? 3 : 4;
+                img.Set(x, y, ArtStyle.FireRamp[Mathf.Min(6, i + (frame == 3 ? 2 : 0))]);
+            }
+            return img.Done();
+        }
+
+        /// <summary>
+        /// A glint off the gem tile a Miner works (polish item I), frame <paramref name="frame"/> of 4: a four-pointed star that
+        /// flares and shrinks, with two smaller sparks.
+        /// </summary>
+        public static EffectFrame GemSparkle(int frame)
+        {
+            var img = new Img(T, T);
+            int[] arm = { 3, 7, 5, 2 };
+            Color32 white = new Color32(255, 255, 255, 255), pale = ArtStyle.FireRamp[0], lamp = Role(StylePalette.Lamp, 3);
+            void Star(int cx, int cy, int len)
+            {
+                img.Set(cx, cy, white);
+                for (int k = 1; k <= len; k++)
+                {
+                    Color32 col = k <= len / 2 ? pale : lamp;
+                    img.Set(cx + k, cy, col); img.Set(cx - k, cy, col);
+                    img.Set(cx, cy + k, col); img.Set(cx, cy - k, col);
+                }
+            }
+            Star(T / 2, T / 2 + 2, arm[frame % 4]);
+            if (frame >= 1) Star(T / 2 - 9, T / 2 - 6, arm[(frame + 2) % 4] / 2);
+            if (frame >= 2) Star(T / 2 + 8, T / 2 - 3, 1);
+            return img.Done();
+        }
+
         /// <summary>The frame for cell <paramref name="cell"/> of an effect id, or null when it has no generator.</summary>
         public static EffectFrame? For(string id, int cell, int frames)
         {
@@ -460,6 +628,16 @@ namespace WAR2D.Art.Render
                 case "RepairSparks": return RepairSparks(cell);
                 case "ConstructionOverlay": return ConstructionOverlay(cell);
                 case "HealthBar": return HealthBar(cell);
+                case "Scorch": return Scorch(1, cell, 41);
+                case "ScorchLarge": return Scorch(2, cell, 43);
+                case "Rubble1": return Rubble(1, cell, 47);
+                case "Rubble2": return Rubble(2, cell, 53);
+                case "Rubble3": return Rubble(3, cell, 59);
+                case "Rubble5": return Rubble(5, cell, 61);
+                case "Tracks": return Tracks(cell / frames, cell % frames); // direction-major, like units
+                case "Smoke": return Smoke(t, 67);
+                case "Fire": return Fire(cell);
+                case "GemSparkle": return GemSparkle(cell);
                 default: return null;
             }
         }

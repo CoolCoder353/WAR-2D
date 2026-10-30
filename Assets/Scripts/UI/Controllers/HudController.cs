@@ -40,6 +40,7 @@ namespace WAR2D.UI
         private HoverCard hover;
         private UnitCommander noticeSource;
         private VisualElement root;
+        private VisualElement hoverRoot; // the root the hover sounds are registered on (OnEnable can run again)
         private float playerTimer, selectionTimer;
         private int placedHQs, players;
 
@@ -76,6 +77,7 @@ namespace WAR2D.UI
         private void OnEnable()
         {
             root = GetComponent<UIDocument>().rootVisualElement;
+            if (hoverRoot != root) { Widgets.HoverSounds(root); hoverRoot = root; }
             Palettes.ApplyTo(root);
             Palettes.Changed += ApplyPalette;
             // Each section's template fills the screen; only its panels take the pointer.
@@ -370,7 +372,11 @@ namespace WAR2D.UI
             if (!matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !diplomacy.IsOpen && !endScreen.IsShown && !Spectating)
             {
                 string why = commandCard.HandleHotkeys();
-                if (why != null) OnNotice(why);
+                if (why != null)
+                {
+                    WAR2D.Audio.AudioService.Ui("ui_error"); // the key's button is greyed out
+                    OnNotice(why);
+                }
             }
             SubscribeNotices();
             ShowCursorNotice();

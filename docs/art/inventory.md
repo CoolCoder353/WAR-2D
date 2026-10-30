@@ -56,9 +56,14 @@ Unused today: `Spawner.asset`, `Test.asset` and the `Pallets` tile palette (remo
 | `SniperTracer` | 1×1 | 1 | `Effects` atlas, pooled (64): the Sniper's shot (v0.12) |
 | `ArtilleryShell` / `ShellImpact` | 1×1 / 4×4 | 2 / 6 | `Effects` atlas, pooled (64 each): the shell flies 0.5 s, then the impact plays (v0.12) |
 | `FlameStream` | 3×1 | 4 | `Effects` atlas, pooled (128), stretched from the nozzle to the target (v0.12) |
-| `BomberBlast` | 4×4 | 8 | `Effects` atlas (v0.12); built but unused: bomber blasts reach clients as `BombBlast` events and draw the bomb's effect |
+| `BomberBlast` | 4×4 | 8 | `Effects` atlas (v0.12): Suicide bomber blasts, and the main blast of a destroyed building 4 tiles or wider (polish: smaller buildings use `BombBlast`, 1-tile ones `Explosion`, each followed by a ripple of explosions and debris across the footprint) |
 | `TurretMuzzle` | 1×1 | 3 | `Effects` atlas, pooled (64): at the turret's muzzle (`RenderGen.TurretMuzzleReach`/`Height`), turned to the head's facing, with a tracer to the target (v0.13) |
 | `JamPulse` | 3×3 | 6 | `Effects` atlas, pooled (32): every 2.5 s over each finished Jammer the client sees (its own only while paid) (v0.13) |
+| `Scorch` / `ScorchLarge` | 1×1 / 2×2 | 4 (fade) | `Effects` atlas, pooled in `Decals` (256 / 64): where a unit the client knew died (the large one under a 2-tile unit); holds 15 s, then dithers out over 10 s (polish, 2026-10-30) |
+| `Rubble1` / `Rubble2` / `Rubble3` / `Rubble5` | 1×1 to 5×5 | 4 (fade) | `Effects` atlas, pooled in `Decals` (24 each, 8 for 5×5): over a finished building the client saw destroyed, by footprint; holds 25 s, fades over 10 s (polish) |
+| `Tracks` | 1×1 | 4 (fade) × 4 directions | `Effects` atlas, pooled in `Decals` (768): tread marks every half tile behind Tanks, Heavies and Artillery on screen; hold 3 s, fade over 4 s (polish) |
+| `Smoke` / `Fire` | 1×1 | 6 / 4 | `Effects` atlas, pooled (160 / 96): from finished buildings on screen under half health (smoke, rising) and a quarter (fire too) (polish) |
+| `GemSparkle` | 1×1 | 4 | `Effects` atlas, pooled (48): once a second on the gem tile each finished Miner on screen faces (its payout), with `gem_mined` at most every 0.4 s (polish) |
 | `DigDebris` | 1×1 | 4 | `Effects` atlas; unused until v0.7 |
 | `RepairSparks` | 1×1 | 4 | `Effects` atlas; unused until v0.7 |
 | `ConstructionOverlay` | 1×1 (tiled over the footprint) | 4 | `Effects` atlas; unused until v0.7 |

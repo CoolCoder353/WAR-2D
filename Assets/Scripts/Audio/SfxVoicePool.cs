@@ -77,5 +77,15 @@ namespace WAR2D.Audio
             float r = Mathf.Max(Mathf.Abs(d.x) / half.x, Mathf.Abs(d.y) / half.y);
             return Mathf.Lerp(1f, 0.3f, Mathf.Clamp01(r));
         }
+
+        /// <summary>How far a sound pans at the view's left or right edge (and beyond): never hard into one ear.</summary>
+        public const float MaxPan = 0.7f;
+
+        /// <summary>Stereo pan from the sound's screen x: 0 at the view's centre, ±<see cref="MaxPan"/> at its edges and beyond.</summary>
+        public static float Pan(Vector2 pos, Rect view)
+        {
+            if (view.width <= 0f) return 0f;
+            return Mathf.Clamp((pos.x - view.center.x) / (view.width * 0.5f), -1f, 1f) * MaxPan;
+        }
     }
 }

@@ -17,7 +17,9 @@ namespace WAR2D.Audio
         private static AudioService instance;
         private SfxVoicePool pool;
         private AudioSource[] voices;
-        private AudioSource ui;
+        private AudioSource ui, loop;
+        private float loopTarget;
+        private float lastHover = float.NegativeInfinity;
         private MusicPlayer music;
         private MusicCue ending = MusicCue.None;
         private float battleUntil, deathWindowStart;
@@ -54,8 +56,45 @@ namespace WAR2D.Audio
             if (clip == null) return; // a missing clip must not claim (and burn) a voice
             int voice = s.pool.Claim(id, position, view, Time.unscaledTime);
             if (voice < 0) return;
+            // A claimed voice is idle, so its pan only moves this sound.
+            s.voices[voice].panStereo = SfxVoicePool.Pan(position, view);
             s.voices[voice].PlayOneShot(clip, SfxVoicePool.Volume(position, view));
         }
+
+        /// <summary>
+        /// Keeps the looping sound <paramref name="id"/> playing at <paramref name="position"/> while it is called each frame with a
+        /// position; null (or a position off screen) fades it out. One loop at a time (the construction loop).
+        /// </summary>
+        public static void Loop(string id, Vector2? position)
+        {
+            AudioService s = Instance;
+            if (s == null) return;
+            Camera cam = View != null ? View : Camera.main;
+            float target = 0f;
+            if (position.HasValue && cam != null)
+            {
+                float h = cam.orthographicSize * 2f, w = h * cam.aspect;
+                var view = new Rect((Vector2)cam.transform.position - new Vector2(w, h) * 0.5f, new Vector2(w, h));
+                if (SfxVoicePool.Audible(position.Value, view))
+                {
+                    target = SfxVoicePool.Volume(position.Value, view) * LoopVolume;
+                    s.loop.panStereo = SfxVoicePool.Pan(position.Value, view);
+                }
+            }
+            if (target > 0f && s.loop.clip == null || target > 0f && s.loop.clip.name != id)
+            {
+                AudioClip clip = Clip(id);
+                if (clip == null) return;
+                s.loop.clip = clip;
+            }
+            s.loopTarget = target;
+        }
+
+        /// <summary>The loop's volume next to one-shot effects (a bed under them, not over).</summary>
+        public const float LoopVolume = 0.5f;
+
+        /// <summary>Seconds the loop takes to fade fully in or out.</summary>
+        public const float LoopFadeSeconds = 0.3f;
 
         /// <summary>Plays an interface sound (never culled by position).</summary>
         public static void Ui(string id)
@@ -63,6 +102,18 @@ namespace WAR2D.Audio
             AudioService s = Instance;
             AudioClip clip = Clip(id);
             if (s != null && clip != null) s.ui.PlayOneShot(clip);
+        }
+
+        /// <summary>Seconds between hover sounds, so sweeping the pointer across a row of buttons ticks instead of buzzing.</summary>
+        public const float HoverCooldown = 0.06f;
+
+        /// <summary>The pointer moved onto an enabled button: <c>ui_hover</c>, at most once per <see cref="HoverCooldown"/>.</summary>
+        public static void Hover()
+        {
+            AudioService s = Instance;
+            if (s == null || Time.unscaledTime - s.lastHover < HoverCooldown) return;
+            s.lastHover = Time.unscaledTime;
+            Ui("ui_hover");
         }
 
         /// <summary>Plays an end-of-match stinger (Victory or Defeat); it holds until the match is left.</summary>
@@ -105,6 +156,9 @@ namespace WAR2D.Audio
             voices = new AudioSource[Voices];
             for (int i = 0; i < Voices; i++) voices[i] = Source(sfx);
             ui = Source(sfx);
+            loop = Source(sfx);
+            loop.loop = true;
+            loop.volume = 0f;
             music = new MusicPlayer(gameObject, musicGroup);
         }
 
@@ -126,6 +180,16 @@ namespace WAR2D.Audio
         {
             music.Play(Choose());
             music.Update(Time.unscaledDeltaTime);
+            UpdateLoop(Time.unscaledDeltaTime);
+        }
+
+        /// <summary>Fades the loop toward the volume <see cref="Loop"/> last asked for; the target drops to silence unless asked again.</summary>
+        private void UpdateLoop(float dt)
+        {
+            loop.volume = Mathf.MoveTowards(loop.volume, loopTarget, LoopVolume * dt / LoopFadeSeconds);
+            loopTarget = 0f; // a caller that stops calling lets it fade out
+            if (loop.volume > 0f && !loop.isPlaying && loop.clip != null) loop.Play();
+            else if (loop.volume <= 0f && loop.isPlaying) loop.Stop();
         }
 
         /// <summary>The cue for the current game state.</summary>

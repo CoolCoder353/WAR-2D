@@ -7,6 +7,8 @@ namespace WAR2D.Client.Render
     public static class SortingOrders
     {
         public const int Terrain = short.MinValue;
+        /// <summary>Ground marks (<see cref="Decals"/>: scorch, rubble, tracks): on the map, under the clearing ring and everything else.</summary>
+        public const int Decals = -20100;
         /// <summary>The HQ clearing ring: over the map, under every building.</summary>
         public const int ClearingRing = -20000;
         public const int Effects = 10000;

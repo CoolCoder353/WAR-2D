@@ -19,7 +19,6 @@ namespace WAR2D.Client.Render
     {
         public const string ShaderPath = "Shaders/InstancedBuilding";
         private const int QuadVertices = 6;
-        private const float FlashSeconds = 0.15f;
 
         private readonly Material buildingMaterial, overlayMaterial, barMaterial;
         private readonly Texture2D barAtlas;
@@ -29,11 +28,13 @@ namespace WAR2D.Client.Render
         private NativeArray<UnitInstance> scratch;
         private readonly BuildingFrames frames;
         private readonly BuildingPacking.Lists lists = new BuildingPacking.Lists();
-        private readonly Dictionary<int, (float health, float flashUntil, bool ghost)> hits = new Dictionary<int, (float, float, bool)>();
+        /// <summary>Per building: its health fraction last frame, when it was last hit, its bar's recent-damage trail, and whether it was a ghost.</summary>
+        private readonly Dictionary<int, (float health, float hitAt, float trail, bool ghost)> hits = new Dictionary<int, (float, float, float, bool)>();
         private readonly HashSet<int> seen = new HashSet<int>();
         private readonly List<int> gone = new List<int>();
-        private float now;
+        private float now, dt;
         private readonly Func<int, bool> flashing;
+        private readonly Func<int, float> trailOf;
         private Func<int, ClientBuildings.TurretHead> headOf;
         private ClientBuildings headsOf;
 
@@ -44,7 +45,8 @@ namespace WAR2D.Client.Render
             Shader quads = Resources.Load<Shader>(InstancedUnitRenderer.ShaderPath);
             if (shader == null || quads == null) throw new InvalidOperationException($"Resources/{ShaderPath}.shader or {InstancedUnitRenderer.ShaderPath} is missing");
             frames = new BuildingFrames(atlas, effects);
-            flashing = id => hits.TryGetValue(id, out var h) && h.flashUntil > now;
+            flashing = id => hits.TryGetValue(id, out var h) && HitFeedback.Flashing(h.hitAt, now);
+            trailOf = id => hits.TryGetValue(id, out var h) ? h.trail : 0f;
 
             buildingMaterial = new Material(shader) { name = "Building instances", renderQueue = 2996 };
             buildingMaterial.SetTexture("_MainTex", atlas != null ? atlas.Texture : Texture2D.whiteTexture);
@@ -79,6 +81,7 @@ namespace WAR2D.Client.Render
             barMaterial.SetFloat("_TeamGain", 1f);
             barMaterial.SetTexture("_MainTex", barAtlas);
             barMaterial.SetTexture("_MaskTex", Texture2D.whiteTexture);
+            barMaterial.SetFloat("_Trail", 1f);
             var barCells = new Vector4[InstancedUnitRenderer.BarFrames];
             for (int i = 0; i < barCells.Length; i++) barCells[i] = new Vector4((float)i / barCells.Length, 0f, 1f / barCells.Length, 1f);
             barRects = new GraphicsBuffer(GraphicsBuffer.Target.Structured, barCells.Length, 16);
@@ -121,6 +124,7 @@ namespace WAR2D.Client.Render
         /// </summary>
         public void Draw(ClientBuildings known, float time, Func<int, uint> colorOf, int barMode = (int)HealthBarMode.DamagedOnly, Func<int, bool> selected = null)
         {
+            dt = now > 0f ? math.max(0f, time - now) : 0f;
             now = time;
             TrackHits(known);
             if (headsOf != known)
@@ -128,15 +132,16 @@ namespace WAR2D.Client.Render
                 headsOf = known;
                 headOf = known.HeadOf;
             }
-            BuildingPacking.Pack(known.Entries.Values, frames, colorOf, WorldStateManager.GetBuildingSize, time, flashing, lists, headOf, barMode, selected);
+            BuildingPacking.Pack(known.Entries.Values, frames, colorOf, WorldStateManager.GetBuildingSize, time, flashing, lists, headOf, barMode, selected, trailOf);
             Submit(lists.Buildings, ref buildings, ref buildingCapacity, buildingMaterial);
             Submit(lists.Overlays, ref overlays, ref overlayCapacity, overlayMaterial);
             Submit(lists.Bars, ref bars, ref barCapacity, barMaterial);
         }
 
         /// <summary>
-        /// A building whose health dropped since the last frame flashes red briefly (it was hit). A ghost that
-        /// comes back into sight with less health than last seen took that damage out of sight: no flash.
+        /// A building whose health dropped since the last frame flashes red briefly (it was hit), and its bar keeps the lost part as a
+        /// draining trail (<see cref="HitFeedback"/>). A ghost that comes back into sight with less health than last seen took that
+        /// damage out of sight: no flash and no trail.
         /// </summary>
         private void TrackHits(ClientBuildings known)
         {
@@ -145,9 +150,15 @@ namespace WAR2D.Client.Render
             {
                 int id = e.Data.id;
                 seen.Add(id);
-                float health = e.Health.currentHealth;
-                if (hits.TryGetValue(id, out var h)) hits[id] = (health, health < h.health && !e.Ghost && !h.ghost ? now + FlashSeconds : h.flashUntil, e.Ghost);
-                else hits[id] = (health, 0f, e.Ghost);
+                float health = e.Health.maxHealth > 0f ? e.Health.currentHealth / e.Health.maxHealth : 1f;
+                if (hits.TryGetValue(id, out var h))
+                {
+                    bool hit = health < h.health && !e.Ghost && !h.ghost;
+                    float hitAt = hit ? now : h.hitAt;
+                    float trail = e.Ghost || h.ghost ? health : HitFeedback.Trail(h.trail, health, now - hitAt, dt);
+                    hits[id] = (health, hitAt, trail, e.Ghost);
+                }
+                else hits[id] = (health, float.NegativeInfinity, health, e.Ghost);
             }
             if (hits.Count == seen.Count) return;
             gone.Clear();

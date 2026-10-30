@@ -1,6 +1,6 @@
 Shader "WAR2D/InstancedUnit"
 {
-    Properties { _MainTex ("Atlas", 2D) = "white" {} _MaskTex ("Team mask", 2D) = "white" {} _UnitSize ("Unit size", Float) = 1 _Aspect ("Height / width", Float) = 1 _TeamGain ("Team grey to owner colour", Float) = 1.55 _PixelsPerUnit ("Pixels per unit (0 = no snapping)", Float) = 64 }
+    Properties { _MainTex ("Atlas", 2D) = "white" {} _MaskTex ("Team mask", 2D) = "white" {} _UnitSize ("Unit size", Float) = 1 _Aspect ("Height / width", Float) = 1 _TeamGain ("Team grey to owner colour", Float) = 1.55 _PixelsPerUnit ("Pixels per unit (0 = no snapping)", Float) = 64 _Trail ("Health bars: draw the recent-damage trail", Float) = 0 }
     SubShader
     {
         Tags { "RenderType"="Transparent" "Queue"="Transparent" "RenderPipeline"="UniversalPipeline" }
@@ -26,8 +26,13 @@ Shader "WAR2D/InstancedUnit"
             float _Aspect;
             float _TeamGain;
             float _PixelsPerUnit;
+            float _Trail;
 
-            struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; half4 color : COLOR; half highlight : TEXCOORD1; };
+            // highlight: x selected, y hit flash. bar: x the bar's local u, y its local v, z filled art pixels, w trail art pixels.
+            struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; half4 color : COLOR; half2 highlight : TEXCOORD1; float4 bar : TEXCOORD2; };
+
+            // Health bar art (InstancedUnitRenderer.BuildBarAtlas): BarWidth x BarHeight pixels, 1 px outline, BarFrames fill steps.
+            static const float BarWidth = 48, BarHeight = 4, BarFrames = 16;
 
             static const float2 Corners[6] =
             {
@@ -49,7 +54,12 @@ Shader "WAR2D/InstancedUnit"
                 o.uv = r.xy + (c + 0.5) * r.zw;
                 o.color = half4((u.color & 255) / 255.0, ((u.color >> 8) & 255) / 255.0,
                                 ((u.color >> 16) & 255) / 255.0, ((u.color >> 24) & 255) / 255.0);
-                o.highlight = u.pad > 0.5 ? 1 : 0;
+                // pad bit 1: selected; bit 2: hit flash (units). Bars and rings leave it 0.
+                uint pad = (uint)(u.pad + 0.5);
+                o.highlight = half2((pad & 1u) != 0 ? 1 : 0, (pad & 2u) != 0 ? 1 : 0);
+                // A bar's frame is how full it is; its rotation carries the recent-damage level (quads never rotate).
+                float inner = BarWidth - 2;
+                o.bar = float4(c + 0.5, round(u.frame / (BarFrames - 1) * inner), round(saturate(u.rotation) * inner));
                 return o;
             }
 
@@ -60,7 +70,16 @@ Shader "WAR2D/InstancedUnit"
                 // Team pixels are a grey ramp: multiplying keeps their shading in the owner's colour.
                 c.rgb = lerp(c.rgb, saturate(c.rgb * i.color.rgb * _TeamGain), mask);
                 c.a *= i.color.a;
-                c.rgb = lerp(c.rgb, half3(1, 1, 1), i.highlight * 0.45h); // selected units read brighter
+                c.rgb = lerp(c.rgb, half3(1, 1, 1), i.highlight.x * 0.45h); // selected units read brighter
+                c.rgb = lerp(c.rgb, half3(1, 0.25, 0.25), i.highlight.y * 0.6h); // a unit that was just hit flashes red, as buildings do
+                if (_Trail > 0.5)
+                {
+                    // The part of a bar that was lost a moment ago stays pale while it drains (health bars only).
+                    float px = floor(i.bar.x * BarWidth), py = floor(i.bar.y * BarHeight);
+                    bool edge = px < 1 || py < 1 || px > BarWidth - 2 || py > BarHeight - 2;
+                    float fill = px - 1;
+                    if (!edge && fill >= i.bar.z && fill < i.bar.w) c.rgb = half3(1, 0.93, 0.8);
+                }
                 return c;
             }
             ENDHLSL

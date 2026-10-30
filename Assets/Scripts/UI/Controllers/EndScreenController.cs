@@ -63,6 +63,8 @@ namespace WAR2D.UI
         public void Show(EndResult result, string line)
         {
             title.text = result == EndResult.Victory ? "Victory" : result == EndResult.Defeat ? "Defeat" : "Draw";
+            // A short hit as the screen appears, while the music crossfades into the stinger under it.
+            if (!IsShown) WAR2D.Audio.AudioService.Ui(result == EndResult.Victory ? "victory" : "defeat");
             WAR2D.Audio.AudioService.Music(result == EndResult.Victory ? WAR2D.Audio.MusicCue.Victory : WAR2D.Audio.MusicCue.Defeat);
             title.EnableInClassList("end-screen__title--lose", result == EndResult.Defeat);
             title.EnableInClassList("end-screen__title--draw", result == EndResult.Draw);

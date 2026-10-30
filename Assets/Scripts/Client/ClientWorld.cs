@@ -50,6 +50,15 @@ namespace WAR2D.Client
         private NativeArray<float> drawScale;
         private float[] scaleByType;
         private NativeArray<byte> selected;
+        // Hit feedback (HitFeedback), by index: whose health is tracked (an index is reused with a new id), its health last frame,
+        // when it was last hit, its bar's trail, and whether it flashes now.
+        private NativeArray<int> trackedId;
+        private NativeArray<byte> lastHealth;
+        private NativeArray<float> hitAt, trail;
+        private NativeArray<byte> flash;
+        private float lastDrawAt;
+        private WorldEffects worldEffects;
+        private float firstBatchAt = -1f; // Time.time the first batch arrived (the produced sound stays quiet just after)
         private NativeList<UnitInstance> instances, bars, rings;
         private NativeArray<int> barCount, ringCount;
         private InstancedUnitRenderer unitRenderer;
@@ -117,6 +126,9 @@ namespace WAR2D.Client
             };
             // A building's attack (v0.13): only a client that may know the building is sent one.
             store.BuildingAttack += (building, target) => buildingAttacks.Add((building, target));
+            worldEffects = new WorldEffects(capacity);
+            store.Died += (index, at) => worldEffects.UnitDied(new Vector2(at.x, at.y), ScaleOf(store.TypeOf(index)) > 1.5f);
+            store.Appeared += (index, at) => worldEffects.UnitAppeared(new Vector2(at.x, at.y), store.OwnerOf(index), Time.time - firstBatchAt);
             lastPosition = new NativeArray<float2>(capacity, Allocator.Persistent);
             rotation = new NativeArray<float>(capacity, Allocator.Persistent);
             frame = new NativeArray<uint>(capacity, Allocator.Persistent);
@@ -126,6 +138,11 @@ namespace WAR2D.Client
             health01 = new NativeArray<float>(capacity, Allocator.Persistent);
             drawScale = new NativeArray<float>(capacity, Allocator.Persistent);
             selected = new NativeArray<byte>(capacity, Allocator.Persistent);
+            trackedId = new NativeArray<int>(capacity, Allocator.Persistent);
+            lastHealth = new NativeArray<byte>(capacity, Allocator.Persistent);
+            hitAt = new NativeArray<float>(capacity, Allocator.Persistent);
+            trail = new NativeArray<float>(capacity, Allocator.Persistent);
+            flash = new NativeArray<byte>(capacity, Allocator.Persistent);
             instances = new NativeList<UnitInstance>(4096, Allocator.Persistent);
             bars = new NativeList<UnitInstance>(1024, Allocator.Persistent);
             barCount = new NativeArray<int>(1, Allocator.Persistent);
@@ -140,6 +157,7 @@ namespace WAR2D.Client
         {
             ReplicationClient.Received -= OnBatch;
             Palettes.Changed -= colorOfOwner.Clear;
+            worldEffects?.Dispose();
             ClientFog.Clear(); // the match is over; the next one starts with a fresh snapshot
             ClientBuildings.Clear();
             ClientTerrain.Clear();
@@ -150,6 +168,7 @@ namespace WAR2D.Client
             if (lastPosition.IsCreated)
             {
                 lastPosition.Dispose(); rotation.Dispose(); frame.Dispose(); lastAction.Dispose(); color.Dispose(); health01.Dispose(); drawScale.Dispose(); selected.Dispose();
+                trackedId.Dispose(); lastHealth.Dispose(); hitAt.Dispose(); trail.Dispose(); flash.Dispose();
                 instances.Dispose(); bars.Dispose(); barCount.Dispose(); rings.Dispose(); ringCount.Dispose();
             }
         }
@@ -160,6 +179,7 @@ namespace WAR2D.Client
         public void Apply(in ReplicationBatch batch)
         {
             store.Now = serverTime;
+            if (firstBatchAt < 0f) firstBatchAt = Time.time;
             if (!store.Apply(batch.Payload, batch.Tick))
             {
                 MalformedBatches++;
@@ -326,6 +346,9 @@ namespace WAR2D.Client
             NativeArray<float2> positions = store.Drawn; // smoothed: corrections glide instead of stepping
             NativeArray<int> owners = store.OwnerArray;
             NativeArray<byte> healthBytes = store.HealthArray;
+            float now = Time.time, frameSeconds = lastDrawAt > 0f ? math.max(0f, now - lastDrawAt) : 0f;
+            lastDrawAt = now;
+            Rect view = WorldEffects.ViewOf(ViewCamera != null ? ViewCamera : Camera.main);
             for (int i = 0; i < count; i++)
             {
                 int index = known[i];
@@ -338,6 +361,8 @@ namespace WAR2D.Client
                     frame[index] = frames.Cell(store.TypeOf(index), rotation[index], moving, serverTime, serverTime - lastAction[index], index);
                 color[index] = ColorOf(owners[index]);
                 health01[index] = healthBytes[index] / 100f;
+                TrackHit(index, healthBytes[index], now, frameSeconds);
+                if (moving) worldEffects.Moved(index, store.IdOf(index), store.TypeOf(index), p, view);
                 drawScale[index] = ScaleOf(store.TypeOf(index));
             }
 
@@ -356,6 +381,8 @@ namespace WAR2D.Client
                 LargeRingFrame = unitRenderer.LargeRingFrame,
                 BarMode = SettingsStore.Current.HealthBars,
                 Selected = selected,
+                Flash = flash,
+                Trail = trail,
                 UnitHalfSize = 0.4f,
                 RingFrame = unitRenderer.RingFrame,
                 Instances = instances.AsArray(),
@@ -367,6 +394,26 @@ namespace WAR2D.Client
             unitRenderer.DrawRings(rings.AsArray(), ringCount[0]);
             unitRenderer.Draw(instances.AsArray(), count);
             unitRenderer.DrawHealthBars(bars.AsArray(), barCount[0]);
+        }
+
+        /// <summary>
+        /// A unit whose health dropped since last frame was hit: it flashes and its bar keeps a draining trail (<see cref="HitFeedback"/>).
+        /// A unit new to this index (a new id) starts from its health, with no flash.
+        /// </summary>
+        private void TrackHit(int index, byte health, float now, float frameSeconds)
+        {
+            int id = store.IdOf(index);
+            if (trackedId[index] != id)
+            {
+                trackedId[index] = id;
+                lastHealth[index] = health;
+                hitAt[index] = float.NegativeInfinity;
+                trail[index] = health / 100f;
+            }
+            else if (health < lastHealth[index]) hitAt[index] = now;
+            lastHealth[index] = health;
+            trail[index] = HitFeedback.Trail(trail[index], health / 100f, now - hitAt[index], frameSeconds);
+            flash[index] = (byte)(HitFeedback.Flashing(hitAt[index], now) ? 1 : 0);
         }
 
         /// <summary>How many tiles across a unit type is drawn (2 for the large units), from the art manifest.</summary>
@@ -402,6 +449,7 @@ namespace WAR2D.Client
             buildingSelected ??= IsSelectedBuilding;
             buildingRenderer.Draw(known, Time.time, buildingColour, SettingsStore.Current.HealthBars, buildingSelected);
             PulseJammers(known);
+            worldEffects.Buildings(known, WorldEffects.ViewOf(ViewCamera != null ? ViewCamera : Camera.main), Time.time);
         }
 
         /// <summary>

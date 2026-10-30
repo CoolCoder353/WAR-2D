@@ -114,6 +114,18 @@ namespace WAR2D.Art
             new ArtEntry("HealthBar", ArtKind.Effect, 1, 1, 2, 1, false),
             new ArtEntry("TurretMuzzle", ArtKind.Effect, 1, 1, 3, 1, false),
             new ArtEntry("JamPulse", ArtKind.Effect, 3, 3, 6, 1, false),
+            // Polish (2026-10-30): ground marks that fade through their frames (scorch where a unit died, rubble sized to a
+            // destroyed building's footprint, tread marks in 4 directions), smoke and fire on damaged buildings, a Miner's gem glint.
+            new ArtEntry("Scorch", ArtKind.Effect, 1, 1, Render.EffectGen.DecalFrames, 1, false),
+            new ArtEntry("ScorchLarge", ArtKind.Effect, 2, 2, Render.EffectGen.DecalFrames, 1, false),
+            new ArtEntry("Rubble1", ArtKind.Effect, 1, 1, Render.EffectGen.DecalFrames, 1, false),
+            new ArtEntry("Rubble2", ArtKind.Effect, 2, 2, Render.EffectGen.DecalFrames, 1, false),
+            new ArtEntry("Rubble3", ArtKind.Effect, 3, 3, Render.EffectGen.DecalFrames, 1, false),
+            new ArtEntry("Rubble5", ArtKind.Effect, 5, 5, Render.EffectGen.DecalFrames, 1, false),
+            new ArtEntry("Tracks", ArtKind.Effect, 1, 1, Render.EffectGen.DecalFrames, Render.EffectGen.TrackDirections, false),
+            new ArtEntry("Smoke", ArtKind.Effect, 1, 1, 6, 1, false),
+            new ArtEntry("Fire", ArtKind.Effect, 1, 1, 4, 1, false),
+            new ArtEntry("GemSparkle", ArtKind.Effect, 1, 1, 4, 1, false),
 
             // Icons: command card (16×16) and cursors.
             new ArtEntry("IconMove", ArtKind.Icon, 1, 1, 1, 1, false),
