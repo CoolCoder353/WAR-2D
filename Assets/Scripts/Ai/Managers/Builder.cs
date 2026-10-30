@@ -7,7 +7,7 @@ namespace WAR2D.Ai
 {
     /// <summary>
     /// Builder (spec §5.3, plan Task 7). Adds its own wants once the opening is done: the style's producers (one new one
-    /// at a time), a Radar (when the style or its scouting wants one), and defences at the spots it defends (Hard:
+    /// at a time), a Radar (when the style or its scouting wants one), and defences at the spots it defends (<c>DefendsChokepoints</c>, the policy's:
     /// chokepoints on the lanes out of its start region towards known enemies, from the map's plan; others: its front,
     /// beside its base): Gun turrets, Jammers and bombs by style (Jammers and bombs scaled by <c>SpecialUse</c>), an
     /// extra turret against massed light units (Normal, Hard), and a wall line with a gap for its own army (styles that
@@ -81,10 +81,13 @@ namespace WAR2D.Ai
         private static void EarlyTurrets(AiContext ai, AiState state)
         {
             AiPlayConfig play = ai.Config.Play;
-            if (ai.Difficulty.EarlyTurrets <= 0 || state.PlayingSeconds < play.EarlyTurretSeconds) return;
-            if (state.CountNear(BuildingType.GunTurret, state.Home, play.BaseRadius) >= ai.Difficulty.EarlyTurrets) return;
+            // A rush expected (AI overhaul §4.3): more of them, sooner and first.
+            int wanted = ai.Difficulty.EarlyTurrets + state.ExtraTurrets;
+            if (wanted <= 0 || (state.PlayingSeconds < play.EarlyTurretSeconds && !state.RushExpected)) return;
+            if (state.CountNear(BuildingType.GunTurret, state.Home, play.BaseRadius) >= wanted) return;
             if (DefenceBlueprints(ai.View, state) >= play.MaxDefenceBlueprints) return;
-            state.RequestBuilding(BuildingType.GunTurret, Front(state, 0, play.GatherDistance * 0.5f), play.DefenceSpread, AiPriority.High - 3f, AiKeys.Of(AiKeys.Place, (int)BuildingType.GunTurret, 100));
+            float priority = state.RushExpected ? AiPriority.High : AiPriority.High - 3f;
+            state.RequestBuilding(BuildingType.GunTurret, Front(state, 0, play.GatherDistance * 0.5f), play.DefenceSpread, priority, AiKeys.Of(AiKeys.Place, (int)BuildingType.GunTurret, 100));
         }
 
         private static readonly BuildingType[] ProducerOrder = { BuildingType.Barracks, BuildingType.HeavyFactory, BuildingType.SiegeWorkshop };
@@ -101,16 +104,29 @@ namespace WAR2D.Ai
                 if (state.BuildingCount[(int)t] > state.CompleteCount[(int)t]) producerBuilding = true;
                 producers += state.BuildingCount[(int)t];
             }
-            // Hard: another producer only once its income carries one more (a producer's upkeep is many units' worth).
+            // Another producer only once its income carries one more (a producer's upkeep is many units' worth), unless
+            // money is piling up (AI overhaul §3.3): then up to its extra producers beyond the style's, if its upkeep
+            // allows another unit's worth too.
             bool affordable = ai.Difficulty.IncomePerProducer <= 0f || state.Income >= ai.Difficulty.IncomePerProducer * producers;
+            int extra = 0;
+            if (state.Banked && state.MayAddUpkeep(state.UpkeepOf(UnitType.Tank)))
+            {
+                affordable = true;
+                extra = ai.Difficulty.ExtraProducers;
+            }
             if (!producerBuilding && affordable)
             {
                 BuildingType next = BuildingType.None;
                 float lowest = 1f;
+                int styleProducers = 0;
+                foreach (BuildingType t in ProducerOrder)
+                    if (ai.Style.Producers.TryGetValue(t, out int w) && w > 0) styleProducers += w;
                 foreach (BuildingType t in ProducerOrder)
                 {
                     if (!ai.Style.Producers.TryGetValue(t, out int wanted) || wanted <= 0) continue;
-                    float share = state.BuildingCount[(int)t] / (float)wanted;
+                    // Banking: each type's share of the extra producers, by the style's weight.
+                    float target = wanted + (styleProducers > 0 ? extra * wanted / (float)styleProducers : 0f);
+                    float share = state.BuildingCount[(int)t] / target;
                     if (share < lowest) { lowest = share; next = t; }
                 }
                 if (next != BuildingType.None) state.RequestBuilding(next, hq, play.BaseRadius, AiPriority.Normal, AiKeys.Of(AiKeys.Place, (int)next), play.BuildingGap);
@@ -164,16 +180,19 @@ namespace WAR2D.Ai
         /// <summary>True when most enemy units it remembers are light (massed Scouts, Tanks...): an extra turret per spot.</summary>
         private static bool LightEnemies(AiContext ai)
         {
-            if (ai.Difficulty.Counters == AiCounters.None) return false;
-            int light = 0, all = 0;
-            foreach (ArmySighting army in ai.Board.Armies.Values)
-                for (int t = 0; t < army.ByType.Length; t++)
+            if (ai.Difficulty.CounterWeight <= 0f) return false;
+            float light = 0f, all = 0f;
+            foreach (EnemyModel model in ai.Board.Models.Values)
+            {
+                if (!ai.View.IsEnemy(model.Owner)) continue;
+                for (int t = 0; t < model.Peak.Length; t++)
                 {
-                    if (army.ByType[t] == 0 || (UnitType)t == UnitType.Builder) continue;
-                    all += army.ByType[t];
+                    if (model.Peak[t] <= 0f || (UnitType)t == UnitType.Builder) continue;
+                    all += model.Peak[t];
                     UnitConfig c = ai.State.UnitOf((UnitType)t);
-                    if (c != null && c.Armour == TargetClass.LightUnit) light += army.ByType[t];
+                    if (c != null && c.Armour == TargetClass.LightUnit) light += model.Peak[t];
                 }
+            }
             return all > 0 && light >= all * ai.Config.Play.LightTurretShare;
         }
 
@@ -278,9 +297,9 @@ namespace WAR2D.Ai
                 // A Miner adds no upkeep and pays for itself in seconds: it may use the upkeep reserve (an AI whose upkeep
                 // has caught up with its income would otherwise never afford the Miners that free it).
                 bool earner = r.Type == BuildingType.Miner && upkeep <= 0f;
-                if (earner ? !state.TrySpendEarner(cost) : !state.TrySpend(cost, upkeep))
+                if (earner ? !state.TrySpendEarner(cost) : !state.TrySpendBuilding(cost, upkeep))
                 {
-                    if (r.Save && state.MayAddUpkeep(upkeep)) state.Reserve(cost); // saves up: nothing after it is bought
+                    if (r.Save && state.MayAddUpkeep(upkeep) && state.MayAddBuildingUpkeep(upkeep)) state.Reserve(cost); // saves up: nothing after it is bought
                     continue;
                 }
                 if (tries <= 0) continue; // paid for, searched next think
@@ -292,7 +311,7 @@ namespace WAR2D.Ai
                 searches.Remove(r.Key);
                 if (result == SearchResult.NotFound)
                 {
-                    state.Release(cost, upkeep);
+                    state.Release(cost, earner ? 0f : upkeep, building: !earner);
                     failedUntil[r.Key] = ai.Now + ai.Config.Play.SearchRetrySeconds;
                     // No Miner spot and no gem left to explore there: that area is full (saturation, expansions).
                     if (!Explore(ai, state, r) && r.Type == BuildingType.Miner) state.SaturatedUntil[r.Key] = ai.Now + ai.Config.Play.SaturatedSeconds;

@@ -21,8 +21,9 @@ The bench and the tuner need a Linux build (`Builds/Linux/WAR-2D.x86_64`, any bu
 | `<Siege>` | Walls, bombs, Builders' build power, repair, digging, gem payout, Radar, Jammer |
 | `<Match><Map>` | Map generation: start sites, expansions, lanes, chokepoints, gems |
 | `<Lobby>` | What the host may pick (map sizes, starting resources, start options, pick time) |
-| `<Ai><Difficulty>` | How well each level plays: thinking rate, actions per minute, reactions, Builders, expansions, upkeep discipline, counters, retreats, scouting, defences, `IncomePerProducer`, `AttackRatio`, diplomacy |
-| `<Ai><Style>` | What a style builds and when it attacks: build order, army mix, producers, Miners, expansions, first attack, attack size and interval, defences |
+| `<Ai><Policy>` | The one policy every difficulty plays (AI overhaul): Builders, expansions, `IncomePerProducer`, the building upkeep share and bank rule, the fight model (`AttackAdvantage`, `RetreatAdvantage`, `RangeWeight`, `SplashTargets`), target scoring, raids, home guard, adaptation (trades, caution, enemy models), style switches, variation, the budget's `EconomyShare`. Moving one moves every difficulty |
+| `<Ai><Difficulty>` | Each level's handicaps only: thinking rate, actions per minute, reactions, `Insight`, `Attention`, `Ambition`, `Mistakes` (0..1; Hard 1, 1, 1, 0), and its diplomacy temperament. Moving one moves one rung of the ladder |
+| `<Ai><Style>` | What a style builds and when it attacks: build orders (one picked per match), army mix, producers, Miners, expansions, first attack, attack size and interval, defences, raids. Each AI varies these by up to `Policy.Variation` per match |
 | `<Ai><Play>` | Sizes and pacing shared by every AI (placement, queues, upkeep model, gathering, staging, retreats, scouting) |
 | `<Ai><Counters>`, `<Concede>`, `<Diplomacy>`, `<Brain>` | What the AI builds against what it has seen; when it surrenders; peace and gifts; its memory |
 
@@ -78,11 +79,11 @@ If every match is "same", a before-and-after comparison on the same seeds is a p
 - the stronger side's wins by its style;
 - the mean highest balance per difficulty (money it never spent).
 
-A rising balance with flat win rates points at spending (producers, queues, `IncomePerProducer`), not fighting.
+A rising balance with flat win rates points at spending (producers, queues, `IncomePerProducer`, `BankHigh`), not fighting. Bench results from after the AI overhaul also give, per difficulty, what it killed over what it lost, its final caution, raids per seat and style switches; each seat's `trades` and `switches` in its result file say why.
 
 ## Recipes
 
-**Hard against Normal (or Normal against Easy).** [tools/ai-tune.example.json](../tools/ai-tune.example.json) is a starting spec. It plays Hard against Normal on 512 with both seats Balanced and tries Hard's `IncomePerProducer` and `AttackRatio`. Other `Difficulty.Hard.*` knobs worth trying: `ReactionSeconds`, `RetreatRatio`, `Builders`, `MaxExpansions`, `ExpandAfterSeconds`, `EarlyTurrets`, `FocusFire` (0 at every difficulty since the v0.14 tuning). A gap that closes with Balanced seats but not with every style is a style problem: confirm with the full bench.
+**Hard against Normal (or Normal against Easy).** [tools/ai-tune.example.json](../tools/ai-tune.example.json) is a starting spec. It plays Hard against Normal on 512 with both seats Balanced and tries `Policy.IncomePerProducer`, `Policy.AttackAdvantage` and `Difficulty.Normal.Insight`. Since the AI overhaul, Hard *is* the policy: to make every level play better, tune `Policy.*` (it moves all three; check both pairings); to open or close the gap between two levels, tune the lower level's handicaps (`Difficulty.Normal.Insight`, `Attention`, `Ambition`, `Mistakes`, `ActionsPerMinute`, `ReactionSeconds`). A handicap can only make a level weaker, so the ladder's order holds by construction; only its spacing needs tuning.
 
 **One style too weak or too strong.** Use `"pairings": "Normal-Normal"`, all four styles, and `"objective": { "kind": "style", "style": "Turtle" }` (or `"*"` for whichever style is furthest from 50%). The knobs are `Style.<name>.*`: `FirstAttackSeconds`, `AttackArmySize`, `AttackRatioScale`, `AttackIntervalSeconds`, `Expansions`, `ExpandTiming`, `Miners`, `Turrets`, `Walls`, `BuildOrder`, `ArmyMix`, `Producers` (strings work too, e.g. `"Style.Turtle.ArmyMix": ["Tank:4 Heavy:3 Artillery:2", "Tank:6 Heavy:2 Artillery:1"]`). Turtles lose the most games and cause the most caps (see [known-issues.md](known-issues.md)).
 
@@ -155,15 +156,16 @@ Other ways to run it:
 The spec is JSON; the header of `tools/ai-tune.js` lists every field and default.
 
 - `knobs`: `{ "<path>": [values] }`. A path is dot-separated element names and key attribute values, and must name exactly one value (an error lists the matches otherwise). The base value is always tried too. Examples:
-  - `Difficulty.Hard.AttackRatio`, `Style.Turtle.FirstAttackSeconds`, `Play.StageShare`;
+  - `Policy.AttackAdvantage`, `Difficulty.Normal.Insight`, `Style.Turtle.FirstAttackSeconds`, `Play.StageShare`;
   - `Unit.Tank.Damage`, `Building.GunTurret.Range`;
   - `DamageTable.Tank.Wall` (the `<Entry attacker="Tank" target="Wall">`), `Counter.Heavy`.
-- `bench`: the screen runs' `sizes`, `pairings`, `styles`, `seeds`, `jobs`, `cap`, `scale` and `seed0` (the `AI_BENCH_*` variables). Defaults: `512`, `Hard-Normal Normal-Easy`, the four styles, 8, 4, 40, 32, 101.
+- `bench`: the screen runs' `sizes`, `pairings`, `styles`, `seeds`, `jobs`, `cap`, `scale` and `seed0` (the `AI_BENCH_*` variables), plus `step` and `maxSeeds` for sequential stopping. Defaults: `512`, `Hard-Normal Normal-Easy`, the four styles, 8, 4, 40, 32, 101, 8, 32.
+- **Paired and sequential:** a candidate and the best so far always play the same seeds. With the `stronger` objective, when their 95% intervals overlap after `seeds` games each, both play `step` more seeds (the same ones), until the intervals separate or `maxSeeds` is reached; set `maxSeeds` equal to `seeds` to turn it off. Clear losers cost one run; close calls get the games to tell them apart (with 8 games a cell, runs differ by ±30 points).
 - `objective`:
   - `{ "kind": "stronger" }` (default) scores the stronger side's win rate over the non-mirror pairings.
   - `{ "kind": "style", "style": "Turtle", "target": 0.5 }` scores how close a style's win rate against other styles, in the mirror pairings (same difficulty), gets to `target`. With `"style": "*"` it scores the worst style.
   - Both subtract `failurePenalty` (default 0.5) times the share of matches that didn't finish.
-- `passes` (default 2), `minGain` (how much a score must beat the best to replace it, default 0) and `confirm` (`top`, `seeds`, `seed0`: default 3, 16, 1001; `top` 0 skips the confirm stage). Screen runs tied with the last pick are confirmed too (up to twice `top`), and the summary says when the top of the screen tied: a screen that saturates (several candidates at 100%) can't rank them, so use more seeds or a harder slice next time.
+- `passes` (default 2), `minGain` (how much a score must beat the best to replace it, default 0) and `confirm` (`top`, `seeds`, `seed0`: default 3, 32, 1001; `top` 0 skips the confirm stage; the base config is confirmed on the same seeds, so the comparison is paired). Screen runs tied with the last pick are confirmed too (up to twice `top`), and the summary says when the top of the screen tied: a screen that saturates (several candidates at 100%) can't rank them, so use more seeds or a harder slice next time.
 
 **Cost:** a run's matches are seeds × sizes × pairings, so a screen run is cheap at 8 seeds, one size and one pairing. `--dry-run` prints the most matches a spec can play (152 for the example), and each result line ends with that run's wall time.
 

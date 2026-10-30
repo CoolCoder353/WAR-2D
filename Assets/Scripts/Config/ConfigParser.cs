@@ -347,40 +347,25 @@ namespace Config
                     errors.Add($"Ai: unknown difficulty \"{name}\" (Easy, Normal or Hard).");
                     continue;
                 }
-                if (config.Difficulties.ContainsKey(difficulty)) { errors.Add($"Ai: difficulty {difficulty} is listed twice."); continue; }
+                if (config.Handicaps.ContainsKey(difficulty)) { errors.Add($"Ai: difficulty {difficulty} is listed twice."); continue; }
                 string c = $"Ai difficulty {difficulty}";
-                config.Difficulties[difficulty] = new AiDifficultyConfig
+                foreach (string moved in MovedToPolicy)
+                    if (node.SelectSingleNode(moved) != null) errors.Add($"{c}: <{moved}> moved to <Policy> (the AI overhaul: a difficulty only lists its handicaps).");
+                config.Handicaps[difficulty] = new AiHandicapConfig
                 {
                     ThinkSeconds = Float(node, "ThinkSeconds", c, errors, min: 0.05f, max: 10),
                     ActionsPerMinute = Int(node, "ActionsPerMinute", c, errors, min: 1, max: 6000),
                     ReactionSeconds = Float(node, "ReactionSeconds", c, errors, min: 0, max: 60),
-                    Builders = Int(node, "Builders", c, errors, min: 1, max: 50),
-                    BuildersPerExpansion = Int(node, "BuildersPerExpansion", c, errors, min: 0, max: 20),
-                    MaxExpansions = Int(node, "MaxExpansions", c, errors, min: 0, max: 16),
-                    ExpandAfterSeconds = Float(node, "ExpandAfterSeconds", c, errors, min: 0, max: 7200),
-                    KeepsUpkeepPaid = Flag(node, "KeepsUpkeepPaid", c, errors),
-                    UpkeepReserveSeconds = Float(node, "UpkeepReserveSeconds", c, errors, min: 0, max: 600),
-                    Counters = Named(node, "Counters", c, errors, AiCounters.None),
-                    Retreats = Flag(node, "Retreats", c, errors),
-                    RetreatRatio = Float(node, "RetreatRatio", c, errors, min: 0, max: 1),
-                    FocusFire = Flag(node, "FocusFire", c, errors),
-                    KeepsBacklineBack = Flag(node, "KeepsBacklineBack", c, errors),
-                    DigsPastWalls = Flag(node, "DigsPastWalls", c, errors),
-                    Scouting = Named(node, "Scouting", c, errors, AiScouting.Once),
-                    RescoutSeconds = Float(node, "RescoutSeconds", c, errors, min: 10, max: 3600),
-                    SpecialUse = Float(node, "SpecialUse", c, errors, min: 0, max: 1),
-                    DefendsChokepoints = Flag(node, "DefendsChokepoints", c, errors),
-                    EarlyTurrets = Int(node, "EarlyTurrets", c, errors, min: 0, max: 20),
-                    IncomePerProducer = Float(node, "IncomePerProducer", c, errors, min: 0, max: 10000),
-                    Scouts = Int(node, "Scouts", c, errors, min: 1, max: 8),
-                    SaturatesMiners = Flag(node, "SaturatesMiners", c, errors),
-                    AttackRatio = Float(node, "AttackRatio", c, errors, min: 0.1f, max: 10),
+                    Insight = Float(node, "Insight", c, errors, min: 0, max: 1),
+                    Attention = Float(node, "Attention", c, errors, min: 0, max: 1),
+                    Ambition = Float(node, "Ambition", c, errors, min: 0, max: 1),
+                    Mistakes = Float(node, "Mistakes", c, errors, min: 0, max: 1),
                     Peace = Named(node, "Peace", c, errors, AiPeace.Always),
                     GiftsSurplus = Flag(node, "GiftsSurplus", c, errors),
                 };
             }
             foreach (AiDifficulty d in new[] { AiDifficulty.Easy, AiDifficulty.Normal, AiDifficulty.Hard })
-                if (!config.Difficulties.ContainsKey(d)) errors.Add($"Ai: missing <Difficulty name=\"{d}\">.");
+                if (!config.Handicaps.ContainsKey(d)) errors.Add($"Ai: missing <Difficulty name=\"{d}\">.");
 
             foreach (XmlNode node in ai.SelectNodes("Style"))
             {
@@ -392,9 +377,11 @@ namespace Config
                 }
                 if (config.Styles.ContainsKey(style)) { errors.Add($"Ai: style {style} is listed twice."); continue; }
                 string c = $"Ai style {style}";
+                AiBuildStep[][] orders = BuildOrders(node, c, errors);
                 config.Styles[style] = new AiStyleConfig
                 {
-                    BuildOrder = BuildOrder(node, c, errors),
+                    BuildOrders = orders,
+                    BuildOrder = orders.Length > 0 ? orders[0] : System.Array.Empty<AiBuildStep>(),
                     ArmyMix = ArmyMix(node, c, errors),
                     Producers = Producers(node, c, errors),
                     Miners = Int(node, "Miners", c, errors, min: 0, max: 100),
@@ -411,6 +398,7 @@ namespace Config
                     Walls = Flag(node, "Walls", c, errors),
                     Radar = Flag(node, "Radar", c, errors),
                     HoldsChokes = Flag(node, "HoldsChokes", c, errors),
+                    Raids = Flag(node, "Raids", c, errors),
                 };
             }
             foreach (AiStyle s in new[] { AiStyle.Rusher, AiStyle.Turtle, AiStyle.Expander, AiStyle.Balanced })
@@ -505,7 +493,6 @@ namespace Config
                 p.StageShare = Float(play, "StageShare", c, errors, min: 0, max: 1);
                 p.StageSeconds = Float(play, "StageSeconds", c, errors, min: 0, max: 600);
                 p.MaxedAttackResources = Float(play, "MaxedAttackResources", c, errors, min: 0, max: 1e7f);
-                p.CounterAttackRatio = Float(play, "CounterAttackRatio", c, errors, min: 1, max: 100);
                 p.StuckBlueprintSeconds = Float(play, "StuckBlueprintSeconds", c, errors, min: 5, max: 3600);
                 p.RecallShare = Float(play, "RecallShare", c, errors, min: 0, max: 10);
                 p.MarchSeconds = Float(play, "MarchSeconds", c, errors, min: 0, max: 3600);
@@ -519,8 +506,87 @@ namespace Config
                 p.StuckPatch = Int(play, "StuckPatch", c, errors, min: 0, max: 32);
             }
 
+            XmlNode policy = Require(ai, "Policy", errors);
+            if (policy != null) Policy(policy, config.Policy, errors);
+
             XmlNode counters = Require(ai, "Counters", errors);
             if (counters != null) Counters(counters, config, errors);
+
+            AiPolicy.ResolveAll(config);
+        }
+
+        /// <summary>The v0.14 difficulty knobs that moved to &lt;Policy&gt; (refused in a &lt;Difficulty&gt;, so a stale config fails loudly).</summary>
+        private static readonly string[] MovedToPolicy =
+        {
+            "Builders", "BuildersPerExpansion", "MaxExpansions", "ExpandAfterSeconds", "KeepsUpkeepPaid", "UpkeepReserveSeconds",
+            "Counters", "Retreats", "RetreatRatio", "FocusFire", "KeepsBacklineBack", "DigsPastWalls", "Scouting", "RescoutSeconds",
+            "SpecialUse", "DefendsChokepoints", "EarlyTurrets", "IncomePerProducer", "Scouts", "SaturatesMiners", "AttackRatio",
+        };
+
+        /// <summary>The &lt;Ai&gt;&lt;Policy&gt; block (AI overhaul §2 to §6): the one policy every difficulty plays.</summary>
+        private static void Policy(XmlNode node, AiPolicyConfig p, List<string> errors)
+        {
+            const string c = "Ai policy";
+            p.Builders = Int(node, "Builders", c, errors, min: 1, max: 50);
+            p.BuildersPerExpansion = Int(node, "BuildersPerExpansion", c, errors, min: 0, max: 20);
+            p.MaxExpansions = Int(node, "MaxExpansions", c, errors, min: 0, max: 16);
+            p.ExpandAfterSeconds = Float(node, "ExpandAfterSeconds", c, errors, min: 0, max: 7200);
+            p.SaturateAmbition = Float(node, "SaturateAmbition", c, errors, min: 0, max: 1);
+            p.ExtraProducers = Int(node, "ExtraProducers", c, errors, min: 0, max: 64);
+            p.IncomePerProducer = Float(node, "IncomePerProducer", c, errors, min: 0, max: 10000);
+            p.UpkeepReserveSeconds = Float(node, "UpkeepReserveSeconds", c, errors, min: 0, max: 600);
+            p.BuildingUpkeepShare = Float(node, "BuildingUpkeepShare", c, errors, min: 0.05f, max: 1);
+            p.BankHigh = Float(node, "BankHigh", c, errors, min: 0, max: 1e7f);
+            p.BankSeconds = Float(node, "BankSeconds", c, errors, min: 0, max: 3600);
+            p.EarlyTurrets = Int(node, "EarlyTurrets", c, errors, min: 0, max: 20);
+            p.DefendsChokepoints = Flag(node, "DefendsChokepoints", c, errors);
+            p.Scouts = Int(node, "Scouts", c, errors, min: 1, max: 8);
+            p.RescoutSeconds = Float(node, "RescoutSeconds", c, errors, min: 10, max: 3600);
+            p.AttackAdvantage = Float(node, "AttackAdvantage", c, errors, min: 0.1f, max: 100);
+            p.RetreatAdvantage = Float(node, "RetreatAdvantage", c, errors, min: 0, max: 10);
+            p.CounterAttackAdvantage = Float(node, "CounterAttackAdvantage", c, errors, min: 1, max: 1000);
+            p.EstimateNoise = Float(node, "EstimateNoise", c, errors, min: 0, max: 0.95f);
+            p.SplashTargets = Float(node, "SplashTargets", c, errors, min: 0, max: 20);
+            p.RangeWeight = Float(node, "RangeWeight", c, errors, min: 0, max: 10);
+            p.BomberFightSeconds = Float(node, "BomberFightSeconds", c, errors, min: 1, max: 600);
+            p.Retreats = Flag(node, "Retreats", c, errors);
+            p.FocusFire = Flag(node, "FocusFire", c, errors);
+            p.KeepsBacklineBack = Flag(node, "KeepsBacklineBack", c, errors);
+            p.DigsPastWalls = Flag(node, "DigsPastWalls", c, errors);
+            p.TargetDistanceScale = Float(node, "TargetDistanceScale", c, errors, min: 1, max: 100000);
+            p.HqValue = Float(node, "HqValue", c, errors, min: 0, max: 1e7f);
+            p.FinishAdvantage = Float(node, "FinishAdvantage", c, errors, min: 1, max: 1000);
+            p.MinerIncomeValue = Float(node, "MinerIncomeValue", c, errors, min: 0, max: 1e7f);
+            p.AvoidFactor = Float(node, "AvoidFactor", c, errors, min: 0, max: 1);
+            p.AvoidSeconds = Float(node, "AvoidSeconds", c, errors, min: 0, max: 3600);
+            p.HomeGuardShare = Float(node, "HomeGuardShare", c, errors, min: 0, max: 1);
+            p.HomeGuardSeconds = Float(node, "HomeGuardSeconds", c, errors, min: 0, max: 3600);
+            p.RaidSize = Int(node, "RaidSize", c, errors, min: 0, max: 64);
+            p.RaidMinSpeed = Float(node, "RaidMinSpeed", c, errors, min: 0, max: 100);
+            p.RaidAdvantage = Float(node, "RaidAdvantage", c, errors, min: 0.1f, max: 100);
+            p.RaidSeconds = Float(node, "RaidSeconds", c, errors, min: 5, max: 3600);
+            p.BadTrade = Float(node, "BadTrade", c, errors, min: 0, max: 100);
+            p.GoodTrade = Float(node, "GoodTrade", c, errors, min: 0, max: 100);
+            if (p.GoodTrade < p.BadTrade) errors.Add($"{c}: <GoodTrade> must be at least <BadTrade>.");
+            p.CautionUp = Float(node, "CautionUp", c, errors, min: 1, max: 10);
+            p.CautionDown = Float(node, "CautionDown", c, errors, min: 0.1f, max: 1);
+            p.MinCaution = Float(node, "MinCaution", c, errors, min: 0.1f, max: 1);
+            p.MaxCaution = Float(node, "MaxCaution", c, errors, min: 1, max: 10);
+            p.TurretCounterBoost = Float(node, "TurretCounterBoost", c, errors, min: 1, max: 10);
+            p.ModelHalfLife = Float(node, "ModelHalfLife", c, errors, min: 1, max: 3600);
+            p.RushUnits = Int(node, "RushUnits", c, errors, min: 1, max: 1000);
+            p.RushSeconds = Float(node, "RushSeconds", c, errors, min: 0, max: 3600);
+            p.FastExpandSeconds = Float(node, "FastExpandSeconds", c, errors, min: 0, max: 3600);
+            p.PunishFactor = Float(node, "PunishFactor", c, errors, min: 0.1f, max: 1);
+            p.ReactionBias = Float(node, "ReactionBias", c, errors, min: 1, max: 10);
+            p.TurtleRaidFactor = Float(node, "TurtleRaidFactor", c, errors, min: 0.1f, max: 1);
+            p.RushOverSeconds = Float(node, "RushOverSeconds", c, errors, min: 0, max: 3600);
+            p.StyleSwitchSeconds = Float(node, "StyleSwitchSeconds", c, errors, min: 0, max: 7200);
+            p.TurtleBreakoutSeconds = Float(node, "TurtleBreakoutSeconds", c, errors, min: 0, max: 7200);
+            p.SlipSeconds = Float(node, "SlipSeconds", c, errors, min: 0.1f, max: 3600);
+            p.EconomyShare = Float(node, "EconomyShare", c, errors, min: 0.05f, max: 0.95f);
+            p.Variation = Float(node, "Variation", c, errors, min: 0, max: 0.9f);
+            p.GatherAngle = Float(node, "GatherAngle", c, errors, min: 0, max: 90);
         }
 
         /// <summary>
@@ -559,9 +625,18 @@ namespace Config
         }
 
         /// <summary>A style's opening: building and unit names in order (not the HQ, which the opening places first).</summary>
-        private static AiBuildStep[] BuildOrder(XmlNode node, string ctx, List<string> errors)
+        /// <summary>A style's openings: every &lt;BuildOrder&gt; it lists (at least one).</summary>
+        private static AiBuildStep[][] BuildOrders(XmlNode node, string ctx, List<string> errors)
         {
-            string text = node.SelectSingleNode("BuildOrder")?.InnerText?.Trim();
+            var orders = new List<AiBuildStep[]>();
+            XmlNodeList nodes = node.SelectNodes("BuildOrder");
+            if (nodes.Count == 0) { errors.Add($"{ctx}: <BuildOrder> is missing or empty."); return orders.ToArray(); }
+            foreach (XmlNode order in nodes) orders.Add(BuildOrder(order.InnerText?.Trim(), ctx, errors));
+            return orders.ToArray();
+        }
+
+        private static AiBuildStep[] BuildOrder(string text, string ctx, List<string> errors)
+        {
             if (string.IsNullOrEmpty(text)) { errors.Add($"{ctx}: <BuildOrder> is missing or empty."); return System.Array.Empty<AiBuildStep>(); }
             var steps = new List<AiBuildStep>();
             foreach (string part in text.Split((char[])null, StringSplitOptions.RemoveEmptyEntries))

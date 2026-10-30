@@ -8,7 +8,7 @@ namespace WAR2D.Ai
     /// <summary>
     /// Scouting (spec §5.3, §6, plan Task 7): its difficulty's scouts (Scouts it asks Production for, or after
     /// <c>ScoutAfterSeconds</c> its fastest fighting unit) share a route over the map plan's start sites and expansions
-    /// it hasn't explored, nearest next. Easy scouts once; Normal and Hard re-scout every <c>RescoutSeconds</c>: the
+    /// it hasn't explored, nearest next. Below <c>Insight</c> 0.3 it scouts once; otherwise it re-scouts every <c>RescoutSeconds</c> (longer at lower insight): the
     /// enemy bases it knows and every site and expansion out of its sight now. Its Radar is the Builder manager's.
     /// </summary>
     public sealed class ScoutingManager : IAiManager

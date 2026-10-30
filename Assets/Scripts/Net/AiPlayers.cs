@@ -83,6 +83,9 @@ public sealed class AiSeat
     /// <summary>Its callsign (its nickname everywhere a player name appears).</summary>
     public string Callsign;
 
+    /// <summary>Seeds its brain's per-match variation (AI overhaul §6.1), drawn at match start. Server only, never sent.</summary>
+    public uint VariationSeed;
+
     /// <summary>Its palette colour (0–7).</summary>
     public int Colour;
 
@@ -382,8 +385,21 @@ public partial class GameCore
             if (seat.Client != null) seat.Client.hasPlacedHQ = false;
             seat.ResolvedStyle = seat.Style != AiStyle.Random ? seat.Style
                 : styles[System.Security.Cryptography.RandomNumberGenerator.GetInt32(styles.Length)];
+            seat.VariationSeed = VariationSeed(Settings.Seed, seat.OwnerId);
             seat.Brain = seat.IsScripted ? null : AiBrains.Factory?.Invoke(seat);
         }
+    }
+
+    /// <summary>
+    /// A seat's variation seed: server randomness (the lobby seed is public, so a client could work it out); under the dev
+    /// APIs (the AI bench) a hash of the lobby seed and owner id, so paired bench runs meet the same AIs. Never 0.
+    /// </summary>
+    internal static uint VariationSeed(uint lobbySeed, int ownerId)
+    {
+        uint seed = DevApi.Allowed
+            ? Unity.Mathematics.math.hash(new Unity.Mathematics.uint2(lobbySeed, unchecked((uint)ownerId)))
+            : unchecked((uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue));
+        return seed == 0 ? 1u : seed;
     }
 
     /// <summary>An AI's HQ went up (any path: its actions, a random placement, or the dev harness): its object shows it alive.</summary>

@@ -1,11 +1,12 @@
 {
-  "note": "Hard against Normal with both seats Balanced, so only the difficulty differs. Hard ends matches with 5,000+ banked: try adding producers sooner and attacking at lower odds. Run: node tools/ai-tune.js tools/ai-tune.example.json --dry-run (then without --dry-run).",
-  "bench": { "sizes": "512", "pairings": "Hard-Normal", "styles": "Balanced", "seeds": 8, "jobs": 4 },
+  "note": "Hard against Normal with both seats Balanced, so only the handicaps differ (AI overhaul: Hard plays <Policy>, Normal plays it handicapped). Policy knobs move every difficulty; Difficulty.<name>.Insight/Attention/Ambition/Mistakes move one rung of the ladder. Close calls play on up to maxSeeds. Run: node tools/ai-tune.js tools/ai-tune.example.json --dry-run (then without --dry-run).",
+  "bench": { "sizes": "512", "pairings": "Hard-Normal", "styles": "Balanced", "seeds": 8, "jobs": 4, "step": 8, "maxSeeds": 32 },
   "objective": { "kind": "stronger" },
   "knobs": {
-    "Difficulty.Hard.IncomePerProducer": [0, 60, 90],
-    "Difficulty.Hard.AttackRatio": [0.9, 1.0, 1.3]
+    "Policy.IncomePerProducer": [0, 60],
+    "Policy.AttackAdvantage": [1.1, 1.5],
+    "Difficulty.Normal.Insight": [0.4, 0.8]
   },
   "passes": 2,
-  "confirm": { "top": 2, "seeds": 16 }
+  "confirm": { "top": 2, "seeds": 32 }
 }

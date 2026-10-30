@@ -127,12 +127,13 @@ namespace WAR2D.Ai
         private readonly HashSet<int> seenLastThink = new HashSet<int>();
         private readonly List<int> scratch = new List<int>();
 
-        public Blackboard(int owner, float reactionSeconds, global::Config.AiBrainConfig brain)
+        /// <param name="armyMemorySeconds">How long a last-seen army is remembered (its difficulty's share of <c>ArmyMemorySeconds</c>); 0: the brain config's.</param>
+        public Blackboard(int owner, float reactionSeconds, global::Config.AiBrainConfig brain, float armyMemorySeconds = 0f)
         {
             Owner = owner;
             ReactionSeconds = reactionSeconds;
             threatRadius = brain.ThreatRadius;
-            armyMemory = brain.ArmyMemorySeconds;
+            armyMemory = armyMemorySeconds > 0f ? armyMemorySeconds : brain.ArmyMemorySeconds;
             Alerts = new ReactionQueue<AiAlert>(reactionSeconds, brain.EventMemorySeconds);
             NewArmies = new ReactionQueue<ArmySighting>(reactionSeconds, brain.EventMemorySeconds);
             EventMemorySeconds = brain.EventMemorySeconds;
@@ -178,6 +179,149 @@ namespace WAR2D.Ai
 
         /// <summary>Its active plans.</summary>
         public readonly List<AiPlan> Plans = new List<AiPlan>();
+
+        // ---- AI overhaul §4: what it learns ----
+
+        /// <summary>
+        /// The kill ledger (AI overhaul §4.1): the worth of enemy units and buildings it saw die (vanish from a cell it
+        /// still sees), and of its own it lost, since the match started.
+        /// </summary>
+        public float EnemyLost { get; private set; }
+        public float OwnLost { get; private set; }
+
+        /// <summary>Its picture of each enemy (AI overhaul §4.2), by owner.</summary>
+        public readonly Dictionary<int, EnemyModel> Models = new Dictionary<int, EnemyModel>();
+
+        /// <summary>Targets where an attack lost badly, kept out of favour until a time (AI overhaul §3.4).</summary>
+        public readonly List<(int2 At, double Until)> Avoided = new List<(int2, double)>();
+
+        /// <summary>The AI clock when it last met a threat at its base (the home guard's clock), or -infinity.</summary>
+        public double LastBaseThreat = double.NegativeInfinity;
+
+        /// <summary>True when <paramref name="at"/> is within <paramref name="radius"/> of a target it avoids now.</summary>
+        public bool IsAvoided(int2 at, float radius)
+        {
+            float r2 = radius * radius;
+            foreach ((int2 a, double until) in Avoided)
+                if (Now < until && math.distancesq((float2)a, (float2)at) <= r2) return true;
+            return false;
+        }
+
+        /// <summary>Avoids a target until <paramref name="until"/>.</summary>
+        public void Avoid(int2 at, double until)
+        {
+            for (int i = Avoided.Count - 1; i >= 0; i--) if (Now >= Avoided[i].Until) Avoided.RemoveAt(i);
+            Avoided.Add((at, until));
+        }
+
+        /// <summary>The model of an enemy (made on first use).</summary>
+        public EnemyModel Model(int owner)
+        {
+            if (!Models.TryGetValue(owner, out EnemyModel m)) Models[owner] = m = new EnemyModel(owner, typeCount, buildingTypeCount);
+            return m;
+        }
+
+        private readonly int buildingTypeCount = System.Enum.GetValues(typeof(BuildingType)).Length + 1;
+        private Dictionary<int, (UnitType Type, float2 At)> lastEnemyUnits = new Dictionary<int, (UnitType, float2)>(), enemyUnitsNow = new Dictionary<int, (UnitType, float2)>();
+        private Dictionary<int, (BuildingType Type, int2 At)> lastEnemyBuildings = new Dictionary<int, (BuildingType, int2)>(), enemyBuildingsNow = new Dictionary<int, (BuildingType, int2)>();
+        private Dictionary<int, UnitType> lastOwnUnits = new Dictionary<int, UnitType>(), ownUnitsNow = new Dictionary<int, UnitType>();
+        private Dictionary<int, BuildingType> lastOwnBuildings = new Dictionary<int, BuildingType>(), ownBuildingsNow = new Dictionary<int, BuildingType>();
+        private readonly HashSet<int> buildingIdsNow = new HashSet<int>();
+        private double lastModelUpdate = double.NaN;
+
+        /// <summary>
+        /// Learns this think's kills and losses and updates the enemy models (AI overhaul §4.1, §4.2). Call once per think
+        /// after <see cref="Observe"/>, with the seconds of play so far.
+        /// </summary>
+        public void UpdateModels(TeamView view, double playing, global::Config.AiPolicyConfig policy, global::Config.GameConfigData game)
+        {
+            // ---- the kill ledger: what vanished since the last think ----
+            enemyUnitsNow.Clear();
+            foreach (AiUnit u in view.OtherUnits) if (view.IsEnemy(u.OwnerId)) enemyUnitsNow[u.Id] = (u.Type, u.Position);
+            // A unit that vanished counts as dead only when everywhere it could have walked since is in sight (else it left).
+            float since = double.IsNaN(lastModelUpdate) ? 0f : (float)System.Math.Max(0.0, Now - lastModelUpdate);
+            foreach (KeyValuePair<int, (UnitType Type, float2 At)> e in lastEnemyUnits)
+            {
+                if (enemyUnitsNow.ContainsKey(e.Key)) continue;
+                float speed = game.Units.TryGetValue(e.Value.Type, out global::Config.UnitConfig uc) ? uc.MoveSpeed : 0f;
+                if (SeenAround(view, e.Value.At, speed * since + 1f)) EnemyLost += UnitCost(game, e.Value.Type);
+            }
+            buildingIdsNow.Clear();
+            enemyBuildingsNow.Clear();
+            ownBuildingsNow.Clear();
+            foreach (AiBuilding b in view.Buildings)
+            {
+                buildingIdsNow.Add(b.Id);
+                if (b.OwnerId == Owner) { if (!b.Ghost && b.Progress >= 100) ownBuildingsNow[b.Id] = b.Type; }
+                else if (!b.Ghost && view.IsEnemy(b.OwnerId)) enemyBuildingsNow[b.Id] = (b.Type, b.Anchor);
+            }
+            foreach (KeyValuePair<int, (BuildingType Type, int2 At)> e in lastEnemyBuildings)
+                if (!buildingIdsNow.Contains(e.Key) && view.FogAt((float2)e.Value.At + 0.5f) == 2) EnemyLost += BuildingCost(game, e.Value.Type);
+            ownUnitsNow.Clear();
+            foreach (AiUnit u in view.OwnUnits) ownUnitsNow[u.Id] = u.Type;
+            foreach (KeyValuePair<int, UnitType> e in lastOwnUnits) if (!ownUnitsNow.ContainsKey(e.Key)) OwnLost += UnitCost(game, e.Value);
+            foreach (KeyValuePair<int, BuildingType> e in lastOwnBuildings) if (!ownBuildingsNow.ContainsKey(e.Key)) OwnLost += BuildingCost(game, e.Value);
+            (lastEnemyUnits, enemyUnitsNow) = (enemyUnitsNow, lastEnemyUnits);
+            (lastEnemyBuildings, enemyBuildingsNow) = (enemyBuildingsNow, lastEnemyBuildings);
+            (lastOwnUnits, ownUnitsNow) = (ownUnitsNow, lastOwnUnits);
+            (lastOwnBuildings, ownBuildingsNow) = (ownBuildingsNow, lastOwnBuildings);
+
+            // ---- the enemy models ----
+            bool inPlay = view.State == GameState.Playing;
+            float decay = double.IsNaN(lastModelUpdate) ? 1f : (float)System.Math.Pow(0.5, System.Math.Max(0.0, Now - lastModelUpdate) / System.Math.Max(1f, policy.ModelHalfLife));
+            lastModelUpdate = Now;
+            foreach (EnemyModel m in Models.Values)
+            {
+                for (int t = 0; t < m.Peak.Length; t++) m.Peak[t] *= decay;
+                System.Array.Clear(m.SeenNow, 0, m.SeenNow.Length);
+                System.Array.Clear(m.Buildings, 0, m.Buildings.Length);
+            }
+            foreach (AiUnit u in view.OtherUnits)
+            {
+                if (!view.IsEnemy(u.OwnerId)) continue;
+                EnemyModel m = Model(u.OwnerId);
+                int t = (int)u.Type;
+                if ((uint)t < (uint)m.SeenNow.Length) m.SeenNow[t]++;
+                if (u.Type != UnitType.Builder && double.IsNaN(m.FirstCombatSeen) && inPlay) m.FirstCombatSeen = playing;
+            }
+            foreach (EnemyModel m in Models.Values)
+            {
+                int combat = 0;
+                for (int t = 0; t < m.Peak.Length; t++)
+                {
+                    if (m.SeenNow[t] > m.Peak[t]) m.Peak[t] = m.SeenNow[t];
+                    if ((UnitType)t != UnitType.Builder) combat += m.SeenNow[t];
+                }
+                if (inPlay && playing < policy.RushSeconds && combat > m.EarlyArmy) m.EarlyArmy = combat;
+            }
+            foreach (AiBuilding b in EnemyBuildings.Values)
+            {
+                EnemyModel m = Model(b.OwnerId);
+                int t = (int)b.Type;
+                if ((uint)t >= (uint)m.Buildings.Length) continue;
+                m.Buildings[t]++;
+                if (double.IsNaN(m.FirstBuildingSeen[t]) && inPlay) m.FirstBuildingSeen[t] = playing;
+                if (double.IsNaN(m.FirstExpansionSeen) && inPlay && AtExpansion(view, b.Anchor)) m.FirstExpansionSeen = playing;
+            }
+            foreach (KeyValuePair<int, AiWall> w in view.Walls)
+                if (w.Value.OwnerId != Owner && view.IsEnemy(w.Value.OwnerId)) Model(w.Value.OwnerId).Walls = true;
+            foreach (EnemyModel m in Models.Values) m.UpdateGuess(policy);
+        }
+
+        /// <summary>True when a point and the four points <paramref name="reach"/> away from it are all in sight now.</summary>
+        private static bool SeenAround(TeamView view, float2 at, float reach) =>
+            view.FogAt(at) == 2 && view.FogAt(at + new float2(reach, 0f)) == 2 && view.FogAt(at - new float2(reach, 0f)) == 2
+            && view.FogAt(at + new float2(0f, reach)) == 2 && view.FogAt(at - new float2(0f, reach)) == 2;
+
+        private static bool AtExpansion(TeamView view, int2 at)
+        {
+            foreach (AiRegion r in view.Regions)
+                if (r.Kind == AiRegionKind.Expansion && math.distancesq((float2)r.Centre, (float2)at) <= (r.Radius + 4f) * (r.Radius + 4f)) return true;
+            return false;
+        }
+
+        private static float UnitCost(global::Config.GameConfigData game, UnitType t) => game.Units.TryGetValue(t, out global::Config.UnitConfig c) ? c.UpfrontCost : 0f;
+        private static float BuildingCost(global::Config.GameConfigData game, BuildingType t) => game.Buildings.TryGetValue(t, out global::Config.BuildingConfig c) ? c.UpfrontCost : 0f;
 
         /// <summary>True when the threat has been known long enough to act on.</summary>
         public bool IsActionable(in Threat threat) => Now - threat.FirstSeen >= ReactionSeconds;

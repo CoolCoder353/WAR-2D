@@ -128,7 +128,7 @@ public class AiManagerTests
     }
 
     [Test]
-    public void CountersComeFromSeenUnitsAndByDifficulty()
+    public void CountersComeFromTheEnemyModelsByInsight()
     {
         float SniperAndArtillery(float[] mix) => mix[(int)UnitType.Sniper] + mix[(int)UnitType.Artillery];
         float[] MixAfterSeeing(AiDifficulty difficulty, bool heavies, bool factory)
@@ -149,10 +149,16 @@ public class AiManagerTests
         float[] easyHeavies = MixAfterSeeing(AiDifficulty.Easy, true, false);
         float[] normalFactory = MixAfterSeeing(AiDifficulty.Normal, false, true);
         float[] hardFactory = MixAfterSeeing(AiDifficulty.Hard, false, true);
-        Assert.That(SniperAndArtillery(normalHeavies), Is.GreaterThan(SniperAndArtillery(normalNone) + 0.1f), "Normal: Heavies seen, more Snipers and Artillery");
-        Assert.That(easyHeavies, Is.EqualTo(easyNone).Within(1e-5f), "Easy keeps its style's mix");
-        Assert.That(normalFactory, Is.EqualTo(normalNone).Within(1e-5f), "Normal doesn't counter buildings");
-        Assert.That(SniperAndArtillery(hardFactory), Is.GreaterThan(SniperAndArtillery(normalNone) + 0.1f), "Hard: a Heavy Factory seen, anti-Heavy");
+        float normalShift = SniperAndArtillery(normalHeavies) - SniperAndArtillery(normalNone);
+        float easyShift = SniperAndArtillery(easyHeavies) - SniperAndArtillery(easyNone);
+        Assert.That(normalShift, Is.GreaterThan(0.1f), "Normal: Heavies seen, more Snipers and Artillery");
+        Assert.That(easyShift, Is.GreaterThan(0f).And.LessThan(normalShift), "Easy counters too, by less (its Insight is lower)");
+        float normalFactoryShift = SniperAndArtillery(normalFactory) - SniperAndArtillery(normalNone);
+        float hardFactoryShift = SniperAndArtillery(hardFactory) - SniperAndArtillery(normalNone);
+        Assert.That(hardFactoryShift, Is.GreaterThan(0.1f), "Hard: a Heavy Factory seen, anti-Heavy");
+        Assert.That(normalFactoryShift, Is.LessThan(hardFactoryShift), "Normal counters buildings less than Hard");
+        float[] easyFactory = MixAfterSeeing(AiDifficulty.Easy, false, true);
+        Assert.That(easyFactory, Is.EqualTo(easyNone).Within(1e-5f), "Easy (Insight 0.2) doesn't counter buildings");
         Assert.That(normalHeavies.Sum(), Is.EqualTo(1f).Within(1e-4f), "shares sum to one");
     }
 
@@ -216,10 +222,10 @@ public class AiManagerTests
                 Is.True, $"every attack-move goes at what it knows ({a.Tile})");
     }
 
-    [TestCase(AiDifficulty.Normal, true)]
-    [TestCase(AiDifficulty.Hard, true)]
-    [TestCase(AiDifficulty.Easy, false)]
-    public void ItRetreatsWhenOutnumbered(AiDifficulty difficulty, bool retreats)
+    [TestCase(AiDifficulty.Normal, 2.0)]
+    [TestCase(AiDifficulty.Hard, 2.0)]
+    [TestCase(AiDifficulty.Easy, 20.0)]
+    public void ItRetreatsWhenOutnumbered(AiDifficulty difficulty, double within)
     {
         AiSandbox world = ReadyToAttack(difficulty, out int2 enemyHq);
         world.AddUnit(world.Ai, UnitType.Scout, (float2)enemyHq + new float2(0, 9)); // it knows the enemy HQ
@@ -237,15 +243,12 @@ public class AiManagerTests
         int heavies = math.max(30, world.Units.Count(u => u.OwnerId == world.Ai) * 2);
         for (int i = 0; i < heavies; i++) world.AddUnit(world.Enemy, UnitType.Heavy, centre + new float2(-5 + i % 10, -5 + (i / 10) % 10));
         int before = world.Actions.Count;
-        world.Run(2.0);
+        // Easy only checks on its attentive thinks (AI overhaul §2.3): later, but it does.
+        for (double t = 0; t < within && army.Retreats == 0; t += 0.5) world.Run(0.5);
         string why = $"mode {army.Mode}, group {army.Group.Count}, centre {centre}, seen {world.View.OtherUnits.Count}, own {world.View.OwnUnits.Count}, attacks {army.Attacks}, target {army.Target}";
-        if (retreats)
-        {
-            Assert.That(army.Retreats, Is.EqualTo(1), "outnumbered: it pulls back; " + why);
-            Assert.That(army.Mode, Is.Not.EqualTo(ArmyMode.Attack), "and stops attacking");
-            int2 gather = world.Brain.Context.State.GatherPoint;
-            Assert.That(world.Actions.Skip(before).Any(a => a.Kind == AiActionKind.Order && a.Order == OrderKind.Move && a.Tile.Equals(gather)), Is.True, "a Move back to its gathering point");
-        }
-        else Assert.That((army.Mode, army.Retreats), Is.EqualTo((ArmyMode.Attack, 0)), "Easy fights on");
+        Assert.That(army.Retreats, Is.EqualTo(1), "outnumbered: it pulls back; " + why);
+        Assert.That(army.Mode, Is.Not.EqualTo(ArmyMode.Attack), "and stops attacking");
+        int2 gather = world.Brain.Context.State.GatherPoint;
+        Assert.That(world.Actions.Skip(before).Any(a => a.Kind == AiActionKind.Order && a.Order == OrderKind.Move && a.Tile.Equals(gather)), Is.True, "a Move back to its gathering point");
     }
 }

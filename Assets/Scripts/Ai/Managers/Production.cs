@@ -5,13 +5,15 @@ using WAR2D.AiView;
 namespace WAR2D.Ai
 {
     /// <summary>
-    /// Production (spec §5.3, §5.5, plan Task 7): keeps <c>QueueAhead</c> units queued on each finished producer. The
-    /// HQ makes the Builders the Economy asks for; the others first make what the managers request (opening steps, a
-    /// Scout) and, once the opening is done, the army: the type furthest below its share of the army mix. The mix is the
-    /// style's (Diggers and Suicide bombers scaled by <c>SpecialUse</c>), moved by <c>CounterShift</c> towards counters of
-    /// the enemy units it has seen (Normal) and of the enemy buildings it has seen too (Hard; Easy keeps the style's).
-    /// A producer switches type only with an empty queue (switching clears the queue). Every unit asks the economy first
-    /// (cost, and upkeep for Normal and Hard). New units rally at the army's gathering point.
+    /// Production (spec §5.3, §5.5, plan Task 7): keeps <c>QueueAhead</c> units queued on each finished producer (a whole
+    /// <c>QueueBatch</c> while money piles up, AI overhaul §3.3). The HQ makes the Builders the Economy asks for; the
+    /// others first make what the managers request (opening steps, a Scout) and, once the opening is done, the army: the
+    /// type furthest below its share of the army mix. The mix is the style's (Diggers and Suicide bombers scaled by
+    /// <c>SpecialUse</c>), moved by <c>CounterShift</c> towards counters of the enemy units its enemy models remember
+    /// (by its <c>CounterWeight</c>) and of the enemy buildings it has seen (by its <c>BuildingCounterWeight</c>), then
+    /// scaled by the strategy's <c>MixBias</c>. A producer switches type only with an empty queue (switching clears the
+    /// queue). Every unit asks the economy first (cost and upkeep). New units rally at the army's gathering point. A
+    /// production slip (AI overhaul §2.3) leaves one producer unrefilled for a think.
     /// </summary>
     public sealed class ProductionManager : IAiManager
     {
@@ -33,16 +35,20 @@ namespace WAR2D.Ai
             for (int t = 0; t < Types && t < state.UnitCount.Length; t++)
                 if ((UnitType)t != UnitType.Builder) army += state.UnitCount[t] + state.QueuedCount[t];
 
+            bool slipped = false;
             foreach (int index in state.Producers)
             {
                 AiBuilding p = view.Buildings[index];
-                if (p.Queued >= ai.Config.Play.QueueAhead) continue;
+                // Money piling up: army producers keep a whole batch queued (production capacity it already has).
+                int ahead = state.Banked && p.Type != BuildingType.Base ? ai.Config.Play.QueueBatch : ai.Config.Play.QueueAhead;
+                if (p.Queued >= ahead) continue;
+                if (!slipped && ai.Slip(AiSlip.Production)) { slipped = true; continue; }
                 UnitType want = Requested(state, p.Type);
                 bool forArmy = false;
                 if (want == UnitType.None && state.OpeningDone && p.Type != BuildingType.Base) { want = ArmyChoice(state, p.Type, army); forArmy = true; }
                 if (want == UnitType.None) continue;
                 if (p.Producing != want && p.Queued > 0) continue; // let the queue run out before switching (a switch clears it)
-                // An empty army producer takes a batch when it can pay for all of it (fewer clicks); Normal and Hard claim the whole
+                // An empty army producer takes a batch when it can pay for all of it (fewer clicks); upkeep-planning difficulties (all, since the overhaul) claim the whole
                 // batch's cost, so its units spawn from money in hand beyond their upkeep floor. Else one at a time.
                 int batch = ai.Config.Play.QueueBatch;
                 int step = 1;
@@ -89,7 +95,7 @@ namespace WAR2D.Ai
             return best;
         }
 
-        /// <summary>The army mix (shares summing to 1): the style's, moved towards counters of what it has seen (by difficulty).</summary>
+        /// <summary>The army mix (shares summing to 1): the style's, moved towards counters of what it knows (by its insight), scaled by the strategy's bias.</summary>
         internal void BuildMix(AiContext ai, AiState state)
         {
             System.Array.Clear(mix, 0, mix.Length);
@@ -101,40 +107,52 @@ namespace WAR2D.Ai
                 sum += weight;
             }
             if (sum > 0f) for (int t = 0; t < mix.Length; t++) mix[t] /= sum;
-            if (ai.Difficulty.Counters == AiCounters.None) return;
 
-            System.Array.Clear(counter, 0, counter.Length);
-            float total = 0f;
-            int seen = 0;
-            foreach (ArmySighting army in ai.Board.Armies.Values)
-                for (int t = 0; t < army.ByType.Length; t++)
-                {
-                    int n = army.ByType[t];
-                    if (n <= 0 || !ai.Config.SeenCounters.TryGetValue((UnitType)t, out var against)) continue;
-                    seen += n;
-                    foreach (System.Collections.Generic.KeyValuePair<UnitType, float> c in against) { counter[(int)c.Key] += n * c.Value; total += n * c.Value; }
-                }
-            float unitTotal = total;
-            if (ai.Difficulty.Counters == AiCounters.SeenAndBuildings)
+            float unitWeight = ai.Difficulty.CounterWeight, buildingWeight = ai.Difficulty.BuildingCounterWeight;
+            if (unitWeight > 0f || buildingWeight > 0f)
             {
-                // What the enemy buildings it has seen will make (a Heavy Factory ghost: anti-Heavy), against the units seen.
+                // Counters of the enemy units its models remember (AI overhaul §4.2) ...
+                System.Array.Clear(counter, 0, counter.Length);
+                float unitTotal = 0f;
+                foreach (EnemyModel model in ai.Board.Models.Values)
+                {
+                    if (!ai.View.IsEnemy(model.Owner)) continue;
+                    for (int t = 0; t < model.Peak.Length; t++)
+                    {
+                        float n = model.Peak[t];
+                        if (n <= 0f || !ai.Config.SeenCounters.TryGetValue((UnitType)t, out var against)) continue;
+                        foreach (System.Collections.Generic.KeyValuePair<UnitType, float> c in against) { counter[(int)c.Key] += n * c.Value; unitTotal += n * c.Value; }
+                    }
+                }
+                // ... and of what the enemy buildings it has seen will make (a Heavy Factory ghost: anti-Heavy), weighed
+                // against the unit counters by BuildingCounterWeight.
                 float buildingTotal = 0f;
                 System.Array.Clear(scratch, 0, scratch.Length);
                 foreach (AiBuilding b in ai.Board.EnemyBuildings.Values)
                 {
                     if (!ai.Config.BuildingCounters.TryGetValue(b.Type, out var against)) continue;
-                    foreach (System.Collections.Generic.KeyValuePair<UnitType, float> c in against) { scratch[(int)c.Key] += c.Value; buildingTotal += c.Value; }
+                    float boost = b.Type == BuildingType.GunTurret ? state.TurretCounterBoost : 1f;
+                    foreach (System.Collections.Generic.KeyValuePair<UnitType, float> c in against) { scratch[(int)c.Key] += c.Value * boost; buildingTotal += c.Value * boost; }
                 }
-                if (buildingTotal > 0f)
+                float buildingScale = buildingTotal > 0f ? (unitTotal > 0f ? unitTotal : 1f) * ai.Config.Play.BuildingCounterWeight / buildingTotal : 0f;
+                float unitPart = unitTotal, buildingPart = buildingTotal * buildingScale;
+                // Each part counts by its weight (its insight): the shift is CounterShift times the parts' weighted share.
+                float weighted = unitPart * unitWeight + buildingPart * buildingWeight;
+                if (weighted > 0f)
                 {
-                    float scale = (unitTotal > 0f ? unitTotal : 1f) * ai.Config.Play.BuildingCounterWeight / buildingTotal;
-                    for (int t = 0; t < counter.Length; t++) counter[t] += scratch[t] * scale;
-                    total += buildingTotal * scale;
+                    float shift = ai.Config.Play.CounterShift * weighted / (unitPart + buildingPart);
+                    for (int t = 0; t < mix.Length; t++)
+                    {
+                        float c = (counter[t] * unitWeight + scratch[t] * buildingScale * buildingWeight) / weighted;
+                        mix[t] = (1f - shift) * mix[t] + shift * c;
+                    }
                 }
             }
-            if (total <= 0f) return;
-            float shift = ai.Config.Play.CounterShift;
-            for (int t = 0; t < mix.Length; t++) mix[t] = (1f - shift) * mix[t] + shift * counter[t] / total;
+
+            // The strategy's bias (AI overhaul §4.3), only on types the mix already has (a style's roster is kept).
+            float biased = 0f;
+            for (int t = 0; t < mix.Length && t < state.MixBias.Length; t++) { mix[t] *= state.MixBias[t]; biased += mix[t]; }
+            if (biased > 0f) for (int t = 0; t < mix.Length; t++) mix[t] /= biased;
         }
 
         private readonly float[] scratch = new float[Types];

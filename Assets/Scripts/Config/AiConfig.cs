@@ -33,17 +33,6 @@ public enum LobbyVisibility : byte
 
 namespace Config
 {
-    /// <summary>How far an AI shifts its army mix towards counters (spec §5.5).</summary>
-    public enum AiCounters : byte
-    {
-        /// <summary>The style's fixed mix.</summary>
-        None,
-        /// <summary>Counters the enemy units it has seen.</summary>
-        Seen,
-        /// <summary>Also counters what the enemy buildings it has seen will make.</summary>
-        SeenAndBuildings,
-    }
-
     /// <summary>How an AI scouts (spec §6).</summary>
     public enum AiScouting : byte
     {
@@ -71,8 +60,15 @@ namespace Config
     {
         /// <summary>Callsigns AIs are named from, unique within a match (at least <see cref="ConfigParser.MinCallsigns"/>).</summary>
         public string[] Callsigns = System.Array.Empty<string>();
-        /// <summary>Easy, Normal and Hard (Scripted has no brain and no settings).</summary>
+        /// <summary>
+        /// Easy, Normal and Hard as the managers play them (Scripted has no brain and no settings): the policy resolved with
+        /// each difficulty's handicaps (AI overhaul §2, <see cref="AiPolicy.Resolve"/>).
+        /// </summary>
         public Dictionary<AiDifficulty, AiDifficultyConfig> Difficulties = new Dictionary<AiDifficulty, AiDifficultyConfig>();
+        /// <summary>Each difficulty's handicaps, as &lt;Difficulty&gt; lists them (AI overhaul §2.1).</summary>
+        public Dictionary<AiDifficulty, AiHandicapConfig> Handicaps = new Dictionary<AiDifficulty, AiHandicapConfig>();
+        /// <summary>The one policy every difficulty plays (Hard unhandicapped; AI overhaul §2).</summary>
+        public AiPolicyConfig Policy = new AiPolicyConfig();
         /// <summary>Rusher, Turtle, Expander and Balanced (Random resolves to one of them).</summary>
         public Dictionary<AiStyle, AiStyleConfig> Styles = new Dictionary<AiStyle, AiStyleConfig>();
         public AiDiplomacyConfig Diplomacy = new AiDiplomacyConfig();
@@ -102,7 +98,10 @@ namespace Config
         }
     }
 
-    /// <summary>How well one difficulty plays (spec §6). No difficulty gets more resources, vision or speed.</summary>
+    /// <summary>
+    /// How well one difficulty plays, as the managers read it (spec §6): the policy resolved with the difficulty's handicaps
+    /// by <see cref="AiPolicy.Resolve"/> (AI overhaul §2.2). No difficulty gets more resources, vision or speed.
+    /// </summary>
     public class AiDifficultyConfig
     {
         /// <summary>Seconds between two thinks.</summary>
@@ -111,6 +110,8 @@ namespace Config
         public int ActionsPerMinute;
         /// <summary>Seconds before a new event (an alert, a newly seen army) may be acted on.</summary>
         public float ReactionSeconds;
+        /// <summary>The handicaps it was resolved from (0..1; Hard 1, 1, 1 and 0).</summary>
+        public float Insight, Attention, Ambition, Mistakes;
         /// <summary>Builders it keeps at its main base.</summary>
         public int Builders;
         /// <summary>Extra Builders per expansion it holds.</summary>
@@ -119,44 +120,211 @@ namespace Config
         public int MaxExpansions;
         /// <summary>Earliest match second it expands; the style scales it (<see cref="AiStyleConfig.ExpandTiming"/>).</summary>
         public float ExpandAfterSeconds;
-        /// <summary>True when it never lets upkeep go unpaid: it pauses production and builds Miners first.</summary>
+        /// <summary>True when it plans its upkeep so it is never unpaid (every difficulty since the overhaul; a slip can skip a check).</summary>
         public bool KeepsUpkeepPaid;
         /// <summary>Balance it keeps back, in seconds of its current upkeep, before spending.</summary>
         public float UpkeepReserveSeconds;
-        /// <summary>How far it counters what it has seen (spec §5.5).</summary>
-        public AiCounters Counters;
-        /// <summary>True when it pulls back from a losing fight.</summary>
+        /// <summary>Share (0..1) of the policy's counter shift it makes towards counters of the enemy units it knows.</summary>
+        public float CounterWeight;
+        /// <summary>Share (0..1) of the building counters (what enemy buildings it has seen will make) it uses.</summary>
+        public float BuildingCounterWeight;
+        /// <summary>Scales <see cref="AiBrainConfig.ArmyMemorySeconds"/>: how long it remembers an enemy army.</summary>
+        public float ArmyMemoryScale;
+        /// <summary>True when it pulls back from a losing fight (on its attentive thinks).</summary>
         public bool Retreats;
-        /// <summary>Its strength over the enemy's (as seen) below which it retreats.</summary>
-        public float RetreatRatio;
-        /// <summary>True when it focuses fire on one target at a time.</summary>
+        /// <summary>Fight-model advantage (ours over theirs) it needs to start an attack; the style scales it.</summary>
+        public float AttackAdvantage;
+        /// <summary>Local fight-model advantage below which it retreats.</summary>
+        public float RetreatAdvantage;
+        /// <summary>True when its units in range focus fire on the weakest enemy they see.</summary>
         public bool FocusFire;
         /// <summary>True when it keeps Artillery and Snipers behind its front line.</summary>
         public bool KeepsBacklineBack;
-        /// <summary>True when its Diggers tunnel through enemy walls near its attacking army (Hard).</summary>
+        /// <summary>True when its Diggers tunnel through enemy walls near its attacking army.</summary>
         public bool DigsPastWalls;
         /// <summary>How it scouts.</summary>
         public AiScouting Scouting;
         /// <summary>Seconds between re-scouting runs (Regular scouting).</summary>
         public float RescoutSeconds;
-        /// <summary>Share (0..1) of its style's Diggers, Suicide bombers, bombs and Jammers it uses: rarely below 1, as the style wants at 1.</summary>
+        /// <summary>Share (0..1) of its style's Diggers, Suicide bombers, bombs and Jammers it uses.</summary>
         public float SpecialUse;
         /// <summary>True when it puts defences at chokepoints between its base and known enemies (else beside its buildings).</summary>
         public bool DefendsChokepoints;
         /// <summary>Gun turrets it puts up in front of its HQ early (from <c>EarlyTurretSeconds</c>), against an early rush.</summary>
         public int EarlyTurrets;
-        /// <summary>Income it needs per producer it already has before it adds another (0: the style's producers whatever its income): a producer's upkeep is many units' worth.</summary>
+        /// <summary>Income it needs per producer it already has before it adds another (0: the style's producers whatever its income); skipped while it banks.</summary>
         public float IncomePerProducer;
+        /// <summary>Producers it may add beyond its style's while money piles up (AI overhaul §3.3).</summary>
+        public int ExtraProducers;
         /// <summary>Scouts it keeps running its scouting route at once.</summary>
         public int Scouts;
         /// <summary>True when it keeps putting Miners on every gem it can reach at its base and expansions (and expands when they are full), not only its style's count.</summary>
         public bool SaturatesMiners;
-        /// <summary>Its strength over the enemy's (as seen) it needs before attacking; the style scales it.</summary>
-        public float AttackRatio;
         /// <summary>When it accepts peace (spec §7).</summary>
         public AiPeace Peace;
         /// <summary>True when it gifts surplus to teammates (spec O5).</summary>
         public bool GiftsSurplus;
+    }
+
+    /// <summary>
+    /// One difficulty's handicaps (&lt;Difficulty&gt;, AI overhaul §2.1): numbers that only ever make it play worse than the
+    /// policy, plus its diplomacy temperament.
+    /// </summary>
+    public class AiHandicapConfig
+    {
+        /// <summary>Seconds between two thinks.</summary>
+        public float ThinkSeconds;
+        /// <summary>Actions it may take per minute.</summary>
+        public int ActionsPerMinute;
+        /// <summary>Seconds before a new event may be acted on.</summary>
+        public float ReactionSeconds;
+        /// <summary>0..1: how much it makes of what it sees (counters, memory, scouting, fight-estimate accuracy).</summary>
+        public float Insight;
+        /// <summary>0..1: share of thinks its army micro runs.</summary>
+        public float Attention;
+        /// <summary>0..1: scale of its economy (Builders, expansions, saturation, extra producers).</summary>
+        public float Ambition;
+        /// <summary>0..1: chance a key decision slips (rolled at most once per <see cref="AiPolicyConfig.SlipSeconds"/> per kind).</summary>
+        public float Mistakes;
+        /// <summary>When it accepts peace (spec §7).</summary>
+        public AiPeace Peace;
+        /// <summary>True when it gifts surplus to teammates (spec O5).</summary>
+        public bool GiftsSurplus;
+    }
+
+    /// <summary>
+    /// The policy (&lt;Ai&gt;&lt;Policy&gt;, AI overhaul §2 to §6): the best play the managers know. Hard plays it as is; the
+    /// other difficulties play it through their handicaps (<see cref="AiPolicy.Resolve"/>).
+    /// </summary>
+    public class AiPolicyConfig
+    {
+        // ---- economy (scaled by Ambition) ----
+        /// <summary>Builders at its main base, at full ambition.</summary>
+        public int Builders;
+        /// <summary>Extra Builders per expansion, at full ambition.</summary>
+        public int BuildersPerExpansion;
+        /// <summary>Most expansions, at full ambition.</summary>
+        public int MaxExpansions;
+        /// <summary>Earliest match second it expands, at full ambition (divided by the ambition).</summary>
+        public float ExpandAfterSeconds;
+        /// <summary>Ambition from which it saturates every gem with Miners.</summary>
+        public float SaturateAmbition;
+        /// <summary>Producers beyond the style's it may add while banking, at full ambition.</summary>
+        public int ExtraProducers;
+        /// <summary>Income per producer it has before it adds another (0: none needed).</summary>
+        public float IncomePerProducer;
+        /// <summary>Balance it keeps back, in seconds of its upkeep shortfall.</summary>
+        public float UpkeepReserveSeconds;
+        /// <summary>Share of its projected income that buildings costing upkeep may take together (producers leave room for an army).</summary>
+        public float BuildingUpkeepShare;
+        /// <summary>A balance above this ...</summary>
+        public float BankHigh;
+        /// <summary>... for this long is money piling up: it adds production (AI overhaul §3.3).</summary>
+        public float BankSeconds;
+
+        // ---- defence and scouting ----
+        /// <summary>Gun turrets in front of its HQ early.</summary>
+        public int EarlyTurrets;
+        /// <summary>True when it defends the chokepoints out of its start region.</summary>
+        public bool DefendsChokepoints;
+        /// <summary>Scouts on its route at once, at full insight.</summary>
+        public int Scouts;
+        /// <summary>Seconds between re-scouting runs, at full insight (divided by the insight).</summary>
+        public float RescoutSeconds;
+
+        // ---- fights (AI overhaul §3.1) ----
+        /// <summary>Advantage it needs to attack (scaled by the style and its caution).</summary>
+        public float AttackAdvantage;
+        /// <summary>Local advantage below which it retreats.</summary>
+        public float RetreatAdvantage;
+        /// <summary>Home's advantage over a threat above which the rest of the army counter-attacks.</summary>
+        public float CounterAttackAdvantage;
+        /// <summary>Estimate noise at zero insight: an estimate is multiplied by a factor in 1 ± (1 − insight) × this.</summary>
+        public float EstimateNoise;
+        /// <summary>Extra targets a splash hit is counted against.</summary>
+        public float SplashTargets;
+        /// <summary>Damage bonus for out-ranging the other side, at a full range's lead.</summary>
+        public float RangeWeight;
+        /// <summary>Seconds of fight a Suicide bomber's blast is spread over.</summary>
+        public float BomberFightSeconds;
+        /// <summary>True when it retreats from losing fights.</summary>
+        public bool Retreats;
+        /// <summary>True when its units in range focus fire.</summary>
+        public bool FocusFire;
+        /// <summary>True when it keeps Artillery and Snipers behind the front.</summary>
+        public bool KeepsBacklineBack;
+        /// <summary>True when its Diggers dig past enemy walls.</summary>
+        public bool DigsPastWalls;
+
+        // ---- targets and squads (AI overhaul §3.4, §3.5) ----
+        /// <summary>Tiles of distance that halve a target's score.</summary>
+        public float TargetDistanceScale;
+        /// <summary>An enemy HQ's value as a target.</summary>
+        public float HqValue;
+        /// <summary>Its advantage over an enemy's remembered army from which that enemy's HQ is worth this many times more (a finishing blow).</summary>
+        public float FinishAdvantage;
+        /// <summary>Value added to a Miner target for the income it denies.</summary>
+        public float MinerIncomeValue;
+        /// <summary>Score factor of a target where an attack lost badly ...</summary>
+        public float AvoidFactor;
+        /// <summary>... for this long.</summary>
+        public float AvoidSeconds;
+        /// <summary>Share of its army's value an attack leaves at home after a threat at its base ...</summary>
+        public float HomeGuardShare;
+        /// <summary>... for this long after that threat.</summary>
+        public float HomeGuardSeconds;
+        /// <summary>Most units in a raid.</summary>
+        public int RaidSize;
+        /// <summary>Slowest move speed a raider may have.</summary>
+        public float RaidMinSpeed;
+        /// <summary>Advantage a raid needs over its target's known defence.</summary>
+        public float RaidAdvantage;
+        /// <summary>Most seconds a raid lasts.</summary>
+        public float RaidSeconds;
+
+        // ---- adaptation (AI overhaul §4) ----
+        /// <summary>A trade (enemy value lost over its own) below this is a bad attack ...</summary>
+        public float BadTrade;
+        /// <summary>... and above this a good one.</summary>
+        public float GoodTrade;
+        /// <summary>Caution (the attack threshold's factor) is multiplied by this after a bad trade ...</summary>
+        public float CautionUp;
+        /// <summary>... and by this after a good one ...</summary>
+        public float CautionDown;
+        /// <summary>... within these bounds.</summary>
+        public float MinCaution, MaxCaution;
+        /// <summary>Factor on its building counters against Gun turrets once turrets beat one of its attacks.</summary>
+        public float TurretCounterBoost;
+        /// <summary>Seconds in which an enemy model's peak counts halve when not seen again.</summary>
+        public float ModelHalfLife;
+        /// <summary>This many enemy combat units seen at once ...</summary>
+        public int RushUnits;
+        /// <summary>... before this much play mark a rusher.</summary>
+        public float RushSeconds;
+        /// <summary>An enemy expansion before this much play marks an expander.</summary>
+        public float FastExpandSeconds;
+        /// <summary>Factor on its first attack's time against a greedy enemy.</summary>
+        public float PunishFactor;
+        /// <summary>Factor on its army mix's counters to what scouting found (a rush: Flamethrowers and Tanks; a Turtle: Artillery and Diggers).</summary>
+        public float ReactionBias;
+        /// <summary>Factor on the wait between raids against an enemy it guesses is a Turtle.</summary>
+        public float TurtleRaidFactor;
+        /// <summary>Seconds after the last threat at its base that a rush counts as seen off.</summary>
+        public float RushOverSeconds;
+        /// <summary>Seconds between two style switches.</summary>
+        public float StyleSwitchSeconds;
+        /// <summary>Play time after which a Turtle with the advantage breaks out.</summary>
+        public float TurtleBreakoutSeconds;
+
+        // ---- the brain (AI overhaul §2.3, §5.1, §6.1) ----
+        /// <summary>Seconds within which a slip of one kind is rolled at most once.</summary>
+        public float SlipSeconds;
+        /// <summary>Share of its actions per minute that go to the economy pool.</summary>
+        public float EconomyShare;
+        /// <summary>Per-match variation of its style's numbers (each × 1 ± this).</summary>
+        public float Variation;
+        /// <summary>Most degrees its gathering point turns off the line to the enemy.</summary>
+        public float GatherAngle;
     }
 
     /// <summary>One step of a style's opening: a building to place or a unit to queue.</summary>
@@ -173,7 +341,9 @@ namespace Config
     /// <summary>How one style plays (spec §5.6): the same managers with different weights.</summary>
     public class AiStyleConfig
     {
-        /// <summary>The opening, in order.</summary>
+        /// <summary>The openings it may play (AI overhaul §6.2), at least one.</summary>
+        public AiBuildStep[][] BuildOrders = System.Array.Empty<AiBuildStep[]>();
+        /// <summary>The opening it plays, in order (the first of <see cref="BuildOrders"/> until a brain varies the style).</summary>
         public AiBuildStep[] BuildOrder = System.Array.Empty<AiBuildStep>();
         /// <summary>Army composition weights by unit type (before counters).</summary>
         public Dictionary<UnitType, float> ArmyMix = new Dictionary<UnitType, float>();
@@ -207,6 +377,19 @@ namespace Config
         public bool Radar;
         /// <summary>True when its army holds its chokepoint (Hold) while it isn't attacking (Turtle).</summary>
         public bool HoldsChokes;
+        /// <summary>True when it sends raiders at enemy Miners and expansions (AI overhaul §3.5).</summary>
+        public bool Raids;
+
+        /// <summary>A deep copy (a brain varies its own).</summary>
+        public AiStyleConfig Clone()
+        {
+            var copy = (AiStyleConfig)MemberwiseClone();
+            copy.BuildOrders = (AiBuildStep[][])BuildOrders.Clone();
+            copy.BuildOrder = (AiBuildStep[])BuildOrder.Clone();
+            copy.ArmyMix = new Dictionary<UnitType, float>(ArmyMix);
+            copy.Producers = new Dictionary<BuildingType, int>(Producers);
+            return copy;
+        }
     }
 
     /// <summary>
@@ -309,8 +492,6 @@ namespace Config
         public float StageSeconds;
         /// <summary>Normal, Hard: upkeep-capped (no room for another unit) with this much in hand, it attacks without the strength check.</summary>
         public float MaxedAttackResources;
-        /// <summary>Defending: its home strength over the threat's above which the rest of its army counter-attacks.</summary>
-        public float CounterAttackRatio;
         /// <summary>A blueprint that makes no progress this long is cancelled (unreachable, or never staffed).</summary>
         public float StuckBlueprintSeconds;
         /// <summary>A threat to its base worth at least this share of its attack group (and more than home holds) calls the attack back.</summary>

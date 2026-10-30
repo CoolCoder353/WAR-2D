@@ -19,16 +19,19 @@ namespace WAR2D.Ai
     }
 
     /// <summary>
-    /// Army (spec §5.3, plan Task 7). Its fighting units gather at a point in front of its HQ towards the enemy it knows
-    /// (Turtle: at its chokepoint, holding it). Threats near its base (enemies seen by its buildings, or Under-attack
-    /// alerts, both after the reaction delay) are met by its home units, and the attack group is called back when home
-    /// can't hold. It attacks when the play time, wave interval and army size allow and its strength (what it has) beats
-    /// the enemy's (what it has seen: the last-seen army plus known turrets there) by its ratio; the target is a known
-    /// enemy building (its HQ first, ghosts included) or else a last-seen army, never anything it hasn't seen. In the
-    /// fight: Normal and Hard retreat when the local fight turns against them; Hard focuses fire on the weakest enemy in
-    /// sight, keeps Artillery and Snipers <c>BacklineDistance</c> behind the front, and digs through enemy walls with
-    /// its Diggers; Suicide bombers detonate on clumps and walls. Units reach the army through the rally point; new ones
-    /// gathered at home join an attack as reinforcements.
+    /// Army (spec §5.3, plan Task 7, AI overhaul §3 and §4.1). Its fighting units gather at a point in front of its HQ
+    /// towards the enemy it knows, turned by its variation's angle (Turtle: at its chokepoint, holding it). Threats near
+    /// its base (enemies seen by its buildings, or Under-attack alerts, both after the reaction delay) are met by its home
+    /// units, and the attack group is called back when home can't hold. Every fight is judged by the fight model
+    /// (<see cref="FightModel"/>, from the damage table, with its insight's noise). It attacks when the play time, wave
+    /// interval and army size allow and its advantage over the target's enemy (that enemy's remembered army plus the
+    /// turrets it knows at the target) reaches its threshold (the policy's, scaled by the style and its caution). The
+    /// target is scored (<see cref="ChooseTarget"/>): worth over distance, among the targets whose known defence it beats,
+    /// never anything it hasn't seen; a turret-guarded target with turrets it out-ranges is sieged. After a threat at its
+    /// base an attack leaves a home guard. On its attentive thinks: it retreats from a losing fight (or regroups a strung
+    /// out vanguard), its units in range focus fire, Artillery and Snipers stay behind the front, Diggers dig through enemy
+    /// walls, and Suicide bombers detonate on clumps and walls. Each attack's trade (from the kill ledger) moves its
+    /// caution and marks a target that beat it. Scouts and raiders are left alone.
     /// </summary>
     public sealed class ArmyManager : IAiManager
     {
@@ -43,7 +46,7 @@ namespace WAR2D.Ai
         private int2 stage;
         private double marchStarted, lastMarchNote, targetSince;
         private float marchLimit;
-        private float threatStrength, homeStrength;
+        private float homeAdvantage;
         private float2 threatAt;
 
         /// <summary>What the army did (dev reads: the bench and <c>aistate</c>), newest last, at most 40 lines.</summary>
@@ -72,6 +75,26 @@ namespace WAR2D.Ai
         public int Attacks { get; private set; }
         public int Retreats { get; private set; }
 
+        // ---- AI overhaul §4.1: learning from its attacks ----
+        /// <summary>Factor on the advantage it wants before attacking: up after bad trades, down after good ones.</summary>
+        public float Caution { get; private set; } = 1f;
+        /// <summary>Bad trades in a row (the Strategy manager's style switch reads it).</summary>
+        public int BadTradeStreak { get; private set; }
+        /// <summary>The last attack's trade (enemy worth lost over its own), or NaN before one ended.</summary>
+        public float LastTrade { get; private set; } = float.NaN;
+        /// <summary>Each finished attack's trade, newest last (dev reads), at most 20.</summary>
+        public readonly List<string> Trades = new List<string>(20);
+        /// <summary>True while the group sieges turrets it out-ranges (short-range units held back).</summary>
+        public bool Sieging { get; private set; }
+        private bool recording;
+        /// <summary>The target its group last regrouped for: one regroup per target, then it fights (a strung-out march would regroup for ever).</summary>
+        private int2 regroupedFor = new int2(int.MinValue, int.MinValue);
+        private float recordEnemyLost, recordOwnLost, recordValue;
+        private bool recordTurrets;
+        private int2 recordTarget;
+
+        private static bool Busy(AiState state, int id) => state.Scouts.Contains(id) || state.Raiders.Contains(id);
+
         public void Think(AiContext ai)
         {
             TeamView view = ai.View;
@@ -83,15 +106,15 @@ namespace WAR2D.Ai
             alive.Clear();
             foreach (int i in state.Combat) alive.Add(view.OwnUnits[i].Id);
             stale.Clear();
-            foreach (int id in group) if (!alive.Contains(id) || state.Scouts.Contains(id)) stale.Add(id);
+            foreach (int id in group) if (!alive.Contains(id) || Busy(state, id)) stale.Add(id);
             foreach (int id in stale) group.Remove(id);
             stale.Clear();
             foreach (int id in holding) if (!alive.Contains(id) || group.Contains(id)) stale.Add(id);
             foreach (int id in stale) holding.Remove(id);
 
             Defend(ai, view, state);
-            // Defending against a threat it outweighs well: the rest of the army may counter-attack (the units at the threat stay).
-            if (Mode == ArmyMode.Defend && hasThreat && homeStrength >= threatStrength * ai.Config.Play.CounterAttackRatio)
+            // Defending against a threat it far outweighs: the rest of the army may counter-attack (the units at the threat stay).
+            if (Mode == ArmyMode.Defend && hasThreat && homeAdvantage >= ai.Policy.CounterAttackAdvantage)
                 TryStartAttack(ai, view, state, CountArmy(view, state), true);
             switch (Mode)
             {
@@ -99,6 +122,9 @@ namespace WAR2D.Ai
                 case ArmyMode.Retreat: Retreat(ai, view, state); break;
                 case ArmyMode.Gather: Gather(ai, view, state); break;
             }
+            state.Attacking = Mode == ArmyMode.Attack;
+            state.AttackedOnce = attackedOnce;
+            state.BadTradeStreak = BadTradeStreak;
             if (orderedAt.Count > 64) orderedAt.Clear();
         }
 
@@ -109,6 +135,9 @@ namespace WAR2D.Ai
             AiPlayConfig play = ai.Config.Play;
             float2 enemy = BuilderManager.EnemyDirectionPoint(ai, view, state);
             float2 dir = math.normalizesafe(enemy - state.Home, new float2(1f, 0f));
+            // Its variation turns the gathering point off the straight line to the enemy (AI overhaul §6.1).
+            float angle = ai.Variation.GatherAngle;
+            if (angle != 0f) dir = new float2(dir.x * math.cos(angle) - dir.y * math.sin(angle), dir.x * math.sin(angle) + dir.y * math.cos(angle));
             float2 point = ai.Style.HoldsChokes && state.DefenceSpots.Count > 0
                 ? state.DefenceSpots[0] - state.DefenceDirs[0] * play.DefenceSpread * 0.5f
                 : state.Home + dir * play.GatherDistance;
@@ -131,7 +160,7 @@ namespace WAR2D.Ai
             foreach (int i in state.Combat)
             {
                 AiUnit u = view.OwnUnits[i];
-                if (state.Scouts.Contains(u.Id) || u.HasOrder || u.Stance == 3) continue;
+                if (Busy(state, u.Id) || u.HasOrder || u.Stance == 3) continue;
                 if (math.distancesq(u.Position, g) > r2) ids.Add(u.Id);
                 else if (ai.Style.HoldsChokes && !holding.Contains(u.Id)) back.Add(u.Id);
             }
@@ -154,7 +183,7 @@ namespace WAR2D.Ai
         /// </summary>
         private bool Sweep(AiContext ai, TeamView view, AiState state, int army)
         {
-            if (state.PlayingSeconds < ai.Style.FirstAttackSeconds || army < ai.Style.AttackArmySize) { sweeping = false; return false; }
+            if (state.PlayingSeconds < FirstAttackAt(ai, state) || army < ai.Style.AttackArmySize) { sweeping = false; return false; }
             foreach (AiBuilding b in ai.Board.EnemyBuildings.Values) if (b.Type != BuildingType.Bomb) { sweeping = false; return false; }
             if (ai.Board.KnownHqs.Count > 0 || ai.Board.Armies.Count > 0) { sweeping = false; return false; }
             float2 centre = GroupCentreOf(view, state);
@@ -180,7 +209,7 @@ namespace WAR2D.Ai
             foreach (int i in state.Combat)
             {
                 AiUnit u = view.OwnUnits[i];
-                if (state.Scouts.Contains(u.Id) || (u.HasOrder && math.distancesq(u.OrderGoal, sweepSite) < 64f)) continue;
+                if (Busy(state, u.Id) || (u.HasOrder && math.distancesq(u.OrderGoal, sweepSite) < 64f)) continue;
                 ids.Add(u.Id);
             }
             if (ids.Count > 0 && Due(ai, AiKeys.Army)) ai.Propose(AiPriority.Low, AiAction.OrderUnits(ids, OrderKind.Move, state.GroundNear((float2)sweepSite + 0.5f, view.HqClearRadius)), AiKeys.Of(AiKeys.Army));
@@ -198,37 +227,59 @@ namespace WAR2D.Ai
         private int CountArmy(TeamView view, AiState state)
         {
             int n = 0;
-            foreach (int i in state.Combat) if (!state.Scouts.Contains(view.OwnUnits[i].Id)) n++;
+            foreach (int i in state.Combat) if (!Busy(state, view.OwnUnits[i].Id)) n++;
             return n;
         }
 
         // ---- attacking ----
 
+        /// <summary>Play seconds of its first attack: the style's, sooner against a greedy enemy (AI overhaul §4.3).</summary>
+        private static float FirstAttackAt(AiContext ai, AiState state) => ai.Style.FirstAttackSeconds * state.FirstAttackFactor;
+
+        /// <summary>The advantage it wants before attacking: the policy's, scaled by the style and its caution.</summary>
+        private float Need(AiContext ai) => ai.Difficulty.AttackAdvantage * ai.Style.AttackRatioScale * Caution;
+
+        /// <summary>Maxed out (no upkeep room for another unit, money piling up): a player attacks with what they have.</summary>
+        private static bool Maxed(AiContext ai, AiState state) =>
+            ai.Difficulty.KeepsUpkeepPaid && state.Free >= ai.Config.Play.MaxedAttackResources && !state.MayAddUpkeep(state.UpkeepOf(UnitType.Tank));
+
         /// <param name="counter">A counter-attack from Defend: the units at the threat stay to hold it.</param>
         private bool TryStartAttack(AiContext ai, TeamView view, AiState state, int army, bool counter)
         {
             AiPlayConfig play = ai.Config.Play;
-            if (state.PlayingSeconds < ai.Style.FirstAttackSeconds || army < ai.Style.AttackArmySize) return false;
+            if (state.PlayingSeconds < FirstAttackAt(ai, state) || army < ai.Style.AttackArmySize) return false;
             if (attackedOnce && ai.Now - lastAttackEnd < ai.Style.AttackIntervalSeconds) return false;
-            if (!ChooseTarget(ai, state.Home, -1, true, out int id, out int owner, out int2 target)) return false;
-            float ours = StrengthEstimate.Own(ai.Game, view, default, 0f);
-            float theirs = StrengthEstimate.Enemy(ai.Game, ai.Board, owner, target, play.ArmyRadius * 2f, play.TurretStrength);
-            // Maxed out (Normal, Hard: no upkeep room for another unit, money piling up): a player attacks with what they have.
-            bool maxed = ai.Difficulty.KeepsUpkeepPaid && state.Free >= play.MaxedAttackResources && !state.MayAddUpkeep(state.UpkeepOf(UnitType.Tank));
-            if (!maxed && ours < theirs * ai.Difficulty.AttackRatio * ai.Style.AttackRatioScale) return false;
+            bool maxed = Maxed(ai, state);
+            // A rush expected and not yet seen off: its first attack waits (AI overhaul §4.3).
+            if (!attackedOnce && state.HoldFirstAttack && !maxed && !counter) return false;
+            // An attack-timing slip (AI overhaul §2.3): it goes without the advantage it wants.
+            bool slip = !maxed && ai.Slip(AiSlip.AttackTiming);
+            float need = maxed || slip ? 0f : Need(ai);
+            if (!ChooseTarget(ai, state.Home, -1, need, out int id, out int owner, out int2 target)) return false;
+            Force ours = AiForces.Own(ai);
+            Force theirs = AiForces.EnemyArmy(ai, owner);
+            theirs.Add(AiForces.KnownTurrets(ai, (float2)target + 0.5f, play.ArmyRadius, owner));
+            float advantage = AiForces.Advantage(ai, ours, theirs);
+            if (advantage < need) return false;
             group.Clear();
             holding.Clear();
             float keep2 = play.ArmyRadius * play.ArmyRadius;
+            guard.Clear();
+            float total = 0f;
             foreach (int i in state.Combat)
             {
                 AiUnit u = view.OwnUnits[i];
-                if (state.Scouts.Contains(u.Id)) continue;
+                if (Busy(state, u.Id)) continue;
                 if (counter && math.distancesq(u.Position, threatAt) <= keep2) continue;
                 group.Add(u.Id);
+                float v = StrengthEstimate.Of(ai.Game, u);
+                total += v;
+                guard.Add((u.Id, math.distancesq(u.Position, state.GatherPoint), v));
             }
+            KeepHomeGuard(ai, total);
             if (group.Count == 0) return false;
             Note(ai, $"from {GroupCentre(view, false).x:F0},{GroupCentre(view, false).y:F0} home {state.Home.x:F0},{state.Home.y:F0}");
-            Note(ai, $"attack {(counter ? "(counter) " : maxed ? "(maxed) " : "")}group {group.Count} ours {ours:F0} theirs {theirs:F0} target {target.x},{target.y} building {id != 0}");
+            Note(ai, $"attack {(counter ? "(counter) " : maxed ? "(maxed) " : slip ? "(slip) " : "")}group {group.Count} advantage {Shown(advantage)} need {need:F2} target {target.x},{target.y} building {id != 0}");
             Mode = ArmyMode.Attack;
             TargetId = id;
             TargetOwner = owner;
@@ -236,9 +287,32 @@ namespace WAR2D.Ai
             targetSince = ai.Now;
             attackedOnce = true;
             Attacks++;
+            StartRecord(ai, target, ours.Value);
             BeginStage(ai, view, state);
             return true;
         }
+
+        private readonly List<(int Id, float Distance, float Value)> guard = new List<(int, float, float)>(64);
+        private static readonly System.Comparison<(int Id, float Distance, float Value)> NearestFirst = (a, b) => a.Distance.CompareTo(b.Distance);
+
+        /// <summary>
+        /// After a threat at its base (within <c>HomeGuardSeconds</c>), the units nearest its gathering point worth
+        /// <c>HomeGuardShare</c> of the group stay home (AI overhaul §3.5). Uses <see cref="guard"/>.
+        /// </summary>
+        private void KeepHomeGuard(AiContext ai, float total)
+        {
+            AiPolicyConfig policy = ai.Policy;
+            if (policy.HomeGuardShare <= 0f || ai.Now - ai.Board.LastBaseThreat > policy.HomeGuardSeconds || guard.Count < 2) return;
+            guard.Sort(NearestFirst);
+            float kept = 0f, wanted = total * policy.HomeGuardShare;
+            for (int k = 0; k < guard.Count - 1 && kept < wanted; k++)
+            {
+                group.Remove(guard[k].Id);
+                kept += guard[k].Value;
+            }
+        }
+
+        private static string Shown(float advantage) => float.IsPositiveInfinity(advantage) ? "inf" : advantage.ToString("F2");
 
         /// <summary>
         /// Sends the group to a staging point <c>StageDistance</c> short of the target, on the side it comes from, so it
@@ -247,6 +321,7 @@ namespace WAR2D.Ai
         private void BeginStage(AiContext ai, TeamView view, AiState state)
         {
             AiPlayConfig play = ai.Config.Play;
+            Sieging = false;
             float2 from = GroupCentre(view, false);
             float2 to = (float2)Target + 0.5f;
             float d = math.distance(from, to);
@@ -283,50 +358,90 @@ namespace WAR2D.Ai
         }
 
         /// <summary>
-        /// A target it knows (never anything it hasn't seen): with <paramref name="hqFirst"/> the nearest known enemy HQ,
-        /// else the nearest known enemy building (ghosts count: it has seen them), else the nearest last-seen enemy army.
-        /// <paramref name="preferOwner"/>'s buildings first when it names one (an attack moving on through a base).
+        /// The best target it knows (AI overhaul §3.4; never anything it hasn't seen): every known enemy building (ghosts
+        /// count), every remembered HQ its view no longer shows (id -1) and every last-seen army (id 0), scored by worth
+        /// over distance (<see cref="ScoreTarget"/>), kept only when its whole force's advantage over what it knows defends
+        /// the target (turrets there, an army seen there) reaches <paramref name="need"/>. <paramref name="preferOwner"/>'s
+        /// targets score double (an attack moving on through a base). A target slip takes the second best.
         /// </summary>
-        internal static bool ChooseTarget(AiContext ai, float2 from, int preferOwner, bool hqFirst, out int id, out int owner, out int2 target)
+        internal static bool ChooseTarget(AiContext ai, float2 from, int preferOwner, float need, out int id, out int owner, out int2 target)
         {
             id = 0;
             owner = 0;
             target = default;
-            float best = float.MaxValue;
-            for (int pass = 0; pass < 4 && id == 0; pass++)
+            Force ours = AiForces.Own(ai);
+            float noise = ai.Noise();
+            float best = 0f, second = 0f;
+            int bestId = 0, bestOwner = 0, secondId = 0, secondOwner = 0;
+            int2 bestAt = default, secondAt = default;
+            void Consider(int candidateId, int candidateOwner, int2 at, float worth)
             {
-                bool hqOnly = pass < 2, ownerOnly = pass % 2 == 0;
-                if (hqOnly && !hqFirst) continue;
-                if (ownerOnly && preferOwner < 0) continue;
-                foreach (AiBuilding b in ai.Board.EnemyBuildings.Values)
+                float score = ScoreTarget(ai, ours, from, candidateOwner, at, worth, need, noise);
+                if (candidateOwner == preferOwner) score *= 2f;
+                if (score <= 0f) return;
+                if (score > best)
                 {
-                    if (ownerOnly && b.OwnerId != preferOwner) continue;
-                    if (b.Type == BuildingType.Bomb || (hqOnly && b.Type != BuildingType.Base)) continue;
-                    float d = math.distancesq((float2)b.Anchor, from);
-                    if (d < best) { best = d; id = b.Id; owner = b.OwnerId; target = b.Anchor; }
+                    second = best; secondId = bestId; secondOwner = bestOwner; secondAt = bestAt;
+                    best = score; bestId = candidateId; bestOwner = candidateOwner; bestAt = at;
                 }
+                else if (score > second) { second = score; secondId = candidateId; secondOwner = candidateOwner; secondAt = at; }
             }
-            if (id != 0) return true;
+            foreach (AiBuilding b in ai.Board.EnemyBuildings.Values)
+            {
+                if (b.Type == BuildingType.Bomb) continue;
+                Consider(b.Id, b.OwnerId, b.Anchor, WorthOf(ai, b.Type));
+            }
             // An HQ it saw that its view doesn't show any more (a Jammer hides it): its remembered spot (id -1).
             foreach (KeyValuePair<int, int2> hq in ai.Board.KnownHqs)
             {
-                if (preferOwner >= 0 && hq.Key != preferOwner && ai.Board.KnownHqs.ContainsKey(preferOwner)) continue;
-                float d = math.distancesq((float2)hq.Value, from);
-                if (d < best) { best = d; id = -1; owner = hq.Key; target = hq.Value; }
+                bool shown = false;
+                foreach (AiBuilding b in ai.Board.EnemyBuildings.Values) if (b.OwnerId == hq.Key && b.Type == BuildingType.Base) { shown = true; break; }
+                if (!shown) Consider(-1, hq.Key, hq.Value, ai.Policy.HqValue);
             }
-            if (id != 0) return true;
             foreach (ArmySighting army in ai.Board.Armies.Values)
-            {
-                float d = math.distancesq(army.Centre, from);
-                if (d < best) { best = d; owner = army.OwnerId; target = (int2)math.floor(army.Centre); }
-            }
-            return owner != 0;
+                Consider(0, army.OwnerId, (int2)math.floor(army.Centre), StrengthEstimate.Of(ai.Game, army));
+            if (best <= 0f) return false;
+            bool slip = second > 0f && ai.Slip(AiSlip.Target);
+            id = slip ? secondId : bestId;
+            owner = slip ? secondOwner : bestOwner;
+            target = slip ? secondAt : bestAt;
+            return true;
+        }
+
+        /// <summary>A target's worth (AI overhaul §3.4): an HQ wins the game, a Miner adds the income it denies, the rest their cost.</summary>
+        internal static float WorthOf(AiContext ai, BuildingType type)
+        {
+            if (type == BuildingType.Base) return ai.Policy.HqValue;
+            float cost = ai.Game.Buildings.TryGetValue(type, out BuildingConfig c) ? c.UpfrontCost : 0f;
+            return type == BuildingType.Miner ? cost + ai.Policy.MinerIncomeValue : cost;
+        }
+
+        /// <summary>
+        /// A target's score: its worth over (1 + distance / <c>TargetDistanceScale</c>), times <c>AvoidFactor</c> where an
+        /// attack lost badly; 0 when <paramref name="ours"/> can't beat what it knows defends the target (the turrets it
+        /// knows within <c>ArmyRadius</c>, and its owner's remembered army when that was last seen within two radii).
+        /// </summary>
+        internal static float ScoreTarget(AiContext ai, in Force ours, float2 from, int owner, int2 at, float worth, float need, float noise)
+        {
+            if (worth <= 0f) return 0f;
+            // A finishing blow (AI overhaul): far stronger than the army it remembers of that enemy, its HQ is worth that much more.
+            if (worth >= ai.Policy.HqValue && FightModel.Advantage(ours, AiForces.EnemyArmy(ai, owner), ai.Policy.RangeWeight) * noise >= ai.Policy.FinishAdvantage)
+                worth *= ai.Policy.FinishAdvantage;
+            float radius = ai.Config.Play.ArmyRadius;
+            float2 centre = (float2)at + 0.5f;
+            Force defence = AiForces.KnownTurrets(ai, centre, radius, owner);
+            if (ai.Board.Armies.TryGetValue(owner, out ArmySighting seen) && math.distancesq(seen.Centre, centre) <= 4f * radius * radius)
+                defence.Add(AiForces.EnemyArmy(ai, owner));
+            if (need > 0f && FightModel.Advantage(ours, defence, ai.Policy.RangeWeight) * noise < need) return 0f;
+            float score = worth / (1f + math.distance(from, centre) / ai.Policy.TargetDistanceScale);
+            if (ai.Board.IsAvoided(at, radius)) score *= ai.Policy.AvoidFactor;
+            return score;
         }
 
         private void Fight(AiContext ai, TeamView view, AiState state)
         {
             AiPlayConfig play = ai.Config.Play;
-            if (group.Count == 0) { Note(ai, "attack over: group gone"); EndAttack(ai, state, false); return; }
+            if (group.Count == 0) { Note(ai, "attack over: group gone"); EndRecord(ai, state); EndAttack(ai, state, false); return; }
             float2 centre = GroupCentre(view, false);
 
             // The target is gone (seen gone, or the army moved on): the next one, nearest the army.
@@ -340,9 +455,32 @@ namespace WAR2D.Ai
             if (TargetId == 0 && ai.Now - targetSince > play.MarchSeconds) { ai.Board.Armies.Remove(TargetOwner); known = false; }
             // A building it now sees beats a remembered HQ spot.
             if (TargetId < 0 && ai.Board.EnemyBuildings.Count > 0) known = false;
+            // A building target it hasn't reached in MarchSeconds (walled off, across rock, a ghost it never sees again):
+            // it gives up on it for AvoidSeconds and picks again (else the whole army, reinforcements and all, waits for ever).
+            bool unreached = TargetId != 0 && ai.Now - targetSince > play.MarchSeconds
+                && math.distancesq(FrontCentre(view, state, play.ArmyRadius), (float2)Target + 0.5f) > play.ArmyRadius * play.ArmyRadius;
+            if (unreached)
+            {
+                Note(ai, $"gave up on {Target.x},{Target.y}: not reached in {play.MarchSeconds:F0} s");
+                ai.Board.Avoid(Target, ai.Now + ai.Policy.AvoidSeconds);
+                int2 given = Target;
+                if (!ChooseTarget(ai, centre, TargetOwner, Maxed(ai, state) ? 0f : 1f, out int nid, out int nowner, out int2 ntarget) || ntarget.Equals(given))
+                {
+                    EndRecord(ai, state);
+                    EndAttack(ai, state, true);
+                    return;
+                }
+                TargetId = nid;
+                TargetOwner = nowner;
+                Target = ntarget;
+                targetSince = ai.Now;
+                if (engaged) OrderGroup(ai, view, state, true);
+                else BeginStage(ai, view, state);
+            }
             if (!known || reachedEmpty)
             {
-                if (!ChooseTarget(ai, centre, TargetOwner, false, out int id, out int owner, out int2 target)) { Note(ai, $"attack over: no target left, group {group.Count}"); EndAttack(ai, state, true); return; }
+                // Moving on: any target its group beats (maxed: any at all).
+                if (!ChooseTarget(ai, centre, TargetOwner, Maxed(ai, state) ? 0f : 1f, out int id, out int owner, out int2 target)) { Note(ai, $"attack over: no target left, group {group.Count}"); EndRecord(ai, state); EndAttack(ai, state, true); return; }
                 Note(ai, $"next target {target.x},{target.y} building {id != 0}");
                 TargetId = id;
                 TargetOwner = owner;
@@ -354,32 +492,32 @@ namespace WAR2D.Ai
 
             // The fight is at the front (the group strings out between home and the target): the units nearest the target.
             float2 front = FrontCentre(view, state, play.ArmyRadius);
-            if (ai.Difficulty.Retreats)
+            // Retreat and regroup checks are micro: on its attentive thinks only (AI overhaul §2.3).
+            if (ai.Difficulty.Retreats && ai.Attentive)
             {
                 centre = front;
-                float ours = 0f, all = 0f;
                 // Engaged: the group within two fight radii (what can join the fight). Marching to its staging point: the whole
                 // group (a strung-out march meeting a defence is not a lost fight; it gathers at the stage first).
-                float r2 = engaged ? 4f * play.ArmyRadius * play.ArmyRadius : float.MaxValue;
-                foreach (int i in state.Combat)
-                {
-                    AiUnit u = view.OwnUnits[i];
-                    if (!group.Contains(u.Id)) continue;
-                    float v = StrengthEstimate.Of(ai.Game, u);
-                    all += v;
-                    if (math.distancesq(u.Position, centre) <= r2) ours += v;
-                }
-                float theirs = StrengthEstimate.EnemyNear(ai.Game, view, centre, play.ArmyRadius, play.TurretStrength);
+                Force local = engaged ? AiForces.Own(ai, group, centre, 2f * play.ArmyRadius) : AiForces.Own(ai, group);
+                Force all = AiForces.Own(ai, group);
+                Force theirs = AiForces.EnemyNear(ai, centre, play.ArmyRadius);
+                float noise = ai.Noise();
+                float localAdvantage = FightModel.Advantage(local, theirs, ai.Policy.RangeWeight) * noise;
+                float allAdvantage = FightModel.Advantage(all, theirs, ai.Policy.RangeWeight) * noise;
+                float retreatAt = ai.Difficulty.RetreatAdvantage;
                 // Maxed out (no upkeep room, money piling up), a trade costs it nothing it can't rebuild: it fights on.
-                bool maxed = ai.Difficulty.KeepsUpkeepPaid && state.Free >= play.MaxedAttackResources && !state.MayAddUpkeep(state.UpkeepOf(UnitType.Tank));
-                if (!maxed && engaged && theirs > 0f && ours < theirs * ai.Difficulty.RetreatRatio && ours < all * play.RegroupShare && all >= theirs * ai.Difficulty.RetreatRatio)
+                bool maxed = Maxed(ai, state);
+                if (!maxed && engaged && !theirs.Empty && localAdvantage < retreatAt && local.Value < all.Value * play.RegroupShare && allAdvantage >= retreatAt
+                    && !regroupedFor.Equals(Target))
                 {
+                    regroupedFor = Target;
                     // Only its vanguard is in the fight (the group strung out): the front falls back to the main body and
                     // the group stages there again, rather than the whole army going home.
                     float2 body = GroupCentre(view, false);
-                    Note(ai, $"regroup at {body.x:F0},{body.y:F0}: front {ours:F0} of {all:F0}, theirs {theirs:F0}");
+                    Note(ai, $"regroup at {body.x:F0},{body.y:F0}: front {Shown(localAdvantage)} of whole {Shown(allAdvantage)}");
                     stage = state.GroundNear(body, (int)play.StageDistance);
                     engaged = false;
+                    Sieging = false;
                     stagedAt = ai.Now;
                     marchStarted = ai.Now;
                     marchLimit = play.StageSeconds;
@@ -388,10 +526,15 @@ namespace WAR2D.Ai
                     orderedAt[AiKeys.Army] = ai.Now;
                     return;
                 }
-                if (!maxed && theirs > 0f && ours < theirs * ai.Difficulty.RetreatRatio)
+                // A retreat slip (AI overhaul §2.3): it misses this check and fights on.
+                // Already regrouped for this target and the whole group wins: it fights on (the rest are on their way).
+                bool wholeWins = regroupedFor.Equals(Target) && allAdvantage >= retreatAt;
+                if (!maxed && !wholeWins && !theirs.Empty && localAdvantage < retreatAt && !ai.Slip(AiSlip.Retreat))
                 {
-                    Note(ai, $"retreat group {group.Count} ours {ours:F0} theirs {theirs:F0}");
+                    Note(ai, $"retreat group {group.Count} advantage {Shown(localAdvantage)}");
+                    EndRecord(ai, state);
                     Mode = ArmyMode.Retreat;
+                    Sieging = false;
                     Retreats++;
                     retreatStarted = ai.Now;
                     lastAttackEnd = ai.Now;
@@ -456,21 +599,14 @@ namespace WAR2D.Ai
                 {
                     if (ids.Count > 0 && Due(ai, AiKeys.Army)) ai.Propose(AiPriority.Normal, AiAction.OrderUnits(ids, OrderKind.AttackMove, stage), AiKeys.Of(AiKeys.Army));
                     Reinforce(ai, view, state);
-                    Detonate(ai, view, state);
+                    if (ai.Attentive) Detonate(ai, view, state);
                     return;
                 }
             }
 
             Reinforce(ai, view, state);
-            if (ai.Difficulty.FocusFire && FocusTarget(view, front, play.ArmyRadius, out float2 weakest))
-            {
-                if (Due(ai, AiKeys.Army))
-                {
-                    GroupIds(view, state, ai.Difficulty.KeepsBacklineBack);
-                    if (ids.Count > 0) ai.Propose(AiPriority.Normal + 5f, AiAction.OrderUnits(ids, OrderKind.AttackMove, (int2)math.floor(weakest)), AiKeys.Of(AiKeys.Army));
-                }
-            }
-            else
+            UpdateSiege(ai, view, state);
+            if (!Sieging)
             {
                 // Units that arrived (or lost their order) go on to the target.
                 ids.Clear();
@@ -481,14 +617,147 @@ namespace WAR2D.Ai
                 }
                 if (ids.Count > 0 && Due(ai, AiKeys.Army)) ai.Propose(AiPriority.Normal, AiAction.OrderUnits(ids, OrderKind.AttackMove, Target), AiKeys.Of(AiKeys.Army));
             }
-            if (ai.Difficulty.KeepsBacklineBack) Backline(ai, view, state, centre);
+            // Micro (AI overhaul §2.3): on its attentive thinks only.
+            if (!ai.Attentive) return;
+            if (ai.Difficulty.FocusFire) FocusFire(ai, view, state, front);
+            if (ai.Difficulty.KeepsBacklineBack && !Sieging) Backline(ai, view, state, centre);
             if (ai.Difficulty.DigsPastWalls) DigWalls(ai, view, state, centre);
             Detonate(ai, view, state);
+        }
+
+        // ---- sieges and focus fire (AI overhaul §3.4, §3.6) ----
+
+        /// <summary>
+        /// Starts or ends a siege: turrets it knows at the target and units of its group that out-range them (by more than
+        /// a tile) start one; the turrets there all gone (or none of its units out-ranging them left) end it, and the
+        /// whole group engages.
+        /// </summary>
+        private void UpdateSiege(AiContext ai, TeamView view, AiState state)
+        {
+            float radius = ai.Config.Play.ArmyRadius;
+            float turretRange = 0f;
+            float best = float.MaxValue;
+            int2 nearest = Target;
+            float2 centre = GroupCentre(view, false);
+            foreach (AiBuilding b in ai.Board.EnemyBuildings.Values)
+            {
+                if (b.Progress < 100 || !ai.Game.Buildings.TryGetValue(b.Type, out BuildingConfig c) || !c.IsAttacker) continue;
+                if (math.distancesq((float2)b.Anchor, (float2)Target) > radius * radius) continue;
+                turretRange = math.max(turretRange, c.Range);
+                float d = math.distancesq((float2)b.Anchor, centre);
+                if (d < best) { best = d; nearest = b.Anchor; }
+            }
+            int outranging = 0;
+            if (turretRange > 0f)
+                foreach (int i in state.Combat)
+                {
+                    AiUnit u = view.OwnUnits[i];
+                    UnitConfig c = state.UnitOf(u.Type);
+                    if (group.Contains(u.Id) && c != null && c.Range > turretRange + 1f) outranging++;
+                }
+            bool siege = turretRange > 0f && outranging > 0;
+            if (!siege)
+            {
+                if (Sieging)
+                {
+                    Sieging = false;
+                    Note(ai, "siege over: the whole group engages");
+                    OrderGroup(ai, view, state, true);
+                }
+                return;
+            }
+            if (!Sieging) Note(ai, $"siege: {outranging} out-range the turrets at {Target.x},{Target.y}");
+            Sieging = true;
+            if (!Due(ai, AiKeys.Siege)) return;
+            // Out-ranging units shell the nearest turret; the rest hold at the staging point, out of its reach.
+            ids.Clear();
+            back.Clear();
+            foreach (int i in state.Combat)
+            {
+                AiUnit u = view.OwnUnits[i];
+                if (!group.Contains(u.Id)) continue;
+                UnitConfig c = state.UnitOf(u.Type);
+                if (c != null && c.Range > turretRange + 1f) ids.Add(u.Id);
+                else if (math.distancesq(u.Position, (float2)stage) > radius * radius * 0.25f) back.Add(u.Id);
+            }
+            if (ids.Count > 0) ai.Propose(AiPriority.High, AiAction.OrderUnits(ids, OrderKind.AttackMove, nearest), AiKeys.Of(AiKeys.Army));
+            if (back.Count > 0) ai.Propose(AiPriority.High, AiAction.OrderUnits(back, OrderKind.Move, stage), AiKeys.Of(AiKeys.Siege));
+        }
+
+        /// <summary>
+        /// Focus fire, as close as attack-moves get (AI overhaul §3.6): its group's units already in range of the weakest
+        /// enemy it sees near the front (within their range plus a tile) attack-move onto that enemy's tile; at least two of
+        /// them, so a lone unit doesn't leave the group. The rest keep the group order.
+        /// </summary>
+        private void FocusFire(AiContext ai, TeamView view, AiState state, float2 front)
+        {
+            if (!FocusTarget(view, front, ai.Config.Play.ArmyRadius, out float2 weakest)) return;
+            ids.Clear();
+            foreach (int i in state.Combat)
+            {
+                AiUnit u = view.OwnUnits[i];
+                if (!group.Contains(u.Id)) continue;
+                UnitConfig c = state.UnitOf(u.Type);
+                if (c == null || c.Range <= 0f) continue;
+                float reach = c.Range + 1f;
+                if (math.distancesq(u.Position, weakest) <= reach * reach) ids.Add(u.Id);
+            }
+            if (ids.Count >= 2 && Due(ai, AiKeys.Focus)) ai.Propose(AiPriority.Normal + 5f, AiAction.OrderUnits(ids, OrderKind.AttackMove, (int2)math.floor(weakest)), AiKeys.Of(AiKeys.Focus));
+        }
+
+        // ---- trades (AI overhaul §4.1) ----
+
+        /// <summary>Starts the attack's ledger: the kills and losses so far, its worth, and whether turrets defend the target more than an army.</summary>
+        private void StartRecord(AiContext ai, int2 target, float value)
+        {
+            recording = true;
+            recordEnemyLost = ai.Board.EnemyLost;
+            recordOwnLost = ai.Board.OwnLost;
+            recordValue = value;
+            recordTarget = target;
+            float turrets = AiForces.KnownTurrets(ai, (float2)target + 0.5f, ai.Config.Play.ArmyRadius, TargetOwner).Value;
+            recordTurrets = turrets > 0f && turrets >= AiForces.EnemyArmy(ai, TargetOwner).Value;
+        }
+
+        /// <summary>
+        /// Ends the attack's ledger: its trade (enemy worth lost over its own) moves its caution, and a bad one marks the
+        /// target avoided (and, when turrets defended it, weighs its counters against turrets more). An attack that never
+        /// really fought (both losses under a tenth of its worth) teaches nothing.
+        /// </summary>
+        private void EndRecord(AiContext ai, AiState state)
+        {
+            if (!recording) return;
+            recording = false;
+            AiPolicyConfig policy = ai.Policy;
+            float enemy = ai.Board.EnemyLost - recordEnemyLost, own = ai.Board.OwnLost - recordOwnLost;
+            if (enemy + own < 0.1f * recordValue) return;
+            float trade = enemy / math.max(1f, own);
+            LastTrade = trade;
+            string verdict = "even";
+            if (trade < policy.BadTrade)
+            {
+                Caution = math.min(policy.MaxCaution, Caution * policy.CautionUp);
+                BadTradeStreak++;
+                ai.Board.Avoid(recordTarget, ai.Now + policy.AvoidSeconds);
+                if (recordTurrets) state.TurretCounterBoost = policy.TurretCounterBoost;
+                verdict = "bad";
+            }
+            else if (trade > policy.GoodTrade)
+            {
+                Caution = math.max(policy.MinCaution, Caution * policy.CautionDown);
+                BadTradeStreak = 0;
+                verdict = "good";
+            }
+            string line = $"{state.PlayingSeconds / 60.0:F1}m {verdict} trade {trade:F2} (killed {enemy:F0}, lost {own:F0}) at {recordTarget.x},{recordTarget.y}, caution {Caution:F2}";
+            if (Trades.Count >= 20) Trades.RemoveAt(0);
+            Trades.Add(line);
+            Note(ai, line);
         }
 
         private void EndAttack(AiContext ai, AiState state, bool sendHome)
         {
             Mode = ArmyMode.Gather;
+            Sieging = false;
             lastAttackEnd = ai.Now;
             if (sendHome && group.Count > 0)
             {
@@ -500,7 +769,7 @@ namespace WAR2D.Ai
             TargetId = 0;
         }
 
-        /// <summary>Orders the whole group at the target (Hard: its Artillery and Snipers to a point behind the front).</summary>
+        /// <summary>Orders the whole group at the target (with <c>KeepsBacklineBack</c>: its Artillery and Snipers to a point behind the front).</summary>
         private void OrderGroup(AiContext ai, TeamView view, AiState state, bool force)
         {
             GroupIds(view, state, ai.Difficulty.KeepsBacklineBack);
@@ -509,7 +778,7 @@ namespace WAR2D.Ai
             if (ai.Difficulty.KeepsBacklineBack) Backline(ai, view, state, GroupCentre(view, true), force);
         }
 
-        /// <summary>Hard: Artillery and Snipers attack-move to a point <c>BacklineDistance</c> behind the front, towards home.</summary>
+        /// <summary><c>KeepsBacklineBack</c>: Artillery and Snipers attack-move to a point <c>BacklineDistance</c> behind the front, towards home.</summary>
         private void Backline(AiContext ai, TeamView view, AiState state, float2 front, bool force = false)
         {
             if (!force && !Due(ai, AiKeys.Backline)) return;
@@ -540,15 +809,17 @@ namespace WAR2D.Ai
             foreach (int i in state.Combat)
             {
                 AiUnit u = view.OwnUnits[i];
-                if (group.Contains(u.Id) || state.Scouts.Contains(u.Id) || math.distancesq(u.Position, g) > r2) continue;
+                if (group.Contains(u.Id) || Busy(state, u.Id) || math.distancesq(u.Position, g) > r2) continue;
                 ids.Add(u.Id);
             }
             if (ids.Count < ai.Config.Play.ReinforceSize) return;
+            // A home guard after a threat at its base stays home (AI overhaul §3.5).
+            if (ai.Policy.HomeGuardShare > 0f && ai.Now - ai.Board.LastBaseThreat <= ai.Policy.HomeGuardSeconds) return;
             foreach (int id in ids) group.Add(id);
             ai.Propose(AiPriority.Normal, AiAction.OrderUnits(ids, OrderKind.AttackMove, engaged ? Target : stage), AiKeys.Of(AiKeys.Army, 1));
         }
 
-        /// <summary>Hard: the most damaged enemy unit it sees near its army.</summary>
+        /// <summary>Focus fire: the most damaged enemy unit it sees near its army.</summary>
         private static bool FocusTarget(TeamView view, float2 centre, float radius, out float2 at)
         {
             at = default;
@@ -569,7 +840,7 @@ namespace WAR2D.Ai
             return n;
         }
 
-        /// <summary>Hard: Diggers in the group dig out the enemy walls it knows near the army.</summary>
+        /// <summary><c>DigsPastWalls</c>: Diggers in the group dig out the enemy walls it knows near the army.</summary>
         private void DigWalls(AiContext ai, TeamView view, AiState state, float2 centre)
         {
             if (!Due(ai, AiKeys.Dig)) return;
@@ -665,40 +936,38 @@ namespace WAR2D.Ai
             }
             // A threat at an expansion is met too: home units near their base or near the threat come (a threat it
             // ignored would hold the army in Defend for good).
-            float theirs = StrengthEstimate.EnemyNear(ai.Game, view, threat, play.ArmyRadius, play.TurretStrength);
-            float home = 0f;
+            Force theirs = AiForces.EnemyNear(ai, threat, play.ArmyRadius);
             ids.Clear();
+            home.Clear();
             float d2 = play.DefendRadius * play.DefendRadius;
             foreach (int i in state.Combat)
             {
                 AiUnit u = view.OwnUnits[i];
-                if (group.Contains(u.Id) || state.Scouts.Contains(u.Id)) continue;
+                if (group.Contains(u.Id) || Busy(state, u.Id)) continue;
                 if (math.distancesq(u.Position, state.Home) > d2 && math.distancesq(u.Position, threat) > d2) continue;
-                home += StrengthEstimate.Of(ai.Game, u);
+                home.Add(u.Id);
                 // Only those not already on their way there (an order is a click: it isn't repeated for nothing).
                 if (!u.HasOrder || math.distancesq(u.OrderGoal, threat) > play.ArmyRadius * play.ArmyRadius) ids.Add(u.Id);
             }
+            Force homeForce = AiForces.Own(ai, home);
             hasThreat = true;
             threatAt = threat;
-            threatStrength = theirs;
-            homeStrength = home;
+            homeAdvantage = AiForces.Advantage(ai, homeForce, theirs);
+            bool atBase = math.distance(threat, state.Home) <= play.DefendRadius;
+            if (atBase) ai.Board.LastBaseThreat = ai.Now;
             // Home can't hold a real attack on its base (not a scout or a raid on an outpost): the attack comes back,
             // unless it is already at its target (a base trade it may win).
-            float groupStrength = 0f;
-            if (Mode == ArmyMode.Attack)
-                foreach (int i in state.Combat)
-                {
-                    AiUnit u = view.OwnUnits[i];
-                    if (group.Contains(u.Id)) groupStrength += StrengthEstimate.Of(ai.Game, u);
-                }
-            bool serious = theirs >= groupStrength * play.RecallShare && math.distance(threat, state.Home) <= play.DefendRadius;
+            float groupValue = Mode == ArmyMode.Attack ? AiForces.Own(ai, group).Value : 0f;
+            bool serious = theirs.Value >= groupValue * play.RecallShare && atBase;
             bool atTarget = engaged && math.distancesq(FrontCentre(view, state, play.ArmyRadius), Target) <= 4f * play.ArmyRadius * play.ArmyRadius;
-            if (Mode == ArmyMode.Attack && home < theirs && serious && !atTarget)
+            if (Mode == ArmyMode.Attack && homeAdvantage < 1f && serious && !atTarget)
             {
-                Note(ai, $"recalled: home {home:F0} threat {theirs:F0}");
+                Note(ai, $"recalled: home advantage {Shown(homeAdvantage)}, threat {theirs.Value:F0}");
+                EndRecord(ai, state);
                 // Home can't hold: the attack comes back.
                 foreach (int id in group) ids.Add(id);
                 group.Clear();
+                Sieging = false;
                 lastAttackEnd = ai.Now;
                 Mode = ArmyMode.Defend;
             }
@@ -707,6 +976,8 @@ namespace WAR2D.Ai
             if (ids.Count > 0 && Due(ai, AiKeys.Defend))
                 ai.Propose(AiPriority.High + 5f, AiAction.OrderUnits(ids, OrderKind.AttackMove, (int2)math.floor(threat)), AiKeys.Of(AiKeys.Defend));
         }
+
+        private readonly HashSet<int> home = new HashSet<int>();
 
         private bool FindThreat(AiContext ai, AiState state, out float2 at)
         {

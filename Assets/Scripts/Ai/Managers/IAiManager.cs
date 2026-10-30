@@ -16,15 +16,18 @@ namespace WAR2D.Ai
     /// <summary>What a manager sees and how it proposes, for one think (one per brain, reused).</summary>
     public sealed class AiContext
     {
-        internal AiContext(int owner, AiDifficultyConfig difficulty, AiStyleConfig style, AiConfig config, GameConfigData game, Blackboard board, ActionBudget budget)
+        internal AiContext(int owner, AiDifficultyConfig difficulty, AiStyle styleName, AiStyleConfig style, AiConfig config, GameConfigData game, Blackboard board, ActionBudget budget, AiDice dice, AiVariation variation)
         {
             Owner = owner;
             Difficulty = difficulty;
+            StyleName = styleName;
             Style = style;
             Config = config;
             Game = game;
             Board = board;
             Budget = budget;
+            Dice = dice;
+            Variation = variation;
             State = new AiState(this);
         }
 
@@ -33,8 +36,32 @@ namespace WAR2D.Ai
 
         public AiDifficultyConfig Difficulty { get; }
 
-        /// <summary>The style it plays (Random already resolved).</summary>
-        public AiStyleConfig Style { get; }
+        /// <summary>The style it plays now (Random already resolved; varied, and maybe switched mid-game, AI overhaul §4.4).</summary>
+        public AiStyleConfig Style { get; internal set; }
+
+        /// <summary>Which style <see cref="Style"/> is.</summary>
+        public AiStyle StyleName { get; internal set; }
+
+        /// <summary>Its random stream: slips, noise, attention.</summary>
+        public AiDice Dice { get; }
+
+        /// <summary>Its per-match variation (gathering angle; style numbers are already varied).</summary>
+        public AiVariation Variation { get; }
+
+        /// <summary>The policy every difficulty plays (AI overhaul §2).</summary>
+        public AiPolicyConfig Policy => Config.Policy;
+
+        /// <summary>Switches the style it plays (the brain's <see cref="AiBrain.SetStyle"/>; AI overhaul §4.4).</summary>
+        internal System.Action<AiStyle> SwitchStyle;
+
+        /// <summary>True when this think's attention roll allows army micro (AI overhaul §2.3).</summary>
+        public bool Attentive { get; internal set; } = true;
+
+        /// <summary>True when this kind of decision slips now (<see cref="AiDice.Slip"/>).</summary>
+        public bool Slip(AiSlip kind) => Dice.Slip(kind, Now);
+
+        /// <summary>A factor to multiply a fight estimate by: 1 at full insight, off by up to <c>EstimateNoise</c> at none.</summary>
+        public float Noise() => Dice.Noise(Difficulty.Insight, Config.Policy.EstimateNoise);
 
         /// <summary>Every AI number (<c>GameConfig.xml</c> &lt;Ai&gt;).</summary>
         public AiConfig Config { get; }
@@ -56,8 +83,11 @@ namespace WAR2D.Ai
         /// <summary>The AI clock now.</summary>
         public double Now => View != null ? View.Time : 0;
 
+        /// <summary>True while an army manager thinks: its proposals draw on the army pool (AI overhaul §5.1).</summary>
+        public bool ArmyPool { get; internal set; }
+
         /// <summary>Proposes an action (see <see cref="ActionBudget.Propose"/>; a non-zero key replaces the same key's waiting proposal).</summary>
-        public void Propose(float priority, in AiAction action, int key = 0) => Budget.Propose(priority, action, key, Now);
+        public void Propose(float priority, in AiAction action, int key = 0) => Budget.Propose(priority, action, key, Now, ArmyPool);
     }
 
     /// <summary>

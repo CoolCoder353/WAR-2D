@@ -33,13 +33,13 @@ namespace WAR2D.Ai
             AiPlayConfig play = ai.Config.Play;
 
             KeepUpkeepPaid(ai, view, state);
-            // Upkeep caught up with income (Normal, Hard; Easy just goes unpaid): more Miners, as many at once as its Builders staff (a Miner being built already counts for its income).
+            // Upkeep caught up with income (every difficulty plans upkeep since the AI overhaul): more Miners, as many at once as its Builders staff (a Miner being built already counts for its income).
             int minersBuilding = state.BuildingCount[(int)BuildingType.Miner] - state.CompleteCount[(int)BuildingType.Miner];
             float incomeSoon = state.Income + minersBuilding * ai.Game.Resources.MiningRate;
             // As many Miner blueprints at once as its Builders staff (one at a time would let a far one hold up the rest).
             int minersAtOnce = math.max(1, state.Builders.Count / math.max(1, play.BuildersPerBlueprint));
             bool capped = ai.Difficulty.KeepsUpkeepPaid && incomeSoon * play.UpkeepIncomeShare - state.Upkeep < play.UpkeepHeadroom && minersBuilding < minersAtOnce;
-            // Normal, Hard: Miners on every gem it can reach, as many at once as its Builders staff (they cost no upkeep
+            // Saturating (Ambition from SaturateAmbition): Miners on every gem it can reach, as many at once as its Builders staff (they cost no upkeep
             // and pay for themselves in seconds); an area whose search found no spot is full for a while.
             bool more = ai.Difficulty.SaturatesMiners && minersBuilding < minersAtOnce;
             int baseKey = AiKeys.Of(AiKeys.Place, (int)BuildingType.Miner, -1);
@@ -53,8 +53,10 @@ namespace WAR2D.Ai
 
             // The style's Miners, and more while its income barely covers its upkeep (it builds Miners before anything else that costs upkeep).
             float baseRadius = play.BaseRadius;
-            if (state.CountNear(BuildingType.Miner, state.Home, baseRadius + 4f) < ai.Style.Miners || ((capped || more) && !baseFull))
-                state.RequestBuilding(BuildingType.Miner, state.Hq.Anchor, baseRadius, AiPriority.High - 2f, baseKey);
+            // Its projected upkeep ahead of its projected income (AI overhaul §3.2): Miners come first, before anything else.
+            float minerPriority = state.Deficit ? AiPriority.Critical - 1f : AiPriority.High - 2f;
+            if (state.CountNear(BuildingType.Miner, state.Home, baseRadius + 4f) < ai.Style.Miners || ((capped || more || state.Deficit) && !baseFull))
+                state.RequestBuilding(BuildingType.Miner, state.Hq.Anchor, baseRadius, minerPriority, baseKey);
 
             foreach (int index in claimed)
             {
@@ -62,7 +64,7 @@ namespace WAR2D.Ai
                 if (!state.Placement.Explored(region.Centre)) { SendBuilder(ai, state, region.Centre, index); continue; }
                 int key = AiKeys.Of(AiKeys.Place, (int)BuildingType.Miner, index);
                 if (state.CountNear(BuildingType.Miner, region.Centre, region.Radius + 4f) < ai.Style.MinersPerExpansion || ((capped || more) && !state.IsSaturated(key)))
-                    state.RequestBuilding(BuildingType.Miner, region.Centre, region.Radius + 4f, ai.Difficulty.SaturatesMiners ? AiPriority.High - 2f : AiPriority.Normal + 5f, key);
+                    state.RequestBuilding(BuildingType.Miner, region.Centre, region.Radius + 4f, state.Deficit ? minerPriority : ai.Difficulty.SaturatesMiners ? AiPriority.High - 2f : AiPriority.Normal + 5f, key);
             }
         }
 
@@ -82,10 +84,11 @@ namespace WAR2D.Ai
             int wanted = math.min(ai.Style.Expansions, ai.Difficulty.MaxExpansions);
             // On time (by difficulty and style), or sooner when its upkeep has caught up with its income and it has money to spare.
             bool onTime = state.PlayingSeconds >= ai.Difficulty.ExpandAfterSeconds * ai.Style.ExpandTiming;
-            bool squeezed = capped && state.Free >= ai.Config.Play.CappedExpandResources;
+            // Money piling up with no upkeep room for more units (AI overhaul §3.3) is a squeeze too: more income makes room.
+            bool squeezed = capped && (state.Free >= ai.Config.Play.CappedExpandResources || state.Banked);
             // Upkeep-capped with money to spare, it takes more than its style's (up to its difficulty's most): money banked is wasted.
             if (squeezed && onTime) wanted = ai.Difficulty.MaxExpansions;
-            // Normal, Hard: its base and every expansion it holds full of Miners, it takes the next one (up to its difficulty's most).
+            // Saturating: its base and every expansion it holds full of Miners, it takes the next one (up to its difficulty's most).
             bool full = ai.Difficulty.SaturatesMiners && baseFull && AllHeldFull(state);
             if (full) wanted = ai.Difficulty.MaxExpansions;
             if (claimed.Count >= wanted || !(onTime || squeezed || full)) return held;
@@ -137,7 +140,7 @@ namespace WAR2D.Ai
             sentAt[index] = ai.Now;
         }
 
-        /// <summary>Normal and Hard: upkeep ahead of income with a short balance cancels blueprints, then demolishes the costliest building.</summary>
+        /// <summary>Upkeep ahead of income with a short balance cancels blueprints, then demolishes the costliest building.</summary>
         private void KeepUpkeepPaid(AiContext ai, TeamView view, AiState state)
         {
             if (!ai.Difficulty.KeepsUpkeepPaid || !state.UpkeepTight || ai.Now < nextEmergency) return;

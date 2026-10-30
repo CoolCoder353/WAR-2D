@@ -113,6 +113,11 @@ function summarise(games) {
       unpaidSeconds: mean(seats.map((x) => x.unpaidSeconds || 0)),
       peakArmy: mean(seats.map((x) => x.peakArmy || 0)),
       firstAttackMinutes: mean(seats.filter((x) => x.firstAttackSeconds >= 0).map((x) => x.firstAttackSeconds / 60)),
+      // AI overhaul fields (absent in older results): attacks' trades, caution, raids, style switches.
+      caution: mean(seats.filter((x) => x.caution != null).map((x) => x.caution)),
+      tradeRatio: (() => { const k = seats.reduce((n, x) => n + (x.killed || 0), 0), l = seats.reduce((n, x) => n + (x.lost || 0), 0); return l > 0 ? k / l : NaN; })(),
+      raids: mean(seats.map((x) => x.raids || 0)),
+      switches: seats.reduce((n, x) => n + ((x.switches || []).length), 0),
     };
   }
   return {
@@ -143,6 +148,7 @@ function formatBrief(s) {
   if (mirror.length) out.push(`  Mirror wins, by style: ${mirror.join(' · ')}`);
   const diff = Object.entries(s.byDifficulty);
   if (diff.length) out.push(`  Mean highest balance: ${diff.map(([d, x]) => `${d} ${Math.round(x.highestBalance)}`).join(' · ')}; unpaid s: ${diff.map(([d, x]) => `${d} ${Math.round(x.unpaidSeconds)}`).join(' · ')}`);
+  if (diff.some(([, x]) => !Number.isNaN(x.tradeRatio))) out.push(`  Killed/lost: ${diff.map(([d, x]) => `${d} ${Number.isNaN(x.tradeRatio) ? '–' : x.tradeRatio.toFixed(2)}`).join(' · ')}; caution: ${diff.map(([d, x]) => `${d} ${Number.isNaN(x.caution) ? '–' : x.caution.toFixed(2)}`).join(' · ')}; raids/seat: ${diff.map(([d, x]) => `${d} ${x.raids.toFixed(1)}`).join(' · ')}; style switches: ${diff.map(([d, x]) => `${d} ${x.switches}`).join(' · ')}`);
   const f = s.failures;
   if (f.files.length) out.push(`  Unfinished: ${f.caps} caps, ${f.draws} draws, ${f.errors} errors (${f.files.slice(0, 4).join(', ')}${f.files.length > 4 ? ', …' : ''})`);
   if (f.errorMessages.length) out.push(`  Errors: ${f.errorMessages.slice(0, 3).map(([e, n]) => `"${e}" ×${n}`).join(' · ')} (each match's log is kept in the results directory)`);

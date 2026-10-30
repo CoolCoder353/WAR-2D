@@ -2,8 +2,10 @@
 // Tunes GameConfig.xml numbers (AI knobs, or any balance value) against the AI bench, with nobody watching: it
 // writes a candidate config per setting, plays it with tools/ai-bench.sh --brief (AI_BENCH_CONFIG, so no rebuild),
 // scores it, and keeps the best. Coordinate search: each pass tries every listed value of one knob at a time with
-// the others at their best so far. Then a confirm stage replays the best few and the base config on fresh seeds,
-// so a lucky screen doesn't win. It prints one line per candidate and a short final table, and writes everything
+// the others at their best so far. A candidate and the best so far always play the same seeds (paired), and with the
+// "stronger" objective a close call plays on in steps of more seeds until their 95% intervals separate or maxSeeds
+// is reached (sequential stopping), so clear losers stop early and close ones get the games to tell them apart.
+// Then a confirm stage replays the best few and the base config on the same fresh seeds, so a lucky screen doesn't win. It prints one line per candidate and a short final table, and writes everything
 // under the tune directory: <id>.xml (the candidate config), <id>/ (its bench results and full report), tune.jsonl
 // (one line per run; re-running with the same --out skips what it already played) and summary.md.
 //
@@ -11,19 +13,20 @@
 //        node tools/ai-tune.js apply <tune-dir> [candidate-id]   (write a candidate's values into the base config)
 //
 // The spec (JSON; see tools/ai-tune.example.json), every field but "knobs" optional:
-//   knobs      { "<path>": [values...] }: config paths (tools/lib/config-xml.js, e.g. "Difficulty.Hard.AttackRatio",
+//   knobs      { "<path>": [values...] }: config paths (tools/lib/config-xml.js, e.g. "Policy.AttackAdvantage",
 //              "Unit.Tank.Damage", "DamageTable.Tank.Wall") and the values to try; the base value is always tried
 //   config     the base config (default Assets/Resources/GameConfig.xml)
 //   player     the Linux player (default Builds/Linux/WAR-2D.x86_64)
-//   bench      { sizes, pairings, styles, seeds, jobs, cap, scale, seed0 }: AI_BENCH_* for the screen runs
-//              (defaults "512", "Hard-Normal Normal-Easy", the four styles, 8, 4, 40, 32, 101)
+//   bench      { sizes, pairings, styles, seeds, jobs, cap, scale, seed0, step, maxSeeds }: AI_BENCH_* for the screen runs
+//              (defaults "512", "Hard-Normal Normal-Easy", the four styles, 8, 4, 40, 32, 101, 8, 32); step and maxSeeds
+//              set the sequential stopping (maxSeeds = seeds turns it off)
 //   objective  { kind: "stronger" }: the stronger side's win rate over the non-mirror pairings (default), or
 //              { kind: "style", style: "Turtle" | "*", target: 0.5 }: in the mirror pairings (same difficulty), a style's
 //              win rate against other styles as close to target as it gets ("*": the worst style's distance).
 //              Both subtract failurePenalty (default 0.5) times the share of matches that didn't finish.
 //   passes     coordinate-search passes (default 2; stops early when a pass changes nothing)
 //   minGain    how much a score must beat the best to replace it (default 0)
-//   confirm    { top, seeds, seed0 }: candidates replayed on fresh seeds (default 3, 16, 1001); top 0 skips it
+//   confirm    { top, seeds, seed0 }: candidates replayed on fresh seeds (default 3, 32, 1001); top 0 skips it
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -35,11 +38,11 @@ const ROOT = path.resolve(__dirname, '..');
 const DEFAULTS = {
   config: 'Assets/Resources/GameConfig.xml',
   player: 'Builds/Linux/WAR-2D.x86_64',
-  bench: { sizes: '512', pairings: 'Hard-Normal Normal-Easy', styles: 'Rusher Turtle Expander Balanced', seeds: 8, jobs: 4, cap: 40, scale: 32, seed0: 101 },
+  bench: { sizes: '512', pairings: 'Hard-Normal Normal-Easy', styles: 'Rusher Turtle Expander Balanced', seeds: 8, jobs: 4, cap: 40, scale: 32, seed0: 101, step: 8, maxSeeds: 32 },
   objective: { kind: 'stronger', failurePenalty: 0.5 },
   passes: 2,
   minGain: 0,
-  confirm: { top: 3, seeds: 16, seed0: 1001 },
+  confirm: { top: 3, seeds: 32, seed0: 1001 },
 };
 
 const isNum = (v) => v !== '' && v !== null && !Number.isNaN(Number(v));
@@ -73,7 +76,7 @@ function scoreOf(summary, objective) {
     if (!games) throw new Error('objective "stronger" needs a non-mirror pairing (e.g. Hard-Normal)');
     const [lo, hi] = bench.wilson(wins, games);
     const per = rows.length > 1 ? `; ${rows.map((r) => `${r.pairing} ${pct(r.rate)}`).join(', ')}` : '';
-    return { score: wins / games - penalty, detail: `stronger ${pct(wins / games)} (${wins}/${games}, 95% ${pct(lo)}–${pct(hi)}${per})${unfinished}` };
+    return { score: wins / games - penalty, wins, games, detail: `stronger ${pct(wins / games)} (${wins}/${games}, 95% ${pct(lo)}–${pct(hi)}${per})${unfinished}` };
   }
   if (objective.kind === 'style') {
     const target = objective.target ?? 0.5;
@@ -175,22 +178,52 @@ async function tune(specFile, outArg, dryRun) {
     return entry;
   }
 
-  // Screen: coordinate search from the base config.
-  let best = await evaluate(baseValues, 'screen', b.seeds, b.seed0);
+  // A screen result over its first n chunks of seeds: chunk 0 is bench.seeds from seed0, each later one bench.step
+  // more seeds after the last, so every config plays the same seeds in the same order (paired).
+  const step = Math.max(1, b.step || b.seeds);
+  const maxChunks = 1 + Math.max(0, Math.ceil(((b.maxSeeds || b.seeds) - b.seeds) / step));
+  const chunk = (i) => (i === 0 ? { seeds: b.seeds, seed0: b.seed0 } : { seeds: step, seed0: b.seed0 + b.seeds + (i - 1) * step });
+  const screenedResults = new Map();
+  async function screen(values, chunks) {
+    const runs = [];
+    for (let i = 0; i < chunks; i++) runs.push(await evaluate(values, 'screen', chunk(i).seeds, chunk(i).seed0));
+    const summary = bench.summarise(bench.loadGames(runs.map((e) => path.join(out, e.id))));
+    const result = { ...scoreOf(summary, spec.objective), values, chunks, id: runs[runs.length - 1].id, seeds: runs.reduce((n, e) => n + e.seeds, 0) };
+    const known = screenedResults.get(keyOf(values));
+    if (!known || known.chunks <= chunks) screenedResults.set(keyOf(values), result);
+    return result;
+  }
+  const separated = (x, y) => {
+    if (x.games == null || y.games == null) return true; // only the "stronger" objective has win counts to test
+    const [xl, xh] = bench.wilson(x.wins, x.games), [yl, yh] = bench.wilson(y.wins, y.games);
+    return xh < yl || yh < xl;
+  };
+
+  // Screen: coordinate search from the base config; a close call against the best plays on (sequential stopping).
+  let best = await screen(baseValues, 1);
   for (let pass = 1; pass <= spec.passes; pass++) {
     let changed = false;
     for (const k of knobs) {
       for (const v of k.values) {
         if (v === best.values[k.path]) continue;
-        const e = await evaluate({ ...best.values, [k.path]: v }, 'screen', b.seeds, b.seed0);
-        if (e.score > best.score + spec.minGain) { best = e; changed = true; }
+        const values = { ...best.values, [k.path]: v };
+        let n = 1;
+        let e = await screen(values, n), incumbent = await screen(best.values, n);
+        while (n < maxChunks && !separated(e, incumbent)) {
+          n++;
+          e = await screen(values, n);
+          incumbent = await screen(best.values, n);
+        }
+        if (n > 1) console.log(`  ${changes(values)} against the best on ${e.seeds} seeds each: ${e.score.toFixed(3)} vs ${incumbent.score.toFixed(3)}${separated(e, incumbent) ? '' : ' (still overlapping at maxSeeds)'}`);
+        if (e.score > incumbent.score + spec.minGain) { best = e; changed = true; } else best = incumbent;
       }
     }
     if (!changed) break;
   }
 
   // Confirm: the best few distinct screen results and the base config, on fresh seeds.
-  const screened = [...new Map(log.filter((e) => e.seeds === b.seeds && e.seed0 === b.seed0).map((e) => [keyOf(e.values), e])).values()].sort((x, y) => y.score - x.score || nChanged(x.values) - nChanged(y.values));
+  // Each config's screen result on the most seeds it played (paired with the best it was measured against).
+  const screened = [...screenedResults.values()].sort((x, y) => y.score - x.score || nChanged(x.values) - nChanged(y.values));
   let ranked;
   if (spec.confirm.top > 0) {
     // Runs tied with the last pick are ones the screen couldn't tell apart: confirm them too, up to twice top.
@@ -206,7 +239,7 @@ async function tune(specFile, outArg, dryRun) {
 
   const lines = [
     `# AI tune: ${path.basename(out)}`, '',
-    `Spec \`${shown(specFile)}\`, objective \`${JSON.stringify(spec.objective)}\`; screen ${b.seeds} seeds from ${b.seed0}, confirm ${spec.confirm.seeds} seeds from ${spec.confirm.seed0}; bench ${b.sizes} · ${b.pairings} · ${b.styles}.`, '',
+    `Spec \`${shown(specFile)}\`, objective \`${JSON.stringify(spec.objective)}\`; screen ${b.seeds} seeds from ${b.seed0} (up to ${b.maxSeeds || b.seeds} on a close call, in steps of ${step}), confirm ${spec.confirm.seeds} seeds from ${spec.confirm.seed0}; bench ${b.sizes} · ${b.pairings} · ${b.styles}.`, '',
     '| Rank | Run | Changes from the base config | Screen | Confirm |', '| --- | --- | --- | --- | --- |',
     ...ranked.map((r, i) => `| ${i + 1} | ${(r.confirm || r.screen).id} | ${changes(r.screen.values)} | ${r.screen.score.toFixed(3)} | ${r.confirm ? `${r.confirm.score.toFixed(3)}: ${r.confirm.detail}` : '–'} |`),
   ];
