@@ -196,7 +196,19 @@ public class HudTests
 
         yield return PlayModeMatch.WaitUntil(() => root.Q<Button>("cmd-stop").enabledInHierarchy, 2f);
         Click(root.Q<Button>("cmd-stop"));
-        yield return new WaitForSeconds(1f); // the order reaches the server and the corrections come back
+        // The order reaches the server and the corrections come back; the predicted positions may still overshoot
+        // and creep onto the server's (known-issues: "Client positions creep after Stop"). Wait until the centre has
+        // settled (moved under 0.05 tiles over half a second), then require it to stay put.
+        float2 mark = Centre(selection);
+        float markAt = Time.realtimeSinceStartup;
+        yield return PlayModeMatch.WaitUntil(() =>
+        {
+            if (Time.realtimeSinceStartup - markAt < 0.5f) return false;
+            bool still = math.distance(Centre(selection), mark) < 0.05f;
+            mark = Centre(selection);
+            markAt = Time.realtimeSinceStartup;
+            return still;
+        }, 10f, () => "the selection never stopped moving after Stop");
         float2 stopped = Centre(selection);
         yield return new WaitForSeconds(1f);
         Assert.That(math.distance(Centre(selection), stopped), Is.LessThan(0.3f), "Stop halts the selection");
@@ -312,13 +324,21 @@ public class HudTests
         yield return PlayModeMatch.WaitUntil(() => math.distance(Centre(selection), goal) < math.distance(start, goal) - 2f, 10f);
     }
 
-    private const int Bot = 1000002;
+    private static readonly int Bot = AiOwnerIds.For(1);
 
     /// <summary>Adds a hostile bot with an indestructible HQ as far from <paramref name="from"/> as fits; returns its anchor.</summary>
+    private static bool BotHasABuilding()
+    {
+        using var q = PlayModeMatch.Em.CreateEntityQuery(typeof(BuildingData));
+        using var buildings = q.ToComponentDataArray<BuildingData>(Unity.Collections.Allocator.Temp);
+        foreach (BuildingData b in buildings) if (b.ownerId == Bot) return true;
+        return false;
+    }
+
     private static int2 AddBotWithHQ(int2 from)
     {
         DevApi.AllowForTests = true;
-        GameCore.Instance.AddBot(Bot, 1e9f);
+        GameCore.Instance.DevAddScriptedAi(Bot, 1e9f);
         WorldStateManager wsm = WorldStateManager.Instance;
         (int2 min, int2 max) = wsm.MapBounds;
         int2 far = new int2(from.x < (min.x + max.x) / 2 ? max.x - 6 : min.x + 6, from.y < (min.y + max.y) / 2 ? max.y - 6 : min.y + 6);
@@ -412,11 +432,10 @@ public class HudTests
             yield return null;
             Assert.That(hud.Diplomacy.IsOpen, Is.True, "the Diplomacy button opens the panel");
 
-            // The bot has no player object, so its row shows as eliminated with its switches disabled;
-            // send the attack switch's event the way an enabled switch does.
-            // Bots join after match start, so resend everyone's row once the bot has a slot.
+            // The Scripted seat joined after match start: the server resends every row by itself once it has a
+            // slot (no SendAllDiplomacy here), and its row is a live player's (v0.14: it has a player object).
             yield return PlayModeMatch.WaitUntil(() => sim.TrySlotOf(Bot, out _), 5f);
-            GameCore.Instance.SendAllDiplomacy();
+            yield return PlayModeMatch.WaitUntil(() => hud.Model.Players.Any(p => p.OwnerId == Bot && !p.Eliminated), 5f);
             int botBit = 1 << GameCore.Instance.PlayerOrder.IndexOf(Bot);
             yield return PlayModeMatch.WaitUntil(() => (hud.Model.AttackMask & botBit) != 0, 5f);
             Assert.That(hud.Model.AttackMask & botBit, Is.Not.Zero, "starts attacking the bot");
@@ -454,12 +473,16 @@ public class HudTests
         int2 hq = default;
         yield return PlayModeMatch.PlaceHQ(a => hq = a);
         AddBotWithHQ(hq);
+        // The bot's HQ is created at the next tick boundary; surrendering before it exists would leave no one standing (a draw).
+        yield return PlayModeMatch.WaitUntil(() => BotHasABuilding(), 15f, () => "the bot's HQ never appeared, state " + GameCore.Instance.CurrentState);
         VisualElement root = HudRoot();
         HudController hud = Object.FindAnyObjectByType<HudController>();
 
         hud.MatchMenu.Open();
         yield return null;
         Assert.That(root.Q("in-match-menu").ClassListContains("overlay-screen--visible"), Is.True, "the menu opens");
+        // The HUD enables Surrender from its own Update once the state is Playing: wait for it, not one frame.
+        yield return PlayModeMatch.WaitUntil(() => root.Q<Button>("surrender-button").enabledInHierarchy, 15f, () => "Surrender stayed disabled, state " + GameCore.Instance.CurrentState);
         Click(root.Q<Button>("surrender-button"));
         yield return null;
         Assert.That(root.Q("in-match-menu").ClassListContains("in-match-menu--confirm"), Is.True, "Surrender asks first");
@@ -492,8 +515,8 @@ public class HudTests
         HudController hud = Object.FindAnyObjectByType<HudController>();
         VisualElement root = HudRoot();
         Click(root.Q<Button>("gift-button"));
-        yield return PlayModeMatch.WaitUntil(() => root.Q<Button>("gift-target-" + Bot) != null, 5f);
-        Assert.That(root.Q<Button>("gift-target-" + Bot).enabledSelf, Is.False, "a bot has no player object, so the dialog lists it as eliminated");
+        yield return PlayModeMatch.WaitUntil(() => root.Q<Button>("gift-target-" + Bot) != null && root.Q<Button>("gift-target-" + Bot).enabledSelf, 5f);
+        Assert.That(root.Q<Button>("gift-target-" + Bot).enabledSelf, Is.True, "a Scripted AI seat has a player object, so the dialog lists it as a live player");
 
         GameCore.Instance.Cmd_GiftResources((uint)Bot, 250f); // the dialog's send path, past the row
         yield return PlayModeMatch.WaitUntil(() => noticed > 0, 5f);
@@ -548,6 +571,26 @@ public class HudTests
             Assert.That(Shown(root.Q<Button>(name)), Is.True, name);
         Assert.That(Shown(root.Q<Button>("cmd-dig")), Is.False, "no Diggers selected");
         Assert.That(root.Q<Label>("build-bomb-cost").text, Is.EqualTo(config.GetBuilding(BuildingType.Bomb).UpfrontCost.ToString("0.##")));
+    }
+
+    [UnityTest, Timeout(120000)]
+    public IEnumerator BuilderCardShowsTheDefencesWithTheirCosts()
+    {
+        int builder = 0;
+        yield return WithBuilder(b => builder = b);
+        VisualElement root = HudRoot();
+        UnitCommander.Instance.Selection.SelectIds(new List<int> { builder });
+        yield return PlayModeMatch.WaitUntil(() => Shown(root.Q<Button>("build-gun-turret")), 5f);
+        // v0.13 layout B: Make over Defend, the defences last in the Defend row; the card stays 452 px.
+        foreach ((string name, BuildingType type) in new[] { ("build-gun-turret", BuildingType.GunTurret), ("build-jammer", BuildingType.Jammer) })
+        {
+            Button button = root.Q<Button>(name);
+            Assert.That(Shown(button), Is.True, name);
+            Assert.That(button.parent.name, Is.EqualTo("builds-defend"), name);
+            Assert.That(root.Q<Label>(name + "-cost").text, Is.EqualTo(config.GetBuilding(type).UpfrontCost.ToString("0.##")), name);
+        }
+        Assert.That(root.Q<Button>("build-miner").parent.name, Is.EqualTo("builds-make"));
+        Assert.That(root.Q("command-card").ClassListContains("command-card--builders"), Is.True, "the Builders' card keeps its 452 px width (Theme.uss)");
     }
 
     [UnityTest, Timeout(120000)]

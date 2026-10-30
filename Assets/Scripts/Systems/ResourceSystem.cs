@@ -68,7 +68,7 @@ public partial struct ResourceSystem : ISystem
 
             float cost = upkeep.ValueRO.runningCostPerSecond * upkeep.ValueRO.timeSinceLastCharge;
             ServerPlayer owner = core.GetServerPlayerById(upkeep.ValueRO.ownerId);
-            upkeep.ValueRW.unpaid = owner == null || !owner.TrySpend(cost);
+            upkeep.ValueRW.unpaid = owner == null || !owner.TryPayUpkeep(cost);
             if (!upkeep.ValueRO.unpaid) owner.AddUpkeep(cost);
             else owner?.MarkUnpaid();
             upkeep.ValueRW.timeSinceLastCharge = 0f;

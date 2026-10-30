@@ -25,7 +25,14 @@ namespace Config
 
             var errors = new List<string>();
             TextAsset xml = UnityEngine.Resources.Load<TextAsset>("GameConfig");
-            if (xml == null)
+            string devFile = DevConfigFile();
+            if (devFile != null)
+            {
+                // Dev only (-perf): tuning runs (tools/ai-bench.sh) try a GameConfig.xml from disk without a rebuild.
+                _cached = ConfigParser.Parse(System.IO.File.ReadAllText(devFile), errors);
+                WarLog.Info(LogCategory.Sim, $"GameConfig from {devFile} (-configFile)");
+            }
+            else if (xml == null)
             {
                 errors.Add("Resources/GameConfig.xml not found.");
                 _cached = new GameConfigData();
@@ -42,6 +49,15 @@ namespace Config
                 WarLog.Error(LogCategory.Sim, $"{error}");
             }
             return _cached;
+        }
+
+        /// <summary>The <c>-configFile &lt;path&gt;</c> argument when the process runs with <c>-perf</c> and the file exists; else null.</summary>
+        private static string DevConfigFile()
+        {
+            if (!DevApi.PerfFlag) return null;
+            string[] args = Environment.GetCommandLineArgs();
+            int i = Array.IndexOf(args, "-configFile");
+            return i >= 0 && i + 1 < args.Length && System.IO.File.Exists(args[i + 1]) ? args[i + 1] : null;
         }
 
         internal static void OverrideForTests(GameConfigData config)

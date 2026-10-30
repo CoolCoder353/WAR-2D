@@ -41,7 +41,9 @@ namespace WAR2D.Net.Replication
     /// unit's route changes, and Correction when the client's prediction (the same
     /// <see cref="MovementPrediction"/> the client runs) drifts past the threshold — finer inside the
     /// camera view, coarser outside it. Attack events go to clients whose view holds the attacker; the target is
-    /// named only when the client may know it (see <see cref="AttackTarget"/>), else it is sent as 0.
+    /// named only when the client may know it (see <see cref="AttackTarget"/>), else it is sent as 0. A building's
+    /// attack (v0.13, <see cref="BuildingAttack"/>) goes only to a client that may know the building: it owns it, or its
+    /// grid sees it now (the rule <see cref="BuildingInterest"/> follows).
     ///
     /// <para><b>What it can see.</b> Every unit loop is driven by the client's
     /// <see cref="InterestSets"/>: a unit outside the allowed set is never encoded for that client.</para>
@@ -85,13 +87,17 @@ namespace WAR2D.Net.Replication
         /// building target is named only to its owner and to clients whose grid sees it. Without
         /// <paramref name="targets"/>, only unit targets the client may know are named.
         /// </summary>
-        public JobHandle Schedule(int tick, in ReplicationInput input, NativeArray<int2> attacks, NativeArray<AttackTarget> targets, bool[] active, JobHandle dependency)
+        public JobHandle Schedule(int tick, in ReplicationInput input, NativeArray<int2> attacks, NativeArray<AttackTarget> targets, bool[] active, JobHandle dependency) =>
+            Schedule(tick, input, attacks, targets, default, active, dependency);
+
+        /// <summary>As above, with this tick's building attacks (v0.13; may be default for none).</summary>
+        public JobHandle Schedule(int tick, in ReplicationInput input, NativeArray<int2> attacks, NativeArray<AttackTarget> targets, NativeArray<BuildingAttack> buildingAttacks, bool[] active, JobHandle dependency)
         {
             var handles = new NativeArray<JobHandle>(buffers.Length, Allocator.Temp);
             for (int c = 0; c < buffers.Length; c++)
             {
                 if (active != null && !active[c]) { handles[c] = dependency; continue; }
-                handles[c] = Job(c, tick, input, attacks, targets).Schedule(dependency);
+                handles[c] = Job(c, tick, input, attacks, targets, buildingAttacks).Schedule(dependency);
             }
             JobHandle all = JobHandle.CombineDependencies(handles);
             handles.Dispose();
@@ -106,6 +112,10 @@ namespace WAR2D.Net.Replication
         public void EncodeAll(int tick, in ReplicationInput input, NativeArray<int2> attacks, NativeArray<AttackTarget> targets) =>
             Schedule(tick, input, attacks, targets, null, default).Complete();
 
+        /// <summary>Encodes every client now, with unit and building attacks.</summary>
+        public void EncodeAll(int tick, in ReplicationInput input, NativeArray<int2> attacks, NativeArray<AttackTarget> targets, NativeArray<BuildingAttack> buildingAttacks) =>
+            Schedule(tick, input, attacks, targets, buildingAttacks, null, default).Complete();
+
         /// <summary>A client's last encoded bytes: reliable messages (with each message's size) and unreliable ones.</summary>
         public (NativeList<byte> reliable, NativeList<int> reliableSizes, NativeList<byte> unreliable, NativeList<int> unreliableSizes) Output(int client)
         {
@@ -119,7 +129,7 @@ namespace WAR2D.Net.Replication
         /// <summary>The client's prediction state for a unit (by id index).</summary>
         public PredictState State(int client, int index) => buffers[client].States[index];
 
-        private EncodeClientJob Job(int client, int tick, in ReplicationInput input, NativeArray<int2> attacks, NativeArray<AttackTarget> targets)
+        private EncodeClientJob Job(int client, int tick, in ReplicationInput input, NativeArray<int2> attacks, NativeArray<AttackTarget> targets, NativeArray<BuildingAttack> buildingAttacks)
         {
             ClientBuffers b = buffers[client];
             return new EncodeClientJob
@@ -137,6 +147,7 @@ namespace WAR2D.Net.Replication
                 Left = interests.Left(client).AsDeferredJobArray(),
                 Attacks = attacks,
                 AttackTargets = targets.IsCreated ? targets : b.NoTargets,
+                BuildingAttacks = buildingAttacks.IsCreated ? buildingAttacks : b.NoBuildingAttacks,
                 Owner = interests.OwnerOf(client),
                 Grid = interests.GridOf(client),
                 View = b.View,
@@ -188,6 +199,8 @@ namespace WAR2D.Net.Replication
             public NativeList<AttackEvent> Attacks;
             /// <summary>An empty target list, for encodes given none.</summary>
             public NativeArray<AttackTarget> NoTargets;
+            /// <summary>An empty building attack list, for encodes given none.</summary>
+            public NativeArray<BuildingAttack> NoBuildingAttacks;
 
             public ClientBuffers(int idCapacity, Allocator allocator)
             {
@@ -207,6 +220,7 @@ namespace WAR2D.Net.Replication
                 Corrections = new NativeList<CorrectionUnit>(1024, allocator);
                 Attacks = new NativeList<AttackEvent>(256, allocator);
                 NoTargets = new NativeArray<AttackTarget>(0, allocator);
+                NoBuildingAttacks = new NativeArray<BuildingAttack>(0, allocator);
             }
 
             /// <summary>Frees the native buffers.</summary>
@@ -214,7 +228,7 @@ namespace WAR2D.Net.Replication
             {
                 States.Dispose(); View.Dispose(); Reliable.Dispose(); Unreliable.Dispose(); ReliableSizes.Dispose();
                 UnreliableSizes.Dispose(); Enters.Dispose(); EnterTiles.Dispose(); MoveOrders.Dispose(); MoveTiles.Dispose();
-                Leaves.Dispose(); Healths.Dispose(); Corrections.Dispose(); Attacks.Dispose(); NoTargets.Dispose();
+                Leaves.Dispose(); Healths.Dispose(); Corrections.Dispose(); Attacks.Dispose(); NoTargets.Dispose(); NoBuildingAttacks.Dispose();
             }
         }
     }
@@ -236,6 +250,8 @@ namespace WAR2D.Net.Replication
         [ReadOnly] public NativeArray<int2> Attacks;
         /// <summary>What each attack's building target is, parallel to <see cref="Attacks"/> (may be empty).</summary>
         [ReadOnly] public NativeArray<AttackTarget> AttackTargets;
+        /// <summary>This tick's building attacks (v0.13), each with what its attacker and target are.</summary>
+        [ReadOnly] public NativeArray<BuildingAttack> BuildingAttacks;
         /// <summary>The client's owner id and fog grid (as its interest set uses them).</summary>
         public int Owner, Grid;
         [ReadOnly] public NativeArray<int4> View;
@@ -343,13 +359,14 @@ namespace WAR2D.Net.Replication
             // Attacks whose attacker this client can see in its view.
             for (int i = 0; i < Attacks.Length; i++)
             {
-                int2 attack = Attacks[i];
-                int index = NetIdAllocator.IndexOf(attack.x);
-                if (!BitSet.Get(Allowed, index)) continue;
-                int slot = Input.SlotOfIndex(index);
-                if (slot < 0 || !InView(view, Input.Positions[slot])) continue;
-                AttackOut.Add(new AttackEvent { AttackerIndex = index, TargetId = MayKnowTarget(i, attack.y) ? attack.y : 0 });
+                AttackTarget target = i < AttackTargets.Length ? AttackTargets[i] : default;
+                if (InterestRules.UnitAttack(Input, Allowed, view, Attacks[i], target, Owner, Grid, out AttackEvent shown)) AttackOut.Add(shown);
             }
+
+            // Building attacks (v0.13): only from a building the client may know, in its view (its own buildings
+            // wherever the camera is: the owner's turret status must not depend on it); the target as above.
+            for (int i = 0; i < BuildingAttacks.Length; i++)
+                if (InterestRules.BuildingAttack(Input, Allowed, view, BuildingAttacks[i], Owner, Grid, out AttackEvent shown)) AttackOut.Add(shown);
 
             FlushLeaves();
             FlushEnters();
@@ -381,7 +398,7 @@ namespace WAR2D.Net.Replication
             state.Speed = state.FullSpeed;
         }
 
-        private static bool InView(int4 view, float2 p) => p.x >= view.x && p.y >= view.y && p.x < view.z + 1 && p.y < view.w + 1;
+        private static bool InView(int4 view, float2 p) => InterestRules.InView(view, p);
 
         private void CheckCorrection(int slot, int index, ref PredictState state, float now, bool inView)
         {
@@ -540,26 +557,6 @@ namespace WAR2D.Net.Replication
             }
         }
 
-        /// <summary>
-        /// True when the client may know attack <paramref name="i"/>'s target: a unit in its interest set, or a
-        /// building it owns or (unless hidden) its grid sees. Anything else would name what the fog hides.
-        /// </summary>
-        private bool MayKnowTarget(int i, int target)
-        {
-            if (target <= 0) return false;
-            int index = NetIdAllocator.IndexOf(target);
-            if ((uint)index < (uint)Input.IndexOfId.Length)
-            {
-                int slot = Input.IndexOfId[index];
-                if ((uint)slot < (uint)Input.Count && Input.IdOf[slot] == target) // a unit (alive or killed by this shot)
-                    return (uint)index < (uint)(Allowed.Length * 64) && BitSet.Get(Allowed, index);
-            }
-            if (i >= AttackTargets.Length) return false;
-            AttackTarget building = AttackTargets[i];
-            if (building.Id != target) return false;
-            return building.OwnerId == Owner || (building.Hidden == 0 && Input.Sees(Grid, building.Position));
-        }
-
         private void FlushAttacks()
         {
             var sink = new NativeSink(Unreliable);
@@ -582,5 +579,16 @@ namespace WAR2D.Net.Replication
         public int Id, OwnerId;
         public float2 Position;
         public byte Hidden;
+    }
+
+    /// <summary>
+    /// One building's attack (v0.13), as the encoder needs it: the attacking building (to decide who may know it) and
+    /// the target (<see cref="Target"/> is filled when the target is a building, as for unit attacks).
+    /// </summary>
+    public struct BuildingAttack
+    {
+        public AttackTarget Attacker;
+        public int TargetId;
+        public AttackTarget Target;
     }
 }

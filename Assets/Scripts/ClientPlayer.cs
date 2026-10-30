@@ -21,6 +21,18 @@ public class ClientPlayer : NetworkBehaviour
     [SyncVar(hook = nameof(OnHasPlacedHQ))]
     public bool hasPlacedHQ = false;
 
+    /// <summary>v0.15: this human dropped out of the running match and has until <see cref="awayUntil"/> to come back; their units hold meanwhile.</summary>
+    [SyncVar]
+    public bool isAway;
+
+    /// <summary>When the away window closes, in network time (<c>NetworkTime.time</c>); 0 when not away.</summary>
+    [SyncVar]
+    public double awayUntil;
+
+    /// <summary>The ticket this client presents to get its seat back after a drop (v0.15). Private: sent to the owner only.</summary>
+    [TargetRpc]
+    public void TargetRejoinTicket(NetworkConnection target, string token, float window) => WAR2D.Net.Rejoin.RejoinTicket.Set(token, window);
+
     /// <summary>A new HQ means a new match: its end screen may show again.</summary>
     private void OnHasPlacedHQ(bool before, bool now)
     {
@@ -37,6 +49,50 @@ public class ClientPlayer : NetworkBehaviour
     [SyncVar]
     public bool isServerOwner;
 
+    /// <summary>True for an AI player's object (v0.14): spawned by the server with no connection, so its TargetRpcs are never sent.</summary>
+    [SyncVar]
+    public bool isAi;
+
+    /// <summary>An AI player's owner id (from <see cref="AiOwnerIds"/>); 0 for a human, whose owner id is its <c>netId</c>.</summary>
+    [SyncVar]
+    public int aiOwnerId;
+
+    /// <summary>An AI player's difficulty (public: the lobby and HUD tag show it).</summary>
+    [SyncVar]
+    public AiDifficulty aiDifficulty;
+
+    /// <summary>The style the host picked for an AI. Random stays Random here: what it resolved to never leaves the server before GameOver.</summary>
+    [SyncVar]
+    public AiStyle aiStyle;
+
+    /// <summary>The owner id this object stands for: the AI's reserved id, or a human's <c>netId</c>.</summary>
+    public int OwnerId => isAi ? aiOwnerId : BuildingData.UIntToInt(netId);
+
+    private static readonly System.Collections.Generic.Dictionary<int, ClientPlayer> aiPlayers = new System.Collections.Generic.Dictionary<int, ClientPlayer>();
+
+    /// <summary>
+    /// The player object of an owner on this client: a human's by <c>netId</c>, an AI's by its reserved owner id.
+    /// False for a player who left (or an unknown owner).
+    /// </summary>
+    public static bool TryFind(int ownerId, out ClientPlayer player)
+    {
+        player = null;
+        if (AiOwnerIds.IsAi(ownerId)) return aiPlayers.TryGetValue(ownerId, out player) && player != null;
+        return NetworkClient.spawned.TryGetValue((uint)ownerId, out NetworkIdentity identity) && identity != null && identity.TryGetComponent(out player) && !player.isAi;
+    }
+
+    private void RegisterAi()
+    {
+        if (isAi && aiOwnerId != 0) aiPlayers[aiOwnerId] = this;
+    }
+
+    private void UnregisterAi()
+    {
+        if (isAi && aiPlayers.TryGetValue(aiOwnerId, out ClientPlayer known) && known == this) aiPlayers.Remove(aiOwnerId);
+    }
+
+    private void OnDestroy() => UnregisterAi();
+
     public UnityEngine.Events.UnityEvent<bool> onResponseFromCanBuildBuilding = new UnityEngine.Events.UnityEvent<bool>();
 
     /// <summary>The placement checked by the most recent server response.</summary>
@@ -51,6 +107,7 @@ public class ClientPlayer : NetworkBehaviour
     public override void OnStartClient()
     {
         base.OnStartClient();
+        RegisterAi();
 
         DontDestroyOnLoad(this);
     }
@@ -66,6 +123,7 @@ public class ClientPlayer : NetworkBehaviour
     [Client]
     public override void OnStopClient()
     {
+        UnregisterAi();
         if (!isLocalPlayer) return;
 
         Destroy(this.gameObject);
@@ -268,6 +326,7 @@ public class ClientPlayer : NetworkBehaviour
     /// <summary>Shows the local end screen once per match.</summary>
     private void EndMatch(WAR2D.UI.EndResult result)
     {
+        WAR2D.Net.Rejoin.RejoinTicket.Clear(); // the match is over for this player: nothing to rejoin
         if (gameOverDeclared) return;
         gameOverDeclared = true;
         MatchEnded?.Invoke(result);
@@ -285,7 +344,7 @@ public class ClientPlayer : NetworkBehaviour
     public override void OnStartServer()
     {
         base.OnStartServer();
-        nickname = $"Player {netId}";
+        if (!isAi) nickname = $"Player {netId}"; // an AI is spawned with its callsign
 
         DontDestroyOnLoad(this);
     }
@@ -313,15 +372,4 @@ public class ClientPlayer : NetworkBehaviour
     [TargetRpc]
     public void RpcOnPlayerLost(NetworkConnectionToClient loser) => EndMatch(WAR2D.UI.EndResult.Defeat);
 
-
-    /// <summary>The player accepts (or declines) the match's replay offer. Only in GameOver, only for the current offer.</summary>
-    [Command(requiresAuthority = false)]
-    public void CmdReplayWanted(int id, bool wanted, NetworkConnectionToClient sender = null)
-    {
-        if (!CommandGate.Allow(sender, nameof(CmdReplayWanted))) return;
-        WorldStateManager world = WorldStateManager.Instance;
-        if (world?.ReplaySender == null || GameCore.Instance == null) return;
-        if (wanted) world.ReplaySender.Accept(sender, id, GameCore.Instance.CurrentState);
-        else world.ReplaySender.Cancel(sender);
-    }
 }

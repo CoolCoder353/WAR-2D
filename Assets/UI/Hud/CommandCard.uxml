@@ -3,31 +3,31 @@
         <ui:Label name="command-title" text="Commands" class="panel__title" />
         <ui:VisualElement class="command-card__content">
             <ui:VisualElement name="orders" class="command-card__row">
-                <ui:Button name="cmd-move" class="command-button" tooltip="Move">
+                <ui:Button name="cmd-move" class="command-button">
                     <war:CommandIcon icon="Move" />
-                    <ui:Label text="RMB" class="command-button__key" />
+                    <ui:Label name="cmd-move-key" text="RMB" class="command-button__key" />
                 </ui:Button>
-                <ui:Button name="cmd-attack-move" class="command-button" tooltip="Attack-move">
+                <ui:Button name="cmd-attack-move" class="command-button">
                     <war:CommandIcon icon="AttackMove" />
-                    <ui:Label text="A" class="command-button__key" />
+                    <ui:Label name="cmd-attack-move-key" text="A" class="command-button__key" />
                 </ui:Button>
-                <ui:Button name="cmd-stop" class="command-button" tooltip="Stop">
+                <ui:Button name="cmd-stop" class="command-button">
                     <war:CommandIcon icon="Stop" />
-                    <ui:Label text="S" class="command-button__key" />
+                    <ui:Label name="cmd-stop-key" text="S" class="command-button__key" />
                 </ui:Button>
-                <ui:Button name="cmd-hold" class="command-button" tooltip="Hold">
+                <ui:Button name="cmd-hold" class="command-button">
                     <war:CommandIcon icon="Hold" />
-                    <ui:Label text="H" class="command-button__key" />
+                    <ui:Label name="cmd-hold-key" text="H" class="command-button__key" />
                 </ui:Button>
-                <ui:Button name="cmd-repair" class="command-button" tooltip="Repair: click an own or allied damaged building or wall">
+                <ui:Button name="cmd-repair" class="command-button">
                     <war:CommandIcon icon="Repair" />
                     <ui:Label name="cmd-repair-key" text="F" class="command-button__key" />
                 </ui:Button>
-                <ui:Button name="cmd-dig" class="command-button" tooltip="Dig: click or drag over rock, gems or enemy walls">
+                <ui:Button name="cmd-dig" class="command-button">
                     <war:CommandIcon icon="Dig" />
                     <ui:Label name="cmd-dig-key" text="G" class="command-button__key" />
                 </ui:Button>
-                <ui:Button name="cmd-detonate" class="command-button" tooltip="Detonate: every selected bomber explodes now">
+                <ui:Button name="cmd-detonate" class="command-button">
                     <war:CommandIcon icon="Detonate" />
                     <ui:Label name="cmd-detonate-key" text="B" class="command-button__key" />
                 </ui:Button>
@@ -36,35 +36,56 @@
             <ui:Label name="detonate-hint" text="Detonate (B): every selected bomber explodes now. Your own units and buildings in the blast are hit too." class="text--secondary command-card__hint" />
             <ui:VisualElement name="divider" class="command-card__divider" />
             <ui:Label name="build-label" text="Build" class="text--secondary" />
-            <ui:VisualElement name="builds" class="command-card__row">
-                <ui:Button name="build-miner" class="command-button" tooltip="Miner">
-                    <war:CommandIcon icon="Miner" />
-                    <ui:Label name="build-miner-cost" text=" " class="command-button__key command-button__cost" />
-                </ui:Button>
-                <ui:Button name="build-barracks" class="command-button" tooltip="Barracks: Scouts, Tanks, Flamethrowers">
-                    <war:CommandIcon icon="Barracks" />
-                    <ui:Label name="build-barracks-cost" text=" " class="command-button__key command-button__cost" />
-                </ui:Button>
-                <ui:Button name="build-heavy-factory" class="command-button" tooltip="Heavy Factory: Heavies, Artillery, Snipers">
-                    <war:CommandIcon icon="HeavyFactory" />
-                    <ui:Label name="build-heavy-factory-cost" text=" " class="command-button__key command-button__cost" />
-                </ui:Button>
-                <ui:Button name="build-siege-workshop" class="command-button" tooltip="Siege Workshop: Diggers, Suicide bombers">
-                    <war:CommandIcon icon="SiegeWorkshop" />
-                    <ui:Label name="build-siege-workshop-cost" text=" " class="command-button__key command-button__cost" />
-                </ui:Button>
-                <ui:Button name="build-wall" class="command-button" tooltip="Wall: press and drag on the map to lay a line">
-                    <war:CommandIcon icon="Wall" />
-                    <ui:Label name="build-wall-cost" text=" " class="command-button__key command-button__cost" />
-                </ui:Button>
-                <ui:Button name="build-bomb" class="command-button" tooltip="Bomb: hidden from your enemies">
-                    <war:CommandIcon icon="Bomb" />
-                    <ui:Label name="build-bomb-cost" text=" " class="command-button__key command-button__cost" />
-                </ui:Button>
-                <ui:Button name="build-radar" class="command-button" tooltip="Radar: sees over walls">
-                    <war:CommandIcon icon="Radar" />
-                    <ui:Label name="build-radar-cost" text=" " class="command-button__key command-button__cost" />
-                </ui:Button>
+            <ui:VisualElement name="builds" class="command-card__builds">
+                <ui:VisualElement name="builds-make" class="command-card__row">
+                    <ui:Button name="build-miner" class="command-button">
+                        <ui:Label name="build-miner-key" text="Q" class="command-button__hotkey" />
+                        <war:CommandIcon icon="Miner" />
+                        <ui:Label name="build-miner-cost" text=" " class="command-button__key command-button__cost" />
+                    </ui:Button>
+                    <ui:Button name="build-barracks" class="command-button">
+                        <ui:Label name="build-barracks-key" text="W" class="command-button__hotkey" />
+                        <war:CommandIcon icon="Barracks" />
+                        <ui:Label name="build-barracks-cost" text=" " class="command-button__key command-button__cost" />
+                    </ui:Button>
+                    <ui:Button name="build-heavy-factory" class="command-button">
+                        <ui:Label name="build-heavy-factory-key" text="E" class="command-button__hotkey" />
+                        <war:CommandIcon icon="HeavyFactory" />
+                        <ui:Label name="build-heavy-factory-cost" text=" " class="command-button__key command-button__cost" />
+                    </ui:Button>
+                    <ui:Button name="build-siege-workshop" class="command-button">
+                        <ui:Label name="build-siege-workshop-key" text="T" class="command-button__hotkey" />
+                        <war:CommandIcon icon="SiegeWorkshop" />
+                        <ui:Label name="build-siege-workshop-cost" text=" " class="command-button__key command-button__cost" />
+                    </ui:Button>
+                </ui:VisualElement>
+                <ui:VisualElement name="builds-defend" class="command-card__row command-card__row--second">
+                    <ui:Button name="build-wall" class="command-button">
+                        <ui:Label name="build-wall-key" text="Z" class="command-button__hotkey" />
+                        <war:CommandIcon icon="Wall" />
+                        <ui:Label name="build-wall-cost" text=" " class="command-button__key command-button__cost" />
+                    </ui:Button>
+                    <ui:Button name="build-bomb" class="command-button">
+                        <ui:Label name="build-bomb-key" text="X" class="command-button__hotkey" />
+                        <war:CommandIcon icon="Bomb" />
+                        <ui:Label name="build-bomb-cost" text=" " class="command-button__key command-button__cost" />
+                    </ui:Button>
+                    <ui:Button name="build-radar" class="command-button">
+                        <ui:Label name="build-radar-key" text="C" class="command-button__hotkey" />
+                        <war:CommandIcon icon="Radar" />
+                        <ui:Label name="build-radar-cost" text=" " class="command-button__key command-button__cost" />
+                    </ui:Button>
+                    <ui:Button name="build-gun-turret" class="command-button">
+                        <ui:Label name="build-gun-turret-key" text="V" class="command-button__hotkey" />
+                        <war:CommandIcon icon="GunTurret" />
+                        <ui:Label name="build-gun-turret-cost" text=" " class="command-button__key command-button__cost" />
+                    </ui:Button>
+                    <ui:Button name="build-jammer" class="command-button">
+                        <ui:Label name="build-jammer-key" text="N" class="command-button__hotkey" />
+                        <war:CommandIcon icon="Jammer" />
+                        <ui:Label name="build-jammer-cost" text=" " class="command-button__key command-button__cost" />
+                    </ui:Button>
+                </ui:VisualElement>
             </ui:VisualElement>
             <ui:Label name="build-hint" text="Wall: press and drag on the map to lay a line." class="text--secondary command-card__hint" />
             <ui:VisualElement name="production" class="production">
@@ -74,19 +95,20 @@
                 <ui:Label name="production-mixed" text="These make different units. Select buildings of one kind to set their production." class="text command-card__hint" />
                 <ui:VisualElement name="production-rows" />
                 <ui:Label name="production-help" text="max 100 · cost charged at spawn" class="text--secondary" />
-                <ui:VisualElement class="production__rally">
-                    <war:RallyIcon class="production__rally-icon" />
-                    <ui:Label text="Rally point: right-click the map with producers selected. New units drive there." class="text--secondary" />
-                </ui:VisualElement>
-                <ui:VisualElement name="production-tooltip" class="production__tooltip" picking-mode="Ignore">
-                    <ui:Label name="production-tooltip-title" text=" " class="text" />
-                    <ui:Label name="production-tooltip-role" text=" " class="text--secondary" />
-                    <ui:Label name="production-tooltip-warning" text=" " class="text production__warning" />
+                <ui:VisualElement name="production-rally" class="production__rally">
+                    <ui:VisualElement class="production__rally-text">
+                        <ui:Label text="Rally point" class="text production__rally-title" />
+                        <ui:Label name="production-rally-help" text="Right-click: these producers. Ctrl + right-click: all of yours." class="text--secondary" />
+                    </ui:VisualElement>
+                    <ui:Button name="cmd-rally-all" class="command-button production__rally-all">
+                        <war:CommandIcon icon="RallyAll" />
+                        <ui:Label name="cmd-rally-all-key" text="Ctrl RMB" class="command-button__key" />
+                    </ui:Button>
                 </ui:VisualElement>
             </ui:VisualElement>
             <ui:VisualElement name="removal" class="removal">
                 <ui:VisualElement class="command-card__row">
-                    <ui:Button name="cmd-cancel" class="command-button" tooltip="Cancel">
+                    <ui:Button name="cmd-cancel" class="command-button">
                         <war:CommandIcon name="cmd-cancel-icon" icon="Cancel" />
                         <ui:Label name="cmd-cancel-key" text="Del" class="command-button__key" />
                     </ui:Button>

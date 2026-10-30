@@ -108,6 +108,20 @@ public class FuzzTests
     }
 
     [Test]
+    public void MenuPause_NeverThrows_AndNeedsExactlyOneHuman()
+    {
+        var rng = new System.Random(77);
+        for (int i = 0; i < Iterations; i++)
+        {
+            var state = (GameState)rng.Next(-3, 9);
+            int humans = rng.Next(int.MinValue, int.MaxValue) % 12;
+            bool own = rng.Next(2) == 0;
+            bool may = PauseRules.MayMenuPause(state, humans, own);
+            if (may) Assert.That(humans == 1 && own, Is.True);
+        }
+    }
+
+    [Test]
     public void SpawnerQueue_NeverLeavesItsRange()
     {
         var rng = new System.Random(31);
@@ -216,6 +230,32 @@ public class FuzzTests
             var bytes = new byte[rng.Next(0, 96)];
             rng.NextBytes(bytes);
             Assert.DoesNotThrow(() => WAR2D.Net.Replication.BuildingCodec.Apply(buildings, new ArraySegment<byte>(bytes)));
+        }
+    }
+
+    [Test]
+    public void LobbyAiAndVisibility_NeverThrow_AndKeepTheirRules()
+    {
+        var rng = new System.Random(4141);
+        for (int i = 0; i < Iterations; i++)
+        {
+            var difficulty = (AiDifficulty)rng.Next(0, 256);
+            var style = (AiStyle)rng.Next(0, 256);
+            bool valid = false;
+            Assert.DoesNotThrow(() => valid = AiLobbyRules.IsValidChoice(difficulty, style));
+            if (valid) Assert.That(difficulty == AiDifficulty.Easy || difficulty == AiDifficulty.Normal || difficulty == AiDifficulty.Hard, Is.True);
+            int seats = rng.Next(int.MinValue, int.MaxValue) % 20;
+            if (AiLobbyRules.HasFreeSeat(seats)) Assert.That(seats, Is.InRange(0, LobbyRules.MaxPlayers - 1));
+
+            var from = (LobbyVisibility)rng.Next(0, 256);
+            var to = (LobbyVisibility)rng.Next(0, 4);
+            int humans = rng.Next(-3, 10);
+            if (LobbyRules.MayChangeVisibility(from, to, humans) && to == LobbyVisibility.Private && from != LobbyVisibility.Private)
+                Assert.That(humans, Is.LessThanOrEqualTo(1), "going Private only alone");
+            bool own = rng.Next(2) == 0;
+            if (LobbyRules.MayConnect(LobbyVisibility.Private, own, (GameState)rng.Next(-2, 8), rng.Next(-5, 20), out _)) Assert.That(own, Is.True);
+            int team = LobbyRules.FewestPlayersTeam((MatchMode)rng.Next(0, 4), new[] { rng.Next(-5, 9), rng.Next(-5, 9), rng.Next(int.MinValue, int.MaxValue) });
+            Assert.That(team == TeamRules.NoTeam || (team >= 0 && team < LobbyRules.PickableTeams), Is.True);
         }
     }
 }

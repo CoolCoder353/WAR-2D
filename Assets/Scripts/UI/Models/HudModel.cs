@@ -15,9 +15,21 @@ namespace WAR2D.UI
         public readonly int OrderIndex;
         public readonly int StartTeam;
         public readonly bool Eliminated;
+        /// <summary>v0.14: an AI player, and its difficulty (public: the AI tag shows it).</summary>
+        public readonly bool IsAi;
+        public readonly AiDifficulty Difficulty;
+        /// <summary>The style the host picked (Random stays Random: what it became is revealed only by the end screen).</summary>
+        public readonly AiStyle PickedStyle;
 
-        public PlayerRow(int ownerId, string nickname, int colourIndex, int startTeam, bool eliminated, int orderIndex = -1)
+        /// <summary>The AI tag's text ("AI · Hard"), or null for a human.</summary>
+        public string AiTag => IsAi ? PlayerNameLabel.TagText(Difficulty) : null;
+
+        public PlayerRow(int ownerId, string nickname, int colourIndex, int startTeam, bool eliminated, int orderIndex = -1,
+            bool isAi = false, AiDifficulty difficulty = default, AiStyle pickedStyle = default)
         {
+            IsAi = isAi;
+            Difficulty = difficulty;
+            PickedStyle = pickedStyle;
             OwnerId = ownerId;
             Nickname = nickname;
             ColourIndex = colourIndex;
@@ -27,7 +39,8 @@ namespace WAR2D.UI
         }
 
         public bool Equals(PlayerRow other) => OwnerId == other.OwnerId && Nickname == other.Nickname &&
-            ColourIndex == other.ColourIndex && OrderIndex == other.OrderIndex && StartTeam == other.StartTeam && Eliminated == other.Eliminated;
+            ColourIndex == other.ColourIndex && OrderIndex == other.OrderIndex && StartTeam == other.StartTeam && Eliminated == other.Eliminated
+            && IsAi == other.IsAi && Difficulty == other.Difficulty && PickedStyle == other.PickedStyle;
 
         public override bool Equals(object obj) => obj is PlayerRow other && Equals(other);
 
@@ -54,6 +67,9 @@ namespace WAR2D.UI
         /// <summary>The local player's upkeep during the last second.</summary>
         public float UpkeepPerSecond { get; private set; }
 
+        /// <summary>The top bar's net-income readout (v0.15), fed every time the numbers are pulled.</summary>
+        public EconomyReadout Economy { get; } = new EconomyReadout();
+
         /// <summary>Every player in match order.</summary>
         public IReadOnlyList<PlayerRow> Players => players;
 
@@ -66,6 +82,7 @@ namespace WAR2D.UI
         /// <summary>Sets the local player's own numbers.</summary>
         public void SetResources(float resources, float incomePerSecond, float upkeepPerSecond)
         {
+            Economy.Feed(resources, incomePerSecond, upkeepPerSecond, UnityEngine.Time.unscaledTime);
             if (resources == Resources && incomePerSecond == IncomePerSecond && upkeepPerSecond == UpkeepPerSecond) return;
             Resources = resources;
             IncomePerSecond = incomePerSecond;
@@ -140,13 +157,13 @@ namespace WAR2D.UI
             {
                 int owner = core.PlayerOrder[i];
                 ClientPlayer player = null;
-                if (NetworkClient.spawned.TryGetValue((uint)owner, out NetworkIdentity identity) && identity != null)
-                    player = identity.GetComponent<ClientPlayer>();
+                ClientPlayer.TryFind(owner, out player); // a human by netId, an AI by its owner id
                 // A player who left has no object; one whose HQ fell lost hasPlacedHQ while Playing.
                 bool eliminated = player == null || (core.CurrentState == GameState.Playing && !player.hasPlacedHQ);
                 string name = player != null && !string.IsNullOrEmpty(player.nickname) ? player.nickname : "Player";
                 int colour = player != null ? player.colourIndex : i;
-                scratch.Add(new PlayerRow(owner, name, colour, core.TeamOf(owner), eliminated, i));
+                scratch.Add(new PlayerRow(owner, name, colour, core.TeamOf(owner), eliminated, i,
+                    player != null && player.isAi, player != null ? player.aiDifficulty : default, player != null ? player.aiStyle : default));
             }
             SetPlayers(scratch);
         }

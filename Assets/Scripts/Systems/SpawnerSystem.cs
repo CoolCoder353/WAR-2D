@@ -46,7 +46,7 @@ public partial struct SpawnerSystem : ISystem
             int ownerId = spawner.ValueRO.ownerId;
             float cost = unitConfig.UpfrontCost;
             ServerPlayer owner = GameCore.Instance.GetServerPlayerById(ownerId);
-            if (owner == null || !owner.TrySpend(cost)) continue;
+            if (owner == null || owner.Away || !owner.TrySpend(cost)) continue; // an away player's producers wait
 
             spawner.ValueRW.count--;
             spawner.ValueRW.progress = 0f;
@@ -66,7 +66,12 @@ public partial struct SpawnerSystem : ISystem
                     if (id >= 0)
                     {
                         // A rally point sends the new unit on (applied at the next boundary, once it is settled).
-                        if (rally) SimCommandQueue.Instance?.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.Move, OwnerId = ownerId, Tile = rallyTile, Ids = new[] { id } });
+                        // A Builder rallied onto one of its owner's blueprints goes and helps build it instead of just standing near it.
+                        if (rally)
+                        {
+                            bool help = type == UnitType.Builder && WorldStateManager.Instance.IsOwnBlueprintAt(ownerId, rallyTile);
+                            SimCommandQueue.Instance?.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = help ? OrderKind.Build : OrderKind.Move, OwnerId = ownerId, Tile = rallyTile, Ids = new[] { id } });
+                        }
                         return;
                     }
                     owner.Refund(cost);

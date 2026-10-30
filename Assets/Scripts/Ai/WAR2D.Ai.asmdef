@@ -1,0 +1,17 @@
+{
+    "name": "WAR2D.Ai",
+    "rootNamespace": "WAR2D.Ai",
+    "references": [
+        "WAR2D",
+        "Unity.Mathematics"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

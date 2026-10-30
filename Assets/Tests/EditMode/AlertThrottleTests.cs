@@ -47,6 +47,20 @@ public class AlertThrottleTests
     }
 
     [Test]
+    public void ClickingAnAlertWithAPlaceAsksForTheCameraAndOthersDoNot()
+    {
+        var feed = new AlertFeedModel(8f);
+        var focused = new System.Collections.Generic.List<int2>();
+        feed.FocusRequested += focused.Add;
+        feed.Add(new Alert { Kind = AlertKind.UnderAttack, Tile = new int2(7, 9) }, "attack", 0f);
+        feed.Add(new Alert { Kind = AlertKind.UpkeepUnpaid }, "unpaid", 0f);
+        feed.Focus(feed.Entries[0].Id);
+        feed.Focus(feed.Entries[1].Id);
+        CollectionAssert.AreEqual(new[] { new int2(7, 9) }, focused);
+        Assert.AreEqual(2, feed.Entries.Count, "focusing does not dismiss");
+    }
+
+    [Test]
     public void SiegeAlertsPingAndReadAsApproved()
     {
         var feed = new AlertFeedModel(8f);

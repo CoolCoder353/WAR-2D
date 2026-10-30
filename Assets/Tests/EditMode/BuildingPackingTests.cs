@@ -105,4 +105,56 @@ public class BuildingPackingTests
         Assert.That(hurt.Bars[0].color, Is.EqualTo(InstancedUnitRenderer.BarColor(0.4f)));
         Assert.That(Pack(0f, Entry(1, BuildingType.Miner, new int2(0, 0), health: 4, ghost: true)).Bars.Count, Is.EqualTo(0), "a ghost shows no live health");
     }
+
+    /// <summary>An atlas with a 2-frame Gun turret base (cells 0–1) and its head: 8 facings × 2 frames (cells 2–17).</summary>
+    private static BuildingFrames TurretFrames()
+    {
+        var buildings = new AtlasData();
+        buildings.sprites.Add(new AtlasSprite { id = "GunTurret", first = 0, frames = 2, directions = 1 });
+        buildings.sprites.Add(new AtlasSprite { id = ArtManifest.TurretHead, first = 2, frames = 2, directions = 8 });
+        for (int i = 0; i < 18; i++) buildings.frames.Add(new AtlasFrame { w = 64, h = 64 });
+        return new BuildingFrames(ArtAtlas.From(buildings), ArtAtlas.From(new AtlasData()));
+    }
+
+    private static BuildingPacking.Lists PackTurret(float time, ClientBuildings.TurretHead head, params ClientBuildings.Entry[] entries)
+    {
+        var lists = new BuildingPacking.Lists();
+        BuildingPacking.Pack(entries, TurretFrames(), _ => 0xFF0000FFu, Size, time, _ => false, lists, _ => head);
+        return lists;
+    }
+
+    [Test]
+    public void ATurretsHeadDrawsOverItsBaseInItsFacing()
+    {
+        var head = new ClientBuildings.TurretHead { Facing = 3, FiredAt = float.NegativeInfinity };
+        // Two turrets side by side (equal y): each head is drawn right after its own base.
+        BuildingPacking.Lists lists = PackTurret(5f, head, Entry(1, BuildingType.GunTurret, new int2(0, 0)), Entry(2, BuildingType.GunTurret, new int2(3, 0)));
+        Assert.That(lists.Buildings.Count, Is.EqualTo(4));
+        Assert.That(lists.Buildings[0].frame, Is.EqualTo(0u), "the base, whole");
+        Assert.That(lists.Buildings[1].frame, Is.EqualTo((uint)(2 + 3 * 2)), "the head in facing 3, at rest");
+        Assert.That(lists.Buildings[1].position, Is.EqualTo(lists.Buildings[0].position));
+        Assert.That(lists.Buildings[3].frame, Is.EqualTo((uint)(2 + 3 * 2)));
+    }
+
+    [Test]
+    public void ATurretsBaseShowsDamageByHealthAndItsHeadRecoilsAfterAShot()
+    {
+        var head = new ClientBuildings.TurretHead { Facing = 0, FiredAt = 5f };
+        for (int t = 0; t < 20; t++)
+            Assert.That(PackTurret(10f + t * 0.05f, head, Entry(1, BuildingType.GunTurret, new int2(0, 0), health: 10)).Buildings[0].frame, Is.EqualTo(0u), "not looped");
+        Assert.That(PackTurret(10f, head, Entry(1, BuildingType.GunTurret, new int2(0, 0), health: 4)).Buildings[0].frame, Is.EqualTo(1u), "damaged below half");
+        Assert.That(PackTurret(5.05f, head, Entry(1, BuildingType.GunTurret, new int2(0, 0))).Buildings[1].frame, Is.EqualTo(3u), "recoil just after the shot");
+        Assert.That(PackTurret(6f, head, Entry(1, BuildingType.GunTurret, new int2(0, 0))).Buildings[1].frame, Is.EqualTo(2u), "back at rest");
+    }
+
+    [Test]
+    public void HeadFacingsAreTheNearestOfEight()
+    {
+        Assert.That(ClientBuildings.FacingOf(1, 0), Is.EqualTo(0));
+        Assert.That(ClientBuildings.FacingOf(1, 1), Is.EqualTo(1));
+        Assert.That(ClientBuildings.FacingOf(0, 1), Is.EqualTo(2));
+        Assert.That(ClientBuildings.FacingOf(-1, 0), Is.EqualTo(4));
+        Assert.That(ClientBuildings.FacingOf(0, -1), Is.EqualTo(6));
+        Assert.That(ClientBuildings.FacingOf(1, -0.2f), Is.EqualTo(0));
+    }
 }

@@ -70,15 +70,22 @@ public class SpatialHashTests
             h = new CountingSortJob { Cell = BCell, CellStart = BCellStart, Sorted = BSorted }.Schedule(h);
             h = new NearestEnemyJob
             {
-                Positions = Positions, OwnerSlot = Owner, AttackMask = AttackMask, Health = Health, Type = Type, RangeSqByType = RangeSqByType, DamageByType = DamageByType,
+                Search = new SearchInput
+                {
+                    Positions = Positions, OwnerSlot = Owner, AttackMask = AttackMask, Health = Health,
+                    IdOf = Cell, IndexOfId = Cell, UnitCount = Positions.Length, // unused by the search; every container must be valid
+                    Visible = Visible, FogCellSize = 100000, FogW = 1, FogH = 1, FogCells = 1,
+                    CellStart = CellStart, Sorted = Sorted,
+                    BuildingPositions = BuildingPositions, BuildingOwnerSlot = BuildingOwner, BuildingHealth = BuildingHealth,
+                    BuildingIds = BCell, BuildingSlotOfIndex = BCell, BuildingCount = BuildingPositions.Length,
+                    BuildingCellStart = BCellStart, BuildingSorted = BSorted,
+                    InvCellSize = inv, CellsX = CellsAcross, CellsY = CellsAcross, SearchCells = SearchCells,
+                    OpaqueTile = Opaque, WallState = WallState, WallOwnerSlot = WallState, BuildingFlag = BuildingFlag, Width = 1, Height = 1, // open ground: one clear tile
+                },
+                Type = Type, RangeSqByType = RangeSqByType, DamageByType = DamageByType,
                 Stance = Stance, OrderSlot = OrderSlot, OrderLive = OrderLive,
-                MinRangeSqByType = MinRangeSqByType, Visible = Visible, FogCellSize = 100000, FogW = 1, FogH = 1, FogCells = 1,
-                CellStart = CellStart, Sorted = Sorted,
-                BuildingPositions = BuildingPositions, BuildingOwnerSlot = BuildingOwner, BuildingHealth = BuildingHealth,
-                BuildingCellStart = BCellStart, BuildingSorted = BSorted,
-                InvCellSize = inv, CellsX = CellsAcross, CellsY = CellsAcross, SearchCells = SearchCells,
+                MinRangeSqByType = MinRangeSqByType,
                 Tick = tick, Slice = slice, Target = Target, TargetKind = TargetKind,
-                OpaqueTile = Opaque, WallState = WallState, WallOwnerSlot = WallState, BuildingFlag = BuildingFlag, Width = 1, Height = 1, // open ground: one clear tile
             }.Schedule(Positions.Length, 64, h);
             h.Complete();
         }

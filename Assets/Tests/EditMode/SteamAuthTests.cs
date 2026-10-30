@@ -5,7 +5,7 @@ public class SteamAuthTests
 {
     private const ulong Alice = 76561198000000002UL, Mallory = 76561198000000666UL;
     private static SteamAuthRequest Req(ulong id, string ver = "0.9.0", int ticketBytes = 8) =>
-        new SteamAuthRequest { version = ver, steamId = id, ticket = new byte[ticketBytes] };
+        new SteamAuthRequest { version = ver, steamId = id, ticket = new byte[ticketBytes], protocol = GameVersion.Protocol };
 
     [Test]
     public void PolicyAcceptsAMatchingRequest() =>
@@ -24,6 +24,27 @@ public class SteamAuthTests
     {
         Assert.IsFalse(SteamAuthPolicy.Check("0.9.0", Req(Alice, version), Alice, out string reason));
         StringAssert.Contains("version", reason);
+    }
+
+    [Test]
+    public void PolicyRejectsAnotherWireProtocol()
+    {
+        var r = Req(Alice); r.protocol = GameVersion.Protocol - 1;
+        Assert.IsFalse(SteamAuthPolicy.Check("0.9.0", r, Alice, out string reason));
+        StringAssert.Contains("Different game version", reason);
+    }
+
+    [Test]
+    public void DirectHandshakeAcceptsOnlyTheSameProtocol()
+    {
+        Assert.IsTrue(DirectHandshake.Check(GameVersion.Protocol, "0.13.0",
+            new VersionHello { protocol = GameVersion.Protocol, version = "0.13.0" }, out _));
+        Assert.IsFalse(DirectHandshake.Check(GameVersion.Protocol, "0.13.0",
+            new VersionHello { protocol = 12, version = "0.12.0" }, out string reason));
+        StringAssert.Contains("Different game version", reason);
+        StringAssert.Contains("0.13.0", reason);
+        // An old client that sends nothing at all decodes as protocol 0.
+        Assert.IsFalse(DirectHandshake.Check(GameVersion.Protocol, "0.13.0", default, out _));
     }
 
     [TestCase(0)]

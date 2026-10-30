@@ -113,17 +113,59 @@ public sealed class QaSmoke : MonoBehaviour
             yield return null;
             hud.MatchMenu.Close();
         }
-        else
+        // v0.15 reconnect: the client's connection breaks, its seat is kept for it, and it comes back with its ticket.
+        if (role == "client")
         {
             yield return new WaitForSecondsRealtime(2f);
+            var before = UnitCommander.Instance != null ? UnitCommander.Instance.KnownBuildings : null;
+            string hqAt = "";
+            if (before != null) foreach (var pair in before.Entries) hqAt += $"{pair.Value.Data.buildingType}@{pair.Value.Data.position} ";
+            log.WriteLine($"before drop: camera {(Camera.main != null ? Camera.main.transform.position.ToString() : "none")}, buildings {hqAt}");
+            GameManager.Instance.StopClient();
+            yield return new WaitForSecondsRealtime(3f);
+            log.WriteLine($"rejoin offered: {GameManager.Instance.CanRejoin} ({GameManager.Instance.RejoinSecondsLeft:0} s left)");
+            bool started = GameManager.Instance.Rejoin();
+            log.WriteLine($"rejoin started: {started}");
+            yield return Until(() => NetworkClient.isConnected && NetworkClient.ready && NetworkClient.localPlayer != null && GameCore.Instance != null, 40f);
+            yield return new WaitForSecondsRealtime(3f);
+            var seen = UnitCommander.Instance != null ? UnitCommander.Instance.KnownBuildings : null;
+            log.WriteLine($"rejoin view: camera {(Camera.main != null ? Camera.main.transform.position.ToString() : "none")}, buildings {(seen != null ? seen.Entries.Count : -1)}{AfterBuildings(seen)}, own units {WAR2D.Client.ClientWorld.Instance?.KnownCount}");
+            State("rejoined");
+            Shot("rejoined");
+            ClientPlayer back = NetworkClient.localPlayer != null ? NetworkClient.localPlayer.GetComponent<ClientPlayer>() : null;
+            log.WriteLine(back != null && !back.isAway && back.hasPlacedHQ && GameCore.Instance.CurrentState == GameState.Playing ? "REJOIN OK" : "REJOIN FAILED");
+            yield return new WaitForSecondsRealtime(3f);
+        }
+        else
+        {
+            yield return Until(() => AnyAway(), 25f);
+            log.WriteLine("host saw a player go away");
+            State("away");
+            yield return Until(() => !AnyAway() && GameCore.Instance.ServerPlayers.Count >= 2, 40f);
+            log.WriteLine(GameCore.Instance.ServerPlayers.Count >= 2 && !AnyAway() ? "HOST: player came back" : "HOST: player did not come back");
+            yield return new WaitForSecondsRealtime(4f);
             GameCore.Instance.Cmd_Surrender();
         }
-        yield return Until(() => GameCore.Instance.CurrentState == GameState.GameOver, 30f);
+        if (role == "client") yield return new WaitForSecondsRealtime(1f);
+        yield return Until(() => GameCore.Instance == null || GameCore.Instance.CurrentState == GameState.GameOver, 30f);
         yield return new WaitForSecondsRealtime(2f);
         State("end");
         Shot("end");
         log.WriteLine("done");
         Application.Quit();
+    }
+
+    private static string AfterBuildings(WAR2D.Net.Replication.ClientBuildings seen)
+    {
+        string text = "";
+        if (seen != null) foreach (var pair in seen.Entries) text += $" {pair.Value.Data.buildingType}@{pair.Value.Data.position}";
+        return text;
+    }
+
+    private static bool AnyAway()
+    {
+        foreach (ServerPlayer player in GameCore.Instance.ServerPlayers.Values) if (player.Away) return true;
+        return false;
     }
 
     private IEnumerator Until(System.Func<bool> condition, float seconds)

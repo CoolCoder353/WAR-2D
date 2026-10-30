@@ -34,6 +34,8 @@ namespace WAR2D.Client.Render
         private readonly List<int> gone = new List<int>();
         private float now;
         private readonly Func<int, bool> flashing;
+        private Func<int, ClientBuildings.TurretHead> headOf;
+        private ClientBuildings headsOf;
 
         /// <param name="atlas">The <c>Buildings</c> atlas; without one, every building draws as a white square.</param>
         public InstancedBuildingRenderer(ArtAtlas atlas, ArtAtlas effects)
@@ -113,12 +115,20 @@ namespace WAR2D.Client.Render
             return 0;
         }
 
-        /// <summary>Packs and draws the buildings. <paramref name="colorOf"/> gives an owner's packed team colour.</summary>
-        public void Draw(ClientBuildings known, float time, Func<int, uint> colorOf)
+        /// <summary>
+        /// Packs and draws the buildings. <paramref name="colorOf"/> gives an owner's packed team colour; <paramref name="barMode"/>
+        /// (a <see cref="HealthBarMode"/>) and <paramref name="selected"/> pick which health bars show.
+        /// </summary>
+        public void Draw(ClientBuildings known, float time, Func<int, uint> colorOf, int barMode = (int)HealthBarMode.DamagedOnly, Func<int, bool> selected = null)
         {
             now = time;
             TrackHits(known);
-            BuildingPacking.Pack(known.Entries.Values, frames, colorOf, WorldStateManager.GetBuildingSize, time, flashing, lists);
+            if (headsOf != known)
+            {
+                headsOf = known;
+                headOf = known.HeadOf;
+            }
+            BuildingPacking.Pack(known.Entries.Values, frames, colorOf, WorldStateManager.GetBuildingSize, time, flashing, lists, headOf, barMode, selected);
             Submit(lists.Buildings, ref buildings, ref buildingCapacity, buildingMaterial);
             Submit(lists.Overlays, ref overlays, ref overlayCapacity, overlayMaterial);
             Submit(lists.Bars, ref bars, ref barCapacity, barMaterial);

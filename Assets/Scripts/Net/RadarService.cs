@@ -51,6 +51,7 @@ public sealed class RadarService
             Centres = centres, Radii = radii, OwnerSlots = slots, Seen = seen, UnitCount = unitCount,
             CellSize = data.CellSize, CellsX = data.CellsX, CellsY = data.CellsY, CellStart = data.CellStart, Sorted = data.Sorted,
             Positions = data.Positions, Health = data.Health, OwnerSlot = data.OwnerSlot, AttackMask = data.AttackMask,
+            JamMask = data.JamMask, FogCellSize = data.FogCellSize, FogW = data.FogW, FogH = data.FogH, FogCells = data.FogCells,
         }.Schedule(radars.Count, 1).Complete();
         for (int r = 0; r < radars.Count; r++)
         {
@@ -63,7 +64,10 @@ public sealed class RadarService
         centres.Dispose(); radii.Dispose(); slots.Dispose(); seen.Dispose();
     }
 
-    /// <summary>One Radar per index: 1 when a living unit of an owner the Radar's owner attacks is within its radius.</summary>
+    /// <summary>
+    /// One Radar per index: 1 when a living unit of an owner the Radar's owner attacks is within its radius, on a fog
+    /// cell that isn't jammed for the Radar owner's grid (v0.13: a Radar never pings for a contact in a jam).
+    /// </summary>
     [BurstCompile]
     private struct EnemyInRangeJob : IJobParallelFor
     {
@@ -77,6 +81,8 @@ public sealed class RadarService
         [ReadOnly] public NativeArray<float> Health;
         [ReadOnly] public NativeArray<byte> OwnerSlot;
         [ReadOnly] public NativeArray<ushort> AttackMask;
+        [ReadOnly] public NativeArray<byte> JamMask;
+        public int FogCellSize, FogW, FogH, FogCells;
 
         public void Execute(int r)
         {
@@ -94,6 +100,8 @@ public sealed class RadarService
                 {
                     int u = Sorted[k];
                     if (u >= UnitCount || Health[u] <= 0f || !SimData.Attacks(AttackMask, ownerSlot, OwnerSlot[u]) || math.distancesq(Positions[u], centre) > rSq) continue;
+                    int2 f = math.clamp((int2)math.floor(Positions[u] / FogCellSize), 0, new int2(FogW - 1, FogH - 1));
+                    if (JamMask[ownerSlot * FogCells + f.y * FogW + f.x] != 0) continue;
                     Seen[r] = 1;
                     return;
                 }

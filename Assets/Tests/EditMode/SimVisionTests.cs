@@ -37,6 +37,23 @@ public class SimVisionTests
     }
 
     [Test]
+    public void AUnitBesideTheBorderSeesAlongIt()
+    {
+        // The bottom and left fog rows are half border rock (fog cells are 2 tiles): sight along them must not be traced
+        // over the rock half of the cells.
+        using var sim = new SimHarness(SimHarness.OpenMap(64));
+        sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 1.5f));
+        sim.Spawn(SimHarness.OwnerA, new float2(1.5f, 30.5f));
+        Pass(sim);
+        int grid = sim.Context.VisionOf(SimHarness.OwnerA);
+        SimData data = sim.Context.Data;
+        Assert.IsTrue(data.Sees(grid, new float2(14.5f, 1.5f)), "east along the bottom row");
+        Assert.IsTrue(data.Sees(grid, new float2(6.5f, 1.5f)), "west along the bottom row");
+        Assert.IsTrue(data.Sees(grid, new float2(1.5f, 34.5f)), "north along the left column");
+        Assert.IsTrue(data.Sees(grid, new float2(1.5f, 26.5f)), "south along the left column");
+    }
+
+    [Test]
     public void ExploredRemainsAfterTheUnitLeaves()
     {
         using var sim = WalledSim();

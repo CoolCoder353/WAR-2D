@@ -6,7 +6,9 @@ namespace WAR2D.Art
     /// <summary>
     /// The approved v0.8 pixel icons and cursors (Figma page <c>v0.8 New Paint</c>, <c>docs/ux/v0.8-figma.md</c>) and the
     /// v0.7 command icons (page <c>v0.7 Siege</c>, <c>docs/ux/v0.7-figma.md</c>) and the v0.12 unit, Detonate and producer
-    /// icons (page <c>v0.12 Arsenal</c>, <c>docs/ux/v0.12-figma.md</c>):
+    /// icons (page <c>v0.12 Arsenal</c>, <c>docs/ux/v0.12-figma.md</c>) and the v0.13 Gun turret and Jammer icons (page
+    /// <c>v0.13 Bastion</c>, <c>docs/ux/v0.13-figma.md</c>) and the v0.15 HQ, Idle Builders, Army, Rally all and Eye icons
+    /// (page <c>v0.15 QoL – redesign</c>, <c>docs/ux/v0.15-qol-figma.md</c>):
     /// 16×16 bitmaps where <c>#</c> is the body, <c>+</c> the accent and <c>.</c> empty, with a 1 px dark outline
     /// added around every lit pixel. Built at runtime as point-filtered textures (no mipmaps), so they stay crisp
     /// at the UI's whole-number scales. Icon bodies are white so a USS tint colours them by button state.
@@ -591,6 +593,63 @@ namespace WAR2D.Art
                 ".....++++++.....",
                 "................",
             },
+            ["IconGunTurret"] = new[]
+            {
+                "................",
+                "................",
+                "................",
+                ".....####.......",
+                "....##########+.",
+                "....##########+.",
+                "....######......",
+                "......##........",
+                "...##########...",
+                "..############..",
+                "..#++######++#..",
+                "..############..",
+                ".##############.",
+                "................",
+                "................",
+                "................",
+            },
+            ["IconJammer"] = new[]
+            {
+                "................",
+                "........+++.....",
+                "...........+....",
+                ".##.....++..+...",
+                ".###......+..+..",
+                ".####......+.+..",
+                ".#####..#..+.+..",
+                ".#######........",
+                "..######........",
+                "...######.......",
+                "....#####.......",
+                "......##........",
+                "......##........",
+                "....######......",
+                "...########.....",
+                "................",
+            },
+            ["IconAi"] = new[]
+            {
+                "................",
+                "................",
+                ".......++.......",
+                ".......##.......",
+                "...##########...",
+                "..############..",
+                ".###++####++###.",
+                ".###++####++###.",
+                "..############..",
+                "..############..",
+                "..###......###..",
+                "..############..",
+                "...##########...",
+                "................",
+                "................",
+                "................",
+            },
             ["IconRallyFlag"] = new[]
             {
                 "................",
@@ -610,6 +669,126 @@ namespace WAR2D.Art
                 "................",
                 "................",
             },
+            // v0.15 (Figma page v0.15 QoL – redesign, Icons – v0.15 redesign 117:40): The HQ: Jump to HQ in the top bar.
+            ["IconHq"] = new[]
+            {
+                "................",
+                ".......#++++....",
+                ".......#+++.....",
+                ".......#........",
+                ".#.#...#...#.#..",
+                ".###...#...###..",
+                ".###.#####.###..",
+                ".#############..",
+                ".#############..",
+                ".#############..",
+                ".######+######..",
+                ".#####+++#####..",
+                ".#####+++#####..",
+                ".#####+++#####..",
+                "................",
+                "................",
+            },
+            // v0.15 (Figma page v0.15 QoL – redesign, Icons – v0.15 redesign 117:40): A Builder with a "z": the idle Builders count.
+            ["IconIdleBuilders"] = new[]
+            {
+                "................",
+                ".........+++++..",
+                "............+...",
+                "...........+....",
+                "..........+.....",
+                ".........+++++..",
+                "....#####.......",
+                "....#...#.......",
+                "...#########.++.",
+                "..##########.++.",
+                ".###########+++.",
+                ".###########.++.",
+                ".#++#++#++##.++.",
+                "..#########..++.",
+                "................",
+                "................",
+            },
+            // v0.15 (Figma page v0.15 QoL – redesign, Icons – v0.15 redesign 117:40): Crossed swords: the Army count.
+            ["IconArmy"] = new[]
+            {
+                "................",
+                ".##..........##.",
+                "..##........##..",
+                "...##......##...",
+                "....##....##....",
+                ".....##..##.....",
+                "......####......",
+                ".......##.......",
+                "...+..####..+...",
+                "....+##..##+....",
+                ".....+....+.....",
+                "....#.+..+.#....",
+                "...#........#...",
+                ".++..........++.",
+                ".++..........++.",
+                "................",
+            },
+            // v0.15 (Figma page v0.15 QoL – redesign, Icons – v0.15 redesign 117:40): Two flags: Rally all producers.
+            ["IconRallyAll"] = new[]
+            {
+                "................",
+                "........#.......",
+                "........#++++++.",
+                "........#+++++++",
+                "..#.....#++++++.",
+                "..####..#++++...",
+                "..#####.#.......",
+                "..####..#.......",
+                "..##....#.......",
+                "..#.....#.......",
+                "..#.....#.......",
+                "..#....###......",
+                ".###..#####.....",
+                "................",
+                "................",
+                "................",
+            },
+            // v0.15 (Figma page v0.15 QoL – redesign, Icons – v0.15 redesign 117:40): An eye: the minimap filters.
+            ["IconEye"] = new[]
+            {
+                "................",
+                "................",
+                "................",
+                "................",
+                "......####......",
+                "....########....",
+                "..####++++####..",
+                ".####++..++####.",
+                ".####++..++####.",
+                "..####++++####..",
+                "....########....",
+                "......####......",
+                "................",
+                "................",
+                "................",
+                "................",
+            },
+            // v0.15 (Figma page v0.15 QoL – redesign, Icon/px/Reconnect 117:8): two arrows chasing round, the reconnect banner and away tag.
+            ["IconReconnect"] = new[]
+            {
+                "..........+.....",
+                "..........++....",
+                ".....#####+++...",
+                "...#######++....",
+                "...###....+.....",
+                "..###...........",
+                "..##............",
+                "..##............",
+                "............##..",
+                "............##..",
+                "...........###..",
+                ".....+....###...",
+                "....++#######...",
+                "...+++#####.....",
+                "....++..........",
+                ".....+..........",
+            },
         };
 
         private static readonly Dictionary<string, (Color32 body, Color32 accent)> Colours = new Dictionary<string, (Color32, Color32)>
@@ -624,6 +803,7 @@ namespace WAR2D.Art
             ["IconRepair"] = (White, new Color32(0x4C, 0xD0, 0x7D, 255)),
             ["IconDemolish"] = (White, new Color32(0xF2, 0xC1, 0x4E, 255)),
             ["IconRallyFlag"] = (White, new Color32(0x4F, 0xC3, 0xF7, 255)),
+            ["IconAi"] = (White, new Color32(0x4F, 0xC3, 0xF7, 255)),
             ["IconBuilder"] = (White, new Color32(0xF2, 0xC1, 0x4E, 255)),
             ["IconTank"] = (White, new Color32(0x2F, 0x3A, 0x46, 255)),
             ["IconDigger"] = (White, new Color32(0xF2, 0xC1, 0x4E, 255)),
@@ -637,6 +817,14 @@ namespace WAR2D.Art
             ["IconBarracks"] = (White, new Color32(0xE0, 0x40, 0x5A, 255)),
             ["IconHeavyFactory"] = (White, new Color32(0xF2, 0xC1, 0x4E, 255)),
             ["IconSiegeWorkshop"] = (White, new Color32(0xF2, 0xC1, 0x4E, 255)),
+            ["IconGunTurret"] = (White, new Color32(0xE0, 0x40, 0x5A, 255)),
+            ["IconJammer"] = (White, new Color32(0x4F, 0xC3, 0xF7, 255)),
+            ["IconHq"] = (White, new Color32(0xF2, 0xC1, 0x4E, 255)),
+            ["IconIdleBuilders"] = (White, new Color32(0xF2, 0xC1, 0x4E, 255)),
+            ["IconArmy"] = (White, new Color32(0xF2, 0xC1, 0x4E, 255)),
+            ["IconRallyAll"] = (White, new Color32(0x4F, 0xC3, 0xF7, 255)),
+            ["IconEye"] = (White, new Color32(0x4F, 0xC3, 0xF7, 255)),
+            ["IconReconnect"] = (White, new Color32(0x4F, 0xC3, 0xF7, 255)),
             ["CursorAttack"] = (Cursor, new Color32(0xE0, 0x40, 0x5A, 255)),
             ["CursorInvalid"] = (Cursor, new Color32(0xE0, 0x40, 0x5A, 255)),
         };

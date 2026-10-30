@@ -6,6 +6,12 @@ public class ServerPlayer
     public NetworkConnectionToClient connection;
     public PlayerState state = PlayerState.Playing;
 
+    /// <summary>
+    /// v0.15: the player dropped out of the running match and has no connection for now. While away nothing is earned, charged or
+    /// produced for them (so nothing decays), their units hold position, and gifts to them are refused.
+    /// </summary>
+    public bool Away;
+
     /// <summary>Verified Steam ID, 0 for a Direct connection. Server only; never sent to clients.</summary>
     public ulong SteamId;
 
@@ -41,6 +47,7 @@ public class ServerPlayer
         incomeThisSecond = upkeepThisSecond = 0f;
         IncomeLastSecond = UpkeepLastSecond = 0f;
         SpentThisMatch = 0f;
+        UnpaidSeconds = 0;
         ResourcesDirty = true;
     }
 
@@ -54,7 +61,7 @@ public class ServerPlayer
 
     public void Add(float amount)
     {
-        if (!(amount > 0f)) return; // also rejects NaN
+        if (Away || !(amount > 0f)) return; // also rejects NaN
         Resources += amount;
         ResourcesDirty = true;
     }
@@ -63,7 +70,9 @@ public class ServerPlayer
     public void Refund(float amount)
     {
         if (!(amount > 0f)) return;
-        Add(amount);
+        // Not Add: a refund is the player's own money coming back, so it lands even while they are away.
+        Resources += amount;
+        ResourcesDirty = true;
         SpentThisMatch = SpentThisMatch > amount ? SpentThisMatch - amount : 0f;
     }
 
@@ -86,6 +95,9 @@ public class ServerPlayer
     /// <summary>True for the second in which some of the player's upkeep first went unpaid (after <see cref="RollSecond"/>).</summary>
     public bool BecameUnpaid { get; private set; }
 
+    /// <summary>Seconds of this match in which some of the player's upkeep went unpaid (statistics, tests and the AI bench).</summary>
+    public int UnpaidSeconds { get; private set; }
+
     /// <summary>Records that some of the player's upkeep (units or buildings) went unpaid this second.</summary>
     public void MarkUnpaid() => unpaidThisSecond = true;
 
@@ -93,6 +105,7 @@ public class ServerPlayer
     public void RollSecond()
     {
         BecameUnpaid = unpaidThisSecond && !unpaidLastSecond;
+        if (unpaidThisSecond) UnpaidSeconds++;
         unpaidLastSecond = unpaidThisSecond;
         unpaidThisSecond = false;
         if (incomeThisSecond != IncomeLastSecond || upkeepThisSecond != UpkeepLastSecond) ResourcesDirty = true;
@@ -108,6 +121,7 @@ public class ServerPlayer
     /// <summary>Takes <paramref name="amount"/> if the player can afford it; it counts as spent unless <paramref name="countAsSpent"/> is false (gifts).</summary>
     public bool TrySpend(float amount, bool countAsSpent = true)
     {
+        if (Away) return false; // nothing is bought for an away player (upkeep goes through TryPayUpkeep)
         float balance = Resources;
         if (!UpkeepRules.TryCharge(ref balance, amount)) return false;
         if (balance != Resources)
@@ -118,6 +132,15 @@ public class ServerPlayer
         }
         return true;
     }
+
+    /// <summary>
+    /// Charges upkeep: <see cref="TrySpend"/>, except that an away player's upkeep is frozen (neither charged nor missed,
+    /// so true without taking anything).
+    /// </summary>
+    public bool TryPayUpkeep(float amount) => Away || TrySpend(amount);
+
+    /// <summary>Sends the balance again at the next sync (a player who came back has none of it).</summary>
+    public void MarkDirty() => ResourcesDirty = true;
 
     public void MarkSynced()
     {

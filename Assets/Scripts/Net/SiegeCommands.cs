@@ -17,32 +17,14 @@ public partial class WorldStateManager
     [Command(requiresAuthority = false)]
     public void CmdCancelBuildings(int[] buildingIds, NetworkConnectionToClient sender = null)
     {
-        if (!CommandGate.Allow(sender, nameof(CmdCancelBuildings))) return;
-        if (buildingIds == null || buildingIds.Length > SpawnerRules.MaxSpawnersPerCommand) return;
-        if (!TryActingOwner(sender, out int owner)) return;
-        ServerPlayer player = GameCore.Instance.GetServerPlayerById(owner);
-        if (player == null) return;
-        GameConfigData config = ConfigLoader.LoadConfig();
-        foreach (int id in buildingIds)
-        {
-            if (!Buildings.TryGetValue(id, out Entity entity) || !EntityManager.Exists(entity)) continue;
-            BuildingData building = EntityManager.GetComponentData<BuildingData>(entity);
-            if (building.ownerId != owner || building.buildingType == BuildingType.Base) continue;
-            bool blueprint = EntityManager.HasComponent<Construction>(entity);
-            HealthComponent health = EntityManager.GetComponentData<HealthComponent>(entity);
-            if (health.currentHealth <= 0f) continue; // already removed this frame (or dying): never refund twice
-            float refund = ConstructionRules.Refund(blueprint, config.GetBuilding(building.buildingType).UpfrontCost, config.Siege.DemolishRefund);
-            if (refund > 0f) player.Refund(refund);
-            if (blueprint) cancelledBlueprints.Add(id); // not a building lost (OnEntityDestroyed)
-            health.currentHealth = 0f; // DestructionSystem removes it, frees the footprint and records the explosion
-            EntityManager.SetComponentData(entity, health);
-        }
+        if (!CommandGate.Allow(sender, nameof(CmdCancelBuildings)) || !TryOwnerOf(sender, out int owner)) return;
+        PlayerActions.CancelBuildings(owner, buildingIds);
     }
 
     /// <summary>Blueprints their owner cancelled this frame, so their destruction does not count as a building lost.</summary>
-    private readonly HashSet<int> cancelledBlueprints = new HashSet<int>();
+    internal readonly HashSet<int> cancelledBlueprints = new HashSet<int>();
 
-    private readonly List<int2> wallScratch = new List<int2>();
+    internal readonly List<int2> wallScratch = new List<int2>();
 
     /// <summary>
     /// Lays a wall line from <paramref name="from"/> to <paramref name="to"/> (4-connected, at most
@@ -52,33 +34,22 @@ public partial class WorldStateManager
     [Command(requiresAuthority = false)]
     public void CmdPlaceWall(int2 from, int2 to, NetworkConnectionToClient sender = null)
     {
-        if (!CommandGate.Allow(sender, nameof(CmdPlaceWall))) return;
-        if (!TryActingOwner(sender, out int owner) || Map == null) return;
-        SiegeConfig siege = ConfigLoader.LoadConfig().Siege;
-        if (!WallRules.ValidDrag(from, to, new int2(Map.Grid.Width, Map.Grid.Height), siege.MaxWallLine)) return;
-        ServerPlayer player = GameCore.Instance.GetServerPlayerById(owner);
-        if (player == null) return;
-        wallScratch.Clear();
-        WallRules.Line(from, to, wallScratch);
-        float cost = siege.WallCost;
-        foreach (int2 tile in wallScratch)
-        {
-            // Only the owner's own knowledge filters here. Whether the tile is free is the sim's call, after its
-            // sight check: testing the real map first would let charges reveal what stands in the fog.
-            if (KnownBombAt(tile, owner)) continue;
-            int2 at = tile;
-            bool paid = false;
-            Sim.Commands.Enqueue(new SimCommand
-            {
-                Kind = SimCommandKind.PlaceWall, OwnerId = owner, Tile = tile,
-                TryPay = () => paid = player.TrySpend(cost),
-                OnApplied = ok =>
-                {
-                    if (!ok) { if (paid) player.Refund(cost); }
-                    else DetonateUnknownBomb(at, owner); // a wall raised on a bomb the owner may not know sets it off
-                },
-            });
-        }
+        if (!CommandGate.Allow(sender, nameof(CmdPlaceWall)) || !TryOwnerOf(sender, out int owner)) return;
+        PlayerActions.PlaceWall(owner, from, to);
+    }
+
+    /// <summary>Most wall tiles one <see cref="CmdRemoveWalls"/> may name.</summary>
+    public const int MaxWallsPerRemove = 512;
+
+    /// <summary>
+    /// Cancels (blueprint: full refund) or demolishes (finished: <c>Siege.DemolishRefund</c> of its cost back) each
+    /// named wall tile the sender owns. Tiles that are not the sender's walls are skipped.
+    /// </summary>
+    [Command(requiresAuthority = false)]
+    public void CmdRemoveWalls(int2[] tiles, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(CmdRemoveWalls)) || !TryOwnerOf(sender, out int owner)) return;
+        PlayerActions.RemoveWalls(owner, tiles);
     }
 
     /// <summary>True when owner <paramref name="from"/> shares vision with owner <paramref name="to"/> (main thread, settled).</summary>
@@ -86,11 +57,11 @@ public partial class WorldStateManager
         Sim != null && Sim.TrySlotOf(from, out int a) && Sim.TrySlotOf(to, out int b) && Sim.Diplomacy.SharesVisionWith(a, b);
 
     /// <summary>True when a bomb the viewer may know of (its own, or shared with it) sits on the tile: placement sees the tile as taken.</summary>
-    private bool KnownBombAt(int2 tile, int viewer) =>
+    internal bool KnownBombAt(int2 tile, int viewer) =>
         bombTiles.TryGetValue(tile, out var bomb) && BombRules.MayKnow(viewer, bomb.owner, SharesVision);
 
     /// <summary>Sets off the bomb on a tile when <paramref name="placer"/> may not know of it (plan P5); the sim checks the placer's side sees the tile.</summary>
-    private void DetonateUnknownBomb(int2 tile, int placer)
+    internal void DetonateUnknownBomb(int2 tile, int placer)
     {
         if (!bombTiles.TryGetValue(tile, out var bomb) || BombRules.MayKnow(placer, bomb.owner, SharesVision)) return;
         Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.DetonateBomb, OwnerId = placer, TargetId = bomb.id, Tile = tile });

@@ -16,9 +16,10 @@ A networked, top-down 2D real-time strategy game built in Unity, made for armies
 | [docs/gameplay.md](docs/gameplay.md) | Rules of the game, controls, buildings, units, economy, combat, win/loss |
 | [docs/known-issues.md](docs/known-issues.md) | Open issues and design requests, plus a log of what past reviews fixed |
 | [docs/bug-review.md](docs/bug-review.md) | Code-review findings, how each was triaged, and the low-priority ones still open |
-| [docs/debugging.md](docs/debugging.md) | The control API and `tools/war2d` CLI, overlays, `WarLog`, replays |
+| [docs/debugging.md](docs/debugging.md) | The control API and `tools/war2d` CLI, overlays, `WarLog`, replays, the AI bench |
+| [docs/tuning.md](docs/tuning.md) | How to tune balance and the AI: where the numbers are, the balance sheet, the bench, the unattended tuner |
 | [docs/playtesting.md](docs/playtesting.md) | How to run a playtest: Steam, and Direct play through a router or tunnel |
-| [docs/roadmap.md](docs/roadmap.md) | The current roadmap (v0.10–v0.13: debug tools and replays, new maps, new units, defences), with a design spec per update |
+| [docs/roadmap.md](docs/roadmap.md) | The current roadmap (v0.10–v0.14: debug tools and replays, new maps, new units, defences, AI opponents; v0.15 quality of life and v0.15.1 followed), with a design spec per update |
 | [docs/archive/](docs/archive/roadmap-v0.2-v0.9.md) | The completed v0.2–v0.9 roadmap, its specs, plans, spike and performance results |
 | [steam/README.md](steam/README.md) | Uploading builds to Steam with `tools/steam-upload.sh` |
 | [CLAUDE.md](CLAUDE.md) | Guidance for AI coding assistants working in this repo |
@@ -46,7 +47,7 @@ Mirror needs two running instances: one host and one or more clients.
 2. In the first instance press **Play**, then **Host**. This starts a server and a local client at the same time.
 3. **With Steam**, friends join from the Play screen's *Friends' games* list or an invite (Steam relay, no port forwarding). **Without Steam** (editor, `-direct` or `-noSteam` runs, tests), open **Join** and enter the host's IP (`localhost` on the same machine). Direct connections use UDP port **7778** (KCP transport); a release build shows the IP field only when started with `-direct`. For play across networks without Steam, see [docs/playtesting.md](docs/playtesting.md).
 4. Players can rename themselves in the lobby. Only the **server owner** (the host, or the next player if the host leaves) sees the **Start Game** button.
-5. Starting the game loads the configured map (`Map_2`), and every player places their HQ inside their own clearing. Once everyone has placed one, a 5-second countdown runs and the match begins.
+5. Starting the game loads the configured map (`Map_2`, generated from a seed), and every player places their HQ at one of the start options they are dealt (AI players place theirs at once; when the host's pick time runs out, the rest are placed at random). Once every HQ is down, a 5-second countdown runs and the match begins.
 
 See [docs/gameplay.md](docs/gameplay.md#controls) for in-game controls.
 
@@ -72,7 +73,12 @@ tools/unity-test.sh PlayMode
 
 ## Balancing
 
-Gameplay numbers are set in `Assets/Resources/GameConfig.xml`, which is read at runtime via `Config.ConfigLoader`. It is the single source of every balance value and is validated strictly at startup — an invalid config refuses to host.
+Gameplay numbers are set in `Assets/Resources/GameConfig.xml`, which is read at runtime via `Config.ConfigLoader`. It is the single source of every balance value, AI behaviour included, and is validated strictly at startup: an invalid config refuses to host.
+
+To change them, see [docs/tuning.md](docs/tuning.md):
+- `node tools/balance-sheet.js` works out unit numbers and equal-cost fights from the config alone, in under a second.
+- `tools/ai-bench.sh --brief` plays AI-vs-AI matches against a Linux build and prints a short summary.
+- `node tools/ai-tune.js <spec.json>` tries listed values unattended and confirms the best.
 
 ## Project layout
 
@@ -87,6 +93,8 @@ Assets/
 │   ├── GameCore.cs (+ Net/*Commands.cs)  Server game state machine, lobby, players, win/loss
 │   ├── ClientPlayer.cs          Per-player NetworkBehaviour: SyncVars, RPCs
 │   ├── ServerPlayer.cs          Server-only player data (resources, state)
+│   ├── Ai/                      The AI brain and managers (own WAR2D.Ai assembly)
+│   ├── AiView/                  The AI's team view (what its side sees) and `AiRunner`, its link to the match
 │   ├── Unit/                    WorldStateManager: map, ids, buildings, order commands
 │   ├── Sim/                     The 20 Hz unit simulation: tick stages, SimData, orders, vision
 │   ├── Pathing/                 Sector graph and flow fields
@@ -103,7 +111,8 @@ Assets/
 │   ├── Art/, Audio/             Procedural art and sound generators
 │   ├── Config/                  GameConfig data classes + strict XML parser/loader
 │   ├── Rules/                   Pure rule helpers (placement, combat, upkeep, win/loss, ...)
-│   └── Dev/                     Perf harness and QA helpers (need `-perf`)
+│   ├── Editor/                  Editor menus: art and audio builds, build commands, Steam setup
+│   └── Dev/                     Perf harness, AI bench and QA helpers (need `-perf`)
 ├── Tests/                       EditMode and PlayMode test assemblies
 ├── 3rd Party/                   TIM Console (+ custom commands), FizzySteamworks, NaughtyAttributes
 ├── Mirror/                      Vendored Mirror networking

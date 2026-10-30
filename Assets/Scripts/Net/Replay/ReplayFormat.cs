@@ -9,7 +9,12 @@ namespace WAR2D.Net.Replay
 {
     public enum ReplayChannel : byte { UnitsReliable = 0, UnitsUnreliable = 1, Buildings = 2, Terrain = 3, Fog = 4, Explosions = 10, Blasts = 11, Timeline = 12, End = 13, BomberBlasts = 14 }
 
-    public sealed class ReplayPlayerInfo { public int OwnerId; public string Nickname; public int Colour; public int Team; }
+    public sealed class ReplayPlayerInfo
+    {
+        public int OwnerId; public string Nickname; public int Colour; public int Team;
+        /// <summary>v0.14: an AI player and its difficulty (the viewer shows the AI tag). Never its style: the file exists while the match runs.</summary>
+        public bool IsAi; public AiDifficulty Difficulty;
+    }
 
     /// <summary>A recording's header: what the viewer needs to rebuild the map and label the players. Never Steam IDs.</summary>
     public sealed class ReplayHeader
@@ -27,7 +32,8 @@ namespace WAR2D.Net.Replay
     /// <summary>File layout: GZip of ("W2DR", u16 format, u32 header length, header JSON, records). Record: varint tick delta, u8 channel, varint length, payload.</summary>
     public static class ReplayFile
     {
-        public const int Format = 1;
+        /// <summary>2 since v0.13: attack events carry the attacker kind (a building's attacks), so older players can't read the units stream.</summary>
+        public const int Format = 2;
         public const string Extension = ".war2drec";
         public static readonly byte[] Magic = { (byte)'W', (byte)'2', (byte)'D', (byte)'R' };
         public const int MaxRecordBytes = 4 << 20;

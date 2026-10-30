@@ -4,7 +4,7 @@
             <ui:Label text="Replays" class="panel__title" />
             <ui:VisualElement class="play-panel__content">
                 <ui:Label text="Your replays" class="text play-panel__heading" />
-                <ui:Label text="Every match you finish is saved here (Settings › Save replays). The newest 50 are kept." class="text--secondary replays__blurb" />
+                <ui:Label text="Every match you host is saved here. The newest 50 are kept." class="text--secondary replays__blurb" />
                 <ui:VisualElement class="divider" />
                 <ui:VisualElement class="row play-panel__header">
                     <ui:Label text="Newest first" class="text play-panel__heading play-panel__grow" />

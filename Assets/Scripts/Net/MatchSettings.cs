@@ -28,10 +28,15 @@ public struct MatchSettings
     public int StartOptions;
     /// <summary>HQ pick time in seconds: 0 = random, &gt; 0 = a timed pick, <see cref="StartPickRules.Unlimited"/> = wait for everyone.</summary>
     public int StartPickSeconds;
+    /// <summary>
+    /// Who may join (v0.14): a Public or Friends Steam lobby, or Private (no Steam lobby; the server refuses every
+    /// connection but the host's own). Default from <c>&lt;Lobby&gt;&lt;Visibility&gt;</c>.
+    /// </summary>
+    public LobbyVisibility Visibility;
 
     public bool Equals(MatchSettings other) =>
         Mode == other.Mode && Diplomacy == other.Diplomacy && MapSize == other.MapSize && Seed == other.Seed && StartingResources.Equals(other.StartingResources)
-        && StartOptions == other.StartOptions && StartPickSeconds == other.StartPickSeconds;
+        && StartOptions == other.StartOptions && StartPickSeconds == other.StartPickSeconds && Visibility == other.Visibility;
 }
 
 /// <summary>Validates settings a client sends. Pure.</summary>
@@ -40,7 +45,7 @@ public static class MatchSettingsRules
     /// <summary>A known mode, a non-zero seed, and a map size and starting resources from the lobby's lists.</summary>
     public static bool IsValid(in MatchSettings s, LobbyConfig lobby)
     {
-        if (lobby == null || !Enum.IsDefined(typeof(MatchMode), s.Mode) || s.Seed == 0) return false;
+        if (lobby == null || !Enum.IsDefined(typeof(MatchMode), s.Mode) || !Enum.IsDefined(typeof(LobbyVisibility), s.Visibility) || s.Seed == 0) return false;
         if (Array.IndexOf(lobby.MapSizes, s.MapSize) < 0) return false;
         if (!StartPickRules.IsValidOptions(s.StartOptions, lobby) || !StartPickRules.IsValidPickSeconds(s.StartPickSeconds, lobby)) return false;
         foreach (float r in lobby.StartingResources) if (r.Equals(s.StartingResources)) return true;
@@ -66,6 +71,43 @@ public static class LobbyRules
     /// </summary>
     public static bool MayJoin(GameState state, int connectionsIncludingNew) =>
         state == GameState.Lobby && connectionsIncludingNew <= MaxPlayers;
+
+    /// <summary>
+    /// True when a connection may stay: a Private lobby (v0.14) takes only the host's own connection; otherwise
+    /// <see cref="MayJoin"/> decides with the seats (humans and AIs).
+    /// </summary>
+    public static bool MayConnect(LobbyVisibility visibility, bool hostsOwn, GameState state, int seatsIncludingNew, out string refusal)
+    {
+        refusal = null;
+        if (hostsOwn) return true;
+        if (visibility == LobbyVisibility.Private) { refusal = PrivateRefusal; return false; }
+        return MayJoin(state, seatsIncludingNew);
+    }
+
+    /// <summary>What a player refused by a Private lobby is told.</summary>
+    public const string PrivateRefusal = "Private match: the host is playing single-player and takes no players.";
+
+    /// <summary>
+    /// True when the host may switch <paramref name="from"/> → <paramref name="to"/>: going Private is refused while
+    /// another human is connected (AIs never block it). Every other change is allowed.
+    /// </summary>
+    public static bool MayChangeVisibility(LobbyVisibility from, LobbyVisibility to, int humans) =>
+        to != LobbyVisibility.Private || from == LobbyVisibility.Private || humans <= 1;
+
+    /// <summary>
+    /// The team an added AI joins (v0.14): <see cref="TeamRules.NoTeam"/> in Free-for-all; in Teams mode the pickable
+    /// team with the fewest players (the lowest on a tie), counting each player's lobby team.
+    /// </summary>
+    public static int FewestPlayersTeam(MatchMode mode, IEnumerable<int> lobbyTeams)
+    {
+        if (mode != MatchMode.Teams) return TeamRules.NoTeam;
+        var counts = new int[PickableTeams];
+        if (lobbyTeams != null)
+            foreach (int t in lobbyTeams) if (t >= 0 && t < PickableTeams) counts[t]++;
+        int best = 0;
+        for (int t = 1; t < PickableTeams; t++) if (counts[t] < counts[best]) best = t;
+        return best;
+    }
 
     /// <summary>The lowest colour nobody has taken, or -1 when all are taken.</summary>
     public static int FirstFreeColour(IEnumerable<int> taken)
@@ -113,6 +155,23 @@ public static class LobbyRules
         foreach (var p in players) choices.Add((p.owner, p.team));
         return TeamRules.CountTeams(TeamRules.Assign(choices).Values);
     }
+}
+
+/// <summary>What the host may pick for a lobby AI (v0.14). Pure.</summary>
+public static class AiLobbyRules
+{
+    /// <summary>Easy, Normal or Hard (never Scripted, which is dev only) and a known style (Random allowed).</summary>
+    public static bool IsValidChoice(AiDifficulty difficulty, AiStyle style) =>
+        difficulty != AiDifficulty.Scripted && Enum.IsDefined(typeof(AiDifficulty), difficulty) && Enum.IsDefined(typeof(AiStyle), style);
+
+    /// <summary>True while another seat fits: humans and AIs together are at most <see cref="LobbyRules.MaxPlayers"/>.</summary>
+    public static bool HasFreeSeat(int seats) => seats >= 0 && seats < LobbyRules.MaxPlayers;
+
+    /// <summary>The lobby's text for a difficulty ("Hard").</summary>
+    public static string DifficultyName(AiDifficulty difficulty) => difficulty.ToString();
+
+    /// <summary>The lobby's text for a style ("Random", "Turtle").</summary>
+    public static string StyleName(AiStyle style) => style.ToString();
 }
 
 /// <summary>Private start points: how many each player is dealt, the pick time and the deal itself. Pure.</summary>

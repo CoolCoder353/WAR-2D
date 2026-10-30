@@ -1,3 +1,4 @@
+using System.Linq;
 using System.IO;
 using NUnit.Framework;
 using UnityEngine;
@@ -32,6 +33,16 @@ public class SettingsStoreTests
         LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("could not be read"));
         GameSettings s = SettingsStore.Load(path);
         Assert.AreEqual(JsonUtility.ToJson(new GameSettings()), JsonUtility.ToJson(s));
+    }
+
+    [Test]
+    public void ResolutionChoicesIncludeFourKAndTheCurrentOne()
+    {
+        var choices = GameSettings.ResolutionChoices(new Vector2Int(2048, 1152));
+        CollectionAssert.Contains(choices, new Vector2Int(3840, 2160));
+        CollectionAssert.Contains(choices, new Vector2Int(1366, 768));
+        CollectionAssert.Contains(choices, new Vector2Int(2048, 1152), "a custom current size stays selectable");
+        CollectionAssert.AreEqual(new System.Collections.Generic.List<Vector2Int>(choices).OrderBy(r => r.x).ThenBy(r => r.y), choices);
     }
 
     [Test]

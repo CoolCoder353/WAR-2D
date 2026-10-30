@@ -24,6 +24,9 @@ Units draw with pre-drawn facings, not a rotated quad (rotation breaks the pixel
 | `Barracks` (was `SmallUnitSpawner`) | 2×2 | 2 (idle: door lamp, each held 5 ticks) | yes | `RenderGen.Spawner` (renamed in v0.12, same art) |
 | `HeavyFactory` | 3×3 | 2 | yes | `RenderGen.HeavyFactory` (v0.12) |
 | `SiegeWorkshop` | 2×2 | 2 | yes | `RenderGen.SiegeWorkshop` (v0.12) |
+| `GunTurret` (base) | 1×1 | 2 (whole, damaged: chosen by health below 50 %, not looped) | yes | `RenderGen.GunTurretBase` (v0.13) |
+| `GunTurretHead` | 1×1 | 2 (rest, recoil just after a shot) × 8 facings | yes | `RenderGen.GunTurretHead` (v0.13), drawn over the base in the facing `ClientBuildings.Heads` keeps |
+| `Jammer` | 2×2 | 2 (aerial lamps, each held half a second) | yes | `RenderGen.Jammer` (v0.13) |
 | `Miner` | 1×1 | 4 (drill loop) × 4 facings | yes | `Resources/miner.png` (32 px) |
 | `Bomb` | 1×1 | 2 (armed blink) | yes | none (v0.7; never sent to enemy clients, so only its owner's team draws it) |
 
@@ -54,6 +57,8 @@ Unused today: `Spawner.asset`, `Test.asset` and the `Pallets` tile palette (remo
 | `ArtilleryShell` / `ShellImpact` | 1×1 / 4×4 | 2 / 6 | `Effects` atlas, pooled (64 each): the shell flies 0.5 s, then the impact plays (v0.12) |
 | `FlameStream` | 3×1 | 4 | `Effects` atlas, pooled (128), stretched from the nozzle to the target (v0.12) |
 | `BomberBlast` | 4×4 | 8 | `Effects` atlas (v0.12); built but unused: bomber blasts reach clients as `BombBlast` events and draw the bomb's effect |
+| `TurretMuzzle` | 1×1 | 3 | `Effects` atlas, pooled (64): at the turret's muzzle (`RenderGen.TurretMuzzleReach`/`Height`), turned to the head's facing, with a tracer to the target (v0.13) |
+| `JamPulse` | 3×3 | 6 | `Effects` atlas, pooled (32): every 2.5 s over each finished Jammer the client sees (its own only while paid) (v0.13) |
 | `DigDebris` | 1×1 | 4 | `Effects` atlas; unused until v0.7 |
 | `RepairSparks` | 1×1 | 4 | `Effects` atlas; unused until v0.7 |
 | `ConstructionOverlay` | 1×1 (tiled over the footprint) | 4 | `Effects` atlas; unused until v0.7 |
@@ -69,6 +74,7 @@ Unused today: `Spawner.asset`, `Test.asset` and the `Pallets` tile palette (remo
 |---|---|
 | `IconMove`, `IconAttackMove`, `IconStop`, `IconHold`, `IconMiner`, `IconSpawner`, `IconWall` | vector paths in `UI/Controllers/CommandIcon.cs` (approved v0.6 Figma icons) |
 | `IconBuilder`, `IconDigger`, `IconBomb`, `IconRepair` | none (v0.7 command card) |
+| `IconGunTurret`, `IconJammer` | `Art/PixelIcons.cs` bitmaps (v0.13, Figma `Icons – v0.13`) |
 | `CursorDefault`, `CursorMove`, `CursorAttack`, `CursorInvalid` | the OS cursor |
 
 ## UI

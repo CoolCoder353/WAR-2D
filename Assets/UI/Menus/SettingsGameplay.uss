@@ -1,0 +1,43 @@
+/* Settings › Gameplay (v0.15 QoL, Figma page "v0.15 QoL – redesign", frame C 123:938): two 460px columns in a
+   1000px panel. Every tab uses the wider panel so the title and tabs don't move when the tab changes. */
+.settings-screen .settings { width: 1000px; }
+
+.settings-gameplay { flex-direction: row; align-items: flex-start; }
+.settings-gameplay__column { width: 460px; flex-shrink: 0; }
+.settings-gameplay__column--right { margin-left: var(--space-8); }
+.settings-gameplay__heading { color: var(--color-readout); padding: 4px 0 0 0; margin: 0; }
+.settings-gameplay__rule { height: 1px; background-color: var(--color-border); margin: 6px 0; }
+.settings-gameplay .settings-row { min-height: 25px; margin-bottom: 6px; }
+.settings-gameplay__hint { padding: 0; margin: 0 0 6px 0; white-space: normal; }
+
+/* Compact segmented choices (3px 10px, joined), as in the frame. */
+.settings-gameplay .segmented { border-width: 1px; border-color: var(--color-border); }
+.settings-gameplay .segmented > .button { margin: 0; padding: 3px 10px; border-width: 0; border-radius: 0; font-size: var(--font-size-12); background-color: var(--color-surface-base); }
+.settings-gameplay .segmented > .button--primary { background-color: var(--color-accent); color: var(--color-on-accent); }
+.settings-gameplay .segmented > .button:hover { background-color: var(--color-surface-raised); }
+.settings-gameplay .segmented > .button--primary:hover { background-color: var(--color-accent); }
+
+/* Reset beside a camera slider: shown only while the value differs from the default. */
+.settings-gameplay__reset { background-color: rgba(0, 0, 0, 0); border-width: 0; padding: 0; margin: 0 var(--space-3) 0 0; color: var(--color-accent); font-size: var(--font-size-12); }
+.settings-gameplay__reset:hover { color: var(--color-text-primary); background-color: rgba(0, 0, 0, 0); }
+.settings-gameplay__reset--hidden { display: none; }
+
+.slider:disabled .slider__fill { background-color: var(--color-text-disabled); }
+.slider:disabled .slider__knob { background-color: var(--color-text-disabled); }
+.slider:disabled .slider__value { color: var(--color-text-disabled); }
+
+/* The Alerts table: a stripe in the feed's colour, the name, and a Show and a Sound switch in 72px columns. */
+.alert-filter__head { flex-direction: row; align-items: center; padding: 2px 0; }
+.alert-filter__row { flex-direction: row; align-items: center; min-height: 28px; }
+.alert-filter__name { flex-grow: 1; flex-direction: row; align-items: center; padding: 0; margin: 0; }
+.alert-filter__label { padding: 0; margin: 0; }
+.alert-filter__cell { width: 72px; flex-shrink: 0; align-items: center; justify-content: center; -unity-text-align: middle-center; padding: 0; margin: 0; }
+.alert-filter__row .alert__stripe { height: 18px; }
+.alert-filter__cell .switch { min-width: 36px; width: 36px; margin: 0; }
+.alert-filter__cell .switch__label { display: none; }
+
+/* Controls › Edge scrolling now links to the Gameplay tab. */
+.settings-gameplay__link { background-color: rgba(0, 0, 0, 0); border-width: 0; padding: 0; margin: 0; color: var(--color-accent); font-size: var(--font-size-12); }
+.settings-gameplay__link:hover { color: var(--color-text-primary); background-color: rgba(0, 0, 0, 0); }
+
+.text--disabled.settings-row__label { color: var(--color-text-disabled); }

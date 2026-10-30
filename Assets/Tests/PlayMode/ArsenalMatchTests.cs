@@ -11,7 +11,7 @@ using UnityEngine.TestTools;
 /// <summary>v0.12 in a hosted match: every producer makes each of its units, and a Suicide bomber run on an enemy building.</summary>
 public class ArsenalMatchTests
 {
-    private const int Bot = 1000003;
+    private static readonly int Bot = AiOwnerIds.For(2);
     private GameConfigData config;
 
     [UnitySetUp]
@@ -79,7 +79,7 @@ public class ArsenalMatchTests
         yield return HostWithHQ(a => hq = a);
         WorldStateManager wsm = WorldStateManager.Instance;
         DevApi.AllowForTests = true;
-        GameCore.Instance.AddBot(Bot, 1e9f);
+        GameCore.Instance.DevAddScriptedAi(Bot, 1e9f);
         PlaceFar(BuildingType.Base, hq, 1e7f); // keeps the bot in the match
 
         // An enemy Heavy Factory about 16 tiles from the local HQ, and a bomber 5 tiles from it.

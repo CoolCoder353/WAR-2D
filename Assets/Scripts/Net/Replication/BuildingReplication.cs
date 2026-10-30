@@ -26,6 +26,11 @@ namespace WAR2D.Net.Replication
         public byte Progress;
         /// <summary>A hidden building (a bomb): only its owner and the players its owner shares vision with may know it.</summary>
         public bool Hidden;
+        /// <summary>
+        /// The building's upkeep went unpaid at its last charge (it decays; a turret doesn't fire, a Jammer doesn't jam).
+        /// Private to the owner: only the owner's own records carry it (<see cref="BuildingRecord.Unpaid"/>).
+        /// </summary>
+        public bool Unpaid;
         /// <summary>Where fog is tested (the anchor's world position).</summary>
         public float2 Position;
     }
@@ -43,6 +48,11 @@ namespace WAR2D.Net.Replication
         Gone = 3,
         /// <summary>A seen building's construction progress (percent) changed.</summary>
         Progress = 4,
+        /// <summary>
+        /// One of the receiver's own buildings went unpaid (1) or paid again (0) (v0.13). Sent only to the owner: whether
+        /// a building is paid tells its owner's budget, so no other client ever gets this record.
+        /// </summary>
+        Unpaid = 5,
     }
 
     /// <summary>
@@ -58,6 +68,8 @@ namespace WAR2D.Net.Replication
             public int Health;
             public byte Progress;
             public bool Hidden;
+            /// <summary>The unpaid state last sent (only ever set for the receiver's own buildings).</summary>
+            public bool Unpaid;
             public float2 Position;
             public int OwnerId;
         }
@@ -72,56 +84,93 @@ namespace WAR2D.Net.Replication
         public void Reset() => known.Clear();
 
         /// <summary>
+        /// True when a player may know a building now (v0.14: shared by replication and the AI's team view): its own, or
+        /// on a fog cell its grid sees; a hidden building (a bomb) only when it is its own or <paramref name="mayKnowHidden"/>
+        /// allows its owner (vision shared with the player).
+        /// </summary>
+        public static bool MayKnow(in BuildingView v, int ownerId, Func<float2, bool> sees, Func<int, bool> mayKnowHidden)
+        {
+            bool allowed = v.OwnerId == ownerId || sees(v.Position);
+            if (v.Hidden) allowed = allowed && (v.OwnerId == ownerId || (mayKnowHidden != null && mayKnowHidden(v.OwnerId)));
+            return allowed;
+        }
+
+        /// <summary>
+        /// True when a player may learn that a building it knew is gone: a hidden one at once (never a ghost of a bomb), its
+        /// own, or once its grid sees the spot again. Otherwise it keeps the last-seen ghost.
+        /// </summary>
+        public static bool MayLearnGone(bool hidden, int buildingOwner, float2 position, int ownerId, Func<float2, bool> sees) =>
+            hidden || buildingOwner == ownerId || sees(position);
+
+        /// <summary>
         /// Writes the records that take the client from what it knew to what it may know now; returns how
         /// many were written. <paramref name="sees"/> answers whether the client's grid sees a position.
         /// Stops once the writer holds <paramref name="maxBytes"/>; the rest follows on the next update.
         /// </summary>
         public int Update(List<BuildingView> views, HashSet<int> present, int ownerId, Func<float2, bool> sees, NetworkWriter writer, int maxBytes = int.MaxValue, Func<int, bool> mayKnowHidden = null)
         {
+            var sink = new WriterSink { Writer = writer, MaxBytes = maxBytes };
+            return Update(views, present, ownerId, sees, ref sink, mayKnowHidden);
+        }
+
+        /// <summary>
+        /// As above, handing each record to <paramref name="sink"/> instead of a writer (the AI's team view applies them
+        /// straight to its own store). Stops once the sink is full.
+        /// </summary>
+        public int Update<TSink>(List<BuildingView> views, HashSet<int> present, int ownerId, Func<float2, bool> sees, ref TSink sink, Func<int, bool> mayKnowHidden = null)
+            where TSink : struct, IBuildingRecordSink
+        {
             int records = 0;
             foreach (BuildingView v in views)
             {
-                bool allowed = v.OwnerId == ownerId || sees(v.Position);
-                if (v.Hidden) allowed = allowed && (v.OwnerId == ownerId || (mayKnowHidden != null && mayKnowHidden(v.OwnerId)));
+                bool allowed = MayKnow(v, ownerId, sees, mayKnowHidden);
                 bool wasKnown = known.TryGetValue(v.Id, out Known k);
                 if (allowed)
                 {
                     if (!wasKnown || !k.Live)
                     {
-                        BuildingCodec.WriteEnter(writer, v);
+                        sink.Enter(v);
                         records++;
                     }
                     else if (k.Health != v.Health)
                     {
-                        BuildingCodec.WriteId(writer, BuildingRecord.Health, v.Id, v.Health);
+                        sink.Record(BuildingRecord.Health, v.Id, v.Health);
                         records++;
                     }
                     byte progress = k.Progress;
                     if (!wasKnown || !k.Live) progress = v.Progress; // an Enter carries it
                     else if (v.Progress == 100 ? k.Progress != 100 : v.Progress >= k.Progress + ProgressStep || v.Progress < k.Progress)
                     {
-                        BuildingCodec.WriteId(writer, BuildingRecord.Progress, v.Id, v.Progress);
+                        sink.Record(BuildingRecord.Progress, v.Id, v.Progress);
                         records++;
                         progress = v.Progress;
                     }
-                    known[v.Id] = new Known { Live = true, Health = v.Health, Progress = progress, Hidden = v.Hidden, Position = v.Position, OwnerId = v.OwnerId };
-                    if (writer.Position >= maxBytes) return records;
+                    // The unpaid flag goes to the owner alone. An Enter leaves the client's flag clear, so it follows when set.
+                    bool unpaid = wasKnown && k.Live && k.Unpaid;
+                    if (v.OwnerId == ownerId && v.Unpaid != unpaid)
+                    {
+                        sink.Record(BuildingRecord.Unpaid, v.Id, v.Unpaid ? 1 : 0);
+                        records++;
+                        unpaid = v.Unpaid;
+                    }
+                    known[v.Id] = new Known { Live = true, Health = v.Health, Progress = progress, Hidden = v.Hidden, Unpaid = unpaid, Position = v.Position, OwnerId = v.OwnerId };
+                    if (sink.Full) return records;
                 }
                 else if (wasKnown && k.Hidden)
                 {
                     // It may no longer be known (vision sharing stopped): gone at once, never a ghost of a bomb.
-                    BuildingCodec.WriteId(writer, BuildingRecord.Gone, v.Id, 0);
+                    sink.Record(BuildingRecord.Gone, v.Id, 0);
                     records++;
                     known.Remove(v.Id);
-                    if (writer.Position >= maxBytes) return records;
+                    if (sink.Full) return records;
                 }
                 else if (wasKnown && k.Live)
                 {
-                    BuildingCodec.WriteId(writer, BuildingRecord.Hide, v.Id, 0);
+                    sink.Record(BuildingRecord.Hide, v.Id, 0);
                     records++;
                     k.Live = false;
                     known[v.Id] = k;
-                    if (writer.Position >= maxBytes) return records;
+                    if (sink.Full) return records;
                 }
             }
 
@@ -131,16 +180,16 @@ namespace WAR2D.Net.Replication
             foreach (int id in scratch)
             {
                 Known k = known[id];
-                if (k.Hidden || k.OwnerId == ownerId || sees(k.Position))
+                if (MayLearnGone(k.Hidden, k.OwnerId, k.Position, ownerId, sees))
                 {
-                    BuildingCodec.WriteId(writer, BuildingRecord.Gone, id, 0);
+                    sink.Record(BuildingRecord.Gone, id, 0);
                     records++;
                     known.Remove(id);
                 }
                 else if (k.Live)
                 {
                     // It died out of sight: the client keeps the last-seen ghost.
-                    BuildingCodec.WriteId(writer, BuildingRecord.Hide, id, 0);
+                    sink.Record(BuildingRecord.Hide, id, 0);
                     records++;
                     k.Live = false;
                     known[id] = k;
@@ -148,6 +197,27 @@ namespace WAR2D.Net.Replication
             }
             return records;
         }
+
+        /// <summary>The network form: records written with <see cref="BuildingCodec"/>, full past a byte limit.</summary>
+        private struct WriterSink : IBuildingRecordSink
+        {
+            public NetworkWriter Writer;
+            public int MaxBytes;
+            public void Enter(in BuildingView v) => BuildingCodec.WriteEnter(Writer, v);
+            public void Record(BuildingRecord kind, int id, int value) => BuildingCodec.WriteId(Writer, kind, id, value);
+            public bool Full => Writer.Position >= MaxBytes;
+        }
+    }
+
+    /// <summary>Where <see cref="BuildingInterest.Update{TSink}"/> puts its records: a network writer, or the AI's own store.</summary>
+    public interface IBuildingRecordSink
+    {
+        /// <summary>An Enter record: the building is seen (full data, replacing any ghost).</summary>
+        void Enter(in BuildingView v);
+        /// <summary>A Health, Progress or Unpaid (with <paramref name="value"/>), Hide or Gone record.</summary>
+        void Record(BuildingRecord kind, int id, int value);
+        /// <summary>True once no more records fit this update (the rest follow on the next).</summary>
+        bool Full { get; }
     }
 
     /// <summary>Encodes and decodes building records. Pure.</summary>
@@ -167,12 +237,12 @@ namespace WAR2D.Net.Replication
             writer.WriteByte(v.Progress);
         }
 
-        /// <summary>A Health (with <paramref name="value"/>), Hide or Gone record.</summary>
+        /// <summary>A Health, Progress or Unpaid (with <paramref name="value"/>), Hide or Gone record.</summary>
         public static void WriteId(NetworkWriter writer, BuildingRecord kind, int id, int value)
         {
             writer.WriteByte((byte)kind);
             VarInt.Write(writer, (uint)id);
-            if (kind == BuildingRecord.Health || kind == BuildingRecord.Progress) VarInt.Write(writer, (uint)math.max(0, value));
+            if (kind == BuildingRecord.Health || kind == BuildingRecord.Progress || kind == BuildingRecord.Unpaid) VarInt.Write(writer, (uint)math.max(0, value));
         }
 
         /// <summary>Applies every record to <paramref name="into"/>. False when malformed.</summary>
@@ -206,6 +276,11 @@ namespace WAR2D.Net.Replication
                         case BuildingRecord.Health:
                             into.SetHealth(id, (int)VarInt.Read(reader));
                             break;
+                        case BuildingRecord.Unpaid:
+                            uint flag = VarInt.Read(reader);
+                            if (flag > 1) return false;
+                            into.SetUnpaid(id, flag != 0);
+                            break;
                         case BuildingRecord.Hide:
                             into.Hide(id);
                             break;
@@ -236,12 +311,66 @@ namespace WAR2D.Net.Replication
             public byte Progress;
             /// <summary>True when the building is out of sight: what is shown is how it was last seen.</summary>
             public bool Ghost;
+            /// <summary>
+            /// The server's unpaid flag (v0.13): set only on the local player's own buildings (no other client is sent it),
+            /// while the last upkeep charge failed.
+            /// </summary>
+            public bool Unpaid;
+            /// <summary>Client time (<c>Time.time</c>) the building went out of sight; 0 while it is in sight (the ghost card's "last seen").</summary>
+            public float LastSeenAt;
+        }
+
+        /// <summary>The first building of this type owned by <paramref name="ownerId"/> that is not a ghost; false when none.</summary>
+        public bool TryFindOwn(int ownerId, BuildingType type, out Entry found)
+        {
+            foreach (Entry e in Entries.Values)
+                if (e.Data.ownerId == ownerId && e.Data.buildingType == type && !e.Ghost) { found = e; return true; }
+            found = default;
+            return false;
         }
 
         /// <summary>The local client's buildings.</summary>
         public static ClientBuildings Current { get; private set; } = new ClientBuildings();
 
         public readonly Dictionary<int, Entry> Entries = new Dictionary<int, Entry>();
+
+        /// <summary>A Gun turret's head as this client last saw it (v0.13): its facing and when it last fired.</summary>
+        public struct TurretHead
+        {
+            /// <summary>One of 8 facings, 45° apart anticlockwise from east (as units).</summary>
+            public byte Facing;
+            /// <summary>Client time (<c>Time.time</c>) of the last shot the client was told about.</summary>
+            public float FiredAt;
+        }
+
+        /// <summary>
+        /// Per turret, the head's facing, turned toward the last target the client was told about (a building's
+        /// attack event: <c>ClientUnitStore.BuildingAttack</c>). A turret that hasn't fired yet faces east.
+        /// </summary>
+        public readonly Dictionary<int, TurretHead> Heads = new Dictionary<int, TurretHead>();
+
+        /// <summary>The facing (of 8) closest to the direction <paramref name="dx"/>, <paramref name="dy"/>.</summary>
+        public static byte FacingOf(float dx, float dy)
+        {
+            float steps = (float)Math.Round(Math.Atan2(dy, dx) / (Math.PI / 4));
+            return (byte)(((int)steps % 8 + 8) % 8);
+        }
+
+        /// <summary>
+        /// Records a shot by turret <paramref name="id"/> at <paramref name="time"/>, turning its head to
+        /// <paramref name="facing"/> (null keeps the facing: the target wasn't named to this client).
+        /// </summary>
+        public void Fired(int id, byte? facing, float time)
+        {
+            if (!Entries.ContainsKey(id)) return;
+            Heads.TryGetValue(id, out TurretHead head);
+            if (facing.HasValue) head.Facing = facing.Value;
+            head.FiredAt = time;
+            Heads[id] = head;
+        }
+
+        /// <summary>The head of turret <paramref name="id"/> (facing east, never fired, when unknown).</summary>
+        public TurretHead HeadOf(int id) => Heads.TryGetValue(id, out TurretHead head) ? head : new TurretHead { FiredAt = float.NegativeInfinity };
 
         /// <summary>Raised for a building seen (again): its data and health.</summary>
         public event Action<BuildingData, HealthComponent> Entered;
@@ -278,6 +407,13 @@ namespace WAR2D.Net.Replication
             Entered?.Invoke(data, health);
         }
 
+        internal void SetUnpaid(int id, bool unpaid)
+        {
+            if (!Entries.TryGetValue(id, out Entry e)) return;
+            e.Unpaid = unpaid;
+            Entries[id] = e;
+        }
+
         internal void SetHealth(int id, int health)
         {
             if (!Entries.TryGetValue(id, out Entry e)) return;
@@ -291,12 +427,14 @@ namespace WAR2D.Net.Replication
         {
             if (!Entries.TryGetValue(id, out Entry e)) return;
             e.Ghost = true;
+            e.LastSeenAt = UnityEngine.Time.time;
             Entries[id] = e;
             Hidden?.Invoke(id);
         }
 
         internal void Remove(int id)
         {
+            Heads.Remove(id);
             if (Entries.Remove(id)) Removed?.Invoke(id);
         }
     }

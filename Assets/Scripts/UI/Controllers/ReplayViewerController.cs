@@ -120,8 +120,9 @@ namespace WAR2D.UI
                 swatch.AddToClassList("lobby-row__swatch");
                 swatch.AddToClassList("player-" + (info.Colour % 8 + 1));
                 chip.Add(swatch);
-                var name = new Label(string.IsNullOrEmpty(info.Nickname) ? "Player" : info.Nickname);
-                name.AddToClassList("text");
+                // The same AI tag as in the match (decision 14); a replay never carries an AI's style.
+                VisualElement name = PlayerNameLabel.Build(string.IsNullOrEmpty(info.Nickname) ? "Player" : info.Nickname,
+                    info.IsAi ? PlayerNameLabel.TagText(info.Difficulty) : null, "text");
                 chip.Add(name);
                 var numbers = new Label($"{resources:N0} res · {units:N0} units");
                 numbers.AddToClassList("replay-row__meta");

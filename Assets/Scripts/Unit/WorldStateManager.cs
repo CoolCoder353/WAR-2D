@@ -45,7 +45,7 @@ public partial class WorldStateManager : NetworkBehaviour
         ? (int2.zero, int2.zero)
         : (int2.zero, new int2(Map.Grid.Width - 1, Map.Grid.Height - 1));
 
-    private EntityManager EntityManager => World.DefaultGameObjectInjectionWorld.EntityManager;
+    internal EntityManager EntityManager => World.DefaultGameObjectInjectionWorld.EntityManager;
 
     [Header("Tilemaps")]
     /// <summary>The tilemap defining walkable areas.</summary>
@@ -77,7 +77,6 @@ public partial class WorldStateManager : NetworkBehaviour
     public WAR2D.Net.Replay.MatchRecorder Recorder { get; private set; }
 
     /// <summary>Streams the finished recording to the players who accept it (after GameOver).</summary>
-    public WAR2D.Net.Replay.ReplaySender ReplaySender { get; private set; }
 
     /// <summary>Where each bomb is: bombs do not mark their tile used (units walk over them), so placement looks here.</summary>
     private readonly Dictionary<int2, (int id, int owner)> bombTiles = new Dictionary<int2, (int, int)>();
@@ -135,7 +134,7 @@ public partial class WorldStateManager : NetworkBehaviour
             var (found, _, tile) = BuildingOwnerAndTile(id);
             if (found) Alerts.Add(owner, new Alert { Kind = AlertKind.ConstructionFinished, Tile = tile });
         };
-        Sim.RepairStalled += (owner, tile) => Alerts?.AddThrottled(owner, new Alert { Kind = AlertKind.RepairsStopped, Tile = tile }, NetworkTime.localTime);
+        Sim.RepairStalled += (owner, tile) => Alerts?.AddThrottled(owner, new Alert { Kind = AlertKind.RepairsStopped, Tile = tile }, GameCore.MatchNow);
         Sim.TeamResolver = ownerId => GameCore.Instance != null ? GameCore.Instance.TeamOf(ownerId) : -ownerId - 1;
         Sim.Settled += OnSettled;
         explored = null; // the last match's
@@ -163,6 +162,18 @@ public partial class WorldStateManager : NetworkBehaviour
             Spectating = owner => GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing &&
                                   GameCore.Instance.GetServerPlayerById(owner)?.state == PlayerState.Eliminated,
         };
+        // v0.14: AI players' team views (the same interest rules as replication) and the director that runs their thinks.
+        AiViews = new WAR2D.AiView.TeamViewBuilder(Sim, new WAR2D.AiView.GameCoreFacts())
+        {
+            CollectBuildings = CollectBuildingsForAi,
+            TerrainCellOf = TerrainCellAt,
+            SharesVision = SharesVision,
+            SpawnerOf = SpawnerForAi,
+        };
+        AiRunner = new WAR2D.AiView.AiRunner(Sim, AiViews, AiBrains.Director?.Invoke());
+        AiViews.Clock = () => AiRunner != null ? AiRunner.Now : 0;
+        WAR2D.AiView.AiRunner.MatchPaused = () => GameCore.Instance != null && GameCore.Instance.MatchPause.Paused;
+        Alerts.Observer = AiViews.ReportAlerts;
         ReplaysConfig replays = ConfigLoader.LoadConfig().Replays;
         if (replays.Enabled && !DevApi.PerfFlag && GameCore.Instance != null)
         {
@@ -172,23 +183,17 @@ public partial class WorldStateManager : NetworkBehaviour
                 Settings = GameCore.Instance.Settings, TickSeconds = ConfigLoader.LoadConfig().Simulation.TickSeconds,
                 StartedUtc = (System.DateTime.UtcNow - System.DateTime.UnixEpoch).TotalSeconds,
             };
-            foreach (var p in GameCore.Instance.ServerPlayers)
+            foreach ((int owner, ServerPlayer _) in GameCore.Instance.AllPlayers())
             {
-                if (p.Key == null) continue;
-                var cp = p.Key.GetComponent<ClientPlayer>();
-                int owner = BuildingData.UIntToInt(p.Key.netId);
-                header.Players.Add(new WAR2D.Net.Replay.ReplayPlayerInfo { OwnerId = owner, Nickname = cp.nickname, Colour = cp.colourIndex, Team = GameCore.Instance.TeamOf(owner) });
+                ClientPlayer cp = GameCore.Instance.ClientPlayerOf(owner);
+                if (cp == null) continue;
+                header.Players.Add(new WAR2D.Net.Replay.ReplayPlayerInfo { OwnerId = owner, Nickname = cp.nickname, Colour = cp.colourIndex, Team = GameCore.Instance.TeamOf(owner), IsAi = cp.isAi, Difficulty = cp.aiDifficulty });
             }
             string path = System.IO.Path.Combine(WAR2D.Net.Replay.ReplayLibrary.Folder, $"{System.DateTime.UtcNow:yyyyMMdd-HHmmss}-{MapSeed}{WAR2D.Net.Replay.ReplayFile.Extension}");
             Recorder = new WAR2D.Net.Replay.MatchRecorder(Replication, Sim, header, path, (long)replays.MaxMegabytes << 20);
             RecordingFinished += finished =>
             {
                 WAR2D.Net.Replay.ReplayLibrary.Prune(replays.KeepCount);
-                if (GameCore.Instance == null) return;
-                ReplaySender = new WAR2D.Net.Replay.ReplaySender(1, finished, replays.SendKilobytesPerSecond * 1024, (float)(Sim.Clock.Tick * Sim.Config.Simulation.TickSeconds));
-                foreach (NetworkIdentity id in GameCore.Instance.ServerPlayers.Keys)
-                    if (id != null && id.connectionToClient != null && id.connectionToClient != NetworkServer.localConnection)
-                        ReplaySender.Offer(id.connectionToClient, GameCore.Instance.CurrentState);
             };
         }
         if (GameCore.Instance != null)
@@ -202,13 +207,17 @@ public partial class WorldStateManager : NetworkBehaviour
             p.AddIncome(amount);
             GameCore.Instance.Stats.Mined(ownerId, amount);
         };
-        Sim.BudgetOf = ownerId => GameCore.Instance?.GetServerPlayerById(ownerId)?.Resources ?? 0f;
+        Sim.BudgetOf = ownerId =>
+        {
+            ServerPlayer p = GameCore.Instance?.GetServerPlayerById(ownerId);
+            return p == null ? 0f : p.Away ? float.MaxValue / 4f : p.Resources; // an away player's upkeep is frozen, not unpaid
+        };
         Sim.Spend = (ownerId, amount) =>
         {
             ServerPlayer player = GameCore.Instance?.GetServerPlayerById(ownerId);
             if (player == null) return;
             float before = player.Resources;
-            if (!player.TrySpend(amount)) player.TrySpend(player.Resources);
+            if (!player.TryPayUpkeep(amount)) player.TrySpend(player.Resources);
             player.AddUpkeep(before - player.Resources);
         };
         // The map and simulation exist: deal each player their private start options and start the pick clock.
@@ -226,7 +235,10 @@ public partial class WorldStateManager : NetworkBehaviour
         AddBuilding(entity, id);
         GameCore.Instance?.Stats.BuildingBuilt(EntityManager.GetComponentData<BuildingData>(entity).ownerId);
         if (EntityManager.GetComponentData<BuildingData>(entity).buildingType == BuildingType.Base)
+        {
+            GameCore.Instance?.OnAiHqCreated(EntityManager.GetComponentData<BuildingData>(entity).ownerId);
             GameCore.Instance?.CheckHQPlacementProgress();
+        }
     }
 
     /// <summary>
@@ -253,6 +265,7 @@ public partial class WorldStateManager : NetworkBehaviour
             if (Map.Hash() != MapHash)
             {
                 WarLog.Error(LogCategory.Sim, $"hash mismatch: local {Map.Hash():X16}, server {MapHash:X16}. Disconnecting.");
+                WAR2D.Net.Rejoin.RejoinTicket.Clear(); // the same map would mismatch again: this is no drop to rejoin
                 NetworkClient.Disconnect();
                 return;
             }
@@ -305,10 +318,46 @@ public partial class WorldStateManager : NetworkBehaviour
     }
     private string pendingOutcome;
     
+    /// <summary>The AI players' team views (server only, v0.14).</summary>
+    public WAR2D.AiView.TeamViewBuilder AiViews { get; private set; }
+
+    /// <summary>Runs the AI director (server only, v0.14).</summary>
+    public WAR2D.AiView.AiRunner AiRunner { get; private set; }
+
+    /// <summary>The live buildings for an AI's view: replication's list of this boundary when it has one, else walked now.</summary>
+    [Server]
+    private void CollectBuildingsForAi(List<BuildingView> into)
+    {
+        if (Replication != null && GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing &&
+            Replication.TryGetBuildingViews(settledTick, out IReadOnlyList<BuildingView> views))
+        {
+            for (int i = 0; i < views.Count; i++) into.Add(views[i]); // by index: no enumerator per think
+            return;
+        }
+        FillBuildingViews(into);
+    }
+
+    /// <summary>An AI's own producer's queue and rally (what <see cref="SendSpawnerQueue"/> and <see cref="SendSpawnerRally"/> tell a human owner).</summary>
+    [Server]
+    private bool SpawnerForAi(int buildingId, out UnitType producing, out int queued, out bool hasRally, out int2 rally)
+    {
+        producing = UnitType.None;
+        queued = 0;
+        hasRally = false;
+        rally = default;
+        if (!TryGetBuilding(buildingId, out Entity entity) || !EntityManager.HasComponent<SpawnerData>(entity)) return false;
+        SpawnerData spawner = EntityManager.GetComponentData<SpawnerData>(entity);
+        producing = (UnitType)spawner.unitType;
+        queued = spawner.count;
+        hasRally = spawner.hasRally;
+        rally = spawner.rally;
+        return true;
+    }
+
     [ServerCallback]
     private void Update()
     {
-        ReplaySender?.Update(Time.unscaledDeltaTime, GameCore.Instance != null ? GameCore.Instance.CurrentState : GameState.Lobby);
+        AiRunner?.Update(Time.unscaledDeltaTime);
         if (Recorder == null || recorderEndAt < 0 || NetworkTime.localTime < recorderEndAt) return;
         recorderEndAt = -1;
         Recorder.End(Sim.Clock.Tick, pendingOutcome);
@@ -324,6 +373,10 @@ public partial class WorldStateManager : NetworkBehaviour
         Recorder = null;
         // The instance subscribed to, not Current: ClientWorld may have replaced it already (ClientTerrain.Clear).
         if (terrain != null) terrain.Changed -= OnTerrainBatch;
+        AiRunner?.Dispose();
+        AiRunner = null;
+        AiViews?.Dispose();
+        AiViews = null;
         Replication?.Dispose();
         Replication = null;
         if (Sim != null)
@@ -368,7 +421,7 @@ public partial class WorldStateManager : NetworkBehaviour
         PerfSplits.Mark(3, ref t);
         if (tick % UnpaidScanTicks == 0) MarkUnpaidOwners(data, count);
         PerfSplits.Mark(4, ref t);
-        Alerts.CollectDamage(data, count, BuildingOwnerAndTile, NetworkTime.localTime);
+        Alerts.CollectDamage(data, count, BuildingOwnerAndTile, GameCore.MatchNow);
         PerfSplits.Mark(5, ref t);
         Alerts.Flush();
         PerfSplits.Mark(6, ref t);
@@ -392,7 +445,7 @@ public partial class WorldStateManager : NetworkBehaviour
             int2 anchor = (int2)math.round(building.position);
             radarScratch.Add(new RadarView { Id = building.id, OwnerId = building.ownerId, Tile = anchor, Centre = Footprint.VisualCenter(anchor, radarConfig.Size), Radius = radarConfig.Sight });
         }
-        radars.Update(data, unitCount, radarScratch, NetworkTime.localTime, Alerts.Add);
+        radars.Update(data, unitCount, radarScratch, GameCore.MatchNow, Alerts.Add);
     }
 
     private readonly List<float2> blastScratch = new List<float2>(), bomberScratch = new List<float2>();
@@ -481,13 +534,11 @@ public partial class WorldStateManager : NetworkBehaviour
         var buildingsBy = new Dictionary<int, int>();
         foreach (Entity e in Buildings.Values)
             if (EntityManager.Exists(e)) { int o = EntityManager.GetComponentData<BuildingData>(e).ownerId; buildingsBy.TryGetValue(o, out int n); buildingsBy[o] = n + 1; }
-        foreach (var p in core.ServerPlayers)
+        foreach ((int owner, ServerPlayer player) in core.AllPlayers())
         {
-            if (p.Key == null) continue;
-            int owner = BuildingData.UIntToInt(p.Key.netId);
             armies.TryGetValue(owner, out int units);
             buildingsBy.TryGetValue(owner, out int b);
-            yield return (owner, p.Value.Resources, units, b);
+            yield return (owner, player.Resources, units, b);
         }
     }
 
@@ -521,6 +572,7 @@ public partial class WorldStateManager : NetworkBehaviour
                 Health = (int)math.ceil(health.currentHealth),
                 MaxHealth = (int)math.ceil(health.maxHealth),
                 Hidden = building.buildingType == BuildingType.Bomb,
+                Unpaid = EntityManager.HasComponent<UpkeepComponent>(entity) && EntityManager.GetComponentData<UpkeepComponent>(entity).unpaid,
                 Progress = EntityManager.HasComponent<Construction>(entity)
                     ? (byte)math.clamp((int)math.floor(EntityManager.GetComponentData<Construction>(entity).Progress * 100f), 0, 99)
                     : (byte)100,
@@ -550,6 +602,7 @@ public partial class WorldStateManager : NetworkBehaviour
     {
         List<float2> deaths = TakeDeathPositions();
         if (deaths.Count == 0) return;
+        if (AiViews != null) foreach (float2 death in deaths) AiViews.ReportDeath(death); // each AI keeps those its grid sees
         Recorder?.Explosions(SimContext.Current.Clock.Tick, deaths);
         GameState state = GameCore.Instance != null ? GameCore.Instance.CurrentState : GameState.Playing;
 
@@ -740,21 +793,26 @@ public partial class WorldStateManager : NetworkBehaviour
 
     /// <summary>Server-side placement check for a player (used by commands and tests).</summary>
     [Server]
-    public PlacementResult CheckPlacement(BuildingType type, int2 anchor, float rotation, ClientPlayer player)
+    public PlacementResult CheckPlacement(BuildingType type, int2 anchor, float rotation, ClientPlayer player) =>
+        CheckPlacement(type, anchor, rotation, player.OwnerId);
+
+    /// <summary>Server-side placement check for an owner, human or AI (commands, <see cref="PlayerActions"/> and tests).</summary>
+    [Server]
+    public PlacementResult CheckPlacement(BuildingType type, int2 anchor, float rotation, int owner)
     {
         if (type == BuildingType.None || !System.Enum.IsDefined(typeof(BuildingType), type)) return PlacementResult.InvalidType;
 
-        ServerPlayer acting = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(player.netId));
+        ServerPlayer acting = GameCore.Instance?.GetServerPlayerById(owner);
         if (acting == null || acting.state != PlayerState.Playing) return PlacementResult.WrongGameState;
 
         // Only on ground the player's side has seen: a blueprint in the fog would probe it (the HQ is placed before anyone sees).
         if (type != BuildingType.Base)
             foreach (int2 tile in Footprint.Tiles(anchor, GetBuildingSize(type)))
-                if (!HasExplored(BuildingData.UIntToInt(player.netId), tile)) return PlacementResult.Unexplored;
+                if (!HasExplored(owner, tile)) return PlacementResult.Unexplored;
 
         return PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
-            player.hasPlacedHQ, Map.Grid.TileAt, tile => Map.IsUsed(tile) || KnownBombAt(tile, BuildingData.UIntToInt(player.netId)), tile => false, // units are pushed out of new footprints
-            OwnStartOptions(player));
+            GameCore.Instance.HasPlacedHq(owner), Map.Grid.TileAt, tile => Map.IsUsed(tile) || KnownBombAt(tile, owner), tile => false, // units are pushed out of new footprints
+            OwnStartOptions(owner));
     }
 
     private byte[] explored;
@@ -786,10 +844,10 @@ public partial class WorldStateManager : NetworkBehaviour
     }
 
     /// <summary>The test for "inside one of this player's start options", or null when they have none (dev bots and tilemap maps).</summary>
-    private System.Func<int2, bool> OwnStartOptions(ClientPlayer player)
+    private System.Func<int2, bool> OwnStartOptions(int owner)
     {
         int2[] sites = Map.HqSites;
-        int[] options = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(player.netId))?.StartOptions;
+        int[] options = GameCore.Instance?.GetServerPlayerById(owner)?.StartOptions;
         if (sites == null || options == null) return null;
         return tile =>
         {
@@ -800,7 +858,11 @@ public partial class WorldStateManager : NetworkBehaviour
     }
 
     /// <summary>Test helper: first anchor (scanning the map) where the player may place this building.</summary>
-    internal bool TryFindBuildableAnchor(BuildingType type, float rotation, ClientPlayer player, out int2 anchor)
+    internal bool TryFindBuildableAnchor(BuildingType type, float rotation, ClientPlayer player, out int2 anchor) =>
+        TryFindBuildableAnchor(type, rotation, player.OwnerId, out anchor);
+
+    /// <summary>Test helper: first anchor (scanning the map) where the owner may place this building.</summary>
+    internal bool TryFindBuildableAnchor(BuildingType type, float rotation, int player, out int2 anchor)
     {
         MapGrid grid = Map.Grid;
         for (int y = 0; y < grid.Height; y++)
@@ -823,13 +885,17 @@ public partial class WorldStateManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void TryAddBuilding(int2 positon, BuildingType type, float rotation, NetworkConnectionToClient sender = null)
     {
-        if (!CommandGate.Allow(sender, nameof(TryAddBuilding))) return;
-        PlaceBuilding(sender.identity.GetComponent<ClientPlayer>(), positon, type, rotation);
+        if (!CommandGate.Allow(sender, nameof(TryAddBuilding)) || !TryOwnerOf(sender, out int owner)) return;
+        PlayerActions.PlaceBuilding(owner, positon, type, rotation);
     }
 
     /// <summary>Checks, charges and queues a building for <paramref name="placer"/>. Returns false when the placement is refused.</summary>
     [Server]
-    internal bool PlaceBuilding(ClientPlayer placer, int2 positon, BuildingType type, float rotation)
+    internal bool PlaceBuilding(ClientPlayer placer, int2 positon, BuildingType type, float rotation) => PlaceBuilding(placer.OwnerId, positon, type, rotation);
+
+    /// <summary>Checks, charges and queues a building for an owner, human or AI. Returns false when the placement is refused.</summary>
+    [Server]
+    internal bool PlaceBuilding(int placer, int2 positon, BuildingType type, float rotation)
     {
         if (CheckPlacement(type, positon, rotation, placer) != PlacementResult.Ok)
         {
@@ -839,7 +905,7 @@ public partial class WorldStateManager : NetworkBehaviour
         BuildingConfig buildingConfig = ConfigLoader.LoadConfig().GetBuilding(type);
 
         // Check the owner can afford the building before it is placed.
-        ServerPlayer owner = GameCore.Instance?.GetServerPlayerById(BuildingData.UIntToInt(placer.netId));
+        ServerPlayer owner = GameCore.Instance?.GetServerPlayerById(placer);
         if (owner == null || !owner.TrySpend(buildingConfig.UpfrontCost))
         {
             return false;
@@ -857,7 +923,7 @@ public partial class WorldStateManager : NetworkBehaviour
             position = new float2(positon.x, positon.y),
             id = buildingId,
             buildingType = type,
-            ownerId = BuildingData.UIntToInt(placer.netId),
+            ownerId = placer,
             rotation = rotation
         };
 
@@ -867,7 +933,8 @@ public partial class WorldStateManager : NetworkBehaviour
         // Set at once so a second HQ in the same tick fails the placement check.
         if (type == BuildingType.Base)
         {
-            placer.hasPlacedHQ = true;
+            ClientPlayer placerObject = GameCore.Instance?.ClientPlayerOf(placer);
+            if (placerObject != null) placerObject.hasPlacedHQ = true;
             GameCore.Instance?.OnHqPlaced(placer, positon);
         }
         Sim.Commands.Enqueue(new SimCommand
@@ -898,7 +965,7 @@ public partial class WorldStateManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CanBuildBuildingCommand(int2 position, BuildingType type, float rotation, NetworkConnectionToClient sender = null)
     {
-        if (!CommandGate.Allow(sender, nameof(CanBuildBuildingCommand))) return;
+        if (!CommandGate.Allow(sender, nameof(CanBuildBuildingCommand)) || sender?.identity == null) return;
         ClientPlayer player = sender.identity.GetComponent<ClientPlayer>();
         player.TargetReceiveCanBuildBuildingResponse(sender, position, type, rotation, CheckPlacement(type, position, rotation, player) == PlacementResult.Ok);
     }
@@ -906,87 +973,75 @@ public partial class WorldStateManager : NetworkBehaviour
     /// <summary>
     /// Adds or removes units of the selected type on each named producer the sender owns (the queue's −, +, +10
     /// and +50). Steps other than <see cref="SpawnerRules.QueueSteps"/> and lists longer than
-    /// <see cref="SpawnerRules.MaxSpawnersPerCommand"/> are refused.
+    /// <see cref="SpawnerRules.MaxSpawnersPerCommand"/> are refused (<see cref="PlayerActions.ChangeQueues"/>).
     /// </summary>
     [Command(requiresAuthority = false)]
     public void CmdChangeQueues(int[] buildingIds, int delta, NetworkConnectionToClient sender = null)
     {
-        if (!CommandGate.Allow(sender, nameof(CmdChangeQueues))) return;
-        if (buildingIds == null || buildingIds.Length > SpawnerRules.MaxSpawnersPerCommand || !SpawnerRules.IsQueueStep(delta)) return;
-        foreach (int id in buildingIds) ChangeQueue(id, sender, delta);
+        if (!CommandGate.Allow(sender, nameof(CmdChangeQueues)) || !TryOwnerOf(sender, out int owner)) return;
+        PlayerActions.ChangeQueues(owner, buildingIds, delta);
     }
 
     /// <summary>
     /// Sets the unit type each named, finished producer the sender owns makes, and clears its queue and the
-    /// progress towards its next unit. Producers that can't make the type are skipped.
+    /// progress towards its next unit (<see cref="PlayerActions.SetProduction"/>).
     /// </summary>
     [Command(requiresAuthority = false)]
     public void CmdSetProduction(int[] buildingIds, byte unitType, NetworkConnectionToClient sender = null)
     {
-        if (!CommandGate.Allow(sender, nameof(CmdSetProduction))) return;
-        if (buildingIds == null || buildingIds.Length > SpawnerRules.MaxSpawnersPerCommand) return;
-        if (unitType == 0 || !System.Enum.IsDefined(typeof(UnitType), (UnitType)unitType)) return;
-        if (!TryActingOwner(sender, out int owner)) return;
-        foreach (int id in buildingIds)
-        {
-            if (!TryOwnSpawner(id, owner, out Entity building) || EntityManager.HasComponent<Construction>(building)) continue;
-            BuildingType buildingType = EntityManager.GetComponentData<BuildingData>(building).buildingType;
-            if (!SpawnerRules.MayProduce(buildingType, (UnitType)unitType)) continue;
-            SpawnerData spawner = EntityManager.GetComponentData<SpawnerData>(building);
-            if (spawner.unitType == unitType) continue; // already making it: keep the queue
-            spawner.unitType = unitType;
-            spawner.count = 0;
-            spawner.progress = 0f;
-            EntityManager.SetComponentData(building, spawner);
-            SendSpawnerQueue(owner, id, unitType, 0);
-        }
+        if (!CommandGate.Allow(sender, nameof(CmdSetProduction)) || !TryOwnerOf(sender, out int owner)) return;
+        PlayerActions.SetProduction(owner, buildingIds, unitType);
     }
 
-    /// <summary>
-    /// Sets (or, with <paramref name="clear"/>, removes) the rally tile of each named spawner the sender owns:
-    /// new units from it get a move order there. The tile must be on the map; an order onto rock snaps like any
-    /// other (<see cref="WAR2D.Sim.OrderBook.SnapGoal"/>). Only the owner is told.
-    /// </summary>
+    /// <summary>Sets or clears the rally tile of each named spawner the sender owns (<see cref="PlayerActions.SetRally"/>).</summary>
     [Command(requiresAuthority = false)]
     public void CmdSetRally(int[] buildingIds, int2 tile, bool clear, NetworkConnectionToClient sender = null)
     {
-        if (!CommandGate.Allow(sender, nameof(CmdSetRally))) return;
-        if (buildingIds == null || buildingIds.Length > SpawnerRules.MaxSpawnersPerCommand || Map == null || !Map.Grid.Contains(tile)) return;
-        if (!TryActingOwner(sender, out int owner)) return;
-        foreach (int id in buildingIds)
-        {
-            if (!TryOwnSpawner(id, owner, out Entity building)) continue;
-            SpawnerData spawner = EntityManager.GetComponentData<SpawnerData>(building);
-            spawner.rally = tile;
-            spawner.hasRally = !clear;
-            EntityManager.SetComponentData(building, spawner);
-            NetworkConnectionToClient connection = GameCore.Instance?.GetServerPlayerById(owner)?.connection;
-            if (connection?.identity != null && connection.identity.TryGetComponent(out ClientPlayer player))
-                player.TargetSpawnerRally(connection, id, tile, !clear);
-        }
+        if (!CommandGate.Allow(sender, nameof(CmdSetRally)) || !TryOwnerOf(sender, out int owner)) return;
+        PlayerActions.SetRally(owner, buildingIds, tile, clear);
     }
 
     /// <summary>True when <paramref name="buildingId"/> is a live spawner owned by <paramref name="owner"/>.</summary>
     [Server]
-    private bool TryOwnSpawner(int buildingId, int owner, out Entity building)
+    internal bool TryOwnSpawner(int buildingId, int owner, out Entity building)
     {
         if (!Buildings.TryGetValue(buildingId, out building) || !EntityManager.Exists(building)) return false;
         return EntityManager.GetComponentData<BuildingData>(building).ownerId == owner && EntityManager.HasComponent<SpawnerData>(building);
     }
 
-    /// <summary>
-    /// Adds or removes <paramref name="delta"/> units of the selected type on a finished producer the sender
-    /// owns, while Playing, and tells the owner the new count.
-    /// </summary>
+    /// <summary>Orders every unit of the owner to hold position (an away player's army stands where it is, never pushed aside).</summary>
     [Server]
-    private void ChangeQueue(int buildingId, NetworkConnectionToClient sender, int delta)
+    public void HoldAll(int ownerId) =>
+        Sim?.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.Hold, OwnerId = ownerId, BoxMin = int2.zero, BoxMax = new int2(1 << 20, 1 << 20) });
+
+    /// <summary>True when <paramref name="tile"/> is inside the footprint of an unfinished building (a blueprint) owned by <paramref name="owner"/>.</summary>
+    [Server]
+    internal bool IsOwnBlueprintAt(int owner, int2 tile)
     {
-        if (!TryActingOwner(sender, out int owner) || !TryOwnSpawner(buildingId, owner, out Entity building)) return;
-        if (EntityManager.HasComponent<Construction>(building)) return;
-        SpawnerData spawner = EntityManager.GetComponentData<SpawnerData>(building);
-        if (SpawnerRules.Apply(ref spawner.count, delta) == 0) return;
-        EntityManager.SetComponentData(building, spawner);
-        SendSpawnerQueue(owner, buildingId, spawner.unitType, spawner.count);
+        foreach (KeyValuePair<int, Entity> pair in Buildings)
+        {
+            Entity entity = pair.Value;
+            if (!EntityManager.Exists(entity) || !EntityManager.HasComponent<Construction>(entity)) continue;
+            BuildingData data = EntityManager.GetComponentData<BuildingData>(entity);
+            if (data.ownerId != owner) continue;
+            foreach (int2 t in Footprint.Tiles((int2)math.round(data.position), GetBuildingSize(data.buildingType)))
+                if (t.Equals(tile)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>A live building's entity by id.</summary>
+    [Server]
+    internal bool TryGetBuilding(int buildingId, out Entity building) =>
+        Buildings.TryGetValue(buildingId, out building) && EntityManager.Exists(building);
+
+    /// <summary>Tells a spawner's owner (only) its rally; skipped for an AI, which has no connection.</summary>
+    [Server]
+    internal void SendSpawnerRally(int ownerId, int buildingId, int2 tile, bool has)
+    {
+        NetworkConnectionToClient connection = GameCore.Instance?.GetServerPlayerById(ownerId)?.connection;
+        if (connection?.identity != null && connection.identity.TryGetComponent(out ClientPlayer player))
+            player.TargetSpawnerRally(connection, buildingId, tile, has);
     }
 
     /// <summary>Tells a producer's owner (only) its selected type and queue count.</summary>
@@ -996,6 +1051,24 @@ public partial class WorldStateManager : NetworkBehaviour
         NetworkConnectionToClient connection = GameCore.Instance?.GetServerPlayerById(ownerId)?.connection;
         if (connection?.identity == null || !connection.identity.TryGetComponent(out ClientPlayer player)) return;
         player.TargetSpawnerQueue(connection, buildingId, unitType, count);
+    }
+
+    /// <summary>
+    /// Tells a player who came back (v0.15 rejoin) every queue and rally of their producers: the new client starts with none,
+    /// and the server only sends them when they change.
+    /// </summary>
+    [Server]
+    public void SendOwnProducers(int ownerId)
+    {
+        foreach (KeyValuePair<int, Entity> pair in Buildings)
+        {
+            Entity entity = pair.Value;
+            if (!EntityManager.Exists(entity) || !EntityManager.HasComponent<SpawnerData>(entity)) continue;
+            SpawnerData spawner = EntityManager.GetComponentData<SpawnerData>(entity);
+            if (spawner.ownerId != ownerId) continue;
+            SendSpawnerQueue(ownerId, pair.Key, spawner.unitType, spawner.count);
+            if (spawner.hasRally) SendSpawnerRally(ownerId, pair.Key, spawner.rally, true);
+        }
     }
 
     /// <summary>
@@ -1015,6 +1088,8 @@ public partial class WorldStateManager : NetworkBehaviour
             {
                 Health = (int)health, Width = buildingConfig.Width, Height = buildingConfig.Height,
                 UpfrontCost = 0f, RunningCost = 0f,
+                // Free and sturdy, but still armed: a turret keeps its weapon (v0.13).
+                Sight = buildingConfig.Sight, Damage = buildingConfig.Damage, Range = buildingConfig.Range, AttackInterval = buildingConfig.AttackInterval,
             };
         }
         var data = new BuildingData { position = anchor, id = Ids.Allocate(), buildingType = type, ownerId = ownerId, rotation = rotation };

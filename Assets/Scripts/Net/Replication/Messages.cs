@@ -88,13 +88,29 @@ namespace WAR2D.Net.Replication
         public LeaveReason Reason;
     }
 
-    /// <summary>An attack for the client's tracer: attacker index, target id (unit or building).</summary>
+    /// <summary>What fired an <see cref="AttackEvent"/> (v0.13).</summary>
+    public static class AttackerKinds
+    {
+        /// <summary>A unit, named by its id index (the client knows the unit from its Enter).</summary>
+        public const byte Unit = 0;
+        /// <summary>A building (a Gun turret), named by its full id (the client knows buildings by id from their records).</summary>
+        public const byte Building = 1;
+    }
+
+    /// <summary>
+    /// An attack for the client's tracer: the attacker (a unit's id index, or since v0.13 a building's full id) and
+    /// the target id (unit or building, 0 when the client may not know it).
+    /// </summary>
     public struct AttackEvent
     {
-        /// <summary>The attacker's id index.</summary>
+        /// <summary>The attacking unit's id index (unit attackers only).</summary>
         public int AttackerIndex;
         /// <summary>The target's full id.</summary>
         public int TargetId;
+        /// <summary><see cref="AttackerKinds"/>.</summary>
+        public byte AttackerKind;
+        /// <summary>The attacking building's full id (building attackers only).</summary>
+        public int AttackerId;
     }
 
     /// <summary>
@@ -244,7 +260,10 @@ namespace WAR2D.Net.Replication
             }
         }
 
-        /// <summary>Encodes an Attack message for the given units.</summary>
+        /// <summary>
+        /// Encodes an Attack message. Each event's first varint carries the attacker kind in its low bit (v0.13): 0 then
+        /// the zigzag delta of a unit's id index (delta coded over the unit events only), 1 then a building's full id.
+        /// </summary>
         public static void EncodeAttack<W>(ref W writer, NativeArray<AttackEvent> events) where W : struct, IWireWriter
         {
             writer.WriteByte((byte)MessageType.Attack);
@@ -252,8 +271,13 @@ namespace WAR2D.Net.Replication
             int previous = 0;
             for (int i = 0; i < events.Length; i++)
             {
-                VarInt.WriteInt(ref writer, events[i].AttackerIndex - previous);
-                previous = events[i].AttackerIndex;
+                if (events[i].AttackerKind == AttackerKinds.Building)
+                    VarInt.Write(ref writer, (uint)events[i].AttackerId << 1 | 1u);
+                else
+                {
+                    VarInt.Write(ref writer, VarInt.ZigZag(events[i].AttackerIndex - previous) << 1);
+                    previous = events[i].AttackerIndex;
+                }
                 VarInt.Write(ref writer, (uint)events[i].TargetId);
             }
         }
@@ -405,7 +429,15 @@ namespace WAR2D.Net.Replication
             int previous = 0;
             for (int i = 0; i < count; i++)
             {
-                int index = previous + VarInt.ReadInt(reader);
+                uint head = VarInt.Read(reader);
+                if ((head & 1) != 0)
+                {
+                    uint id = head >> 1;
+                    if (id == 0 || id > int.MaxValue) throw new InvalidDataException("bad attacker building id");
+                    events.Add(new AttackEvent { AttackerKind = AttackerKinds.Building, AttackerId = (int)id, TargetId = (int)VarInt.Read(reader) });
+                    continue;
+                }
+                int index = previous + VarInt.UnZigZag(head >> 1);
                 if ((uint)index >= NetIdAllocator.MaxCapacity) throw new InvalidDataException("attacker index out of range");
                 previous = index;
                 events.Add(new AttackEvent { AttackerIndex = index, TargetId = (int)VarInt.Read(reader) });

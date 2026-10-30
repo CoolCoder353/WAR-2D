@@ -9,12 +9,14 @@ namespace WAR2D.UI
     /// <summary>
     /// Binds the Settings screen (<c>Assets/UI/Menus/Settings.uxml</c>, in the main menu and the match):
     /// Graphics (resolution, fullscreen, VSync, FPS cap, the menu battle, the colour palette), Audio
-    /// (master, music, sound effects) and Controls (rebinding with Press-a-key, conflicts offered as a swap,
-    /// and edge scrolling). Every change applies and saves at once (<see cref="SettingsStore"/>).
+    /// (master, music, sound effects), Controls (rebinding with Press-a-key, conflicts offered as a swap) and
+    /// Gameplay (v0.15: UI scale, health bars, tracers, tooltip delay, camera speeds and edge scrolling,
+    /// confirmations, and the per-alert Show and Sound switches; Figma frame 123:938). Every change applies and
+    /// saves at once (<see cref="SettingsStore"/>).
     /// </summary>
     public sealed class SettingsController : IDisposable
     {
-        private enum Page { Graphics, Audio, Controls }
+        private enum Page { Graphics, Audio, Controls, Gameplay }
 
         /// <summary>Rebindable actions (by <c>GameInput</c> name) and their labels; the rest are shown fixed.</summary>
         private static readonly (string label, string action, string fixedText)[] Bindings =
@@ -33,9 +35,54 @@ namespace WAR2D.UI
             ("Assign squad", "AssignModifier", null),
             ("Rotate building", "Rotate", null),
             ("Menu", "Menu", null),
+            ("Select idle Builders", "SelectIdleBuilders", null),
+            ("Select army", "SelectArmy", null),
+            ("Jump to HQ", "JumpToHq", null),
+            ("Next alert", "NextAlert", null),
+            // v0.15.1 card slots (Figma H3): what each does with Builders / with producers selected.
+            ("Card top 1 · Miner / 1st unit type", "CardTop1", null),
+            ("Card top 2 · Barracks / 2nd unit type", "CardTop2", null),
+            ("Card top 3 · Heavy Factory / 3rd unit type", "CardTop3", null),
+            ("Card top 4 · Siege Workshop", "CardTop4", null),
+            ("Card bottom 1 · Wall", "CardBottom1", null),
+            ("Card bottom 2 · Bomb", "CardBottom2", null),
+            ("Card bottom 3 · Radar", "CardBottom3", null),
+            ("Card bottom 4 · Gun turret", "CardBottom4", null),
+            ("Card bottom 5 · Jammer", "CardBottom5", null),
         };
 
-        private readonly VisualElement screen, tabs, graphics, audio, controls, bindingRows, conflict;
+        /// <summary>The alert kinds in the Gameplay tab's table, in the frame's order, with their names.</summary>
+        private static readonly (AlertKind kind, string label)[] AlertRows =
+        {
+            (AlertKind.UnderAttack, "Under attack"),
+            (AlertKind.BombTriggered, "Bomb triggered"),
+            (AlertKind.EnemySpotted, "Enemy spotted"),
+            (AlertKind.ConstructionFinished, "Construction finished"),
+            (AlertKind.UpkeepUnpaid, "Upkeep unpaid"),
+            (AlertKind.GiftReceived, "Gift received"),
+            (AlertKind.ResourcesLow, "Resources will run out"),
+            (AlertKind.RepairsStopped, "Repairs stopped"),
+            (AlertKind.VisionSharedWithYou, "Vision shared with you"),
+            (AlertKind.VisionUnshared, "Vision unshared"),
+        };
+
+        /// <summary>
+        /// True when Confirm surrender may not be switched off: a match with teams (the host set Teams), so a
+        /// misclick can't surrender for a side. Replaceable for tests and for a finer rule.
+        /// </summary>
+        public static Func<bool> SurrenderAlwaysConfirms = InTeamMatch;
+
+        private static bool InTeamMatch()
+        {
+            GameCore core = GameCore.Instance;
+            if (core == null) return false;
+            var teams = new HashSet<int>();
+            foreach (KeyValuePair<int, int> entry in core.Teams)
+                if (!teams.Add(entry.Value)) return true;
+            return false;
+        }
+
+        private readonly VisualElement screen, tabs, graphics, audio, controls, gameplay, bindingRows, conflict;
         private readonly Label hint, conflictText, conflictHelp;
         private Page page;
         private InputActionRebindingExtensions.RebindingOperation rebinding;
@@ -52,6 +99,7 @@ namespace WAR2D.UI
             graphics = root.Q("settings-graphics");
             audio = root.Q("settings-audio");
             controls = root.Q("settings-controls");
+            gameplay = root.Q("settings-gameplay");
             bindingRows = root.Q("binding-rows");
             conflict = root.Q("conflict");
             hint = root.Q<Label>("rebind-hint");
@@ -61,10 +109,17 @@ namespace WAR2D.UI
             root.Q<Button>("settings-reset").clicked += ResetToDefaults;
             root.Q<Button>("conflict-cancel").clicked += CancelConflict;
             root.Q<Button>("conflict-swap").clicked += SwapConflict;
+            root.Q<Button>("edge-link").clicked += () => { page = Page.Gameplay; Show(); };
+            gameplay.Q<Button>("pan-speed-reset").clicked += () => { S.PanSpeed = Defaults.PanSpeed; Changed(); };
+            gameplay.Q<Button>("edge-speed-reset").clicked += () => { S.EdgeScrollSpeed = Defaults.EdgeScrollSpeed; Changed(); };
+            gameplay.Q<Button>("zoom-speed-reset").clicked += () => { S.ZoomSpeed = Defaults.ZoomSpeed; Changed(); };
+            gameplay.Q<Button>("shift-multiplier-reset").clicked += () => { S.ShiftMultiplier = Defaults.ShiftMultiplier; Changed(); };
             Show();
         }
 
         private static GameSettings S => SettingsStore.Current;
+
+        private static readonly GameSettings Defaults = new GameSettings();
 
         public bool IsOpen => screen.ClassListContains("overlay-screen--visible");
 
@@ -107,19 +162,23 @@ namespace WAR2D.UI
             tabs.Add(Widgets.Option("tab-graphics", "Graphics", page == Page.Graphics, true, () => { page = Page.Graphics; Show(); }));
             tabs.Add(Widgets.Option("tab-audio", "Audio", page == Page.Audio, true, () => { page = Page.Audio; Show(); }));
             tabs.Add(Widgets.Option("tab-controls", "Controls", page == Page.Controls, true, () => { page = Page.Controls; Show(); }));
+            tabs.Add(Widgets.Option("tab-gameplay", "Gameplay", page == Page.Gameplay, true, () => { page = Page.Gameplay; Show(); }));
             graphics.EnableInClassList("settings__page--visible", page == Page.Graphics);
             audio.EnableInClassList("settings__page--visible", page == Page.Audio);
             controls.EnableInClassList("settings__page--visible", page == Page.Controls);
+            gameplay.EnableInClassList("settings__page--visible", page == Page.Gameplay);
             ShowGraphics();
             ShowAudio();
             ShowControls();
+            ShowGameplay();
         }
 
         private void ShowGraphics()
         {
             VisualElement resolutions = graphics.Q("resolution-options");
             resolutions.Clear();
-            foreach (Vector2Int r in GameSettings.Resolutions)
+            resolutions.style.flexWrap = Wrap.Wrap;
+            foreach (Vector2Int r in GameSettings.ResolutionChoices(new Vector2Int(S.Width, S.Height)))
             {
                 Vector2Int res = r;
                 resolutions.Add(Widgets.Option($"resolution-{r.x}", $"{r.x}×{r.y}", S.Width == r.x && S.Height == r.y, true, () => { S.Width = res.x; S.Height = res.y; Changed(); }));
@@ -127,7 +186,6 @@ namespace WAR2D.UI
             Slot(graphics, "fullscreen-slot", Widgets.Switch("fullscreen", S.Fullscreen, true, () => { S.Fullscreen = !S.Fullscreen; Changed(); }));
             Slot(graphics, "vsync-slot", Widgets.Switch("vsync", S.VSync, true, () => { S.VSync = !S.VSync; Changed(); }));
             Slot(graphics, "battle-slot", Widgets.Switch("menu-battle", S.MenuBattle, true, () => { S.MenuBattle = !S.MenuBattle; Changed(); }));
-            Slot(graphics, "save-replays-slot", Widgets.Switch("save-replays-toggle", S.SaveReplays, true, () => { S.SaveReplays = !S.SaveReplays; Changed(); }));
             VisualElement fps = graphics.Q("fps-options");
             fps.Clear();
             foreach (int cap in GameSettings.FpsCaps)
@@ -175,8 +233,17 @@ namespace WAR2D.UI
             Slot(audio, "sfx-slider", Slider("sfx", S.Sfx, v => { S.Sfx = v; Changed(); }));
         }
 
-        /// <summary>The Slider component: a track with a fill and a knob, and the value in percent; click or drag to set.</summary>
-        private static VisualElement Slider(string name, float value, Action<float> changed)
+        /// <summary>The Slider component for a 0–1 volume, shown in percent.</summary>
+        private static VisualElement Slider(string name, float value, Action<float> changed) => Slider(name, value, 0f, 1f, 0f, Percent, changed);
+
+        private static string Percent(float v) => $"{v * 100f:0}%";
+
+        /// <summary>
+        /// The Slider component: a track with a fill and a knob, and the value as <paramref name="format"/> gives it;
+        /// click or drag to set (the value applies on release). It runs from <paramref name="min"/> to
+        /// <paramref name="max"/> in steps of <paramref name="step"/> (0 = continuous).
+        /// </summary>
+        private static VisualElement Slider(string name, float value, float min, float max, float step, Func<float, string> format, Action<float> changed, bool enabled = true)
         {
             var slider = new VisualElement { name = name };
             slider.AddToClassList("slider");
@@ -186,21 +253,28 @@ namespace WAR2D.UI
             fill.AddToClassList("slider__fill");
             var knob = new VisualElement();
             knob.AddToClassList("slider__knob");
-            fill.style.width = Length.Percent(value * 100f);
-            knob.style.left = Length.Percent(value * 100f);
+            float At(float t)
+            {
+                float v = Mathf.Lerp(min, max, Mathf.Clamp01(t));
+                if (step > 0f) v = Mathf.Clamp(min + Mathf.Round((v - min) / step) * step, min, max);
+                return v;
+            }
+            float Fraction(float v) => max > min ? Mathf.Clamp01((v - min) / (max - min)) : 0f;
+            fill.style.width = Length.Percent(Fraction(value) * 100f);
+            knob.style.left = Length.Percent(Fraction(value) * 100f);
             track.Add(fill);
             track.Add(knob);
-            var text = new Label($"{value * 100f:0}%");
+            var text = new Label(format(value));
             text.AddToClassList("slider__value");
             slider.Add(track);
             slider.Add(text);
             bool dragging = false;
             void Set(Vector2 local)
             {
-                float v = Mathf.Clamp01(local.x / Mathf.Max(1f, track.layout.width));
-                fill.style.width = Length.Percent(v * 100f);
-                knob.style.left = Length.Percent(v * 100f);
-                text.text = $"{v * 100f:0}%";
+                float v = At(local.x / Mathf.Max(1f, track.layout.width));
+                fill.style.width = Length.Percent(Fraction(v) * 100f);
+                knob.style.left = Length.Percent(Fraction(v) * 100f);
+                text.text = format(v);
             }
             track.RegisterCallback<PointerDownEvent>(e => { dragging = true; track.CapturePointer(e.pointerId); Set(e.localPosition); });
             track.RegisterCallback<PointerMoveEvent>(e => { if (dragging) Set(e.localPosition); });
@@ -209,8 +283,9 @@ namespace WAR2D.UI
                 if (!dragging) return;
                 dragging = false;
                 track.ReleasePointer(e.pointerId);
-                changed(Mathf.Clamp01(e.localPosition.x / Mathf.Max(1f, track.layout.width)));
+                changed(At(e.localPosition.x / Mathf.Max(1f, track.layout.width)));
             });
+            slider.SetEnabled(enabled);
             return slider;
         }
 
@@ -237,8 +312,88 @@ namespace WAR2D.UI
                 row.Add(binding);
                 bindingRows.Add(row);
             }
-            Slot(controls, "edge-slot", Widgets.Switch("edge-scroll", S.EdgeScroll, true, () => { S.EdgeScroll = !S.EdgeScroll; Changed(); }));
             hint.text = listening != null ? $"Press a key for {LabelOf(listening)}. Esc cancels." : "";
+        }
+
+        private void ShowGameplay()
+        {
+            Slot(gameplay, "ui-scale-slot", Slider("ui-scale", S.UiScale, 0.75f, 1.5f, 0.05f, Percent, v => { S.UiScale = v; Changed(); }));
+            Segmented("health-bar-options", "health-bars", S.HealthBars, v => S.HealthBars = v, "Always", "Damaged only", "Selected only");
+            Segmented("tracer-options", "tracers", S.Tracers, v => S.Tracers = v, "Full", "Reduced", "Off");
+            Segmented("tooltip-options", "tooltip-delay", S.TooltipDelay, v => S.TooltipDelay = v, "Fast", "Normal", "Off");
+
+            CameraSlider("pan-speed", S.PanSpeed, Defaults.PanSpeed, 0.5f, 2f, 0.05f, Percent, v => S.PanSpeed = v);
+            Slot(gameplay, "edge-slot", Widgets.Switch("edge-scroll", S.EdgeScroll, true, () => { S.EdgeScroll = !S.EdgeScroll; Changed(); }));
+            CameraSlider("edge-speed", S.EdgeScrollSpeed, Defaults.EdgeScrollSpeed, 0.5f, 2f, 0.05f, Percent, v => S.EdgeScrollSpeed = v, S.EdgeScroll);
+            gameplay.Q<Label>("edge-speed-label").EnableInClassList("text--disabled", !S.EdgeScroll);
+            CameraSlider("zoom-speed", S.ZoomSpeed, Defaults.ZoomSpeed, 0.5f, 2f, 0.05f, Percent, v => S.ZoomSpeed = v);
+            CameraSlider("shift-multiplier", S.ShiftMultiplier, Defaults.ShiftMultiplier, 1.5f, 4f, 0.1f, v => $"{v:0.0}×", v => S.ShiftMultiplier = v);
+
+            Slot(gameplay, "confirm-demolish-slot", Widgets.Switch("confirm-demolish", S.ConfirmDemolish, true, () => { S.ConfirmDemolish = !S.ConfirmDemolish; Changed(); }));
+            bool surrenderLocked = SurrenderAlwaysConfirms != null && SurrenderAlwaysConfirms();
+            Slot(gameplay, "confirm-surrender-slot", Widgets.Switch("confirm-surrender", S.ConfirmSurrender || surrenderLocked, !surrenderLocked, () => { S.ConfirmSurrender = !S.ConfirmSurrender; Changed(); }));
+            gameplay.Q<Label>("confirm-surrender-label").EnableInClassList("text--disabled", surrenderLocked);
+            gameplay.Q("confirm-surrender-hint").style.display = surrenderLocked ? DisplayStyle.Flex : DisplayStyle.None;
+
+            VisualElement rows = gameplay.Q("alert-filter-rows");
+            rows.Clear();
+            foreach ((AlertKind kind, string label) in AlertRows) rows.Add(AlertRow(kind, label));
+            InputAction next = GameInput.Map.FindAction("NextAlert");
+            gameplay.Q<Label>("next-alert-hint").text = next != null ? $"Next alert key: {Rebinding.Display(next)} (rebind in Controls)." : "";
+        }
+
+        /// <summary>A row of the Alerts table: the kind's stripe and name, then its Show and Sound switches.</summary>
+        private VisualElement AlertRow(AlertKind kind, string label)
+        {
+            int i = (int)kind;
+            bool show = S.ShowsAlert(kind), sound = S.SoundsAlert(kind);
+            // Under attack and Upkeep unpaid keep at least one of the two: the last one on is locked.
+            bool mustHear = Array.IndexOf(GameSettings.MustHear, kind) >= 0;
+            var row = new VisualElement { name = "alert-filter-" + kind };
+            row.AddToClassList("alert-filter__row");
+            row.AddToClassList(AlertFeedController.KindClass(kind));
+            var name = new VisualElement();
+            name.AddToClassList("alert-filter__name");
+            var stripe = new VisualElement();
+            stripe.AddToClassList("alert__stripe");
+            name.Add(stripe);
+            var text = new Label(label);
+            text.AddToClassList("text");
+            text.AddToClassList("alert-filter__label");
+            name.Add(text);
+            row.Add(name);
+            row.Add(Cell(Widgets.Switch($"alert-show-{kind}", show, !(mustHear && show && !sound), () => { S.Clamp(); S.AlertShow[i] = !show; Changed(); }, "")));
+            row.Add(Cell(Widgets.Switch($"alert-sound-{kind}", sound, !(mustHear && sound && !show), () => { S.Clamp(); S.AlertSound[i] = !sound; Changed(); }, "")));
+            return row;
+        }
+
+        private static VisualElement Cell(VisualElement content)
+        {
+            var cell = new VisualElement();
+            cell.AddToClassList("alert-filter__cell");
+            cell.Add(content);
+            return cell;
+        }
+
+        /// <summary>A segmented choice of an int setting (the option's index is its value).</summary>
+        private void Segmented(string slot, string name, int current, Action<int> set, params string[] labels)
+        {
+            VisualElement options = gameplay.Q(slot);
+            options.Clear();
+            for (int i = 0; i < labels.Length; i++)
+            {
+                int value = i;
+                options.Add(Widgets.Option($"{name}-{i}", labels[i], current == i, true, () => { set(value); Changed(); }));
+            }
+        }
+
+        /// <summary>A camera slider and its Reset (shown only while the value differs from the default).</summary>
+        private void CameraSlider(string name, float value, float fallback, float min, float max, float step, Func<float, string> format, Action<float> set, bool enabled = true)
+        {
+            Slot(gameplay, name + "-slot", Slider(name, value, min, max, step, format, v => { set(v); Changed(); }, enabled));
+            Button reset = gameplay.Q<Button>(name + "-reset");
+            reset.EnableInClassList("settings-gameplay__reset--hidden", Mathf.Approximately(value, fallback));
+            reset.SetEnabled(enabled);
         }
 
         private static string LabelOf(string action)

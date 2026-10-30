@@ -23,6 +23,35 @@ public class SimWallTests
     }
 
     [Test]
+    public void OwnerCancelsABlueprintAndDemolishesAWallButNobodyElseCan()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(32));
+        var blueprint = new int2(10, 10);
+        var built = new int2(12, 10);
+        sim.PlaceWall(SimHarness.OwnerA, blueprint);
+        sim.PlaceWall(SimHarness.OwnerA, built);
+        sim.Tick();
+        sim.ForceBuiltWall(built);
+        var removed = new System.Collections.Generic.List<byte>();
+        void Remove(int owner, int2 tile) =>
+            sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.RemoveWall, OwnerId = owner, Tile = tile, OnWallRemoved = removed.Add });
+
+        Remove(SimHarness.OwnerB, blueprint);
+        Remove(SimHarness.OwnerB, built);
+        sim.Tick();
+        Assert.AreEqual(0, removed.Count, "another owner's request is refused");
+        Assert.AreEqual(TileType.WallBlueprint, sim.Map.Grid.TileAt(blueprint));
+
+        Remove(SimHarness.OwnerA, blueprint);
+        Remove(SimHarness.OwnerA, built);
+        Remove(SimHarness.OwnerA, new int2(20, 20)); // not a wall
+        sim.Tick();
+        CollectionAssert.AreEquivalent(new[] { WallStates.Blueprint, WallStates.Built }, removed);
+        Assert.AreEqual(TileType.Ground, sim.Map.Grid.TileAt(blueprint));
+        Assert.AreEqual(TileType.Ground, sim.Map.Grid.TileAt(built));
+    }
+
+    [Test]
     public void ConstructionWaitsWhileAUnitStandsOnTheTile()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(32));

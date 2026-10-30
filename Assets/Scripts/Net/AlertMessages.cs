@@ -23,6 +23,15 @@ public enum AlertKind : byte
     EnemySpotted,
     /// <summary>The receiver's Builders stopped repairing because the receiver ran out of resources (Tile is the target).</summary>
     RepairsStopped,
+    /// <summary>
+    /// Made by the client, never sent: the balance runs out within a minute at the current net income (v0.15).
+    /// Appended last so the wire values of the others do not change.
+    /// </summary>
+    ResourcesLow,
+    /// <summary>Made by the client, never sent (v0.15, item 19): another player dropped out and their seat is held (OtherOwnerId is them).</summary>
+    PlayerDisconnected,
+    /// <summary>Made by the client, never sent (v0.15, item 19): an away player came back (OtherOwnerId is them).</summary>
+    PlayerReturned,
 }
 
 /// <summary>

@@ -1,0 +1,18 @@
+{
+  "wave": "Square",
+  "attack": 0.05,
+  "sustain": 0.35,
+  "decay": 0.3,
+  "frequency": 147,
+  "slide": 2.2,
+  "deltaSlide": -2.5,
+  "vibratoDepth": 0.05,
+  "vibratoSpeed": 22,
+  "duty": 0.3,
+  "dutySweep": 0.4,
+  "lowPass": 0.75,
+  "phaserOffset": 0.002,
+  "phaserSweep": 0.003,
+  "volume": 0.45,
+  "seed": 42
+}

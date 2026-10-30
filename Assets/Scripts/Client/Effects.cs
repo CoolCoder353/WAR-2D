@@ -16,6 +16,9 @@ public static class Effects
     /// <summary>Pool sizes for the v0.12 weapons: sniper tracers, artillery shells and their impacts, flame streams.</summary>
     public const int SniperPool = 64, ShellPool = 64, ImpactPool = 64, StreamPool = 128, BomberBlastPool = 16;
 
+    /// <summary>Pool sizes for the v0.13 defences: turret muzzle flashes and Jammer pulses.</summary>
+    public const int TurretFlashPool = 64, PulsePool = 32;
+
     /// <summary>Seconds a tracer takes to reach its target.</summary>
     public const float TracerSeconds = 0.2f;
 
@@ -61,6 +64,8 @@ public static class Effects
     private static readonly Pool Impacts = new Pool("ShellImpact", ImpactPool);
     private static readonly Pool Streams = new Pool("FlameStream", StreamPool);
     private static readonly Pool BomberBlasts = new Pool("BomberBlast", BomberBlastPool);
+    private static readonly Pool TurretFlashes = new Pool("TurretMuzzle", TurretFlashPool);
+    private static readonly Pool Pulses = new Pool("JamPulse", PulsePool);
     private static Runner runner;
     private static ArtAtlas atlas;
 
@@ -149,8 +154,11 @@ public static class Effects
     /// <summary>How far from a shooter's centre its barrel ends, in tiles (the muzzle flash goes there).</summary>
     public const float BarrelReach = 0.45f;
 
-    /// <summary>A tracer from the shooter to the target (with a muzzle flash at the shooter's barrel).</summary>
-    public static void Tracer(Vector3 from, Vector3 to, UnitType attacker = UnitType.Tank)
+    /// <summary>
+    /// A tracer from the shooter to the target (with a muzzle flash at the shooter's barrel). Without <paramref name="line"/>
+    /// (the Tracers setting thinning them out) only the flash and sound play; Artillery shells and flame streams always draw.
+    /// </summary>
+    public static void Tracer(Vector3 from, Vector3 to, UnitType attacker = UnitType.Tank, bool line = true)
     {
         Vector3 heading = to - from;
         heading.z = 0f;
@@ -168,6 +176,7 @@ public static class Effects
             return;
         }
         MuzzleFlash(muzzle, ShotSound(attacker));
+        if (!line && attacker != UnitType.Artillery) return;
         Pool pool = attacker == UnitType.Sniper ? SniperTracers : attacker == UnitType.Artillery ? Shells : Tracers;
         Slot s = Take(pool);
         if (s == null) return;
@@ -178,6 +187,65 @@ public static class Effects
         Vector3 d = s.To - s.From;
         s.Go.transform.SetPositionAndRotation(s.From, Quaternion.Euler(0f, 0f, Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg));
     }
+
+    /// <summary>
+    /// Where a Gun turret's muzzle is, from its footprint's centre, for a head facing <paramref name="angle"/>
+    /// (radians): <see cref="WAR2D.Art.Render.RenderGen.TurretMuzzleReach"/> along the facing, raised by the
+    /// muzzle's height in the 3/4 view.
+    /// </summary>
+    public static Vector3 TurretMuzzle(Vector2 centre, float angle)
+    {
+        const float ppu = ArtStyle.PixelsPerUnit;
+        float reach = WAR2D.Art.Render.RenderGen.TurretMuzzleReach / ppu;
+        float rise = WAR2D.Art.Render.RenderGen.TurretMuzzleHeight * WAR2D.Art.Render.RenderGen.Lift / ppu;
+        return new Vector3(centre.x + Mathf.Cos(angle) * reach, centre.y + Mathf.Sin(angle) * reach + rise, 0f);
+    }
+
+    /// <summary>
+    /// A Gun turret's shot (v0.13): the <c>TurretMuzzle</c> flash at the muzzle of a head facing
+    /// <paramref name="angle"/> (turned to it), <c>shot_turret</c>, and a tracer from the muzzle to
+    /// <paramref name="to"/> when the client was told the target (null: flash and sound only).
+    /// </summary>
+    public static void TurretShot(Vector2 centre, float angle, Vector3? to)
+    {
+        Vector3 muzzle = TurretMuzzle(centre, angle);
+        WAR2D.Audio.AudioService.Sfx("shot_turret", muzzle);
+        Slot flash = Take(TurretFlashes);
+        if (flash == null) return;
+        TurretShots++;
+        flash.Go.transform.SetPositionAndRotation(muzzle, Quaternion.Euler(0f, 0f, angle * Mathf.Rad2Deg));
+        if (!to.HasValue) return;
+        Slot s = Take(Tracers);
+        if (s == null) return;
+        TurretTracers++;
+        s.From = muzzle;
+        s.To = new Vector3(to.Value.x, to.Value.y, 0f);
+        Vector3 d = s.To - s.From;
+        s.Go.transform.SetPositionAndRotation(s.From, Quaternion.Euler(0f, 0f, Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg));
+    }
+
+    /// <summary>A Jammer's pulse (v0.13), centred on its footprint (the art places the rings on its dish).</summary>
+    public static void JamPulse(Vector2 centre)
+    {
+        Slot s = Take(Pulses);
+        if (s == null) return;
+        s.Go.transform.SetPositionAndRotation(new Vector3(centre.x, centre.y, 0f), Quaternion.identity);
+    }
+
+    /// <summary>Turret muzzle flashes playing now (tests).</summary>
+    public static int ActiveTurretFlashes => Count(TurretFlashes);
+
+    /// <summary>Turret shots drawn (flash and sound) and those with a tracer, since the pools were made (tests).</summary>
+    public static int TurretShots { get; private set; }
+
+    /// <summary>Turret shots drawn with a tracer to their target (tests).</summary>
+    public static int TurretTracers { get; private set; }
+
+    /// <summary>Jammer pulses playing now (tests).</summary>
+    public static int ActivePulses => Count(Pulses);
+
+    /// <summary>Tracers (the plain kind units and turrets fire) flying now (tests).</summary>
+    public static int ActiveTracers => Count(Tracers);
 
     /// <summary>Destroys every pooled sprite (tests, and nothing else needs it: pools follow their runner).</summary>
     public static void Clear()
@@ -194,7 +262,9 @@ public static class Effects
     {
         runner = null;
         Created = 0;
-        foreach (Pool p in new[] { Explosions, Flashes, Tracers, Blasts, Debris, Sparks, SniperTracers, Shells, Impacts, Streams, BomberBlasts })
+        TurretShots = 0;
+        TurretTracers = 0;
+        foreach (Pool p in new[] { Explosions, Flashes, Tracers, Blasts, Debris, Sparks, SniperTracers, Shells, Impacts, Streams, BomberBlasts, TurretFlashes, Pulses })
         {
             p.Slots.Clear();
             p.Next = 0;
@@ -263,6 +333,8 @@ public static class Effects
             Animate(BomberBlasts, now, false);
             Animate(Debris, now, false);
             Animate(Sparks, now, false);
+            Animate(TurretFlashes, now, false);
+            Animate(Pulses, now, false);
         }
 
         private static void Animate(Pool pool, float now, bool tracer)

@@ -1,6 +1,6 @@
 # Debugging and developer tools (v0.10)
 
-For Claude and the owner. Everything here is dev-only: it is compiled out of nothing, but gated at run time, and a release build never opens the API.
+For Claude and the owner. Everything here is dev-only: nothing is compiled out, but it is gated at run time, and a release build never opens the API.
 
 ## Turning the control API on
 
@@ -26,7 +26,7 @@ tools/war2d --json state               # raw reply
 | --- | --- |
 | Session | `ping`, `info`, `host`, `join route=…`, `leave`, `start [size seed mode options pick team]` (`pick=-1` is Unlimited; `team=0` puts every player on one team, Teams mode only), `quit` |
 | Read | `state`, `players`, `units`, `unit id=…`, `buildings`, `tiles box=[x0,y0,x1,y1]`, `fog owner box`, `orders`, `perf`, `log`, `loglevel` |
-| Scenario | `bots n`, `spawn owner type tile count`, `build owner type tile`, `resources`, `order`, `diplomacy`, `kill ids`, `pause`, `resume`, `step`, `wait` |
+| Scenario | `ai difficulty [style] [team] [colour]` (a lobby AI seat), `aistate [owner]` (each AI's style, plans, counts, actions and unpaid seconds), `timescale [n]` (run the match n times faster, 0.1–32; the tick catches up several ticks per frame; dev only), `bots n` (Scripted AI seats, owner ids from `AiOwnerIds`), `spawn owner type tile count`, `build owner type tile`, `resources`, `order`, `diplomacy`, `kill ids`, `pause`, `resume`, `step`, `wait` |
 | View | `camera`, `select`, `screenshot`, `overlay layer on` |
 | Replays | `record`, `replays`, `replay do=open/seek/speed/play/pause/stop/status` |
 
@@ -42,9 +42,30 @@ Server-role commands refuse on a client. A client answers `units`/`buildings` on
 
 ## Replays
 
-The host records every match from a fog-free virtual spectator (`MatchRecorder`) into `<persistentDataPath>/Replays/*.war2drec` (GZip: header JSON, then tick-stamped records). After *GameOver* it offers the file to each player (`ReplayOffer`, chunked `ReplayChunk`s, hash-checked); players with *Save replays* on keep it (offers larger than `<MaxMegabytes>` are refused, a received file must open as a replay, and received replays and the machine's own recordings each keep their newest `<KeepCount>`, counted separately, so a host can never push out the player's own recordings). The recorder stops replicating once its file is finished. Nothing is sent before *GameOver*. `ReplayPlayer` plays a file offline with speed and seeking (`war2d replay do=open path=…`). Config: `<Replays>` in `GameConfig.xml`.
+The host records every match from a fog-free virtual spectator (`MatchRecorder`) into `<persistentDataPath>/Replays/*.war2drec` (GZip: header JSON, then tick-stamped records). Only the host saves a replay; joined players get none (the old host-to-player transfer was removed on 2026-10-27, since its 16 KiB chunks exceeded Mirror's Direct batch limit). The host keeps the newest `<KeepCount>` recordings. The recorder stops replicating once its file is finished. Nothing is sent before *GameOver*. `ReplayPlayer` plays a file offline with speed and seeking (`war2d replay do=open path=…`). Config: `<Replays>` in `GameConfig.xml`.
 
 Players watch them from the main menu's **Replays** screen (Watch, Delete, and a viewer with play/pause, speed, a seek bar and the players' numbers); see `docs/ux/v0.10-figma.md`. Hosted PlayMode tests switch recording off (`PlayModeMatch.Configure`) so they don't fill the real folder.
+
+## Example: watch two AIs play
+
+```bash
+tools/war2d host
+tools/war2d ai difficulty=Normal style=Balanced
+tools/war2d ai difficulty=Easy style=Rusher
+tools/war2d start size=256 seed=21 pick=15   # the host's HQ is placed at random when the pick time ends
+tools/war2d wait state=Playing && tools/war2d timescale n=8
+tools/war2d aistate                           # repeat; GameOver when one side is left
+```
+
+## The AI bench (v0.14)
+
+`tools/ai-bench.sh [seeds=6] [jobs=4] [player=Builds/Linux/WAR-2D.x86_64]` plays AI-vs-AI 1v1 matches and writes [perf/v0.14/ai-bench.md](perf/v0.14/ai-bench.md): per pairing (Hard-Normal, Normal-Easy and the mirrors) and map size (256, 512, 1024), the stronger side's win rate, draws, matches still running at the time cap (40 match minutes: a failure), errors and lengths, then results by style, how each difficulty played (first attack, attacks, retreats, peak army, highest balance, unpaid seconds, concessions), the failures and the upsets. Each match is its own headless player (`-batchmode -nographics -perf -noSteam -aiBench <result.json>`, `Dev/AiBench.cs`): it hosts, adds the two AIs, starts a Free-for-all with the host sitting out (it places no HQ, so the win/loss rules drop it), fast-forwards (`AI_BENCH_SCALE`, 32) and writes the result with a minute-by-minute timeline per AI (balance, estimated income and upkeep, army, buildings, Miners, producers, turrets, army mode). `jobs` run at once, each on its own KCP port (`-port n`, dev only; the WebSocket listener moves to n + 1000). Styles are drawn per seat from a seeded generator, the same pair for a seed in every pairing; the seat order alternates by seed. Environment: `AI_BENCH_SIZES`, `AI_BENCH_PAIRINGS`, `AI_BENCH_STYLES`, `AI_BENCH_CAP`, `AI_BENCH_SCALE`, `AI_BENCH_SEED0`, `AI_BENCH_OUT` (`-` prints only), `AI_BENCH_DIR` (the results directory, default `PerfResults/ai-bench-<date-time>`) and `AI_BENCH_CONFIG` (a `GameConfig.xml` to play instead of the built one, through the dev-only `-configFile <path>`: tuning `<Ai>` or any balance number without a rebuild). `tools/ai-bench.sh report <dir>...` rewrites the report from finished runs (`PerfResults/ai-bench-*`). Logs are kept only for failed matches.
+
+**Brief mode and tuning.** `tools/ai-bench.sh --brief` prints an eight-line summary instead of a line per match and the full report, and writes the full report into the results directory; `tools/ai-bench.sh brief <dir>...` summarises finished runs. `tools/ai-tune.js` tunes config values against it unattended, and `tools/balance-sheet.js` works out unit numbers and equal-cost fights from the config alone. How to use them, and how to read the results: [tuning.md](tuning.md).
+
+## Perf runs (v0.14 additions)
+
+`WAR_PERF_AI=Hard tools/perf-run.sh 3` runs the gate's AI form (seven lobby AIs on the 1024 map, the host sitting out, `perf.part.ai` ≤ 2 ms p95; `WAR_PERF_AI_WARMUP` minutes of fast-forwarded play first, default 12). `WAR_PERF_HOST_ARGS="…"` adds host arguments for experiments, e.g. `-configFile <path>` to try a config without a rebuild. Results: [perf/v0.14](perf/v0.14/README.md).
 
 ## Example: reproduce a pathing bug
 

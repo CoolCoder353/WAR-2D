@@ -32,6 +32,8 @@ public class BuildingPlacement : MonoBehaviour
     private float displayedRotation;
     private bool hasDisplayedTarget;
     private SpriteRenderer statusOutline;
+    private SpriteRenderer previewHead; // the Gun turret's head over its base (v0.13)
+    private WAR2D.Client.ClearingRing rangeRing; // the Gun turret's range or the Jammer's jam radius while placing (v0.13)
 
     private int2 lastQueriedAnchor = new int2(int.MinValue, int.MinValue);
     private float lastQueriedRotation = float.MinValue;
@@ -48,6 +50,7 @@ public class BuildingPlacement : MonoBehaviour
         if (Instance == this) Instance = null;
         if (localPlayer != null) localPlayer.onResponseFromCanBuildBuilding.RemoveListener(ResultFromCommand);
         WAR2D.Client.ClearingRing.Hide();
+        if (rangeRing != null) Destroy(rangeRing.gameObject);
     }
 
     [ClientCallback]
@@ -69,6 +72,7 @@ public class BuildingPlacement : MonoBehaviour
         sprite.sharedMaterial = WAR2D.Client.Render.TeamSpriteMaterial.ForColour(PlayerPalette.Of(localPlayer != null ? localPlayer.colourIndex : -1), false);
         sprite.sortingOrder = WAR2D.Client.Render.SortingOrders.PlacementPreview;
         EnsureStatusOutline(sprite);
+        ShowHead(sprite);
         previewBuilding.SetActive(true);
         currentRotation = 0f;
         hasDisplayedTarget = false;
@@ -85,7 +89,41 @@ public class BuildingPlacement : MonoBehaviour
         PlacingType = BuildingType.None;
         previewBuilding.SetActive(false);
         previewBuilding.GetComponent<SpriteRenderer>().sprite = null;
+        if (previewHead != null) previewHead.enabled = false;
+        if (rangeRing != null) rangeRing.gameObject.SetActive(false);
         currentRotation = 0f;
+    }
+
+    /// <summary>The Gun turret's preview draws its head over the base, facing east (v0.13); other buildings have none.</summary>
+    private void ShowHead(SpriteRenderer sprite)
+    {
+        bool turret = PlacingType == BuildingType.GunTurret;
+        if (previewHead == null)
+        {
+            if (!turret) return;
+            GameObject head = new GameObject("PreviewHead");
+            head.transform.SetParent(previewBuilding.transform, false);
+            previewHead = head.AddComponent<SpriteRenderer>();
+        }
+        previewHead.enabled = turret;
+        if (!turret) return;
+        previewHead.sprite = WAR2D.Art.ArtAtlas.Load(WAR2D.Art.ArtAtlas.Buildings)?.Sprite(WAR2D.Art.ArtManifest.TurretHead, 0);
+        previewHead.sharedMaterial = sprite.sharedMaterial;
+        previewHead.sortingLayerID = sprite.sortingLayerID;
+        previewHead.sortingOrder = sprite.sortingOrder + 1;
+    }
+
+    /// <summary>While a Gun turret or Jammer is placed, its range ring follows the preview (Figma: Range rings – v0.13).</summary>
+    private void ShowRangeRing(float2 centre)
+    {
+        float radius = PlacingType == BuildingType.GunTurret || PlacingType == BuildingType.Jammer ? WAR2D.Client.DefenceView.RingRadius(PlacingType) : 0f;
+        if (radius <= 0f)
+        {
+            if (rangeRing != null) rangeRing.gameObject.SetActive(false);
+            return;
+        }
+        if (rangeRing == null) rangeRing = WAR2D.Client.ClearingRing.Create("PlacementRange", WAR2D.Client.Render.SortingOrders.ClearingRing);
+        rangeRing.Set(centre, radius, PlayerPalette.Of(localPlayer != null ? localPlayer.colourIndex : -1));
     }
 
     private readonly System.Collections.Generic.List<WAR2D.Client.ClearingRing> optionRings = new System.Collections.Generic.List<WAR2D.Client.ClearingRing>();
@@ -102,7 +140,7 @@ public class BuildingPlacement : MonoBehaviour
                 shown += ShowRing(sites, option, shown, PlayerPalette.Of(localPlayer.colourIndex));
             foreach (var teammate in localPlayer.TeammateStarts)
             {
-                int colour = NetworkClient.spawned.TryGetValue((uint)teammate.Key, out NetworkIdentity id) && id.TryGetComponent(out ClientPlayer other) ? other.colourIndex : localPlayer.colourIndex;
+                int colour = ClientPlayer.TryFind(teammate.Key, out ClientPlayer other) ? other.colourIndex : localPlayer.colourIndex;
                 foreach (int option in teammate.Value.options)
                     shown += ShowRing(sites, option, shown, PlayerPalette.Of(colour), option == teammate.Value.pick);
             }
@@ -146,6 +184,7 @@ public class BuildingPlacement : MonoBehaviour
             ShowFacing();
         }
         previewBuilding.transform.position = new Vector3(centre.x, centre.y, 0);
+        ShowRangeRing(centre);
 
         if (!hasDisplayedTarget || math.any(currentAnchor != displayedAnchor) || PlacingType != displayedType || currentRotation != displayedRotation)
         {
@@ -235,6 +274,7 @@ public class BuildingPlacement : MonoBehaviour
         if (!showStatus) PreviewValid = null;
         SpriteRenderer sprite = previewBuilding.GetComponent<SpriteRenderer>();
         sprite.color = showStatus ? new Color(tint.r, tint.g, tint.b, 0.85f) : new Color(1f, 1f, 1f, 0.75f);
+        if (previewHead != null) previewHead.color = sprite.color;
         if (statusOutline == null) return;
         statusOutline.color = tint;
         statusOutline.enabled = showStatus;

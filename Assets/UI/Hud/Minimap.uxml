@@ -1,6 +1,16 @@
-<ui:UXML xmlns:ui="UnityEngine.UIElements">
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:war="WAR2D.UI">
     <ui:VisualElement name="minimap" class="panel minimap">
-        <ui:Label text="Minimap" class="panel__title" />
+        <ui:VisualElement class="panel__title minimap__title">
+            <ui:Label text="Minimap" class="minimap__title-text" />
+            <ui:Button name="minimap-filters" class="minimap__eye">
+                <war:CommandIcon icon="Eye" class="minimap__eye-icon" />
+            </ui:Button>
+            <ui:VisualElement name="minimap-scale" class="minimap__scale">
+                <ui:Button name="minimap-scale-s" text="S" class="minimap__size" />
+                <ui:Button name="minimap-scale-m" text="M" class="minimap__size" />
+                <ui:Button name="minimap-scale-l" text="L" class="minimap__size" />
+            </ui:VisualElement>
+        </ui:VisualElement>
         <ui:VisualElement class="minimap__content">
             <ui:VisualElement name="minimap-frame" class="minimap__frame">
                 <ui:VisualElement name="minimap-image" class="minimap__image">
@@ -9,5 +19,9 @@
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
+    </ui:VisualElement>
+    <ui:VisualElement name="minimap-filter-popover" class="minimap-popover">
+        <ui:Label text="Show on minimap" class="text--secondary minimap-popover__title" />
+        <ui:VisualElement name="minimap-filter-rows" />
     </ui:VisualElement>
 </ui:UXML>

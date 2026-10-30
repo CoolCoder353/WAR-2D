@@ -27,6 +27,41 @@ public class GameInputTests
         Assert.That(GameInput.Map[action].bindings.Select(b => b.path), Has.Member(path));
     }
 
+    [TestCase("CardTop1", "<Keyboard>/q")]
+    [TestCase("CardTop2", "<Keyboard>/w")]
+    [TestCase("CardTop3", "<Keyboard>/e")]
+    [TestCase("CardTop4", "<Keyboard>/t")]
+    [TestCase("CardBottom1", "<Keyboard>/z")]
+    [TestCase("CardBottom2", "<Keyboard>/x")]
+    [TestCase("CardBottom3", "<Keyboard>/c")]
+    [TestCase("CardBottom4", "<Keyboard>/v")]
+    [TestCase("CardBottom5", "<Keyboard>/n")]
+    public void CardSlotHasDefaultBinding(string action, string path)
+    {
+        Assert.That(GameInput.Map[action].bindings.Select(b => b.path), Has.Member(path));
+    }
+
+    [Test]
+    public void CardSlotKeysClashWithNoOtherDefault()
+    {
+        // v0.15.1 (Figma H1): the slots skip R (Rotate) and B (Detonate) so no default key does two things.
+        foreach (string key in GameInput.CardTopKeys.Concat(GameInput.CardBottomKeys))
+        {
+            string path = "<Keyboard>/" + key;
+            int users = GameInput.Map.actions.Count(a => a.bindings.Any(b => b.path == path));
+            Assert.That(users, Is.EqualTo(1), path);
+        }
+    }
+
+    [Test]
+    public void TheCardHasASlotForEveryBuildButtonAndEveryUnitType()
+    {
+        Assert.That(WAR2D.UI.CommandCardController.TopBuilds.Length, Is.EqualTo(GameInput.CardTopSlots));
+        Assert.That(WAR2D.UI.CommandCardController.BottomBuilds.Length, Is.EqualTo(GameInput.CardBottomSlots));
+        foreach (BuildingType producer in new[] { BuildingType.Base, BuildingType.Barracks, BuildingType.HeavyFactory, BuildingType.SiegeWorkshop })
+            Assert.That(SpawnerRules.Produces(producer).Length, Is.LessThanOrEqualTo(GameInput.CardTopSlots), producer.ToString());
+    }
+
     [TestCase("<Keyboard>/a")]
     [TestCase("<Keyboard>/s")]
     [TestCase("<Keyboard>/h")]

@@ -49,6 +49,13 @@ namespace WAR2D.Sim
             waitWatch.Stop();
             SimTiming.LastBoundaryWaitMs = waitWatch.Elapsed.TotalMilliseconds;
             SimTiming.LastBoundaryFrame = UnityEngine.Time.frameCount;
+            if (StageClock.Enabled)
+            {
+                SimTiming.LastCombatJobsMs = StageClock.Take(StageClock.CombatStart, StageClock.CombatEnd);
+                // The vision stage runs every VisionInterval ticks: only those ticks have a vision sample.
+                SimTiming.LastVisionRan = StageClock.Ran(StageClock.VisionStart, StageClock.VisionEnd);
+                SimTiming.LastVisionJobsMs = StageClock.Take(StageClock.VisionStart, StageClock.VisionEnd);
+            }
 
             SimData data = SystemAPI.GetSingleton<SimData>();
             SimContext context = SimContext.Current;
@@ -66,6 +73,7 @@ namespace WAR2D.Sim
             SimTiming.LastSettledMs = Split(ref mark);
             SimTiming.CommandsEndMs = mark; // until the command stage moves it
             data.AttackEvents.Clear();
+            data.BuildingAttackEvents.Clear();
             data.BombBlasts.Clear();
             data.ForcedBombs.Clear();
             data.ForcedBombers.Clear();

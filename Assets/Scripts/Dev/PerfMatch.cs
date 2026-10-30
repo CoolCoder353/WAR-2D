@@ -23,7 +23,6 @@ using WAR2D.Sim;
 public sealed class PerfMatch : MonoBehaviour
 {
     public const int Owners = 8, UnitsPerOwner = 10000, WarmupTicks = 100, SampleTicks = 1200, OrderEveryTicks = 40;
-    private const int BotIdBase = 1000001;
 
     private readonly PerfStats stats = new PerfStats();
     private readonly HashSet<int>[] armyIds = new HashSet<int>[Owners];
@@ -43,6 +42,9 @@ public sealed class PerfMatch : MonoBehaviour
 
     // v0.7 siege load per owner: walls, Radars, bombs, Builders on the walls and Diggers on the rock.
     public const int WallsPerOwner = 200, RadarsPerOwner = 5, BombsPerOwner = 20, BuildersPerOwner = 50, DiggersPerOwner = 20, SiegeSetupTick = 60;
+    // v0.13 defences per owner (owner decision O4): Gun turrets in a double row across the front, facing the opposing
+    // army, and Jammers (two at the front, two by the HQ). Free and sturdy (1e6 health), so the load stays all run.
+    public const int TurretsPerOwner = 40, JammersPerOwner = 4;
     private bool siegeSetUp;
     private readonly List<int>[] builderIds = new List<int>[Owners], diggerIds = new List<int>[Owners];
     private readonly List<int2>[] wallTiles = new List<int2>[Owners], rockTiles = new List<int2>[Owners];
@@ -50,7 +52,7 @@ public sealed class PerfMatch : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Boot()
     {
-        if (!DevApi.PerfFlag || ArgValue("-perfClient") != null) return;
+        if (!DevApi.PerfFlag || ArgValue("-perfClient") != null || AiBench.Requested) return;
         var go = new GameObject("PerfMatch");
         DontDestroyOnLoad(go);
         go.AddComponent<PerfMatch>();
@@ -63,6 +65,14 @@ public sealed class PerfMatch : MonoBehaviour
         yield return new WaitUntil(() => GameManager.Instance != null);
 
         GameConfigData config = ConfigLoader.LoadConfig();
+        if (AiRun)
+        {
+            // The AI run plays a real match: the lobby's resources, no free money.
+            config.Replays.Enabled = false;
+            config.Match.CountdownSeconds = 0.5f;
+            yield return StartAiRun(config);
+            yield break;
+        }
         config.Match.Map.Size = 1024;
         config.Match.Map.Seed = 1;
         config.Match.CountdownSeconds = 0.5f;
@@ -97,8 +107,8 @@ public sealed class PerfMatch : MonoBehaviour
         }
         for (int i = firstBot; i < Owners; i++)
         {
-            owners[i] = BotIdBase + i;
-            GameCore.Instance.AddBot(owners[i], 1e9f);
+            owners[i] = AiOwnerIds.For(i);
+            GameCore.Instance.DevAddScriptedAi(owners[i], 1e9f);
         }
 
         int2[] sites = PairedSites(world.Map.HqSites, world.MapSize);
@@ -158,6 +168,7 @@ public sealed class PerfMatch : MonoBehaviour
 
     private void Update()
     {
+        if (AiRun) { UpdateAiRun(); return; }
         SimContext sim = SimContext.Current;
         if (owners == null || armyStart == null || sim == null) return;
         int tick = sim.Clock.Tick;
@@ -209,8 +220,12 @@ public sealed class PerfMatch : MonoBehaviour
         stats.Add("perf.part.orders", SimTiming.LastOrdersMs);
         stats.Add("perf.part.settled", SimTiming.LastSettledMs);
         stats.Add("perf.part.matchSettled", SimTiming.LastMatchSettledMs);
+        stats.Add("perf.part.ai", SimTiming.LastAiMs); // v0.14: AI thinking (view build and brain) on the main thread
         stats.Add("perf.part.commands", SimTiming.LastCommandsMs);
         stats.Add("perf.part.stages", SimTiming.LastStagesMs);
+        // v0.13: the combat and vision stages' job chains on the workers (the turrets' jobs, the jam rebuild and stamping).
+        stats.Add("perf.part.combat", SimTiming.LastCombatJobsMs);
+        if (SimTiming.LastVisionRan) stats.Add("perf.part.vision", SimTiming.LastVisionJobsMs); // only ticks the stage ran
         for (int s = 0; s < PerfSplits.Names.Length; s++) stats.Add("perf.split." + PerfSplits.Names[s], PerfSplits.Ms[s]);
         stats.Add("perf.units", sim.Clock.UnitCount);
         if (tick - startTick >= SampleTicks) Finish();
@@ -230,7 +245,10 @@ public sealed class PerfMatch : MonoBehaviour
         }
     }
 
-    /// <summary>Places each owner's walls (blueprints), Radars and bombs near its HQ and spawns its Builders and Diggers.</summary>
+    /// <summary>
+    /// Places each owner's walls (blueprints), Radars and bombs near its HQ, its Gun turrets and Jammers (v0.13), and
+    /// spawns its Builders and Diggers.
+    /// </summary>
     private void SetUpSiege(SimContext sim)
     {
         siegeSetUp = true;
@@ -251,6 +269,7 @@ public sealed class PerfMatch : MonoBehaviour
                 if (radars < RadarsPerOwner && step % 37 == 0 && world.DevPlaceBuilding(owner, BuildingType.Radar, tile, 1e6f)) radars++;
                 else if (bombs < BombsPerOwner && step % 11 == 0 && world.DevPlaceBuilding(owner, BuildingType.Bomb, tile, 1e6f)) bombs++;
             }
+            PlaceDefences(world, i);
             int walls = 0;
             foreach (int2 tile in WalkableSpiral(world, site, 600))
             {
@@ -271,6 +290,41 @@ public sealed class PerfMatch : MonoBehaviour
             for (int k = 0; k < BuildersPerOwner; k++) { List<int> ids = builderIds[i]; world.DevSpawnUnit(owner, (float2)site + new float2(-3 + k % 8, -7 - k / 8), id => { if (id > 0) ids.Add(id); }, UnitType.Builder); }
             for (int k = 0; k < DiggersPerOwner; k++) { List<int> ids = diggerIds[i]; world.DevSpawnUnit(owner, (float2)site + new float2(-3 + k % 8, -12 - k / 8), id => { if (id > 0) ids.Add(id); }, UnitType.Digger); }
         }
+    }
+
+    /// <summary>
+    /// Owner <paramref name="i"/>'s v0.13 defences: <see cref="TurretsPerOwner"/> Gun turrets in two rows 6 and 8 tiles
+    /// in front of its army's start, toward its front partner (the battle is at the midpoint, 12 tiles ahead, inside their
+    /// range of 7 from the front row), spread 2 tiles apart across the front; and <see cref="JammersPerOwner"/> Jammers,
+    /// half at the front's flanks and half by the HQ.
+    /// </summary>
+    private void PlaceDefences(WorldStateManager world, int i)
+    {
+        int owner = owners[i];
+        float2 start = armyStart[i];
+        float2 forward = math.normalizesafe((float2)armyStart[i ^ 1] - start);
+        float2 across = new float2(-forward.y, forward.x);
+        int turrets = 0;
+        for (int k = 0; turrets < TurretsPerOwner && k < TurretsPerOwner * 8; k++)
+        {
+            int row = k % 2, column = k / 2;
+            float lateral = (column % 2 == 0 ? 1f : -1f) * ((column + 1) / 2) * 2f; // 0, -2, 2, -4, 4, ...
+            int2 tile = (int2)math.round(start + forward * (6f + 2f * row) + across * lateral);
+            if (world.DevPlaceBuilding(owner, BuildingType.GunTurret, tile, 1e6f)) turrets++;
+        }
+        int jammers = 0;
+        for (int k = 0; jammers < JammersPerOwner / 2 && k < 40; k++)
+        {
+            float lateral = (k % 2 == 0 ? 1f : -1f) * (24f + k / 2);
+            if (world.DevPlaceBuilding(owner, BuildingType.Jammer, (int2)math.round(start + across * lateral), 1e6f)) jammers++;
+        }
+        int step = 0;
+        foreach (int2 tile in WalkableSpiral(world, PairedSites(world.Map.HqSites, world.MapSize)[i], 900))
+        {
+            if (jammers >= JammersPerOwner) break;
+            if (++step % 53 == 0 && world.DevPlaceBuilding(owner, BuildingType.Jammer, tile, 1e6f)) jammers++;
+        }
+        WarLog.Info(LogCategory.Dev, $"owner {i}: {turrets} Gun turrets, {jammers} Jammers");
     }
 
     /// <summary>Keeps the Builders building walls and the Diggers digging rock, in batches of ten.</summary>
@@ -390,13 +444,15 @@ public sealed class PerfMatch : MonoBehaviour
     {
         string dir = ArgValue("-perfOut") ?? Path.Combine(Application.persistentDataPath, "PerfResults");
         string path = Path.Combine(dir, "perf.csv");
-        stats.WriteCsv(path, new Dictionary<string, (string, double, bool)>
+        var budgets = new Dictionary<string, (string, double, bool)>
         {
             ["perf.tick.main"] = ("p95", 25.0, true),
             ["perf.fps"] = ("mean", 60.0, false),
             ["perf.bw.avg"] = ("mean", 262144.0, true),
             ["perf.bw.peak1s"] = ("max", 786432.0, true),
-        });
+        };
+        if (AiRun) budgets["perf.part.ai"] = ("p95", 2.0, true); // v0.14 spec §12: AI thinking with 7 Hard AIs
+        stats.WriteCsv(path, budgets);
         WarLog.Info(LogCategory.Dev, $"wrote {path}");
         if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0)
         {
@@ -432,6 +488,88 @@ public sealed class PerfMatch : MonoBehaviour
             result.Add(partner);
         }
         return result.ToArray();
+    }
+
+    // ---- v0.14: the AI run (-perfAi [difficulty]) ----
+
+    /// <summary>
+    /// True with <c>-perfAi</c>: the gate's second run (v0.14 spec §12). Seven lobby AI seats of the given difficulty
+    /// (Hard by default, Random styles) play a real Free-for-all on the 1024² map (seed 1) with the host sitting out (no
+    /// HQ); the match is fast-forwarded (<c>-perfAiScale</c>, 8) through <c>-perfAiWarmupMinutes</c> (12) of play, so the
+    /// AIs have bases and armies, then runs at normal speed for <see cref="SampleTicks"/> ticks, recording the tick and
+    /// <c>perf.part.ai</c> (budget 2 ms p95). No bots, armies or virtual clients: the AIs make the load.
+    /// </summary>
+    private static bool AiRun => ArgValue("-perfAi") != null || Array.IndexOf(Environment.GetCommandLineArgs(), "-perfAi") >= 0;
+
+    private float aiRunWarmupSeconds;
+    private bool aiRunPlaying;
+    private double aiRunPlayingSince = double.NaN;
+
+    private IEnumerator StartAiRun(GameConfigData config)
+    {
+        string named = ArgValue("-perfAi");
+        AiDifficulty difficulty = named != null && !named.StartsWith("-") && Enum.TryParse(named, out AiDifficulty d) && d != AiDifficulty.Scripted ? d : AiDifficulty.Hard;
+        aiRunWarmupSeconds = 60f * (float.TryParse(ArgValue("-perfAiWarmupMinutes"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float m) ? math.max(0f, m) : 12f);
+        float scale = float.TryParse(ArgValue("-perfAiScale"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float s) ? math.clamp(s, 1f, 32f) : 8f;
+
+        GameManager.Instance.HostServer();
+        yield return new WaitUntil(() => NetworkClient.isConnected && NetworkClient.localPlayer != null && GameCore.Instance != null);
+        GameCore core = GameCore.Instance;
+        MatchSettings settings = core.Settings;
+        settings.Mode = MatchMode.FreeForAll;
+        settings.MapSize = 1024;
+        settings.Seed = 1;
+        settings.StartPickSeconds = StartPickRules.Unlimited;
+        core.Settings = settings;
+        for (int i = 1; i < Owners; i++)
+            if (core.AddAi(difficulty, AiStyle.Random) == null) Fail($"could not add AI seat {i}");
+        core.DevStartMatch(settings);
+        yield return new WaitUntil(() => WorldStateManager.Instance != null && WorldStateManager.Instance.Sim != null && core.CurrentState == GameState.PlacingHQ);
+        // The host sits out (no HQ): the AIs place theirs from their dealt options.
+        NetworkClient.localPlayer.GetComponent<ClientPlayer>().hasPlacedHQ = true;
+        core.CheckHQPlacementProgress();
+        yield return new WaitUntil(() => core.CurrentState == GameState.Playing);
+        Time.timeScale = scale;
+        Time.maximumDeltaTime = math.max(1f / 3f, 0.05f * scale);
+        aiRunPlaying = true;
+        WarLog.Info(LogCategory.Dev, $"AI run: 7 {difficulty} AIs playing; warming up {aiRunWarmupSeconds / 60f:F0} min at {scale}x");
+    }
+
+    private void UpdateAiRun()
+    {
+        SimContext sim = SimContext.Current;
+        WorldStateManager world = WorldStateManager.Instance;
+        if (!aiRunPlaying || sim == null || world == null || world.AiRunner == null) return;
+        if (GameCore.Instance == null || GameCore.Instance.CurrentState != GameState.Playing) { Fail("the AI match ended before sampling finished"); aiRunPlaying = false; return; }
+        double now = world.AiRunner.Now;
+        if (double.IsNaN(aiRunPlayingSince)) aiRunPlayingSince = now;
+        int tick = sim.Clock.Tick;
+        if (startTick < 0)
+        {
+            if (now - aiRunPlayingSince < aiRunWarmupSeconds) return;
+            Time.timeScale = 1f;
+            Time.maximumDeltaTime = 1f / 3f;
+            startTick = tick;
+            lastTick = tick;
+            WarLog.Info(LogCategory.Dev, $"AI run: sampling at {sim.Clock.UnitCount} units");
+            return;
+        }
+        stats.Add("perf.fps", 1.0 / Math.Max(1e-6, Time.unscaledDeltaTime));
+        stats.Add("perf.frame.ms", Time.unscaledDeltaTime * 1000.0);
+        if (tick == lastTick) return;
+        lastTick = tick;
+        stats.Add("perf.tick.main", SimTiming.LastMainThreadMs - SimTiming.LastBoundaryWaitMs);
+        stats.Add("perf.tick.wait", SimTiming.LastBoundaryWaitMs);
+        stats.Add("perf.tick.replication", ReplicationService.LastMilliseconds);
+        stats.Add("perf.part.settled", SimTiming.LastSettledMs);
+        stats.Add("perf.part.matchSettled", SimTiming.LastMatchSettledMs);
+        stats.Add("perf.part.ai", SimTiming.LastAiMs);
+        stats.Add("perf.part.commands", SimTiming.LastCommandsMs);
+        stats.Add("perf.part.stages", SimTiming.LastStagesMs);
+        stats.Add("perf.part.combat", SimTiming.LastCombatJobsMs);
+        if (SimTiming.LastVisionRan) stats.Add("perf.part.vision", SimTiming.LastVisionJobsMs);
+        stats.Add("perf.units", sim.Clock.UnitCount);
+        if (tick - startTick >= SampleTicks) { aiRunPlaying = false; Finish(); }
     }
 
     private static bool PlaceNear(WorldStateManager world, int owner, int2 site)

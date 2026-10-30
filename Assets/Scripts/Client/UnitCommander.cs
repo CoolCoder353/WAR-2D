@@ -57,6 +57,7 @@ public class UnitCommander : NetworkBehaviour
             Feedback = gameObject.AddComponent<OrderFeedback>();
             Feedback.Init(Config.ConfigLoader.LoadConfig().Orders.MaxQueued, IsDiggableHere, PositionOf);
             Selection.Ordered += OnOrdered;
+            gameObject.AddComponent<WAR2D.Client.Overlays.WorldOverlays>(); // v0.15 order, range, rally and hover overlays
         }
         else
         {
@@ -71,7 +72,7 @@ public class UnitCommander : NetworkBehaviour
         {
             UnsubscribeBuildings();
             wallDrag?.Dispose();
-            if (radarRing != null) Destroy(radarRing.gameObject);
+            foreach (ClearingRing ring in rangeRings) if (ring != null) Destroy(ring.gameObject);
             Instance = null;
         }
     }
@@ -170,6 +171,43 @@ public class UnitCommander : NetworkBehaviour
         return WAR2D.Sim.OrderBook.SnapGoal(wsm.Map.Grid, goal, from, WAR2D.Sim.OrderBook.GoalSnapRadius, out moved) && !moved.Equals(goal);
     }
 
+    /// <summary>True after the Rally all button: the next click sets every own producer's rally point (Esc or a right-click elsewhere cancels).</summary>
+    public bool RallyAllArmed { get; private set; }
+
+    /// <summary>Arms Rally all (the production card's Rally point row). Does nothing when there is no producer to set.</summary>
+    public void ArmRallyAll()
+    {
+        if (OwnProducerIds().Count == 0) return;
+        ArmedOrder = null;
+        CancelWallDrag();
+        CancelDigDrag();
+        RallyAllArmed = true;
+    }
+
+    /// <summary>The ids of every own producer the client can see (the targets of Rally all).</summary>
+    public List<int> OwnProducerIds()
+    {
+        var ids = new List<int>();
+        int own = LocalOwner();
+        foreach (KeyValuePair<int, ClientBuildings.Entry> pair in Known.Entries)
+            if (!pair.Value.Ghost && pair.Value.Data.ownerId == own && SpawnerRules.IsProducer(pair.Value.Data.buildingType)) ids.Add(pair.Key);
+        return ids;
+    }
+
+    /// <summary>Sets the rally point of these producers (in groups the server accepts) and shows where a goal on rock went.</summary>
+    private void SetRally(IReadOnlyList<int> ids, int2 goal)
+    {
+        WorldStateManager wsm = WorldStateManager.Instance;
+        if (wsm == null || ids.Count == 0) return;
+        var all = new List<int>(ids);
+        for (int i = 0; i < all.Count; i += SpawnerRules.MaxSpawnersPerCommand)
+            wsm.CmdSetRally(all.GetRange(i, System.Math.Min(SpawnerRules.MaxSpawnersPerCommand, all.Count - i)).ToArray(), goal, false);
+        // The server moves a rally on rock to open ground like any goal: show where.
+        if (wsm.Map != null && wsm.Map.Grid.Contains(goal) &&
+            WAR2D.Sim.OrderBook.SnapGoal(wsm.Map.Grid, goal, goal, WAR2D.Sim.OrderBook.GoalSnapRadius, out int2 rally) && !rally.Equals(goal))
+            Feedback?.GoalMoved(goal, rally);
+    }
+
     /// <summary>Arms an order for the next click (only with units selected; Repair needs Builders, Dig Diggers).</summary>
     private void Arm(OrderKind kind)
     {
@@ -178,6 +216,7 @@ public class UnitCommander : NetworkBehaviour
         if (kind == OrderKind.Dig && !SelectionHas(UnitType.Digger)) return;
         CancelWallDrag();
         CancelDigDrag();
+        RallyAllArmed = false;
         ArmedOrder = kind;
     }
 
@@ -416,6 +455,40 @@ public class UnitCommander : NetworkBehaviour
         return true;
     }
 
+    /// <summary>Most wall tiles one selection holds.</summary>
+    private const int MaxSelectedWalls = 512;
+
+    /// <summary>True when the tile is one of this owner's walls or wall blueprints, as far as this client knows.</summary>
+    private static bool IsOwnWall(int2 tile, int ownerId, out bool blueprint)
+    {
+        blueprint = false;
+        WorldStateManager wsm = WorldStateManager.Instance;
+        if (wsm == null || wsm.Map == null || !wsm.Map.Grid.Contains(tile)) return false;
+        TileType type = wsm.Map.Grid.TileAt(tile);
+        if (type != TileType.PlayerWall && type != TileType.WallBlueprint) return false;
+        blueprint = type == TileType.WallBlueprint;
+        return ClientTerrain.Current.WallOwner(wsm.Map.Grid.Index(tile)) == ownerId;
+    }
+
+    /// <summary>The own wall tiles and blueprints inside the inclusive tile box.</summary>
+    private static List<int2> OwnWallsIn(float2 lo, float2 hi, int ownerId)
+    {
+        var found = new List<int2>();
+        for (int y = (int)lo.y; y <= (int)hi.y && found.Count < MaxSelectedWalls; y++)
+            for (int x = (int)lo.x; x <= (int)hi.x && found.Count < MaxSelectedWalls; x++)
+                if (IsOwnWall(new int2(x, y), ownerId, out _)) found.Add(new int2(x, y));
+        return found;
+    }
+
+    /// <summary>Cancels or demolishes the selected walls and blueprints (the server refunds them).</summary>
+    [Client]
+    public void RemoveSelectedWalls()
+    {
+        if (Selection.SelectedWalls.Count == 0 || WorldStateManager.Instance == null) return;
+        WorldStateManager.Instance.CmdRemoveWalls(System.Linq.Enumerable.ToArray(Selection.SelectedWalls));
+        Selection.ClearWalls();
+    }
+
     /// <summary>The ids of our spawners (seen now) with a footprint tile inside the box.</summary>
     private List<int> OwnSpawnersIn(float2 lo, float2 hi, int ownerId)
     {
@@ -449,6 +522,71 @@ public class UnitCommander : NetworkBehaviour
         return GameInput.PointerWorld();
     }
 
+    /// <summary>Raised with a short message to show at the cursor ("No idle Builders") when a shortcut found nothing to select.</summary>
+    public event System.Action<string> Notice;
+
+    private int idleCycle;
+    private float lastHqJumpTime = -1f;
+
+    private static void CentreCamera(float2 at)
+    {
+        Camera main = Camera.main;
+        if (main != null && main.TryGetComponent(out Character.Character_Controler controller)) controller.CentreOn(new Vector2(at.x, at.y));
+    }
+
+    private int LocalOwner() => localPlayer != null ? BuildingData.UIntToInt(localPlayer.netId) : 0;
+
+    /// <summary>
+    /// The idle Builders chip and key: selects the Builders with nothing to do (every Builder with <paramref name="all"/>). With them
+    /// already selected, it moves the camera to the next one instead.
+    /// </summary>
+    public void SelectBuilders(int owner, bool all)
+    {
+        Selection.ClearWalls();
+        var before = new HashSet<int>(Selection.Selected);
+        int n = Selection.SelectBuilders(owner, all);
+        if (n == 0) { Notice?.Invoke(all ? "No Builders" : "No idle Builders"); return; }
+        bool same = before.Count == n;
+        foreach (int id in Selection.Selected) same &= before.Contains(id);
+        if (!same) { idleCycle = 0; return; }
+        // Pressed again with the same Builders selected: walk the camera through them.
+        var ids = new List<int>(Selection.Selected);
+        ids.Sort();
+        idleCycle = (idleCycle + 1) % ids.Count;
+        if (ClientWorld.Instance != null && ClientWorld.Instance.TryGet(ids[idleCycle], out ClientUnitView view)) CentreCamera(view.Position);
+    }
+
+    /// <summary>The Army chip and key: every own unit that attacks. Pressed again it adds the Diggers and Suicide bombers.</summary>
+    public void SelectArmy(int owner)
+    {
+        Selection.ClearWalls();
+        bool addSiege = Selection.IsExactlyArmy(owner);
+        if (Selection.SelectArmy(owner, addSiege) == 0) Notice?.Invoke("No army");
+    }
+
+    /// <summary>The HQ button and key: centres the camera on your HQ; again within a moment it also selects the HQ.</summary>
+    public void JumpToHq(int owner)
+    {
+        if (!ClientBuildings.Current.TryFindOwn(owner, BuildingType.Base, out ClientBuildings.Entry hq)) return;
+        CentreCamera(hq.Data.position + new float2(2.5f, 2.5f));
+        if (Time.unscaledTime - lastHqJumpTime < DoubleTapSeconds)
+        {
+            Selection.ClearWalls();
+            Selection.SelectBuilding(hq.Data.id);
+            lastHqJumpTime = -1f;
+        }
+        else lastHqJumpTime = Time.unscaledTime;
+    }
+
+    /// <summary>The chips' entry points: the same actions as the keys, for the local player.</summary>
+    public void SelectIdleBuilders(bool all) => SelectBuilders(LocalOwner(), all);
+
+    /// <summary>The Army chip.</summary>
+    public void SelectArmy() => SelectArmy(LocalOwner());
+
+    /// <summary>The HQ button.</summary>
+    public void JumpToHq() => JumpToHq(LocalOwner());
+
     [ClientCallback]
     public void Update()
     {
@@ -460,6 +598,13 @@ public class UnitCommander : NetworkBehaviour
             return;
         }
 
+
+        if (GameManager.Instance != null && GameManager.Instance.CentreOnHqPending &&
+            ClientBuildings.Current.TryFindOwn(LocalOwner(), BuildingType.Base, out ClientBuildings.Entry rejoinHq))
+        {
+            GameManager.Instance.CentreOnHqPending = false;
+            CentreCamera(rejoinHq.Data.position + new float2(2.5f, 2.5f));
+        }
 
         if (GameInput.AttackMove.WasPressedThisFrame()) Arm(OrderKind.AttackMove);
         if (GameInput.Repair.WasPressedThisFrame()) Arm(OrderKind.Repair);
@@ -475,7 +620,20 @@ public class UnitCommander : NetworkBehaviour
         if (clickUsed) CancelDigDrag();
         clickUsed |= UpdateWallDrag();
         clickUsed |= UpdateDigDrag();
-        Feedback?.ShowQueueOf(GameInput.QueueModifier.IsPressed() && Selection.Selected.Count > 0 ? Selection.First : 0);
+        Feedback?.ShowQueueOf(GameInput.QueueModifier.IsPressed() && Selection.Selected.Count > 0 ? Selection.LongestQueue(Feedback.Queue) : 0);
+
+        // Rally all armed: the next click on the map sets every producer's rally; Esc or a click on the HUD drops it.
+        if (RallyAllArmed)
+        {
+            if (GameInput.Menu.WasPressedThisFrame()) RallyAllArmed = false;
+            else if (!clickUsed && !GameInput.PointerOverUI && (GameInput.Select.WasPressedThisFrame() || GameInput.Command.WasPressedThisFrame()))
+            {
+                Vector3 target = GetMouseWorldPosition();
+                SetRally(OwnProducerIds(), new int2((int)target.x, (int)target.y));
+                RallyAllArmed = false;
+                clickUsed = true;
+            }
+        }
 
         // With an order armed, the next left or right click sends it instead of selecting or moving.
         if (!clickUsed && ArmedOrder.HasValue && (GameInput.Select.WasPressedThisFrame() || GameInput.Command.WasPressedThisFrame()))
@@ -527,14 +685,15 @@ public class UnitCommander : NetworkBehaviour
             bool click = math.distance(a, b) < 0.5f;
             if (click && Time.unscaledTime - lastClickTime < DoubleTapSeconds && math.distance(b, lastClickAt) < 1f)
             {
-                // Double-click: every own unit of the clicked unit's type on screen.
+                // Double-click: every own unit of the clicked unit's type on screen (Ctrl: anywhere on the map).
                 (float2 viewMin, float2 viewMax) = CameraView();
-                Selection.SelectTypeAt(b, viewMin, viewMax, me);
+                Selection.SelectTypeAt(b, viewMin, viewMax, me, GameInput.AssignModifier.IsPressed());
                 lastClickTime = -1f;
             }
             else
             {
                 bool append = GameInput.AppendModifier.IsPressed();
+                if (!append) Selection.ClearWalls();
                 var keptBuildings = new List<int>(append ? Selection.SelectedBuildings : System.Array.Empty<int>());
                 Selection.SelectBox(lo, hi, me, append);
                 if (Selection.Selected.Count == 0)
@@ -544,6 +703,12 @@ public class UnitCommander : NetworkBehaviour
                     if (append) Selection.SelectBuildings(keptBuildings, false);
                     if (click && TryOwnBuildingAt(b, me, out BuildingData building)) SelectBuilding(building, append);
                     else if (!click) Selection.SelectBuildings(OwnSpawnersIn(lo, hi, me), append);
+                }
+                if (Selection.Selected.Count == 0 && Selection.SelectedBuildings.Count == 0)
+                {
+                    // Nothing else there: own walls and wall blueprints (they can be cancelled or demolished).
+                    var wallsHit = OwnWallsIn(click ? math.floor(b) : math.floor(lo + 0.5f), click ? math.floor(b) : math.floor(hi - 0.5f), me);
+                    if (wallsHit.Count > 0 || !append) Selection.SelectWalls(wallsHit, append);
                 }
                 if (click) { lastClickTime = Time.unscaledTime; lastClickAt = b; }
             }
@@ -556,12 +721,8 @@ public class UnitCommander : NetworkBehaviour
             // With only spawners selected, a right-click sets their rally point.
             if (Selection.Selected.Count == 0 && Selection.SelectedBuildings.Count > 0 && AllSpawners(Selection.SelectedBuildings))
             {
-                WorldStateManager.Instance?.CmdSetRally(System.Linq.Enumerable.ToArray(Selection.SelectedBuildings), goal, false);
-                // The server moves a rally on rock to open ground like any goal: show where.
-                WorldStateManager wsm = WorldStateManager.Instance;
-                if (wsm != null && wsm.Map != null && wsm.Map.Grid.Contains(goal) &&
-                    WAR2D.Sim.OrderBook.SnapGoal(wsm.Map.Grid, goal, goal, WAR2D.Sim.OrderBook.GoalSnapRadius, out int2 rally) && !rally.Equals(goal))
-                    Feedback?.GoalMoved(goal, rally);
+                // Ctrl + right-click sets every producer's rally, not only the selected ones.
+                SetRally(GameInput.AssignModifier.IsPressed() ? OwnProducerIds() : Selection.SelectedBuildings, goal);
             }
             else if (!QueueFull(GameInput.QueueModifier.IsPressed())) OrderClick(goal, GameInput.QueueModifier.IsPressed());
         }
@@ -569,9 +730,30 @@ public class UnitCommander : NetworkBehaviour
         for (int squad = 0; squad < WAR2D.Sim.Squads.Count; squad++)
         {
             if (!GameInput.Squad(squad).WasPressedThisFrame()) continue;
-            if (GameInput.AssignModifier.IsPressed()) Selection.AssignSquad(squad);
+            if (GameInput.AssignModifier.IsPressed())
+            {
+                // Only producers selected: the slot holds those buildings (client side) instead of units.
+                if (Selection.Selected.Count == 0 && Selection.SelectedBuildings.Count > 0) Selection.AssignBuildingGroup(squad);
+                else Selection.AssignSquad(squad);
+            }
+            else if (Selection.IsBuildingGroup(squad))
+            {
+                Selection.ClearWalls();
+                bool again = squad == lastSquadTap && Time.unscaledTime - lastSquadTapTime < DoubleTapSeconds;
+                if (Selection.SelectBuildingGroup(squad) && again && ClientBuildings.Current.Entries.TryGetValue(Selection.FirstOfBuildingGroup(squad), out ClientBuildings.Entry first))
+                {
+                    CentreCamera(first.Data.position);
+                    lastSquadTap = -1;
+                }
+                else
+                {
+                    lastSquadTap = squad;
+                    lastSquadTapTime = Time.unscaledTime;
+                }
+            }
             else
             {
+                Selection.ClearWalls();
                 Selection.SelectSquad(squad);
                 // Double-tapping a squad key centres the camera on the squad.
                 if (squad == lastSquadTap && Time.unscaledTime - lastSquadTapTime < DoubleTapSeconds && Selection.TryCentre(out float2 centre))
@@ -587,6 +769,11 @@ public class UnitCommander : NetworkBehaviour
                 }
             }
         }
+
+        int owner = BuildingData.UIntToInt(localPlayer.netId);
+        if (GameInput.SelectIdleBuilders.WasPressedThisFrame()) SelectBuilders(owner, GameInput.AssignModifier.IsPressed());
+        if (GameInput.SelectArmy.WasPressedThisFrame()) SelectArmy(owner);
+        if (GameInput.JumpToHq.WasPressedThisFrame()) JumpToHq(owner);
 
         //Get the corners of the camera (orthographic bounds)
         Camera cam = Camera.main;
@@ -631,6 +818,18 @@ public class UnitCommander : NetworkBehaviour
 
     /// <summary>The buildings the client knows (the instanced renderer draws them; clicks resolve through the picker).</summary>
     private ClientBuildings Known => subscribedBuildings ?? ClientBuildings.Current;
+
+    /// <summary>The buildings the client knows, for the world overlays (hover card, rally spokes).</summary>
+    public ClientBuildings KnownBuildings => Known;
+
+    /// <summary>Tile → building lookup over <see cref="KnownBuildings"/>, for the world overlays.</summary>
+    public BuildingPicker Picker => picker;
+
+    /// <summary>The local player's owner id (0 when none).</summary>
+    public int LocalOwnerId => LocalOwner();
+
+    /// <summary>True for an owner on the local player's attack mask (the range rings' enemy brackets).</summary>
+    public bool IsEnemyOwner(int owner) => IsEnemy(owner);
 
     /// <summary>Follows the buildings the server sends (see ClientBuildings), including ones already known.</summary>
     [Client]
@@ -718,34 +917,60 @@ public class UnitCommander : NetworkBehaviour
             f.transform.position = new Vector3(rally.x + 0.5f, rally.y + 0.5f, 0f);
             f.gameObject.SetActive(true);
         }
+        ShowWallSelection(ref shown);
         for (int i = shown; i < buildingMarkers.Count; i++) buildingMarkers[i].Hide();
-        ShowRadarRange(ids);
+        ShowRangeRings(ids);
         for (int i = flags; i < rallyFlags.Count; i++) rallyFlags[i].gameObject.SetActive(false);
     }
 
-    private ClearingRing radarRing;
-    private float radarSight = -1f;
-
-    /// <summary>A selected own Radar shows its range: a dashed ring in its owner's colour (Figma: World look – v0.7).</summary>
-    private void ShowRadarRange(IReadOnlyList<int> ids)
+    /// <summary>Brackets on each selected wall tile; drops tiles that are no longer our walls (destroyed, or removed).</summary>
+    private void ShowWallSelection(ref int shown)
     {
-        int radar = 0;
-        float2 centre = default;
+        if (localPlayer == null || Selection.SelectedWalls.Count == 0) return;
+        int me = BuildingData.UIntToInt(localPlayer.netId);
+        for (int i = Selection.SelectedWalls.Count - 1; i >= 0; i--)
+            if (!IsOwnWall(Selection.SelectedWalls[i], me, out _)) Selection.RemoveWall(Selection.SelectedWalls[i]);
+        int limit = System.Math.Min(Selection.SelectedWalls.Count, MaxSelectedWalls);
+        for (int i = 0; i < limit; i++)
+        {
+            int2 tile = Selection.SelectedWalls[i];
+            if (shown == buildingMarkers.Count) buildingMarkers.Add(new GameObject("BuildingSelection").AddComponent<BuildingSelectionMarker>());
+            // Negative ids keep wall markers apart from building ids.
+            buildingMarkers[shown++].Show(-(1 + tile.y * 65536 + tile.x), new float2(tile.x + 0.5f, tile.y + 0.5f), new int2(1, 1));
+        }
+    }
+
+    private readonly List<ClearingRing> rangeRings = new List<ClearingRing>();
+
+    /// <summary>Most range rings shown at once (one per selected Radar, Gun turret or Jammer).</summary>
+    private const int MaxRangeRings = 32;
+
+    /// <summary>A ring drawn for a building that isn't working (a blueprint, or unpaid) is this opaque (Figma: Range rings – v0.13).</summary>
+    public const float IdleRingOpacity = 0.4f;
+
+    /// <summary>
+    /// Selected own Radars, Gun turrets and Jammers show their range: a dashed ring in the owner's colour at the
+    /// Radar's sight, the turret's range or the jam radius (Figma: World look – v0.7, Range rings – v0.13), at
+    /// 40% while the building is a blueprint or is unpaid.
+    /// </summary>
+    private void ShowRangeRings(IReadOnlyList<int> ids)
+    {
+        int shown = 0;
+        Color32 colour = PlayerPalette.Of(localPlayer != null ? localPlayer.colourIndex : -1);
+        int own = localPlayer != null ? BuildingData.UIntToInt(localPlayer.netId) : int.MinValue;
         foreach (int id in ids)
         {
-            if (!Known.Entries.TryGetValue(id, out ClientBuildings.Entry e) || e.Ghost || e.Data.buildingType != BuildingType.Radar) continue;
-            radar = id;
-            centre = CentreOf(e.Data);
-            break;
+            if (shown >= MaxRangeRings) break;
+            if (!Known.Entries.TryGetValue(id, out ClientBuildings.Entry e) || e.Ghost || e.Data.ownerId != own) continue;
+            float radius = DefenceView.RingRadius(e.Data.buildingType);
+            if (radius <= 0f) continue;
+            bool idle = e.Progress < 100 || (e.Data.buildingType != BuildingType.Radar && DefenceView.Unpaid(e));
+            Color32 c = colour;
+            c.a = (byte)(idle ? 255 * IdleRingOpacity : 255);
+            if (shown == rangeRings.Count) rangeRings.Add(ClearingRing.Create("RangeRing", SortingOrders.ClearingRing));
+            rangeRings[shown++].Set(CentreOf(e.Data), radius, c);
         }
-        if (radar == 0)
-        {
-            if (radarRing != null) radarRing.gameObject.SetActive(false);
-            return;
-        }
-        if (radarSight < 0f) radarSight = Config.ConfigLoader.LoadConfig().GetBuilding(BuildingType.Radar).Sight;
-        if (radarRing == null) radarRing = ClearingRing.Create("RadarRange", SortingOrders.ClearingRing);
-        radarRing.Set(centre, radarSight, PlayerPalette.Of(localPlayer != null ? localPlayer.colourIndex : -1));
+        for (int i = shown; i < rangeRings.Count; i++) if (rangeRings[i] != null) rangeRings[i].gameObject.SetActive(false);
     }
 
     /// <summary>The local player's building (seen now, not a ghost) whose footprint holds the world point.</summary>

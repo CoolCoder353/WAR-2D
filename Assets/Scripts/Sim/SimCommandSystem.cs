@@ -57,6 +57,7 @@ namespace WAR2D.Sim
             data.PendingOrders.Clear();
             data.PendingMoves.Clear();
             WriteBackBuildingDamage(data);
+            WriteBackBuildingWeapons(data);
             bool wallsChanged = ApplyWallWork(data, context) | ApplyDigDone(data, context);
             ApplyBuildingWork(data, context);
             if (clock.Running)
@@ -92,6 +93,13 @@ namespace WAR2D.Sim
                         bool placed = ApplyPlaceWall(data, context, command.OwnerId, command.Tile, command.TryPay);
                         terrainChanged |= placed;
                         command.OnApplied?.Invoke(placed);
+                        break;
+                    }
+                    case SimCommandKind.RemoveWall:
+                    {
+                        byte was = ApplyRemoveOwnWall(data, context, command.OwnerId, command.Tile, clock.UnitCount);
+                        terrainChanged |= was != WallStates.None;
+                        if (was != WallStates.None) command.OnWallRemoved?.Invoke(was);
                         break;
                     }
                     case SimCommandKind.DetonateBomb:
@@ -197,6 +205,21 @@ namespace WAR2D.Sim
             data.RefreshTerrain(tile);
             context.RaiseTerrainChanged(tile);
             return true;
+        }
+
+        /// <summary>
+        /// Cancels or demolishes the owner's own wall tile (it becomes ground). Returns the <see cref="WallStates"/> it was in,
+        /// or <see cref="WallStates.None"/> when the tile is not that owner's wall.
+        /// </summary>
+        private static byte ApplyRemoveOwnWall(SimData data, SimContext context, int ownerId, int2 tile, int unitCount)
+        {
+            int slot = context.SlotOf(ownerId);
+            if (slot < 0 || !context.Map.Grid.Contains(tile)) return WallStates.None;
+            int index = context.Map.Grid.Index(tile);
+            byte state = data.WallState[index];
+            if (state == WallStates.None || data.WallOwnerSlot[index] != (byte)slot) return WallStates.None;
+            RemoveWall(data, context, index, unitCount);
+            return state;
         }
 
         /// <summary>Removes a wall tile: it becomes ground again.</summary>
@@ -318,6 +341,28 @@ namespace WAR2D.Sim
                 HealthComponent health = EntityManager.GetComponentData<HealthComponent>(entity);
                 health.currentHealth = math.max(0f, health.currentHealth - damage);
                 EntityManager.SetComponentData(entity, health);
+            }
+        }
+
+        /// <summary>
+        /// Keeps each attacker building's target (as a stable id, see <c>BuildingAttackJob</c>) and cooldown on its
+        /// <see cref="BuildingWeapon"/>, since the next gather refills the slots in a new order.
+        /// </summary>
+        private void WriteBackBuildingWeapons(SimData data)
+        {
+            int count = data.BuildingCount[0];
+            for (int i = 0; i < data.AttackerBuildings.Length; i++)
+            {
+                int b = data.AttackerBuildings[i];
+                if ((uint)b >= (uint)count) continue;
+                Entity entity = data.BuildingEntities[b];
+                if (!EntityManager.Exists(entity) || !EntityManager.HasComponent<BuildingWeapon>(entity)) continue;
+                EntityManager.SetComponentData(entity, new BuildingWeapon
+                {
+                    TargetId = data.BuildingTarget[b],
+                    TargetKind = data.BuildingTargetKind[b],
+                    Cooldown = data.BuildingCooldown[b],
+                });
             }
         }
 
@@ -510,11 +555,18 @@ namespace WAR2D.Sim
                     break;
                 case BuildingType.Bomb:
                 case BuildingType.Radar:
-                    break; // no components of their own: their stages read the building's slot flags
+                case BuildingType.GunTurret:
+                    break; // no components of their own: their stages read the building's slot flags (the turret's weapon is added below)
+                case BuildingType.Jammer:
+                    EntityManager.AddComponent<Jammer>(building);
+                    break;
                 default:
                     WarLog.Error(LogCategory.Sim, $"no components for building type {buildingData.buildingType}");
                     break;
             }
+
+            // Any building with a weapon in the config attacks once complete (v0.13: the Gun turret).
+            if (buildingConfig.IsAttacker) EntityManager.AddComponentData(building, new BuildingWeapon { TargetId = -1 });
 
             context.RaiseBuildingCreated(buildingData.id, building);
         }

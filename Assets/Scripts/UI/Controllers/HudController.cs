@@ -19,6 +19,7 @@ namespace WAR2D.UI
         private const float SelectionRefreshSeconds = 0.1f;
 
         private TopBarController topBar;
+        private ReconnectBannerController reconnect;
         private SelectionPanelController selectionPanel;
         private CommandCardController commandCard;
         private SquadBarController squadBar;
@@ -36,6 +37,8 @@ namespace WAR2D.UI
         private SettingsController settings;
         private GiftDialogController gift;
         private EndScreenController endScreen;
+        private HoverCard hover;
+        private UnitCommander noticeSource;
         private VisualElement root;
         private float playerTimer, selectionTimer;
         private int placedHQs, players;
@@ -95,18 +98,52 @@ namespace WAR2D.UI
                 return role + $", health {u.Health:0}";
             }
 
-            topBar = new TopBarController(root, Model);
-            selectionPanel = new SelectionPanelController(root, Selection);
+            // The build buttons' hover card (v0.15, Figma v0.15 QoL redesign, frame 3): role, then Cost, Upkeep, Size and reach.
+            HoverCardContent BuildCard(BuildingType type)
+            {
+                string role = type switch
+                {
+                    BuildingType.None => "Press and drag on the map to lay a line",
+                    BuildingType.Miner => "Income: mines the gem tile it faces (R turns it)",
+                    BuildingType.Barracks => "Makes Scouts, Tanks, Flamethrowers",
+                    BuildingType.HeavyFactory => "Makes Heavies, Artillery, Snipers",
+                    BuildingType.SiegeWorkshop => "Makes Diggers, Suicide bombers",
+                    BuildingType.Bomb => "Hidden from your enemies",
+                    BuildingType.Radar => "Sees over walls",
+                    BuildingType.GunTurret => "Defence: shoots units, then buildings and walls",
+                    BuildingType.Jammer => "Hides an area from enemies",
+                    _ => null,
+                };
+                var card = new HoverCardContent(null, null, role);
+                if (type == BuildingType.None) return card.Pair("Size", "1 tile each");
+                if (!config.Buildings.TryGetValue(type, out BuildingConfig b)) return card;
+                if (b.RunningCost > 0f) card.Pair("Upkeep", $"{b.RunningCost:0.#}/s");
+                card.Pair("Size", $"{b.Width}×{b.Height}");
+                if (type == BuildingType.GunTurret) card.Pair("Range", $"{b.Range:0.#}");
+                else if (type == BuildingType.Jammer) card.Pair("Jams", $"{config.Siege.JamRadius:0.#} tiles");
+                else if (type == BuildingType.Radar) card.Pair("Sight", $"{b.Sight:0.#}");
+                return card;
+            }
+
+            // v0.15: the one shared hover card (command-tooltip) every button's card goes through.
+            hover = new HoverCard(root);
+            topBar = new TopBarController(root, Model, hover);
+            selectionPanel = new SelectionPanelController(root, Selection, hover);
             commandCard = new CommandCardController(root, Selection, Model, costs, unitCosts, config.Siege.WallCost, config.Siege.DemolishRefund,
-                BuildSeconds, RoleOf, switchClearsQueue: true);
-            squadBar = new SquadBarController(root, Selection);
+                BuildSeconds, RoleOf, switchClearsQueue: true, BuildCard, unit => HoverText.Unit(unit, config.GetUnit(unit), Model.Resources),
+                hover, config.Siege.RepairCostPerHealth);
+            squadBar = new SquadBarController(root, Selection, hover);
             overlay = new HudOverlayController(root);
             startMarkers = new StartMarkersController(root);
             overlay.OptionClicked += FocusOption;
             startMarkers.Clicked += CentreCamera;
             minimap = new MinimapController(root);
             Alerts = new AlertFeedModel(config.Alerts.ShowSeconds);
-            alertFeed = new AlertFeedController(root, Alerts);
+            alertFeed = new AlertFeedController(root, Alerts, hover);
+            reconnect = new ReconnectBannerController(root, topBar, Alerts); // v0.15 item 19: drop banners, away tags, alerts
+            Model.Economy.LowFunds += OnLowFunds;
+            // The selection panel and squad bar sit right of the minimap and follow it when its size changes (S, M, L).
+            root.Q("minimap")?.RegisterCallback<GeometryChangedEvent>(FollowMinimap);
             orderTags = new OrderTagsController(root);
             diplomacy = new DiplomacyPanelController(root, Model);
             diplomacyButton = root.Q<Button>("diplomacy-button");
@@ -114,13 +151,23 @@ namespace WAR2D.UI
             ShowDiplomacyButton();
 
             Alerts.PingRequested += minimap.Ping;
+            Alerts.FocusRequested += tile =>
+            {
+                Camera cam = Camera.main;
+                if (cam != null && cam.TryGetComponent(out Character.Character_Controler controller)) controller.CentreOn(new Unity.Mathematics.float2(tile.x + 0.5f, tile.y + 0.5f));
+            };
             topBar.DiplomacyClicked += diplomacy.Toggle;
+            topBar.HqClicked += () => { UnitCommander.Instance?.JumpToHq(); Selection.Pull(); };
+            topBar.BuildersClicked += all => { UnitCommander.Instance?.SelectIdleBuilders(all); Selection.Pull(); };
+            topBar.ArmyClicked += () => { UnitCommander.Instance?.SelectArmy(); Selection.Pull(); };
+            topBar.DecayingClicked += SelectDecaying;
             diplomacy.AttackToggled += SetAttack;
             diplomacy.ShareToggled += SetShareVision;
 
             matchMenu = new InMatchMenuController(root);
             settings = new SettingsController(root);
             settings.Closed += matchMenu.Open;
+            settings.Closed += commandCard.ShowKeys; // a rebind shows on the command buttons at once
             matchMenu.SettingsClicked += () => { matchMenu.Close(); settings.Open(); SettingsRequested?.Invoke(); };
             matchMenu.SurrenderConfirmed += () => GameCore.Instance?.Cmd_Surrender();
             matchMenu.LeaveClicked += () => { HostLeftNotice.LeavingOnPurpose = true; GameManager.Instance?.LeaveLobby(); };
@@ -139,18 +186,26 @@ namespace WAR2D.UI
             GameCore.ClearMatchStats(); // a new match
 
             Selection.FilterRequested += OnFilter;
+            Selection.EverywhereRequested += OnEverywhere;
+            commandCard.RallyAllClicked += () => UnitCommander.Instance?.ArmRallyAll();
             commandCard.OrderClicked += OnOrder;
             commandCard.BuildClicked += OnBuild;
             commandCard.QueueClicked += OnQueue;
             commandCard.ProductionSelected += OnProductionSelected;
             commandCard.WallClicked += OnWall;
             commandCard.RemoveConfirmed += OnRemove;
+            commandCard.RemoveWallsConfirmed += () => { UnitCommander.Instance?.RemoveSelectedWalls(); Selection.Pull(); };
             squadBar.SquadClicked += OnSquad;
         }
 
         private void OnDisable()
         {
             Selection.FilterRequested -= OnFilter;
+            Selection.EverywhereRequested -= OnEverywhere;
+            Model.Economy.LowFunds -= OnLowFunds;
+            if (noticeSource != null) noticeSource.Notice -= OnNotice;
+            noticeSource = null;
+            hover?.Hide();
             topBar?.Dispose();
             selectionPanel?.Dispose();
             commandCard?.Dispose();
@@ -158,6 +213,8 @@ namespace WAR2D.UI
             minimap?.Dispose();
             minimap = null;
             alertFeed?.Dispose();
+            reconnect?.Dispose();
+            reconnect = null;
             diplomacy?.Dispose();
             gift?.Dispose();
             settings?.Dispose();
@@ -174,6 +231,7 @@ namespace WAR2D.UI
         }
 
         private bool cameraCentred;
+        private readonly List<(Unity.Mathematics.float2 centre, Color32 colour)> starts = new List<(Unity.Mathematics.float2, Color32)>();
 
         /// <summary>
         /// Once the match map is ready, puts the camera on the local player's HQ clearing (their first dealt option).
@@ -232,6 +290,7 @@ namespace WAR2D.UI
             }
             if (!placing)
             {
+                minimap?.ShowStarts(null);
                 startMarkers.Show(markers, null);
                 return prompt;
             }
@@ -254,7 +313,7 @@ namespace WAR2D.UI
             foreach (var teammate in me.TeammateStarts)
             {
                 string name = NameOf(teammate.Key);
-                Color32 colour = PlayerPalette.Of(NetworkClient.spawned.TryGetValue((uint)teammate.Key, out NetworkIdentity id) && id.TryGetComponent(out ClientPlayer other) ? other.colourIndex : -1);
+                Color32 colour = PlayerPalette.Of(ClientPlayer.TryFind(teammate.Key, out ClientPlayer other) ? other.colourIndex : -1);
                 foreach (int site in teammate.Value.options)
                 {
                     if (site < 0 || site >= sites.Length) continue;
@@ -264,7 +323,28 @@ namespace WAR2D.UI
                 }
             }
             startMarkers.Show(markers, cam);
+            starts.Clear();
+            foreach (StartMarker marker in markers) starts.Add((new Unity.Mathematics.float2(marker.Centre.x, marker.Centre.y), marker.Colour));
+            minimap?.ShowStarts(starts);
             return prompt;
+        }
+
+        private bool menuPauseSent;
+
+        /// <summary>
+        /// Asks the server to pause while the in-match menu (or Settings opened from it) is open, and to resume when it
+        /// closes; the server accepts only when this is the one human connected. The menu shows the server's answer.
+        /// </summary>
+        private void SyncMenuPause()
+        {
+            GameCore core = GameCore.Instance;
+            bool want = (matchMenu.IsOpen || settings.IsOpen) && !endScreen.IsShown;
+            if (core != null && NetworkClient.active && want != menuPauseSent)
+            {
+                menuPauseSent = want;
+                core.CmdSetMenuPause(want);
+            }
+            matchMenu.ShowPaused(core != null && core.IsMenuPaused && want);
         }
 
         private void Update()
@@ -273,7 +353,9 @@ namespace WAR2D.UI
             Model.PullResources();
             if (GameInput.Menu.WasPressedThisFrame() && !endScreen.IsShown)
             {
+                hover.Hide();
                 if (commandCard.CloseConfirm()) { }
+                else if (minimap.FiltersOpen) minimap.SetFiltersOpen(false);
                 else if (UnitCommander.Instance != null && UnitCommander.Instance.CancelWallDrag()) { }
                 else if (UnitCommander.Instance != null && UnitCommander.Instance.CancelDigDrag()) { }
                 else if (settings.IsOpen) settings.Close();
@@ -282,18 +364,27 @@ namespace WAR2D.UI
                 else matchMenu.Toggle();
             }
             if (GameInput.Cancel.WasPressedThisFrame() && !matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !diplomacy.IsOpen) commandCard.RequestRemove();
+            // Next alert (Space, rebindable): the newest unvisited alert with a place, then the one before it.
+            if (GameInput.NextAlert.WasPressedThisFrame() && !matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !endScreen.IsShown) Alerts.FocusNextUnvisited();
+            // v0.15.1 card-slot keys (Figma H1–H2): build and production, not while a menu or dialog has the keyboard.
+            if (!matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !diplomacy.IsOpen && !endScreen.IsShown && !Spectating)
+            {
+                string why = commandCard.HandleHotkeys();
+                if (why != null) OnNotice(why);
+            }
+            SubscribeNotices();
+            ShowCursorNotice();
             matchMenu.SetCanSurrender(root, GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing && !endScreen.IsShown);
+            SyncMenuPause();
             if (endScreen.IsShown)
             {
-                var (replayText, replayFraction) = EndScreenController.ReplayState(NetworkServer.active, WorldStateManager.Instance != null ? WorldStateManager.Instance.Recorder : null,
-                    WAR2D.Net.Replay.ReplayReceiver.Current, SettingsStore.Current.SaveReplays);
+                var (replayText, replayFraction) = EndScreenController.ReplayState(NetworkServer.active, WorldStateManager.Instance != null ? WorldStateManager.Instance.Recorder : null);
                 endScreen.ShowReplay(replayText, replayFraction);
             }
             minimap.Update(Time.unscaledDeltaTime);
             orderTags.Update(UnitCommander.Instance != null ? UnitCommander.Instance.Feedback : null, Camera.main, GameInput.Point.ReadValue<Vector2>());
             ShowWallReadout();
             Model.PullDiplomacy();
-            Alerts.Expire(Time.unscaledTime);
             SubscribeAlerts();
 
             selectionTimer -= Time.unscaledDeltaTime;
@@ -310,9 +401,110 @@ namespace WAR2D.UI
                 playerTimer = PlayerRefreshSeconds;
                 Model.PullPlayers();
                 if (core != null && core.CurrentState == GameState.PlacingHQ) CountPlacedHQs();
+                PullQuick();
             }
             if (core != null) overlay.Show(core.CurrentState, ShowStartOptions(core), core.CountdownEndTime - NetworkTime.time);
             else startMarkers.Show(markers, null);
+        }
+
+        /// <summary>
+        /// The v0.15 top bar refresh (4 Hz): the quick-select counts, the net readout (its five-second average moves between
+        /// resource updates), the decaying count, the HQ button (hidden without an own HQ, so when spectating or in a replay)
+        /// and Rally all's armed state.
+        /// </summary>
+        private void PullQuick()
+        {
+            UnitCommander commander = UnitCommander.Instance;
+            int owner = Model.LocalOwnerId;
+            topBar.ShowQuick(commander != null && owner != 0 ? commander.Selection.CountQuick(owner) : default);
+            int decaying = 0;
+            foreach (WAR2D.Net.Replication.ClientBuildings.Entry entry in WAR2D.Net.Replication.ClientBuildings.Current.Entries.Values)
+                if (entry.Data.ownerId == owner && WAR2D.Client.DefenceView.Unpaid(entry)) decaying++;
+            topBar.SetDecaying(decaying);
+            topBar.ShowNet();
+            topBar.ShowHq(owner != 0 && !Spectating && WAR2D.Net.Replication.ClientBuildings.Current.TryFindOwn(owner, BuildingType.Base, out _));
+            commandCard.ShowRallyAllArmed(commander != null && commander.RallyAllArmed);
+        }
+
+        /// <summary>"· select" in the Decaying state: selects the own buildings the client knows are unpaid.</summary>
+        private void SelectDecaying()
+        {
+            UnitCommander commander = UnitCommander.Instance;
+            if (commander == null) return;
+            var ids = new List<int>();
+            foreach (KeyValuePair<int, WAR2D.Net.Replication.ClientBuildings.Entry> pair in WAR2D.Net.Replication.ClientBuildings.Current.Entries)
+                if (pair.Value.Data.ownerId == Model.LocalOwnerId && WAR2D.Client.DefenceView.Unpaid(pair.Value)) ids.Add(pair.Key);
+            if (ids.Count == 0) return;
+            commander.Selection.ClearWalls();
+            commander.Selection.SelectBuildings(ids, false);
+            Selection.Pull();
+        }
+
+        /// <summary>The low-funds warning (state C): one alert row per drop, re-armed once net is positive again.</summary>
+        private void OnLowFunds()
+        {
+            string text = $"Resources will run out in {EconomyReadout.Clock(Model.Economy.SecondsUntilEmpty)}";
+            Alerts.Add(new Alert { Kind = AlertKind.ResourcesLow }, text, Time.unscaledTime);
+            if (SettingsStore.Current.SoundsAlert(AlertKind.ResourcesLow)) WAR2D.Audio.AudioService.Ui("alert");
+        }
+
+        /// <summary>Keeps the selection panel, squad bar and its hint just right of the minimap, whatever its size.</summary>
+        private void FollowMinimap(GeometryChangedEvent e)
+        {
+            if (!(e.target is VisualElement map) || float.IsNaN(map.layout.xMax)) return;
+            float left = map.layout.xMax + 16f;
+            foreach (string name in new[] { "selection-panel", "squad-bar", "squad-hint" })
+            {
+                VisualElement element = root.Q(name);
+                if (element != null) element.style.left = left;
+            }
+        }
+
+        private Label cursorNotice;
+        private string noticeText;
+        private float noticeUntil;
+        private const float NoticeSeconds = 1f;
+
+        /// <summary>Listens to the commander's "No idle Builders" notices once it exists.</summary>
+        private void SubscribeNotices()
+        {
+            UnitCommander commander = UnitCommander.Instance;
+            if (commander == noticeSource) return;
+            if (noticeSource != null) noticeSource.Notice -= OnNotice;
+            noticeSource = commander;
+            if (noticeSource != null) noticeSource.Notice += OnNotice;
+        }
+
+        private void OnNotice(string text)
+        {
+            noticeText = text;
+            noticeUntil = Time.unscaledTime + NoticeSeconds;
+        }
+
+        /// <summary>
+        /// The HUD's cursor tag (frames 1 and 8): a shortcut's notice for a second ("No idle Builders"), or "Rally all producers (4)"
+        /// while Rally all waits for its click.
+        /// </summary>
+        private void ShowCursorNotice()
+        {
+            UnitCommander commander = UnitCommander.Instance;
+            string text = Time.unscaledTime < noticeUntil ? noticeText : null;
+            if (text == null && commander != null && commander.RallyAllArmed) text = $"Rally all producers ({commander.OwnProducerIds().Count})";
+            if (cursorNotice == null)
+            {
+                if (text == null) return;
+                cursorNotice = new Label { name = "hud-cursor-tag", pickingMode = PickingMode.Ignore };
+                cursorNotice.AddToClassList("order-tag");
+                cursorNotice.AddToClassList("cursor-notice");
+                root.Add(cursorNotice);
+            }
+            cursorNotice.style.display = text != null ? DisplayStyle.Flex : DisplayStyle.None;
+            if (text == null || root.panel == null) return;
+            cursorNotice.text = text;
+            Vector2 screen = GameInput.Point.ReadValue<Vector2>();
+            Vector2 at = RuntimePanelUtils.ScreenToPanel(root.panel, new Vector2(screen.x, Screen.height - screen.y));
+            cursorNotice.style.left = at.x + 18f;
+            cursorNotice.style.top = at.y + 14f;
         }
 
         private void CountPlacedHQs()
@@ -357,7 +549,7 @@ namespace WAR2D.UI
             bool won = System.Array.IndexOf(result.Winners, Model.LocalOwnerId) >= 0;
             EndResult mine = result.Winners.Length == 0 ? EndResult.Draw : won ? EndResult.Victory : EndResult.Defeat;
             endScreen.Show(mine, EndScreenController.Line(mine, winners, result.DurationSeconds));
-            endScreen.ShowStats(result, NameOf, PlayerPalette.ColourIndexOf);
+            endScreen.ShowStats(result, NameOf, PlayerPalette.ColourIndexOf, owner => ResultTagOf(owner, result));
         }
 
         private VisualElement spectatingPanel;
@@ -448,12 +640,18 @@ namespace WAR2D.UI
             {
                 string building = alert.Kind == AlertKind.UnderAttack ? NearestOwnBuilding(alert.Tile)
                     : alert.Kind == AlertKind.ConstructionFinished ? OwnBuildingAt(alert.Tile) : null;
-                Alerts.Add(alert, AlertFeedModel.Text(alert, NameOf, building), Time.unscaledTime);
-                if (alert.Kind == AlertKind.ConstructionFinished) sound = "construction_finished";
+                // An AI named by the alert gets its tag after its callsign (Figma 95:563); Under attack never names anyone.
+                bool names = AlertFeedModel.NamesAPlayer(alert.Kind);
+                Alerts.Add(alert, AlertFeedModel.Text(alert, NameOf, building), Time.unscaledTime,
+                    names ? NameOf(alert.OtherOwnerId) : null, names ? AiTagOf(alert.OtherOwnerId) : null);
+                if (alert.Kind == AlertKind.ConstructionFinished) sound = building == AlertFeedModel.BuildingName(BuildingType.Jammer) ? "jammer_online" : "construction_finished";
                 if (alert.Kind == AlertKind.EnemySpotted) sound = "radar_ping";
             }
-            // One sound per batch; a Radar contact or a finished building has its own.
-            WAR2D.Audio.AudioService.Ui(sound);
+            // One sound per batch; a Radar contact or a finished building has its own (a Jammer coming online hums, v0.13).
+            // Settings → Gameplay → Alerts: a batch whose kinds are all muted plays nothing.
+            bool audible = false;
+            foreach (Alert alert in alerts) audible |= SettingsStore.Current.SoundsAlert(alert.Kind);
+            if (audible) WAR2D.Audio.AudioService.Ui(sound);
         }
 
         /// <summary>The name of the local player's building whose anchor is the tile, or null.</summary>
@@ -483,6 +681,22 @@ namespace WAR2D.UI
             return name;
         }
 
+        /// <summary>A player's AI tag ("AI · Hard"), or null for a human or an unknown owner.</summary>
+        private string AiTagOf(int ownerId)
+        {
+            foreach (PlayerRow row in Model.Players) if (row.OwnerId == ownerId) return row.AiTag;
+            return null;
+        }
+
+        /// <summary>An AI's tag on the end screen: difficulty and the style it played, "(random)" when the host left it on Random.</summary>
+        private string ResultTagOf(int ownerId, MatchResult result)
+        {
+            foreach (PlayerRow row in Model.Players)
+                if (row.OwnerId == ownerId)
+                    return row.IsAi ? PlayerNameLabel.ResultTagText(row.Difficulty, row.PickedStyle, result.PlayedStyle(ownerId)) : null;
+            return null;
+        }
+
         /// <summary>A player's public nickname.</summary>
         private string NameOf(int ownerId)
         {
@@ -497,6 +711,13 @@ namespace WAR2D.UI
         public void SetShareVision(int ownerId, bool on) => GameCore.Instance?.Cmd_SetShareVision((uint)ownerId, on);
 
         private void OnFilter(UnitType type) => UnitCommander.Instance?.Selection.FilterTo(type);
+
+        /// <summary>A type chip double-clicked: every own unit of the type on the map (the camera stays put).</summary>
+        private void OnEverywhere(UnitType type)
+        {
+            UnitCommander.Instance?.Selection.SelectTypeEverywhere(type, Model.LocalOwnerId);
+            Selection.Pull();
+        }
 
         private void OnOrder(OrderKind kind)
         {
@@ -531,9 +752,23 @@ namespace WAR2D.UI
             Selection.Pull();
         }
 
+        /// <summary>
+        /// A squad slot clicked: selects its squad, or its building group (v0.15: the producers and their card; clicked again with
+        /// them selected, the camera centres on the first).
+        /// </summary>
         private void OnSquad(int squad)
         {
-            UnitCommander.Instance?.Selection.SelectSquad(squad);
+            WAR2D.Client.Selection selection = UnitCommander.Instance != null ? UnitCommander.Instance.Selection : null;
+            if (selection == null) return;
+            if (selection.IsBuildingGroup(squad))
+            {
+                selection.ClearWalls();
+                if (selection.IsExactlyBuildingGroup(squad) &&
+                    WAR2D.Net.Replication.ClientBuildings.Current.Entries.TryGetValue(selection.FirstOfBuildingGroup(squad), out WAR2D.Net.Replication.ClientBuildings.Entry first))
+                    CentreCamera(new Vector2(first.Data.position.x, first.Data.position.y));
+                else selection.SelectBuildingGroup(squad);
+            }
+            else selection.SelectSquad(squad);
             Selection.Pull();
         }
     }

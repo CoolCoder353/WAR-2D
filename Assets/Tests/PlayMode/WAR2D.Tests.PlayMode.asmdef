@@ -2,7 +2,7 @@
     "name": "WAR2D.Tests.PlayMode",
     "rootNamespace": "",
     "references": [
-        "WAR2D", "Mirror", "Unity.Entities", "Unity.Collections", "Unity.Mathematics", "Unity.Transforms",
+        "WAR2D", "WAR2D.Ai", "Mirror", "Unity.Entities", "Unity.Collections", "Unity.Mathematics", "Unity.Transforms",
         "UnityEngine.TestRunner", "Unity.PerformanceTesting"
     ],
     "includePlatforms": [],

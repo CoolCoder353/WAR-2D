@@ -17,7 +17,6 @@ public static class CommandGate
         ["UpdateClientView"] = (20f, 15f),
         ["CmdOrderChunk"] = (40f, 20f),
         ["CmdDigAreaChunk"] = (40f, 10f),
-        ["CmdReplayWanted"] = (3f, 1f),
         ["CmdAssignSquadChunk"] = (40f, 10f),
         ["CmdOrderSquad"] = (10f, 5f),
         ["TryAddBuilding"] = (10f, 5f),
@@ -39,6 +38,10 @@ public static class CommandGate
         ["Cmd_GiftResources"] = (5f, 1f),
         ["Cmd_SetAttack"] = (10f, 2f),
         ["Cmd_SetShareVision"] = (10f, 2f),
+        ["CmdSetMenuPause"] = (6f, 2f),
+        ["Cmd_AddAi"] = (10f, 4f),
+        ["Cmd_SetAi"] = (20f, 8f),
+        ["Cmd_RemoveAi"] = (10f, 4f),
     }, (10f, 5f));
 
     private static readonly Dictionary<int, (int count, double windowStart)> Violations = new Dictionary<int, (int, double)>();
@@ -59,10 +62,16 @@ public static class CommandGate
         {
             WarLog.Warn(LogCategory.Net, $"Disconnecting connection {conn.connectionId}: repeatedly exceeded command rate limits ({command}){(WAR2D.Net.Steam.SteamIdentity.TryGet(conn.connectionId, out ulong sid) ? $" (Steam {sid})" : "")}.");
             Forget(conn.connectionId);
+            Kicked.Add(conn.connectionId); // a kick is not a drop: the seat is not kept for a rejoin
             conn.Disconnect();
         }
         return false;
     }
+
+    private static readonly HashSet<int> Kicked = new HashSet<int>();
+
+    /// <summary>True (once) when this gate disconnected the connection for exceeding its limits.</summary>
+    public static bool TakeKicked(int connectionId) => Kicked.Remove(connectionId);
 
     public static void Forget(int connectionId)
     {

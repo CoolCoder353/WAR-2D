@@ -121,6 +121,10 @@ namespace WAR2D.UI
                     list.Join(lobbyId, "your friend");
                 });
             play.CancelClicked += () => { joiningAddress = null; GameManager.Instance?.StopClient(); play.ShowIdle(); };
+            play.RejoinClicked += Rejoin;
+            play.RejoinCancelClicked += () => { rejoining = false; GameManager.Instance?.StopClient(); };
+            play.RejoinDismissClicked += WAR2D.Net.Rejoin.RejoinTicket.DismissRefusal;
+            rejoinOffered = false; // a menu that opens with a Rejoin on offer (the connection just dropped) goes straight to Play
 
             GameConfigData config = ConfigLoader.LoadConfig();
             string lan = MenuModel.LocalAddress();
@@ -132,6 +136,9 @@ namespace WAR2D.UI
             lobby.HostTeamClicked += (owner, team) => GameCore.Instance?.Cmd_SetTeam((uint)owner, team);
             lobby.ReadyClicked += r => GameCore.Instance?.Cmd_SetReady(r);
             lobby.StartClicked += () => GameCore.Instance?.Cmd_StartGame();
+            lobby.AddAiClicked += () => GameCore.Instance?.Cmd_AddAi(AiDifficulty.Normal, AiStyle.Random);
+            lobby.AiChanged += (owner, difficulty, style, colour, team) => GameCore.Instance?.Cmd_SetAi(owner, difficulty, style, colour, team);
+            lobby.AiRemoved += owner => GameCore.Instance?.Cmd_RemoveAi(owner);
             lobby.InviteClicked += WAR2D.Net.Steam.SteamHostLobby.OpenInvite;
             lobby.LeaveClicked += () => { wantsPlay = true; GameManager.Instance?.LeaveLobby(); };
             Show(Screen.Main);
@@ -179,8 +186,45 @@ namespace WAR2D.UI
             GameManager.Instance?.Connect(route);
         }
 
+        // v0.15 item 19: the Rejoin card's state.
+        private bool rejoining, rejoinOffered;
+
+        private void Rejoin()
+        {
+            GameManager manager = GameManager.Instance;
+            if (manager == null || NetworkClient.active || NetworkServer.active) return;
+            MenuBattle.Instance?.TearDown();
+            play.ShowRejoinFailed(null);
+            rejoining = manager.Rejoin() && NetworkClient.active;
+            if (!rejoining) play.ShowRejoinFailed("Couldn't reconnect. Try again while the timer runs.");
+        }
+
+        /// <summary>Shows or hides the Rejoin card; the first frame a Rejoin is on offer opens the Play screen.</summary>
+        private void UpdateRejoin()
+        {
+            GameManager manager = GameManager.Instance;
+            bool available = manager != null && manager.CanRejoin && !NetworkServer.active;
+            if (available && !rejoinOffered) { wantsPlay = true; wantsReplays = false; }
+            rejoinOffered = available;
+            // An attempt that ended before the match came back failed (the server refused the ticket, or nobody answered).
+            if (rejoining && !NetworkClient.active)
+            {
+                rejoining = false;
+                if (available) play.ShowRejoinFailed("Couldn't get back into the match. Try again while the timer runs.");
+            }
+            // v0.15.1: the server refused the ticket and said why; Rejoin is no longer offered.
+            if (!available && WAR2D.Net.Rejoin.RejoinTicket.Refusal is WAR2D.Net.Rejoin.RejoinRefusal refusal)
+            {
+                play.ShowRejoinRefused(ReconnectText.RefusalTail(refusal), RejoinMatch.HostName, RejoinMatch.HostColour);
+                return;
+            }
+            play.ShowRejoin(available, available ? manager.RejoinSecondsLeft : 0f, WAR2D.Net.Rejoin.RejoinTicket.Window,
+                rejoining, RejoinMatch.HostName, RejoinMatch.HostColour);
+        }
+
         private void Update()
         {
+            UpdateRejoin();
             if (playScreen.ClassListContains("menu-screen--visible") && !NetworkClient.active) list.Tick(Time.unscaledDeltaTime);
             lobby.SetInviteVisible(NetworkServer.active && WAR2D.Net.Steam.SteamHostLobby.CanInvite);
             bool connected = NetworkClient.isConnected;
@@ -197,7 +241,7 @@ namespace WAR2D.UI
 
             GameCore core = GameCore.Instance;
             if (core != null && NetworkServer.active)
-                WAR2D.Net.Steam.SteamHostLobby.Current?.Update(core.CurrentState, core.Settings, NetworkServer.connections.Count);
+                WAR2D.Net.Steam.SteamHostLobby.Current?.Update(core.CurrentState, core.Settings, core.SeatCount);
             if (WAR2D.Client.Replay.ReplayPlayer.Instance != null)
             {
                 viewer.Tick(Time.unscaledDeltaTime);

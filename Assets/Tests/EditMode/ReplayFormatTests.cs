@@ -59,4 +59,24 @@ public class ReplayFormatTests
             using (r) while (r.TryNext(out _, out _, out _)) { }
         });
     }
+
+    [TestCase(1)]  // before v0.13's attack events with an attacker kind
+    [TestCase(99)] // a newer build's
+    public void RefusesOtherFormats(int format)
+    {
+        var raw = new MemoryStream();
+        using (var gzip = new System.IO.Compression.GZipStream(raw, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true))
+        using (var w = new BinaryWriter(gzip))
+        {
+            byte[] json = System.Text.Encoding.UTF8.GetBytes(Newtonsoft.Json.JsonConvert.SerializeObject(Header()));
+            w.Write(ReplayFile.Magic);
+            w.Write((ushort)format);
+            w.Write((uint)json.Length);
+            w.Write(json);
+        }
+        raw.Position = 0;
+        Assert.AreEqual(2, ReplayFile.Format);
+        Assert.IsFalse(ReplayReader.TryOpen(raw, out _, out string error));
+        StringAssert.Contains($"replay format {format} is not supported", error);
+    }
 }

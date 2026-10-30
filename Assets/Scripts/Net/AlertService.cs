@@ -45,23 +45,34 @@ public sealed class AlertService
     /// </summary>
     public void CollectDamage(SimData data, int unitCount, Func<int, (bool found, int owner, int2 tile)> building, double now)
     {
-        if (data.AttackEvents.Length == 0) return;
+        if (data.AttackEvents.Length == 0 && data.BuildingAttackEvents.Length == 0) return;
         damaged.Clear();
         seenTargets.Clear();
-        foreach (int2 attack in data.AttackEvents)
-        {
-            int target = attack.y;
-            if (!seenTargets.Add(target)) continue;
-            int slot = data.SlotOf(target, unitCount);
-            if (slot >= 0) damaged.Add((data.OwnerId[slot], (int2)math.floor(data.Positions[slot])));
-            else
-            {
-                (bool found, int owner, int2 tile) = building(target);
-                if (found) damaged.Add((owner, tile));
-            }
-        }
+        foreach (int2 attack in data.AttackEvents) Damaged(data, unitCount, building, attack.y);
+        // A turret's victims are attacked like any other (v0.13); a turret being hit is a building target above.
+        foreach (int2 attack in data.BuildingAttackEvents)
+            if (attack.y > 0) Damaged(data, unitCount, building, attack.y); // 0: a wall shot, no alert (as for units)
         AlertRules.UnderAttack(damaged, throttle, now, add);
     }
+
+    /// <summary>Adds a hit target's own owner and tile, once per target.</summary>
+    private void Damaged(SimData data, int unitCount, Func<int, (bool found, int owner, int2 tile)> building, int target)
+    {
+        if (!seenTargets.Add(target)) return;
+        int slot = data.SlotOf(target, unitCount);
+        if (slot >= 0) damaged.Add((data.OwnerId[slot], (int2)math.floor(data.Positions[slot])));
+        else
+        {
+            (bool found, int owner, int2 tile) = building(target);
+            if (found) damaged.Add((owner, tile));
+        }
+    }
+
+    /// <summary>
+    /// Sees every player's alerts as they are sent (v0.14: the AI's team view collects its owner's from here, so it is
+    /// told exactly what a client of that owner would be). Null for none.
+    /// </summary>
+    public Action<int, IReadOnlyList<Alert>> Observer;
 
     /// <summary>Sends each player their queued alerts.</summary>
     public void Flush()
@@ -70,6 +81,8 @@ public sealed class AlertService
         foreach (KeyValuePair<int, List<Alert>> pair in pending)
         {
             if (pair.Value.Count == 0) continue;
+            Observer?.Invoke(pair.Key, pair.Value);
+            if (AiOwnerIds.IsAi(pair.Key)) { pair.Value.Clear(); continue; } // no connection to send to: its view has them
             send(pair.Key, pair.Value.ToArray());
             pair.Value.Clear();
         }

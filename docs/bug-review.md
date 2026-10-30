@@ -1,6 +1,6 @@
 # Bug Review
 
-Findings from an outside code review (2026-10-14), triaged against the code on 2026-10-15. The review was not taken as fact: each finding was traced in the source. Confirmed bugs are fixed (and logged in [known-issues.md](known-issues.md)); the rest are listed below with why they were not changed.
+Findings from code reviews and scans, from an outside review (2026-10-14, triaged against the code on 2026-10-15) to the sixth scan (2026-10-28, the v0.15 reconnect and QoL). The review was not taken as fact: each finding was traced in the source. Confirmed bugs are fixed (and logged in [known-issues.md](known-issues.md)); the rest are listed below with why they were not changed.
 
 ## Triage (2026-10-15)
 
@@ -38,6 +38,21 @@ Findings from an outside code review (2026-10-14), triaged against the code on 2
 `Shift` shared by `QueueModifier` and `AppendModifier` (kept on purpose, open until the owner confirms; see `known-issues.md`, rebinding), and the low / hardening bullets below that are not struck through. The original findings follow; fixes are marked in place. The 2026-10-18 pass fixed stale squad counts, the embedded large unit, the replay EOF hang, the v0.7 client leftovers, the null-identity loops and most hardening bullets.
 
 ---
+
+## Sixth scan (2026-10-28): v0.15 reconnect and QoL
+
+All fixed in v0.15.1 (see [known-issues.md](known-issues.md), "Reconnect review fixes"); UI states on the Figma page `v0.15.1 Hotkeys and polish`.
+
+| Finding | Fix |
+| ------- | --- |
+| Leave match kept the seat 60 s (`gameplay.md` promised it never would): the server cannot tell a leave from a drop. | `LeaveMatch` message first; the server revokes the ticket and closes the connection. |
+| A `CommandGate` kick went through `TryMarkAway`, so the kicked client was offered a working Rejoin. | `CommandGate.TakeKicked`; a kicked seat is never kept. |
+| An away player eliminated by an HQ loss kept a valid ticket; `RpcOnPlayerLost` was skipped (no connection), so a rejoin landed with no HQ and no Defeat screen. | `EliminatePlayer` ends the away seat at once. |
+| A rejoin before the server noticed the drop was refused (no away seat yet), until the server's own timeout. | `TryTakeOver`: a valid token takes the seat from the old connection. |
+| While a seat was away, any connection was let in and could sit without a player forever. | `RejoinGrace` (15 s). |
+| `ServerPlayer.TrySpend` returned true without charging an away player, so a purchase applied after the drop was free; `Refund` went through `Add`, which drops money while away. | `TrySpend` refuses while away; upkeep uses `TryPayUpkeep`; `Refund` bypasses the freeze. |
+| Producer queues and rallies were not resent on rejoin. | `WorldStateManager.SendOwnProducers`. |
+| A map-hash mismatch disconnect counted as a drop. | It clears the ticket. |
 
 ## First review (2026-10-14): general
 
@@ -231,8 +246,8 @@ Reviewed the server-authoritative control surfaces: `CommandGate`, `CommandValid
 
 ### Low / hardening
 
-- **Dev-only bots are intentionally outside the civilian player count.** `MatchStartPlayerCount` is set from `ServerPlayers.Count` only, while bots are accounted for in `WinLossSystem` and in the lobby-only server-owner checks. This is a dev/perf choice rather than a gameplay bug, but it is worth keeping explicit if user-facing bots are ever added.
-- **`ResetToLobby` clears both the live player list and the bot table.** This is deliberate for a clean lobby reset, but it means a dev/perf bot run disappears as soon as the last real player leaves. It is a lifecycle choice, not a mismatch, and it should remain documented if bot matches become a normal mode.
+- ~~**Dev-only bots are intentionally outside the civilian player count.**~~ **Resolved (v0.14):** bots became AI seats; `MatchStartPlayerCount` counts humans plus AIs at launch (`SeatCount`), and a Scripted seat added mid-match adds one.
+- **`ResetToLobby` clears both the live player list and the AI seats** (v0.14: `ClearAiPlayers`, which also destroys their player objects). Deliberate: a server whose last human left returns to an empty lobby, AIs included.
 - ~~`DeclareWinner` / `DeclareDraw` assume populated `ServerPlayers` entries.~~ **Fixed (2026-10-18):** both skip a null identity.
 
 The reviewed command, lobby and lifecycle surfaces are now covered in this ledger; no high-confidence bug remains in the server-owned control path as inspected.

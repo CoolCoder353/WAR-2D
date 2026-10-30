@@ -19,8 +19,13 @@ namespace WAR2D.Net.Steam
         event Action<ulong, bool> AuthSessionResult;
 
         // lobbies
-        /// <summary>Calls back with the lobby id, 0 = failed.</summary>
-        void CreateLobby(int maxPlayers, Action<ulong> done);
+        /// <summary>
+        /// Creates a Steam lobby of <paramref name="visibility"/> (Public or Friends; a Private match has none) and calls
+        /// back with the lobby id, 0 = failed.
+        /// </summary>
+        void CreateLobby(int maxPlayers, LobbyVisibility visibility, Action<ulong> done);
+        /// <summary>Retypes an open lobby (Public ↔ Friends) without closing it.</summary>
+        void SetLobbyType(ulong lobbyId, LobbyVisibility visibility);
         void SetLobbyData(ulong lobbyId, IDictionary<string, string> data);
         void SetLobbyJoinable(ulong lobbyId, bool joinable);
         void LeaveLobby(ulong lobbyId);

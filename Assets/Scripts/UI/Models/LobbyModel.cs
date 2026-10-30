@@ -13,9 +13,17 @@ namespace WAR2D.UI
         /// <summary>The lobby team choice (<see cref="TeamRules.NoTeam"/> = Solo).</summary>
         public readonly int Team;
         public readonly bool Ready, IsHost;
+        /// <summary>v0.14: an AI seat, its difficulty and the style the host picked (Random stays Random).</summary>
+        public readonly bool IsAi;
+        public readonly AiDifficulty Difficulty;
+        public readonly AiStyle Style;
 
-        public LobbyPlayer(int ownerId, string nickname, int colourIndex, int team, bool ready, bool isHost)
+        public LobbyPlayer(int ownerId, string nickname, int colourIndex, int team, bool ready, bool isHost,
+            bool isAi = false, AiDifficulty difficulty = default, AiStyle style = default)
         {
+            IsAi = isAi;
+            Difficulty = difficulty;
+            Style = style;
             OwnerId = ownerId;
             Nickname = nickname;
             ColourIndex = colourIndex;
@@ -24,7 +32,8 @@ namespace WAR2D.UI
             IsHost = isHost;
         }
 
-        public bool Equals(LobbyPlayer o) => OwnerId == o.OwnerId && Nickname == o.Nickname && ColourIndex == o.ColourIndex && Team == o.Team && Ready == o.Ready && IsHost == o.IsHost;
+        public bool Equals(LobbyPlayer o) => OwnerId == o.OwnerId && Nickname == o.Nickname && ColourIndex == o.ColourIndex && Team == o.Team && Ready == o.Ready && IsHost == o.IsHost
+            && IsAi == o.IsAi && Difficulty == o.Difficulty && Style == o.Style;
         public override bool Equals(object obj) => obj is LobbyPlayer o && Equals(o);
         public override int GetHashCode() => HashCode.Combine(OwnerId, Nickname, ColourIndex, Team, Ready, IsHost);
     }
@@ -99,6 +108,33 @@ namespace WAR2D.UI
             }
         }
 
+        /// <summary>Humans in the lobby (AIs never block going Private).</summary>
+        public int Humans
+        {
+            get
+            {
+                int n = 0;
+                foreach (LobbyPlayer p in players) if (!p.IsAi) n++;
+                return n;
+            }
+        }
+
+        /// <summary>True while another seat (human or AI) fits: the host's Add AI shows then.</summary>
+        public bool HasFreeSeat => AiLobbyRules.HasFreeSeat(players.Count);
+
+        /// <summary>The colour after <paramref name="current"/> that nobody but <paramref name="owner"/> holds (a swatch click), or <paramref name="current"/> when none is free.</summary>
+        public int NextFreeColour(int owner, int current)
+        {
+            for (int step = 1; step < LobbyRules.Colours; step++)
+            {
+                int c = ((current + step) % LobbyRules.Colours + LobbyRules.Colours) % LobbyRules.Colours;
+                bool taken = false;
+                foreach (LobbyPlayer p in players) taken |= p.OwnerId != owner && p.ColourIndex == c;
+                if (!taken) return c;
+            }
+            return current;
+        }
+
         /// <summary>Taken colours, other than the local player's.</summary>
         public bool IsColourTaken(int colour)
         {
@@ -115,7 +151,8 @@ namespace WAR2D.UI
             foreach (NetworkIdentity identity in NetworkClient.spawned.Values)
             {
                 if (identity == null || !identity.TryGetComponent(out ClientPlayer p)) continue;
-                scratch.Add(new LobbyPlayer((int)identity.netId, string.IsNullOrEmpty(p.nickname) ? "Player" : p.nickname, p.colourIndex, p.lobbyTeam, p.ready, p.isServerOwner));
+                scratch.Add(new LobbyPlayer(p.OwnerId, string.IsNullOrEmpty(p.nickname) ? "Player" : p.nickname, p.colourIndex, p.lobbyTeam, p.ready, p.isServerOwner,
+                    p.isAi, p.aiDifficulty, p.aiStyle));
             }
             scratch.Sort((a, b) => a.OwnerId.CompareTo(b.OwnerId)); // join order
             Set(scratch, core.Settings, (int)NetworkClient.localPlayer.netId);

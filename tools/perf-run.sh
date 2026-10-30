@@ -6,11 +6,19 @@
 # join over KCP on loopback and measure the raw UDP bytes they receive (v0.5); with clients=0 the
 # bandwidth comes from the host's virtual bot clients (v0.4). Prints, per metric, the run with the
 # median value of its gated statistic, against the budget.
+# WAR_PERF_AI=Hard (or Normal, Easy) runs v0.14's second gate instead: seven lobby AIs of that difficulty play a real
+# Free-for-all on the 1024 map (seed 1, the host sitting out), fast-forwarded through WAR_PERF_AI_WARMUP minutes of play
+# (default 12), then sampled at normal speed; perf.part.ai is budgeted (2 ms p95). No clients join (clients is forced to 0).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 runs="${1:-3}"
 player="${2:-Builds/Linux/WAR-2D.x86_64}"
 clients="${3:-7}"
+aiArgs=()
+if [[ -n "${WAR_PERF_AI:-}" ]]; then
+  clients=0
+  aiArgs=(-perfAi "$WAR_PERF_AI" -perfAiWarmupMinutes "${WAR_PERF_AI_WARMUP:-12}")
+fi
 [[ -x "$player" ]] || { echo "No player at $player - make a Linux release build first."; exit 1; }
 stamp="$(date +%Y%m%d-%H%M%S)"
 out="PerfResults/$stamp"
@@ -21,7 +29,12 @@ for run in $(seq 1 "$runs"); do
   dir="$(pwd)/$out/run$run"
   mkdir -p "$dir"
   echo "Run $run/$runs..."
-  "$player" -perf -perfRecord -perfClients "$clients" -perfOut "$dir" -screen-width 1920 -screen-height 1080 -screen-fullscreen 0 -logFile "$dir/player.log" &
+  # WAR_PERF_HEADLESS_HOST=1 runs the host without a window too (when no display can open one); fps is then meaningless.
+  hostArgs=(-screen-width 1920 -screen-height 1080 -screen-fullscreen 0)
+  if [[ "${WAR_PERF_HEADLESS_HOST:-0}" == "1" ]]; then hostArgs=(-batchmode -nographics); fi
+  # WAR_PERF_HOST_ARGS: extra host arguments for experiments (e.g. "-configFile /path/GameConfig.xml", dev only).
+  if [[ -n "${WAR_PERF_HOST_ARGS:-}" ]]; then read -r -a extraHost <<< "$WAR_PERF_HOST_ARGS"; hostArgs+=("${extraHost[@]}"); fi
+  "$player" -perf -perfRecord -perfClients "$clients" "${aiArgs[@]}" -perfOut "$dir" "${hostArgs[@]}" -logFile "$dir/player.log" &
   host=$!
   sleep 5
   for c in $(seq 1 "$clients"); do

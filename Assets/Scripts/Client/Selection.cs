@@ -10,7 +10,7 @@ namespace WAR2D.Client
     /// orders go to the server as chunked id lists, or as a squad order when the selection is exactly
     /// a squad. The client keeps its own copy of what it assigned to each squad, for selecting it.
     /// </summary>
-    public sealed class Selection
+    public sealed partial class Selection
     {
         private readonly HashSet<int> selected = new HashSet<int>();
         private readonly List<int>[] squads = new List<int>[WAR2D.Sim.Squads.Count];
@@ -57,6 +57,27 @@ namespace WAR2D.Client
             foreach (int id in ids) if (!buildings.Contains(id)) buildings.Add(id);
         }
 
+        private readonly List<int2> walls = new List<int2>();
+
+        /// <summary>The selected own wall tiles and wall blueprints (they cancel or demolish; never with units or buildings).</summary>
+        public IReadOnlyList<int2> SelectedWalls => walls;
+
+        /// <summary>Selects these own wall tiles (a click or a box), dropping the unit and building selection; <paramref name="append"/> keeps the current walls.</summary>
+        public void SelectWalls(IEnumerable<int2> tiles, bool append)
+        {
+            selected.Clear();
+            selectedSquad = -1;
+            buildings.Clear();
+            if (!append) walls.Clear();
+            foreach (int2 t in tiles) if (!walls.Contains(t)) walls.Add(t);
+        }
+
+        /// <summary>Clears the wall selection.</summary>
+        public void ClearWalls() => walls.Clear();
+
+        /// <summary>Drops one wall tile from the selection (it is gone).</summary>
+        public void RemoveWall(int2 tile) => walls.Remove(tile);
+
         /// <summary>Clears the building selection.</summary>
         public void ClearBuilding() => buildings.Clear();
 
@@ -76,9 +97,10 @@ namespace WAR2D.Client
 
         /// <summary>
         /// Selects every own unit of the type of the own unit nearest <paramref name="at"/> (within a tile)
-        /// that lies inside the view (a double-click). Does nothing when no own unit is there.
+        /// that lies inside the view (a double-click), or anywhere on the map with <paramref name="everywhere"/>
+        /// (Ctrl + double-click). Does nothing when no own unit is there.
         /// </summary>
-        public void SelectTypeAt(float2 at, float2 viewMin, float2 viewMax, int ownerId)
+        public void SelectTypeAt(float2 at, float2 viewMin, float2 viewMax, int ownerId, bool everywhere = false)
         {
             ClientWorld world = ClientWorld.Instance;
             if (world == null) return;
@@ -93,6 +115,11 @@ namespace WAR2D.Client
                 if (d < best) { best = d; nearest = id; }
             }
             if (nearest < 0 || !world.TryGet(nearest, out ClientUnitView clicked)) return;
+            if (everywhere)
+            {
+                SelectTypeEverywhere(clicked.Type, ownerId);
+                return;
+            }
             scratch.Clear();
             world.QueryBox(viewMin, viewMax, ownerId, scratch);
             selected.Clear();
@@ -139,6 +166,7 @@ namespace WAR2D.Client
         {
             if ((uint)squad >= squads.Length) return;
             squads[squad] = Sorted();
+            buildingGroups[squad] = null; // a slot holds units or buildings, never both
             selectedSquad = squad;
             ushort token = NextToken();
             List<byte[]> chunks = OrderIdCodec.EncodeChunks(squads[squad]);

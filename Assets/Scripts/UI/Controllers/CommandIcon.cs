@@ -10,6 +10,12 @@ namespace WAR2D.UI
         Move, AttackMove, Stop, Hold, Miner, Spawner, Wall, Radar, Dig, Cancel, Bomb, Repair, Demolish,
         // v0.12: units (named as UnitType), Detonate and the producers.
         Builder, Tank, Digger, Scout, Heavy, Artillery, Sniper, Flamethrower, SuicideBomber, Detonate, Barracks, HeavyFactory, SiegeWorkshop,
+        // v0.13: the defences (named as BuildingType).
+        GunTurret, Jammer,
+        // v0.14: the AI player tag.
+        Ai,
+        // v0.15 QoL: Jump to HQ, the quick-select counts, Rally all and the minimap filters.
+        Hq, IdleBuilders, Army, RallyAll, Eye,
     }
 
     /// <summary>
@@ -41,6 +47,19 @@ namespace WAR2D.UI
         }
 
         private void Apply() => style.backgroundImage = new StyleBackground(PixelIcons.Texture(IdOf(icon)));
+    }
+
+    /// <summary>The AI tag's robot head from <see cref="PixelIcons"/>, in its own colours (blue eyes), 16 px.</summary>
+    [UxmlElement]
+    public partial class AiIcon : VisualElement
+    {
+        public AiIcon()
+        {
+            AddToClassList("ai-tag__icon");
+            pickingMode = PickingMode.Ignore;
+            style.backgroundImage = new StyleBackground(PixelIcons.Texture(CommandIcon.IdOf(IconKind.Ai)));
+            style.backgroundSize = new BackgroundSize(BackgroundSizeType.Contain);
+        }
     }
 
     /// <summary>The rally flag from <see cref="PixelIcons"/>, in its own colours (the production queue's rally hint).</summary>

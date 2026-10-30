@@ -231,6 +231,84 @@ namespace WAR2D.Art.Render
             return img.Done();
         }
 
+        /// <summary>
+        /// The Gun turret's muzzle flash (v0.13), 3 frames, from the tile's centre along +x (drawn at the muzzle,
+        /// turned to the head's facing): a hot tongue with side jets from the muzzle brake, a smaller one, then a
+        /// puff of dithered smoke with a last spark.
+        /// </summary>
+        public static EffectFrame TurretMuzzle(int frame)
+        {
+            var img = new Img(T, T);
+            int c = T / 2;
+            if (frame < 2)
+            {
+                float len = frame == 0 ? 18f : 11f, width = frame == 0 ? 5f : 3.2f;
+                for (int y = -7; y <= 7; y++)
+                for (int x = 0; x <= (int)len; x++)
+                {
+                    float along = x / len, half = width * Mathf.Sin(Mathf.PI * Mathf.Min(1f, along * 1.3f + 0.12f));
+                    float d = Mathf.Abs(y) / Mathf.Max(0.5f, half);
+                    if (d > 1f) continue;
+                    img.Set(c + x, c + y, d < 0.45f && along < 0.7f ? ArtStyle.FireRamp[0] : d < 0.8f ? ArtStyle.FireRamp[1] : ArtStyle.FireRamp[2]);
+                }
+                // Side jets from the brake.
+                int jet = frame == 0 ? 7 : 4;
+                foreach (int s in new[] { -1, 1 })
+                    for (int k = 1; k <= jet; k++)
+                    {
+                        Color32 col = k < jet - 1 ? ArtStyle.FireRamp[1] : ArtStyle.FireRamp[3];
+                        img.Set(c + 1 + k / 3, c + s * (2 + k), col);
+                        if (frame == 0 && k < jet - 1) img.Set(c + 2 + k / 3, c + s * (2 + k), ArtStyle.FireRamp[2]);
+                    }
+                return img.Done();
+            }
+            for (int y = -8; y <= 8; y++)
+            for (int x = -1; x <= 18; x++)
+            {
+                float dx = (x - 8) / 9.5f, dy = y / 6.5f;
+                float puff = 1f - (dx * dx + dy * dy) + (Noise.Fbm(x, y, T, 4, 2, 61) - 0.5f) * 0.8f;
+                if (puff > Bayer(c + x, c + y) * 1.4f)
+                    img.Set(c + x, c + y, Noise.Fbm(x, y, T, 6, 2, 67) > 0.5f ? Role(StylePalette.Body3, 2) : Role(StylePalette.Body2, 2));
+            }
+            img.Set(c + 9, c + 2, ArtStyle.FireRamp[3]);
+            img.Set(c + 4, c - 3, ArtStyle.FireRamp[4]);
+            return img.Done();
+        }
+
+        /// <summary>
+        /// The Jammer's pulse (v0.13), 3 tiles square (drawn over the 2×2 Jammer, centred on it) at
+        /// <paramref name="t"/> (0 = start, 1 = gone): two rings of static running out from the dish, their
+        /// bright edges broken by noise, each with a dithered wake that thins as it spreads.
+        /// </summary>
+        public static EffectFrame JamPulse(float t)
+        {
+            int s = 3 * T;
+            var img = new Img(s, s);
+            // The dish (RenderGen.Jammer, centre 6 px east and 14 px north of the footprint's), lifted by its rim height.
+            float cx = s / 2f + 6, cy = s / 2f + 14 + 26 * RenderGen.Lift;
+            float maxR = s - cy - 4;
+            Color32 edge = Role(StylePalette.Lamp, t < 0.5f ? 3 : 2), wake = Role(StylePalette.Body3, 3);
+            void Ring(float ring, float strength, int seed)
+            {
+                if (ring < 6 || strength <= 0) return;
+                for (int y = 0; y < s; y++)
+                for (int x = 0; x < s; x++)
+                {
+                    float dx = x + 0.5f - cx, dy = y + 0.5f - cy, d = Mathf.Sqrt(dx * dx + dy * dy);
+                    if (d > ring + 1f || d < ring - 12f) continue;
+                    float n = Noise.Fbm(Mathf.Atan2(dy, dx) * 40f + 128f, d * 0.6f, 256, 16, 2, seed);
+                    if (d > ring - 1.5f)
+                    {
+                        if (n > 0.62f - 0.35f * strength) img.Set(x, y, edge);
+                    }
+                    else if ((d - (ring - 12f)) / 10.5f * strength > Bayer(x, y) * 1.2f && n > 0.45f) img.Set(x, y, wake);
+                }
+            }
+            Ring(10f + (maxR - 10f) * t, 1f - t * 0.75f, 71);
+            Ring(10f + (maxR - 10f) * (t - 0.35f), (1f - t) * 0.8f, 73);
+            return img.Done();
+        }
+
         /// <summary>The ring under a selected unit: four light arcs with a dark edge.</summary>
         public static EffectFrame SelectionRingSmall()
         {
@@ -372,6 +450,8 @@ namespace WAR2D.Art.Render
                 case "ShellImpact": return ShellImpact(t, 37);
                 case "FlameStream": return FlameStream(cell);
                 case "BomberBlast": return Blast(4, t, 29);
+                case "TurretMuzzle": return TurretMuzzle(cell);
+                case "JamPulse": return JamPulse(t);
                 case "SelectionRingSmall": return SelectionRingSmall();
                 case "SelectionRingLarge": return SelectionRingLarge();
                 case "WaypointFlag": return Flag(cell, false);

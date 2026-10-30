@@ -12,6 +12,7 @@
   <Match>
     <Scene>Map_2</Scene>
     <CountdownSeconds>5.0</CountdownSeconds>
+    <ReconnectSeconds>60</ReconnectSeconds> <!-- v0.15: how long a dropped player has to rejoin; 0 = no rejoin -->
     <Map>
       <Size>1024</Size>          <!-- tiles per side; 0 = use the scene's tilemaps (Map_2). v0.3 results: map size -->
       <Seed>0</Seed>             <!-- 0 = a new random seed every match -->
@@ -58,7 +59,7 @@
   </Replication>
 
   <Orders>
-    <MaxQueued>4</MaxQueued>  <!-- v0.6: Shift-queued waypoints per unit -->
+    <MaxQueued>30</MaxQueued>  <!-- v0.6: Shift-queued waypoints per unit -->
     <MaxDigArea>24</MaxDigArea>  <!-- 2026-10-18: longest side of a Dig drag's area, in tiles (Figma v0.12 Fixes) -->
   </Orders>
 
@@ -73,6 +74,7 @@
     <StartPickSeconds>0 15 30 45 60 90</StartPickSeconds> <!-- v0.11: HQ pick time the host may choose (0 = random); Unlimited is always allowed -->
     <StartPickDefault>45</StartPickDefault>
     <SpareStartSites>2</SpareStartSites>                 <!-- v0.11: sites left undealt -->
+    <Visibility>Friends</Visibility>                     <!-- v0.14: the host's default: Public, Friends or Private (single-player) -->
   </Lobby>
 
   <MenuBattle>
@@ -105,6 +107,8 @@
     <BlastDamage>200.0</BlastDamage>                    <!-- v0.7 -->
     <RadarClearSeconds>5.0</RadarClearSeconds>          <!-- v0.7: radius clear this long before it may ping again -->
     <RadarAlertCooldownSeconds>30.0</RadarAlertCooldownSeconds> <!-- v0.7: least time between two pings from one Radar -->
+    <JamRadius>12.0</JamRadius>                         <!-- v0.13 starting value: tiles a complete, paid Jammer jams for players its owner doesn't share vision with -->
+    <JamSight>3.0</JamSight>                            <!-- v0.13 starting value: inside the jam, those players see a fog cell only from this close -->
   </Siege>
 
   <Audio>
@@ -118,6 +122,275 @@
     <SendKilobytesPerSecond>1024</SendKilobytesPerSecond> <!-- v0.10: per player, after GameOver -->
     <KeepCount>50</KeepCount>                             <!-- v0.10: newest replays kept in the Replays folder -->
   </Replays>
+
+  <!-- v0.14 AI players. No difficulty gets more resources, vision or speed: difficulty only changes how well it plays
+       (docs/superpowers/specs/2026-10-23-v0.14-ai-opponents-design.md). Starting values, tuned with tools/ai-bench.sh. -->
+  <Ai>
+    <Callsigns>Cmdr. Vasquez, Maj. Okafor, Capt. Reyes, Col. Lindqvist, Lt. Tanaka, Maj. Haddad, Capt. Novak, Cmdr. Achebe, Col. Duarte, Lt. Kowalski, Maj. Ferreira, Capt. Ivanova</Callsigns>
+    <!-- Booleans are 1 or 0. Counters: None, Seen, SeenAndBuildings. Scouting: Once, Regular, RegularWithRadar.
+         Peace: Always, UnlessWinning, WhenLosingOrThirdParty. SpecialUse scales the style's Diggers, Suicide bombers, bombs and Jammers. -->
+    <Difficulty name="Easy">
+      <ThinkSeconds>1.0</ThinkSeconds>
+      <ActionsPerMinute>30</ActionsPerMinute>
+      <ReactionSeconds>6.0</ReactionSeconds>
+      <Builders>2</Builders>                         <!-- a low Builders target -->
+      <BuildersPerExpansion>0</BuildersPerExpansion>
+      <MaxExpansions>1</MaxExpansions>               <!-- expands late, once -->
+      <ExpandAfterSeconds>600</ExpandAfterSeconds>
+      <KeepsUpkeepPaid>0</KeepsUpkeepPaid>           <!-- may go unpaid -->
+      <UpkeepReserveSeconds>0</UpkeepReserveSeconds>
+      <Counters>None</Counters>                      <!-- the style's fixed mix -->
+      <Retreats>0</Retreats>
+      <RetreatRatio>0.5</RetreatRatio>
+      <FocusFire>0</FocusFire>
+      <KeepsBacklineBack>0</KeepsBacklineBack>
+      <DigsPastWalls>0</DigsPastWalls>
+      <Scouting>Once</Scouting>
+      <RescoutSeconds>600</RescoutSeconds>
+      <Scouts>1</Scouts>                             <!-- scouts on its route at once -->
+      <SpecialUse>0.25</SpecialUse>                  <!-- rarely -->
+      <DefendsChokepoints>0</DefendsChokepoints>
+      <EarlyTurrets>0</EarlyTurrets>
+      <IncomePerProducer>0</IncomePerProducer>
+      <SaturatesMiners>0</SaturatesMiners>
+      <AttackRatio>1.0</AttackRatio>
+      <Peace>Always</Peace>
+      <GiftsSurplus>0</GiftsSurplus>
+    </Difficulty>
+    <Difficulty name="Normal">
+      <ThinkSeconds>0.5</ThinkSeconds>
+      <ActionsPerMinute>80</ActionsPerMinute>
+      <ReactionSeconds>2.0</ReactionSeconds>
+      <Builders>4</Builders>                         <!-- full -->
+      <BuildersPerExpansion>1</BuildersPerExpansion>
+      <MaxExpansions>2</MaxExpansions>               <!-- on time -->
+      <ExpandAfterSeconds>300</ExpandAfterSeconds>
+      <KeepsUpkeepPaid>1</KeepsUpkeepPaid>           <!-- never unpaid -->
+      <UpkeepReserveSeconds>20</UpkeepReserveSeconds>
+      <Counters>Seen</Counters>
+      <Retreats>1</Retreats>
+      <RetreatRatio>0.6</RetreatRatio>
+      <FocusFire>0</FocusFire>
+      <KeepsBacklineBack>0</KeepsBacklineBack>
+      <DigsPastWalls>0</DigsPastWalls>
+      <Scouting>Regular</Scouting>
+      <RescoutSeconds>120</RescoutSeconds>
+      <Scouts>2</Scouts>
+      <SpecialUse>1.0</SpecialUse>                   <!-- as the style wants -->
+      <DefendsChokepoints>0</DefendsChokepoints>
+      <EarlyTurrets>0</EarlyTurrets>
+      <IncomePerProducer>0</IncomePerProducer>
+      <SaturatesMiners>1</SaturatesMiners>          <!-- Miners on every gem it reaches, expanding when full -->
+      <AttackRatio>1.2</AttackRatio>
+      <Peace>UnlessWinning</Peace>
+      <GiftsSurplus>1</GiftsSurplus>
+    </Difficulty>
+    <Difficulty name="Hard">
+      <ThinkSeconds>0.25</ThinkSeconds>
+      <ActionsPerMinute>200</ActionsPerMinute>
+      <ReactionSeconds>0.5</ReactionSeconds>
+      <Builders>7</Builders>                         <!-- full, plus extra for expansions -->
+      <BuildersPerExpansion>1</BuildersPerExpansion>
+      <MaxExpansions>4</MaxExpansions>               <!-- early, as the style wants -->
+      <ExpandAfterSeconds>120</ExpandAfterSeconds>
+      <KeepsUpkeepPaid>1</KeepsUpkeepPaid>
+      <UpkeepReserveSeconds>15</UpkeepReserveSeconds>
+      <Counters>SeenAndBuildings</Counters>
+      <Retreats>1</Retreats>
+      <RetreatRatio>0.35</RetreatRatio>
+      <FocusFire>0</FocusFire>
+      <KeepsBacklineBack>1</KeepsBacklineBack>
+      <DigsPastWalls>1</DigsPastWalls>
+      <Scouting>RegularWithRadar</Scouting>
+      <RescoutSeconds>60</RescoutSeconds>
+      <Scouts>3</Scouts>
+      <SpecialUse>1.0</SpecialUse>
+      <DefendsChokepoints>1</DefendsChokepoints>     <!-- defences at chokepoints -->
+      <EarlyTurrets>3</EarlyTurrets>                 <!-- turrets in front of its HQ early, against a rush -->
+      <IncomePerProducer>120</IncomePerProducer>           <!-- another producer only with this much income per producer it has -->
+      <SaturatesMiners>1</SaturatesMiners>
+      <AttackRatio>1.1</AttackRatio>
+      <Peace>WhenLosingOrThirdParty</Peace>
+      <GiftsSurplus>1</GiftsSurplus>
+    </Difficulty>
+    <!-- BuildOrder: buildings to place and units to queue, in order, after the HQ. ArmyMix: unit weights before counters.
+         Producers: producer buildings kept (the HQ aside). Turrets, Jammers and Bombs: per defended spot. -->
+    <Style name="Rusher">  <!-- early Barracks, Scouts and Tanks, attacks early and often, expands late -->
+      <BuildOrder>Miner Miner Barracks Builder Scout Tank Tank Miner Barracks Tank Tank Tank Flamethrower</BuildOrder>
+      <ArmyMix>Scout:2 Tank:6 Flamethrower:2 SuicideBomber:1 Heavy:1</ArmyMix>
+      <Producers>Barracks:3 HeavyFactory:1 SiegeWorkshop:1</Producers>
+      <Miners>4</Miners>
+      <MinersPerExpansion>3</MinersPerExpansion>
+      <Expansions>1</Expansions>
+      <ExpandTiming>2.0</ExpandTiming>
+      <FirstAttackSeconds>150</FirstAttackSeconds>
+      <AttackArmySize>8</AttackArmySize>
+      <AttackRatioScale>0.8</AttackRatioScale>
+      <AttackIntervalSeconds>60</AttackIntervalSeconds>
+      <Turrets>1</Turrets>
+      <Jammers>0</Jammers>
+      <Bombs>0</Bombs>
+      <Walls>0</Walls>
+      <Radar>0</Radar>
+      <HoldsChokes>0</HoldsChokes>
+    </Style>
+    <Style name="Turtle">  <!-- walls, turrets, Jammers and bombs at its chokepoints; a big Heavy and Artillery army later -->
+      <BuildOrder>Miner Miner Builder Miner Barracks GunTurret GunTurret Miner Builder HeavyFactory Radar Jammer</BuildOrder>
+      <ArmyMix>Tank:2 Heavy:4 Artillery:4 Sniper:2 Flamethrower:1 Digger:1</ArmyMix>
+      <Producers>Barracks:1 HeavyFactory:2 SiegeWorkshop:1</Producers>
+      <Miners>6</Miners>
+      <MinersPerExpansion>4</MinersPerExpansion>
+      <Expansions>1</Expansions>
+      <ExpandTiming>1.5</ExpandTiming>
+      <FirstAttackSeconds>600</FirstAttackSeconds>
+      <AttackArmySize>25</AttackArmySize>
+      <AttackRatioScale>1.5</AttackRatioScale>
+      <AttackIntervalSeconds>180</AttackIntervalSeconds>
+      <Turrets>6</Turrets>
+      <Jammers>2</Jammers>
+      <Bombs>8</Bombs>
+      <Walls>1</Walls>
+      <Radar>1</Radar>
+      <HoldsChokes>1</HoldsChokes>
+    </Style>
+    <Style name="Expander">  <!-- takes expansions early, more Miners, a mid-game army -->
+      <BuildOrder>Miner Miner Builder Miner Miner Builder Barracks Miner Tank Tank Scout</BuildOrder>
+      <ArmyMix>Scout:1 Tank:5 Flamethrower:2 Heavy:2 Artillery:1 Sniper:1</ArmyMix>
+      <Producers>Barracks:2 HeavyFactory:1 SiegeWorkshop:0</Producers>
+      <Miners>6</Miners>
+      <MinersPerExpansion>6</MinersPerExpansion>
+      <Expansions>3</Expansions>
+      <ExpandTiming>0.5</ExpandTiming>
+      <FirstAttackSeconds>360</FirstAttackSeconds>
+      <AttackArmySize>15</AttackArmySize>
+      <AttackRatioScale>1.2</AttackRatioScale>
+      <AttackIntervalSeconds>120</AttackIntervalSeconds>
+      <Turrets>2</Turrets>
+      <Jammers>0</Jammers>
+      <Bombs>2</Bombs>
+      <Walls>0</Walls>
+      <Radar>1</Radar>
+      <HoldsChokes>0</HoldsChokes>
+    </Style>
+    <Style name="Balanced">  <!-- a bit of each; what Random picks by default -->
+      <BuildOrder>Miner Miner Builder Barracks Miner Scout Tank Tank Miner HeavyFactory Tank Heavy</BuildOrder>
+      <ArmyMix>Scout:1 Tank:4 Flamethrower:2 Heavy:2 Artillery:1 Sniper:1 Digger:1 SuicideBomber:1</ArmyMix>
+      <Producers>Barracks:2 HeavyFactory:1 SiegeWorkshop:1</Producers>
+      <Miners>5</Miners>
+      <MinersPerExpansion>4</MinersPerExpansion>
+      <Expansions>2</Expansions>
+      <ExpandTiming>1.0</ExpandTiming>
+      <FirstAttackSeconds>300</FirstAttackSeconds>
+      <AttackArmySize>12</AttackArmySize>
+      <AttackRatioScale>1.0</AttackRatioScale>
+      <AttackIntervalSeconds>120</AttackIntervalSeconds>
+      <Turrets>3</Turrets>
+      <Jammers>1</Jammers>
+      <Bombs>4</Bombs>
+      <Walls>0</Walls>
+      <Radar>1</Radar>
+      <HoldsChokes>0</HoldsChokes>
+    </Style>
+    <Diplomacy>  <!-- only when the match has Diplomacy on -->
+      <PeaceSeconds>60</PeaceSeconds>              <!-- a non-teammate sharing vision who hasn't hit it this long is offered peace -->
+      <GrudgeSeconds>180</GrudgeSeconds>           <!-- peace refused this long after a betrayal -->
+      <WinningRatio>1.5</WinningRatio>             <!-- its strength over theirs (as seen) above which it is clearly winning -->
+      <LosingRatio>0.8</LosingRatio>               <!-- and below which it is losing -->
+      <GiftSurplus>3000</GiftSurplus>              <!-- O5: above this balance ... -->
+      <GiftSurplusSeconds>60</GiftSurplusSeconds>  <!-- ... for this long ... -->
+      <GiftShare>0.25</GiftShare>                  <!-- ... it gifts this share to the teammate seen fighting most recently -->
+      <GiftPeaceFactor>0.5</GiftPeaceFactor>       <!-- O6: a gift from a non-teammate scales PeaceSeconds once -->
+    </Diplomacy>
+    <Concede>  <!-- surrenders when hopeless, never while a teammate still holds -->
+      <MinMinutes>10</MinMinutes>
+      <Seconds>60</Seconds>                        <!-- both conditions held this long -->
+      <Ratio>0.1</Ratio>                           <!-- its strength under this share of the strongest enemy force seen -->
+      <SeenWindowSeconds>120</SeenWindowSeconds>   <!-- that force seen within this long -->
+      <IncomeSeconds>60</IncomeSeconds>            <!-- resources plus this much income to afford a unit -->
+    </Concede>
+    <Brain>  <!-- the brain's bookkeeping, the same at every difficulty -->
+      <BudgetBurstSeconds>5</BudgetBurstSeconds>    <!-- the action budget saves up at most this many seconds of its APM -->
+      <ProposalWaitSeconds>10</ProposalWaitSeconds> <!-- an unaffordable proposal waits this long, then managers propose again -->
+      <ThreatRadius>14</ThreatRadius>               <!-- tiles from its buildings where a seen enemy is a threat -->
+      <ArmyMemorySeconds>180</ArmyMemorySeconds>    <!-- a last-seen enemy army is remembered this long -->
+      <EventMemorySeconds>30</EventMemorySeconds>   <!-- alerts and threats stay on the blackboard this long -->
+    </Brain>
+    <Play>  <!-- plan Task 7: how every AI plays, the same at every difficulty and style (sizes and pacing; behaviour is above) -->
+      <OptionRadius>18</OptionRadius>                  <!-- tiles around a start option counted for gems and open ground -->
+      <OptionGemWeight>1.0</OptionGemWeight>           <!-- score per gem tile there -->
+      <OptionOpenWeight>0.05</OptionOpenWeight>        <!-- score per ground tile there -->
+      <OptionExpansionWeight>40</OptionExpansionWeight> <!-- score per rich field (expansion) in reach, falling to 0 at the reach -->
+      <OptionExpansionReach>140</OptionExpansionReach>
+      <OptionTeammateWeight>0.3</OptionTeammateWeight> <!-- score lost per tile from the nearest teammate's pick -->
+      <OpeningSeconds>300</OpeningSeconds>             <!-- the build order is dropped after this, done or not -->
+      <BaseRadius>24</BaseRadius>                      <!-- tiles from the HQ buildings go within -->
+      <BuildingGap>1</BuildingGap>                     <!-- free tiles kept around producers, Radars and Jammers -->
+      <PlacementTriesPerThink>600</PlacementTriesPerThink> <!-- anchors a placement search tries per think; longer searches go on next think -->
+      <PendingSeconds>5</PendingSeconds>               <!-- a placed building's footprint is reserved this long until its view shows it -->
+      <BlockedSeconds>60</BlockedSeconds>              <!-- an anchor where a placement was refused stays out of its search this long -->
+      <SearchRetrySeconds>5</SearchRetrySeconds>       <!-- a request whose search found no spot is searched again after this -->
+      <ReplanSeconds>30</ReplanSeconds>                <!-- defended spots and the gathering point are re-planned this often -->
+      <DefenceSpread>6</DefenceSpread>                 <!-- tiles around a defended spot its turrets, bombs and Jammers go -->
+      <BuildersPerBlueprint>2</BuildersPerBlueprint>
+      <AssignSeconds>4</AssignSeconds>                 <!-- a blueprint, repair or scout target is not re-assigned sooner -->
+      <RepairBelow>0.6</RepairBelow>                   <!-- health share below which a finished building is repaired -->
+      <QueueAhead>2</QueueAhead>                       <!-- units kept queued per producer -->
+      <QueueBatch>10</QueueBatch>                      <!-- units queued at once on an empty army producer it can pay for (a queue step) -->
+      <UpkeepIncomeShare>0.95</UpkeepIncomeShare>      <!-- Normal, Hard: upkeep kept under this share of income ... -->
+      <UpkeepFloorSeconds>3</UpkeepFloorSeconds>        <!-- Normal, Hard: seconds of upkeep always kept in hand -->
+      <UpkeepBankSeconds>60</UpkeepBankSeconds>        <!-- ... unless its balance covers this long of the deficit -->
+      <UpkeepHeadroom>25</UpkeepHeadroom>              <!-- income left over upkeep below which it builds Miners beyond its style's -->
+      <CappedExpandResources>600</CappedExpandResources> <!-- with upkeep up to its income and this much banked, it expands early -->
+      <GatherDistance>12</GatherDistance>              <!-- the army gathers this far from the HQ towards the enemy -->
+      <ArmyRadius>14</ArmyRadius>                      <!-- tiles around an army's centre that count as its fight -->
+      <OrderSeconds>3</OrderSeconds>                   <!-- a group is re-ordered at most this often -->
+      <ReinforceSize>4</ReinforceSize>                 <!-- units gathered at home sent on to an attack -->
+      <DefendRadius>40</DefendRadius>                  <!-- home units within this of the HQ come to defend -->
+      <CounterShift>0.5</CounterShift>                 <!-- share of the mix moved to counters (spec 5.5) -->
+      <BuildingCounterWeight>0.5</BuildingCounterWeight> <!-- Hard: building counters against unit counters -->
+      <LightTurretShare>0.6</LightTurretShare>         <!-- massed light enemies above this share add a turret per defended spot -->
+      <BacklineDistance>6</BacklineDistance>           <!-- Hard: Artillery and Snipers stay this far behind the front -->
+      <BomberClump>3</BomberClump>                     <!-- visible enemies in a bomber's blast that make it detonate -->
+      <BomberChecks>16</BomberChecks>                  <!-- bombers checked for a detonation per think -->
+      <ScoutAfterSeconds>20</ScoutAfterSeconds>        <!-- with no Scout by then, any unit scouts -->
+      <DefenceAfterSeconds>240</DefenceAfterSeconds>   <!-- defences beyond the build order's only after this much play -->
+      <DefenceDistance>3</DefenceDistance>             <!-- tiles past the start region's edge along a lane for a chokepoint defence -->
+      <MaxDefendedSpots>2</MaxDefendedSpots>
+      <WallGap>6</WallGap>                             <!-- tiles left open in a chokepoint wall for its own army (2 trapped big armies behind it) -->
+      <RetreatSeconds>15</RetreatSeconds>              <!-- a retreat lasts at most this long -->
+      <TurretStrength>2.0</TurretStrength>             <!-- a Gun turret counts as this many times its cost in a strength estimate -->
+      <StageDistance>18</StageDistance>                <!-- an attack group gathers this far short of its target before it engages ... -->
+      <StageShare>0.7</StageShare>                     <!-- ... until this share of it is there ... -->
+      <StageSeconds>45</StageSeconds>                  <!-- ... or this long has passed since the first got there -->
+      <MarchSeconds>240</MarchSeconds>                 <!-- the staging wait starts after this long marching, even with nobody there -->
+      <EarlyTurretSeconds>90</EarlyTurretSeconds>      <!-- a difficulty's EarlyTurrets go up from this much play -->
+      <ScoutStopSeconds>90</ScoutStopSeconds>          <!-- a scout gives up a route stop it hasn't reached or seen in this long -->
+      <ScoutsFullMapSize>1024</ScoutsFullMapSize>      <!-- a difficulty's Scouts all run on maps this big; smaller maps get fewer, at least one -->
+      <MaxedAttackResources>1500</MaxedAttackResources> <!-- Normal, Hard: no upkeep room for another unit and this much in hand: attack without the strength check -->
+      <CounterAttackRatio>3</CounterAttackRatio>       <!-- defending a threat it outweighs this many times over, the rest of its army counter-attacks -->
+      <StuckBlueprintSeconds>60</StuckBlueprintSeconds> <!-- a blueprint with no progress this long is cancelled and its spot avoided -->
+      <RecallShare>0.3</RecallShare>                   <!-- a threat at its base worth this share of its attack group (and more than home holds) calls the attack back -->
+      <MarchSlack>1.5</MarchSlack>                     <!-- the staging wait starts at the latest after the slowest unit's travel time times this -->
+      <MaxDefenceBlueprints>2</MaxDefenceBlueprints>   <!-- defence blueprints standing at once (more would hold Builders off Miners) -->
+      <RegroupShare>0.5</RegroupShare>                 <!-- a lost fight at the front holding under this share of the group regroups instead of retreating -->
+      <SaturatedSeconds>45</SaturatedSeconds>          <!-- a Miner search with no spot and nothing to explore marks that area full this long -->
+      <StuckPatch>4</StuckPatch>                       <!-- anchors this far around a cancelled stuck blueprint stay out of the search -->
+    </Play>
+    <Counters>  <!-- spec 5.5: units weighted against each enemy unit seen (Normal, Hard) and what each enemy building makes (Hard) -->
+      <Counter seen="Heavy">Sniper:2 Artillery:2 Heavy:1</Counter>
+      <Counter seen="Artillery">Scout:1 Tank:2 SuicideBomber:1</Counter>
+      <Counter seen="Sniper">Scout:2 Tank:2</Counter>
+      <Counter seen="Tank">Flamethrower:3 Heavy:1</Counter>
+      <Counter seen="Scout">Flamethrower:2 Tank:1</Counter>
+      <Counter seen="Flamethrower">Artillery:1 Sniper:2 Heavy:1</Counter>
+      <Counter seen="SuicideBomber">Tank:2 Sniper:1</Counter>
+      <Counter seen="Digger">Tank:2</Counter>
+      <Counter building="Barracks">Flamethrower:2 Tank:1</Counter>
+      <Counter building="HeavyFactory">Sniper:2 Artillery:2</Counter>
+      <Counter building="SiegeWorkshop">Tank:2 Sniper:1</Counter>
+      <Counter building="GunTurret">Artillery:3 Heavy:1</Counter>
+    </Counters>
+  </Ai>
 
   <!-- Damage multiplier per attacker unit type and target class (LightUnit, HeavyUnit, Building, Wall); 1.0 when missing. target="Unit" is shorthand for both unit classes. -->
   <DamageTable>
@@ -157,6 +430,11 @@
     <Entry attacker="SuicideBomber" target="HeavyUnit">1</Entry>
     <Entry attacker="SuicideBomber" target="Building">2</Entry>
     <Entry attacker="SuicideBomber" target="Wall">3</Entry>
+    <!-- v0.13 building attackers, starting values (spec section 2.1) -->
+    <Entry attacker="GunTurret" target="LightUnit">1.5</Entry>
+    <Entry attacker="GunTurret" target="HeavyUnit">0.4</Entry>
+    <Entry attacker="GunTurret" target="Building">0.5</Entry>
+    <Entry attacker="GunTurret" target="Wall">0.5</Entry>
   </DamageTable>
 
   <Units>
@@ -265,6 +543,15 @@
     </Building>
     <Building type="Radar">
       <Health>200</Health><Width>2</Width><Height>2</Height><UpfrontCost>250.0</UpfrontCost><RunningCost>5.0</RunningCost><Sight>20.0</Sight>  <!-- v0.7 -->
+    </Building>
+    <!-- v0.13 Bastion: starting values from the spec (section 5), to tune in play -->
+    <Building type="GunTurret"> <!-- attacks like a unit that can't move: units, then buildings, then walls -->
+      <Health>350</Health><Width>1</Width><Height>1</Height><UpfrontCost>150.0</UpfrontCost><RunningCost>4.0</RunningCost>
+      <Sight>8.0</Sight><Damage>8</Damage><Range>7.0</Range><AttackInterval>0.4</AttackInterval>
+    </Building>
+    <Building type="Jammer"> <!-- jams Siege/JamRadius for players its owner doesn't share vision with -->
+      <Health>200</Health><Width>2</Width><Height>2</Height><UpfrontCost>200.0</UpfrontCost><RunningCost>6.0</RunningCost>
+      <Sight>6.0</Sight>
     </Building>
   </Buildings>
 </GameConfig>

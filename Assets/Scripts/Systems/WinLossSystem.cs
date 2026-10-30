@@ -30,8 +30,8 @@ public partial struct WinLossSystem : ISystem
             int id = (int)entry.Key.netId;
             statuses.Add(new PlayerStatus(id, hqOwners.Contains(id), entry.Value.state == PlayerState.Eliminated, GameCore.Instance.TeamOf(id)));
         }
-        foreach (KeyValuePair<int, ServerPlayer> bot in GameCore.Instance.Bots)
-            statuses.Add(new PlayerStatus(bot.Key, hqOwners.Contains(bot.Key), bot.Value.state == PlayerState.Eliminated, GameCore.Instance.TeamOf(bot.Key)));
+        foreach (KeyValuePair<int, AiSeat> seat in GameCore.Instance.AiPlayers)
+            statuses.Add(new PlayerStatus(seat.Key, hqOwners.Contains(seat.Key), seat.Value.Player.state == PlayerState.Eliminated, GameCore.Instance.TeamOf(seat.Key)));
         hqOwners.Dispose();
 
         GameCore core = GameCore.Instance;

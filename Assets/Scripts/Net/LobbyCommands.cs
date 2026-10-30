@@ -26,6 +26,7 @@ public partial class GameCore
             StartingResources = config.Resources.StartingResources,
             StartOptions = config.Lobby.StartOptionsDefault,
             StartPickSeconds = config.Lobby.StartPickDefault,
+            Visibility = config.Lobby.Visibility,
         };
     }
 
@@ -38,11 +39,27 @@ public partial class GameCore
         if (!CommandGate.Allow(sender, nameof(Cmd_SetMatchSettings))) return;
         if (!IsServerOwner(sender) || CurrentState != GameState.Lobby) return;
         if (!MatchSettingsRules.IsValid(settings, ConfigLoader.LoadConfig().Lobby)) return;
+        // Going Private with another human connected is refused (the host's lobby shows "Remove the other players first").
+        if (!LobbyRules.MayChangeVisibility(Settings.Visibility, settings.Visibility, ServerPlayers.Count)) return;
+        bool reseeded = settings.Seed != Settings.Seed;
         Settings = settings;
+        if (reseeded) RedrawCallsigns();
         foreach (ClientPlayer player in LobbyClientPlayers())
         {
             if (settings.Mode == MatchMode.FreeForAll) player.lobbyTeam = TeamRules.NoTeam;
             player.ready = false;
+        }
+        if (settings.Mode == MatchMode.FreeForAll) SetAiTeams(TeamRules.NoTeam);
+    }
+
+    /// <summary>Puts every lobby AI on <paramref name="team"/> (Free-for-all forces Solo).</summary>
+    [Server]
+    private void SetAiTeams(int team)
+    {
+        foreach (AiSeat seat in AiPlayers.Values)
+        {
+            seat.LobbyTeam = team;
+            if (seat.Client != null) seat.Client.lobbyTeam = team;
         }
     }
 
@@ -55,7 +72,45 @@ public partial class GameCore
         MatchSettings settings = Settings;
         settings.Seed = NewSeed();
         Settings = settings;
+        RedrawCallsigns();
         foreach (ClientPlayer player in LobbyClientPlayers()) player.ready = false;
+    }
+
+    /// <summary>
+    /// Adds an AI seat (v0.14): server owner only, in the lobby, Easy/Normal/Hard and a known style. It takes the first
+    /// unused colour and, in Teams mode, the team with the fewest players. Refused past the seat limit. Clears every ready flag.
+    /// </summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_AddAi(AiDifficulty difficulty, AiStyle style, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_AddAi))) return;
+        if (!IsServerOwner(sender) || CurrentState != GameState.Lobby) return;
+        if (!AiLobbyRules.IsValidChoice(difficulty, style) || !AiLobbyRules.HasFreeSeat(SeatCount)) return;
+        var teams = new List<int>();
+        foreach (ClientPlayer player in LobbyClientPlayers()) teams.Add(player.lobbyTeam);
+        foreach (AiSeat seat in AiPlayers.Values) teams.Add(seat.LobbyTeam);
+        AddAi(difficulty, style, -1, LobbyRules.FewestPlayersTeam(Settings.Mode, teams));
+    }
+
+    /// <summary>
+    /// Changes a lobby AI (v0.14): server owner only, in the lobby, for an existing (not Scripted) AI, with a valid
+    /// difficulty and style, a colour nobody else has and a team the mode offers. Clears every ready flag on a change.
+    /// </summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_SetAi(int ownerId, AiDifficulty difficulty, AiStyle style, int colour, int team, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_SetAi))) return;
+        if (!IsServerOwner(sender)) return;
+        SetAi(ownerId, difficulty, style, colour, team);
+    }
+
+    /// <summary>Removes a lobby AI (v0.14): server owner only, in the lobby. Clears every ready flag.</summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_RemoveAi(int ownerId, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_RemoveAi))) return;
+        if (!IsServerOwner(sender)) return;
+        RemoveAi(ownerId);
     }
 
     /// <summary>Takes a palette colour nobody else has, in the lobby.</summary>
@@ -64,9 +119,7 @@ public partial class GameCore
     {
         if (!CommandGate.Allow(sender, nameof(Cmd_SetColour))) return;
         if (CurrentState != GameState.Lobby || !TryLobbyPlayer(sender, out ClientPlayer me)) return;
-        var others = new List<int>();
-        foreach (ClientPlayer player in LobbyClientPlayers()) if (player != me) others.Add(player.colourIndex);
-        if (LobbyRules.IsColourFree(colourIndex, others)) me.colourIndex = colourIndex;
+        if (LobbyRules.IsColourFree(colourIndex, TakenColours(me))) me.colourIndex = colourIndex;
     }
 
     /// <summary>Marks the sender ready (or not), in the lobby.</summary>
@@ -95,6 +148,7 @@ public partial class GameCore
         foreach (NetworkIdentity identity in ServerPlayers.Keys)
             if (identity != null && identity.TryGetComponent(out ClientPlayer player))
                 players.Add((BuildingData.UIntToInt(identity.netId), player.ready, player.lobbyTeam));
+        foreach (AiSeat seat in AiPlayers.Values) players.Add((seat.OwnerId, true, seat.LobbyTeam)); // an AI is always ready
         return players;
     }
 
@@ -102,14 +156,13 @@ public partial class GameCore
     [Server]
     private void AssignFreeColour(ClientPlayer joining)
     {
-        var taken = new List<int>();
-        foreach (ClientPlayer player in LobbyClientPlayers()) if (player != joining) taken.Add(player.colourIndex);
-        int colour = LobbyRules.FirstFreeColour(taken);
+        int colour = LobbyRules.FirstFreeColour(TakenColours(joining));
         if (colour < 0) // LobbyRules.MayJoin keeps the lobby within the palette, so this means that rule broke
             WAR2D.Dev.Logging.WarLog.Error(WAR2D.Dev.Logging.LogCategory.Lobby, $"no free colour for netId {joining.netId}; sharing colour 0");
         joining.colourIndex = colour < 0 ? 0 : colour;
     }
 
+    /// <summary>The humans' player objects (AIs are always ready and keep their own seats).</summary>
     private IEnumerable<ClientPlayer> LobbyClientPlayers()
     {
         foreach (NetworkIdentity identity in ServerPlayers.Keys)

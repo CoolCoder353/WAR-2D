@@ -45,8 +45,8 @@ namespace WAR2D.UI
             if (fraction.HasValue) replayFill.style.width = Length.Percent(UnityEngine.Mathf.Clamp01(fraction.Value) * 100f);
         }
 
-        /// <summary>The replay line's text and bar for the current state (the host has the file; a player receives it).</summary>
-        public static (string text, float? fraction) ReplayState(bool host, WAR2D.Net.Replay.MatchRecorder recorder, WAR2D.Net.Replay.ReplayReceiver receiver, bool saveReplays)
+        /// <summary>The replay line's text and bar for the current state (only the host records, so a joined player has none).</summary>
+        public static (string text, float? fraction) ReplayState(bool host, WAR2D.Net.Replay.MatchRecorder recorder)
         {
             const string saved = "Replay saved · watch it from Replays";
             if (host)
@@ -54,10 +54,7 @@ namespace WAR2D.UI
                 if (recorder == null) return (null, null);
                 return recorder.Finished ? (saved, null) : ("Saving replay…", null);
             }
-            if (!saveReplays || receiver == null) return (null, null);
-            if (receiver.SavedPath != null) return (saved, null);
-            if (!receiver.Active) return (null, null);
-            return ($"Saving replay… {UnityEngine.Mathf.FloorToInt(receiver.Fraction * 100f)} %", receiver.Fraction);
+            return (null, null);
         }
 
         public bool IsShown => screen.ClassListContains("overlay-screen--visible");
@@ -75,7 +72,8 @@ namespace WAR2D.UI
         }
 
         /// <summary>Fills the statistics table: one row per player, with their result.</summary>
-        public void ShowStats(MatchResult result, Func<int, string> nameOf, Func<int, int> colourOf)
+        /// <param name="tagOf">An AI's end-screen tag ("AI · Hard · Turtle (random)"); null for a human.</param>
+        public void ShowStats(MatchResult result, Func<int, string> nameOf, Func<int, int> colourOf, Func<int, string> tagOf = null)
         {
             stats.Clear();
             var header = new VisualElement();
@@ -97,8 +95,7 @@ namespace WAR2D.UI
                 var swatch = new VisualElement();
                 swatch.AddToClassList("swatch");
                 swatch.AddToClassList("player-" + (colourOf(owner) % 8 + 1));
-                var name = new Label(nameOf(owner));
-                name.AddToClassList("stats-cell__name");
+                VisualElement name = PlayerNameLabel.Build(nameOf(owner), tagOf?.Invoke(owner), "stats-cell__name");
                 bool won = winners.Contains(owner);
                 var outcome = new Label(winners.Count == 0 ? "Draw" : won ? "Win" : "Lose");
                 outcome.AddToClassList("stats-cell__result");

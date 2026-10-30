@@ -66,6 +66,17 @@ public class GameManager : NetworkManager
                 if (child.GetType().Name == "FizzySteamworks") { if (steamTransport == null) steamTransport = child; }
                 else if (directTransport == null) directTransport = child;
             }
+        // Dev only (-perf, e.g. tools/ai-bench.sh's parallel hosts): -port n moves the KCP port off the scene's.
+        if (DevApi.PerfFlag && ushort.TryParse(PerfMatch.ArgValue("-port"), out ushort devPort) && devPort != 0)
+        {
+            DefaultPort = devPort;
+            if (directTransport is PortTransport kcp) kcp.Port = devPort;
+            else if (transport is PortTransport single) single.Port = devPort;
+            // The host listens on every child, so the multiplexer's other port transports (WebSocket) move too, 1000 up.
+            if (transport is MultiplexTransport all && all.transports != null)
+                foreach (Transport child in all.transports)
+                    if (child != directTransport && child is PortTransport other) other.Port = (ushort)Mathf.Min(ushort.MaxValue, devPort + 1000);
+        }
         // Without Steam (not running, -noSteam, tests) the Steam transport would throw on start: host on KCP only.
         if (!WAR2D.Net.Steam.SteamServices.Available && transport is MultiplexTransport plain && steamTransport != null)
         {
@@ -119,6 +130,10 @@ public class GameManager : NetworkManager
         }
         GameObject corePrefab = Resources.Load<GameObject>(GameCorePrefabPath);
         if (GameCore.Instance == null && corePrefab != null) NetworkServer.Spawn(Instantiate(corePrefab));
+        pendingRejoin.Clear();
+        rejoinGrace.Clear();
+        NetworkServer.RegisterHandler<WAR2D.Net.Rejoin.RejoinRequest>(OnRejoinRequest, true);
+        NetworkServer.RegisterHandler<WAR2D.Net.Rejoin.LeaveMatch>(OnLeaveMatch, true);
         WarLog.Info(LogCategory.Net, "Server has started");
     }
 
@@ -139,18 +154,68 @@ public class GameManager : NetworkManager
 
     /// <summary>
     /// Called on the server when a client connects. Only the lobby takes new players, and only up to
-    /// <see cref="LobbyRules.MaxPlayers"/>: a player joining a running match would have no team, colour
-    /// slot, HQ or replication, so the server closes the connection (the joining client says so).
+    /// <see cref="LobbyRules.MaxPlayers"/> seats (AIs included): a player joining a running match would have no team,
+    /// colour slot, HQ or replication, so the server closes the connection (the joining client says so). A Private
+    /// lobby (v0.14) refuses every connection but the host's own (the authenticator tells the client why first).
     /// </summary>
     [Server]
     public override void OnServerConnect(NetworkConnectionToClient conn)
     {
         base.OnServerConnect(conn);
         GameCore core = GameCore.Instance;
-        if (core == null || LobbyRules.MayJoin(core.CurrentState, NetworkServer.connections.Count)) return;
-        WarLog.Info(LogCategory.Net, $"Refusing connection {conn.connectionId}: the match is {core.CurrentState} with {NetworkServer.connections.Count - 1} players.");
+        // v0.15: a running match takes a connection only while some human holds a rejoin ticket (they may come back before the
+        // server noticed the drop), and only keeps it if it brings a valid token within RejoinGrace.Seconds.
+        if (core != null && !(conn is LocalConnectionToClient) && core.CurrentState == GameState.Playing && core.MayRejoin)
+        {
+            rejoinGrace.Track(conn.connectionId, NetworkTime.localTime);
+            return;
+        }
+        // AI seats take places too: humans and AIs together are at most MaxPlayers; a Private lobby takes only the host (v0.14).
+        if (core == null || LobbyRules.MayConnect(core.Settings.Visibility, conn is LocalConnectionToClient, core.CurrentState,
+                NetworkServer.connections.Count + core.AiPlayers.Count, out string refusal)) return;
+        WarLog.Info(LogCategory.Net, refusal != null
+            ? $"Refusing connection {conn.connectionId}: {refusal}"
+            : $"Refusing connection {conn.connectionId}: the match is {core.CurrentState} with {NetworkServer.connections.Count - 1} players.");
+        LastRefusedConnection = conn.connectionId;
         conn.Disconnect();
     }
+
+    private readonly Dictionary<int, string> pendingRejoin = new Dictionary<int, string>();
+
+    private readonly WAR2D.Net.Rejoin.RejoinGrace rejoinGrace = new WAR2D.Net.Rejoin.RejoinGrace();
+    private readonly List<int> graceExpired = new List<int>();
+
+    /// <summary>Closes the connections a running match let in that never came back as a player (server only).</summary>
+    public override void Update()
+    {
+        base.Update();
+        if (!NetworkServer.active || rejoinGrace.Count == 0) return;
+        graceExpired.Clear();
+        rejoinGrace.TakeExpired(NetworkTime.localTime, graceExpired);
+        foreach (int id in graceExpired)
+        {
+            if (!NetworkServer.connections.TryGetValue(id, out NetworkConnectionToClient conn) || conn.identity != null) continue;
+            WarLog.Info(LogCategory.Net, $"Refusing connection {id}: it did not come back as a player within {WAR2D.Net.Rejoin.RejoinGrace.Seconds:0} s");
+            LastRefusedConnection = id;
+            conn.Disconnect();
+        }
+    }
+
+    /// <summary>A client leaving the running match on purpose: its seat is not kept for a rejoin (<see cref="GameCore.OnLeaveMatch"/>).</summary>
+    [Server]
+    private void OnLeaveMatch(NetworkConnectionToClient conn, WAR2D.Net.Rejoin.LeaveMatch _)
+    {
+        if (GameCore.Instance != null) GameCore.Instance.OnLeaveMatch(conn);
+        else conn.Disconnect();
+    }
+
+    /// <summary>A client that is coming back sends its ticket's token before anything else; the seat is given at its add-player request.</summary>
+    [Server]
+    private void OnRejoinRequest(NetworkConnectionToClient conn, WAR2D.Net.Rejoin.RejoinRequest request) =>
+        pendingRejoin[conn.connectionId] = request.Token;
+
+    /// <summary>The connection id <see cref="OnServerConnect"/> last refused (tests read it); -1 for none.</summary>
+    internal static int LastRefusedConnection { get; set; } = -1;
 
     /// <summary>
     /// Called on the server when a new player has connected.
@@ -160,6 +225,24 @@ public class GameManager : NetworkManager
     [Server]
     public override void OnServerAddPlayer(NetworkConnectionToClient conn)
     {
+        // Mirror asks again after a scene change; a connection that already has its player (a rejoin) has nothing to add.
+        if (conn.identity != null) return;
+        // A running match never makes a new player: the connection is somebody coming back (it sent its ticket's token first) or it is closed.
+        if (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing && !(conn is LocalConnectionToClient))
+        {
+            pendingRejoin.Remove(conn.connectionId, out string token);
+            rejoinGrace.Forget(conn.connectionId);
+            if (!GameCore.Instance.TryRejoin(conn, token))
+            {
+                WAR2D.Net.Rejoin.RejoinRefusal why = GameCore.Instance.RefusalFor(token);
+                WarLog.Info(LogCategory.Net, $"Refusing connection {conn.connectionId}: no seat to come back to ({why})");
+                LastRefusedConnection = conn.connectionId;
+                // v0.15.1: say why first; the client leaves on receipt, and the grace clock closes the connection if it does not.
+                conn.Send(new WAR2D.Net.Rejoin.RejoinRefused { Reason = why });
+                rejoinGrace.Track(conn.connectionId, NetworkTime.localTime, WAR2D.Net.Rejoin.RejoinGrace.RefusedSeconds);
+            }
+            return;
+        }
         base.OnServerAddPlayer(conn);
 
         if (GameCore.Instance == null) return;
@@ -168,6 +251,13 @@ public class GameManager : NetworkManager
         // Log the connection
         WarLog.Info(LogCategory.Net, $"Player {conn.connectionId} has connected");
         WarLog.Info(LogCategory.Net, $"There are now {GameCore.Instance.ServerPlayers.Count} players connected");
+    }
+
+    private static bool ForgetGate(NetworkConnectionToClient conn)
+    {
+        CommandGate.TakeKicked(conn.connectionId);
+        CommandGate.Forget(conn.connectionId);
+        return false;
     }
 
     /// <summary>
@@ -181,8 +271,11 @@ public class GameManager : NetworkManager
         WAR2D.Net.Replication.ReplicationService.Instance?.OnClientLeft(conn);
         (authenticator as WAR2D.Net.Steam.SteamAuthenticator)?.OnServerDisconnect(conn); // a sign-in still in progress
         // Remove the disconnected player from the list of players
-        if (GameCore.Instance != null) GameCore.Instance.OnPlayerLeave(conn);
-        else CommandGate.Forget(conn.connectionId);
+        pendingRejoin.Remove(conn.connectionId);
+        rejoinGrace.Forget(conn.connectionId);
+        bool keptAway = GameCore.Instance != null ? GameCore.Instance.OnPlayerLeave(conn) : ForgetGate(conn);
+        // A player whose seat is kept for them to come back to keeps their object: Mirror's default would destroy it with the connection.
+        if (keptAway) NetworkServer.RemovePlayerForConnection(conn, RemovePlayerOptions.KeepActive);
 
         // Log the disconnection
         WarLog.Info(LogCategory.Net, $"Player {conn.connectionId} has disconnected");
@@ -219,23 +312,59 @@ public class GameManager : NetworkManager
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.FogBatch>(WAR2D.Net.Replication.ClientFog.Receive, false);
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.TerrainBatch>(WAR2D.Net.Replication.ClientTerrain.Receive, false);
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.BuildingBatch>(WAR2D.Net.Replication.ClientBuildings.Receive, false);
-        NetworkClient.RegisterHandler<WAR2D.Net.Replay.ReplayOffer>(o =>
-        {
-            Config.ReplaysConfig replays = Config.ConfigLoader.LoadConfig().Replays;
-            // The file is gzip of at most MaxMegabytes of records, so anything much larger isn't a real recording.
-            WAR2D.Net.Replay.ReplayReceiver.Install(WAR2D.Net.Replay.ReplayLibrary.Folder, ((long)replays.MaxMegabytes << 20) + (1L << 20), replays.KeepCount);
-            bool want = SettingsStore.Current.SaveReplays;
-            WAR2D.Net.Replay.ReplayReceiver.Current.OnOffer(o, want);
-            if (NetworkClient.localPlayer != null && NetworkClient.localPlayer.TryGetComponent(out ClientPlayer me)) me.CmdReplayWanted(o.Id, want);
-        }, false);
-        NetworkClient.RegisterHandler<WAR2D.Net.Replay.ReplayChunk>(c => WAR2D.Net.Replay.ReplayReceiver.Current?.OnChunk(c), false);
+        NetworkClient.RegisterHandler<WAR2D.Net.Rejoin.RejoinRefused>(OnRejoinRefused, false);
     }
 
     /// <summary>Called on the client when it connects to the server.</summary>
     [Client]
     public override void OnClientConnect()
     {
+        leaving = false;
+        // Coming back to a match dropped out of: present the ticket before the add-player request (the base sends that).
+        if (WAR2D.Net.Rejoin.RejoinTicket.Dropped && !string.IsNullOrEmpty(WAR2D.Net.Rejoin.RejoinTicket.Token))
+        {
+            NetworkClient.Send(new WAR2D.Net.Rejoin.RejoinRequest { Token = WAR2D.Net.Rejoin.RejoinTicket.Token });
+            rejoining = true;
+            CentreOnHqPending = true;
+        }
         base.OnClientConnect();
+    }
+
+    private bool rejoining;
+
+    /// <summary>The server will not give the seat back (v0.15.1): the ticket is dead, the Play screen says why, and the client leaves.</summary>
+    [Client]
+    private void OnRejoinRefused(WAR2D.Net.Rejoin.RejoinRefused message)
+    {
+        WarLog.Info(LogCategory.Net, $"The server refused the rejoin ({message.Reason})");
+        WAR2D.Net.Rejoin.RejoinTicket.Refuse(message.Reason);
+        StopClient();
+    }
+
+    /// <summary>Set when this client rejoined a match: the camera starts at the map's corner, so the commander centres it on the HQ once the HQ is known.</summary>
+    public bool CentreOnHqPending { get; set; }
+
+    /// <summary>A rejoining client already asked for its player when it connected; asking again after the scene loads would be refused.</summary>
+    public override void OnClientSceneChanged()
+    {
+        if (!rejoining) { base.OnClientSceneChanged(); return; }
+        if (NetworkClient.connection.isAuthenticated && !NetworkClient.ready) NetworkClient.Ready();
+    }
+
+    private bool leaving;
+
+    /// <summary>True while a dropped match can still be rejoined (the Play screen's Rejoin row).</summary>
+    public bool CanRejoin => WAR2D.Net.Rejoin.RejoinTicket.Available(Time.realtimeSinceStartup);
+
+    /// <summary>Seconds left to rejoin the match this client dropped out of.</summary>
+    public float RejoinSecondsLeft => WAR2D.Net.Rejoin.RejoinTicket.SecondsLeft(Time.realtimeSinceStartup);
+
+    /// <summary>Connects again to the match the connection broke out of, the way the client first joined it. False when there is nothing to rejoin.</summary>
+    public bool Rejoin()
+    {
+        if (!CanRejoin || !WAR2D.Net.Rejoin.RejoinTicket.Route.HasValue) return false;
+        Connect(WAR2D.Net.Rejoin.RejoinTicket.Route.Value);
+        return true;
     }
 
     /// <summary>
@@ -246,8 +375,11 @@ public class GameManager : NetworkManager
     public override void OnClientDisconnect()
     {
         base.OnClientDisconnect();
-        WAR2D.Net.Replay.ReplayReceiver.Clear();
+        rejoining = false;
         WarLog.Info(LogCategory.Net, "Disconnected from server");
+        // The connection broke in a running match (the client holds a ticket and did not leave): the match can be rejoined for a while.
+        if (!leaving && !NetworkServer.active) WAR2D.Net.Rejoin.RejoinTicket.MarkDropped(Time.realtimeSinceStartup);
+        else if (leaving) WAR2D.Net.Rejoin.RejoinTicket.Clear();
     }
 
 
@@ -256,6 +388,38 @@ public class GameManager : NetworkManager
     /// Resets the GameCore and reloads the main menu.
     /// </summary>
     public void LeaveLobby()
+    {
+        if (leavePending) return; // already on the way out
+        // v0.15: a joined client in a running match (it holds a rejoin ticket) tells the server first, so its seat is not kept
+        // for a rejoin, and leaves once the server closes the connection (so the message is sent) or after LeaveWaitSeconds.
+        bool tell = !NetworkServer.active && NetworkClient.isConnected && !string.IsNullOrEmpty(WAR2D.Net.Rejoin.RejoinTicket.Token);
+        leaving = true;
+        WAR2D.Net.Rejoin.RejoinTicket.Clear();
+        if (tell)
+        {
+            leavePending = true;
+            NetworkClient.Send(new WAR2D.Net.Rejoin.LeaveMatch());
+            StartCoroutine(LeaveOnceClosed());
+            return;
+        }
+        FinishLeave();
+    }
+
+    /// <summary>Longest a leaving client waits for the server to close its connection after <see cref="WAR2D.Net.Rejoin.LeaveMatch"/>.</summary>
+    public const float LeaveWaitSeconds = 1f;
+
+    private bool leavePending;
+
+    private System.Collections.IEnumerator LeaveOnceClosed()
+    {
+        float until = Time.realtimeSinceStartup + LeaveWaitSeconds;
+        while (NetworkClient.isConnected && Time.realtimeSinceStartup < until) yield return null;
+        leavePending = false;
+        FinishLeave();
+    }
+
+    /// <summary>Stops the host or the client, resets the GameCore and the world, and reloads the main menu.</summary>
+    private void FinishLeave()
     {
 
         if (NetworkClient.localPlayer && NetworkClient.localPlayer.isServer)
@@ -377,6 +541,7 @@ public class GameManager : NetworkManager
         if (NetworkServer.active) return; // hosting: there is nothing to join
         if (NetworkClient.active) StopClient(); // a lingering connection must not swallow this join
         ActiveRoute = route;
+        WAR2D.Net.Rejoin.RejoinTicket.Remember(route);
         if (route.Kind == WAR2D.Net.Steam.RouteKind.Steam)
         {
             UseTransport(steamTransport);

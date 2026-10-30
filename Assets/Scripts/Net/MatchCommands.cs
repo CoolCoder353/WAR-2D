@@ -18,39 +18,52 @@ public partial class GameCore
 
     private readonly Dictionary<int, double> lastGift = new Dictionary<int, double>();
 
-    /// <summary>Leaves the match as if the sender's HQ fell: everything they own is destroyed and they are out.</summary>
+    /// <summary>Leaves the match as if the sender's HQ fell (<see cref="PlayerActions.Surrender"/>).</summary>
     [Command(requiresAuthority = false)]
     public void Cmd_Surrender(NetworkConnectionToClient sender = null)
     {
-        if (!CommandGate.Allow(sender, nameof(Cmd_Surrender))) return;
-        if (CurrentState != GameState.Playing || sender?.identity == null) return;
-        int owner = BuildingData.UIntToInt(sender.identity.netId);
-        ServerPlayer player = GetServerPlayerById(owner);
-        if (player == null || player.state != PlayerState.Playing) return;
-        EliminatePlayer(owner);
+        if (!CommandGate.Allow(sender, nameof(Cmd_Surrender)) || !WorldStateManager.TryOwnerOf(sender, out int owner)) return;
+        PlayerActions.Surrender(owner);
     }
 
-    /// <summary>
-    /// Gives resources to any other live player (ally or enemy). Taken from the sender at once and added to
-    /// the target; one gift per <c>Gifting/CooldownSeconds</c>. Only the two of them are told.
-    /// </summary>
+    /// <summary>Gives resources to any other live player, ally or enemy (<see cref="PlayerActions.Gift"/>).</summary>
     [Command(requiresAuthority = false)]
     public void Cmd_GiftResources(uint targetNetId, float amount, NetworkConnectionToClient sender = null)
     {
-        if (!CommandGate.Allow(sender, nameof(Cmd_GiftResources))) return;
-        if (sender?.identity == null) return;
-        int from = BuildingData.UIntToInt(sender.identity.netId), to = BuildingData.UIntToInt(targetNetId);
+        if (!CommandGate.Allow(sender, nameof(Cmd_GiftResources)) || !WorldStateManager.TryOwnerOf(sender, out int owner)) return;
+        PlayerActions.Gift(owner, BuildingData.UIntToInt(targetNetId), amount);
+    }
+
+    /// <summary>
+    /// Gives resources from <paramref name="from"/> to any other live player. Taken from the giver at once and added to
+    /// the target; one gift per <c>Gifting/CooldownSeconds</c>. Only the two of them are told. Returns whether it was given.
+    /// </summary>
+    [Server]
+    internal bool TryGift(int from, int to, float amount)
+    {
         ServerPlayer giver = GetServerPlayerById(from), receiver = GetServerPlayerById(to);
-        if (giver == null || receiver == null) return;
+        if (giver == null || receiver == null || giver.Away || receiver.Away) return false; // an away player neither gives nor takes
         if (!lastGift.TryGetValue(from, out double last)) last = double.NegativeInfinity;
-        double now = NetworkTime.localTime;
-        if (!GiftRules.CanGift(CurrentState, giver.state, receiver.state, from, to, now, last, ConfigLoader.LoadConfig().Gifting.CooldownSeconds)) return;
-        if (!GiftRules.IsValid(amount, giver.Resources) || !giver.TrySpend(amount, countAsSpent: false)) return;
+        double now = MatchClock.Now; // match time: a pause stops the cooldown
+        if (!GiftRules.CanGift(CurrentState, giver.state, receiver.state, from, to, now, last, ConfigLoader.LoadConfig().Gifting.CooldownSeconds)) return false;
+        if (!GiftRules.IsValid(amount, giver.Resources) || !giver.TrySpend(amount, countAsSpent: false)) return false;
         receiver.Add(amount);
         lastGift[from] = now;
         Stats.Gift(from, to, amount);
         foreach (int owner in GiftRules.Recipients(from, to)) SendGiftNotice(owner, from, to, amount);
         WorldStateManager.Instance?.Alerts?.Add(to, new Alert { Kind = AlertKind.GiftReceived, OtherOwnerId = from, Amount = amount });
+        return true;
+    }
+
+    /// <summary>Eliminates the owner as if their HQ fell, while Playing and still in the match. Returns whether they surrendered.</summary>
+    [Server]
+    internal bool TrySurrender(int owner)
+    {
+        if (CurrentState != GameState.Playing) return false;
+        ServerPlayer player = GetServerPlayerById(owner);
+        if (player == null || player.state != PlayerState.Playing) return false;
+        EliminatePlayer(owner);
+        return true;
     }
 
     /// <summary>Tells one party of a gift (sender or recipient only).</summary>
@@ -83,14 +96,27 @@ public partial class GameCore
             if (player != null) Stats.Spent(owner, player.SpentThisMatch);
         }
         var won = new List<int>(winners ?? new int[0]);
-        RpcMatchStats(owners, Stats.Snapshot(owners), won.ToArray(), (float)(NetworkTime.time - MatchStartTime));
+        RpcMatchStats(owners, Stats.Snapshot(owners), won.ToArray(), (float)(NetworkTime.time - MatchStartTime), ResolvedStyles(owners));
     }
 
-    /// <summary>The end screen's statistics, for every player (public once the match is over).</summary>
-    [ClientRpc]
-    public void RpcMatchStats(int[] owners, PlayerStats[] stats, int[] winners, float durationSeconds)
+    /// <summary>
+    /// Each owner's played AI style (v0.14; <see cref="AiStyle.Random"/> for humans), by <paramref name="owners"/>. This
+    /// is the only message that carries what a Random style became, sent once the match is over.
+    /// </summary>
+    [Server]
+    private AiStyle[] ResolvedStyles(int[] owners)
     {
-        LastMatchStats = new MatchResult { Owners = owners, Stats = stats, Winners = winners, DurationSeconds = durationSeconds };
+        var styles = new AiStyle[owners.Length];
+        for (int i = 0; i < owners.Length; i++)
+            if (AiPlayers.TryGetValue(owners[i], out AiSeat seat)) styles[i] = seat.ResolvedStyle;
+        return styles;
+    }
+
+    /// <summary>The end screen's statistics, for every player (public once the match is over), with each AI's played style.</summary>
+    [ClientRpc]
+    public void RpcMatchStats(int[] owners, PlayerStats[] stats, int[] winners, float durationSeconds, AiStyle[] aiStyles)
+    {
+        LastMatchStats = new MatchResult { Owners = owners, Stats = stats, Winners = winners, DurationSeconds = durationSeconds, AiStyles = aiStyles };
         MatchStatsReceived?.Invoke(LastMatchStats);
     }
 
@@ -111,6 +137,16 @@ public sealed class MatchResult
     public PlayerStats[] Stats;
     public int[] Winners;
     public float DurationSeconds;
+    /// <summary>Each owner's played AI style (by <see cref="Owners"/>; Random for humans), revealed at GameOver.</summary>
+    public AiStyle[] AiStyles;
+
+    /// <summary>What <paramref name="owner"/>'s AI played; Random for a human or when unknown.</summary>
+    public AiStyle PlayedStyle(int owner)
+    {
+        if (Owners == null || AiStyles == null) return AiStyle.Random;
+        int i = System.Array.IndexOf(Owners, owner);
+        return i >= 0 && i < AiStyles.Length ? AiStyles[i] : AiStyle.Random;
+    }
 }
 
 /// <summary>When match statistics may leave the server. Pure.</summary>

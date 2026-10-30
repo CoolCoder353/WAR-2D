@@ -21,6 +21,20 @@ namespace WAR2D.Steam
         private CallResult<LobbyCreated_t> created;
         private CallResult<LobbyMatchList_t> matchList;
         private CallResult<LobbyEnter_t> entered;
+        private Callback<LobbyDataUpdate_t> lobbyData;
+        private FriendScan scan;
+
+        /// <summary>Seconds a friend's lobby may take to answer before the list is shown without it.</summary>
+        private const float FriendLobbyWait = 3f;
+
+        /// <summary>The friends' lobbies being read to add to a lobby list.</summary>
+        private sealed class FriendScan
+        {
+            public List<LobbyInfo> List;
+            public readonly HashSet<ulong> Waiting = new HashSet<ulong>();
+            public Action<IReadOnlyList<LobbyInfo>> Done;
+            public float Deadline;
+        }
 
         public SteamworksBackend(bool initialised)
         {
@@ -32,6 +46,13 @@ namespace WAR2D.Steam
             created = CallResult<LobbyCreated_t>.Create();
             matchList = CallResult<LobbyMatchList_t>.Create();
             entered = CallResult<LobbyEnter_t>.Create();
+            lobbyData = Callback<LobbyDataUpdate_t>.Create(OnLobbyData);
+        }
+
+        /// <summary>Called every frame by the pump: gives up on friends' lobbies that never answered.</summary>
+        public void Tick()
+        {
+            if (scan != null && UnityEngine.Time.realtimeSinceStartup > scan.Deadline) FinishScan();
         }
 
         public bool TryGetAuthTicket(out byte[] ticket)
@@ -51,10 +72,19 @@ namespace WAR2D.Steam
 
         public void EndAuthSession(ulong steamId) => SteamUser.EndAuthSession(new CSteamID(steamId));
 
-        // Friends-only for the playtest: the browser lists friends' lobbies. Switch to k_ELobbyTypePublic for public games.
-        public void CreateLobby(int maxPlayers, Action<ulong> done) =>
-            created.Set(SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypeFriendsOnly, maxPlayers),
+        public void CreateLobby(int maxPlayers, LobbyVisibility visibility, Action<ulong> done) =>
+            created.Set(SteamMatchmaking.CreateLobby(TypeOf(visibility), maxPlayers),
                 (r, ioFailure) => done(!ioFailure && r.m_eResult == EResult.k_EResultOK ? r.m_ulSteamIDLobby : 0));
+
+        public void SetLobbyType(ulong lobbyId, LobbyVisibility visibility) => SteamMatchmaking.SetLobbyType(new CSteamID(lobbyId), TypeOf(visibility));
+
+        /// <summary>Public and Friends map to Steam's types; Private (never asked for: a Private match has no lobby) to a private one.</summary>
+        private static ELobbyType TypeOf(LobbyVisibility visibility) => visibility switch
+        {
+            LobbyVisibility.Public => ELobbyType.k_ELobbyTypePublic,
+            LobbyVisibility.Friends => ELobbyType.k_ELobbyTypeFriendsOnly,
+            _ => ELobbyType.k_ELobbyTypePrivate,
+        };
 
         public void SetLobbyData(ulong lobbyId, IDictionary<string, string> data)
         {
@@ -81,8 +111,53 @@ namespace WAR2D.Steam
                         if (LobbyInfo.TryDecode(id.m_SteamID, SteamMatchmaking.GetLobbyOwner(id).m_SteamID,
                                 SteamMatchmaking.GetNumLobbyMembers(id), data, out LobbyInfo info)) list.Add(info);
                     }
-                done(list);
+                AddFriendLobbies(list, done);
             });
+        }
+
+        /// <summary>
+        /// Steam's lobby search only returns Public lobbies: a Friends lobby never shows in it. Adds the lobbies the Steam
+        /// friends playing this game are in (their game info names the lobby), once their data has arrived.
+        /// </summary>
+        private void AddFriendLobbies(List<LobbyInfo> list, Action<IReadOnlyList<LobbyInfo>> done)
+        {
+            FinishScan();
+            var found = new FriendScan { List = list, Done = done, Deadline = UnityEngine.Time.realtimeSinceStartup + FriendLobbyWait };
+            AppId_t app = SteamUtils.GetAppID();
+            int friends = SteamFriends.GetFriendCount(EFriendFlags.k_EFriendFlagImmediate);
+            for (int i = 0; i < friends; i++)
+            {
+                CSteamID friend = SteamFriends.GetFriendByIndex(i, EFriendFlags.k_EFriendFlagImmediate);
+                if (!SteamFriends.GetFriendGamePlayed(friend, out FriendGameInfo_t game) || game.m_gameID.AppID() != app) continue;
+                ulong lobby = game.m_steamIDLobby.m_SteamID;
+                if (lobby == 0 || list.Exists(l => l.LobbyId == lobby)) continue;
+                if (SteamMatchmaking.RequestLobbyData(game.m_steamIDLobby)) found.Waiting.Add(lobby);
+            }
+            scan = found;
+            if (found.Waiting.Count == 0) FinishScan();
+        }
+
+        private void OnLobbyData(LobbyDataUpdate_t r)
+        {
+            // A lobby-level update names the lobby itself as the member.
+            if (scan == null || r.m_ulSteamIDLobby != r.m_ulSteamIDMember || !scan.Waiting.Remove(r.m_ulSteamIDLobby)) return;
+            if (r.m_bSuccess != 0)
+            {
+                var id = new CSteamID(r.m_ulSteamIDLobby);
+                var data = new Dictionary<string, string>();
+                foreach (string key in new[] { LobbyInfo.KeyVersion, LobbyInfo.KeyState, LobbyInfo.KeyMode, LobbyInfo.KeyMapSize, LobbyInfo.KeyHostName })
+                    data[key] = SteamMatchmaking.GetLobbyData(id, key);
+                if (LobbyInfo.TryDecode(id.m_SteamID, SteamMatchmaking.GetLobbyOwner(id).m_SteamID,
+                        SteamMatchmaking.GetNumLobbyMembers(id), data, out LobbyInfo info)) scan.List.Add(info);
+            }
+            if (scan.Waiting.Count == 0) FinishScan();
+        }
+
+        private void FinishScan()
+        {
+            FriendScan finished = scan;
+            scan = null;
+            finished?.Done(finished.List);
         }
 
         public void JoinLobby(ulong lobbyId, Action<ulong> done) =>

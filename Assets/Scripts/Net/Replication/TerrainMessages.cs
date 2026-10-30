@@ -122,22 +122,35 @@ namespace WAR2D.Net.Replication
         /// </summary>
         public int Update(IReadOnlyList<TerrainCell> changedNow, Func<float2, bool> sees, int width, byte[] initial, NetworkWriter writer, int maxBytes)
         {
-            scratch.Clear();
+            if (Select(changedNow, sees, width, initial, scratch, maxBytes) == 0) return 0;
+            TerrainCodec.Write(writer, scratch);
+            return scratch.Count;
+        }
+
+        /// <summary>
+        /// The rule both replication and the AI's team view use (v0.14): fills <paramref name="into"/> with the changed
+        /// tiles the player's grid sees now that differ from what it was last given (one batch's worth), and records them
+        /// as given. Returns how many it chose.
+        /// </summary>
+        public int Select(IReadOnlyList<TerrainCell> changedNow, Func<float2, bool> sees, int width, byte[] initial, List<TerrainCell> into, int maxBytes = int.MaxValue)
+        {
+            into.Clear();
             for (int i = 0; i < changedNow.Count; i++)
             {
                 TerrainCell now = changedNow[i];
                 int index = now.Index;
                 TerrainCell known = sent.TryGetValue(index, out TerrainCell k) ? k : new TerrainCell { Index = index, Type = initial[index] };
                 if (now.Equals(known)) continue;
-                if (!sees(new float2(index % width + 0.5f, index / width + 0.5f))) continue;
-                scratch.Add(now);
-                if (scratch.Count >= TerrainCodec.MaxCells || scratch.Count * 8 >= maxBytes) break;
+                if (!Sees(sees, index, width)) continue;
+                into.Add(now);
+                if (into.Count >= TerrainCodec.MaxCells || into.Count * 8 >= maxBytes) break;
             }
-            if (scratch.Count == 0) return 0;
-            foreach (TerrainCell c in scratch) sent[c.Index] = c;
-            TerrainCodec.Write(writer, scratch);
-            return scratch.Count;
+            foreach (TerrainCell c in into) sent[c.Index] = c;
+            return into.Count;
         }
+
+        /// <summary>True when the player's grid sees tile <paramref name="index"/> (its centre's fog cell).</summary>
+        public static bool Sees(Func<float2, bool> sees, int index, int width) => sees(new float2(index % width + 0.5f, index / width + 0.5f));
     }
 
     /// <summary>The terrain the local client knows: the seeded map plus every change it was sent.</summary>

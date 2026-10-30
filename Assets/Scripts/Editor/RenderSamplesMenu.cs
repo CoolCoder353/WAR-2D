@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Unity.Mathematics;
 using UnityEditor;
 using UnityEngine;
@@ -212,23 +213,282 @@ namespace WAR2D.EditorTools
         /// <summary>Sprites side by side on a floor strip, centred on one baseline, saved at <paramref name="scale"/>×.</summary>
         private static void Strip(string path, List<(LitCanvas canvas, Color team)> items, int gap, int scale, float lift = 0f)
         {
+            var layered = new List<(LitCanvas[] layers, Color team)>();
+            foreach (var (canvas, team) in items) layered.Add((new[] { canvas }, team));
+            Strip(path, layered, gap, scale, lift);
+        }
+
+        /// <summary>As <see cref="Strip(string, List{ValueTuple{LitCanvas, Color}}, int, int, float)"/>, each item a stack of layers drawn at one anchor (a turret head over its base).</summary>
+        private static void Strip(string path, List<(LitCanvas[] layers, Color team)> items, int gap, int scale, float lift = 0f)
+        {
             int w = gap, h = 0;
-            foreach (var (canvas, _) in items)
+            foreach (var (layers, _) in items)
             {
-                w += canvas.Width / Factor + gap;
-                h = Math.Max(h, canvas.Height / Factor);
+                w += layers[0].Width / Factor + gap;
+                h = Math.Max(h, layers[0].Height / Factor);
             }
             h += 2 * gap;
             var px = new Color32[w * h];
             Tile(px, w, h, (x, y) => TileAt(TileType.Ground, 0, (x + y) & 3));
             int ox = gap;
-            foreach (var (canvas, team) in items)
+            foreach (var (layers, team) in items)
             {
-                int cw = canvas.Width / Factor;
-                Sprite(px, w, h, canvas, team, ox + cw / 2, gap + Mathf.RoundToInt(canvas.PivotY / Factor), lift);
+                int cw = layers[0].Width / Factor;
+                foreach (LitCanvas canvas in layers)
+                    Sprite(px, w, h, canvas, team, ox + cw / 2, gap + Mathf.RoundToInt(layers[0].PivotY / Factor), lift);
                 ox += cw + gap;
             }
             Save(path, px, w, h, scale);
+        }
+
+        public const string BastionFolder = "docs/art/v0.13";
+
+        /// <summary>
+        /// The v0.13 Bastion art for the owner's review, in the game's finish (pixel art at 64 px per tile): the
+        /// Gun turret's base (whole and damaged) with its head in all 8 facings over it, the Jammer's frames beside
+        /// the Radar and Barracks, the two new effects, an in-game scene, and preview WAVs of the two new sounds,
+        /// to <c>docs/art/v0.13/</c>.
+        /// </summary>
+        [MenuItem("WAR-2D/Art/Render v0.13 samples")]
+        public static void RenderBastion()
+        {
+            mode = Finish.Pixel64;
+            TileCache.Clear();
+            Directory.CreateDirectory(BastionFolder);
+            Color blue = (Color)(Color32)PlayerPalette.Of(0), red = (Color)(Color32)PlayerPalette.Of(1);
+            const int gap = 8;
+
+            // The turret: every head facing over the whole base, then the shot frame, the damaged base, and red.
+            var turret = new List<(LitCanvas[], Color)>();
+            for (int d = 0; d < 8; d++) turret.Add((new[] { RenderGen.GunTurretBase(0), RenderGen.GunTurretHead(d * Mathf.PI / 4) }, blue));
+            turret.Add((new[] { RenderGen.GunTurretBase(0), RenderGen.GunTurretHead(0, 1) }, blue));
+            turret.Add((new[] { RenderGen.GunTurretBase(1), RenderGen.GunTurretHead(Mathf.PI / 4) }, blue));
+            turret.Add((new[] { RenderGen.GunTurretBase(0) }, blue));
+            turret.Add((new[] { RenderGen.GunTurretBase(1) }, blue));
+            turret.Add((new[] { RenderGen.GunTurretBase(0), RenderGen.GunTurretHead(5 * Mathf.PI / 4) }, red));
+            turret.Add((new[] { RenderGen.Tank(0, 0) }, blue));
+            Strip(Path.Combine(BastionFolder, "turret.png"), turret, gap, 2, RenderGen.Lift);
+
+            var buildings = new List<(LitCanvas, Color)>
+            {
+                (RenderGen.Jammer(0), blue), (RenderGen.Jammer(1), blue), (RenderGen.Jammer(0), red),
+                (RenderGen.Radar(0), blue), (RenderGen.Spawner(0), blue),
+            };
+            Strip(Path.Combine(BastionFolder, "buildings.png"), buildings, gap, 2, RenderGen.Lift);
+
+            Save(Path.Combine(BastionFolder, "scene.png"), BastionScene(blue, red, out int sw, out int sh), sw, sh, 1);
+
+            // Effects: the muzzle flash on its own, and over a turret facing east; the pulse over a Jammer.
+            var muzzle = new List<EffectFrame>();
+            for (int i = 0; i < 3; i++) muzzle.Add(EffectGen.TurretMuzzle(i));
+            EffectStrip(Path.Combine(BastionFolder, "fx-TurretMuzzle.png"), muzzle, gap);
+            var pulse = new List<EffectFrame>();
+            for (int i = 0; i < 6; i++) pulse.Add(EffectGen.JamPulse(i / 5f));
+            EffectStrip(Path.Combine(BastionFolder, "fx-JamPulse.png"), pulse, gap);
+            OverlaidStrip(Path.Combine(BastionFolder, "fx-TurretMuzzle-over.png"), muzzle, blue, gap, 3,
+                () => new[] { RenderGen.GunTurretBase(0), RenderGen.GunTurretHead(0, 1) }, RenderGen.TurretMuzzleReach, RenderGen.TurretMuzzleHeight * RenderGen.Lift);
+            OverlaidStrip(Path.Combine(BastionFolder, "fx-JamPulse-over.png"), pulse, blue, gap, 2,
+                () => new[] { RenderGen.Jammer(0) }, 0, 0);
+            CheckEffectPalette("TurretMuzzle", muzzle);
+            CheckEffectPalette("JamPulse", pulse);
+
+            string sfx = Path.Combine(BastionFolder, "sfx");
+            Directory.CreateDirectory(sfx);
+            foreach (string id in new[] { "shot_turret", "shot_scout", "shot_tank", "jammer_online", "construction_finished", "radar_ping" })
+            {
+                var p = JsonUtility.FromJson<WAR2D.Audio.SfxrParams>(File.ReadAllText($"{AudioBuild.SfxSource}/{id}.json"));
+                File.WriteAllBytes(Path.Combine(sfx, id + ".wav"), WAR2D.Audio.Wav.Encode(WAR2D.Audio.Sfxr.Render(p, p.seed, AudioBuild.SampleRate), AudioBuild.SampleRate));
+            }
+            Debug.Log($"[Art] rendered v0.13 samples to {BastionFolder}");
+        }
+
+        /// <summary>Effect frames in order on a floor strip, saved at 2×.</summary>
+        private static void EffectStrip(string path, List<EffectFrame> frames, int gap)
+        {
+            int w = gap, h = 0;
+            foreach (EffectFrame f in frames) { w += f.Width + gap; h = Math.Max(h, f.Height); }
+            h += 2 * gap;
+            var px = new Color32[w * h];
+            Tile(px, w, h, (x, y) => TileAt(TileType.Ground, 0, (x + y) & 3));
+            int ox = gap;
+            foreach (EffectFrame f in frames)
+            {
+                Over(px, w, h, f.Pixels, f.Width, f.Height, ox, gap + (h - 2 * gap - f.Height) / 2);
+                ox += f.Width + gap;
+            }
+            Save(path, px, w, h, 2);
+        }
+
+        /// <summary>
+        /// Each effect frame drawn over the sprite stack <paramref name="under"/>, centred
+        /// <paramref name="reach"/> px east of the sprite's anchor and <paramref name="rise"/> px up (the muzzle).
+        /// </summary>
+        private static void OverlaidStrip(string path, List<EffectFrame> frames, Color team, int gap, int scale, Func<LitCanvas[]> under, float reach, float rise)
+        {
+            LitCanvas[] probe = under();
+            int cw = Math.Max(probe[0].Width, frames[0].Width), ch = probe[0].Height;
+            int w = gap + frames.Count * (cw + gap), h = Math.Max(ch, frames[0].Height) + 2 * gap;
+            var px = new Color32[w * h];
+            Tile(px, w, h, (x, y) => TileAt(TileType.Ground, 0, (x + y) & 3));
+            int ox = gap;
+            foreach (EffectFrame f in frames)
+            {
+                int ax = ox + cw / 2, ay = gap + (h - 2 * gap - ch) / 2 + Mathf.RoundToInt(probe[0].PivotY);
+                foreach (LitCanvas canvas in under()) Sprite(px, w, h, canvas, team, ax, ay, RenderGen.Lift);
+                Over(px, w, h, f.Pixels, f.Width, f.Height, ax + Mathf.RoundToInt(reach) - f.Width / 2, ay + Mathf.RoundToInt(rise) - f.Height / 2);
+                ox += cw + gap;
+            }
+            Save(path, px, w, h, scale);
+        }
+
+        /// <summary>Logs effect pixels outside <see cref="WAR2D.Art.ArtStyle.EffectPalette"/> (the atlas test would fail on them).</summary>
+        private static void CheckEffectPalette(string name, List<EffectFrame> frames)
+        {
+            var allowed = new HashSet<Color32>(WAR2D.Art.ArtStyle.EffectPalette);
+            int bad = 0;
+            foreach (EffectFrame f in frames)
+                foreach (Color32 c in f.Pixels)
+                    if (c.a != 0 && !allowed.Contains(c)) bad++;
+            if (bad > 0) Debug.LogWarning($"[Art] {name}: {bad} pixels outside the effect palette");
+        }
+
+        /// <summary>Rotates an effect frame about its centre by <paramref name="angle"/> radians (nearest pixel), as the game turns its quad.</summary>
+        private static Color32[] Rotate(EffectFrame f, float angle)
+        {
+            var dst = new Color32[f.Pixels.Length];
+            float cos = Mathf.Cos(angle), sin = Mathf.Sin(angle), cx = f.Width / 2f, cy = f.Height / 2f;
+            for (int y = 0; y < f.Height; y++)
+            for (int x = 0; x < f.Width; x++)
+            {
+                float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+                int sx = Mathf.FloorToInt(cx + dx * cos + dy * sin), sy = Mathf.FloorToInt(cy - dx * sin + dy * cos);
+                if ((uint)sx < (uint)f.Width && (uint)sy < (uint)f.Height) dst[y * f.Width + x] = f.Pixels[sy * f.Width + sx];
+            }
+            return dst;
+        }
+
+        /// <summary>
+        /// The v0.7 scene's map with the HQ, Barracks and Radar, a Jammer beside the Radar with its pulse, and a
+        /// line of Gun turrets (one firing) holding the east side against a red army.
+        /// </summary>
+        private static Color32[] BastionScene(Color blue, Color red, out int w, out int h)
+        {
+            using MapStore map = MapStore.Generate(256, 5u, 0.15f);
+            int2 site = map.HqSites[2];
+            int x0 = site.x - 8, y0 = site.y - SceneH / 2;
+            int W = SceneW * T, H = SceneH * T;
+            w = W;
+            h = H;
+            var px = new Color32[W * H];
+            bool Rock(int tx, int ty) => map.Grid.TileAt(new int2(tx, ty)) != TileType.Ground;
+            for (int ty = 0; ty < SceneH; ty++)
+            for (int tx = 0; tx < SceneW; tx++)
+            {
+                int mx = x0 + tx, my = y0 + ty;
+                TileType kind = map.Grid.TileAt(new int2(mx, my));
+                int variant = ((mx * 73856093) ^ (my * 19349663)) & 3;
+                int mask = (Rock(mx, my + 1) ? RenderGen.North : 0) | (Rock(mx + 1, my) ? RenderGen.East : 0)
+                         | (Rock(mx, my - 1) ? RenderGen.South : 0) | (Rock(mx - 1, my) ? RenderGen.West : 0);
+                Over(px, W, H, TileAt(kind, mask, variant), T, T, tx * T, ty * T);
+            }
+
+            float2 hq = (float2)site + 0.5f - new float2(x0, y0);
+            var used = new HashSet<int2>();
+            bool Free(int tx, int ty, int size)
+            {
+                for (int dy = 0; dy < size; dy++)
+                for (int dx = 0; dx < size; dx++)
+                    if (tx + dx < 0 || ty + dy < 0 || tx + dx >= SceneW || ty + dy >= SceneH || Rock(x0 + tx + dx, y0 + ty + dy) || used.Contains(new int2(tx + dx, ty + dy))) return false;
+                return true;
+            }
+            void Claim(int tx, int ty, int size)
+            {
+                for (int dy = 0; dy < size; dy++)
+                for (int dx = 0; dx < size; dx++)
+                    used.Add(new int2(tx + dx, ty + dy));
+            }
+            for (int dy = -3; dy < 3; dy++)
+            for (int dx = -3; dx < 3; dx++)
+                used.Add(new int2((int)hq.x + dx, (int)hq.y + dy));
+
+            // Sprites are queued and drawn far rows first, so nearer ones overlap them as in game.
+            var draws = new List<(float order, Action draw)>();
+            void Put(LitCanvas sprite, Color team, float2 tile, float lift = 0f) =>
+                draws.Add((-tile.y, () => Sprite(px, W, H, sprite, team, (int)(tile.x * T), (int)(tile.y * T), lift)));
+            // Buildings near the HQ: the first free spot in a search around each wanted place.
+            int2 Place(float2 want, int size)
+            {
+                for (int r = 0; r < 8; r++)
+                for (int dy = -r; dy <= r; dy++)
+                for (int dx = -r; dx <= r; dx++)
+                {
+                    int tx = (int)want.x + dx, ty = (int)want.y + dy;
+                    if (Free(tx, ty, size)) { Claim(tx, ty, size); return new int2(tx, ty); }
+                }
+                return new int2(-99, -99);
+            }
+            Put(RenderGen.Base(), blue, hq, RenderGen.Lift);
+            int2 barracks = Place(hq + new float2(-1f, -6.5f), 2);
+            Put(RenderGen.Spawner(0), blue, (float2)barracks + 1f, RenderGen.Lift);
+            int2 radar = Place(hq + new float2(-6.5f, 1f), 2);
+            Put(RenderGen.Radar(0), blue, (float2)radar + 1f, RenderGen.Lift);
+            int2 jammer = Place(hq + new float2(-6.5f, -3f), 2);
+            Put(RenderGen.Jammer(0), blue, (float2)jammer + 1f, RenderGen.Lift);
+            EffectFrame pulse = EffectGen.JamPulse(0.4f);
+            float2 jc = (float2)jammer + 1f;
+            draws.Add((-jc.y - 0.01f, () => Over(px, W, H, pulse.Pixels, pulse.Width, pulse.Height, (int)(jc.x * T) - pulse.Width / 2, (int)(jc.y * T) - pulse.Height / 2)));
+
+            // A line of turrets east of the HQ, heads toward the red army; the middle one fires.
+            var turrets = new List<float2>();
+            for (int k = 0; k < 5; k++)
+            {
+                int2 t = Place(hq + new float2(5.5f, -5f + k * 2.5f), 1);
+                if (t.x > -99) turrets.Add((float2)t + 0.5f);
+            }
+            var rng = new System.Random(6);
+            var reds = new List<float2>();
+            var mix = new Func<float, int, LitCanvas>[] { RenderGen.Tank, RenderGen.Scout, RenderGen.Flamethrower, RenderGen.Tank, RenderGen.SuicideBomber, RenderGen.Sniper };
+            for (int i = 0; i < 3000 && reds.Count < 14; i++)
+            {
+                int tx = 17 + rng.Next(SceneW - 17), ty = rng.Next(SceneH);
+                if (!Free(tx, ty, 1)) continue;
+                Claim(tx, ty, 1);
+                var p = new float2(tx + 0.5f, ty + 0.5f);
+                reds.Add(p);
+                float facing = Mathf.PI + rng.Next(-1, 2) * Mathf.PI / 4;
+                Put(mix[rng.Next(mix.Length)](facing, rng.Next(5) == 0 ? 2 : rng.Next(2)), red, p);
+            }
+            for (int k = 0; k < turrets.Count; k++)
+            {
+                float2 t = turrets[k], nearest = t + new float2(5, 0);
+                float best = float.MaxValue;
+                foreach (float2 r in reds)
+                    if (math.distancesq(r, t) < best) { best = math.distancesq(r, t); nearest = r; }
+                float2 dir = nearest - t;
+                int facing = ((int)math.round(math.atan2(dir.y, dir.x) / (Mathf.PI / 4)) + 8) % 8;
+                bool firing = k == turrets.Count / 2;
+                Put(RenderGen.GunTurretBase(k == 0 ? 1 : 0), blue, t, RenderGen.Lift);
+                Put(RenderGen.GunTurretHead(facing * Mathf.PI / 4, firing ? 1 : 0), blue, t, RenderGen.Lift);
+                if (firing)
+                {
+                    float a = facing * Mathf.PI / 4;
+                    EffectFrame flash = EffectGen.TurretMuzzle(0);
+                    Color32[] turned = Rotate(flash, a);
+                    int mx = (int)(t.x * T + Mathf.Cos(a) * RenderGen.TurretMuzzleReach), my = (int)(t.y * T + Mathf.Sin(a) * RenderGen.TurretMuzzleReach + RenderGen.TurretMuzzleHeight * RenderGen.Lift);
+                    draws.Add((-t.y + 0.001f, () => Over(px, W, H, turned, flash.Width, flash.Height, mx - flash.Width / 2, my - flash.Height / 2)));
+                }
+            }
+            // A few blue units behind the line.
+            for (int i = 0, n = 0; i < 3000 && n < 8; i++)
+            {
+                int tx = 6 + rng.Next(10), ty = rng.Next(SceneH);
+                if (!Free(tx, ty, 1)) continue;
+                Claim(tx, ty, 1);
+                Put((rng.Next(3) == 0 ? (Func<float, int, LitCanvas>)RenderGen.Builder : RenderGen.Tank)(rng.Next(-1, 2) * Mathf.PI / 4, rng.Next(2)), blue, new float2(tx + 0.5f, ty + 0.5f));
+                n++;
+            }
+            foreach (var (_, draw) in draws.OrderBy(d => d.order)) draw(); // stable: a head after its base
+            return px;
         }
 
         /// <summary>The v0.7 scene's map, with the HQ, the three producers and two mixed armies facing each other.</summary>
