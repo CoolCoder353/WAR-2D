@@ -2,7 +2,9 @@ Shader "WAR2D/Terrain"
 {
     // The map as one quad: each tile looks up its frame in the Tiles atlas from an RGBA32 index texture
     // (R = TileType, G = frame: autotile mask or random pick, and a player wall's damage state; B = a player
-    // wall's owner palette index + 1, whose colour tints the frame's team pixels as TeamSprite does). Mip level comes from the tile-local
+    // wall's owner palette index + 1, whose colour tints the frame's team pixels as TeamSprite does; A = the tile's clearance,
+    // MapView.Clearance). Over plain floor and deep rock it scatters feature stamps (FloorFeature, RockFeature frames): each tile
+    // with room may carry one, at a hashed position, size, kind and rotation. Mip level comes from the tile-local
     // derivatives (no seams at tile edges) and stays inside the frame's padding; at the farthest zoom the
     // tiles fade to their flat palette colour.
     Properties
@@ -16,6 +18,10 @@ Shader "WAR2D/Terrain"
         _MaxLod ("Deepest mip used (padding is 2 px, so 2 at most)", Float) = 2
         _FlatFrom ("Art px per screen px where the flat colour starts", Float) = 3
         _FlatTo ("Art px per screen px where it is fully flat", Float) = 4
+        _FeatureFirst ("First atlas cell of the floor (x) and rock (y) stamps", Vector) = (0, 0, 0, 0)
+        _FeatureKinds ("Floor kinds, rock kinds, frames per kind, stamp tiles", Vector) = (0, 0, 8, 2)
+        _FeatureDensity ("Chance a clear floor (x) or rock (y) tile carries a stamp", Vector) = (0.12, 0.1, 0, 0)
+        _FeatureScale ("Stamp size range, of its full size (min, max, skew towards small, max stretch)", Vector) = (0.18, 1, 1.8, 0.35)
     }
     SubShader
     {
@@ -41,6 +47,7 @@ Shader "WAR2D/Terrain"
             float4 _TileFlat[8];                  // per TileType: its flat colour (linear when the project is)
             float4 _MapSize;
             float _TileSize, _MaxLod, _FlatFrom, _FlatTo, _TeamGain;
+            float4 _FeatureFirst, _FeatureKinds, _FeatureDensity, _FeatureScale;
 
             // Large-scale variation (playtest 2026-10-30: ground and rock looked too even): smooth value noise over the tile grid.
             float Hash21(float2 p)
@@ -77,6 +84,51 @@ Shader "WAR2D/Terrain"
                 return col * light * tint;
             }
 
+            float4 Hash42(float2 p)
+            {
+                float4 p4 = frac(p.xyxy * float4(0.1031, 0.1030, 0.0973, 0.1099));
+                p4 += dot(p4, p4.wzxy + 33.33);
+                return frac((p4.xxyz + p4.yzzw) * p4.zywx);
+            }
+
+            // The feature stamps over this pixel, blended in over col. A stamp belongs to the tile its centre is in and is at
+            // most _FeatureKinds.w tiles across, so only the 3 x 3 tiles around this one can reach it. A floor stamp needs its
+            // tile's 3 x 3 block all floor (clearance 1), a rock stamp the 5 x 5 block all rock (clearance 2), so neither
+            // crosses a cliff, a gem or a wall. A frame is _FeatureKinds.w tiles of art: at scale s, 1 / s times the tile's
+            // art pixels per tile, which sets its mip level.
+            half3 Stamps(half3 col, float2 tile, int2 cell, float artPerPixel)
+            {
+                [unroll] for (int dy = -1; dy <= 1; dy++)
+                [unroll] for (int dx = -1; dx <= 1; dx++)
+                {
+                    int2 t = cell + int2(dx, dy);
+                    if (any(t < 0) || any(t >= (int2)_MapSize.xy)) continue;
+                    float4 index = LOAD_TEXTURE2D(_IndexTex, t) * 255.0 + 0.5;
+                    uint type = (uint)index.r, clearance = (uint)index.a;
+                    bool rock = type == 1u;
+                    if (!(type == 0u && clearance >= 1u) && !(rock && clearance >= 2u)) continue;
+                    float kinds = rock ? _FeatureKinds.y : _FeatureKinds.x;
+                    float4 h = Hash42((float2)t + (rock ? 71.3 : 0.0));
+                    if (kinds < 1 || h.x >= (rock ? _FeatureDensity.y : _FeatureDensity.x)) continue;
+                    float4 pick = Hash42((float2)t + 517.0);
+                    // Mostly small, now and then large; stretched along one axis by up to 2^_FeatureScale.w either way (kept
+                    // within the 3 x 3 tiles' reach).
+                    float stretch = exp2((pick.z * 2 - 1) * _FeatureScale.w);
+                    float s = min(lerp(_FeatureScale.x, _FeatureScale.y, pow(h.w, _FeatureScale.z)), 1 / max(stretch, 1 / stretch));
+                    float2 centre = (float2)t + 0.1 + 0.8 * h.yz;
+                    float2 local = (tile - centre) / (_FeatureKinds.w * s * float2(stretch, 1 / stretch)) + 0.5;
+                    if (any(local <= 0) || any(local >= 1)) continue;
+                    float frames = _FeatureKinds.z;
+                    uint frame = (uint)(rock ? _FeatureFirst.y : _FeatureFirst.x) + (uint)(floor(pick.x * kinds) * frames + floor(pick.y * frames));
+                    float4 rect = _FrameRects[frame];
+                    float lod = clamp(log2(max(artPerPixel / s, 1e-4)), 0, _MaxLod);
+                    float inset = 0.5 * exp2(ceil(lod)) / (_TileSize * _FeatureKinds.w);
+                    half4 stamp = SAMPLE_TEXTURE2D_LOD(_AtlasTex, sampler_AtlasTex, rect.xy + clamp(local, inset, 1 - inset) * rect.zw, lod);
+                    col = lerp(col, stamp.rgb, stamp.a);
+                }
+                return col;
+            }
+
             struct appdata { float3 vertex : POSITION; float2 uv : TEXCOORD0; };
             struct v2f { float4 pos : SV_POSITION; float2 tile : TEXCOORD0; };
 
@@ -111,6 +163,8 @@ Shader "WAR2D/Terrain"
                     half mask = SAMPLE_TEXTURE2D_LOD(_MaskTex, sampler_MaskTex, uv, lod).r;
                     art.rgb = lerp(art.rgb, saturate(art.rgb * (half3)_TeamColors[owner].rgb * _TeamGain), mask);
                 }
+
+                if (type <= 1u) art.rgb = Stamps(art.rgb, i.tile, cell, artPerPixel);
 
                 half flat = (half)saturate((artPerPixel - _FlatFrom) / max(_FlatTo - _FlatFrom, 1e-3));
                 half3 col = lerp(art.rgb, _TileFlat[type].rgb, flat);

@@ -11,8 +11,9 @@ using WAR2D.World;
 /// <summary>
 /// Draws a <see cref="MapGrid"/> on one quad behind everything else with the <c>Terrain</c> shader: an RGBA32
 /// index texture (one texel per tile: R = <see cref="TileType"/>, G = its frame: the <see cref="TileAutotile"/>
-/// variant, plus the damage state × 16 for player walls, B = a player wall's owner palette index + 1) picks each
-/// tile's frame in the <c>Tiles</c> atlas, and the shader tints wall team pixels in the owner's colour.
+/// variant, plus the damage state × 16 for player walls, B = a player wall's owner palette index + 1, A = its
+/// <see cref="Clearance"/>) picks each tile's frame in the <c>Tiles</c> atlas, the shader tints wall team pixels in the
+/// owner's colour and scatters the floor and rock feature stamps over tiles with room for them.
 /// Wall owners and health come from <see cref="WAR2D.Net.Replication.ClientTerrain"/>. <see cref="Refresh"/>
 /// rewrites changed tiles (and their neighbours, whose masks change with them).
 /// </summary>
@@ -42,7 +43,7 @@ public class MapView : MonoBehaviour
         _instance.Bake(grid);
     }
 
-    /// <summary>Rewrites <paramref name="tiles"/> (and their neighbours) after their type changed in the shown grid.</summary>
+    /// <summary>Rewrites <paramref name="tiles"/> (and the neighbours whose mask or clearance they change) after their type changed in the shown grid.</summary>
     public static void Refresh(IReadOnlyList<int2> tiles)
     {
         if (_instance == null || _instance._index == null || tiles == null || tiles.Count == 0) return;
@@ -87,7 +88,7 @@ public class MapView : MonoBehaviour
 
     /// <summary>
     /// The index texel of tile (x, y): R = type, G = frame (variant, and for a player wall + 16 × damage state),
-    /// B = for a wall tile its owner's palette index + 1 (0 for none). <paramref name="wall"/> gives a tile index's
+    /// B = for a wall tile its owner's palette index + 1 (0 for none), A = its <see cref="Clearance"/>. <paramref name="wall"/> gives a tile index's
     /// owner palette index (-1 for none) and health percent; null reads the local client's terrain.
     /// </summary>
     public static Color32 IndexOf(MapGrid grid, int x, int y, System.Func<int, (int colour, int health)> wall = null)
@@ -102,8 +103,31 @@ public class MapView : MonoBehaviour
             owner = (byte)(colour < 0 || colour >= TeamColours ? 0 : colour + 1);
             if (type == (byte)TileType.PlayerWall) variant = (byte)(variant + ArtManifest.AutotileVariants * WallRules.DamageState(health));
         }
-        return new Color32(type, variant, owner, 255);
+        return new Color32(type, variant, owner, Clearance(grid, x, y));
     }
+
+    /// <summary>
+    /// How far a floor or rock tile's own kind reaches around it: 0 for other kinds or a different neighbour, 1 when its
+    /// 3 × 3 block is all the same kind, 2 when its 5 × 5 block is (off the map counts as different). The shader stamps a
+    /// floor feature (up to 2 tiles across, centred in the tile) at 1, and a rock feature at 2, where every tile the
+    /// stamp touches is plain rock top with no cliff.
+    /// </summary>
+    public static byte Clearance(MapGrid grid, int x, int y)
+    {
+        byte type = grid.Tiles[y * grid.Width + x];
+        if (type != (byte)TileType.Ground && type != (byte)TileType.Wall) return 0;
+        for (int r = 1; r <= MaxClearance; r++)
+        for (int dy = -r; dy <= r; dy++)
+        for (int dx = -r; dx <= r; dx += (dy == -r || dy == r) ? 1 : 2 * r)
+        {
+            int tx = x + dx, ty = y + dy;
+            if ((uint)tx >= (uint)grid.Width || (uint)ty >= (uint)grid.Height || grid.Tiles[ty * grid.Width + tx] != type) return (byte)(r - 1);
+        }
+        return MaxClearance;
+    }
+
+    /// <summary>The largest <see cref="Clearance"/> (a changed tile rewrites its neighbours this far out).</summary>
+    public const int MaxClearance = 2;
 
     /// <summary>A wall tile's owner colour and health as the local client knows them.</summary>
     private static (int colour, int health) LocalWall(int index)
@@ -184,14 +208,22 @@ public class MapView : MonoBehaviour
         }
         _material.SetFloatArray("_TileFirst", first);
         _material.SetVectorArray("_TileFlat", flat);
+
+        // Feature stamps: none when the atlas predates them.
+        int floorStamps = atlas != null ? atlas.FirstFrame(ArtManifest.FloorFeature) : -1;
+        int rockStamps = atlas != null ? atlas.FirstFrame(ArtManifest.RockFeature) : -1;
+        _material.SetVector("_FeatureFirst", new Vector4(Mathf.Max(floorStamps, 0), Mathf.Max(rockStamps, 0), 0, 0));
+        _material.SetVector("_FeatureKinds", new Vector4(floorStamps < 0 ? 0 : WAR2D.Art.Render.RenderGen.FloorFeatureKinds, rockStamps < 0 ? 0 : WAR2D.Art.Render.RenderGen.RockFeatureKinds,
+            WAR2D.Art.Render.RenderGen.FeatureFrames, WAR2D.Art.Render.RenderGen.FeatureTiles));
     }
 
     private void Rewrite(IReadOnlyList<int2> tiles)
     {
         NativeArray<Color32> texels = _index.GetPixelData<Color32>(0);
+        // A tile's mask depends on its 4 neighbours and its clearance on its 5 × 5 block.
         foreach (int2 tile in tiles)
-        for (int dy = -1; dy <= 1; dy++)
-        for (int dx = -1; dx <= 1; dx++)
+        for (int dy = -MaxClearance; dy <= MaxClearance; dy++)
+        for (int dx = -MaxClearance; dx <= MaxClearance; dx++)
         {
             int x = tile.x + dx, y = tile.y + dy;
             if ((uint)x >= (uint)_grid.Width || (uint)y >= (uint)_grid.Height) continue;

@@ -15,6 +15,48 @@ namespace WAR2D.Art.Render
         public const int TileSize = 64;
         public const int North = 1, East = 2, South = 4, West = 8;
 
+        /// <summary>
+        /// Inside-corner bits for rock: set when both sides of that corner are rock but the diagonal tile between them is
+        /// open, so the corner is cut back to meet the two neighbours' cliffs instead of sticking out (playtest 2026-10-31).
+        /// </summary>
+        public const int NorthEast = 1, SouthEast = 2, SouthWest = 4, NorthWest = 8;
+
+        // Before RockShapes: static fields initialise in order, and MakeRockShapes fills this.
+        private static readonly int[] RockShapeIndex = new int[256];
+
+        /// <summary>
+        /// Every rock shape: a 4-neighbour mask with the inside corners it can have (a corner bit only where both of its
+        /// sides are rock): 47 in all. A rock tile's frame is its shape's index (<see cref="RockShape"/>).
+        /// </summary>
+        public static readonly (int mask, int corners)[] RockShapes = MakeRockShapes();
+
+        /// <summary>The inside corners a 4-neighbour mask allows (both sides of the corner rock).</summary>
+        public static int AllowedCorners(int mask)
+        {
+            int c = 0;
+            if ((mask & North) != 0 && (mask & East) != 0) c |= NorthEast;
+            if ((mask & South) != 0 && (mask & East) != 0) c |= SouthEast;
+            if ((mask & South) != 0 && (mask & West) != 0) c |= SouthWest;
+            if ((mask & North) != 0 && (mask & West) != 0) c |= NorthWest;
+            return c;
+        }
+
+        /// <summary>The <see cref="RockShapes"/> index of a mask and its inside corners (corners it can't have are ignored).</summary>
+        public static int RockShape(int mask, int corners) => RockShapeIndex[(mask & 15) | ((corners & AllowedCorners(mask)) << 4)];
+
+        private static (int, int)[] MakeRockShapes()
+        {
+            var shapes = new System.Collections.Generic.List<(int, int)>();
+            for (int mask = 0; mask < 16; mask++)
+            for (int corners = 0; corners < 16; corners++)
+            {
+                if ((corners & ~AllowedCorners(mask)) != 0) continue;
+                RockShapeIndex[mask | (corners << 4)] = shapes.Count;
+                shapes.Add((mask, corners));
+            }
+            return shapes.ToArray();
+        }
+
         private static StylePalette P => StylePalettes.Charcoal;
         private static Color C(byte role) => P.Colours[role];
 
@@ -414,155 +456,321 @@ namespace WAR2D.Art.Render
         }
 
         // ---------- Terrain ----------
+        //
+        // The tiles themselves are plain (owner, 2026-10-31): seamless stone floor and a calm rock top, so a field of them
+        // doesn't read as a grid. The features (cracks, stains, craters, boulders; crevices, crags, veins on rock) are
+        // separate stamps (FloorFeature, RockFeature) that the Terrain shader scatters over open floor and deep rock at
+        // any position and scale. A stamp is drawn in FeatureFrames rotations with the light kept fixed, so a turned
+        // crater is still lit from the top left.
 
-        /// <summary>Stone floor: mottled, pebbled and cracked; tiles seamlessly.</summary>
+        private static Material FloorMaterial => new Material(C(StylePalette.Floor1) * 0.95f, 0.06f, 8);
+        private static Material RockMaterial => new Material(C(StylePalette.Rock2) * 1.35f, 0.08f, 10);
+
+        /// <summary>
+        /// Stone floor: mottled and lightly pebbled; tiles seamlessly. The variants differ only away from the edges
+        /// (their mottling blends to variant 0's within 16 px of each side), so any two meet without a seam.
+        /// </summary>
         public static LitCanvas Floor(int seed, int variant)
         {
             var c = new LitCanvas(TileSize, TileSize);
             // 0.95: dark enough that every high-contrast player colour stands out 4.5:1 (PalettesTests).
-            c.Ground(new Material(C(StylePalette.Floor1) * 0.95f, 0.06f, 8));
-            int s = seed + variant * 977;
-            c.Grime(s, 0.9f, 0.16f, 4, 5);
-            // Fine cracks along a noise contour, broken up by a second noise so they don't form loops.
-            c.Groove((x, y) => Noise.Fbm(x, y, TileSize, 2, 2, s + 9) < 0.55f ? 9 : (Mathf.Abs(Noise.Fbm(x, y, TileSize, 5, 3, s + 5) - 0.5f) - 0.006f) * 60, 0.9f, 0.45f);
+            c.Ground(FloorMaterial);
+            int vs = seed + variant * 977;
+            float Mix(float x, float y, int cells, int octaves, int salt) => variant == 0
+                ? Noise.Fbm(x, y, TileSize, cells, octaves, seed + salt)
+                : Mathf.Lerp(Noise.Fbm(x, y, TileSize, cells, octaves, seed + salt), Noise.Fbm(x, y, TileSize, cells, octaves, vs + salt), Interior(x, y));
+            c.Displace((x, y) => (Mix(x, y, 4, 5, 0) - 0.5f) * 1.8f);
+            c.Tint((x, y, col) => col * (1 + (Mix(x, y, 8, 3, 7) - 0.5f) * 0.32f));
             var rng = new ArtRandom(seed, "pebbles" + variant);
-            for (int k = 0; k < 6; k++) c.Rivet(4 + rng.Range(TileSize - 8), 4 + rng.Range(TileSize - 8), 0.8f + rng.Range(2) * 0.6f, 0.9f, 0.05f);
-            // Variants 4 and up add one feature each in the tile's middle, faded out before the edges so tiles still meet
-            // (playtest 2026-10-30: the ground looked too even): loose stones, a damp stain, a sandy patch, a crack,
-            // a gravel spill, a small crater, a split slab and a few boulders. Each feature has two frames (4–11, 12–19)
-            // drawn from different seeds, so the same crater doesn't sit a few tiles from its twin.
-            switch (variant < 4 ? variant : 4 + (variant - 4) % FloorFeatures)
-            {
-                case 4:
-                    for (int k = 0; k < 6; k++) c.Rivet(14 + rng.Range(TileSize - 28), 14 + rng.Range(TileSize - 28), 1.8f + rng.Range(3) * 0.6f, 1.8f, 0.14f);
-                    break;
-                case 5:
-                    c.Tint((x, y, col) => col * (1f - 0.24f * Patch(x, y, s + 31)));
-                    break;
-                case 6:
-                    c.Tint((x, y, col) => Color.Lerp(col, C(StylePalette.Floor2), 0.6f * Patch(x, y, s + 37)));
-                    break;
-                case 7:
-                {
-                    // A crack: one deep wandering line across the middle.
-                    float a = rng.Range(180) * Mathf.Deg2Rad, o = rng.Range(20) - 10;
-                    c.Groove((x, y) => Interior(x, y) < 0.4f ? 9 : Mathf.Abs((x - TileSize / 2f) * Mathf.Cos(a) + (y - TileSize / 2f) * Mathf.Sin(a) - o
-                        + 6f * (Noise.Fbm(x, y, TileSize, 2, 3, s + 41) - 0.5f)) - 0.5f, 2f, 1f);
-                    break;
-                }
-                case 8:
-                {
-                    // Gravel: a lighter patch thick with small stones.
-                    c.Tint((x, y, col) => Color.Lerp(col, C(StylePalette.Floor2), 0.4f * Patch(x, y, s + 43)));
-                    for (int k = 0; k < 40; k++)
-                    {
-                        float gx = 10 + rng.Range(TileSize - 20), gy = 10 + rng.Range(TileSize - 20);
-                        if (Patch(gx, gy, s + 43) > 0.25f) c.Rivet(gx, gy, 0.8f + rng.Range(3) * 0.4f, 1f, 0.1f);
-                    }
-                    break;
-                }
-                case 9:
-                {
-                    // A shallow crater: a dished, darker floor inside a low rim.
-                    float cx = 26 + rng.Range(12), cy = 26 + rng.Range(12), r = 9 + rng.Range(4);
-                    c.Displace((x, y) =>
-                    {
-                        float d = new Vector2(x - cx, y - cy).magnitude / r;
-                        return d < 1 ? -2.2f * (1 - d * d) : 1.4f * Mathf.Max(0, 1 - (d - 1) * 2.5f);
-                    });
-                    c.Tint((x, y, col) => col * (1f - 0.22f * Mathf.Clamp01(1.1f - new Vector2(x - cx, y - cy).magnitude / r)));
-                    break;
-                }
-                case 10:
-                {
-                    // A split slab: one wandering crack across the middle and a branch off one side of it.
-                    float a = rng.Range(180) * Mathf.Deg2Rad, b = a + (50 + rng.Range(80)) * Mathf.Deg2Rad;
-                    float o1 = rng.Range(16) - 8, o2 = rng.Range(16) - 8;
-                    float Line(float x, float y, float ang, float off) =>
-                        (x - TileSize / 2f) * Mathf.Cos(ang) + (y - TileSize / 2f) * Mathf.Sin(ang) - off
-                        + 3f * (Noise.Fbm(x, y, TileSize, 3, 2, s + 47) - 0.5f);
-                    c.Groove((x, y) => Interior(x, y) < 0.5f ? 9
-                        : Mathf.Min(Mathf.Abs(Line(x, y, a, o1)), Line(x, y, a, o1) > 0 ? Mathf.Abs(Line(x, y, b, o2)) : 9) - 0.4f, 1.6f, 0.9f);
-                    break;
-                }
-                case 11:
-                {
-                    // Boulders: two or three fallen rocks.
-                    var rock = new Material(C(StylePalette.Rock1), 0.08f, 10);
-                    int n = 2 + rng.Range(2);
-                    for (int k = 0; k < n; k++)
-                    {
-                        float bx = 18 + rng.Range(TileSize - 36), by = 18 + rng.Range(TileSize - 36), br = 3 + rng.Range(3);
-                        int sides = 5 + rng.Range(2);
-                        float turn = rng.Range(70) * Mathf.Deg2Rad;
-                        c.Shape((x, y) => Polygon(x, y, bx, by, br, sides, turn), rock, 3 + br, br * 0.7f, br);
-                    }
-                    break;
-                }
-            }
+            for (int k = 0; k < 4; k++) c.Rivet(10 + rng.Range(TileSize - 20), 10 + rng.Range(TileSize - 20), 0.7f + rng.Range(2) * 0.4f, 0.7f, 0.04f);
             return c;
         }
 
-        /// <summary>Floor features (<see cref="Floor"/> variants 4 and up), each drawn in two frames.</summary>
-        public const int FloorFeatures = 8;
-
-        /// <summary>Floor variants (<see cref="Floor"/>): four plain, then two frames of each feature.</summary>
-        public const int FloorVariants = 4 + 2 * FloorFeatures;
+        /// <summary>Floor variants (<see cref="Floor"/>): plain, picked at random per tile.</summary>
+        public const int FloorVariants = 4;
 
         /// <summary>
-        /// The floor variant of a tile from its position hash in [0, <see cref="FloorPicks"/>): the plain variants 0–3 take
-        /// the first 24 picks, each feature frame (4–19) one pick, so 40 % of the floor carries a feature.
+        /// 0 below <paramref name="e0"/>, 1 above <paramref name="e1"/>, smooth between (a shader's smoothstep; Unity's
+        /// <c>Mathf.SmoothStep</c> interpolates between its first two arguments instead).
         /// </summary>
-        public static int FloorVariant(int pick) => pick < 24 ? pick & 3 : 4 + (pick - 24) % (FloorVariants - 4);
-
-        /// <summary>The number of position-hash picks <see cref="FloorVariant"/> maps to variants.</summary>
-        public const int FloorPicks = 40;
-
-        /// <summary>Rock variants per autotile mask (<see cref="Rock"/>): the same edges, different tops.</summary>
-        public const int RockVariants = 3;
+        private static float Step(float e0, float e1, float x)
+        {
+            float t = Mathf.Clamp01((x - e0) / (e1 - e0));
+            return t * t * (3 - 2 * t);
+        }
 
         /// <summary>0 at a tile's edges rising to 1 from 16 px in: where a variant may differ without making a seam.</summary>
         private static float Interior(float x, float y) =>
             Mathf.SmoothStep(0f, 1f, Mathf.Min(Mathf.Min(x, TileSize - x), Mathf.Min(y, TileSize - y)) / 16f);
 
-        /// <summary>A soft noisy blob in a tile's middle, 0–1 (a variant's stain or patch).</summary>
-        private static float Patch(float x, float y, int seed) =>
-            Interior(x, y) * Mathf.SmoothStep(0.45f, 0.7f, Noise.Fbm(x, y, TileSize, 2, 3, seed));
-
         /// <summary>
-        /// Rock for a 4-neighbour mask (bit set = that neighbour is rock): a craggy raised mass whose cliffs
-        /// face the open sides, with rounded outside corners and a noisy (but tile-matching) edge.
+        /// Rock for a 4-neighbour mask (bit set = that neighbour is rock) and its inside <paramref name="corners"/>: a raised
+        /// mass whose cliffs face the open sides, with rounded outside corners, cut-back inside corners and a noisy (but
+        /// tile-matching) edge. The top is craggy near a cliff and calms to a
+        /// fine, even grain from 44 px in, so rock enclosed on all four sides is plain and joins its neighbours.
         /// </summary>
-        public static LitCanvas Rock(int seed, int mask, int variant = 0)
+        public static LitCanvas Rock(int seed, int mask, int corners = 0)
         {
             LitCanvas c = Floor(seed, mask & 3);
-            var rock = new Material(C(StylePalette.Rock2) * 1.35f, 0.08f, 10);
-            float Inside(float x, float y) => EdgeDistance(x, y, mask) - 6 - 5 * Noise.Fbm(x, y, TileSize, 4, 3, seed + 41);
-            c.Shape((x, y) => -Inside(x, y), rock, 22, 12, 20);
-            // Craggy top: ridged noise lit from above, darker in the cracks. A variant (playtest 2026-10-30) blends in its own
-            // ridges and shading away from the tile's edges, so neighbouring variants still meet without a seam.
-            int vs = seed + variant * 131;
-            float Blend(float x, float y) => variant == 0 ? 0f : Interior(x, y);
-            float Ridge(float x, float y)
-            {
-                float a = 1 - Mathf.Abs(Noise.Fbm(x, y, TileSize, 4, 4, seed + 77) * 2 - 1);
-                if (variant == 0) return a;
-                float b = 1 - Mathf.Abs(Noise.Fbm(x, y, TileSize, 3 + variant, 4, vs + 77) * 2 - 1);
-                return Mathf.Lerp(a, b, Blend(x, y));
-            }
-            c.Displace((x, y) => Inside(x, y) <= 0 ? 0 : Mathf.Min(1, Inside(x, y) / 10) * (10 + 3 * variant * Blend(x, y)) * Ridge(x, y));
-            // Crevices darker and browner, ridges lighter.
+            float Inside(float x, float y) => EdgeDistance(x, y, mask, corners) - 6 - 5 * Noise.Fbm(x, y, TileSize, 4, 3, seed + 41);
+            c.Shape((x, y) => -Inside(x, y), RockMaterial, 22, 12, 20);
+            float Crag(float x, float y) => 1 - Step(20, 44, EdgeDistance(x, y, mask, corners));
+            RockTop(c, seed, TileSize, (x, y) => Inside(x, y) <= 0 ? 0 : Mathf.Min(1, Inside(x, y) / 10), Crag);
+            return c;
+        }
+
+        /// <summary>
+        /// The rock top's relief and shading over a canvas <paramref name="size"/> px square (tiling at that size):
+        /// <paramref name="on"/> is how much of it a point gets (0 off the rock), <paramref name="crag"/> how craggy it is
+        /// there (ridged and darker in the cracks) rather than calm.
+        /// </summary>
+        private static void RockTop(LitCanvas c, int seed, int size, Func<float, float, float> on, Func<float, float, float> crag)
+        {
+            int k = size / TileSize;
+            float Ridge(float x, float y) => 1 - Mathf.Abs(Noise.Fbm(x, y, size, 4 * k, 4, seed + 77) * 2 - 1);
+            float Calm(float x, float y) => Noise.Fbm(x, y, size, 8 * k, 3, seed + 83);
+            c.Displace((x, y) => on(x, y) * (2.5f * Calm(x, y) + 10 * crag(x, y) * Ridge(x, y)));
             Color crevice = C(StylePalette.Rock0) * 1.4f;
-            float Shade(float x, float y) => Mathf.Lerp(Noise.Fbm(x, y, TileSize, 6, 3, seed + 99), Noise.Fbm(x, y, TileSize, 5, 3, vs + 99), Blend(x, y));
-            c.Tint((x, y, col) => Inside(x, y) <= 0 ? col
-                : Color.Lerp(crevice, col * (0.9f + 0.25f * Shade(x, y)), Mathf.SmoothStep(0.15f, 0.75f, Ridge(x, y))));
+            c.Tint((x, y, col) =>
+            {
+                if (on(x, y) <= 0) return col;
+                Color calm = col * (0.8f + 0.16f * Calm(x, y));
+                Color craggy = Color.Lerp(crevice, col * (0.9f + 0.25f * Noise.Fbm(x, y, size, 6 * k, 3, seed + 99)), Mathf.SmoothStep(0.15f, 0.75f, Ridge(x, y)));
+                return Color.Lerp(calm, craggy, crag(x, y));
+            });
+        }
+
+        // ---------- Terrain features (stamps) ----------
+
+        /// <summary>A feature stamp's canvas in tiles across (at scale 1; the shader draws it from about 0.35 to 2 tiles).</summary>
+        public const int FeatureTiles = 2;
+
+        /// <summary>Frames per feature kind: rotations about 30° apart, each with its own random size and layout.</summary>
+        public const int FeatureFrames = 12;
+
+        /// <summary>Floor feature kinds (<see cref="FloorFeature"/>).</summary>
+        public const int FloorFeatureKinds = 6;
+
+        /// <summary>Rock feature kinds (<see cref="RockFeature"/>).</summary>
+        public const int RockFeatureKinds = 5;
+
+        private const int FeatureSize = FeatureTiles * TileSize;
+
+        /// <summary>The plain floor a floor stamp is drawn on; the stamp keeps only the pixels its feature changed.</summary>
+        public static LitCanvas FloorFeatureBase(int seed)
+        {
+            var c = new LitCanvas(FeatureSize, FeatureSize);
+            c.Ground(FloorMaterial);
+            c.Displace((x, y) => (Noise.Fbm(x, y, FeatureSize, 4 * FeatureTiles, 5, seed) - 0.5f) * 1.8f);
+            c.Tint((x, y, col) => col * (1 + (Noise.Fbm(x, y, FeatureSize, 8 * FeatureTiles, 3, seed + 7) - 0.5f) * 0.32f));
+            return c;
+        }
+
+        /// <summary>The plain rock top a rock stamp is drawn on.</summary>
+        public static LitCanvas RockFeatureBase(int seed)
+        {
+            LitCanvas c = FloorFeatureBase(seed);
+            c.Shape((x, y) => -1000f, RockMaterial, 22, 0, 0);
+            RockTop(c, seed, FeatureSize, (x, y) => 1, (x, y) => 0);
+            return c;
+        }
+
+        /// <summary>
+        /// Floor feature <paramref name="kind"/> (0 crack, 1 damp stain, 2 sandy patch, 3 gravel, 4 crater, 5 boulders),
+        /// frame <paramref name="frame"/> (turned frame × 30°, give or take 15°), on <see cref="FloorFeatureBase"/>. Kept within 56 px of the
+        /// centre and faded out towards it, so a stamp has no square edge.
+        /// </summary>
+        public static LitCanvas FloorFeature(int seed, int kind, int frame)
+        {
+            LitCanvas c = FloorFeatureBase(seed);
+            var rng = new ArtRandom(seed, $"floor feature {kind} {frame}");
+            float a = (frame * 30 + rng.Range(30) - 15) * Mathf.Deg2Rad;
+            float o = FeatureSize / 2f, ca = Mathf.Cos(a), sa = Mathf.Sin(a);
+            float U(float x, float y) => (x - o) * ca + (y - o) * sa;
+            float V(float x, float y) => -(x - o) * sa + (y - o) * ca;
+            float Blob(float x, float y, float r, int salt) =>
+                Step(0.15f, 0.55f, 1 - new Vector2(U(x, y) / 1.25f, V(x, y)).magnitude / r + 0.45f * (Noise.Fbm(x, y, FeatureSize, 6, 3, seed + salt) - 0.5f));
+            int ns = seed + kind * 31 + frame * 7;
+            switch (kind)
+            {
+                case 0:
+                {
+                    // A crack: a long tapering wandering line with a short branch off one side.
+                    float len = 22 + rng.Range(34), bu = (rng.Range(60) - 30) / 100f * len, ba = (30 + rng.Range(40)) * Mathf.Deg2Rad;
+                    float wander = 4 + rng.Range(7), branch = rng.Chance(0.6f) ? 10 + rng.Range(14) : 0;
+                    float Wander(float u) => wander * (Mathf.PerlinNoise(u * 0.045f + ns * 0.13f, 0.5f) - 0.5f);
+                    float Crack(float x, float y)
+                    {
+                        float u = U(x, y), v = V(x, y) - Wander(u);
+                        float t = Mathf.Abs(u) / len;
+                        return t >= 1 ? 9 : Mathf.Abs(v) / (1 - t * t) - 0.35f;
+                    }
+                    float Branch(float x, float y)
+                    {
+                        float u = U(x, y) - bu, v = V(x, y) - Wander(bu);
+                        float bu2 = u * Mathf.Cos(ba) + v * Mathf.Sin(ba), bv = -u * Mathf.Sin(ba) + v * Mathf.Cos(ba);
+                        float t = bu2 / Mathf.Max(branch, 1);
+                        return branch <= 0 || t <= 0 || t >= 1 ? 9 : Mathf.Abs(bv) / (1 - t) - 0.3f;
+                    }
+                    c.Groove((x, y) => Mathf.Min(Crack(x, y), Branch(x, y)), 2.6f, 1.5f);
+                    break;
+                }
+                case 1:
+                    // A damp stain: a dark soft-edged blob.
+                    c.Tint((x, y, col) => col * (1f - 0.38f * Blob(x, y, 14 + rng.Range(26), 31)));
+                    break;
+                case 2:
+                {
+                    // A sandy patch: lighter grit drifted into a blob.
+                    float r = 14 + rng.Range(26);
+                    c.Tint((x, y, col) => Color.Lerp(col, C(StylePalette.Floor2) * 1.05f, 0.65f * Blob(x, y, r, 37)));
+                    c.Displace((x, y) => -0.6f * Blob(x, y, r, 37));
+                    break;
+                }
+                case 3:
+                {
+                    // Gravel: a lighter patch thick with small stones.
+                    float r = 16 + rng.Range(24);
+                    c.Tint((x, y, col) => Color.Lerp(col, C(StylePalette.Floor2), 0.35f * Blob(x, y, r, 43)));
+                    for (int k = 0; k < (int)(r * 2); k++)
+                    {
+                        float gx = 12 + rng.Range(FeatureSize - 24), gy = 12 + rng.Range(FeatureSize - 24);
+                        if (Blob(gx, gy, r, 43) > 0.3f) c.Rivet(gx, gy, 0.8f + rng.Range(3) * 0.45f, 1f, 0.1f);
+                    }
+                    break;
+                }
+                case 4:
+                {
+                    // A crater: a dished, darker floor inside a raised rim, with thrown-out stones.
+                    float r = 7 + rng.Range(18);
+                    float D(float x, float y) => new Vector2(x - o, y - o).magnitude / r;
+                    c.Displace((x, y) => D(x, y) < 1 ? -3f * (1 - D(x, y) * D(x, y)) : 1.8f * Mathf.Max(0, 1 - (D(x, y) - 1) * 2.2f));
+                    c.Tint((x, y, col) => col * (1f - 0.35f * Mathf.Clamp01(1.1f - D(x, y))));
+                    for (int k = 0; k < 3 + (int)(r / 3); k++)
+                    {
+                        float t = rng.Range(360) * Mathf.Deg2Rad, d = r * (1.3f + rng.Range(60) / 100f);
+                        c.Rivet(o + Mathf.Cos(t) * d, o + Mathf.Sin(t) * d, 0.9f + rng.Range(3) * 0.4f, 1.1f, 0.1f);
+                    }
+                    break;
+                }
+                default:
+                {
+                    // Boulders: one large fallen rock and two or three smaller ones beside it.
+                    var rock = new Material(C(StylePalette.Rock1) * 1.1f, 0.08f, 10);
+                    int n = 1 + rng.Range(4);
+                    float big = 4 + rng.Range(9);
+                    for (int k = 0; k < n; k++)
+                    {
+                        float d = k == 0 ? 0 : big + 3 + rng.Range(12), t = a + k * 2.1f;
+                        float bx = o + Mathf.Cos(t) * d, by = o + Mathf.Sin(t) * d, br = k == 0 ? big : 2 + rng.Range(4);
+                        int sides = 5 + rng.Range(3);
+                        float turn = rng.Range(70) * Mathf.Deg2Rad;
+                        c.Shape((x, y) => Polygon(x, y, bx, by, br, sides, turn) - 0.8f * Noise.Fbm(x, y, FeatureSize, 16, 2, ns + k), rock, 3 + br * 0.9f, br * 0.7f, br);
+                    }
+                    break;
+                }
+            }
+            return c;
+        }
+
+        /// <summary>
+        /// Rock feature <paramref name="kind"/> (0 crevice, 1 crag, 2 mineral veins, 3 outcrop, 4 pit), frame
+        /// <paramref name="frame"/> (turned frame × 30°, give or take 15°), on <see cref="RockFeatureBase"/>.
+        /// </summary>
+        public static LitCanvas RockFeature(int seed, int kind, int frame)
+        {
+            LitCanvas c = RockFeatureBase(seed);
+            var rng = new ArtRandom(seed, $"rock feature {kind} {frame}");
+            float a = (frame * 30 + rng.Range(30) - 15) * Mathf.Deg2Rad;
+            float o = FeatureSize / 2f, ca = Mathf.Cos(a), sa = Mathf.Sin(a);
+            float U(float x, float y) => (x - o) * ca + (y - o) * sa;
+            float V(float x, float y) => -(x - o) * sa + (y - o) * ca;
+            int ns = seed + 500 + kind * 31 + frame * 7;
+            float Fade(float x, float y, float r) => Mathf.Clamp01((r - new Vector2(x - o, y - o).magnitude) / 12f);
+            Color crevice = C(StylePalette.Rock0) * 1.2f;
+            switch (kind)
+            {
+                case 0:
+                {
+                    // A crevice: a deep dark split with jagged walls.
+                    float len = 20 + rng.Range(34), wide = 1.6f + rng.Range(15) / 10f;
+                    float Split(float x, float y)
+                    {
+                        float u = U(x, y), t = Mathf.Abs(u) / len;
+                        if (t >= 1) return 9;
+                        float v = V(x, y) - 9 * (Mathf.PerlinNoise(u * 0.05f + ns * 0.11f, 0.3f) - 0.5f);
+                        return Mathf.Abs(v) - wide * (1 - t * t) * (0.7f + 0.6f * Mathf.PerlinNoise(u * 0.3f, ns * 0.07f));
+                    }
+                    c.Displace((x, y) => Split(x, y) < 0 ? -7 : -3 * Mathf.Clamp01(1 - Split(x, y) / 3));
+                    c.Tint((x, y, col) => Split(x, y) < 0 ? crevice : Split(x, y) < 2 ? col * 0.8f : col);
+                    break;
+                }
+                case 1:
+                {
+                    // A crag: a raised knot of ridged stone, darker in its cracks.
+                    float r = 18 + rng.Range(28);
+                    float W(float x, float y) => Mathf.SmoothStep(0, 1, Fade(x, y, r) * (0.8f + 0.4f * Noise.Fbm(x, y, FeatureSize, 4, 2, ns)));
+                    float Ridge(float x, float y) => 1 - Mathf.Abs(Noise.Fbm(x, y, FeatureSize, 6, 4, ns + 3) * 2 - 1);
+                    c.Displace((x, y) => W(x, y) * 11 * Ridge(x, y));
+                    c.Tint((x, y, col) => Color.Lerp(col, Color.Lerp(crevice, col * 1.1f, Mathf.SmoothStep(0.15f, 0.75f, Ridge(x, y))), W(x, y)));
+                    break;
+                }
+                case 2:
+                {
+                    // Mineral veins: a few thin lighter bands with a dark seam, wandering together.
+                    float r = 26 + rng.Range(28);
+                    int bands = 1 + rng.Range(4);
+                    float gap = 6 + rng.Range(5);
+                    float Band(float x, float y)
+                    {
+                        float v = V(x, y) - 8 * (Mathf.PerlinNoise(U(x, y) * 0.04f + ns * 0.17f, 0.7f) - 0.5f) + gap * (bands - 1) / 2f;
+                        float best = 9;
+                        for (int b = 0; b < bands; b++) best = Mathf.Min(best, Mathf.Abs(v - b * gap));
+                        return best;
+                    }
+                    Color vein = C(StylePalette.Rock3) * 1.5f;
+                    c.Tint((x, y, col) =>
+                    {
+                        float f = Fade(x, y, r), d = Band(x, y);
+                        if (f <= 0 || d > 1.6f) return col;
+                        return Color.Lerp(col, d < 0.5f ? crevice : vein, f * (d < 0.5f ? 0.8f : 0.7f));
+                    });
+                    c.Displace((x, y) => Fade(x, y, r) * (Band(x, y) < 1.6f ? 0.8f : 0));
+                    break;
+                }
+                case 3:
+                {
+                    // An outcrop: a big blocky slab standing proud of the rock, with a smaller one beside it.
+                    var stone = new Material(C(StylePalette.Rock3) * 1.25f, 0.1f, 12);
+                    float br = 7 + rng.Range(12), sx = o + Mathf.Cos(a) * (br + 4), sy = o + Mathf.Sin(a) * (br + 4);
+                    int sides = 5 + rng.Range(2);
+                    c.Shape((x, y) => Polygon(x, y, o, o, br, sides, a) - 1.2f * Noise.Fbm(x, y, FeatureSize, 12, 2, ns), stone, 34, 3, 9);
+                    c.Shape((x, y) => Polygon(x, y, sx, sy, br * 0.45f, 5, a + 1) - 0.8f * Noise.Fbm(x, y, FeatureSize, 12, 2, ns + 1), stone, 30, 2, 6);
+                    c.Groove((x, y) => Polygon(x, y, o, o, br, sides, a) > -3 ? 9 : Mathf.Abs(U(x, y) * 0.3f + V(x, y)) - 0.4f, 1.2f, 0.8f);
+                    break;
+                }
+                default:
+                {
+                    // A pit: a rough hollow with loose stones in it.
+                    float r = 7 + rng.Range(14);
+                    float D(float x, float y) => new Vector2(U(x, y) / 1.2f, V(x, y)).magnitude / r + 0.25f * (Noise.Fbm(x, y, FeatureSize, 8, 2, ns) - 0.5f);
+                    c.Displace((x, y) => D(x, y) < 1 ? -6 * (1 - D(x, y) * D(x, y)) : 0);
+                    c.Tint((x, y, col) => D(x, y) < 1 ? Color.Lerp(col, crevice, 0.5f * (1 - D(x, y))) : col);
+                    for (int k = 0; k < 6; k++)
+                    {
+                        float t = rng.Range(360) * Mathf.Deg2Rad, d = r * rng.Range(80) / 100f;
+                        c.Rivet(o + Mathf.Cos(t) * d, o + Mathf.Sin(t) * d, 1.2f + rng.Range(3) * 0.5f, 1.6f, 0.08f);
+                    }
+                    break;
+                }
+            }
             return c;
         }
 
         /// <summary>Rock with glowing faceted gem crystals set into it.</summary>
-        public static LitCanvas Gem(int seed, int variant, int mask = North | East | South | West)
+        public static LitCanvas Gem(int seed, int variant, int mask = North | East | South | West, int corners = 0)
         {
-            LitCanvas c = Rock(seed, mask);
+            LitCanvas c = Rock(seed, mask, corners);
             var rng = new ArtRandom(seed, "crystals" + variant);
             int count = 3 + rng.Range(3), placed = 0;
             void Crystal(float cx, float cy, float r, float a, float t)
@@ -576,7 +784,7 @@ namespace WAR2D.Art.Render
                 float cx = 14 + rng.Range(TileSize - 28), cy = 14 + rng.Range(TileSize - 28);
                 float r = 4 + rng.Range(4), a = rng.Range(60) * Mathf.Deg2Rad, t = rng.Range(100) / 100f;
                 // Only on the rock's top: the cliff and its bevel reach about 23 px in from an open side.
-                if (EdgeDistance(cx, cy, mask) < 23 + r) continue;
+                if (EdgeDistance(cx, cy, mask, corners) < 23 + r) continue;
                 Crystal(cx, cy, r, a, t);
             }
             if (placed == 0)
@@ -586,7 +794,7 @@ namespace WAR2D.Art.Render
                 for (int y = 8; y <= TileSize - 8; y += 4)
                 for (int x = 8; x <= TileSize - 8; x += 4)
                 {
-                    float d = EdgeDistance(x, y, mask);
+                    float d = EdgeDistance(x, y, mask, corners);
                     if (d > best) { best = d; bx = x; by = y; }
                 }
                 Crystal(bx, by, Mathf.Clamp(best - 23, 3, 6), rng.Range(60) * Mathf.Deg2Rad, 0.5f);
@@ -594,8 +802,11 @@ namespace WAR2D.Art.Render
             return c;
         }
 
-        /// <summary>Distance (px) to the nearest side open to floor, with rounded outside corners; large when enclosed.</summary>
-        private static float EdgeDistance(float x, float y, int mask)
+        /// <summary>
+        /// Distance (px) to the nearest side open to floor, with rounded outside corners; large when enclosed. An inside
+        /// corner (<paramref name="corners"/>) is open floor at that corner point, where the two neighbours' cliffs meet.
+        /// </summary>
+        private static float EdgeDistance(float x, float y, int mask, int corners = 0)
         {
             float s = TileSize, d = 999;
             bool n = (mask & North) == 0, e = (mask & East) == 0, so = (mask & South) == 0, w = (mask & West) == 0;
@@ -614,6 +825,11 @@ namespace WAR2D.Art.Render
             if (n && e) d = Mathf.Min(d, Corner(s - r, s - r, false, false));
             if (so && w) d = Mathf.Min(d, Corner(r, r, true, true));
             if (so && e) d = Mathf.Min(d, Corner(s - r, r, false, true));
+            float Point(float px, float py) => Mathf.Sqrt((x - px) * (x - px) + (y - py) * (y - py));
+            if ((corners & NorthEast) != 0) d = Mathf.Min(d, Point(s, s));
+            if ((corners & SouthEast) != 0) d = Mathf.Min(d, Point(s, 0));
+            if ((corners & SouthWest) != 0) d = Mathf.Min(d, Point(0, 0));
+            if ((corners & NorthWest) != 0) d = Mathf.Min(d, Point(0, s));
             return d;
         }
 

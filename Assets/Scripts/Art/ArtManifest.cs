@@ -58,6 +58,9 @@ namespace WAR2D.Art
         /// <summary>The Gun turret's head (v0.13): drawn over its base (<c>GunTurret</c>) in 8 facings, 2 frames (rest, recoil).</summary>
         public const string TurretHead = "GunTurretHead";
 
+        /// <summary>The floor and rock feature stamps (<see cref="Render.RenderGen.FloorFeature"/>, <see cref="Render.RenderGen.RockFeature"/>).</summary>
+        public const string FloorFeature = "FloorFeature", RockFeature = "RockFeature";
+
         private static readonly ArtEntry[] Entries =
         {
             // Units: 1×1 tile, 8 facings; frames are move (2) then the unit's action (2).
@@ -88,11 +91,17 @@ namespace WAR2D.Art
 
             // Tiles: frames are variants (random for floor and gems, autotile masks for walls).
             new ArtEntry(nameof(TileType.Ground), ArtKind.Tile, 1, 1, Render.RenderGen.FloorVariants, 1, false),
-            new ArtEntry(nameof(TileType.Wall), ArtKind.Tile, 1, 1, Render.RenderGen.RockVariants * AutotileVariants, 1, false), // variants × 16 masks, variant-major
-            new ArtEntry(nameof(TileType.Gem), ArtKind.Tile, 1, 1, 4 * AutotileVariants, 1, false), // 4 variants × 16 masks, variant-major
+            new ArtEntry(nameof(TileType.Wall), ArtKind.Tile, 1, 1, Render.RenderGen.RockShapes.Length, 1, false), // one per rock shape
+            new ArtEntry(nameof(TileType.Gem), ArtKind.Tile, 1, 1, 4 * Render.RenderGen.RockShapes.Length, 1, false), // 4 variants × rock shapes, variant-major
             new ArtEntry(nameof(TileType.Border), ArtKind.Tile, 1, 1, 1, 1, false),
             new ArtEntry("PlayerWall", ArtKind.Tile, 1, 1, AutotileVariants * WallDamageStates, 1, true),
             new ArtEntry("WallBlueprint", ArtKind.Tile, 1, 1, AutotileVariants, 1, true),
+            // Terrain features (2026-10-31): stamps the Terrain shader scatters over open floor and deep rock, kind-major,
+            // each kind in FeatureFrames rotations. Transparent where the feature leaves the ground as it is.
+            new ArtEntry(FloorFeature, ArtKind.Tile, Render.RenderGen.FeatureTiles, Render.RenderGen.FeatureTiles,
+                Render.RenderGen.FloorFeatureKinds * Render.RenderGen.FeatureFrames, 1, false),
+            new ArtEntry(RockFeature, ArtKind.Tile, Render.RenderGen.FeatureTiles, Render.RenderGen.FeatureTiles,
+                Render.RenderGen.RockFeatureKinds * Render.RenderGen.FeatureFrames, 1, false),
 
             // Effects and overlays.
             new ArtEntry("Explosion", ArtKind.Effect, 2, 2, 6, 1, false),

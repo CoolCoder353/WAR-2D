@@ -36,12 +36,14 @@ Footprints match `GameConfig.xml` (`ArtManifestTests.BuildingFootprintsMatchTheC
 
 | Id | Frames | Team mask | Source today |
 |---|---|---|---|
-| `Ground` | 4 random variants | no | `Tiles` atlas, drawn by the `Terrain` shader (`MapView`, index texture from `TileAutotile`) |
-| `Wall` (rock) | 16 autotile masks (N, E, S, W) | no | `Wall.asset`, `WallSIB.asset` (sibling rule tile) |
-| `Gem` | 4 random variants × 16 autotile masks (variant-major) | no | `Gems.asset`, `GemsSIB.asset` |
+| `Ground` | 4 plain random variants (they differ only away from the edges) | no | `Tiles` atlas, drawn by the `Terrain` shader (`MapView`, index texture from `TileAutotile`) |
+| `Wall` (rock) | 47 rock shapes (`RenderGen.RockShapes`: 4-neighbour mask plus cut-back inside corners where a diagonal is open); craggy only near a cliff, plain inside | no | `Wall.asset`, `WallSIB.asset` (sibling rule tile) |
+| `Gem` | 4 random variants × 47 rock shapes (variant-major) | no | `Gems.asset`, `GemsSIB.asset` |
 | `Border` | 1 (solid rock) | no | drawn as rock |
 | `PlayerWall` | 16 masks × 3 damage states | yes | none (v0.7) |
 | `WallBlueprint` | 16 masks | yes | none (v0.7) |
+| `FloorFeature` | 2×2-tile stamps: 6 kinds (crack, damp stain, sandy patch, gravel, crater, boulders) × 12 turned frames | no | `Tiles` atlas, scattered by the `Terrain` shader over tiles whose 3×3 block is all floor |
+| `RockFeature` | 2×2-tile stamps: 5 kinds (crevice, crag, mineral veins, outcrop, pit) × 12 turned frames | no | `Tiles` atlas, scattered over rock whose 5×5 block is all rock |
 
 Unused today: `Spawner.asset`, `Test.asset` and the `Pallets` tile palette (removed in Task 16 if nothing references them).
 
