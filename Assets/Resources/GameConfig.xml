@@ -63,6 +63,35 @@
     <MaxDigArea>24</MaxDigArea>  <!-- 2026-10-18: longest side of a Dig drag's area, in tiles (Figma v0.12 Fixes) -->
   </Orders>
 
+  <TargetLines>
+    <HoldSeconds>1.5</HoldSeconds>   <!-- v0.16: a line stays this long after the attacker's last shot -->
+    <Max>200</Max>                   <!-- v0.16: most lines at once, nearest the view's centre first -->
+  </TargetLines>
+
+  <MinimapCombat>
+    <CellTiles>16</CellTiles>        <!-- v0.16: tiles per side of a pulse cell -->
+    <PulseSeconds>1.5</PulseSeconds> <!-- v0.16: a pulse grows and fades over this -->
+    <QuietSeconds>3</QuietSeconds>   <!-- v0.16: then its cell stays quiet this long -->
+    <Max>32</Max>                    <!-- v0.16: most pulses at once -->
+  </MinimapCombat>
+
+  <PlacementMinimap>
+    <MarkerPixels>8</MarkerPixels>   <!-- v0.16: smallest on-screen ring for an own start option -->
+  </PlacementMinimap>
+
+  <Formation>
+    <Spacing>1.2</Spacing>           <!-- v0.16: tiles between slots -->
+    <LooseTiles>4</LooseTiles>       <!-- v0.16: near its slot a unit runs at its own speed -->
+    <SlotTiles>12</SlotTiles>        <!-- v0.16: within this of the goal a unit steers to its slot -->
+    <LostTiles>20</LostTiles>        <!-- v0.16: this far behind the leader, it drops the group speed -->
+  </Formation>
+
+  <AutoWork>
+    <Radius>8</Radius>               <!-- v0.16: tiles an idle Builder looks for blueprints and repairs -->
+    <RepairBelow>0.9</RepairBelow>   <!-- v0.16: repairs own buildings and walls under this share of health -->
+    <SliceTicks>10</SliceTicks>      <!-- v0.16: each idle Builder looks once every this many ticks -->
+  </AutoWork>
+
   <Diplomacy>
     <ChangeCooldownSeconds>2.0</ChangeCooldownSeconds>  <!-- v0.6: per player, per command -->
   </Diplomacy>

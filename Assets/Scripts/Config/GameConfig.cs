@@ -25,6 +25,16 @@ namespace Config
         public ReplicationConfig Replication = new ReplicationConfig();
         /// <summary>Unit orders (Shift-queued waypoints).</summary>
         public OrdersConfig Orders = new OrdersConfig();
+        /// <summary>v0.16: target lines for selected units (client presentation).</summary>
+        public TargetLinesConfig TargetLines = new TargetLinesConfig();
+        /// <summary>v0.16: fights pulsing on the minimap (client presentation).</summary>
+        public MinimapCombatConfig MinimapCombat = new MinimapCombatConfig();
+        /// <summary>v0.16: the minimap while placing the HQ (client presentation).</summary>
+        public PlacementMinimapConfig PlacementMinimap = new PlacementMinimapConfig();
+        /// <summary>v0.16: formations for group moves.</summary>
+        public FormationConfig Formation = new FormationConfig();
+        /// <summary>v0.16: idle Builders building and repairing nearby.</summary>
+        public AutoWorkConfig AutoWork = new AutoWorkConfig();
         /// <summary>Player-controlled diplomacy.</summary>
         public DiplomacyConfig Diplomacy = new DiplomacyConfig();
         /// <summary>Resource gifting between players.</summary>
@@ -158,6 +168,59 @@ namespace Config
         public int MaxQueued;
         /// <summary>The longest side of a Dig drag's area, in tiles.</summary>
         public int MaxDigArea;
+    }
+
+    /// <summary>Target lines (v0.16).</summary>
+    public class TargetLinesConfig
+    {
+        /// <summary>Seconds a line stays after the attacker's last shot.</summary>
+        public float HoldSeconds;
+        /// <summary>Most lines drawn at once.</summary>
+        public int Max;
+    }
+
+    /// <summary>Fights on the minimap (v0.16).</summary>
+    public class MinimapCombatConfig
+    {
+        /// <summary>Tiles per side of a pulse cell.</summary>
+        public int CellTiles;
+        /// <summary>Seconds a pulse grows and fades.</summary>
+        public float PulseSeconds;
+        /// <summary>Seconds a cell stays quiet after its pulse ends.</summary>
+        public float QuietSeconds;
+        /// <summary>Most pulses at once.</summary>
+        public int Max;
+    }
+
+    /// <summary>The HQ-placement minimap (v0.16).</summary>
+    public class PlacementMinimapConfig
+    {
+        /// <summary>Smallest on-screen size of an own start option's ring, in pixels.</summary>
+        public int MarkerPixels;
+    }
+
+    /// <summary>Formations (v0.16).</summary>
+    public class FormationConfig
+    {
+        /// <summary>Tiles between slots.</summary>
+        public float Spacing;
+        /// <summary>Within this many tiles of its slot a unit runs at its own speed.</summary>
+        public float LooseTiles;
+        /// <summary>Within this many tiles of the goal a unit steers to its slot.</summary>
+        public float SlotTiles;
+        /// <summary>A unit this much farther from the goal than its group's leader drops the group speed.</summary>
+        public float LostTiles;
+    }
+
+    /// <summary>Builders working on their own when idle (v0.16).</summary>
+    public class AutoWorkConfig
+    {
+        /// <summary>Tiles an idle Builder looks for work.</summary>
+        public float Radius;
+        /// <summary>Health share below which an own building or wall is repaired.</summary>
+        public float RepairBelow;
+        /// <summary>Ticks between one idle Builder's looks.</summary>
+        public int SliceTicks;
     }
 
     /// <summary>Diplomacy tuning.</summary>

@@ -45,6 +45,12 @@ public sealed class GameSettings
     public int HealthBars = (int)HealthBarMode.DamagedOnly;
     /// <summary>A <see cref="TracerMode"/>.</summary>
     public int Tracers = (int)TracerMode.Full;
+    /// <summary>Target lines (v0.16): 0 for the selected units, 1 off.</summary>
+    public int TargetLines;
+    /// <summary>Groups ordered to move form up (v0.16). Sent with each order.</summary>
+    public bool Formations = true;
+    /// <summary>Menu screens and dialogs swap at once, without motion (v0.16, Graphics).</summary>
+    public bool ReduceMotion;
     /// <summary>A <see cref="TooltipDelayMode"/>.</summary>
     public int TooltipDelay = (int)TooltipDelayMode.Normal;
     /// <summary>Multipliers on the camera's pan, edge-scroll and zoom speeds (0.5–2) and the Shift pan multiplier (1.5–4).</summary>
@@ -108,6 +114,7 @@ public sealed class GameSettings
         UiScale = Finite(UiScale, 1f, 0.75f, 1.5f);
         HealthBars = Mathf.Clamp(HealthBars, 0, 2);
         Tracers = Mathf.Clamp(Tracers, 0, 2);
+        TargetLines = Mathf.Clamp(TargetLines, 0, 1);
         TooltipDelay = Mathf.Clamp(TooltipDelay, 0, 2);
         PanSpeed = Finite(PanSpeed, 1f, 0.5f, 2f);
         EdgeScrollSpeed = Finite(EdgeScrollSpeed, 1f, 0.5f, 2f);

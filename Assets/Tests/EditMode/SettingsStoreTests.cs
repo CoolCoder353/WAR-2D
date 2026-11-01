@@ -60,4 +60,16 @@ public class SettingsStoreTests
         Assert.AreEqual(0f, s.Music);
         Assert.AreEqual(Palettes.Standard, s.Palette, "an unknown palette falls back to standard");
     }
+
+    [Test]
+    public void V016SettingsDefaultAndClamp()
+    {
+        var s = new GameSettings();
+        Assert.AreEqual(0, s.TargetLines);
+        Assert.IsTrue(s.Formations);
+        Assert.IsFalse(s.ReduceMotion);
+        s.TargetLines = 7;
+        s.Clamp();
+        Assert.AreEqual(1, s.TargetLines);
+    }
 }
