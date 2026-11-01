@@ -240,7 +240,7 @@ namespace WAR2D.UI
         }
 
         private bool cameraCentred;
-        private readonly List<(Unity.Mathematics.float2 centre, Color32 colour)> starts = new List<(Unity.Mathematics.float2, Color32)>();
+        private readonly List<MinimapStart> starts = new List<MinimapStart>();
 
         /// <summary>
         /// Once the match map is ready, puts the camera on the local player's HQ clearing (their first dealt option).
@@ -319,6 +319,7 @@ namespace WAR2D.UI
                 float distance = ((Vector2)view - new Vector2(0.5f, 0.5f)).sqrMagnitude;
                 if (view.x >= 0f && view.x <= 1f && view.y >= 0f && view.y <= 1f && distance < nearest) { nearest = distance; prompt.Focused = i; }
             }
+            int ownMarkers = markers.Count;
             foreach (var teammate in me.TeammateStarts)
             {
                 string name = NameOf(teammate.Key);
@@ -333,7 +334,12 @@ namespace WAR2D.UI
             }
             startMarkers.Show(markers, cam);
             starts.Clear();
-            foreach (StartMarker marker in markers) starts.Add((new Unity.Mathematics.float2(marker.Centre.x, marker.Centre.y), marker.Colour));
+            for (int i = 0; i < markers.Count; i++)
+            {
+                StartMarker marker = markers[i];
+                bool own = i < ownMarkers; // the player's own options come first, numbered as their Option buttons
+                starts.Add(new MinimapStart { Centre = new Unity.Mathematics.float2(marker.Centre.x, marker.Centre.y), Colour = marker.Colour, Own = own, Label = own ? marker.OnScreen : null });
+            }
             minimap?.ShowStarts(starts);
             return prompt;
         }

@@ -286,6 +286,10 @@
 /* v0.16 fights on the minimap (Figma C): scale and opacity set per frame from code */
 .minimap-pulse { position: absolute; width: 22px; height: 22px; margin-left: -11px; margin-top: -11px; border-width: 2px; border-radius: 11px; border-color: rgb(255, 255, 255); background-color: rgba(0, 0, 0, 0); }
 .minimap-pulse--own { border-color: var(--color-danger); }
+/* v0.16 HQ-placement minimap (Figma P): own option rings sized from code (PlacementMinimap/MarkerPixels), numbered */
+.minimap-start { position: absolute; border-width: 2px; border-radius: 50%; background-color: rgba(0, 0, 0, 0); }
+.minimap-start__label { position: absolute; padding: 0 3px; font-size: var(--font-size-12); color: rgb(10, 12, 16); -unity-font-style: bold; }
+.minimap-start--teammate { width: 7px; height: 7px; margin-left: -3.5px; margin-top: -3.5px; border-width: 1.5px; }
 
 /* Diplomacy panel (Figma: Panel / Diplomacy) */
 .diplomacy-panel { position: absolute; right: var(--space-4); top: 60px; width: 400px; display: none; }

@@ -13,6 +13,16 @@ namespace WAR2D.UI
     /// redesign, frame 13): the title bar holds an eye button that opens a popover of layer switches (Gems, Enemy ghosts,
     /// Own army, Own buildings; the eye outlines gold while any is off) and an S/M/L size control, both saved with the settings.
     /// </summary>
+    /// <summary>A start option on the HQ-placement minimap (v0.16, Figma P): the player's own (numbered) or a teammate's.</summary>
+    public struct MinimapStart
+    {
+        public float2 Centre;
+        public Color32 Colour;
+        /// <summary>The number matching its Option button (own options only).</summary>
+        public string Label;
+        public bool Own;
+    }
+
     public sealed class MinimapController : System.IDisposable
     {
         private const float RedrawSeconds = 0.2f;
@@ -161,17 +171,95 @@ namespace WAR2D.UI
             popover.style.bottom = popover.parent.layout.height - panel.layout.yMin + 8f;
         }
 
-        private System.Collections.Generic.List<(float2 centre, Color32 colour)> starts;
+        private System.Collections.Generic.List<MinimapStart> starts;
+        private readonly System.Collections.Generic.List<MinimapStart> shownStarts = new System.Collections.Generic.List<MinimapStart>();
+        private readonly System.Collections.Generic.List<VisualElement> startRings = new System.Collections.Generic.List<VisualElement>();
+        private readonly System.Collections.Generic.List<Vector2> startLocal = new System.Collections.Generic.List<Vector2>();
+        private int markerPixels = -1;
 
         /// <summary>
-        /// While choosing an HQ site nothing sees anything, so the minimap shows the whole terrain dimmed with the start
-        /// options marked; null (or none) goes back to the fog. Call every frame.
+        /// While choosing an HQ site nothing sees anything, so the minimap shows the whole (public) terrain at full brightness
+        /// with the start options as rings over it (v0.16, Figma P): the player's own numbered like their Option buttons, a
+        /// teammate's smaller in their colour. Null (or none) goes back to the fog. Call every frame.
         /// </summary>
-        public void ShowStarts(System.Collections.Generic.List<(float2 centre, Color32 colour)> options)
+        public void ShowStarts(System.Collections.Generic.List<MinimapStart> options)
         {
             bool before = starts != null;
             starts = options != null && options.Count > 0 ? options : null;
             if (before != (starts != null)) redrawTimer = 0f;
+            if (!SameStarts()) BuildStartRings();
+        }
+
+        /// <summary>The on-screen size of an own option's ring: the configured minimum, never under 12 px.</summary>
+        public static float OwnRingPixels(int markerPixels) => Mathf.Max(markerPixels, 12);
+
+        /// <summary>The option whose ring a click at <paramref name="click"/> falls in (nearest first), or -1.</summary>
+        public static int SnapToStart(System.Collections.Generic.IReadOnlyList<Vector2> markers, Vector2 click, float radius)
+        {
+            int best = -1;
+            float bestSq = radius * radius;
+            for (int i = 0; i < markers.Count; i++)
+            {
+                float d = (markers[i] - click).sqrMagnitude;
+                if (d <= bestSq) { bestSq = d; best = i; }
+            }
+            return best;
+        }
+
+        private bool SameStarts()
+        {
+            int count = starts?.Count ?? 0;
+            if (count != shownStarts.Count) return false;
+            for (int i = 0; i < count; i++)
+            {
+                MinimapStart a = starts[i], b = shownStarts[i];
+                if (!a.Centre.Equals(b.Centre) || a.Own != b.Own || a.Label != b.Label || !a.Colour.Equals(b.Colour)) return false;
+            }
+            return true;
+        }
+
+        private void BuildStartRings()
+        {
+            foreach (VisualElement ring in startRings) ring.RemoveFromHierarchy();
+            startRings.Clear();
+            shownStarts.Clear();
+            if (starts == null) return;
+            if (markerPixels < 0) markerPixels = Config.ConfigLoader.LoadConfig().PlacementMinimap.MarkerPixels;
+            float own = OwnRingPixels(markerPixels);
+            foreach (MinimapStart start in starts)
+            {
+                shownStarts.Add(start);
+                var ring = new VisualElement { name = "minimap-start", pickingMode = PickingMode.Ignore };
+                ring.AddToClassList("minimap-start");
+                ring.style.borderTopColor = ring.style.borderBottomColor = ring.style.borderLeftColor = ring.style.borderRightColor = (Color)start.Colour;
+                if (start.Own)
+                {
+                    ring.style.width = ring.style.height = own;
+                    ring.style.marginLeft = ring.style.marginTop = -own / 2f;
+                    var label = new Label(start.Label) { name = "minimap-start-label", pickingMode = PickingMode.Ignore };
+                    label.AddToClassList("minimap-start__label");
+                    label.style.backgroundColor = (Color)start.Colour;
+                    label.style.left = own + 1f;
+                    label.style.top = -2f;
+                    ring.Add(label);
+                }
+                else ring.AddToClassList("minimap-start--teammate");
+                Pings.Add(ring);
+                startRings.Add(ring);
+            }
+        }
+
+        /// <summary>Places the option rings on the image (every frame: the panel can resize).</summary>
+        private void PlaceStartRings()
+        {
+            if (startRings.Count == 0 || texture == null) return;
+            Vector2 size = image.layout.size;
+            for (int i = 0; i < startRings.Count; i++)
+            {
+                Vector2 at = MinimapTexture.ToLocal(shownStarts[i].Centre, size, WorldSize);
+                startRings[i].style.left = at.x;
+                startRings[i].style.top = at.y;
+            }
         }
 
         /// <summary>The world size the minimap covers (fog grid × cell size), or zero before the first fog.</summary>
@@ -184,6 +272,7 @@ namespace WAR2D.UI
             float2 world = MinimapTexture.ToWorld(local, image.layout.size, WorldSize);
             if (button == 0)
             {
+                if (starts != null) world = SnapToOwnStart(local, world);
                 Camera cam = Camera.main;
                 if (cam != null && cam.TryGetComponent(out Character.Character_Controler controller)) controller.CentreOn(world);
                 else if (cam != null) cam.transform.position = new Vector3(world.x, world.y, cam.transform.position.z);
@@ -195,6 +284,25 @@ namespace WAR2D.UI
         }
 
         private const long PingMilliseconds = 3000;
+
+        /// <summary>While placing the HQ, a click inside an own option's ring centres on that option (v0.16, Figma P).</summary>
+        private float2 SnapToOwnStart(Vector2 local, float2 world)
+        {
+            startLocal.Clear();
+            Vector2 size = image.layout.size;
+            int ownCount = 0;
+            foreach (MinimapStart start in starts)
+            {
+                if (!start.Own) continue;
+                startLocal.Add(MinimapTexture.ToLocal(start.Centre, size, WorldSize));
+                ownCount++;
+            }
+            int pick = SnapToStart(startLocal, local, OwnRingPixels(markerPixels < 0 ? 8 : markerPixels));
+            if (pick < 0) return world;
+            foreach (MinimapStart start in starts)
+                if (start.Own && pick-- == 0) return start.Centre;
+            return world;
+        }
 
         private readonly System.Collections.Generic.Dictionary<int2, VisualElement> pulseRings = new System.Collections.Generic.Dictionary<int2, VisualElement>();
         private readonly System.Collections.Generic.List<int2> pulseGone = new System.Collections.Generic.List<int2>();
@@ -280,6 +388,7 @@ namespace WAR2D.UI
             }
             ShowCamera();
             ShowPulses();
+            PlaceStartRings();
         }
 
         /// <summary>Redraws the texture now: terrain under fog, buildings and ghosts, then units, then flags over the known HQs.</summary>
@@ -295,8 +404,6 @@ namespace WAR2D.UI
             foreach (ClientBuildings.Entry entry in ClientBuildings.Current.Entries.Values)
                 if (entry.Data.buildingType == BuildingType.Base)
                     texture.PlotFlag(entry.Data.position + new float2(2.5f, 2.5f), PlayerPalette.OfOwner(entry.Data.ownerId), entry.Ghost);
-            if (starts != null)
-                foreach ((float2 centre, Color32 colour) in starts) texture.PlotMarker(centre, colour, 2);
             texture.End();
         }
 
