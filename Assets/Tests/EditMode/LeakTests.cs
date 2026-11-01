@@ -34,6 +34,8 @@ public class LeakTests
         public readonly HashSet<int> Attackers = new HashSet<int>();
         /// <summary>The targets those events named (0: unnamed, or a wall).</summary>
         public readonly List<int> AttackTargets = new List<int>();
+        /// <summary>The targets unit attack events named (v0.16: negative is a wall tile).</summary>
+        public readonly List<int> UnitAttackTargets = new List<int>();
         /// <summary>Other players' unit ids this client was ever told about.</summary>
         public readonly HashSet<int> OthersKnown = new HashSet<int>();
         private readonly SimContext sim;
@@ -45,6 +47,7 @@ public class LeakTests
             Units = new ClientUnitStore(sim.Config.Simulation.MaxEntities, sim.Config.Simulation.TickSeconds);
             Terrain.Init(sim.Map.Grid); // before any tick: the map is still as generated
             Units.BuildingAttack += OnBuildingAttack;
+            Units.Attack += (attacker, target) => UnitAttackTargets.Add(target);
             replication.AddVirtualClient(owner, Receive);
         }
 
@@ -803,6 +806,31 @@ public class LeakTests
         foreach (Spy spy in new[] { a, c }) { CollectionAssert.IsEmpty(spy.Failures, $"owner {spy.Owner}"); spy.Dispose(); }
 
         static List<int> Enumerable(int value, int count) { var l = new List<int>(); for (int i = 0; i < count; i++) l.Add(value); return l; }
+    }
+
+    [Test]
+    public void AUnitsWallShotNamesTheTileOnlyToItsOwner()
+    {
+        using var sim = new SimHarness(Map(), c => c.Simulation.TargetSearchSliceTicks = 1);
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        replication.CollectBuildings = list => SimBuildings(sim, list);
+        var a = new Spy(sim.Context, replication, SimHarness.OwnerA);
+        var c = new Spy(sim.Context, replication, OwnerC);
+        foreach (int owner in new[] { SimHarness.OwnerA, OwnerC }) replication.SetVirtualView(owner, new int2(0, 0), new int2(95, 95));
+        int2 wall = new int2(24, 20);
+        sim.Spawn(OwnerC, new float2(27.5f, 22.5f), UnitType.Builder); // C sees the shooter
+        sim.Tick(); // C exists from here, so it can own the wall
+        sim.PlaceWall(OwnerC, wall);
+        int[] tank = sim.Spawn(SimHarness.OwnerA, new float2(20.5f, 20.5f));
+        sim.Tick();
+        sim.ForceBuiltWall(wall);
+        sim.Order(SimHarness.OwnerA, OrderKind.AttackMove, new int2(20, 40), tank[0]); // units shoot walls only on Attack-move
+        for (int t = 0; t < 40; t++) sim.Tick();
+        int named = AttackTargetIds.OfWall(sim.Map.Grid.Index(wall));
+        Assert.Contains(named, a.UnitAttackTargets, "the owner learns the wall its unit shoots");
+        Assert.Greater(c.UnitAttackTargets.Count, 0, "the wall's owner sees the shooter fire");
+        foreach (int target in c.UnitAttackTargets) Assert.GreaterOrEqual(target, 0, "nobody else is told a wall tile");
+        foreach (Spy spy in new[] { a, c }) { CollectionAssert.IsEmpty(spy.Failures, $"owner {spy.Owner}"); spy.Dispose(); }
     }
 
     [Test]

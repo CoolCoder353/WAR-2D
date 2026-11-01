@@ -441,8 +441,9 @@ namespace WAR2D.Sim
                     AttackerOwner = OwnerId[i], PrimaryKind = kind, PrimarySlot = target,
                 });
             }
-            if (kind != TargetKinds.Wall) // a wall is a tile, not an entity: its damage state travels in the terrain delta (plan P4)
-            Events.AddNoResize(new int2(IdOf[i], kind == TargetKinds.Unit ? IdOf[target] : BuildingIds[target]));
+            // A wall is a tile, not an entity: its damage travels in the terrain delta. Its event names the tile as
+            // -(tile + 1) for the shooter's owner only (v0.16 target lines; InterestRules.UnitAttack drops it for others).
+            Events.AddNoResize(new int2(IdOf[i], kind == TargetKinds.Unit ? IdOf[target] : kind == TargetKinds.Wall ? -(target + 1) : BuildingIds[target]));
             Cooldown[i] = type < CooldownByType.Length ? CooldownByType[type] : 1f;
         }
     }

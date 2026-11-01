@@ -193,7 +193,7 @@ namespace WAR2D.AiView
                     for (int i = 0; i < attacks.Length; i++)
                     {
                         if (!InterestRules.UnitAttack(input, default, InterestRules.WholeMap, attacks[i], targets[i], seat.Owner, grid, out AttackEvent shown)) continue;
-                        AddAttack(seat, new AiAttack { AttackerId = attacks[i].x, TargetId = shown.TargetId, Time = now });
+                        AddAttack(seat, new AiAttack { AttackerId = attacks[i].x, TargetId = math.max(0, shown.TargetId), Time = now }); // the AI reads no wall targets (v0.16)
                     }
                     for (int i = 0; i < buildingAttacks.Length; i++)
                     {

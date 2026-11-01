@@ -509,8 +509,15 @@ namespace WAR2D.Client
         }
 
         /// <summary>Where a target named by an attack event is now: a known unit's prediction or a known building's centre.</summary>
-        private bool TryTargetPosition(int target, out Vector3 to)
+        internal bool TryTargetPosition(int target, out Vector3 to)
         {
+            if (AttackTargetIds.IsWall(target)) // a wall tile, only in the shooter's owner's events (v0.16)
+            {
+                int tile = AttackTargetIds.WallTile(target), width = ClientTerrain.Current.Width;
+                if (width <= 0) { to = default; return false; }
+                to = new Vector3(tile % width + 0.5f, tile / width + 0.5f, 0);
+                return true;
+            }
             int targetIndex = NetIdAllocator.IndexOf(target);
             if (target > 0 && store.IdOf(targetIndex) == target)
             {

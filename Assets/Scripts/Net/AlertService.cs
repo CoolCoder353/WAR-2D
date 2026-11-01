@@ -48,7 +48,8 @@ public sealed class AlertService
         if (data.AttackEvents.Length == 0 && data.BuildingAttackEvents.Length == 0) return;
         damaged.Clear();
         seenTargets.Clear();
-        foreach (int2 attack in data.AttackEvents) Damaged(data, unitCount, building, attack.y);
+        foreach (int2 attack in data.AttackEvents)
+            if (attack.y > 0) Damaged(data, unitCount, building, attack.y); // negative: a wall tile (v0.16), no alert
         // A turret's victims are attacked like any other (v0.13); a turret being hit is a building target above.
         foreach (int2 attack in data.BuildingAttackEvents)
             if (attack.y > 0) Damaged(data, unitCount, building, attack.y); // 0: a wall shot, no alert (as for units)

@@ -57,6 +57,7 @@ namespace WAR2D.Net.Replication
         /// <summary>
         /// The attack event a player is told about for a unit's attack (attacker id, target id), or false: the attacker
         /// must be known and inside <paramref name="view"/>; the target is named only when <see cref="MayKnowTarget"/>, else 0.
+        /// A wall target (negative, <see cref="AttackTargetIds"/>) is kept only for the attacker's owner.
         /// </summary>
         public static bool UnitAttack(in ReplicationInput input, NativeArray<ulong> allowed, int4 view, int2 attack, in AttackTarget target, int owner, int grid, out AttackEvent shown)
         {
@@ -65,7 +66,10 @@ namespace WAR2D.Net.Replication
             if (!UnitKnown(input, allowed, index, owner, grid)) return false;
             int slot = input.SlotOfIndex(index);
             if (slot < 0 || !InView(view, input.Positions[slot])) return false;
-            shown = new AttackEvent { AttackerIndex = index, TargetId = MayKnowTarget(input, allowed, attack.y, target, owner, grid) ? attack.y : 0 };
+            int named = attack.y < 0
+                ? (input.OwnerId[slot] == owner ? attack.y : 0) // a wall tile (v0.16): only the shooter's owner is told
+                : MayKnowTarget(input, allowed, attack.y, target, owner, grid) ? attack.y : 0;
+            shown = new AttackEvent { AttackerIndex = index, TargetId = named };
             return true;
         }
 
