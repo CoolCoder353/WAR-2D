@@ -293,6 +293,29 @@ namespace WAR2D.UI
             lobbyScreen.EnableInClassList("menu-screen--visible", screen == Screen.Lobby);
             replaysScreen?.EnableInClassList("menu-screen--visible", screen == Screen.Replays);
             viewerScreen?.EnableInClassList("menu-screen--visible", screen == Screen.Viewer);
+            MenuMotion.ApplySetting(root);
+            if (screen == shown) return;
+            // v0.16 (Figma M1): the arriving screen slides in, from the right going forward (Main → Play → Lobby), from
+            // the left coming back. The first screen shown doesn't move.
+            VisualElement arriving = ScreenElement(screen);
+            if (shown != Screen.None && arriving != null) MenuMotion.Enter(arriving, screen < shown ? "menu-screen--enter-back" : "menu-screen--enter");
+            shown = screen;
+            LastScreenChange = screen.ToString();
         }
+
+        private Screen shown = Screen.None;
+
+        /// <summary>The screen last moved to (tests).</summary>
+        public string LastScreenChange { get; private set; }
+
+        private VisualElement ScreenElement(Screen screen) => screen switch
+        {
+            Screen.Main => mainScreen,
+            Screen.Play => playScreen,
+            Screen.Lobby => lobbyScreen,
+            Screen.Replays => replaysScreen,
+            Screen.Viewer => viewerScreen,
+            _ => null,
+        };
     }
 }

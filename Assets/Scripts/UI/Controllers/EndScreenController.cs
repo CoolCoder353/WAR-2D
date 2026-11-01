@@ -69,6 +69,7 @@ namespace WAR2D.UI
             title.EnableInClassList("end-screen__title--lose", result == EndResult.Defeat);
             title.EnableInClassList("end-screen__title--draw", result == EndResult.Draw);
             subtitle.text = line;
+            if (!IsShown) { MenuMotion.ApplySetting(screen.panel?.visualTree); MenuMotion.Enter(screen, "overlay-screen--enter"); } // v0.16 (Figma M1)
             screen.AddToClassList("overlay-screen--visible");
             stats.EnableInClassList("hidden", stats.childCount == 0);
         }

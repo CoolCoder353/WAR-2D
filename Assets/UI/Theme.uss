@@ -427,6 +427,21 @@
 .button--danger:disabled { background-color: var(--color-surface-panel); color: var(--color-text-disabled); border-width: 1px; border-color: var(--color-border); }
 .overlay-screen { position: absolute; left: 0; top: 0; right: 0; bottom: 0; display: none; align-items: center; justify-content: center; background-color: rgba(0, 0, 0, 0.5); }
 .overlay-screen--visible { display: flex; }
+
+/* v0.16 menu motion (Figma M1): an arriving screen slides and fades in, an overlay rises and its panel scales in from
+   96 %; menu buttons lift on hover and press down. Reduce motion (on the root) makes every one an instant swap. */
+.menu-screen { transition-property: translate, opacity; transition-duration: 200ms; transition-timing-function: ease-out; }
+.menu-screen--enter { translate: 24px 0; opacity: 0; }
+.menu-screen--enter-back { translate: -24px 0; opacity: 0; }
+.overlay-screen { transition-property: opacity; transition-duration: 180ms; transition-timing-function: ease-out; }
+.overlay-screen > * { transition-property: scale, translate; transition-duration: 180ms; transition-timing-function: ease-out; }
+.overlay-screen--enter { opacity: 0; }
+.overlay-screen--enter > * { scale: 0.96 0.96; translate: 0 12px; }
+.menu-screen .button, .overlay-screen .button { transition-property: translate, background-color; transition-duration: 80ms; }
+.menu-screen .button:hover, .overlay-screen .button:hover { translate: 0 -1px; }
+.menu-screen .button:active, .overlay-screen .button:active { translate: 0 1px; }
+.menu-screen .button:disabled, .overlay-screen .button:disabled { translate: 0 0; }
+.reduce-motion .menu-screen, .reduce-motion .overlay-screen, .reduce-motion .overlay-screen > *, .reduce-motion .button { transition-duration: 0s; }
 .match-menu { width: 320px; }
 .match-menu__content { padding: 20px; }
 .match-menu__content > * { margin-bottom: var(--space-2); }
