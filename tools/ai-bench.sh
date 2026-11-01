@@ -56,6 +56,8 @@ def strong_weak(g):
     return (a, b) if order[a["difficulty"]] > order[b["difficulty"]] else (b, a)
 lines = ["# v0.14 AI bench", "",
          "`tools/ai-bench.sh` (spec §12): 1v1 Free-for-all, AI vs AI, one headless player per match (`Dev/AiBench.cs`, `-perf -aiBench`), the host sitting out, fast-forwarded. Styles are drawn per seat from a seeded generator (the same pair for a seed in every pairing); the seat order alternates by seed. Exit criteria: every match ends (a draw at the time cap is a failure) and Hard beats Normal, Normal beats Easy, in ≥ 80% on every map size.", ""]
+copies = [d for d in dirs if os.path.exists(os.path.join(d, "GameConfig.xml"))]
+lines += ["Config: " + ("a `GameConfig.xml` passed with `AI_BENCH_CONFIG` (a copy is in the results directory; `tools/ai-bench.sh brief <dir>` lists the values that differ from the repo's)." if copies else "the build's own `GameConfig.xml`."), ""]
 sizes = sorted({g["size"] for g in games})
 pairings = [p for p in ["Hard-Normal", "Normal-Easy", "Hard-Easy", "Hard-Hard", "Normal-Normal", "Easy-Easy"] if any(g["pairing"] == p for g in games)]
 def mins(gs):
