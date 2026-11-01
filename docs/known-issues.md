@@ -1,6 +1,6 @@
 # Known Issues and Tech Debt
 
-Bugs, mismatches and hygiene problems. The first two roadmaps (v0.2 to v0.9, and v0.10 to v0.14 with v0.15 and v0.15.1) are complete; open items are backlog, and the sections after "Open" are the log of what past reviews and playtests found and fixed. Code-review findings that were triaged but not fixed are in [bug-review.md](bug-review.md). See [the archived roadmap](archive/roadmap-v0.2-v0.9.md) for what each version delivered.
+Bugs, mismatches and hygiene problems. The first two roadmaps (v0.2 to v0.9, and v0.10 to v0.14 with v0.15 and v0.15.1) are complete; open items are backlog, and the sections after "Open" are the log of what past reviews and playtests found and fixed. Code-review findings that were triaged but not fixed are in [bug-review.md](bug-review.md). See the archived roadmaps ([v0.2 to v0.9](archive/roadmap-v0.2-v0.9.md), [v0.10 to v0.14](archive/roadmap-v0.10-v0.14.md)) for what each version delivered; the current plan is [roadmap.md](roadmap.md).
 
 ### v0.10: replays are a tick behind on units
 

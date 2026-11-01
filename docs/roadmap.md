@@ -1,22 +1,17 @@
-# WAR-2D Roadmap: v0.10 to v0.14
+# WAR-2D Roadmap: v0.16 and v0.17
 
-The second roadmap, **complete** (owner sign-off 2026-11-01: every update below and its follow-ups v0.15 and v0.15.1 are verified, playtested and balanced, and the Steam store page is done). The first one (v0.2 to v0.9: foundations, scale, fog, UI, art, Steam, siege) is complete and archived in [archive/roadmap-v0.2-v0.9.md](archive/roadmap-v0.2-v0.9.md), with its specs, plans, spike and performance results under [archive/](archive/).
+The third roadmap: polish and usability, with one piece of new content. The second roadmap (v0.10 to v0.14, then v0.15 and v0.15.1) is complete and archived in [archive/roadmap-v0.10-v0.14.md](archive/roadmap-v0.10-v0.14.md); the first (v0.2 to v0.9) is in [archive/roadmap-v0.2-v0.9.md](archive/roadmap-v0.2-v0.9.md).
 
 - **Designs:** one spec per update in [`superpowers/specs/`](superpowers/specs/). If this file and a spec disagree, the spec wins and this file gets fixed.
-- **Step-by-step plans:** each update's implementation plan lives in [`superpowers/plans/`](superpowers/plans/). The v0.10, v0.12, v0.13 and v0.14 plans and the [AI overhaul](superpowers/plans/2026-10-30-ai-overhaul.md) plan are written, and all are built.
+- **Step-by-step plans:** each update's implementation plan goes in [`superpowers/plans/`](superpowers/plans/), written when the update starts.
 - **Current state of the game:** [gameplay.md](gameplay.md), [architecture.md](architecture.md), [known-issues.md](known-issues.md), [bug-review.md](bug-review.md).
 
-| Update | Name         | Delivers                                                                                                                       | Status                                                                                                                                                                                   | Design                                                                                                                                       | Plan                                                                  |
-| ------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| v0.10  | Insight      | A control API and CLI for Claude and the owner, debug overlays, structured logs, and match recordings players watch afterwards | Done: perf gate passes with the recorder on (23.9 ms p95); owner playtest done (2026-11-01)                                                                                                       | [design](superpowers/specs/2026-10-16-v0.10-insight-design.md)                                                                               | [plan](superpowers/plans/2026-10-16-v0.10-insight.md)                 |
-| v0.11  | New Ground   | A region-graph map generator (lanes, chokepoints, contested expansions) and private start points                               | Done: gated, UI approved (2026-10-17), map numbers signed off (2026-11-01)                                                                                                                                     | [design](superpowers/specs/2026-10-16-v0.11-new-ground-design.md)                                                                            | Written when v0.11 starts                                             |
-| v0.12  | Arsenal      | Scout, Heavy, Artillery, Sniper, Flamethrower and Suicide bomber; role-based production buildings, one unit type at a time     | Done: perf gate passes (23.8 ms p95, see perf/v0.12); security review, code review and a full Linux match done (owner, 2026-10-23)                                                       | [design](superpowers/specs/2026-10-16-v0.12-arsenal-design.md), [Figma](ux/v0.12-figma.md)                                                   | [plan](superpowers/plans/2026-10-17-v0.12-arsenal.md): all tasks done |
-| v0.13  | Bastion      | Static defences: the Gun turret and the Jammer                                                                                 | Done: tested and reviewed (2026-10-23); perf gate passes (21.3 ms p95 headless, see perf/v0.13; windowed run signed off by the owner 2026-11-01)             | [design](superpowers/specs/2026-10-16-v0.13-bastion-design.md), [Figma](ux/v0.13-figma.md)                                                   | [plan](superpowers/plans/2026-10-23-v0.13-bastion.md): all tasks done |
-| v0.14  | AI opponents | AI players in the lobby, so the game has Single-player and co-op against the AI before the Steam Early Access launch           | Done: built (2026-10-24), then the [AI overhaul](superpowers/specs/2026-10-30-ai-overhaul-design.md) (2026-10-30); playtests, perf gate and balance signed off by the owner (2026-11-01) | [design](superpowers/specs/2026-10-23-v0.14-ai-opponents-design.md); [store page plan](superpowers/specs/2026-10-19-store-page-design.md) §6 | [plan](superpowers/plans/2026-10-23-v0.14-ai-opponents.md)            |
+| Update | Name      | Delivers                                                                                                                                                         | Status                         | Design                                                                                          | Plan                      |
+| ------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------- | ------------------------- |
+| v0.16  | Clarity   | Reading the battle (target lines, minimap combat, a clear HQ-placement minimap), controls (formations, Builder auto-repair) and menu presentation | Spec approved (2026-11-01)    | [design](superpowers/specs/2026-11-01-v0.16-clarity-design.md), [Figma brief](ux/v0.16-figma.md) | Written when v0.16 starts |
+| v0.17  | Heartland | Rich gems: a new gem tile in the middle of every map that pays 2.5 times as much, and an AI that values it                                                      | Spec approved (2026-11-01)    | [design](superpowers/specs/2026-11-01-v0.17-heartland-design.md)                                 | Written when v0.17 starts |
 
-**Since this roadmap:** v0.15 (quality of life and reconnecting, from the owner's 2026-10-27 QoL review; Figma brief [ux/v0.15-qol-figma.md](ux/v0.15-qol-figma.md)) and v0.15.1 (build and production hotkeys, reconnect review fixes; [ux/v0.15.1-figma.md](ux/v0.15.1-figma.md)) are built and verified (version 0.15.1, protocol 15). The terrain-replication and rejoin tech debt was fixed on 2026-11-01 ([known-issues.md](known-issues.md), "Owner sign-off"). Balance and AI tuning: [tuning.md](tuning.md). Presentation polish (approved items and candidates): [polish.md](polish.md).
-
-The owner set the scope, order and numbering on 2026-10-16 and will review the specs before each update starts. Decisions still open are listed at the end of each spec.
+The owner set the direction, the split and the order on 2026-11-01 ("polish and usability, with some new content sprinkled in"; two bigger updates). Decisions still open are listed at the end of each spec.
 
 ---
 
@@ -24,16 +19,12 @@ The owner set the scope, order and numbering on 2026-10-16 and will review the s
 
 ```mermaid
 flowchart LR
-    v010[v0.10 Insight<br/>control API, overlays,<br/>logs, recordings] --> v011[v0.11 New Ground<br/>region-graph maps,<br/>private start points]
-    v011 --> v012[v0.12 Arsenal<br/>six new units,<br/>production buildings]
-    v012 --> v013[v0.13 Bastion<br/>Gun turret, Jammer]
-    v013 --> v014[v0.14 AI opponents<br/>AI players for<br/>Single-player]
+    v016[v0.16 Clarity<br/>read the battle, formations,<br/>auto-repair, menus] --> v017[v0.17 Heartland<br/>rich gems in the middle]
 ```
 
-- **v0.10 first:** every later update is easier to build, test and debug once Claude can drive a running game, the overlays show what the pathing, fog and replication are doing, and a recording can show a bug again. Recordings are also a player feature.
-- **v0.11 before the units:** a new generator changes every seed's map and hash, the start sites and the perf gate's layout. Unit balance (Scout speed, Artillery range, which lanes Heavies fit through) depends on the maps it is tuned on, so the maps come first.
-- **v0.14 last:** the AI has to play the finished roster, the new maps and the defences, so it comes after them. It is the last update before the Steam Early Access launch ([store page plan](superpowers/specs/2026-10-19-store-page-design.md)).
-- **v0.12 before v0.13:** the defences are balanced against the new roster (the Gun turret against light units, the Jammer against Scouts and Radar), and the turret reuses the combat changes v0.12 makes (armour classes, buildings in the damage table).
+- **Polish first:** the game's balance and AI were signed off on 2026-11-01. v0.16 changes how the game reads and handles, not what anything is worth, so the sign-off still holds when it ships.
+- **The economy change last:** rich gems change every seed's map, the value of the middle and the AI's scoring. Doing it last means one balance and AI re-check at the end, against the finished controls (formations change how armies arrive at a contested middle).
+- **One Figma round for v0.16:** target lines, minimap combat, the HQ-placement minimap and the menus are all HUD or menu work, so one brief ([ux/v0.16-figma.md](ux/v0.16-figma.md)) covers them before any is built.
 
 Every update ships a playable, tested build.
 
@@ -41,62 +32,30 @@ Every update ships a playable, tested build.
 
 ## 2. The updates
 
-### v0.10: Insight
+### v0.16: Clarity
 
-> Tools that let Claude and the owner see, drive and replay the game.
+> See what's happening at a glance, move armies with less babysitting, and a front end that looks finished.
 
-- **Control API and `tools/war2d` CLI.** Localhost only, in the editor and in development builds started with `-debugApi`; release builds refuse it. Read the game (state, players, units, buildings, tiles, a player's fog, logs), drive it (host, join, start, add bots, order, spawn, set resources, pause and step the tick, move the camera, screenshot). The same scenario commands are in the TIM console.
-- **Debug overlays** (dev builds, host process): flow fields and routes, unit stances and targets, fog grids per owner, sectors and portals, the spatial hash, footprints, replication interest.
-- **Structured logs** (`WarLog`): categories and levels, an in-memory ring, a per-session file, filterable from the console and the API.
-- **Match recordings.** The host records a fog-free spectator stream. After _GameOver_ each player is offered the file in the background, and a **Replays** screen plays it back (play, pause, speed, seek, free camera, no fog). Nothing is sent before the match is over.
+- **Reading the battle (client only):** target lines for selected units, fights flashing on the minimap, and a minimap that shows the whole map and your start options clearly while you place your HQ.
+- **Controls (server):** formations (a group arrives together, at its slowest member's pace, heavy units in front) and Builders that repair nearby damage on their own when idle. The wall drag that stops after `Orders/MaxQueued + 1` tiles is fixed along the way.
+- **Menu presentation:** transitions and motion through the main menu, Play, lobby and Settings, and a better-looking lobby.
 
-**Exit criteria:** Claude can host a match in the editor and in two dev-build processes, set up a scenario, observe it and take screenshots through the CLI without the owner's help; every overlay draws; a recorded 2-player match is offered to the joining player and plays back to the end; the perf gate passes with the recorder on.
+**Exit criteria:** every feature's rules tests; `LeakTests` unchanged (nothing new is sent to clients); the perf gate passes with formations in the load; the owner approves the Figma frames before any HUD or menu item is built.
 
-### v0.11: New Ground
+### v0.17: Heartland
 
-> Designed, strategic maps from a seed, and start points nobody else knows.
+> Something in the middle worth fighting for.
 
-- **Region-graph generator:** start sites, rich expansions and central areas joined by a looped graph of lanes, some with narrow chokepoints; fewer scattered gems, rich fields at expansions. Every start site passes the same fairness tests (area, vein, distance to its neighbours).
-- **Private start points:** the host sets how many options each player gets. The server deals them with its own randomness; only the player (and their teammates) learn them. Players pick one by placing their HQ in it during _PlacingHQ_. The host sets the pick time: 0 (everyone gets a random option), a time limit (the server places the rest at the deadline), or unlimited (the match waits for everyone). The lobby's clearing claim goes.
+- **Rich gems:** a new tile, generated only in central areas, that a Miner mines for 2.5 times the ordinary rate, for good.
+- **The AI** scores start options, expansions and targets with rich gems in mind.
 
-**Exit criteria:** leak tests prove no player learns another's options or pick (teammates excepted); the generator meets its fairness tests on 1,000 seeds at every map size; the perf gate passes on the new layout.
-
-### v0.12: Arsenal
-
-> More units, and buildings that each make one family of them.
-
-- **Units:** Scout, Heavy, Artillery (direct fire, long range, splash), Sniper, Flamethrower (splash), Suicide bomber (detonates on contact or on a Detonate order).
-- **Production:** HQ (Builder), Barracks (Scout, Tank, Flamethrower), Heavy Factory (Heavy, Artillery, Sniper), Siege Workshop (Digger, Suicide bomber). A producer makes one selected type at a time; switching clears its queue.
-- **Combat:** splash damage, `LightUnit`/`HeavyUnit` armour classes in the damage table, the large pathing class used for real.
-
-**Exit criteria:** rules tests for every unit and the production change; the perf gate passes with the mixed roster.
-
-### v0.13: Bastion
-
-> Defences worth building at a chokepoint.
-
-- **Gun turret:** a building that attacks units, buildings and walls like a unit that can't move; strong against light units.
-- **Jammer:** inside its radius, enemies see only at short range and enemy Radars see nothing.
-
-**Exit criteria:** rules and leak tests for both (a jammed unit never reaches an enemy client beyond the short range); the perf gate passes with defences in the siege load.
-
-### v0.14: AI opponents
-
-> Someone to play against when nobody else is online.
-
-- **AI players:** the host adds AI slots in the lobby, each with a difficulty (Easy, Normal, Hard), a play style (Rusher, Turtle, Expander, Balanced, or Random), a generated callsign, a colour and a team, like a human player. The AI places its HQ, builds an economy, expands, makes an army from the whole roster, builds defences, scouts, attacks, reacts to diplomacy, and surrenders when hopeless.
-- **Server-side only, no cheating:** the AI runs on the server, acts through the same validated actions as a player's commands, and sees only a team view built from the replication interest rules. No difficulty gets extra resources or vision.
-- **Single-player through the lobby:** a new lobby Visibility setting (Public, Friends, Private); a Private lobby with AIs is Single-player and works without Steam. A match with one human can be paused from the in-match menu.
-- **Dev bots** become AI seats (a Scripted seat for the perf harness).
-- **Store page:** Single-player and co-op against the AI go on the Steam page once this ships.
-
-**Exit criteria:** AI-vs-AI matches finish on every map size, with Hard beating Normal and Normal beating Easy in at least 80% of games; leak tests prove the AI's view holds only its team's knowledge; the perf gate passes with AI players in the match (AI thinking ≤ 2 ms p95).
+**Exit criteria:** tile and generator tests (fairness on 1,000 seeds at every map size), Miner payout tests, `LeakTests`; an `ai-bench` check that the difficulty ladder still holds; the perf gate passes on the new maps.
 
 ---
 
 ## 3. Performance budget
 
-Unchanged from the first roadmap, on the same reference machine (Ryzen 5 5600GT, 32 GB, Radeon RX 6600, Linux, hosting and playing):
+Unchanged, on the same reference machine (Ryzen 5 5600GT, 32 GB, Radeon RX 6600, Linux, hosting and playing):
 
 | Metric               | Target                                                       |
 | -------------------- | ------------------------------------------------------------ |
@@ -104,21 +63,21 @@ Unchanged from the first roadmap, on the same reference machine (Ryzen 5 5600GT,
 | Client frame rate    | **≥ 60 fps** with 10,000 own units on screen                 |
 | Bandwidth per client | **≤ 256 KB/s average**, ≤ 768 KB/s peak 1 s                  |
 
-The margin is small: the v0.7 gate measured 20.9 ms p95, v0.12 23.8 ms and v0.13 21.3 ms (headless host), and v0.14's full-load run 27.5 ms with the editor open (the owner signed off the re-run, 2026-11-01). Every update that touches the tick, pathing or replication is measured with `tools/perf-run.sh` before it lands. New results go in `docs/perf/v0.N/`.
+v0.16's formations and auto-repair add tick work, and the 2026-11-01 terrain-replication change hasn't been measured yet, so v0.16 runs `tools/perf-run.sh` before it lands. Target lines and the minimap flashes are measured on the client frame. New results go in `docs/perf/v0.N/`.
 
 ---
 
 ## 4. How every update is built
 
-These rules carry over from the first roadmap unchanged.
+Unchanged from the earlier roadmaps.
 
 - **Bugs before features:** a bug found during an update is fixed in it or logged in [known-issues.md](known-issues.md).
-- **Security:** the server is authoritative; every `[Command]` goes through `CommandGate` and validates its arguments; hidden information never leaves the server and `LeakTests` prove it; validators get fuzz tests.
+- **Security:** the server is authoritative; every `[Command]` goes through `CommandGate` and validates its arguments; hidden information never leaves the server and `LeakTests` prove it.
 - **Config:** every balance number is in `GameConfig.xml`.
 - **UI:** any HUD or menu change goes through Figma and the owner's approval first.
-- **Art and sound:** generated (`RenderGen`, `EffectGen`, the SFX and music builders); nothing hand-made in `Resources`.
+- **Art and sound:** generated; nothing hand-made in `Resources`.
 - **Testing:** EditMode and PlayMode suites through the live editor, both passing before a merge; compile checks while working.
-- **Workflow:** one branch per update (`release/v0.N`), never commit from `main`, no co-author or AI attribution in commits; a security review and a code review before each merge; docs updated in the same branch.
+- **Workflow:** one branch per update (`release/v0.N`), never commit from `main`, no co-author or AI attribution in commits; a security review and a code review before each merge; docs updated in the same branch; `GameVersion.Protocol` and `bundleVersion` bumped when the wire format changes.
 
 **Definition of done:** all tests pass, the performance budget is met, no open known issue targets the update, and a full match is played on Linux.
 
@@ -126,26 +85,27 @@ These rules carry over from the first roadmap unchanged.
 
 ## 5. Not in this roadmap
 
-The Steam store page and content survey have their own plan: [store page plan](superpowers/specs/2026-10-19-store-page-design.md).
+Considered on 2026-11-01 and left for later:
 
-Carried over as candidates for later: the tutorial, the headless dedicated server and host migration, ranked matchmaking, new terrain types (water, forest), other defences (gates, tank traps, shields, decoys), healer and stealth units, and mobile or console platforms.
+- **Learning the game:** a tutorial, a guided first match, explanatory tooltips.
+- **Battle view:** status markers over units and buildings (idle, unpaid, under attack, producing); strategic zoom (units and buildings as icons when zoomed far out; drawn for v0.16 and dropped at the owner's Figma review, 2026-11-01).
+- **Controls:** a Patrol order, repeat production.
+- **Feel:** unit turn, idle, recoil and death animation; dynamic (combat-layer) music; ambient sound beds.
+- **Content:** new terrain (water, forest), more defences (gates, tank traps, shields, decoys), healer and stealth units, new modes.
+- **Online:** a headless dedicated server and host migration (the match still ends when the host leaves), ranked matchmaking.
+- Mobile or console platforms.
+
+The owner turned down on 2026-10-30 (see [polish.md](polish.md)): screen shake, order-acknowledgement chirps, map pings, chat, floating resource numbers, an idle-producer alert, end-screen graphs, a Quick skirmish button, first-match hints, colourblind team colours.
 
 ---
 
 ## 6. Decisions log
 
-| Topic (2026-10-16)                       | Decision                                                                                                                                                                                                                                                                                                                                                                                             |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Order and numbering                      | v0.10 Insight, v0.11 New Ground, v0.12 Arsenal, v0.13 Bastion                                                                                                                                                                                                                                                                                                                                        |
-| Debug tools                              | Control API plus CLI, overlays, structured logs, recordings. Scenario commands in the API and console only, no in-game debug panel                                                                                                                                                                                                                                                                   |
-| Control API reach                        | Editor and development builds, localhost, behind `-debugApi` in builds                                                                                                                                                                                                                                                                                                                               |
-| Recordings                               | Host records; after _GameOver_ each player is sent the file in the background; watched from a Replays screen; fog-free                                                                                                                                                                                                                                                                               |
-| Maps                                     | Procedural region graph from the seed; chokepoints, lanes and expansions; no symmetry and no new terrain types                                                                                                                                                                                                                                                                                       |
-| Start points                             | Dealt privately by the server; options per player and pick time (0 = random to unlimited) set by the host; teammates see each other's                                                                                                                                                                                                                                                                |
-| Units                                    | Scout, Heavy, Artillery (direct fire), Sniper, Flamethrower, Suicide bomber (contact and Detonate order)                                                                                                                                                                                                                                                                                             |
-| Production                               | By role: Barracks, Heavy Factory, Siege Workshop; one type per building; switching clears the queue                                                                                                                                                                                                                                                                                                  |
-| v0.12 open decisions (2026-10-17)        | Tank and Digger Light armour; the §3 numbers go in as written and are tuned in play; Detonate on B; a full Barracks rename                                                                                                                                                                                                                                                                           |
-| Defences                                 | One Gun turret (shoots units, buildings and walls) and the Jammer; v0.13 spec approved                                                                                                                                                                                                                                                                                                               |
-| Archive                                  | The first roadmap, its specs, plans, spike and perf results moved to `docs/archive/`                                                                                                                                                                                                                                                                                                                 |
-| AI opponents and store (2026-10-19)      | AI opponents become v0.14, before the Steam Early Access launch; the store page plan is in `superpowers/specs/2026-10-19-store-page-design.md` (free to play, Early Access, no release date yet)                                                                                                                                                                                                     |
-| v0.13 plan and v0.14 design (2026-10-23) | v0.12's reviews and Linux match are done; v0.13 starts with Figma and art up front. v0.14: Easy/Normal/Hard, never cheating, Single-player through a Private lobby, team-view snapshot, independent AI allies, AI reacts to diplomacy, host-picked styles, pause only with one human, dev bots become AI seats, lobby Visibility, Hard ≥ 80% vs Normal, surrenders when hopeless, military callsigns |
+| Topic (2026-11-01) | Decision |
+| ------------------ | -------- |
+| Direction | Polish and usability, with some new content sprinkled in |
+| Polish themes | Reading the battle; controls and flow; look, sound and feel. Not a tutorial |
+| Content | Dense resources at the middle of maps, as a richer gem type, paying 2.5× and never running out |
+| Split | Two bigger updates: v0.16 Clarity (all three polish themes), v0.17 Heartland (rich gems) |
+| v0.16 picks | Target lines, minimap combat, the HQ-placement minimap (owner addition), formations, Builder auto-repair, menu presentation |
+| v0.16 Figma review | Every frame approved except strategic zoom, which leaves v0.16 and the roadmap |
