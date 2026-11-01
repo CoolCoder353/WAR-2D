@@ -161,11 +161,13 @@ namespace WAR2D.Sim
         }
 
         /// <summary>
-        /// The nearest enemy wall tile within range with a clear line, or -1. The wall tile ends the line, so it
-        /// doesn't block its own line.
+        /// The nearest enemy wall tile within range with a clear line, on a fog cell the owner's grid sees now (v0.16: a
+        /// unit's wall shot names the tile to its owner, so a wall in the fog must never be a target), or -1. The wall tile
+        /// ends the line, so it doesn't block its own line.
         /// </summary>
         private static int FindWall(in SearchInput s, float2 p, int slot, float rangeSq)
         {
+            int grid = slot * s.FogCells;
             int r = (int)math.ceil(math.sqrt(rangeSq));
             int2 c = (int2)math.floor(p);
             int2 lo = math.max(c - r, 0), hi = math.min(c + r, new int2(s.Width - 1, s.Height - 1));
@@ -178,7 +180,7 @@ namespace WAR2D.Sim
                 if (s.WallState[t] == WallStates.None || !SimData.Attacks(s.AttackMask, slot, s.WallOwnerSlot[t])) continue;
                 float2 centre = new float2(x + 0.5f, y + 0.5f);
                 float d = math.distancesq(p, centre);
-                if (d <= best && LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, centre)) { best = d; bestTile = t; }
+                if (d <= best && Sees(s, grid, centre) && LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, centre)) { best = d; bestTile = t; }
             }
             return bestTile;
         }
@@ -186,7 +188,7 @@ namespace WAR2D.Sim
         /// <summary>
         /// This tick's slot (or tile) for a stored target id of the given kind, or -1 when it must be dropped: it died,
         /// left range (or came inside the minimum range), lost the line of fire, went into the fog of the owner's grid
-        /// (units and buildings), changed hands, is no longer attacked (diplomacy), is a hidden building, or no longer exists.
+        /// (units, buildings and, since v0.16, walls), changed hands, is no longer attacked (diplomacy), is a hidden building, or no longer exists.
         /// </summary>
         public static int Keep(in SearchInput s, float2 p, int slot, float rangeSq, float minSq, int id, byte kind)
         {
@@ -198,7 +200,7 @@ namespace WAR2D.Sim
             {
                 if ((uint)id >= (uint)s.WallState.Length || s.WallState[id] == WallStates.None || !SimData.Attacks(s.AttackMask, slot, s.WallOwnerSlot[id])) return -1;
                 float2 centre = new float2(id % s.Width + 0.5f, id / s.Width + 0.5f);
-                if (math.distancesq(p, centre) > rangeSq || !LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, centre)) return -1;
+                if (math.distancesq(p, centre) > rangeSq || !Sees(s, slot * s.FogCells, centre) || !LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, centre)) return -1;
                 return id;
             }
             int grid = slot * s.FogCells;

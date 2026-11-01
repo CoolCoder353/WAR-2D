@@ -196,7 +196,7 @@ Low severity, deferred from the `/code-review` of the siege client work:
 - ~~Repair sparks can fire on the last step of construction.~~ **Fixed (2026-10-18):** sparks need the building to have been finished at its previous health change too.
 - ~~`BuildingPacking` sorts with the unstable `List.Sort`~~ **Fixed (v0.12):** ties break on x.
 - ~~The Radar range ring (`ClearingRing.Create`) never releases its Material.~~ **Fixed (2026-10-18):** every ring shares one material (colours are per vertex).
-- A wall drag sends Build orders only for the first `Orders/MaxQueued + 1` tiles.
+- ~~A wall drag sends Build orders only for the first `Orders/MaxQueued + 1` tiles.~~ **Fixed (v0.16):** idle Builders take the next unfinished wall within `AutoWork/Radius` on their own, so they carry on along the line (`SimAutoWorkTests.ALongWallDragGetsBuiltToTheEnd`).
 - ~~`ToArray` is duplicated in `UnitCommander` and `HudController`~~ **Fixed (2026-10-18):** both use `Enumerable.ToArray`. `InstancedBuildingRenderer.LastColourOf` is still an O(n·m) test hook.
 
 ## Whole-project review (2026-10-16)

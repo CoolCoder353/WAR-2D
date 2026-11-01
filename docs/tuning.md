@@ -21,6 +21,9 @@ The bench and the tuner need a Linux build (`Builds/Linux/WAR-2D.x86_64`, any bu
 | `<Siege>` | Walls, bombs, Builders' build power, repair, digging, gem payout, Radar, Jammer |
 | `<Match><Map>` | Map generation: start sites, expansions, lanes, chokepoints, gems |
 | `<Lobby>` | What the host may pick (map sizes, starting resources, start options, pick time) |
+| `<Formation>` | v0.16 formations: slot `Spacing`, `LooseTiles` (no speed cap this near the slot), `SlotTiles` (steer to the slot this near the goal), `LostTiles` (catch up this far behind the leader) |
+| `<AutoWork>` | v0.16 idle Builders: `Radius` they look for blueprints and repairs, `RepairBelow` (health share), `SliceTicks` between looks |
+| `<TargetLines>`, `<MinimapCombat>`, `<PlacementMinimap>` | v0.16 client presentation (not balance): target-line hold and cap, minimap pulse cell, timing and cap, the HQ-placement ring size |
 | `<Ai><Policy>` | The one policy every difficulty plays (AI overhaul): Builders, expansions, `IncomePerProducer`, the building upkeep share and bank rule, the fight model (`AttackAdvantage`, `RetreatAdvantage`, `RangeWeight`, `SplashTargets`), target scoring, raids, home guard, adaptation (trades, caution, enemy models), style switches, variation, the budget's `EconomyShare`. Moving one moves every difficulty |
 | `<Ai><Difficulty>` | Each level's handicaps only: thinking rate, actions per minute, reactions, `Insight`, `Attention`, `Ambition`, `Mistakes` (0..1; Hard 1, 1, 1, 0), and its diplomacy temperament. Moving one moves one rung of the ladder |
 | `<Ai><Style>` | What a style builds and when it attacks: build orders (one picked per match), army mix, producers, Miners, expansions, first attack, attack size and interval, defences, raids. Each AI varies these by up to `Policy.Variation` per match |

@@ -88,6 +88,20 @@ The owner closed the v0.10 to v0.15.1 verification and tuning items: the playtes
 | `<Replays><SendKilobytesPerSecond>` did nothing | **Removed** (parser, `GameConfig`, XML, test fixture). |
 | The version stayed at 0.14.0 / protocol 14 after v0.15's new messages | **Fixed.** `bundleVersion` 0.15.1, `GameVersion.Protocol` 15. |
 
+## v0.16 Clarity (2026-11-02)
+
+| Item | Status |
+| ---- | ------ |
+| The HQ-placement minimap was black | **Fixed.** The sim doesn't tick during _PlacingHQ_, so no fog batch arrives and `MinimapController` drew nothing; it now sizes the texture from the map and `Simulation/FogCellSize` while placing and draws the public terrain at full brightness with numbered option rings (Figma P). |
+| A wall drag built only its first `Orders/MaxQueued + 1` tiles | **Fixed** by auto-work (idle Builders carry on along the line). |
+| A formation unit steering straight to its slot could stick in a rock notch | **Fixed** before landing: it steers straight only over clear floor (`SimFormationTests.UnitsGoRoundRockBetweenThemAndTheirSlots`), and slots must be reachable straight from the goal. |
+| Units in a formation that arrive first can still be nudged by later ones walking through | Accepted. Units of a role furthest ahead take the front rows, which keeps crossings rare; the block can end a little uneven where paths cross. |
+| Target lines need the attacker in the camera view | By design. Attack events reach a client only for attackers inside its camera view (as tracers); a selected unit fighting off screen has no line until the camera is there. |
+| Auto-work applies to the AI's Builders too | By design (spec D2: for everyone); the AI's Builder manager keeps ordering its Builders. |
+| Security review: a unit's wall target could name a wall in its owner's fog | **Fixed before landing.** Units and turrets targeted enemy walls with only range and line of sight checked, and Artillery (range 14, sight 7) and Snipers (16, 10) outrange their sight, so the new owner-only wall target would have named a fogged wall's tile. `TargetSearch.FindWall` and `Keep` now take only walls on fog cells the owner's grid sees (as for units and buildings), and `InterestRules.UnitAttack` names a wall tile only while the owner sees it (`LeakTests.AWallInTheFogIsNeverTargetedNorNamed`). Units and turrets no longer shoot walls they can't see. |
+| `ReplicationPlayModeTests.EnemyOutsideViewIsNeverSent` failed once in a full PlayMode run (2026-11-02) | Test flakiness. It passed alone and in its class on the same code; it follows test order, not the change. |
+| `ReplicationPlayModeTests.BoxSelectAndSquadOrderMoveUnits` expected a 3-tile clump | **Updated.** Its squad order goes out with Formations on, so 30 units stop in a block; it now counts units within 6 tiles. |
+
 ## Open
 
 | Item                                                           | Kind                              | Detail                                                                                                                                                                                                                                             |
@@ -99,7 +113,7 @@ The owner closed the v0.10 to v0.15.1 verification and tuning items: the playtes
 | Client positions creep after Stop                              | Presentation                      | Predicted positions converge on the server's at about 0.15 tiles/s instead of snapping; `HudTests.CommandCardStopHalts` can fail on timing.                                                                                                        |
 | Authored maps (`Size = 0`) get no terrain on a pure client      | Test-only                         | A pure client can't rebuild an authored map, so `WorldStateManager.OnStartClient` gives it no `ClientTerrain`; the host's client gets one. Real matches always use generated maps.                                            |
 | Footprints ignore rotation                                     | Latent                            | A rotated non-square building would cover the wrong tiles. Every building is square today.                                                                                                                                                         |
-| Two PlayMode tests are timing-sensitive | Test flakiness | 2026-11-01, full PlayMode run (79/81): `HudTests.GiftToEnemyMovesResources` timed out after 5 s and passed alone; `PerformanceTests.MinimapRedrawAtTenThousandOwnUnitsIsUnderOneMillisecond` measured 1.08 then 1.81 ms against 1.0 ms, and failed the same way (timed out) on the code before that day's changes, so it follows the machine's load, not the code. |
+| Two PlayMode tests are timing-sensitive | Test flakiness | 2026-11-01, full PlayMode run (79/81): `HudTests.GiftToEnemyMovesResources` timed out after 5 s and passed alone; `PerformanceTests.MinimapRedrawAtTenThousandOwnUnitsIsUnderOneMillisecond` measured 1.08 then 1.81 ms against 1.0 ms, and failed the same way (timed out) on the code before that day's changes, so it follows the machine's load, not the code. On 2026-11-02 (v0.16 branch, editor freshly restarted) it measured 2.07 and 2.19 ms; the redraw it times is unchanged by v0.16. |
 | Low-severity review findings                                   | Mixed                             | The "Still open" lists in [bug-review.md](bug-review.md).                                                                                                                                                                                          |
 
 Developer-tool, networking and hygiene leftovers are further down.

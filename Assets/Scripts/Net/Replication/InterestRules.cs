@@ -57,7 +57,7 @@ namespace WAR2D.Net.Replication
         /// <summary>
         /// The attack event a player is told about for a unit's attack (attacker id, target id), or false: the attacker
         /// must be known and inside <paramref name="view"/>; the target is named only when <see cref="MayKnowTarget"/>, else 0.
-        /// A wall target (negative, <see cref="AttackTargetIds"/>) is kept only for the attacker's owner.
+        /// A wall target (negative, <see cref="AttackTargetIds"/>) is kept only for the attacker's owner, and only while its grid sees the tile.
         /// </summary>
         public static bool UnitAttack(in ReplicationInput input, NativeArray<ulong> allowed, int4 view, int2 attack, in AttackTarget target, int owner, int grid, out AttackEvent shown)
         {
@@ -67,10 +67,18 @@ namespace WAR2D.Net.Replication
             int slot = input.SlotOfIndex(index);
             if (slot < 0 || !InView(view, input.Positions[slot])) return false;
             int named = attack.y < 0
-                ? (input.OwnerId[slot] == owner ? attack.y : 0) // a wall tile (v0.16): only the shooter's owner is told
+                ? (input.OwnerId[slot] == owner && SeesWall(input, attack.y, grid) ? attack.y : 0) // a wall tile (v0.16): only the shooter's owner, only in sight
                 : MayKnowTarget(input, allowed, attack.y, target, owner, grid) ? attack.y : 0;
             shown = new AttackEvent { AttackerIndex = index, TargetId = named };
             return true;
+        }
+
+        /// <summary>True when the player's grid sees the wall tile a negative attack target names (v0.16).</summary>
+        private static bool SeesWall(in ReplicationInput input, int target, int grid)
+        {
+            if (input.MapWidth <= 0) return false;
+            int tile = AttackTargetIds.WallTile(target);
+            return input.Sees(grid, new float2(tile % input.MapWidth + 0.5f, tile / input.MapWidth + 0.5f));
         }
 
         /// <summary>

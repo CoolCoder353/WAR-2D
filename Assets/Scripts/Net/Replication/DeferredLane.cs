@@ -76,7 +76,7 @@ namespace WAR2D.Net.Replication
             {
                 Count = count, Positions = positions, Health = health, MaxHealth = maxHealth, OwnerId = ownerId, Type = type,
                 IdOf = idOf, IndexOfId = indexOfId, SpeedByType = speedByType,
-                Visible = noFog, FogCellSize = math.max(1, data.FogCellSize), FogW = 1, FogH = 1, FogCells = 1,
+                Visible = noFog, FogCellSize = math.max(1, data.FogCellSize), FogW = 1, FogH = 1, FogCells = 1, MapWidth = data.Width,
             };
             JobHandle built = interests.Schedule(input, default);
             handle = built; // completed by Dispose even if the encoder refuses to schedule

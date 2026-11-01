@@ -834,6 +834,33 @@ public class LeakTests
     }
 
     [Test]
+    public void AWallInTheFogIsNeverTargetedNorNamed()
+    {
+        // Artillery outranges its own sight (14 against 7): a wall 11.5 tiles away, with nothing of A's seeing it, is in A's fog.
+        using var sim = new SimHarness(Map(), c => c.Simulation.TargetSearchSliceTicks = 1);
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        replication.CollectBuildings = list => SimBuildings(sim, list);
+        var a = new Spy(sim.Context, replication, SimHarness.OwnerA);
+        replication.SetVirtualView(SimHarness.OwnerA, new int2(0, 0), new int2(95, 95));
+        int2 wall = new int2(32, 20);
+        sim.Spawn(OwnerC, new float2(80.5f, 80.5f), UnitType.Builder);
+        sim.Tick(); // C exists from here, so it can own the wall
+        sim.PlaceWall(OwnerC, wall);
+        int[] artillery = sim.Spawn(SimHarness.OwnerA, new float2(20.5f, 20.5f), UnitType.Artillery);
+        sim.Tick();
+        sim.ForceBuiltWall(wall);
+        int index = sim.Map.Grid.Index(wall);
+        float health = sim.Context.Data.WallHealth[index];
+        sim.Order(SimHarness.OwnerA, OrderKind.AttackMove, new int2(12, 20), artillery[0]); // backing away: still in range, never in sight
+        for (int t = 0; t < 60; t++) sim.Tick();
+        sim.Em.CompleteAllTrackedJobs();
+        Assert.AreEqual(health, sim.Context.Data.WallHealth[index], "a wall in the fog is not a target");
+        foreach (int target in a.UnitAttackTargets) Assert.GreaterOrEqual(target, 0, "no wall tile named from the fog");
+        CollectionAssert.IsEmpty(a.Failures);
+        a.Dispose();
+    }
+
+    [Test]
     public void AJammerGhostStaysAGhostUntilItsSpotIsSeen()
     {
         using var sim = new SimHarness(Map());
