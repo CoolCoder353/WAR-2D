@@ -139,6 +139,8 @@ namespace WAR2D.Client
                 AttackSeen?.Invoke(building, target);
             };
             worldEffects = new WorldEffects(capacity);
+            MinimapCombatConfig pulses = config.MinimapCombat;
+            MinimapCombat.Current = new MinimapCombat(pulses.CellTiles, pulses.PulseSeconds, pulses.QuietSeconds, pulses.Max);
             store.Died += OnUnitDied;
             store.Appeared += (index, at) => worldEffects.UnitAppeared(new Vector2(at.x, at.y), store.OwnerOf(index), Time.time - firstBatchAt);
             lastPosition = new NativeArray<float2>(capacity, Allocator.Persistent);
@@ -383,7 +385,7 @@ namespace WAR2D.Client
                     frame[index] = frames.Cell(store.TypeOf(index), rotation[index], moving, serverTime, serverTime - lastAction[index], index);
                 color[index] = ColorOf(owners[index]);
                 health01[index] = healthBytes[index] / 100f;
-                TrackHit(index, healthBytes[index], now, frameSeconds);
+                TrackHit(index, healthBytes[index], p, owners[index], now, frameSeconds);
                 if (moving) worldEffects.Moved(index, store.IdOf(index), store.TypeOf(index), p, view);
                 drawScale[index] = ScaleOf(store.TypeOf(index));
             }
@@ -423,7 +425,7 @@ namespace WAR2D.Client
         /// A unit whose health dropped since last frame was hit: it flashes and its bar keeps a draining trail (<see cref="HitFeedback"/>).
         /// A unit new to this index (a new id) starts from its health, with no flash.
         /// </summary>
-        private void TrackHit(int index, byte health, float now, float frameSeconds)
+        private void TrackHit(int index, byte health, float2 position, int owner, float now, float frameSeconds)
         {
             int id = store.IdOf(index);
             if (trackedId[index] != id)
@@ -433,7 +435,11 @@ namespace WAR2D.Client
                 hitAt[index] = float.NegativeInfinity;
                 trail[index] = health / 100f;
             }
-            else if (health < lastHealth[index]) hitAt[index] = now;
+            else if (health < lastHealth[index])
+            {
+                hitAt[index] = now;
+                MinimapCombat.Current?.Hit(position, owner == WorldEffects.LocalOwner, now); // v0.16: fights on the minimap
+            }
             lastHealth[index] = health;
             trail[index] = HitFeedback.Trail(trail[index], health / 100f, now - hitAt[index], frameSeconds);
             flash[index] = (byte)(HitFeedback.Flashing(hitAt[index], now) ? 1 : 0);

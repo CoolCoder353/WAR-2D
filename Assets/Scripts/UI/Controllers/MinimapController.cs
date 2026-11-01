@@ -196,6 +196,49 @@ namespace WAR2D.UI
 
         private const long PingMilliseconds = 3000;
 
+        private readonly System.Collections.Generic.Dictionary<int2, VisualElement> pulseRings = new System.Collections.Generic.Dictionary<int2, VisualElement>();
+        private readonly System.Collections.Generic.List<int2> pulseGone = new System.Collections.Generic.List<int2>();
+        private readonly System.Collections.Generic.HashSet<int2> pulseLive = new System.Collections.Generic.HashSet<int2>();
+
+        /// <summary>
+        /// Fights on the minimap (v0.16, Figma C): one ring per <see cref="MinimapCombat"/> pulse, growing from 30 % to 120 %
+        /// and fading over the pulse; the alert colour when the player's own things were hit.
+        /// </summary>
+        private void ShowPulses()
+        {
+            MinimapCombat combat = MinimapCombat.Current;
+            float now = Time.time;
+            combat?.Update(now);
+            pulseLive.Clear();
+            if (combat != null && texture != null)
+            {
+                Vector2 size = image.layout.size;
+                foreach (MinimapCombat.Pulse pulse in combat.Pulses)
+                {
+                    pulseLive.Add(pulse.Cell);
+                    if (!pulseRings.TryGetValue(pulse.Cell, out VisualElement ring))
+                    {
+                        ring = new VisualElement { name = "minimap-pulse", pickingMode = PickingMode.Ignore };
+                        ring.AddToClassList("minimap-pulse");
+                        Pings.Add(ring);
+                        pulseRings[pulse.Cell] = ring;
+                    }
+                    ring.EnableInClassList("minimap-pulse--own", pulse.Own);
+                    Vector2 at = MinimapTexture.ToLocal(pulse.Centre, size, WorldSize);
+                    float t = math.saturate((now - pulse.Start) / math.max(0.01f, combat.PulseSeconds));
+                    float scale = math.lerp(0.3f, 1.2f, t);
+                    ring.style.left = at.x;
+                    ring.style.top = at.y;
+                    ring.style.scale = new Scale(new Vector3(scale, scale, 1f));
+                    ring.style.opacity = math.lerp(1f, 0.2f, t);
+                }
+            }
+            if (pulseRings.Count == pulseLive.Count) return;
+            pulseGone.Clear();
+            foreach (int2 cell in pulseRings.Keys) if (!pulseLive.Contains(cell)) pulseGone.Add(cell);
+            foreach (int2 cell in pulseGone) { pulseRings[cell].RemoveFromHierarchy(); pulseRings.Remove(cell); }
+        }
+
         /// <summary>Shows a ring at a world tile for a few seconds (an UnderAttack alert).</summary>
         public void Ping(int2 tile, AlertKind kind = AlertKind.UnderAttack)
         {
@@ -236,6 +279,7 @@ namespace WAR2D.UI
                 Redraw(fog);
             }
             ShowCamera();
+            ShowPulses();
         }
 
         /// <summary>Redraws the texture now: terrain under fog, buildings and ghosts, then units, then flags over the known HQs.</summary>

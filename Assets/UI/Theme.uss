@@ -283,6 +283,9 @@
 /* Minimap pings */
 .minimap-ping { position: absolute; width: 22px; height: 22px; margin-left: -11px; margin-top: -11px; border-width: 2px; border-color: var(--color-danger); border-radius: 11px; }
 .minimap-ping--warning { border-color: var(--color-warning); }
+/* v0.16 fights on the minimap (Figma C): scale and opacity set per frame from code */
+.minimap-pulse { position: absolute; width: 22px; height: 22px; margin-left: -11px; margin-top: -11px; border-width: 2px; border-radius: 11px; border-color: rgb(255, 255, 255); background-color: rgba(0, 0, 0, 0); }
+.minimap-pulse--own { border-color: var(--color-danger); }
 
 /* Diplomacy panel (Figma: Panel / Diplomacy) */
 .diplomacy-panel { position: absolute; right: var(--space-4); top: 60px; width: 400px; display: none; }
