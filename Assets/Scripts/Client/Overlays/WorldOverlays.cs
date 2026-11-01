@@ -36,6 +36,7 @@ namespace WAR2D.Client.Overlays
         private readonly WorldLabels labels = new WorldLabels();
         private OverlayMesh mesh;
         private GroupOrderOverlay orders;
+        private TargetLineOverlay targets;
         private RangeRingOverlay ranges;
         private RallyOverlay rally;
         private BuildingHoverCard hover;
@@ -48,6 +49,7 @@ namespace WAR2D.Client.Overlays
         {
             commander = GetComponent<UnitCommander>();
             orders = new GroupOrderOverlay();
+            targets = new TargetLineOverlay();
             ranges = new RangeRingOverlay();
             rally = new RallyOverlay();
             hover = new BuildingHoverCard();
@@ -92,6 +94,7 @@ namespace WAR2D.Client.Overlays
 
             ranges.Draw(frame);
             rally.Draw(frame);
+            targets.Draw(frame);
             orders.Draw(frame);
             hover.Update(frame);
 
@@ -104,6 +107,7 @@ namespace WAR2D.Client.Overlays
             if (commander != null) commander.Selection.Ordered -= orders.OnOrdered;
             labels.HideAll();
             hover?.Dispose();
+            targets?.Dispose();
             mesh?.Dispose();
             mesh = null;
         }

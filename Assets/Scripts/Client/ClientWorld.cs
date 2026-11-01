@@ -112,6 +112,12 @@ namespace WAR2D.Client
         }
 
         /// <summary>Allocates the store and buffers and subscribes to batches (Awake; tests call it directly).</summary>
+        /// <summary>
+        /// An attack event the client was told about: attacker id (a unit's or a building's) and target id (0 unnamed,
+        /// negative a wall tile). v0.16 target lines.
+        /// </summary>
+        public event Action<int, int> AttackSeen;
+
         internal void Initialise()
         {
             if (store != null) return;
@@ -124,9 +130,14 @@ namespace WAR2D.Client
             {
                 attacks.Add((attacker, target));
                 if ((uint)attacker < (uint)lastAction.Length) lastAction[attacker] = serverTime;
+                AttackSeen?.Invoke(store.IdOf(attacker), target);
             };
             // A building's attack (v0.13): only a client that may know the building is sent one.
-            store.BuildingAttack += (building, target) => buildingAttacks.Add((building, target));
+            store.BuildingAttack += (building, target) =>
+            {
+                buildingAttacks.Add((building, target));
+                AttackSeen?.Invoke(building, target);
+            };
             worldEffects = new WorldEffects(capacity);
             store.Died += OnUnitDied;
             store.Appeared += (index, at) => worldEffects.UnitAppeared(new Vector2(at.x, at.y), store.OwnerOf(index), Time.time - firstBatchAt);

@@ -204,6 +204,19 @@ namespace WAR2D.Client
         /// <summary>Raised after an order is sent: its kind, Shift-queued or not, its goal, and the ids (sorted) it went to.</summary>
         public event Action<OrderKind, bool, int2, IReadOnlyList<int>> Ordered;
 
+        private readonly Dictionary<int, int2> attackMoveGoals = new Dictionary<int, int2>();
+
+        /// <summary>The attack-move goal this client last gave the unit, while its last order was an attack-move (v0.16 target lines).</summary>
+        public bool AttackMoveGoal(int id, out int2 goal) => attackMoveGoals.TryGetValue(id, out goal);
+
+        /// <summary>Remembers attack-move goals (a queued order keeps the one before it), then raises <see cref="Ordered"/>.</summary>
+        private void RaiseOrdered(OrderKind kind, bool queue, int2 goal, IReadOnlyList<int> ids)
+        {
+            if (kind == OrderKind.AttackMove && !queue) foreach (int id in ids) attackMoveGoals[id] = goal;
+            else if (!queue) foreach (int id in ids) attackMoveGoals.Remove(id);
+            Ordered?.Invoke(kind, queue, goal, ids);
+        }
+
         /// <summary>The selected unit with the lowest id (the one whose queued goals the HUD shows), or 0.</summary>
         public int First
         {
@@ -225,7 +238,7 @@ namespace WAR2D.Client
             if (selectedSquad >= 0 && IsExactly(squads[selectedSquad]))
             {
                 WorldStateManager.Instance.CmdOrderSquad((byte)selectedSquad, (byte)kind, queue, goal);
-                Ordered?.Invoke(kind, queue, goal, Sorted());
+                RaiseOrdered(kind, queue, goal, Sorted());
                 return;
             }
             ushort token = NextToken();
@@ -233,7 +246,7 @@ namespace WAR2D.Client
             List<byte[]> chunks = OrderIdCodec.EncodeChunks(ids);
             for (int i = 0; i < chunks.Count; i++)
                 WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, queue, goal);
-            Ordered?.Invoke(kind, queue, goal, ids);
+            RaiseOrdered(kind, queue, goal, ids);
         }
 
         private readonly Dictionary<OrderKind, List<int>> byKind = new Dictionary<OrderKind, List<int>>();
@@ -268,7 +281,7 @@ namespace WAR2D.Client
                 List<byte[]> chunks = OrderIdCodec.EncodeChunks(pair.Value);
                 for (int i = 0; i < chunks.Count; i++)
                     WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)pair.Key, queue, goal);
-                Ordered?.Invoke(pair.Key, queue, goal, pair.Value);
+                RaiseOrdered(pair.Key, queue, goal, pair.Value);
             }
         }
 
