@@ -8,7 +8,7 @@ The third roadmap: polish and usability, with one piece of new content. The seco
 
 | Update | Name      | Delivers                                                                                                                                                         | Status                         | Design                                                                                          | Plan                      |
 | ------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------- | ------------------------- |
-| v0.16  | Clarity   | Reading the battle (target lines, strategic zoom, minimap combat, a clear HQ-placement minimap), controls (formations, Builder auto-repair) and menu presentation | Spec approved (2026-11-01)    | [design](superpowers/specs/2026-11-01-v0.16-clarity-design.md), [Figma brief](ux/v0.16-figma.md) | Written when v0.16 starts |
+| v0.16  | Clarity   | Reading the battle (target lines, minimap combat, a clear HQ-placement minimap), controls (formations, Builder auto-repair) and menu presentation | Spec approved (2026-11-01)    | [design](superpowers/specs/2026-11-01-v0.16-clarity-design.md), [Figma brief](ux/v0.16-figma.md) | Written when v0.16 starts |
 | v0.17  | Heartland | Rich gems: a new gem tile in the middle of every map that pays 2.5 times as much, and an AI that values it                                                      | Spec approved (2026-11-01)    | [design](superpowers/specs/2026-11-01-v0.17-heartland-design.md)                                 | Written when v0.17 starts |
 
 The owner set the direction, the split and the order on 2026-11-01 ("polish and usability, with some new content sprinkled in"; two bigger updates). Decisions still open are listed at the end of each spec.
@@ -24,7 +24,7 @@ flowchart LR
 
 - **Polish first:** the game's balance and AI were signed off on 2026-11-01. v0.16 changes how the game reads and handles, not what anything is worth, so the sign-off still holds when it ships.
 - **The economy change last:** rich gems change every seed's map, the value of the middle and the AI's scoring. Doing it last means one balance and AI re-check at the end, against the finished controls (formations change how armies arrive at a contested middle).
-- **One Figma round for v0.16:** target lines, strategic zoom icons, minimap combat, the HQ-placement minimap and the menus are all HUD or menu work, so one brief ([ux/v0.16-figma.md](ux/v0.16-figma.md)) covers them before any is built.
+- **One Figma round for v0.16:** target lines, minimap combat, the HQ-placement minimap and the menus are all HUD or menu work, so one brief ([ux/v0.16-figma.md](ux/v0.16-figma.md)) covers them before any is built.
 
 Every update ships a playable, tested build.
 
@@ -36,7 +36,7 @@ Every update ships a playable, tested build.
 
 > See what's happening at a glance, move armies with less babysitting, and a front end that looks finished.
 
-- **Reading the battle (client only):** target lines for selected units, a strategic zoom that draws units and buildings as icons when zoomed far out, fights flashing on the minimap, and a minimap that shows the whole map and your start options clearly while you place your HQ.
+- **Reading the battle (client only):** target lines for selected units, fights flashing on the minimap, and a minimap that shows the whole map and your start options clearly while you place your HQ.
 - **Controls (server):** formations (a group arrives together, at its slowest member's pace, heavy units in front) and Builders that repair nearby damage on their own when idle. The wall drag that stops after `Orders/MaxQueued + 1` tiles is fixed along the way.
 - **Menu presentation:** transitions and motion through the main menu, Play, lobby and Settings, and a better-looking lobby.
 
@@ -63,7 +63,7 @@ Unchanged, on the same reference machine (Ryzen 5 5600GT, 32 GB, Radeon RX 6600,
 | Client frame rate    | **≥ 60 fps** with 10,000 own units on screen                 |
 | Bandwidth per client | **≤ 256 KB/s average**, ≤ 768 KB/s peak 1 s                  |
 
-v0.16's formations and auto-repair add tick work, and the 2026-11-01 terrain-replication change hasn't been measured yet, so v0.16 runs `tools/perf-run.sh` before it lands. Strategic zoom and the minimap flashes are measured on the client frame. New results go in `docs/perf/v0.N/`.
+v0.16's formations and auto-repair add tick work, and the 2026-11-01 terrain-replication change hasn't been measured yet, so v0.16 runs `tools/perf-run.sh` before it lands. Target lines and the minimap flashes are measured on the client frame. New results go in `docs/perf/v0.N/`.
 
 ---
 
@@ -88,7 +88,7 @@ Unchanged from the earlier roadmaps.
 Considered on 2026-11-01 and left for later:
 
 - **Learning the game:** a tutorial, a guided first match, explanatory tooltips.
-- **Battle view:** status markers over units and buildings (idle, unpaid, under attack, producing).
+- **Battle view:** status markers over units and buildings (idle, unpaid, under attack, producing); strategic zoom (units and buildings as icons when zoomed far out; drawn for v0.16 and dropped at the owner's Figma review, 2026-11-01).
 - **Controls:** a Patrol order, repeat production.
 - **Feel:** unit turn, idle, recoil and death animation; dynamic (combat-layer) music; ambient sound beds.
 - **Content:** new terrain (water, forest), more defences (gates, tank traps, shields, decoys), healer and stealth units, new modes.
@@ -107,4 +107,5 @@ The owner turned down on 2026-10-30 (see [polish.md](polish.md)): screen shake, 
 | Polish themes | Reading the battle; controls and flow; look, sound and feel. Not a tutorial |
 | Content | Dense resources at the middle of maps, as a richer gem type, paying 2.5× and never running out |
 | Split | Two bigger updates: v0.16 Clarity (all three polish themes), v0.17 Heartland (rich gems) |
-| v0.16 picks | Target lines, strategic zoom, minimap combat, the HQ-placement minimap (owner addition), formations, Builder auto-repair, menu presentation |
+| v0.16 picks | Target lines, minimap combat, the HQ-placement minimap (owner addition), formations, Builder auto-repair, menu presentation |
+| v0.16 Figma review | Every frame approved except strategic zoom, which leaves v0.16 and the roadmap |
