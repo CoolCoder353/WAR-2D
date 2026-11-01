@@ -52,7 +52,7 @@ namespace WAR2D.Ai
 
         public const int Hq = 1, Place = 2, Build = 3, Repair = 4, Produce = 5, Queue = 6, Rally = 7, Army = 8, Scout = 9,
             Expand = 10, Cancel = 11, Wall = 12, Dig = 13, Detonate = 14, Backline = 15, Hold = 16, Defend = 17,
-            Attack = 18, Share = 19, Gift = 20, Surrender = 21;
+            Attack = 18, Share = 19, Gift = 20, Surrender = 21, Focus = 22, Raid = 23, Siege = 24;
     }
 
     /// <summary>
@@ -75,6 +75,8 @@ namespace WAR2D.Ai
             QueuedCount = new int[UnitTypes];
             BuildingCount = new int[BuildingTypes];
             CompleteCount = new int[BuildingTypes];
+            MixBias = new float[UnitTypes];
+            for (int i = 0; i < MixBias.Length; i++) MixBias[i] = 1f;
         }
 
         public AiContext Context => ai;
@@ -126,6 +128,36 @@ namespace WAR2D.Ai
         public float UpkeepAdded;
         /// <summary>True while its upkeep runs ahead of its income and its balance is short (it stops adding upkeep).</summary>
         public bool UpkeepTight;
+        /// <summary>Income per second once the Miners it is building are done (AI overhaul §3.2).</summary>
+        public float IncomeSoon;
+        /// <summary>Upkeep of its buildings (blueprints and pending placements included), and what the managers added this think.</summary>
+        public float BuildingUpkeep, BuildingUpkeepAdded;
+        /// <summary>True while its projected upkeep runs ahead of its projected income: Miners first (AI overhaul §3.2).</summary>
+        public bool Deficit;
+        /// <summary>True while its balance has stayed above <c>BankHigh</c> for <c>BankSeconds</c>: money piling up (AI overhaul §3.3).</summary>
+        public bool Banked;
+        private double bankSince = double.NaN;
+
+        // ---- strategy (AI overhaul §4.3; set by the Strategy manager, kept across thinks) ----
+        /// <summary>True while it expects an enemy rush.</summary>
+        public bool RushExpected;
+        /// <summary>True while its first attack waits (a rush expected and not yet seen off).</summary>
+        public bool HoldFirstAttack;
+        /// <summary>Factor on its style's first attack time (below 1 against a greedy enemy).</summary>
+        public float FirstAttackFactor = 1f;
+        /// <summary>Gun turrets in front of its HQ beyond its early ones (against a rush).</summary>
+        public int ExtraTurrets;
+        /// <summary>Multipliers on its army mix by unit type (1: none).</summary>
+        public readonly float[] MixBias;
+        /// <summary>Factor on its building counters against Gun turrets (raised when turrets beat an attack).</summary>
+        public float TurretCounterBoost = 1f;
+        /// <summary>True while its army is attacking, once it has attacked at all, and its bad trades in a row (set by the Army manager).</summary>
+        public bool Attacking, AttackedOnce;
+        public int BadTradeStreak;
+        /// <summary>Factor on the wait between two raids (below 1 against a Turtle: it raids more).</summary>
+        public float RaidCooldownFactor = 1f;
+        /// <summary>Unit ids on a raid (the Raid manager's; the army leaves them alone).</summary>
+        public readonly HashSet<int> Raiders = new HashSet<int>();
 
         // ---- shared plans ----
         public readonly List<BuildRequest> BuildRequests = new List<BuildRequest>(16);
@@ -166,7 +198,8 @@ namespace WAR2D.Ai
             UnitRequests.Clear();
 
             HasHq = false;
-            float upkeep = 0f, income = 0f;
+            float upkeep = 0f, income = 0f, buildingUpkeep = 0f;
+            int minersBuilding = 0;
             int owner = ai.Owner;
             for (int i = 0; i < view.Buildings.Count; i++)
             {
@@ -174,7 +207,8 @@ namespace WAR2D.Ai
                 if (b.OwnerId != owner || b.Ghost) continue;
                 BuildingCount[(int)b.Type]++;
                 BuildingConfig config = BuildingOf(b.Type);
-                if (config != null) upkeep += config.RunningCost;
+                if (config != null) { upkeep += config.RunningCost; buildingUpkeep += config.RunningCost; }
+                if (b.Progress < 100 && b.Type == BuildingType.Miner) minersBuilding++;
                 if (b.Progress >= 100)
                 {
                     CompleteCount[(int)b.Type]++;
@@ -234,7 +268,8 @@ namespace WAR2D.Ai
                 }
                 BuildingCount[(int)p.Type]++;
                 BuildingConfig config = BuildingOf(p.Type);
-                if (config != null) upkeep += config.RunningCost;
+                if (config != null) { upkeep += config.RunningCost; buildingUpkeep += config.RunningCost; }
+                if (p.Type == BuildingType.Miner) minersBuilding++;
             }
 
             expired.Clear();
@@ -245,9 +280,17 @@ namespace WAR2D.Ai
             Income = income;
             Upkeep = upkeep;
             UpkeepAdded = 0f;
+            IncomeSoon = income + minersBuilding * Game.Resources.MiningRate;
+            BuildingUpkeep = buildingUpkeep;
+            BuildingUpkeepAdded = 0f;
+            Deficit = view.State == GameState.Playing && Upkeep > IncomeSoon * Play.UpkeepIncomeShare;
+            AiPolicyConfig policy = ai.Config.Policy;
+            if (view.Resources > policy.BankHigh) { if (double.IsNaN(bankSince)) bankSince = now; }
+            else bankSince = double.NaN;
+            Banked = !double.IsNaN(bankSince) && now - bankSince >= policy.BankSeconds;
             AiDifficultyConfig d = ai.Difficulty;
             float shortfall = math.max(0f, Upkeep - Income * Play.UpkeepIncomeShare);
-            // Normal and Hard keep a few seconds of upkeep in hand at all times (upkeep is charged entity by entity through
+            // Every difficulty keeps a few seconds of upkeep in hand at all times (upkeep is charged entity by entity through
             // the second, so an empty balance leaves some unpaid), more while their upkeep runs ahead of their income.
             float reserve = d.KeepsUpkeepPaid ? math.max(d.UpkeepReserveSeconds * shortfall, Play.UpkeepFloorSeconds * Upkeep) : 0f;
             Free = view.Resources - reserve;
@@ -259,14 +302,33 @@ namespace WAR2D.Ai
 
         // ---- money ----
 
-        /// <summary>True when it may add this much upkeep: Easy always; Normal and Hard only while their income covers it, or their balance covers the deficit for <c>UpkeepBankSeconds</c>.</summary>
+        /// <summary>True when it may add this much upkeep (an upkeep slip skips the check once): only while its income covers it, or its balance covers the deficit for <c>UpkeepBankSeconds</c>.</summary>
         public bool MayAddUpkeep(float upkeep)
         {
             if (!ai.Difficulty.KeepsUpkeepPaid || upkeep <= 0f) return true;
+            if (ai.Slip(AiSlip.Upkeep)) return true; // a slip: this purchase skips the check
             if (UpkeepTight) return false;
             float after = Upkeep + UpkeepAdded + upkeep;
             float shortfall = after - Income * Play.UpkeepIncomeShare;
             return shortfall <= 0f || Free >= shortfall * Play.UpkeepBankSeconds;
+        }
+
+        /// <summary>
+        /// True when a building costing <paramref name="upkeep"/> keeps its buildings' upkeep within <c>BuildingUpkeepShare</c>
+        /// of its projected income (AI overhaul §3.2: producers leave room for an army). The opening's steps are exempt.
+        /// </summary>
+        public bool MayAddBuildingUpkeep(float upkeep)
+        {
+            if (upkeep <= 0f || !OpeningDone) return true;
+            return BuildingUpkeep + BuildingUpkeepAdded + upkeep <= IncomeSoon * ai.Config.Policy.BuildingUpkeepShare;
+        }
+
+        /// <summary>Claims money and upkeep for a building (the building upkeep share first); false (nothing claimed) when it can't.</summary>
+        public bool TrySpendBuilding(float cost, float upkeep)
+        {
+            if (!MayAddBuildingUpkeep(upkeep) || !TrySpend(cost, upkeep)) return false;
+            BuildingUpkeepAdded += upkeep;
+            return true;
         }
 
         /// <summary>Claims money and upkeep for something it is about to buy; false (nothing claimed) when it can't.</summary>
@@ -299,11 +361,12 @@ namespace WAR2D.Ai
         /// <summary>Holds money back for something it saves up for (nothing cheaper is bought before it).</summary>
         public void Reserve(float cost) => Free -= cost;
 
-        /// <summary>Gives back money claimed this think.</summary>
-        public void Release(float cost, float upkeep)
+        /// <summary>Gives back money claimed this think (<paramref name="building"/>: claimed with <see cref="TrySpendBuilding"/>).</summary>
+        public void Release(float cost, float upkeep, bool building = false)
         {
             Free += cost;
             UpkeepAdded -= upkeep;
+            if (building) BuildingUpkeepAdded -= upkeep;
         }
 
         // ---- requests ----

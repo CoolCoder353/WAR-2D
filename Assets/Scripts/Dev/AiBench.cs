@@ -35,6 +35,11 @@ public sealed class AiBench : MonoBehaviour
         public List<string> timeline = new List<string>();
         /// <summary>The army's last decisions (attacks, staging, retreats, recalls).</summary>
         public string[] armyLog;
+        /// <summary>AI overhaul: the style it ended on, its switches, its attacks' trades, its last caution, raids, slips and kill ledger.</summary>
+        public string finalStyle;
+        public string[] switches, trades;
+        public float caution = 1f, killed, lost;
+        public int raids, slips;
         [JsonIgnore] public int nextMinute;
     }
 
@@ -196,6 +201,14 @@ public sealed class AiBench : MonoBehaviour
         r.retreats = status.TryGetValue("retreats", out object re) ? Convert.ToInt32(re) : 0;
         r.conceded = status.TryGetValue("conceded", out object c) && c is bool conceded && conceded;
         if (status.TryGetValue("armyLog", out object log) && log is string[] lines) r.armyLog = lines;
+        if (status.TryGetValue("style", out object st)) r.finalStyle = st as string;
+        if (status.TryGetValue("switches", out object sw) && sw is string[] switches) r.switches = switches;
+        if (status.TryGetValue("trades", out object tr) && tr is string[] trades) r.trades = trades;
+        if (status.TryGetValue("caution", out object ca)) r.caution = Convert.ToSingle(ca);
+        if (status.TryGetValue("raids", out object ra)) r.raids = Convert.ToInt32(ra);
+        if (status.TryGetValue("slips", out object sl)) r.slips = Convert.ToInt32(sl);
+        if (status.TryGetValue("killed", out object k)) r.killed = Convert.ToSingle(k);
+        if (status.TryGetValue("lost", out object lo)) r.lost = Convert.ToSingle(lo);
         if (played >= r.nextMinute * 60f && seat.Player.state == PlayerState.Playing)
         {
             int Count(string key) => status.TryGetValue("buildings", out object bs) && bs is Dictionary<string, int> d && d.TryGetValue(key, out int n) ? n : 0;

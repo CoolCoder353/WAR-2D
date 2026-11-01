@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -17,7 +18,8 @@ namespace WAR2D.UI
         private readonly AlertFeedModel model;
         private readonly VisualElement feed, column, nextSlot;
         private readonly VisualElement card;
-        private IVisualElementScheduledItem unhighlight;
+        private IVisualElementScheduledItem unhighlight, drain;
+        private readonly List<(AlertEntry entry, VisualElement bar)> timers = new List<(AlertEntry, VisualElement)>();
         private readonly HoverCard hover;
 
         /// <summary>The gap between the feed and the command card's top edge.</summary>
@@ -32,11 +34,25 @@ namespace WAR2D.UI
             nextSlot = root.Q("next-alert-slot");
             card = root.Q("command-card");
             card?.RegisterCallback<GeometryChangedEvent>(OnCardMoved);
+            feed.RegisterCallback<PointerEnterEvent>(_ => Hovered = true);
+            feed.RegisterCallback<PointerLeaveEvent>(_ => Hovered = false);
             model.Changed += Show;
             Show();
+            // The timer bars drain a few times a second (they stop while the HUD holds the feed).
+            drain = feed.schedule.Execute(Drain).Every(100);
+        }
+
+        /// <summary>Sets each row's timer bar to the share of its time left.</summary>
+        private void Drain()
+        {
+            float now = Time.unscaledTime;
+            foreach ((AlertEntry entry, VisualElement bar) in timers) bar.style.width = Length.Percent(model.Left(entry, now) * 100f);
         }
 
         private void OnCardMoved(GeometryChangedEvent e) => Follow();
+
+        /// <summary>True while the pointer is over the feed (the HUD holds the alerts' timers then).</summary>
+        public bool Hovered { get; private set; }
 
         /// <summary>Puts the feed's bottom edge just above the command card.</summary>
         private void Follow()
@@ -49,6 +65,7 @@ namespace WAR2D.UI
         private void Show()
         {
             feed.Clear();
+            timers.Clear();
             float now = Time.unscaledTime, nextFade = float.MaxValue;
             int unvisited = model.UnvisitedCount;
             if (nextSlot != null)
@@ -85,13 +102,21 @@ namespace WAR2D.UI
                     tag.AddToClassList("alert__tag");
                     row.Add(tag);
                 }
-                var text = new Label(entry.Subject != null ? entry.Text.Substring(entry.Subject.Length).TrimStart() : entry.Text) { name = "alert-text" };
+                string body = entry.Subject != null ? entry.Text.Substring(entry.Subject.Length).TrimStart() : entry.Text;
+                var text = new Label(entry.Count > 1 ? $"{body} ×{entry.Count}" : body) { name = "alert-text" };
                 text.AddToClassList("alert__text");
                 var dismiss = new Button(() => model.Dismiss(id)) { text = "×", name = "alert-dismiss", tooltip = "Dismiss" };
                 dismiss.AddToClassList("alert__dismiss");
                 dismiss.RegisterCallback<ClickEvent>(e => e.StopPropagation());
+                // A right click on the row dismisses it too (playtest 2026-10-30), and goes no further than the feed.
+                row.RegisterCallback<PointerDownEvent>(e => { if (e.button == 1) { e.StopPropagation(); model.Dismiss(id); } });
                 row.Add(text);
                 row.Add(dismiss);
+                var timer = new VisualElement { name = "alert-timer", pickingMode = PickingMode.Ignore };
+                timer.AddToClassList("alert__timer");
+                timer.style.width = Length.Percent(model.Left(entry, now) * 100f);
+                row.Add(timer);
+                timers.Add((entry, timer));
                 feed.Add(row);
             }
             unhighlight?.Pause();
@@ -133,6 +158,7 @@ namespace WAR2D.UI
         {
             model.Changed -= Show;
             unhighlight?.Pause();
+            drain?.Pause();
             card?.UnregisterCallback<GeometryChangedEvent>(OnCardMoved);
         }
     }

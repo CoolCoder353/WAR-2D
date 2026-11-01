@@ -123,6 +123,11 @@ function summarise(games) {
       unpaidSeconds: mean(seats.map((x) => x.unpaidSeconds || 0)),
       peakArmy: mean(seats.map((x) => x.peakArmy || 0)),
       firstAttackMinutes: mean(seats.filter((x) => x.firstAttackSeconds >= 0).map((x) => x.firstAttackSeconds / 60)),
+      // AI overhaul fields (absent in older results): attacks' trades, caution, raids, style switches.
+      caution: mean(seats.filter((x) => x.caution != null).map((x) => x.caution)),
+      tradeRatio: (() => { const k = seats.reduce((n, x) => n + (x.killed || 0), 0), l = seats.reduce((n, x) => n + (x.lost || 0), 0); return l > 0 ? k / l : NaN; })(),
+      raids: mean(seats.map((x) => x.raids || 0)),
+      switches: seats.reduce((n, x) => n + ((x.switches || []).length), 0),
     };
     // The economy at minute 10 (seats still playing then): unlike the highest balance, it doesn't grow with match length.
     const at10 = seats.map((x) => (x.timeline || []).map(parseMinute).find((t) => t && t.minute === 10)).filter(Boolean);
@@ -163,6 +168,7 @@ function formatBrief(s) {
   const at10 = diff.filter(([, x]) => x.at10);
   if (at10.length) out.push(`  At 10 min (mean): ${at10.map(([d, { at10: t }]) => `${d} bank ${Math.round(t.res)}, income ${Math.round(t.inc)}/s, upkeep ${Math.round(t.upk)}/s, army ${Math.round(t.army)}`).join(' · ')}`);
   if (diff.length) out.push(`  Mean highest balance: ${diff.map(([d, x]) => `${d} ${Math.round(x.highestBalance)}`).join(' · ')}; unpaid s: ${diff.map(([d, x]) => `${d} ${Math.round(x.unpaidSeconds)}`).join(' · ')}`);
+  if (diff.some(([, x]) => !Number.isNaN(x.tradeRatio))) out.push(`  Killed/lost: ${diff.map(([d, x]) => `${d} ${Number.isNaN(x.tradeRatio) ? '–' : x.tradeRatio.toFixed(2)}`).join(' · ')}; caution: ${diff.map(([d, x]) => `${d} ${Number.isNaN(x.caution) ? '–' : x.caution.toFixed(2)}`).join(' · ')}; raids/seat: ${diff.map(([d, x]) => `${d} ${x.raids.toFixed(1)}`).join(' · ')}; style switches: ${diff.map(([d, x]) => `${d} ${x.switches}`).join(' · ')}`);
   const f = s.failures;
   if (f.files.length) out.push(`  Unfinished: ${f.caps} caps, ${f.draws} draws, ${f.errors} errors (${f.files.slice(0, 4).join(', ')}${f.files.length > 4 ? ', …' : ''})`);
   if (f.errorMessages.length) out.push(`  Errors: ${f.errorMessages.slice(0, 3).map(([e, n]) => `"${e}" ×${n}`).join(' · ')} (each match's log is kept in the results directory)`);

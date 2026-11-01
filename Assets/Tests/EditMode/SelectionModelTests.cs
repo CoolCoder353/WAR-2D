@@ -145,4 +145,17 @@ public class SelectionModelTests
         model.SetBuildingRows(rows, 7f, 12f);
         Assert.That(changes, Is.EqualTo(1), "unchanged: no event");
     }
+
+    [Test]
+    public void RoamIsActiveOnlyWhenEveryUnitThatCanRoamDoes()
+    {
+        var model = new SelectionModel();
+        model.SetUnits(new List<ClientUnitView> { Unit(1, UnitType.Tank, 1f), Unit(2, UnitType.Scout, 1f), Unit(3, UnitType.Builder, 1f) }, -1);
+        Assert.IsFalse(model.AllRoaming);
+        model.SetRoaming(1);
+        Assert.IsFalse(model.AllRoaming, "one of the two that can roam");
+        model.SetRoaming(2);
+        Assert.IsTrue(model.AllRoaming, "Builders never roam, so they don't count");
+        Assert.AreEqual(1, model.CountOf(UnitType.Builder));
+    }
 }

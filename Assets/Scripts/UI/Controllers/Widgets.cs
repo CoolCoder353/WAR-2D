@@ -47,5 +47,22 @@ namespace WAR2D.UI
             if (primary) button.AddToClassList("button--primary");
             return button;
         }
+
+        /// <summary>
+        /// Plays <c>ui_hover</c> when the pointer moves onto an enabled button anywhere under <paramref name="root"/> (once per
+        /// button: moving over its label or icon doesn't repeat it). Register once per document root.
+        /// </summary>
+        public static void HoverSounds(VisualElement root)
+        {
+            Button last = null;
+            root.RegisterCallback<PointerOverEvent>(evt =>
+            {
+                Button button = null;
+                for (var e = evt.target as VisualElement; e != null && button == null; e = e.parent) button = e as Button;
+                if (button == last) return;
+                last = button;
+                if (button != null && button.enabledInHierarchy) WAR2D.Audio.AudioService.Hover();
+            }, TrickleDown.TrickleDown);
+        }
     }
 }

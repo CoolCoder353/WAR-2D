@@ -35,7 +35,7 @@ namespace WAR2D.UI
         private readonly WAR2D.UI.HoverCard hover;
         private readonly float repairCostPerHealth;
         private readonly CommandIcon cancelIcon;
-        private readonly Button cancel, wall, detonate, rallyAll;
+        private readonly Button cancel, wall, detonate, rallyAll, roam;
         private readonly Dictionary<Label, Func<UnityEngine.InputSystem.InputAction>> keyLabels = new Dictionary<Label, Func<UnityEngine.InputSystem.InputAction>>();
         private readonly OrderKind? detonateKind;
         private readonly UnitType? bomberType;
@@ -61,6 +61,9 @@ namespace WAR2D.UI
 
         /// <summary>Raised by an order button (Move and AttackMove arm, Repair and Dig arm, Stop and Hold act).</summary>
         public event Action<OrderKind> OrderClicked;
+
+        /// <summary>Raised by the Roam button (playtest 2026-10-30): the selected units scout on their own.</summary>
+        public event Action RoamClicked;
 
         /// <summary>Raised by a building's build button.</summary>
         public event Action<BuildingType> BuildClicked;
@@ -142,6 +145,14 @@ namespace WAR2D.UI
             AddOrder(root, "cmd-hold", OrderKind.Hold, () => GameInput.Hold);
             AddOrder(root, "cmd-repair", OrderKind.Repair, () => GameInput.Repair);
             AddOrder(root, "cmd-dig", OrderKind.Dig, () => GameInput.Dig);
+            roam = root.Q<Button>("cmd-roam");
+            if (roam != null)
+            {
+                roam.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); RoamClicked?.Invoke(); };
+                Label roamKey = root.Q<Label>("cmd-roam-key");
+                if (roamKey != null) keyLabels[roamKey] = () => GameInput.Roam;
+                hover?.Attach(roam, () => HoverText.Roam(WAR2D.UI.HoverCard.KeyOf(GameInput.Roam)), WAR2D.UI.HoverCard.Side.Left, card);
+            }
             detonateKind = OrderKind.Detonate;
             AddOrder(root, "cmd-detonate", OrderKind.Detonate, () => GameInput.Detonate);
             bomberType = UnitType.SuicideBomber;
@@ -420,6 +431,12 @@ namespace WAR2D.UI
             Display(orders[OrderKind.Repair], builders);
             Display(orders[OrderKind.Dig], diggers);
             Display(detonate, bombers);
+            if (roam != null)
+            {
+                // Builders never roam; Active while every unit that can is roaming (Figma "Playtest fixes" item 6).
+                roam.SetEnabled(units && selection.Count > selection.CountOf(UnitType.Builder));
+                roam.EnableInClassList("command-button--active", units && selection.AllRoaming);
+            }
             foreach (KeyValuePair<BuildingType, Button> build in builds)
                 build.Value.SetEnabled(buildCosts.TryGetValue(build.Key, out float cost) && hud.Resources >= cost);
             wall.SetEnabled(hud.Resources >= wallCost);

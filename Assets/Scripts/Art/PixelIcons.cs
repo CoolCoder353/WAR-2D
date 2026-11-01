@@ -750,6 +750,26 @@ namespace WAR2D.Art
                 "................",
             },
             // v0.15 (Figma page v0.15 QoL – redesign, Icons – v0.15 redesign 117:40): An eye: the minimap filters.
+            // Playtest 2026-10-30 (Figma "Playtest fixes", Icon/px/Roam): a winding trail ending in an arrowhead.
+            ["IconRoam"] = new[]
+            {
+                "................",
+                "..........#####.",
+                "...........####.",
+                "..........#####.",
+                ".........###.##.",
+                "........###...#.",
+                ".......###......",
+                "..##..###.......",
+                ".####.##........",
+                ".#..###.........",
+                ".#...#..........",
+                ".#..............",
+                ".##.............",
+                "..###...........",
+                "...###..........",
+                "................",
+            },
             ["IconEye"] = new[]
             {
                 "................",
@@ -824,6 +844,7 @@ namespace WAR2D.Art
             ["IconArmy"] = (White, new Color32(0xF2, 0xC1, 0x4E, 255)),
             ["IconRallyAll"] = (White, new Color32(0x4F, 0xC3, 0xF7, 255)),
             ["IconEye"] = (White, new Color32(0x4F, 0xC3, 0xF7, 255)),
+            ["IconRoam"] = (White, White),
             ["IconReconnect"] = (White, new Color32(0x4F, 0xC3, 0xF7, 255)),
             ["CursorAttack"] = (Cursor, new Color32(0xE0, 0x40, 0x5A, 255)),
             ["CursorInvalid"] = (Cursor, new Color32(0xE0, 0x40, 0x5A, 255)),

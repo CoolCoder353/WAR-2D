@@ -39,9 +39,38 @@ namespace WAR2D.UI
         /// <summary>Raised by "· select" in the Decaying state: select what is decaying.</summary>
         public event Action DecayingClicked;
 
+        /// <summary>The all-Builders chip was clicked without the assign modifier: show the next Builder.</summary>
+        public event Action ShowBuilderClicked;
+
+        private readonly HoverCard hover;
+
+        /// <summary>Milliseconds the All Builders chip reads "4 / 12" after a click (Figma "Playtest fixes" item 9).</summary>
+        public const int BuilderPositionMilliseconds = 2000;
+
+        private float positionUntil;
+        private IVisualElementScheduledItem positionReset;
+        private int lastBuilders;
+
+        /// <summary>The All Builders chip reads which Builder the camera went to ("4 / 12", gold) for a moment.</summary>
+        public void ShowBuilderPosition(int position, int count)
+        {
+            if (count <= 0) return;
+            buildersCount.text = $"{position} / {count}";
+            buildersCount.AddToClassList("quick-select__count--gold");
+            positionUntil = UnityEngine.Time.unscaledTime + BuilderPositionMilliseconds / 1000f;
+            positionReset?.Pause();
+            positionReset = buildersCount.schedule.Execute(() =>
+            {
+                positionUntil = 0f;
+                buildersCount.RemoveFromClassList("quick-select__count--gold");
+                buildersCount.text = lastBuilders.ToString("N0");
+            }).StartingIn(BuilderPositionMilliseconds);
+        }
+
         public TopBarController(VisualElement root, HudModel model, HoverCard card = null)
         {
             this.model = model;
+            hover = card;
             players = root.Q("players");
             resourcesBlock = root.Q("resources");
             resources = root.Q<Label>("resources-value");
@@ -61,7 +90,12 @@ namespace WAR2D.UI
             root.Q<Button>("menu-button").clicked += () => MenuClicked?.Invoke();
             hqButton.clicked += () => HqClicked?.Invoke();
             idleChip.clicked += () => BuildersClicked?.Invoke(GameInput.AssignModifier.IsPressed());
-            buildersChip.clicked += () => BuildersClicked?.Invoke(true);
+            // All Builders: a click shows the next Builder; with the assign modifier it selects them all (playtest 2026-10-30).
+            buildersChip.clicked += () =>
+            {
+                if (GameInput.AssignModifier.IsPressed()) BuildersClicked?.Invoke(true);
+                else ShowBuilderClicked?.Invoke();
+            };
             armyChip.clicked += () => ArmyClicked?.Invoke();
             netSelect.RegisterCallback<ClickEvent>(_ => DecayingClicked?.Invoke());
             if (card != null)
@@ -114,7 +148,8 @@ namespace WAR2D.UI
         public void ShowQuick(WAR2D.Client.QuickCounts counts)
         {
             idleCount.text = counts.IdleBuilders.ToString("N0");
-            buildersCount.text = counts.Builders.ToString("N0");
+            lastBuilders = counts.Builders;
+            if (UnityEngine.Time.unscaledTime >= positionUntil) buildersCount.text = counts.Builders.ToString("N0");
             armyCount.text = counts.Army.ToString("N0");
             idleChip.SetEnabled(counts.IdleBuilders > 0);
             buildersChip.SetEnabled(counts.Builders > 0);
@@ -148,6 +183,11 @@ namespace WAR2D.UI
             {
                 var chip = new VisualElement { name = "player-" + row.OwnerId };
                 chip.AddToClassList("top-bar__player");
+                // The chip may shrink to fit eight players (playtest 2026-10-30: AI names overlapped); its hover card has the whole
+                // name, tag, team and status (Figma "Playtest fixes" item 8).
+                PlayerRow shown = row;
+                if (hover != null) hover.Attach(chip, () => PlayerCard(shown), HoverCard.Side.Below, chip);
+                else chip.tooltip = PlayerNameLabel.Plain(row.Nickname, row.AiTag) + (row.Eliminated ? " (eliminated)" : "");
                 var swatch = new VisualElement();
                 swatch.AddToClassList("swatch");
                 swatch.AddToClassList(row.Eliminated ? "swatch--eliminated" : "player-" + (row.ColourIndex % 8 + 1));
@@ -167,6 +207,16 @@ namespace WAR2D.UI
                 }
                 players.Add(chip);
             }
+        }
+
+        /// <summary>A top-bar player's hover card: the full name, the AI tag or "Player", the team in a team match, and the status.</summary>
+        private HoverCardContent PlayerCard(PlayerRow row)
+        {
+            var c = new HoverCardContent(row.Nickname, null, row.AiTag ?? "Player");
+            if (row.StartTeam != TeamRules.NoTeam) c.Pair("Team", (row.StartTeam + 1).ToString());
+            if (row.Eliminated) c.Line("Eliminated");
+            else if (away.TryGetValue(row.OwnerId, out string timer) && timer != null) c.Line($"Away {timer}: their units hold until they return");
+            return c;
         }
 
         public void Dispose()

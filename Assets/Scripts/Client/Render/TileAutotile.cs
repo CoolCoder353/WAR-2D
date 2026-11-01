@@ -12,7 +12,7 @@ namespace WAR2D.Client.Render
     /// </summary>
     public static class TileAutotile
     {
-        /// <summary>Random variants of floor and gem tiles.</summary>
+        /// <summary>Random variants of gem tiles.</summary>
         public const int RandomVariants = 4;
 
         /// <summary>
@@ -27,6 +27,28 @@ namespace WAR2D.Client.Render
             if (same(x, y - 1)) mask |= RenderGen.South;
             if (same(x - 1, y)) mask |= RenderGen.West;
             return (byte)mask;
+        }
+
+        /// <summary>
+        /// The inside corners (<see cref="RenderGen.NorthEast"/> …) of a tile with 4-neighbour <paramref name="mask"/>:
+        /// those whose two sides are in the mask but whose diagonal tile isn't (<paramref name="same"/> false).
+        /// </summary>
+        public static byte Corners(Func<int, int, bool> same, int x, int y, int mask)
+        {
+            int allowed = RenderGen.AllowedCorners(mask), corners = 0;
+            if ((allowed & RenderGen.NorthEast) != 0 && !same(x + 1, y + 1)) corners |= RenderGen.NorthEast;
+            if ((allowed & RenderGen.SouthEast) != 0 && !same(x + 1, y - 1)) corners |= RenderGen.SouthEast;
+            if ((allowed & RenderGen.SouthWest) != 0 && !same(x - 1, y - 1)) corners |= RenderGen.SouthWest;
+            if ((allowed & RenderGen.NorthWest) != 0 && !same(x - 1, y + 1)) corners |= RenderGen.NorthWest;
+            return (byte)corners;
+        }
+
+        /// <summary>A rock-like tile's <see cref="RenderGen.RockShapes"/> index: its mask of solid neighbours and its inside corners.</summary>
+        public static int RockShape(MapGrid grid, int x, int y)
+        {
+            Func<int, int, bool> solid = (tx, ty) => Solid(grid, tx, ty);
+            byte mask = Mask4(solid, x, y);
+            return RenderGen.RockShape(mask, Corners(solid, x, y, mask));
         }
 
         /// <summary>A deterministic hash of a tile position in [0, <paramref name="count"/>).</summary>
@@ -67,12 +89,12 @@ namespace WAR2D.Client.Render
             switch (type)
             {
                 case TileType.Wall:
-                    return Mask4((tx, ty) => Solid(grid, tx, ty), x, y);
+                    return (byte)RockShape(grid, x, y);
                 case TileType.Gem:
-                    // Variant-major, as ArtBuild lays the gem frames out: 4 variants × 16 masks.
-                    return (byte)(Hash(x, y, RandomVariants) * ArtManifest.AutotileVariants + Mask4((tx, ty) => Solid(grid, tx, ty), x, y));
+                    // Variant-major, as ArtBuild lays the gem frames out: 4 variants × the rock shapes.
+                    return (byte)(Hash(x, y, RandomVariants) * RenderGen.RockShapes.Length + RockShape(grid, x, y));
                 case TileType.Ground:
-                    return (byte)Hash(x, y, RandomVariants);
+                    return (byte)Hash(x, y, RenderGen.FloorVariants);
                 case TileType.PlayerWall:
                     // Built walls join built walls (the damage frame is added by MapView).
                     return Mask4((tx, ty) => Is(grid, tx, ty, TileType.PlayerWall, TileType.PlayerWall), x, y);

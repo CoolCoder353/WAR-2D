@@ -6,7 +6,8 @@ using WAR2D.Net.Replication;
 /// <summary>
 /// Draws the local team's fog of war over the map: black where unexplored, dimmed where explored but
 /// hidden, clear where seen. One texel per fog cell, filtered and then dithered on the art-pixel grid by the
-/// <c>Fog</c> shader, so its edges read as pixel art; only changed texels are rewritten.
+/// <c>Fog</c> shader, so its edges read as pixel art; only changed texels are rewritten. A changed cell eases to
+/// its new level over <see cref="FadeSeconds"/> (polish item H), which the shader's dither turns into a dissolve.
 /// </summary>
 public class FogView : MonoBehaviour
 {
@@ -23,6 +24,21 @@ public class FogView : MonoBehaviour
     private Mesh _mesh;
     private bool _dirty;
     private readonly List<int> _changed = new List<int>();
+    private readonly List<int> _fading = new List<int>(); // cells still easing toward their level
+    private bool[] _isFading = System.Array.Empty<bool>();
+
+    /// <summary>Seconds a cell takes to ease all the way between unexplored and seen (a smaller change takes less).</summary>
+    public const float FadeSeconds = 0.25f;
+
+    /// <summary>Cells easing now (tests and the perf notes).</summary>
+    public static int Fading => _instance != null ? _instance._fading.Count : 0;
+
+    /// <summary>An alpha moved from <paramref name="current"/> toward <paramref name="target"/> by <paramref name="dt"/> seconds of the fade.</summary>
+    public static byte Toward(byte current, byte target, float dt)
+    {
+        int step = Mathf.Max(1, Mathf.CeilToInt(255f * dt / FadeSeconds));
+        return current < target ? (byte)Mathf.Min(target, current + step) : (byte)Mathf.Max(target, current - step);
+    }
 
     /// <summary>Creates the overlay if there is none.</summary>
     public static void Ensure()
@@ -36,26 +52,46 @@ public class FogView : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (!_dirty) return;
-        _dirty = false;
         ClientFog fog = ClientFog.Current;
+        if (!_dirty && _fading.Count == 0) return;
         if (fog.State == null) return;
-
-        _changed.Clear();
-        bool all = fog.TakeChanges(_changed);
-        if (_texture == null || _texture.width != fog.Width || _texture.height != fog.Height)
+        if (_dirty)
         {
-            Build(fog);
-            all = true;
+            _dirty = false;
+            _changed.Clear();
+            bool all = fog.TakeChanges(_changed);
+            if (_texture == null || _texture.width != fog.Width || _texture.height != fog.Height)
+            {
+                Build(fog);
+                all = true;
+            }
+            if (all)
+            {
+                // A new grid (the match's first snapshot, a rejoin) is drawn at once: nothing to ease from.
+                var every = _texture.GetPixelData<Color32>(0);
+                for (int i = 0; i < fog.State.Length; i++) every[i] = Palette[fog.State[i]];
+                foreach (int i in _fading) _isFading[i] = false;
+                _fading.Clear();
+            }
+            else
+            {
+                foreach (int i in _changed)
+                    if (!_isFading[i]) { _isFading[i] = true; _fading.Add(i); }
+            }
         }
+        if (_texture == null) return;
         var pixels = _texture.GetPixelData<Color32>(0);
-        if (all)
+        float dt = Time.unscaledDeltaTime;
+        for (int k = _fading.Count - 1; k >= 0; k--)
         {
-            for (int i = 0; i < fog.State.Length; i++) pixels[i] = Palette[fog.State[i]];
-        }
-        else
-        {
-            foreach (int i in _changed) pixels[i] = Palette[fog.State[i]];
+            int i = _fading[k];
+            byte target = Palette[fog.State[i]].a;
+            byte next = Toward(pixels[i].a, target, dt);
+            pixels[i] = new Color32(0, 0, 0, next);
+            if (next != target) continue;
+            _isFading[i] = false;
+            _fading[k] = _fading[_fading.Count - 1];
+            _fading.RemoveAt(_fading.Count - 1);
         }
         _texture.Apply(false);
     }
@@ -63,6 +99,8 @@ public class FogView : MonoBehaviour
     private void Build(ClientFog fog)
     {
         if (_texture != null) Destroy(_texture);
+        _isFading = new bool[fog.Width * fog.Height];
+        _fading.Clear();
         _texture = new Texture2D(fog.Width, fog.Height, TextureFormat.RGBA32, mipChain: false)
         {
             filterMode = FilterMode.Bilinear,

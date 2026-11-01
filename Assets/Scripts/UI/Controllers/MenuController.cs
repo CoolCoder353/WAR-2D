@@ -30,6 +30,7 @@ namespace WAR2D.UI
         private LobbyController lobby;
         private SettingsController settings;
         private VisualElement root;
+        private VisualElement hoverRoot; // the root the hover sounds are registered on (OnEnable can run again)
         private readonly MapPreview preview = new MapPreview();
         private bool wantsPlay;
         private LobbyListController list;
@@ -57,6 +58,7 @@ namespace WAR2D.UI
         private void OnEnable()
         {
             root = GetComponent<UIDocument>().rootVisualElement;
+            if (hoverRoot != root) { Widgets.HoverSounds(root); hoverRoot = root; }
             Palettes.ApplyTo(root);
             Palettes.Changed += ApplyPalette;
             root.Query<TemplateContainer>().ForEach(t => t.pickingMode = PickingMode.Ignore);

@@ -56,7 +56,9 @@ function load(src) {
     return [type, { type, hp: num(b, 'Health'), cost: num(b, 'UpfrontCost', 0), upkeep: num(b, 'RunningCost', 0), dmg: num(b, 'Damage', 0), range: num(b, 'Range', 0), interval: num(b, 'AttackInterval', 1), mult: mult(type) }];
   }));
   const res = one(gc, 'Resources'), siege = one(gc, 'Siege');
-  const difficulties = (one(gc, 'Ai') ? one(gc, 'Ai').children.filter((c) => c.tag === 'Difficulty') : []).map((d) => ({ name: attr(d, 'name'), incomePerProducer: num(d, 'IncomePerProducer', 0) }));
+  // The AI overhaul moved IncomePerProducer from each <Difficulty> to the one <Policy> every difficulty plays.
+  const policy = one(gc, 'Ai') ? one(gc, 'Ai').children.find((c) => c.tag === 'Policy') : null;
+  const difficulties = policy ? [{ name: 'policy', incomePerProducer: num(policy, 'IncomePerProducer', 0) }] : [];
   return {
     units, buildings, difficulties,
     passive: num(res, 'PassiveGenerationRate', 0), mining: num(res, 'MiningRate', 0),

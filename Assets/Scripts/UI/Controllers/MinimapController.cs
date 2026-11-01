@@ -29,6 +29,7 @@ namespace WAR2D.UI
             (MinimapLayers.Ghosts, "ghosts", "Enemy ghosts"),
             (MinimapLayers.Army, "army", "Own army"),
             (MinimapLayers.Buildings, "buildings", "Own buildings"),
+            (MinimapLayers.Hqs, "hqs", "HQs (flags)"), // Figma "Playtest fixes" item 10
         };
 
         private readonly VisualElement image, cameraBox, panel, frame, popover, filterRows;
@@ -96,7 +97,7 @@ namespace WAR2D.UI
         public void ToggleLayer(MinimapLayers layer)
         {
             WAR2D.Audio.AudioService.Ui("ui_click");
-            SettingsStore.Current.MinimapFilters ^= (int)layer;
+            SettingsStore.Current.ToggleLayer(layer);
             SettingsStore.Save(SettingsStore.Current);
             redrawTimer = 0f;
             ShowSettings();
@@ -115,11 +116,13 @@ namespace WAR2D.UI
                 panel.style.width = SizePixels[size] + PanelExtra;
                 for (int i = 0; i < sizes.Length; i++) sizes[i]?.EnableInClassList("minimap__size--on", i == size);
             }
-            if (settings.MinimapFilters != shownFilters)
+            int filters = (int)settings.ShownLayers;
+            if (filters != shownFilters)
             {
-                shownFilters = settings.MinimapFilters;
+                shownFilters = filters;
                 redrawTimer = 0f;
-                eye?.EnableInClassList("minimap__eye--filtered", (shownFilters & (int)MinimapLayers.All) != (int)MinimapLayers.All);
+                const int every = (int)(MinimapLayers.All | MinimapLayers.Hqs);
+                eye?.EnableInClassList("minimap__eye--filtered", (shownFilters & every) != every);
                 if (FiltersOpen) ShowFilters();
             }
         }
@@ -235,7 +238,7 @@ namespace WAR2D.UI
             ShowCamera();
         }
 
-        /// <summary>Redraws the texture now: terrain under fog, buildings and ghosts, then units.</summary>
+        /// <summary>Redraws the texture now: terrain under fog, buildings and ghosts, then units, then flags over the known HQs.</summary>
         public void Redraw(ClientFog fog)
         {
             texture.Begin(fog.State, starts != null);
@@ -244,6 +247,10 @@ namespace WAR2D.UI
                 texture.PlotBuilding(entry.Data.position, PlayerPalette.OfOwner(entry.Data.ownerId), entry.Ghost);
             }
             ClientWorld.Instance?.PlotOn(texture);
+            // Flags over every HQ the player has found (their own included), on top of the units.
+            foreach (ClientBuildings.Entry entry in ClientBuildings.Current.Entries.Values)
+                if (entry.Data.buildingType == BuildingType.Base)
+                    texture.PlotFlag(entry.Data.position + new float2(2.5f, 2.5f), PlayerPalette.OfOwner(entry.Data.ownerId), entry.Ghost);
             if (starts != null)
                 foreach ((float2 centre, Color32 colour) in starts) texture.PlotMarker(centre, colour, 2);
             texture.End();

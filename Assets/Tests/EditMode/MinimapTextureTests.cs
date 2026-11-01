@@ -97,4 +97,22 @@ public class MinimapTextureTests
         Assert.That(back.x, Is.EqualTo(61f).Within(1e-3f));
         Assert.That(back.y, Is.EqualTo(30.5f).Within(1e-3f));
     }
+
+    [Test]
+    public void AnHqFlagFliesInItsOwnersColourAndGrowsWithTheTexture()
+    {
+        Assert.AreEqual(1, MinimapTexture.FlagScale(256));
+        Assert.AreEqual(2, MinimapTexture.FlagScale(512));
+        SettingsStore.Current = new GameSettings();
+        using var big = new MinimapTexture(512, 512, 2, _ => TileType.Ground);
+        var fog = new byte[512 * 512];
+        for (int i = 0; i < fog.Length; i++) fog[i] = (byte)FogState.Visible;
+        big.Begin(fog);
+        big.PlotFlag(new float2(100, 100), Red, ghost: false); // cell (50, 50)
+        big.End();
+        int k = MinimapTexture.FlagScale(512);
+        Assert.AreNotEqual(Red, big.Pixel(50, 50), "the pole's foot is dark");
+        int clothY = 50 + (MinimapTexture.FlagPole - MinimapTexture.FlagHeight - 1) * k + k;
+        Assert.AreEqual(Red, big.Pixel(50 + k * 2, clothY), "the cloth is the owner's colour");
+    }
 }

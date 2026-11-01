@@ -40,7 +40,9 @@ public class AiPlayModeTests
     {
         AiState s = StateOf(seat);
         ArmyManager army = ((AiBrain)seat.Brain).Manager<ArmyManager>();
-        return $"{seat.Callsign}: playing {s.PlayingSeconds:F0}s, combat {s.Combat.Count}, army {army.Mode}, attacks {army.Attacks}, retreats {army.Retreats}, miners {s.CompleteCount[(int)BuildingType.Miner]}, free {s.Free:F0}, income {s.Income:F1}, upkeep {s.Upkeep:F1}, units {s.View.OwnUnits.Count}, producers {s.Producers.Count}, queued {s.QueuedCount[(int)UnitType.Tank]}";
+        AiBrain brain = (AiBrain)seat.Brain;
+        return $"{seat.Callsign}: playing {s.PlayingSeconds:F0}s, combat {s.Combat.Count}, army {army.Mode}, attacks {army.Attacks}, retreats {army.Retreats}, miners {s.CompleteCount[(int)BuildingType.Miner]}, free {s.Free:F0}, income {s.Income:F1}, upkeep {s.Upkeep:F1}, units {s.View.OwnUnits.Count}, producers {s.Producers.Count}, queued {s.QueuedCount[(int)UnitType.Tank]}, "
+            + $"style {brain.Context.StyleName}, raids {brain.Manager<RaidManager>()?.Raids ?? 0}, conceded {brain.Manager<ConcedeManager>()?.Conceded ?? false}, player {seat.Player.state}, strategy '{brain.Manager<StrategyManager>()?.Reacting}', log [{string.Join("; ", army.Log)}]";
     }
 
     private static bool Producing(AiSeat seat)
@@ -79,8 +81,9 @@ public class AiPlayModeTests
 
         // Sped up (the dev fast-forward): the tick runs several times per frame.
         PlayModeMatch.FastForward(8);
-        yield return PlayModeMatch.WaitUntil(() => Producing(easy) && Producing(normal), 150f, () => Describe(easy) + " | " + Describe(normal));
         ArmyManager easyArmy = ((AiBrain)easy.Brain).Manager<ArmyManager>(), normalArmy = ((AiBrain)normal.Brain).Manager<ArmyManager>();
+        // Both build up, unless one attacks first (a Normal Rusher can overrun Easy before Easy's army is three strong).
+        yield return PlayModeMatch.WaitUntil(() => (Producing(easy) && Producing(normal)) || easyArmy.Attacks + normalArmy.Attacks > 0, 150f, () => Describe(easy) + " | " + Describe(normal));
         yield return PlayModeMatch.WaitUntil(() => easyArmy.Attacks + normalArmy.Attacks > 0 || core.CurrentState == GameState.GameOver, 200f, () => Describe(easy) + " | " + Describe(normal));
         Assert.That(easyArmy.Attacks + normalArmy.Attacks, Is.GreaterThan(0), "and eventually one of them attacks");
     }
@@ -168,8 +171,10 @@ public class AiPlayModeTests
             if (enemyArmy.Mode == ArmyMode.Attack && enemyArmy.TargetOwner != me && enemyArmy.TargetOwner != ally.OwnerId) enemyTargetedOutsider = true;
             return enemyArmy.Attacks + allyArmy.Attacks > 0 || core.CurrentState == GameState.GameOver;
         }, 100f, () => Describe(ally) + " | " + Describe(enemy));
-        // The match is a real, unscripted one: whichever AI strikes first (or ends it) is not fixed, so one attack by either side is the signal.
-        Assert.That(enemyArmy.Attacks + allyArmy.Attacks, Is.GreaterThan(0), "an AI attacks");
+        // The match is a real, unscripted one: whichever AI strikes first (or ends it) is not fixed, so one attack by either
+        // side is the signal, or a side eliminated (an army defending an expansion beside the enemy can end it from Defend).
+        bool fought = enemyArmy.Attacks + allyArmy.Attacks > 0 || ally.Player.state == PlayerState.Eliminated || enemy.Player.state == PlayerState.Eliminated;
+        Assert.That(fought, Is.True, $"an AI attacks (match {core.CurrentState}, human {core.HasPlacedHq(me)}): {Describe(ally)} | {Describe(enemy)}");
         Assert.That(allyTargetedHuman, Is.False, "the ally never attacks its teammate");
         Assert.That(enemyTargetedOutsider, Is.False, "the enemy's targets are the human or the ally");
     }

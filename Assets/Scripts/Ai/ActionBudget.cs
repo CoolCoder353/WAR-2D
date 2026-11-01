@@ -9,6 +9,9 @@ namespace WAR2D.Ai
     /// <see cref="Spend"/>s the tokens on the highest priority first (older first on a tie), one token per action whether
     /// or not it is accepted (a refused click is still a click). Proposals it can't afford wait for a later think, up to
     /// <c>ProposalWaitSeconds</c>; a manager re-proposing under the same key replaces its waiting proposal.
+    /// The tokens are split in two pools (AI overhaul §5.1): the economy's share and the army's. Each proposal is paid
+    /// from its own pool first; what a pool has left once its own proposals are paid is lent to the other, so army
+    /// orders never starve production and no token is wasted.
     /// </summary>
     public sealed class ActionBudget
     {
@@ -19,31 +22,45 @@ namespace WAR2D.Ai
             public int Key;
             public double Since;
             public long Order;
+            public bool Army;
         }
 
         private readonly List<Proposal> pending = new List<Proposal>(32);
-        private readonly float perSecond, capacity, waitSeconds;
+        private readonly float perSecond, capacity, waitSeconds, economyShare;
+        private float economyTokens, armyTokens;
         private double lastRefill = double.NaN;
         private long sequence;
+        private static readonly Predicate<Proposal> Done = p => p.Action.Kind == AiActionKind.None;
         private static readonly Comparison<Proposal> HighestFirst = (a, b) =>
             a.Priority != b.Priority ? b.Priority.CompareTo(a.Priority) : a.Order.CompareTo(b.Order);
 
         /// <param name="actionsPerMinute">The difficulty's APM.</param>
         /// <param name="burstSeconds">How many seconds of tokens it may save up (it starts full).</param>
         /// <param name="waitSeconds">How long an unaffordable proposal waits.</param>
-        public ActionBudget(int actionsPerMinute, float burstSeconds, float waitSeconds)
+        /// <param name="economyShare">Share (0..1) of the tokens kept for economy proposals; the rest are the army's.</param>
+        public ActionBudget(int actionsPerMinute, float burstSeconds, float waitSeconds, float economyShare = 0.5f)
         {
             ActionsPerMinute = Math.Max(0, actionsPerMinute);
             perSecond = ActionsPerMinute / 60f;
             capacity = Math.Max(1f, perSecond * Math.Max(0f, burstSeconds));
             this.waitSeconds = Math.Max(0f, waitSeconds);
-            Tokens = capacity;
+            this.economyShare = Math.Min(1f, Math.Max(0f, economyShare));
+            economyTokens = EconomyCapacity;
+            armyTokens = ArmyCapacity;
         }
+
+        // A pool's share of the capacity; fractions of a token in both pools are pooled when spending (Spend's second pass).
+        private float EconomyCapacity => capacity * economyShare;
+        private float ArmyCapacity => capacity * (1f - economyShare);
+
+        /// <summary>The economy pool's tokens and the army pool's.</summary>
+        public float EconomyTokens => economyTokens;
+        public float ArmyTokens => armyTokens;
 
         public int ActionsPerMinute { get; }
 
-        /// <summary>Actions it may take now.</summary>
-        public float Tokens { get; private set; }
+        /// <summary>Actions it may take now (both pools).</summary>
+        public float Tokens => economyTokens + armyTokens;
 
         /// <summary>Most tokens it saves up.</summary>
         public float Capacity => capacity;
@@ -58,7 +75,12 @@ namespace WAR2D.Ai
         /// <summary>Adds the tokens earned since the last refill (the first refill only starts the clock).</summary>
         public void Refill(double now)
         {
-            if (!double.IsNaN(lastRefill) && now > lastRefill) Tokens = Math.Min(capacity, Tokens + (float)((now - lastRefill) * perSecond));
+            if (!double.IsNaN(lastRefill) && now > lastRefill)
+            {
+                float earned = (float)((now - lastRefill) * perSecond);
+                economyTokens = Math.Min(EconomyCapacity, economyTokens + earned * economyShare);
+                armyTokens = Math.Min(ArmyCapacity, armyTokens + earned * (1f - economyShare));
+            }
             lastRefill = double.IsNaN(lastRefill) ? now : Math.Max(lastRefill, now);
         }
 
@@ -66,9 +88,10 @@ namespace WAR2D.Ai
         /// Proposes an action. A non-zero <paramref name="key"/> names what it is about (a producer, a squad, a plan):
         /// a waiting proposal with the same key is replaced, so a manager can re-propose every think without piling up.
         /// </summary>
-        public void Propose(float priority, in AiAction action, int key, double now)
+        /// <param name="army">True for the army pool (orders), false for the economy's.</param>
+        public void Propose(float priority, in AiAction action, int key, double now, bool army = false)
         {
-            var proposal = new Proposal { Priority = priority, Action = action, Key = key, Since = now, Order = sequence++ };
+            var proposal = new Proposal { Priority = priority, Action = action, Key = key, Since = now, Order = sequence++, Army = army };
             if (key != 0)
                 for (int i = 0; i < pending.Count; i++)
                     if (pending[i].Key == key)
@@ -92,15 +115,39 @@ namespace WAR2D.Ai
             if (pending.Count == 0) return 0;
             pending.Sort(HighestFirst);
             int taken = 0;
-            while (taken < pending.Count && Tokens >= 1f)
+            // Each proposal from its own pool first, highest priority first ...
+            for (int i = 0; i < pending.Count; i++)
             {
-                Tokens -= 1f;
-                Spent++;
-                if (execute(pending[taken].Action)) Accepted++;
+                Proposal p = pending[i];
+                ref float own = ref p.Army ? ref armyTokens : ref economyTokens;
+                if (own < 1f) continue;
+                own -= 1f;
+                Take(i, execute);
                 taken++;
             }
-            pending.RemoveRange(0, taken);
+            // ... then what either pool has left goes to the rest, highest priority first.
+            for (int i = 0; i < pending.Count; i++)
+            {
+                if (pending[i].Action.Kind == AiActionKind.None) continue;
+                if (economyTokens + armyTokens < 1f) break;
+                float fromEconomy = Math.Min(economyTokens, 1f);
+                economyTokens -= fromEconomy;
+                armyTokens -= 1f - fromEconomy;
+                Take(i, execute);
+                taken++;
+            }
+            pending.RemoveAll(Done);
             return taken;
+        }
+
+        /// <summary>Takes a proposal and marks it done (its action cleared).</summary>
+        private void Take(int index, Func<AiAction, bool> execute)
+        {
+            Proposal p = pending[index];
+            Spent++;
+            if (execute(p.Action)) Accepted++;
+            p.Action = default;
+            pending[index] = p;
         }
 
         /// <summary>Drops every waiting proposal.</summary>

@@ -26,7 +26,7 @@ namespace WAR2D.Client
         /// Army the units, Buildings the seen buildings, Ghosts the last-seen ones. They change only what is drawn, never what is known.
         /// Read from the settings at every <see cref="Begin"/>.
         /// </summary>
-        public MinimapLayers Layers { get; private set; } = MinimapLayers.All;
+        public MinimapLayers Layers { get; private set; } = MinimapLayers.All | MinimapLayers.Hqs;
         private NativeArray<byte> fogCopy;
         private byte[] fog;
         private NativeArray<Color32> pixels;
@@ -78,7 +78,7 @@ namespace WAR2D.Client
         {
             fog = fogState != null && fogState.Length == visible.Length ? fogState : null;
             pixels = Texture.GetPixelData<Color32>(0);
-            Layers = (MinimapLayers)SettingsStore.Current.MinimapFilters;
+            Layers = SettingsStore.Current.ShownLayers;
             NativeArray<Color32> terrainVisible = (Layers & MinimapLayers.Gems) != 0 ? visible : visibleNoGems;
             NativeArray<Color32> terrainExplored = (Layers & MinimapLayers.Gems) != 0 ? explored : exploredNoGems;
             if (fog == null)
@@ -134,6 +134,41 @@ namespace WAR2D.Client
             int cell = CellOf(position);
             if (fog == null || cell < 0 || fog[cell] == (byte)FogState.Unexplored) return;
             pixels[cell] = ghost ? Scale(colour, 0.5f) : colour;
+        }
+
+        /// <summary>Texture pixels of a flag's pole above its foot, and of its cloth (width, height).</summary>
+        public const int FlagPole = 7, FlagWidth = 5, FlagHeight = 3;
+
+        /// <summary>
+        /// A flag over an HQ the player has found (playtest 2026-10-30): a dark pole rising from the HQ's cell with a cloth in its
+        /// owner's colour, drawn over everything else; dimmed for a ghost. Only on an explored cell, like any building.
+        /// </summary>
+        public void PlotFlag(float2 position, Color32 colour, bool ghost)
+        {
+            if ((Layers & MinimapLayers.Hqs) == 0) return;
+            int cell = CellOf(position);
+            if (fog == null || cell < 0 || fog[cell] == (byte)FogState.Unexplored) return;
+            int fx = cell % Width, fy = cell / Width;
+            // Drawn bigger on a big texture, so the flag stays a few screen pixels tall however the panel scales it down.
+            int k = FlagScale(Width);
+            Color32 cloth = ghost ? Scale(colour, 0.6f) : colour, pole = new Color32(16, 16, 16, 255);
+            for (int y = 0; y < (FlagPole + 1) * k; y++)
+            for (int x = 0; x < k; x++) Put(fx + x, fy + y, pole);
+            int top = fy + (FlagPole - FlagHeight - 1) * k;
+            for (int y = 0; y < (FlagHeight + 2) * k; y++)
+            for (int x = 0; x < (FlagWidth + 2) * k; x++)
+            {
+                bool edge = x < k || y < k || x >= (FlagWidth + 1) * k || y >= (FlagHeight + 1) * k;
+                Put(fx + x, top + y, edge ? pole : cloth);
+            }
+        }
+
+        /// <summary>The flag's size multiple for a texture <paramref name="width"/> cells wide: 1 up to 256, 2 at 512, and so on.</summary>
+        public static int FlagScale(int width) => Math.Max(1, (width + 128) / 256);
+
+        private void Put(int x, int y, Color32 colour)
+        {
+            if ((uint)x < (uint)Width && (uint)y < (uint)Height) pixels[y * Width + x] = colour;
         }
 
         /// <summary>Uploads the redraw.</summary>

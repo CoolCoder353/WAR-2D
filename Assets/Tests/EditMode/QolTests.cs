@@ -145,6 +145,57 @@ public class QolTests
     }
 
     [Test]
+    public void ARepeatedAlertJoinsItsRowAndCountsUp()
+    {
+        SettingsStore.Current = new GameSettings();
+        var feed = new AlertFeedModel(10f);
+        feed.Add(At(AlertKind.ConstructionFinished, 1), "Construction finished: Miner", 0f);
+        feed.Add(At(AlertKind.UnderAttack, 2), "Under attack near your HQ", 1f);
+        feed.Add(At(AlertKind.ConstructionFinished, 3), "Construction finished: Miner", 2f);
+        Assert.AreEqual(2, feed.Entries.Count, "one row per kind and text");
+        Assert.AreEqual(2, feed.Entries[1].Count);
+        Assert.AreEqual(3, feed.Entries[1].Tile.x, "the newest place, at the bottom");
+    }
+
+    [Test]
+    public void AlertsExpireButNotWhileHeld()
+    {
+        SettingsStore.Current = new GameSettings();
+        var feed = new AlertFeedModel(10f);
+        feed.Add(At(AlertKind.UnderAttack, 1), "a", 0f);
+        feed.Hold(5f);
+        feed.Expire(12f);
+        Assert.AreEqual(1, feed.Entries.Count, "held for 5 s");
+        feed.Expire(15f);
+        Assert.AreEqual(0, feed.Entries.Count);
+    }
+
+    [Test]
+    public void AnAlertsTimerBarShowsTheShareOfItsTimeLeft()
+    {
+        SettingsStore.Current = new GameSettings();
+        var feed = new AlertFeedModel(10f);
+        feed.Add(At(AlertKind.UnderAttack, 1), "a", 0f);
+        Assert.AreEqual(1f, feed.Left(feed.Entries[0], 0f), 1e-4f);
+        Assert.AreEqual(0.25f, feed.Left(feed.Entries[0], 7.5f), 1e-4f);
+        Assert.AreEqual(0f, feed.Left(feed.Entries[0], 20f));
+    }
+
+    [Test]
+    public void TheHqFlagsAreAMinimapLayerOnByDefaultAndKeptApartFromTheSavedBits()
+    {
+        var s = new GameSettings();
+        Assert.IsTrue(s.ShowsLayer(MinimapLayers.Hqs));
+        Assert.IsTrue((s.ShownLayers & MinimapLayers.Hqs) != 0);
+        s.ToggleLayer(MinimapLayers.Hqs);
+        Assert.IsFalse(s.ShowsLayer(MinimapLayers.Hqs));
+        Assert.AreEqual((int)MinimapLayers.All, s.MinimapFilters, "the old filter bits are untouched");
+        var old = new GameSettings { MinimapFilters = (int)MinimapLayers.Gems };
+        old.Clamp();
+        Assert.IsTrue(old.ShowsLayer(MinimapLayers.Hqs), "a file saved before the layer existed shows the flags");
+    }
+
+    [Test]
     public void ClickingAnAlertMarksItVisited()
     {
         SettingsStore.Current = new GameSettings();

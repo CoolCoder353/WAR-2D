@@ -27,6 +27,7 @@ namespace WAR2D.UI
             ("Attack-move", "AttackMove", null),
             ("Stop", "Stop", null),
             ("Hold", "Hold", null),
+            ("Roam (scout on their own)", "Roam", null),
             ("Repair (Builders)", "Repair", null),
             ("Dig (Diggers)", "Dig", null),
             ("Detonate (Suicide bombers)", "Detonate", null), // shown once GameInput has the action (v0.12 plan)

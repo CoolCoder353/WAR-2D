@@ -16,6 +16,8 @@ namespace WAR2D.UI
         Ai,
         // v0.15 QoL: Jump to HQ, the quick-select counts, Rally all and the minimap filters.
         Hq, IdleBuilders, Army, RallyAll, Eye,
+        // Playtest 2026-10-30: the Roam order.
+        Roam,
     }
 
     /// <summary>

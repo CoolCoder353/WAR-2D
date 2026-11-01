@@ -28,7 +28,7 @@ public class TileAutotileTests
         MapGrid g = map.Grid;
         // FromAscii rows run top-down: '#' is at (0, 1), the top-left tile, open to the east and south.
         Assert.AreEqual((byte)TileType.Wall, g.Tiles[g.Index(new Unity.Mathematics.int2(0, 1))]);
-        Assert.AreEqual(RenderGen.North | RenderGen.West, TileAutotile.Variant(g, 0, 1));
+        Assert.AreEqual((RenderGen.North | RenderGen.West, 0), RenderGen.RockShapes[TileAutotile.Variant(g, 0, 1)]);
         Assert.IsTrue(TileAutotile.Solid(g, -1, 0));
         Assert.IsTrue(TileAutotile.Solid(g, 0, 2));
         Assert.IsFalse(TileAutotile.Solid(g, 1, 1));
@@ -58,6 +58,31 @@ public class TileAutotileTests
     }
 
     [Test]
+    public void RockShapesAreTheFortySevenBlobTiles()
+    {
+        Assert.AreEqual(47, RenderGen.RockShapes.Length);
+        for (int i = 0; i < RenderGen.RockShapes.Length; i++)
+        {
+            var (mask, corners) = RenderGen.RockShapes[i];
+            Assert.AreEqual(i, RenderGen.RockShape(mask, corners));
+        }
+    }
+
+    [Test]
+    public void AnOpenDiagonalBetweenTwoRockSidesCutsAnInsideCorner()
+    {
+        // The centre rock has rock above and to its left, but the tile between them (top-left) is floor.
+        using MapStore map = MapStore.FromAscii(
+            ".#.",
+            "##.",
+            "...");
+        MapGrid g = map.Grid;
+        Assert.AreEqual((RenderGen.North | RenderGen.West, RenderGen.NorthWest), RenderGen.RockShapes[TileAutotile.Variant(g, 1, 1)]);
+        g.Tiles[g.Index(new Unity.Mathematics.int2(0, 2))] = (byte)TileType.Wall;
+        Assert.AreEqual((RenderGen.North | RenderGen.West, 0), RenderGen.RockShapes[TileAutotile.Variant(g, 1, 1)], "a rock diagonal fills the corner");
+    }
+
+    [Test]
     public void IndexTexelsCarryTypeAndVariant()
     {
         using MapStore map = MapStore.FromAscii(
@@ -67,9 +92,10 @@ public class TileAutotileTests
         MapGrid g = map.Grid;
         UnityEngine.Color32 gem = MapView.IndexOf(g, 1, 1);
         Assert.AreEqual((byte)TileType.Gem, gem.r);
-        // Rock to the north and west: mask N|W, in one of the 4 random variants.
-        Assert.AreEqual(RenderGen.North | RenderGen.West, gem.g % WAR2D.Art.ArtManifest.AutotileVariants);
-        Assert.Less(gem.g, 4 * WAR2D.Art.ArtManifest.AutotileVariants);
+        // Rock to the north and west (and north-west, so no inside corner), in one of the 4 random variants.
+        int shapes = RenderGen.RockShapes.Length;
+        Assert.AreEqual((RenderGen.North | RenderGen.West, 0), RenderGen.RockShapes[gem.g % shapes]);
+        Assert.Less(gem.g, 4 * shapes);
         Assert.AreEqual((byte)TileType.Ground, MapView.IndexOf(g, 2, 0).r);
     }
 

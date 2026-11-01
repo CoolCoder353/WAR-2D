@@ -121,8 +121,11 @@
 
 /* Top bar (Figma: HUD / Default, Top bar) */
 .top-bar { position: absolute; left: 0; top: 0; right: 0; height: 44px; flex-direction: row; align-items: center; padding-left: var(--space-4); padding-right: var(--space-4); background-color: var(--color-surface-panel); border-bottom-width: 1px; border-color: var(--color-border); }
-.top-bar__players { flex-grow: 1; flex-basis: 0; flex-direction: row; align-items: center; }
-.top-bar__player { flex-direction: row; align-items: center; margin-right: var(--space-4); }
+.top-bar__players { flex-grow: 1; flex-basis: 0; flex-direction: row; align-items: center; overflow: hidden; min-width: 0; }
+.top-bar__player { flex-direction: row; align-items: center; margin-right: var(--space-4); flex-shrink: 1; min-width: 24px; overflow: hidden; }
+.top-bar__player .player-name { flex-shrink: 1; min-width: 0; overflow: hidden; }
+.top-bar__player .player-name__text { flex-shrink: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.top-bar__player .ai-tag__label { display: none; }
 .top-bar__player .swatch { margin-right: 6px; }
 .top-bar__name { color: var(--color-text-primary); font-size: var(--font-size-12); }
 .top-bar__name--eliminated { color: var(--color-text-disabled); }
@@ -258,6 +261,12 @@
 .alert--warning .alert__stripe { background-color: var(--color-warning); }
 .alert--accent .alert__stripe { background-color: var(--color-accent); }
 .alert--success .alert__stripe { background-color: var(--color-success); }
+/* Playtest 2026-10-30 (Figma "Playtest fixes" item 7): a 2 px bar in the stripe colour drains until the row leaves. */
+.alert__timer { position: absolute; left: 0; bottom: 0; height: 2px; opacity: 0.7; }
+.alert--danger .alert__timer { background-color: var(--color-danger); }
+.alert--warning .alert__timer { background-color: var(--color-warning); }
+.alert--accent .alert__timer { background-color: var(--color-accent); }
+.alert--success .alert__timer { background-color: var(--color-success); }
 .alert--new.alert--danger { border-color: var(--color-danger); }
 .alert--new.alert--warning { border-color: var(--color-warning); }
 .alert--new.alert--accent { border-color: var(--color-accent); }
@@ -549,7 +558,7 @@
 .ai-tag__label { font-size: var(--font-size-12); color: var(--color-text-secondary); padding: 0; margin: 0; }
 .player-name--disabled .ai-tag__label { color: var(--color-text-disabled); }
 .player-name--disabled .ai-tag__icon { -unity-background-image-tint-color: var(--color-text-disabled); }
-.top-bar__player .ai-tag { margin-left: 6px; }
+.top-bar__player .ai-tag { margin-left: 4px; }
 .list-row__label .player-name__text { font-size: var(--font-size-14); color: var(--color-text-primary); }
 .list-row:disabled .player-name__text, .list-row:disabled .ai-tag__label { color: var(--color-text-disabled); }
 .stats-cell--player .player-name { margin: 0 8px; }

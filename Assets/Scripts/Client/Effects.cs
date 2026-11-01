@@ -4,7 +4,7 @@ using WAR2D.Art;
 
 /// <summary>
 /// Client-only effects from the <c>Effects</c> atlas: explosions, bomb blasts, muzzle flashes, tracers, dig
-/// debris and repair sparks. Each kind has a
+/// debris, repair sparks, building collapses, smoke and fire on damaged buildings, and gem glints. Each kind has a
 /// fixed pool of sprites made once (no allocation per effect after warm-up); when a pool is full the oldest
 /// effect is recycled. A runner object advances the frames at <see cref="ArtStyle.FramesPerSecond"/>.
 /// </summary>
@@ -18,6 +18,15 @@ public static class Effects
 
     /// <summary>Pool sizes for the v0.13 defences: turret muzzle flashes and Jammer pulses.</summary>
     public const int TurretFlashPool = 64, PulsePool = 32;
+
+    /// <summary>Pool sizes for the polish effects: smoke and fire on damaged buildings, gem glints, and collapse blasts.</summary>
+    public const int SmokePool = 160, FirePool = 96, SparklePool = 48, CollapsePool = 16;
+
+    /// <summary>Tiles per second a smoke puff rises while it plays.</summary>
+    public const float SmokeRise = 0.7f;
+
+    /// <summary>Most delayed blasts waiting at once (a collapse's follow-up explosions); more are dropped.</summary>
+    public const int MaxDelayed = 128;
 
     /// <summary>Seconds a tracer takes to reach its target.</summary>
     public const float TracerSeconds = 0.2f;
@@ -41,6 +50,8 @@ public static class Effects
         public float Seconds = TracerSeconds;
         /// <summary>True for a shell: it plays a <see cref="ShellImpact"/> where it lands.</summary>
         public bool ImpactOnLanding;
+        /// <summary>World units per second the effect drifts while it plays (rising smoke).</summary>
+        public Vector3 Drift;
     }
 
     private sealed class Pool
@@ -66,6 +77,20 @@ public static class Effects
     private static readonly Pool BomberBlasts = new Pool("BomberBlast", BomberBlastPool);
     private static readonly Pool TurretFlashes = new Pool("TurretMuzzle", TurretFlashPool);
     private static readonly Pool Pulses = new Pool("JamPulse", PulsePool);
+    private static readonly Pool Smokes = new Pool("Smoke", SmokePool);
+    private static readonly Pool Fires = new Pool("Fire", FirePool);
+    private static readonly Pool Sparkles = new Pool("GemSparkle", SparklePool);
+    private static readonly Pool Collapses = new Pool("BomberBlast", CollapsePool);
+
+    /// <summary>A blast waiting to go off (a collapse's follow-up explosions and debris).</summary>
+    private struct Delayed
+    {
+        public float At;
+        public Vector2 Position;
+        public bool Debris;
+    }
+
+    private static readonly List<Delayed> delayed = new List<Delayed>();
     private static Runner runner;
     private static ArtAtlas atlas;
 
@@ -232,6 +257,76 @@ public static class Effects
         s.Go.transform.SetPositionAndRotation(new Vector3(centre.x, centre.y, 0f), Quaternion.identity);
     }
 
+    /// <summary>A puff of smoke rising from <paramref name="position"/> (a damaged building).</summary>
+    public static void Smoke(Vector2 position)
+    {
+        Slot s = Take(Smokes);
+        if (s == null) return;
+        s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
+        s.Drift = new Vector3(0f, SmokeRise, 0f);
+    }
+
+    /// <summary>A tongue of flame at <paramref name="position"/> (a badly damaged building).</summary>
+    public static void Fire(Vector2 position)
+    {
+        Slot s = Take(Fires);
+        if (s == null) return;
+        s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
+    }
+
+    /// <summary>A glint on the gem tile centred on <paramref name="position"/> (a Miner paying out). Silent: the caller rate-limits <c>gem_mined</c>.</summary>
+    public static void GemSparkle(Vector2 position)
+    {
+        Slot s = Take(Sparkles);
+        if (s == null) return;
+        s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
+    }
+
+    /// <summary>
+    /// A finished building of <paramref name="tiles"/> × <paramref name="tiles"/> destroyed, centred on <paramref name="centre"/>:
+    /// a blast sized to it (a 1-tile building's is a unit's), then for 2 tiles and up a ripple of smaller explosions and flying
+    /// debris across the footprint over half a second, with <c>explosion_large</c> and <c>building_destroyed</c>.
+    /// </summary>
+    public static void BuildingCollapse(Vector2 centre, int tiles)
+    {
+        if (tiles <= 1)
+        {
+            Explosion(centre);
+            return;
+        }
+        Slot s = Take(tiles >= 4 ? Collapses : Blasts);
+        // The blast art is 3 or 4 tiles (never scaled: the pixels stay crisp); the ripple below covers a larger footprint.
+        if (s != null) s.Go.transform.SetPositionAndRotation(new Vector3(centre.x, centre.y, 0f), Quaternion.identity);
+        WAR2D.Audio.AudioService.Sfx("explosion_large", centre);
+        WAR2D.Audio.AudioService.Sfx("building_destroyed", centre);
+        int follow = tiles * tiles / 2;
+        float now = Time.time, half = tiles * 0.4f;
+        for (int k = 0; k < follow && delayed.Count < MaxDelayed; k++)
+        {
+            // Spread over the footprint without randomness: a golden-angle spiral from the centre outward.
+            float a = k * 2.39996f, r = half * Mathf.Sqrt((k + 0.5f) / follow);
+            delayed.Add(new Delayed
+            {
+                At = now + 0.08f + 0.5f * k / follow,
+                Position = centre + new Vector2(Mathf.Cos(a) * r, Mathf.Sin(a) * r),
+                Debris = k % 2 == 1,
+            });
+        }
+        EnsureRunner();
+    }
+
+    /// <summary>Delayed blasts still waiting (tests).</summary>
+    public static int PendingBlasts => delayed.Count;
+
+    /// <summary>Smoke puffs playing now (tests).</summary>
+    public static int ActiveSmoke => Count(Smokes);
+
+    /// <summary>Fires playing now (tests).</summary>
+    public static int ActiveFires => Count(Fires);
+
+    /// <summary>Gem glints playing now (tests).</summary>
+    public static int ActiveSparkles => Count(Sparkles);
+
     /// <summary>Turret muzzle flashes playing now (tests).</summary>
     public static int ActiveTurretFlashes => Count(TurretFlashes);
 
@@ -264,7 +359,8 @@ public static class Effects
         Created = 0;
         TurretShots = 0;
         TurretTracers = 0;
-        foreach (Pool p in new[] { Explosions, Flashes, Tracers, Blasts, Debris, Sparks, SniperTracers, Shells, Impacts, Streams, BomberBlasts, TurretFlashes, Pulses })
+        delayed.Clear();
+        foreach (Pool p in new[] { Explosions, Flashes, Tracers, Blasts, Debris, Sparks, SniperTracers, Shells, Impacts, Streams, BomberBlasts, TurretFlashes, Pulses, Smokes, Fires, Sparkles, Collapses })
         {
             p.Slots.Clear();
             p.Next = 0;
@@ -279,14 +375,17 @@ public static class Effects
     }
 
     /// <summary>The next slot of a pool: a new one until it is full, then the oldest (restarted).</summary>
+    private static void EnsureRunner()
+    {
+        if (runner != null) return;
+        Reset();
+        var go = new GameObject("Effects");
+        runner = go.AddComponent<Runner>();
+    }
+
     private static Slot Take(Pool pool)
     {
-        if (runner == null)
-        {
-            Reset();
-            var go = new GameObject("Effects");
-            runner = go.AddComponent<Runner>();
-        }
+        EnsureRunner();
         if (atlas == null || atlas.Texture == null) atlas = ArtAtlas.Load(ArtAtlas.Effects);
         if (atlas == null) return null;
 
@@ -309,6 +408,7 @@ public static class Effects
         s.Start = Time.time;
         s.Go.transform.localScale = Vector3.one;
         s.ImpactOnLanding = false;
+        s.Drift = Vector3.zero;
         s.Seconds = TracerSeconds;
         s.Sprite.sprite = atlas.Sprite(pool.Id, 0);
         s.Go.SetActive(true);
@@ -335,6 +435,24 @@ public static class Effects
             Animate(Sparks, now, false);
             Animate(TurretFlashes, now, false);
             Animate(Pulses, now, false);
+            Animate(Smokes, now, false);
+            Animate(Fires, now, false);
+            Animate(Sparkles, now, false);
+            Animate(Collapses, now, false);
+            Release(now);
+        }
+
+        /// <summary>Sets off the delayed blasts whose time has come.</summary>
+        private static void Release(float now)
+        {
+            for (int i = delayed.Count - 1; i >= 0; i--)
+            {
+                Delayed d = delayed[i];
+                if (d.At > now) continue;
+                delayed.RemoveAt(i);
+                if (d.Debris) DigDebris(d.Position);
+                else Explosion(d.Position);
+            }
         }
 
         private static void Animate(Pool pool, float now, bool tracer)
@@ -359,6 +477,7 @@ public static class Effects
                 int frame = (int)(age * ArtStyle.FramesPerSecond);
                 if (frame >= frames) { Stop(s); continue; }
                 s.Sprite.sprite = atlas.Sprite(pool.Id, frame);
+                if (s.Drift != Vector3.zero) s.Go.transform.position += s.Drift * Time.deltaTime;
             }
         }
 

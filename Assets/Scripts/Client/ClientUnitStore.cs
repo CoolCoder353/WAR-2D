@@ -62,6 +62,8 @@ namespace WAR2D.Client
         public event Action<int, int> BuildingAttack;
         /// <summary>Raised for each unit that left because it died: (index, last predicted position).</summary>
         public event Action<int, float2> Died;
+        /// <summary>Raised when a unit the client didn't know becomes known: (index, where it is). Own units are always known, so for them it means a new unit.</summary>
+        public event Action<int, float2> Appeared;
 
         public ClientUnitStore(int idCapacity, float tickSeconds, Allocator allocator = Allocator.Persistent)
         {
@@ -225,7 +227,8 @@ namespace WAR2D.Client
             int index = NetIdAllocator.IndexOf(u.Id);
             if (index >= states.Length) throw new InvalidDataException("unit index beyond the client's capacity");
             blend[index] = float2.zero;
-            if (!IsKnown(index))
+            bool appeared = !IsKnown(index);
+            if (appeared)
             {
                 knownSlot[index] = known.Length;
                 known.Add(index);
@@ -249,6 +252,7 @@ namespace WAR2D.Client
                 Speed = fullSpeed,
                 LastHealth = u.Health,
             };
+            if (appeared) Appeared?.Invoke(index, anchor);
         }
 
         private void Leave(in LeaveUnit u, int tick)

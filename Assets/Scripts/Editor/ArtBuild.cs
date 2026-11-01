@@ -78,6 +78,13 @@ namespace WAR2D.EditorTools
                 data.sprites.Add(new AtlasSprite { id = e.Id, first = frames.Count, frames = e.Frames, directions = e.Directions });
                 for (int i = 0; i < cells; i++)
                 {
+                    if (e.Id == ArtManifest.FloorFeature || e.Id == ArtManifest.RockFeature)
+                    {
+                        Frame stamp = Feature(e.Id == ArtManifest.RockFeature, i, cache);
+                        frames.Add(stamp);
+                        rects.Add((e.Id, i, stamp.W, stamp.H));
+                        continue;
+                    }
                     if (kind == ArtKind.Effect)
                     {
                         Frame fx = Effect(e, i);
@@ -168,15 +175,41 @@ namespace WAR2D.EditorTools
                 case nameof(TileType.Ground):
                     return ($"Floor {frame}", () => RenderGen.Floor(Seed, frame), 0f);
                 case nameof(TileType.Wall):
-                    return ($"Rock {frame}", () => RenderGen.Rock(Seed, frame), 0f);
+                {
+                    var (mask, corners) = RenderGen.RockShapes[frame];
+                    return ($"Rock {frame}", () => RenderGen.Rock(Seed, mask, corners), 0f);
+                }
                 case nameof(TileType.Gem):
-                    // Variant-major: 4 variants × 16 autotile masks.
-                    return ($"Gem {frame}", () => RenderGen.Gem(Seed, frame / ArtManifest.AutotileVariants, frame % ArtManifest.AutotileVariants), 0f);
+                {
+                    // Variant-major: 4 variants × the rock shapes.
+                    int shapes = RenderGen.RockShapes.Length;
+                    var (mask, corners) = RenderGen.RockShapes[frame % shapes];
+                    return ($"Gem {frame}", () => RenderGen.Gem(Seed, frame / shapes, mask, corners), 0f);
+                }
                 case nameof(TileType.Border):
                     return ("Rock 15", () => RenderGen.Rock(Seed, 15), 0f);
                 default:
                     return ($"Placeholder {Math.Max(e.WidthTiles, e.HeightTiles)}", () => RenderGen.Placeholder(Math.Max(e.WidthTiles, e.HeightTiles)), 0f);
             }
+        }
+
+        /// <summary>
+        /// A terrain feature stamp: the feature finished on its plain base, transparent wherever it came out the same as
+        /// the base without it, so the shader blends in only what the feature changed.
+        /// </summary>
+        private static Frame Feature(bool rock, int cell, Dictionary<string, Frame> cache)
+        {
+            string baseKey = rock ? "RockFeatureBase" : "FloorFeatureBase";
+            if (!cache.TryGetValue(baseKey, out Frame plain))
+                cache[baseKey] = plain = Finish(rock ? RenderGen.RockFeatureBase(Seed) : RenderGen.FloorFeatureBase(Seed), 0f, false);
+            int kind = cell / RenderGen.FeatureFrames, frame = cell % RenderGen.FeatureFrames;
+            Frame f = Finish(rock ? RenderGen.RockFeature(Seed, kind, frame) : RenderGen.FloorFeature(Seed, kind, frame), 0f, false);
+            for (int i = 0; i < f.Colour.Length; i++)
+            {
+                Color32 a = f.Colour[i], b = plain.Colour[i];
+                if (a.r == b.r && a.g == b.g && a.b == b.b) f.Colour[i].a = 0;
+            }
+            return f;
         }
 
         /// <summary>An effect frame from <see cref="EffectGen"/> (already palette pixel art), split into colour and mask.</summary>

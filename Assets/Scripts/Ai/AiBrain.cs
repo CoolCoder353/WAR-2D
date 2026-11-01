@@ -14,15 +14,21 @@ namespace WAR2D.Ai
         private readonly IAiManager[] managers;
 
         /// <param name="managers">The managers in order (null: the standard set).</param>
-        public AiBrain(int owner, AiDifficulty difficulty, AiStyle style, AiConfig config, IAiManager[] managers = null, GameConfigData game = null)
+        /// <param name="seed">The seat's variation seed (AI overhaul §6.1); 0 plays the styles as configured (tests).</param>
+        public AiBrain(int owner, AiDifficulty difficulty, AiStyle style, AiConfig config, IAiManager[] managers = null, GameConfigData game = null, uint seed = 0)
         {
             game ??= ConfigLoader.LoadConfig();
             Owner = owner;
             Difficulty = config.GetDifficulty(difficulty);
-            Style = config.GetStyle(style == AiStyle.Random ? AiStyle.Balanced : style);
-            Budget = new ActionBudget(Difficulty.ActionsPerMinute, config.Brain.BudgetBurstSeconds, config.Brain.ProposalWaitSeconds);
-            Board = new Blackboard(owner, Difficulty.ReactionSeconds, config.Brain);
-            Context = new AiContext(owner, Difficulty, Style, config, game, Board, Budget);
+            Dice = new AiDice(seed, Difficulty.Mistakes, config.Policy.SlipSeconds);
+            Variation = new AiVariation(Dice, config.Policy);
+            foreach (AiStyle s in PlayedStyles) styles[s] = Variation.Apply(config.GetStyle(s));
+            AiStyle start = style == AiStyle.Random ? AiStyle.Balanced : style;
+            Style = styles[start];
+            Budget = new ActionBudget(Difficulty.ActionsPerMinute, config.Brain.BudgetBurstSeconds, config.Brain.ProposalWaitSeconds, config.Policy.EconomyShare);
+            Board = new Blackboard(owner, Difficulty.ReactionSeconds, config.Brain, config.Brain.ArmyMemorySeconds * Difficulty.ArmyMemoryScale);
+            Context = new AiContext(owner, Difficulty, start, Style, config, game, Board, Budget, Dice, Variation);
+            Context.SwitchStyle = SetStyle;
             this.managers = managers ?? StandardManagers();
             Execute = action => action.Execute(Owner);
             take = action =>
@@ -34,20 +40,38 @@ namespace WAR2D.Ai
         }
 
         private readonly Func<AiAction, bool> take;
+        private readonly System.Collections.Generic.Dictionary<AiStyle, AiStyleConfig> styles = new System.Collections.Generic.Dictionary<AiStyle, AiStyleConfig>();
+
+        /// <summary>The styles a brain can play (and switch between).</summary>
+        public static readonly AiStyle[] PlayedStyles = { AiStyle.Rusher, AiStyle.Turtle, AiStyle.Expander, AiStyle.Balanced };
 
         /// <summary>A brain for a seat at match start (its style resolved), from the loaded config.</summary>
-        public static AiBrain For(AiSeat seat) => new AiBrain(seat.OwnerId, seat.Difficulty, seat.ResolvedStyle, ConfigLoader.LoadConfig().Ai);
+        public static AiBrain For(AiSeat seat) => new AiBrain(seat.OwnerId, seat.Difficulty, seat.ResolvedStyle, ConfigLoader.LoadConfig().Ai, seed: seat.VariationSeed);
+
+        /// <summary>Its random stream and its per-match variation.</summary>
+        public AiDice Dice { get; }
+        public AiVariation Variation { get; }
+
+        /// <summary>Plays another style from now on (its varied copy; AI overhaul §4.4). Everything built stays.</summary>
+        public void SetStyle(AiStyle style)
+        {
+            if (!styles.TryGetValue(style, out AiStyleConfig s)) return;
+            Style = s;
+            Context.Style = s;
+            Context.StyleName = style;
+        }
 
         /// <summary>The managers every brain runs, in the order they propose (spec §5.3).</summary>
         public static IAiManager[] StandardManagers() => new IAiManager[]
         {
-            new OpeningManager(), new EconomyManager(), new BuilderManager(), new ProductionManager(),
-            new ScoutingManager(), new ArmyManager(), new DiplomacyManager(), new ConcedeManager(),
+            new OpeningManager(), new StrategyManager(), new EconomyManager(), new BuilderManager(), new ProductionManager(),
+            new ScoutingManager(), new RaidManager(), new ArmyManager(), new DiplomacyManager(), new ConcedeManager(),
         };
 
         public int Owner { get; }
         public AiDifficultyConfig Difficulty { get; }
-        public AiStyleConfig Style { get; }
+        /// <summary>The style it plays now.</summary>
+        public AiStyleConfig Style { get; private set; }
         public ActionBudget Budget { get; }
         public Blackboard Board { get; }
         public AiContext Context { get; }
@@ -91,7 +115,28 @@ namespace WAR2D.Ai
                 ["blueprints"] = s.Blueprints.Count, ["idleBuilders"] = s.IdleBuilders.Count, ["requests"] = s.BuildRequests.Count,
                 ["requestList"] = RequestList(s), ["free"] = s.Free,
                 ["expansions"] = $"{Manager<EconomyManager>()?.Held ?? 0}/{Manager<EconomyManager>()?.Claimed.Count ?? 0}",
+                // AI overhaul: what it plays now, what it learned and reacts to.
+                ["style"] = Context.StyleName.ToString(),
+                ["switches"] = Manager<StrategyManager>()?.Switches.ToArray() ?? new string[0],
+                ["strategy"] = Manager<StrategyManager>()?.Reacting ?? "",
+                ["caution"] = army?.Caution ?? 1f,
+                ["trades"] = army != null ? army.Trades.ToArray() : new string[0],
+                ["sieging"] = army?.Sieging ?? false,
+                ["raids"] = Manager<RaidManager>()?.Raids ?? 0,
+                ["raiding"] = Manager<RaidManager>()?.Active ?? false,
+                ["banked"] = s.Banked,
+                ["slips"] = Dice.Slips,
+                ["killed"] = Board.EnemyLost,
+                ["lost"] = Board.OwnLost,
+                ["enemyGuess"] = Guesses(),
             };
+        }
+
+        private string Guesses()
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (EnemyModel m in Board.Models.Values) { if (sb.Length > 0) sb.Append(','); sb.Append(m.Owner).Append(':').Append(m.Guess); }
+            return sb.ToString();
         }
 
         private static string RequestList(AiState s)
@@ -108,9 +153,16 @@ namespace WAR2D.Ai
             Thinks++;
             Context.View = view;
             Budget.Refill(view.Time);
+            Context.Attentive = Dice.Next() < Difficulty.Attention;
             Board.Observe(view);
             Context.State.Update(view);
-            foreach (IAiManager manager in managers) manager.Think(Context);
+            Board.UpdateModels(view, Context.State.PlayingSeconds, Context.Policy, Context.Game);
+            foreach (IAiManager manager in managers)
+            {
+                Context.ArmyPool = manager is ArmyManager || manager is ScoutingManager || manager is RaidManager;
+                manager.Think(Context);
+            }
+            Context.ArmyPool = false;
             Budget.Spend(view.Time, take);
         }
     }

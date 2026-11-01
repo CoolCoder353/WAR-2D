@@ -435,7 +435,45 @@ namespace WAR2D.Net.Replication
         internal void Remove(int id)
         {
             Heads.Remove(id);
+            if (Entries.TryGetValue(id, out Entry e) && !e.Ghost)
+            {
+                // A seen building's Gone record can arrive before the death explosion that names its tile: keep it a moment.
+                if (recentlyGone.Count >= MaxRecentlyGone) recentlyGone.RemoveAt(0);
+                recentlyGone.Add((e, UnityEngine.Time.time));
+            }
             if (Entries.Remove(id)) Removed?.Invoke(id);
+        }
+
+        /// <summary>Seconds a removed building is still found by <see cref="TryTakeDying"/>.</summary>
+        public const float GoneMemorySeconds = 2f;
+
+        private const int MaxRecentlyGone = 64;
+        private readonly List<(Entry entry, float at)> recentlyGone = new List<(Entry, float)>();
+
+        /// <summary>
+        /// The building a death explosion at <paramref name="anchor"/> belongs to (client presentation only): one in sight anchored
+        /// there, or one removed from sight there in the last <see cref="GoneMemorySeconds"/> (taken, so it is found once). Units
+        /// never die on a building's anchor tile, so a miss means a unit died.
+        /// </summary>
+        public bool TryTakeDying(int2 anchor, float now, out Entry found)
+        {
+            for (int i = recentlyGone.Count - 1; i >= 0; i--)
+            {
+                var (entry, at) = recentlyGone[i];
+                if (now - at > GoneMemorySeconds) continue;
+                if (!((int2)math.round(entry.Data.position)).Equals(anchor)) continue;
+                recentlyGone.RemoveAt(i);
+                found = entry;
+                return true;
+            }
+            foreach (Entry e in Entries.Values)
+                if (!e.Ghost && ((int2)math.round(e.Data.position)).Equals(anchor))
+                {
+                    found = e;
+                    return true;
+                }
+            found = default;
+            return false;
         }
     }
 }

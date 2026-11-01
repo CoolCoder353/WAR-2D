@@ -53,3 +53,15 @@ Press **Play**, type the host's address in **Join** (`1.2.3.4`, `1.2.3.4:7778`, 
 - The port mapping is leased for 2 hours and renewed while you host, so it closes on its own if the game crashes. Leaving the lobby removes it.
 - Start the game with `-noUpnp` to stop it from touching the router.
 - The lobby is limited to 8 players (AI seats included), and players can't join a match that has started. A player who drops out can rejoin their own seat within `ReconnectSeconds` (60 s; see [gameplay.md](gameplay.md), Reconnecting).
+
+## Playing against the AI (owner checklist)
+
+The bench measures AI against AI; how each difficulty feels to a person only a playtest shows ([AI overhaul](superpowers/specs/2026-10-30-ai-overhaul-design.md) §11). A Private lobby with one AI is enough. Per difficulty, play at least one match against each style (pick the style in the AI's row rather than Random) and note:
+
+- when it first attacked, and whether you saw it coming (it gathers short of its target first);
+- whether it felt fair: did it seem to know things it couldn't have seen?
+- Easy: could a new player beat it? Hard: could you beat it without a plan?
+- anything that looked dumb (an army thrown at turrets, money piling up, units idle at home, a raid into a defended base), with the minute.
+
+For anything odd, read its state with the control API (`tools/war2d aistate`, [debugging.md](debugging.md)): `armyLog` and `trades` say what its army did and why, `switches` and `strategy` what it reacted to, `caution` how its attacks have gone.
+

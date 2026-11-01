@@ -53,6 +53,7 @@ namespace WAR2D.UI
             if (model.MapWide && model.ByType.Count == 1)
                 units = $"{model.Count:N0} {Plural(AlertFeedModel.UnitName(model.ByType[0].type), model.Count)}";
             title.text = model.Squad >= 0 ? $"Selection: {units} (squad {(model.Squad + 1) % 10})" : $"Selection: {units}";
+            if (model.Roaming > 0) title.text += $" · {model.Roaming:N0} roaming"; // Figma "Playtest fixes" item 6
             Display(mapWide, model.MapWide);
 
             ShowTypes();

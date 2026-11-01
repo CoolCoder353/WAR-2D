@@ -305,11 +305,9 @@ public class ClientPlayer : NetworkBehaviour
     [TargetRpc]
     public void TargetPlayExplosions(NetworkConnection target, Vector2[] positions)
     {
-        foreach (Vector2 p in positions)
-        {
-            Effects.Explosion(p);
-            WAR2D.Audio.AudioService.ReportDeath();
-        }
+        // A finished building's death is drawn sized to it, with rubble (polish item B); the rest are unit explosions.
+        WAR2D.Client.WorldEffects.Explosions(positions);
+        foreach (Vector2 _ in positions) WAR2D.Audio.AudioService.ReportDeath();
     }
 
 

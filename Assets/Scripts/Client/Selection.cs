@@ -188,6 +188,19 @@ namespace WAR2D.Client
         /// <summary>Orders the selection to the goal: one squad order when it is exactly a squad, chunked ids otherwise.</summary>
         public void OrderMove(int2 goal) => Order(OrderKind.Move, false, goal);
 
+        /// <summary>
+        /// Sends <paramref name="kind"/> to the given units, whatever is selected, without raising <see cref="Ordered"/> (the
+        /// Roam autopilot's own orders, which must not end the roaming they serve).
+        /// </summary>
+        public void OrderIds(OrderKind kind, List<int> ids, int2 goal)
+        {
+            if (ids.Count == 0 || WorldStateManager.Instance == null) return;
+            ushort token = NextToken();
+            List<byte[]> chunks = OrderIdCodec.EncodeChunks(ids);
+            for (int i = 0; i < chunks.Count; i++)
+                WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, false, goal);
+        }
+
         /// <summary>Raised after an order is sent: its kind, Shift-queued or not, its goal, and the ids (sorted) it went to.</summary>
         public event Action<OrderKind, bool, int2, IReadOnlyList<int>> Ordered;
 

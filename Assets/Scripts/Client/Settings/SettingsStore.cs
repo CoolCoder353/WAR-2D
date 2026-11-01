@@ -16,9 +16,13 @@ public enum TooltipDelayMode { Fast, Normal, Off }
 /// <summary>The minimap's size (160, 224, 304 px at 1080p).</summary>
 public enum MinimapSize { Small, Medium, Large }
 
-/// <summary>What the minimap draws on top of the terrain and fog; they change only what is drawn, never what is known.</summary>
+/// <summary>
+/// What the minimap draws on top of the terrain and fog; they change only what is drawn, never what is known.
+/// <see cref="Hqs"/> (the HQ flags, playtest 2026-10-30) is kept out of <see cref="All"/> and the saved bits:
+/// <see cref="GameSettings.MinimapHqs"/> holds it, so files saved before it existed still show the flags.
+/// </summary>
 [Flags]
-public enum MinimapLayers { Gems = 1, Ghosts = 2, Army = 4, Buildings = 8, All = 15 }
+public enum MinimapLayers { Gems = 1, Ghosts = 2, Army = 4, Buildings = 8, All = 15, Hqs = 16 }
 
 /// <summary>The player's settings (Settings: Graphics, Audio, Controls, Gameplay). Saved as JSON on this machine.</summary>
 [Serializable]
@@ -28,7 +32,8 @@ public sealed class GameSettings
     public bool Fullscreen = true, VSync;
     /// <summary>Frames per second cap; 0 = none.</summary>
     public int FpsCap = 144;
-    public float Master = 1f, Music = 1f, Sfx = 1f;
+    /// <summary>Volumes, 0–1. Music starts at half (playtest 2026-10-30: it sat over the effects).</summary>
+    public float Master = 1f, Music = 0.5f, Sfx = 1f;
     public bool MenuBattle = true;
     public string Palette = Palettes.Standard;
     public bool EdgeScroll = true;
@@ -54,6 +59,8 @@ public sealed class GameSettings
     public int MinimapScale = (int)MinimapSize.Medium;
     /// <summary>Minimap layers drawn, a <see cref="MinimapLayers"/> bit set.</summary>
     public int MinimapFilters = (int)MinimapLayers.All;
+    /// <summary>Whether the minimap draws the HQ flags (its fifth filter, Figma "Playtest fixes" item 10).</summary>
+    public bool MinimapHqs = true;
     /// <summary>The Input System's binding overrides (<see cref="Rebinding"/>).</summary>
     public string Bindings = "";
 
@@ -137,7 +144,17 @@ public sealed class GameSettings
     public bool SoundsAlert(AlertKind kind) => AlertSound == null || (int)kind >= AlertSound.Length || AlertSound[(int)kind];
 
     /// <summary>True when the minimap draws this layer.</summary>
-    public bool ShowsLayer(MinimapLayers layer) => (MinimapFilters & (int)layer) != 0;
+    public bool ShowsLayer(MinimapLayers layer) => layer == MinimapLayers.Hqs ? MinimapHqs : (MinimapFilters & (int)layer) != 0;
+
+    /// <summary>Every layer the minimap draws now, the HQ flags included.</summary>
+    public MinimapLayers ShownLayers => (MinimapLayers)(MinimapFilters & (int)MinimapLayers.All) | (MinimapHqs ? MinimapLayers.Hqs : 0);
+
+    /// <summary>Turns a minimap layer on or off.</summary>
+    public void ToggleLayer(MinimapLayers layer)
+    {
+        if (layer == MinimapLayers.Hqs) MinimapHqs = !MinimapHqs;
+        else MinimapFilters ^= (int)layer;
+    }
 
     private static float Clamp01(float v) => float.IsNaN(v) ? 1f : Mathf.Clamp01(v);
 }
