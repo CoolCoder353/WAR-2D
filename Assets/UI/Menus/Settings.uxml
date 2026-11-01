@@ -41,6 +41,7 @@
                         <ui:VisualElement class="settings-row"><ui:Label text="Health bars" class="text settings-row__label" /><ui:VisualElement name="health-bar-options" class="row segmented" /></ui:VisualElement>
                         <ui:VisualElement class="settings-row"><ui:Label text="Tracers" class="text settings-row__label" /><ui:VisualElement name="tracer-options" class="row segmented" /></ui:VisualElement>
                         <ui:VisualElement class="settings-row"><ui:Label text="Target lines" class="text settings-row__label" /><ui:VisualElement name="target-line-options" class="row segmented" /></ui:VisualElement>
+                        <ui:VisualElement class="settings-row"><ui:Label text="Formations" class="text settings-row__label" /><ui:VisualElement name="formations-slot" /></ui:VisualElement>
                         <ui:VisualElement class="settings-row"><ui:Label text="Tooltip delay" class="text settings-row__label" /><ui:VisualElement name="tooltip-options" class="row segmented" /></ui:VisualElement>
                         <ui:Label text="Camera" class="text settings-gameplay__heading" />
                         <ui:VisualElement class="settings-gameplay__rule" />

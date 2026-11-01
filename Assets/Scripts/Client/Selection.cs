@@ -198,7 +198,7 @@ namespace WAR2D.Client
             ushort token = NextToken();
             List<byte[]> chunks = OrderIdCodec.EncodeChunks(ids);
             for (int i = 0; i < chunks.Count; i++)
-                WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, false, goal);
+                WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, false, goal, false); // roaming units scatter on purpose
         }
 
         /// <summary>Raised after an order is sent: its kind, Shift-queued or not, its goal, and the ids (sorted) it went to.</summary>
@@ -237,7 +237,7 @@ namespace WAR2D.Client
             if (selected.Count == 0 || WorldStateManager.Instance == null) return;
             if (selectedSquad >= 0 && IsExactly(squads[selectedSquad]))
             {
-                WorldStateManager.Instance.CmdOrderSquad((byte)selectedSquad, (byte)kind, queue, goal);
+                WorldStateManager.Instance.CmdOrderSquad((byte)selectedSquad, (byte)kind, queue, goal, SettingsStore.Current.Formations);
                 RaiseOrdered(kind, queue, goal, Sorted());
                 return;
             }
@@ -245,7 +245,7 @@ namespace WAR2D.Client
             List<int> ids = Sorted();
             List<byte[]> chunks = OrderIdCodec.EncodeChunks(ids);
             for (int i = 0; i < chunks.Count; i++)
-                WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, queue, goal);
+                WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, queue, goal, SettingsStore.Current.Formations);
             RaiseOrdered(kind, queue, goal, ids);
         }
 
@@ -280,7 +280,7 @@ namespace WAR2D.Client
                 ushort token = NextToken();
                 List<byte[]> chunks = OrderIdCodec.EncodeChunks(pair.Value);
                 for (int i = 0; i < chunks.Count; i++)
-                    WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)pair.Key, queue, goal);
+                    WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)pair.Key, queue, goal, SettingsStore.Current.Formations);
                 RaiseOrdered(pair.Key, queue, goal, pair.Value);
             }
         }

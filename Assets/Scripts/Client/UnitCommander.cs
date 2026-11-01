@@ -271,7 +271,7 @@ public class UnitCommander : NetworkBehaviour
         ushort token = (ushort)UnityEngine.Random.Range(0, ushort.MaxValue);
         List<byte[]> chunks = OrderIdCodec.EncodeChunks(builders);
         for (int i = 0; i < chunks.Count; i++)
-            WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, queue, tile);
+            WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, queue, tile, false);
         Feedback?.Queue.Sent(builders, (float2)tile + 0.5f, queue);
         if (!queue) Feedback?.Unmark(builders);
     }

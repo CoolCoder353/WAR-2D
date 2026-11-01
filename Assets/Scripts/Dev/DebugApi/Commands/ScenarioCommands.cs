@@ -99,7 +99,7 @@ namespace WAR2D.Dev.DebugApi
                 p.DevSetResources(amount);
                 return p.Resources;
             });
-            r.Add("order", DebugRole.Server, "order owner (ids|box) kind [goal] [queue]: order units as their owner", a =>
+            r.Add("order", DebugRole.Server, "order owner (ids|box) kind [goal] [queue] [formation]: order units as their owner (formation: a Move or AttackMove forms up, v0.16)", a =>
             {
                 SimContext sim = Sim();
                 var cmd = new SimCommand
@@ -109,6 +109,7 @@ namespace WAR2D.Dev.DebugApi
                     Order = DebugArgs.Enum<OrderKind>(a, "kind"),
                     Queue = DebugArgs.Bool(a, "queue", false),
                 };
+                cmd.Formation = PlayerActions.FormsUp(cmd.Order, DebugArgs.Bool(a, "formation", false));
                 if (DebugArgs.Has(a, "goal")) cmd.Tile = DebugArgs.Int2(a, "goal");
                 if (a["ids"] is JArray ids) cmd.Ids = ids.Select(t => (int)t).OrderBy(i => i).Distinct().ToArray();
                 else { var (min, max) = DebugArgs.Box(a, "box"); cmd.BoxMin = min; cmd.BoxMax = max; }

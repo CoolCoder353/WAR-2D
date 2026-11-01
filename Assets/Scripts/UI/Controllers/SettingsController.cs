@@ -322,6 +322,7 @@ namespace WAR2D.UI
             Segmented("health-bar-options", "health-bars", S.HealthBars, v => S.HealthBars = v, "Always", "Damaged only", "Selected only");
             Segmented("tracer-options", "tracers", S.Tracers, v => S.Tracers = v, "Full", "Reduced", "Off");
             Segmented("target-line-options", "target-lines", S.TargetLines, v => S.TargetLines = v, "Selected", "Off");
+            Slot(gameplay, "formations-slot", Widgets.Switch("formations", S.Formations, true, () => { S.Formations = !S.Formations; Changed(); }));
             Segmented("tooltip-options", "tooltip-delay", S.TooltipDelay, v => S.TooltipDelay = v, "Fast", "Normal", "Off");
 
             CameraSlider("pan-speed", S.PanSpeed, Defaults.PanSpeed, 0.5f, 2f, 0.05f, Percent, v => S.PanSpeed = v);
