@@ -147,6 +147,25 @@ public sealed class SimHarness : IDisposable
         return Entity.Null;
     }
 
+    /// <summary>True while the building is still a blueprint (it has its <see cref="Construction"/>).</summary>
+    public bool IsBlueprint(int buildingId) => Em.HasComponent<Construction>(BuildingEntity(buildingId));
+
+    /// <summary>Sets a building's health to a share of its maximum (tests only).</summary>
+    public void SetBuildingHealthShare(int buildingId, float share)
+    {
+        Entity e = BuildingEntity(buildingId);
+        HealthComponent health = Em.GetComponentData<HealthComponent>(e);
+        health.currentHealth = health.maxHealth * share;
+        Em.SetComponentData(e, health);
+    }
+
+    /// <summary>A building's health as a share of its maximum.</summary>
+    public float BuildingHealthShare(int buildingId)
+    {
+        HealthComponent health = Em.GetComponentData<HealthComponent>(BuildingEntity(buildingId));
+        return health.currentHealth / health.maxHealth;
+    }
+
     /// <summary>Adds construction work to a building slot for the next boundary (what Builders do from Task 9).</summary>
     public void AddWork(int buildingId, float work)
     {

@@ -138,6 +138,7 @@ namespace WAR2D.Sim
             }
             if (terrainChanged) data.RebuildOpaqueSum();
             if (deferred.Count > 0) context.Commands.Requeue(deferred);
+            if (clock.Running) AutoWork(data, context, clock.UnitCount, clock.Tick); // v0.16: after the players' orders, which win
             if (context.Diplomacy.Dirty) context.Diplomacy.CopyTo(data);
         }
 

@@ -87,6 +87,9 @@ namespace WAR2D.Sim
         public float SeparationStrength;
         /// <summary>Formations (v0.16, <c>&lt;Formation&gt;</c>): slot spacing, the loose radius, the slot-steering radius and the lost distance, in tiles.</summary>
         public float FormationSpacing, FormationLoose, FormationSlot, FormationLost;
+        /// <summary>Idle Builders' own work (v0.16, <c>&lt;AutoWork&gt;</c>): how far they look (tiles), the repair share, and ticks between looks.</summary>
+        public float AutoWorkRadius, AutoWorkRepairBelow;
+        public int AutoWorkSlice;
         /// <summary>The largest body radius, so a separation scan reaches every possible neighbour.</summary>
         public float SeparationMargin;
         /// <summary>Percent of max health an unpaid unit loses per second.</summary>
@@ -431,6 +434,9 @@ namespace WAR2D.Sim
                 FormationLoose = config.Formation.LooseTiles,
                 FormationSlot = config.Formation.SlotTiles,
                 FormationLost = config.Formation.LostTiles,
+                AutoWorkRadius = config.AutoWork.Radius,
+                AutoWorkRepairBelow = config.AutoWork.RepairBelow,
+                AutoWorkSlice = math.max(1, config.AutoWork.SliceTicks),
                 SeparationMargin = maxRadius,
                 DecayPercentPerSecond = config.Resources.DecayPercentPerSecond,
                 MaxUnitsPerPlayer = sim.MaxUnitsPerPlayer,
