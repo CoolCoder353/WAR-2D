@@ -1,3 +1,5 @@
+using Unity.Mathematics;
+
 namespace WAR2D.Sim
 {
     /// <summary>What a unit does about enemies and its order. Stored on <see cref="Unit"/> and gathered to <see cref="SimData.Stance"/>.</summary>
@@ -23,6 +25,12 @@ namespace WAR2D.Sim
         public int WorkTile;
         /// <summary>One of <see cref="WorkKinds"/>; every non-work order carries None, which clears work.</summary>
         public byte WorkKind;
+        /// <summary>The unit's slot relative to the goal (v0.16 formations).</summary>
+        public float2 Offset;
+        /// <summary>The group's speed; 0 when not in formation (every other order clears the formation).</summary>
+        public float GroupSpeed;
+        /// <summary>The order handle whose <see cref="SimData.OrderLead"/> the whole formation shares (its size classes get separate handles).</summary>
+        public int LeadSlot;
     }
 
     /// <summary>What a Builder or Digger is working on (<see cref="Unit.WorkKind"/>).</summary>

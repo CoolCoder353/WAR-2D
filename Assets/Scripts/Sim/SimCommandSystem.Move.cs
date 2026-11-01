@@ -76,9 +76,62 @@ namespace WAR2D.Sim
                     AddPending(data, slots, new PendingOrder { Slot = -1, Stance = stance });
                 return;
             }
+            if (command.Formation) AssignFormation(data, context, command.Tile);
             int tick = SystemAPI.GetSingleton<SimClock>().Tick;
             for (int sizeClass = 0; sizeClass < moversByClass.Length; sizeClass++)
                 Issue(data, context, moversByClass[sizeClass], sizeClass, command.Tile, stance, tick, command.OwnerId);
+            if (command.Formation) ApplyFormationPending(data);
+        }
+
+        private readonly List<int> formationSlots = new List<int>();
+        private readonly List<UnitType> formationTypes = new List<UnitType>();
+        private readonly List<float2> formationPositions = new List<float2>();
+        private readonly List<float2> formationOffsets = new List<float2>();
+        private float formationSpeed;
+
+        /// <summary>
+        /// Lays the movers of a formation order into a block at the goal (<see cref="FormationRules"/>), pulling slots on rock
+        /// or a footprint in towards the goal until they are on open floor, and records the slowest member's speed. Two or
+        /// more movers only (a Shift-queued order queues waypoints as before and doesn't form up).
+        /// </summary>
+        private void AssignFormation(SimData data, SimContext context, int2 goal)
+        {
+            formationSlots.Clear(); formationTypes.Clear(); formationPositions.Clear();
+            foreach (List<int> list in moversByClass) formationSlots.AddRange(list);
+            if (formationSlots.Count < 2) { formationSlots.Clear(); return; }
+            formationSpeed = float.MaxValue;
+            foreach (int s in formationSlots)
+            {
+                formationTypes.Add((UnitType)data.Type[s]);
+                formationPositions.Add(data.Positions[s]);
+                formationSpeed = math.min(formationSpeed, data.SpeedByType[data.Type[s]]);
+            }
+            float2 centre = (float2)goal + 0.5f;
+            FormationRules.Layout(formationTypes, formationPositions, centre, data.FormationSpacing, formationOffsets);
+            for (int k = 0; k < formationOffsets.Count; k++)
+            {
+                float2 offset = formationOffsets[k];
+                for (int tries = 0; tries < 4 && !context.Map.IsWalkable((int2)math.floor(centre + offset)); tries++) offset *= 0.5f;
+                formationOffsets[k] = context.Map.IsWalkable((int2)math.floor(centre + offset)) ? offset : float2.zero;
+            }
+        }
+
+        /// <summary>Gives each formation mover's pending order its slot and the group speed.</summary>
+        private void ApplyFormationPending(SimData data)
+        {
+            int lead = -1; // one handle keeps the whole formation's leader distance (each size class has its own handle)
+            for (int k = 0; k < formationSlots.Count && lead < 0; k++)
+                if (data.PendingOrders.TryGetValue(data.IdOf[formationSlots[k]], out PendingOrder first) && first.Slot >= 0) lead = first.Slot;
+            for (int k = 0; k < formationSlots.Count; k++)
+            {
+                int id = data.IdOf[formationSlots[k]];
+                if (!data.PendingOrders.TryGetValue(id, out PendingOrder order) || order.Slot < 0) continue;
+                order.Offset = formationOffsets[k];
+                order.GroupSpeed = formationSpeed;
+                order.LeadSlot = lead;
+                data.PendingOrders[id] = order;
+            }
+            formationSlots.Clear();
         }
 
         /// <summary>Sets off the owner's listed Suicide bombers (or those inside the box) at the next combat stage.</summary>

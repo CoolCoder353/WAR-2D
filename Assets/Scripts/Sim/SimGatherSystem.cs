@@ -101,6 +101,9 @@ namespace WAR2D.Sim
                 LastHitBy = data.LastHitBy,
                 OrderSlot = data.OrderSlot,
                 Unpaid = data.Unpaid,
+                FormationOffset = data.FormationOffset,
+                FormationSpeed = data.FormationSpeed,
+                FormationLead = data.FormationLead,
                 Stance = data.Stance,
                 WorkTile = data.WorkTile,
                 WorkKind = data.WorkKind,
@@ -134,6 +137,9 @@ namespace WAR2D.Sim
         [NativeDisableParallelForRestriction] public NativeArray<int> LastHitBy;
         [NativeDisableParallelForRestriction] public NativeArray<int> OrderSlot;
         [NativeDisableParallelForRestriction] public NativeArray<byte> Unpaid;
+        [NativeDisableParallelForRestriction] public NativeArray<float2> FormationOffset;
+        [NativeDisableParallelForRestriction] public NativeArray<float> FormationSpeed;
+        [NativeDisableParallelForRestriction] public NativeArray<int> FormationLead;
         [NativeDisableParallelForRestriction] public NativeArray<byte> Stance;
         [NativeDisableParallelForRestriction] public NativeArray<float> DigProgress;
         [NativeDisableParallelForRestriction] public NativeArray<int> DigAt;
@@ -161,6 +167,9 @@ namespace WAR2D.Sim
                 }
                 unit.WorkTile = order.WorkTile;
                 unit.WorkKind = order.WorkKind;
+                unit.FormationOffset = order.Offset; // v0.16: a formation order sets them, every other order clears them
+                unit.FormationSpeed = order.GroupSpeed;
+                unit.FormationLead = order.LeadSlot;
             }
             if (PendingMoves.TryGetValue(unit.Id, out float2 moved)) unit.Position = moved;
 
@@ -177,6 +186,9 @@ namespace WAR2D.Sim
             LastHitBy[index] = unit.LastHitBy;
             OrderSlot[index] = unit.OrderSlot;
             Unpaid[index] = unit.Unpaid;
+            FormationOffset[index] = unit.FormationOffset;
+            FormationSpeed[index] = unit.FormationSpeed;
+            FormationLead[index] = unit.FormationLead;
             Stance[index] = unit.Stance;
             WorkTile[index] = unit.WorkTile;
             DigProgress[index] = unit.DigProgress;

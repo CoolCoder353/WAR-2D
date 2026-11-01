@@ -57,6 +57,13 @@ namespace WAR2D.Sim
                 OrderLive = data.OrderLive,
                 OrderReady = data.OrderReady,
                 OrderFollowers = data.OrderFollowers,
+                FormationOffset = data.FormationOffset,
+                FormationSpeed = data.FormationSpeed,
+                OrderLead = data.OrderLead,
+                FormationLead = data.FormationLead,
+                Loose = data.FormationLoose,
+                SlotTiles = data.FormationSlot,
+                Lost = data.FormationLost,
                 RouteMisses = data.RouteMisses.AsParallelWriter(),
                 SpeedByType = data.SpeedByType,
                 Width = data.Width,
@@ -95,8 +102,13 @@ namespace WAR2D.Sim
                 OrderSlot = data.OrderSlot,
                 Arrived = data.Arrived,
                 Health = data.Health,
+                Positions = data.Positions,
+                OrderGoal = data.OrderGoal,
+                FormationSpeed = data.FormationSpeed,
+                FormationLead = data.FormationLead,
                 Count = count,
                 Followers = data.OrderFollowers,
+                Lead = data.OrderLead,
             }.Schedule(state.Dependency);
 
             state.Dependency = new WriteBackMovementJob
@@ -134,6 +146,12 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<byte> OrderReady;
         /// <summary>Last tick's follower count per order: a bigger group stops farther from the goal.</summary>
         [ReadOnly] public NativeArray<int> OrderFollowers;
+        /// <summary>v0.16 formations: each unit's slot and group speed, each order's leader distance, and the radii.</summary>
+        [ReadOnly] public NativeArray<float2> FormationOffset;
+        [ReadOnly] public NativeArray<float> FormationSpeed;
+        [ReadOnly] public NativeArray<float> OrderLead;
+        [ReadOnly] public NativeArray<int> FormationLead;
+        public float Loose, SlotTiles, Lost;
         public NativeQueue<int2>.ParallelWriter RouteMisses;
         [ReadOnly] public NativeArray<float> SpeedByType;
         public int Width, Height;
@@ -162,40 +180,62 @@ namespace WAR2D.Sim
             // Moving units ignore their target; the others hold to fight it.
             if ((Target[i] < 0 || Stance[i] == Stances.Move) && (uint)slot < (uint)OrderLive.Length && OrderLive[slot] != 0)
             {
-                byte direction = Direction(slot, position);
-                float2 toGoal = OrderGoal[slot] - position;
-                float distance = math.length(toGoal);
-                // A group packs around the goal: the stop radius grows with the square root of its size.
-                float arriveRadius = 0.5f + 0.4f * math.sqrt(math.max(1, OrderFollowers[slot]));
-                if (direction == FlowDirections.AtGoal)
+                bool steered = false;
+                float groupSpeed = FormationSpeed[i];
+                if (groupSpeed > 0f)
                 {
-                    // On a goal cell: close in on the goal itself, then stop.
-                    if (distance <= arriveRadius) Arrived[i] = 1;
-                    else velocity = speed * toGoal / distance;
+                    // v0.16 formation: hold to the group's speed until near its own slot or lost behind the leader,
+                    // and close to the goal walk straight to the slot (slots are on open floor; the integrator slides on walls).
+                    float2 goal = OrderGoal[slot];
+                    float2 seat = goal + FormationOffset[i];
+                    float toSeat = math.distance(position, seat), fromGoal = math.distance(position, goal);
+                    int lead = FormationLead[i];
+                    bool lost = (uint)lead < (uint)OrderLead.Length && fromGoal - OrderLead[lead] > Lost;
+                    if (!lost && toSeat > Loose) speed = math.min(speed, groupSpeed);
+                    if (fromGoal <= SlotTiles)
+                    {
+                        steered = true;
+                        if (toSeat <= 0.25f) Arrived[i] = 1;
+                        else velocity = speed * (seat - position) / toSeat;
+                    }
                 }
-                else if (FlowDirections.IsStep(direction))
+                if (!steered)
                 {
-                    // Aim at the centre of the next cell rather than along the raw step, so units
-                    // line up with corridors and gaps the cell grid says are open.
-                    int2 cell = (int2)math.floor(position / FieldCellSize);
-                    float2 next = ((float2)(cell + FlowDirections.Step(direction)) + 0.5f) * FieldCellSize;
-                    velocity = speed * math.normalizesafe(next - position, math.normalize((float2)FlowDirections.Step(direction)));
-                }
-                else if (NearestFieldCell(slot, position, out float2 rejoin))
-                {
-                    // On a floor tile in a field cell that holds wall (the field runs on 2×2-tile cells, so
-                    // cave edges are full of these): step back onto the field instead of heading straight
-                    // at the goal, which would pin the unit against the wall.
-                    velocity = speed * math.normalizesafe(rejoin - position);
-                }
-                else
-                {
-                    // Off the route (or the route is not built yet): head straight for the goal, and
-                    // once the route exists, report the sector so the route grows to cover it.
-                    if (distance <= arriveRadius) Arrived[i] = 1;
-                    else velocity = speed * toGoal / distance;
-                    if (OrderReady[slot] != 0 && (i + Tick) % Slice == 0)
-                        RouteMisses.Enqueue(new int2(slot, SectorOf((int2)math.floor(position))));
+                    byte direction = Direction(slot, position);
+                    float2 toGoal = OrderGoal[slot] - position;
+                    float distance = math.length(toGoal);
+                    // A group packs around the goal: the stop radius grows with the square root of its size.
+                    float arriveRadius = 0.5f + 0.4f * math.sqrt(math.max(1, OrderFollowers[slot]));
+                    if (direction == FlowDirections.AtGoal)
+                    {
+                        // On a goal cell: close in on the goal itself, then stop.
+                        if (distance <= arriveRadius) Arrived[i] = 1;
+                        else velocity = speed * toGoal / distance;
+                    }
+                    else if (FlowDirections.IsStep(direction))
+                    {
+                        // Aim at the centre of the next cell rather than along the raw step, so units
+                        // line up with corridors and gaps the cell grid says are open.
+                        int2 cell = (int2)math.floor(position / FieldCellSize);
+                        float2 next = ((float2)(cell + FlowDirections.Step(direction)) + 0.5f) * FieldCellSize;
+                        velocity = speed * math.normalizesafe(next - position, math.normalize((float2)FlowDirections.Step(direction)));
+                    }
+                    else if (NearestFieldCell(slot, position, out float2 rejoin))
+                    {
+                        // On a floor tile in a field cell that holds wall (the field runs on 2×2-tile cells, so
+                        // cave edges are full of these): step back onto the field instead of heading straight
+                        // at the goal, which would pin the unit against the wall.
+                        velocity = speed * math.normalizesafe(rejoin - position);
+                    }
+                    else
+                    {
+                        // Off the route (or the route is not built yet): head straight for the goal, and
+                        // once the route exists, report the sector so the route grows to cover it.
+                        if (distance <= arriveRadius) Arrived[i] = 1;
+                        else velocity = speed * toGoal / distance;
+                        if (OrderReady[slot] != 0 && (i + Tick) % Slice == 0)
+                            RouteMisses.Enqueue(new int2(slot, SectorOf((int2)math.floor(position))));
+                    }
                 }
             }
 
@@ -353,16 +393,25 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<int> OrderSlot;
         [ReadOnly] public NativeArray<byte> Arrived;
         [ReadOnly] public NativeArray<float> Health;
+        [ReadOnly] public NativeArray<float2> Positions;
+        [ReadOnly] public NativeArray<float2> OrderGoal;
+        [ReadOnly] public NativeArray<float> FormationSpeed;
+        [ReadOnly] public NativeArray<int> FormationLead;
         public int Count;
         public NativeArray<int> Followers;
+        /// <summary>v0.16: each formation's leading follower's distance to the goal, under its lead handle (<see cref="float.MaxValue"/> when none).</summary>
+        public NativeArray<float> Lead;
 
         public void Execute()
         {
-            for (int h = 0; h < Followers.Length; h++) Followers[h] = 0;
+            for (int h = 0; h < Followers.Length; h++) { Followers[h] = 0; Lead[h] = float.MaxValue; }
             for (int i = 0; i < Count; i++)
             {
                 int slot = OrderSlot[i];
-                if ((uint)slot < (uint)Followers.Length && Arrived[i] == 0 && Health[i] > 0f) Followers[slot]++;
+                if ((uint)slot >= (uint)Followers.Length || Arrived[i] != 0 || Health[i] <= 0f) continue;
+                Followers[slot]++;
+                int lead = FormationLead[i];
+                if (FormationSpeed[i] > 0f && (uint)lead < (uint)Lead.Length) Lead[lead] = math.min(Lead[lead], math.distance(Positions[i], OrderGoal[slot]));
             }
         }
     }
@@ -388,6 +437,9 @@ namespace WAR2D.Sim
             if (Arrived[index] != 0)
             {
                 unit.OrderSlot = -1;
+                unit.FormationSpeed = 0f; // v0.16: the formation ends at the slot
+                unit.FormationOffset = float2.zero;
+                unit.FormationLead = 0;
                 Arrivals.Enqueue(unit.Id);
                 if (unit.Stance == Stances.Move || unit.Stance == Stances.AttackMove) unit.Stance = Stances.Idle;
             }
