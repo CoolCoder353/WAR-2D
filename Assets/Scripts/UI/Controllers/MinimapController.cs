@@ -367,14 +367,25 @@ namespace WAR2D.UI
             ShowSettings();
             ClientFog fog = ClientFog.Current;
             WorldStateManager wsm = WorldStateManager.Instance;
-            if (fog.State == null || wsm == null || wsm.Map == null) return;
-            if (texture == null || texture.Width != fog.Width || texture.Height != fog.Height || texture.CellSize != fog.CellSize)
+            if (wsm == null || wsm.Map == null) return;
+            // While placing HQs the sim isn't ticking, so no fog has arrived yet (v0.16, Figma P): size the texture from the
+            // map and the fog grid's cell size, and draw the public terrain revealed.
+            int width, height, cellSize;
+            if (fog.State != null) { width = fog.Width; height = fog.Height; cellSize = fog.CellSize; }
+            else if (starts != null)
+            {
+                cellSize = Mathf.Max(1, Config.ConfigLoader.LoadConfig().Simulation.FogCellSize);
+                width = (wsm.Map.Grid.Width + cellSize - 1) / cellSize;
+                height = (wsm.Map.Grid.Height + cellSize - 1) / cellSize;
+            }
+            else return;
+            if (texture == null || texture.Width != width || texture.Height != height || texture.CellSize != cellSize)
             {
                 texture?.Dispose();
                 var grid = wsm.Map.Grid;
-                texture = new MinimapTexture(fog.Width, fog.Height, fog.CellSize, grid.TileAt);
+                texture = new MinimapTexture(width, height, cellSize, grid.TileAt);
                 image.style.backgroundImage = new StyleBackground(texture.Texture);
-                float aspect = (float)fog.Width / fog.Height;
+                float aspect = (float)width / height;
                 image.style.width = aspect >= 1f ? Length.Percent(100) : Length.Percent(100 * aspect);
                 image.style.height = aspect >= 1f ? Length.Percent(100 / aspect) : Length.Percent(100);
                 redrawTimer = 0f;
