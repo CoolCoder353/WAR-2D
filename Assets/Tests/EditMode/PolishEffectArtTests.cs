@@ -7,7 +7,7 @@ using WAR2D.Art.Render;
 /// <summary>The polish effects' generated frames (2026-10-30): palette pixel art, drawn, and ground marks that fade out.</summary>
 public class PolishEffectArtTests
 {
-    private static readonly string[] Ids = { "Scorch", "ScorchLarge", "Rubble1", "Rubble2", "Rubble3", "Rubble5", "Tracks", "Smoke", "Fire", "GemSparkle" };
+    private static readonly string[] Ids = { "Scorch", "ScorchLarge", "Rubble1", "Rubble2", "Rubble3", "Rubble5", "Tracks", "Smoke", "Fire", "GemSparkle", "HitSpark", "DustPuff" };
     private static readonly string[] Decals = { "Scorch", "ScorchLarge", "Rubble1", "Rubble2", "Rubble3", "Rubble5" };
 
     private static int Opaque(EffectFrame f)

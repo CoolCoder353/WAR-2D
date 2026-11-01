@@ -66,6 +66,8 @@ Unused today: `Spawner.asset`, `Test.asset` and the `Pallets` tile palette (remo
 | `Tracks` | 1×1 | 4 (fade) × 4 directions | `Effects` atlas, pooled in `Decals` (768): tread marks every half tile behind Tanks, Heavies and Artillery on screen; hold 3 s, fade over 4 s (polish) |
 | `Smoke` / `Fire` | 1×1 | 6 / 4 | `Effects` atlas, pooled (160 / 96): from finished buildings on screen under half health (smoke, rising) and a quarter (fire too) (polish) |
 | `GemSparkle` | 1×1 | 4 | `Effects` atlas, pooled (48): once a second on the gem tile each finished Miner on screen faces (its payout), with `gem_mined` at most every 0.4 s (polish) |
+| `HitSpark` | 1×1 | 3 | `Effects` atlas, pooled (128): where a plain, Sniper or Gun turret tracer reaches its target, silent (polish A) |
+| `DustPuff` | 1×1 | 5 | `Effects` atlas, pooled (96): where a new own unit appears beside its producer (polish E), and ringed round a building's footprint as it is finished (polish J) |
 | `DigDebris` | 1×1 | 4 | `Effects` atlas; unused until v0.7 |
 | `RepairSparks` | 1×1 | 4 | `Effects` atlas; unused until v0.7 |
 | `ConstructionOverlay` | 1×1 (tiled over the footprint) | 4 | `Effects` atlas; unused until v0.7 |

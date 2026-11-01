@@ -21,7 +21,7 @@ public class ConfigParserTests
   <Alerts><ThrottleSeconds>10</ThrottleSeconds><AreaTiles>32</AreaTiles><ShowSeconds>8</ShowSeconds></Alerts>
   <Siege><BuildPower>25</BuildPower><DemolishRefund>0.5</DemolishRefund><RepairCostPerHealth>0.2</RepairCostPerHealth><WorkReach>1.6</WorkReach><DigTime>1.5</DigTime><GemPayout>150</GemPayout><WallCost>5</WallCost><WallHealth>150</WallHealth><MaxWallLine>64</MaxWallLine><BlastRadius>2.5</BlastRadius><BlastDamage>200</BlastDamage><RadarClearSeconds>5</RadarClearSeconds><RadarAlertCooldownSeconds>30</RadarAlertCooldownSeconds><JamRadius>12</JamRadius><JamSight>3</JamSight></Siege>
   <Audio><BattleDeathsPerSecond>3</BattleDeathsPerSecond><BattleHoldSeconds>20</BattleHoldSeconds></Audio>
-  <Replays><Enabled>1</Enabled><MaxMegabytes>512</MaxMegabytes><SendKilobytesPerSecond>1024</SendKilobytesPerSecond><KeepCount>50</KeepCount></Replays>
+  <Replays><Enabled>1</Enabled><MaxMegabytes>512</MaxMegabytes><KeepCount>50</KeepCount></Replays>
   <Ai><Callsigns>Cmdr. A, Maj. B, Capt. C, Col. D, Lt. E, Maj. F, Capt. G, Cmdr. H, Col. I</Callsigns>
     <Difficulty name=""Easy""><ThinkSeconds>1.0</ThinkSeconds><ActionsPerMinute>30</ActionsPerMinute><ReactionSeconds>6</ReactionSeconds><Insight>0.2</Insight><Attention>0.3</Attention><Ambition>0.4</Ambition><Mistakes>0.25</Mistakes><Peace>Always</Peace><GiftsSurplus>0</GiftsSurplus></Difficulty>
     <Difficulty name=""Normal""><ThinkSeconds>0.5</ThinkSeconds><ActionsPerMinute>80</ActionsPerMinute><ReactionSeconds>2</ReactionSeconds><Insight>0.6</Insight><Attention>0.7</Attention><Ambition>0.75</Ambition><Mistakes>0.1</Mistakes><Peace>UnlessWinning</Peace><GiftsSurplus>1</GiftsSurplus></Difficulty>

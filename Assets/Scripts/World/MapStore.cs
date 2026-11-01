@@ -51,6 +51,32 @@ namespace WAR2D.World
         /// <summary>The same tiles as <see cref="ChangedSinceStart"/>, for a walk without an enumerator allocation (the AI's team view).</summary>
         internal HashSet<int> ChangedSinceStartSet => changedSinceStart;
 
+        private readonly List<HashSet<int>> watchers = new List<HashSet<int>>();
+
+        /// <summary>
+        /// Adds <paramref name="into"/> to the sets every later tile change is added to (see <see cref="MarkChanged"/>), and
+        /// adds every tile changed so far. Terrain interest keeps one per client so it walks only what that client was not
+        /// yet told, not every tile changed since the match started.
+        /// </summary>
+        public void Watch(HashSet<int> into)
+        {
+            if (into == null || watchers.Contains(into)) return;
+            watchers.Add(into);
+            into.UnionWith(changedSinceStart);
+        }
+
+        /// <summary>Stops adding changes to a set given to <see cref="Watch"/>.</summary>
+        public void Unwatch(HashSet<int> into) => watchers.Remove(into);
+
+        /// <summary>
+        /// Tells the watchers that what a client may know of a tile changed without its kind changing (a wall's health).
+        /// Tick boundary only, like <see cref="SetTile"/>, which calls it too.
+        /// </summary>
+        public void MarkChanged(int index)
+        {
+            for (int i = 0; i < watchers.Count; i++) watchers[i].Add(index);
+        }
+
         /// <summary>
         /// Changes a tile's kind now and records it for the flow-field cache (<see cref="ChangedTiles"/>) and
         /// replication (<see cref="ChangedSinceStart"/>). Refuses border tiles, off-map tiles and unknown kinds
@@ -66,6 +92,7 @@ namespace WAR2D.World
             tiles[i] = (byte)type;
             ChangedTiles.Add(tile);
             changedSinceStart.Add(i);
+            MarkChanged(i);
             return true;
         }
 

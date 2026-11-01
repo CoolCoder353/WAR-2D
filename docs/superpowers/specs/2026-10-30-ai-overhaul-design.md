@@ -264,7 +264,7 @@ Not something the code can do: a short checklist goes into [playtesting.md](../.
 | Branch | This branch (`release/v0.13-v0.14`), on top of the owner's uncommitted `GameConfig.xml` tuning |
 | Scope | All of the recommendations (intelligence, variability, adaptability, speed, the difficulty model) |
 
-## 14. Open decisions (defaults built)
+## 14. Decisions (defaults built; the owner signed them off with the balance, 2026-11-01)
 
 | # | Question | Default |
 | --- | --- | --- |

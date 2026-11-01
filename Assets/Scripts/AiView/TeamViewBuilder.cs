@@ -79,6 +79,7 @@ namespace WAR2D.AiView
             public int Grid = -1;
             public Func<float2, bool> Sees;
             public Func<int, bool> MayKnowHidden;
+            public Func<int, TerrainCell> CellOf;
         }
 
         private readonly SimContext sim;
@@ -87,7 +88,6 @@ namespace WAR2D.AiView
         private readonly List<Seat> seatList = new List<Seat>();
         private readonly List<BuildingView> buildingViews = new List<BuildingView>();
         private readonly HashSet<int> buildingIds = new HashSet<int>();
-        private readonly List<TerrainCell> terrainNow = new List<TerrainCell>();
         private readonly List<TerrainCell> terrainScratch = new List<TerrainCell>();
         private readonly List<int> slotByIndex = new List<int>(16);
         private readonly List<float2> pendingDeaths = new List<float2>();
@@ -137,6 +137,7 @@ namespace WAR2D.AiView
             if (!seats.TryGetValue(owner, out Seat seat)) return;
             seats.Remove(owner);
             seatList.Remove(seat);
+            seat.Terrain.Unwatch();
         }
 
         /// <summary>True when the owner is tracked.</summary>
@@ -412,12 +413,12 @@ namespace WAR2D.AiView
             TeamView view = seat.View;
             view.TerrainChanged.Clear();
             if (sim.Map.ChangedSinceStart.Count == 0) return;
-            terrainNow.Clear();
-            foreach (int index in sim.Map.ChangedSinceStartSet)
-                terrainNow.Add(TerrainCellOf != null ? TerrainCellOf(index) : new TerrainCell { Index = index, Type = data.Tiles[index] });
+            if (!seat.Terrain.Watching) seat.Terrain.Watch(sim.Map);
+            if (seat.Terrain.PendingCount == 0) return;
+            seat.CellOf ??= index => TerrainCellOf != null ? TerrainCellOf(index) : new TerrainCell { Index = index, Type = seat.Data.Tiles[index] };
             while (true)
             {
-                int cells = seat.Terrain.Select(terrainNow, seat.Sees, view.Width, sim.Map.InitialTiles, terrainScratch);
+                int cells = seat.Terrain.SelectPending(seat.CellOf, seat.Sees, view.Width, sim.Map.InitialTiles, terrainScratch);
                 foreach (TerrainCell c in terrainScratch)
                 {
                     view.Tiles[c.Index] = c.Type;
@@ -453,6 +454,7 @@ namespace WAR2D.AiView
             if (disposed) return;
             disposed = true;
             sim.Settled -= CollectEvents;
+            foreach (Seat seat in seatList) seat.Terrain.Unwatch();
             if (ownUnits.IsCreated) ownUnits.Dispose();
             if (otherUnits.IsCreated) otherUnits.Dispose();
             if (fog.IsCreated) fog.Dispose();

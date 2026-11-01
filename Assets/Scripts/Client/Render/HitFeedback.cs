@@ -21,6 +21,16 @@ namespace WAR2D.Client.Render
         /// <summary>True while a hit at <paramref name="hitAt"/> still flashes at <paramref name="now"/>.</summary>
         public static bool Flashing(float hitAt, float now) => now >= hitAt && now - hitAt < FlashSeconds;
 
+        /// <summary>Seconds a building just finished pulses bright (polish J), in two blinks.</summary>
+        public const float FinishSeconds = 0.36f;
+
+        /// <summary>True while a building finished at <paramref name="finishedAt"/> is bright: the first and last thirds of the pulse.</summary>
+        public static bool Finishing(float finishedAt, float now)
+        {
+            float age = now - finishedAt;
+            return age >= 0f && age < FinishSeconds && (age < FinishSeconds / 3f || age >= FinishSeconds * 2f / 3f);
+        }
+
         /// <summary>
         /// The trail's next level, a health fraction never below <paramref name="health"/>: it follows healing at once, holds after a
         /// hit, then drains toward the health.

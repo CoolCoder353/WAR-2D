@@ -30,6 +30,9 @@ namespace WAR2D.Client.Render
         private readonly BuildingPacking.Lists lists = new BuildingPacking.Lists();
         /// <summary>Per building: its health fraction last frame, when it was last hit, its bar's recent-damage trail, and whether it was a ghost.</summary>
         private readonly Dictionary<int, (float health, float hitAt, float trail, bool ghost)> hits = new Dictionary<int, (float, float, float, bool)>();
+        /// <summary>Per building: its progress last frame and when it was finished (polish J's pulse).</summary>
+        private readonly Dictionary<int, (byte progress, float finishedAt)> finish = new Dictionary<int, (byte, float)>();
+        private readonly Func<int, bool> finishing;
         private readonly HashSet<int> seen = new HashSet<int>();
         private readonly List<int> gone = new List<int>();
         private float now, dt;
@@ -47,6 +50,7 @@ namespace WAR2D.Client.Render
             frames = new BuildingFrames(atlas, effects);
             flashing = id => hits.TryGetValue(id, out var h) && HitFeedback.Flashing(h.hitAt, now);
             trailOf = id => hits.TryGetValue(id, out var h) ? h.trail : 0f;
+            finishing = id => finish.TryGetValue(id, out var f) && HitFeedback.Finishing(f.finishedAt, now);
 
             buildingMaterial = new Material(shader) { name = "Building instances", renderQueue = 2996 };
             buildingMaterial.SetTexture("_MainTex", atlas != null ? atlas.Texture : Texture2D.whiteTexture);
@@ -132,7 +136,7 @@ namespace WAR2D.Client.Render
                 headsOf = known;
                 headOf = known.HeadOf;
             }
-            BuildingPacking.Pack(known.Entries.Values, frames, colorOf, WorldStateManager.GetBuildingSize, time, flashing, lists, headOf, barMode, selected, trailOf);
+            BuildingPacking.Pack(known.Entries.Values, frames, colorOf, WorldStateManager.GetBuildingSize, time, flashing, lists, headOf, barMode, selected, trailOf, finishing);
             Submit(lists.Buildings, ref buildings, ref buildingCapacity, buildingMaterial);
             Submit(lists.Overlays, ref overlays, ref overlayCapacity, overlayMaterial);
             Submit(lists.Bars, ref bars, ref barCapacity, barMaterial);
@@ -159,11 +163,19 @@ namespace WAR2D.Client.Render
                     hits[id] = (health, hitAt, trail, e.Ghost);
                 }
                 else hits[id] = (health, float.NegativeInfinity, health, e.Ghost);
+                // A blueprint seen rising that reaches 100 % was just finished; one first seen finished never pulses.
+                bool tracked = finish.TryGetValue(id, out var f);
+                bool done = tracked && f.progress < 100 && e.Progress >= 100 && !e.Ghost;
+                finish[id] = (e.Progress, done ? now : tracked ? f.finishedAt : float.NegativeInfinity);
             }
             if (hits.Count == seen.Count) return;
             gone.Clear();
             foreach (int id in hits.Keys) if (!seen.Contains(id)) gone.Add(id);
-            foreach (int id in gone) hits.Remove(id);
+            foreach (int id in gone)
+            {
+                hits.Remove(id);
+                finish.Remove(id);
+            }
         }
 
         private void Submit(List<UnitInstance> list, ref GraphicsBuffer buffer, ref int capacity, Material material)

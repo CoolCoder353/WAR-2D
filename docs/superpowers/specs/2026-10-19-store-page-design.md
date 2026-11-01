@@ -1,6 +1,6 @@
 # Steam store page: plan
 
-The plan for WAR-2D's Steam store page (app **1975300**), from "Coming Soon" through Early Access release. It was written on 2026-10-19 after a read-only look at the Steamworks dashboard. **Nothing in Steamworks has been changed yet.** Every Steamworks edit below is a step the owner approves first.
+The plan for WAR-2D's Steam store page (app **1975300**), from "Coming Soon" through Early Access release. It was written on 2026-10-19 after a read-only look at the Steamworks dashboard. Every Steamworks edit below was a step the owner approved first. **Status (owner, 2026-11-01): done.** The owner marked the store page work complete; the checklist in §9 is ticked on their word.
 
 Owner decisions (2026-10-19):
 
@@ -214,19 +214,19 @@ Before uploading, a mockup of the page ([docs/store/mockup/index.html](../../sto
 
 **Saved in Steamworks on 2026-10-22, not yet submitted:** the Early Access answers, short and long description, all six capsules plus the library header and hero (English), and six screenshots (01, 02, 05, 04, 06, 07, all Gameplay and suitable for all ages). Players (Multi-player, Online PvP), system requirements, accessibility, languages and tags were already right. The owner checks the store beta page and marks the store page ready for re-review.
 
-## 9. Checklist (for the owner, in Steamworks, once approved)
+## 9. Checklist (for the owner, in Steamworks; done 2026-11-01)
 
-- [ ] Rename the app to "War: Weaponry and Resources"
-- [ ] Developer and publisher: CoolCoder64
-- [ ] Platforms: Windows and Linux + SteamOS, in both Steamworks settings and the store admin
-- [ ] Package: replace "Tank Time" $10.99 with a free package containing both depots (§5)
-- [ ] Short and long description (§3.1, §3.2)
-- [ ] Tags (§3.5), players and languages (§3.4)
-- [ ] System requirements (§3.6), controller description and accessibility (§3.7)
-- [ ] Content survey, new questions included, with the AI disclosure
-- [ ] Capsules, library assets and icons (§4.1)
-- [ ] At least 5 screenshots; trailer
-- [ ] Support info, legal lines, privacy policy URL (§3.8)
-- [ ] Preview in store beta mode, then submit the store page for review
-- [ ] Phase 2: Early Access answers (§3.3), AI opponents shipped, final screenshots
-- [ ] Phase 3: release build on `default`, build review, pick the release date (≥ 2 weeks after Coming Soon)
+- [x] Rename the app to "War: Weaponry and Resources"
+- [x] Developer and publisher: CoolCoder64
+- [x] Platforms: Windows and Linux + SteamOS, in both Steamworks settings and the store admin
+- [x] Package: replace "Tank Time" $10.99 with a free package containing both depots (§5)
+- [x] Short and long description (§3.1, §3.2)
+- [x] Tags (§3.5), players and languages (§3.4)
+- [x] System requirements (§3.6), controller description and accessibility (§3.7)
+- [x] Content survey, new questions included, with the AI disclosure
+- [x] Capsules, library assets and icons (§4.1)
+- [x] At least 5 screenshots; trailer
+- [x] Support info, legal lines, privacy policy URL (§3.8)
+- [x] Preview in store beta mode, then submit the store page for review
+- [x] Phase 2: Early Access answers (§3.3), AI opponents shipped, final screenshots
+- [x] Phase 3: release build on `default`, build review, pick the release date (≥ 2 weeks after Coming Soon)

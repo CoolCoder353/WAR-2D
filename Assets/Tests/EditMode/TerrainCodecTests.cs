@@ -76,4 +76,34 @@ public class TerrainCodecTests
         current[5].Type = (byte)TileType.Ground; // dug back to its initial kind
         Assert.AreEqual(1, interest.Update(changed, i => current[i], _ => seen, 4, initial, writer, int.MaxValue), "a change back is a change too");
     }
+
+    [Test]
+    public void AWatchingInterestWalksOnlyWhatItWasNotYetTold()
+    {
+        using MapStore map = MapStore.FromAscii(new[] { "....", "....", "....", "...." });
+        map.SetTile(new int2(1, 1), TileType.Wall); // changed before the client joined
+        var health = new byte[16];
+        Func<int, TerrainCell> cellOf = i => new TerrainCell { Index = i, Type = map.Grid.Tiles[i], Health = health[i] };
+        var interest = new TerrainInterest();
+        var into = new List<TerrainCell>();
+        bool seen = false;
+        interest.Watch(map);
+        Assert.AreEqual(1, interest.PendingCount, "joins with every tile changed so far");
+
+        Assert.AreEqual(0, interest.SelectPending(cellOf, _ => seen, 4, map.InitialTiles, into), "unseen: nothing");
+        Assert.AreEqual(1, interest.PendingCount, "an unseen change stays pending");
+        seen = true;
+        Assert.AreEqual(1, interest.SelectPending(cellOf, _ => seen, 4, map.InitialTiles, into));
+        Assert.AreEqual(0, interest.PendingCount, "a sent tile is not walked again");
+
+        health[5] = 40; // a health change keeps the kind: only MarkChanged tells the watchers
+        Assert.AreEqual(0, interest.SelectPending(cellOf, _ => seen, 4, map.InitialTiles, into));
+        map.MarkChanged(5);
+        Assert.AreEqual(1, interest.SelectPending(cellOf, _ => seen, 4, map.InitialTiles, into));
+        Assert.AreEqual(40, into[0].Health);
+
+        interest.Unwatch();
+        map.SetTile(new int2(2, 2), TileType.Wall);
+        Assert.AreEqual(0, interest.PendingCount, "an unwatched interest is no longer fed");
+    }
 }

@@ -104,9 +104,76 @@ namespace WAR2D.Net.Replication
     {
         private readonly Dictionary<int, TerrainCell> sent = new Dictionary<int, TerrainCell>();
         private readonly List<TerrainCell> scratch = new List<TerrainCell>();
+        /// <summary>Tiles that changed since this client was last told about them (fed by <see cref="MapStore.Watch"/>).</summary>
+        private readonly HashSet<int> pending = new HashSet<int>();
+        private readonly List<int> settled = new List<int>();
+        private MapStore watched;
+
+        /// <summary>True while <see cref="Watch"/> feeds this interest the map's changes.</summary>
+        public bool Watching => watched != null;
+
+        /// <summary>The tiles still waiting to be checked: changed, and not yet sent or found unchanged.</summary>
+        public int PendingCount => pending.Count;
 
         /// <summary>Forgets everything (the client left or rejoined).</summary>
-        public void Reset() => sent.Clear();
+        public void Reset()
+        {
+            sent.Clear();
+            pending.Clear();
+            if (watched != null) pending.UnionWith(watched.ChangedSinceStart); // known again from the seeded map only
+        }
+
+        /// <summary>Starts following <paramref name="map"/>'s changes, beginning with every tile changed so far.</summary>
+        public void Watch(MapStore map)
+        {
+            if (watched == map) return;
+            Unwatch();
+            watched = map;
+            map.Watch(pending);
+        }
+
+        /// <summary>Stops following the map (the client left).</summary>
+        public void Unwatch()
+        {
+            watched?.Unwatch(pending);
+            watched = null;
+            pending.Clear();
+        }
+
+        /// <summary>
+        /// Writes one batch of seen tiles from the watched changes (<see cref="SelectPending"/>); returns how many cells it
+        /// holds (0 writes nothing).
+        /// </summary>
+        public int UpdatePending(Func<int, TerrainCell> current, Func<float2, bool> sees, int width, byte[] initial, NetworkWriter writer, int maxBytes)
+        {
+            if (SelectPending(current, sees, width, initial, scratch, maxBytes) == 0) return 0;
+            TerrainCodec.Write(writer, scratch);
+            return scratch.Count;
+        }
+
+        /// <summary>
+        /// <see cref="Select"/> over the watched changes only: a tile leaves the pending set once it is sent or found equal
+        /// to what the player knows, and stays while the player's grid doesn't see it. So the walk costs the tiles this
+        /// player was not yet told about, not every tile changed since the match started.
+        /// </summary>
+        public int SelectPending(Func<int, TerrainCell> current, Func<float2, bool> sees, int width, byte[] initial, List<TerrainCell> into, int maxBytes = int.MaxValue)
+        {
+            into.Clear();
+            settled.Clear();
+            foreach (int index in pending)
+            {
+                if (!Sees(sees, index, width)) continue; // checked first: the fog read is cheaper than the cell
+                settled.Add(index);
+                TerrainCell now = current(index);
+                TerrainCell known = sent.TryGetValue(index, out TerrainCell k) ? k : new TerrainCell { Index = index, Type = initial[index] };
+                if (now.Equals(known)) continue;
+                into.Add(now);
+                if (into.Count >= TerrainCodec.MaxCells || into.Count * 8 >= maxBytes) break;
+            }
+            foreach (int index in settled) pending.Remove(index);
+            foreach (TerrainCell c in into) sent[c.Index] = c;
+            return into.Count;
+        }
 
         /// <summary>Writes one batch of seen, changed tiles; returns how many cells it holds (0 writes nothing).</summary>
         public int Update(IReadOnlyCollection<int> changed, Func<int, TerrainCell> current, Func<float2, bool> sees, int width, byte[] initial, NetworkWriter writer, int maxBytes)
