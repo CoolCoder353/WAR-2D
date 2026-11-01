@@ -162,6 +162,7 @@ namespace WAR2D.Net.Replication
         {
             int c = Find(conn);
             if (c < 0) return;
+            clients[c].Terrain.Unwatch();
             clients[c] = null;
             active[c] = false;
             interests.ResetClient(c);
@@ -176,6 +177,7 @@ namespace WAR2D.Net.Replication
             {
                 if (clients[c] == null || clients[c].VirtualSink == null || clients[c].OwnerId != ownerId) continue;
                 clients[c].Lane?.Dispose();
+                clients[c].Terrain.Unwatch();
                 clients[c] = null;
                 active[c] = false;
                 interests.ResetClient(c);
@@ -444,11 +446,11 @@ namespace WAR2D.Net.Replication
             }
         }
 
-        private readonly List<TerrainCell> terrainNow = new List<TerrainCell>();
-
         /// <summary>
         /// Sends every client the changed tiles its grid sees (see <see cref="TerrainInterest"/>). Fog only moves on
-        /// vision ticks, so the walk over changed tiles runs then, and whenever a client's fog grid was just sent.
+        /// vision ticks, so the walk runs then, and whenever a client's fog grid was just sent. Each client walks only
+        /// the tiles it was not yet told about (<see cref="TerrainInterest.SelectPending"/>), so the cost no longer grows
+        /// with every tile changed since the match started.
         /// </summary>
         private void SendTerrain(SimData data, int tick)
         {
@@ -456,25 +458,19 @@ namespace WAR2D.Net.Replication
             bool visionTick = (tick - 1) % data.VisionInterval == 0;
             int limit = BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4);
             Func<int, TerrainCell> cellOf = TerrainCellOf ?? (i => new TerrainCell { Index = i, Type = data.Tiles[i] });
-            bool read = false;
             for (int c = 0; c < MaxClients; c++)
             {
                 if (!active[c]) continue;
                 Client client = clients[c];
+                if (!client.Terrain.Watching) client.Terrain.Watch(sim.Map);
                 int grid = GridFor(client);
                 if (grid < 0 || (!visionTick && client.TerrainGrid == grid)) continue;
                 client.TerrainGrid = grid;
-                if (!read)
-                {
-                    // Every changed tile's current cell, read once for all clients.
-                    read = true;
-                    terrainNow.Clear();
-                    foreach (int index in sim.Map.ChangedSinceStart) terrainNow.Add(cellOf(index));
-                }
+                if (client.Terrain.PendingCount == 0) continue;
                 while (true)
                 {
                     writer.Position = 0;
-                    int cells = client.Terrain.Update(terrainNow, p => data.Sees(grid, p), data.Width, sim.Map.InitialTiles, writer, limit);
+                    int cells = client.Terrain.UpdatePending(cellOf, p => data.Sees(grid, p), data.Width, sim.Map.InitialTiles, writer, limit);
                     if (cells == 0) break;
                     ArraySegment<byte> payload = writer.ToArraySegment();
                     client.BytesSent += payload.Count;
@@ -555,7 +551,11 @@ namespace WAR2D.Net.Replication
             disposed = true;
             sim.Settled -= AfterBoundary;
             if (Instance == this) Instance = null;
-            foreach (Client client in clients) client?.Lane?.Dispose();
+            foreach (Client client in clients)
+            {
+                client?.Lane?.Dispose();
+                client?.Terrain.Unwatch();
+            }
             routes.Dispose();
             interests.Dispose();
             if (allSeen.IsCreated) allSeen.Dispose();

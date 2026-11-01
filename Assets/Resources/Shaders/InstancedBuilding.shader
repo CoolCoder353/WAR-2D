@@ -2,7 +2,8 @@ Shader "WAR2D/InstancedBuilding"
 {
     // Buildings as one instanced draw: each instance places its atlas frame's pivot at its position, at the
     // frame's own size (building frames differ in size and pivot, unlike the one-tile unit frames). Team pixels
-    // take the owner's colour; pad bit 1 draws a ghost (last seen: grey, dim, 60 % opaque), bit 2 a hit flash.
+    // take the owner's colour; pad bit 1 draws a ghost (last seen: grey, dim, 60 % opaque), bit 2 a hit flash, bit 4 the bright
+    // pulse of a building just finished.
     // The colour's alpha fades a blueprint.
     Properties { _MainTex ("Atlas", 2D) = "white" {} _MaskTex ("Team mask", 2D) = "black" {} _TeamGain ("Team grey to owner colour", Float) = 1.55 _PixelsPerUnit ("Pixels per unit (0 = no snapping)", Float) = 64 }
     SubShader
@@ -43,7 +44,7 @@ Shader "WAR2D/InstancedBuilding"
             float _TeamGain;
             float _PixelsPerUnit;
 
-            struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; half4 color : COLOR; half2 flags : TEXCOORD1; };
+            struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; half4 color : COLOR; half3 flags : TEXCOORD1; };
 
             static const float2 Corners[6] =
             {
@@ -64,7 +65,7 @@ Shader "WAR2D/InstancedBuilding"
                 o.color = half4((u.color & 255) / 255.0, ((u.color >> 8) & 255) / 255.0,
                                 ((u.color >> 16) & 255) / 255.0, ((u.color >> 24) & 255) / 255.0);
                 uint pad = (uint)(u.pad + 0.5);
-                o.flags = half2((pad & 1u) != 0 ? 1 : 0, (pad & 2u) != 0 ? 1 : 0);
+                o.flags = half3((pad & 1u) != 0 ? 1 : 0, (pad & 2u) != 0 ? 1 : 0, (pad & 4u) != 0 ? 1 : 0);
                 return o;
             }
 
@@ -78,6 +79,7 @@ Shader "WAR2D/InstancedBuilding"
                 c.rgb = lerp(c.rgb, grey.xxx * 0.6, i.flags.x);
                 c.a *= lerp(1, 0.6, i.flags.x);
                 c.rgb = lerp(c.rgb, half3(1, 0.25, 0.25), i.flags.y * 0.6);
+                c.rgb = lerp(c.rgb, half3(1, 1, 0.9), i.flags.z * 0.45);
                 c.a *= i.color.a;
                 return c;
             }

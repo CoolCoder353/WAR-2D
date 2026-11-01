@@ -55,7 +55,7 @@ namespace WAR2D.Client.Render
     public static class BuildingPacking
     {
         /// <summary><see cref="UnitInstance.pad"/> bits the building shader reads.</summary>
-        public const int GhostFlag = 1, FlashFlag = 2;
+        public const int GhostFlag = 1, FlashFlag = 2, FinishFlag = 4;
 
         /// <summary>The progress bar's colour (the HUD's readout gold).</summary>
         public static readonly uint ProgressColor = InstancedUnitRenderer.Pack(new Color32(0xFF, 0xC8, 0x57, 0xFF));
@@ -101,9 +101,11 @@ namespace WAR2D.Client.Render
         /// <param name="barMode">The Gameplay setting's <see cref="HealthBarMode"/>: which finished buildings get a health bar.</param>
         /// <param name="selected">True for a selected building (SelectedOnly); null when none is.</param>
         /// <param name="trailOf">A building's recent-damage trail for its health bar (<see cref="HitFeedback"/>); null draws none.</param>
+        /// <param name="finishing">True for a building that was just finished (it pulses bright); null pulses none.</param>
         public static void Pack(IEnumerable<ClientBuildings.Entry> entries, BuildingFrames frames, Func<int, uint> colorOf, Func<BuildingType, int2> sizeOf,
             float time, Func<int, bool> flashing, Lists into, Func<int, ClientBuildings.TurretHead> headOf = null,
-            int barMode = (int)HealthBarMode.DamagedOnly, Func<int, bool> selected = null, Func<int, float> trailOf = null)
+            int barMode = (int)HealthBarMode.DamagedOnly, Func<int, bool> selected = null, Func<int, float> trailOf = null,
+            Func<int, bool> finishing = null)
         {
             into.Clear();
             foreach (ClientBuildings.Entry e in entries)
@@ -121,7 +123,8 @@ namespace WAR2D.Client.Render
                 uint color = colorOf(d.ownerId) & 0x00FFFFFFu;
                 float alpha = rising ? math.lerp(StartAlpha, RisingAlpha, progress) : 1f;
                 color |= (uint)math.round(alpha * 255f) << 24;
-                int flags = (e.Ghost ? GhostFlag : 0) | (!e.Ghost && flashing(d.id) ? FlashFlag : 0);
+                int flags = (e.Ghost ? GhostFlag : 0) | (!e.Ghost && flashing(d.id) ? FlashFlag : 0)
+                    | (!e.Ghost && finishing != null && finishing(d.id) ? FinishFlag : 0);
                 into.Buildings.Add(new UnitInstance { position = centre, frame = (uint)(first + facing * count + frame), color = color, scale = 1f, pad = flags, health = 1f });
                 if (d.buildingType == BuildingType.GunTurret && frames.Head.frames > 0)
                 {

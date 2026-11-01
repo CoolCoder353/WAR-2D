@@ -138,6 +138,35 @@ public class PolishEffectsTests
             new HealthComponent { currentHealth = 100f, maxHealth = 100f }, progress);
 
     [Test]
+    public void AFinishedBuildingIsRingedWithDustSizedToIt()
+    {
+        Effects.BuildingFinished(new Vector2(10, 10), 1);
+        Assert.AreEqual(Effects.FinishPuffsMin, Effects.ActiveDust, "a 1-tile building gets the fewest puffs");
+        Effects.BuildingFinished(new Vector2(30, 30), 5);
+        Assert.AreEqual(Effects.FinishPuffsMin + 5 * Effects.FinishPuffsPerTile, Effects.ActiveDust);
+        for (int i = 0; i < 100; i++) Effects.BuildingFinished(new Vector2(i, 0), 5);
+        Assert.AreEqual(Effects.DustPool, Effects.ActiveDust, "never past the pool");
+    }
+
+    [Test]
+    public void HitSparksUseTheirOwnPool()
+    {
+        for (int i = 0; i < 1000; i++) Effects.HitSpark(new Vector2(i, 0));
+        Assert.AreEqual(Effects.HitSparkPool, Effects.ActiveHitSparks);
+        Assert.AreEqual(0, Effects.ActiveExplosions);
+    }
+
+    [Test]
+    public void AFinishedBuildingPulsesTwiceThenStops()
+    {
+        Assert.IsTrue(HitFeedback.Finishing(5f, 5.05f), "first blink");
+        Assert.IsFalse(HitFeedback.Finishing(5f, 5f + HitFeedback.FinishSeconds * 0.5f), "dark between the blinks");
+        Assert.IsTrue(HitFeedback.Finishing(5f, 5f + HitFeedback.FinishSeconds * 0.8f), "second blink");
+        Assert.IsFalse(HitFeedback.Finishing(5f, 5f + HitFeedback.FinishSeconds), "over");
+        Assert.IsFalse(HitFeedback.Finishing(float.NegativeInfinity, 5f), "never finished in sight");
+    }
+
+    [Test]
     public void ADeathOnABuildingsAnchorIsThatBuildings()
     {
         var b = new ClientBuildings();

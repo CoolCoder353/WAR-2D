@@ -209,7 +209,6 @@ namespace Config
     {
         public bool Enabled;
         public int MaxMegabytes;
-        public int SendKilobytesPerSecond;
         public int KeepCount;
     }
 

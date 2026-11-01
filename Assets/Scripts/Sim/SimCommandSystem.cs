@@ -250,7 +250,10 @@ namespace WAR2D.Sim
                     data.WallHealth[work.Tile] = math.min(work.Amount, data.WallMaxHealth);
                 }
                 else if (state == WallStates.Rising)
+                {
                     data.WallHealth[work.Tile] = math.min(data.WallMaxHealth, data.WallHealth[work.Tile] + work.Amount);
+                    context.Map.MarkChanged(work.Tile);
+                }
                 else if (state == WallStates.Built)
                 {
                     float budget = context.BudgetOf != null ? context.BudgetOf(work.OwnerId) : float.MaxValue;
@@ -262,6 +265,7 @@ namespace WAR2D.Sim
                         continue;
                     }
                     data.WallHealth[work.Tile] += restore;
+                    context.Map.MarkChanged(work.Tile);
                     context.Spend?.Invoke(work.OwnerId, restore * data.RepairCostPerHealth);
                 }
                 if (data.WallState[work.Tile] == WallStates.Rising && data.WallHealth[work.Tile] >= data.WallMaxHealth)
@@ -270,7 +274,11 @@ namespace WAR2D.Sim
             while (data.WallDamage.TryDequeue(out TileWork hit))
             {
                 if ((uint)hit.Tile >= (uint)data.WallState.Length || data.WallState[hit.Tile] == WallStates.None) continue;
-                if (data.WallState[hit.Tile] != WallStates.Blueprint) data.WallHealth[hit.Tile] -= hit.Amount;
+                if (data.WallState[hit.Tile] != WallStates.Blueprint)
+                {
+                    data.WallHealth[hit.Tile] -= hit.Amount;
+                    context.Map.MarkChanged(hit.Tile);
+                }
                 if (data.WallState[hit.Tile] == WallStates.Blueprint || data.WallHealth[hit.Tile] <= 0f)
                 {
                     RemoveWall(data, context, hit.Tile, unitCount);

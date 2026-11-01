@@ -136,6 +136,9 @@ namespace WAR2D.Art
             new ArtEntry("Smoke", ArtKind.Effect, 1, 1, 6, 1, false),
             new ArtEntry("Fire", ArtKind.Effect, 1, 1, 4, 1, false),
             new ArtEntry("GemSparkle", ArtKind.Effect, 1, 1, 4, 1, false),
+            // Polish A, E and J (2026-11-01): a spark where a bullet lands, dust where a unit is made and around a finished building.
+            new ArtEntry("HitSpark", ArtKind.Effect, 1, 1, 3, 1, false),
+            new ArtEntry("DustPuff", ArtKind.Effect, 1, 1, 5, 1, false),
 
             // Icons: command card (16×16) and cursors.
             new ArtEntry("IconMove", ArtKind.Icon, 1, 1, 1, 1, false),

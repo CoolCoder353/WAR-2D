@@ -119,7 +119,6 @@
   <Replays>
     <Enabled>1</Enabled>                                  <!-- v0.10: record matches (1) or not (0) -->
     <MaxMegabytes>512</MaxMegabytes>                      <!-- v0.10: a recording stops (and is kept) past this size -->
-    <SendKilobytesPerSecond>1024</SendKilobytesPerSecond> <!-- v0.10: per player, after GameOver -->
     <KeepCount>50</KeepCount>                             <!-- v0.10: newest replays kept in the Replays folder -->
   </Replays>
 

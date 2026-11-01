@@ -10,8 +10,8 @@ namespace WAR2D.Client
     /// The polish effects (docs/polish.md) that follow what the client already knows, owned by <see cref="ClientWorld"/>:
     /// smoke and fire on damaged buildings, a glint and <c>gem_mined</c> on the gem tile a Miner works, the construction loop
     /// under the player's own blueprints, <c>wall_hit</c> when a seen wall loses health, <c>unit_produced</c> for a new own
-    /// unit beside its producer, scorch where a unit died, tread marks behind vehicles, and building deaths sized to the
-    /// building with rubble left behind. It reads only replicated state, so it shows nothing a client couldn't already see.
+    /// unit beside its producer (with a dust puff), scorch where a unit died, tread marks behind vehicles, a ring of dust
+    /// around a building as it is finished, and building deaths sized to the building with rubble left behind. It reads only replicated state, so it shows nothing a client couldn't already see.
     /// </summary>
     public sealed class WorldEffects
     {
@@ -107,7 +107,7 @@ namespace WAR2D.Client
 
         /// <summary>
         /// A unit became known at <paramref name="position"/>. A new own unit beside one of the player's finished producers was
-        /// just made there: <c>unit_produced</c>. Quiet for <see cref="ProducedQuietSeconds"/> after the first batch.
+        /// just made there: a dust puff and <c>unit_produced</c>. Quiet for <see cref="ProducedQuietSeconds"/> after the first batch.
         /// </summary>
         public void UnitAppeared(Vector2 position, int ownerId, float sinceFirstBatch)
         {
@@ -120,6 +120,7 @@ namespace WAR2D.Client
                 float2 centre = Footprint.VisualCenter((int2)math.round(e.Data.position), size);
                 float2 d = math.abs((float2)position - centre) - (float2)size * 0.5f;
                 if (math.cmax(d) > ProducedReach) continue;
+                Effects.DustPuff(position);
                 AudioService.Sfx("unit_produced", position);
                 return;
             }
@@ -254,7 +255,18 @@ namespace WAR2D.Client
             }
         }
 
-        private void OnProgress(int id, byte progress) => progressAt[id] = Time.time;
+        /// <summary>
+        /// A blueprint's progress record: it counts as being built for the loop, and one that reaches 100 % while seen is
+        /// finished: a ring of dust round its footprint (<see cref="Effects.BuildingFinished"/>).
+        /// </summary>
+        private void OnProgress(int id, byte progress)
+        {
+            progressAt[id] = Time.time;
+            if (progress < 100 || buildingsSeen == null || !buildingsSeen.Entries.TryGetValue(id, out ClientBuildings.Entry e) || e.Ghost) return;
+            if (e.Data.buildingType == BuildingType.Bomb) return;
+            int2 size = WorldStateManager.GetBuildingSize(e.Data.buildingType);
+            Effects.BuildingFinished((Vector2)Footprint.VisualCenter((int2)math.round(e.Data.position), size), size.x);
+        }
 
         /// <summary>A seen wall that lost health was hit: <c>wall_hit</c> on it. A wall first seen, or gone, plays nothing here.</summary>
         private void OnTerrain(IReadOnlyList<int2> tiles)

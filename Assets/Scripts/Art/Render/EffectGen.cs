@@ -626,6 +626,52 @@ namespace WAR2D.Art.Render
             return img.Done();
         }
 
+        /// <summary>
+        /// A bullet striking its target (polish item A), frame <paramref name="frame"/> of 3: a white-hot point with short sparks
+        /// flying out, which cool and scatter.
+        /// </summary>
+        public static EffectFrame HitSpark(int frame)
+        {
+            var img = new Img(T, T);
+            var rng = new ArtRandom(13, "hitspark");
+            int c = T / 2;
+            float t = (frame + 1) / 3f;
+            if (frame == 0)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                    img.Set(c + dx, c + dy, dx == 0 && dy == 0 ? new Color32(255, 255, 255, 255) : ArtStyle.FireRamp[0]);
+            }
+            for (int k = 0; k < 7; k++)
+            {
+                float a = rng.Range(360) * Mathf.Deg2Rad, reach = 3 + rng.Range(5);
+                float r0 = reach * (t - 0.34f), r1 = reach * t * 1.6f;
+                for (float r = Mathf.Max(0f, r0); r <= r1; r += 1f)
+                    img.Set((int)(c + Mathf.Cos(a) * r), (int)(c + Mathf.Sin(a) * r), ArtStyle.FireRamp[Mathf.Min(6, frame * 2 + (r > reach ? 1 : 0))]);
+            }
+            return img.Done();
+        }
+
+        /// <summary>
+        /// A puff of ground dust at <paramref name="t"/> (0 = new, 1 = gone): where a unit is made (polish item E), and ringed
+        /// around a building as it is finished (item J). A dithered tan ball, low and wide, that spreads and thins.
+        /// </summary>
+        public static EffectFrame DustPuff(float t, int seed)
+        {
+            var img = new Img(T, T);
+            float c = T / 2f, rx = T * (0.16f + 0.24f * t), ry = rx * 0.7f, density = 1.15f - t;
+            for (int y = 0; y < T; y++)
+            for (int x = 0; x < T; x++)
+            {
+                float dx = (x + 0.5f - c) / rx, dy = (y + 0.5f - c + t * 3f) / ry;
+                float n = Noise.Fbm(x + t * 9f, y, T, 4, 2, seed) - 0.5f;
+                float puff = (1f - Mathf.Sqrt(dx * dx + dy * dy) + n * 0.7f) * density * 1.6f;
+                if (puff > Bayer(x / 2, y / 2))
+                    img.Set(x, y, Role(n > 0.05f ? StylePalette.Floor2 : StylePalette.Floor1, n > 0.15f ? 3 : 2));
+            }
+            return img.Done();
+        }
+
         /// <summary>The frame for cell <paramref name="cell"/> of an effect id, or null when it has no generator.</summary>
         public static EffectFrame? For(string id, int cell, int frames)
         {
@@ -662,6 +708,8 @@ namespace WAR2D.Art.Render
                 case "Smoke": return Smoke(t, 67);
                 case "Fire": return Fire(cell);
                 case "GemSparkle": return GemSparkle(cell);
+                case "HitSpark": return HitSpark(cell);
+                case "DustPuff": return DustPuff(t, 71);
                 default: return null;
             }
         }

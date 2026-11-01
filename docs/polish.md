@@ -8,7 +8,7 @@ Started 2026-10-30 from a survey of the client code. Items move to **Built** whe
 
 The owner approved 1, 2, 3, B, C, D, F, G, H and I. All are built, with EditMode tests (`PolishEffectsTests`, `PolishEffectArtTests`) and the Effects atlas rebuilt (`WAR-2D/Art/Build all`). Both suites pass.
 
-Checked in an editor match on 2026-10-30, through the control API, screenshots and the effects' counters: the red hit flash and the bar trail on units, smoke and fire on a damaged HQ, the glints, tread marks, fog easing, building collapses with their ripple, rubble and scorch. No exceptions were logged. Sounds and panning were not listened to, and the smoke and fire read small on the 5×5 HQ, so look at them in an owner playtest.
+Checked in an editor match on 2026-10-30, through the control API, screenshots and the effects' counters: the red hit flash and the bar trail on units, smoke and fire on a damaged HQ, the glints, tread marks, fog easing, building collapses with their ripple, rubble and scorch. No exceptions were logged. The owner's playtest signed them off (2026-11-01).
 
 ### 1. Play the sounds that were never played
 
@@ -53,21 +53,27 @@ Tanks, Heavies and Artillery on screen lay a `Tracks` mark every half tile moved
 
 ### H. Fog fades in and out
 
-`FogView` eases each changed cell's alpha to its new level over 0.25 s (unexplored to seen; smaller changes take less), and the `Fog` shader's dither turns that into a dissolve. A new grid (the first snapshot, a rejoin) is drawn at once. **Not measured yet:** the fog texture is now uploaded every frame while any cell is easing, instead of once per fog update. Check it with `tools/perf-run.sh` (client frame time) before relying on it at 10,000 units.
+`FogView` eases each changed cell's alpha to its new level over 0.25 s (unexplored to seen; smaller changes take less), and the `Fog` shader's dither turns that into a dissolve. A new grid (the first snapshot, a rejoin) is drawn at once. The fog texture is uploaded every frame while any cell is easing, instead of once per fog update; signed off by the owner (2026-11-01).
 
 ### I. Mining sparkle
 
 Once a second (a Miner's payout interval), each finished Miner on screen whose faced tile the client knows is a gem glints on that tile (`GemSparkle`), with `gem_mined` (item 1).
 
-## Candidates
+## Built (2026-11-01)
 
-Found in the same survey; not yet approved.
+The owner approved the three candidates A, E and J. EditMode tests in `PolishEffectsTests` and `PolishEffectArtTests`; the Effects atlas is rebuilt. Not yet looked at in a running match.
 
-| # | Item | What the code does today | Change |
-| --- | --- | --- | --- |
-| A | **Bullet impacts** | Only Artillery shells play an impact (`Effects.ShellImpact`); every other tracer ends in nothing at the target | A small hit-spark sprite and pool, played when a tracer arrives (the runner already knows when a shell lands) |
-| E | **Units appear with a puff** | A new unit pops into existence beside its producer | A short dust puff where it appears (`ClientUnitStore.Appeared` now gives the moment and place) |
-| J | **Construction-finished flourish** | A finished building simply swaps from blueprint to building | A dust ring and a short brightness pulse when it completes |
+### A. Bullet impacts
+
+Every tracer that reaches its target (plain, Sniper and Gun turret tracers; not Artillery shells, which keep `ShellImpact`, or flame streams) ends in a `HitSpark` (`EffectGen.HitSpark`, 3 frames: a white-hot point and short cooling sparks) from its own pool (`Effects.HitSparkPool` 128). Silent: the shot already played its sound. A shot drawn without its tracer line (the Tracers setting) has no spark either.
+
+### E. Units appear with a puff
+
+A new own unit beside one of the player's finished producers (the `unit_produced` rule in `WorldEffects.UnitAppeared`, quiet after a join or rejoin) kicks up a `DustPuff` (`EffectGen.DustPuff`, 5 frames, a low tan ball that spreads and thins) where it appears.
+
+### J. Construction-finished flourish
+
+A building whose progress record reaches 100 % while the client sees it (`ClientBuildings.ProgressChanged`) gets a ring of dust puffs round its footprint's edge (`Effects.BuildingFinished`: 4, or 3 per footprint tile, pushed out to the square edge; `Effects.DustPool` 96) and blinks bright twice over 0.36 s (`HitFeedback.Finishing`; `BuildingPacking.FinishFlag`, bit 4 of the instance's `pad`, lerps the sprite 45 % toward warm white in `InstancedBuilding.shader`). A building first seen already finished, a ghost and a bomb do neither. Silent: the `construction_finished` alert has its sound.
 
 ## Not pursued
 

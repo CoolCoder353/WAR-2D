@@ -324,6 +324,7 @@ public class GameManager : NetworkManager
         if (WAR2D.Net.Rejoin.RejoinTicket.Dropped && !string.IsNullOrEmpty(WAR2D.Net.Rejoin.RejoinTicket.Token))
         {
             NetworkClient.Send(new WAR2D.Net.Rejoin.RejoinRequest { Token = WAR2D.Net.Rejoin.RejoinTicket.Token });
+            WAR2D.Client.Selection.ArmRejoin(WAR2D.Net.Rejoin.RejoinTicket.Token);
             rejoining = true;
             CentreOnHqPending = true;
         }

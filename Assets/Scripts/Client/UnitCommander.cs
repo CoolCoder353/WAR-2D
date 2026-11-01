@@ -78,6 +78,7 @@ public class UnitCommander : NetworkBehaviour
             Feedback = gameObject.AddComponent<OrderFeedback>();
             Feedback.Init(Config.ConfigLoader.LoadConfig().Orders.MaxQueued, IsDiggableHere, PositionOf);
             Selection.Ordered += OnOrdered;
+            if (Selection.RestoreAfterRejoin()) WAR2D.Dev.Logging.WarLog.Info(WAR2D.Dev.Logging.LogCategory.Net, "rejoined: squads and building groups restored");
             gameObject.AddComponent<WAR2D.Client.Overlays.WorldOverlays>(); // v0.15 order, range, rally and hover overlays
         }
         else
@@ -91,6 +92,7 @@ public class UnitCommander : NetworkBehaviour
     {
         if (Instance == this)
         {
+            Selection.RememberForRejoin(WAR2D.Net.Rejoin.RejoinTicket.Token); // a leave has cleared the ticket already
             UnsubscribeBuildings();
             wallDrag?.Dispose();
             foreach (ClearingRing ring in rangeRings) if (ring != null) Destroy(ring.gameObject);
