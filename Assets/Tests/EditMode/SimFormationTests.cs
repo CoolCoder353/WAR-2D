@@ -80,4 +80,30 @@ public class SimFormationTests
         float moved = sim.UnitById(back[0]).Position.y - before;
         Assert.Greater(moved, sim.Config.Units[UnitType.Heavy].MoveSpeed * 1.2f, "50 tiles behind: it runs at its own speed");
     }
+
+    [Test]
+    public void UnitsGoRoundRockBetweenThemAndTheirSlots()
+    {
+        // A rock cup between the group and the goal, open towards the group, with the units inside it and already within
+        // the slot radius: they must follow the flow out and round it, not walk straight at their slots into the rock.
+        var rows = new string[96];
+        for (int r = 0; r < 96; r++)
+        {
+            int y = 95 - r;
+            char[] row = (r == 0 || r == 95 ? new string('B', 96) : "B" + new string('.', 94) + "B").ToCharArray();
+            if (y == 54) for (int x = 28; x <= 48; x++) row[x] = '#';
+            if (y >= 46 && y < 54) { row[28] = '#'; row[48] = '#'; } // a cup open towards the group: sliding can't get out
+            rows[r] = new string(row);
+        }
+        using var sim = new SimHarness(MapStoreFrom(rows));
+        var boxes = new System.Collections.Generic.List<int[]>();
+        for (int i = 0; i < 8; i++) boxes.Add(sim.Spawn(SimHarness.OwnerA, new float2(34.5f + i, 49.5f), UnitType.Tank)); // inside the cup, within the slot radius
+        sim.Tick();
+        var ids = boxes.ConvertAll(b => b[0]);
+        Formed(sim, SimHarness.OwnerA, new int2(38, 60), ids.ToArray());
+        sim.TickSeconds(40f);
+        foreach (int id in ids) Assert.Less(math.distance(sim.UnitById(id).Position, new float2(38.5f, 60.5f)), 4f, $"unit {id} at {sim.UnitById(id).Position}");
+    }
+
+    private static WAR2D.World.MapStore MapStoreFrom(string[] rows) => WAR2D.World.MapStore.FromAscii(rows);
 }

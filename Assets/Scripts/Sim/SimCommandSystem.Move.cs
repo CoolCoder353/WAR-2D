@@ -91,7 +91,8 @@ namespace WAR2D.Sim
 
         /// <summary>
         /// Lays the movers of a formation order into a block at the goal (<see cref="FormationRules"/>), pulling slots on rock
-        /// or a footprint in towards the goal until they are on open floor, and records the slowest member's speed. Two or
+        /// or a footprint (or behind one, seen from the goal) in towards the goal until they can be walked to straight from
+        /// the goal, and records the slowest member's speed. Two or
         /// more movers only (a Shift-queued order queues waypoints as before and doesn't form up).
         /// </summary>
         private void AssignFormation(SimData data, SimContext context, int2 goal)
@@ -111,9 +112,18 @@ namespace WAR2D.Sim
             for (int k = 0; k < formationOffsets.Count; k++)
             {
                 float2 offset = formationOffsets[k];
-                for (int tries = 0; tries < 4 && !context.Map.IsWalkable((int2)math.floor(centre + offset)); tries++) offset *= 0.5f;
-                formationOffsets[k] = context.Map.IsWalkable((int2)math.floor(centre + offset)) ? offset : float2.zero;
+                for (int tries = 0; tries < 4 && !OpenFrom(context, centre, offset); tries++) offset *= 0.5f;
+                formationOffsets[k] = OpenFrom(context, centre, offset) ? offset : float2.zero;
             }
+        }
+
+        /// <summary>True when the slot and the straight line to it from the goal are open floor (a unit at the goal can walk to it).</summary>
+        private static bool OpenFrom(SimContext context, float2 centre, float2 offset)
+        {
+            int steps = (int)math.ceil(math.length(offset) * 2f);
+            for (int k = 1; k <= steps; k++)
+                if (!context.Map.IsWalkable((int2)math.floor(centre + offset * (k / (float)steps)))) return false;
+            return context.Map.IsWalkable((int2)math.floor(centre + offset));
         }
 
         /// <summary>Gives each formation mover's pending order its slot and the group speed.</summary>

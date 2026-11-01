@@ -64,6 +64,8 @@ namespace WAR2D.Sim
                 Loose = data.FormationLoose,
                 SlotTiles = data.FormationSlot,
                 Lost = data.FormationLost,
+                Tiles = data.Tiles,
+                Used = data.Used,
                 RouteMisses = data.RouteMisses.AsParallelWriter(),
                 SpeedByType = data.SpeedByType,
                 Width = data.Width,
@@ -152,6 +154,9 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<float> OrderLead;
         [ReadOnly] public NativeArray<int> FormationLead;
         public float Loose, SlotTiles, Lost;
+        /// <summary>The map's tiles and footprints: a unit steers straight at its slot only over clear floor.</summary>
+        [ReadOnly] public NativeArray<byte> Tiles;
+        [ReadOnly] public NativeArray<byte> Used;
         public NativeQueue<int2>.ParallelWriter RouteMisses;
         [ReadOnly] public NativeArray<float> SpeedByType;
         public int Width, Height;
@@ -192,7 +197,7 @@ namespace WAR2D.Sim
                     int lead = FormationLead[i];
                     bool lost = (uint)lead < (uint)OrderLead.Length && fromGoal - OrderLead[lead] > Lost;
                     if (!lost && toSeat > Loose) speed = math.min(speed, groupSpeed);
-                    if (fromGoal <= SlotTiles)
+                    if (fromGoal <= SlotTiles && ClearLine(position, seat))
                     {
                         steered = true;
                         if (toSeat <= 0.25f) Arrived[i] = 1;
@@ -279,6 +284,21 @@ namespace WAR2D.Sim
                 centre = c;
             }
             return best < float.MaxValue;
+        }
+
+        /// <summary>True when every tile under the straight line from <paramref name="a"/> to <paramref name="b"/> is open floor (sampled every half tile).</summary>
+        private bool ClearLine(float2 a, float2 b)
+        {
+            float length = math.distance(a, b);
+            int steps = (int)math.ceil(length * 2f);
+            for (int k = 1; k <= steps; k++)
+            {
+                int2 t = (int2)math.floor(math.lerp(a, b, k / (float)steps));
+                if ((uint)t.x >= (uint)Width || (uint)t.y >= (uint)Height) return false;
+                int index = t.y * Width + t.x;
+                if (!TileRules.IsFloor(Tiles[index]) || Used[index] != 0) return false;
+            }
+            return true;
         }
 
         private int SectorOf(int2 tile) => tile.y / SectorGraph.SectorSize * SectorsX + tile.x / SectorGraph.SectorSize;
