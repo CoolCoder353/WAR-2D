@@ -83,7 +83,7 @@ namespace WAR2D.Client
             NativeArray<Color32> terrainExplored = (Layers & MinimapLayers.Gems) != 0 ? explored : exploredNoGems;
             if (fog == null)
             {
-                for (int i = 0; i < pixels.Length; i++) pixels[i] = revealTerrain ? terrainExplored[i] : Unexplored;
+                for (int i = 0; i < pixels.Length; i++) pixels[i] = revealTerrain ? terrainVisible[i] : Unexplored; // v0.16: the public map at full brightness
                 return;
             }
             fogCopy.CopyFrom(fog);
@@ -114,7 +114,8 @@ namespace WAR2D.Client
                 for (int i = 0; i < Pixels.Length; i++)
                 {
                     byte f = Fog[i];
-                    Pixels[i] = f == (byte)FogState.Visible ? Visible[i] : f == (byte)FogState.Explored || Reveal ? Explored[i] : black;
+                    // v0.16 (Figma P): while placing the HQ the public map shows at full brightness.
+                    Pixels[i] = f == (byte)FogState.Visible || Reveal ? Visible[i] : f == (byte)FogState.Explored ? Explored[i] : black;
                 }
             }
         }

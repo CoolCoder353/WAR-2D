@@ -41,6 +41,18 @@ namespace Config
                 config.Resources.DecayPercentPerSecond = Float(resources, "DecayPercentPerSecond", "Resources", errors, min: 0, max: 100);
             }
 
+            XmlNode release = Require(root, "Release", errors);
+            if (release != null)
+            {
+                string version = release.SelectSingleNode("Version")?.InnerText?.Trim();
+                if (string.IsNullOrEmpty(version) || !System.Text.RegularExpressions.Regex.IsMatch(version, @"^\d+\.\d+\.\d+$"))
+                    errors.Add("Release: <Version> must be major.minor.patch, like 0.16.0.");
+                else config.Release.Version = version;
+                string name = release.SelectSingleNode("Name")?.InnerText?.Trim() ?? "";
+                if (name.Length > 32) errors.Add("Release: <Name> is longer than 32 characters.");
+                else config.Release.Name = name;
+            }
+
             XmlNode match = Require(root, "Match", errors);
             if (match != null)
             {
@@ -76,6 +88,7 @@ namespace Config
                     m.MinStartDistance = Float(map, "MinStartDistance", "Map", errors, min: 0, max: 2);
                     m.MaxStartDistance = Float(map, "MaxStartDistance", "Map", errors, min: 0, max: 4);
                     m.ExpansionGemTiles = Int(map, "ExpansionGemTiles", "Map", errors, min: 1, max: 200);
+                    m.EdgeTiles = Int(map, "EdgeTiles", "Map", errors, min: 1, max: 16);
                 }
             }
 
@@ -147,6 +160,43 @@ namespace Config
             {
                 config.Orders.MaxQueued = Int(orders, "MaxQueued", "Orders", errors, min: 0, max: 516);
                 config.Orders.MaxDigArea = Int(orders, "MaxDigArea", "Orders", errors, min: 1, max: 64);
+            }
+
+            XmlNode lines = Require(root, "TargetLines", errors);
+            if (lines != null)
+            {
+                config.TargetLines.HoldSeconds = Float(lines, "HoldSeconds", "TargetLines", errors, min: 0.1f, max: 10f);
+                config.TargetLines.Max = Int(lines, "Max", "TargetLines", errors, min: 1, max: 2000);
+            }
+
+            XmlNode pulses = Require(root, "MinimapCombat", errors);
+            if (pulses != null)
+            {
+                config.MinimapCombat.CellTiles = Int(pulses, "CellTiles", "MinimapCombat", errors, min: 4, max: 128);
+                config.MinimapCombat.PulseSeconds = Float(pulses, "PulseSeconds", "MinimapCombat", errors, min: 0.2f, max: 10f);
+                config.MinimapCombat.QuietSeconds = Float(pulses, "QuietSeconds", "MinimapCombat", errors, min: 0f, max: 60f);
+                config.MinimapCombat.Max = Int(pulses, "Max", "MinimapCombat", errors, min: 1, max: 256);
+            }
+
+            XmlNode placement = Require(root, "PlacementMinimap", errors);
+            if (placement != null)
+                config.PlacementMinimap.MarkerPixels = Int(placement, "MarkerPixels", "PlacementMinimap", errors, min: 4, max: 64);
+
+            XmlNode formation = Require(root, "Formation", errors);
+            if (formation != null)
+            {
+                config.Formation.Spacing = Float(formation, "Spacing", "Formation", errors, min: 0.5f, max: 4f);
+                config.Formation.LooseTiles = Float(formation, "LooseTiles", "Formation", errors, min: 0f, max: 32f);
+                config.Formation.SlotTiles = Float(formation, "SlotTiles", "Formation", errors, min: 1f, max: 64f);
+                config.Formation.LostTiles = Float(formation, "LostTiles", "Formation", errors, min: 1f, max: 256f);
+            }
+
+            XmlNode autoWork = Require(root, "AutoWork", errors);
+            if (autoWork != null)
+            {
+                config.AutoWork.Radius = Float(autoWork, "Radius", "AutoWork", errors, min: 1f, max: 32f);
+                config.AutoWork.RepairBelow = Float(autoWork, "RepairBelow", "AutoWork", errors, min: 0.05f, max: 1f);
+                config.AutoWork.SliceTicks = Int(autoWork, "SliceTicks", "AutoWork", errors, min: 1, max: 200);
             }
 
             XmlNode diplomacy = Require(root, "Diplomacy", errors);

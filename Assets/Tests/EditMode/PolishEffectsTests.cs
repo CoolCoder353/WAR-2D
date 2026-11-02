@@ -86,6 +86,24 @@ public class PolishEffectsTests
     }
 
     [Test]
+    public void RubbleNeverFadesOnItsOwn()
+    {
+        Assert.AreEqual(0, Decals.FrameAt(10f * 3600f, Decals.RubbleHold, Decals.RubbleFade), "still whole after ten hours");
+    }
+
+    [Test]
+    public void ABuildingOverRubbleClearsOnlyTheRubbleItCovers()
+    {
+        Decals.Rubble(new Vector2(10.5f, 10.5f), 3); // a 3-tile building's rubble, tiles 9..11
+        Decals.Rubble(new Vector2(30.5f, 30.5f), 3);
+        Assert.AreEqual(2, Decals.ActiveRubble);
+        Assert.AreEqual(1, Decals.ClearRubbleUnder(new Vector2(12.5f, 10.5f), new int2(2, 2)), "a 2-tile footprint over tiles 11..12 overlaps the first");
+        Assert.AreEqual(1, Decals.ActiveRubble);
+        Assert.AreEqual(0, Decals.ClearRubbleUnder(new Vector2(33f, 30.5f), new int2(2, 2)), "a footprint touching the second's edge (tiles 32..33 beside 29..31) is not over it");
+        Assert.AreEqual(1, Decals.ActiveRubble);
+    }
+
+    [Test]
     public void ATrackMarkTurnsToTheExactHeading()
     {
         Decals.Track(new Vector2(3, 3), math.radians(20f));

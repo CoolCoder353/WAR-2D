@@ -1,47 +1,59 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
     <ui:VisualElement name="lobby" class="menu-screen lobby">
-        <ui:Label text="Lobby" class="lobby__title" />
-        <ui:Label name="lobby-subtitle" text="" class="text text--muted lobby__subtitle" />
+        <ui:VisualElement class="row lobby__heading">
+            <ui:Label text="Lobby" class="lobby__title" />
+            <ui:Label name="lobby-subtitle" text="" class="text text--muted lobby__subtitle" />
+            <ui:VisualElement name="server-name" class="row lobby__server-name">
+                <ui:Label text="Server name" class="text--secondary lobby__server-name-label" />
+                <ui:TextField name="server-name-field" max-length="24" class="input__field lobby__server-name-field" />
+            </ui:VisualElement>
+        </ui:VisualElement>
         <ui:ScrollView name="lobby-left" mode="Vertical" horizontal-scroller-visibility="Hidden" class="lobby__left">
-            <ui:VisualElement class="panel">
-                <ui:Label name="players-title" text="Players" class="panel__title" />
-                <ui:VisualElement class="lobby__players">
-                    <ui:VisualElement name="player-rows" />
-                    <ui:VisualElement name="add-ai-row" class="row lobby__add-ai">
-                        <ui:Button name="add-ai-button" text="Add AI" class="button" />
-                        <ui:Label name="add-ai-hint" text="AIs are always ready. Shown while a seat is free (8 at most)." class="text--secondary lobby__add-ai-hint" />
+            <ui:Label name="players-title" text="Players" class="lobby__column-title" />
+            <ui:VisualElement name="lobby-cards">
+                <ui:VisualElement name="player-rows" class="lobby__cards" />
+            </ui:VisualElement>
+            <ui:VisualElement name="add-ai-row" class="row lobby__add-ai">
+                <ui:Button name="add-ai-button" text="Add AI" class="button" />
+                <ui:Label name="add-ai-hint" text="AIs are always ready. Shown while a seat is free (8 at most)." class="text--secondary lobby__add-ai-hint" />
+            </ui:VisualElement>
+            <ui:VisualElement name="local-pickers" class="lobby__pickers">
+                <ui:Label text="Your colour (other players' colours are crossed out; an AI gives its colour up)" class="text--secondary lobby__label" />
+                <ui:VisualElement name="colour-picker" class="row lobby__colours" />
+                <ui:VisualElement name="team-section">
+                    <ui:Label text="Your team" class="text--secondary lobby__label" />
+                    <ui:VisualElement name="team-picker" class="row segmented" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:ScrollView>
+        <ui:VisualElement class="lobby__preview">
+            <ui:Label text="Map" class="lobby__column-title" />
+            <ui:VisualElement name="preview-image" class="lobby__preview-image">
+                <ui:VisualElement name="preview-markers" class="lobby__markers" picking-mode="Ignore" />
+            </ui:VisualElement>
+            <ui:Label name="lobby-map-caption" text="" class="text lobby__map-caption" />
+            <ui:Button name="reroll-button" text="Reroll" class="button lobby__reroll" />
+        </ui:VisualElement>
+        <ui:ScrollView name="lobby-settings" mode="Vertical" horizontal-scroller-visibility="Hidden" class="lobby__settings">
+            <ui:Label name="settings-title" text="Match settings" class="lobby__column-title" />
+            <ui:VisualElement name="lobby-block-map" class="panel lobby__block">
+                <ui:Label text="Map" class="panel__title" />
+                <ui:VisualElement class="lobby__block-content">
+                    <ui:VisualElement class="option-group">
+                        <ui:Label text="Size" class="text--secondary lobby__label" />
+                        <ui:VisualElement name="size-options" class="row segmented" />
                     </ui:VisualElement>
-                    <ui:VisualElement name="local-pickers">
-                        <ui:Label text="Your colour (taken colours are crossed out)" class="text--secondary lobby__label" />
-                        <ui:VisualElement name="colour-picker" class="row lobby__colours" />
-                        <ui:VisualElement name="team-section">
-                            <ui:Label text="Your team" class="text--secondary lobby__label" />
-                            <ui:VisualElement name="team-picker" class="row segmented" />
-                        </ui:VisualElement>
+                    <ui:VisualElement class="input lobby__seed">
+                        <ui:Label text="Seed" class="input__label" />
+                        <ui:TextField name="seed-field" max-length="10" class="input__field" />
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
-            <ui:VisualElement class="panel lobby__settings">
-                <ui:Label name="settings-title" text="Match settings" class="panel__title" />
-                <ui:VisualElement class="lobby__settings-content">
-                    <ui:VisualElement name="visibility-group" class="option-group">
-                        <ui:Label text="Visibility" class="text--secondary lobby__label" />
-                        <ui:VisualElement name="visibility-row" class="row segmented" />
-                        <ui:Label name="visibility-hint" text="" class="text--secondary lobby__hint" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="row lobby__mode-row">
-                        <ui:VisualElement class="option-group">
-                            <ui:Label text="Mode" class="text--secondary lobby__label" />
-                            <ui:VisualElement name="mode-options" class="row segmented" />
-                        </ui:VisualElement>
-                        <ui:VisualElement name="diplomacy-switch-slot" class="lobby__diplomacy" />
-                    </ui:VisualElement>
+            <ui:VisualElement name="lobby-block-start" class="panel lobby__block">
+                <ui:Label text="Start" class="panel__title" />
+                <ui:VisualElement class="lobby__block-content">
                     <ui:VisualElement class="option-group">
-                        <ui:Label text="Map size" class="text--secondary lobby__label" />
-                        <ui:VisualElement name="size-options" class="row segmented" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="option-group">
-                        <ui:Label text="Starting resources" class="text--secondary lobby__label" />
+                        <ui:Label text="Resources" class="text--secondary lobby__label" />
                         <ui:VisualElement name="resource-options" class="row segmented" />
                     </ui:VisualElement>
                     <ui:VisualElement class="option-group">
@@ -56,21 +68,34 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
-        </ui:ScrollView>
-        <ui:VisualElement class="panel lobby__preview">
-            <ui:Label text="Map preview" class="panel__title" />
-            <ui:VisualElement class="lobby__preview-content">
-                <ui:VisualElement name="preview-image" class="lobby__preview-image">
-                    <ui:VisualElement name="preview-markers" class="lobby__markers" picking-mode="Ignore" />
-                </ui:VisualElement>
-                <ui:VisualElement class="row lobby__seed-row">
-                    <ui:VisualElement class="input">
-                        <ui:Label text="Seed" class="input__label" />
-                        <ui:TextField name="seed-field" max-length="10" class="input__field" />
+            <ui:VisualElement name="lobby-block-rules" class="panel lobby__block">
+                <ui:Label text="Rules" class="panel__title" />
+                <ui:VisualElement class="lobby__block-content">
+                    <ui:VisualElement name="visibility-group" class="option-group">
+                        <ui:Label text="Visibility" class="text--secondary lobby__label" />
+                        <ui:VisualElement name="visibility-row" class="row segmented" />
+                        <ui:Label name="visibility-hint" text="" class="text--secondary lobby__hint" />
                     </ui:VisualElement>
-                    <ui:Button name="reroll-button" text="Reroll" class="button lobby__reroll" />
+                    <ui:VisualElement class="row lobby__mode-row">
+                        <ui:VisualElement class="option-group">
+                            <ui:Label text="Mode" class="text--secondary lobby__label" />
+                            <ui:VisualElement name="mode-options" class="row segmented" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="diplomacy-switch-slot" class="lobby__diplomacy" />
+                    </ui:VisualElement>
                 </ui:VisualElement>
-                <ui:Label name="start-caption" text="Terrain only. Start points are private: each player is dealt their own options when the match starts (teammates see each other's)." class="text--secondary lobby__caption" />
+            </ui:VisualElement>
+        </ui:ScrollView>
+        <ui:VisualElement name="lobby-ban-confirm" class="overlay-screen">
+            <ui:VisualElement class="panel lobby__confirm">
+                <ui:Label name="lobby-ban-title" text="Ban?" class="panel__title" />
+                <ui:VisualElement class="lobby__confirm-content">
+                    <ui:Label name="lobby-ban-text" text="" class="text--secondary lobby__confirm-text" />
+                    <ui:VisualElement class="row lobby__confirm-buttons">
+                        <ui:Button name="lobby-ban-cancel" text="Cancel" class="button" />
+                        <ui:Button name="lobby-ban-confirm-button" text="Ban" class="button button--danger" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
         <ui:VisualElement class="row lobby__footer">

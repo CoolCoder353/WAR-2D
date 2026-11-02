@@ -93,8 +93,11 @@ namespace WAR2D.UI
         /// <summary>Raised by Back.</summary>
         public event Action Closed;
 
+        private readonly VisualElement motionRoot;
+
         public SettingsController(VisualElement root)
         {
+            motionRoot = root;
             screen = root.Q("settings");
             tabs = root.Q("settings-tabs");
             graphics = root.Q("settings-graphics");
@@ -128,6 +131,8 @@ namespace WAR2D.UI
         {
             page = Page.Graphics;
             screen.AddToClassList("overlay-screen--visible");
+            MenuMotion.ApplySetting(motionRoot);
+            MenuMotion.Enter(screen, "overlay-screen--enter");
             Show();
         }
 
@@ -187,6 +192,7 @@ namespace WAR2D.UI
             Slot(graphics, "fullscreen-slot", Widgets.Switch("fullscreen", S.Fullscreen, true, () => { S.Fullscreen = !S.Fullscreen; Changed(); }));
             Slot(graphics, "vsync-slot", Widgets.Switch("vsync", S.VSync, true, () => { S.VSync = !S.VSync; Changed(); }));
             Slot(graphics, "battle-slot", Widgets.Switch("menu-battle", S.MenuBattle, true, () => { S.MenuBattle = !S.MenuBattle; Changed(); }));
+            Slot(graphics, "reduce-motion-slot", Widgets.Switch("reduce-motion", S.ReduceMotion, true, () => { S.ReduceMotion = !S.ReduceMotion; MenuMotion.ApplySetting(motionRoot); Changed(); }));
             VisualElement fps = graphics.Q("fps-options");
             fps.Clear();
             foreach (int cap in GameSettings.FpsCaps)
@@ -321,6 +327,8 @@ namespace WAR2D.UI
             Slot(gameplay, "ui-scale-slot", Slider("ui-scale", S.UiScale, 0.75f, 1.5f, 0.05f, Percent, v => { S.UiScale = v; Changed(); }));
             Segmented("health-bar-options", "health-bars", S.HealthBars, v => S.HealthBars = v, "Always", "Damaged only", "Selected only");
             Segmented("tracer-options", "tracers", S.Tracers, v => S.Tracers = v, "Full", "Reduced", "Off");
+            Segmented("target-line-options", "target-lines", S.TargetLines, v => S.TargetLines = v, "Selected", "Off");
+            Slot(gameplay, "formations-slot", Widgets.Switch("formations", S.Formations, true, () => { S.Formations = !S.Formations; Changed(); }));
             Segmented("tooltip-options", "tooltip-delay", S.TooltipDelay, v => S.TooltipDelay = v, "Fast", "Normal", "Off");
 
             CameraSlider("pan-speed", S.PanSpeed, Defaults.PanSpeed, 0.5f, 2f, 0.05f, Percent, v => S.PanSpeed = v);

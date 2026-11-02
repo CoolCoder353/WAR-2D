@@ -5,7 +5,7 @@ using UnityEngine;
 
 /// <summary>
 /// Server-side gate every client Command passes through: per-command rate limits, plus disconnecting
-/// connections that keep exceeding them.
+/// connections that keep exceeding them (never the host's own local client).
 /// </summary>
 public static class CommandGate
 {
@@ -42,6 +42,9 @@ public static class CommandGate
         ["Cmd_AddAi"] = (10f, 4f),
         ["Cmd_SetAi"] = (20f, 8f),
         ["Cmd_RemoveAi"] = (10f, 4f),
+        ["Cmd_SetServerName"] = (5f, 1f),
+        ["Cmd_ForceReady"] = (10f, 4f),
+        ["Cmd_RemovePlayer"] = (10f, 4f),
     }, (10f, 5f));
 
     private static readonly Dictionary<int, (int count, double windowStart)> Violations = new Dictionary<int, (int, double)>();
@@ -58,7 +61,9 @@ public static class CommandGate
         if (now - v.windowStart > ViolationWindowSeconds) v = (0, now);
         v.count++;
         Violations[conn.connectionId] = v;
-        if (v.count >= ViolationsBeforeKick)
+        // The host's own client is never disconnected (playtest 2026-11-02): it is the server, so a kick ended the host's
+        // own game while the match went on without it. Its excess commands are still dropped.
+        if (v.count >= ViolationsBeforeKick && !(conn is LocalConnectionToClient))
         {
             WarLog.Warn(LogCategory.Net, $"Disconnecting connection {conn.connectionId}: repeatedly exceeded command rate limits ({command}){(WAR2D.Net.Steam.SteamIdentity.TryGet(conn.connectionId, out ulong sid) ? $" (Steam {sid})" : "")}.");
             Forget(conn.connectionId);
@@ -70,8 +75,17 @@ public static class CommandGate
 
     private static readonly HashSet<int> Kicked = new HashSet<int>();
 
-    /// <summary>True (once) when this gate disconnected the connection for exceeding its limits.</summary>
+    /// <summary>True (once) when this gate disconnected the connection for exceeding its limits, or the host removed it.</summary>
     public static bool TakeKicked(int connectionId) => Kicked.Remove(connectionId);
+
+    /// <summary>
+    /// Marks a connection the host kicked or banned (code review 2026-11-03): it may not ready up in the moment before it
+    /// is closed, and its leaving keeps no seat, like a rate-limit kick.
+    /// </summary>
+    public static void MarkKicked(int connectionId) => Kicked.Add(connectionId);
+
+    /// <summary>True while the connection is marked kicked and not yet gone.</summary>
+    public static bool IsKicked(int connectionId) => Kicked.Contains(connectionId);
 
     public static void Forget(int connectionId)
     {

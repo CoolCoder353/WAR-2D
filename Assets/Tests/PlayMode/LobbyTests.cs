@@ -43,6 +43,28 @@ public class LobbyTests
     }
 
     [UnityTest, Timeout(60000)]
+    public IEnumerator TheLobbyShowsPlayerCardsAndGroupedSettings()
+    {
+        // v0.16 (Figma M2): player cards, the map's size and seed under the preview, the settings in three blocks.
+        yield return HostFromMenu();
+        VisualElement root = Root();
+        HudTests.Click(root.Q<Button>("add-ai-button"));
+        yield return PlayModeMatch.WaitUntil(() => GameCore.Instance.AiPlayers.Count == 1, 5f);
+        HudTests.Click(root.Q<Button>("add-ai-button"));
+        yield return PlayModeMatch.WaitUntil(() => GameCore.Instance.AiPlayers.Count == 2, 5f);
+        HudTests.Click(root.Q<Button>("size-512"));
+        yield return PlayModeMatch.WaitUntil(() => GameCore.Instance.Settings.MapSize == 512, 5f);
+        yield return PlayModeMatch.WaitUntil(() => root.Q("lobby-cards").Query(className: "lobby-card").ToList().Count == 3
+            && root.Q<Label>("lobby-map-caption").text.StartsWith("512"), 5f);
+        Assert.That(root.Q("lobby-cards").Query(className: "lobby-card").ToList().Count, Is.EqualTo(3), "the host and two AIs");
+        Assert.That(root.Q("lobby-cards").Query(className: "lobby-card--you").ToList().Count, Is.EqualTo(1), "the local player's card is outlined");
+        StringAssert.Contains($"512 × 512 · seed {GameCore.Instance.Settings.Seed}", root.Q<Label>("lobby-map-caption").text);
+        Assert.That(root.Q("lobby-block-map").Q("size-options"), Is.Not.Null);
+        Assert.That(root.Q("lobby-block-start").Q("pick-time-row"), Is.Not.Null);
+        Assert.That(root.Q("lobby-block-rules").Q("mode-options"), Is.Not.Null);
+    }
+
+    [UnityTest, Timeout(60000)]
     public IEnumerator HostSetsSettingsAndPreviewChanges()
     {
         yield return HostFromMenu();

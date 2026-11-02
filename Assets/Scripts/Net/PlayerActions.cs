@@ -212,16 +212,20 @@ public static class PlayerActions
     /// Orders units (any <see cref="OrderKind"/>; the goal is used, and must be on the map, for orders that name a
     /// tile; <paramref name="queue"/> queues it after each unit's current orders). Ids the owner doesn't own are
     /// ignored by the simulation at the boundary. More ids than <c>Simulation/MaxUnitsPerPlayer</c> are refused.
+    /// <paramref name="formation"/> (v0.16, the sender's Formations setting) forms a Move or Attack-move up; other kinds ignore it.
     /// True when the order was queued.
     /// </summary>
-    public static bool Order(int owner, IReadOnlyList<int> unitIds, OrderKind kind, bool queue, int2 goal)
+    public static bool Order(int owner, IReadOnlyList<int> unitIds, OrderKind kind, bool queue, int2 goal, bool formation = false)
     {
         WorldStateManager world = World;
         if (unitIds == null || unitIds.Count == 0 || unitIds.Count > ConfigLoader.LoadConfig().Simulation.MaxUnitsPerPlayer) return false;
         if (!MayAct(owner) || !world.IsOrderValid((byte)kind, goal)) return false;
-        world.Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, Queue = queue, OwnerId = owner, Tile = goal, Ids = ToArray(unitIds) });
+        world.Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, Queue = queue, OwnerId = owner, Tile = goal, Ids = ToArray(unitIds), Formation = FormsUp(kind, formation) });
         return true;
     }
+
+    /// <summary>True when an order of this kind forms up (v0.16): only a Move or Attack-move sent with formations on.</summary>
+    public static bool FormsUp(OrderKind kind, bool formation) => formation && (kind == OrderKind.Move || kind == OrderKind.AttackMove);
 
     /// <summary>Every listed Suicide bomber of the owner's blows up where it stands (an <see cref="OrderKind.Detonate"/> order).</summary>
     public static bool Detonate(int owner, IReadOnlyList<int> unitIds) => Order(owner, unitIds, OrderKind.Detonate, false, int2.zero);
@@ -251,14 +255,14 @@ public static class PlayerActions
     }
 
     /// <summary>Orders one of the owner's squads' living members, as <see cref="Order"/>. False for an empty squad.</summary>
-    public static bool OrderSquad(int owner, int squad, OrderKind kind, bool queue, int2 goal)
+    public static bool OrderSquad(int owner, int squad, OrderKind kind, bool queue, int2 goal, bool formation = false)
     {
         WorldStateManager world = World;
         if (!CommandValidator.IsSquadIndexValid(squad) || !MayAct(owner) || !world.IsOrderValid((byte)kind, goal)) return false;
         if (world.Squads.Prune(owner, squad, world.Ids) > 0) world.MarkSquadCountsDirty(); // the HUD's count went stale
         IReadOnlyList<int> members = world.Squads.Members(owner, squad);
         if (members.Count == 0) return false;
-        world.Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, Queue = queue, OwnerId = owner, Tile = goal, Ids = ToArray(members) });
+        world.Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, Queue = queue, OwnerId = owner, Tile = goal, Ids = ToArray(members), Formation = FormsUp(kind, formation) });
         return true;
     }
 

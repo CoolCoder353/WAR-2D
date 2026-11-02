@@ -50,4 +50,21 @@ public class OrderQueueTrackerTests
         StringAssert.StartsWith("Squad 0 · empty", WAR2D.UI.SquadBarController.Tooltip(9, 0));
         StringAssert.StartsWith("Squad 1 · 1 unit\n", WAR2D.UI.SquadBarController.Tooltip(0, 1));
     }
+
+    [Test]
+    public void AStoppedUnitHasReachedItsMoveGoalButNotItsJob()
+    {
+        // Playtest 2026-11-02: a unit stopping further than the reach from its goal (a formation slot) kept it forever.
+        var tracker = new OrderQueueTracker(4);
+        tracker.Sent(new[] { 1 }, new float2(10, 10), queue: false);
+        tracker.Sent(new[] { 1 }, new float2(30, 10), queue: true);
+        tracker.Sent(new[] { 2 }, new float2(10, 10), queue: false, isWork: true);
+        System.Func<int, float2?> at = id => new float2(6, 10); // 4 tiles short of the goal, standing still
+        tracker.Prune(at, 1.5f, id => false, 0f);
+        Assert.AreEqual(2, tracker.GoalsOf(1).Count, "not yet a second");
+        tracker.Prune(at, 1.5f, id => false, 1.2f);
+        Assert.AreEqual(1, tracker.GoalsOf(1).Count, "stopped a second: the move goal is done, the queued one is next");
+        Assert.AreEqual(new float2(30, 10), tracker.GoalsOf(1)[0]);
+        Assert.AreEqual(1, tracker.GoalsOf(2).Count, "a Builder works standing still: its job stays");
+    }
 }

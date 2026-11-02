@@ -4,6 +4,10 @@
         <ui:VisualElement class="panel play-panel">
             <ui:Label text="Play" class="panel__title" />
             <ui:VisualElement class="play-panel__content">
+                <ui:VisualElement name="removed-notice" class="row play-panel__notice play-panel__notice--warning play-panel__removed">
+                    <ui:Label name="removed-text" text="" class="text play-panel__grow" />
+                    <ui:Button name="removed-dismiss" text="Dismiss" class="button" />
+                </ui:VisualElement>
                 <ui:VisualElement name="rejoin-block" class="play-panel__section hidden">
                     <ui:VisualElement name="rejoin-card" class="rejoin-card">
                         <ui:VisualElement class="rejoin-card__stripe" />

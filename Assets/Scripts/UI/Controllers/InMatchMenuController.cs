@@ -60,6 +60,8 @@ namespace WAR2D.UI
         {
             screen.RemoveFromClassList("in-match-menu--confirm");
             screen.AddToClassList("overlay-screen--visible");
+            MenuMotion.ApplySetting(screen.panel?.visualTree);
+            MenuMotion.Enter(screen, "overlay-screen--enter"); // v0.16 (Figma M1)
         }
 
         public void Close()

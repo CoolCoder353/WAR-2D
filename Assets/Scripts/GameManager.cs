@@ -313,6 +313,8 @@ public class GameManager : NetworkManager
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.TerrainBatch>(WAR2D.Net.Replication.ClientTerrain.Receive, false);
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.BuildingBatch>(WAR2D.Net.Replication.ClientBuildings.Receive, false);
         NetworkClient.RegisterHandler<WAR2D.Net.Rejoin.RejoinRefused>(OnRejoinRefused, false);
+        // Playtest 2026-11-02: the host kicked or banned us; the server closes the connection a moment later.
+        NetworkClient.RegisterHandler<WAR2D.Net.RemovedFromLobby>(WAR2D.Net.LobbyRemoval.Received, false);
     }
 
     /// <summary>Called on the client when it connects to the server.</summary>

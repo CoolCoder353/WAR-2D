@@ -43,6 +43,7 @@ namespace WAR2D.Client
         private readonly List<int2> previewTiles = new List<int2>();
         private Func<int2, bool> diggable;
         private Func<int, float2?> positionOf;
+        private Func<int, bool> isMoving;
         private OverlayMesh overlay, tilesOverlay; // tile marks go under the fog, so they never light up unexplored rock
         private int2 movedFrom, movedTo;
         private float movedUntil = -1f;
@@ -52,11 +53,12 @@ namespace WAR2D.Client
         private int queueUnit;
 
         /// <summary>Sets the rules: the waypoint limit, which tiles a dig area digs, and where a unit is.</summary>
-        public void Init(int maxQueued, Func<int2, bool> isDiggable, Func<int, float2?> unitPosition)
+        public void Init(int maxQueued, Func<int2, bool> isDiggable, Func<int, float2?> unitPosition, Func<int, bool> unitMoving = null)
         {
             Queue = new OrderQueueTracker(maxQueued);
             diggable = isDiggable;
             positionOf = unitPosition;
+            isMoving = unitMoving;
         }
 
         /// <summary>Shows that an order clicked at <paramref name="clicked"/> goes to <paramref name="goal"/> instead.</summary>
@@ -112,7 +114,7 @@ namespace WAR2D.Client
         private void Update()
         {
             if (Queue == null) return;
-            Queue.Prune(positionOf, 1.5f);
+            Queue.Prune(positionOf, 1.5f, isMoving, Time.unscaledTime);
             foreach (Mark m in marks)
                 m.Units.RemoveWhere(id => positionOf(id) == null);
             marks.RemoveAll(m => m.Units.Count == 0 || !AnyDiggable(m));

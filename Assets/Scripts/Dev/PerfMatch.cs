@@ -241,7 +241,7 @@ public sealed class PerfMatch : MonoBehaviour
             if (ids == null || ids.Count == 0) continue;
             var picked = new List<int>(ids.Count / 4 + 1);
             foreach (int id in ids) if (NetIdAllocator.IndexOf(id) % 4 == quarter) picked.Add(id);
-            sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.AttackMove, OwnerId = owners[i], Tile = armyStart[i ^ 1], Ids = picked.ToArray() });
+            sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.AttackMove, OwnerId = owners[i], Tile = armyStart[i ^ 1], Ids = picked.ToArray(), Formation = true }); // v0.16: the gate measures formations
         }
     }
 

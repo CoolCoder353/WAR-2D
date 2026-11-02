@@ -59,6 +59,23 @@ namespace WAR2D.UI
         public const string PrivateRefusedHint = "Remove the other players first";
 
         private readonly Button invite;
+        private readonly Label mapCaption;
+
+        // Host tools (playtest 2026-11-02, Figma K1/K2).
+        private readonly VisualElement serverNameBox, banConfirm;
+        private readonly TextField serverNameField;
+        private readonly Label banTitle, banText;
+        private readonly WAR2D.UI.HoverCard hover;
+        private int banTarget;
+
+        /// <summary>The host renamed the server ("" restores the default).</summary>
+        public event Action<string> ServerNameChanged;
+
+        /// <summary>The host forced a player ready.</summary>
+        public event Action<int> ForceReadyClicked;
+
+        /// <summary>The host kicked (false) or banned (true) a player.</summary>
+        public event Action<int, bool> RemoveClicked;
 
         /// <summary>The host pressed Invite friends.</summary>
         public event Action InviteClicked;
@@ -97,6 +114,25 @@ namespace WAR2D.UI
             settingsTitle = root.Q<Label>("settings-title");
             status = root.Q<Label>("lobby-status");
             seed = root.Q<TextField>("seed-field");
+            mapCaption = root.Q<Label>("lobby-map-caption");
+            serverNameBox = root.Q("server-name");
+            serverNameField = root.Q<TextField>("server-name-field");
+            banConfirm = root.Q("lobby-ban-confirm");
+            banTitle = root.Q<Label>("lobby-ban-title");
+            banText = root.Q<Label>("lobby-ban-text");
+            root.Q<Button>("lobby-ban-cancel").clicked += () => banConfirm.RemoveFromClassList("overlay-screen--visible");
+            root.Q<Button>("lobby-ban-confirm-button").clicked += () =>
+            {
+                banConfirm.RemoveFromClassList("overlay-screen--visible");
+                RemoveClicked?.Invoke(banTarget, true);
+            };
+            serverNameField.RegisterCallback<FocusOutEvent>(_ => SubmitServerName());
+            serverNameField.RegisterCallback<KeyDownEvent>(e =>
+            {
+                if (e.keyCode == UnityEngine.KeyCode.Return || e.keyCode == UnityEngine.KeyCode.KeypadEnter) SubmitServerName();
+            });
+            hover = new WAR2D.UI.HoverCard(root);
+            AttachSettingCards(root);
             reroll = root.Q<Button>("reroll-button");
             ready = root.Q<Button>("ready-button");
             start = root.Q<Button>("start-button");
@@ -130,8 +166,11 @@ namespace WAR2D.UI
             foreach (LobbyPlayer p in model.Players) if (p.IsHost) hostName = p.Nickname;
             bool isPrivate = s.Visibility == LobbyVisibility.Private;
             // Private hides the join line (the Direct addresses): nobody can join (Figma 93:343).
-            subtitle.text = host ? (isPrivate ? "You are hosting a private match · single-player: nobody can join" : $"You are hosting · {hostAddress()}")
-                : $"Hosted by {hostName} · you are {me.Nickname}";
+            string server = WAR2D.Net.ServerNames.Display(model.ServerName, hostName);
+            subtitle.text = host ? (isPrivate ? "You are hosting a private match · single-player: nobody can join" : $"{server} · you are hosting · {hostAddress()}")
+                : $"{server} · hosted by {hostName} · you are {me.Nickname}";
+            serverNameBox.EnableInClassList("hidden", !host || isPrivate);
+            if (serverNameField.focusController?.focusedElement != serverNameField) serverNameField.SetValueWithoutNotify(server);
             playersTitle.text = $"Players ({model.Players.Count} of {LobbyRules.MaxPlayers})";
             if (isPrivate) invite.AddToClassList("hidden");
             settingsTitle.text = host ? "Match settings" : "Match settings (host only)";
@@ -142,6 +181,7 @@ namespace WAR2D.UI
             ShowSettings(s, host);
 
             if (seed.focusController?.focusedElement != seed) seed.SetValueWithoutNotify(s.Seed.ToString());
+            mapCaption.text = $"{s.MapSize} × {s.MapSize} · seed {s.Seed}"; // v0.16 (Figma M2)
             seed.SetEnabled(host);
             reroll.SetEnabled(host);
 
@@ -160,116 +200,219 @@ namespace WAR2D.UI
         private void ShowRows(bool host, bool teams)
         {
             rows.Clear();
-            foreach (LobbyPlayer p in model.Players)
+            // Playtest 2026-11-02: grouped by team in Teams mode (Solo last), join order within a team. LINQ's sort is stable.
+            IEnumerable<LobbyPlayer> ordered = teams ? System.Linq.Enumerable.OrderBy(model.Players, p => TeamRules.ListOrder(p.Team)) : model.Players;
+            foreach (LobbyPlayer p in ordered)
             {
                 if (p.IsAi) { rows.Add(AiRow(p, host, teams)); continue; }
-                var row = new VisualElement { name = "lobby-row-" + p.OwnerId };
-                row.AddToClassList("lobby-row");
-                row.EnableInClassList("lobby-row--ready", p.Ready);
-                var swatch = new VisualElement();
-                swatch.AddToClassList("lobby-row__swatch");
-                swatch.AddToClassList("player-" + (p.ColourIndex % LobbyRules.Colours + 1));
-                var name = new Label(p.IsHost ? p.Nickname + "  (Host)" : p.Nickname);
-                name.AddToClassList("lobby-row__name");
-                row.Add(swatch);
-                row.Add(name);
+                bool you = p.OwnerId == model.Local.OwnerId;
+                var (card, info, side) = Card(p.OwnerId, you);
+                card.Insert(0, Strip(p.ColourIndex));
+                if (host && !you && !p.IsHost) card.Insert(2, PlayerMenu(p)); // after the strip and the name, before team and ready
+                AddName(info, p.Nickname + (you ? " (you)" : ""));
+                var sub = Sub(info);
+                sub.Add(SubText(p.IsHost ? "Host" : "Player"));
                 if (teams)
                 {
                     string team = TeamName(p.Team);
                     if (host)
                     {
                         int owner = p.OwnerId, next = NextTeam(p.Team);
-                        var pill = new Button(() => HostTeamClicked?.Invoke(owner, next)) { text = team + " ▾", name = "team-" + owner };
+                        var pill = new Button(() => HostTeamClicked?.Invoke(owner, next)) { text = team + " ▸", name = "team-" + owner };
                         pill.AddToClassList("lobby-row__team");
-                        row.Add(pill);
+                        side.Add(pill);
                     }
                     else
                     {
                         var pill = new Label(team);
                         pill.AddToClassList("lobby-row__team");
-                        row.Add(pill);
+                        side.Add(pill);
                     }
                 }
-                var readyLabel = new Label(p.Ready ? "Ready" : "Not ready");
-                readyLabel.AddToClassList("lobby-row__ready");
-                readyLabel.EnableInClassList("lobby-row__ready--yes", p.Ready);
-                row.Add(readyLabel);
-                rows.Add(row);
+                side.Add(ReadyLabel(p.Ready));
+                rows.Add(card);
             }
         }
 
         /// <summary>
-        /// An AI's row (Figma 93:94 host, 93:592 joined). Host: swatch (click: the next free colour), callsign, the tag
-        /// ("AI"), Difficulty and Style dropdowns, Team (Teams mode), Ready, ×. Everyone else: callsign with "AI · Hard",
-        /// the style as text (Random stays "Random"), team and Ready.
+        /// A player card (v0.16, Figma M2): colour strip, name over a second line, team and ready on the right; the local
+        /// player's card outlined in the accent. Named <c>lobby-row-&lt;owner&gt;</c> as the rows were.
+        /// </summary>
+        private static (VisualElement card, VisualElement info, VisualElement side) Card(int owner, bool you)
+        {
+            var card = new VisualElement { name = "lobby-row-" + owner };
+            card.AddToClassList("lobby-card");
+            card.EnableInClassList("lobby-card--you", you);
+            var info = new VisualElement();
+            info.AddToClassList("lobby-card__info");
+            var side = new VisualElement();
+            side.AddToClassList("lobby-card__side");
+            card.Add(info);
+            card.Add(side);
+            return (card, info, side);
+        }
+
+        private static VisualElement Strip(int colourIndex)
+        {
+            var strip = new VisualElement();
+            strip.AddToClassList("lobby-card__strip");
+            strip.AddToClassList("player-" + (colourIndex % LobbyRules.Colours + 1));
+            return strip;
+        }
+
+        private static void AddName(VisualElement info, string text)
+        {
+            var name = new Label(text);
+            name.AddToClassList("lobby-card__name");
+            info.Add(name);
+        }
+
+        private static VisualElement Sub(VisualElement info)
+        {
+            var sub = new VisualElement();
+            sub.AddToClassList("lobby-card__sub");
+            info.Add(sub);
+            return sub;
+        }
+
+        private static Label SubText(string text, string name = null)
+        {
+            var label = new Label(text) { name = name };
+            label.AddToClassList("lobby-card__sub-text");
+            return label;
+        }
+
+        private static Label ReadyLabel(bool ready)
+        {
+            var label = new Label(ready ? "Ready" : "Not ready");
+            label.AddToClassList("lobby-row__ready");
+            label.EnableInClassList("lobby-row__ready--yes", ready);
+            return label;
+        }
+
+        /// <summary>
+        /// An AI's card (Figma M2; v0.14 controls). Host: the strip is a button (the next free colour), the tag ("AI") with
+        /// the Difficulty and Style dropdowns under the name, Team (Teams mode) and Ready on the right, × in the corner.
+        /// Everyone else: "AI · Hard · Rusher" under the name (Random stays "Random"), team and Ready.
         /// </summary>
         private VisualElement AiRow(LobbyPlayer p, bool host, bool teams)
         {
             int owner = p.OwnerId;
-            var row = new VisualElement { name = "lobby-row-" + owner };
-            row.AddToClassList("lobby-row");
-            row.AddToClassList("ai-row");
-            row.AddToClassList("lobby-row--ready");
-            string colourClass = "player-" + (p.ColourIndex % LobbyRules.Colours + 1);
+            var (card, info, side) = Card(owner, false);
+            card.AddToClassList("ai-row");
             if (host)
             {
                 var swatch = new Button(() => AiChanged?.Invoke(owner, p.Difficulty, p.Style, model.NextFreeColour(owner, p.ColourIndex), p.Team))
                     { name = "ai-colour-" + owner, tooltip = "Change colour" };
-                swatch.AddToClassList("lobby-row__swatch-button");
-                swatch.AddToClassList(colourClass);
-                row.Add(swatch);
+                swatch.AddToClassList("lobby-card__strip");
+                swatch.AddToClassList("player-" + (p.ColourIndex % LobbyRules.Colours + 1));
+                card.Insert(0, swatch);
             }
-            else
-            {
-                var swatch = new VisualElement();
-                swatch.AddToClassList("lobby-row__swatch");
-                swatch.AddToClassList(colourClass);
-                row.Add(swatch);
-            }
-            VisualElement name = PlayerNameLabel.Build(p.Nickname, host ? "AI" : PlayerNameLabel.TagText(p.Difficulty), "lobby-row__name");
-            name.AddToClassList("lobby-row__name-box");
-            row.Add(name);
+            else card.Insert(0, Strip(p.ColourIndex));
+            AddName(info, p.Nickname);
+            VisualElement sub = Sub(info);
             if (host)
             {
+                sub.Add(PlayerNameLabel.Tag("AI"));
                 var difficulty = Pill("ai-difficulty-" + owner, AiLobbyRules.DifficultyName(p.Difficulty) + " ▾");
                 difficulty.clicked += () => Menu(difficulty, new[] { AiDifficulty.Easy, AiDifficulty.Normal, AiDifficulty.Hard }, p.Difficulty, AiLobbyRules.DifficultyName,
                     d => AiChanged?.Invoke(owner, d, p.Style, p.ColourIndex, p.Team));
-                row.Add(difficulty);
+                sub.Add(difficulty);
                 var style = Pill("ai-style-" + owner, AiLobbyRules.StyleName(p.Style) + " ▾");
                 style.clicked += () => Menu(style, new[] { AiStyle.Random, AiStyle.Rusher, AiStyle.Turtle, AiStyle.Expander, AiStyle.Balanced }, p.Style, AiLobbyRules.StyleName,
                     st => AiChanged?.Invoke(owner, p.Difficulty, st, p.ColourIndex, p.Team));
-                row.Add(style);
+                sub.Add(style);
                 if (teams)
                 {
                     int next = NextTeam(p.Team);
-                    var team = new Button(() => AiChanged?.Invoke(owner, p.Difficulty, p.Style, p.ColourIndex, next)) { text = TeamName(p.Team) + " ▾", name = "team-" + owner };
+                    var team = new Button(() => AiChanged?.Invoke(owner, p.Difficulty, p.Style, p.ColourIndex, next)) { text = TeamName(p.Team) + " ▸", name = "team-" + owner };
                     team.AddToClassList("lobby-row__pill");
-                    row.Add(team);
+                    side.Add(team);
                 }
             }
             else
             {
-                var style = new Label(AiLobbyRules.StyleName(p.Style)) { name = "ai-style-" + owner };
-                style.AddToClassList("lobby-row__text");
-                row.Add(style);
+                sub.Add(PlayerNameLabel.Tag(PlayerNameLabel.TagText(p.Difficulty)));
+                sub.Add(SubText("· " + AiLobbyRules.StyleName(p.Style), "ai-style-" + owner));
                 if (teams)
                 {
                     var team = new Label(TeamName(p.Team)) { name = "team-" + owner };
                     team.AddToClassList("lobby-row__text");
-                    row.Add(team);
+                    side.Add(team);
                 }
             }
-            var ready = new Label("Ready");
-            ready.AddToClassList("lobby-row__ready");
-            ready.AddToClassList("lobby-row__ready--yes");
-            row.Add(ready);
+            side.Add(ReadyLabel(true));
             if (host)
             {
                 var remove = new Button(() => AiRemoved?.Invoke(owner)) { text = "×", name = "ai-remove-" + owner, tooltip = "Remove" };
                 remove.AddToClassList("lobby-row__remove");
-                row.Add(remove);
+                remove.AddToClassList("lobby-card__remove");
+                card.Add(remove);
             }
-            return row;
+            return card;
+        }
+
+        /// <summary>
+        /// The host's ⋯ button on another human's card (Figma K1): Force ready (while not ready), Kick, and Ban, which asks
+        /// first (K2).
+        /// </summary>
+        private Button PlayerMenu(LobbyPlayer p)
+        {
+            int owner = p.OwnerId;
+            string name = p.Nickname;
+            var button = new Button { name = "player-menu-" + owner, text = "⋯", tooltip = "Host actions" };
+            button.AddToClassList("lobby-card__menu");
+            button.clicked += () =>
+            {
+                var menu = new GenericDropdownMenu();
+                if (p.Ready) menu.AddDisabledItem("Force ready (already ready)", false);
+                else menu.AddItem("Force ready", false, () => ForceReadyClicked?.Invoke(owner));
+                menu.AddItem("Kick", false, () => RemoveClicked?.Invoke(owner, false));
+                menu.AddItem("Ban…", false, () => AskBan(owner, name));
+                menu.DropDown(button.worldBound, button, false);
+            };
+            return button;
+        }
+
+        /// <summary>Opens the Ban confirmation for a player.</summary>
+        private void AskBan(int owner, string name)
+        {
+            banTarget = owner;
+            banTitle.text = $"Ban {name}?";
+            banText.text = $"{name} leaves the lobby and can't rejoin {WAR2D.Net.ServerNames.Display(model.ServerName, HostName())} while it is open. Kick instead lets them come back.";
+            banConfirm.AddToClassList("overlay-screen--visible");
+        }
+
+        private string HostName()
+        {
+            foreach (LobbyPlayer p in model.Players) if (p.IsHost) return p.Nickname;
+            return null;
+        }
+
+        private void SubmitServerName()
+        {
+            if (!model.LocalIsHost) return;
+            string typed = serverNameField.value?.Trim() ?? "";
+            string current = WAR2D.Net.ServerNames.Display(model.ServerName, HostName());
+            if (typed == current) return;
+            ServerNameChanged?.Invoke(typed == WAR2D.Net.ServerNames.Display(null, HostName()) ? "" : typed);
+        }
+
+        /// <summary>A hover card on every match setting (playtest 2026-11-02, Figma K1), with <see cref="LobbySettingHelp"/>'s words.</summary>
+        private void AttachSettingCards(VisualElement root)
+        {
+            void Attach(VisualElement target, Func<WAR2D.UI.HoverCardContent> content)
+            {
+                if (target != null) hover.Attach(target, content, WAR2D.UI.HoverCard.Side.Left);
+            }
+            Attach(sizeOptions?.parent, LobbySettingHelp.MapSize);
+            Attach(seed?.parent, LobbySettingHelp.Seed);
+            Attach(resourceOptions?.parent, LobbySettingHelp.Resources);
+            Attach(startOptions?.parent, LobbySettingHelp.StartOptions);
+            Attach(pickTimes?.parent, LobbySettingHelp.PickTime);
+            Attach(visibilityOptions?.parent, LobbySettingHelp.Visibility);
+            Attach(modeOptions?.parent, LobbySettingHelp.Mode);
+            Attach(diplomacySlot, LobbySettingHelp.Diplomacy);
         }
 
         private static Button Pill(string name, string text)
@@ -304,7 +447,7 @@ namespace WAR2D.UI
             for (int c = 0; c < LobbyRules.Colours; c++)
             {
                 int colour = c;
-                bool taken = model.IsColourTaken(c);
+                bool taken = model.IsColourTakenByHuman(c); // an AI's colour can be taken: the AI moves (humans over AIs)
                 var chip = new Button(() => ColourClicked?.Invoke(colour)) { name = "colour-" + c, text = taken ? "×" : "" };
                 chip.AddToClassList("colour-chip");
                 chip.AddToClassList("player-" + (c + 1));

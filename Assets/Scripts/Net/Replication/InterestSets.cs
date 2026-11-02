@@ -30,6 +30,8 @@ namespace WAR2D.Net.Replication
         /// <summary>Every owner's fog grid (see <c>SimData.Visible</c>): grid g covers [g * FogCells, (g + 1) * FogCells).</summary>
         [ReadOnly] public NativeArray<byte> Visible;
         public int FogCellSize, FogW, FogH, FogCells;
+        /// <summary>The map's width in tiles (v0.16: a wall target's tile index to a position).</summary>
+        public int MapWidth;
 
         /// <summary>The settled simulation's units and fog, as replication (and the AI's team view) read them.</summary>
         public static ReplicationInput From(WAR2D.Sim.SimData data, int count) => new ReplicationInput
@@ -37,6 +39,7 @@ namespace WAR2D.Net.Replication
             Count = count, Positions = data.Positions, Health = data.Health, MaxHealth = data.MaxHealth,
             OwnerId = data.OwnerId, Type = data.Type, IdOf = data.IdOf, IndexOfId = data.IndexOfId, SpeedByType = data.SpeedByType,
             Visible = data.Visible, FogCellSize = data.FogCellSize, FogW = data.FogW, FogH = data.FogH, FogCells = data.FogCells,
+            MapWidth = data.Width,
         };
 
         /// <summary>True when fog grid <paramref name="grid"/> sees <paramref name="p"/>.</summary>

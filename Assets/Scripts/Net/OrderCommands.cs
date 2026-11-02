@@ -32,16 +32,17 @@ public partial class WorldStateManager
     /// <summary>
     /// Accumulates one chunk of an order (<see cref="OrderKind"/>); the final chunk queues it. The goal
     /// is used (and validated) only for Move and AttackMove; <paramref name="queue"/> (Shift) queues
-    /// those after each unit's current order.
+    /// those after each unit's current order. <paramref name="formation"/> (v0.16) is the sender's Formations setting; only
+    /// a Move or Attack-move uses it (<see cref="PlayerActions.FormsUp"/>), so it needs no other check.
     /// </summary>
     [Command(requiresAuthority = false)]
-    public void CmdOrderChunk(ushort token, byte[] idChunk, bool final, byte kind, bool queue, int2 goal, NetworkConnectionToClient sender = null)
+    public void CmdOrderChunk(ushort token, byte[] idChunk, bool final, byte kind, bool queue, int2 goal, bool formation, NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(CmdOrderChunk))) return;
         if (!TryActingOwner(sender, out int owner) || !IsOrderValid(kind, goal)) return;
         List<int> ids = Accumulate(owner, token, OrderChunkKind, idChunk, final);
         if (ids == null) return;
-        PlayerActions.Order(owner, ids, (OrderKind)kind, queue, goal);
+        PlayerActions.Order(owner, ids, (OrderKind)kind, queue, goal, formation);
     }
 
     /// <summary>
@@ -74,11 +75,11 @@ public partial class WorldStateManager
 
     /// <summary>Gives a squad's living members an order (<see cref="OrderKind"/>), as <see cref="CmdOrderChunk"/>.</summary>
     [Command(requiresAuthority = false)]
-    public void CmdOrderSquad(byte squad, byte kind, bool queue, int2 goal, NetworkConnectionToClient sender = null)
+    public void CmdOrderSquad(byte squad, byte kind, bool queue, int2 goal, bool formation, NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(CmdOrderSquad))) return;
         if (!CommandValidator.IsSquadIndexValid(squad) || !TryActingOwner(sender, out int owner) || !IsOrderValid(kind, goal)) return;
-        PlayerActions.OrderSquad(owner, squad, (OrderKind)kind, queue, goal);
+        PlayerActions.OrderSquad(owner, squad, (OrderKind)kind, queue, goal, formation);
     }
 
     private const int SquadCountTicks = 40; // 2 s at 20 Hz

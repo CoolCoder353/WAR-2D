@@ -85,6 +85,11 @@ namespace WAR2D.Sim
         public int SeparationInterval;
         /// <summary>Separation strength k.</summary>
         public float SeparationStrength;
+        /// <summary>Formations (v0.16, <c>&lt;Formation&gt;</c>): slot spacing, the loose radius, the slot-steering radius and the lost distance, in tiles.</summary>
+        public float FormationSpacing, FormationLoose, FormationSlot, FormationLost;
+        /// <summary>Idle Builders' own work (v0.16, <c>&lt;AutoWork&gt;</c>): how far they look (tiles), the repair share, and ticks between looks.</summary>
+        public float AutoWorkRadius, AutoWorkRepairBelow;
+        public int AutoWorkSlice;
         /// <summary>The largest body radius, so a separation scan reaches every possible neighbour.</summary>
         public float SeparationMargin;
         /// <summary>Percent of max health an unpaid unit loses per second.</summary>
@@ -101,6 +106,8 @@ namespace WAR2D.Sim
         // ---- map (not owned: MapStore owns Tiles and Used) ----
         /// <summary>Tiles across and down.</summary>
         public int Width, Height;
+        /// <summary>The undiggable rim's width in tiles (<c>Map/EdgeTiles</c>; <see cref="DigRules.InRim"/>).</summary>
+        public int RimTiles;
         /// <summary>Tile kinds, row-major (see <see cref="MapGrid"/>).</summary>
         public NativeArray<byte> Tiles;
         /// <summary>Building footprint flags, row-major.</summary>
@@ -192,6 +199,11 @@ namespace WAR2D.Sim
         public float WorkReach;
         /// <summary>1 when the unit's upkeep went unpaid at the last charge.</summary>
         public NativeArray<byte> Unpaid;
+        /// <summary>Per unit (v0.16 formations): its slot relative to its order's goal, and the group's speed (0: no formation).</summary>
+        public NativeArray<float2> FormationOffset;
+        public NativeArray<float> FormationSpeed;
+        /// <summary>Per unit: the order handle its formation's leader distance is kept under.</summary>
+        public NativeArray<int> FormationLead;
         /// <summary>Stance per unit (<see cref="Stances"/>).</summary>
         public NativeArray<byte> Stance;
         /// <summary>Network id per unit slot.</summary>
@@ -290,6 +302,8 @@ namespace WAR2D.Sim
         public NativeArray<byte> OrderLive;
         public NativeArray<byte> OrderReady;
         public NativeArray<int> OrderFollowers;
+        /// <summary>Per order handle (v0.16): the distance to the goal of the formation follower nearest it, last tick (its leader), keyed by <see cref="FormationLead"/>.</summary>
+        public NativeArray<float> OrderLead;
         /// <summary>(handle, sector) pairs where a unit of a ready order found no direction.</summary>
         public NativeQueue<int2> RouteMisses;
         /// <summary>Non-zero where a large unit may not stand (a tile next to a blocked tile).</summary>
@@ -418,6 +432,13 @@ namespace WAR2D.Sim
                 Slice = math.max(1, sim.TargetSearchSliceTicks),
                 SeparationInterval = math.max(1, sim.SeparationIntervalTicks),
                 SeparationStrength = sim.SeparationStrength,
+                FormationSpacing = config.Formation.Spacing,
+                FormationLoose = config.Formation.LooseTiles,
+                FormationSlot = config.Formation.SlotTiles,
+                FormationLost = config.Formation.LostTiles,
+                AutoWorkRadius = config.AutoWork.Radius,
+                AutoWorkRepairBelow = config.AutoWork.RepairBelow,
+                AutoWorkSlice = math.max(1, config.AutoWork.SliceTicks),
                 SeparationMargin = maxRadius,
                 DecayPercentPerSecond = config.Resources.DecayPercentPerSecond,
                 MaxUnitsPerPlayer = sim.MaxUnitsPerPlayer,
@@ -427,6 +448,7 @@ namespace WAR2D.Sim
                 SearchCells = math.max(1, (int)math.ceil(maxRange / sim.HashCellSize)),
                 Width = map.Width,
                 Height = map.Height,
+                RimTiles = DigRules.RimWidth(config.Match.Map.EdgeTiles, map.Width, map.Height),
                 Tiles = map.Tiles,
                 Used = map.Used,
                 SpeedByType = new NativeArray<float>(typeCount, allocator),
@@ -478,6 +500,9 @@ namespace WAR2D.Sim
                 BuildPower = config.Siege.BuildPower,
                 WorkReach = config.Siege.WorkReach,
                 Unpaid = new NativeArray<byte>(capacity, allocator),
+                FormationOffset = new NativeArray<float2>(capacity, allocator),
+                FormationSpeed = new NativeArray<float>(capacity, allocator),
+                FormationLead = new NativeArray<int>(capacity, allocator),
                 Stance = new NativeArray<byte>(capacity, allocator),
                 IdOf = new NativeArray<int>(capacity, allocator),
                 IndexOfId = new NativeArray<int>(sim.MaxEntities, allocator),
@@ -600,7 +625,7 @@ namespace WAR2D.Sim
             RunningCostByType.Dispose(); DamageTable.Dispose();
             Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Type.Dispose();
             SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose(); LastHitBy.Dispose();
-            OrderSlot.Dispose(); Arrived.Dispose(); WorkTile.Dispose(); WorkKind.Dispose(); WorkFinished.Dispose(); BombBlasts.Dispose(); ForcedBombs.Dispose(); ForcedBombers.Dispose(); ArmourByType.Dispose(); SplashByType.Dispose(); MinRangeSqByType.Dispose(); SearchSqByType.Dispose(); BlastRadiusByType.Dispose(); BlastDamageByType.Dispose(); DigProgress.Dispose(); DigAt.Dispose(); DigDone.Dispose(); DigMoves.Dispose(); WallOwnerSlot.Dispose(); WallState.Dispose(); WallHealth.Dispose(); WallWork.Dispose(); WallDamage.Dispose(); RepairWork.Dispose(); Unpaid.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
+            OrderSlot.Dispose(); Arrived.Dispose(); WorkTile.Dispose(); WorkKind.Dispose(); WorkFinished.Dispose(); BombBlasts.Dispose(); ForcedBombs.Dispose(); ForcedBombers.Dispose(); ArmourByType.Dispose(); SplashByType.Dispose(); MinRangeSqByType.Dispose(); SearchSqByType.Dispose(); BlastRadiusByType.Dispose(); BlastDamageByType.Dispose(); DigProgress.Dispose(); DigAt.Dispose(); DigDone.Dispose(); DigMoves.Dispose(); WallOwnerSlot.Dispose(); WallState.Dispose(); WallHealth.Dispose(); WallWork.Dispose(); WallDamage.Dispose(); RepairWork.Dispose(); Unpaid.Dispose(); FormationOffset.Dispose(); FormationSpeed.Dispose(); FormationLead.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
             Cell.Dispose(); CellStart.Dispose(); Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose();
             BuildingCount.Dispose(); BuildingPositions.Dispose(); BuildingOwnerId.Dispose(); BuildingOwnerSlot.Dispose(); BuildingHealth.Dispose();
             BuildingDamage.Dispose(); BuildingIds.Dispose(); BuildingEntities.Dispose(); BuildingSlotOfIndex.Dispose(); BuildingCell.Dispose();

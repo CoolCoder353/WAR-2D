@@ -113,8 +113,23 @@ namespace WAR2D.Client
             return true;
         }
 
-        /// <summary>True while a known unit still has a route to follow (it is moving).</summary>
+        /// <summary>True while a known unit holds a route (it may already stand at the route's end; see <see cref="IsMoving"/>).</summary>
         public bool HasRoute(int index) => IsKnown(index) && routeCount[index] > 0;
+
+        /// <summary>
+        /// True while a known unit is still on its way: it has a route and its prediction still advances (a quarter second on
+        /// from <paramref name="now"/>). A unit that stopped (a fresh spawn, one that arrived, one held at a corrected point)
+        /// keeps its route on the client, so <see cref="HasRoute"/> alone counted it as moving (playtest 2026-11-02: "idle
+        /// Builders" was always 0).
+        /// </summary>
+        public bool IsMoving(int index, float now)
+        {
+            if (!HasRoute(index)) return false;
+            return math.distancesq(PredictOne(index, now), PredictOne(index, now + MovingLookAhead)) > 0.02f * 0.02f;
+        }
+
+        /// <summary>Seconds ahead <see cref="IsMoving"/> looks for the prediction to move.</summary>
+        private const float MovingLookAhead = 0.25f;
 
         public bool IsKnown(int index) => (uint)index < (uint)knownSlot.Length && knownSlot[index] >= 0;
         public int IdOf(int index) => IsKnown(index) ? states[index].Id : 0;

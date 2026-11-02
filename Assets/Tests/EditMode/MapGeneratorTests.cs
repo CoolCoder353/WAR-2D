@@ -75,11 +75,12 @@ public class MapGeneratorTests
 
     /// <summary>
     /// Every lobby size's map for one seed, against its recorded hash: an accidental change to the generator (or to the
-    /// <c>&lt;Map&gt;</c> numbers) shows here. When the change is meant, record the new hashes.
+    /// <c>&lt;Map&gt;</c> numbers) shows here. When the change is meant, record the new hashes (last: 2026-11-02, the
+    /// undiggable <c>&lt;EdgeTiles&gt;</c> rim).
     /// </summary>
-    [TestCase(256, 6200578098023691338UL)]
-    [TestCase(512, 2412201922470835925UL)]
-    [TestCase(1024, 11967994763251245253UL)]
+    [TestCase(256, 11030021379267669698UL)]
+    [TestCase(512, 11829311808475786207UL)]
+    [TestCase(1024, 13262930411169682477UL)]
     public void RecordedHashPerSize(int size, ulong expected)
     {
         using MapLayout l = Make(size, 12345u);
@@ -278,5 +279,23 @@ public class MapGeneratorTests
     {
         foreach (int size in Config.ConfigLoader.LoadConfig().Lobby.MapSizes)
             Assert.GreaterOrEqual(RegionMapGenerator.Counts(Cfg, size).starts, 8 * 1 + Config.ConfigLoader.LoadConfig().Lobby.SpareStartSites, $"size {size}");
+    }
+
+    [TestCase(256, 7u)]
+    [TestCase(512, 21u)]
+    public void TheMapsRimIsUndiggableBorder(int size, uint seed)
+    {
+        // Playtest 2026-11-02: rock within <EdgeTiles> of the edge is border; floor and gems (a start vein can reach the rim) stay.
+        int band = Config.ConfigLoader.LoadConfig().Match.Map.EdgeTiles;
+        using MapLayout layout = Make(size, seed, 0.05f);
+        for (int y = 0; y < size; y++)
+        for (int x = 0; x < size; x++)
+        {
+            int edge = math.min(math.min(x, y), math.min(size - 1 - x, size - 1 - y));
+            if (edge >= band) continue;
+            var tile = (TileType)layout.Tiles[y * size + x];
+            if (edge == 0) Assert.AreEqual(TileType.Border, tile, $"({x}, {y})");
+            else Assert.That(tile != TileType.Wall, $"({x}, {y}) is rock");
+        }
     }
 }

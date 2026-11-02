@@ -72,6 +72,15 @@ namespace WAR2D.Sim
 
         /// <summary>Owner id of the last unit that hit this one (0 when never hit): who gets the kill.</summary>
         public int LastHitBy;
+
+        /// <summary>Slot relative to the order's goal (v0.16 formations).</summary>
+        public float2 FormationOffset;
+
+        /// <summary>The formation's speed cap; 0 when the unit isn't in one.</summary>
+        public float FormationSpeed;
+
+        /// <summary>The order handle that holds the formation's leader distance (<see cref="PendingOrder.LeadSlot"/>).</summary>
+        public int FormationLead;
     }
 
     /// <summary>The tick's clock and state, a singleton next to <see cref="SimData"/>.</summary>

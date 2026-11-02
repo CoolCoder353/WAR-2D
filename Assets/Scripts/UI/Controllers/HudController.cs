@@ -146,6 +146,7 @@ namespace WAR2D.UI
             Model.Economy.LowFunds += OnLowFunds;
             // The selection panel and squad bar sit right of the minimap and follow it when its size changes (S, M, L).
             root.Q("minimap")?.RegisterCallback<GeometryChangedEvent>(FollowMinimap);
+            root.Q("selection-panel")?.RegisterCallback<GeometryChangedEvent>(FollowSelectionPanel);
             orderTags = new OrderTagsController(root);
             diplomacy = new DiplomacyPanelController(root, Model);
             diplomacyButton = root.Q<Button>("diplomacy-button");
@@ -240,7 +241,7 @@ namespace WAR2D.UI
         }
 
         private bool cameraCentred;
-        private readonly List<(Unity.Mathematics.float2 centre, Color32 colour)> starts = new List<(Unity.Mathematics.float2, Color32)>();
+        private readonly List<MinimapStart> starts = new List<MinimapStart>();
 
         /// <summary>
         /// Once the match map is ready, puts the camera on the local player's HQ clearing (their first dealt option).
@@ -319,6 +320,7 @@ namespace WAR2D.UI
                 float distance = ((Vector2)view - new Vector2(0.5f, 0.5f)).sqrMagnitude;
                 if (view.x >= 0f && view.x <= 1f && view.y >= 0f && view.y <= 1f && distance < nearest) { nearest = distance; prompt.Focused = i; }
             }
+            int ownMarkers = markers.Count;
             foreach (var teammate in me.TeammateStarts)
             {
                 string name = NameOf(teammate.Key);
@@ -333,7 +335,12 @@ namespace WAR2D.UI
             }
             startMarkers.Show(markers, cam);
             starts.Clear();
-            foreach (StartMarker marker in markers) starts.Add((new Unity.Mathematics.float2(marker.Centre.x, marker.Centre.y), marker.Colour));
+            for (int i = 0; i < markers.Count; i++)
+            {
+                StartMarker marker = markers[i];
+                bool own = i < ownMarkers; // the player's own options come first, numbered as their Option buttons
+                starts.Add(new MinimapStart { Centre = new Unity.Mathematics.float2(marker.Centre.x, marker.Centre.y), Colour = marker.Colour, Own = own, Label = own ? marker.OnScreen : null });
+            }
             minimap?.ShowStarts(starts);
             return prompt;
         }
@@ -474,6 +481,24 @@ namespace WAR2D.UI
                 VisualElement element = root.Q(name);
                 if (element != null) element.style.left = left;
             }
+        }
+
+        /// <summary>Lowest the squad bar sits (its USS bottom), and the gap kept above the selection panel and to the hint.</summary>
+        private const float SquadBarBottom = 142f, SquadBarGap = 8f, SquadHintAbove = 44f;
+
+        /// <summary>
+        /// Keeps the squad bar and its hint above the selection panel when the panel grows past them (playtest 2026-11-02: a
+        /// tall selection, many types or the upkeep line, covered the squad bar).
+        /// </summary>
+        private void FollowSelectionPanel(GeometryChangedEvent e)
+        {
+            if (!(e.target is VisualElement panel)) return;
+            float top = panel.resolvedStyle.display == DisplayStyle.None || float.IsNaN(panel.layout.height) ? 0f
+                : panel.resolvedStyle.bottom + panel.layout.height + SquadBarGap;
+            float bottom = Mathf.Max(SquadBarBottom, top);
+            VisualElement bar = root.Q("squad-bar"), hint = root.Q("squad-hint");
+            if (bar != null) bar.style.bottom = bottom;
+            if (hint != null) hint.style.bottom = bottom + SquadHintAbove;
         }
 
         private Label cursorNotice;

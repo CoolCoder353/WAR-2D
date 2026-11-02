@@ -5,7 +5,7 @@ using WAR2D.Net.Steam;
 public class LobbyInfoTests
 {
     private static LobbyInfo Make(ulong id, string name, int players, string state = "lobby", string ver = "0.9.0") =>
-        new LobbyInfo { LobbyId = id, HostSteamId = id + 1, HostName = name, Version = ver, State = state, Mode = "FreeForAll", MapSize = 128, Players = players };
+        new LobbyInfo { LobbyId = id, HostSteamId = id + 1, HostName = name, ServerName = WAR2D.Net.ServerNames.Display(null, name), Version = ver, State = state, Mode = "FreeForAll", MapSize = 128, Players = players };
 
     [Test]
     public void EncodeThenDecodeRoundTrips()

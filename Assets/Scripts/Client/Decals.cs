@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using Unity.Mathematics;
 using UnityEngine;
+using WAR2D.Net.Replication;
 using WAR2D.Art;
 using WAR2D.Art.Render;
 
@@ -9,6 +11,9 @@ using WAR2D.Art.Render;
 /// and goes. Like <see cref="Effects"/>, each kind has a fixed pool of sprites made once; when a pool is full the oldest mark
 /// is reused. Marks only follow deaths and movement the client already draws. A destroyed unit also leaves its wreck (its own
 /// sprite at its last facing, charred), which fades out by alpha (playtest 2026-10-30: wrecks, and longer-lasting marks).
+/// Since 2026-11-02 marks last much longer (the owner chose longer holds over bigger pools, which cost every frame): scorch
+/// and wrecks ten minutes, tracks two, and rubble until a building or blueprint goes up over it. A big fight still recycles
+/// the oldest marks once a pool is full.
 /// </summary>
 public static class Decals
 {
@@ -16,16 +21,16 @@ public static class Decals
     public const int ScorchPool = 256, LargeScorchPool = 64, RubblePool = 48, LargeRubblePool = 16, TrackPool = 2048, WreckPool = 192;
 
     /// <summary>Seconds a scorch holds before it fades, and the seconds the fade takes.</summary>
-    public const float ScorchHold = 60f, ScorchFade = 20f;
+    public const float ScorchHold = 600f, ScorchFade = 20f;
 
-    /// <summary>Seconds rubble holds before it fades, and the seconds the fade takes.</summary>
-    public const float RubbleHold = 180f, RubbleFade = 30f;
+    /// <summary>Rubble never fades on its own: it stays until a building or blueprint enters over it (<see cref="ClearRubbleUnder"/>).</summary>
+    public const float RubbleHold = float.PositiveInfinity, RubbleFade = 30f;
 
     /// <summary>Seconds a tread mark holds before it fades, and the seconds the fade takes.</summary>
-    public const float TrackHold = 12f, TrackFade = 10f;
+    public const float TrackHold = 120f, TrackFade = 10f;
 
     /// <summary>Seconds a unit's wreck holds before it fades, and the seconds the fade takes.</summary>
-    public const float WreckHold = 60f, WreckFade = 15f;
+    public const float WreckHold = 600f, WreckFade = 15f;
 
     /// <summary>The tint on a wreck's sprite: charred, dark and a little warm.</summary>
     public static readonly Color WreckTint = new Color(0.32f, 0.29f, 0.27f, 1f);
@@ -36,6 +41,8 @@ public static class Decals
         public SpriteRenderer Sprite;
         public float Start;
         public int Direction, Frame;
+        /// <summary>Rubble: the width in tiles of the building it was left by.</summary>
+        public int Tiles;
         public bool Active;
         /// <summary>A wreck: drawn from another atlas and faded by alpha rather than through dithered frames.</summary>
         public bool Wreck;
@@ -60,6 +67,7 @@ public static class Decals
     private static readonly Pool Rubble5 = new Pool("Rubble5", LargeRubblePool, RubbleHold, RubbleFade);
     private static readonly Pool Tracks = new Pool("Tracks", TrackPool, TrackHold, TrackFade);
     private static readonly Pool Wrecks = new Pool("Wreck", WreckPool, WreckHold, WreckFade);
+    private static readonly Pool[] RubblePools = { Rubble1, Rubble2, Rubble3, Rubble5 };
     private static readonly Pool[] All = { Scorches, LargeScorches, Rubble1, Rubble2, Rubble3, Rubble5, Tracks, Wrecks };
     private static Runner runner;
     private static ArtAtlas atlas;
@@ -98,8 +106,33 @@ public static class Decals
     public static void Scorch(Vector2 position, bool large) => Place(large ? LargeScorches : Scorches, position, 0);
 
     /// <summary>Rubble over a destroyed building's footprint, centred on <paramref name="centre"/>; <paramref name="tiles"/> is its width.</summary>
-    public static void Rubble(Vector2 centre, int tiles) =>
-        Place(tiles >= 5 ? Rubble5 : tiles >= 3 ? Rubble3 : tiles == 2 ? Rubble2 : Rubble1, centre, 0);
+    public static void Rubble(Vector2 centre, int tiles)
+    {
+        Slot s = Place(tiles >= 5 ? Rubble5 : tiles >= 3 ? Rubble3 : tiles == 2 ? Rubble2 : Rubble1, centre, 0);
+        if (s != null) s.Tiles = Mathf.Max(1, tiles);
+    }
+
+    /// <summary>
+    /// Removes the rubble a footprint of <paramref name="size"/> tiles centred on <paramref name="centre"/> overlaps (a building
+    /// or blueprint went up over it). Returns how many patches went.
+    /// </summary>
+    public static int ClearRubbleUnder(Vector2 centre, int2 size)
+    {
+        int cleared = 0;
+        foreach (Pool pool in RubblePools)
+        {
+            foreach (Slot s in pool.Slots)
+            {
+                if (!s.Active) continue;
+                Vector2 d = (Vector2)s.Go.transform.position - centre;
+                if (Mathf.Abs(d.x) * 2f >= s.Tiles + size.x || Mathf.Abs(d.y) * 2f >= s.Tiles + size.y) continue;
+                s.Active = false;
+                s.Go.SetActive(false);
+                cleared++;
+            }
+        }
+        return cleared;
+    }
 
     /// <summary>
     /// A tread mark centred on <paramref name="position"/>, laid along <paramref name="heading"/> (radians). The east–west mark is
@@ -186,8 +219,24 @@ public static class Decals
     /// <summary>Steps every mark through its fade; hides the ones that are gone.</summary>
     private sealed class Runner : MonoBehaviour
     {
+        private ClientBuildings watched;
+
+        private void OnEntered(BuildingData data, HealthComponent health)
+        {
+            if (data.buildingType == BuildingType.Bomb) return;
+            int2 size = WorldStateManager.GetBuildingSize(data.buildingType);
+            float2 centre = Footprint.VisualCenter((int2)math.round(data.position), size);
+            ClearRubbleUnder(new Vector2(centre.x, centre.y), size);
+        }
+
         private void Update()
         {
+            if (watched != ClientBuildings.Current) // replaced at the end of a match
+            {
+                if (watched != null) watched.Entered -= OnEntered;
+                watched = ClientBuildings.Current;
+                if (watched != null) watched.Entered += OnEntered;
+            }
             float now = Time.time;
             foreach (Slot s in Wrecks.Slots)
             {
@@ -225,6 +274,7 @@ public static class Decals
 
         private void OnDestroy()
         {
+            if (watched != null) watched.Entered -= OnEntered;
             if (runner == this) Reset();
         }
     }

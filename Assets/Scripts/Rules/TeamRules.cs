@@ -7,6 +7,12 @@ public static class TeamRules
     public const int NoTeam = -1;
 
     /// <summary>
+    /// Where a player sorts in a player list (playtest 2026-11-02: lists ordered by team): numbered teams in order, then
+    /// every player on no team (Solo, or a free-for-all's own team, negative).
+    /// </summary>
+    public static int ListOrder(int team) => team >= 0 ? team : int.MaxValue;
+
+    /// <summary>
     /// Assigns every owner a team in <c>[0, owners.Count)</c>. Owners who chose the same team share
     /// one (numbered in ascending choice order); owners with <see cref="NoTeam"/> each get their own.
     /// </summary>

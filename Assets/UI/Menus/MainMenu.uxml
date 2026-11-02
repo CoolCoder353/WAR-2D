@@ -2,7 +2,7 @@
     <ui:VisualElement name="main-menu" class="menu-screen main-menu" picking-mode="Ignore">
         <ui:VisualElement class="main-menu__title" picking-mode="Ignore">
             <ui:Label text="WAR-2D" class="main-menu__name" picking-mode="Ignore" />
-            <ui:Label name="version" text="v0.10 Insight" class="text text--muted" picking-mode="Ignore" />
+            <ui:Label name="version" text="" class="text text--muted" picking-mode="Ignore" />
         </ui:VisualElement>
         <ui:VisualElement class="main-menu__buttons" picking-mode="Ignore">
             <ui:Button name="play-button" text="Play" class="button button--primary menu-button" />

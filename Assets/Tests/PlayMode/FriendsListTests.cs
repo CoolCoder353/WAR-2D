@@ -71,7 +71,7 @@ public class FriendsListTests
         VisualElement root = Root();
         HudTests.Click(root.Q<Button>("play-button"));
         yield return PlayModeMatch.WaitUntil(() => root.Q("game-list").childCount == 1, 5f);
-        Assert.That(root.Q<Label>("game-host").text, Is.EqualTo("Ann"));
+        Assert.That(root.Q<Label>("game-host").text, Is.EqualTo("Ann's server"), "2026-11-02 (Figma K2): the server's name leads the row");
         Assert.That(root.Q("friends-empty").ClassListContains("play-panel__notice--visible"), Is.False);
     }
 }

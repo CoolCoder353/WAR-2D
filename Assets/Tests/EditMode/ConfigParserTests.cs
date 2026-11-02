@@ -9,11 +9,17 @@ using NUnit.Framework;
 public class ConfigParserTests
 {
     internal const string ValidXml = @"<GameConfig>
+  <Release><Version>0.16.0</Version><Name>Clarity</Name></Release>
   <Resources><PassiveGenerationRate>5</PassiveGenerationRate><StartingResources>1000</StartingResources><MiningRate>10</MiningRate><DecayPercentPerSecond>5</DecayPercentPerSecond></Resources>
-  <Match><Scene>Map_2</Scene><CountdownSeconds>5</CountdownSeconds><ReconnectSeconds>60</ReconnectSeconds><Map><Size>1024</Size><Seed>0</Seed><GemChance>0.04</GemChance><LayoutSizes>128 256</LayoutSizes><StartSites>8 16</StartSites><Expansions>2 4</Expansions><CentralAreas>1 1</CentralAreas><RegionScale>100 100</RegionScale><LaneScale>100 100</LaneScale><CaveDepth>3 5</CaveDepth><OutcropShare>0.08</OutcropShare><ChokepointShare>0.4</ChokepointShare><LaneWidth>6 10</LaneWidth><ChokeWidth>3 6</ChokeWidth><MinStartDistance>0.1</MinStartDistance><MaxStartDistance>0.6</MaxStartDistance><ExpansionGemTiles>30</ExpansionGemTiles></Map></Match>
+  <Match><Scene>Map_2</Scene><CountdownSeconds>5</CountdownSeconds><ReconnectSeconds>60</ReconnectSeconds><Map><Size>1024</Size><Seed>0</Seed><GemChance>0.04</GemChance><LayoutSizes>128 256</LayoutSizes><StartSites>8 16</StartSites><Expansions>2 4</Expansions><CentralAreas>1 1</CentralAreas><RegionScale>100 100</RegionScale><LaneScale>100 100</LaneScale><CaveDepth>3 5</CaveDepth><OutcropShare>0.08</OutcropShare><ChokepointShare>0.4</ChokepointShare><LaneWidth>6 10</LaneWidth><ChokeWidth>3 6</ChokeWidth><MinStartDistance>0.1</MinStartDistance><MaxStartDistance>0.6</MaxStartDistance><ExpansionGemTiles>30</ExpansionGemTiles><EdgeTiles>4</EdgeTiles></Map></Match>
   <Simulation><TickRate>20</TickRate><TargetSearchSliceTicks>8</TargetSearchSliceTicks><SeparationIntervalTicks>2</SeparationIntervalTicks><SeparationStrength>1</SeparationStrength><HashCellSize>5</HashCellSize><MaxFieldRebuildsPerTick>2</MaxFieldRebuildsPerTick><MaxUnitsPerPlayer>10000</MaxUnitsPerPlayer><MaxEntities>131072</MaxEntities><FogCellSize>2</FogCellSize><VisionIntervalTicks>4</VisionIntervalTicks></Simulation>
   <Replication><CorrectionIntervalTicks>4</CorrectionIntervalTicks><CorrectionThreshold>0.25</CorrectionThreshold><DeltaScale>8</DeltaScale><OffscreenThreshold>2</OffscreenThreshold><OffscreenIntervalTicks>20</OffscreenIntervalTicks><SnapshotBytesPerSecond>262144</SnapshotBytesPerSecond><RouteTolerance>1</RouteTolerance></Replication>
   <Orders><MaxQueued>4</MaxQueued><MaxDigArea>24</MaxDigArea></Orders>
+  <TargetLines><HoldSeconds>1.5</HoldSeconds><Max>200</Max></TargetLines>
+  <MinimapCombat><CellTiles>16</CellTiles><PulseSeconds>1.5</PulseSeconds><QuietSeconds>3</QuietSeconds><Max>32</Max></MinimapCombat>
+  <PlacementMinimap><MarkerPixels>8</MarkerPixels></PlacementMinimap>
+  <Formation><Spacing>1.2</Spacing><LooseTiles>4</LooseTiles><SlotTiles>12</SlotTiles><LostTiles>20</LostTiles></Formation>
+  <AutoWork><Radius>8</Radius><RepairBelow>0.9</RepairBelow><SliceTicks>10</SliceTicks></AutoWork>
   <Diplomacy><ChangeCooldownSeconds>2</ChangeCooldownSeconds></Diplomacy>
   <Lobby><MapSizes>256 512 1024</MapSizes><StartingResources>500 1000 2500 5000</StartingResources><StartOptions>1 3 4</StartOptions><StartPickSeconds>0 15 45</StartPickSeconds><StartPickDefault>45</StartPickDefault><SpareStartSites>2</SpareStartSites><Visibility>Friends</Visibility></Lobby>
   <MenuBattle><UnitsPerArmy>1500</UnitsPerArmy><MapSize>512</MapSize><Seed>7</Seed></MenuBattle>
@@ -210,6 +216,32 @@ public class ConfigParserTests
         Assert.That(errors, Is.Empty);
         Assert.AreEqual(4, c.Orders.MaxQueued);
         Assert.AreEqual(24, c.Orders.MaxDigArea);
+    }
+
+    [Test]
+    public void ParsesTheV016Blocks()
+    {
+        var errors = new List<string>();
+        GameConfigData c = ConfigParser.Parse(ValidXml, errors);
+        Assert.That(errors, Is.Empty);
+        Assert.AreEqual(1.5f, c.TargetLines.HoldSeconds);
+        Assert.AreEqual(200, c.TargetLines.Max);
+        Assert.AreEqual(16, c.MinimapCombat.CellTiles);
+        Assert.AreEqual(3f, c.MinimapCombat.QuietSeconds);
+        Assert.AreEqual(8, c.PlacementMinimap.MarkerPixels);
+        Assert.AreEqual(1.2f, c.Formation.Spacing);
+        Assert.AreEqual(20f, c.Formation.LostTiles);
+        Assert.AreEqual(8f, c.AutoWork.Radius);
+        Assert.AreEqual(10, c.AutoWork.SliceTicks);
+    }
+
+    [TestCase("<Spacing>1.2</Spacing>", "<Spacing>0</Spacing>")]
+    [TestCase("<RepairBelow>0.9</RepairBelow>", "<RepairBelow>1.5</RepairBelow>")]
+    public void RefusesOutOfRangeV016Values(string good, string bad)
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(ValidXml.Replace(good, bad), errors);
+        Assert.That(errors, Is.Not.Empty);
     }
 
     [Test]
@@ -623,7 +655,7 @@ public class ConfigParserTests
         GameConfigData c = ConfigLoader.LoadConfig();
         Assert.IsTrue(ConfigLoader.IsValid, string.Join("\n", ConfigLoader.Errors));
         Assert.That(c.Ai.Callsigns.Length, Is.GreaterThanOrEqualTo(ConfigParser.MinCallsigns));
-        Assert.That(c.Ai.Callsigns, Does.Contain("Cmdr. Vasquez"));
+        Assert.That(c.Ai.Callsigns, Does.Contain("IronFox")); // 2026-11-02 playtest: gamer tags
         // Spec §6's starting values.
         Assert.AreEqual((1.0f, 30, 6.0f), Row(c.Ai.GetDifficulty(AiDifficulty.Easy)));
         Assert.AreEqual((0.5f, 80, 2.0f), Row(c.Ai.GetDifficulty(AiDifficulty.Normal)));

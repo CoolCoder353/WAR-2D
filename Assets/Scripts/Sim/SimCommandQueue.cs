@@ -67,6 +67,8 @@ namespace WAR2D.Sim
         public bool Flag;
         /// <summary>Shift-queued: a Move or AttackMove runs after the unit's current order.</summary>
         public bool Queue;
+        /// <summary>Move or AttackMove in formation (v0.16): two or more movers take slots at the goal and the slowest one's speed.</summary>
+        public bool Formation;
         /// <summary>Goal tile of a move.</summary>
         public int2 Tile;
         /// <summary>Spawn position.</summary>

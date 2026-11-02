@@ -141,6 +141,9 @@ namespace WAR2D.UI
             lobby.AddAiClicked += () => GameCore.Instance?.Cmd_AddAi(AiDifficulty.Normal, AiStyle.Random);
             lobby.AiChanged += (owner, difficulty, style, colour, team) => GameCore.Instance?.Cmd_SetAi(owner, difficulty, style, colour, team);
             lobby.AiRemoved += owner => GameCore.Instance?.Cmd_RemoveAi(owner);
+            lobby.ServerNameChanged += name => GameCore.Instance?.Cmd_SetServerName(name);
+            lobby.ForceReadyClicked += owner => GameCore.Instance?.Cmd_ForceReady((uint)owner);
+            lobby.RemoveClicked += (owner, ban) => GameCore.Instance?.Cmd_RemovePlayer((uint)owner, ban);
             lobby.InviteClicked += WAR2D.Net.Steam.SteamHostLobby.OpenInvite;
             lobby.LeaveClicked += () => { wantsPlay = true; GameManager.Instance?.LeaveLobby(); };
             Show(Screen.Main);
@@ -231,6 +234,13 @@ namespace WAR2D.UI
             lobby.SetInviteVisible(NetworkServer.active && WAR2D.Net.Steam.SteamHostLobby.CanInvite);
             bool connected = NetworkClient.isConnected;
             if (connected) wasConnected = true;
+            // Playtest 2026-11-02 (Figma K2): the host kicked or banned us; say so on the Play screen once we're out.
+            if (!NetworkClient.active && WAR2D.Net.LobbyRemoval.Pending != null)
+            {
+                wantsPlay = true;
+                wantsReplays = false;
+                play.ShowRemoved(WAR2D.Net.LobbyRemoval.Take());
+            }
 
             // A join that ended before reaching the lobby failed: nobody answered, or the server closed the
             // connection (its match has started or it is full).
@@ -242,8 +252,11 @@ namespace WAR2D.UI
             }
 
             GameCore core = GameCore.Instance;
-            if (core != null && NetworkServer.active)
-                WAR2D.Net.Steam.SteamHostLobby.Current?.Update(core.CurrentState, core.Settings, core.SeatCount);
+            if (core != null && NetworkServer.active && WAR2D.Net.Steam.SteamHostLobby.Current != null)
+            {
+                WAR2D.Net.Steam.SteamHostLobby.Current.ServerName = core.DisplayServerName();
+                WAR2D.Net.Steam.SteamHostLobby.Current.Update(core.CurrentState, core.Settings, core.SeatCount);
+            }
             if (WAR2D.Client.Replay.ReplayPlayer.Instance != null)
             {
                 viewer.Tick(Time.unscaledDeltaTime);
@@ -293,6 +306,29 @@ namespace WAR2D.UI
             lobbyScreen.EnableInClassList("menu-screen--visible", screen == Screen.Lobby);
             replaysScreen?.EnableInClassList("menu-screen--visible", screen == Screen.Replays);
             viewerScreen?.EnableInClassList("menu-screen--visible", screen == Screen.Viewer);
+            MenuMotion.ApplySetting(root);
+            if (screen == shown) return;
+            // v0.16 (Figma M1): the arriving screen slides in, from the right going forward (Main → Play → Lobby), from
+            // the left coming back. The first screen shown doesn't move.
+            VisualElement arriving = ScreenElement(screen);
+            if (shown != Screen.None && arriving != null) MenuMotion.Enter(arriving, screen < shown ? "menu-screen--enter-back" : "menu-screen--enter");
+            shown = screen;
+            LastScreenChange = screen.ToString();
         }
+
+        private Screen shown = Screen.None;
+
+        /// <summary>The screen last moved to (tests).</summary>
+        public string LastScreenChange { get; private set; }
+
+        private VisualElement ScreenElement(Screen screen) => screen switch
+        {
+            Screen.Main => mainScreen,
+            Screen.Play => playScreen,
+            Screen.Lobby => lobbyScreen,
+            Screen.Replays => replaysScreen,
+            Screen.Viewer => viewerScreen,
+            _ => null,
+        };
     }
 }

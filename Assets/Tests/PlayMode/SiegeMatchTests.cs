@@ -58,7 +58,7 @@ public class SiegeMatchTests
 
         var ids = new System.Collections.Generic.List<int> { builder };
         foreach (byte[] chunk in OrderIdCodec.EncodeChunks(ids))
-            wsm.CmdOrderChunk(1, chunk, true, (byte)OrderKind.Build, false, wall);
+            wsm.CmdOrderChunk(1, chunk, true, (byte)OrderKind.Build, false, wall, false);
 
         yield return Wait("wall built on client", () => ClientTerrain.Current.Tiles[index] == (byte)TileType.PlayerWall, 60f);
         Assert.That(ClientTerrain.Current.WallOwner(index), Is.EqualTo(PlayModeMatch.LocalOwner));

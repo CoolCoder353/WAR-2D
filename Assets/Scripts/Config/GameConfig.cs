@@ -25,6 +25,16 @@ namespace Config
         public ReplicationConfig Replication = new ReplicationConfig();
         /// <summary>Unit orders (Shift-queued waypoints).</summary>
         public OrdersConfig Orders = new OrdersConfig();
+        /// <summary>v0.16: target lines for selected units (client presentation).</summary>
+        public TargetLinesConfig TargetLines = new TargetLinesConfig();
+        /// <summary>v0.16: fights pulsing on the minimap (client presentation).</summary>
+        public MinimapCombatConfig MinimapCombat = new MinimapCombatConfig();
+        /// <summary>v0.16: the minimap while placing the HQ (client presentation).</summary>
+        public PlacementMinimapConfig PlacementMinimap = new PlacementMinimapConfig();
+        /// <summary>v0.16: formations for group moves.</summary>
+        public FormationConfig Formation = new FormationConfig();
+        /// <summary>v0.16: idle Builders building and repairing nearby.</summary>
+        public AutoWorkConfig AutoWork = new AutoWorkConfig();
         /// <summary>Player-controlled diplomacy.</summary>
         public DiplomacyConfig Diplomacy = new DiplomacyConfig();
         /// <summary>Resource gifting between players.</summary>
@@ -38,6 +48,8 @@ namespace Config
         public ReplaysConfig Replays = new ReplaysConfig();
         /// <summary>What the host may pick in the lobby.</summary>
         public LobbyConfig Lobby = new LobbyConfig();
+        /// <summary>The release's version and name (the main menu; the build's version).</summary>
+        public ReleaseConfig Release = new ReleaseConfig();
         /// <summary>The battle behind the main menu.</summary>
         public MenuBattleConfig MenuBattle = new MenuBattleConfig();
         /// <summary>Damage multipliers per attacker type and target class.</summary>
@@ -121,6 +133,11 @@ namespace Config
         public float MinStartDistance, MaxStartDistance;
         /// <summary>Gem tiles in each expansion's rich field.</summary>
         public int ExpansionGemTiles;
+        /// <summary>
+        /// Playtest 2026-11-02: rock within this many tiles of the map's edge becomes undiggable border, so Diggers can't open
+        /// a path around the map's rim (floor and gems there stay). 1 is the old one-tile border.
+        /// </summary>
+        public int EdgeTiles;
     }
 
     /// <summary>Server simulation tuning.</summary>
@@ -151,6 +168,17 @@ namespace Config
         public float TickSeconds => 1f / TickRate;
     }
 
+    /// <summary>The release (2026-11-02): one place for the version number and the update's name.</summary>
+    public class ReleaseConfig
+    {
+        /// <summary>major.minor.patch; builds use it as their version (Steam joins compare it).</summary>
+        public string Version = "";
+        /// <summary>The update's name ("Clarity").</summary>
+        public string Name = "";
+        /// <summary>The main menu's line: "v0.16.0 Clarity".</summary>
+        public string Display => string.IsNullOrEmpty(Name) ? $"v{Version}" : $"v{Version} {Name}";
+    }
+
     /// <summary>Unit order tuning.</summary>
     public class OrdersConfig
     {
@@ -158,6 +186,59 @@ namespace Config
         public int MaxQueued;
         /// <summary>The longest side of a Dig drag's area, in tiles.</summary>
         public int MaxDigArea;
+    }
+
+    /// <summary>Target lines (v0.16).</summary>
+    public class TargetLinesConfig
+    {
+        /// <summary>Seconds a line stays after the attacker's last shot.</summary>
+        public float HoldSeconds;
+        /// <summary>Most lines drawn at once.</summary>
+        public int Max;
+    }
+
+    /// <summary>Fights on the minimap (v0.16).</summary>
+    public class MinimapCombatConfig
+    {
+        /// <summary>Tiles per side of a pulse cell.</summary>
+        public int CellTiles;
+        /// <summary>Seconds a pulse grows and fades.</summary>
+        public float PulseSeconds;
+        /// <summary>Seconds a cell stays quiet after its pulse ends.</summary>
+        public float QuietSeconds;
+        /// <summary>Most pulses at once.</summary>
+        public int Max;
+    }
+
+    /// <summary>The HQ-placement minimap (v0.16).</summary>
+    public class PlacementMinimapConfig
+    {
+        /// <summary>Smallest on-screen size of an own start option's ring, in pixels.</summary>
+        public int MarkerPixels;
+    }
+
+    /// <summary>Formations (v0.16).</summary>
+    public class FormationConfig
+    {
+        /// <summary>Tiles between slots.</summary>
+        public float Spacing;
+        /// <summary>Within this many tiles of its slot a unit runs at its own speed.</summary>
+        public float LooseTiles;
+        /// <summary>Within this many tiles of the goal a unit steers to its slot.</summary>
+        public float SlotTiles;
+        /// <summary>A unit this much farther from the goal than its group's leader drops the group speed.</summary>
+        public float LostTiles;
+    }
+
+    /// <summary>Builders working on their own when idle (v0.16).</summary>
+    public class AutoWorkConfig
+    {
+        /// <summary>Tiles an idle Builder looks for work.</summary>
+        public float Radius;
+        /// <summary>Health share below which an own building or wall is repaired.</summary>
+        public float RepairBelow;
+        /// <summary>Ticks between one idle Builder's looks.</summary>
+        public int SliceTicks;
     }
 
     /// <summary>Diplomacy tuning.</summary>

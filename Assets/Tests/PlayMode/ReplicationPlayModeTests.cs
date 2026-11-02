@@ -168,7 +168,9 @@ public class ReplicationPlayModeTests
         while (UnityEngine.Time.realtimeSinceStartup < end)
         {
             nearCount = 0;
-            foreach (int id in ids) if (math.distance(ServerPosition(id), goalCentre) <= 3f) nearCount++;
+            // v0.16: the order goes out with Formations on (the default), so the 30 stop in a block (8 × 4 slots 1.2 tiles
+            // apart, corners ~4.6 tiles out, pulled in where the slot is on rock), not a 3-tile clump.
+            foreach (int id in ids) if (math.distance(ServerPosition(id), goalCentre) <= 6f) nearCount++;
             if (nearCount >= 25) yield break;
             yield return null;
         }

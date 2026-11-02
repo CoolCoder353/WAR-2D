@@ -404,7 +404,7 @@ namespace WAR2D.World
             }
 
             SprinkleGems(tiles, size, ref rng, gemChance);
-            WriteBorder(tiles, size);
+            WriteBorder(tiles, size, cfg.EdgeTiles);
 
             var lanes = new MapLane[plan.Lanes.Count];
             for (int i = 0; i < lanes.Length; i++)
@@ -744,14 +744,21 @@ namespace WAR2D.World
                 if (FacesFloor(tiles, size, x, y) && rng.NextInt(0, 1000000) < threshold) tiles[y * size + x] = Gem;
         }
 
-        private static void WriteBorder(NativeArray<byte> tiles, int size)
+        /// <summary>
+        /// The map's outer ring is border, and so is every rock tile within <paramref name="edgeTiles"/> of the edge
+        /// (playtest 2026-11-02: an undiggable rim, so Diggers can't open a path around the map's edge). Floor stays floor, and
+        /// gems stay gems (a start site's vein can reach the rim; a lone gem dug out opens no path through border).
+        /// </summary>
+        private static void WriteBorder(NativeArray<byte> tiles, int size, int edgeTiles)
         {
-            for (int i = 0; i < size; i++)
+            int band = DigRules.RimWidth(edgeTiles, size, size);
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
             {
-                tiles[i] = BorderTile;
-                tiles[(size - 1) * size + i] = BorderTile;
-                tiles[i * size] = BorderTile;
-                tiles[i * size + size - 1] = BorderTile;
+                int edge = math.min(math.min(x, y), math.min(size - 1 - x, size - 1 - y));
+                if (edge >= band) continue;
+                int i = y * size + x;
+                if (edge == 0 || tiles[i] == Rock) tiles[i] = BorderTile;
             }
         }
     }

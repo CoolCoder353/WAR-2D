@@ -42,6 +42,8 @@ namespace WAR2D.Sim
         public NativeArray<byte> Ready;
         /// <summary>Per order handle: units following it, counted by the movement stage each tick.</summary>
         public NativeArray<int> Followers;
+        /// <summary>Per order handle (v0.16): its leading follower's distance to the goal, written by the movement stage.</summary>
+        public NativeArray<float> Lead;
         /// <summary>(handle, sector) pairs where a unit of a ready order found no direction.</summary>
         public NativeQueue<int2> RouteMisses;
 
@@ -54,6 +56,7 @@ namespace WAR2D.Sim
             Live = new NativeArray<byte>(OrderFieldTable.MaxOrders, Allocator.Persistent);
             Ready = new NativeArray<byte>(OrderFieldTable.MaxOrders, Allocator.Persistent);
             Followers = new NativeArray<int>(OrderFieldTable.MaxOrders, Allocator.Persistent);
+            Lead = new NativeArray<float>(OrderFieldTable.MaxOrders, Allocator.Persistent);
             RouteMisses = new NativeQueue<int2>(Allocator.Persistent);
         }
 
@@ -202,6 +205,7 @@ namespace WAR2D.Sim
             Live.Dispose();
             Ready.Dispose();
             Followers.Dispose();
+            Lead.Dispose();
             RouteMisses.Dispose();
         }
     }

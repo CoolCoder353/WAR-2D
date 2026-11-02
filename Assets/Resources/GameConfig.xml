@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- All gameplay balance values. Parsed by Config.ConfigParser (invariant culture, strict). -->
 <GameConfig>
+  <!-- The release (2026-11-02): shown on the main menu as "v<Version> <Name>". Builds take their version (bundleVersion,
+       which Steam joins compare) from <Version>; ReleaseVersionTests fails when the two disagree in the editor. -->
+  <Release>
+    <Version>0.16.0</Version>
+    <Name>Clarity</Name>
+  </Release>
+
   <Resources>
     <PassiveGenerationRate>5.0</PassiveGenerationRate>
     <StartingResources>1000.0</StartingResources>
@@ -32,6 +39,7 @@
       <MinStartDistance>0.1</MinStartDistance>    <!-- path distance to the nearest other start site, share of map size -->
       <MaxStartDistance>0.6</MaxStartDistance>
       <ExpansionGemTiles>30</ExpansionGemTiles>
+      <EdgeTiles>4</EdgeTiles>                     <!-- 2026-11-02 playtest: rock this close to the edge is undiggable border -->
     </Map>
   </Match>
 
@@ -62,6 +70,35 @@
     <MaxQueued>30</MaxQueued>  <!-- v0.6: Shift-queued waypoints per unit -->
     <MaxDigArea>24</MaxDigArea>  <!-- 2026-10-18: longest side of a Dig drag's area, in tiles (Figma v0.12 Fixes) -->
   </Orders>
+
+  <TargetLines>
+    <HoldSeconds>1.5</HoldSeconds>   <!-- v0.16: a line stays this long after the attacker's last shot -->
+    <Max>200</Max>                   <!-- v0.16: most lines at once, nearest the view's centre first -->
+  </TargetLines>
+
+  <MinimapCombat>
+    <CellTiles>16</CellTiles>        <!-- v0.16: tiles per side of a pulse cell -->
+    <PulseSeconds>1.5</PulseSeconds> <!-- v0.16: a pulse grows and fades over this -->
+    <QuietSeconds>3</QuietSeconds>   <!-- v0.16: then its cell stays quiet this long -->
+    <Max>32</Max>                    <!-- v0.16: most pulses at once -->
+  </MinimapCombat>
+
+  <PlacementMinimap>
+    <MarkerPixels>8</MarkerPixels>   <!-- v0.16: smallest on-screen ring for an own start option -->
+  </PlacementMinimap>
+
+  <Formation>
+    <Spacing>1.2</Spacing>           <!-- v0.16: tiles between slots -->
+    <LooseTiles>4</LooseTiles>       <!-- v0.16: near its slot a unit runs at its own speed -->
+    <SlotTiles>12</SlotTiles>        <!-- v0.16: within this of the goal a unit steers to its slot -->
+    <LostTiles>20</LostTiles>        <!-- v0.16: this far behind the leader, it drops the group speed -->
+  </Formation>
+
+  <AutoWork>
+    <Radius>8</Radius>               <!-- v0.16: tiles an idle Builder looks for blueprints and repairs -->
+    <RepairBelow>0.9</RepairBelow>   <!-- v0.16: repairs own buildings and walls under this share of health -->
+    <SliceTicks>10</SliceTicks>      <!-- v0.16: each idle Builder looks once every this many ticks -->
+  </AutoWork>
 
   <Diplomacy>
     <ChangeCooldownSeconds>2.0</ChangeCooldownSeconds>  <!-- v0.6: per player, per command -->
@@ -125,7 +162,7 @@
   <!-- v0.14 AI players. No difficulty gets more resources, vision or speed: difficulty only changes how well it plays
        (docs/superpowers/specs/2026-10-23-v0.14-ai-opponents-design.md). Starting values, tuned with tools/ai-bench.sh. -->
   <Ai>
-    <Callsigns>Cmdr. Vasquez, Maj. Okafor, Capt. Reyes, Col. Lindqvist, Lt. Tanaka, Maj. Haddad, Capt. Novak, Cmdr. Achebe, Col. Duarte, Lt. Kowalski, Maj. Ferreira, Capt. Ivanova</Callsigns>
+    <Callsigns>IronFox, quietstorm, Vex, NightOwl42, bluemoss, Raptor_9, Kestrel, deadpixel, Halcyon, Tundra, sp4rk, GhostLine, Mako, rustbucket, Zephyr, coldbrew</Callsigns>
     <!-- AI overhaul (2026-10-30): one policy (<Policy>, below) that Hard plays as is; a difficulty lists only its handicaps,
          numbers that only ever make it play worse. Insight: what it makes of what it sees (counters, memory, scouting, how well
          it judges fights). Attention: share of thinks its army micro runs. Ambition: scale of its economy. Mistakes: chance a

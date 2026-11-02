@@ -18,9 +18,11 @@ namespace WAR2D.Client
         /// <summary>Preview texels per side.</summary>
         public const int Resolution = 256;
 
-        private static readonly Color32 FloorColour = new Color32(0x40, 0x50, 0x5F, 255); // surface/raised
-        private static readonly Color32 RockColour = new Color32(0x26, 0x30, 0x3A, 255);  // surface/base
-        private static readonly Color32 GemColour = new Color32(0x6E, 0x5A, 0x9E, 255);
+        // Playtest 2026-11-02: "clearer map preview, make the resources red not pink". Floor and rock further apart, and gems
+        // a clear red (the minimap's gem red), solid where a texel is mostly gem and half strength where it holds any.
+        private static readonly Color32 FloorColour = new Color32(0x58, 0x68, 0x78, 255);
+        private static readonly Color32 RockColour = new Color32(0x1C, 0x23, 0x2B, 255);
+        private static readonly Color32 GemColour = new Color32(0xE0, 0x3C, 0x3C, 255);
 
         private (int size, uint seed) wanted = (-1, 0), pendingKey;
         private JobHandle pendingHandle;
@@ -123,7 +125,7 @@ namespace WAR2D.Client
                     n++;
                 }
                 Color32 c = Color32.Lerp(RockColour, FloorColour, (float)floor / n);
-                pixels[y * Resolution + x] = gem * 4 >= n ? Color32.Lerp(c, GemColour, 0.6f) : c;
+                pixels[y * Resolution + x] = gem * 4 >= n ? GemColour : gem > 0 ? Color32.Lerp(c, GemColour, 0.5f) : c;
             }
             Texture.Apply(false);
             var spawns = new int2[sites.Length];

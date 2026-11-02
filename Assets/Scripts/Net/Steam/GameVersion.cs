@@ -11,9 +11,9 @@ namespace WAR2D.Net.Steam
         /// shape. Host and client must match exactly; Direct (KCP) joins check only this, Steam joins this and
         /// <see cref="Current"/>. 13: v0.13 (building attack events, attacker kinds). 14: v0.14 (AI players, lobby
         /// Visibility, the end screen's AI styles). 15: v0.15.1 (reconnecting: rejoin, leave and refusal messages, the
-        /// producers resent on rejoin).
+        /// producers resent on rejoin). 16: v0.16 (owner wall targets in attack events, the order formation flag).
         /// </summary>
-        public const int Protocol = 15;
+        public const int Protocol = 16;
 
         public static string Current => UnityEngine.Application.version;
 

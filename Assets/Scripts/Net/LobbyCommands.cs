@@ -120,6 +120,7 @@ public partial class GameCore
         if (!CommandGate.Allow(sender, nameof(Cmd_SetColour))) return;
         if (CurrentState != GameState.Lobby || !TryLobbyPlayer(sender, out ClientPlayer me)) return;
         if (LobbyRules.IsColourFree(colourIndex, TakenColours(me))) me.colourIndex = colourIndex;
+        else if (TakeColourFromAi(colourIndex, me)) me.colourIndex = colourIndex;
     }
 
     /// <summary>Marks the sender ready (or not), in the lobby.</summary>
@@ -128,6 +129,7 @@ public partial class GameCore
     {
         if (!CommandGate.Allow(sender, nameof(Cmd_SetReady))) return;
         if (CurrentState != GameState.Lobby || !TryLobbyPlayer(sender, out ClientPlayer me)) return;
+        if (sender != null && CommandGate.IsKicked(sender.connectionId)) return; // removed by the host, closing in a moment
         me.ready = ready;
     }
 
@@ -173,5 +175,77 @@ public partial class GameCore
     {
         player = null;
         return sender?.identity != null && ServerPlayers.ContainsKey(sender.identity) && sender.identity.TryGetComponent(out player);
+    }
+
+    // ---------- Host tools (playtest 2026-11-02, Figma K1/K2) ----------
+
+    /// <summary>The server's name as the host set it (empty: "&lt;host&gt;'s server", see <see cref="DisplayServerName"/>).</summary>
+    [SyncVar]
+    public string ServerName = "";
+
+    /// <summary>The players the host banned while this server is open.</summary>
+    public readonly WAR2D.Net.LobbyBans Bans = new WAR2D.Net.LobbyBans();
+
+    /// <summary>The server's name as players see it (server side: from the owner's nickname when none was chosen).</summary>
+    [Server]
+    public string DisplayServerName()
+    {
+        string host = null;
+        if (serverOwner?.identity != null && serverOwner.identity.TryGetComponent(out ClientPlayer owner)) host = owner.nickname;
+        return WAR2D.Net.ServerNames.Display(ServerName, host);
+    }
+
+    /// <summary>Names the server (shown in the lobby and friends' join lists). Server owner only, in the lobby; empty restores the default.</summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_SetServerName(string name, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_SetServerName))) return;
+        if (!IsServerOwner(sender) || CurrentState != GameState.Lobby) return;
+        if (string.IsNullOrWhiteSpace(name)) { ServerName = ""; return; }
+        if (CommandValidator.TrySanitizeNickname(name, out string clean)) ServerName = clean;
+    }
+
+    /// <summary>Marks another human in the lobby ready (they can still cancel). Server owner only.</summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_ForceReady(uint target, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_ForceReady))) return;
+        if (!IsServerOwner(sender) || CurrentState != GameState.Lobby) return;
+        if (TryOtherHuman(target, sender, out _, out ClientPlayer player)) player.ready = true;
+    }
+
+    /// <summary>
+    /// Removes another human from the lobby: Kick, or Ban (<paramref name="ban"/>: they can't join this server again while it
+    /// is open). They are told why, then disconnected. Server owner only, never themselves.
+    /// </summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_RemovePlayer(uint target, bool ban, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_RemovePlayer))) return;
+        if (!IsServerOwner(sender) || CurrentState != GameState.Lobby) return;
+        if (!TryOtherHuman(target, sender, out NetworkConnectionToClient conn, out ClientPlayer player)) return;
+        if (ban) Bans.Add(WAR2D.Net.LobbyBans.KeyOf(conn));
+        // Out of the lobby at once (code review 2026-11-03): not ready, so the match can't start with them in the moment
+        // before the connection closes, and their leaving keeps no seat to rejoin.
+        player.ready = false;
+        CommandGate.MarkKicked(conn.connectionId);
+        WAR2D.Dev.Logging.WarLog.Info(WAR2D.Dev.Logging.LogCategory.Lobby, $"the host {(ban ? "banned" : "kicked")} {player.nickname} (netId {target})");
+        conn.Send(new WAR2D.Net.RemovedFromLobby { Banned = ban, ServerName = DisplayServerName() });
+        StartCoroutine(WAR2D.Net.Disconnects.CloseSoon(conn, c => c.Disconnect()));
+    }
+
+    /// <summary>A human in the lobby other than the sender (and never the host's own local client), with their connection.</summary>
+    private bool TryOtherHuman(uint target, NetworkConnectionToClient sender, out NetworkConnectionToClient conn, out ClientPlayer player)
+    {
+        conn = null;
+        player = null;
+        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
+        {
+            if (entry.Key == null || entry.Key.netId != target) continue;
+            conn = entry.Value.connection;
+            if (conn == null || conn == sender || conn is LocalConnectionToClient || !entry.Key.TryGetComponent(out player)) return false;
+            return true;
+        }
+        return false;
     }
 }

@@ -262,7 +262,8 @@ namespace WAR2D.Net.Replication
 
         /// <summary>
         /// Encodes an Attack message. Each event's first varint carries the attacker kind in its low bit (v0.13): 0 then
-        /// the zigzag delta of a unit's id index (delta coded over the unit events only), 1 then a building's full id.
+        /// the zigzag delta of a unit's id index (delta coded over the unit events only), 1 then a building's full id. The
+        /// target follows, zigzag coded (v0.16: negative names a wall tile, <see cref="AttackTargetIds"/>).
         /// </summary>
         public static void EncodeAttack<W>(ref W writer, NativeArray<AttackEvent> events) where W : struct, IWireWriter
         {
@@ -278,7 +279,7 @@ namespace WAR2D.Net.Replication
                     VarInt.Write(ref writer, VarInt.ZigZag(events[i].AttackerIndex - previous) << 1);
                     previous = events[i].AttackerIndex;
                 }
-                VarInt.Write(ref writer, (uint)events[i].TargetId);
+                VarInt.WriteInt(ref writer, events[i].TargetId); // zigzag: a wall target is negative (v0.16)
             }
         }
 
@@ -434,13 +435,13 @@ namespace WAR2D.Net.Replication
                 {
                     uint id = head >> 1;
                     if (id == 0 || id > int.MaxValue) throw new InvalidDataException("bad attacker building id");
-                    events.Add(new AttackEvent { AttackerKind = AttackerKinds.Building, AttackerId = (int)id, TargetId = (int)VarInt.Read(reader) });
+                    events.Add(new AttackEvent { AttackerKind = AttackerKinds.Building, AttackerId = (int)id, TargetId = VarInt.ReadInt(reader) });
                     continue;
                 }
                 int index = previous + VarInt.UnZigZag(head >> 1);
                 if ((uint)index >= NetIdAllocator.MaxCapacity) throw new InvalidDataException("attacker index out of range");
                 previous = index;
-                events.Add(new AttackEvent { AttackerIndex = index, TargetId = (int)VarInt.Read(reader) });
+                events.Add(new AttackEvent { AttackerIndex = index, TargetId = VarInt.ReadInt(reader) });
             }
         }
     }

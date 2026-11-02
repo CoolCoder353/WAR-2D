@@ -189,6 +189,28 @@ public class ReplicationTests
     }
 
     [Test]
+    public void AttackTargetsRoundTripIncludingWallTiles()
+    {
+        using var bytes = new NativeList<byte>(256, Allocator.Temp);
+        var sink = new NativeSink(bytes);
+        using var attacks = new NativeArray<AttackEvent>(new[]
+        {
+            new AttackEvent { AttackerIndex = 3, TargetId = 0 },
+            new AttackEvent { AttackerIndex = 5, TargetId = Rig.Id(1, 1) },
+            new AttackEvent { AttackerIndex = 9, TargetId = AttackTargetIds.OfWall(4096) },
+            new AttackEvent { AttackerKind = AttackerKinds.Building, AttackerId = Rig.Id(7), TargetId = int.MaxValue },
+        }, Allocator.Temp);
+        Messages.EncodeAttack(ref sink, attacks);
+        NetworkReader reader = Reader(bytes);
+        var a = new List<AttackEvent>();
+        Messages.DecodeAttack(reader, a);
+        Assert.AreEqual(0, reader.Remaining);
+        CollectionAssert.AreEqual(new[] { 0, Rig.Id(1, 1), -4097, int.MaxValue }, a.ConvertAll(e => e.TargetId));
+        Assert.IsTrue(AttackTargetIds.IsWall(a[2].TargetId));
+        Assert.AreEqual(4096, AttackTargetIds.WallTile(a[2].TargetId));
+    }
+
+    [Test]
     public void ABuildingAttackWithIdZeroIsRefused()
     {
         var writer = new NetworkWriter();

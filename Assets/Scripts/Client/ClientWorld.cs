@@ -112,6 +112,12 @@ namespace WAR2D.Client
         }
 
         /// <summary>Allocates the store and buffers and subscribes to batches (Awake; tests call it directly).</summary>
+        /// <summary>
+        /// An attack event the client was told about: attacker id (a unit's or a building's) and target id (0 unnamed,
+        /// negative a wall tile). v0.16 target lines.
+        /// </summary>
+        public event Action<int, int> AttackSeen;
+
         internal void Initialise()
         {
             if (store != null) return;
@@ -124,10 +130,20 @@ namespace WAR2D.Client
             {
                 attacks.Add((attacker, target));
                 if ((uint)attacker < (uint)lastAction.Length) lastAction[attacker] = serverTime;
+                AttackSeen?.Invoke(store.IdOf(attacker), target);
             };
             // A building's attack (v0.13): only a client that may know the building is sent one.
-            store.BuildingAttack += (building, target) => buildingAttacks.Add((building, target));
+            store.BuildingAttack += (building, target) =>
+            {
+                buildingAttacks.Add((building, target));
+                AttackSeen?.Invoke(building, target);
+            };
             worldEffects = new WorldEffects(capacity);
+            MinimapCombatConfig pulses = config.MinimapCombat;
+            MinimapCombat.Current = new MinimapCombat(pulses.CellTiles, pulses.PulseSeconds, pulses.QuietSeconds, pulses.Max)
+            {
+                DecayPercentPerSecond = config.Resources.DecayPercentPerSecond,
+            };
             store.Died += OnUnitDied;
             store.Appeared += (index, at) => worldEffects.UnitAppeared(new Vector2(at.x, at.y), store.OwnerOf(index), Time.time - firstBatchAt);
             lastPosition = new NativeArray<float2>(capacity, Allocator.Persistent);
@@ -241,8 +257,8 @@ namespace WAR2D.Client
             return true;
         }
 
-        /// <summary>True while the client knows the unit and it still has a route to follow (it is moving).</summary>
-        public bool IsMoving(int id) => id > 0 && store.IdOf(NetIdAllocator.IndexOf(id)) == id && store.HasRoute(NetIdAllocator.IndexOf(id));
+        /// <summary>True while the client knows the unit and it is still short of its route's end (it is moving).</summary>
+        public bool IsMoving(int id) => id > 0 && store.IdOf(NetIdAllocator.IndexOf(id)) == id && store.IsMoving(NetIdAllocator.IndexOf(id), serverTime);
 
         /// <summary>Adds the ids of every unit the client knows of the owner (all of them, not only those on screen), optionally of one type.</summary>
         public void CollectOwn(int ownerId, List<int> into, UnitType type = UnitType.None)
@@ -372,7 +388,7 @@ namespace WAR2D.Client
                     frame[index] = frames.Cell(store.TypeOf(index), rotation[index], moving, serverTime, serverTime - lastAction[index], index);
                 color[index] = ColorOf(owners[index]);
                 health01[index] = healthBytes[index] / 100f;
-                TrackHit(index, healthBytes[index], now, frameSeconds);
+                TrackHit(index, healthBytes[index], p, owners[index], now, frameSeconds);
                 if (moving) worldEffects.Moved(index, store.IdOf(index), store.TypeOf(index), p, view);
                 drawScale[index] = ScaleOf(store.TypeOf(index));
             }
@@ -412,7 +428,7 @@ namespace WAR2D.Client
         /// A unit whose health dropped since last frame was hit: it flashes and its bar keeps a draining trail (<see cref="HitFeedback"/>).
         /// A unit new to this index (a new id) starts from its health, with no flash.
         /// </summary>
-        private void TrackHit(int index, byte health, float now, float frameSeconds)
+        private void TrackHit(int index, byte health, float2 position, int owner, float now, float frameSeconds)
         {
             int id = store.IdOf(index);
             if (trackedId[index] != id)
@@ -422,7 +438,14 @@ namespace WAR2D.Client
                 hitAt[index] = float.NegativeInfinity;
                 trail[index] = health / 100f;
             }
-            else if (health < lastHealth[index]) hitAt[index] = now;
+            else if (health < lastHealth[index])
+            {
+                // v0.16: fights on the minimap, but not an own unit's upkeep decay (code review 2026-11-03).
+                bool own = owner == WorldEffects.LocalOwner;
+                MinimapCombat combat = MinimapCombat.Current;
+                if (combat != null && !(own && combat.IsOwnDecay(lastHealth[index] - health, now - hitAt[index]))) combat.Hit(position, own, now);
+                hitAt[index] = now;
+            }
             lastHealth[index] = health;
             trail[index] = HitFeedback.Trail(trail[index], health / 100f, now - hitAt[index], frameSeconds);
             flash[index] = (byte)(HitFeedback.Flashing(hitAt[index], now) ? 1 : 0);
@@ -509,8 +532,15 @@ namespace WAR2D.Client
         }
 
         /// <summary>Where a target named by an attack event is now: a known unit's prediction or a known building's centre.</summary>
-        private bool TryTargetPosition(int target, out Vector3 to)
+        internal bool TryTargetPosition(int target, out Vector3 to)
         {
+            if (AttackTargetIds.IsWall(target)) // a wall tile, only in the shooter's owner's events (v0.16)
+            {
+                int tile = AttackTargetIds.WallTile(target), width = ClientTerrain.Current.Width;
+                if (width <= 0) { to = default; return false; }
+                to = new Vector3(tile % width + 0.5f, tile / width + 0.5f, 0);
+                return true;
+            }
             int targetIndex = NetIdAllocator.IndexOf(target);
             if (target > 0 && store.IdOf(targetIndex) == target)
             {

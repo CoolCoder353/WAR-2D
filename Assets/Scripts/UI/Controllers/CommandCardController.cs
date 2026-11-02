@@ -573,6 +573,9 @@ namespace WAR2D.UI
             var row = new VisualElement { name = "production-row" };
             row.AddToClassList("production__row");
             queueMinus = Step("−", -1, "production-minus", false);
+            // Playtest 2026-11-02: no way to cancel a big queue. Shift removes 10, Ctrl clears it (the server clamps at 0).
+            hover?.Attach(queueMinus, () => new HoverCardContent("Remove from queue", null, "Click: one. Shift-click: ten. Ctrl-click: clear the queue."),
+                WAR2D.UI.HoverCard.Side.Left, card);
             queueCount = new Label("0") { name = "production-count" };
             queueCount.AddToClassList("text");
             queueCount.AddToClassList("text--readout");
@@ -616,7 +619,14 @@ namespace WAR2D.UI
 
         private Button Step(string text, int delta, string name, bool wide)
         {
-            var button = new Button(() => { WAR2D.Audio.AudioService.Ui("ui_click"); QueueClicked?.Invoke(selection.BuildingIds, Chosen(), delta); }) { text = text, name = name };
+            var button = new Button(() =>
+            {
+                WAR2D.Audio.AudioService.Ui("ui_click");
+                int step = delta;
+                if (delta == -1 && GameInput.AssignModifier.IsPressed()) step = -SpawnerRules.MaxQueue;
+                else if (delta == -1 && GameInput.QueueModifier.IsPressed()) step = -10;
+                QueueClicked?.Invoke(selection.BuildingIds, Chosen(), step);
+            }) { text = text, name = name };
             button.AddToClassList("button");
             button.AddToClassList("production__button");
             if (wide) button.AddToClassList("production__button--wide");
