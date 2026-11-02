@@ -140,7 +140,10 @@ namespace WAR2D.Client
             };
             worldEffects = new WorldEffects(capacity);
             MinimapCombatConfig pulses = config.MinimapCombat;
-            MinimapCombat.Current = new MinimapCombat(pulses.CellTiles, pulses.PulseSeconds, pulses.QuietSeconds, pulses.Max);
+            MinimapCombat.Current = new MinimapCombat(pulses.CellTiles, pulses.PulseSeconds, pulses.QuietSeconds, pulses.Max)
+            {
+                DecayPercentPerSecond = config.Resources.DecayPercentPerSecond,
+            };
             store.Died += OnUnitDied;
             store.Appeared += (index, at) => worldEffects.UnitAppeared(new Vector2(at.x, at.y), store.OwnerOf(index), Time.time - firstBatchAt);
             lastPosition = new NativeArray<float2>(capacity, Allocator.Persistent);
@@ -437,8 +440,11 @@ namespace WAR2D.Client
             }
             else if (health < lastHealth[index])
             {
+                // v0.16: fights on the minimap, but not an own unit's upkeep decay (code review 2026-11-03).
+                bool own = owner == WorldEffects.LocalOwner;
+                MinimapCombat combat = MinimapCombat.Current;
+                if (combat != null && !(own && combat.IsOwnDecay(lastHealth[index] - health, now - hitAt[index]))) combat.Hit(position, own, now);
                 hitAt[index] = now;
-                MinimapCombat.Current?.Hit(position, owner == WorldEffects.LocalOwner, now); // v0.16: fights on the minimap
             }
             lastHealth[index] = health;
             trail[index] = HitFeedback.Trail(trail[index], health / 100f, now - hitAt[index], frameSeconds);

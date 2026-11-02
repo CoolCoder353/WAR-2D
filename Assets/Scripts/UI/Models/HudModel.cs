@@ -83,6 +83,7 @@ namespace WAR2D.UI
         public void SetResources(float resources, float incomePerSecond, float upkeepPerSecond)
         {
             Economy.Feed(resources, incomePerSecond, upkeepPerSecond, UnityEngine.Time.unscaledTime);
+            if (WAR2D.Client.MinimapCombat.Current != null) WAR2D.Client.MinimapCombat.Current.OwnDecaying = Economy.State == EconomyState.Decaying;
             if (resources == Resources && incomePerSecond == IncomePerSecond && upkeepPerSecond == UpkeepPerSecond) return;
             Resources = resources;
             IncomePerSecond = incomePerSecond;

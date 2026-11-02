@@ -158,7 +158,8 @@ namespace WAR2D.Client.Render
                 if (hits.TryGetValue(id, out var h))
                 {
                     bool hit = health < h.health && !e.Ghost && !h.ghost;
-                    if (hit && MinimapCombat.Current != null) // v0.16: fights on the minimap
+                    // v0.16: fights on the minimap; an own unpaid building's decay is not one (code review 2026-11-03).
+                    if (hit && MinimapCombat.Current != null && !(e.Data.ownerId == WorldEffects.LocalOwner && DefenceView.Unpaid(e)))
                         MinimapCombat.Current.Hit(Footprint.VisualCenter((int2)math.round(e.Data.position), WorldStateManager.GetBuildingSize(e.Data.buildingType)),
                             e.Data.ownerId == WorldEffects.LocalOwner, now);
                     float hitAt = hit ? now : h.hitAt;

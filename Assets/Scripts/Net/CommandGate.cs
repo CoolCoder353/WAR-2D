@@ -75,8 +75,17 @@ public static class CommandGate
 
     private static readonly HashSet<int> Kicked = new HashSet<int>();
 
-    /// <summary>True (once) when this gate disconnected the connection for exceeding its limits.</summary>
+    /// <summary>True (once) when this gate disconnected the connection for exceeding its limits, or the host removed it.</summary>
     public static bool TakeKicked(int connectionId) => Kicked.Remove(connectionId);
+
+    /// <summary>
+    /// Marks a connection the host kicked or banned (code review 2026-11-03): it may not ready up in the moment before it
+    /// is closed, and its leaving keeps no seat, like a rate-limit kick.
+    /// </summary>
+    public static void MarkKicked(int connectionId) => Kicked.Add(connectionId);
+
+    /// <summary>True while the connection is marked kicked and not yet gone.</summary>
+    public static bool IsKicked(int connectionId) => Kicked.Contains(connectionId);
 
     public static void Forget(int connectionId)
     {

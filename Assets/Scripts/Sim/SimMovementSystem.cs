@@ -192,12 +192,13 @@ namespace WAR2D.Sim
                     // v0.16 formation: hold to the group's speed until near its own slot or lost behind the leader,
                     // and close to the goal walk straight to the slot (slots are on open floor; the integrator slides on walls).
                     float2 goal = OrderGoal[slot];
-                    float2 seat = goal + FormationOffset[i];
+                    bool seated = FormationRules.HasSeat(FormationOffset[i]); // a member with no slot stops around the goal
+                    float2 seat = seated ? goal + FormationOffset[i] : goal;
                     float toSeat = math.distance(position, seat), fromGoal = math.distance(position, goal);
                     int lead = FormationLead[i];
                     bool lost = (uint)lead < (uint)OrderLead.Length && fromGoal - OrderLead[lead] > Lost;
                     if (!lost && toSeat > Loose) speed = math.min(speed, groupSpeed);
-                    if (fromGoal <= SlotTiles && ClearLine(position, seat, Radius[i]))
+                    if (seated && fromGoal <= SlotTiles && ClearLine(position, seat, Radius[i]))
                     {
                         steered = true;
                         if (toSeat <= 0.25f) Arrived[i] = 1;

@@ -129,6 +129,7 @@ public partial class GameCore
     {
         if (!CommandGate.Allow(sender, nameof(Cmd_SetReady))) return;
         if (CurrentState != GameState.Lobby || !TryLobbyPlayer(sender, out ClientPlayer me)) return;
+        if (sender != null && CommandGate.IsKicked(sender.connectionId)) return; // removed by the host, closing in a moment
         me.ready = ready;
     }
 
@@ -224,16 +225,13 @@ public partial class GameCore
         if (!IsServerOwner(sender) || CurrentState != GameState.Lobby) return;
         if (!TryOtherHuman(target, sender, out NetworkConnectionToClient conn, out ClientPlayer player)) return;
         if (ban) Bans.Add(WAR2D.Net.LobbyBans.KeyOf(conn));
+        // Out of the lobby at once (code review 2026-11-03): not ready, so the match can't start with them in the moment
+        // before the connection closes, and their leaving keeps no seat to rejoin.
+        player.ready = false;
+        CommandGate.MarkKicked(conn.connectionId);
         WAR2D.Dev.Logging.WarLog.Info(WAR2D.Dev.Logging.LogCategory.Lobby, $"the host {(ban ? "banned" : "kicked")} {player.nickname} (netId {target})");
         conn.Send(new WAR2D.Net.RemovedFromLobby { Banned = ban, ServerName = DisplayServerName() });
-        StartCoroutine(DisconnectSoon(conn));
-    }
-
-    /// <summary>Closes a removed player's connection a moment after its message, so the message arrives first.</summary>
-    private System.Collections.IEnumerator DisconnectSoon(NetworkConnectionToClient conn)
-    {
-        yield return new UnityEngine.WaitForSecondsRealtime(0.3f);
-        if (NetworkServer.connections.ContainsKey(conn.connectionId)) conn.Disconnect();
+        StartCoroutine(WAR2D.Net.Disconnects.CloseSoon(conn, c => c.Disconnect()));
     }
 
     /// <summary>A human in the lobby other than the sender (and never the host's own local client), with their connection.</summary>

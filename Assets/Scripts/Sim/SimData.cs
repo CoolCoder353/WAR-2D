@@ -106,6 +106,8 @@ namespace WAR2D.Sim
         // ---- map (not owned: MapStore owns Tiles and Used) ----
         /// <summary>Tiles across and down.</summary>
         public int Width, Height;
+        /// <summary>The undiggable rim's width in tiles (<c>Map/EdgeTiles</c>; <see cref="DigRules.InRim"/>).</summary>
+        public int RimTiles;
         /// <summary>Tile kinds, row-major (see <see cref="MapGrid"/>).</summary>
         public NativeArray<byte> Tiles;
         /// <summary>Building footprint flags, row-major.</summary>
@@ -446,6 +448,7 @@ namespace WAR2D.Sim
                 SearchCells = math.max(1, (int)math.ceil(maxRange / sim.HashCellSize)),
                 Width = map.Width,
                 Height = map.Height,
+                RimTiles = DigRules.RimWidth(config.Match.Map.EdgeTiles, map.Width, map.Height),
                 Tiles = map.Tiles,
                 Used = map.Used,
                 SpeedByType = new NativeArray<float>(typeCount, allocator),

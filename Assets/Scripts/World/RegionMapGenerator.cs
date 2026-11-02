@@ -751,7 +751,7 @@ namespace WAR2D.World
         /// </summary>
         private static void WriteBorder(NativeArray<byte> tiles, int size, int edgeTiles)
         {
-            int band = math.clamp(edgeTiles, 1, size / 4);
+            int band = DigRules.RimWidth(edgeTiles, size, size);
             for (int y = 0; y < size; y++)
             for (int x = 0; x < size; x++)
             {

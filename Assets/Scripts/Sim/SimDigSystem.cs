@@ -36,7 +36,7 @@ namespace WAR2D.Sim
             state.Dependency = new DigJob
             {
                 Count = clock.UnitCount,
-                Width = data.Width, Height = data.Height,
+                Width = data.Width, Height = data.Height, Rim = data.RimTiles,
                 Dt = data.Dt, DigTime = data.DigTime, Reach = data.WorkReach,
                 Digger = (byte)UnitType.Digger,
                 Tiles = data.Tiles,
@@ -59,7 +59,7 @@ namespace WAR2D.Sim
     [BurstCompile]
     public struct DigJob : IJob
     {
-        public int Count, Width, Height;
+        public int Count, Width, Height, Rim;
         public float Dt, DigTime, Reach;
         public byte Digger;
         [ReadOnly] public NativeArray<byte> Tiles, Type, WorkKind, OrderLive, Arrived, OwnerSlot, WallOwnerSlot;
@@ -95,7 +95,7 @@ namespace WAR2D.Sim
                 int2 goalTile = hasOrder ? (int2)math.floor(OrderGoal[order]) : position;
                 bool beside = hasOrder && math.csum(math.abs(goalTile - target)) == 1;
                 if (beside) position = goalTile;
-                DigStep step = DigRules.Next(Tiles, Width, Height, position, target, out int2 dig, out int2 stand);
+                DigStep step = DigRules.Next(Tiles, Width, Height, position, target, out int2 dig, out int2 stand, Rim);
                 // Keep digging the tile already started while it is solid and in reach, so a wobble across a
                 // tile edge doesn't change the line and reset the progress.
                 int started = DigAt[i];

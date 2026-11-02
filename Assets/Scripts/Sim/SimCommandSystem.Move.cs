@@ -87,6 +87,7 @@ namespace WAR2D.Sim
         private readonly List<UnitType> formationTypes = new List<UnitType>();
         private readonly List<float2> formationPositions = new List<float2>();
         private readonly List<float2> formationOffsets = new List<float2>();
+        private readonly List<(int index, float2 offset)> blockedSlots = new List<(int, float2)>();
         private float formationSpeed;
 
         /// <summary>
@@ -109,11 +110,20 @@ namespace WAR2D.Sim
             }
             float2 centre = (float2)goal + 0.5f;
             FormationRules.Layout(formationTypes, formationPositions, centre, data.FormationSpacing, formationOffsets);
+            // Slots that can be walked to stay (they are distinct by construction). The rest are pulled in towards the goal,
+            // to a place that is open and no other member's slot, or get no slot (code review 2026-11-03: every blocked slot
+            // fell back to the goal itself, so several units shared it and never arrived).
+            blockedSlots.Clear();
             for (int k = 0; k < formationOffsets.Count; k++)
+                if (!OpenFrom(context, centre, formationOffsets[k])) { blockedSlots.Add((k, formationOffsets[k])); formationOffsets[k] = FormationRules.NoSeat; }
+            foreach ((int k, float2 original) in blockedSlots)
             {
-                float2 offset = formationOffsets[k];
-                for (int tries = 0; tries < 4 && !OpenFrom(context, centre, offset); tries++) offset *= 0.5f;
-                formationOffsets[k] = OpenFrom(context, centre, offset) ? offset : float2.zero;
+                float2 offset = original;
+                for (int tries = 0; tries < 5; tries++)
+                {
+                    offset = tries < 4 ? offset * 0.5f : float2.zero;
+                    if (OpenFrom(context, centre, offset) && !FormationRules.Taken(formationOffsets, k, offset, data.FormationSpacing)) { formationOffsets[k] = offset; break; }
+                }
             }
         }
 

@@ -32,6 +32,16 @@ public class DigRulesTests
     }
 
     [Test]
+    public void AGemInTheRimIsNotDug()
+    {
+        // Row 1 of a 3-row map is 1 tile from the edge: inside a 2-tile rim, its gem blocks the line (code review 2026-11-03).
+        using var map = MapStore.FromAscii("BBBBBB", "B.g..B", "BBBBBB");
+        Assert.AreEqual(DigStep.Blocked, DigRules.Next(map.Grid.Tiles, map.Grid.Width, map.Grid.Height, new int2(1, 1), new int2(4, 1), out _, out _, rim: 2));
+        Assert.IsTrue(DigRules.InRim(new int2(2, 1), 6, 3, 2));
+        Assert.IsFalse(DigRules.InRim(new int2(5, 5), 12, 12, 4), "5 tiles in on a 12-tile map is outside a 4-tile rim");
+    }
+
+    [Test]
     public void GemsAreDug()
     {
         using var map = MapStore.FromAscii("BBBBBB", "B.g..B", "BBBBBB");

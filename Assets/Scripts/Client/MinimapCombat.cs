@@ -28,6 +28,26 @@ namespace WAR2D.Client
         /// <summary>Seconds a pulse lasts.</summary>
         public float PulseSeconds => pulseSeconds;
 
+        /// <summary>
+        /// True while the local player's balance is empty and upkeep outruns income (the top bar reads "Decaying"): their
+        /// unpaid units lose health with no enemy near, which must not pulse as a fight (code review 2026-11-03).
+        /// </summary>
+        public bool OwnDecaying { get; set; }
+
+        /// <summary>Percent of max health an unpaid unit loses per second (<c>Resources/DecayPercentPerSecond</c>).</summary>
+        public float DecayPercentPerSecond { get; set; }
+
+        /// <summary>The longest gap between two drops that decay is allowed to explain (so a long-idle unit's first drop counts at most this much).</summary>
+        public const float DecayWindowSeconds = 2f;
+
+        /// <summary>
+        /// True when an own unit's drop of <paramref name="dropPercent"/> points, <paramref name="sinceLastDrop"/> seconds after
+        /// its last, is what upkeep decay alone would cause while <see cref="OwnDecaying"/> (one point of rounding allowed).
+        /// A bigger drop is a hit. A light hit on a decaying unit can be missed; a false alarm over the whole base can't happen.
+        /// </summary>
+        public bool IsOwnDecay(int dropPercent, float sinceLastDrop) =>
+            OwnDecaying && dropPercent <= math.ceil(DecayPercentPerSecond * math.min(sinceLastDrop, DecayWindowSeconds)) + 1;
+
         public MinimapCombat(int cellTiles, float pulseSeconds, float quietSeconds, int max)
         {
             this.cellTiles = math.max(1, cellTiles); this.pulseSeconds = pulseSeconds; this.quietSeconds = quietSeconds; this.max = max;

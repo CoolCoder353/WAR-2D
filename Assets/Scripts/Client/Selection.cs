@@ -199,6 +199,7 @@ namespace WAR2D.Client
             List<byte[]> chunks = OrderIdCodec.EncodeChunks(ids);
             for (int i = 0; i < chunks.Count; i++)
                 WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, false, goal, false); // roaming units scatter on purpose
+            foreach (int id in ids) attackMoveGoals.Remove(id); // a roaming unit has no attack-move goal (code review 2026-11-03)
         }
 
         /// <summary>Raised after an order is sent: its kind, Shift-queued or not, its goal, and the ids (sorted) it went to.</summary>
@@ -291,7 +292,14 @@ namespace WAR2D.Client
             ClientWorld world = ClientWorld.Instance;
             if (world == null) return;
             selected.RemoveWhere(id => !world.IsKnownId(id));
+            if (attackMoveGoals.Count == 0) return;
+            // Dead units' attack-move goals go too (each id's reuse is a new id, so they would pile up all match).
+            goneGoals.Clear();
+            foreach (int id in attackMoveGoals.Keys) if (!world.IsKnownId(id)) goneGoals.Add(id);
+            foreach (int id in goneGoals) attackMoveGoals.Remove(id);
         }
+
+        private readonly List<int> goneGoals = new List<int>();
 
         private bool IsExactly(List<int> squad)
         {

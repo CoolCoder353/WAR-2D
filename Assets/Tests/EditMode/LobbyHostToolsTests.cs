@@ -28,6 +28,15 @@ public class LobbyHostToolsTests
     }
 
     [Test]
+    public void ARemovedConnectionIsMarkedUntilItLeaves()
+    {
+        CommandGate.MarkKicked(9876);
+        Assert.IsTrue(CommandGate.IsKicked(9876), "it can't ready up while closing");
+        Assert.IsTrue(CommandGate.TakeKicked(9876), "its leaving keeps no seat");
+        Assert.IsFalse(CommandGate.IsKicked(9876));
+    }
+
+    [Test]
     public void ARemovedPlayerIsToldWhyOnce()
     {
         LobbyRemoval.Received(new RemovedFromLobby { Banned = false, ServerName = "Oscar's server" });

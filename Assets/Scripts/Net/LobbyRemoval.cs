@@ -1,5 +1,8 @@
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using Mirror;
+using UnityEngine;
 
 namespace WAR2D.Net
 {
@@ -60,6 +63,30 @@ namespace WAR2D.Net
         public void Add(string key) { if (!string.IsNullOrEmpty(key)) keys.Add(key); }
         public bool Contains(string key) => key != null && keys.Contains(key);
         public void Clear() => keys.Clear();
+    }
+
+    /// <summary>Closing a connection just after a last message to it (a refusal, a kick or a ban).</summary>
+    public static class Disconnects
+    {
+        /// <summary>
+        /// Seconds between the message and the close: Mirror sends batched messages at the end of the frame, so closing at
+        /// once would drop the message.
+        /// </summary>
+        public const float AfterMessageSeconds = 0.3f;
+
+        /// <summary>
+        /// Waits <see cref="AfterMessageSeconds"/>, then calls <paramref name="close"/> if <paramref name="conn"/> is still
+        /// connected: the same connection, not a newer one that took its id (code review 2026-11-03). Run as a coroutine.
+        /// </summary>
+        public static IEnumerator CloseSoon(NetworkConnectionToClient conn, Action<NetworkConnectionToClient> close)
+        {
+            yield return new WaitForSecondsRealtime(AfterMessageSeconds);
+            if (IsStillConnected(conn)) close(conn);
+        }
+
+        /// <summary>True when the server still lists this very connection under its id.</summary>
+        public static bool IsStillConnected(NetworkConnectionToClient conn) =>
+            conn != null && NetworkServer.connections.TryGetValue(conn.connectionId, out NetworkConnectionToClient listed) && listed == conn;
     }
 
     /// <summary>The server's name as players see it: the host's choice, else "&lt;host&gt;'s server".</summary>

@@ -11,6 +11,25 @@ namespace WAR2D.Sim
     /// </summary>
     public static class FormationRules
     {
+        /// <summary>
+        /// The offset of a formation member with no slot of its own (every pulled-in place was rock or another unit's slot,
+        /// code review 2026-11-03): it keeps the group's pace, then stops around the goal like any group instead of steering
+        /// to a slot (two units steering to one slot never both arrive).
+        /// </summary>
+        public static readonly float2 NoSeat = new float2(float.MaxValue, float.MaxValue);
+
+        /// <summary>True for a real slot, false for <see cref="NoSeat"/>.</summary>
+        public static bool HasSeat(float2 offset) => offset.x < float.MaxValue;
+
+        /// <summary>True when <paramref name="offset"/> is within half a slot's spacing of another member's slot in <paramref name="offsets"/> (index <paramref name="self"/> aside).</summary>
+        public static bool Taken(List<float2> offsets, int self, float2 offset, float spacing)
+        {
+            float minSq = spacing * spacing * 0.25f;
+            for (int j = 0; j < offsets.Count; j++)
+                if (j != self && HasSeat(offsets[j]) && math.distancesq(offsets[j], offset) < minSq) return true;
+            return false;
+        }
+
         /// <summary>0 front, 1 middle, 2 back.</summary>
         public static int RoleOf(UnitType type) => type switch
         {

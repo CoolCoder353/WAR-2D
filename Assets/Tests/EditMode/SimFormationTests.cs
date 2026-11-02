@@ -105,5 +105,39 @@ public class SimFormationTests
         foreach (int id in ids) Assert.Less(math.distance(sim.UnitById(id).Position, new float2(38.5f, 60.5f)), 4f, $"unit {id} at {sim.UnitById(id).Position}");
     }
 
+    [Test]
+    public void EveryUnitArrivesWhenManySlotsAreOnRock()
+    {
+        // A dead-end corridor 3 tiles wide around the goal: the block's outer columns are rock. Their slots used to fall
+        // back to the goal itself, so several units shared it and never arrived (code review 2026-11-03).
+        var rows = new string[96];
+        for (int r = 0; r < 96; r++)
+        {
+            int y = 95 - r;
+            char[] row = (r == 0 || r == 95 ? new string('B', 96) : "B" + new string('.', 94) + "B").ToCharArray();
+            if (y >= 50 && y <= 66) { for (int x = 30; x <= 38; x++) row[x] = '#'; for (int x = 42; x <= 50; x++) row[x] = '#'; }
+            if (y >= 67 && y <= 70) for (int x = 30; x <= 50; x++) row[x] = '#';
+            rows[r] = new string(row);
+        }
+        using var sim = new SimHarness(MapStoreFrom(rows));
+        var boxes = new System.Collections.Generic.List<int[]>();
+        for (int i = 0; i < 12; i++) boxes.Add(sim.Spawn(SimHarness.OwnerA, new float2(34.5f + i, 20.5f), UnitType.Tank));
+        sim.Tick();
+        var ids = boxes.ConvertAll(b => b[0]);
+        Formed(sim, SimHarness.OwnerA, new int2(40, 60), ids.ToArray());
+        sim.TickSeconds(60f);
+        foreach (int id in ids) Assert.AreEqual(0f, sim.UnitById(id).FormationSpeed, $"unit {id} arrived (at {sim.UnitById(id).Position})");
+    }
+
+    [Test]
+    public void ABlockedSlotPullsInOnlyToAFreePlace()
+    {
+        var offsets = new System.Collections.Generic.List<float2> { new float2(0, 0), new float2(1.2f, 0), FormationRules.NoSeat };
+        Assert.IsTrue(FormationRules.Taken(offsets, 2, new float2(1.0f, 0), 1.2f), "too close to another member's slot");
+        Assert.IsFalse(FormationRules.Taken(offsets, 2, new float2(2.4f, 0), 1.2f));
+        Assert.IsFalse(FormationRules.Taken(offsets, 1, new float2(1.2f, 0), 1.2f), "its own slot doesn't count");
+        Assert.IsFalse(FormationRules.HasSeat(FormationRules.NoSeat));
+    }
+
     private static WAR2D.World.MapStore MapStoreFrom(string[] rows) => WAR2D.World.MapStore.FromAscii(rows);
 }

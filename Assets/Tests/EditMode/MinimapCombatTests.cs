@@ -18,6 +18,19 @@ public class MinimapCombatTests
     }
 
     [Test]
+    public void UpkeepDecayIsNotAFightButABiggerDropIs()
+    {
+        MinimapCombat m = Make();
+        m.DecayPercentPerSecond = 5f;
+        Assert.IsFalse(m.IsOwnDecay(1, 0.2f), "not decaying: every drop is a hit");
+        m.OwnDecaying = true;
+        Assert.IsTrue(m.IsOwnDecay(2, 0.2f), "5 %/s over 0.2 s, plus a point of rounding");
+        Assert.IsTrue(m.IsOwnDecay(6, 1f));
+        Assert.IsFalse(m.IsOwnDecay(10, 1f), "more than decay explains: a hit");
+        Assert.IsFalse(m.IsOwnDecay(15, 60f), "a long gap is capped at the decay window");
+    }
+
+    [Test]
     public void AnOwnHitDuringThePulseTurnsItOwn()
     {
         MinimapCombat m = Make();
