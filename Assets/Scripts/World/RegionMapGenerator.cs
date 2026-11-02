@@ -82,6 +82,7 @@ namespace WAR2D.World
         internal static List<string> Diagnostics;
 
         private const byte Floor = (byte)TileType.Ground, Rock = (byte)TileType.Wall, Gem = (byte)TileType.Gem, BorderTile = (byte)TileType.Border;
+        private const byte RichGem = (byte)TileType.RichGem;
         private const int RoughenPercent = 20;
 
         private static readonly int2[] Steps = { new int2(1, 0), new int2(-1, 0), new int2(0, 1), new int2(0, -1) };
@@ -96,27 +97,39 @@ namespace WAR2D.World
             new int2(1, 0), new int2(1, 1), new int2(0, 1), new int2(-1, 1), new int2(-1, 0), new int2(-1, -1), new int2(0, -1), new int2(1, -1),
         };
 
-        /// <summary>The layout row (start sites, expansions, central areas) used for a map size.</summary>
-        public static (int starts, int expansions, int centrals) Counts(MapConfig cfg, int size)
+        /// <summary>The <c>LayoutSizes</c> row a map size uses: the largest entry not above it (the first when all are).</summary>
+        public static int LayoutRow(MapConfig cfg, int size)
         {
             int row = 0;
             for (int i = 0; i < cfg.LayoutSizes.Length; i++) if (cfg.LayoutSizes[i] <= size) row = i;
+            return row;
+        }
+
+        /// <summary>The layout row (start sites, expansions, central areas) used for a map size.</summary>
+        public static (int starts, int expansions, int centrals) Counts(MapConfig cfg, int size)
+        {
+            int row = LayoutRow(cfg, size);
             return (cfg.StartSites[row], cfg.Expansions[row], cfg.CentralAreas[row]);
+        }
+
+        /// <summary>Rich gem tiles per chosen central area for a map size (v0.17); 0 when the config has none.</summary>
+        public static int CentralRichGemTiles(MapConfig cfg, int size)
+        {
+            int row = LayoutRow(cfg, size);
+            return row < cfg.CentralRichGemTiles.Length ? cfg.CentralRichGemTiles[row] : 0;
         }
 
         /// <summary>Region-radius and lane-width scales (percent) for a map size; 100 when the config has none.</summary>
         public static (int region, int lane) Scales(MapConfig cfg, int size)
         {
-            int row = 0;
-            for (int i = 0; i < cfg.LayoutSizes.Length; i++) if (cfg.LayoutSizes[i] <= size) row = i;
+            int row = LayoutRow(cfg, size);
             return (row < cfg.RegionScale.Length ? cfg.RegionScale[row] : 100, row < cfg.LaneScale.Length ? cfg.LaneScale[row] : 100);
         }
 
         /// <summary>Depth of the cave band for a map size; 0 when the config has none.</summary>
         public static int CaveDepth(MapConfig cfg, int size)
         {
-            int row = 0;
-            for (int i = 0; i < cfg.LayoutSizes.Length; i++) if (cfg.LayoutSizes[i] <= size) row = i;
+            int row = LayoutRow(cfg, size);
             return row < cfg.CaveDepth.Length ? cfg.CaveDepth[row] : 0;
         }
 
@@ -325,6 +338,9 @@ namespace WAR2D.World
             var dist = new long[n];
             var done = new bool[n];
             long score = 0;
+            // v0.17: the rich fields, for the diagnostics. They aren't scored: the rule that matters (no start beside one) is
+            // RichAreas' own, and an upper band like the expansions' rejected most plans (open decision D5).
+            List<int> rich = Diagnostics != null && CentralRichGemTiles(cfg, size) > 0 ? RichAreas(plan.Regions.ToArray(), LanesOf(plan), size, cfg) : null;
             for (int s = 0; s < n; s++)
             {
                 if (plan.Regions[s].Kind != RegionKind.Start) continue;
@@ -351,7 +367,9 @@ namespace WAR2D.World
                 }
                 bool anyExpansion = false;
                 foreach (MapRegion r in plan.Regions) if (r.Kind == RegionKind.Expansion) anyExpansion = true;
-                if (Diagnostics != null) Diagnostics.Add($"site {s}: start {(nearestStart == long.MaxValue ? -1 : nearestStart)} exp {(nearestExpansion == long.MaxValue ? -1 : nearestExpansion)} band {min}-{max}");
+                long nearestRich = long.MaxValue;
+                if (rich != null) foreach (int r in rich) nearestRich = math.min(nearestRich, dist[r]);
+                if (Diagnostics != null) Diagnostics.Add($"site {s}: start {(nearestStart == long.MaxValue ? -1 : nearestStart)} exp {(nearestExpansion == long.MaxValue ? -1 : nearestExpansion)} rich {(nearestRich == long.MaxValue ? -1 : nearestRich)} ({(rich == null ? 0 : rich.Count)} areas) band {min}-{max}");
                 if (nearestStart != long.MaxValue && nearestStart < min) score += 1000 + (min - nearestStart);
                 if (nearestStart != long.MaxValue && nearestStart > max) score += 1000 + (nearestStart - max);
                 if (anyExpansion && nearestExpansion > max) score += 1000 + (nearestExpansion == long.MaxValue ? max : nearestExpansion - max);
@@ -404,15 +422,18 @@ namespace WAR2D.World
             }
 
             SprinkleGems(tiles, size, ref rng, gemChance);
+            // v0.17: rich gems in the central areas far from every start site (one area at least). A stream of its own, so
+            // every other draw is as before.
+            int richTiles = CentralRichGemTiles(cfg, size);
+            if (richTiles > 0)
+            {
+                var richRng = new Random(SubSeed(seed, attempt) ^ 0x2C1B3C6Du | 1u);
+                foreach (int c in RichAreas(plan.Regions.ToArray(), LanesOf(plan), size, cfg))
+                    AddRichField(tiles, size, plan.Regions[c], richTiles, ref richRng);
+            }
             WriteBorder(tiles, size, cfg.EdgeTiles);
 
-            var lanes = new MapLane[plan.Lanes.Count];
-            for (int i = 0; i < lanes.Length; i++)
-            {
-                LanePlan l = plan.Lanes[i];
-                lanes[i] = new MapLane(l.A, l.B, l.Width, l.ChokeWidth, l.Dist);
-            }
-            return new MapLayout(tiles, plan.Regions.ToArray(), lanes, starts.ToArray(), expansions.ToArray(), plan.Score == 0, attempt);
+            return new MapLayout(tiles, plan.Regions.ToArray(), LanesOf(plan), starts.ToArray(), expansions.ToArray(), plan.Score == 0, attempt);
         }
 
         private static void CarveDisc(NativeArray<byte> tiles, int size, int2 centre, int radius) => FillDisc(tiles, size, centre, radius, Floor);
@@ -665,7 +686,7 @@ namespace WAR2D.World
         /// Grows a cluster of up to <paramref name="count"/> gem tiles along the rim (rock facing floor) near
         /// <paramref name="centre"/>. With <paramref name="awayFrom"/> set, starts at the rim tile farthest from it.
         /// </summary>
-        private static void GrowGems(NativeArray<byte> tiles, int size, int2 centre, int reach, int count, int2 awayFrom, bool useAway, ref Random rng)
+        private static int GrowGems(NativeArray<byte> tiles, int size, int2 centre, int reach, int count, int2 awayFrom, bool useAway, ref Random rng, byte kind = Gem)
         {
             var candidates = new List<int2>();
             for (int y = centre.y - reach; y <= centre.y + reach; y++)
@@ -674,7 +695,7 @@ namespace WAR2D.World
                 int dx = x - centre.x, dy = y - centre.y;
                 if (dx * dx + dy * dy <= reach * reach && FacesFloor(tiles, size, x, y)) candidates.Add(new int2(x, y));
             }
-            if (candidates.Count == 0) return;
+            if (candidates.Count == 0) return 0;
 
             int2 start;
             if (useAway)
@@ -709,13 +730,103 @@ namespace WAR2D.World
                     }
                 }
                 int2 t = queue.Dequeue();
-                tiles[t.y * size + t.x] = Gem;
+                tiles[t.y * size + t.x] = kind;
                 placed++;
                 foreach (int2 d in Around)
                 {
                     int2 n = t + d;
                     if (inReach.Contains(n) && seen.Add(n)) queue.Enqueue(n);
                 }
+            }
+            return placed;
+        }
+
+        /// <summary>The plan's lanes as the layout publishes them.</summary>
+        private static MapLane[] LanesOf(Plan plan)
+        {
+            var lanes = new MapLane[plan.Lanes.Count];
+            for (int i = 0; i < lanes.Length; i++)
+            {
+                LanePlan l = plan.Lanes[i];
+                lanes[i] = new MapLane(l.A, l.B, l.Width, l.ChokeWidth, l.Dist);
+            }
+            return lanes;
+        }
+
+        /// <summary>
+        /// The shortest lane distance (sum of <see cref="MapLane.Length"/>) from region <paramref name="from"/> to every region
+        /// (<see cref="long.MaxValue"/> when unreachable). Dijkstra over the plan's few regions; v0.17 rich-field placement and
+        /// the fairness tests use it.
+        /// </summary>
+        public static long[] LaneDistances(MapRegion[] regions, MapLane[] lanes, int from)
+        {
+            int n = regions.Length;
+            var dist = new long[n];
+            var done = new bool[n];
+            for (int i = 0; i < n; i++) dist[i] = long.MaxValue;
+            dist[from] = 0;
+            for (int step = 0; step < n; step++)
+            {
+                int u = -1;
+                for (int i = 0; i < n; i++) if (!done[i] && dist[i] != long.MaxValue && (u < 0 || dist[i] < dist[u])) u = i;
+                if (u < 0) break;
+                done[u] = true;
+                foreach (MapLane l in lanes)
+                {
+                    int v = l.A == u ? l.B : l.B == u ? l.A : -1;
+                    if (v >= 0 && dist[u] + l.Length < dist[v]) dist[v] = dist[u] + l.Length;
+                }
+            }
+            return dist;
+        }
+
+        /// <summary>
+        /// The central areas that get rich gems (v0.17): every one whose lane distance to its nearest start site is at least
+        /// <c>RichMinStartDistance</c> × size; if none is, the one farthest from its nearest start, so every map has one.
+        /// </summary>
+        public static List<int> RichAreas(MapRegion[] regions, MapLane[] lanes, int size, MapConfig cfg)
+        {
+            long min = (long)(cfg.RichMinStartDistance * size);
+            var nearest = new long[regions.Length];
+            for (int i = 0; i < regions.Length; i++) nearest[i] = long.MaxValue;
+            for (int s = 0; s < regions.Length; s++)
+            {
+                if (regions[s].Kind != RegionKind.Start) continue;
+                long[] d = LaneDistances(regions, lanes, s);
+                for (int i = 0; i < regions.Length; i++) nearest[i] = math.min(nearest[i], d[i]);
+            }
+            var chosen = new List<int>();
+            int farthest = -1;
+            long farthestD = -1;
+            for (int c = 0; c < regions.Length; c++)
+            {
+                if (regions[c].Kind != RegionKind.Central || nearest[c] == long.MaxValue) continue;
+                if (nearest[c] >= min) chosen.Add(c);
+                if (nearest[c] > farthestD) { farthestD = nearest[c]; farthest = c; }
+            }
+            if (chosen.Count == 0 && farthest >= 0) chosen.Add(farthest);
+            return chosen;
+        }
+
+        /// <summary>
+        /// Grows <paramref name="count"/> rich gem tiles in 2 to 4 clusters on the rock faces of a central area (v0.17), the
+        /// clusters spread round it so more than one side is worth holding. Each cluster's reach stays inside the area's disc
+        /// (centre 0.6 R out, reach 0.4 R + 4; the compass points are 1000 long), so no rich gem lies in a lane's chokepoint. Only rock facing floor turns:
+        /// ordinary gems stay.
+        /// </summary>
+        private static void AddRichField(NativeArray<byte> tiles, int size, MapRegion region, int count, ref Random rng)
+        {
+            // Integer arithmetic only (every machine regenerates the same map): the clusters' directions come from the
+            // sixteen-point compass, evenly spaced from a random first one.
+            int clusters = 2 + rng.NextInt(0, 3);
+            int left = count;
+            int turn = rng.NextInt(0, Directions.Length);
+            for (int k = 0; k < clusters && left > 0; k++)
+            {
+                int share = k == clusters - 1 ? left : count / clusters;
+                int2 dir = Directions[(turn + k * Directions.Length / clusters) % Directions.Length];
+                int2 at = region.Centre + dir * region.Radius * 6 / 10000;
+                left -= GrowGems(tiles, size, at, region.Radius * 2 / 5 + 4, share, int2.zero, false, ref rng, RichGem);
             }
         }
 

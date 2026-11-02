@@ -75,12 +75,12 @@ public class MapGeneratorTests
 
     /// <summary>
     /// Every lobby size's map for one seed, against its recorded hash: an accidental change to the generator (or to the
-    /// <c>&lt;Map&gt;</c> numbers) shows here. When the change is meant, record the new hashes (last: 2026-11-02, the
-    /// undiggable <c>&lt;EdgeTiles&gt;</c> rim).
+    /// <c>&lt;Map&gt;</c> numbers) shows here. When the change is meant, record the new hashes (last: 2026-11-03, v0.17
+    /// rich gems in the central areas).
     /// </summary>
-    [TestCase(256, 11030021379267669698UL)]
-    [TestCase(512, 11829311808475786207UL)]
-    [TestCase(1024, 13262930411169682477UL)]
+    [TestCase(256, 4693615685231487340UL)]
+    [TestCase(512, 17454236144246519819UL)]
+    [TestCase(1024, 4745728311395710835UL)]
     public void RecordedHashPerSize(int size, ulong expected)
     {
         using MapLayout l = Make(size, 12345u);
@@ -297,5 +297,91 @@ public class MapGeneratorTests
             if (edge == 0) Assert.AreEqual(TileType.Border, tile, $"({x}, {y})");
             else Assert.That(tile != TileType.Wall, $"({x}, {y}) is rock");
         }
+    }
+
+    // ---- v0.17 rich gems --------------------------------------------------------------------------------------
+
+    private static int CountRich(MapLayout l, int size, int2 c, int reach)
+    {
+        int n = 0;
+        for (int dy = -reach; dy <= reach; dy++)
+        for (int dx = -reach; dx <= reach; dx++)
+            if (math.lengthsq(new int2(dx, dy)) <= reach * reach && At(l, size, c + new int2(dx, dy)) == (byte)TileType.RichGem) n++;
+        return n;
+    }
+
+    private static long NearestStart(MapLayout l, int region)
+    {
+        long[] d = RegionMapGenerator.LaneDistances(l.Regions, l.Lanes, region);
+        long best = long.MaxValue;
+        for (int i = 0; i < l.Regions.Length; i++) if (l.Regions[i].Kind == RegionKind.Start) best = math.min(best, d[i]);
+        return best;
+    }
+
+    [Test]
+    public void RichGemsLieOnlyInTheChosenCentralAreas([Values(256, 512, 1024)] int size)
+    {
+        using MapLayout l = Make(size, 3u);
+        List<int> rich = RegionMapGenerator.RichAreas(l.Regions, l.Lanes, size, Cfg);
+        Assert.IsNotEmpty(rich, "every map has a rich field");
+        foreach (int r in rich) Assert.AreEqual(RegionKind.Central, l.Regions[r].Kind);
+        int total = 0;
+        for (int i = 0; i < l.Tiles.Length; i++)
+        {
+            if (l.Tiles[i] != (byte)TileType.RichGem) continue;
+            total++;
+            int2 t = new int2(i % size, i / size);
+            bool inside = false;
+            foreach (int r in rich) if (math.distance((float2)t, (float2)l.Regions[r].Centre) <= l.Regions[r].Radius + 4) inside = true;
+            Assert.IsTrue(inside, $"rich gem at {t} outside every chosen central area");
+        }
+        Assert.Greater(total, 0);
+    }
+
+    [Test]
+    public void RichAreasAreFarFromEveryStartUnlessNoneIs([Values(256, 512, 1024)] int size)
+    {
+        for (uint seed = 1; seed <= 10; seed++)
+        {
+            using MapLayout l = Make(size, seed);
+            List<int> rich = RegionMapGenerator.RichAreas(l.Regions, l.Lanes, size, Cfg);
+            long min = (long)(Cfg.RichMinStartDistance * size);
+            bool anyFar = false;
+            for (int c = 0; c < l.Regions.Length; c++)
+                if (l.Regions[c].Kind == RegionKind.Central && NearestStart(l, c) >= min) anyFar = true;
+            if (anyFar) foreach (int r in rich) Assert.GreaterOrEqual(NearestStart(l, r), min, $"seed {seed}: area {r} is too near a start");
+            else Assert.AreEqual(1, rich.Count, $"seed {seed}: the fallback is the one farthest central area");
+        }
+    }
+
+    [Test]
+    public void EveryStartCanReachARichField([Values(256, 512, 1024)] int size)
+    {
+        // Spec §3's fairness check, as decided 2026-11-03 (D5): no start is beside a rich field (RichAreasAreFar…), and every
+        // start can reach one. An upper band like the expansions' (0.6 × size) rejected most plans: far-side starts are
+        // routinely farther than that from the few distant central areas.
+        int seeds = size == 1024 ? 6 : 20;
+        for (uint seed = 1; seed <= seeds; seed++)
+        {
+            using MapLayout l = Make(size, seed);
+            List<int> rich = RegionMapGenerator.RichAreas(l.Regions, l.Lanes, size, Cfg);
+            for (int s = 0; s < l.Regions.Length; s++)
+            {
+                if (l.Regions[s].Kind != RegionKind.Start) continue;
+                long[] d = RegionMapGenerator.LaneDistances(l.Regions, l.Lanes, s);
+                long nearest = long.MaxValue;
+                foreach (int r in rich) nearest = math.min(nearest, d[r]);
+                Assert.Less(nearest, long.MaxValue, $"seed {seed} size {size}: start {s} can't reach a rich field");
+            }
+        }
+    }
+
+    [Test]
+    public void EachRichAreaHoldsItsConfiguredTiles([Values(256, 512)] int size)
+    {
+        using MapLayout l = Make(size, 3u);
+        int wanted = RegionMapGenerator.CentralRichGemTiles(Cfg, size);
+        foreach (int r in RegionMapGenerator.RichAreas(l.Regions, l.Lanes, size, Cfg))
+            Assert.That(CountRich(l, size, l.Regions[r].Centre, l.Regions[r].Radius + 4), Is.InRange(wanted * 3 / 4, wanted), $"area {r}");
     }
 }
