@@ -220,8 +220,8 @@ namespace WAR2D.Ai
                         UnitConfig queued = UnitOf(b.Producing);
                         if (queued != null) upkeep += queued.RunningCost * b.Queued;
                     }
-                    if (b.Type == BuildingType.Miner && view.TileAt(b.Anchor + MinerRules.FacingOffset(b.Rotation * 90f)) == TileType.Gem)
-                        income += Game.Resources.MiningRate;
+                    if (b.Type == BuildingType.Miner)
+                        income += Game.Resources.MiningRate * MinerRules.RateOf(view.TileAt(b.Anchor + MinerRules.FacingOffset(b.Rotation * 90f)), Game.Resources.RichGemMultiplier);
                 }
                 else Blueprints.Add(i);
                 if (b.Type == BuildingType.Base)

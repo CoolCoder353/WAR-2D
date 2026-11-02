@@ -220,7 +220,7 @@ namespace WAR2D.Client
             int width = terrain.Width;
             if (width <= 0 || tile.x < 0 || tile.y < 0 || tile.x >= width) return;
             int index = tile.y * width + tile.x;
-            if (index >= terrain.Tiles.Length || terrain.Tiles[index] != (byte)TileType.Gem) return;
+            if (index >= terrain.Tiles.Length || !TileRules.IsGem(terrain.Tiles[index])) return;
             var at = new Vector2(tile.x + 0.5f, tile.y + 0.5f);
             Effects.GemSparkle(at);
             if (now - lastGemSound < GemSoundSeconds || !GemSoundAudible(AudioService.View != null ? AudioService.View : Camera.main, at)) return;

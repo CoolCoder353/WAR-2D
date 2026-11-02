@@ -48,5 +48,5 @@ public static class ClickOrders
     }
 
     private static OrderKind? DiggerOrder(in ClickTarget target, bool enemyWall) =>
-        target.Tile == TileType.Wall || target.Tile == TileType.Gem || enemyWall ? OrderKind.Dig : (OrderKind?)null;
+        target.Tile == TileType.Wall || TileRules.IsGem(target.Tile) || enemyWall ? OrderKind.Dig : (OrderKind?)null;
 }

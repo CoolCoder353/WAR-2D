@@ -374,7 +374,7 @@ namespace WAR2D.Ai
                     int2 t = r.Near + Placement.RingOffset(ring, i);
                     if (state.Placement.Explored(t)) continue;
                     TileType kind = view.TileAt(t);
-                    if (r.Type == BuildingType.Miner ? kind == TileType.Gem : kind == TileType.Ground) { goal = t; found = true; }
+                    if (r.Type == BuildingType.Miner ? TileRules.IsGem(kind) : kind == TileType.Ground) { goal = t; found = true; }
                 }
             if (!found) return false;
             if (state.IdleBuilders.Count == 0) return true;
@@ -432,7 +432,7 @@ namespace WAR2D.Ai
                 TileType kind = view.TileAt(t);
                 if (kind != TileType.WallBlueprint)
                 {
-                    if (kind == TileType.PlayerWall || kind == TileType.Wall || kind == TileType.Gem) wallTiles.RemoveAt(i);
+                    if (kind == TileType.PlayerWall || kind == TileType.Wall || TileRules.IsGem(kind)) wallTiles.RemoveAt(i);
                     continue;
                 }
                 int key = AiKeys.Of(AiKeys.Wall, t.x, t.y);

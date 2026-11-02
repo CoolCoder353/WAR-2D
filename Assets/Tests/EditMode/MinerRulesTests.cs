@@ -25,4 +25,15 @@ public class MinerRulesTests
         float back = (MinerRules.ZDegrees(q) % 360f + 360f) % 360f;
         Assert.That(back, Is.EqualTo(degrees).Within(0.01f));
     }
+
+    [Test]
+    public void AMinerEarnsFromEitherGemAtItsRate()
+    {
+        Assert.IsTrue(MinerRules.Produces(TileType.Gem));
+        Assert.IsTrue(MinerRules.Produces(TileType.RichGem));
+        Assert.IsFalse(MinerRules.Produces(TileType.Wall));
+        Assert.AreEqual(1f, MinerRules.RateOf(TileType.Gem, 2.5f));
+        Assert.AreEqual(2.5f, MinerRules.RateOf(TileType.RichGem, 2.5f));
+        Assert.AreEqual(0f, MinerRules.RateOf(TileType.Ground, 2.5f));
+    }
 }

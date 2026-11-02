@@ -31,7 +31,7 @@ public static class DigRules
             if ((uint)t.x >= (uint)width || (uint)t.y >= (uint)height) return DigStep.Blocked;
             TileType type = (TileType)tiles[t.y * width + t.x];
             if (TileRules.IsFloor(type)) { previous = t; continue; }
-            if (!TileRules.IsDiggable(type) || (type == TileType.Gem && InRim(t, width, height, rim))) return DigStep.Blocked;
+            if (!TileRules.IsDiggable(type) || (TileRules.IsGem(type) && InRim(t, width, height, rim))) return DigStep.Blocked;
             dig = t;
             stand = previous;
             return DigStep.Dig;

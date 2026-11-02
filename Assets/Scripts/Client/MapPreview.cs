@@ -121,7 +121,7 @@ namespace WAR2D.Client
                 {
                     byte tile = tiles[(y0 + dy) * size + x0 + dx];
                     if (tile == (byte)TileType.Ground) floor++;
-                    else if (tile == (byte)TileType.Gem) gem++;
+                    else if (TileRules.IsGem(tile)) gem++;
                     n++;
                 }
                 Color32 c = Color32.Lerp(RockColour, FloorColour, (float)floor / n);

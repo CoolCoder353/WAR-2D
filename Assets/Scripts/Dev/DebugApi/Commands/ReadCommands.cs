@@ -165,7 +165,7 @@ namespace WAR2D.Dev.DebugApi
                 for (int x = min.x; x <= max.x; x++)
                 {
                     TileType t = (TileType)grid.Tiles[grid.Index(new int2(x, y))];
-                    sb.Append(t switch { TileType.Ground => '.', TileType.Wall => '#', TileType.Gem => '*', TileType.Border => 'B', TileType.PlayerWall => 'W', TileType.WallBlueprint => 'w', _ => '?' });
+                    sb.Append(t switch { TileType.Ground => '.', TileType.Wall => '#', TileType.Gem => '*', TileType.Border => 'B', TileType.PlayerWall => 'W', TileType.WallBlueprint => 'w', TileType.RichGem => 'r', _ => '?' });
                 }
                 sb.Append('\n');
             }

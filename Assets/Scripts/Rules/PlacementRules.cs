@@ -51,7 +51,7 @@ public static class PlacementRules
             if (tileAt(tile) != TileType.Ground || isUsed(tile) || isOccupiedByUnit(tile)) return PlacementResult.TileBlocked;
         }
 
-        if (type == BuildingType.Miner && tileAt(anchor + MinerRules.FacingOffset(rotation)) != TileType.Gem)
+        if (type == BuildingType.Miner && !MinerRules.Produces(tileAt(anchor + MinerRules.FacingOffset(rotation))))
         {
             return PlacementResult.MinerMustFaceGem;
         }

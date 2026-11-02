@@ -99,7 +99,7 @@ namespace WAR2D.Sim
                 // Keep digging the tile already started while it is solid and in reach, so a wobble across a
                 // tile edge doesn't change the line and reset the progress.
                 int started = DigAt[i];
-                if (started > 0 && started < Tiles.Length && (TileType)Tiles[started] is TileType.Wall or TileType.Gem)
+                if (started > 0 && started < Tiles.Length && (TileType)Tiles[started] is TileType.Wall or TileType.Gem or TileType.RichGem)
                 {
                     int2 sd = new int2(started % Width, started / Width);
                     float2 sgap = math.max(math.max((float2)sd - Positions[i], Positions[i] - (sd + 1)), 0f);

@@ -459,7 +459,7 @@ public sealed class AiSandbox
         {
             if (b.OwnerId != Ai) continue;
             upkeep += Game.GetBuilding(b.Type).RunningCost;
-            if (b.Type == BuildingType.Miner && b.Progress >= 100 && TileAt(b.Anchor + MinerRules.FacingOffset(b.Rotation * 90f)) == TileType.Gem) income += Game.Resources.MiningRate;
+            if (b.Type == BuildingType.Miner && b.Progress >= 100) income += Game.Resources.MiningRate * MinerRules.RateOf(TileAt(b.Anchor + MinerRules.FacingOffset(b.Rotation * 90f)), Game.Resources.RichGemMultiplier);
         }
         foreach (AiUnit u in Units) if (u.OwnerId == Ai) upkeep += Game.GetUnit(u.Type).RunningCost;
         Resources += income;

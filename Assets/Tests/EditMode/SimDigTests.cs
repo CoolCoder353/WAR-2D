@@ -48,6 +48,22 @@ public class SimDigTests
     }
 
     [Test]
+    public void ARichGemPaysItsRichPayoutOnce()
+    {
+        var rows = new string[8];
+        for (int r = 0; r < 8; r++) rows[r] = r == 0 || r == 7 ? new string('B', 12) : "B....r.....B";
+        using var sim = new SimHarness(MapStore.FromAscii(rows));
+        float paid = 0f;
+        sim.Context.Income = (owner, amount) => { if (owner == SimHarness.OwnerA) paid += amount; };
+        int[] digger = sim.Spawn(SimHarness.OwnerA, new float2(3.5f, 4.5f), UnitType.Digger);
+        sim.Tick();
+        sim.Order(SimHarness.OwnerA, OrderKind.Dig, new int2(5, 4), digger[0]);
+        sim.TickSeconds(sim.Config.Siege.DigTime + 2f);
+        Assert.AreEqual(TileType.Ground, sim.Map.Grid.TileAt(new int2(5, 4)));
+        Assert.AreEqual(sim.Config.Siege.RichGemPayout, paid);
+    }
+
+    [Test]
     public void TheBorderIsNeverDug()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(16));

@@ -471,7 +471,7 @@ namespace WAR2D.Sim
             WAR2D.World.MapGrid grid = context.Map.Grid;
             if (!grid.Contains(tile)) return false;
             TileType type = grid.TileAt(tile);
-            if (type == TileType.Wall || type == TileType.Gem) return true;
+            if (type == TileType.Wall || TileRules.IsGem(type)) return true;
             if (type != TileType.PlayerWall) return false;
             int me = context.SlotOf(owner), wall = data.WallOwnerSlot[grid.Index(tile)];
             return me >= 0 && wall != SimData.NoSlot && wall != me && SimData.Attacks(data.AttackMask, me, wall);

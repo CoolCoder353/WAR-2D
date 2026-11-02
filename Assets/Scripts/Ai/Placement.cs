@@ -160,7 +160,7 @@ namespace WAR2D.Ai
                     for (int q = 0; q < 4; q++)
                     {
                         float rot = q * 90f;
-                        if (view.TileAt(a + MinerRules.FacingOffset(rot)) != TileType.Gem) continue;
+                        if (!MinerRules.Produces(view.TileAt(a + MinerRules.FacingOffset(rot)))) continue;
                         if (!Quick(a, size, 0, false, false, false)) break;
                         if (Check(BuildingType.Miner, a, rot) != PlacementResult.Ok) continue;
                         anchor = a;
@@ -190,8 +190,8 @@ namespace WAR2D.Ai
                     if (view.TileAt(t) != TileType.Ground || IsUsed(t)) return false;
                     if (!hq && !Explored(t)) return false;
                     if (hq && options && !InOwnOptions(t)) return false;
-                    if (avoidGems && (view.TileAt(t + new int2(1, 0)) == TileType.Gem || view.TileAt(t - new int2(1, 0)) == TileType.Gem ||
-                                      view.TileAt(t + new int2(0, 1)) == TileType.Gem || view.TileAt(t - new int2(0, 1)) == TileType.Gem)) return false;
+                    if (avoidGems && (TileRules.IsGem(view.TileAt(t + new int2(1, 0))) || TileRules.IsGem(view.TileAt(t - new int2(1, 0))) ||
+                                      TileRules.IsGem(view.TileAt(t + new int2(0, 1))) || TileRules.IsGem(view.TileAt(t - new int2(0, 1))))) return false;
                 }
             return true;
         }
