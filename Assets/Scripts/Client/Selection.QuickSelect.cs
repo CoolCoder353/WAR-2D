@@ -33,6 +33,7 @@ namespace WAR2D.Client
         private readonly List<int> mapWide = new List<int>();
         private readonly List<int>[] buildingGroups = new List<int>[WAR2D.Sim.Squads.Count];
         private readonly List<int> quickScratch = new List<int>();
+        private readonly List<float2> workSites = new List<float2>();
 
         /// <summary>True while the selection is exactly the units a map-wide type selection picked.</summary>
         public bool MapWide
@@ -54,19 +55,29 @@ namespace WAR2D.Client
 
         /// <summary>
         /// True when a Builder standing at <paramref name="position"/> has nothing to do as far as the client can tell: it is not
-        /// moving and there is no blueprint or damaged own building within <see cref="WorkNear"/> tiles.
+        /// moving and no blueprint or damaged own building (<paramref name="sites"/>, from <see cref="CollectWorkSites"/>) is
+        /// within <see cref="WorkNear"/> tiles.
         /// </summary>
-        public static bool IsIdleBuilder(int id, float2 position, int ownerId)
+        private static bool IsIdleBuilder(ClientWorld world, int id, float2 position, List<float2> sites)
         {
-            ClientWorld world = ClientWorld.Instance;
-            if (world == null || world.IsMoving(id)) return false;
+            if (world.IsMoving(id)) return false;
+            foreach (float2 site in sites)
+                if (math.distance(position, site) <= WorkNear) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// Fills <see cref="workSites"/> with the anchors of the owner's blueprints and damaged buildings, once per count, so
+        /// each Builder is checked against those few rather than every building the client knows.
+        /// </summary>
+        private void CollectWorkSites(int ownerId)
+        {
+            workSites.Clear();
             foreach (ClientBuildings.Entry e in ClientBuildings.Current.Entries.Values)
             {
                 if (e.Data.ownerId != ownerId || e.Ghost) continue;
-                bool needsWork = e.Progress < 100 || (e.Health.maxHealth > 0f && e.Health.currentHealth < e.Health.maxHealth);
-                if (needsWork && math.distance(position, e.Data.position) <= WorkNear) return false;
+                if (e.Progress < 100 || (e.Health.maxHealth > 0f && e.Health.currentHealth < e.Health.maxHealth)) workSites.Add(e.Data.position);
             }
-            return true;
         }
 
         /// <summary>Counts for the quick-select chips.</summary>
@@ -77,6 +88,7 @@ namespace WAR2D.Client
             Config.GameConfigData config = Config.ConfigLoader.LoadConfig();
             quickScratch.Clear();
             world.CollectOwn(ownerId, quickScratch);
+            CollectWorkSites(ownerId);
             int idle = 0, builders = 0, army = 0;
             foreach (int id in quickScratch)
             {
@@ -84,7 +96,7 @@ namespace WAR2D.Client
                 if (view.Type == UnitType.Builder)
                 {
                     builders++;
-                    if (IsIdleBuilder(id, view.Position, ownerId)) idle++;
+                    if (IsIdleBuilder(world, id, view.Position, workSites)) idle++;
                 }
                 else if (IsArmy(view.Type, config.GetUnit(view.Type))) army++;
             }
@@ -98,9 +110,10 @@ namespace WAR2D.Client
             if (world == null) return 0;
             quickScratch.Clear();
             world.CollectOwn(ownerId, quickScratch, UnitType.Builder);
+            if (!all) CollectWorkSites(ownerId);
             var picked = new List<int>();
             foreach (int id in quickScratch)
-                if (all || (world.TryGet(id, out ClientUnitView view) && IsIdleBuilder(id, view.Position, ownerId))) picked.Add(id);
+                if (all || (world.TryGet(id, out ClientUnitView view) && IsIdleBuilder(world, id, view.Position, workSites))) picked.Add(id);
             if (picked.Count > 0) SelectIds(picked);
             return picked.Count;
         }

@@ -29,7 +29,7 @@ A unit whose replicated health drops flashes red for 0.15 s, as buildings do. `C
 
 ### 3. Wrecks and scorch marks
 
-New ground-mark layer, `Decals` (pooled sprites at `SortingOrders.Decals`, under the clearing ring and everything else). A known unit that dies (`ClientUnitStore.Died`) leaves a `Scorch` (`ScorchLarge` under Heavies and Artillery) that holds 60 s and dithers out over 20 s, and (playtest 2026-10-30) its wreck: its own sprite at its last facing, tinted charred, holding 60 s and fading over 15 s (not a Suicide bomber). A destroyed finished building leaves rubble the size of its footprint (`Rubble1/2/3/5`, 4 tiles uses the 3-tile one), holding 180 s and fading over 30 s.
+New ground-mark layer, `Decals` (pooled sprites at `SortingOrders.Decals`, under the clearing ring and everything else). A known unit that dies (`ClientUnitStore.Died`) leaves a `Scorch` (`ScorchLarge` under Heavies and Artillery) that holds 10 minutes (60 s before 2026-11-02) and dithers out over 20 s, and (playtest 2026-10-30) its wreck: its own sprite at its last facing, tinted charred, holding 10 minutes and fading over 15 s (not a Suicide bomber). A destroyed finished building leaves rubble the size of its footprint (`Rubble1/2/3/5`, 4 tiles uses the 3-tile one), which stays until a building or blueprint enters over it (`Decals.ClearRubbleUnder`). (2026-11-02, owner: longer holds rather than bigger pools; a pool that is full still reuses its oldest mark.)
 
 ### B. Building deaths scaled to size
 
@@ -49,7 +49,7 @@ A unit's or building's bar keeps the lost part as a pale segment that holds 0.25
 
 ### G. Track marks
 
-Tanks, Heavies and Artillery on screen lay a `Tracks` mark every half tile moved, turned to the exact heading (playtest 2026-10-30; it was the nearest of 4 directions). Marks hold 12 s and fade over 10 s. A jump of more than 2 tiles (a correction) lays none. The pool is 2048.
+Tanks, Heavies and Artillery on screen lay a `Tracks` mark every half tile moved, turned to the exact heading (playtest 2026-10-30; it was the nearest of 4 directions). Marks hold 120 s (12 s before 2026-11-02) and fade over 10 s; in a big fight the 2048 pool turns over within seconds, so the oldest go first. A jump of more than 2 tiles (a correction) lays none. The pool is 2048.
 
 ### H. Fog fades in and out
 

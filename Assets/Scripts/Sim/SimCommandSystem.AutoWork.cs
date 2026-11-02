@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Unity.Mathematics;
 
 namespace WAR2D.Sim
@@ -16,6 +17,7 @@ namespace WAR2D.Sim
         {
             float r = data.AutoWorkRadius, rSq = r * r;
             int slice = math.max(1, data.AutoWorkSlice);
+            bool collected = false;
             for (int slot = 0; slot < unitCount; slot++)
             {
                 if (data.Type[slot] != (byte)UnitType.Builder || data.Health[slot] <= 0f) continue;
@@ -26,6 +28,7 @@ namespace WAR2D.Sim
                 int owner = data.OwnerId[slot];
                 int ownerSlot = context.SlotOf(owner);
                 if (ownerSlot < 0) continue;
+                if (!collected) { CollectWorkBuildings(data); collected = true; }
                 float2 at = data.Positions[slot];
                 OrderKind kind;
                 int2 tile;
@@ -36,15 +39,35 @@ namespace WAR2D.Sim
             }
         }
 
-        /// <summary>The nearest own blueprint (a tile of its footprint) or unfinished own wall within reach.</summary>
-        private static bool TryNearestBuildWork(SimData data, int owner, int ownerSlot, float2 at, float rSq, out int2 tile)
+        private readonly List<int> blueprints = new List<int>();
+        private readonly List<int> damaged = new List<int>();
+
+        /// <summary>
+        /// This boundary's living blueprints and finished buildings under the repair share (every owner's, in slot order), so
+        /// each Builder that looks checks those few rather than every building.
+        /// </summary>
+        private void CollectWorkBuildings(SimData data)
         {
-            tile = default;
-            float best = rSq;
+            blueprints.Clear();
+            damaged.Clear();
             int count = data.BuildingCount[0];
             for (int b = 0; b < count; b++)
             {
-                if (data.BuildingOwnerId[b] != owner || (data.BuildingFlag[b] & global::BuildingFlags.UnderConstruction) == 0 || data.BuildingHealth[b] <= 0f) continue;
+                float h = data.BuildingHealth[b];
+                if (h <= 0f) continue;
+                if ((data.BuildingFlag[b] & global::BuildingFlags.UnderConstruction) != 0) blueprints.Add(b);
+                else if (h < data.BuildingMaxHealth[b] * data.AutoWorkRepairBelow) damaged.Add(b);
+            }
+        }
+
+        /// <summary>The nearest own blueprint (a tile of its footprint) or unfinished own wall within reach.</summary>
+        private bool TryNearestBuildWork(SimData data, int owner, int ownerSlot, float2 at, float rSq, out int2 tile)
+        {
+            tile = default;
+            float best = rSq;
+            foreach (int b in blueprints)
+            {
+                if (data.BuildingOwnerId[b] != owner) continue;
                 float d = DistanceSqToFootprint(at, data.BuildingAnchor[b], data.BuildingSize[b]);
                 if (d < best) { best = d; tile = Footprint.Start(data.BuildingAnchor[b], data.BuildingSize[b]); }
             }
@@ -53,16 +76,13 @@ namespace WAR2D.Sim
         }
 
         /// <summary>The nearest own finished building or built wall under the repair share, within reach.</summary>
-        private static bool TryNearestRepair(SimData data, int owner, int ownerSlot, float2 at, float rSq, out int2 tile)
+        private bool TryNearestRepair(SimData data, int owner, int ownerSlot, float2 at, float rSq, out int2 tile)
         {
             tile = default;
             float best = rSq;
-            int count = data.BuildingCount[0];
-            for (int b = 0; b < count; b++)
+            foreach (int b in damaged)
             {
-                if (data.BuildingOwnerId[b] != owner || (data.BuildingFlag[b] & global::BuildingFlags.UnderConstruction) != 0) continue;
-                float h = data.BuildingHealth[b], max = data.BuildingMaxHealth[b];
-                if (h <= 0f || h >= max * data.AutoWorkRepairBelow) continue;
+                if (data.BuildingOwnerId[b] != owner) continue;
                 float d = DistanceSqToFootprint(at, data.BuildingAnchor[b], data.BuildingSize[b]);
                 if (d < best) { best = d; tile = Footprint.Start(data.BuildingAnchor[b], data.BuildingSize[b]); }
             }
