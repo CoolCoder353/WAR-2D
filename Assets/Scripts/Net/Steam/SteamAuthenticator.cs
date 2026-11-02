@@ -141,7 +141,17 @@ namespace WAR2D.Net.Steam
             directWaiting.Remove(conn.connectionId);
             sessions?.Forget(conn.connectionId);
             conn.Send(new SteamAuthResponse { accepted = false, reason = reason });
-            ServerReject(conn);
+            StartCoroutine(RejectSoon(conn));
+        }
+
+        /// <summary>
+        /// Closes a refused connection a moment after its refusal: Mirror sends batched messages at the end of the frame, so
+        /// disconnecting at once would drop the reason. The connection stays unauthenticated meanwhile.
+        /// </summary>
+        private System.Collections.IEnumerator RejectSoon(NetworkConnectionToClient conn)
+        {
+            yield return new WaitForSecondsRealtime(0.3f);
+            if (NetworkServer.connections.ContainsKey(conn.connectionId)) ServerReject(conn);
         }
 
         /// <summary>The Steam ID behind a connection, or 0 when it is not a Steam relay connection.</summary>
