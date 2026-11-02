@@ -9,9 +9,9 @@ using NUnit.Framework;
 public class ConfigParserTests
 {
     internal const string ValidXml = @"<GameConfig>
-  <Release><Version>0.16.0</Version><Name>Clarity</Name></Release>
-  <Resources><PassiveGenerationRate>5</PassiveGenerationRate><StartingResources>1000</StartingResources><MiningRate>10</MiningRate><DecayPercentPerSecond>5</DecayPercentPerSecond></Resources>
-  <Match><Scene>Map_2</Scene><CountdownSeconds>5</CountdownSeconds><ReconnectSeconds>60</ReconnectSeconds><Map><Size>1024</Size><Seed>0</Seed><GemChance>0.04</GemChance><LayoutSizes>128 256</LayoutSizes><StartSites>8 16</StartSites><Expansions>2 4</Expansions><CentralAreas>1 1</CentralAreas><RegionScale>100 100</RegionScale><LaneScale>100 100</LaneScale><CaveDepth>3 5</CaveDepth><OutcropShare>0.08</OutcropShare><ChokepointShare>0.4</ChokepointShare><LaneWidth>6 10</LaneWidth><ChokeWidth>3 6</ChokeWidth><MinStartDistance>0.1</MinStartDistance><MaxStartDistance>0.6</MaxStartDistance><ExpansionGemTiles>30</ExpansionGemTiles><EdgeTiles>4</EdgeTiles></Map></Match>
+  <Release><Version>0.17.0</Version><Name>Heartland</Name></Release>
+  <Resources><PassiveGenerationRate>5</PassiveGenerationRate><StartingResources>1000</StartingResources><MiningRate>10</MiningRate><RichGemMultiplier>2.5</RichGemMultiplier><DecayPercentPerSecond>5</DecayPercentPerSecond></Resources>
+  <Match><Scene>Map_2</Scene><CountdownSeconds>5</CountdownSeconds><ReconnectSeconds>60</ReconnectSeconds><Map><Size>1024</Size><Seed>0</Seed><GemChance>0.04</GemChance><LayoutSizes>128 256</LayoutSizes><StartSites>8 16</StartSites><Expansions>2 4</Expansions><CentralAreas>1 1</CentralAreas><RegionScale>100 100</RegionScale><LaneScale>100 100</LaneScale><CaveDepth>3 5</CaveDepth><OutcropShare>0.08</OutcropShare><ChokepointShare>0.4</ChokepointShare><LaneWidth>6 10</LaneWidth><ChokeWidth>3 6</ChokeWidth><MinStartDistance>0.1</MinStartDistance><MaxStartDistance>0.6</MaxStartDistance><ExpansionGemTiles>30</ExpansionGemTiles><CentralRichGemTiles>8 16</CentralRichGemTiles><RichMinStartDistance>0.15</RichMinStartDistance><EdgeTiles>4</EdgeTiles></Map></Match>
   <Simulation><TickRate>20</TickRate><TargetSearchSliceTicks>8</TargetSearchSliceTicks><SeparationIntervalTicks>2</SeparationIntervalTicks><SeparationStrength>1</SeparationStrength><HashCellSize>5</HashCellSize><MaxFieldRebuildsPerTick>2</MaxFieldRebuildsPerTick><MaxUnitsPerPlayer>10000</MaxUnitsPerPlayer><MaxEntities>131072</MaxEntities><FogCellSize>2</FogCellSize><VisionIntervalTicks>4</VisionIntervalTicks></Simulation>
   <Replication><CorrectionIntervalTicks>4</CorrectionIntervalTicks><CorrectionThreshold>0.25</CorrectionThreshold><DeltaScale>8</DeltaScale><OffscreenThreshold>2</OffscreenThreshold><OffscreenIntervalTicks>20</OffscreenIntervalTicks><SnapshotBytesPerSecond>262144</SnapshotBytesPerSecond><RouteTolerance>1</RouteTolerance></Replication>
   <Orders><MaxQueued>4</MaxQueued><MaxDigArea>24</MaxDigArea></Orders>
@@ -25,7 +25,7 @@ public class ConfigParserTests
   <MenuBattle><UnitsPerArmy>1500</UnitsPerArmy><MapSize>512</MapSize><Seed>7</Seed></MenuBattle>
   <Gifting><CooldownSeconds>5</CooldownSeconds></Gifting>
   <Alerts><ThrottleSeconds>10</ThrottleSeconds><AreaTiles>32</AreaTiles><ShowSeconds>8</ShowSeconds></Alerts>
-  <Siege><BuildPower>25</BuildPower><DemolishRefund>0.5</DemolishRefund><RepairCostPerHealth>0.2</RepairCostPerHealth><WorkReach>1.6</WorkReach><DigTime>1.5</DigTime><GemPayout>150</GemPayout><WallCost>5</WallCost><WallHealth>150</WallHealth><MaxWallLine>64</MaxWallLine><BlastRadius>2.5</BlastRadius><BlastDamage>200</BlastDamage><RadarClearSeconds>5</RadarClearSeconds><RadarAlertCooldownSeconds>30</RadarAlertCooldownSeconds><JamRadius>12</JamRadius><JamSight>3</JamSight></Siege>
+  <Siege><BuildPower>25</BuildPower><DemolishRefund>0.5</DemolishRefund><RepairCostPerHealth>0.2</RepairCostPerHealth><WorkReach>1.6</WorkReach><DigTime>1.5</DigTime><GemPayout>150</GemPayout><RichGemPayout>375</RichGemPayout><WallCost>5</WallCost><WallHealth>150</WallHealth><MaxWallLine>64</MaxWallLine><BlastRadius>2.5</BlastRadius><BlastDamage>200</BlastDamage><RadarClearSeconds>5</RadarClearSeconds><RadarAlertCooldownSeconds>30</RadarAlertCooldownSeconds><JamRadius>12</JamRadius><JamSight>3</JamSight></Siege>
   <Audio><BattleDeathsPerSecond>3</BattleDeathsPerSecond><BattleHoldSeconds>20</BattleHoldSeconds></Audio>
   <Replays><Enabled>1</Enabled><MaxMegabytes>512</MaxMegabytes><KeepCount>50</KeepCount></Replays>
   <Ai><Callsigns>Cmdr. A, Maj. B, Capt. C, Col. D, Lt. E, Maj. F, Capt. G, Cmdr. H, Col. I</Callsigns>
@@ -689,5 +689,25 @@ public class ConfigParserTests
     {
         int at = text.IndexOf(from, System.StringComparison.Ordinal);
         return at < 0 ? text : text.Substring(0, at) + to + text.Substring(at + from.Length);
+    }
+
+    [Test]
+    public void RichGemNumbersParse()
+    {
+        var errors = new List<string>();
+        GameConfigData c = ConfigParser.Parse(ValidXml, errors);
+        Assert.IsEmpty(errors);
+        Assert.AreEqual(2.5f, c.Resources.RichGemMultiplier);
+        Assert.AreEqual(375f, c.Siege.RichGemPayout);
+        CollectionAssert.AreEqual(new[] { 8, 16 }, c.Match.Map.CentralRichGemTiles);
+        Assert.AreEqual(0.15f, c.Match.Map.RichMinStartDistance);
+    }
+
+    [Test]
+    public void CentralRichGemTilesNeedOneEntryPerLayoutSize()
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(ValidXml.Replace("<CentralRichGemTiles>8 16</CentralRichGemTiles>", "<CentralRichGemTiles>8</CentralRichGemTiles>"), errors);
+        Assert.That(errors, Has.Some.Contains("CentralRichGemTiles"));
     }
 }

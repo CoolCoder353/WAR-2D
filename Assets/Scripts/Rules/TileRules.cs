@@ -10,10 +10,16 @@ public static class TileRules
     /// <summary>True for tiles line of sight stops at (the tile itself is still seen).</summary>
     public static bool BlocksSight(TileType type) => type == TileType.Wall || type == TileType.PlayerWall || type == TileType.Border;
 
+    /// <summary>True for either gem kind (v0.17: ordinary and rich).</summary>
+    public static bool IsGem(TileType type) => type == TileType.Gem || type == TileType.RichGem;
+
+    /// <summary>True for either gem kind, from the grid's byte.</summary>
+    public static bool IsGem(byte type) => IsGem((TileType)type);
+
     /// <summary>True for tiles a Digger can remove.</summary>
-    public static bool IsDiggable(TileType type) => type == TileType.Wall || type == TileType.Gem || type == TileType.PlayerWall;
+    public static bool IsDiggable(TileType type) => type == TileType.Wall || IsGem(type) || type == TileType.PlayerWall;
 
     /// <summary>True when a tile of kind <paramref name="from"/> may become <paramref name="to"/>: never to or from the border, never an unknown kind.</summary>
     public static bool MayChange(TileType from, TileType to) =>
-        from != to && from <= TileType.WallBlueprint && to <= TileType.WallBlueprint && from != TileType.Border && to != TileType.Border;
+        from != to && from <= TileType.RichGem && to <= TileType.RichGem && from != TileType.Border && to != TileType.Border;
 }

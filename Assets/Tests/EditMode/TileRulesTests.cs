@@ -36,6 +36,19 @@ public class TileRulesTests
     }
 
     [Test]
+    public void ARichGemIsAGem()
+    {
+        Assert.IsTrue(TileRules.IsGem(TileType.Gem));
+        Assert.IsTrue(TileRules.IsGem(TileType.RichGem));
+        Assert.IsFalse(TileRules.IsGem(TileType.Wall));
+        Assert.IsFalse(TileRules.IsFloor(TileType.RichGem));
+        Assert.IsTrue(TileRules.IsDiggable(TileType.RichGem));
+        Assert.AreEqual(TileRules.BlocksSight(TileType.Gem), TileRules.BlocksSight(TileType.RichGem), "sees like an ordinary gem");
+        Assert.IsTrue(TileRules.MayChange(TileType.RichGem, TileType.Ground), "digging turns it to ground");
+        Assert.AreEqual(6, (int)TileType.RichGem, "existing values keep their numbers");
+    }
+
+    [Test]
     public void BorderNeverChangesAndNothingBecomesBorder()
     {
         Assert.IsFalse(TileRules.MayChange(TileType.Border, TileType.Ground));
