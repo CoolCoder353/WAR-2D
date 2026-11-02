@@ -17,13 +17,13 @@
   <Project Path="Mirror.Authenticators.csproj" />
   <Project Path="WAR2D.Tests.PlayMode.csproj" />
   <Project Path="EncryptionTransportEditor.csproj" />
+  <Project Path="WAR2D.Editor.csproj" />
   <Project Path="Assembly-CSharp-firstpass.csproj" />
   <Project Path="TIM.Console.csproj" />
   <Project Path="Telepathy.csproj" />
   <Project Path="TIM.Console.Editor.csproj" />
   <Project Path="WAR2D.Steam.csproj" />
   <Project Path="FizzySteamworks.csproj" />
-  <Project Path="WAR2D.Editor.csproj" />
   <Project Path="Mirror.CompilerSymbols.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
   <Project Path="Assembly-CSharp-Editor.csproj" />
