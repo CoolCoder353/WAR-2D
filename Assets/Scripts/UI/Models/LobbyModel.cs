@@ -51,6 +51,9 @@ namespace WAR2D.UI
 
         public IReadOnlyList<LobbyPlayer> Players => players;
         public MatchSettings Settings { get; private set; }
+
+        /// <summary>The server's name as the host set it ("" for the default, "&lt;host&gt;'s server").</summary>
+        public string ServerName { get; private set; } = "";
         public int LocalOwnerId { get; private set; }
 
         /// <summary>True when the local player is the host (may change settings and start).</summary>
@@ -76,15 +79,17 @@ namespace WAR2D.UI
         public event Action Changed;
 
         /// <summary>Replaces what is shown.</summary>
-        public void Set(IReadOnlyList<LobbyPlayer> rows, MatchSettings settings, int localOwnerId)
+        public void Set(IReadOnlyList<LobbyPlayer> rows, MatchSettings settings, int localOwnerId, string serverName = "")
         {
-            bool same = rows.Count == players.Count && settings.Equals(Settings) && localOwnerId == LocalOwnerId;
+            serverName ??= "";
+            bool same = rows.Count == players.Count && settings.Equals(Settings) && localOwnerId == LocalOwnerId && serverName == ServerName;
             for (int i = 0; same && i < rows.Count; i++) same = rows[i].Equals(players[i]);
             if (same) return;
             players.Clear();
             for (int i = 0; i < rows.Count; i++) players.Add(rows[i]);
             Settings = settings;
             LocalOwnerId = localOwnerId;
+            ServerName = serverName;
             Changed?.Invoke();
         }
 
@@ -165,7 +170,7 @@ namespace WAR2D.UI
                     p.isAi, p.aiDifficulty, p.aiStyle));
             }
             scratch.Sort((a, b) => a.OwnerId.CompareTo(b.OwnerId)); // join order
-            Set(scratch, core.Settings, (int)NetworkClient.localPlayer.netId);
+            Set(scratch, core.Settings, (int)NetworkClient.localPlayer.netId, core.ServerName);
         }
 
         private List<(int, bool, int)> StartState()

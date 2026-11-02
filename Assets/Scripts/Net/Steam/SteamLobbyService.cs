@@ -10,6 +10,9 @@ namespace WAR2D.Net.Steam
     {
         private readonly ISteamBackend backend;
         private string hostName;
+
+        /// <summary>The server's name to publish (the host's choice, or "&lt;host&gt;'s server").</summary>
+        public string ServerName { get; set; }
         private LobbyInfo last;
         private bool open, creating, closed;
         /// <summary>The type of the open lobby (or of the one being created).</summary>
@@ -98,7 +101,7 @@ namespace WAR2D.Net.Steam
             bool joinable = state == GameState.Lobby;
             LobbyInfo now = new LobbyInfo
             {
-                LobbyId = LobbyId, HostSteamId = backend.LocalSteamId, HostName = hostName, Version = GameVersion.Current,
+                LobbyId = LobbyId, HostSteamId = backend.LocalSteamId, HostName = hostName, ServerName = ServerName ?? WAR2D.Net.ServerNames.Display(null, hostName), Version = GameVersion.Current,
                 State = joinable ? "lobby" : "playing", Mode = settings.Mode.ToString(), MapSize = settings.MapSize, Players = players,
             };
             if (now.Equals(last)) return;

@@ -65,6 +65,7 @@ namespace WAR2D.Net.Steam
         {
             if (!directWaiting.Remove(conn.connectionId)) return; // not a Direct connection waiting on its hello
             if (!DirectHandshake.Check(GameVersion.Protocol, GameVersion.Current, msg, out string reason)) { Reject(conn, reason); return; }
+            if (IsBanned(LobbyBans.AddressKey(conn.address), out string banned)) { Reject(conn, banned); return; }
             waiting.Remove(conn.connectionId);
             conn.Send(new SteamAuthResponse { accepted = true });
             ServerAccept(conn);
@@ -93,6 +94,7 @@ namespace WAR2D.Net.Steam
                     waiting.Remove(connectionId);
                     if (!accepted) { Reject(w.conn, reason); continue; }
                     ulong steamId = TransportSteamId(connectionId);
+                    if (IsBanned(LobbyBans.SteamKey(steamId), out string banned)) { Reject(w.conn, banned); continue; }
                     SteamIdentity.Set(connectionId, steamId);
                     WarLog.Info(LogCategory.Steam, $"connection {connectionId} signed in as Steam {steamId}");
                     w.conn.Send(new SteamAuthResponse { accepted = true });
@@ -120,6 +122,16 @@ namespace WAR2D.Net.Steam
             waiting.Remove(conn.connectionId);
             directWaiting.Remove(conn.connectionId);
             sessions?.Forget(conn.connectionId);
+        }
+
+        /// <summary>True when the host banned this player from the server (playtest 2026-11-02); <paramref name="refusal"/> says so.</summary>
+        private static bool IsBanned(string key, out string refusal)
+        {
+            refusal = null;
+            GameCore core = GameCore.Instance;
+            if (core == null || !core.Bans.Contains(key)) return false;
+            refusal = LobbyRemoval.Text(true, core.DisplayServerName());
+            return true;
         }
 
         private void Reject(NetworkConnectionToClient conn, string reason)

@@ -376,6 +376,17 @@
 .lobby__heading { position: absolute; left: 50px; top: 44px; align-items: flex-end; }
 .lobby__title { font-size: var(--font-size-28); -unity-font-style: normal; color: var(--color-text-primary); padding: 0; margin-right: 24px; }
 .lobby__subtitle { padding: 0 0 4px 0; }
+/* Playtest 2026-11-02 (Figma K1/K2): the host's server name, the player menu, the Ban confirmation */
+.lobby__server-name { margin-left: 24px; align-items: center; padding: 4px 10px; border-width: 1px; border-color: var(--color-accent); background-color: var(--color-surface-raised); }
+.lobby__server-name-label { padding: 0; margin-right: 8px; font-size: var(--font-size-12); }
+.lobby__server-name-field { width: 260px; margin: 0; }
+.lobby-card__menu { width: 30px; height: 24px; padding: 0; margin: 0 10px 0 0; border-width: 1px; border-color: var(--color-border); border-radius: var(--radius-sm); background-color: rgba(0, 0, 0, 0); color: var(--color-text-secondary); -unity-text-align: middle-center; }
+.lobby-card__menu:hover { border-color: var(--color-accent); color: var(--color-accent); }
+.lobby__confirm { width: 520px; }
+.lobby__confirm-content { padding: var(--space-4); }
+.lobby__confirm-text { white-space: normal; margin-bottom: var(--space-3); }
+.lobby__confirm-buttons > * { margin-right: var(--space-3); }
+.play-panel__removed { align-items: center; margin-bottom: var(--space-3); }
 .lobby__column-title { font-size: var(--font-size-16); color: var(--color-text-primary); padding: 0; margin-bottom: 12px; }
 .lobby__left { position: absolute; left: 50px; top: 138px; bottom: 96px; width: 946px; }
 .lobby__left .unity-scroller--vertical { width: 6px; margin-left: 10px; border-width: 0; }

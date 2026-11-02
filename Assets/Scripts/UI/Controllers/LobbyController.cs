@@ -61,6 +61,22 @@ namespace WAR2D.UI
         private readonly Button invite;
         private readonly Label mapCaption;
 
+        // Host tools (playtest 2026-11-02, Figma K1/K2).
+        private readonly VisualElement serverNameBox, banConfirm;
+        private readonly TextField serverNameField;
+        private readonly Label banTitle, banText;
+        private readonly WAR2D.UI.HoverCard hover;
+        private int banTarget;
+
+        /// <summary>The host renamed the server ("" restores the default).</summary>
+        public event Action<string> ServerNameChanged;
+
+        /// <summary>The host forced a player ready.</summary>
+        public event Action<int> ForceReadyClicked;
+
+        /// <summary>The host kicked (false) or banned (true) a player.</summary>
+        public event Action<int, bool> RemoveClicked;
+
         /// <summary>The host pressed Invite friends.</summary>
         public event Action InviteClicked;
 
@@ -99,6 +115,24 @@ namespace WAR2D.UI
             status = root.Q<Label>("lobby-status");
             seed = root.Q<TextField>("seed-field");
             mapCaption = root.Q<Label>("lobby-map-caption");
+            serverNameBox = root.Q("server-name");
+            serverNameField = root.Q<TextField>("server-name-field");
+            banConfirm = root.Q("lobby-ban-confirm");
+            banTitle = root.Q<Label>("lobby-ban-title");
+            banText = root.Q<Label>("lobby-ban-text");
+            root.Q<Button>("lobby-ban-cancel").clicked += () => banConfirm.RemoveFromClassList("overlay-screen--visible");
+            root.Q<Button>("lobby-ban-confirm-button").clicked += () =>
+            {
+                banConfirm.RemoveFromClassList("overlay-screen--visible");
+                RemoveClicked?.Invoke(banTarget, true);
+            };
+            serverNameField.RegisterCallback<FocusOutEvent>(_ => SubmitServerName());
+            serverNameField.RegisterCallback<KeyDownEvent>(e =>
+            {
+                if (e.keyCode == UnityEngine.KeyCode.Return || e.keyCode == UnityEngine.KeyCode.KeypadEnter) SubmitServerName();
+            });
+            hover = new WAR2D.UI.HoverCard(root);
+            AttachSettingCards(root);
             reroll = root.Q<Button>("reroll-button");
             ready = root.Q<Button>("ready-button");
             start = root.Q<Button>("start-button");
@@ -132,8 +166,11 @@ namespace WAR2D.UI
             foreach (LobbyPlayer p in model.Players) if (p.IsHost) hostName = p.Nickname;
             bool isPrivate = s.Visibility == LobbyVisibility.Private;
             // Private hides the join line (the Direct addresses): nobody can join (Figma 93:343).
-            subtitle.text = host ? (isPrivate ? "You are hosting a private match · single-player: nobody can join" : $"You are hosting · {hostAddress()}")
-                : $"Hosted by {hostName} · you are {me.Nickname}";
+            string server = WAR2D.Net.ServerNames.Display(model.ServerName, hostName);
+            subtitle.text = host ? (isPrivate ? "You are hosting a private match · single-player: nobody can join" : $"{server} · you are hosting · {hostAddress()}")
+                : $"{server} · hosted by {hostName} · you are {me.Nickname}";
+            serverNameBox.EnableInClassList("hidden", !host || isPrivate);
+            if (serverNameField.focusController?.focusedElement != serverNameField) serverNameField.SetValueWithoutNotify(server);
             playersTitle.text = $"Players ({model.Players.Count} of {LobbyRules.MaxPlayers})";
             if (isPrivate) invite.AddToClassList("hidden");
             settingsTitle.text = host ? "Match settings" : "Match settings (host only)";
@@ -171,6 +208,7 @@ namespace WAR2D.UI
                 bool you = p.OwnerId == model.Local.OwnerId;
                 var (card, info, side) = Card(p.OwnerId, you);
                 card.Insert(0, Strip(p.ColourIndex));
+                if (host && !you && !p.IsHost) card.Insert(2, PlayerMenu(p)); // after the strip and the name, before team and ready
                 AddName(info, p.Nickname + (you ? " (you)" : ""));
                 var sub = Sub(info);
                 sub.Add(SubText(p.IsHost ? "Host" : "Player"));
@@ -312,6 +350,69 @@ namespace WAR2D.UI
                 card.Add(remove);
             }
             return card;
+        }
+
+        /// <summary>
+        /// The host's ⋯ button on another human's card (Figma K1): Force ready (while not ready), Kick, and Ban, which asks
+        /// first (K2).
+        /// </summary>
+        private Button PlayerMenu(LobbyPlayer p)
+        {
+            int owner = p.OwnerId;
+            string name = p.Nickname;
+            var button = new Button { name = "player-menu-" + owner, text = "⋯", tooltip = "Host actions" };
+            button.AddToClassList("lobby-card__menu");
+            button.clicked += () =>
+            {
+                var menu = new GenericDropdownMenu();
+                if (p.Ready) menu.AddDisabledItem("Force ready (already ready)", false);
+                else menu.AddItem("Force ready", false, () => ForceReadyClicked?.Invoke(owner));
+                menu.AddItem("Kick", false, () => RemoveClicked?.Invoke(owner, false));
+                menu.AddItem("Ban…", false, () => AskBan(owner, name));
+                menu.DropDown(button.worldBound, button, false);
+            };
+            return button;
+        }
+
+        /// <summary>Opens the Ban confirmation for a player.</summary>
+        private void AskBan(int owner, string name)
+        {
+            banTarget = owner;
+            banTitle.text = $"Ban {name}?";
+            banText.text = $"{name} leaves the lobby and can't rejoin {WAR2D.Net.ServerNames.Display(model.ServerName, HostName())} while it is open. Kick instead lets them come back.";
+            banConfirm.AddToClassList("overlay-screen--visible");
+        }
+
+        private string HostName()
+        {
+            foreach (LobbyPlayer p in model.Players) if (p.IsHost) return p.Nickname;
+            return null;
+        }
+
+        private void SubmitServerName()
+        {
+            if (!model.LocalIsHost) return;
+            string typed = serverNameField.value?.Trim() ?? "";
+            string current = WAR2D.Net.ServerNames.Display(model.ServerName, HostName());
+            if (typed == current) return;
+            ServerNameChanged?.Invoke(typed == WAR2D.Net.ServerNames.Display(null, HostName()) ? "" : typed);
+        }
+
+        /// <summary>A hover card on every match setting (playtest 2026-11-02, Figma K1), with <see cref="LobbySettingHelp"/>'s words.</summary>
+        private void AttachSettingCards(VisualElement root)
+        {
+            void Attach(VisualElement target, Func<WAR2D.UI.HoverCardContent> content)
+            {
+                if (target != null) hover.Attach(target, content, WAR2D.UI.HoverCard.Side.Left);
+            }
+            Attach(sizeOptions?.parent, LobbySettingHelp.MapSize);
+            Attach(seed?.parent, LobbySettingHelp.Seed);
+            Attach(resourceOptions?.parent, LobbySettingHelp.Resources);
+            Attach(startOptions?.parent, LobbySettingHelp.StartOptions);
+            Attach(pickTimes?.parent, LobbySettingHelp.PickTime);
+            Attach(visibilityOptions?.parent, LobbySettingHelp.Visibility);
+            Attach(modeOptions?.parent, LobbySettingHelp.Mode);
+            Attach(diplomacySlot, LobbySettingHelp.Diplomacy);
         }
 
         private static Button Pill(string name, string text)

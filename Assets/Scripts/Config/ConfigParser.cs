@@ -41,6 +41,18 @@ namespace Config
                 config.Resources.DecayPercentPerSecond = Float(resources, "DecayPercentPerSecond", "Resources", errors, min: 0, max: 100);
             }
 
+            XmlNode release = Require(root, "Release", errors);
+            if (release != null)
+            {
+                string version = release.SelectSingleNode("Version")?.InnerText?.Trim();
+                if (string.IsNullOrEmpty(version) || !System.Text.RegularExpressions.Regex.IsMatch(version, @"^\d+\.\d+\.\d+$"))
+                    errors.Add("Release: <Version> must be major.minor.patch, like 0.16.0.");
+                else config.Release.Version = version;
+                string name = release.SelectSingleNode("Name")?.InnerText?.Trim() ?? "";
+                if (name.Length > 32) errors.Add("Release: <Name> is longer than 32 characters.");
+                else config.Release.Name = name;
+            }
+
             XmlNode match = Require(root, "Match", errors);
             if (match != null)
             {

@@ -42,6 +42,9 @@ public static class CommandGate
         ["Cmd_AddAi"] = (10f, 4f),
         ["Cmd_SetAi"] = (20f, 8f),
         ["Cmd_RemoveAi"] = (10f, 4f),
+        ["Cmd_SetServerName"] = (5f, 1f),
+        ["Cmd_ForceReady"] = (10f, 4f),
+        ["Cmd_RemovePlayer"] = (10f, 4f),
     }, (10f, 5f));
 
     private static readonly Dictionary<int, (int count, double windowStart)> Violations = new Dictionary<int, (int, double)>();

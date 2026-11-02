@@ -41,6 +41,9 @@ namespace WAR2D.UI
             friendsEmpty = root.Q("friends-empty");
             steamOff = root.Q<Label>("steam-off");
             friendsNotice = root.Q<Label>("friends-notice");
+            removedNotice = root.Q("removed-notice");
+            removedText = root.Q<Label>("removed-text");
+            root.Q<Button>("removed-dismiss").clicked += () => ShowRemoved(null);
             directBlock = root.Q("direct-block");
             directSection = root.Q("direct-section");
             directToggle = root.Q<Button>("direct-toggle");
@@ -169,8 +172,9 @@ namespace WAR2D.UI
                 row.AddToClassList("game-row");
                 var info = new VisualElement();
                 info.AddToClassList("game-row__name");
-                info.Add(new Label(g.HostName) { name = "game-host" });
-                var meta = new Label($"{(g.Mode == nameof(MatchMode.Teams) ? "Teams" : "Free for all")} · map {g.MapSize}");
+                // Playtest 2026-11-02 (Figma K2): the server's name leads, then the host.
+                info.Add(new Label(g.ServerName ?? WAR2D.Net.ServerNames.Display(null, g.HostName)) { name = "game-host" });
+                var meta = new Label($"{g.HostName} · {(g.Mode == nameof(MatchMode.Teams) ? "Teams" : "Free for all")} · map {g.MapSize}");
                 meta.AddToClassList("game-row__meta");
                 info.Add(meta);
                 row.Add(info);
@@ -193,6 +197,18 @@ namespace WAR2D.UI
         }
 
         /// <summary>Shows a failure notice under the friends' list; null clears it.</summary>
+        private readonly VisualElement removedNotice;
+        private readonly Label removedText;
+
+        /// <summary>
+        /// The line a player kicked or banned by a host sees (playtest 2026-11-02, Figma K2), with Dismiss; null hides it.
+        /// </summary>
+        public void ShowRemoved(string message)
+        {
+            removedText.text = message ?? "";
+            removedNotice.EnableInClassList("play-panel__notice--visible", !string.IsNullOrEmpty(message));
+        }
+
         public void ShowFriendsNotice(string message)
         {
             friendsNotice.text = message ?? "";

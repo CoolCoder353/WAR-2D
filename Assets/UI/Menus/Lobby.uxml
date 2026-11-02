@@ -3,6 +3,10 @@
         <ui:VisualElement class="row lobby__heading">
             <ui:Label text="Lobby" class="lobby__title" />
             <ui:Label name="lobby-subtitle" text="" class="text text--muted lobby__subtitle" />
+            <ui:VisualElement name="server-name" class="row lobby__server-name">
+                <ui:Label text="Server name" class="text--secondary lobby__server-name-label" />
+                <ui:TextField name="server-name-field" max-length="24" class="input__field lobby__server-name-field" />
+            </ui:VisualElement>
         </ui:VisualElement>
         <ui:ScrollView name="lobby-left" mode="Vertical" horizontal-scroller-visibility="Hidden" class="lobby__left">
             <ui:Label name="players-title" text="Players" class="lobby__column-title" />
@@ -82,6 +86,18 @@
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:ScrollView>
+        <ui:VisualElement name="lobby-ban-confirm" class="overlay-screen">
+            <ui:VisualElement class="panel lobby__confirm">
+                <ui:Label name="lobby-ban-title" text="Ban?" class="panel__title" />
+                <ui:VisualElement class="lobby__confirm-content">
+                    <ui:Label name="lobby-ban-text" text="" class="text--secondary lobby__confirm-text" />
+                    <ui:VisualElement class="row lobby__confirm-buttons">
+                        <ui:Button name="lobby-ban-cancel" text="Cancel" class="button" />
+                        <ui:Button name="lobby-ban-confirm-button" text="Ban" class="button button--danger" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
         <ui:VisualElement class="row lobby__footer">
             <ui:Button name="leave-button" text="Leave" class="button" />
             <ui:Button name="ready-button" text="Ready" class="button button--primary" />

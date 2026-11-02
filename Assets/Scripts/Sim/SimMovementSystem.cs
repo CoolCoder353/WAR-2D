@@ -234,12 +234,15 @@ namespace WAR2D.Sim
                     }
                     else
                     {
-                        // Off the route (or the route is not built yet): head straight for the goal, and
-                        // once the route exists, report the sector so the route grows to cover it.
+                        // Off the route. Until the route is built the unit waits for it (owner, 2026-11-02: heading
+                        // straight at the goal meanwhile ground units into walls; bug-review third scan). Once it
+                        // exists, head for the goal and report the sector so the route grows to cover it.
                         if (distance <= arriveRadius) Arrived[i] = 1;
-                        else velocity = speed * toGoal / distance;
-                        if (OrderReady[slot] != 0 && (i + Tick) % Slice == 0)
-                            RouteMisses.Enqueue(new int2(slot, SectorOf((int2)math.floor(position))));
+                        else if (OrderReady[slot] != 0)
+                        {
+                            velocity = speed * toGoal / distance;
+                            if ((i + Tick) % Slice == 0) RouteMisses.Enqueue(new int2(slot, SectorOf((int2)math.floor(position))));
+                        }
                     }
                 }
             }

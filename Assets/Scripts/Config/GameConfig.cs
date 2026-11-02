@@ -48,6 +48,8 @@ namespace Config
         public ReplaysConfig Replays = new ReplaysConfig();
         /// <summary>What the host may pick in the lobby.</summary>
         public LobbyConfig Lobby = new LobbyConfig();
+        /// <summary>The release's version and name (the main menu; the build's version).</summary>
+        public ReleaseConfig Release = new ReleaseConfig();
         /// <summary>The battle behind the main menu.</summary>
         public MenuBattleConfig MenuBattle = new MenuBattleConfig();
         /// <summary>Damage multipliers per attacker type and target class.</summary>
@@ -164,6 +166,17 @@ namespace Config
 
         /// <summary>Seconds per simulation tick.</summary>
         public float TickSeconds => 1f / TickRate;
+    }
+
+    /// <summary>The release (2026-11-02): one place for the version number and the update's name.</summary>
+    public class ReleaseConfig
+    {
+        /// <summary>major.minor.patch; builds use it as their version (Steam joins compare it).</summary>
+        public string Version = "";
+        /// <summary>The update's name ("Clarity").</summary>
+        public string Name = "";
+        /// <summary>The main menu's line: "v0.16.0 Clarity".</summary>
+        public string Display => string.IsNullOrEmpty(Name) ? $"v{Version}" : $"v{Version} {Name}";
     }
 
     /// <summary>Unit order tuning.</summary>
