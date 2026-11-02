@@ -120,6 +120,7 @@ public partial class GameCore
         if (!CommandGate.Allow(sender, nameof(Cmd_SetColour))) return;
         if (CurrentState != GameState.Lobby || !TryLobbyPlayer(sender, out ClientPlayer me)) return;
         if (LobbyRules.IsColourFree(colourIndex, TakenColours(me))) me.colourIndex = colourIndex;
+        else if (TakeColourFromAi(colourIndex, me)) me.colourIndex = colourIndex;
     }
 
     /// <summary>Marks the sender ready (or not), in the lobby.</summary>

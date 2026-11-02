@@ -131,6 +131,11 @@ namespace Config
         public float MinStartDistance, MaxStartDistance;
         /// <summary>Gem tiles in each expansion's rich field.</summary>
         public int ExpansionGemTiles;
+        /// <summary>
+        /// Playtest 2026-11-02: rock within this many tiles of the map's edge becomes undiggable border, so Diggers can't open
+        /// a path around the map's rim (floor and gems there stay). 1 is the old one-tile border.
+        /// </summary>
+        public int EdgeTiles;
     }
 
     /// <summary>Server simulation tuning.</summary>

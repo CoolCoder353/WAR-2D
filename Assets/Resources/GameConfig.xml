@@ -32,6 +32,7 @@
       <MinStartDistance>0.1</MinStartDistance>    <!-- path distance to the nearest other start site, share of map size -->
       <MaxStartDistance>0.6</MaxStartDistance>
       <ExpansionGemTiles>30</ExpansionGemTiles>
+      <EdgeTiles>4</EdgeTiles>                     <!-- 2026-11-02 playtest: rock this close to the edge is undiggable border -->
     </Map>
   </Match>
 
@@ -154,7 +155,7 @@
   <!-- v0.14 AI players. No difficulty gets more resources, vision or speed: difficulty only changes how well it plays
        (docs/superpowers/specs/2026-10-23-v0.14-ai-opponents-design.md). Starting values, tuned with tools/ai-bench.sh. -->
   <Ai>
-    <Callsigns>Cmdr. Vasquez, Maj. Okafor, Capt. Reyes, Col. Lindqvist, Lt. Tanaka, Maj. Haddad, Capt. Novak, Cmdr. Achebe, Col. Duarte, Lt. Kowalski, Maj. Ferreira, Capt. Ivanova</Callsigns>
+    <Callsigns>IronFox, quietstorm, Vex, NightOwl42, bluemoss, Raptor_9, Kestrel, deadpixel, Halcyon, Tundra, sp4rk, GhostLine, Mako, rustbucket, Zephyr, coldbrew</Callsigns>
     <!-- AI overhaul (2026-10-30): one policy (<Policy>, below) that Hard plays as is; a difficulty lists only its handicaps,
          numbers that only ever make it play worse. Insight: what it makes of what it sees (counters, memory, scouting, how well
          it judges fights). Attention: share of thinks its army micro runs. Ambition: scale of its economy. Mistakes: chance a

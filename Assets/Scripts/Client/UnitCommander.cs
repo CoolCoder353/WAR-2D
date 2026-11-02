@@ -76,7 +76,7 @@ public class UnitCommander : NetworkBehaviour
             localPlayer = NetworkClient.connection.identity.GetComponent<ClientPlayer>();
             SubscribeBuildings();
             Feedback = gameObject.AddComponent<OrderFeedback>();
-            Feedback.Init(Config.ConfigLoader.LoadConfig().Orders.MaxQueued, IsDiggableHere, PositionOf);
+            Feedback.Init(Config.ConfigLoader.LoadConfig().Orders.MaxQueued, IsDiggableHere, PositionOf, id => WAR2D.Client.ClientWorld.Instance != null && WAR2D.Client.ClientWorld.Instance.IsMoving(id));
             Selection.Ordered += OnOrdered;
             if (Selection.RestoreAfterRejoin()) WAR2D.Dev.Logging.WarLog.Info(WAR2D.Dev.Logging.LogCategory.Net, "rejoined: squads and building groups restored");
             gameObject.AddComponent<WAR2D.Client.Overlays.WorldOverlays>(); // v0.15 order, range, rally and hover overlays
@@ -177,7 +177,7 @@ public class UnitCommander : NetworkBehaviour
             Feedback.GoalMoved(goal, moved);
             to = moved;
         }
-        Feedback.Queue.Sent(ids, (float2)to + 0.5f, queue);
+        Feedback.Queue.Sent(ids, (float2)to + 0.5f, queue, isWork: kind == OrderKind.Build || kind == OrderKind.Repair || kind == OrderKind.Dig);
         if (!queue) Feedback.Unmark(ids);
     }
 
@@ -272,7 +272,7 @@ public class UnitCommander : NetworkBehaviour
         List<byte[]> chunks = OrderIdCodec.EncodeChunks(builders);
         for (int i = 0; i < chunks.Count; i++)
             WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, queue, tile, false);
-        Feedback?.Queue.Sent(builders, (float2)tile + 0.5f, queue);
+        Feedback?.Queue.Sent(builders, (float2)tile + 0.5f, queue, isWork: true);
         if (!queue) Feedback?.Unmark(builders);
     }
 
@@ -380,7 +380,7 @@ public class UnitCommander : NetworkBehaviour
         for (int i = 0; i < chunks.Count; i++)
             WorldStateManager.Instance.CmdDigAreaChunk(token, chunks[i], i == chunks.Count - 1, keep, digFrom, tile);
         Feedback?.AddDigMarks(lo, hi, diggers, keep);
-        Feedback?.Queue.Sent(diggers, ((float2)lo + hi + 1f) * 0.5f, keep);
+        Feedback?.Queue.Sent(diggers, ((float2)lo + hi + 1f) * 0.5f, keep, isWork: true);
     }
 
     /// <summary>

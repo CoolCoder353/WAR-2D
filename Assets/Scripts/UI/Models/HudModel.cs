@@ -165,6 +165,10 @@ namespace WAR2D.UI
                 scratch.Add(new PlayerRow(owner, name, colour, core.TeamOf(owner), eliminated, i,
                     player != null && player.isAi, player != null ? player.aiDifficulty : default, player != null ? player.aiStyle : default));
             }
+            // Playtest 2026-11-02: grouped by team (free-for-all players are each on no team, so they keep the match order).
+            List<PlayerRow> byTeam = System.Linq.Enumerable.ToList(System.Linq.Enumerable.OrderBy(scratch, r => TeamRules.ListOrder(r.StartTeam)));
+            scratch.Clear();
+            scratch.AddRange(byTeam);
             SetPlayers(scratch);
         }
     }

@@ -254,8 +254,8 @@ namespace WAR2D.Client
             return true;
         }
 
-        /// <summary>True while the client knows the unit and it still has a route to follow (it is moving).</summary>
-        public bool IsMoving(int id) => id > 0 && store.IdOf(NetIdAllocator.IndexOf(id)) == id && store.HasRoute(NetIdAllocator.IndexOf(id));
+        /// <summary>True while the client knows the unit and it is still short of its route's end (it is moving).</summary>
+        public bool IsMoving(int id) => id > 0 && store.IdOf(NetIdAllocator.IndexOf(id)) == id && store.IsMoving(NetIdAllocator.IndexOf(id), serverTime);
 
         /// <summary>Adds the ids of every unit the client knows of the owner (all of them, not only those on screen), optionally of one type.</summary>
         public void CollectOwn(int ownerId, List<int> into, UnitType type = UnitType.None)

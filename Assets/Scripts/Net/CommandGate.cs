@@ -5,7 +5,7 @@ using UnityEngine;
 
 /// <summary>
 /// Server-side gate every client Command passes through: per-command rate limits, plus disconnecting
-/// connections that keep exceeding them.
+/// connections that keep exceeding them (never the host's own local client).
 /// </summary>
 public static class CommandGate
 {
@@ -58,7 +58,9 @@ public static class CommandGate
         if (now - v.windowStart > ViolationWindowSeconds) v = (0, now);
         v.count++;
         Violations[conn.connectionId] = v;
-        if (v.count >= ViolationsBeforeKick)
+        // The host's own client is never disconnected (playtest 2026-11-02): it is the server, so a kick ended the host's
+        // own game while the match went on without it. Its excess commands are still dropped.
+        if (v.count >= ViolationsBeforeKick && !(conn is LocalConnectionToClient))
         {
             WarLog.Warn(LogCategory.Net, $"Disconnecting connection {conn.connectionId}: repeatedly exceeded command rate limits ({command}){(WAR2D.Net.Steam.SteamIdentity.TryGet(conn.connectionId, out ulong sid) ? $" (Steam {sid})" : "")}.");
             Forget(conn.connectionId);

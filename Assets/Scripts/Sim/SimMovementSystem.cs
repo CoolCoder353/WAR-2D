@@ -197,7 +197,7 @@ namespace WAR2D.Sim
                     int lead = FormationLead[i];
                     bool lost = (uint)lead < (uint)OrderLead.Length && fromGoal - OrderLead[lead] > Lost;
                     if (!lost && toSeat > Loose) speed = math.min(speed, groupSpeed);
-                    if (fromGoal <= SlotTiles && ClearLine(position, seat))
+                    if (fromGoal <= SlotTiles && ClearLine(position, seat, Radius[i]))
                     {
                         steered = true;
                         if (toSeat <= 0.25f) Arrived[i] = 1;
@@ -286,19 +286,30 @@ namespace WAR2D.Sim
             return best < float.MaxValue;
         }
 
-        /// <summary>True when every tile under the straight line from <paramref name="a"/> to <paramref name="b"/> is open floor (sampled every half tile).</summary>
-        private bool ClearLine(float2 a, float2 b)
+        /// <summary>
+        /// True when a body of <paramref name="radius"/> can slide straight from <paramref name="a"/> to <paramref name="b"/>:
+        /// every tile under its corners, sampled every half tile, is open floor (playtest 2026-11-02: checking the centre
+        /// line alone let a body clip a rock corner beside it and stick there).
+        /// </summary>
+        private bool ClearLine(float2 a, float2 b, float radius)
         {
             float length = math.distance(a, b);
             int steps = (int)math.ceil(length * 2f);
             for (int k = 1; k <= steps; k++)
             {
-                int2 t = (int2)math.floor(math.lerp(a, b, k / (float)steps));
-                if ((uint)t.x >= (uint)Width || (uint)t.y >= (uint)Height) return false;
-                int index = t.y * Width + t.x;
-                if (!TileRules.IsFloor(Tiles[index]) || Used[index] != 0) return false;
+                float2 p = math.lerp(a, b, k / (float)steps);
+                if (!Open(p + new float2(-radius, -radius)) || !Open(p + new float2(radius, -radius))
+                    || !Open(p + new float2(-radius, radius)) || !Open(p + new float2(radius, radius))) return false;
             }
             return true;
+        }
+
+        private bool Open(float2 p)
+        {
+            int2 t = (int2)math.floor(p);
+            if ((uint)t.x >= (uint)Width || (uint)t.y >= (uint)Height) return false;
+            int index = t.y * Width + t.x;
+            return TileRules.IsFloor(Tiles[index]) && Used[index] == 0;
         }
 
         private int SectorOf(int2 tile) => tile.y / SectorGraph.SectorSize * SectorsX + tile.x / SectorGraph.SectorSize;

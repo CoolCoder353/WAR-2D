@@ -30,6 +30,16 @@ namespace WAR2D.Client
         /// <summary>Random tiles tried per new goal; the least recently seen wins.</summary>
         public const int Samples = 24;
 
+        /// <summary>
+        /// Most Move orders one check sends (playtest 2026-11-02: a large roaming group sent one order per unit at once,
+        /// past <c>CmdOrderChunk</c>'s rate limit, so the orders were dropped and the host was disconnected). 4 per check is
+        /// 8 a second, well under the limit's 20; the rest wait for the next check, round robin.
+        /// </summary>
+        public const int MaxOrdersPerCheck = 4;
+
+        /// <summary>A unit's drawn position, or false when the client no longer knows it.</summary>
+        public delegate bool PositionOf(int id, out float2 position);
+
         private sealed class Roamer
         {
             public int2 Goal;
@@ -40,6 +50,8 @@ namespace WAR2D.Client
         private readonly Dictionary<int, Roamer> roamers = new Dictionary<int, Roamer>();
         private readonly List<int> gone = new List<int>();
         private readonly List<int> one = new List<int>(1);
+        private readonly List<int> order = new List<int>();
+        private int cursor;
         private Random random = new Random(0x5C07u);
         private float nextCheck;
 
@@ -74,29 +86,50 @@ namespace WAR2D.Client
         /// </summary>
         public void Update(float now, int2 mapMin, int2 mapMax, System.Action<List<int>, int2> send)
         {
-            if (roamers.Count == 0 || now < nextCheck) return;
-            nextCheck = now + CheckSeconds;
             ClientWorld world = ClientWorld.Instance;
             if (world == null) return;
-            gone.Clear();
-            foreach (KeyValuePair<int, Roamer> pair in roamers)
+            Update(now, mapMin, mapMax, send, (int id, out float2 position) =>
             {
-                if (!world.TryGet(pair.Key, out ClientUnitView view)) { gone.Add(pair.Key); continue; }
-                Roamer r = pair.Value;
-                float distance = r.HasGoal ? math.distance(view.Position, (float2)r.Goal + 0.5f) : 0f;
+                bool known = world.TryGet(id, out ClientUnitView view);
+                position = view.Position;
+                return known;
+            });
+        }
+
+        /// <summary>
+        /// As <see cref="Update(float, int2, int2, System.Action{List{int}, int2})"/>, with the units' positions from
+        /// <paramref name="positionOf"/>. At most <see cref="MaxOrdersPerCheck"/> orders go out per check, starting where the
+        /// last check stopped.
+        /// </summary>
+        public void Update(float now, int2 mapMin, int2 mapMax, System.Action<List<int>, int2> send, PositionOf positionOf)
+        {
+            if (roamers.Count == 0 || now < nextCheck) return;
+            nextCheck = now + CheckSeconds;
+            gone.Clear();
+            order.Clear();
+            order.AddRange(roamers.Keys);
+            int sent = 0, start = cursor % order.Count;
+            for (int k = 0; k < order.Count && sent < MaxOrdersPerCheck; k++)
+            {
+                int index = (start + k) % order.Count, id = order[index];
+                if (!positionOf(id, out float2 position)) { gone.Add(id); continue; }
+                Roamer r = roamers[id];
+                float distance = r.HasGoal ? math.distance(position, (float2)r.Goal + 0.5f) : 0f;
                 if (r.HasGoal && distance > ArriveTiles)
                 {
                     if (distance < r.Best - ProgressTiles) { r.Best = distance; r.BestAt = now; }
                     if (now - r.BestAt < StuckSeconds) continue;
                 }
-                if (!PickGoal(view.Position, mapMin, mapMax, out int2 goal)) continue;
+                if (!PickGoal(position, mapMin, mapMax, out int2 goal)) continue;
                 r.Goal = goal;
                 r.HasGoal = true;
-                r.Best = math.distance(view.Position, (float2)goal + 0.5f);
+                r.Best = math.distance(position, (float2)goal + 0.5f);
                 r.BestAt = now;
                 one.Clear();
-                one.Add(pair.Key);
+                one.Add(id);
                 send(one, goal);
+                sent++;
+                cursor = index + 1; // the next check starts after the last unit served
             }
             foreach (int id in gone) roamers.Remove(id);
         }

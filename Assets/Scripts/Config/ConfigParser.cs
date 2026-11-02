@@ -76,6 +76,7 @@ namespace Config
                     m.MinStartDistance = Float(map, "MinStartDistance", "Map", errors, min: 0, max: 2);
                     m.MaxStartDistance = Float(map, "MaxStartDistance", "Map", errors, min: 0, max: 4);
                     m.ExpansionGemTiles = Int(map, "ExpansionGemTiles", "Map", errors, min: 1, max: 200);
+                    m.EdgeTiles = Int(map, "EdgeTiles", "Map", errors, min: 1, max: 16);
                 }
             }
 

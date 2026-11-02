@@ -4,8 +4,11 @@ public static class SpawnerRules
     /// <summary>Maximum units a single spawner may have queued.</summary>
     public const int MaxQueue = 100;
 
-    /// <summary>The queue buttons' steps: −1, +1, +10 and +50 (the approved v0.8 panel).</summary>
-    public static readonly int[] QueueSteps = { -1, 1, 10, 50 };
+    /// <summary>
+    /// The queue buttons' steps: −1, +1, +10 and +50 (the approved v0.8 panel), and since the 2026-11-02 playtest −10
+    /// (Shift + −) and −<see cref="MaxQueue"/> (Ctrl + −: clear the queue).
+    /// </summary>
+    public static readonly int[] QueueSteps = { -1, 1, 10, 50, -10, -MaxQueue };
 
     /// <summary>Most spawners one queue or rally command may name (a selection bound, checked on the server).</summary>
     public const int MaxSpawnersPerCommand = 64;

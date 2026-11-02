@@ -146,6 +146,7 @@ namespace WAR2D.UI
             Model.Economy.LowFunds += OnLowFunds;
             // The selection panel and squad bar sit right of the minimap and follow it when its size changes (S, M, L).
             root.Q("minimap")?.RegisterCallback<GeometryChangedEvent>(FollowMinimap);
+            root.Q("selection-panel")?.RegisterCallback<GeometryChangedEvent>(FollowSelectionPanel);
             orderTags = new OrderTagsController(root);
             diplomacy = new DiplomacyPanelController(root, Model);
             diplomacyButton = root.Q<Button>("diplomacy-button");
@@ -480,6 +481,24 @@ namespace WAR2D.UI
                 VisualElement element = root.Q(name);
                 if (element != null) element.style.left = left;
             }
+        }
+
+        /// <summary>Lowest the squad bar sits (its USS bottom), and the gap kept above the selection panel and to the hint.</summary>
+        private const float SquadBarBottom = 142f, SquadBarGap = 8f, SquadHintAbove = 44f;
+
+        /// <summary>
+        /// Keeps the squad bar and its hint above the selection panel when the panel grows past them (playtest 2026-11-02: a
+        /// tall selection, many types or the upkeep line, covered the squad bar).
+        /// </summary>
+        private void FollowSelectionPanel(GeometryChangedEvent e)
+        {
+            if (!(e.target is VisualElement panel)) return;
+            float top = panel.resolvedStyle.display == DisplayStyle.None || float.IsNaN(panel.layout.height) ? 0f
+                : panel.resolvedStyle.bottom + panel.layout.height + SquadBarGap;
+            float bottom = Mathf.Max(SquadBarBottom, top);
+            VisualElement bar = root.Q("squad-bar"), hint = root.Q("squad-hint");
+            if (bar != null) bar.style.bottom = bottom;
+            if (hint != null) hint.style.bottom = bottom + SquadHintAbove;
         }
 
         private Label cursorNotice;

@@ -14,7 +14,7 @@
                 <ui:Label name="add-ai-hint" text="AIs are always ready. Shown while a seat is free (8 at most)." class="text--secondary lobby__add-ai-hint" />
             </ui:VisualElement>
             <ui:VisualElement name="local-pickers" class="lobby__pickers">
-                <ui:Label text="Your colour (taken colours are crossed out)" class="text--secondary lobby__label" />
+                <ui:Label text="Your colour (other players' colours are crossed out; an AI gives its colour up)" class="text--secondary lobby__label" />
                 <ui:VisualElement name="colour-picker" class="row lobby__colours" />
                 <ui:VisualElement name="team-section">
                     <ui:Label text="Your team" class="text--secondary lobby__label" />
@@ -29,7 +29,6 @@
             </ui:VisualElement>
             <ui:Label name="lobby-map-caption" text="" class="text lobby__map-caption" />
             <ui:Button name="reroll-button" text="Reroll" class="button lobby__reroll" />
-            <ui:Label name="start-caption" text="Terrain only. Start points are private: each player is dealt their own options when the match starts (teammates see each other's)." class="text--secondary lobby__caption" />
         </ui:VisualElement>
         <ui:ScrollView name="lobby-settings" mode="Vertical" horizontal-scroller-visibility="Hidden" class="lobby__settings">
             <ui:Label name="settings-title" text="Match settings" class="lobby__column-title" />

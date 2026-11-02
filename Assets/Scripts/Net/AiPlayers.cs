@@ -324,6 +324,28 @@ public partial class GameCore
         return AiCallsigns.Draw(ConfigLoader.LoadConfig().Ai.Callsigns, Settings.Seed, taken);
     }
 
+    /// <summary>
+    /// Humans over AIs (playtest 2026-11-02): when <paramref name="colour"/> is held by an AI and no other human, the AI moves
+    /// to the first colour nobody else holds (the human's old one if nothing else is free) so <paramref name="human"/> can take
+    /// it. False (nothing changes) when a human holds it or no AI does.
+    /// </summary>
+    [Server]
+    private bool TakeColourFromAi(int colour, ClientPlayer human)
+    {
+        if (colour < 0 || colour >= LobbyRules.Colours) return false;
+        foreach (ClientPlayer player in LobbyClientPlayers()) if (player != human && player.colourIndex == colour) return false;
+        AiSeat holder = null;
+        foreach (AiSeat seat in AiPlayers.Values) if (seat.Colour == colour) holder = seat;
+        if (holder == null) return false;
+        List<int> taken = TakenColours(human); // the human's old colour is free for the AI
+        int next = LobbyRules.FirstFreeColour(taken);
+        if (next < 0) next = human.colourIndex;
+        holder.Colour = next;
+        if (holder.Client != null) holder.Client.colourIndex = next;
+        WarLog.Info(LogCategory.Lobby, $"AI {holder.Callsign} gave colour {colour} to netId {human.netId}, now {next}");
+        return true;
+    }
+
     /// <summary>Colours humans and AIs hold, except <paramref name="except"/>'s.</summary>
     private List<int> TakenColours(ClientPlayer except)
     {

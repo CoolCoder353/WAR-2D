@@ -163,7 +163,9 @@ namespace WAR2D.UI
         private void ShowRows(bool host, bool teams)
         {
             rows.Clear();
-            foreach (LobbyPlayer p in model.Players)
+            // Playtest 2026-11-02: grouped by team in Teams mode (Solo last), join order within a team. LINQ's sort is stable.
+            IEnumerable<LobbyPlayer> ordered = teams ? System.Linq.Enumerable.OrderBy(model.Players, p => TeamRules.ListOrder(p.Team)) : model.Players;
+            foreach (LobbyPlayer p in ordered)
             {
                 if (p.IsAi) { rows.Add(AiRow(p, host, teams)); continue; }
                 bool you = p.OwnerId == model.Local.OwnerId;
@@ -344,7 +346,7 @@ namespace WAR2D.UI
             for (int c = 0; c < LobbyRules.Colours; c++)
             {
                 int colour = c;
-                bool taken = model.IsColourTaken(c);
+                bool taken = model.IsColourTakenByHuman(c); // an AI's colour can be taken: the AI moves (humans over AIs)
                 var chip = new Button(() => ColourClicked?.Invoke(colour)) { name = "colour-" + c, text = taken ? "×" : "" };
                 chip.AddToClassList("colour-chip");
                 chip.AddToClassList("player-" + (c + 1));

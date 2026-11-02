@@ -142,6 +142,16 @@ namespace WAR2D.UI
             return false;
         }
 
+        /// <summary>
+        /// Colours another human holds (playtest 2026-11-02: humans over AIs; picking an AI's colour moves the AI, see
+        /// <c>GameCore.TakeColourFromAi</c>).
+        /// </summary>
+        public bool IsColourTakenByHuman(int colour)
+        {
+            foreach (LobbyPlayer p in players) if (!p.IsAi && p.OwnerId != LocalOwnerId && p.ColourIndex == colour) return true;
+            return false;
+        }
+
         /// <summary>Reads the lobby from every player's public SyncVars and <c>GameCore.Settings</c>.</summary>
         public void Pull()
         {

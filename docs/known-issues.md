@@ -88,6 +88,24 @@ The owner closed the v0.10 to v0.15.1 verification and tuning items: the playtes
 | `<Replays><SendKilobytesPerSecond>` did nothing | **Removed** (parser, `GameConfig`, XML, test fixture). |
 | The version stayed at 0.14.0 / protocol 14 after v0.15's new messages | **Fixed.** `bundleVersion` 0.15.1, `GameVersion.Protocol` 15. |
 
+## Playtest fixes (2026-11-02, v0.16 branch)
+
+| Report | Status |
+| ------ | ------ |
+| When a player died, nobody else could build | **Fixed.** Not the death: the host's own client was disconnected by `CommandGate` for flooding `CmdOrderChunk` (the Roam autopilot, below), and every later host command was dropped. The gate never disconnects the host's local connection now (its excess commands are still dropped). |
+| Units told to roam (auto-scout) didn't move, bombers in particular | **Fixed.** Roam sent one Move per unit at once; a large group went past the order command's rate limit and the orders were dropped. It sends at most `Roam.MaxOrdersPerCheck` (4) per half-second check, round robin (`RoamTests`). |
+| The idle-Builders button always said 0 | **Fixed.** `ClientWorld.IsMoving` was true for any unit holding a route, and a stopped unit keeps its route on the client; it now asks whether the prediction still advances. |
+| Shift didn't always show a unit's queue | **Partly fixed.** A unit stopping further than 1.5 tiles from its goal (a formation slot, a packed group) kept that goal forever, so the queue shown was stale; a move goal now counts as reached once the unit has stood still for a second (jobs excepted). The report of nothing showing at all wasn't reproduced; steps to reproduce wanted. |
+| No way to cancel a large production queue | **Fixed.** Shift-click on − removes ten, Ctrl-click clears the queue (`SpawnerRules.QueueSteps` gains −10 and −100; the − button's hover card says so). |
+| The squad bar went under other UI | **Fixed.** It stayed at a fixed height while the selection panel grew under it; it now sits above the panel whenever the panel is taller (`HudController.FollowSelectionPanel`). |
+| Units stuck on walls | **Partly fixed.** A formation unit walking straight to its slot checked the line's centre only, so a body could clip a rock corner and stick; the check now covers the body's width. The older open finding (units with no route yet head straight for their goal, no unstick logic; [bug-review.md](bug-review.md) third scan) still needs the hold-or-follow decision. |
+| AI names | **Changed** to player-style tags (`<Ai><Callsigns>`, owner's choice: gamer tags). |
+| Player lists by team | **Done.** The lobby (Teams mode) and the in-match player list are grouped by team, Solo last. |
+| Colour clashes | **Done** (owner's choice: humans over AIs). A human may pick a colour an AI holds; the AI moves to the first free colour (`GameCore.TakeColourFromAi`). |
+| Map preview resources pink; the "Terrain only" caption | **Done.** Gems draw a clear red with more floor/rock contrast; the caption is gone. |
+| Undestructable walls on the map's rim | **Done** (owner's choice: a thicker undiggable ring). Rock within `<Map><EdgeTiles>` (4) of the edge is border; floor and gems are untouched. Every seed's map changes. |
+| Host kick/ban, force ready, server names, hover cards on match settings | **Figma first** (owner, 2026-11-02): new lobby UI, drawn for approval before it is built. |
+
 ## v0.16 Clarity (2026-11-02)
 
 | Item | Status |

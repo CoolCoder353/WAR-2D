@@ -27,6 +27,18 @@ public class SpawnerRulesTests
     }
 
     [Test]
+    public void ABigQueueCanBeCutByTenOrCleared()
+    {
+        // Playtest 2026-11-02: Shift + − removes ten, Ctrl + − clears the queue.
+        int count = 73;
+        Assert.IsTrue(SpawnerRules.IsQueueStep(-10) && SpawnerRules.IsQueueStep(-SpawnerRules.MaxQueue));
+        SpawnerRules.Apply(ref count, -10);
+        Assert.AreEqual(63, count);
+        SpawnerRules.Apply(ref count, -SpawnerRules.MaxQueue);
+        Assert.AreEqual(0, count);
+    }
+
+    [Test]
     public void EachProducerMakesItsRolesUnits()
     {
         CollectionAssert.AreEqual(new[] { UnitType.Builder }, SpawnerRules.Produces(BuildingType.Base));
