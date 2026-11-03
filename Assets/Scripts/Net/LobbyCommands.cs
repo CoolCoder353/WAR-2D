@@ -37,6 +37,7 @@ public partial class GameCore
         RememberedLobby lobby = LobbyMemory.Load();
         if (lobby == null) return;
         Settings = LobbyMemory.Apply(Settings, lobby, ConfigLoader.LoadConfig().Lobby);
+        if (!string.IsNullOrEmpty(lobby.ServerName)) ServerName = lobby.ServerName;
         if (lobby.Ais == null) return;
         foreach (RememberedAi ai in lobby.Ais)
         {
@@ -52,7 +53,7 @@ public partial class GameCore
         var lobby = new RememberedLobby
         {
             Mode = Settings.Mode, Diplomacy = Settings.Diplomacy, MapSize = Settings.MapSize, StartingResources = Settings.StartingResources,
-            StartOptions = Settings.StartOptions, StartPickSeconds = Settings.StartPickSeconds, Visibility = Settings.Visibility,
+            StartOptions = Settings.StartOptions, StartPickSeconds = Settings.StartPickSeconds, Visibility = Settings.Visibility, ServerName = ServerName,
         };
         foreach (AiSeat seat in AiPlayers.Values)
             lobby.Ais.Add(new RememberedAi { Difficulty = seat.Difficulty, Style = seat.Style, Team = seat.Client != null ? seat.Client.lobbyTeam : TeamRules.NoTeam });
@@ -67,6 +68,7 @@ public partial class GameCore
         if (!IsServerOwner(sender) || CurrentState != GameState.Lobby) return;
         ClearAiPlayers();
         InitSettings();
+        ServerName = "";
         LobbyMemory.Forget();
         foreach (ClientPlayer player in LobbyClientPlayers()) player.ready = false;
     }

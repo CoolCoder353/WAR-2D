@@ -112,7 +112,7 @@ public partial class GameCore
         Rejoin.RevokeAll();
         var away = new List<int>();
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
-            if (entry.Key != null && entry.Value.connection == null) away.Add(BuildingData.UIntToInt(entry.Key.netId));
+            if (entry.Key != null && entry.Value.Away) away.Add(BuildingData.UIntToInt(entry.Key.netId));
         foreach (int owner in away) EndAway(owner, WAR2D.Net.Rejoin.RejoinRefusal.MatchOver);
         ResetMatchState();
         foreach (ClientPlayer player in LobbyClientPlayers()) player.ready = false;

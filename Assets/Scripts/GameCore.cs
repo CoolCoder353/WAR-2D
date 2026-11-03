@@ -84,7 +84,6 @@ public partial class GameCore : NetworkBehaviour
     {
         base.OnStartServer();
         InitSettings();
-        ApplyRememberedLobby();
     }
 
     [Server]
@@ -172,6 +171,8 @@ public partial class GameCore : NetworkBehaviour
             joining.ready = false;
             if (Settings.Mode == MatchMode.FreeForAll) joining.lobbyTeam = TeamRules.NoTeam;
         }
+        // v0.18: the first player in is the host: their last lobby comes back now they have their seat and colour.
+        if (!lobbyRestored) { lobbyRestored = true; ApplyRememberedLobby(); }
     }
 
     /// <summary>
@@ -565,6 +566,7 @@ public partial class GameCore : NetworkBehaviour
     }
 
     private readonly HashSet<int> summaryEliminated = new HashSet<int>();
+    private bool lobbyRestored;
 
     /// <summary>Puts a player leaving the match on the timeline, once.</summary>
     [Server]
