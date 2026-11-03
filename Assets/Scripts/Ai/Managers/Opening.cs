@@ -101,13 +101,15 @@ namespace WAR2D.Ai
             AiPlayConfig play = ai.Config.Play;
             int r = (int)math.ceil(play.OptionRadius);
             float r2 = play.OptionRadius * play.OptionRadius;
-            int gems = 0, open = 0;
+            float gems = 0f; // v0.17: a rich tile counts RichGemMultiplier gems
+            int open = 0;
             for (int y = -r; y <= r; y++)
                 for (int x = -r; x <= r; x++)
                 {
                     if (x * x + y * y > r2) continue;
                     TileType t = view.TileAt(centre + new int2(x, y));
-                    if (t == TileType.Gem) gems++;
+                    if (t == TileType.Gem) gems += 1f;
+                    else if (t == TileType.RichGem) gems += ai.Game.Resources.RichGemMultiplier;
                     else if (t == TileType.Ground) open++;
                 }
             float score = gems * play.OptionGemWeight + open * play.OptionOpenWeight;

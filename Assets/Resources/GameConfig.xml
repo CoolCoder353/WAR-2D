@@ -330,6 +330,7 @@
       <OptionExpansionWeight>40</OptionExpansionWeight> <!-- score per rich field (expansion) in reach, falling to 0 at the reach -->
       <OptionExpansionReach>140</OptionExpansionReach>
       <OptionTeammateWeight>0.3</OptionTeammateWeight> <!-- score lost per tile from the nearest teammate's pick -->
+      <ExpansionDistanceScale>120</ExpansionDistanceScale> <!-- v0.17: tiles from home that halve an expansion's score (gem worth over distance) -->
       <OpeningSeconds>300</OpeningSeconds>             <!-- the build order is dropped after this, done or not -->
       <BaseRadius>24</BaseRadius>                      <!-- tiles from the HQ buildings go within -->
       <BuildingGap>1</BuildingGap>                     <!-- free tiles kept around producers, Radars and Jammers -->

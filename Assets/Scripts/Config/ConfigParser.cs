@@ -508,6 +508,7 @@ namespace Config
                 p.OptionExpansionWeight = Float(play, "OptionExpansionWeight", c, errors, min: 0, max: 100000);
                 p.OptionExpansionReach = Float(play, "OptionExpansionReach", c, errors, min: 1, max: 4096);
                 p.OptionTeammateWeight = Float(play, "OptionTeammateWeight", c, errors, min: 0, max: 1000);
+                p.ExpansionDistanceScale = Float(play, "ExpansionDistanceScale", c, errors, min: 1, max: 10000);
                 p.OpeningSeconds = Float(play, "OpeningSeconds", c, errors, min: 0, max: 3600);
                 p.BaseRadius = Float(play, "BaseRadius", c, errors, min: 4, max: 128);
                 p.BuildingGap = Int(play, "BuildingGap", c, errors, min: 0, max: 4);

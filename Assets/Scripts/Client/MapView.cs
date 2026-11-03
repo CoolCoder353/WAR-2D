@@ -65,8 +65,8 @@ public class MapView : MonoBehaviour
         _instance = null;
     }
 
-    /// <summary>v0.17 rich gems: brighter and warmer than ordinary gems (Gem3 halfway to Warn; Figma H1).</summary>
-    private static Color32 RichGemColour(Color32[] roles) => Color32.Lerp(roles[StylePalette.Gem3], roles[StylePalette.Warn], 0.5f);
+    /// <summary>v0.17 rich gems: the palette's gold (<c>Warn</c>), brighter and warmer than ordinary gems (Figma H1). Flat tile colours are palette colours.</summary>
+    private static Color32 RichGemColour(Color32[] roles) => roles[StylePalette.Warn];
 
     /// <summary>
     /// A tile kind's flat colour (far zoom, minimap, lobby preview): a base colour from the style's palette

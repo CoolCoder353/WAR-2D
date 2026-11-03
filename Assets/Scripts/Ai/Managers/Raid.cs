@@ -101,7 +101,7 @@ namespace WAR2D.Ai
                 if (ai.Board.Armies.TryGetValue(b.OwnerId, out ArmySighting seen) && math.distancesq(seen.Centre, at) <= 4f * r2)
                     defence.Add(AiForces.EnemyArmy(ai, b.OwnerId));
                 if (FightModel.Advantage(ours, defence, policy.RangeWeight) * noise < policy.RaidAdvantage) continue;
-                float score = ArmyManager.WorthOf(ai, b.Type) / (1f + math.distance(home, at) / policy.TargetDistanceScale);
+                float score = ArmyManager.WorthOf(ai, view, b) / (1f + math.distance(home, at) / policy.TargetDistanceScale);
                 if (score > best) { best = score; bestId = b.Id; bestAt = b.Anchor; }
             }
             if (bestId == 0) { raiders.Clear(); return; }
@@ -135,7 +135,7 @@ namespace WAR2D.Ai
         private static bool AtExpansion(TeamView view, int2 at)
         {
             foreach (AiRegion r in view.Regions)
-                if (r.Kind == AiRegionKind.Expansion && math.distancesq((float2)r.Centre, (float2)at) <= (r.Radius + 4f) * (r.Radius + 4f)) return true;
+                if (r.Expandable && math.distancesq((float2)r.Centre, (float2)at) <= (r.Radius + 4f) * (r.Radius + 4f)) return true;
             return false;
         }
 

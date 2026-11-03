@@ -93,18 +93,26 @@ namespace WAR2D.Ai
             if (full) wanted = ai.Difficulty.MaxExpansions;
             if (claimed.Count >= wanted || !(onTime || squeezed || full)) return held;
             if (state.BuildingCount[(int)BuildingType.Miner] < ai.Style.Miners || state.Free < 2f * state.CostOf(BuildingType.Miner)) return held;
+            // v0.17: the best by gem worth over distance (rich central areas too), not simply the nearest.
             int best = -1;
-            float bestD = float.MaxValue;
+            float bestScore = 0f;
             for (int i = 0; i < regions.Length; i++)
             {
-                if (regions[i].Kind != AiRegionKind.Expansion || claimed.Contains(i)) continue;
+                if (!regions[i].Expandable || claimed.Contains(i)) continue;
                 if (EnemyBuildingNear(ai, regions[i].Centre, regions[i].Radius)) continue;
-                float d = math.distance(regions[i].Centre, state.Home);
-                if (d < bestD) { bestD = d; best = i; }
+                float score = ExpansionScore(regions[i], math.distance(regions[i].Centre, state.Home), ai.Game.Resources.RichGemMultiplier, ai.Config.Play.ExpansionDistanceScale);
+                if (score > bestScore) { bestScore = score; best = i; }
             }
             if (best >= 0) claimed.Add(best);
             return held;
         }
+
+        /// <summary>
+        /// An expansion candidate's score (v0.17): its gem worth in ordinary-gem units (a rich tile counts
+        /// <c>RichGemMultiplier</c>) over (1 + distance / <c>ExpansionDistanceScale</c>). 0 for a region with no gems.
+        /// </summary>
+        internal static float ExpansionScore(AiRegion region, float distance, float richMultiplier, float distanceScale) =>
+            region.Worth(richMultiplier) / (1f + distance / math.max(1f, distanceScale));
 
         private bool AllHeldFull(AiState state)
         {

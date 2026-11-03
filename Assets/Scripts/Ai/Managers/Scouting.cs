@@ -127,7 +127,7 @@ namespace WAR2D.Ai
             sitesInRoute = route.Count;
             foreach (AiRegion r in view.Regions)
             {
-                if (r.Kind != AiRegionKind.Expansion) continue;
+                if (!r.Expandable) continue; // v0.17: rich central areas are scouted like expansions
                 byte fog = view.FogAt((float2)r.Centre + 0.5f);
                 if (firstRunDone ? fog != 2 : fog == 0) Add(r.Centre, view.HqClearRadius);
             }

@@ -389,7 +389,7 @@ namespace WAR2D.Ai
             foreach (AiBuilding b in ai.Board.EnemyBuildings.Values)
             {
                 if (b.Type == BuildingType.Bomb) continue;
-                Consider(b.Id, b.OwnerId, b.Anchor, WorthOf(ai, b.Type));
+                Consider(b.Id, b.OwnerId, b.Anchor, WorthOf(ai, ai.View, b));
             }
             // An HQ it saw that its view doesn't show any more (a Jammer hides it): its remembered spot (id -1).
             foreach (KeyValuePair<int, int2> hq in ai.Board.KnownHqs)
@@ -408,12 +408,17 @@ namespace WAR2D.Ai
             return true;
         }
 
-        /// <summary>A target's worth (AI overhaul §3.4): an HQ wins the game, a Miner adds the income it denies, the rest their cost.</summary>
-        internal static float WorthOf(AiContext ai, BuildingType type)
+        /// <summary>
+        /// A target's worth (AI overhaul §3.4): an HQ wins the game, a Miner adds the income it denies (v0.17: by the gem it
+        /// faces, so a rich Miner is worth <c>RichGemMultiplier</c> times as much), the rest their cost.
+        /// </summary>
+        internal static float WorthOf(AiContext ai, TeamView view, AiBuilding b)
         {
-            if (type == BuildingType.Base) return ai.Policy.HqValue;
-            float cost = ai.Game.Buildings.TryGetValue(type, out BuildingConfig c) ? c.UpfrontCost : 0f;
-            return type == BuildingType.Miner ? cost + ai.Policy.MinerIncomeValue : cost;
+            if (b.Type == BuildingType.Base) return ai.Policy.HqValue;
+            float cost = ai.Game.Buildings.TryGetValue(b.Type, out BuildingConfig c) ? c.UpfrontCost : 0f;
+            if (b.Type != BuildingType.Miner) return cost;
+            TileType faced = view.TileAt(b.Anchor + MinerRules.FacingOffset(b.Rotation * 90f));
+            return cost + ai.Policy.MinerIncomeValue * math.max(1f, MinerRules.RateOf(faced, ai.Game.Resources.RichGemMultiplier));
         }
 
         /// <summary>
