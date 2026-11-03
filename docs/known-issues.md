@@ -130,6 +130,16 @@ The owner closed the v0.10 to v0.15.1 verification and tuning items: the playtes
 | A ban holds only the route the player came by | Open (can't be closed as things stand). A Steam connection carries no address and a Direct connection carries no Steam ID, so a player banned over Steam can come back over Direct (and the reverse) on a host that allows Direct (`-direct`, the editor, or `-perf`). Release builds without `-direct` take Steam connections only. |
 | `ReplicationPlayModeTests.BoxSelectAndSquadOrderMoveUnits` expected a 3-tile clump | **Updated.** Its squad order goes out with Formations on, so 30 units stop in a block; it now counts units within 6 tiles. |
 
+## v0.17 Heartland (2026-11-03, in progress)
+
+| Item | Status |
+| ---- | ------ |
+| The `Tiles` atlas outgrew Unity's default 2048 import size | **Fixed.** The rich gem frames took it to 4096×2048 and the importer's default cap halved it, so every frame past the old edge sampled the wrong art (rich gems drew as plain rock). `ArtImporter` now imports every atlas at up to `MaxSize` (8192), and `ArtImportTests.ImporterSettingsApplyToEveryArtTexture` checks it. The Tiles atlas and its mask cost about twice the GPU memory they did (4096×2048, uncompressed). |
+| Rich fields' fairness band (spec D5) | Decided while building, awaiting the owner: no upper band. As written, every start within the expansions' 0.6 × size of a rich field rejected most plans at every size; what holds is that no start is beside a rich field and every start can reach one. |
+| The rich gem colour (Figma H1) | Built with proposal A, the palette's gold (`Warn` #F2C14E), as flat tile and minimap colour; awaiting the owner's pick (A or the orange B). A tile's flat colour must be a palette colour (`TileAutotileTests.FlatTileColoursComeFromThePalette`). |
+| The Miner hover line, placement label and minimap legend (Figma H1) | Not built: waiting for the frame's approval. |
+| The AI difficulty ladder on v0.16 (measured 2026-11-03 as v0.17's baseline) | Open. `tools/ai-bench.sh --brief 16` on v0.16: Hard beats Normal 81 % on 256, 69 % on 512 and 31 % on 1024 (9 of 16 capped); Normal beats Easy 81 to 100 %. Before any v0.17 change, so it is v0.16's (formations, auto-work) or earlier. Results: `PerfResults/ai-bench-v016-baseline`. |
+
 ## Open
 
 | Item                                                           | Kind                              | Detail                                                                                                                                                                                                                                             |
