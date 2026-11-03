@@ -1,0 +1,22 @@
+# v0.17 Heartland: AI bench and performance
+
+## AI bench (2026-11-03)
+
+`tools/ai-bench.sh --brief 16` (16 seeds, the same in both runs), first on a v0.16 build (`release/v0.16` at 4a2ec85, before any v0.17 change), then on v0.17 (rich gems, the AI's gem-worth scoring). Full reports: [ai-bench-v016-baseline.md](ai-bench-v016-baseline.md), [ai-bench-v017.md](ai-bench-v017.md).
+
+| Pairing | 256 | 512 | 1024 |
+|---|---|---|---|
+| Hard beats Normal, v0.16 → v0.17 | 81 % → 88 % | 69 % → 62 % | 31 % → 31 % (caps 9 → 7) |
+| Normal beats Easy, v0.16 → v0.17 | 100 % → 100 % | 94 % → 81 % | 81 % → 44 % (caps 3 → 9) |
+
+**Accepted by the owner on 2026-11-03, not tuned.** What it says:
+
+- **On 1024 the rich middle makes games longer, not shorter** (spec §5 asked to note it). Easy won no 1024 game against Normal: of 16, Normal won 7 and 9 reached the 40-minute cap with Normal far ahead (armies of 300 to 830 against Easy's 16 to 107, mostly a Normal Turtle). The extra income builds bigger armies that don't finish in time. The win-rate drop is caps, not losses.
+- **Hard against Normal on 1024 was already broken in v0.16** (31 %, 9 caps) before any v0.17 change; v0.17 doesn't change it.
+- With 16 games a row, differences of a game or two (94 → 81 %) are within the noise.
+
+If finishing matters, the levers are the AI's expansion and attack timing (`<Ai><Play><ExpansionDistanceScale>`, `MaxedAttackResources`, the Turtle style's attack thresholds), tuned with `node tools/ai-tune.js` per [tuning.md](../../tuning.md).
+
+## Performance gate
+
+To do.
