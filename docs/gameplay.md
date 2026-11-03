@@ -44,7 +44,7 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | Right-click | Order the selected units to **Move** to the cursor (they ignore enemies until they arrive) |
 | `A`, then left- or right-click | **Attack-move** to the cursor: move, but stop to fight enemies in range |
 | Move or Attack-move with two or more units (v0.16) | The group **forms up** (Settings → Gameplay → Formations, on by default): it travels at its slowest member's speed and stops in a block at the goal, Heavies, Tanks, Flamethrowers and bombers in front, Scouts, Builders and Diggers in the middle, Snipers and Artillery at the back. See "Formations" below |
-| `Shift` + right-click (or attack-move click) | **Queue** the order after the current one: up to 4 waypoints per unit (`Orders/MaxQueued`). Units without an order start it at once. Stop, Hold or an unqueued order clears the queue. While Shift is held, the first selected unit's goals show as numbered rings; at the limit the cursor says "Queue full (5 orders)" and a Shift-click sends nothing. |
+| `Shift` + right-click (or attack-move click) | **Queue** the order after the current one: up to 30 waypoints per unit (`Orders/MaxQueued`). Units without an order start it at once. Stop, Hold or an unqueued order clears the queue. While Shift is held, the first selected unit's goals show as numbered rings; at the limit the cursor says "Queue full (5 orders)" and a Shift-click sends nothing. |
 | `S` | **Stop**: drop the order and stand (still fighting enemies in range) |
 | `H` | **Hold**: stand still, never pushed aside, fighting enemies in range |
 | `Ctrl` + `1`–`0` | Assign the selection to squad 1–10 (squads are kept by the server); with nothing selected, empty that squad |
@@ -170,12 +170,12 @@ A Miner checks the single tile next to it in the direction it faces:
 | **Flamethrower** | 90 | 6 | 2.5 | 0.5 s | 4.5 | 70 | 2 | 6 | 0.35 | Light | 1.5 | Splash 1.5 |
 | **Heavy** | 400 | 30 | 5 | 1.5 s | 2.5 | 200 | 6 | 7 | 0.7 | Heavy | 5 | Large pathing class |
 | **Artillery** | 120 | 40 | 14 | 4 s | 2.5 | 220 | 6 | 7 | 0.7 | Heavy | 6 | Splash 2, can't fire inside 4; large pathing class |
-| **Sniper** | 50 | 60 | 16 | 3 s | 4 | 150 | 4 | 10 | 0.35 | Light | 4 | Can't fire inside 3 |
+| **Sniper** | 70 | 60 | 16 | 3 s | 4 | 150 | 4 | 10 | 0.35 | Light | 4 | Can't fire inside 3 |
 | **Suicide bomber** | 30 | (blast 150) | 0.8 | n/a | 8 | 60 | 1 | 6 | 0.3 | Light | 1 | Blast radius 2 |
 
 The v0.12 numbers are starting values to tune in play ([tuning.md](tuning.md) says how). Speeds are in tiles per second.
 
-**Armour and damage classes.** Every unit is *Light* or *Heavy* armoured (`<Armour>`); with buildings and walls that gives four target classes (`LightUnit`, `HeavyUnit`, `Building`, `Wall`). The damage table holds one multiplier per attacker and class (`target="Unit"` in the XML means both unit classes). Scouts and Snipers do a quarter or half damage to Heavies; Artillery does double to buildings.
+**Armour and damage classes.** Every unit is *Light* or *Heavy* armoured (`<Armour>`); with buildings and walls that gives four target classes (`LightUnit`, `HeavyUnit`, `Building`, `Wall`). The damage table holds one multiplier per attacker and class (`target="Unit"` in the XML means both unit classes). Scouts do a quarter of their damage to Heavies and Snipers 70 %; Artillery does double to buildings.
 
 **Fire only at what you see.** A unit only fires at an enemy whose fog cell its owner's side sees now (own units, allies who share vision, Radars). Artillery (range 14) and Snipers (16) outrange their own sight, so Scouts and Radars are what let them fire.
 
