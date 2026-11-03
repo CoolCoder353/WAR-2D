@@ -4,14 +4,15 @@
   <!-- The release (2026-11-02): shown on the main menu as "v<Version> <Name>". Builds take their version (bundleVersion,
        which Steam joins compare) from <Version>; ReleaseVersionTests fails when the two disagree in the editor. -->
   <Release>
-    <Version>0.16.0</Version>
-    <Name>Clarity</Name>
+    <Version>0.17.0</Version>
+    <Name>Heartland</Name>
   </Release>
 
   <Resources>
     <PassiveGenerationRate>5.0</PassiveGenerationRate>
     <StartingResources>1000.0</StartingResources>
     <MiningRate>10.0</MiningRate>
+    <RichGemMultiplier>2.5</RichGemMultiplier>      <!-- v0.17: a Miner facing a rich gem earns MiningRate × this -->
     <!-- Percent of max health lost per second while an entity's upkeep is unpaid. -->
     <DecayPercentPerSecond>5.0</DecayPercentPerSecond>
   </Resources>
@@ -39,6 +40,8 @@
       <MinStartDistance>0.1</MinStartDistance>    <!-- path distance to the nearest other start site, share of map size -->
       <MaxStartDistance>0.6</MaxStartDistance>
       <ExpansionGemTiles>30</ExpansionGemTiles>
+      <CentralRichGemTiles>8 16 24 32</CentralRichGemTiles> <!-- v0.17: rich gem tiles per central area, per LayoutSizes row -->
+      <RichMinStartDistance>0.15</RichMinStartDistance>     <!-- v0.17: lane distance from any start site, share of map size -->
       <EdgeTiles>4</EdgeTiles>                     <!-- 2026-11-02 playtest: rock this close to the edge is undiggable border -->
     </Map>
   </Match>
@@ -137,6 +140,7 @@
     <WorkReach>1.6</WorkReach>                          <!-- v0.7: tiles from a worker's body edge to its target (Builders and Diggers); a unit stops within 0.9 tiles of its goal -->
     <DigTime>1.5</DigTime>                              <!-- v0.7: seconds per rock tile -->
     <GemPayout>150.0</GemPayout>                        <!-- v0.7 -->
+    <RichGemPayout>375.0</RichGemPayout>                <!-- v0.17: digging a rich gem pays this once -->
     <WallCost>5.0</WallCost>                            <!-- v0.7: per segment; no upkeep in v0.7 (plan P3) -->
     <WallHealth>150</WallHealth>                        <!-- v0.7 -->
     <MaxWallLine>64</MaxWallLine>                       <!-- v0.7: segments per drag -->
@@ -326,6 +330,7 @@
       <OptionExpansionWeight>40</OptionExpansionWeight> <!-- score per rich field (expansion) in reach, falling to 0 at the reach -->
       <OptionExpansionReach>140</OptionExpansionReach>
       <OptionTeammateWeight>0.3</OptionTeammateWeight> <!-- score lost per tile from the nearest teammate's pick -->
+      <ExpansionDistanceScale>120</ExpansionDistanceScale> <!-- v0.17: tiles from home that halve an expansion's score (gem worth over distance) -->
       <OpeningSeconds>300</OpeningSeconds>             <!-- the build order is dropped after this, done or not -->
       <BaseRadius>24</BaseRadius>                      <!-- tiles from the HQ buildings go within -->
       <BuildingGap>1</BuildingGap>                     <!-- free tiles kept around producers, Radars and Jammers -->

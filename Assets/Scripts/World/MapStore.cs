@@ -170,7 +170,7 @@ namespace WAR2D.World
                 for (int x = 0; x < width; x++)
                 {
                     char c = rows[r][x];
-                    tiles[y * width + x] = (byte)(c == '#' ? TileType.Wall : c == 'g' ? TileType.Gem : c == 'B' ? TileType.Border : TileType.Ground);
+                    tiles[y * width + x] = (byte)(c == '#' ? TileType.Wall : c == 'g' ? TileType.Gem : c == 'r' ? TileType.RichGem : c == 'B' ? TileType.Border : TileType.Ground);
                 }
             }
             return FromTiles(width, height, tiles);

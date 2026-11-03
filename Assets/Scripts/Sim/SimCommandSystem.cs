@@ -173,11 +173,12 @@ namespace WAR2D.Sim
             {
                 if ((uint)done.Tile >= (uint)data.Tiles.Length) continue;
                 var type = (TileType)data.Tiles[done.Tile];
-                if (type != TileType.Wall && type != TileType.Gem) continue;
+                if (type != TileType.Wall && !TileRules.IsGem(type)) continue;
                 int2 tile = new int2(done.Tile % data.Width, done.Tile / data.Width);
                 if (!ApplySetTile(data, context, tile, TileType.Ground, unitCount)) continue;
                 changed = true;
                 if (type == TileType.Gem) context.Income?.Invoke(done.OwnerId, context.Config.Siege.GemPayout);
+                else if (type == TileType.RichGem) context.Income?.Invoke(done.OwnerId, context.Config.Siege.RichGemPayout); // v0.17
             }
             return changed;
         }

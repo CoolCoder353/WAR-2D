@@ -414,6 +414,8 @@ namespace Config
         public float OptionExpansionReach;
         /// <summary>Score lost per tile from the nearest teammate's pick (Teams).</summary>
         public float OptionTeammateWeight;
+        /// <summary>v0.17: tiles of distance from home that halve an expansion candidate's score (its gem worth).</summary>
+        public float ExpansionDistanceScale;
         /// <summary>Match seconds after which the style's build order is dropped, done or not.</summary>
         public float OpeningSeconds;
         /// <summary>Tiles from the HQ (or an expansion's centre, by its radius) within which buildings are placed.</summary>

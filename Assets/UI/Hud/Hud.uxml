@@ -26,6 +26,7 @@
         <ui:VisualElement name="order-tags" class="hud-layer" picking-mode="Ignore">
             <ui:Label name="order-world-tag" class="order-tag" picking-mode="Ignore" />
             <ui:Label name="order-cursor-tag" class="order-tag" picking-mode="Ignore" />
+            <ui:Label name="placement-tag" class="order-tag" picking-mode="Ignore" />
         </ui:VisualElement>
         <ui:VisualElement name="hq-prompt" class="hud-overlay hud-overlay--top" picking-mode="Ignore">
             <ui:VisualElement class="panel hq-prompt">

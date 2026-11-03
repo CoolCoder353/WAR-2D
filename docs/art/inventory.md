@@ -39,6 +39,7 @@ Footprints match `GameConfig.xml` (`ArtManifestTests.BuildingFootprintsMatchTheC
 | `Ground` | 4 plain random variants (they differ only away from the edges) | no | `Tiles` atlas, drawn by the `Terrain` shader (`MapView`, index texture from `TileAutotile`) |
 | `Wall` (rock) | 47 rock shapes (`RenderGen.RockShapes`: 4-neighbour mask plus cut-back inside corners where a diagonal is open); craggy only near a cliff, plain inside | no | `Wall.asset`, `WallSIB.asset` (sibling rule tile) |
 | `Gem` | 4 random variants × 47 rock shapes (variant-major) | no | `Gems.asset`, `GemsSIB.asset` |
+| `RichGem` (v0.17) | 4 random variants × 47 rock shapes (variant-major): fewer, larger crystals tinted `Gem3` to `Warn`, stronger glow (`RenderGen.RichGem`) | no | – |
 | `Border` | 1 (solid rock) | no | drawn as rock |
 | `PlayerWall` | 16 masks × 3 damage states | yes | none (v0.7) |
 | `WallBlueprint` | 16 masks | yes | none (v0.7) |
@@ -65,7 +66,7 @@ Unused today: `Spawner.asset`, `Test.asset` and the `Pallets` tile palette (remo
 | `Rubble1` / `Rubble2` / `Rubble3` / `Rubble5` | 1×1 to 5×5 | 4 (fade) | `Effects` atlas, pooled in `Decals` (24 each, 8 for 5×5): over a finished building the client saw destroyed, by footprint; holds 25 s, fades over 10 s (polish) |
 | `Tracks` | 1×1 | 4 (fade) × 4 directions | `Effects` atlas, pooled in `Decals` (768): tread marks every half tile behind Tanks, Heavies and Artillery on screen; hold 3 s, fade over 4 s (polish) |
 | `Smoke` / `Fire` | 1×1 | 6 / 4 | `Effects` atlas, pooled (160 / 96): from finished buildings on screen under half health (smoke, rising) and a quarter (fire too) (polish) |
-| `GemSparkle` | 1×1 | 4 | `Effects` atlas, pooled (48): once a second on the gem tile each finished Miner on screen faces (its payout), with `gem_mined` at most every 0.4 s (polish) |
+| `GemSparkle` | 1×1 | 4 | `Effects` atlas, pooled (48): once a second on the gem tile each finished Miner on screen faces (its payout; tinted gold on a rich gem, v0.17), with `gem_mined` at most every 0.4 s (polish) |
 | `HitSpark` | 1×1 | 3 | `Effects` atlas, pooled (128): where a plain, Sniper or Gun turret tracer reaches its target, silent (polish A) |
 | `DustPuff` | 1×1 | 5 | `Effects` atlas, pooled (96): where a new own unit appears beside its producer (polish E), and ringed round a building's footprint as it is finished (polish J) |
 | `DigDebris` | 1×1 | 4 | `Effects` atlas; unused until v0.7 |

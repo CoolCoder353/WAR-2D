@@ -47,6 +47,57 @@ public class AiManagerTests
     }
 
     [Test]
+    public void ARegionCountsItsOrdinaryAndRichGems()
+    {
+        using var map = MapStore.FromAscii("BBBBBBB", "B.g.r.B", "B..r..B", "BBBBBBB");
+        TeamViewBuilder.CountGems(map.InitialTiles, 7, 4, new int2(3, 1), 3, out int gems, out int rich);
+        Assert.AreEqual(1, gems);
+        Assert.AreEqual(2, rich);
+        var region = new AiRegion { GemTiles = gems, RichTiles = rich };
+        Assert.AreEqual(1f + 2f * 2.5f, region.Worth(2.5f));
+    }
+
+    [Test]
+    public void ARichAreaOutscoresAnOrdinaryExpansionAtTheSameDistance()
+    {
+        var ordinary = new AiRegion { Kind = AiRegionKind.Expansion, GemTiles = 30 };
+        var rich = new AiRegion { Kind = AiRegionKind.Central, GemTiles = 2, RichTiles = 16 };
+        Assert.Greater(EconomyManager.ExpansionScore(rich, 100f, 2.5f, 120f), EconomyManager.ExpansionScore(ordinary, 100f, 2.5f, 120f));
+        Assert.Greater(EconomyManager.ExpansionScore(ordinary, 50f, 2.5f, 120f), EconomyManager.ExpansionScore(ordinary, 150f, 2.5f, 120f), "nearer is better");
+        Assert.AreEqual(0f, EconomyManager.ExpansionScore(new AiRegion { Kind = AiRegionKind.Central }, 50f, 2.5f, 120f), "a central area without gems is no expansion");
+    }
+
+    [Test]
+    public void ARichMinerIsAWorthierTarget()
+    {
+        var world = new AiSandbox(256, 5);
+        AiBrain brain = world.MakeBrain(AiDifficulty.Normal, AiStyle.Balanced);
+        world.BuildView();
+        int2 a = world.Sites[0] + new int2(0, 8), b = a + new int2(0, 4);
+        world.View.Tiles[a.y * world.Width + a.x + 1] = (byte)TileType.RichGem; // rotation 0 faces east (+x)
+        world.View.Tiles[b.y * world.Width + b.x + 1] = (byte)TileType.Gem;
+        var rich = new AiBuilding { Type = BuildingType.Miner, Anchor = a, Rotation = 0 };
+        var ordinary = new AiBuilding { Type = BuildingType.Miner, Anchor = b, Rotation = 0 };
+        Assert.Greater(ArmyManager.WorthOf(brain.Context, world.View, rich), ArmyManager.WorthOf(brain.Context, world.View, ordinary));
+    }
+
+    [Test]
+    public void AStartOptionCountsARichTileAsRichGemMultiplierGems()
+    {
+        var world = new AiSandbox(256, 5);
+        AiBrain brain = world.MakeBrain(AiDifficulty.Normal, AiStyle.Balanced);
+        world.BuildView();
+        int2 site = world.Sites[0];
+        int at = (site.y + 6) * world.Width + site.x;
+        world.View.Tiles[at] = (byte)TileType.Gem;
+        float ordinary = OpeningManager.Score(brain.Context, world.View, site);
+        world.View.Tiles[at] = (byte)TileType.RichGem;
+        float rich = OpeningManager.Score(brain.Context, world.View, site);
+        float expected = (world.Game.Resources.RichGemMultiplier - 1f) * brain.Context.Config.Play.OptionGemWeight;
+        Assert.AreEqual(expected, rich - ordinary, 1e-3f);
+    }
+
+    [Test]
     public void AnOptionWithMoreGemsScoresHigher()
     {
         var world = new AiSandbox(256, 5);
@@ -71,7 +122,7 @@ public class AiManagerTests
             "every placement it proposed passed the server's rules: " + string.Join(", ", world.IllegalPlacements));
         Assert.That(world.Count(world.Ai, BuildingType.Miner), Is.GreaterThanOrEqualTo(2), "Miners, each facing a gem");
         foreach (AiBuilding b in world.Buildings.Where(b => b.OwnerId == world.Ai && b.Type == BuildingType.Miner))
-            Assert.That(world.TileAt(b.Anchor + MinerRules.FacingOffset(b.Rotation * 90f)), Is.EqualTo(TileType.Gem));
+            Assert.IsTrue(TileRules.IsGem(world.TileAt(b.Anchor + MinerRules.FacingOffset(b.Rotation * 90f))), "a Miner faces a gem (either kind, v0.17)");
     }
 
     [Test]

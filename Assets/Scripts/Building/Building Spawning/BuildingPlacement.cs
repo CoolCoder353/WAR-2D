@@ -19,6 +19,19 @@ public class BuildingPlacement : MonoBehaviour
     /// <summary>True while a preview follows the pointer.</summary>
     public bool IsPlacing => PlacingType != BuildingType.None;
 
+    /// <summary>
+    /// v0.17 (Figma H1): while a Miner is placed, a label under its ghost saying what the faced tile pays ("Rich gem: 25/s",
+    /// "Gem: 10/s"); null otherwise. The HUD's order-tag layer draws it.
+    /// </summary>
+    public (float2 at, string text)? PlacementTag { get; private set; }
+
+    /// <summary>The placement label for a Miner facing <paramref name="faced"/>: "Rich gem: 25/s", "Gem: 10/s", or null.</summary>
+    public static string MinerLabel(TileType faced, float miningRate, float richMultiplier)
+    {
+        float rate = miningRate * MinerRules.RateOf(faced, richMultiplier);
+        return faced == TileType.RichGem ? $"Rich gem: {rate:0.#}/s" : faced == TileType.Gem ? $"Gem: {rate:0.#}/s" : null;
+    }
+
     /// <summary>The server's answer for the spot under the cursor: null until it arrives (the cursor and tint use it).</summary>
     public bool? PreviewValid { get; private set; }
 
@@ -87,6 +100,7 @@ public class BuildingPlacement : MonoBehaviour
     public void Cancel()
     {
         PlacingType = BuildingType.None;
+        PlacementTag = null;
         previewBuilding.SetActive(false);
         previewBuilding.GetComponent<SpriteRenderer>().sprite = null;
         if (previewHead != null) previewHead.enabled = false;
@@ -185,6 +199,14 @@ public class BuildingPlacement : MonoBehaviour
         }
         previewBuilding.transform.position = new Vector3(centre.x, centre.y, 0);
         ShowRangeRing(centre);
+        PlacementTag = null;
+        if (PlacingType == BuildingType.Miner && WorldStateManager.Instance != null && WorldStateManager.Instance.Map != null)
+        {
+            Config.GameConfigData config = Config.ConfigLoader.LoadConfig();
+            TileType faced = WorldStateManager.Instance.Map.Grid.TileAt(currentAnchor + MinerRules.FacingOffset(currentRotation));
+            string label = MinerLabel(faced, config.Resources.MiningRate, config.Resources.RichGemMultiplier);
+            if (label != null) PlacementTag = (centre - new float2(0f, size.y * 0.5f), label);
+        }
 
         if (!hasDisplayedTarget || math.any(currentAnchor != displayedAnchor) || PlacingType != displayedType || currentRotation != displayedRotation)
         {

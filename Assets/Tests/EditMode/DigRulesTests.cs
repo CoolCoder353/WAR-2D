@@ -42,6 +42,15 @@ public class DigRulesTests
     }
 
     [Test]
+    public void RichGemsAreDugButNotInTheRim()
+    {
+        using var map = MapStore.FromAscii("BBBBBB", "B.r..B", "BBBBBB");
+        Assert.AreEqual(DigStep.Dig, Next(map, new int2(1, 1), new int2(4, 1), out int2 dig, out _));
+        Assert.AreEqual(new int2(2, 1), dig);
+        Assert.AreEqual(DigStep.Blocked, DigRules.Next(map.Grid.Tiles, map.Grid.Width, map.Grid.Height, new int2(1, 1), new int2(4, 1), out _, out _, rim: 2));
+    }
+
+    [Test]
     public void GemsAreDug()
     {
         using var map = MapStore.FromAscii("BBBBBB", "B.g..B", "BBBBBB");

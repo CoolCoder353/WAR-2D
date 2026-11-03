@@ -154,8 +154,8 @@ public class UnitCommander : NetworkBehaviour
         (int2 min, int2 max) = wsm.MapBounds;
         if (!CommandValidator.IsInside(tile, min + 1, max - 1)) return false;
         TileType type = wsm.Map.Grid.TileAt(tile);
-        if (type == TileType.Gem && DigRules.InRim(tile, max.x + 1, max.y + 1, DigRules.RimWidth(Config.ConfigLoader.LoadConfig().Match.Map.EdgeTiles, max.x + 1, max.y + 1))) return false;
-        if (type == TileType.Wall || type == TileType.Gem) return true;
+        if (TileRules.IsGem(type) && DigRules.InRim(tile, max.x + 1, max.y + 1, DigRules.RimWidth(Config.ConfigLoader.LoadConfig().Match.Map.EdgeTiles, max.x + 1, max.y + 1))) return false;
+        if (type == TileType.Wall || TileRules.IsGem(type)) return true;
         if (type != TileType.PlayerWall) return false;
         int owner = ClientTerrain.Current.WallOwner(wsm.Map.Grid.Index(tile));
         return owner != 0 && owner != BuildingData.UIntToInt(localPlayer.netId) && IsEnemy(owner);

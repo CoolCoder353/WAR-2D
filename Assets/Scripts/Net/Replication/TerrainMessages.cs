@@ -65,7 +65,7 @@ namespace WAR2D.Net.Replication
                 {
                     index += VarInt.Read(reader);
                     byte type = reader.ReadByte();
-                    if (index >= into.Tiles.Length || type > (byte)TileType.WallBlueprint) return false;
+                    if (index >= into.Tiles.Length || type > (byte)TileType.RichGem) return false;
                     int owner = 0;
                     byte health = 0;
                     if (HasWallData(type))

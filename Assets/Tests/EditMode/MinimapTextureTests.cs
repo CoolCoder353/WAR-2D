@@ -115,4 +115,25 @@ public class MinimapTextureTests
         int clothY = 50 + (MinimapTexture.FlagPole - MinimapTexture.FlagHeight - 1) * k + k;
         Assert.AreEqual(Red, big.Pixel(50 + k * 2, clothY), "the cloth is the owner's colour");
     }
+
+    [Test]
+    public void RichGemsHaveTheirOwnColourAndHideWithTheGemsLayer()
+    {
+        // v0.17 (Figma H1): cell 0 over a rich gem, cell 1 over an ordinary gem, the rest ground.
+        using var gems = new MinimapTexture(4, 1, 1, t => t.x == 0 ? TileType.RichGem : t.x == 1 ? TileType.Gem : TileType.Ground);
+        GameSettings before = SettingsStore.Current;
+        try
+        {
+            SettingsStore.Current = new GameSettings();
+            gems.Begin(null, revealTerrain: true);
+            gems.End();
+            Assert.That(gems.Pixel(0, 0), Is.Not.EqualTo(gems.Pixel(1, 0)), "rich and ordinary gems differ");
+            Assert.That(gems.Pixel(0, 0), Is.Not.EqualTo(gems.Pixel(2, 0)), "a rich gem isn't ground");
+            SettingsStore.Current = new GameSettings { MinimapFilters = (int)(MinimapLayers.All & ~MinimapLayers.Gems) };
+            gems.Begin(null, revealTerrain: true);
+            gems.End();
+            Assert.That(gems.Pixel(0, 0), Is.EqualTo(gems.Pixel(2, 0)), "with the Gems layer off a rich gem reads as ground");
+        }
+        finally { SettingsStore.Current = before; }
+    }
 }

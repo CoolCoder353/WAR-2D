@@ -14,6 +14,8 @@ public enum TileType : byte
     PlayerWall = 4,
     /// <summary>A planned wall segment: walkable and see-through until a Builder starts it.</summary>
     WallBlueprint = 5,
+    /// <summary>A rich gem (v0.17 Heartland): an ordinary gem in every way but what a Miner earns facing it (<c>Resources/RichGemMultiplier</c>) and what digging it pays.</summary>
+    RichGem = 6,
 }
 
 namespace WAR2D.World

@@ -13,6 +13,9 @@ namespace WAR2D.EditorTools
     {
         public const string AtlasFolder = "Assets/Resources/Art/", SourceFolder = "Assets/Art/";
 
+        /// <summary>The largest atlas size imported at full resolution.</summary>
+        public const int MaxSize = 8192;
+
         /// <summary>True for textures this importer configures.</summary>
         public static bool Handles(string assetPath) => assetPath.StartsWith(AtlasFolder) || assetPath.StartsWith(SourceFolder);
 
@@ -30,6 +33,9 @@ namespace WAR2D.EditorTools
             importer.textureType = TextureImporterType.Default;
             importer.textureCompression = TextureImporterCompression.Uncompressed;
             importer.npotScale = TextureImporterNPOTScale.None;
+            // Never scaled down on import (v0.17: the Tiles atlas grew to 4096 with the rich gem frames, and Unity's default
+            // 2048 cap halved it, so every frame past the old edge sampled the wrong art).
+            importer.maxTextureSize = MaxSize;
             importer.wrapMode = TextureWrapMode.Clamp;
             importer.isReadable = false;
             importer.spritePixelsPerUnit = ArtStyle.PixelsPerUnit;

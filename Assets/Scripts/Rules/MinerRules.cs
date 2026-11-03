@@ -17,8 +17,15 @@ public static class MinerRules
         }
     }
 
-    /// <summary>True when a Miner facing this tile kind earns (only gems pay).</summary>
-    public static bool Produces(TileType faced) => faced == TileType.Gem;
+    /// <summary>True when a Miner facing this tile kind earns (either gem).</summary>
+    public static bool Produces(TileType faced) => TileRules.IsGem(faced);
+
+    /// <summary>
+    /// What a Miner facing <paramref name="faced"/> earns per second, as a multiple of <c>Resources/MiningRate</c>: 1 for a
+    /// gem, <paramref name="richMultiplier"/> (<c>Resources/RichGemMultiplier</c>) for a rich gem (v0.17), 0 otherwise.
+    /// </summary>
+    public static float RateOf(TileType faced, float richMultiplier) =>
+        faced == TileType.RichGem ? richMultiplier : faced == TileType.Gem ? 1f : 0f;
 
     /// <summary>Rotation about Z in degrees for a 2D (Z-only) rotation quaternion.</summary>
     public static float ZDegrees(quaternion rotation)

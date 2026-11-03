@@ -98,7 +98,7 @@ A rising balance with flat win rates points at spending (producers, queues, `Inc
 
 The AI builds units by its style's `ArmyMix` and its `<Counters>`, so the bench sees a unit only as far as the AIs build it. A tune spec can take `Unit.*` and `DamageTable.*` knobs, but its objectives measure the AI, not whether a unit is worth its price: use them as a check, not as the judge.
 
-**Pacing and economy.** Starting resources, income (`Resources.MiningRate`, `Resources.PassiveGenerationRate`), prices and upkeep set how long a match runs and how big armies get. Watch the brief's median length and highest balance, and the sheet's "per Miner" column (how many of a unit one Miner's income carries).
+**Pacing and economy.** Starting resources, income (`Resources.MiningRate`, `Resources.PassiveGenerationRate`, and since v0.17 `Resources.RichGemMultiplier` with the map's `CentralRichGemTiles`: how much the middle is worth), prices and upkeep set how long a match runs and how big armies get. Watch the brief's median length and highest balance, and the sheet's "per Miner" column (how many of a unit one Miner's income carries).
 
 ## The balance sheet
 
@@ -179,3 +179,14 @@ The spec is JSON; the header of `tools/ai-tune.js` lists every field and default
 ## Tuning with Claude
 
 Claude can't run the game in a cloud session, so give it summaries, not raw output: the brief, or a tune's `summary.md`. Never paste match logs or the full report unless it asks for a specific part. It can run the balance sheet and `--dry-run` itself, write a spec, and read `tune.jsonl` if you commit or paste it. `CLAUDE.md` tells it the same.
+
+## v0.17 Heartland numbers
+
+| Number | Where | Default | What it does |
+| --- | --- | --- | --- |
+| `RichGemMultiplier` | `<Resources>` | 2.5 | A Miner facing a rich gem earns `MiningRate` × this (25/s). |
+| `RichGemPayout` | `<Siege>` | 375 | Digging a rich gem pays this once (the tile is gone). |
+| `CentralRichGemTiles` | `<Match><Map>` | 8 16 24 32 | Rich gem tiles per chosen central area, per `LayoutSizes` row. |
+| `RichMinStartDistance` | `<Match><Map>` | 0.15 | No rich field within this lane distance (share of map size) of a start site. |
+| `ExpansionDistanceScale` | `<Ai><Play>` | 120 | Tiles from home that halve an expansion candidate's score (its gem worth); lower makes the AI stay nearer home, higher sends it to the rich middle sooner. |
+

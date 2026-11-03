@@ -41,6 +41,22 @@ public class TerrainCodecTests
     }
 
     [Test]
+    public void ARichGemTravelsAndAnythingHigherIsRefused()
+    {
+        var terrain = Terrain(out MapStore map);
+        using (map)
+        {
+            var writer = new NetworkWriter();
+            TerrainCodec.Write(writer, new List<TerrainCell> { new TerrainCell { Index = 3, Type = (byte)TileType.RichGem } });
+            Assert.IsTrue(TerrainCodec.Apply(terrain, writer.ToArraySegment()));
+            Assert.AreEqual((byte)TileType.RichGem, terrain.Tiles[3]);
+            var bad = new NetworkWriter();
+            TerrainCodec.Write(bad, new List<TerrainCell> { new TerrainCell { Index = 4, Type = (byte)TileType.RichGem + 1 } });
+            Assert.IsFalse(TerrainCodec.Apply(terrain, bad.ToArraySegment()), "an unknown kind is refused");
+        }
+    }
+
+    [Test]
     public void RejectsOutOfRangeIndicesAndUnknownKinds()
     {
         var terrain = Terrain(out MapStore map);

@@ -186,6 +186,13 @@ namespace WAR2D.EditorTools
                     var (mask, corners) = RenderGen.RockShapes[frame % shapes];
                     return ($"Gem {frame}", () => RenderGen.Gem(Seed, frame / shapes, mask, corners), 0f);
                 }
+                case nameof(TileType.RichGem):
+                {
+                    // v0.17: as Gem, variant-major.
+                    int shapes = RenderGen.RockShapes.Length;
+                    var (mask, corners) = RenderGen.RockShapes[frame % shapes];
+                    return ($"Rich gem {frame}", () => RenderGen.RichGem(Seed, frame / shapes, mask, corners), 0f);
+                }
                 case nameof(TileType.Border):
                     return ("Rock 15", () => RenderGen.Rock(Seed, 15), 0f);
                 default:

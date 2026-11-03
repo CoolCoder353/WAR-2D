@@ -22,9 +22,12 @@ namespace WAR2D.Client
         public readonly float Upkeep;
         /// <summary>Ghosts only: seconds since it went out of sight.</summary>
         public readonly float LastSeenSecondsAgo;
+        /// <summary>Own finished Miners only (v0.17, Figma H1): what it mines, "Mining rich gem: 25/s" or "Mining: 10/s"; else null.</summary>
+        public readonly string Mining;
 
-        public BuildingHoverInfo(int id, int ownerId, BuildingType type, bool own, bool ghost, float health, float maxHealth, byte progress, bool unpaid, float upkeep, float lastSeenSecondsAgo)
+        public BuildingHoverInfo(int id, int ownerId, BuildingType type, bool own, bool ghost, float health, float maxHealth, byte progress, bool unpaid, float upkeep, float lastSeenSecondsAgo, string mining = null)
         {
+            Mining = mining;
             Id = id;
             OwnerId = ownerId;
             Type = type;
@@ -55,8 +58,31 @@ namespace WAR2D.Client
             bool own = e.Data.ownerId == localOwner;
             float upkeep = own && config != null ? config.GetBuilding(e.Data.buildingType)?.RunningCost ?? 0f : 0f;
             float ago = e.Ghost ? System.Math.Max(0f, now - e.LastSeenAt) : 0f;
-            info = new BuildingHoverInfo(id, e.Data.ownerId, e.Data.buildingType, own, e.Ghost, e.Health.currentHealth, e.Health.maxHealth, e.Progress, own && e.Unpaid, upkeep, ago);
+            string mining = null;
+            if (own && !e.Ghost && e.Progress >= 100 && e.Data.buildingType == BuildingType.Miner && config != null)
+                mining = MiningLine(FacedTile(e), config.Resources.MiningRate, config.Resources.RichGemMultiplier);
+            info = new BuildingHoverInfo(id, e.Data.ownerId, e.Data.buildingType, own, e.Ghost, e.Health.currentHealth, e.Health.maxHealth, e.Progress, own && e.Unpaid, upkeep, ago, mining);
             return true;
+        }
+
+        /// <summary>
+        /// An own Miner's footer line (v0.17, Figma H1): "Mining rich gem: 25/s" facing a rich gem, "Mining: 10/s" facing a
+        /// gem, null facing anything else.
+        /// </summary>
+        public static string MiningLine(TileType faced, float miningRate, float richMultiplier)
+        {
+            float rate = miningRate * MinerRules.RateOf(faced, richMultiplier);
+            return faced == TileType.RichGem ? $"Mining rich gem: {rate:0.#}/s" : faced == TileType.Gem ? $"Mining: {rate:0.#}/s" : null;
+        }
+
+        /// <summary>The tile a Miner faces, from the client's terrain (Border when unknown).</summary>
+        private static TileType FacedTile(in ClientBuildings.Entry e)
+        {
+            int2 tile = (int2)math.round(e.Data.position) + MinerRules.FacingOffset(e.Data.rotation);
+            ClientTerrain terrain = ClientTerrain.Current;
+            if (terrain.Width <= 0 || tile.x < 0 || tile.y < 0 || tile.x >= terrain.Width) return TileType.Border;
+            int index = tile.y * terrain.Width + tile.x;
+            return index < terrain.Tiles.Length ? (TileType)terrain.Tiles[index] : TileType.Border;
         }
 
         /// <summary>Seconds as "m:ss" for the ghost card's "Last seen 2:14 ago".</summary>

@@ -144,4 +144,14 @@ public class TileAutotileTests
     {
         Assert.AreEqual(state, WallRules.DamageState(percent));
     }
+
+    [Test]
+    public void ARichGemAutotilesLikeAGem()
+    {
+        using var map = MapStore.FromAscii("BBBBB", "B.r.B", "BBBBB");
+        int shapes = RenderGen.RockShapes.Length;
+        byte v = TileAutotile.Variant(map.Grid, 2, 1);
+        Assert.Less(v, 4 * shapes, "variant-major: 4 variants × the rock shapes");
+        Assert.AreEqual(TileAutotile.RockShape(map.Grid, 2, 1), v % shapes);
+    }
 }

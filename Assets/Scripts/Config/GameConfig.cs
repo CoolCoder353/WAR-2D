@@ -81,6 +81,8 @@ namespace Config
         public float StartingResources;
         /// <summary>Resources per second a working miner earns.</summary>
         public float MiningRate;
+        /// <summary>v0.17: a Miner facing a rich gem earns <see cref="MiningRate"/> times this.</summary>
+        public float RichGemMultiplier;
         /// <summary>Percent of max health lost per second while upkeep is unpaid.</summary>
         public float DecayPercentPerSecond;
     }
@@ -133,6 +135,10 @@ namespace Config
         public float MinStartDistance, MaxStartDistance;
         /// <summary>Gem tiles in each expansion's rich field.</summary>
         public int ExpansionGemTiles;
+        /// <summary>v0.17: rich gem tiles per central area, per entry of <see cref="LayoutSizes"/>.</summary>
+        public int[] CentralRichGemTiles = System.Array.Empty<int>();
+        /// <summary>v0.17: no rich gem within this lane distance of a start site, as a share of the map size.</summary>
+        public float RichMinStartDistance;
         /// <summary>
         /// Playtest 2026-11-02: rock within this many tiles of the map's edge becomes undiggable border, so Diggers can't open
         /// a path around the map's rim (floor and gems there stay). 1 is the old one-tile border.
@@ -317,6 +323,8 @@ namespace Config
         public float DigTime;
         /// <summary>Resources a dug gem tile pays the Digger's owner.</summary>
         public float GemPayout;
+        /// <summary>v0.17: digging a rich gem pays this once (the tile is gone for good).</summary>
+        public float RichGemPayout;
         /// <summary>Resources per wall segment, taken when it is placed.</summary>
         public float WallCost;
         /// <summary>A finished wall segment's health.</summary>

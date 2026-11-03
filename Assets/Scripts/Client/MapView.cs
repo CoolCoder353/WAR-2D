@@ -65,6 +65,9 @@ public class MapView : MonoBehaviour
         _instance = null;
     }
 
+    /// <summary>v0.17 rich gems: the palette's gold (<c>Warn</c>), brighter and warmer than ordinary gems (Figma H1). Flat tile colours are palette colours.</summary>
+    private static Color32 RichGemColour(Color32[] roles) => roles[StylePalette.Warn];
+
     /// <summary>
     /// A tile kind's flat colour (far zoom, minimap, lobby preview): a base colour from the style's palette
     /// (<see cref="ArtStyle.Palette"/>).
@@ -77,6 +80,7 @@ public class MapView : MonoBehaviour
             TileType.Ground => roles[StylePalette.Floor0],
             TileType.Wall => roles[StylePalette.Rock2],
             TileType.Gem => roles[StylePalette.Gem1],
+            TileType.RichGem => RichGemColour(roles),
             TileType.PlayerWall => roles[StylePalette.Rock1],
             TileType.WallBlueprint => roles[StylePalette.Floor1],
             _ => roles[StylePalette.Rock0],
@@ -197,7 +201,7 @@ public class MapView : MonoBehaviour
 
         var first = new float[TypeSlots];
         var flat = new Vector4[TypeSlots];
-        string[] names = { nameof(TileType.Ground), nameof(TileType.Wall), nameof(TileType.Gem), nameof(TileType.Border), "PlayerWall", "WallBlueprint" };
+        string[] names = { nameof(TileType.Ground), nameof(TileType.Wall), nameof(TileType.Gem), nameof(TileType.Border), "PlayerWall", "WallBlueprint", nameof(TileType.RichGem) };
         bool linear = QualitySettings.activeColorSpace == ColorSpace.Linear;
         for (int t = 0; t < TypeSlots; t++)
         {

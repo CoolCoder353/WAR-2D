@@ -220,9 +220,10 @@ namespace WAR2D.Client
             int width = terrain.Width;
             if (width <= 0 || tile.x < 0 || tile.y < 0 || tile.x >= width) return;
             int index = tile.y * width + tile.x;
-            if (index >= terrain.Tiles.Length || terrain.Tiles[index] != (byte)TileType.Gem) return;
+            if (index >= terrain.Tiles.Length || !TileRules.IsGem(terrain.Tiles[index])) return;
             var at = new Vector2(tile.x + 0.5f, tile.y + 0.5f);
-            Effects.GemSparkle(at);
+            // v0.17: a rich gem sparkles in its own colour.
+            Effects.GemSparkle(at, terrain.Tiles[index] == (byte)TileType.RichGem ? (Color)MapView.TileColor(TileType.RichGem) : (Color?)null);
             if (now - lastGemSound < GemSoundSeconds || !GemSoundAudible(AudioService.View != null ? AudioService.View : Camera.main, at)) return;
             lastGemSound = now;
             AudioService.Sfx("gem_mined", at, GemSoundGain);

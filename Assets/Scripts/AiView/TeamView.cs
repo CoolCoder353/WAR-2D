@@ -125,6 +125,20 @@ namespace WAR2D.AiView
         public int2 Centre;
         public int Radius;
         public AiRegionKind Kind;
+        /// <summary>
+        /// v0.17: ordinary and rich gem tiles within <see cref="Radius"/> + 4 of the centre. Static: counted once from the
+        /// generated map, which every client regenerates from the seed (a dug tile isn't subtracted).
+        /// </summary>
+        public int GemTiles, RichTiles;
+
+        /// <summary>The region's gems in ordinary-gem units: a rich tile counts <paramref name="richMultiplier"/> (<c>Resources/RichGemMultiplier</c>).</summary>
+        public float Worth(float richMultiplier) => GemTiles + RichTiles * richMultiplier;
+
+        /// <summary>
+        /// True for a region the AI may take as an expansion: an expansion, or (v0.17) a central area with rich gems. The
+        /// raid and enemy-model checks treat a claimed middle as an expansion too.
+        /// </summary>
+        public bool Expandable => Kind == AiRegionKind.Expansion || (Kind == AiRegionKind.Central && RichTiles > 0);
     }
 
     /// <summary>A lane of the map's plan between two regions (indices into <see cref="TeamView.Regions"/>), and its chokepoint width (0: none).</summary>

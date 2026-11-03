@@ -38,6 +38,24 @@ namespace WAR2D.AiView
     /// </summary>
     public sealed class TeamViewBuilder : IDisposable
     {
+        /// <summary>
+        /// Counts the ordinary and rich gem tiles (v0.17) within <paramref name="reach"/> tiles of <paramref name="centre"/> on
+        /// a row-major map. Pure: the AI's region worth, and its test double, use it.
+        /// </summary>
+        public static void CountGems(byte[] tiles, int width, int height, int2 centre, int reach, out int gems, out int rich)
+        {
+            gems = rich = 0;
+            for (int y = math.max(0, centre.y - reach); y <= math.min(height - 1, centre.y + reach); y++)
+            for (int x = math.max(0, centre.x - reach); x <= math.min(width - 1, centre.x + reach); x++)
+            {
+                int dx = x - centre.x, dy = y - centre.y;
+                if (dx * dx + dy * dy > reach * reach) continue;
+                byte t = tiles[y * width + x];
+                if (t == (byte)TileType.Gem) gems++;
+                else if (t == (byte)TileType.RichGem) rich++;
+            }
+        }
+
         /// <summary>Most events of each kind kept per owner between two thinks; the rest are counted as dropped.</summary>
         public const int MaxEventsPerThink = 512;
 
@@ -122,7 +140,10 @@ namespace WAR2D.AiView
             var regions = sim.Map.Regions;
             seat.View.Regions = new AiRegion[regions.Length];
             for (int i = 0; i < regions.Length; i++)
-                seat.View.Regions[i] = new AiRegion { Centre = regions[i].Centre, Radius = regions[i].Radius, Kind = (AiRegionKind)regions[i].Kind };
+            {
+                CountGems(initial, seat.View.Width, seat.View.Height, regions[i].Centre, regions[i].Radius + 4, out int gems, out int rich);
+                seat.View.Regions[i] = new AiRegion { Centre = regions[i].Centre, Radius = regions[i].Radius, Kind = (AiRegionKind)regions[i].Kind, GemTiles = gems, RichTiles = rich };
+            }
             var lanes = sim.Map.Lanes;
             seat.View.Lanes = new AiLane[lanes.Length];
             for (int i = 0; i < lanes.Length; i++)

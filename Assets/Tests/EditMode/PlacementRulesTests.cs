@@ -85,6 +85,13 @@ public class PlacementRulesTests
     }
 
     [Test]
+    public void Miner_FacingRichGem_IsOk()
+    {
+        SetTile(new int2(0, 1), TileType.RichGem);
+        Assert.That(Check(BuildingType.Miner, int2.zero, 90, 1, GameState.Playing, true), Is.EqualTo(PlacementResult.Ok));
+    }
+
+    [Test]
     public void Miner_NotFacingGem_IsRejected()
     {
         SetTile(new int2(0, 1), TileType.Gem);

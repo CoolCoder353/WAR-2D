@@ -316,7 +316,7 @@ namespace WAR2D.Ai
         private static bool AtExpansion(TeamView view, int2 at)
         {
             foreach (AiRegion r in view.Regions)
-                if (r.Kind == AiRegionKind.Expansion && math.distancesq((float2)r.Centre, (float2)at) <= (r.Radius + 4f) * (r.Radius + 4f)) return true;
+                if (r.Expandable && math.distancesq((float2)r.Centre, (float2)at) <= (r.Radius + 4f) * (r.Radius + 4f)) return true;
             return false;
         }
 

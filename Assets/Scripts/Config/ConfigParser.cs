@@ -38,6 +38,7 @@ namespace Config
                 config.Resources.PassiveGenerationRate = Float(resources, "PassiveGenerationRate", "Resources", errors, min: 0);
                 config.Resources.StartingResources = Float(resources, "StartingResources", "Resources", errors, min: 0);
                 config.Resources.MiningRate = Float(resources, "MiningRate", "Resources", errors, min: 0);
+                config.Resources.RichGemMultiplier = Float(resources, "RichGemMultiplier", "Resources", errors, min: 1, max: 100);
                 config.Resources.DecayPercentPerSecond = Float(resources, "DecayPercentPerSecond", "Resources", errors, min: 0, max: 100);
             }
 
@@ -88,6 +89,10 @@ namespace Config
                     m.MinStartDistance = Float(map, "MinStartDistance", "Map", errors, min: 0, max: 2);
                     m.MaxStartDistance = Float(map, "MaxStartDistance", "Map", errors, min: 0, max: 4);
                     m.ExpansionGemTiles = Int(map, "ExpansionGemTiles", "Map", errors, min: 1, max: 200);
+                    m.CentralRichGemTiles = IntList(map, "CentralRichGemTiles", "Map", errors, 0, 400);
+                    if (m.CentralRichGemTiles.Length != m.LayoutSizes.Length)
+                        errors.Add("Map: <CentralRichGemTiles> must have one entry per <LayoutSizes> entry.");
+                    m.RichMinStartDistance = Float(map, "RichMinStartDistance", "Map", errors, min: 0, max: 2);
                     m.EdgeTiles = Int(map, "EdgeTiles", "Map", errors, min: 1, max: 16);
                 }
             }
@@ -252,6 +257,7 @@ namespace Config
                 config.Siege.WorkReach = Float(siege, "WorkReach", s, errors, min: 0.1f, max: 8);
                 config.Siege.DigTime = Float(siege, "DigTime", s, errors, min: 0.05f, max: 60);
                 config.Siege.GemPayout = Float(siege, "GemPayout", s, errors, min: 0, max: 100000);
+                config.Siege.RichGemPayout = Float(siege, "RichGemPayout", s, errors, min: 0, max: 100000);
                 config.Siege.WallCost = Float(siege, "WallCost", s, errors, min: 0, max: 10000);
                 config.Siege.WallHealth = Int(siege, "WallHealth", s, errors, min: 1, max: 100000);
                 config.Siege.MaxWallLine = Int(siege, "MaxWallLine", s, errors, min: 1, max: 256);
@@ -502,6 +508,7 @@ namespace Config
                 p.OptionExpansionWeight = Float(play, "OptionExpansionWeight", c, errors, min: 0, max: 100000);
                 p.OptionExpansionReach = Float(play, "OptionExpansionReach", c, errors, min: 1, max: 4096);
                 p.OptionTeammateWeight = Float(play, "OptionTeammateWeight", c, errors, min: 0, max: 1000);
+                p.ExpansionDistanceScale = Float(play, "ExpansionDistanceScale", c, errors, min: 1, max: 10000);
                 p.OpeningSeconds = Float(play, "OpeningSeconds", c, errors, min: 0, max: 3600);
                 p.BaseRadius = Float(play, "BaseRadius", c, errors, min: 4, max: 128);
                 p.BuildingGap = Int(play, "BuildingGap", c, errors, min: 0, max: 4);

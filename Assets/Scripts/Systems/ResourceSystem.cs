@@ -41,14 +41,16 @@ public partial struct ResourceSystem : ISystem
 
             int2 anchor = (int2)math.round(transform.ValueRO.Position.xy);
             int2 faced = anchor + MinerRules.FacingOffset(MinerRules.ZDegrees(transform.ValueRO.Rotation));
-            bool active = MinerRules.Produces(WorldStateManager.Instance.Map.Grid.TileAt(faced));
+            TileType facedType = WorldStateManager.Instance.Map.Grid.TileAt(faced);
+            bool active = MinerRules.Produces(facedType);
             mining.ValueRW.isActive = active;
             if (active)
             {
                 ServerPlayer owner = core.GetServerPlayerById(building.ValueRO.ownerId);
                 if (owner != null && owner.state == PlayerState.Playing)
                 {
-                    float mined = config.Resources.MiningRate * mining.ValueRO.timeSinceLastMining;
+                    // v0.17: a rich gem pays RichGemMultiplier times the rate.
+                    float mined = config.Resources.MiningRate * MinerRules.RateOf(facedType, config.Resources.RichGemMultiplier) * mining.ValueRO.timeSinceLastMining;
                     owner.AddIncome(mined);
                     core.Stats.Mined(building.ValueRO.ownerId, mined);
                 }
