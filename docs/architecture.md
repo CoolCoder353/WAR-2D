@@ -195,6 +195,10 @@ Enums: `UnitType { None, Tank, Builder, Digger, Scout, Heavy, Artillery, Sniper,
 
 Every stage declares write access to `Unit`, which chains their jobs without a sync point; no stage completes its own jobs.
 
+### Attack orders and bomber aim (v0.18)
+
+`Stances.Attack` with `Unit.OrderTarget` and `OrderTargetKind` (gathered to `SimData.OrderTarget`): `ResolveTargetsJob` fires only at that target and `NearestEnemyJob` skips the unit. `SimCommandSystem.Attack.cs` keeps one `Chase` per owner and target: at each boundary the shared goal follows a target the side sees, at most once per `AttackOrder/RepathSeconds`, so one flow field serves the group. A target that leaves sight leaves the goal at the last tile seen and the order ends there; one that dies out of sight tells the followers nothing. `SeesTarget` is the only way a target enters an order: anything the side can't name now becomes an Attack-move to the clicked tile. Bombers: `BlastAimJob` picks each bomber's `BlastAim` (stored by id index, because slots move) on its search slice, from what its side sees; `BomberJob` detonates at the point, on good-enough contact or when blocked; `LastGaspJob` runs after `ApplyDamageJob`, in up to `Bomber/ChainPasses` rounds.
+
 ## Siege
 
 - **Terrain is mutable.** Walls and dug rock are tiles: `MapStore.SetTile` (queued as a `SimCommand`, applied at the boundary) changes the grid, refuses the border, pushes units off a newly solid tile, refreshes the tile-LOS tables and flags the tile in `ChangedTiles` so the flow fields rebuild. `TileType` gains `WallBlueprint` and `PlayerWall`; `TileRules` decides floor/solid/opaque for each, and a new `TileType` needs its `TileRules` cases. Per-tile wall owner and health live beside the grid.
@@ -440,6 +444,18 @@ The `Menu` object in `Main_Menu` has a `UIDocument` (`Menu.uxml`: `MainMenu`, `H
 ### Match end (`Net/MatchCommands.cs`)
 
 `Cmd_Surrender` eliminates the sender like losing the HQ. `Cmd_GiftResources` (any other live player, `GiftRules`: 1 ≤ amount ≤ balance, cooldown) moves resources at once and tells only the two players (`ClientPlayer.TargetGift`, plus a GiftReceived alert). `GameCore.Stats` (`MatchStats`) counts units built (`SimContext.UnitSpawned`), lost and killed (`SimContext.UnitKilled`: the dead unit's owner and `Unit.LastHitBy`, the owner of the last attacker, written only by `ApplyDamageJob`), buildings built and lost, mined, spent (`ServerPlayer.SpentThisMatch`, gifts excluded), gifts and peak army (counted once a second at the boundary). `RpcMatchStats` sends them to everyone only from `DeclareWinner` / `DeclareDraw`, after `CurrentState` is `GameOver` (`StatsRules.MaySend`). The HUD's end screen (`EndScreenController`) shows the result from `RpcOnPlayerWon/Lost/MatchDraw` (via `ClientPlayer.MatchEnded`) and the table from `GameCore.MatchStatsReceived`; the in-match menu (`InMatchMenuController`, Esc) and the gift dialog (`GiftDialogController`) are HUD layers too.
+
+### Summary, Rematch and lobby memory (v0.18)
+
+`MatchSummary` and `FightDetector` (`Rules/MatchSummary.cs`) collect during Playing on the match clock; `SendStats` sends `RpcMatchSummary` at game over and the recorder writes the same data to its `Summary` channel. `Cmd_Rematch` runs `ResetForRematch`: away seats end, match state clears, a new seed, and the server changes scene to the lobby, which disposes the ECS world as leaving does. The `Main_Menu` scene holds a copy of `GameManager`, whose destruction must not stop the server (`OnDestroy` returns unless it is the singleton). `LobbyMemory` (`lobby.json`) is applied when the host gets their seat.
+
+### Replay format 3 (v0.18)
+
+`ReplayChannel.Summary`, `TeamFog` and `TeamFogDropped`. `TeamFogEncodeJob` diffs each owner slot's `Visible`/`Explored` against the last record at the settled boundary, run-length encoded. `ReplayCursor` reads the summary and fog presence when the file opens; `ReplayView` holds every player's grid and building memory as playback goes forward, and `ReplayPlayer.SetViewer` applies one through `ClientFog.ShowReplayGrid`, `ClientWorld.UnitShown` and `ClientWorld.BuildingsShown`. A file is untrusted: fog sizes, grids and runs are bounded.
+
+### Field manual (v0.18)
+
+`ManualText` (the approved `tools/manual-text.json`, copied by `tools/manual-mock.js --write-text`; a test compares them), `ManualRules` (Strong / Weak, the balance sheet's fight), `ManualModel` (pages, built at each open) and `ManualController` (built in code, one in each of the menu and HUD documents, not a `.uxml`). `ManualSprites` cuts tinted frames from the atlases through a render texture, because the atlases aren't readable.
 
 ### Settings (`Client/Settings/`, `Assets/UI/Menus/Settings.uxml`)
 

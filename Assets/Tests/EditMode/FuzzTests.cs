@@ -78,7 +78,7 @@ public class FuzzTests
             var goal = new int2(rng.Next(-512, 512), rng.Next(-512, 512));
             bool valid = false;
             Assert.DoesNotThrow(() => valid = CommandValidator.IsOrderValid(kind, goal, min, max));
-            if (kind > (byte)OrderKind.Detonate) Assert.IsFalse(valid);
+            if (kind > (byte)OrderKind.Attack) Assert.IsFalse(valid);
             else if (kind == (byte)OrderKind.Dig) Assert.AreEqual(CommandValidator.IsInside(goal, min + 1, max - 1), valid, "never the outer ring");
             else if (kind == (byte)OrderKind.Hold || kind == (byte)OrderKind.Stop || kind == (byte)OrderKind.Detonate) Assert.IsTrue(valid, "Stop, Hold and Detonate ignore the goal");
             else Assert.AreEqual(CommandValidator.IsInside(goal, min, max), valid);
