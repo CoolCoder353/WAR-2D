@@ -153,6 +153,16 @@ namespace WAR2D.Net.Replication
         /// <summary>Forgets the fog (a new match, or leaving one).</summary>
         public static void Clear() => Current = new ClientFog();
 
+        /// <summary>Shows a replay's view (v0.18): this player's recorded grid, drawn at once.</summary>
+        public static void ShowReplayGrid(byte[] state, int width, int height, int cellSize)
+        {
+            ClientFog fog = Current;
+            if (fog.State == null || fog.Width != width || fog.Height != height) fog.Reset(width, height, cellSize);
+            Buffer.BlockCopy(state, 0, fog.State, 0, state.Length);
+            fog.MarkAllChanged();
+            Updated?.Invoke();
+        }
+
         internal void Reset(int width, int height, int cellSize)
         {
             Width = width;

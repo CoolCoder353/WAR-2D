@@ -76,6 +76,16 @@ public partial class WorldStateManager : NetworkBehaviour
     /// <summary>The match's recorder (server, when Replays/Enabled and not a perf run), or null.</summary>
     public WAR2D.Net.Replay.MatchRecorder Recorder { get; private set; }
 
+    /// <summary>The fog grid's size in cells: the map's size over the fog cell size, rounded up as the sim does.</summary>
+    private Unity.Mathematics.int2 SimFogSize
+    {
+        get
+        {
+            int cell = ConfigLoader.LoadConfig().Simulation.FogCellSize;
+            return new Unity.Mathematics.int2((Map.Grid.Width + cell - 1) / cell, (Map.Grid.Height + cell - 1) / cell);
+        }
+    }
+
     /// <summary>Streams the finished recording to the players who accept it (after GameOver).</summary>
 
     /// <summary>Where each bomb is: bombs do not mark their tile used (units walk over them), so placement looks here.</summary>
@@ -188,6 +198,7 @@ public partial class WorldStateManager : NetworkBehaviour
                 GameVersion = UnityEngine.Application.version, MapSize = MapSize, Seed = MapSeed,
                 Settings = GameCore.Instance.Settings, TickSeconds = ConfigLoader.LoadConfig().Simulation.TickSeconds,
                 StartedUtc = (System.DateTime.UtcNow - System.DateTime.UnixEpoch).TotalSeconds,
+                FogW = SimFogSize.x, FogH = SimFogSize.y, FogCellSize = ConfigLoader.LoadConfig().Simulation.FogCellSize,
             };
             foreach ((int owner, ServerPlayer _) in GameCore.Instance.AllPlayers())
             {
@@ -428,6 +439,8 @@ public partial class WorldStateManager : NetworkBehaviour
     {
         settledTick = tick;
         Recorder?.OnTick(tick);
+        if (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing)
+            Recorder?.TeamFog(data, tick, GameCore.MatchNow, ConfigLoader.LoadConfig().Replays.FogSeconds);
         double t = PerfSplits.Now;
         FlushBlasts(data);
         PerfSplits.Mark(1, ref t);

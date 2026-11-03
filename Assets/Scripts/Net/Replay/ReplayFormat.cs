@@ -7,7 +7,7 @@ using Newtonsoft.Json;
 
 namespace WAR2D.Net.Replay
 {
-    public enum ReplayChannel : byte { UnitsReliable = 0, UnitsUnreliable = 1, Buildings = 2, Terrain = 3, Fog = 4, Explosions = 10, Blasts = 11, Timeline = 12, Summary = 20, TeamFog = 21, End = 13, BomberBlasts = 14 }
+    public enum ReplayChannel : byte { UnitsReliable = 0, UnitsUnreliable = 1, Buildings = 2, Terrain = 3, Fog = 4, Explosions = 10, Blasts = 11, Timeline = 12, Summary = 20, TeamFog = 21, TeamFogDropped = 22, End = 13, BomberBlasts = 14 }
 
     public sealed class ReplayPlayerInfo
     {
@@ -27,6 +27,8 @@ namespace WAR2D.Net.Replay
         public List<ReplayPlayerInfo> Players = new List<ReplayPlayerInfo>();
         public double StartedUtc;
         public float TickSeconds;
+        /// <summary>v0.18: the fog grid of the team fog channel.</summary>
+        public int FogW, FogH, FogCellSize;
     }
 
     /// <summary>File layout: GZip of ("W2DR", u16 format, u32 header length, header JSON, records). Record: varint tick delta, u8 channel, varint length, payload.</summary>

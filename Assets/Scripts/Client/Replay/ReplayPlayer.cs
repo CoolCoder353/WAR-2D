@@ -25,6 +25,10 @@ namespace WAR2D.Client.Replay
         private int pendingLength;
     
         public ReplayHeader Header { get; private set; }
+        /// <summary>v0.18: the match's graphs and timeline, read when the file opens so they are there from the start.</summary>
+        public SummaryData? Summary { get; private set; }
+        /// <summary>v0.18: the file has every player's fog (false: too large, or the recording was cut short).</summary>
+        public bool HasFog { get; private set; }
         public float Seconds { get; private set; }
         public float DurationSeconds { get; }
         public string Error => reader?.Error;
@@ -36,7 +40,19 @@ namespace WAR2D.Client.Replay
             this.path = path;
             int last = 0;
             Open();
-            while (reader.TryNext(out int t, out _, out _)) last = t;
+            bool fog = false, dropped = false;
+            while (reader.TryNext(out int t, out ReplayChannel channel, out ArraySegment<byte> payload))
+            {
+                last = t;
+                if (channel == ReplayChannel.TeamFog) fog = true;
+                else if (channel == ReplayChannel.TeamFogDropped) dropped = true;
+                else if (channel == ReplayChannel.Summary)
+                {
+                    try { Summary = Newtonsoft.Json.JsonConvert.DeserializeObject<SummaryData>(System.Text.Encoding.UTF8.GetString(payload.Array, payload.Offset, payload.Count)); }
+                    catch (Newtonsoft.Json.JsonException e) { WarLog.Warn(LogCategory.Replay, "unreadable summary: " + e.Message); }
+                }
+            }
+            HasFog = fog && !dropped;
             DurationSeconds = last * Header.TickSeconds;
             Restart();
         }
@@ -105,6 +121,49 @@ namespace WAR2D.Client.Replay
         /// </summary>
         public bool Incomplete => cursor != null && cursor.AtEnd && !sawEnd;
         public ReplayHeader Header => cursor?.Header;
+        /// <summary>v0.18: the match's graphs and timeline, when the file has them.</summary>
+        public SummaryData? Summary => cursor?.Summary;
+        /// <summary>v0.18: the per-player view can be offered.</summary>
+        public bool HasFog => cursor != null && cursor.HasFog;
+        /// <summary>v0.18: which player's eyes are shown, or 0 for everything.</summary>
+        public int Viewer => playerView != null ? playerView.Viewer : 0;
+
+        private ReplayView playerView;
+        private readonly ClientBuildings shownBuildings = new ClientBuildings();
+        private bool fogDirty;
+
+        /// <summary>Shows the replay through a player's eyes, or everything for 0 (v0.18, Figma R1).</summary>
+        public void SetViewer(int owner)
+        {
+            if (playerView == null || !HasFog) return;
+            playerView.Viewer = owner;
+            ApplyViewer();
+        }
+
+        private void ApplyViewer()
+        {
+            if (playerView == null || view == null) return;
+            int viewer = playerView.Viewer;
+            ReplayHeader h = cursor.Header;
+            view.UnitShown = viewer == 0 ? (Func<int, float2, bool>)null : (owner, at) => playerView.ShowsUnit(viewer, owner, at);
+            view.BuildingsShown = viewer == 0 ? null : shownBuildings;
+            if (viewer != 0) playerView.BuildingsFor(viewer, ClientBuildings.Current, shownBuildings);
+            if (viewer != 0) ClientFog.ShowReplayGrid(playerView.GridOf(viewer), h.FogW, h.FogH, h.FogCellSize);
+            else
+            {
+                // Everything: an all-clear grid, in case a player's fog was showing.
+                var clear = new byte[h.FogW * h.FogH];
+                Array.Fill(clear, (byte)FogState.Visible);
+                ClientFog.ShowReplayGrid(clear, h.FogW, h.FogH, h.FogCellSize);
+            }
+            fogDirty = false;
+        }
+
+        /// <summary>Moves the camera to a place on the map (a seek-bar marker).</summary>
+        public void CentreOn(float2 at)
+        {
+            if (replayCamera != null) replayCamera.transform.position = new Vector3(at.x, at.y, replayCamera.transform.position.z);
+        }
         public IReadOnlyList<(int owner, float resources, int units, int buildings)> LatestTimeline => timeline;
 
         /// <summary>Opens a recording and shows it; null with <paramref name="error"/> when it can't be played.</summary>
@@ -140,6 +199,7 @@ namespace WAR2D.Client.Replay
             var player = new GameObject("ReplayPlayer").AddComponent<ReplayPlayer>();
             player.cursor = cursor;
             player.cameraSettings = cameraSettings;
+            if (cursor.HasFog) player.playerView = new ReplayView(h.FogW, h.FogH, h.FogCellSize);
             player.Build();
             return player;
         }
@@ -254,6 +314,7 @@ namespace WAR2D.Client.Replay
 
         private void LateUpdate()
         {
+            if (fogDirty && Viewer != 0) ApplyViewer();
             if (view != null) view.Draw(null);
         }
 
@@ -267,6 +328,9 @@ namespace WAR2D.Client.Replay
                     break;
                 case ReplayChannel.Buildings: BuildingCodec.Apply(ClientBuildings.Current, payload); break;
                 case ReplayChannel.Terrain: TerrainCodec.Apply(ClientTerrain.Current, payload); break;
+                case ReplayChannel.TeamFog:
+                    if (playerView != null) { playerView.Fog(payload, ClientBuildings.Current); fogDirty = true; }
+                    break;
                 case ReplayChannel.Explosions:
                 case ReplayChannel.Blasts:
                 case ReplayChannel.BomberBlasts:
@@ -274,6 +338,7 @@ namespace WAR2D.Client.Replay
                     for (int i = 0; i + 8 <= payload.Count; i += 8)
                     {
                         var p = new Vector2(BitConverter.ToSingle(payload.Array, payload.Offset + i), BitConverter.ToSingle(payload.Array, payload.Offset + i + 4));
+                        if (Viewer != 0 && !playerView.Sees(Viewer, new float2(p.x, p.y))) continue; // only what that player's team saw
                         if (channel == ReplayChannel.Explosions) Effects.Explosion(p); else if (channel == ReplayChannel.Blasts) Effects.BombBlast(p); else Effects.BomberBlast(p);
                     }
                     break;
@@ -297,11 +362,22 @@ namespace WAR2D.Client.Replay
             if (cursor == null) return;
             var watch = System.Diagnostics.Stopwatch.StartNew();
             seconds = Mathf.Clamp(seconds, 0f, cursor.DurationSeconds);
-            if (seconds < cursor.Seconds) { Reset(); cursor.Restart(); sawEnd = false; }
+            if (seconds < cursor.Seconds)
+            {
+                Reset();
+                cursor.Restart();
+                sawEnd = false;
+                if (playerView != null)
+                {
+                    int viewer = playerView.Viewer;
+                    playerView = new ReplayView(cursor.Header.FogW, cursor.Header.FogH, cursor.Header.FogCellSize) { Viewer = viewer };
+                }
+            }
             quiet = true;
             cursor.AdvanceTo(seconds, Apply);
             quiet = false;
             view.AdvanceClock(0f);
+            ApplyViewer();
             WarLog.Info(LogCategory.Replay, $"seek to {seconds:0.0} s took {watch.ElapsedMilliseconds} ms");
         }
 

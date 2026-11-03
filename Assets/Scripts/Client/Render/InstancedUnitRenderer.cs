@@ -257,6 +257,11 @@ namespace WAR2D.Client.Render
             for (int i = 0; i < Known.Length; i++)
             {
                 int index = Known[i];
+                if (Scale[index] < 0f) // not shown (a replay's per-player view): nothing, not even a bar
+                {
+                    Instances[i] = new UnitInstance { position = Positions[i], scale = 0f };
+                    continue;
+                }
                 float health = Health01[index];
                 float scale = Scale[index] > 0f ? Scale[index] : 1f;
                 bool selected = (Selected[index] & 1) != 0;

@@ -599,7 +599,18 @@ Button.lobby-card__strip:hover { border-width: 0 2px 0 0; border-color: var(--co
 .replay-viewer__player { flex-direction: row; align-items: center; }
 .replay-viewer__player > * { margin-right: 8px; }
 .replay-viewer__speed > * { margin-right: 4px; }
-.replay-viewer__seek { width: 760px; height: 8px; background-color: var(--color-surface-raised); }
+.replay-viewer__seek { width: 560px; height: 8px; background-color: var(--color-surface-raised); }
+.replay-viewer__marks { position: absolute; left: 0; right: 0; top: 0; bottom: 0; }
+.replay-viewer__mark { position: absolute; top: -16px; width: 8px; height: 14px; }
+.replay-viewer__mark-icon { width: 16px; height: 16px; margin-left: -8px; -unity-background-scale-mode: scale-to-fit; }
+.replay-viewer__mark-bar { position: absolute; left: 0; top: 13px; height: 3px; background-color: var(--color-readout); }
+.replay-viewer__player--viewed { border-width: 1px; border-color: var(--color-accent); background-color: var(--color-surface-raised); padding: 2px 6px; }
+.replay-viewer__graphs { position: absolute; top: 72px; right: 16px; width: 640px; padding: 10px; }
+.replay-viewer__graphs .summary-chart { height: 230px; }
+.replay-viewer__view-list { position: absolute; bottom: 72px; right: 96px; padding: 6px; }
+.replay-viewer__view-list > .button { margin-bottom: 2px; }
+.replay-viewer__tip { position: absolute; bottom: 88px; padding: 6px 10px; }
+.replay-viewer__note { position: absolute; bottom: 72px; right: 96px; padding: 8px 12px; color: var(--color-readout); white-space: normal; width: 340px; }
 .replay-viewer__seek-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background-color: var(--color-accent); }
 .replay-viewer__seek-knob { position: absolute; top: -4px; width: 4px; height: 16px; left: 0; background-color: var(--color-text-primary); }
 .replay-viewer__time { min-width: 110px; -unity-text-align: middle-right; }
