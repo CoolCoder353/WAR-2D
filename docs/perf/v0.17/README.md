@@ -17,7 +17,18 @@
 
 If finishing matters, the levers are the AI's expansion and attack timing (`<Ai><Play><ExpansionDistanceScale>`, `MaxedAttackResources`, the Turtle style's attack thresholds), tuned with `node tools/ai-tune.js` per [tuning.md](../../tuning.md).
 
-## Performance gate (2026-11-03, not yet passed)
+## Performance gate: PASS (quiet re-run, 2026-11-03)
+
+Re-run with Firefox closed and KDE's file indexer suspended (load average 0.2 before the runs), the v0.17 player first, then the v0.16 player straight after. Files: `perf-quiet-v017-run*.csv`, `perf-quiet-v016-run*.csv`.
+
+| Build | tick.main p95 (runs) | median | wait | replication | settled | combat | vision | commands | stages |
+|---|---|---|---|---|---|---|---|---|---|
+| v0.17 | 22.6 / 18.3 / 23.8 | **22.6 ms (PASS)** | 31.3 | 13.6 | 14.4 | 10.3 | 9.2 | 4.6 | 2.9 |
+| v0.16 | 19.7 / 18.8 / 24.6 | 19.7 ms (PASS) | 31.8 | 13.4 | 14.4 | 10.2 | 9.2 | 4.7 | 3.0 |
+
+**Budget: `tick.main` p95 ≤ 25 ms: PASS** (22.6 ms). Bandwidth: 206 KB/s average, 662 KB/s peak: PASS. Every part is within 0.2 ms of v0.16's; the medians' 2.9 ms gap is inside the runs' own spread (18 to 25 ms for both builds), so v0.17 costs nothing measurable. The earlier failure below was the busy machine.
+
+## First run on a busy machine (2026-11-03)
 
 `WAR_PERF_HEADLESS_HOST=1 tools/perf-run.sh 3`, editor closed, the v0.17 player built at db452cb; then the same on the v0.16 player (4a2ec85) straight after, to separate the machine from the code. The machine was busier than for v0.16's morning gate (Firefox open and busy, KDE's file indexer running): v0.16 itself read 24.9 ms against 19.7 ms that morning.
 
