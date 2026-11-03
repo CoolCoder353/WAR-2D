@@ -7,6 +7,7 @@
         <ui:VisualElement class="main-menu__buttons" picking-mode="Ignore">
             <ui:Button name="play-button" text="Play" class="button button--primary menu-button" />
             <ui:Button name="replays-button" text="Replays" class="button menu-button" />
+            <ui:Button name="manual-button" text="Manual" class="button menu-button" />
             <ui:Button name="settings-button" text="Settings" class="button menu-button" />
             <ui:Button name="quit-button" text="Quit" class="button menu-button" />
         </ui:VisualElement>

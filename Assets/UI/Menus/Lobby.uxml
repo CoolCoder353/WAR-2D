@@ -3,6 +3,7 @@
         <ui:VisualElement class="row lobby__heading">
             <ui:Label text="Lobby" class="lobby__title" />
             <ui:Label name="lobby-subtitle" text="" class="text text--muted lobby__subtitle" />
+            <ui:Button name="lobby-manual" text="Manual" class="button lobby__manual" />
             <ui:VisualElement name="server-name" class="row lobby__server-name">
                 <ui:Label text="Server name" class="text--secondary lobby__server-name-label" />
                 <ui:TextField name="server-name-field" max-length="24" class="input__field lobby__server-name-field" />

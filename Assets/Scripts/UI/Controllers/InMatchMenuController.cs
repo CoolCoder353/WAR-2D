@@ -18,7 +18,7 @@ namespace WAR2D.UI
         public const string RunningNote = "The match keeps running while this is open.";
         public const string PausedNote = "The match is paused while this is open. Resume (or Esc) continues it.";
 
-        public event Action SettingsClicked, SurrenderConfirmed, LeaveClicked;
+        public event Action SettingsClicked, ManualClicked, SurrenderConfirmed, LeaveClicked;
 
         public InMatchMenuController(VisualElement root)
         {
@@ -27,6 +27,7 @@ namespace WAR2D.UI
             note = root.Q<Label>("match-menu-note");
             root.Q<Button>("resume-button").clicked += Close;
             root.Q<Button>("match-settings-button").clicked += () => SettingsClicked?.Invoke();
+            root.Q<Button>("match-manual-button").clicked += () => ManualClicked?.Invoke();
             root.Q<Button>("surrender-button").clicked += () =>
             {
                 // Settings → Gameplay can skip the confirm, except where a misclick would give up for a side (SettingsController.SurrenderAlwaysConfirms).

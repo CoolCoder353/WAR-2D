@@ -23,6 +23,10 @@ namespace WAR2D.UI
 
         private VisualElement mainScreen, playScreen, lobbyScreen, replaysScreen, viewerScreen;
         private ReplaysController replays;
+        private ManualController manual;
+
+        /// <summary>The Field manual (tests).</summary>
+        public ManualController Manual => manual;
         private ReplayViewerController viewer;
         private bool wantsReplays;
         private MainMenuController main;
@@ -104,6 +108,14 @@ namespace WAR2D.UI
             viewer.LeaveClicked += () => { WAR2D.Client.Replay.ReplayPlayer.Instance?.Close(); wantsReplays = true; Replays.Refresh(); };
             settings = new SettingsController(root);
             main.SettingsClicked += () => { settings.Open(); SettingsRequested?.Invoke(); };
+            if (manual == null)
+            {
+                manual = new ManualController(root);
+                manual.SettingsRequested += () => { settings.Open(); SettingsRequested?.Invoke(); };
+            }
+            main.ManualClicked += () => manual.Open(null, fullScreen: true);
+            Button lobbyManual = root.Q<Button>("lobby-manual");
+            if (lobbyManual != null) lobbyManual.clicked += () => manual.Open();
             main.QuitClicked += () => GameManager.Instance?.QuitGame();
 
             play = new HostJoinController(root);
@@ -230,6 +242,7 @@ namespace WAR2D.UI
         private void Update()
         {
             UpdateRejoin();
+            if (manual != null && manual.IsOpen && (GameInput.Menu.WasPressedThisFrame() || GameInput.FieldManual.WasPressedThisFrame())) manual.Close();
             if (playScreen.ClassListContains("menu-screen--visible") && !NetworkClient.active) list.Tick(Time.unscaledDeltaTime);
             lobby.SetInviteVisible(NetworkServer.active && WAR2D.Net.Steam.SteamHostLobby.CanInvite);
             bool connected = NetworkClient.isConnected;

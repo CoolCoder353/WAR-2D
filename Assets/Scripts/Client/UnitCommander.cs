@@ -705,6 +705,7 @@ public class UnitCommander : NetworkBehaviour
             CentreCamera(rejoinHq.Data.position + new float2(2.5f, 2.5f));
         }
 
+        if (WAR2D.UI.ManualController.AnyOpen) return; // v0.18: the keyboard is the manual's (its search box), and clicks stop at it
         if (GameInput.AttackMove.WasPressedThisFrame()) Arm(OrderKind.AttackMove);
         if (GameInput.Repair.WasPressedThisFrame()) Arm(OrderKind.Repair);
         if (GameInput.Dig.WasPressedThisFrame()) Arm(OrderKind.Dig);

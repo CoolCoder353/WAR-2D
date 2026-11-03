@@ -6,6 +6,7 @@
 // It refuses to write the page when the manual contradicts itself (see check).
 //
 // Usage: node tools/manual-mock.js [--config Assets/Resources/GameConfig.xml] --out <file.html>
+//        node tools/manual-mock.js --write-text   (copies manual-text.json into Assets/Scripts/UI/Models/ManualText.Data.cs for the game)
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -629,6 +630,13 @@ function ruleDiagrams(cfg) {
 if (require.main === module) {
   const args = process.argv.slice(2);
   const opt = (name, def) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : def; };
+  if (args.includes('--write-text')) {
+    const json = fs.readFileSync(path.join(__dirname, 'manual-text.json'), 'utf8').replace(/\r/g, '');
+    const target = path.join(ROOT, 'Assets/Scripts/UI/Models/ManualText.Data.cs');
+    fs.writeFileSync(target, `// Written by tools/manual-mock.js --write-text from tools/manual-text.json, the words the owner approved. Don't edit by hand.\nnamespace WAR2D.UI\n{\n    public static partial class ManualText\n    {\n        private const string Json = @"${json.replace(/"/g, '""')}";\n    }\n}\n`);
+    process.stdout.write(`${target}\n`);
+    process.exit(0);
+  }
   const out = opt('--out', null);
   if (!out) { process.stderr.write('Usage: node tools/manual-mock.js [--config <GameConfig.xml>] --out <file.html>\n'); process.exit(2); }
   const cfg = loadConfig(opt('--config', path.join(ROOT, 'Assets/Resources/GameConfig.xml')));
