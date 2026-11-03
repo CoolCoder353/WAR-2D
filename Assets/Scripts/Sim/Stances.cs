@@ -13,6 +13,8 @@ namespace WAR2D.Sim
         public const byte AttackMove = 2;
         /// <summary>Never moves (not even by separation); fights enemies in range.</summary>
         public const byte Hold = 3;
+        /// <summary>v0.18: goes after <see cref="Unit.OrderTarget"/>, fires at it in range and at nothing else.</summary>
+        public const byte Attack = 4;
     }
 
     /// <summary>A queued order assignment, applied by the next gather.</summary>
@@ -31,6 +33,9 @@ namespace WAR2D.Sim
         public float GroupSpeed;
         /// <summary>The order handle whose <see cref="SimData.OrderLead"/> the whole formation shares (its size classes get separate handles).</summary>
         public int LeadSlot;
+        /// <summary>v0.18: an Attack order's target (0 for every other order) and what it is (<see cref="TargetKinds"/>).</summary>
+        public int OrderTarget;
+        public byte OrderTargetKind;
     }
 
     /// <summary>What a Builder or Digger is working on (<see cref="Unit.WorkKind"/>).</summary>
@@ -60,4 +65,6 @@ public enum OrderKind : byte
     Dig = 6,
     /// <summary>Every selected Suicide bomber blows up where it stands.</summary>
     Detonate = 7,
+    /// <summary>v0.18: go after one enemy the side sees, and ignore everything else until it dies.</summary>
+    Attack = 8,
 }

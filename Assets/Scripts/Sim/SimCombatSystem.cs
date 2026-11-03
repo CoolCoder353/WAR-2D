@@ -60,6 +60,8 @@ namespace WAR2D.Sim
             SearchInput search = SearchInput.From(data, count, buildings);
             state.Dependency = new ResolveTargetsJob
             {
+                OrderTarget = data.OrderTarget,
+                OrderTargetKind = data.OrderTargetKind,
                 Search = search,
                 Type = data.Type,
                 Stance = data.Stance,
@@ -294,6 +296,8 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<float> RangeSqByType;
         [ReadOnly] public NativeArray<float> MinRangeSqByType;
         [ReadOnly] public NativeArray<float> DamageByType;
+        [ReadOnly] public NativeArray<int> OrderTarget;
+        [ReadOnly] public NativeArray<byte> OrderTargetKind;
         public NativeArray<int> Target;
         public NativeArray<byte> TargetKind;
 
@@ -301,6 +305,13 @@ namespace WAR2D.Sim
         {
             int id = Target[i];
             Target[i] = -1;
+            if (Stance[i] == Stances.Attack)
+            {
+                // An Attack order fires at its target when it can, and at nothing else.
+                id = OrderTarget[i];
+                TargetKind[i] = OrderTargetKind[i];
+                if (Search.Health[i] <= 0f || id <= 0 || DamageByType[Type[i]] <= 0f) return;
+            }
             if (Search.Health[i] <= 0f || id <= 0 || TargetKinds.IgnoresEnemies(Stance[i], OrderSlot[i], OrderLive) || DamageByType[Type[i]] <= 0f) return;
             int type = Type[i];
             float rangeSq = type < RangeSqByType.Length ? RangeSqByType[type] : 0f;

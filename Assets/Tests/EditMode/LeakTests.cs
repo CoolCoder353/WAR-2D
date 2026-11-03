@@ -452,6 +452,32 @@ public class LeakTests
         }
     }
 
+    /// <summary>Routes reach their owner's client, so the shared goal must stop at the last tile the side saw the target on.</summary>
+    [Test]
+    public void AnAttackOrderNeverFollowsATargetIntoTheFog()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(128), c => c.GetUnit(UnitType.Tank).Damage = 0);
+        int[] attacker = sim.Spawn(SimHarness.OwnerA, new float2(20, 20));
+        int[] scout = sim.Spawn(SimHarness.OwnerB, new float2(25, 20), UnitType.Scout);
+        sim.Tick();
+        sim.Tick();
+        sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.Attack, OwnerId = SimHarness.OwnerA, TargetId = scout[0], Tile = new int2(25, 20), Ids = attacker });
+        sim.Move(SimHarness.OwnerB, new int2(110, 110), scout); // a Scout outruns a Tank and its sight at once
+        float furthest = 0f;
+        sim.Context.Settled += (data, tick, count) =>
+        {
+            int slot = data.SlotOf(attacker[0], count);
+            if (slot < 0 || data.OrderTarget[slot] == 0) return;
+            int order = data.OrderSlot[slot];
+            if ((uint)order < (uint)data.OrderLive.Length && data.OrderLive[order] != 0) furthest = math.max(furthest, data.OrderGoal[order].x);
+        };
+        for (int t = 0; t < 600; t++) sim.Tick();
+        Unit a = sim.UnitById(attacker[0]);
+        Assert.AreEqual(Stances.Idle, a.Stance, "the order ended where the target was last seen");
+        Assert.Less(a.Position.x, 60f);
+        Assert.Less(furthest, 60f, "no goal past what the side could see");
+    }
+
     /// <summary>A bomber's route reaches its owner, so a block of Tanks in the fog beside its target must never draw its aim.</summary>
     [Test]
     public void ABombersAimUsesOnlyWhatItsSideSees()

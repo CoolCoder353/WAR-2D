@@ -175,6 +175,9 @@ namespace WAR2D.Sim
         public NativeArray<byte> BomberSpent;
         /// <summary>v0.18: each bomber's blast point, by its id's index.</summary>
         public NativeArray<BlastAim> BlastAims;
+        /// <summary>Per unit (v0.18): its Attack order's target id (0 for none) and kind, gathered from <see cref="Unit"/>.</summary>
+        public NativeArray<int> OrderTarget;
+        public NativeArray<byte> OrderTargetKind;
         /// <summary>v0.18: the bomber's aim numbers (<c>Bomber</c> in the config).</summary>
         public float AimTiles, FriendlyWeight, AimReachTiles, GoodEnough;
         public float BlastRadius, BlastDamage;
@@ -497,6 +500,8 @@ namespace WAR2D.Sim
                 ForcedBombers = new NativeParallelHashSet<int>(16, allocator),
                 BomberSpent = new NativeArray<byte>(capacity, allocator),
                 BlastAims = new NativeArray<BlastAim>(capacity, allocator),
+                OrderTarget = new NativeArray<int>(capacity, allocator),
+                OrderTargetKind = new NativeArray<byte>(capacity, allocator),
                 ArmourByType = new NativeArray<byte>(typeCount, allocator),
                 SplashByType = new NativeArray<float>(typeCount, allocator),
                 MinRangeSqByType = new NativeArray<float>(typeCount, allocator),
@@ -645,7 +650,7 @@ namespace WAR2D.Sim
         public void Dispose()
         {
             SpeedByType.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose(); CooldownByType.Dispose();
-            RunningCostByType.Dispose(); CostByType.Dispose(); BuildingCostByKind.Dispose(); BlastAims.Dispose(); DamageTable.Dispose();
+            RunningCostByType.Dispose(); CostByType.Dispose(); BuildingCostByKind.Dispose(); BlastAims.Dispose(); OrderTarget.Dispose(); OrderTargetKind.Dispose(); DamageTable.Dispose();
             Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Type.Dispose();
             SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose(); LastHitBy.Dispose();
             OrderSlot.Dispose(); Arrived.Dispose(); WorkTile.Dispose(); WorkKind.Dispose(); WorkFinished.Dispose(); BombBlasts.Dispose(); ForcedBombs.Dispose(); ForcedBombers.Dispose(); BomberSpent.Dispose(); ArmourByType.Dispose(); SplashByType.Dispose(); MinRangeSqByType.Dispose(); SearchSqByType.Dispose(); BlastRadiusByType.Dispose(); BlastDamageByType.Dispose(); DigProgress.Dispose(); DigAt.Dispose(); DigDone.Dispose(); DigMoves.Dispose(); WallOwnerSlot.Dispose(); WallState.Dispose(); WallHealth.Dispose(); WallWork.Dispose(); WallDamage.Dispose(); RepairWork.Dispose(); Unpaid.Dispose(); FormationOffset.Dispose(); FormationSpeed.Dispose(); FormationLead.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
