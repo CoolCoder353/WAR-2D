@@ -65,7 +65,7 @@ Every update ships a playable, tested build.
 - **Ease of use (server and client):** an Attack order (right-click or A-click on an enemy; never follows a target into the fog), a drag box that drops Builders when it catches army, Rematch back to the same lobby with the AIs, and the host's lobby settings remembered.
 - **Suicide bombers (server; owner addition):** a bomber brought to 10 % health or below, shot down included, explodes where it is; bombers aim at the point of an army that catches the most worth, and the middle of a building's side, instead of the nearest edge.
 
-**Exit criteria:** every feature's rules tests; `LeakTests` with the new Attack-order and summary tests; the manual's every-type and every-number tests; a two-match Rematch PlayMode test; the bomber tests and an `ai-bench` check that the difficulty ladder still holds; the perf gate passes with Attack orders, bombers and the team-fog recording in the load; the owner approves the Figma frames before any HUD or menu item is built.
+**Exit criteria:** the owner approves a mock website of the Field manual (generated from the config) before it is built; every feature's rules tests; `LeakTests` with the new Attack-order and summary tests; the manual's every-type and every-number tests; a two-match Rematch PlayMode test; the bomber tests and an `ai-bench` check that the difficulty ladder still holds; the perf gate passes with Attack orders, bombers and the team-fog recording in the load; the owner approves the Figma frames before any HUD or menu item is built.
 
 ---
 
@@ -131,3 +131,4 @@ The owner turned down on 2026-10-30 (see [polish.md](polish.md)): screen shake, 
 | v0.18 not | Hover-card changes (the manual carries the detail), status markers, economy breakdown, production overview, live stats, Patrol, repeat production, tutorial, camera bookmarks |
 | v0.18 name | Briefing |
 | v0.18 bombers (2026-11-03) | Owner addition: a Suicide bomber near 0 health (10 %) explodes; bombers aim for the centre of an army or building rather than its side |
+| v0.18 manual approval (2026-11-03) | The Field manual is approved as a mock website, generated from the config, before it goes into the game |
