@@ -204,18 +204,6 @@ public class SimArsenalTests
         for (int i = 0; i < 3; i++) sim.Tick();
         Assert.IsTrue(Alive(sim, a[0]));
     }
-
-    [Test]
-    public void ABomberShotDownBeforeContactDoesNotExplode()
-    {
-        using var sim = Sim();
-        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.SuicideBomber);
-        var tanks = new List<int[]>();
-        for (int i = 0; i < 6; i++) tanks.Add(sim.Spawn(SimHarness.OwnerB, new float2(20, 9 + i * 0.4f))); // 6 volleys of 10 kill its 30 health at once
-        for (int i = 0; i < 6; i++) sim.Tick();
-        Assert.IsFalse(Alive(sim, bomber[0]));
-        foreach (int[] id in tanks) Assert.AreEqual(sim.Config.GetUnit(UnitType.Tank).Health, sim.UnitById(id[0]).Health, "no blast");
-    }
 }
 
 /// <summary>Heavy and Artillery use the large pathing class.</summary>
