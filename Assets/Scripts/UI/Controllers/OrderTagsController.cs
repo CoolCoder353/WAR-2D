@@ -16,7 +16,7 @@ namespace WAR2D.UI
     {
         private const float TagBelow = 14f, CursorRight = 18f, CursorBelow = 14f;
         private readonly VisualElement layer;
-        private readonly Label worldTag, cursorTag;
+        private readonly Label worldTag, cursorTag, placementTag;
         private readonly List<Label> numbers = new List<Label>();
 
         public OrderTagsController(VisualElement root)
@@ -24,6 +24,7 @@ namespace WAR2D.UI
             layer = root.Q("order-tags");
             worldTag = root.Q<Label>("order-world-tag");
             cursorTag = root.Q<Label>("order-cursor-tag");
+            placementTag = root.Q<Label>("placement-tag");
         }
 
         /// <summary>Places the tags for this frame (all hidden without feedback or a camera).</summary>
@@ -38,6 +39,17 @@ namespace WAR2D.UI
                 float width = float.IsNaN(worldTag.resolvedStyle.width) ? 0f : worldTag.resolvedStyle.width;
                 worldTag.style.left = p.x - width * 0.5f;
                 worldTag.style.top = p.y + TagBelow;
+            }
+            // v0.17 (Figma H1): what the Miner being placed would mine, under its ghost.
+            var placing = BuildingPlacement.Instance != null ? BuildingPlacement.Instance.PlacementTag : null;
+            bool tagged = placementTag != null && cam != null && layer.panel != null && placing.HasValue;
+            if (placementTag != null) Show(placementTag, tagged ? placing.Value.text : null);
+            if (tagged)
+            {
+                Vector2 p = RuntimePanelUtils.CameraTransformWorldToPanel(layer.panel, new Vector3(placing.Value.at.x, placing.Value.at.y, 0f), cam);
+                float width = float.IsNaN(placementTag.resolvedStyle.width) ? 0f : placementTag.resolvedStyle.width;
+                placementTag.style.left = p.x - width * 0.5f;
+                placementTag.style.top = p.y + 4f;
             }
             Show(cursorTag, live ? feedback.CursorTag : null);
             if (live && feedback.CursorTag != null)

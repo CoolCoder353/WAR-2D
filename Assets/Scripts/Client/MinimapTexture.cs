@@ -57,7 +57,7 @@ namespace WAR2D.Client
                 visible[y * width + x] = Scale(tile, 1.6f);
                 explored[y * width + x] = Scale(tile, 0.75f);
                 // With the Gems layer off a gem cell reads as plain ground.
-                Color32 plain = type == TileType.Gem ? MapView.TileColor(TileType.Ground) : tile;
+                Color32 plain = TileRules.IsGem(type) ? MapView.TileColor(TileType.Ground) : tile; // both gem kinds (v0.17)
                 visibleNoGems[y * width + x] = Scale(plain, 1.6f);
                 exploredNoGems[y * width + x] = Scale(plain, 0.75f);
             }

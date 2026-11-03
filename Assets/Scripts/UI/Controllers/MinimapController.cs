@@ -157,6 +157,14 @@ namespace WAR2D.UI
                 bool on = SettingsStore.Current.ShowsLayer(layer);
                 text.EnableInClassList("minimap-popover__label--off", !on);
                 row.Add(swatch);
+                if (layer == MinimapLayers.Gems)
+                {
+                    // v0.17 (Figma H1): the Gems layer covers rich gems too, in their own colour.
+                    var rich = new VisualElement { name = "minimap-filter-rich-swatch" };
+                    rich.AddToClassList("minimap-popover__swatch");
+                    rich.style.backgroundColor = (Color)MapView.TileColor(TileType.RichGem);
+                    row.Add(rich);
+                }
                 row.Add(text);
                 row.Add(Widgets.Switch("minimap-filter-" + name + "-switch", on, true, () => ToggleLayer(layer), ""));
                 filterRows.Add(row);

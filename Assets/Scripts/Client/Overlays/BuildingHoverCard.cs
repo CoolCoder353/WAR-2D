@@ -22,7 +22,7 @@ namespace WAR2D.Client.Overlays
         private VisualElement layer;
         private int hoveredId;
         private float restSince;
-        private (int id, int health, int max, bool ghost, int ago, byte progress, bool unpaid, int owner) shownKey;
+        private (int id, int health, int max, bool ghost, int ago, byte progress, bool unpaid, int owner, string mining) shownKey;
 
         /// <summary>The building whose card is open (tests), or 0.</summary>
         public int OpenId { get; private set; }
@@ -63,7 +63,7 @@ namespace WAR2D.Client.Overlays
 
         private void Fill(in BuildingHoverInfo info)
         {
-            var key = (info.Id, (int)math.round(info.Health), (int)math.round(info.MaxHealth), info.Ghost, (int)info.LastSeenSecondsAgo, info.Progress, info.Unpaid, info.OwnerId);
+            var key = (info.Id, (int)math.round(info.Health), (int)math.round(info.MaxHealth), info.Ghost, (int)info.LastSeenSecondsAgo, info.Progress, info.Unpaid, info.OwnerId, info.Mining);
             if (key.Equals(shownKey) && OpenId == info.Id) return;
             shownKey = key;
 
@@ -95,6 +95,7 @@ namespace WAR2D.Client.Overlays
                 footer.AddToClassList("text--danger");
             }
             else if (info.Own && info.Upkeep > 0f) footer.text = $"Upkeep {Rate(info.Upkeep)}/s";
+            else if (info.Mining != null) footer.text = info.Mining; // v0.17 (Figma H1): an own Miner says what it mines
             else footer.text = "";
             footer.style.display = footer.text.Length > 0 ? DisplayStyle.Flex : DisplayStyle.None;
         }
