@@ -79,7 +79,7 @@ public partial class WorldStateManager : NetworkBehaviour
     /// <summary>Streams the finished recording to the players who accept it (after GameOver).</summary>
 
     /// <summary>Where each bomb is: bombs do not mark their tile used (units walk over them), so placement looks here.</summary>
-    private readonly Dictionary<int2, (int id, int owner)> bombTiles = new Dictionary<int2, (int, int)>();
+    private readonly BombTiles bombTiles = new BombTiles();
 
     /// <summary>Footprint tiles each building marked used, so they can be freed when it dies.</summary>
     private readonly Dictionary<int, List<int2>> buildingFootprints = new Dictionary<int, List<int2>>();
@@ -159,8 +159,7 @@ public partial class WorldStateManager : NetworkBehaviour
             TerrainCellOf = TerrainCellAt,
             SharesVision = SharesVision,
             // A defeated player still connected watches the rest of the match with the whole map shown (P10).
-            Spectating = owner => GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing &&
-                                  GameCore.Instance.GetServerPlayerById(owner)?.state == PlayerState.Eliminated,
+            Spectating = IsSpectating,
         };
         // v0.14: AI players' team views (the same interest rules as replication) and the director that runs their thinks.
         AiViews = new WAR2D.AiView.TeamViewBuilder(Sim, new WAR2D.AiView.GameCoreFacts())
@@ -203,7 +202,7 @@ public partial class WorldStateManager : NetworkBehaviour
         Sim.Income = (ownerId, amount) =>
         {
             ServerPlayer p = GameCore.Instance?.GetServerPlayerById(ownerId);
-            if (p == null) return;
+            if (p == null || p.Away) return; // an away player earns nothing, so nothing is counted as mined
             p.AddIncome(amount);
             GameCore.Instance.Stats.Mined(ownerId, amount);
         };
@@ -223,6 +222,18 @@ public partial class WorldStateManager : NetworkBehaviour
         // The map and simulation exist: deal each player their private start options and start the pick clock.
         if (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.PlacingHQ) GameCore.Instance.BeginPlacementPhase(this);
     }
+
+    /// <summary>True when the owner is a defeated player still connected, who watches the rest of the match with the whole map shown (P10).</summary>
+    private static bool IsSpectating(int owner) =>
+        GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing &&
+        GameCore.Instance.GetServerPlayerById(owner)?.state == PlayerState.Eliminated;
+
+    /// <summary>
+    /// The vision grid a viewer's per-client events (explosions, blasts) are filtered by: the whole map for a spectator, as
+    /// replication gives them (<see cref="ReplicationService.Spectating"/>), else the owner's own grid.
+    /// </summary>
+    [Server]
+    private int ViewerGrid(int owner) => IsSpectating(owner) ? SimData.SeesAll : Sim.VisionOf(owner);
 
     /// <summary>Records a unit the simulation removed, for its explosion.</summary>
     [ServerCallback]
@@ -469,7 +480,7 @@ public partial class WorldStateManager : NetworkBehaviour
         foreach (KeyValuePair<ClientPlayer, (int2, int2)> view in playerView)
         {
             if (view.Key == null || view.Key.connectionToClient == null) continue;
-            int grid = Sim.VisionOf(BuildingData.UIntToInt(view.Key.netId));
+            int grid = ViewerGrid(BuildingData.UIntToInt(view.Key.netId));
             Vector2[] bombs = VisibilityRules.SeenBlasts(data, grid, blastScratch, view.Value.Item1, view.Value.Item2);
             Vector2[] bombers = VisibilityRules.SeenBlasts(data, grid, bomberScratch, view.Value.Item1, view.Value.Item2);
             if (bombs != null || bombers != null) view.Key.TargetPlayBlasts(view.Key.connectionToClient, bombs, bombers);
@@ -609,7 +620,7 @@ public partial class WorldStateManager : NetworkBehaviour
         foreach (KeyValuePair<ClientPlayer, (int2, int2)> view in playerView)
         {
             if (view.Key == null || view.Key.connectionToClient == null) continue;
-            int grid = Sim.VisionOf(BuildingData.UIntToInt(view.Key.netId));
+            int grid = ViewerGrid(BuildingData.UIntToInt(view.Key.netId));
             seenDeaths.Clear();
             foreach (float2 death in deaths) if (VisibilityRules.ShowsDeath(state, data.Sees(grid, death))) seenDeaths.Add(death);
             List<Vector2> visible = VisibilityRules.Filter(seenDeaths, view.Value.Item1, view.Value.Item2);
@@ -645,9 +656,8 @@ public partial class WorldStateManager : NetworkBehaviour
             Buildings.Remove(id);
             if (building.buildingType == BuildingType.Bomb)
             {
-                // Only drop the entry if it is still this bomb's (another may have been built on the tile since).
-                int2 bombTile = (int2)math.round(building.position);
-                if (bombTiles.TryGetValue(bombTile, out var registered) && registered.id == id) bombTiles.Remove(bombTile);
+                // Only this bomb's entry: another may have been laid on the tile too.
+                bombTiles.Remove((int2)math.round(building.position), id);
             }
             if (building.buildingType == BuildingType.Radar) radars?.Forget(id);
             Sim?.ForgetBuilding(id);
@@ -950,7 +960,7 @@ public partial class WorldStateManager : NetworkBehaviour
         if (type == BuildingType.Bomb)
         {
             // A bomb's tile is not marked used: units walk over it.
-            bombTiles[positon] = (buildingData.id, buildingData.ownerId);
+            bombTiles.Add(positon, buildingData.id, buildingData.ownerId);
             return true;
         }
         //Set the tiles the building will cover to be used

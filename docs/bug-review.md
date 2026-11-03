@@ -1,6 +1,6 @@
 # Bug Review
 
-Findings from code reviews and scans, from an outside review (2026-10-14, triaged against the code on 2026-10-15) to the sixth scan (2026-10-28, the v0.15 reconnect and QoL). The review was not taken as fact: each finding was traced in the source. Confirmed bugs are fixed (and logged in [known-issues.md](known-issues.md)); the rest are listed below with why they were not changed.
+Findings from code reviews and scans, from an outside review (2026-10-14, triaged against the code on 2026-10-15) to the seventh scan (2026-11-03, a whole-project pass). The review was not taken as fact: each finding was traced in the source. Confirmed bugs are fixed (and logged in [known-issues.md](known-issues.md)); the rest are listed below with why they were not changed.
 
 ## Triage (2026-10-15)
 
@@ -38,6 +38,22 @@ Findings from code reviews and scans, from an outside review (2026-10-14, triage
 `Shift` shared by `QueueModifier` and `AppendModifier` (kept on purpose, open until the owner confirms; see `known-issues.md`, rebinding), and the low / hardening bullets below that are not struck through. The original findings follow; fixes are marked in place. The 2026-10-18 pass fixed stale squad counts, the embedded large unit, the replay EOF hang, the v0.7 client leftovers, the null-identity loops and most hardening bullets.
 
 ---
+
+## Seventh scan (2026-11-03): whole project
+
+A targeted pass over the command surface, economy, production, the sim's command drain, reconnect, pause and per-client events (not the client UI, art, AI or pathing internals). All fixed (see [known-issues.md](known-issues.md), "Review fixes (2026-11-03)").
+
+| Finding | Fix |
+| ------- | --- |
+| A unit queued by a producer could be made inside a building placed over its tile before the boundary: the spawn did not recheck the tile, and the building's push only moves units already in the arrays. | `SimCommandSystem.Spawn` picks the nearest free tile again (`TryFindFreeTile`, shared with `PushUnitsOffTiles`). |
+| `FlushDeathEvents` and `FlushBlasts` filtered by the viewer's own grid, so a defeated spectator (who sees everything through replication) got no explosions or blasts. | `WorldStateManager.ViewerGrid` gives a spectator `SimData.SeesAll`, as `ReplicationService.GridOf` does. |
+| `bombTiles` kept one bomb per tile: a bomb laid over another owner's unknown, unseen bomb overwrote it. | `BombTiles` keeps every bomb on a tile; removal is by id. |
+| `ServerPlayer.AddIncome` counted income while away, and Miners and gem digs counted `Stats.Mined`, though nothing was credited. | Nothing is counted while away. |
+| `HumansConnected` / `IsConnectedHuman` counted an away seat (identity kept, no connection). | Only seats with a live connection count. |
+
+### Checked, no issue
+
+Every `[Command]` gates, takes the owner from the sender and validates; gifts reject NaN, Infinity and overdrafts; order chunks are capped and squads pruned to owned units before counts are sent; rejoin tickets are revoked on leave, kick and elimination; repairs re-read the budget per repair; refused spawns refund and requeue; lobby AI commands check the state.
 
 ## Sixth scan (2026-10-28): v0.15 reconnect and QoL
 

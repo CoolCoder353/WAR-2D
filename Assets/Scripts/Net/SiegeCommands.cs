@@ -57,14 +57,17 @@ public partial class WorldStateManager
         Sim != null && Sim.TrySlotOf(from, out int a) && Sim.TrySlotOf(to, out int b) && Sim.Diplomacy.SharesVisionWith(a, b);
 
     /// <summary>True when a bomb the viewer may know of (its own, or shared with it) sits on the tile: placement sees the tile as taken.</summary>
-    internal bool KnownBombAt(int2 tile, int viewer) =>
-        bombTiles.TryGetValue(tile, out var bomb) && BombRules.MayKnow(viewer, bomb.owner, SharesVision);
+    internal bool KnownBombAt(int2 tile, int viewer) => bombTiles.AnyKnown(tile, viewer, SharesVision);
+
+    private readonly List<int> unknownBombs = new List<int>();
 
     /// <summary>Sets off the bomb on a tile when <paramref name="placer"/> may not know of it (plan P5); the sim checks the placer's side sees the tile.</summary>
     internal void DetonateUnknownBomb(int2 tile, int placer)
     {
-        if (!bombTiles.TryGetValue(tile, out var bomb) || BombRules.MayKnow(placer, bomb.owner, SharesVision)) return;
-        Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.DetonateBomb, OwnerId = placer, TargetId = bomb.id, Tile = tile });
+        unknownBombs.Clear();
+        bombTiles.Unknown(tile, placer, SharesVision, unknownBombs);
+        foreach (int id in unknownBombs)
+            Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.DetonateBomb, OwnerId = placer, TargetId = id, Tile = tile });
     }
 
     /// <summary>What a wall tile is as a client may know it: kind, and for player walls their owner and health percent.</summary>

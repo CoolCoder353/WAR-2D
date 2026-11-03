@@ -47,7 +47,7 @@ public partial struct ResourceSystem : ISystem
             if (active)
             {
                 ServerPlayer owner = core.GetServerPlayerById(building.ValueRO.ownerId);
-                if (owner != null && owner.state == PlayerState.Playing)
+                if (owner != null && owner.state == PlayerState.Playing && !owner.Away) // an away player earns nothing, so nothing is counted as mined
                 {
                     // v0.17: a rich gem pays RichGemMultiplier times the rate.
                     float mined = config.Resources.MiningRate * MinerRules.RateOf(facedType, config.Resources.RichGemMultiplier) * mining.ValueRO.timeSinceLastMining;

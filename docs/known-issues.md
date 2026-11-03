@@ -142,6 +142,18 @@ The owner closed the v0.10 to v0.15.1 verification and tuning items: the playtes
 | `HudTests.DiplomacyToggleStopsMyUnitsAttacking` failed once in a full PlayMode run (2026-11-03, v0.17) | Test flakiness. It passed alone twice on the same code; it follows load or test order, like the other timing-sensitive PlayMode tests. |
 | The v0.17 AI bench: Normal finishes fewer 1024 games against Easy | **Accepted (owner, 2026-11-03), not tuned.** 81 % → 44 % on 1024, but Easy won none: 9 of 16 reached the 40-minute cap with Normal far ahead. The rich middle's income makes bigger armies and longer games on the largest map. Hard against Normal on 1024 is unchanged from v0.16 (31 %). [perf/v0.17](perf/v0.17/README.md). |
 
+## Review fixes (2026-11-03)
+
+From the whole-project scan of 2026-11-03 ([bug-review.md](bug-review.md), "Seventh scan"). Not yet run through `tools/unity-test.sh`.
+
+| Finding | Status |
+| ------- | ------ |
+| A unit could be made inside a building placed over its spawn tile before the boundary | **Fixed.** The producer picks the tile when it queues the unit; a building placed on it before the next boundary drained after the spawn, and its push only moves units already in the arrays. `SimCommandSystem.Spawn` now picks the nearest free tile again when its tile is no longer walkable (`SimConstructionTests.AUnitSpawnedOnATileABuildingTookInTheSameTickIsPlacedOutsideIt`). |
+| A spectating (defeated) player saw units vanish without explosions or blasts | **Fixed.** Explosions and blasts were filtered by the player's own, now empty, fog grid; they now use the same whole-map grid replication gives a spectator (`WorldStateManager.ViewerGrid`; `SimBastionTests.ASpectatorsGridShowsDeathsAndBlastsInTheFog`). |
+| A bomb laid over another owner's unknown, unseen bomb replaced its record | **Fixed.** The tile's record held one bomb, so the older one was forgotten: building over it no longer set it off, and its owner could lay a second bomb on it. A tile now keeps every bomb on it (`BombTiles`; `SimBombTests.ABombLaidOverAnotherKeepsBothOnTheTile`). |
+| An away player's income and mining were still counted | **Fixed.** Nothing was credited, but `IncomeLastSecond` and the end screen's mined total still counted Miner and gem income while away (`RejoinTests.AnAwayPlayerEarnsAndPaysNothingSoNothingDecays`). |
+| The menu pause counted an away seat as a connected human | **Fixed.** With one of two humans dropped out, the one left could not pause; only humans with a live connection count now (`MatchPausePlayModeTests.WithTwoHumansTheMenuDoesntPause`). |
+
 ## Open
 
 | Item                                                           | Kind                              | Detail                                                                                                                                                                                                                                             |

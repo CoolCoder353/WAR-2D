@@ -76,10 +76,10 @@ public class ServerPlayer
         SpentThisMatch = SpentThisMatch > amount ? SpentThisMatch - amount : 0f;
     }
 
-    /// <summary>Adds earned resources and counts them towards this second's income.</summary>
+    /// <summary>Adds earned resources and counts them towards this second's income. Nothing is earned (or counted) while away.</summary>
     public void AddIncome(float amount)
     {
-        if (!(amount > 0f)) return;
+        if (Away || !(amount > 0f)) return;
         Add(amount);
         incomeThisSecond += amount;
     }

@@ -539,6 +539,24 @@ public class SimBastionTests
     }
 
     [Test]
+    public void ASpectatorsGridShowsDeathsAndBlastsInTheFog()
+    {
+        // WorldStateManager.ViewerGrid gives a defeated spectator SeesAll for explosions and blasts, as replication does for units.
+        using var sim = new SimHarness(SimHarness.OpenMap(96));
+        sim.Spawn(SimHarness.OwnerA, new float2(10, 10));
+        Pass(sim);
+        sim.Em.CompleteAllTrackedJobs();
+        SimData data = sim.Context.Data;
+        var far = new float2(90.5f, 90.5f);
+        int own = sim.Context.VisionOf(SimHarness.OwnerA);
+        var blasts = new List<float2> { far };
+        Assert.IsNull(VisibilityRules.SeenBlasts(data, own, blasts, int2.zero, new int2(95, 95)), "the player's own grid doesn't see it");
+        Assert.IsFalse(VisibilityRules.ShowsDeath(GameState.Playing, data.Sees(own, far)));
+        Assert.AreEqual(1, VisibilityRules.SeenBlasts(data, SimData.SeesAll, blasts, int2.zero, new int2(95, 95))?.Length, "a spectator sees the blast");
+        Assert.IsTrue(VisibilityRules.ShowsDeath(GameState.Playing, data.Sees(SimData.SeesAll, far)), "and the explosion");
+    }
+
+    [Test]
     public void InsideTheJamAUnitSeesOnlyWithinJamSight()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(96));
