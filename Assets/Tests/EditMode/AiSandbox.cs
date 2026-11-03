@@ -74,7 +74,11 @@ public sealed class AiSandbox
         layout.Dispose();
         Sites = layout.StartSites;
         Regions = new AiRegion[layout.Regions.Length];
-        for (int i = 0; i < Regions.Length; i++) Regions[i] = new AiRegion { Centre = layout.Regions[i].Centre, Radius = layout.Regions[i].Radius, Kind = (AiRegionKind)layout.Regions[i].Kind };
+        for (int i = 0; i < Regions.Length; i++)
+        {
+            TeamViewBuilder.CountGems(Tiles, Width, Height, layout.Regions[i].Centre, layout.Regions[i].Radius + 4, out int gems, out int rich);
+            Regions[i] = new AiRegion { Centre = layout.Regions[i].Centre, Radius = layout.Regions[i].Radius, Kind = (AiRegionKind)layout.Regions[i].Kind, GemTiles = gems, RichTiles = rich };
+        }
         Lanes = new AiLane[layout.Lanes.Length];
         for (int i = 0; i < Lanes.Length; i++) Lanes[i] = new AiLane { A = layout.Lanes[i].A, B = layout.Lanes[i].B, Width = layout.Lanes[i].Width, ChokeWidth = layout.Lanes[i].ChokeWidth };
         Options = options ?? new[] { 0, 1, 2 };

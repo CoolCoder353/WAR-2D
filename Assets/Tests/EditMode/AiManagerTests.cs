@@ -47,6 +47,17 @@ public class AiManagerTests
     }
 
     [Test]
+    public void ARegionCountsItsOrdinaryAndRichGems()
+    {
+        using var map = MapStore.FromAscii("BBBBBBB", "B.g.r.B", "B..r..B", "BBBBBBB");
+        TeamViewBuilder.CountGems(map.InitialTiles, 7, 4, new int2(3, 1), 3, out int gems, out int rich);
+        Assert.AreEqual(1, gems);
+        Assert.AreEqual(2, rich);
+        var region = new AiRegion { GemTiles = gems, RichTiles = rich };
+        Assert.AreEqual(1f + 2f * 2.5f, region.Worth(2.5f));
+    }
+
+    [Test]
     public void AnOptionWithMoreGemsScoresHigher()
     {
         var world = new AiSandbox(256, 5);
