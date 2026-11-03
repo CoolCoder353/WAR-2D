@@ -76,4 +76,30 @@ public class SimBombTests
             foreach (int2 attack in sim.Context.Data.AttackEvents) Assert.AreNotEqual(bomb, attack.y, "no shot at a hidden bomb");
         }
     }
+
+    [Test]
+    public void ABombLaidOverAnotherKeepsBothOnTheTile()
+    {
+        // A places a bomb where B's unknown bomb already is (explored, not seen: nothing goes off). Neither may be forgotten.
+        var tiles = new BombTiles();
+        var tile = new int2(5, 5);
+        const int a = 1, b = 2;
+        System.Func<int, int, bool> noSharing = (from, to) => false;
+        tiles.Add(tile, 100, b);
+        tiles.Add(tile, 101, a);
+        Assert.AreEqual(2, tiles.CountAt(tile));
+        Assert.IsTrue(tiles.AnyKnown(tile, b, noSharing), "B still knows its own bomb is there");
+        Assert.IsTrue(tiles.AnyKnown(tile, a, noSharing), "and A its own");
+        var unknown = new System.Collections.Generic.List<int>();
+        tiles.Unknown(tile, 3, noSharing, unknown);
+        CollectionAssert.AreEquivalent(new[] { 100, 101 }, unknown, "a third player building there sets off both");
+
+        tiles.Remove(tile, 101);
+        Assert.AreEqual(1, tiles.CountAt(tile), "removing one keeps the other");
+        Assert.IsTrue(tiles.AnyKnown(tile, b, noSharing));
+        Assert.IsFalse(tiles.AnyKnown(tile, a, noSharing));
+        Assert.IsTrue(tiles.AnyKnown(tile, a, (from, to) => from == b && to == a), "B sharing vision with A lets A know it");
+        tiles.Remove(tile, 100);
+        Assert.AreEqual(0, tiles.CountAt(tile));
+    }
 }

@@ -107,6 +107,8 @@ public class RejoinTests
         player.Add(100f);
         player.AddIncome(50f);
         Assert.AreEqual(500f, player.Resources, "nothing is earned while away");
+        player.RollSecond();
+        Assert.AreEqual(0f, player.IncomeLastSecond, "nor counted as income");
         Assert.IsTrue(player.TryPayUpkeep(10_000f), "upkeep is frozen, never missed");
         Assert.AreEqual(500f, player.Resources, "and nothing is charged");
         player.Away = false;

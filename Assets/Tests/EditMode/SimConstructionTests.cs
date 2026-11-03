@@ -165,4 +165,20 @@ public class SimConstructionTests
         sim.TickSeconds(5f);
         Assert.Greater(Health(sim, ally), 10f);
     }
+
+    [Test]
+    public void AUnitSpawnedOnATileABuildingTookInTheSameTickIsPlacedOutsideIt()
+    {
+        // The producer queued the unit on a free tile; a building placed over it before the boundary drains after the spawn,
+        // and its push only moves units already in the arrays, so the spawn itself must move off the footprint.
+        using var sim = new SimHarness(SimHarness.OpenMap(48));
+        int[] unit = sim.Spawn(SimHarness.OwnerA, new float2(20.5f, 20.5f));
+        sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(20, 20)); // tiles 19..20 on each axis
+        sim.Tick();
+        Assert.GreaterOrEqual(unit[0], 0, "the unit is still made");
+        sim.Tick();
+        int2 tile = (int2)math.floor(sim.UnitById(unit[0]).Position);
+        foreach (int2 t in Footprint.Tiles(new int2(20, 20), sim.Config.GetBuilding(BuildingType.Barracks).Size))
+            Assert.IsFalse(math.all(tile == t), $"the unit was made inside the building at {tile}");
+    }
 }

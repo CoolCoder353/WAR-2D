@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Mirror;
 using UnityEngine;
 using WAR2D.Sim;
@@ -117,22 +118,26 @@ public partial class GameCore
         ApplyPause();
     }
 
-    /// <summary>Humans with a connection (AIs never count).</summary>
+    /// <summary>Humans with a connection (AIs never count, nor does a seat kept for a player who dropped out).</summary>
     [Server]
     private int HumansConnected()
     {
         int n = 0;
-        foreach (NetworkIdentity identity in ServerPlayers.Keys) if (identity != null) n++;
+        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers) if (IsConnected(entry)) n++;
         return n;
     }
 
     [Server]
     private bool IsConnectedHuman(int owner)
     {
-        foreach (NetworkIdentity identity in ServerPlayers.Keys)
-            if (identity != null && BuildingData.UIntToInt(identity.netId) == owner) return true;
+        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
+            if (IsConnected(entry) && BuildingData.UIntToInt(entry.Key.netId) == owner) return true;
         return false;
     }
+
+    /// <summary>A human seat with its player object and a live connection (not away, v0.15).</summary>
+    private static bool IsConnected(KeyValuePair<NetworkIdentity, ServerPlayer> entry) =>
+        entry.Key != null && entry.Value != null && entry.Value.connection != null && !entry.Value.Away;
 
     /// <summary>Copies the pause to the tick and the synced flags.</summary>
     [Server]

@@ -389,6 +389,19 @@ namespace WAR2D.Sim
                 command.OnSpawned?.Invoke(-1);
                 return;
             }
+            // The spawner chose this tile when it queued the unit; a building placed over it since (applied later in this same
+            // drain, whose push only moves units already in the arrays) would trap it, so a tile no longer free is chosen again.
+            float2 position = command.Position;
+            int2 spawnTile = (int2)math.floor(position);
+            if (!context.Map.IsWalkable(spawnTile))
+            {
+                if (!TryFindFreeTile(data, context, spawnTile, unit.SizeClass == WAR2D.Pathing.FlowSizeClass.Large, out int2 free))
+                {
+                    command.OnSpawned?.Invoke(-1);
+                    return;
+                }
+                position = (float2)free + 0.5f;
+            }
             int id;
             try { id = context.Ids.Allocate(); }
             catch (System.InvalidOperationException)
@@ -410,7 +423,7 @@ namespace WAR2D.Sim
                 Radius = unit.Radius,
                 Health = unit.Health,
                 MaxHealth = unit.Health,
-                Position = command.Position,
+                Position = position,
                 TargetId = -1,
                 OrderSlot = -1,
             });
@@ -489,19 +502,14 @@ namespace WAR2D.Sim
         /// <summary>Moves every unit overlapping the inclusive tile box to the nearest free floor tile.</summary>
         private static void PushUnitsOffTiles(SimData data, SimContext context, int2 lo, int2 hi, int unitCount)
         {
-            WAR2D.World.MapGrid grid = context.Map.Grid;
             for (int slot = 0; slot < unitCount; slot++)
             {
                 float2 p = data.Positions[slot];
                 float r = data.Radius[slot];
                 if (p.x + r < lo.x || p.y + r < lo.y || p.x - r > hi.x + 1 || p.y - r > hi.y + 1) continue;
-                // A large unit needs a spot with its clearance (no rock or wall within a tile), not just a free tile.
-                // Clearance is part of the goal, not the walk: the tiles next to the new wall or footprint have none.
                 bool large = data.SizeClass[slot] == WAR2D.Pathing.FlowSizeClass.Large;
                 int2 at = (int2)math.floor(p);
-                if (!TileSearch.FindNearest(at, t => grid.IsWalkable(t) && (!large || data.LargeGrid[t.y * data.Width + t.x] == 0), t => TileRules.IsFloor(grid.TileAt(t)), 4096, out int2 free) &&
-                    // No clear spot near: a free tile without the clearance still beats staying inside the wall.
-                    !(large && TileSearch.FindNearest(at, t => grid.IsWalkable(t), t => TileRules.IsFloor(grid.TileAt(t)), 4096, out free)))
+                if (!TryFindFreeTile(data, context, at, large, out int2 free))
                 {
                     WarLog.Warn(LogCategory.Sim, $"no free tile near {at} for unit {data.IdOf[slot]}; it stays where it is");
                     continue;
@@ -509,6 +517,20 @@ namespace WAR2D.Sim
                 if (data.PendingMoves.Capacity <= data.PendingMoves.Count()) data.PendingMoves.Capacity *= 2;
                 data.PendingMoves[data.IdOf[slot]] = (float2)free + 0.5f;
             }
+        }
+
+        /// <summary>
+        /// The nearest free floor tile to <paramref name="at"/> (searching through blocked tiles). A large unit needs a spot with
+        /// its clearance (no rock or wall within a tile), not just a free tile; clearance is part of the goal, not the walk, since
+        /// the tiles next to a new wall or footprint have none. With no clear spot near, a free tile without the clearance still
+        /// beats staying inside a wall or a building.
+        /// </summary>
+        private static bool TryFindFreeTile(SimData data, SimContext context, int2 at, bool large, out int2 free)
+        {
+            WAR2D.World.MapStore map = context.Map;
+            WAR2D.World.MapGrid grid = map.Grid;
+            return TileSearch.FindNearest(at, t => map.IsWalkable(t) && (!large || data.LargeGrid[t.y * data.Width + t.x] == 0), t => TileRules.IsFloor(grid.TileAt(t)), 4096, out free) ||
+                   (large && TileSearch.FindNearest(at, t => map.IsWalkable(t), t => TileRules.IsFloor(grid.TileAt(t)), 4096, out free));
         }
 
         private void CreateBuilding(SimContext context, in BuildingSpec spec)

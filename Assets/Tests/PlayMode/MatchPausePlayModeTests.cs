@@ -180,7 +180,8 @@ public class MatchPausePlayModeTests
 
         // A second human connected (a stand-in record: only the count matters to the rule).
         var other = new GameObject("second human").AddComponent<NetworkIdentity>();
-        core.ServerPlayers[other] = new ServerPlayer(null, 0f);
+        var otherConnection = new NetworkConnectionToClient(7101);
+        core.ServerPlayers[other] = new ServerPlayer(otherConnection, 0f);
         try
         {
             Assert.That(core.TrySetMenuPause(me, true), Is.False, "two humans: the menu never pauses");
@@ -190,10 +191,22 @@ public class MatchPausePlayModeTests
 
         // A pause that stops qualifying (a second human arrives) is dropped.
         Assert.That(core.TrySetMenuPause(me, true), Is.True);
-        core.ServerPlayers[other] = new ServerPlayer(null, 0f);
+        core.ServerPlayers[other] = new ServerPlayer(otherConnection, 0f);
         try { core.UpdatePause(); }
         finally { core.ServerPlayers.Remove(other); }
         Assert.That(core.MatchPause.Paused, Is.False, "dropped with two humans");
+
+        // A seat kept for a human who dropped out (v0.15) is not a connected human: the one left may pause.
+        core.ServerPlayers[other] = new ServerPlayer(null, 0f) { Away = true };
+        try
+        {
+            Assert.That(core.TrySetMenuPause(me, true), Is.True, "an away seat doesn't count");
+            core.UpdatePause();
+            Assert.That(core.MatchPause.Paused, Is.True, "and the pause holds");
+            Assert.That(core.TrySetMenuPause(me, false), Is.True);
+        }
+        finally { core.ServerPlayers.Remove(other); }
+        core.UpdatePause();
         Object.Destroy(other.gameObject);
 
         // Nor may anyone else's id pause (an AI, or a made-up owner).
