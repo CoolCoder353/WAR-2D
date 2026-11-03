@@ -445,6 +445,7 @@ Button.lobby-card__strip:hover { border-width: 0 2px 0 0; border-color: var(--co
 .spawn-marker--free:hover > .spawn-marker__tooltip { display: flex; }
 .lobby__hint { white-space: normal; margin-top: 4px; }
 .lobby__seed { width: 200px; }
+.lobby__settings-header { justify-content: space-between; align-items: center; }
 .lobby__reroll { height: 35px; align-self: flex-start; }
 .lobby__footer { position: absolute; left: 50px; bottom: 34px; }
 .lobby__footer > * { margin-right: var(--space-3); }

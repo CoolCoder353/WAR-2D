@@ -53,7 +53,8 @@ namespace WAR2D.Client.Replay
         /// <summary>Applies a recorded fog payload, then refreshes every player's memory of the buildings.</summary>
         public void Fog(ArraySegment<byte> payload, ClientBuildings all)
         {
-            TeamFogCodec.Apply(payload, fogW * fogH, GridOf);
+            // A file can name any owner: only as many grids as a match can have players, so it can't grow memory without bound.
+            TeamFogCodec.Apply(payload, fogW * fogH, owner => players.ContainsKey(owner) || players.Count < LobbyRules.MaxPlayers ? GridOf(owner) : null);
             Remember(all);
         }
 

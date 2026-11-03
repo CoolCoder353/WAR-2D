@@ -124,7 +124,7 @@ namespace WAR2D.Client.Replay
         /// <summary>v0.18: the match's graphs and timeline, when the file has them.</summary>
         public SummaryData? Summary => cursor?.Summary;
         /// <summary>v0.18: the per-player view can be offered.</summary>
-        public bool HasFog => cursor != null && cursor.HasFog;
+        public bool HasFog => cursor != null && cursor.HasFog && playerView != null;
         /// <summary>v0.18: which player's eyes are shown, or 0 for everything.</summary>
         public int Viewer => playerView != null ? playerView.Viewer : 0;
 
@@ -152,6 +152,7 @@ namespace WAR2D.Client.Replay
             else
             {
                 // Everything: an all-clear grid, in case a player's fog was showing.
+                if (h.FogW <= 0 || h.FogH <= 0) return;
                 var clear = new byte[h.FogW * h.FogH];
                 Array.Fill(clear, (byte)FogState.Visible);
                 ClientFog.ShowReplayGrid(clear, h.FogW, h.FogH, h.FogCellSize);
@@ -199,7 +200,9 @@ namespace WAR2D.Client.Replay
             var player = new GameObject("ReplayPlayer").AddComponent<ReplayPlayer>();
             player.cursor = cursor;
             player.cameraSettings = cameraSettings;
-            if (cursor.HasFog) player.playerView = new ReplayView(h.FogW, h.FogH, h.FogCellSize);
+            // An untrusted file's fog size must fit its map, or it simply offers no per-player view.
+            bool fogFits = h.FogCellSize > 0 && h.FogW >= 1 && h.FogH >= 1 && h.FogW <= h.MapSize && h.FogH <= h.MapSize;
+            if (cursor.HasFog && fogFits) player.playerView = new ReplayView(h.FogW, h.FogH, h.FogCellSize);
             player.Build();
             return player;
         }

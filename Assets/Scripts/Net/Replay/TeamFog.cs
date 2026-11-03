@@ -84,8 +84,9 @@ namespace WAR2D.Net.Replay
                 {
                     if (!Varint(b, ref i, end, out int skip) || !Varint(b, ref i, end, out int length) || i >= end) return false;
                     byte state = b[i++];
+                    if (skip > cells - cell) return false;
                     cell += skip;
-                    if (cell < 0 || length < 0 || cell + length > cells) return false;
+                    if (skip < 0 || length < 0 || cell < 0 || cell > cells || length > cells - cell) return false;
                     if (grid != null) for (int k = 0; k < length; k++) grid[cell + k] = state;
                     cell += length;
                 }

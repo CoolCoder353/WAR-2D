@@ -15,6 +15,7 @@ public static class PlayModeMatch
     /// <summary>Reloads the config with fast test settings (Map_2, short countdown, rich start).</summary>
     public static GameConfigData Configure()
     {
+        LobbyMemory.Disabled = true; // tests start from the config's defaults and never touch the player's lobby.json
         ConfigLoader.ResetForTests();
         GameConfigData config = ConfigLoader.LoadConfig();
         Assert.That(ConfigLoader.IsValid, Is.True, string.Join("\n", ConfigLoader.Errors));

@@ -35,7 +35,10 @@
             <ui:Button name="reroll-button" text="Reroll" class="button lobby__reroll" />
         </ui:VisualElement>
         <ui:ScrollView name="lobby-settings" mode="Vertical" horizontal-scroller-visibility="Hidden" class="lobby__settings">
-            <ui:Label name="settings-title" text="Match settings" class="lobby__column-title" />
+            <ui:VisualElement class="row lobby__settings-header">
+                <ui:Label name="settings-title" text="Match settings" class="lobby__column-title" />
+                <ui:Button name="lobby-reset" text="Reset" class="button lobby__reset" />
+            </ui:VisualElement>
             <ui:VisualElement name="lobby-block-map" class="panel lobby__block">
                 <ui:Label text="Map" class="panel__title" />
                 <ui:VisualElement class="lobby__block-content">

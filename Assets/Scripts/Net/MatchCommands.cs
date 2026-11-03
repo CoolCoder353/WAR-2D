@@ -78,6 +78,52 @@ public partial class GameCore
             player.TargetGift(connection, from, to, amount);
     }
 
+    /// <summary>
+    /// The host's Rematch (v0.18, Figma E2): everyone still connected goes back to this lobby with their seat, colour and team,
+    /// ready cleared; AI seats stay; the seed is new; everything else of the match is gone. Server owner only, once the match is
+    /// over and the replay is saved.
+    /// </summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_Rematch(NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_Rematch))) return;
+        WorldStateManager world = WorldStateManager.Instance;
+        bool replayPending = world != null && world.Recorder != null && !world.Recorder.Finished;
+        if (!RematchRules.May(CurrentState, IsServerOwner(sender), replayPending)) return;
+        RpcRematchStarting();
+        ResetForRematch();
+    }
+
+    /// <summary>The end screen says "Returning to the lobby" until the scene changes, and a rejoin ticket means nothing now.</summary>
+    [ClientRpc]
+    private void RpcRematchStarting()
+    {
+        RematchStarting?.Invoke();
+        WAR2D.Net.Rejoin.RejoinTicket.Clear();
+    }
+
+    /// <summary>Raised on clients when the host presses Rematch.</summary>
+    public static event System.Action RematchStarting;
+
+    /// <summary>Back to the lobby with the seats kept. Leaving the match's scene disposes its ECS world, as leaving does.</summary>
+    [Server]
+    private void ResetForRematch()
+    {
+        Rejoin.RevokeAll();
+        var away = new List<int>();
+        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
+            if (entry.Key != null && entry.Value.connection == null) away.Add(BuildingData.UIntToInt(entry.Key.netId));
+        foreach (int owner in away) EndAway(owner, WAR2D.Net.Rejoin.RejoinRefusal.MatchOver);
+        ResetMatchState();
+        foreach (ClientPlayer player in LobbyClientPlayers()) player.ready = false;
+        MatchSettings settings = Settings;
+        settings.Seed = NewRematchSeed();
+        Settings = settings;
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != LobbyScene) GameManager.Instance.ServerChangeScene(LobbyScene);
+    }
+
+    private static uint NewRematchSeed() => (uint)UnityEngine.Random.Range(1, int.MaxValue);
+
     /// <summary>Starts counting a new match.</summary>
     [Server]
     private void BeginStats()

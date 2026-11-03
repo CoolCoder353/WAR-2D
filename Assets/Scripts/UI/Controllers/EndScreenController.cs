@@ -20,7 +20,10 @@ namespace WAR2D.UI
         private SummaryChart chart;
         private int tab;
 
-        public event Action MainMenuClicked, QuitClicked;
+        public event Action MainMenuClicked, QuitClicked, RematchClicked;
+        private readonly Button rematch, mainMenu, quit;
+        private readonly Label rematchNote;
+        private bool returning;
 
         public EndScreenController(VisualElement root)
         {
@@ -36,8 +39,13 @@ namespace WAR2D.UI
             graphs = root.Q("end-graphs");
             timeline = root.Q("end-timeline");
             result = screen.Q(className: "end-screen__result");
-            root.Q<Button>("end-main-menu").clicked += () => MainMenuClicked?.Invoke();
-            root.Q<Button>("end-quit").clicked += () => QuitClicked?.Invoke();
+            mainMenu = root.Q<Button>("end-main-menu");
+            quit = root.Q<Button>("end-quit");
+            rematch = root.Q<Button>("end-rematch");
+            rematchNote = root.Q<Label>("end-rematch-note");
+            mainMenu.clicked += () => MainMenuClicked?.Invoke();
+            quit.clicked += () => QuitClicked?.Invoke();
+            rematch.clicked += () => RematchClicked?.Invoke();
         }
 
         /// <summary>Shows the Summary, Graphs and Timeline tabs (v0.18, Figma E1, E2) once the graphs and timeline arrive.</summary>
@@ -93,6 +101,31 @@ namespace WAR2D.UI
             row.Add(text);
             row.Add(players);
             return row;
+        }
+
+        /// <summary>
+        /// The button row (v0.18, Figma E2). The host: Rematch (off while the replay saves), Main menu and Quit. Everyone else:
+        /// Main menu and Quit, with "Waiting for the host…".
+        /// </summary>
+        public void ShowRematch(bool host, bool replayPending)
+        {
+            if (returning) return;
+            rematch.EnableInClassList("hidden", !host);
+            rematch.SetEnabled(!replayPending);
+            mainMenu.EnableInClassList("button--primary", !host);
+            rematchNote.text = "Waiting for the host…";
+            rematchNote.EnableInClassList("hidden", host);
+        }
+
+        /// <summary>The host pressed Rematch: the screen says so until the scene changes.</summary>
+        public void ShowReturning()
+        {
+            returning = true;
+            rematch.AddToClassList("hidden");
+            mainMenu.AddToClassList("hidden");
+            quit.AddToClassList("hidden");
+            rematchNote.text = "Returning to the lobby";
+            rematchNote.RemoveFromClassList("hidden");
         }
 
         /// <summary>The replay line under the buttons: hidden for null text; the bar shows only with a fraction.</summary>

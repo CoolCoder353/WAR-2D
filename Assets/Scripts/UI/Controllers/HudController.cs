@@ -190,9 +190,11 @@ namespace WAR2D.UI
             endScreen = new EndScreenController(root);
             endScreen.MainMenuClicked += () => { HostLeftNotice.LeavingOnPurpose = true; GameManager.Instance?.LeaveLobby(); };
             endScreen.QuitClicked += () => GameManager.Instance?.QuitGame();
+            endScreen.RematchClicked += () => GameCore.Instance?.Cmd_Rematch();
             ClientPlayer.MatchEnded += OnMatchEnded;
             GameCore.MatchStatsReceived += OnMatchStats;
             GameCore.MatchSummaryReceived += ShowSummary;
+            GameCore.RematchStarting += endScreen.ShowReturning;
             GameCore.ClearMatchStats(); // a new match
 
             Selection.FilterRequested += OnFilter;
@@ -233,6 +235,7 @@ namespace WAR2D.UI
             ClientPlayer.MatchEnded -= OnMatchEnded;
             GameCore.MatchStatsReceived -= OnMatchStats;
             GameCore.MatchSummaryReceived -= ShowSummary;
+            GameCore.RematchStarting -= endScreen.ShowReturning;
             Model.DiplomacyChanged -= ShowDiplomacyButton;
             if (alertSource != null) alertSource.AlertsReceived -= OnAlerts;
             alertSource = null;
@@ -405,6 +408,8 @@ namespace WAR2D.UI
             {
                 var (replayText, replayFraction) = EndScreenController.ReplayState(NetworkServer.active, WorldStateManager.Instance != null ? WorldStateManager.Instance.Recorder : null);
                 endScreen.ShowReplay(replayText, replayFraction);
+                bool owner = NetworkClient.localPlayer != null && NetworkClient.localPlayer.TryGetComponent(out ClientPlayer local) && local.isServerOwner;
+                endScreen.ShowRematch(owner, NetworkServer.active && WorldStateManager.Instance != null && WorldStateManager.Instance.Recorder != null && !WorldStateManager.Instance.Recorder.Finished);
             }
             minimap.Update(Time.unscaledDeltaTime);
             orderTags.Update(UnitCommander.Instance != null ? UnitCommander.Instance.Feedback : null, Camera.main, GameInput.Point.ReadValue<Vector2>());

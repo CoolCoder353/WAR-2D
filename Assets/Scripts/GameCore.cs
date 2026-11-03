@@ -84,6 +84,7 @@ public partial class GameCore : NetworkBehaviour
     {
         base.OnStartServer();
         InitSettings();
+        ApplyRememberedLobby();
     }
 
     [Server]
@@ -447,6 +448,7 @@ public partial class GameCore : NetworkBehaviour
 
     private void StartMatchServerSide()
     {
+        if (!DevApi.Allowed) RememberLobby();
         DiplomacyEnabled = Settings.Diplomacy;
         ResetPause();
         ForgetDiplomacyCooldowns(); // they count on the match clock, which starts again at 0
@@ -655,9 +657,9 @@ public partial class GameCore : NetworkBehaviour
         }
     }
 
-    /// <summary>Returns an empty server (e.g. a dedicated server whose players all left) to the lobby.</summary>
+    /// <summary>What every return to the lobby clears.</summary>
     [Server]
-    private void ResetToLobby()
+    private void ResetMatchState()
     {
         CurrentState = GameState.Lobby;
         ResetPause();
@@ -668,6 +670,13 @@ public partial class GameCore : NetworkBehaviour
         Teams.Clear();
         ForgetDiplomacyCooldowns();
         DiplomacyEnabled = false;
+    }
+
+    /// <summary>Returns an empty server (e.g. a dedicated server whose players all left) to the lobby.</summary>
+    [Server]
+    private void ResetToLobby()
+    {
+        ResetMatchState();
         ClearAiPlayers();
         foreach (ClientPlayer player in LobbyClientPlayers()) player.ready = false;
         if (SceneManager.GetActiveScene().name != LobbyScene && NetworkServer.active)
