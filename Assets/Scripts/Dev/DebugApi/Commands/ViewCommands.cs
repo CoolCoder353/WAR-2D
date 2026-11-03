@@ -2,6 +2,7 @@ using System.IO;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace WAR2D.Dev.DebugApi
 {
@@ -32,6 +33,27 @@ namespace WAR2D.Dev.DebugApi
                 var commander = UnitCommander.Instance ?? throw new DebugError("no UnitCommander (not in a match)");
                 commander.Selection.SelectIds(ids.Select(t => (int)t));
                 return commander.Selection.Selected.Count;
+            });
+            r.Add("uiclick", DebugRole.Any, "uiclick name: press the named UI Toolkit button, as a click does", a =>
+            {
+                string name = DebugArgs.Str(a, "name", "");
+                foreach (UnityEngine.UIElements.UIDocument doc in UnityEngine.Object.FindObjectsByType<UnityEngine.UIElements.UIDocument>(UnityEngine.FindObjectsSortMode.None))
+                {
+                    UnityEngine.UIElements.Button b = doc.rootVisualElement?.Q<UnityEngine.UIElements.Button>(name);
+                    if (b == null) continue;
+                    using (var submit = UnityEngine.UIElements.NavigationSubmitEvent.GetPooled())
+                    {
+                        submit.target = b;
+                        b.SendEvent(submit);
+                    }
+                    return "pressed " + name;
+                }
+                return "no button " + name;
+            });
+            r.Add("rings", DebugRole.Any, "rings on: hold the Show ranges key's rings on or off", a =>
+            {
+                WAR2D.Client.Overlays.HeldRangeOverlay.ForcedOn = DebugArgs.Bool(a, "on");
+                return WAR2D.Client.Overlays.HeldRangeOverlay.ForcedOn ? "rings on" : "rings off";
             });
             r.Add("screenshot", DebugRole.Any, "screenshot [path]: save a PNG at the end of this frame, answer with its path", a =>
             {

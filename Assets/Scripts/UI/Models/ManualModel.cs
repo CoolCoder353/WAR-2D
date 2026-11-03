@@ -102,16 +102,28 @@ namespace WAR2D.UI
             Build();
         }
 
+        private static readonly UnitType[] UnitOrder = { UnitType.Tank, UnitType.Builder, UnitType.Digger, UnitType.Scout, UnitType.Flamethrower, UnitType.Heavy, UnitType.Artillery, UnitType.Sniper, UnitType.SuicideBomber };
+        private static readonly BuildingType[] BuildingOrder = { BuildingType.Base, BuildingType.Miner, BuildingType.Barracks, BuildingType.HeavyFactory, BuildingType.SiegeWorkshop, BuildingType.Bomb, BuildingType.Radar, BuildingType.GunTurret, BuildingType.Jammer };
+
         /// <summary>The unit types with pages.</summary>
         public static IEnumerable<UnitType> UnitTypes
         {
-            get { foreach (UnitType t in Enum.GetValues(typeof(UnitType))) if (t != UnitType.None) yield return t; }
+            get
+            {
+                // The approved order first; any type added later still gets a page.
+                foreach (UnitType t in UnitOrder) yield return t;
+                foreach (UnitType t in Enum.GetValues(typeof(UnitType))) if (t != UnitType.None && Array.IndexOf(UnitOrder, t) < 0) yield return t;
+            }
         }
 
         /// <summary>The building types with pages.</summary>
         public static IEnumerable<BuildingType> BuildingTypes
         {
-            get { foreach (BuildingType t in Enum.GetValues(typeof(BuildingType))) if (t != BuildingType.None) yield return t; }
+            get
+            {
+                foreach (BuildingType t in BuildingOrder) yield return t;
+                foreach (BuildingType t in Enum.GetValues(typeof(BuildingType))) if (t != BuildingType.None && Array.IndexOf(BuildingOrder, t) < 0) yield return t;
+            }
         }
 
         /// <summary>A type's name as the game shows it.</summary>

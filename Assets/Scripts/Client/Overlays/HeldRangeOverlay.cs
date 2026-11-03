@@ -19,7 +19,10 @@ namespace WAR2D.Client.Overlays
         private readonly List<int> under = new List<int>(8);
 
         /// <summary>True while the key is held (the v0.15 selected-unit rings step aside).</summary>
-        public static bool Held => GameInput.ShowRanges.IsPressed();
+        public static bool Held => ForcedOn || GameInput.ShowRanges.IsPressed();
+
+        /// <summary>The control API's stand-in for the held key.</summary>
+        public static bool ForcedOn;
 
         public void Draw(OverlayFrame f)
         {
