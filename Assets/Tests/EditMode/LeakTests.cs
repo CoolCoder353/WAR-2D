@@ -452,6 +452,32 @@ public class LeakTests
         }
     }
 
+    /// <summary>A bomber's route reaches its owner, so a block of Tanks in the fog beside its target must never draw its aim.</summary>
+    [Test]
+    public void ABombersAimUsesOnlyWhatItsSideSees()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(96), c => c.GetUnit(UnitType.Tank).Damage = 0);
+        sim.Spawn(SimHarness.OwnerB, new float2(30, 30)); // seen: within the bomber's sight
+        for (int y = 0; y < 3; y++)
+            for (int x = 0; x < 3; x++)
+                sim.Spawn(SimHarness.OwnerB, new float2(35f + x, 29f + y)); // within AimTiles of the target, past its sight
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(26, 30), UnitType.SuicideBomber);
+        float farthest = 0f;
+        int aims = 0;
+        sim.Context.Settled += (data, tick, count) =>
+        {
+            int id = bomber[0];
+            if (id <= 0) return;
+            BlastAim aim = data.BlastAims[NetIdAllocator.IndexOf(id)];
+            if (aim.Id != id) return;
+            aims++;
+            farthest = math.max(farthest, aim.Point.x);
+        };
+        for (int t = 0; t < 8; t++) sim.Tick();
+        Assert.Greater(aims, 0, "it aimed");
+        Assert.Less(farthest, 31f, "the aim stays on what it sees");
+    }
+
     [Test]
     public void BlastsInTheFogAreNotShown()
     {

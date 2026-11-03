@@ -147,8 +147,37 @@ namespace WAR2D.Sim
                 BlastRadiusByType = data.BlastRadiusByType, BlastDamageByType = data.BlastDamageByType,
                 ArmourByType = data.ArmourByType, DamageTable = data.DamageTable,
             };
+            var blastWorth = new BlastWorth
+            {
+                Search = search,
+                Type = data.Type,
+                BuildingKind = data.BuildingKind,
+                CostByType = data.CostByType,
+                BuildingCostByKind = data.BuildingCostByKind,
+                BuildingAnchor = data.BuildingAnchor,
+                BuildingSize = data.BuildingSize,
+                FriendlyWeight = data.FriendlyWeight,
+            };
+            state.Dependency = new BlastAimJob
+            {
+                Worth = blastWorth,
+                Aims = data.BlastAims,
+                Target = data.Target,
+                TargetKind = data.TargetKind,
+                Stance = data.Stance,
+                BlastRadiusByType = data.BlastRadiusByType,
+                AimTiles = data.AimTiles,
+                Tick = clock.Tick % data.Slice,
+                Slice = data.Slice,
+            }.Schedule(count, 256, state.Dependency);
+
             state.Dependency = new BomberJob
             {
+                Aims = data.BlastAims,
+                Worth = blastWorth,
+                AimReachTiles = data.AimReachTiles,
+                GoodEnough = data.GoodEnough,
+                StuckTicks = (int)math.ceil(1f / data.Dt),
                 Hits = hits,
                 Blasts = data.BombBlasts,
                 Spent = data.BomberSpent,
@@ -566,8 +595,12 @@ namespace WAR2D.Sim
         public NativeQueue<DamageHit> Hits;
         public NativeQueue<BombBlast> Blasts;
         public NativeArray<byte> Spent;
+        public NativeArray<BlastAim> Aims;
         [ReadOnly] public NativeParallelHashSet<int> Forced;
         public BlastWorld World;
+        public BlastWorth Worth;
+        public float AimReachTiles, GoodEnough;
+        public int StuckTicks;
         [ReadOnly] public NativeArray<float2> Positions;
         [ReadOnly] public NativeArray<float> UnitHealth, BuildingHealth, Radius, RangeSqByType;
         [ReadOnly] public NativeArray<byte> TargetKind;
@@ -580,12 +613,34 @@ namespace WAR2D.Sim
                 Spent[i] = 0;
                 int type = World.Type[i];
                 if (UnitHealth[i] <= 0f || type >= World.BlastRadiusByType.Length || World.BlastRadiusByType[type] <= 0f) continue;
-                if (!Forced.Contains(IdOf[i]) && !InContact(i, type)) continue;
+                if (!Forced.Contains(IdOf[i]) && !ShouldGoOff(i, type)) continue;
                 Spent[i] = 1;
                 World.Detonate(i, type, Positions, UnitHealth, BuildingHealth, Hits, Blasts);
                 // The bomber itself is spent.
                 Hits.Enqueue(new DamageHit { Kind = TargetKinds.Unit, Slot = i, Amount = UnitHealth[i], AttackerOwner = World.OwnerId[i] });
             }
+        }
+
+        /// <summary>
+        /// With an aim: at the blast point; or touching an enemy where the blast is already good enough; or touching one and
+        /// stuck for a second (bodies in the way). Without one (a wall): on contact with the target, as before v0.18.
+        /// </summary>
+        private bool ShouldGoOff(int i, int type)
+        {
+            int id = IdOf[i], key = NetIdAllocator.IndexOf(id);
+            BlastAim aim = Aims[key];
+            if (aim.Id != id) return InContact(i, type);
+            float2 p = Positions[i];
+            float distance = math.distance(p, aim.Point);
+            if (distance <= AimReachTiles) return true;
+            if (distance < aim.Closest - 0.05f) { aim.Closest = distance; aim.StuckTicks = 0; }
+            else aim.StuckTicks++;
+            Aims[key] = aim;
+            int slot = Worth.Search.OwnerSlot[i];
+            if (!InContact(i, type) && !Worth.TouchesEnemy(p, slot, math.sqrt(RangeSqByType[type]), Radius[i], Radius)) return false;
+            if (aim.StuckTicks >= StuckTicks) return true;
+            float here = Worth.At(p, slot, World.BlastRadiusByType[type], i);
+            return here > 0f && here >= GoodEnough * aim.Worth;
         }
 
         private bool InContact(int i, int type)
