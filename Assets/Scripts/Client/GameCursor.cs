@@ -2,7 +2,7 @@ using UnityEngine;
 using WAR2D.Art;
 
 /// <summary>
-/// The approved v0.8 pixel cursors (<see cref="PixelIcons"/>, drawn at 2×): Attack while attack-move is armed,
+/// The approved v0.8 pixel cursors (<see cref="PixelIcons"/>, drawn at 2×): Attack while attack-move is armed or the pointer is on an enemy,
 /// Move while a move is armed, Invalid over a spot the server refused for the building preview, and the
 /// pointer otherwise. Sets the OS cursor only when the choice changes.
 /// </summary>
@@ -12,12 +12,14 @@ public sealed class GameCursor : MonoBehaviour
     public const int Scale = 2;
 
     private string shown;
+    private bool overAttackTarget;
 
     /// <summary>The cursor id for the current client state.</summary>
-    public static string Choose(OrderKind? armed, bool placing, bool? previewValid)
+    public static string Choose(OrderKind? armed, bool placing, bool? previewValid, bool overAttackTarget = false)
     {
         if (placing && previewValid == false) return "CursorInvalid";
         if (armed == OrderKind.AttackMove) return "CursorAttack";
+        if (overAttackTarget && !placing && armed == null) return "CursorAttack"; // v0.18 (Figma O1): the click attacks it
         if (armed == OrderKind.Move) return "CursorMove";
         return "CursorDefault";
     }
@@ -25,8 +27,11 @@ public sealed class GameCursor : MonoBehaviour
     private void Update()
     {
         BuildingPlacement placement = BuildingPlacement.Instance;
+        // A scan of every known unit: every third frame is quick enough for a cursor.
+        if (Time.frameCount % 3 == 0) overAttackTarget = UnitCommander.Instance != null && UnitCommander.Instance.PointerOverAttackTarget;
         string id = Choose(UnitCommander.Instance != null ? UnitCommander.Instance.ArmedOrder : null,
-            placement != null && placement.IsPlacing, placement != null ? placement.PreviewValid : null);
+            placement != null && placement.IsPlacing, placement != null ? placement.PreviewValid : null,
+            overAttackTarget);
         if (id == shown) return;
         shown = id;
         // The pointer's tip is its top-left pixel; the others aim with their centre.

@@ -452,6 +452,24 @@ public class LeakTests
         }
     }
 
+    /// <summary>An id the side can't see gets the Attack-move the client could have sent anyway: the reply says nothing about it.</summary>
+    [Test]
+    public void AnAttackOrderNeverNamesATargetTheSideCannotSee()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(128));
+        int[] attacker = sim.Spawn(SimHarness.OwnerA, new float2(20, 20));
+        int[] hidden = sim.Spawn(SimHarness.OwnerB, new float2(100, 100));
+        sim.Tick();
+        sim.Tick();
+        sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.Attack, OwnerId = SimHarness.OwnerA, TargetId = hidden[0], Tile = new int2(30, 20), Ids = attacker });
+        sim.Tick();
+        sim.Tick();
+        Unit a = sim.UnitById(attacker[0]);
+        Assert.AreEqual(Stances.AttackMove, a.Stance);
+        Assert.AreEqual(0, a.OrderTarget);
+        Assert.That(a.Position.y, Is.LessThan(25f), "it heads for the clicked tile, not the hidden unit");
+    }
+
     /// <summary>Routes reach their owner's client, so the shared goal must stop at the last tile the side saw the target on.</summary>
     [Test]
     public void AnAttackOrderNeverFollowsATargetIntoTheFog()

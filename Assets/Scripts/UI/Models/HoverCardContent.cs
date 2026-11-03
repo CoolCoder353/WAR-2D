@@ -47,6 +47,17 @@ namespace WAR2D.UI
             return this;
         }
 
+        /// <summary>A line the card picks out in gold (<see cref="GoldLine"/>).</summary>
+        public HoverCardContent GoldLine(string text)
+        {
+            Line(text);
+            Gold = text;
+            return this;
+        }
+
+        /// <summary>The one line shown in gold, or null.</summary>
+        public string Gold;
+
         /// <summary>Adds a secondary line.</summary>
         public HoverCardContent Line(string text)
         {
@@ -97,7 +108,7 @@ namespace WAR2D.UI
             {
                 case OrderKind.Move: return new HoverCardContent("Move", key, "Drive to a point. Right-clicking the map does the same.");
                 case OrderKind.AttackMove:
-                    return new HoverCardContent("Attack-move", key, "Move there and fight anything on the way.").Line($"{queueKey} + {key}: add to the queue");
+                    return new HoverCardContent("Attack-move", key, "Move there and fight anything on the way.").Line($"{queueKey} + {key}: add to the queue").GoldLine("Click an enemy to attack it");
                 case OrderKind.Stop: return new HoverCardContent("Stop", key, "Drop every order now.");
                 case OrderKind.Hold: return new HoverCardContent("Hold", key, "Stay put; fire only at what is in range.");
                 case OrderKind.Repair:

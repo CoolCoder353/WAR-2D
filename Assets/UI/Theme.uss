@@ -657,6 +657,7 @@ Button.lobby-card__strip:hover { border-width: 0 2px 0 0; border-color: var(--co
 .hover-card__value--cost { color: var(--color-readout); }
 .hover-card__value--danger { color: var(--color-danger); }
 .hover-card__line { font-size: var(--font-size-12); color: var(--color-text-secondary); padding: 0; margin: 0 0 6px 0; white-space: normal; }
+.hover-card__line--gold { color: var(--color-readout); }
 .hover-card__warning { font-size: var(--font-size-12); color: var(--color-warning); padding: 0; white-space: normal; }
 .hover-card__reason { font-size: var(--font-size-12); color: var(--color-danger); padding: 0; white-space: normal; }
 

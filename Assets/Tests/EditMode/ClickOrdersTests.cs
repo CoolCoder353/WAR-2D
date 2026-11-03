@@ -5,6 +5,26 @@ public class ClickOrdersTests
     private const int Me = 1, Ally = 2, Enemy = 3;
     private static bool IsEnemy(int owner) => owner == Enemy;
 
+    [Test]
+    public void TheArmyAttacksASeenEnemyUnitAndWorkersKeepTheirClick()
+    {
+        var (builders, diggers, others) = On(new ClickTarget { Tile = TileType.Ground, EnemyUnit = 77 });
+        Assert.AreEqual(OrderKind.Attack, others);
+        Assert.AreEqual(OrderKind.Move, builders);
+        Assert.AreEqual(OrderKind.Move, diggers);
+    }
+
+    [Test]
+    public void TheArmyAttacksASeenEnemyBuildingButMovesOntoAFriendsOrAGhost()
+    {
+        var enemy = new ClickTarget { Tile = TileType.Ground, HasBuilding = true, BuildingId = 9, BuildingOwner = Enemy };
+        Assert.AreEqual(OrderKind.Attack, On(enemy).others);
+        var own = new ClickTarget { Tile = TileType.Ground, HasBuilding = true, BuildingId = 9, BuildingOwner = Me };
+        Assert.AreEqual(OrderKind.Move, On(own).others);
+        var ghost = new ClickTarget { Tile = TileType.Ground }; // TargetAt leaves ghosts out
+        Assert.AreEqual(OrderKind.Move, On(ghost).others);
+    }
+
     private static (OrderKind builders, OrderKind diggers, OrderKind others) On(ClickTarget target) => ClickOrders.For(target, Me, IsEnemy);
 
     [Test]

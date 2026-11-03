@@ -24,6 +24,8 @@ public class CommandIconTests
         Assert.AreEqual("CursorInvalid", GameCursor.Choose(OrderKind.AttackMove, true, false), "a refused spot wins");
         Assert.AreEqual("CursorAttack", GameCursor.Choose(OrderKind.AttackMove, false, null));
         Assert.AreEqual("CursorDefault", GameCursor.Choose(null, true, true));
+        Assert.AreEqual("CursorAttack", GameCursor.Choose(null, false, null, overAttackTarget: true));
+        Assert.AreEqual("CursorMove", GameCursor.Choose(OrderKind.Move, false, null, overAttackTarget: true), "an armed Move is a Move");
     }
 
     [Test]
