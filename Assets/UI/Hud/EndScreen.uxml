@@ -4,7 +4,10 @@
             <ui:Label name="end-title" text="Victory" class="end-screen__title" />
             <ui:Label name="end-subtitle" text="" class="text end-screen__subtitle" />
         </ui:VisualElement>
+        <ui:VisualElement name="end-tabs" class="row end-screen__tabs" />
         <ui:VisualElement name="end-stats" class="panel end-screen__stats" />
+        <ui:VisualElement name="end-graphs" class="panel end-screen__panel hidden" />
+        <ui:VisualElement name="end-timeline" class="panel end-screen__panel hidden" />
         <ui:VisualElement class="row end-screen__buttons">
             <ui:Button name="end-main-menu" text="Main menu" class="button button--primary" />
             <ui:Button name="end-quit" text="Quit" class="button" />

@@ -144,6 +144,13 @@ public partial class WorldStateManager : NetworkBehaviour
         SiegeConfig siegeConfig = ConfigLoader.LoadConfig().Siege;
         radars = new RadarService(siegeConfig.RadarClearSeconds, siegeConfig.RadarAlertCooldownSeconds);
         Sim.UnitKilled += (owner, killer) => GameCore.Instance?.Stats.UnitDied(owner, killer);
+        Sim.UnitDeath += (owner, killer, type, position) =>
+        {
+            if (GameCore.Instance == null || GameCore.Instance.CurrentState != GameState.Playing) return;
+            Config.GameConfigData units = Config.ConfigLoader.LoadConfig();
+            float worth = units.Units.TryGetValue((UnitType)type, out Config.UnitConfig unit) ? unit.UpfrontCost : 0f;
+            GameCore.Instance.Summary.Death(GameCore.MatchNow, owner, killer, worth, position.x, position.y);
+        };
         Sim.UnitSpawned += owner => GameCore.Instance?.Stats.UnitBuilt(owner);
         Sim.VisionShareChanged += (from, to, on) =>
             Alerts.Add(to, new Alert { Kind = on ? AlertKind.VisionSharedWithYou : AlertKind.VisionUnshared, OtherOwnerId = from });
@@ -506,7 +513,8 @@ public partial class WorldStateManager : NetworkBehaviour
         // One Burst pass by owner slot: a dictionary update per unit cost ~6 ms at 80,000 units (docs/perf/v0.12).
         using var armies = new NativeArray<int>(SimData.MaxOwners, Allocator.TempJob);
         using var unpaid = new NativeArray<byte>(SimData.MaxOwners, Allocator.TempJob);
-        new CountArmiesJob { Count = count, OwnerSlot = data.OwnerSlot, Unpaid = data.Unpaid, Armies = armies, UnpaidBySlot = unpaid }.Run();
+        using var worth = new NativeArray<float>(SimData.MaxOwners, Allocator.TempJob);
+        new CountArmiesJob { Count = count, OwnerSlot = data.OwnerSlot, Unpaid = data.Unpaid, Armies = armies, UnpaidBySlot = unpaid, Type = data.Type, CostByType = data.CostByType, Worth = worth }.Run();
         armyScratch.Clear();
         for (int s = 0; s < SimData.MaxOwners; s++)
         {
@@ -516,7 +524,26 @@ public partial class WorldStateManager : NetworkBehaviour
             if (unpaid[s] != 0) core.GetServerPlayerById(owner)?.MarkUnpaid();
         }
         foreach (KeyValuePair<int, int> army in armyScratch) core.Stats.Army(army.Key, army.Value);
+        SampleSummary(core, data, worth);
         Recorder?.Timeline(Sim.Clock.Tick, TimelineRows(core, armyScratch));
+    }
+
+    /// <summary>The end screen's graphs (v0.18): one sample every <c>Summary/SampleSeconds</c> of match time, during Playing.</summary>
+    [Server]
+    private static void SampleSummary(GameCore core, SimData data, NativeArray<float> worth)
+    {
+        for (int s = 0; s < SimData.MaxOwners; s++)
+            if (data.OwnerIdBySlot[s] != 0 && data.HqLastHitBy[s] != 0) core.NoteHqHit(data.OwnerIdBySlot[s], data.HqLastHitBy[s]);
+        double now = GameCore.MatchNow;
+        if (core.CurrentState != GameState.Playing || !core.Summary.SampleDue(now)) return;
+        var byOwner = new Dictionary<int, float>(SimData.MaxOwners);
+        for (int s = 0; s < SimData.MaxOwners; s++)
+            if (data.OwnerIdBySlot[s] != 0) byOwner[data.OwnerIdBySlot[s]] = worth[s];
+        core.Summary.Sample(now, core.PlayerOrder, owner =>
+        {
+            PlayerStats stats = core.Stats.Of(owner);
+            return (byOwner.TryGetValue(owner, out float army) ? army : 0f, stats.UnitsKilled, stats.UnitsLost);
+        });
     }
 
     /// <summary>Units per owner slot, and whether any of a slot's units is unpaid.</summary>
@@ -527,6 +554,9 @@ public partial class WorldStateManager : NetworkBehaviour
         [Unity.Collections.ReadOnly] public NativeArray<byte> OwnerSlot, Unpaid;
         public NativeArray<int> Armies;
         public NativeArray<byte> UnpaidBySlot;
+        [Unity.Collections.ReadOnly] public NativeArray<byte> Type;
+        [Unity.Collections.ReadOnly] public NativeArray<float> CostByType;
+        public NativeArray<float> Worth;
 
         public void Execute()
         {
@@ -535,6 +565,7 @@ public partial class WorldStateManager : NetworkBehaviour
                 int s = OwnerSlot[i];
                 if (s >= Armies.Length) continue;
                 Armies[s]++;
+                Worth[s] += CostByType[Type[i]];
                 if (Unpaid[i] != 0) UnpaidBySlot[s] = 1;
             }
         }
@@ -946,6 +977,7 @@ public partial class WorldStateManager : NetworkBehaviour
             ClientPlayer placerObject = GameCore.Instance?.ClientPlayerOf(placer);
             if (placerObject != null) placerObject.hasPlacedHQ = true;
             GameCore.Instance?.OnHqPlaced(placer, positon);
+            GameCore.Instance?.NoteHq(placer, positon);
         }
         Sim.Commands.Enqueue(new SimCommand
         {

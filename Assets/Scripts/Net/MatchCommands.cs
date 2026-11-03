@@ -12,6 +12,9 @@ public partial class GameCore
     /// <summary>Every player's statistics for the current match (server only).</summary>
     public MatchStats Stats { get; } = new MatchStats();
 
+    /// <summary>The end screen's graphs and timeline, collected during Playing (v0.18, server only).</summary>
+    public MatchSummary Summary { get; } = new MatchSummary();
+
     /// <summary>Server time the match started playing (for the end screen's duration).</summary>
     [SyncVar]
     public double MatchStartTime;
@@ -62,7 +65,7 @@ public partial class GameCore
         if (CurrentState != GameState.Playing) return false;
         ServerPlayer player = GetServerPlayerById(owner);
         if (player == null || player.state != PlayerState.Playing) return false;
-        EliminatePlayer(owner);
+        EliminatePlayer(owner, EliminationCause.Surrendered);
         return true;
     }
 
@@ -80,6 +83,10 @@ public partial class GameCore
     private void BeginStats()
     {
         Stats.Clear();
+        Summary.Begin(Config.ConfigLoader.LoadConfig().Summary);
+        summaryEliminated.Clear();
+        hqLastHit.Clear();
+        hqTiles.Clear();
         lastGift.Clear();
     }
 
@@ -97,7 +104,48 @@ public partial class GameCore
         }
         var won = new List<int>(winners ?? new int[0]);
         RpcMatchStats(owners, Stats.Snapshot(owners), won.ToArray(), (float)(NetworkTime.time - MatchStartTime), ResolvedStyles(owners));
+        SummaryData summary = BuildSummary();
+        WorldStateManager.Instance?.Recorder?.Summary(summary);
+        RpcMatchSummary(summary);
     }
+
+    /// <summary>The summary with the map's size and each player's HQ, so a client can name places. Public at game over only.</summary>
+    [Server]
+    private SummaryData BuildSummary()
+    {
+        WorldStateManager world = WorldStateManager.Instance;
+        var owners = new List<int>();
+        var xs = new List<float>();
+        var ys = new List<float>();
+        if (world != null)
+            foreach (KeyValuePair<int, Unity.Mathematics.int2> hq in hqTiles)
+            {
+                owners.Add(hq.Key);
+                xs.Add(hq.Value.x);
+                ys.Add(hq.Value.y);
+            }
+        return Summary.Build(world != null && world.Map != null ? world.Map.Grid.Width : 0, owners.ToArray(), xs.ToArray(), ys.ToArray());
+    }
+
+    private readonly Dictionary<int, Unity.Mathematics.int2> hqTiles = new Dictionary<int, Unity.Mathematics.int2>();
+
+    /// <summary>Remembers where a player's HQ was placed, so the timeline can say "near their base" after it falls.</summary>
+    [Server]
+    public void NoteHq(int owner, Unity.Mathematics.int2 tile) => hqTiles[owner] = tile;
+
+    /// <summary>The end screen's graphs and timeline (v0.18), for every player, once the match is over.</summary>
+    [ClientRpc]
+    public void RpcMatchSummary(SummaryData summary)
+    {
+        LastMatchSummary = summary;
+        MatchSummaryReceived?.Invoke(summary);
+    }
+
+    /// <summary>The last match's graphs and timeline on this client.</summary>
+    public static SummaryData? LastMatchSummary { get; private set; }
+
+    /// <summary>Raised on clients when the graphs and timeline arrive.</summary>
+    public static event System.Action<SummaryData> MatchSummaryReceived;
 
     /// <summary>
     /// Each owner's played AI style (v0.14; <see cref="AiStyle.Random"/> for humans), by <paramref name="owners"/>. This
@@ -127,7 +175,11 @@ public partial class GameCore
     public static event System.Action<MatchResult> MatchStatsReceived;
 
     /// <summary>Forgets the last result (a new match starts).</summary>
-    public static void ClearMatchStats() => LastMatchStats = null;
+    public static void ClearMatchStats()
+    {
+        LastMatchStats = null;
+        LastMatchSummary = null;
+    }
 }
 
 /// <summary>The final result of a match as clients receive it.</summary>

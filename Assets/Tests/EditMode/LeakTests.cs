@@ -470,6 +470,15 @@ public class LeakTests
         Assert.That(a.Position.y, Is.LessThan(25f), "it heads for the clicked tile, not the hidden unit");
     }
 
+    /// <summary>The graphs and timeline say what every player did all match, so they travel with the statistics, behind the same gate.</summary>
+    [Test]
+    public void SummaryIsSentOnlyAtGameOver()
+    {
+        foreach (GameState state in System.Enum.GetValues(typeof(GameState)))
+            Assert.AreEqual(state == GameState.GameOver, StatsRules.MaySend(state), $"summary in {state}");
+        Assert.IsTrue(typeof(GameCore).GetMethod(nameof(GameCore.RpcMatchSummary)).IsDefined(typeof(Mirror.ClientRpcAttribute), false));
+    }
+
     /// <summary>Routes reach their owner's client, so the shared goal must stop at the last tile the side saw the target on.</summary>
     [Test]
     public void AnAttackOrderNeverFollowsATargetIntoTheFog()

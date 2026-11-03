@@ -85,6 +85,7 @@ Unused today: `Spawner.asset`, `Test.asset` and the `Pallets` tile palette (remo
 | `IconMove`, `IconAttackMove`, `IconStop`, `IconHold`, `IconMiner`, `IconSpawner`, `IconWall` | vector paths in `UI/Controllers/CommandIcon.cs` (approved v0.6 Figma icons) |
 | `IconBuilder`, `IconDigger`, `IconBomb`, `IconRepair` | none (v0.7 command card) |
 | `IconGunTurret`, `IconJammer` | `Art/PixelIcons.cs` bitmaps (v0.13, Figma `Icons – v0.13`) |
+| `MarkElimination`, `MarkFight` | the end screen's timeline and the replay viewer's seek bar (v0.18) |
 | `CursorDefault`, `CursorMove`, `CursorAttack`, `CursorInvalid` | the OS cursor |
 
 ## UI

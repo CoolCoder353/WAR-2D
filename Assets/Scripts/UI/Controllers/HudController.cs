@@ -192,6 +192,7 @@ namespace WAR2D.UI
             endScreen.QuitClicked += () => GameManager.Instance?.QuitGame();
             ClientPlayer.MatchEnded += OnMatchEnded;
             GameCore.MatchStatsReceived += OnMatchStats;
+            GameCore.MatchSummaryReceived += ShowSummary;
             GameCore.ClearMatchStats(); // a new match
 
             Selection.FilterRequested += OnFilter;
@@ -231,6 +232,7 @@ namespace WAR2D.UI
             Palettes.Changed -= ApplyPalette;
             ClientPlayer.MatchEnded -= OnMatchEnded;
             GameCore.MatchStatsReceived -= OnMatchStats;
+            GameCore.MatchSummaryReceived -= ShowSummary;
             Model.DiplomacyChanged -= ShowDiplomacyButton;
             if (alertSource != null) alertSource.AlertsReceived -= OnAlerts;
             alertSource = null;
@@ -591,6 +593,13 @@ namespace WAR2D.UI
             EndResult mine = result.Winners.Length == 0 ? EndResult.Draw : won ? EndResult.Victory : EndResult.Defeat;
             endScreen.Show(mine, EndScreenController.Line(mine, winners, result.DurationSeconds));
             endScreen.ShowStats(result, NameOf, PlayerPalette.ColourIndexOf, owner => ResultTagOf(owner, result));
+            if (GameCore.LastMatchSummary.HasValue) ShowSummary(GameCore.LastMatchSummary.Value);
+        }
+
+        private void ShowSummary(SummaryData summary)
+        {
+            if (!endScreen.IsShown) return; // the statistics show the screen; they call this again
+            endScreen.ShowSummary(summary, NameOf, PlayerPalette.OfOwner, Model.LocalOwnerId);
         }
 
         private VisualElement spectatingPanel;

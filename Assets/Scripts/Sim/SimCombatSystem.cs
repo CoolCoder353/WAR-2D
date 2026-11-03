@@ -247,6 +247,9 @@ namespace WAR2D.Sim
                 BuildingHealth = data.BuildingHealth,
                 BuildingDamage = data.BuildingDamage,
                 WallDamage = data.WallDamage,
+                HqLastHitBy = data.HqLastHitBy,
+                BuildingKind = data.BuildingKind,
+                BuildingOwnerSlot = data.BuildingOwnerSlot,
             }.Schedule(state.Dependency);
 
             state.Dependency = new LastGaspJob
@@ -259,6 +262,9 @@ namespace WAR2D.Sim
                 BuildingHealth = data.BuildingHealth,
                 BuildingDamage = data.BuildingDamage,
                 LastHitBy = data.LastHitBy,
+                HqLastHitBy = data.HqLastHitBy,
+                BuildingKind = data.BuildingKind,
+                BuildingOwnerSlot = data.BuildingOwnerSlot,
                 World = blastWorld,
                 Positions = data.Positions,
                 MaxHealth = data.MaxHealth,
@@ -747,7 +753,8 @@ namespace WAR2D.Sim
         public NativeQueue<TileWork> WallDamage;
         public NativeArray<byte> Spent;
         public NativeArray<float> Health, BuildingHealth, BuildingDamage;
-        public NativeArray<int> LastHitBy;
+        public NativeArray<int> LastHitBy, HqLastHitBy;
+        [ReadOnly] public NativeArray<byte> BuildingKind, BuildingOwnerSlot;
         public BlastWorld World;
         [ReadOnly] public NativeArray<float2> Positions;
         [ReadOnly] public NativeArray<float> MaxHealth;
@@ -770,7 +777,7 @@ namespace WAR2D.Sim
                 }
                 if (!any) return;
                 for (int i = 0; i < World.UnitCount; i++) if (Spent[i] != 0) Health[i] = 0f;
-                new ApplyDamageJob { Hits = Hits, Health = Health, LastHitBy = LastHitBy, BuildingHealth = BuildingHealth, BuildingDamage = BuildingDamage, WallDamage = WallDamage }.Execute();
+                new ApplyDamageJob { Hits = Hits, Health = Health, LastHitBy = LastHitBy, BuildingHealth = BuildingHealth, BuildingDamage = BuildingDamage, WallDamage = WallDamage, HqLastHitBy = HqLastHitBy, BuildingKind = BuildingKind, BuildingOwnerSlot = BuildingOwnerSlot }.Execute();
             }
         }
     }
@@ -785,6 +792,8 @@ namespace WAR2D.Sim
         public NativeArray<float> BuildingHealth;
         public NativeArray<float> BuildingDamage;
         public NativeQueue<TileWork> WallDamage;
+        public NativeArray<int> HqLastHitBy;
+        [ReadOnly] public NativeArray<byte> BuildingKind, BuildingOwnerSlot;
 
         public void Execute()
         {
@@ -803,6 +812,7 @@ namespace WAR2D.Sim
                 {
                     BuildingHealth[hit.Slot] = math.max(0f, BuildingHealth[hit.Slot] - hit.Amount);
                     BuildingDamage[hit.Slot] += hit.Amount;
+                    if (BuildingKind[hit.Slot] == (byte)BuildingType.Base && BuildingOwnerSlot[hit.Slot] < HqLastHitBy.Length) HqLastHitBy[BuildingOwnerSlot[hit.Slot]] = hit.AttackerOwner;
                 }
             }
         }

@@ -16,7 +16,9 @@ namespace WAR2D.UI
         private static readonly string[] Columns = { "Units built", "Lost", "Killed", "Buildings", "Lost", "Mined", "Spent", "Gifted out", "Gifted in", "Peak army" };
         private readonly VisualElement screen, stats;
         private readonly Label title, subtitle, replayLabel;
-        private readonly VisualElement replay, replayBar, replayFill;
+        private readonly VisualElement replay, replayBar, replayFill, tabs, graphs, timeline, result;
+        private SummaryChart chart;
+        private int tab;
 
         public event Action MainMenuClicked, QuitClicked;
 
@@ -30,8 +32,67 @@ namespace WAR2D.UI
             replayLabel = root.Q<Label>("replay-progress-label");
             replayBar = root.Q("replay-progress-bar");
             replayFill = root.Q("replay-progress-fill");
+            tabs = root.Q("end-tabs");
+            graphs = root.Q("end-graphs");
+            timeline = root.Q("end-timeline");
+            result = screen.Q(className: "end-screen__result");
             root.Q<Button>("end-main-menu").clicked += () => MainMenuClicked?.Invoke();
             root.Q<Button>("end-quit").clicked += () => QuitClicked?.Invoke();
+        }
+
+        /// <summary>Shows the Summary, Graphs and Timeline tabs (v0.18, Figma E1, E2) once the graphs and timeline arrive.</summary>
+        public void ShowSummary(in SummaryData summary, Func<int, string> nameOf, Func<int, UnityEngine.Color32> colourOf, int local)
+        {
+            if (tabs == null) return;
+            chart ??= new SummaryChart(graphs);
+            chart.Show(summary, nameOf, colourOf, local);
+            timeline.Clear();
+            foreach (TimelineEntry entry in TimelineText.Entries(summary, nameOf, local)) timeline.Add(TimelineRow(entry, colourOf));
+            result?.AddToClassList("end-screen__result--tabs");
+            stats.AddToClassList("end-screen__stats--tabs");
+            SelectTab(tab);
+        }
+
+        private void SelectTab(int chosen)
+        {
+            tab = chosen;
+            tabs.Clear();
+            string[] names = { "Summary", "Graphs", "Timeline" };
+            for (int i = 0; i < names.Length; i++)
+            {
+                int index = i;
+                tabs.Add(Widgets.Option("end-tab-" + names[i].ToLowerInvariant(), names[i], i == tab, true, () => SelectTab(index)));
+            }
+            stats.EnableInClassList("hidden", tab != 0 || stats.childCount == 0);
+            graphs.EnableInClassList("hidden", tab != 1);
+            timeline.EnableInClassList("hidden", tab != 2);
+        }
+
+        private static VisualElement TimelineRow(in TimelineEntry entry, Func<int, UnityEngine.Color32> colourOf)
+        {
+            var row = new VisualElement();
+            row.AddToClassList("timeline-row");
+            var time = new Label(SummaryModel.Time(entry.Time));
+            time.AddToClassList("timeline-row__time");
+            var mark = new VisualElement();
+            mark.AddToClassList("timeline-row__mark");
+            mark.style.backgroundImage = new StyleBackground(WAR2D.Art.PixelIcons.Texture(entry.Fight ? "MarkFight" : "MarkElimination", 2));
+            var text = new Label(entry.Text);
+            text.AddToClassList("timeline-row__text");
+            var players = new VisualElement();
+            players.AddToClassList("timeline-row__players");
+            foreach (int owner in entry.Owners)
+            {
+                var swatch = new VisualElement();
+                swatch.AddToClassList("swatch");
+                swatch.style.backgroundColor = (UnityEngine.Color)colourOf(owner);
+                players.Add(swatch);
+            }
+            row.Add(time);
+            row.Add(mark);
+            row.Add(text);
+            row.Add(players);
+            return row;
         }
 
         /// <summary>The replay line under the buttons: hidden for null text; the bar shows only with a fraction.</summary>
@@ -116,7 +177,7 @@ namespace WAR2D.UI
                 for (int c = 0; c < values.Length; c++) row.Add(Cell(values[c], "stats-cell__value", narrow: c == 1 || c == 2 || c == 4));
                 stats.Add(row);
             }
-            stats.RemoveFromClassList("hidden");
+            stats.EnableInClassList("hidden", tab != 0);
         }
 
         private static VisualElement Cell(string text, string labelClass, bool player = false, bool narrow = false)

@@ -101,6 +101,15 @@ namespace WAR2D.Net.Replay
             Enqueue(ReplayChannel.Timeline, System.Text.Encoding.UTF8.GetBytes(json));
         }
 
+        /// <summary>The end screen's graphs and timeline (v0.18), written once at game over so the viewer has them from the start of playback.</summary>
+        public void Summary(SummaryData summary)
+        {
+            bool wasStopped = stopped;
+            stopped = false; // goes in even when the size cap stopped the rest
+            Enqueue(ReplayChannel.Summary, System.Text.Encoding.UTF8.GetBytes(Newtonsoft.Json.JsonConvert.SerializeObject(summary)));
+            stopped = wasStopped;
+        }
+
         /// <summary>Writes the outcome, closes the file and renames it from <c>.part</c>.</summary>
         public void End(int tick, string outcomeJson)
         {
