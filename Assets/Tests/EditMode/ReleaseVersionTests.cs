@@ -28,7 +28,7 @@ public class ReleaseVersionTests
     public void ABadVersionIsRefused(string version)
     {
         var errors = new System.Collections.Generic.List<string>();
-        Config.ConfigParser.Parse(ConfigParserTests.ValidXml.Replace("<Version>0.17.0</Version>", $"<Version>{version}</Version>"), errors);
+        Config.ConfigParser.Parse(ConfigParserTests.ValidXml.Replace("<Version>0.18.0</Version>", $"<Version>{version}</Version>"), errors);
         Assert.That(errors, Has.Some.Contains("Release"));
     }
 }

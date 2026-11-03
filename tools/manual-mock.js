@@ -27,8 +27,6 @@ const KEYS = {
   CardTop1: 'Q', CardTop2: 'W', CardTop3: 'E', CardTop4: 'T', CardBottom1: 'Z', CardBottom2: 'X', CardBottom3: 'C', CardBottom4: 'V', CardBottom5: 'N',
   FieldManual: 'F1', ShowRanges: 'Alt',
 };
-// Spec section 9: numbers v0.18 adds to the config. Until they land they show here, and the page marks them.
-const PENDING = { 'Bomber/LastGaspHealth': 0.1 };
 // Theme.uss, standard palette.
 const PLAYER_1 = [0x4d, 0xa3, 0xff];
 const TEAM_GAIN = 1.55; // TeamSprite.shader
@@ -166,17 +164,12 @@ function resolver(cfg) {
     HeavyFactoryMiners: bld('HeavyFactory').RunningCost / mining,
     DecaySeconds: 100 / cfg.lookup('Resources/DecayPercentPerSecond'),
     DemolishPercent: cfg.lookup('Siege/DemolishRefund') * 100,
+    LastGaspPercent: cfg.lookup('Bomber/LastGaspHealth') * 100,
   };
   return (p) => {
     const [head, ...rest] = p.split('/');
     if (head === 'Key') { if (!(rest[0] in KEYS)) throw new Error(`no key ${rest[0]}`); return `<span class="chip">${esc(KEYS[rest[0]])}</span>`; }
     if (head === 'Derived') { if (!(rest[0] in derived)) throw new Error(`no figure ${rest[0]}`); return fmt(derived[rest[0]]); }
-    if (head === 'Pending') {
-      const percent = rest[rest.length - 1].endsWith('%');
-      const key = rest.join('/').replace('%', '');
-      if (!(key in PENDING)) throw new Error(`nothing pending for ${key}`);
-      return `<span class="pending" title="From the v0.18 spec, not yet in GameConfig.xml">${fmt(percent ? PENDING[key] * 100 : PENDING[key])}${percent ? ' %' : ''}</span>`;
-    }
     if (head === 'Unit' || head === 'Building') {
       const row = head === 'Unit' ? unit(rest[0]) : bld(rest[0]);
       if (!row || !(rest[1] in row)) throw new Error(`no ${p} in the config`);
@@ -288,7 +281,7 @@ function render(cfg, text, sprites, fontUri, table) {
   pageIds['Damage table'] = 'damage';
   const link = (type, label) => `<a href="#${pageIds[nameOf(type)]}" data-go="${pageIds[nameOf(type)]}">${esc(label || nameOf(type))}</a>`;
   const words = (s) => esc(s)
-    .replace(/\{([\w/%]+)\}/g, (_, p) => fill(p))
+    .replace(/\{([\w/]+)\}/g, (_, p) => fill(p))
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\[\[(.+?)\]\]/g, (_, ref) => { const [n, label] = ref.split('|'); if (!pageIds[n]) throw new Error(`no page for [[${n}]]`); return `<a href="#${pageIds[n]}" data-go="${pageIds[n]}">${label || n}</a>`; });
   // A sprite is a <span> over its sheet; "move" loops its frames at 10 fps, "turn" also walks through its facings.
@@ -392,7 +385,6 @@ function render(cfg, text, sprites, fontUri, table) {
 
   const sections = [['units', 'Units'], ['buildings', 'Buildings'], ['damage', 'Damage table'], ['rules', 'Rules'], ['controls', 'Controls']];
   const index = pages.filter((p) => !['units', 'buildings', 'rules'].includes(p.id)).map((p) => ({ id: p.id, title: p.title, section: sections.find((s) => s[0] === p.section)[1] }));
-  const pending = Object.keys(PENDING).join(', ');
 
   return `<meta charset="utf-8"><title>Field Manual Mock</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -467,7 +459,6 @@ strong { font-weight: 400; color: var(--readout); }
 .mini .sprite { background-color: transparent; }
 .mini .sprite.missing { padding: 2px 4px; font-size: 14px; }
 .none { color: var(--muted); }
-.pending { color: var(--readout); border-bottom: 2px dotted var(--readout); }
 .grid-wrap { overflow-x: auto; max-width: 720px; }
 .grid { border-collapse: separate; border-spacing: 2px; width: 100%; font-variant-numeric: tabular-nums; }
 .grid th { font-weight: 400; padding: 4px 8px; text-align: center; color: var(--muted); font-size: 19px; white-space: nowrap; }
@@ -552,7 +543,7 @@ strong { font-weight: 400; color: var(--readout); }
     </main>
   </div>
 </div>
-<p class="foot">Mock for review, generated from GameConfig.xml (v${esc(cfg.version)}). Numbers underlined with dots come from the v0.18 spec and aren't in the config yet (${esc(pending)}). Sprites are from the built atlases in player colour 1.</p>
+<p class="foot">Mock for review, generated from GameConfig.xml (v${esc(cfg.version)}). Sprites are from the built atlases in player colour 1.</p>
 <script>
 const INDEX = ${JSON.stringify(index)};
 const store = { get() { try { return localStorage.getItem('manual-page'); } catch (e) { return null; } }, set(v) { try { localStorage.setItem('manual-page', v); } catch (e) {} } };

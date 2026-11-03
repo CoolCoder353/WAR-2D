@@ -96,7 +96,7 @@
       "body": [
         "On an attack-move, or idle with an enemy in sight, it runs in and explodes. Its blast hits every unit, building and wall within {Unit/SuicideBomber/BlastRadius} tiles, **your own and your allies' included**.",
         "It aims for the middle of a group, where its blast catches the most value for the least harm to your side. Against a building it goes for the middle of a side. It can only aim at what your side sees.",
-        "**A bomber at {Pending/Bomber/LastGaspHealth%} health or less explodes**, which in practice means a bomber shot down explodes where it falls. Shoot it down far from what you are protecting. The Detonate order sets off every selected bomber where it stands."
+        "**A bomber at {Derived/LastGaspPercent} % health or less explodes**, which in practice means a bomber shot down explodes where it falls. Shoot it down far from what you are protecting. The Detonate order sets off every selected bomber where it stands."
       ]
     }
   },

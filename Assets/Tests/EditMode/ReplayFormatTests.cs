@@ -61,6 +61,7 @@ public class ReplayFormatTests
     }
 
     [TestCase(1)]  // before v0.13's attack events with an attacker kind
+    [TestCase(2)]  // before v0.18's summary and team fog
     [TestCase(99)] // a newer build's
     public void RefusesOtherFormats(int format)
     {
@@ -75,7 +76,7 @@ public class ReplayFormatTests
             w.Write(json);
         }
         raw.Position = 0;
-        Assert.AreEqual(2, ReplayFile.Format);
+        Assert.AreEqual(3, ReplayFile.Format);
         Assert.IsFalse(ReplayReader.TryOpen(raw, out _, out string error));
         StringAssert.Contains($"replay format {format} is not supported", error);
     }

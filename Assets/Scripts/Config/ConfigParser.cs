@@ -174,6 +174,42 @@ namespace Config
                 config.TargetLines.Max = Int(lines, "Max", "TargetLines", errors, min: 1, max: 2000);
             }
 
+            XmlNode attackOrder = Require(root, "AttackOrder", errors);
+            if (attackOrder != null)
+            {
+                config.AttackOrder.RepathTiles = Float(attackOrder, "RepathTiles", "AttackOrder", errors, min: 0.1f, max: 64f);
+                config.AttackOrder.RepathSeconds = Float(attackOrder, "RepathSeconds", "AttackOrder", errors, min: 0f, max: 10f);
+            }
+
+            XmlNode rangeRings = Require(root, "RangeRings", errors);
+            if (rangeRings != null)
+            {
+                config.RangeRings.Max = Int(rangeRings, "Max", "RangeRings", errors, min: 1, max: 1024);
+                config.RangeRings.MergeOverlap = Float(rangeRings, "MergeOverlap", "RangeRings", errors, min: 0f, max: 1f);
+            }
+
+            XmlNode summary = Require(root, "Summary", errors);
+            if (summary != null)
+            {
+                config.Summary.SampleSeconds = Float(summary, "SampleSeconds", "Summary", errors, min: 1f, max: 600f);
+                config.Summary.MaxPoints = Int(summary, "MaxPoints", "Summary", errors, min: 8, max: 4096);
+                config.Summary.FightCellTiles = Int(summary, "FightCellTiles", "Summary", errors, min: 4, max: 256);
+                config.Summary.FightWindowSeconds = Float(summary, "FightWindowSeconds", "Summary", errors, min: 1f, max: 600f);
+                config.Summary.FightMinWorth = Float(summary, "FightMinWorth", "Summary", errors, min: 1f);
+                config.Summary.MaxFights = Int(summary, "MaxFights", "Summary", errors, min: 1, max: 256);
+            }
+
+            XmlNode bomber = Require(root, "Bomber", errors);
+            if (bomber != null)
+            {
+                config.Bomber.LastGaspHealth = Float(bomber, "LastGaspHealth", "Bomber", errors, min: 0f, max: 1f);
+                config.Bomber.ChainPasses = Int(bomber, "ChainPasses", "Bomber", errors, min: 1, max: 16);
+                config.Bomber.AimTiles = Float(bomber, "AimTiles", "Bomber", errors, min: 0f, max: 64f);
+                config.Bomber.FriendlyWeight = Float(bomber, "FriendlyWeight", "Bomber", errors, min: 0f, max: 10f);
+                config.Bomber.AimReachTiles = Float(bomber, "AimReachTiles", "Bomber", errors, min: 0.1f, max: 8f);
+                config.Bomber.GoodEnough = Float(bomber, "GoodEnough", "Bomber", errors, min: 0f, max: 1f);
+            }
+
             XmlNode pulses = Require(root, "MinimapCombat", errors);
             if (pulses != null)
             {
@@ -284,6 +320,8 @@ namespace Config
                 config.Replays.Enabled = Int(replays, "Enabled", "Replays", errors, min: 0, max: 1) == 1;
                 config.Replays.MaxMegabytes = Int(replays, "MaxMegabytes", "Replays", errors, min: 1, max: 8192);
                 config.Replays.KeepCount = Int(replays, "KeepCount", "Replays", errors, min: 1, max: 10000);
+                config.Replays.FogSeconds = Float(replays, "FogSeconds", "Replays", errors, min: 0.2f, max: 60f);
+                config.Replays.MarkerLeadSeconds = Float(replays, "MarkerLeadSeconds", "Replays", errors, min: 0f, max: 60f);
             }
 
             var explicitEntries = new HashSet<(UnitType, TargetClass)>();
