@@ -107,6 +107,7 @@ public class ArtImportTests
             Assert.AreEqual(atlas, importer.mipmapEnabled, path);
             Assert.AreEqual(atlas ? FilterMode.Trilinear : FilterMode.Point, importer.filterMode, path);
             Assert.AreEqual(!ArtImporter.IsMask(path), importer.sRGBTexture, path);
+            Assert.AreEqual(ArtImporter.MaxSize, importer.maxTextureSize, $"{path}: never scaled down on import");
         }
     }
 }

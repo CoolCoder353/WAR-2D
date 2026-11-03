@@ -91,6 +91,7 @@ namespace WAR2D.Client.Render
                 case TileType.Wall:
                     return (byte)RockShape(grid, x, y);
                 case TileType.Gem:
+                case TileType.RichGem:
                     // Variant-major, as ArtBuild lays the gem frames out: 4 variants × the rock shapes.
                     return (byte)(Hash(x, y, RandomVariants) * RenderGen.RockShapes.Length + RockShape(grid, x, y));
                 case TileType.Ground:

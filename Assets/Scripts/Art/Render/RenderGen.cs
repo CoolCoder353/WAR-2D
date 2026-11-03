@@ -768,21 +768,40 @@ namespace WAR2D.Art.Render
         }
 
         /// <summary>Rock with glowing faceted gem crystals set into it.</summary>
-        public static LitCanvas Gem(int seed, int variant, int mask = North | East | South | West, int corners = 0)
+        public static LitCanvas Gem(int seed, int variant, int mask = North | East | South | West, int corners = 0) =>
+            Crystals(seed, "crystals" + variant, 3, 3, 4, 4, C(StylePalette.Gem1), C(StylePalette.Gem2), 0.35f, mask, corners);
+
+        /// <summary>
+        /// A rich gem (v0.17): rock with fewer, larger crystals in a brighter, warmer colour than ordinary gems (the palette's
+        /// <c>Gem3</c> halfway to <c>Warn</c>, Figma H1) and a stronger glow.
+        /// </summary>
+        public static LitCanvas RichGem(int seed, int variant, int mask = North | East | South | West, int corners = 0) =>
+            Crystals(seed, "rich" + variant, 2, 2, 6, 5, RichGemColour, C(StylePalette.Warn), 0.55f, mask, corners);
+
+        /// <summary>The rich gem's colour: <c>Gem3</c> halfway to <c>Warn</c> (Figma H1).</summary>
+        public static Color RichGemColour => Color.Lerp(C(StylePalette.Gem3), C(StylePalette.Warn), 0.5f);
+
+        /// <summary>
+        /// Rock with <paramref name="countBase"/> plus up to <paramref name="countRange"/> − 1 faceted crystals of radius
+        /// <paramref name="radiusBase"/> plus up to <paramref name="radiusRange"/> − 1, tinted between <paramref name="from"/> and
+        /// <paramref name="to"/>, only on the rock's top; a narrow rock gets one crystal at its deepest point.
+        /// </summary>
+        private static LitCanvas Crystals(int seed, string stream, int countBase, int countRange, int radiusBase, int radiusRange,
+            Color from, Color to, float glow, int mask, int corners)
         {
             LitCanvas c = Rock(seed, mask, corners);
-            var rng = new ArtRandom(seed, "crystals" + variant);
-            int count = 3 + rng.Range(3), placed = 0;
+            var rng = new ArtRandom(seed, stream);
+            int count = countBase + rng.Range(countRange), placed = 0;
             void Crystal(float cx, float cy, float r, float a, float t)
             {
-                Color tint = Color.Lerp(C(StylePalette.Gem1), C(StylePalette.Gem2), t);
-                c.Shape((x, y) => Polygon(x, y, cx, cy, r, 6, a), new Material(tint, 0.9f, 80, glow: 0.35f), 34 + r, r, r * 1.6f);
+                Color tint = Color.Lerp(from, to, t);
+                c.Shape((x, y) => Polygon(x, y, cx, cy, r, 6, a), new Material(tint, 0.9f, 80, glow: glow), 34 + r, r, r * 1.6f);
                 placed++;
             }
             for (int k = 0; k < count; k++)
             {
                 float cx = 14 + rng.Range(TileSize - 28), cy = 14 + rng.Range(TileSize - 28);
-                float r = 4 + rng.Range(4), a = rng.Range(60) * Mathf.Deg2Rad, t = rng.Range(100) / 100f;
+                float r = radiusBase + rng.Range(radiusRange), a = rng.Range(60) * Mathf.Deg2Rad, t = rng.Range(100) / 100f;
                 // Only on the rock's top: the cliff and its bevel reach about 23 px in from an open side.
                 if (EdgeDistance(cx, cy, mask, corners) < 23 + r) continue;
                 Crystal(cx, cy, r, a, t);
@@ -797,7 +816,7 @@ namespace WAR2D.Art.Render
                     float d = EdgeDistance(x, y, mask, corners);
                     if (d > best) { best = d; bx = x; by = y; }
                 }
-                Crystal(bx, by, Mathf.Clamp(best - 23, 3, 6), rng.Range(60) * Mathf.Deg2Rad, 0.5f);
+                Crystal(bx, by, Mathf.Clamp(best - 23, 3, radiusBase + 2), rng.Range(60) * Mathf.Deg2Rad, 0.5f);
             }
             return c;
         }

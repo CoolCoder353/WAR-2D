@@ -288,11 +288,13 @@ public static class Effects
     }
 
     /// <summary>A glint on the gem tile centred on <paramref name="position"/> (a Miner paying out). Silent: the caller rate-limits <c>gem_mined</c>.</summary>
-    public static void GemSparkle(Vector2 position)
+    /// <param name="tint">The sparkle's colour (v0.17: a rich gem's); white keeps the art's own.</param>
+    public static void GemSparkle(Vector2 position, Color? tint = null)
     {
         Slot s = Take(Sparkles);
         if (s == null) return;
         s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
+        s.Sprite.color = tint ?? Color.white; // a pooled sprite: always set, so a reused one never keeps an old tint
     }
 
     /// <summary>A bullet striking at <paramref name="position"/> (a tracer arriving). Silent: the shot already played its sound.</summary>

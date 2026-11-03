@@ -93,6 +93,7 @@ namespace WAR2D.Art
             new ArtEntry(nameof(TileType.Ground), ArtKind.Tile, 1, 1, Render.RenderGen.FloorVariants, 1, false),
             new ArtEntry(nameof(TileType.Wall), ArtKind.Tile, 1, 1, Render.RenderGen.RockShapes.Length, 1, false), // one per rock shape
             new ArtEntry(nameof(TileType.Gem), ArtKind.Tile, 1, 1, 4 * Render.RenderGen.RockShapes.Length, 1, false), // 4 variants × rock shapes, variant-major
+            new ArtEntry(nameof(TileType.RichGem), ArtKind.Tile, 1, 1, 4 * Render.RenderGen.RockShapes.Length, 1, false), // v0.17: as Gem, variant-major
             new ArtEntry(nameof(TileType.Border), ArtKind.Tile, 1, 1, 1, 1, false),
             new ArtEntry("PlayerWall", ArtKind.Tile, 1, 1, AutotileVariants * WallDamageStates, 1, true),
             new ArtEntry("WallBlueprint", ArtKind.Tile, 1, 1, AutotileVariants, 1, true),
