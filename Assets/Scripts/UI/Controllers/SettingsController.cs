@@ -40,6 +40,8 @@ namespace WAR2D.UI
             ("Select army", "SelectArmy", null),
             ("Jump to HQ", "JumpToHq", null),
             ("Next alert", "NextAlert", null),
+            ("Field manual", "FieldManual", null),
+            ("Show ranges", "ShowRanges", null),
             // v0.15.1 card slots (Figma H3): what each does with Builders / with producers selected.
             ("Card top 1 · Miner / 1st unit type", "CardTop1", null),
             ("Card top 2 · Barracks / 2nd unit type", "CardTop2", null),

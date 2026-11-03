@@ -92,8 +92,12 @@ namespace WAR2D.Client
             SelectedBuilding = 0;
             scratch.Clear();
             ClientWorld.Instance?.QueryBox(a, b, ownerId, scratch);
+            SelectionRules.PreferArmy(scratch, TypeOfKnown); // v0.18: applies to what the box adds, not to what was selected
             foreach (int id in scratch) selected.Add(id);
         }
+
+        private static UnitType TypeOfKnown(int id) =>
+            ClientWorld.Instance != null && ClientWorld.Instance.TryGet(id, out ClientUnitView view) ? view.Type : UnitType.None;
 
         /// <summary>
         /// Selects every own unit of the type of the own unit nearest <paramref name="at"/> (within a tile)

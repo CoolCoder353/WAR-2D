@@ -127,17 +127,17 @@ public class BuildingPlacement : MonoBehaviour
         previewHead.sortingOrder = sprite.sortingOrder + 1;
     }
 
-    /// <summary>While a Gun turret or Jammer is placed, its range ring follows the preview (Figma: Range rings – v0.13).</summary>
+    /// <summary>While a Gun turret, Radar or Jammer is placed, its reach follows the preview (Figma: Range rings – v0.13, G1 – v0.18).</summary>
     private void ShowRangeRing(float2 centre)
     {
-        float radius = PlacingType == BuildingType.GunTurret || PlacingType == BuildingType.Jammer ? WAR2D.Client.DefenceView.RingRadius(PlacingType) : 0f;
+        float radius = WAR2D.Client.DefenceView.RingRadius(PlacingType);
         if (radius <= 0f)
         {
             if (rangeRing != null) rangeRing.gameObject.SetActive(false);
             return;
         }
         if (rangeRing == null) rangeRing = WAR2D.Client.ClearingRing.Create("PlacementRange", WAR2D.Client.Render.SortingOrders.ClearingRing);
-        rangeRing.Set(centre, radius, PlayerPalette.Of(localPlayer != null ? localPlayer.colourIndex : -1));
+        rangeRing.Set(centre, radius, WAR2D.Client.Overlays.OverlayColours.Success(Palettes.Current));
     }
 
     private readonly System.Collections.Generic.List<WAR2D.Client.ClearingRing> optionRings = new System.Collections.Generic.List<WAR2D.Client.ClearingRing>();

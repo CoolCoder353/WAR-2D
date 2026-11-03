@@ -38,7 +38,8 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | `1`–`0` twice quickly | Select that squad and centre the camera on it |
 | `Esc` | In-match menu (closes the settings, gift or diplomacy panel first) |
 | Hold `Shift` | Pan 2.5× faster |
-| Left-click + drag | Select **every** one of your units inside the box (no limit). A plain click selects what is under the cursor. |
+| Left-click + drag | Select **every** one of your units inside the box (no limit), except that a box catching Builders and anything else keeps only the others (v0.18; Diggers and bombers count as army). A plain click selects what is under the cursor. |
+| Hold `Alt` (v0.18, rebindable) | **Range and sight rings** of the selection and of whatever is under the pointer: attack range solid, minimum range dashed, sight dotted, in the owner's colour. Close units of a type share a ring (`RangeRings/MergeOverlap`), at most `RangeRings/Max` (64) sets. A Gun turret, Radar or Jammer always shows its reach while you place it. |
 | `Shift` + left-click while placing | Place the building and keep placing the same type (not the HQ) |
 | `Shift` + drag | Add the units in the box to the selection |
 | Right-click | Order the selected units to **Move** to the cursor (they ignore enemies until they arrive) |

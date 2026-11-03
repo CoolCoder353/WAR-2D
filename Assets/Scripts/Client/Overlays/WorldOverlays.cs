@@ -38,6 +38,7 @@ namespace WAR2D.Client.Overlays
         private GroupOrderOverlay orders;
         private TargetLineOverlay targets;
         private RangeRingOverlay ranges;
+        private readonly HeldRangeOverlay held = new HeldRangeOverlay();
         private RallyOverlay rally;
         private BuildingHoverCard hover;
         private UnitCommander commander;
@@ -92,7 +93,8 @@ namespace WAR2D.Client.Overlays
             frame.PointerScreen = GameInput.Point.ReadValue<Vector2>();
             frame.PointerOverUI = GameInput.PointerOverUI;
 
-            ranges.Draw(frame);
+            if (HeldRangeOverlay.Held) held.Draw(frame); // v0.18: while the key is held these replace the v0.15 rings
+            else ranges.Draw(frame);
             rally.Draw(frame);
             targets.Draw(frame);
             orders.Draw(frame);
