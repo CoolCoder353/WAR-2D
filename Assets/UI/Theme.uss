@@ -552,9 +552,15 @@ Button.lobby-card__strip:hover { border-width: 0 2px 0 0; border-color: var(--co
 /* ---------- Settings (Figma: Settings page) ---------- */
 .settings-screen { background-color: var(--color-surface-base); }
 /* Pinned from the top, not centred: the pages differ in height, and a centred panel moved its title and tabs whenever the tab changed (owner request, 2026-10-10). 14% keeps the tallest state (a binding conflict) on screen. */
-.settings { width: 760px; position: absolute; top: 14%; left: 50%; translate: -50% 0; }
+.settings { width: 760px; position: absolute; top: 6%; left: 50%; translate: -50% 0; }
 .settings__content { padding: 20px 24px; }
 .settings__divider { margin: var(--space-2) 0; }
+.settings__scroll { max-height: 540px; }
+.settings__scroll .unity-scroll-view__content-container { padding-right: 14px; }
+.settings__scroll .unity-scroller--vertical { width: 6px; margin-left: 10px; border-width: 0; }
+.settings__scroll .unity-scroller--vertical .unity-base-slider__tracker { background-color: var(--color-surface-panel); border-width: 0; }
+.settings__scroll .unity-scroller--vertical .unity-base-slider__dragger { background-color: var(--color-border); border-width: 0; left: 0; width: 6px; }
+.settings__scroll .unity-scroller__low-button, .settings__scroll .unity-scroller__high-button { display: none; }
 .settings__page { display: none; }
 .settings__page--visible { display: flex; }
 .settings-row { flex-direction: row; align-items: center; justify-content: space-between; min-height: 32px; margin-bottom: var(--space-2); }
@@ -690,10 +696,10 @@ Button.lobby-card__strip:hover { border-width: 0 2px 0 0; border-color: var(--co
 .key-chip { flex-direction: row; flex-shrink: 0; padding: 1px 6px; background-color: var(--color-surface-base); border-width: 1px; border-color: var(--color-border); border-radius: var(--radius-sm); }
 .key-chip__text { font-size: var(--font-size-12); color: var(--color-readout); padding: 0; margin: 0; white-space: nowrap; }
 .hover-card__role { font-size: var(--font-size-12); color: var(--color-text-primary); padding: 0; white-space: normal; }
-.hover-card__pairs { flex-direction: row; flex-wrap: wrap; }
-.hover-card__pair { flex-direction: row; align-items: flex-end; margin-right: 10px; }
-.hover-card__label { font-size: var(--font-size-12); color: var(--color-text-secondary); padding: 0; margin: 0 4px 0 0; }
-.hover-card__value { font-size: var(--font-size-12); color: var(--color-text-primary); padding: 0; margin: 0; }
+.hover-card__pairs { flex-direction: row; flex-wrap: wrap; flex-shrink: 1; }
+.hover-card__pair { flex-direction: row; align-items: flex-end; flex-shrink: 1; margin-right: 10px; }
+.hover-card__label { font-size: var(--font-size-12); color: var(--color-text-secondary); padding: 0; margin: 0 4px 0 0; white-space: normal; flex-shrink: 1; }
+.hover-card__value { font-size: var(--font-size-12); color: var(--color-text-primary); padding: 0; margin: 0; white-space: normal; flex-shrink: 1; }
 .hover-card__value--cost { color: var(--color-readout); }
 .hover-card__value--danger { color: var(--color-danger); }
 .hover-card__line { font-size: var(--font-size-12); color: var(--color-text-secondary); padding: 0; margin: 0 0 6px 0; white-space: normal; }
