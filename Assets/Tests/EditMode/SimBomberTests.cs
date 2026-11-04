@@ -23,7 +23,7 @@ public class SimBomberTests
         sim.Tick();
         Assert.IsFalse(Alive(sim, bomber[0]));
         float blast = sim.Config.GetUnit(UnitType.SuicideBomber).BlastDamage;
-        Assert.That(Alive(sim, friend[0]) ? Health(sim, friend[0]) : 0f, Is.LessThanOrEqualTo(100f - System.Math.Min(100f, blast)), "its own side's Tank is caught");
+        Assert.That(Alive(sim, friend[0]) ? Health(sim, friend[0]) : 0f, Is.EqualTo(100f - blast * sim.Config.Bomber.FriendlyDamage).Within(1e-3f), "its own side's Tank takes its share");
         Assert.IsFalse(Alive(sim, nearby[0]), "the enemy beside it is caught");
     }
 
@@ -68,7 +68,8 @@ public class SimBomberTests
     [Test]
     public void AChainGoesOffInOneTickUpToThePassLimit()
     {
-        using var sim = Sim(96);
+        // A blast only sets off friendly bombers when friends take enough of it (shipped, they take a tenth).
+        using var sim = new SimHarness(SimHarness.OpenMap(96), c => c.Bomber.FriendlyDamage = 1f);
         var chain = new List<int[]>(); // each id is filled in when the spawn runs
         for (int i = 0; i < 6; i++) chain.Add(sim.Spawn(SimHarness.OwnerA, new float2(10 + i * 1.5f, 10), UnitType.SuicideBomber));
         int blasts = 0;

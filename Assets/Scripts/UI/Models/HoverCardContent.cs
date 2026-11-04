@@ -148,7 +148,7 @@ namespace WAR2D.UI
             UnitType.Scout => "Fast and far-sighted; lightly armed.",
             UnitType.Heavy => "Slow, armoured front-line tank.",
             UnitType.Artillery => "Long-range splash; can't fire up close.",
-            UnitType.Sniper => "Very long range; needs something to spot for it.",
+            UnitType.Sniper => "Very long range, and sees as far as it shoots.",
             UnitType.Flamethrower => "Short-range splash that burns through groups.",
             UnitType.SuicideBomber => "Drives in and explodes. Hurts friends too.",
             _ => null,
@@ -203,7 +203,7 @@ namespace WAR2D.UI
             var card = new HoverCardContent($"Net {(net >= 0 ? "+" : "−")}{System.Math.Abs(net):N0}/s", null, "Income minus upkeep, averaged over 5 s.");
             if (economy.State == EconomyState.Negative || economy.State == EconomyState.RunningLow)
                 card.Role = "Upkeep is higher than income.";
-            if (economy.State != EconomyState.Healthy) card.Line("Units and buildings decay when you run out.");
+            if (economy.State != EconomyState.Healthy) card.Line("When you run out, buildings stop, then units decay one at a time.");
             if (economy.State == EconomyState.Decaying) card.Line("Click: select what is decaying");
             return card;
         }

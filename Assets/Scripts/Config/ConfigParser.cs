@@ -206,6 +206,7 @@ namespace Config
                 config.Bomber.ChainPasses = Int(bomber, "ChainPasses", "Bomber", errors, min: 1, max: 16);
                 config.Bomber.AimTiles = Float(bomber, "AimTiles", "Bomber", errors, min: 0f, max: 64f);
                 config.Bomber.FriendlyWeight = Float(bomber, "FriendlyWeight", "Bomber", errors, min: 0f, max: 10f);
+                config.Bomber.FriendlyDamage = Float(bomber, "FriendlyDamage", "Bomber", errors, min: 0f, max: 1f);
                 config.Bomber.AimReachTiles = Float(bomber, "AimReachTiles", "Bomber", errors, min: 0.1f, max: 8f);
                 config.Bomber.GoodEnough = Float(bomber, "GoodEnough", "Bomber", errors, min: 0f, max: 1f);
             }
@@ -238,6 +239,22 @@ namespace Config
                 config.AutoWork.Radius = Float(autoWork, "Radius", "AutoWork", errors, min: 1f, max: 32f);
                 config.AutoWork.RepairBelow = Float(autoWork, "RepairBelow", "AutoWork", errors, min: 0.05f, max: 1f);
                 config.AutoWork.SliceTicks = Int(autoWork, "SliceTicks", "AutoWork", errors, min: 1, max: 200);
+            }
+
+            XmlNode pings = Require(root, "Pings", errors);
+            if (pings != null)
+            {
+                config.Pings.CooldownSeconds = Float(pings, "CooldownSeconds", "Pings", errors, min: 0f, max: 60f);
+                config.Pings.ShowSeconds = Float(pings, "ShowSeconds", "Pings", errors, min: 0.5f, max: 60f);
+            }
+
+            XmlNode defend = Require(root, "Defend", errors);
+            if (defend != null)
+            {
+                config.Defend.RespondTiles = Float(defend, "RespondTiles", "Defend", errors, min: 0f, max: 64f);
+                config.Defend.StepTiles = Float(defend, "StepTiles", "Defend", errors, min: 1f, max: 64f);
+                config.Defend.AlarmCellTiles = Float(defend, "AlarmCellTiles", "Defend", errors, min: 1f, max: 128f);
+                config.Defend.IntervalTicks = Int(defend, "IntervalTicks", "Defend", errors, min: 1, max: 200);
             }
 
             XmlNode diplomacy = Require(root, "Diplomacy", errors);
@@ -298,6 +315,8 @@ namespace Config
                 config.Siege.WallHealth = Int(siege, "WallHealth", s, errors, min: 1, max: 100000);
                 config.Siege.MaxWallLine = Int(siege, "MaxWallLine", s, errors, min: 1, max: 256);
                 config.Siege.BlastRadius = Float(siege, "BlastRadius", s, errors, min: 0.5f, max: 16);
+                config.Siege.BombTriggerRadius = Float(siege, "BombTriggerRadius", s, errors, min: 0.5f, max: 8);
+                config.Siege.BombFriendlyDamage = Float(siege, "BombFriendlyDamage", s, errors, min: 0f, max: 1f);
                 config.Siege.BlastDamage = Float(siege, "BlastDamage", s, errors, min: 0, max: 100000);
                 config.Siege.RadarClearSeconds = Float(siege, "RadarClearSeconds", s, errors, min: 0, max: 600);
                 config.Siege.RadarAlertCooldownSeconds = Float(siege, "RadarAlertCooldownSeconds", s, errors, min: 0, max: 600);

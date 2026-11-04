@@ -52,7 +52,7 @@ public partial class GameCore
     {
         var lobby = new RememberedLobby
         {
-            Mode = Settings.Mode, Diplomacy = Settings.Diplomacy, MapSize = Settings.MapSize, StartingResources = Settings.StartingResources,
+            Mode = Settings.Mode, Diplomacy = Settings.Diplomacy, MapSize = Settings.MapSize, StartingResources = Settings.StartingResources, InfiniteResources = Settings.InfiniteResources,
             StartOptions = Settings.StartOptions, StartPickSeconds = Settings.StartPickSeconds, Visibility = Settings.Visibility, ServerName = ServerName,
         };
         foreach (AiSeat seat in AiPlayers.Values)

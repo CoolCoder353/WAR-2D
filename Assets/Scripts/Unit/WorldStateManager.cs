@@ -177,6 +177,7 @@ public partial class WorldStateManager : NetworkBehaviour
             SharesVision = SharesVision,
             // A defeated player still connected watches the rest of the match with the whole map shown (P10).
             Spectating = IsSpectating,
+            SpectatorGrid = SpectatorGridOf,
         };
         // v0.14: AI players' team views (the same interest rules as replication) and the director that runs their thinks.
         AiViews = new WAR2D.AiView.TeamViewBuilder(Sim, new WAR2D.AiView.GameCoreFacts())
@@ -237,7 +238,13 @@ public partial class WorldStateManager : NetworkBehaviour
             if (!player.TryPayUpkeep(amount)) player.TrySpend(player.Resources);
             player.AddUpkeep(before - player.Resources);
         };
-        Sim.Owe = (ownerId, amount) => GameCore.Instance?.GetServerPlayerById(ownerId)?.AddOwed(amount);
+        Sim.Owe = (ownerId, amount) =>
+        {
+            ServerPlayer p = GameCore.Instance?.GetServerPlayerById(ownerId);
+            if (p == null) return;
+            p.AddOwed(amount);
+            p.UnitUpkeepReserve = amount;
+        };
         // The map and simulation exist: deal each player their private start options and start the pick clock.
         if (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.PlacingHQ) GameCore.Instance.BeginPlacementPhase(this);
     }
@@ -252,7 +259,41 @@ public partial class WorldStateManager : NetworkBehaviour
     /// replication gives them (<see cref="ReplicationService.Spectating"/>), else the owner's own grid.
     /// </summary>
     [Server]
-    private int ViewerGrid(int owner) => IsSpectating(owner) ? SimData.SeesAll : Sim.VisionOf(owner);
+    private int ViewerGrid(int owner) => IsSpectating(owner) ? SpectatorGridOf(owner) : Sim.VisionOf(owner);
+
+    /// <summary>What a spectator watches: the whole map, or the sight of the player they chose while that player is still in the match.</summary>
+    [Server]
+    private int SpectatorGridOf(int owner)
+    {
+        GameCore core = GameCore.Instance;
+        int view = core != null ? core.GetServerPlayerById(owner)?.SpectateView ?? 0 : 0;
+        if (view == 0 || core.GetServerPlayerById(view)?.state != PlayerState.Playing) return SimData.SeesAll;
+        int grid = Sim.VisionOf(view);
+        return grid >= 0 ? grid : SimData.SeesAll;
+    }
+
+    /// <summary>Once a second: every spectator's player bar. Only spectators are told other players' balances.</summary>
+    [Server]
+    private void SendSpectatorStats(GameCore core, Dictionary<int, int> armies)
+    {
+        int[] owners = null; float[] resources = null; int[] units = null;
+        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in core.ServerPlayers)
+        {
+            if (entry.Key == null || entry.Key.connectionToClient == null || !IsSpectating(BuildingData.UIntToInt(entry.Key.netId))) continue;
+            if (owners == null)
+            {
+                var o = new List<int>(); var r = new List<float>(); var u = new List<int>();
+                foreach ((int owner, ServerPlayer player) in core.AllPlayers())
+                {
+                    if (player.state != PlayerState.Playing) continue;
+                    armies.TryGetValue(owner, out int n);
+                    o.Add(owner); r.Add(player.Resources); u.Add(n);
+                }
+                owners = o.ToArray(); resources = r.ToArray(); units = u.ToArray();
+            }
+            entry.Key.GetComponent<ClientPlayer>().TargetSpectatorStats(entry.Key.connectionToClient, owners, resources, units);
+        }
+    }
 
     /// <summary>Records a unit the simulation removed, for its explosion.</summary>
     [ServerCallback]
@@ -474,6 +515,7 @@ public partial class WorldStateManager : NetworkBehaviour
             if (!EntityManager.Exists(entity)) continue;
             BuildingData building = EntityManager.GetComponentData<BuildingData>(entity);
             if (building.buildingType != BuildingType.Radar || EntityManager.HasComponent<Construction>(entity)) continue;
+            if (EntityManager.HasComponent<UpkeepComponent>(entity) && EntityManager.GetComponentData<UpkeepComponent>(entity).unpaid) continue; // an unpaid Radar is off
             if (EntityManager.GetComponentData<HealthComponent>(entity).currentHealth <= 0f) continue;
             int2 anchor = (int2)math.round(building.position);
             radarScratch.Add(new RadarView { Id = building.id, OwnerId = building.ownerId, Tile = anchor, Centre = Footprint.VisualCenter(anchor, radarConfig.Size), Radius = radarConfig.Sight });
@@ -548,13 +590,17 @@ public partial class WorldStateManager : NetworkBehaviour
         for (int s = 0; s < SimData.MaxOwners; s++)
         {
             int owner = data.OwnerIdBySlot[s];
-            if (owner == 0 || armies[s] == 0) continue;
+            if (owner == 0) continue;
+            ServerPlayer counted = core.GetServerPlayerById(owner);
+            if (counted != null) counted.UnitCount = armies[s];
+            if (armies[s] == 0) continue;
             armyScratch[owner] = armies[s];
             if (unpaid[s] != 0) core.GetServerPlayerById(owner)?.MarkUnpaid();
         }
         foreach (KeyValuePair<int, int> army in armyScratch) core.Stats.Army(army.Key, army.Value);
         SampleSummary(core, data, worth);
         Recorder?.Timeline(Sim.Clock.Tick, TimelineRows(core, armyScratch));
+        SendSpectatorStats(core, armyScratch);
     }
 
     /// <summary>The end screen's graphs (v0.18): one sample every <c>Summary/SampleSeconds</c> of match time, during Playing.</summary>

@@ -92,6 +92,16 @@ namespace WAR2D.Sim
         /// <summary>Idle Builders' own work (v0.16, <c>&lt;AutoWork&gt;</c>): how far they look (tiles), the repair share, and ticks between looks.</summary>
         public float AutoWorkRadius, AutoWorkRepairBelow;
         public int AutoWorkSlice;
+        /// <summary>Idle units answering fire (playtest 2026-11-04, <c>&lt;Defend&gt;</c>): how far from a victim they answer, the step into the fog, the alarm cell and ticks between answers.</summary>
+        public float DefendRadius, DefendStepTiles, DefendAlarmCellTiles;
+        public int DefendInterval;
+        /// <summary><see cref="DefendAlarms.PerOwner"/> alarms per owner slot, and how many each holds.</summary>
+        public NativeArray<DefendAlarm> Alarms;
+        public NativeArray<int> AlarmCount;
+        /// <summary>Share of a blast that reaches whoever its owner doesn't attack: a bomber's, a hidden bomb's (playtest 2026-11-04).</summary>
+        public float BomberFriendlyDamage, BombFriendlyDamage;
+        /// <summary>Tiles from a hidden bomb's tile centre at which an enemy sets it off.</summary>
+        public float BombTriggerRadius;
         /// <summary>The largest body radius, so a separation scan reaches every possible neighbour.</summary>
         public float SeparationMargin;
         /// <summary>Percent of max health an unpaid unit loses per second.</summary>
@@ -460,6 +470,15 @@ namespace WAR2D.Sim
                 AutoWorkRadius = config.AutoWork.Radius,
                 AutoWorkRepairBelow = config.AutoWork.RepairBelow,
                 AutoWorkSlice = math.max(1, config.AutoWork.SliceTicks),
+                DefendRadius = config.Defend.RespondTiles,
+                DefendStepTiles = config.Defend.StepTiles,
+                DefendAlarmCellTiles = config.Defend.AlarmCellTiles,
+                DefendInterval = math.max(1, config.Defend.IntervalTicks),
+                Alarms = new NativeArray<DefendAlarm>(MaxOwners * DefendAlarms.PerOwner, allocator),
+                AlarmCount = new NativeArray<int>(MaxOwners, allocator),
+                BomberFriendlyDamage = config.Bomber.FriendlyDamage,
+                BombFriendlyDamage = config.Siege.BombFriendlyDamage,
+                BombTriggerRadius = config.Siege.BombTriggerRadius,
                 SeparationMargin = maxRadius,
                 DecayPercentPerSecond = config.Resources.DecayPercentPerSecond,
                 LastGaspHealth = config.Bomber.LastGaspHealth,
@@ -670,7 +689,7 @@ namespace WAR2D.Sim
             BuildingWork.Dispose(); BuildingFlag.Dispose(); BuildingAnchor.Dispose(); BuildingSize.Dispose(); BuildingMaxHealth.Dispose(); BuildingKind.Dispose(); BuildingSizeByType.Dispose();
             AttackEvents.Dispose(); BuildingAttackEvents.Dispose(); Deaths.Dispose(); PendingOrders.Dispose(); PendingMoves.Dispose(); Arrivals.Dispose();
             OwnerIdBySlot.Dispose(); TeamBySlot.Dispose(); AttackMask.Dispose(); ShareVisionMask.Dispose(); UpkeepBudget.Dispose(); UpkeepSpent.Dispose(); UpkeepOwed.Dispose(); UnitsBySlot.Dispose();
-            ChargedThisTick.Dispose(); LargeGrid.Dispose();
+            ChargedThisTick.Dispose(); LargeGrid.Dispose(); Alarms.Dispose(); AlarmCount.Dispose();
             SightByType.Dispose(); BuildingSightByType.Dispose(); BuildingSight.Dispose();
             Opaque.Dispose(); OpaqueSum.Dispose(); OpaqueTile.Dispose(); Visible.Dispose(); VisiblePrev.Dispose(); Explored.Dispose();
             SourceRadius.Dispose(); Sources.Dispose(); RadarSources.Dispose(); FogChanges.Dispose();

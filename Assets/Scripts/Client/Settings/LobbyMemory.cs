@@ -23,6 +23,7 @@ public sealed class RememberedLobby
     public bool Diplomacy;
     public int MapSize;
     public float StartingResources;
+    public bool InfiniteResources;
     public int StartOptions;
     public int StartPickSeconds;
     public LobbyVisibility Visibility;
@@ -85,6 +86,7 @@ public static class LobbyMemory
         s.Diplomacy = lobby.Diplomacy;
         if (Array.IndexOf(config.MapSizes, lobby.MapSize) >= 0) s.MapSize = lobby.MapSize;
         if (Array.IndexOf(config.StartingResources, lobby.StartingResources) >= 0) s.StartingResources = lobby.StartingResources;
+        s.InfiniteResources = lobby.InfiniteResources;
         if (StartPickRules.IsValidOptions(lobby.StartOptions, config)) s.StartOptions = lobby.StartOptions;
         if (StartPickRules.IsValidPickSeconds(lobby.StartPickSeconds, config)) s.StartPickSeconds = lobby.StartPickSeconds;
         if (Enum.IsDefined(typeof(LobbyVisibility), lobby.Visibility)) s.Visibility = lobby.Visibility;

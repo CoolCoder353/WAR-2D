@@ -5,8 +5,8 @@ using Unity.Mathematics;
 using Unity.Transforms;
 
 /// <summary>
-/// Passive income, Miner income, and upkeep for units and buildings. Unpaid entities lose
-/// DecayPercentPerSecond of max health per second until paid. Server only, Playing state only.
+/// Passive income, Miner income, and building upkeep. An unpaid building stops working until paid; with no
+/// units left to its owner it also loses DecayPercentPerSecond of max health per second. Server only, Playing state only.
 /// </summary>
 public partial struct ResourceSystem : ISystem
 {
@@ -63,7 +63,8 @@ public partial struct ResourceSystem : ISystem
 
         foreach (var (upkeep, health) in SystemAPI.Query<RefRW<UpkeepComponent>, RefRW<HealthComponent>>())
         {
-            if (upkeep.ValueRO.unpaid)
+            ServerPlayer payer = core.GetServerPlayerById(upkeep.ValueRO.ownerId);
+            if (upkeep.ValueRO.unpaid && UpkeepRules.BuildingDecays(payer == null ? 0 : payer.UnitCount))
             {
                 health.ValueRW.currentHealth -= UpkeepRules.DecayDamage(health.ValueRO.maxHealth, config.Resources.DecayPercentPerSecond, dt);
             }
@@ -72,11 +73,10 @@ public partial struct ResourceSystem : ISystem
             if (upkeep.ValueRO.timeSinceLastCharge < 1f) continue;
 
             float cost = upkeep.ValueRO.runningCostPerSecond * upkeep.ValueRO.timeSinceLastCharge;
-            ServerPlayer owner = core.GetServerPlayerById(upkeep.ValueRO.ownerId);
-            owner?.AddOwed(cost);
-            upkeep.ValueRW.unpaid = owner == null || !owner.TryPayUpkeep(cost);
-            if (!upkeep.ValueRO.unpaid) owner.AddUpkeep(cost);
-            else owner?.MarkUnpaid();
+            payer?.AddOwed(cost);
+            upkeep.ValueRW.unpaid = payer == null || !payer.TryPayBuildingUpkeep(cost);
+            if (!upkeep.ValueRO.unpaid) payer.AddUpkeep(cost);
+            else payer?.MarkUnpaid();
             upkeep.ValueRW.timeSinceLastCharge = 0f;
         }
     }

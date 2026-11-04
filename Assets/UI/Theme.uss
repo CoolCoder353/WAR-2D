@@ -166,9 +166,16 @@
 .production__button { width: 36px; height: 35px; padding: 0; -unity-text-align: middle-center; }
 .production__count { font-size: var(--font-size-20); min-width: 22px; -unity-text-align: middle-center; }
 .production__button--wide { width: 48px; }
-.spectating { position: absolute; top: 56px; left: 50%; width: 560px; margin-left: -280px; }
-.spectating__body { padding: var(--space-3); }
-.spectating__leave { width: 150px; margin-top: var(--space-2); }
+/* Spectating: the replay viewer's bars for a live match (Figma R1) */
+.spectator { position: absolute; left: 0; right: 0; top: 0; bottom: 0; justify-content: space-between; align-items: center; padding: 16px; }
+.spectator .replay-viewer__view-list { right: auto; }
+/* Playtest 2026-11-04 (Figma K1, K3) */
+.top-bar__resources-value--infinite { color: var(--color-warning); }
+.world-markers { position: absolute; left: 0; right: 0; top: 0; bottom: 0; }
+.world-ping { position: absolute; width: 0; height: 0; overflow: visible; }
+.world-ping__ring { position: absolute; border-width: 2px; border-radius: 50%; background-color: rgba(0, 0, 0, 0); }
+.world-ping__centre { position: absolute; width: 6px; height: 6px; margin-left: -3px; margin-top: -3px; }
+.world-ping__name { position: absolute; left: 14px; top: -10px; color: var(--color-text-primary); white-space: nowrap; }
 .production__rally { flex-direction: row; align-items: center; margin-top: var(--space-2); }
 /* v0.7 command card (Figma: Command card – v0.7) */
 .command-button__cost { color: var(--color-readout); }

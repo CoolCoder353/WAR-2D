@@ -1,3 +1,4 @@
+using Unity.Mathematics;
 using System.Collections.Generic;
 using Config;
 using Mirror;
@@ -34,6 +35,22 @@ public partial class GameCore
     {
         if (!CommandGate.Allow(sender, nameof(Cmd_Surrender)) || !WorldStateManager.TryOwnerOf(sender, out int owner)) return;
         PlayerActions.Surrender(owner);
+    }
+
+    /// <summary>Chooses whose sight a spectator watches (<see cref="PlayerActions.SetSpectateView"/>).</summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_SetSpectateView(int view, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_SetSpectateView)) || !WorldStateManager.TryOwnerOf(sender, out int owner)) return;
+        PlayerActions.SetSpectateView(owner, view);
+    }
+
+    /// <summary>Marks a map tile for the sender and everyone the sender shares vision with (<see cref="PlayerActions.Ping"/>).</summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_Ping(int2 tile, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_Ping)) || !WorldStateManager.TryOwnerOf(sender, out int owner)) return;
+        PlayerActions.Ping(owner, tile);
     }
 
     /// <summary>Gives resources to any other live player, ally or enemy (<see cref="PlayerActions.Gift"/>).</summary>

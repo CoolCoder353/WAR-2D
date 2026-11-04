@@ -6,6 +6,18 @@ Bugs, mismatches and hygiene problems. The first two roadmaps (v0.2 to v0.9, and
 
 The recorder's units go through `DeferredLane` (encoded during the next tick to keep the boundary inside the perf budget), so a recording's unit records are one tick later than its buildings and terrain. Harmless for playback; don't "fix" it by moving the recorder back onto the boundary (`docs/perf/v0.10/README.md`).
 
+## Owner playtest fixes (2026-11-04, third session)
+
+| Item | State |
+| --- | --- |
+| Units beside a building never fired at it | **Fixed.** Range was measured to a building's centre, so a Digger (1.5) or Flamethrower (2.5) touching a 5×5 HQ was out of range for good. Range, fog and line of fire now use the footprint's nearest point (`TargetSearch.NearestPoint`). |
+| 2×2 units froze for good | **Fixed.** A Heavy or Artillery whose body overlapped a tile (spawned at a producer's side, pushed out by a new building, walled in) had every step refused, because every step still overlapped. A body already overlapping may now walk while its centre stays on free floor (`IntegrateJob.Escapes`). Not a flow-field problem: the field runs per tile, and the code comment about 2×2 cells is stale. |
+| Idle units stood still under fire from out of range | **Fixed.** See "Idle units answer fire" in gameplay.md (`DefendAlarms`, `SimCommandSystem.AnswerAlarms`). A responder's route to a shooter in the fog gives away the direction of fire only, never its position. There is no return to post: they stay where the fight ended. |
+| Decay | **Changed.** Buildings stop first, then whole units, then buildings decay (gameplay.md). The top bar still says "Decaying" when only buildings have stopped: the wording would be a Figma change. |
+| Rich gems drew as rock at max zoom | **Fixed.** The far-zoom colour slots stopped at `WallBlueprint`, one kind short of `RichGem`, so it fell back to the rock colour; `MapView.FlatType` covers it, and rich gems now show gold where normal gems show red. On the minimap they keep their true gold instead of the near-white brightened one. |
+| A Heavy lost to turrets after the buff | **Changed on purpose.** Even at ×0.4 against heavy armour, a 500-health, 12-damage turret wins an equal-cost fight, so the manual no longer says Heavies beat turrets (×0.5 shipped). Artillery and Snipers still out-range it. The approved manual mock's counter lists changed with the numbers; regenerate it with `tools/manual-mock.js`. |
+| Numbers not measured | Artillery, Sniper, Gun turret, wall and bomb numbers were set by hand and checked with `balance-sheet.js` only. **Not yet run:** `ai-bench` and the perf gate, which the longer Sniper and Artillery sight (four times the vision cost per unit for a Sniper) makes worth re-running. |
+
 ## v0.12 Arsenal: built, perf gate passes
 
 The code, the atlases (`WAR-2D/Art/Build all`, the Barracks now keyed `Barracks`) and the sound effects (`WAR-2D/Audio/Build SFX`) are in. Still open:

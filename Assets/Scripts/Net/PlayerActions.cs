@@ -282,6 +282,39 @@ public static class PlayerActions
     /// <summary>Leaves the match as if the owner's HQ fell: everything it owns is destroyed and it is out.</summary>
     public static bool Surrender(int owner) => GameCore.Instance != null && GameCore.Instance.TrySurrender(owner);
 
+    /// <summary>Chooses whose sight an eliminated player watches: 0 for the whole map, or a player still in the match. Returns whether it changed.</summary>
+    public static bool SetSpectateView(int owner, int view)
+    {
+        GameCore core = GameCore.Instance;
+        if (core == null || core.CurrentState != GameState.Playing) return false;
+        ServerPlayer player = core.GetServerPlayerById(owner);
+        if (player == null || player.state != PlayerState.Eliminated) return false;
+        if (view != 0 && core.GetServerPlayerById(view)?.state != PlayerState.Playing) return false;
+        player.SpectateView = view;
+        return true;
+    }
+
+    private static PingRules.Cooldown pingCooldown;
+    private static readonly List<int> pingScratch = new List<int>();
+
+    /// <summary>
+    /// Marks a map tile for the owner and everyone it shares vision with (playtest 2026-11-04), one ping per
+    /// <c>Pings/CooldownSeconds</c>. Only a player still in the match may ping. Returns whether it went out.
+    /// </summary>
+    public static bool Ping(int owner, int2 tile)
+    {
+        GameCore core = GameCore.Instance;
+        WorldStateManager world = WorldStateManager.Instance;
+        if (core == null || world == null || world.Map == null || core.CurrentState != GameState.Playing) return false;
+        if (core.GetServerPlayerById(owner)?.state != PlayerState.Playing || !world.Map.Grid.Contains(tile)) return false;
+        pingCooldown ??= new PingRules.Cooldown(ConfigLoader.LoadConfig().Pings.CooldownSeconds);
+        if (!pingCooldown.Allow(owner, Mirror.NetworkTime.time)) return false;
+        PingRules.Recipients(owner, core.PlayerOrder, world.SharesVision, pingScratch);
+        foreach (int to in pingScratch)
+            if (!AiOwnerIds.IsAi(to)) world.Alerts?.Add(to, new Alert { Kind = AlertKind.Ping, Tile = tile, OtherOwnerId = owner });
+        return true;
+    }
+
     private static int[] ToArray(IReadOnlyList<int> ids)
     {
         var array = new int[ids.Count];

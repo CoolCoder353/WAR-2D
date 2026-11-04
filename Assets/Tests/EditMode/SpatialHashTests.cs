@@ -15,6 +15,7 @@ public class SpatialHashTests
     {
         public NativeArray<float2> Positions, BuildingPositions;
         public NativeArray<int> Cell, CellStart, Sorted, Target, BCell, BCellStart, BSorted;
+        public NativeArray<int2> BAnchor, BSize;
         public NativeArray<float> Health, BuildingHealth, RangeSqByType, DamageByType, MinRangeSqByType;
         public NativeArray<byte> WallState = new NativeArray<byte>(1, Allocator.TempJob);
         public NativeArray<byte> BuildingFlag, Visible;
@@ -49,6 +50,8 @@ public class SpatialHashTests
             BCell = new NativeArray<int>(buildings, Allocator.TempJob);
             BCellStart = new NativeArray<int>(cells, Allocator.TempJob);
             BSorted = new NativeArray<int>(buildings, Allocator.TempJob);
+            BAnchor = new NativeArray<int2>(buildings, Allocator.TempJob);
+            BSize = new NativeArray<int2>(buildings, Allocator.TempJob);
             RangeSqByType = new NativeArray<float>(new[] { 0f, Range * Range }, Allocator.TempJob);
             DamageByType = new NativeArray<float>(new[] { 0f, 1f }, Allocator.TempJob);
             MinRangeSqByType = new NativeArray<float>(2, Allocator.TempJob);
@@ -64,6 +67,7 @@ public class SpatialHashTests
         public void Search(int tick = 0, int slice = 1)
         {
             float inv = 1f / CellSize;
+            for (int b = 0; b < BuildingPositions.Length; b++) { BAnchor[b] = (int2)math.floor(BuildingPositions[b]); BSize[b] = new int2(1, 1); }
             JobHandle h = new CellIndexJob { Positions = Positions, Cell = Cell, InvCellSize = inv, CellsX = CellsAcross, CellsY = CellsAcross }.Schedule(Positions.Length, 64);
             h = new CountingSortJob { Cell = Cell, CellStart = CellStart, Sorted = Sorted }.Schedule(h);
             h = new CellIndexJob { Positions = BuildingPositions, Cell = BCell, InvCellSize = inv, CellsX = CellsAcross, CellsY = CellsAcross }.Schedule(BuildingPositions.Length, 64, h);
@@ -78,7 +82,7 @@ public class SpatialHashTests
                     CellStart = CellStart, Sorted = Sorted,
                     BuildingPositions = BuildingPositions, BuildingOwnerSlot = BuildingOwner, BuildingHealth = BuildingHealth,
                     BuildingIds = BCell, BuildingSlotOfIndex = BCell, BuildingCount = BuildingPositions.Length,
-                    BuildingCellStart = BCellStart, BuildingSorted = BSorted,
+                    BuildingCellStart = BCellStart, BuildingSorted = BSorted, BuildingAnchor = BAnchor, BuildingSize = BSize,
                     InvCellSize = inv, CellsX = CellsAcross, CellsY = CellsAcross, SearchCells = SearchCells,
                     OpaqueTile = Opaque, WallState = WallState, WallOwnerSlot = WallState, BuildingFlag = BuildingFlag, Width = 1, Height = 1, // open ground: one clear tile
                 },
@@ -95,7 +99,7 @@ public class SpatialHashTests
             Opaque.Dispose();
             Positions.Dispose(); Owner.Dispose(); AttackMask.Dispose(); Health.Dispose(); Type.Dispose(); Stance.Dispose(); OrderSlot.Dispose(); OrderLive.Dispose(); Cell.Dispose(); CellStart.Dispose();
             Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose(); BuildingPositions.Dispose(); BuildingOwner.Dispose();
-            BuildingHealth.Dispose(); BCell.Dispose(); BCellStart.Dispose(); BSorted.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose(); MinRangeSqByType.Dispose(); Visible.Dispose(); WallState.Dispose(); BuildingFlag.Dispose();
+            BAnchor.Dispose(); BSize.Dispose(); BuildingHealth.Dispose(); BCell.Dispose(); BCellStart.Dispose(); BSorted.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose(); MinRangeSqByType.Dispose(); Visible.Dispose(); WallState.Dispose(); BuildingFlag.Dispose();
         }
     }
 

@@ -200,7 +200,7 @@ public class SimBastionTests
         Assert.GreaterOrEqual(drops.Count, 4);
         int interval = (int)math.round(sim.Config.GetBuilding(BuildingType.GunTurret).AttackInterval * sim.Config.Simulation.TickRate);
         for (int i = 1; i < drops.Count; i++) Assert.AreEqual(interval, drops[i].tick - drops[i - 1].tick, "one shot per AttackInterval");
-        Assert.AreEqual(8f * 0.4f, drops[0].amount, 1e-3f, "8 damage x0.4 against Heavy armour");
+        Assert.AreEqual(12f * 0.5f, drops[0].amount, 1e-3f, "12 damage x0.5 against Heavy armour");
     }
 
     [Test]
@@ -212,7 +212,7 @@ public class SimBastionTests
         float start = sim.Config.GetUnit(UnitType.Scout).Health;
         sim.Tick(); // the spawn applies
         for (int i = 0; i < 40 && Health(sim, scout[0]) == start; i++) sim.Tick();
-        Assert.AreEqual(start - 8f * 1.5f, Health(sim, scout[0]), 1e-3f, "8 damage x1.5 against Light armour");
+        Assert.AreEqual(start - 12f * 1.5f, Health(sim, scout[0]), 1e-3f, "12 damage x1.5 against Light armour");
     }
 
     [Test]
@@ -340,8 +340,8 @@ public class SimBastionTests
     {
         using var sim = Sim();
         int turret = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.GunTurret, TurretAt, complete: true);
-        sim.Spawn(SimHarness.OwnerB, new float2(28f, 20.5f), UnitType.Builder);   // 7.5 away, range 7
-        sim.Spawn(SimHarness.OwnerA, new float2(28f, 23f), UnitType.Builder);     // lit
+        sim.Spawn(SimHarness.OwnerB, new float2(30f, 20.5f), UnitType.Builder);   // 9.5 away, range 9
+        sim.Spawn(SimHarness.OwnerA, new float2(30f, 23f), UnitType.Builder);     // lit
         int[] shots = CountShots(sim, turret);
         for (int i = 0; i < 30; i++) sim.Tick();
         Assert.AreEqual(0, shots[0]);

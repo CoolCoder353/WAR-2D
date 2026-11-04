@@ -122,6 +122,18 @@
     <SliceTicks>10</SliceTicks>      <!-- v0.16: each idle Builder looks once every this many ticks -->
   </AutoWork>
 
+  <Pings>
+    <CooldownSeconds>0.5</CooldownSeconds> <!-- playtest 2026-11-04: least time between one player's pings -->
+    <ShowSeconds>4</ShowSeconds>           <!-- how long a ping stays on the map and the minimap -->
+  </Pings>
+
+  <Defend>
+    <RespondTiles>12</RespondTiles>     <!-- playtest 2026-11-04: idle armed units this close to a shot unit or building of theirs attack-move at the shooter -->
+    <StepTiles>8</StepTiles>            <!-- a shooter their side can't see: they go this far towards it (a route must not name a spot in the fog) -->
+    <AlarmCellTiles>16</AlarmCellTiles> <!-- shooters in one cell of this size are one alarm (one route) -->
+    <IntervalTicks>10</IntervalTicks>   <!-- how often they answer -->
+  </Defend>
+
   <Diplomacy>
     <ChangeCooldownSeconds>2.0</ChangeCooldownSeconds>  <!-- v0.6: per player, per command -->
   </Diplomacy>
@@ -161,10 +173,12 @@
     <GemPayout>150.0</GemPayout>                        <!-- v0.7 -->
     <RichGemPayout>375.0</RichGemPayout>                <!-- v0.17: digging a rich gem pays this once -->
     <WallCost>5.0</WallCost>                            <!-- v0.7: per segment; no upkeep in v0.7 (plan P3) -->
-    <WallHealth>150</WallHealth>                        <!-- v0.7 -->
+    <WallHealth>150</WallHealth>                        <!-- v0.7: also its build time at BuildPower, so toughness comes from the damage table's Wall column -->
     <MaxWallLine>64</MaxWallLine>                       <!-- v0.7: segments per drag -->
-    <BlastRadius>2.5</BlastRadius>                      <!-- v0.7: tiles -->
-    <BlastDamage>200.0</BlastDamage>                    <!-- v0.7 -->
+    <BlastRadius>3.0</BlastRadius>                      <!-- playtest 2026-11-04, was 2.5: tiles -->
+    <BlastDamage>250.0</BlastDamage>                    <!-- playtest 2026-11-04, was 200 -->
+    <BombTriggerRadius>1.5</BombTriggerRadius>          <!-- playtest 2026-11-04: an enemy this close sets a bomb off (it used to have to stand on the very tile) -->
+    <BombFriendlyDamage>0.1</BombFriendlyDamage>        <!-- playtest 2026-11-04: share of a bomb's blast its own side takes -->
     <RadarClearSeconds>5.0</RadarClearSeconds>          <!-- v0.7: radius clear this long before it may ping again -->
     <RadarAlertCooldownSeconds>30.0</RadarAlertCooldownSeconds> <!-- v0.7: least time between two pings from one Radar -->
     <JamRadius>12.0</JamRadius>                         <!-- v0.13 starting value: tiles a complete, paid Jammer jams for players its owner doesn't share vision with -->
@@ -175,7 +189,8 @@
     <LastGaspHealth>0.1</LastGaspHealth> <!-- v0.18: a bomber at or below this share of its health explodes; a hit that kills it counts -->
     <ChainPasses>4</ChainPasses>         <!-- v0.18: blasts setting off bombers in one tick; the rest go next tick -->
     <AimTiles>6</AimTiles>               <!-- v0.18: enemies within this of its target are candidates for the blast point -->
-    <FriendlyWeight>1.0</FriendlyWeight> <!-- v0.18: own and allied worth in the blast, against the enemy's -->
+    <FriendlyWeight>0.1</FriendlyWeight> <!-- v0.18: own and allied worth in the blast, against the enemy's; follows FriendlyDamage -->
+    <FriendlyDamage>0.1</FriendlyDamage> <!-- playtest 2026-11-04: share of the blast that reaches its own side and allies -->
     <AimReachTiles>0.5</AimReachTiles>   <!-- v0.18: detonates this close to the blast point -->
     <GoodEnough>0.8</GoodEnough>         <!-- v0.18: or touching an enemy, when the blast here is worth this share of the point's -->
   </Bomber>
@@ -397,7 +412,7 @@
       <MaxDefendedSpots>2</MaxDefendedSpots>
       <WallGap>6</WallGap>                             <!-- tiles left open in a chokepoint wall for its own army (2 trapped big armies behind it) -->
       <RetreatSeconds>15</RetreatSeconds>              <!-- a retreat lasts at most this long -->
-      <TurretStrength>2.0</TurretStrength>             <!-- a Gun turret counts as this many times its cost in a strength estimate -->
+      <TurretStrength>3.0</TurretStrength>             <!-- a Gun turret counts as this many times its cost in a strength estimate -->
       <StageDistance>18</StageDistance>                <!-- an attack group gathers this far short of its target before it engages ... -->
       <StageShare>0.7</StageShare>                     <!-- ... until this share of it is there ... -->
       <StageSeconds>45</StageSeconds>                  <!-- ... or this long has passed since the first got there -->
@@ -496,7 +511,7 @@
     <Entry attacker="Tank" target="LightUnit">1</Entry>
     <Entry attacker="Tank" target="HeavyUnit">1</Entry>
     <Entry attacker="Tank" target="Building">1</Entry>
-    <Entry attacker="Tank" target="Wall">0.5</Entry>
+    <Entry attacker="Tank" target="Wall">0.2</Entry>
     <Entry attacker="Builder" target="LightUnit">0</Entry>
     <Entry attacker="Builder" target="HeavyUnit">0</Entry>
     <Entry attacker="Builder" target="Building">0</Entry>
@@ -508,32 +523,32 @@
     <Entry attacker="Scout" target="LightUnit">1</Entry>
     <Entry attacker="Scout" target="HeavyUnit">0.25</Entry>
     <Entry attacker="Scout" target="Building">0.25</Entry>
-    <Entry attacker="Scout" target="Wall">0.1</Entry>
+    <Entry attacker="Scout" target="Wall">0.05</Entry>
     <Entry attacker="Flamethrower" target="LightUnit">1.5</Entry>
     <Entry attacker="Flamethrower" target="HeavyUnit">0.5</Entry>
     <Entry attacker="Flamethrower" target="Building">0.75</Entry>
-    <Entry attacker="Flamethrower" target="Wall">0.25</Entry>
+    <Entry attacker="Flamethrower" target="Wall">0.1</Entry>
     <Entry attacker="Heavy" target="LightUnit">1</Entry>
     <Entry attacker="Heavy" target="HeavyUnit">1.25</Entry>
     <Entry attacker="Heavy" target="Building">1.5</Entry>
-    <Entry attacker="Heavy" target="Wall">1</Entry>
+    <Entry attacker="Heavy" target="Wall">0.5</Entry>
     <Entry attacker="Artillery" target="LightUnit">1</Entry>
     <Entry attacker="Artillery" target="HeavyUnit">1</Entry>
     <Entry attacker="Artillery" target="Building">2</Entry>
-    <Entry attacker="Artillery" target="Wall">1.5</Entry>
+    <Entry attacker="Artillery" target="Wall">1</Entry>
     <Entry attacker="Sniper" target="LightUnit">1</Entry>
     <Entry attacker="Sniper" target="HeavyUnit">0.7</Entry>
     <Entry attacker="Sniper" target="Building">0.25</Entry>
-    <Entry attacker="Sniper" target="Wall">0.1</Entry>
+    <Entry attacker="Sniper" target="Wall">0.05</Entry>
     <Entry attacker="SuicideBomber" target="LightUnit">1</Entry>
     <Entry attacker="SuicideBomber" target="HeavyUnit">1</Entry>
     <Entry attacker="SuicideBomber" target="Building">2</Entry>
-    <Entry attacker="SuicideBomber" target="Wall">3</Entry>
+    <Entry attacker="SuicideBomber" target="Wall">2</Entry>
     <!-- v0.13 building attackers, starting values (spec section 2.1) -->
     <Entry attacker="GunTurret" target="LightUnit">1.5</Entry>
-    <Entry attacker="GunTurret" target="HeavyUnit">0.4</Entry>
+    <Entry attacker="GunTurret" target="HeavyUnit">0.5</Entry>
     <Entry attacker="GunTurret" target="Building">0.5</Entry>
-    <Entry attacker="GunTurret" target="Wall">0.5</Entry>
+    <Entry attacker="GunTurret" target="Wall">0.25</Entry>
   </DamageTable>
 
   <Units>
@@ -584,16 +599,16 @@
       <Armour>Heavy</Armour><BuildSeconds>5.0</BuildSeconds>
     </Unit>
     <Unit type="Artillery">
-      <Health>120</Health><Damage>40</Damage><Range>14.0</Range><AttackInterval>4.0</AttackInterval>
-      <MoveSpeed>2.5</MoveSpeed><UpfrontCost>220.0</UpfrontCost><RunningCost>6.0</RunningCost>
-      <Radius>0.7</Radius><SizeClass>1</SizeClass><Sight>7.0</Sight>
+      <Health>120</Health><Damage>70</Damage><Range>18.0</Range><AttackInterval>5.0</AttackInterval>
+      <MoveSpeed>2.0</MoveSpeed><UpfrontCost>220.0</UpfrontCost><RunningCost>6.0</RunningCost>
+      <Radius>0.7</Radius><SizeClass>1</SizeClass><Sight>18.0</Sight>
       <Armour>Heavy</Armour><BuildSeconds>6.0</BuildSeconds>
       <Splash>2.0</Splash><MinRange>4.0</MinRange>
     </Unit>
     <Unit type="Sniper">
-      <Health>70</Health><Damage>60</Damage><Range>16.0</Range><AttackInterval>3.0</AttackInterval>
+      <Health>70</Health><Damage>60</Damage><Range>20.0</Range><AttackInterval>3.0</AttackInterval>
       <MoveSpeed>4.0</MoveSpeed><UpfrontCost>150.0</UpfrontCost><RunningCost>4.0</RunningCost>
-      <Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>10.0</Sight>
+      <Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>20.0</Sight>
       <Armour>Light</Armour><BuildSeconds>4.0</BuildSeconds>
       <MinRange>3.0</MinRange>
     </Unit>
@@ -645,8 +660,8 @@
     </Building>
     <!-- v0.13 Bastion: starting values from the spec (section 5), to tune in play -->
     <Building type="GunTurret"> <!-- attacks like a unit that can't move: units, then buildings, then walls -->
-      <Health>350</Health><Width>1</Width><Height>1</Height><UpfrontCost>150.0</UpfrontCost><RunningCost>4.0</RunningCost>
-      <Sight>8.0</Sight><Damage>8</Damage><Range>7.0</Range><AttackInterval>0.4</AttackInterval>
+      <Health>500</Health><Width>1</Width><Height>1</Height><UpfrontCost>150.0</UpfrontCost><RunningCost>4.0</RunningCost>
+      <Sight>10.0</Sight><Damage>12</Damage><Range>9.0</Range><AttackInterval>0.4</AttackInterval>
     </Building>
     <Building type="Jammer"> <!-- jams Siege/JamRadius for players its owner doesn't share vision with -->
       <Health>200</Health><Width>2</Width><Height>2</Height><UpfrontCost>200.0</UpfrontCost><RunningCost>6.0</RunningCost>

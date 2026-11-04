@@ -10,6 +10,9 @@ public static class UpkeepRules
         return true;
     }
 
+    /// <summary>True when an unpaid building loses health: only once its owner has no units left to lose first.</summary>
+    public static bool BuildingDecays(int ownerUnits) => ownerUnits <= 0;
+
     /// <summary>Health lost over <paramref name="seconds"/> while upkeep is unpaid.</summary>
     public static float DecayDamage(float maxHealth, float percentPerSecond, float seconds) => maxHealth * percentPerSecond / 100f * seconds;
 }

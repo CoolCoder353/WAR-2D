@@ -385,11 +385,14 @@ namespace WAR2D.Net.Replication
         /// </summary>
         public Func<int, bool> Spectating;
 
+        /// <summary>The grid a spectating owner watches: <see cref="SimData.SeesAll"/> or the player they chose (null: the whole map).</summary>
+        public Func<int, int> SpectatorGrid;
+
         /// <summary>A client's grid: everything for the recorder, else as <see cref="GridOf"/>.</summary>
         private int GridFor(Client client) => client.SeesAll ? SimData.SeesAll : GridOf(client.OwnerId);
 
         /// <summary>The fog grid an owner's client is replicated against.</summary>
-        private int GridOf(int ownerId) => Spectating != null && Spectating(ownerId) ? SimData.SeesAll : sim.VisionOf(ownerId);
+        private int GridOf(int ownerId) => Spectating != null && Spectating(ownerId) ? SpectatorGrid != null ? SpectatorGrid(ownerId) : SimData.SeesAll : sim.VisionOf(ownerId);
 
         /// <summary>
         /// Sends every client its own team's fog: a snapshot when its grid is new to it, otherwise the

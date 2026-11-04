@@ -369,6 +369,20 @@ namespace WAR2D.UI
             ring.schedule.Execute(() => ring.RemoveFromHierarchy()).ExecuteLater(PingMilliseconds);
         }
 
+        /// <summary>A ring in a player's colour at a world tile (Figma K3).</summary>
+        public void PingColoured(int2 tile, Color32 colour, float seconds)
+        {
+            if (texture == null) return;
+            Vector2 at = MinimapTexture.ToLocal((float2)tile + 0.5f, image.layout.size, WorldSize);
+            var ring = new VisualElement { name = "minimap-ping", pickingMode = PickingMode.Ignore };
+            ring.AddToClassList("minimap-ping");
+            ring.style.borderTopColor = ring.style.borderBottomColor = ring.style.borderLeftColor = ring.style.borderRightColor = (Color)colour;
+            ring.style.left = at.x;
+            ring.style.top = at.y;
+            Pings.Add(ring);
+            ring.schedule.Execute(() => ring.RemoveFromHierarchy()).ExecuteLater((long)(seconds * 1000f));
+        }
+
         /// <summary>Redraws at 5 Hz and moves the camera box every frame.</summary>
         public void Update(float deltaTime)
         {

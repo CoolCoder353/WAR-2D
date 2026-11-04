@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using Unity.Collections;
+using Unity.Jobs;
 using Unity.Mathematics;
 
 namespace WAR2D.Sim
@@ -37,6 +39,61 @@ namespace WAR2D.Sim
                 else continue;
                 ApplyWorkOrder(data, context, new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, OwnerId = owner, Tile = tile, Ids = new[] { id } }, unitCount);
             }
+        }
+
+        /// <summary>
+        /// Idle units answer fire (playtest 2026-11-04): every <c>Defend/IntervalTicks</c>, the armed idle units near a shot unit or
+        /// building of their own side attack-move at the shooter (<see cref="DefendAlarms"/>), so an army isn't picked apart from
+        /// out of its range and a base under fire draws the units standing by it. Hold, work and any order keep their units.
+        /// Runs after the boundary's drained commands, so a player's order this boundary wins.
+        /// </summary>
+        private void AnswerAlarms(SimData data, SimContext context, int unitCount, int tick)
+        {
+            if (tick % math.max(1, data.DefendInterval) != 0) return;
+            bool any = false;
+            for (int s = 0; s < data.AlarmCount.Length; s++) any |= data.AlarmCount[s] > 0;
+            if (!any) return;
+
+            using var responders = new NativeList<long>(256, Allocator.TempJob);
+            new FindRespondersJob
+            {
+                Count = unitCount,
+                RadiusSq = data.DefendRadius * data.DefendRadius,
+                Alarms = data.Alarms,
+                AlarmCount = data.AlarmCount,
+                Positions = data.Positions,
+                Health = data.Health,
+                DamageByType = data.DamageByType,
+                OwnerSlot = data.OwnerSlot,
+                Type = data.Type,
+                Stance = data.Stance,
+                WorkKind = data.WorkKind,
+                Target = data.Target,
+                OrderSlot = data.OrderSlot,
+                OrderLive = data.OrderLive,
+                Results = responders,
+            }.Run();
+            responders.Sort();
+
+            for (int next = 0; next < responders.Length;)
+            {
+                int alarm = (int)(responders[next] >> 32);
+                foreach (List<int> list in moversByClass) list.Clear();
+                for (; next < responders.Length && (int)(responders[next] >> 32) == alarm; next++)
+                {
+                    int slot = (int)(responders[next] & 0xffffffffL);
+                    int id = data.IdOf[slot];
+                    if (!data.PendingOrders.ContainsKey(id) && context.Waypoints.CountOf(id) == 0) moversByClass[data.SizeClass[slot]].Add(slot);
+                }
+                int ownerSlot = alarm / DefendAlarms.PerOwner;
+                DefendAlarm raised = data.Alarms[alarm];
+                bool seen = NearestEnemyJob.Sees(data.Visible, ownerSlot * data.FogCells, raised.From, data.FogCellSize, data.FogW, data.FogH);
+                int2 goal = DefendAlarms.Goal(raised, seen, data.DefendStepTiles);
+                for (int sizeClass = 0; sizeClass < moversByClass.Length; sizeClass++)
+                    if (moversByClass[sizeClass].Count > 0) Issue(data, context, moversByClass[sizeClass], sizeClass, goal, Stances.AttackMove, tick, data.OwnerIdBySlot[ownerSlot]);
+            }
+            foreach (List<int> list in moversByClass) list.Clear();
+            for (int s = 0; s < data.AlarmCount.Length; s++) data.AlarmCount[s] = 0;
         }
 
         private readonly List<int> blueprints = new List<int>();

@@ -29,6 +29,7 @@ public partial struct SpawnerSystem : ISystem
 
         foreach (var (spawner, building, entity) in SystemAPI.Query<RefRW<SpawnerData>, RefRO<BuildingData>>().WithNone<Construction>().WithEntityAccess())
         {
+            if (SystemAPI.HasComponent<UpkeepComponent>(entity) && SystemAPI.GetComponent<UpkeepComponent>(entity).unpaid) continue; // an unpaid producer stops, keeping its progress
             UnitType type = (UnitType)spawner.ValueRO.unitType;
             if (spawner.ValueRO.count <= 0 || !config.Units.TryGetValue(type, out UnitConfig unitConfig))
             {

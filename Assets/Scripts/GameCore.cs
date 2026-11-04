@@ -457,7 +457,7 @@ public partial class GameCore : NetworkBehaviour
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
             entry.Value.state = PlayerState.Playing;
-            entry.Value.ResetResources(Settings.StartingResources);
+            entry.Value.ResetResources(Settings.StartingResources, Settings.InfiniteResources);
             if (entry.Key != null) entry.Key.GetComponent<ClientPlayer>().hasPlacedHQ = false;
         }
         StartAiSeats();

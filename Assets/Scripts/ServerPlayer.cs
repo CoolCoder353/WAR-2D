@@ -40,10 +40,21 @@ public class ServerPlayer
         Resources = startingResources;
     }
 
+    /// <summary>Whose sight the player watches while spectating: a live player's owner id, or 0 for the whole map.</summary>
+    public int SpectateView;
+
+    /// <summary>What an infinite balance reads: more than any check asks for, and what the client recognises.</summary>
+    public const float InfiniteBalance = 999999f;
+
+    /// <summary>The match has infinite resources (<see cref="MatchSettings.InfiniteResources"/>): spending counts but the balance never moves.</summary>
+    public bool Infinite { get; private set; }
+
     /// <summary>Sets the balance at match start (the lobby's starting resources) and clears the per-second counters.</summary>
-    public void ResetResources(float amount)
+    public void ResetResources(float amount, bool infinite = false)
     {
-        Resources = amount > 0f ? amount : 0f;
+        Infinite = infinite;
+        SpectateView = 0;
+        Resources = infinite ? InfiniteBalance : amount > 0f ? amount : 0f;
         incomeThisSecond = upkeepThisSecond = 0f;
         IncomeLastSecond = UpkeepLastSecond = 0f;
         SpentThisMatch = 0f;
@@ -61,7 +72,7 @@ public class ServerPlayer
 
     public void Add(float amount)
     {
-        if (Away || !(amount > 0f)) return; // also rejects NaN
+        if (Away || Infinite || !(amount > 0f)) return; // also rejects NaN
         Resources += amount;
         ResourcesDirty = true;
     }
@@ -71,7 +82,7 @@ public class ServerPlayer
     {
         if (!(amount > 0f)) return;
         // Not Add: a refund is the player's own money coming back, so it lands even while they are away.
-        Resources += amount;
+        if (!Infinite) Resources += amount;
         ResourcesDirty = true;
         SpentThisMatch = SpentThisMatch > amount ? SpentThisMatch - amount : 0f;
     }
@@ -138,6 +149,11 @@ public class ServerPlayer
     public bool TrySpend(float amount, bool countAsSpent = true)
     {
         if (Away) return false; // nothing is bought for an away player (upkeep goes through TryPayUpkeep)
+        if (Infinite)
+        {
+            if (countAsSpent && amount > 0f) SpentThisMatch += amount;
+            return true;
+        }
         float balance = Resources;
         if (!UpkeepRules.TryCharge(ref balance, amount)) return false;
         if (balance != Resources)
@@ -154,6 +170,22 @@ public class ServerPlayer
     /// so true without taking anything).
     /// </summary>
     public bool TryPayUpkeep(float amount) => Away || TrySpend(amount);
+
+    /// <summary>Upkeep the player's units were charged at the last charge, which buildings leave in the bank.</summary>
+    public float UnitUpkeepReserve;
+
+    /// <summary>Living units at the last count (once a second): buildings decay only with none left. Starts above 0 until the first count.</summary>
+    public int UnitCount = 1;
+
+    /// <summary>
+    /// Pays a building's upkeep out of what the units don't need (playtest 2026-11-04: buildings give way first). A building
+    /// refused here stops working, and takes no damage while its owner has units left.
+    /// </summary>
+    public bool TryPayBuildingUpkeep(float amount)
+    {
+        if (amount <= 0f || Away) return true;
+        return Resources - amount >= UnitUpkeepReserve && TrySpend(amount);
+    }
 
     /// <summary>Sends the balance again at the next sync (a player who came back has none of it).</summary>
     public void MarkDirty() => ResourcesDirty = true;

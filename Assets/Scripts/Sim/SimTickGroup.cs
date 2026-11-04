@@ -105,7 +105,7 @@ namespace WAR2D.Sim
                 data.UpkeepOwed[s] = 0f;
                 if (owner == 0) continue;
                 if (charged && spent > 0f) context?.Spend?.Invoke(owner, spent);
-                if (charged && owed > 0f) context?.Owe?.Invoke(owner, owed);
+                if (charged) context?.Owe?.Invoke(owner, owed); // zero too: it also resets what buildings must leave for the units
                 data.UpkeepBudget[s] = context?.BudgetOf != null ? context.BudgetOf(owner) : float.MaxValue;
             }
         }

@@ -59,6 +59,7 @@
                     <ui:VisualElement class="option-group">
                         <ui:Label text="Resources" class="text--secondary lobby__label" />
                         <ui:VisualElement name="resource-options" class="row segmented" />
+                        <ui:Label name="resources-hint" text="Nobody's balance runs out: no upkeep to pay, nothing decays." class="text--secondary hidden" />
                     </ui:VisualElement>
                     <ui:VisualElement class="option-group">
                         <ui:Label text="Options per player" class="text--secondary lobby__label" />

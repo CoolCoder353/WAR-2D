@@ -62,7 +62,7 @@ namespace WAR2D.UI
         /// <summary>True for the alerts that happened somewhere on the map, so clicking them moves the camera there.</summary>
         public static bool HasPlace(AlertKind kind) =>
             kind == AlertKind.UnderAttack || kind == AlertKind.BombTriggered || kind == AlertKind.EnemySpotted ||
-            kind == AlertKind.ConstructionFinished || kind == AlertKind.RepairsStopped;
+            kind == AlertKind.ConstructionFinished || kind == AlertKind.RepairsStopped || kind == AlertKind.Ping;
 
         /// <summary>Asks the camera to go to an alert's place (its row was clicked). Does nothing for alerts without one.</summary>
         public void Focus(int id)
@@ -161,7 +161,8 @@ namespace WAR2D.UI
         public static string Text(in Alert alert, Func<int, string> nameOf, string nearBuilding) => alert.Kind switch
         {
             AlertKind.UnderAttack => nearBuilding != null ? $"Under attack near your {nearBuilding}" : "Your units are under attack",
-            AlertKind.UpkeepUnpaid => "Upkeep unpaid: units are decaying",
+            AlertKind.UpkeepUnpaid => "Upkeep unpaid: buildings stop, then units decay",
+            AlertKind.Ping => $"{nameOf(alert.OtherOwnerId)} pinged",
             AlertKind.GiftReceived => $"{nameOf(alert.OtherOwnerId)} gifted you {alert.Amount:N0}",
             AlertKind.VisionSharedWithYou => $"{nameOf(alert.OtherOwnerId)} shares vision with you",
             AlertKind.VisionUnshared => $"{nameOf(alert.OtherOwnerId)} stopped sharing vision with you",
@@ -178,7 +179,7 @@ namespace WAR2D.UI
         /// <summary>True for the alerts whose text starts with another player's name (<see cref="Alert.OtherOwnerId"/>).</summary>
         public static bool NamesAPlayer(AlertKind kind) =>
             kind == AlertKind.GiftReceived || kind == AlertKind.VisionSharedWithYou || kind == AlertKind.VisionUnshared ||
-            kind == AlertKind.PlayerDisconnected || kind == AlertKind.PlayerReturned;
+            kind == AlertKind.PlayerDisconnected || kind == AlertKind.PlayerReturned || kind == AlertKind.Ping;
 
         /// <summary>A building type as players know it.</summary>
         public static string BuildingName(BuildingType type) => type switch

@@ -53,7 +53,7 @@ public partial class WorldStateManager
     }
 
     /// <summary>True when owner <paramref name="from"/> shares vision with owner <paramref name="to"/> (main thread, settled).</summary>
-    private bool SharesVision(int from, int to) =>
+    internal bool SharesVision(int from, int to) =>
         Sim != null && Sim.TrySlotOf(from, out int a) && Sim.TrySlotOf(to, out int b) && Sim.Diplomacy.SharesVisionWith(a, b);
 
     /// <summary>True when a bomb the viewer may know of (its own, or shared with it) sits on the tile: placement sees the tile as taken.</summary>

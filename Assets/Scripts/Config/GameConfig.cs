@@ -43,6 +43,8 @@ namespace Config
         public FormationConfig Formation = new FormationConfig();
         /// <summary>v0.16: idle Builders building and repairing nearby.</summary>
         public AutoWorkConfig AutoWork = new AutoWorkConfig();
+        public DefendConfig Defend = new DefendConfig();
+        public PingsConfig Pings = new PingsConfig();
         /// <summary>Player-controlled diplomacy.</summary>
         public DiplomacyConfig Diplomacy = new DiplomacyConfig();
         /// <summary>Resource gifting between players.</summary>
@@ -248,6 +250,8 @@ namespace Config
         public float AimTiles;
         /// <summary>Weight of own and allied worth in the blast.</summary>
         public float FriendlyWeight;
+        /// <summary>Share of the blast that reaches own and allied units, buildings and walls.</summary>
+        public float FriendlyDamage;
         /// <summary>Tiles from the blast point at which it detonates.</summary>
         public float AimReachTiles;
         /// <summary>Share of the point's worth that makes a blast on contact good enough.</summary>
@@ -294,6 +298,28 @@ namespace Config
         public float SlotTiles;
         /// <summary>A unit this much farther from the goal than its group's leader drops the group speed.</summary>
         public float LostTiles;
+    }
+
+    /// <summary>Map pings between players sharing vision (playtest 2026-11-04).</summary>
+    public class PingsConfig
+    {
+        /// <summary>Least seconds between one player's pings.</summary>
+        public float CooldownSeconds;
+        /// <summary>Seconds a ping stays on the map and the minimap.</summary>
+        public float ShowSeconds;
+    }
+
+    /// <summary>Idle units answering fire (playtest 2026-11-04).</summary>
+    public class DefendConfig
+    {
+        /// <summary>Tiles from a shot unit or building within which idle units answer.</summary>
+        public float RespondTiles;
+        /// <summary>Tiles they go towards a shooter their side doesn't see.</summary>
+        public float StepTiles;
+        /// <summary>Side of the cells that make one alarm of many shooters.</summary>
+        public float AlarmCellTiles;
+        /// <summary>Ticks between answers.</summary>
+        public int IntervalTicks;
     }
 
     /// <summary>Builders working on their own when idle (v0.16).</summary>
@@ -375,6 +401,10 @@ namespace Config
     /// <summary>Construction, walls, digging, bombs and Radars (v0.7).</summary>
     public class SiegeConfig
     {
+        /// <summary>Tiles from a hidden bomb's tile centre at which an enemy sets it off.</summary>
+        public float BombTriggerRadius;
+        /// <summary>Share of a hidden bomb's blast that reaches its own side.</summary>
+        public float BombFriendlyDamage;
         /// <summary>Health per second one Builder adds to a blueprint, a rising wall or (for a price) a damaged building.</summary>
         public float BuildPower;
         /// <summary>Share of its cost (0..1) a completed building refunds when its owner demolishes it; blueprints refund in full.</summary>

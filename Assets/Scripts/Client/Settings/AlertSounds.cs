@@ -17,6 +17,7 @@ public static class AlertSounds
         AlertKind.UnderAttack => "alert_under_attack",
         AlertKind.BombTriggered => "alert_bomb",
         AlertKind.EnemySpotted => "radar_ping",
+        AlertKind.Ping => "radar_ping",
         AlertKind.ConstructionFinished => jammer ? "jammer_online" : "construction_finished",
         AlertKind.UpkeepUnpaid => "alert_upkeep",
         AlertKind.GiftReceived => "alert_gift",
