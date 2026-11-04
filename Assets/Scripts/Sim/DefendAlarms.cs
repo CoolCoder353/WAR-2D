@@ -34,15 +34,14 @@ namespace WAR2D.Sim
         }
 
         /// <summary>
-        /// Where an alarm sends its responders: the shooter's position if the owner's side sees it now; else a step towards it, because
-        /// a route reaches its owner's client and must not name a position in the fog. It gives away only the direction fire came from.
+        /// Where an alarm sends its responders: the shooter's position if the owner's side sees it now; else the whole step towards it,
+        /// however near it is, because a route reaches its owner's client and must not name a position in the fog. It gives away only
+        /// the direction fire came from. The step may pass the shooter: attack-move stops for it as soon as it is seen.
         /// </summary>
         public static int2 Goal(in DefendAlarm alarm, bool seen, float stepTiles)
         {
             if (seen) return (int2)math.floor(alarm.From);
-            float2 way = alarm.From - alarm.Victim;
-            float distance = math.length(way);
-            return (int2)math.floor(alarm.Victim + (distance > stepTiles ? way / distance * stepTiles : way));
+            return (int2)math.floor(alarm.Victim + math.normalizesafe(alarm.From - alarm.Victim) * stepTiles);
         }
     }
 
