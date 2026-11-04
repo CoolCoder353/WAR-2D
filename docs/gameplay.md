@@ -61,7 +61,7 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | `F`, then click (Builders) | **Repair** the damaged own or allied building or wall you click (the command card has the same button) |
 | `G`, then click (Diggers) | **Dig** toward the rock, gem or wall you click |
 | `G`, then drag a box (Diggers) | **Dig an area**: the selected Diggers share out the rock, gems and enemy walls in the box (lit up while you drag, with a count), each taking the nearest tile no other has, until it is clear. Your own and allies' walls are left alone. At most `Orders/MaxDigArea` (24) tiles a side. Shift queues it and keeps Dig armed; right-click or Esc cancels the drag. |
-| `.` | Select your **idle Builders** (not moving, with no own blueprint or damaged own building within 5 tiles; the client cannot see Builder work, so this is a guess). Pressed again it centres the camera on the next one. `Ctrl` + `.` selects every Builder |
+| `.` | Select your **idle Builders** (not moving, with no own blueprint or own building under 90 % health, the line `AutoWork/RepairBelow` where an idle Builder takes the repair, within 5 tiles; the client cannot see Builder work, so this is a guess). Pressed again it centres the camera on the next one. `Ctrl` + `.` selects every Builder |
 | `,` | Select your **army**: every own unit that can attack. Pressed again it adds Diggers and Suicide bombers |
 | `Backspace` | Centre the camera on your HQ; twice quickly it also selects it |
 | `Space` | Centre the camera on the newest alert you have not visited yet |
@@ -206,7 +206,7 @@ Units reach full speed at once (the unused `Acceleration` setting was dropped). 
 
 The alert feed shows the newest five alerts. Each leaves after `Alerts/ShowSeconds` (12 s), shown by a bar draining along its bottom edge, though not while the pointer is over the feed, or when you dismiss it with × or a right click on it. An alert repeating one already shown (same kind and text) joins that row, with a count ("×3"), instead of adding a row. Clicking an alert that happened somewhere (Under attack, Bomb triggered, Enemy spotted, Construction finished, Repairs stopped) moves the camera there. You're told only about your own things and choices made towards you:
 
-- **Under attack near your HQ/Spawner/Miner** (or "Your units are under attack"): one of your units or buildings took damage. The minimap pings the spot. At most one per 32-tile area every 10 s (`Alerts/AreaTiles`, `Alerts/ThrottleSeconds`). It never says who attacked.
+- **Under attack near your HQ/Spawner/Miner** (or "Your units are under attack"): one of your units or buildings took damage, from a shot or from another player's bomb or Suicide bomber. The minimap pings the spot. At most one per 32-tile area every 10 s (`Alerts/AreaTiles`, `Alerts/ThrottleSeconds`). It never says who attacked.
 - **Upkeep unpaid**: some of your upkeep first went unpaid (repeats only after a fully paid second).
 - **A player shares vision with you / stopped sharing vision with you**.
 - **A player gifted you N**.

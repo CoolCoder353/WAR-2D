@@ -56,6 +56,49 @@ public sealed class AlertService
         AlertRules.UnderAttack(damaged, throttle, now, add);
     }
 
+    /// <summary>
+    /// Bombs and Suicide bombers hurt everything around them and leave no attack event, so <see cref="CollectDamage"/> never hears
+    /// of it: every other owner's unit (alive or just killed) and building inside a blast (<paramref name="blasts"/>) gets the same
+    /// throttled UnderAttack alert, at its own tile. A player's own blast is theirs, and tells them nothing new. Runs only on a
+    /// tick with a blast; the box cuts the units it has to measure.
+    /// </summary>
+    public void CollectBlasts(SimData data, int unitCount, IReadOnlyList<(float2 at, int owner, float radius)> blasts, double now)
+    {
+        if (blasts.Count == 0) return;
+        damaged.Clear();
+        float2 lo = new float2(float.MaxValue), hi = new float2(float.MinValue);
+        foreach ((float2 at, int _, float radius) in blasts)
+        {
+            lo = math.min(lo, at - radius);
+            hi = math.max(hi, at + radius);
+        }
+        for (int slot = 0; slot < unitCount; slot++)
+        {
+            float2 p = data.Positions[slot];
+            if (math.all(p >= lo & p <= hi) && Hit(blasts, p, p, data.OwnerId[slot])) // a unit the blast killed is still here, at 0 health
+                damaged.Add((data.OwnerId[slot], (int2)math.floor(p)));
+        }
+        int buildings = data.BuildingCount[0];
+        for (int b = 0; b < buildings; b++)
+        {
+            if ((data.BuildingFlag[b] & BuildingFlags.Hidden) != 0) continue; // a hidden bomb is the blast's cause, not its victim
+            float2 start = Footprint.Start(data.BuildingAnchor[b], data.BuildingSize[b]);
+            if (Hit(blasts, start, start + data.BuildingSize[b], data.BuildingOwnerId[b])) damaged.Add((data.BuildingOwnerId[b], data.BuildingAnchor[b]));
+        }
+        AlertRules.UnderAttack(damaged, throttle, now, add);
+    }
+
+    /// <summary>True when a blast by another owner reaches the box from <paramref name="min"/> to <paramref name="max"/>.</summary>
+    private static bool Hit(IReadOnlyList<(float2 at, int owner, float radius)> blasts, float2 min, float2 max, int owner)
+    {
+        for (int i = 0; i < blasts.Count; i++)
+        {
+            (float2 at, int by, float radius) = blasts[i];
+            if (by != owner && math.lengthsq(math.max(math.max(min - at, at - max), 0f)) <= radius * radius) return true;
+        }
+        return false;
+    }
+
     /// <summary>Adds a hit target's own owner and tile, once per target.</summary>
     private void Damaged(SimData data, int unitCount, Func<int, (bool found, int owner, int2 tile)> building, int target)
     {

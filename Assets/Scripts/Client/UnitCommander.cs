@@ -606,6 +606,9 @@ public class UnitCommander : NetworkBehaviour
     /// <summary>Raised with a short message to show at the cursor ("No idle Builders") when a shortcut found nothing to select.</summary>
     public event System.Action<string> Notice;
 
+    /// <summary>Shows a notice at the cursor for a moment.</summary>
+    public void ShowNotice(string text) => Notice?.Invoke(text);
+
     private int idleCycle, builderCycle = -1;
     private float lastHqJumpTime = -1f;
 
@@ -705,7 +708,11 @@ public class UnitCommander : NetworkBehaviour
             CentreCamera(rejoinHq.Data.position + new float2(2.5f, 2.5f));
         }
 
-        if (WAR2D.UI.ManualController.AnyOpen) return; // v0.18: the keyboard is the manual's (its search box), and clicks stop at it
+        // Roaming runs on through a dialog: without a pause (two humans) the match goes on behind it.
+        Roaming.Update(Time.unscaledTime, WorldStateManager.Instance.MapBounds.Item1, WorldStateManager.Instance.MapBounds.Item2,
+            (ids, goal) => Selection.OrderIds(OrderKind.Move, ids, goal));
+        // v0.18: the keyboard is the manual's (its search box), and clicks stop at it; so for the menu, Settings and the gift dialog.
+        if (WAR2D.UI.HudController.DialogOpen || WAR2D.UI.ManualController.AnyOpen) { SendCameraView(); return; }
         if (GameInput.AttackMove.WasPressedThisFrame()) Arm(OrderKind.AttackMove);
         if (GameInput.Repair.WasPressedThisFrame()) Arm(OrderKind.Repair);
         if (GameInput.Dig.WasPressedThisFrame()) Arm(OrderKind.Dig);
@@ -713,8 +720,6 @@ public class UnitCommander : NetworkBehaviour
         if (GameInput.Hold.WasPressedThisFrame()) Order(OrderKind.Hold);
         if (GameInput.Detonate.WasPressedThisFrame()) Order(OrderKind.Detonate);
         if (GameInput.Roam.WasPressedThisFrame()) StartRoaming();
-        Roaming.Update(Time.unscaledTime, WorldStateManager.Instance.MapBounds.Item1, WorldStateManager.Instance.MapBounds.Item2,
-            (ids, goal) => Selection.OrderIds(OrderKind.Move, ids, goal));
 
         // While placing a building, clicks belong to the placement.
         BuildingPlacement placement = BuildingPlacement.Instance;
@@ -883,7 +888,12 @@ public class UnitCommander : NetworkBehaviour
         if (GameInput.SelectIdleBuilders.WasPressedThisFrame()) SelectBuilders(owner, GameInput.AssignModifier.IsPressed());
         if (GameInput.SelectArmy.WasPressedThisFrame()) SelectArmy(owner);
         if (GameInput.JumpToHq.WasPressedThisFrame()) JumpToHq(owner);
+        SendCameraView();
+    }
 
+    /// <summary>Tells the server what the camera shows (throttled, and only when it changed).</summary>
+    private void SendCameraView()
+    {
         //Get the corners of the camera (orthographic bounds)
         Camera cam = Camera.main;
         float halfH = cam.orthographicSize;

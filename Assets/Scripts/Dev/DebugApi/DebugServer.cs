@@ -133,6 +133,7 @@ namespace WAR2D.Dev.DebugApi
         private void OnDestroy()
         {
             stopping = true;
+            InputCommands.Reset();
             try { listener?.Stop(); } catch (SocketException) { }
             if (apiFile != null && File.Exists(apiFile)) File.Delete(apiFile);
             if (Instance == this) { Instance = null; DebugApi.Listening = false; }

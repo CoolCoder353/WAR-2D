@@ -109,6 +109,14 @@ namespace WAR2D.Sim
         /// <summary>Commands waiting for the next boundary.</summary>
         public int Count => pending.Count;
 
+        /// <summary>How many queued commands are of <paramref name="kind"/>.</summary>
+        public int CountOf(SimCommandKind kind)
+        {
+            int n = 0;
+            foreach (SimCommand command in pending) if (command.Kind == kind) n++;
+            return n;
+        }
+
         /// <summary>Queues a command. Main thread only.</summary>
         public void Enqueue(in SimCommand command) => pending.Add(command);
 

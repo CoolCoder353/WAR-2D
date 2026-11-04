@@ -85,4 +85,51 @@ public IEnumerator ScreenshotWritesAPng()
     Assert.IsTrue(System.IO.File.Exists(path));
     DebugApi.AllowForTests = false;
 }
+
+    private static IEnumerator CallAndWait(string cmd, string args, System.Action<JObject> done)
+    {
+        JObject reply = null;
+        var d = new DebugDispatcher(DebugServer.Registry, "t", () => false, () => false);
+        d.Handle($"{{\"id\":1,\"token\":\"t\",\"cmd\":\"{cmd}\",\"args\":{args}}}", s => reply = JObject.Parse(s));
+        float until = Time.realtimeSinceStartup + 10f;
+        while (reply == null && Time.realtimeSinceStartup < until) { d.Pump(Time.unscaledDeltaTime); yield return null; }
+        Assert.IsNotNull(reply, cmd + ": no reply");
+        done(reply);
+    }
+
+    [UnityTest]
+    public IEnumerator InjectedMouseAndKeyboardReachTheInputSystem()
+    {
+        DebugApi.AllowForTests = true;
+        JObject reply = null;
+        yield return CallAndWait("mouse", "{\"x\":100,\"y\":50,\"action\":\"move\"}", r => reply = r);
+        Assert.IsTrue((bool)reply["ok"], (string)reply["error"]);
+        Assert.AreEqual(50f, (float)reply["result"]["y"], 0.5f, "the reply is in the pixels sent");
+        yield return null;
+        var pos = UnityEngine.InputSystem.Mouse.current.position.ReadValue();
+        Assert.AreEqual(100f, pos.x, 0.5f);
+        Assert.AreEqual(Screen.height - 50f, pos.y, 0.5f);
+
+        // Hold F1 and see the key down, then release it.
+        yield return CallAndWait("key", "{\"keys\":\"F1\",\"action\":\"down\"}", r => reply = r);
+        Assert.IsTrue((bool)reply["ok"], (string)reply["error"]);
+        yield return null;
+        Assert.IsTrue(UnityEngine.InputSystem.Keyboard.current[UnityEngine.InputSystem.Key.F1].isPressed);
+        yield return CallAndWait("key", "{\"keys\":\"F1\",\"action\":\"up\"}", r => reply = r);
+        yield return null;
+        Assert.IsFalse(UnityEngine.InputSystem.Keyboard.current[UnityEngine.InputSystem.Key.F1].isPressed);
+
+        yield return CallAndWait("key", "{\"keys\":\"nonsense\"}", r => reply = r);
+        Assert.IsFalse((bool)reply["ok"]);
+        yield return CallAndWait("ui", "{}", r => reply = r);
+        Assert.IsTrue((bool)reply["ok"], (string)reply["error"]);
+        yield return CallAndWait("ui", "{\"compact\":true,\"max\":3}", r => reply = r);
+        Assert.IsTrue((bool)reply["ok"], (string)reply["error"]);
+        foreach (JToken line in (JArray)reply["result"]["elements"]) Assert.AreEqual(JTokenType.String, line.Type);
+        yield return CallAndWait("camera", "{}", r => reply = r);
+        Assert.IsTrue((bool)reply["ok"], (string)reply["error"]);
+        Assert.IsNotNull(reply["result"]["zoom"], "no arguments reads the camera");
+        InputCommands.Reset();
+        DebugApi.AllowForTests = false;
+    }
 }

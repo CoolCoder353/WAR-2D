@@ -57,7 +57,7 @@ public struct SummaryData
 }
 
 /// <summary>
-/// Collects the graphs and timeline during Playing, on the match clock so a pause adds nothing (server only). Every
+/// Collects the graphs and timeline during Playing, in seconds of play (<c>WorldStateManager.PlayedSeconds</c>), so neither the HQ pick nor a pause adds anything (server only). Every
 /// <c>Summary/SampleSeconds</c>, one row per player; at <c>Summary/MaxPoints</c> neighbouring pairs merge (averages for income,
 /// the later value for the rest) and the interval doubles, so a long match keeps its whole shape. Pure.
 /// </summary>

@@ -1,0 +1,102 @@
+using System.Collections;
+using Config;
+using Newtonsoft.Json.Linq;
+using NUnit.Framework;
+using Unity.Mathematics;
+using UnityEngine;
+using UnityEngine.TestTools;
+using WAR2D.Dev.DebugApi;
+using WAR2D.UI;
+
+/// <summary>What the agent-played match of 2026-11-04 found, in a real hosted match (known-issues.md).</summary>
+public class PlaytestFixPlayModeTests
+{
+    private GameConfigData config;
+
+    [UnitySetUp]
+    public IEnumerator SetUp()
+    {
+        config = PlayModeMatch.Configure();
+        yield return PlayModeMatch.LoadMenu();
+        DebugApi.AllowForTests = true;
+    }
+
+    [UnityTearDown]
+    public IEnumerator TearDown()
+    {
+        InputCommands.Reset();
+        DebugApi.AllowForTests = false;
+        DevApi.AllowForTests = false;
+        yield return PlayModeMatch.TearDown();
+    }
+
+    private static IEnumerator Press(string keys)
+    {
+        JObject reply = null;
+        var d = new DebugDispatcher(DebugServer.Registry, "t", () => false, () => false);
+        d.Handle($"{{\"id\":1,\"token\":\"t\",\"cmd\":\"key\",\"args\":{{\"keys\":\"{keys}\"}}}}", s => reply = JObject.Parse(s));
+        float until = Time.realtimeSinceStartup + 10f;
+        while (reply == null && Time.realtimeSinceStartup < until) { d.Pump(Time.unscaledDeltaTime); yield return null; }
+        Assert.IsTrue(reply != null && (bool)reply["ok"], keys + ": " + reply);
+    }
+
+    [UnityTest]
+    public IEnumerator TheMinersFacingWaitsBehindTheMenuAndCarriesToTheNextOne()
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        yield return PlayModeMatch.PlaceHQ(_ => { });
+        yield return PlayModeMatch.WaitUntil(() => GameCore.Instance.CurrentState == GameState.Playing, 20f);
+        HudController hud = Object.FindAnyObjectByType<HudController>();
+        BuildingPlacement placement = BuildingPlacement.Instance;
+
+        placement.BeginPlacement(BuildingType.Miner);
+        Assert.AreEqual(0f, placement.Rotation);
+        hud.MatchMenu.Open();
+        yield return null;
+        yield return null;
+        Assert.IsTrue(HudController.DialogOpen);
+        yield return Press("R");
+        Assert.AreEqual(0f, placement.Rotation, "R behind the menu does nothing");
+
+        hud.MatchMenu.Close();
+        yield return null;
+        yield return null;
+        Assert.IsFalse(HudController.DialogOpen);
+        yield return Press("R");
+        Assert.AreEqual(90f, placement.Rotation);
+
+        placement.Cancel();
+        placement.BeginPlacement(BuildingType.Miner);
+        Assert.AreEqual(90f, placement.Rotation, "the next Miner along the vein keeps it");
+        placement.BeginPlacement(BuildingType.Barracks);
+        Assert.AreEqual(0f, placement.Rotation, "a building with one facing doesn't turn");
+        placement.Cancel();
+    }
+
+    [UnityTest]
+    public IEnumerator TheTimelineAndTheEndScreenCountTheSameSeconds()
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        yield return new WaitForSecondsRealtime(3f); // the HQ pick: on the match clock, but no play
+        yield return PlayModeMatch.PlaceHQ(_ => { });
+        yield return new WaitForSecondsRealtime(1f);
+        MatchResult before = GameCore.LastMatchStats;
+        GameCore.Instance.Cmd_Surrender();
+        yield return PlayModeMatch.WaitUntil(() => GameCore.LastMatchStats != before && GameCore.LastMatchSummary.HasValue, 10f);
+        SummaryData summary = GameCore.LastMatchSummary.Value;
+        Assert.That(summary.Eliminations.Length, Is.GreaterThan(0));
+        // The win/loss check ends the match a moment after the surrender; the 3 s of HQ pick must be in neither.
+        float length = GameCore.LastMatchStats.DurationSeconds;
+        Assert.That(summary.Eliminations[0].Time, Is.LessThanOrEqualTo(length));
+        Assert.That(summary.Eliminations[0].Time, Is.GreaterThan(length - 1.5f));
+    }
+
+    [UnityTest]
+    public IEnumerator TheHqPickOpensWithTheStartRingInView()
+    {
+        config.Match.Map.Size = 256; // a generated map: start options are dealt
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        yield return PlayModeMatch.WaitUntil(() => Camera.main != null && Camera.main.orthographicSize >= WAR2D.World.MapGenerator.HqClearRadius, 10f,
+            () => "camera size " + (Camera.main != null ? Camera.main.orthographicSize : -1f));
+    }
+}

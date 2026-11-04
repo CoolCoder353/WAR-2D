@@ -16,6 +16,7 @@ namespace WAR2D.Dev.DebugApi
             SessionCommands.Register(r);
             ScenarioCommands.Register(r);
             ViewCommands.Register(r);
+            InputCommands.Register(r);
             ReplayCommands.Register(r);
         }
     }

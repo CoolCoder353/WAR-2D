@@ -29,6 +29,19 @@ public static class CameraZoom
         return s >= 1f - Epsilon && Mathf.Abs(s - Mathf.Round(s)) < Epsilon;
     }
 
+    /// <summary>The size after zooming out in wheel steps until it is at least <paramref name="wanted"/>, or the limit; never smaller than now.</summary>
+    public static float OutToShow(float current, float wanted, int ppu, int screenHeight, float minSize, float maxSize)
+    {
+        float size = current;
+        while (size < wanted && size < maxSize)
+        {
+            float next = Step(size, -1f, ppu, screenHeight, minSize, maxSize);
+            if (next <= size) break;
+            size = next;
+        }
+        return size;
+    }
+
     /// <summary>The size after one wheel step (<paramref name="scroll"/> &gt; 0 zooms in), within the limits.</summary>
     public static float Step(float current, float scroll, int ppu, int screenHeight, float minSize, float maxSize)
     {

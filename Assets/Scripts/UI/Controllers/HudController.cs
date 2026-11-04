@@ -222,6 +222,7 @@ namespace WAR2D.UI
 
         private void OnDisable()
         {
+            DialogOpen = false;
             Selection.FilterRequested -= OnFilter;
             Selection.EverywhereRequested -= OnEverywhere;
             Model.Economy.LowFunds -= OnLowFunds;
@@ -273,7 +274,13 @@ namespace WAR2D.UI
             if (sites == null || index < 0 || index >= sites.Length) return;
             Unity.Mathematics.int2 site = sites[index];
             CentreCamera(new Vector2(site.x + 0.5f, site.y + 0.5f));
+            // The pick needs the whole ring in view (playtest 2026-11-04: 1:1 on a small window was all HQ).
+            if (core.CurrentState == GameState.PlacingHQ && Camera.main != null && Camera.main.TryGetComponent(out Character.Character_Controler controller))
+                controller.ZoomOutToShow(WAR2D.World.MapGenerator.HqClearRadius + HqPickMargin);
         }
+
+        /// <summary>Tiles shown past the start ring when the HQ pick opens.</summary>
+        private const float HqPickMargin = 2f;
 
         private static void CentreCamera(Vector2 point)
         {
@@ -362,6 +369,12 @@ namespace WAR2D.UI
         private bool menuPauseSent;
 
         /// <summary>
+        /// True while the in-match menu, Settings, the Field manual or the gift dialog is open: hotkeys, orders and placement wait,
+        /// as they do for the card keys. The diplomacy panel isn't here: it is not modal, so the match can be played around it.
+        /// </summary>
+        public static bool DialogOpen { get; private set; }
+
+        /// <summary>
         /// Asks the server to pause while the in-match menu (or Settings opened from it) is open, and to resume when it
         /// closes; the server accepts only when this is the one human connected. The menu shows the server's answer.
         /// </summary>
@@ -399,6 +412,7 @@ namespace WAR2D.UI
                 else if (diplomacy.IsOpen) diplomacy.SetOpen(false);
                 else matchMenu.Toggle();
             }
+            DialogOpen = manual.IsOpen || matchMenu.IsOpen || settings.IsOpen || gift.IsOpen;
             if (GameInput.Cancel.WasPressedThisFrame() && !manual.IsOpen && !matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !diplomacy.IsOpen) commandCard.RequestRemove();
             // Alerts leave after Alerts.ShowSeconds, but not from under the pointer (playtest 2026-10-30).
             if (alertFeed != null && alertFeed.Hovered) Alerts.Hold(Time.unscaledDeltaTime);

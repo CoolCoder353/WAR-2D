@@ -88,7 +88,28 @@ def launch(clients):
         print(f"{'host' if i == 0 else 'client%d' % i}: pid {p.pid}, port {7790 + i}")
     return 0
 
+def shortcut(cmd, rest):
+    """Positional shorthands: click X Y [right], tile X Y [right], drag X Y X2 Y2, key ctrl+a, type TEXT, shot [path], ui [filter]."""
+    num = lambda v: parse_value(v)
+    if cmd in ("click", "tile") and len(rest) >= 2:
+        a = {"x": num(rest[0]), "y": num(rest[1]), "space": "tile" if cmd == "tile" else "screen"}
+        a.update(parse_args(rest[2:]) if any("=" in r for r in rest[2:]) else {"button": rest[2]} if len(rest) > 2 else {})
+        return "mouse", a
+    if cmd == "drag" and len(rest) >= 4:
+        return "mouse", {"action": "drag", "x": num(rest[0]), "y": num(rest[1]), "to": [num(rest[2]), num(rest[3])], **parse_args(rest[4:])}
+    if cmd == "key" and rest and "=" not in rest[0]:
+        return "key", {"keys": rest[0], **parse_args(rest[1:])}
+    if cmd == "type" and rest:
+        return "text", {"text": " ".join(rest)}
+    if cmd == "shot":
+        return "screenshot", {"path": rest[0]} if rest and "=" not in rest[0] else parse_args(rest)
+    if cmd == "ui" and rest and "=" not in rest[0]:
+        return "ui", {"filter": rest[0], **parse_args(rest[1:])}
+    return None
+
 def selftest():
+    assert shortcut("click", ["10", "20", "right"]) == ("mouse", {"x": 10, "y": 20, "space": "screen", "button": "right"})
+    assert shortcut("key", ["ctrl+a"]) == ("key", {"keys": "ctrl+a"})
     assert parse_args(["tile=[1,2]", "type=Tank", "on=true", "n=3"]) == {"tile": [1, 2], "type": "Tank", "on": True, "n": 3}
     print("ok")
     return 0
@@ -115,7 +136,12 @@ def main():
             parts = line.split()
             try: show(client.call(parts[0], parse_args(parts[1:])), o.json)
             except SystemExit as e: print(e)
-    return show(client.call(o.command, parse_args(o.args)), o.json)
+    cmd, args = shortcut(o.command, o.args) or (o.command, parse_args(o.args))
+    reply = client.call(cmd, args)
+    if o.command == "shot" and reply.get("ok") and not o.json:
+        print(reply["result"]["path"])
+        return 0
+    return show(reply, o.json)
 
 if __name__ == "__main__":
     sys.exit(main())

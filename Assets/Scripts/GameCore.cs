@@ -573,7 +573,7 @@ public partial class GameCore : NetworkBehaviour
     private void NoteElimination(int playerId, EliminationCause cause)
     {
         if (!summaryEliminated.Add(playerId)) return;
-        Summary.Eliminated(MatchNow, playerId, cause, cause == EliminationCause.HqDestroyed ? HqLastHitBy(playerId) : 0);
+        Summary.Eliminated(WorldStateManager.Instance != null ? WorldStateManager.Instance.PlayedSeconds : 0f, playerId, cause, cause == EliminationCause.HqDestroyed ? HqLastHitBy(playerId) : 0);
     }
 
     /// <summary>Whoever last hit the player's HQ, as of the last settled tick (0 when nobody has).</summary>

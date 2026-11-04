@@ -13,6 +13,19 @@ using WAR2D.World;
 
 namespace WAR2D.Client.Replay
 {
+    /// <summary>Where a replay's camera starts.</summary>
+    public static class ReplayOpening
+    {
+        /// <summary>The first player's HQ tile in a recording's summary; false for a recording without one (cut short, or no HQ placed).</summary>
+        public static bool TryFirstHq(SummaryData? summary, out float2 hq)
+        {
+            hq = default;
+            if (!summary.HasValue || summary.Value.HqX == null || summary.Value.HqY == null || summary.Value.HqX.Length == 0 || summary.Value.HqY.Length == 0) return false;
+            hq = new float2(summary.Value.HqX[0], summary.Value.HqY[0]);
+            return true;
+        }
+    }
+
     public sealed class ReplayCursor : IDisposable
     {
         private readonly string path;
@@ -235,6 +248,8 @@ namespace WAR2D.Client.Replay
                 cam.orthographic = true;
                 cam.orthographicSize = 26f;
                 cam.transform.position = new Vector3(map.Grid.Width / 2f, map.Grid.Height / 2f, cam.transform.position.z);
+                // Open on a base rather than whatever is in the map's middle (usually empty ground).
+                if (ReplayOpening.TryFirstHq(cursor != null ? cursor.Summary : null, out float2 hq)) CentreOn(hq);
             }
         }
 
@@ -259,6 +274,9 @@ namespace WAR2D.Client.Replay
                 if (Playing && cursor.AtEnd) StopAtEndOfFile();
             }
         }
+
+        /// <summary>The share of the view's half height the replay's control bar can cover.</summary>
+        private const float ControlBarShare = 0.35f;
 
         private void UpdateCamera()
         {
@@ -296,7 +314,8 @@ namespace WAR2D.Client.Replay
             }
 
             next.x = Mathf.Clamp(next.x, 0f, map.Grid.Width);
-            next.y = Mathf.Clamp(next.y, 0f, map.Grid.Height);
+            // The control bar covers the bottom of the view: the camera may go far enough below the map to show that edge above it.
+            next.y = Mathf.Clamp(next.y, -cam.orthographicSize * ControlBarShare, map.Grid.Height);
             cam.transform.position = next;
         }
 

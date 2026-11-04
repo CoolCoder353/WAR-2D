@@ -25,8 +25,8 @@ namespace WAR2D.Client
     public sealed partial class Selection
     {
         /// <summary>
-        /// How close (tiles from a building's anchor) a standing Builder must be to a blueprint or a damaged own building to
-        /// count as working on it. The client is never told what a Builder is doing, only where it is and whether it is moving.
+        /// How close (tiles from a building's anchor) a standing Builder must be to a blueprint or an own building needing repair
+        /// to count as working on it. The client is never told what a Builder is doing, only where it is and whether it is moving.
         /// </summary>
         public const float WorkNear = 5f;
 
@@ -55,8 +55,8 @@ namespace WAR2D.Client
 
         /// <summary>
         /// True when a Builder standing at <paramref name="position"/> has nothing to do as far as the client can tell: it is not
-        /// moving and no blueprint or damaged own building (<paramref name="sites"/>, from <see cref="CollectWorkSites"/>) is
-        /// within <see cref="WorkNear"/> tiles.
+        /// moving and no work site (<paramref name="sites"/>, from <see cref="CollectWorkSites"/>) is within
+        /// <see cref="WorkNear"/> tiles.
         /// </summary>
         private static bool IsIdleBuilder(ClientWorld world, int id, float2 position, List<float2> sites)
         {
@@ -67,16 +67,25 @@ namespace WAR2D.Client
         }
 
         /// <summary>
-        /// Fills <see cref="workSites"/> with the anchors of the owner's blueprints and damaged buildings, once per count, so
+        /// True for a building an idle Builder nearby would be working on: a blueprint, or one under <paramref name="repairBelow"/>
+        /// of its health (<c>AutoWork/RepairBelow</c>). A building only scratched gets no Builder on its own, so it must not make
+        /// the Builders standing beside it look busy.
+        /// </summary>
+        public static bool IsWorkSite(int progress, float health, float maxHealth, float repairBelow) =>
+            progress < 100 || (maxHealth > 0f && health < maxHealth * repairBelow);
+
+        /// <summary>
+        /// Fills <see cref="workSites"/> with the anchors of the owner's work sites (<see cref="IsWorkSite"/>), once per count, so
         /// each Builder is checked against those few rather than every building the client knows.
         /// </summary>
         private void CollectWorkSites(int ownerId)
         {
             workSites.Clear();
+            float repairBelow = Config.ConfigLoader.LoadConfig().AutoWork.RepairBelow;
             foreach (ClientBuildings.Entry e in ClientBuildings.Current.Entries.Values)
             {
                 if (e.Data.ownerId != ownerId || e.Ghost) continue;
-                if (e.Progress < 100 || (e.Health.maxHealth > 0f && e.Health.currentHealth < e.Health.maxHealth)) workSites.Add(e.Data.position);
+                if (IsWorkSite(e.Progress, e.Health.currentHealth, e.Health.maxHealth, repairBelow)) workSites.Add(e.Data.position);
             }
         }
 

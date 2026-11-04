@@ -144,7 +144,7 @@ namespace WAR2D.Dev.DebugApi
                 sim.Pause.Step(ticks);
                 return SessionCommands.Wait(() => SimContext.Current == null ? "match ended" : (object)(SimContext.Current.Clock.Tick >= target ? SimContext.Current.Clock.Tick : (object)null), 10 + ticks / 20f);
             });
-            r.Add("wait", DebugRole.Any, "wait (state S | ticks N | units owner count) [timeout]: answer when true", a =>
+            r.Add("wait", DebugRole.Any, "wait (state S | ticks N | units owner count) [timeout]: answer when the state is S, after N more ticks, or when owner has count units", a =>
             {
                 float timeout = DebugArgs.Float(a, "timeout", 60f);
                 if (DebugArgs.Has(a, "state"))

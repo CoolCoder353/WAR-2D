@@ -84,6 +84,13 @@ namespace WAR2D.UI
 
         private static string NameOf(BuildingType type) => AlertFeedModel.BuildingName(type) ?? AlertFeedModel.Spaced(type.ToString());
 
+        /// <summary>A building type's icon: named as the type, but for the HQ, whose type is <c>Base</c>.</summary>
+        public static bool TryIconOf(BuildingType type, out IconKind kind)
+        {
+            if (type == BuildingType.Base) { kind = IconKind.Hq; return true; }
+            return Enum.TryParse(type.ToString(), out kind);
+        }
+
         /// <summary>One chip per selected building type (its icon, name and count), rebuilt only when the counts changed.</summary>
         private void ShowBuildingTypes()
         {
@@ -97,7 +104,7 @@ namespace WAR2D.UI
                 var chip = new VisualElement { name = "type-" + type };
                 chip.AddToClassList("selection-type");
                 VisualElement icon;
-                if (Enum.TryParse(type.ToString(), out IconKind kind)) icon = new CommandIcon { Icon = kind };
+                if (TryIconOf(type, out IconKind kind)) icon = new CommandIcon { Icon = kind };
                 else
                 {
                     icon = new VisualElement();
