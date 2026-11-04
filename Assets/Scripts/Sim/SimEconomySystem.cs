@@ -46,6 +46,7 @@ namespace WAR2D.Sim
                 RunningCostByType = data.RunningCostByType,
                 Budget = data.UpkeepBudget,
                 Spent = data.UpkeepSpent,
+                Owed = data.UpkeepOwed,
                 UnitsBySlot = data.UnitsBySlot,
                 Charged = data.ChargedThisTick,
                 DecayPerTick = data.DecayPercentPerSecond * 0.01f * data.Dt,
@@ -74,6 +75,7 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<float> RunningCostByType;
         public NativeArray<float> Budget;
         public NativeArray<float> Spent;
+        public NativeArray<float> Owed;
         public NativeArray<int> UnitsBySlot;
         public NativeArray<byte> Charged;
         public float DecayPerTick;
@@ -90,6 +92,7 @@ namespace WAR2D.Sim
                 if (Charge)
                 {
                     float cost = Type[i] < RunningCostByType.Length ? RunningCostByType[Type[i]] : 0f;
+                    Owed[owner] += cost;
                     if (Budget[owner] >= cost)
                     {
                         Budget[owner] -= cost;

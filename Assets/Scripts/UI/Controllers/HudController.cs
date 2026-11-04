@@ -279,6 +279,24 @@ namespace WAR2D.UI
                 controller.ZoomOutToShow(WAR2D.World.MapGenerator.HqClearRadius + HqPickMargin);
         }
 
+        private bool ownHqSeen;
+
+        /// <summary>
+        /// When the own HQ first appears, brings it into view. A Random or timed-out pick places it at any of the player's options,
+        /// while the camera is still on the one it opened on, with nothing but fog to see there.
+        /// </summary>
+        private void ShowOwnHqOnce()
+        {
+            if (ownHqSeen || Model.LocalOwnerId == 0) return;
+            if (!WAR2D.Net.Replication.ClientBuildings.Current.TryFindOwn(Model.LocalOwnerId, BuildingType.Base, out WAR2D.Net.Replication.ClientBuildings.Entry hq)) return;
+            ownHqSeen = true;
+            Camera cam = Camera.main;
+            if (cam == null) return;
+            Unity.Mathematics.float2 centre = hq.Data.position + new Unity.Mathematics.float2(2.5f, 2.5f);
+            Vector3 at = cam.transform.position;
+            if (!CameraZoom.InView(new Unity.Mathematics.float2(at.x, at.y), cam.orthographicSize, cam.aspect, centre)) CentreCamera(new Vector2(centre.x, centre.y));
+        }
+
         /// <summary>Tiles shown past the start ring when the HQ pick opens.</summary>
         private const float HqPickMargin = 2f;
 
@@ -393,6 +411,7 @@ namespace WAR2D.UI
         private void Update()
         {
             CentreOnOwnClearing();
+            ShowOwnHqOnce();
             Model.PullResources();
             if (GameInput.FieldManual.WasPressedThisFrame() && !endScreen.IsShown && !settings.IsOpen)
             {
@@ -626,7 +645,7 @@ namespace WAR2D.UI
             bool won = System.Array.IndexOf(result.Winners, Model.LocalOwnerId) >= 0;
             EndResult mine = result.Winners.Length == 0 ? EndResult.Draw : won ? EndResult.Victory : EndResult.Defeat;
             endScreen.Show(mine, EndScreenController.Line(mine, winners, result.DurationSeconds));
-            endScreen.ShowStats(result, NameOf, PlayerPalette.ColourIndexOf, owner => ResultTagOf(owner, result));
+            endScreen.ShowStats(result, NameOf, ColourIndexOf, owner => ResultTagOf(owner, result));
             if (GameCore.LastMatchSummary.HasValue) ShowSummary(GameCore.LastMatchSummary.Value);
         }
 
@@ -645,7 +664,7 @@ namespace WAR2D.UI
         private void ShowSummary(SummaryData summary)
         {
             if (!endScreen.IsShown) return; // the statistics show the screen; they call this again
-            endScreen.ShowSummary(summary, NameOf, PlayerPalette.OfOwner, Model.LocalOwnerId);
+            endScreen.ShowSummary(summary, NameOf, owner => PlayerPalette.Of(ColourIndexOf(owner)), Model.LocalOwnerId);
         }
 
         private VisualElement spectatingPanel;
@@ -678,7 +697,17 @@ namespace WAR2D.UI
                 root.Add(spectatingPanel);
             }
             spectatingPanel.style.display = show ? DisplayStyle.Flex : DisplayStyle.None;
+            // The panel replaces the controls: a player who is out has nothing to order, gift or negotiate with.
+            root.Q("gift-button")?.EnableInClassList("top-bar__hidden", show);
+            ShowDiplomacyButton();
+            foreach (string layer in SpectatorHiddenLayers)
+            {
+                VisualElement element = root.Q(layer);
+                if (element != null) element.style.display = show ? DisplayStyle.None : new StyleEnum<DisplayStyle>(StyleKeyword.Null);
+            }
         }
+
+        private static readonly string[] SpectatorHiddenLayers = { "command-card-instance", "squad-bar-instance", "selection-panel-instance" };
 
         private VisualElement wallReadout;
         private Label wallCost, wallBlocked;
@@ -719,7 +748,7 @@ namespace WAR2D.UI
         /// <summary>The settings screen.</summary>
         public SettingsController Settings => settings;
 
-        private void ShowDiplomacyButton() => diplomacyButton.EnableInClassList("top-bar__hidden", !Model.DiplomacyEnabled);
+        private void ShowDiplomacyButton() => diplomacyButton.EnableInClassList("top-bar__hidden", !Model.DiplomacyEnabled || Spectating);
 
         /// <summary>Listens to the local player's alerts once it exists.</summary>
         private void SubscribeAlerts()
@@ -794,6 +823,13 @@ namespace WAR2D.UI
         }
 
         /// <summary>A player's public nickname.</summary>
+        /// <summary>A player's colour as last seen: one who left has no object for <see cref="PlayerPalette"/> to read it from.</summary>
+        private int ColourIndexOf(int ownerId)
+        {
+            foreach (PlayerRow row in Model.Players) if (row.OwnerId == ownerId) return row.ColourIndex;
+            return PlayerPalette.ColourIndexOf(ownerId);
+        }
+
         private string NameOf(int ownerId)
         {
             foreach (PlayerRow row in Model.Players) if (row.OwnerId == ownerId) return row.Nickname;

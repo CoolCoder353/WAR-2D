@@ -235,9 +235,10 @@ public class GameManager : NetworkManager
         {
             pendingRejoin.Remove(conn.connectionId, out string token);
             rejoinGrace.Forget(conn.connectionId);
-            if (!GameCore.Instance.TryRejoin(conn, token))
+            bool stranger = WAR2D.Net.Rejoin.RejoinRules.IsStranger(token);
+            if (stranger || !GameCore.Instance.TryRejoin(conn, token))
             {
-                WAR2D.Net.Rejoin.RejoinRefusal why = GameCore.Instance.RefusalFor(token);
+                WAR2D.Net.Rejoin.RejoinRefusal why = stranger ? WAR2D.Net.Rejoin.RejoinRefusal.NoTicket : GameCore.Instance.RefusalFor(token);
                 WarLog.Info(LogCategory.Net, $"Refusing connection {conn.connectionId}: no seat to come back to ({why})");
                 LastRefusedConnection = conn.connectionId;
                 // v0.15.1: say why first; the client leaves on receipt, and the grace clock closes the connection if it does not.
@@ -316,6 +317,7 @@ public class GameManager : NetworkManager
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.TerrainBatch>(WAR2D.Net.Replication.ClientTerrain.Receive, false);
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.BuildingBatch>(WAR2D.Net.Replication.ClientBuildings.Receive, false);
         NetworkClient.RegisterHandler<WAR2D.Net.Rejoin.RejoinRefused>(OnRejoinRefused, false);
+        NetworkClient.RegisterHandler<WAR2D.Net.Rejoin.HostLeaving>(OnHostLeaving, false);
         // Playtest 2026-11-02: the host kicked or banned us; the server closes the connection a moment later.
         NetworkClient.RegisterHandler<WAR2D.Net.RemovedFromLobby>(WAR2D.Net.LobbyRemoval.Received, false);
     }
@@ -333,6 +335,7 @@ public class GameManager : NetworkManager
             rejoining = true;
             CentreOnHqPending = true;
         }
+        askedForPlayer = !clientLoadedScene; // the base asks only when no scene was loaded
         base.OnClientConnect();
     }
 
@@ -343,17 +346,25 @@ public class GameManager : NetworkManager
     private void OnRejoinRefused(WAR2D.Net.Rejoin.RejoinRefused message)
     {
         WarLog.Info(LogCategory.Net, $"The server refused the rejoin ({message.Reason})");
-        WAR2D.Net.Rejoin.RejoinTicket.Refuse(message.Reason);
+        if (message.Reason == WAR2D.Net.Rejoin.RejoinRefusal.NoTicket) WAR2D.Net.LobbyRemoval.MatchStarted();
+        else WAR2D.Net.Rejoin.RejoinTicket.Refuse(message.Reason);
         StopClient();
+    }
+
+    private void OnHostLeaving(WAR2D.Net.Rejoin.HostLeaving _)
+    {
+        if (!NetworkServer.active) WAR2D.Net.Rejoin.RejoinTicket.HostLeft();
     }
 
     /// <summary>Set when this client rejoined a match: the camera starts at the map's corner, so the commander centres it on the HQ once the HQ is known.</summary>
     public bool CentreOnHqPending { get; set; }
 
-    /// <summary>A rejoining client already asked for its player when it connected; asking again after the scene loads would be refused.</summary>
+    private bool askedForPlayer;
+
+    /// <summary>A client that asked for its player when it connected (a rejoin too) would be refused if it asked again after the scene loads.</summary>
     public override void OnClientSceneChanged()
     {
-        if (!rejoining) { base.OnClientSceneChanged(); return; }
+        if (WAR2D.Net.Rejoin.RejoinRules.AsksForPlayerAfterScene(askedForPlayer, rejoining)) { base.OnClientSceneChanged(); return; }
         if (NetworkClient.connection.isAuthenticated && !NetworkClient.ready) NetworkClient.Ready();
     }
 
@@ -382,6 +393,7 @@ public class GameManager : NetworkManager
     {
         base.OnClientDisconnect();
         rejoining = false;
+        askedForPlayer = false;
         WarLog.Info(LogCategory.Net, "Disconnected from server");
         // The connection broke in a running match (the client holds a ticket and did not leave): the match can be rejoined for a while.
         if (!leaving && !NetworkServer.active) WAR2D.Net.Rejoin.RejoinTicket.MarkDropped(Time.realtimeSinceStartup);
@@ -408,6 +420,24 @@ public class GameManager : NetworkManager
             StartCoroutine(LeaveOnceClosed());
             return;
         }
+        // A host in a match tells the players first, or they'd take it for a drop and be offered a Rejoin with nobody to rejoin.
+        if (NetworkServer.active && NetworkServer.connections.Count > 1 && GameCore.Instance != null && GameCore.Instance.CurrentState != GameState.Lobby)
+        {
+            leavePending = true;
+            NetworkServer.SendToAll(new WAR2D.Net.Rejoin.HostLeaving(), sendToReadyOnly: false);
+            StartCoroutine(LeaveAfterTelling());
+            return;
+        }
+        FinishLeave();
+    }
+
+    /// <summary>Time for <see cref="WAR2D.Net.Rejoin.HostLeaving"/> to go out: Mirror sends its batches later in the frame, and stopping would drop them.</summary>
+    public const float HostLeaveFlushSeconds = 0.3f;
+
+    private System.Collections.IEnumerator LeaveAfterTelling()
+    {
+        yield return new WaitForSecondsRealtime(HostLeaveFlushSeconds);
+        leavePending = false;
         FinishLeave();
     }
 

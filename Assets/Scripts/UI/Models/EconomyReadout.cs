@@ -11,7 +11,7 @@ namespace WAR2D.UI
         Negative,
         /// <summary>The balance runs out within <see cref="EconomyReadout.LowSeconds"/>.</summary>
         RunningLow,
-        /// <summary>The balance is empty and upkeep is higher than income: things are decaying.</summary>
+        /// <summary>Some upkeep went unpaid, or the balance is empty and upkeep is higher than income: things are decaying.</summary>
         Decaying,
     }
 
@@ -48,8 +48,8 @@ namespace WAR2D.UI
         /// <summary>Raised once when the state first becomes <see cref="EconomyState.RunningLow"/>; it re-arms when the net is zero or better.</summary>
         public event System.Action LowFunds;
 
-        /// <summary>Records this moment's balance, income and upkeep.</summary>
-        public void Feed(float resources, float incomePerSecond, float upkeepPerSecond, float now)
+        /// <summary>Records this moment's balance, income and upkeep owed, and whether the server says some of it went unpaid.</summary>
+        public void Feed(float resources, float incomePerSecond, float upkeepPerSecond, float now, bool unpaid = false)
         {
             samples.Enqueue(new Sample(now, incomePerSecond - upkeepPerSecond));
             while (samples.Count > 1 && now - samples.Peek().Time > WindowSeconds) samples.Dequeue();
@@ -59,7 +59,8 @@ namespace WAR2D.UI
             SecondsUntilEmpty = NetPerSecond < 0f ? resources / -NetPerSecond : -1f;
 
             EconomyState state;
-            if (NetPerSecond >= 0f) state = EconomyState.Healthy;
+            if (unpaid) state = EconomyState.Decaying;
+            else if (NetPerSecond >= 0f) state = EconomyState.Healthy;
             else if (resources < 1f) state = EconomyState.Decaying;
             else if (SecondsUntilEmpty < LowSeconds) state = EconomyState.RunningLow;
             else state = EconomyState.Negative;

@@ -237,6 +237,7 @@ public partial class WorldStateManager : NetworkBehaviour
             if (!player.TryPayUpkeep(amount)) player.TrySpend(player.Resources);
             player.AddUpkeep(before - player.Resources);
         };
+        Sim.Owe = (ownerId, amount) => GameCore.Instance?.GetServerPlayerById(ownerId)?.AddOwed(amount);
         // The map and simulation exist: deal each player their private start options and start the pick clock.
         if (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.PlacingHQ) GameCore.Instance.BeginPlacementPhase(this);
     }

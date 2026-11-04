@@ -340,6 +340,9 @@ namespace WAR2D.Sim
         public NativeArray<float> UpkeepBudget;
         /// <summary>Resources each owner's units spent at the last charge, read back at the boundary.</summary>
         public NativeArray<float> UpkeepSpent;
+
+        /// <summary>Per owner slot: unit upkeep charged this second, paid or not.</summary>
+        public NativeArray<float> UpkeepOwed;
         /// <summary>Live units per owner slot, counted every tick.</summary>
         public NativeArray<int> UnitsBySlot;
         /// <summary>1 on the tick an upkeep charge ran, so the boundary applies the spend once.</summary>
@@ -576,6 +579,7 @@ namespace WAR2D.Sim
                 ShareVisionMask = new NativeArray<ushort>(MaxOwners, allocator),
                 UpkeepBudget = new NativeArray<float>(MaxOwners, allocator),
                 UpkeepSpent = new NativeArray<float>(MaxOwners, allocator),
+                UpkeepOwed = new NativeArray<float>(MaxOwners, allocator),
                 UnitsBySlot = new NativeArray<int>(MaxOwners, allocator),
                 ChargedThisTick = new NativeArray<byte>(1, allocator),
                 LargeGrid = BuildLargeGrid(map, allocator),
@@ -665,7 +669,7 @@ namespace WAR2D.Sim
             BuildingCellStart.Dispose(); BuildingSorted.Dispose();
             BuildingWork.Dispose(); BuildingFlag.Dispose(); BuildingAnchor.Dispose(); BuildingSize.Dispose(); BuildingMaxHealth.Dispose(); BuildingKind.Dispose(); BuildingSizeByType.Dispose();
             AttackEvents.Dispose(); BuildingAttackEvents.Dispose(); Deaths.Dispose(); PendingOrders.Dispose(); PendingMoves.Dispose(); Arrivals.Dispose();
-            OwnerIdBySlot.Dispose(); TeamBySlot.Dispose(); AttackMask.Dispose(); ShareVisionMask.Dispose(); UpkeepBudget.Dispose(); UpkeepSpent.Dispose(); UnitsBySlot.Dispose();
+            OwnerIdBySlot.Dispose(); TeamBySlot.Dispose(); AttackMask.Dispose(); ShareVisionMask.Dispose(); UpkeepBudget.Dispose(); UpkeepSpent.Dispose(); UpkeepOwed.Dispose(); UnitsBySlot.Dispose();
             ChargedThisTick.Dispose(); LargeGrid.Dispose();
             SightByType.Dispose(); BuildingSightByType.Dispose(); BuildingSight.Dispose();
             Opaque.Dispose(); OpaqueSum.Dispose(); OpaqueTile.Dispose(); Visible.Dispose(); VisiblePrev.Dispose(); Explored.Dispose();

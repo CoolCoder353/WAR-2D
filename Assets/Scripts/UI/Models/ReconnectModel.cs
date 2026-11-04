@@ -223,6 +223,7 @@ namespace WAR2D.UI
             WAR2D.Net.Rejoin.RejoinRefusal.Kicked => "· you were removed for flooding commands",
             WAR2D.Net.Rejoin.RejoinRefusal.Left => "· you left the match",
             WAR2D.Net.Rejoin.RejoinRefusal.MatchOver => "· the match is over",
+            WAR2D.Net.Rejoin.RejoinRefusal.NoTicket => "· that match has already started",
             _ => "· the host no longer knows this ticket",
         };
 

@@ -90,7 +90,21 @@ public class ServerPlayer
         if (amount > 0f) upkeepThisSecond += amount;
     }
 
-    private bool unpaidThisSecond, unpaidLastSecond;
+    /// <summary>Upkeep charged last second, paid or not: what the player's HUD shows. <see cref="UpkeepLastSecond"/> is only what was paid.</summary>
+    public float UpkeepOwedLastSecond { get; private set; }
+
+    private float owedThisSecond;
+
+    /// <summary>Counts upkeep charged, whether or not it can be paid. An away player's is frozen, so nothing is owed.</summary>
+    public void AddOwed(float amount)
+    {
+        if (!Away && amount > 0f) owedThisSecond += amount;
+    }
+
+    /// <summary>True when some of the player's upkeep went unpaid last second.</summary>
+    public bool UnpaidLastSecond { get; private set; }
+
+    private bool unpaidThisSecond;
 
     /// <summary>True for the second in which some of the player's upkeep first went unpaid (after <see cref="RollSecond"/>).</summary>
     public bool BecameUnpaid { get; private set; }
@@ -104,11 +118,13 @@ public class ServerPlayer
     /// <summary>Publishes this second's income and upkeep and starts a new second. Called once a second.</summary>
     public void RollSecond()
     {
-        BecameUnpaid = unpaidThisSecond && !unpaidLastSecond;
+        BecameUnpaid = unpaidThisSecond && !UnpaidLastSecond;
         if (unpaidThisSecond) UnpaidSeconds++;
-        unpaidLastSecond = unpaidThisSecond;
+        if (incomeThisSecond != IncomeLastSecond || upkeepThisSecond != UpkeepLastSecond || owedThisSecond != UpkeepOwedLastSecond || unpaidThisSecond != UnpaidLastSecond) ResourcesDirty = true;
+        UnpaidLastSecond = unpaidThisSecond;
         unpaidThisSecond = false;
-        if (incomeThisSecond != IncomeLastSecond || upkeepThisSecond != UpkeepLastSecond) ResourcesDirty = true;
+        UpkeepOwedLastSecond = owedThisSecond;
+        owedThisSecond = 0f;
         IncomeLastSecond = incomeThisSecond;
         UpkeepLastSecond = upkeepThisSecond;
         incomeThisSecond = 0f;

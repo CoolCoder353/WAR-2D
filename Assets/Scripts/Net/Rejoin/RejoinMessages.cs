@@ -34,6 +34,8 @@ namespace WAR2D.Net.Rejoin
         Left,
         /// <summary>The match is no longer being played.</summary>
         MatchOver,
+        /// <summary>The connection brought no ticket: someone joining a running match while a seat is held open, not someone coming back.</summary>
+        NoTicket,
     }
 
     /// <summary>
@@ -49,6 +51,22 @@ namespace WAR2D.Net.Rejoin
     /// What a client keeps so it can come back to a match it dropped out of (in memory only: it does not survive closing the
     /// game). The server sends a fresh token at match start and after every rejoin.
     /// </summary>
+    /// <summary>Sent by a host leaving on purpose, just before it stops: there will be no match to come back to.</summary>
+    public struct HostLeaving : NetworkMessage { }
+
+    /// <summary>Who is coming back to a running match, and when a client asks for its player. Pure.</summary>
+    public static class RejoinRules
+    {
+        /// <summary>True for a connection to a running match that brought no token: it never had a seat, so there is nothing to refuse it back into.</summary>
+        public static bool IsStranger(string token) => string.IsNullOrEmpty(token);
+
+        /// <summary>
+        /// Whether a scene load should ask for the player. A client that asked when it connected (or is rejoining) must not ask again:
+        /// a host that has changed scene sends its scene on connect, and the player's spawn hasn't arrived when that scene finishes loading.
+        /// </summary>
+        public static bool AsksForPlayerAfterScene(bool askedOnConnect, bool rejoining) => !askedOnConnect && !rejoining;
+    }
+
     public static class RejoinTicket
     {
         /// <summary>The secret token, or null when there is no ticket.</summary>
@@ -86,6 +104,9 @@ namespace WAR2D.Net.Rejoin
             Clear();
             Refusal = reason;
         }
+
+        /// <summary>The host said it is leaving: the coming disconnect is no drop, and Rejoin is not offered.</summary>
+        public static void HostLeft() => Clear();
 
         /// <summary>The player read the refusal (the Play screen's Dismiss).</summary>
         public static void DismissRefusal() => Refusal = null;

@@ -101,8 +101,11 @@ namespace WAR2D.Sim
                 int owner = data.OwnerIdBySlot[s];
                 float spent = data.UpkeepSpent[s];
                 data.UpkeepSpent[s] = 0f;
+                float owed = data.UpkeepOwed[s];
+                data.UpkeepOwed[s] = 0f;
                 if (owner == 0) continue;
                 if (charged && spent > 0f) context?.Spend?.Invoke(owner, spent);
+                if (charged && owed > 0f) context?.Owe?.Invoke(owner, owed);
                 data.UpkeepBudget[s] = context?.BudgetOf != null ? context.BudgetOf(owner) : float.MaxValue;
             }
         }

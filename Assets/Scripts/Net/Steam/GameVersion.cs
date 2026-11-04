@@ -12,9 +12,9 @@ namespace WAR2D.Net.Steam
         /// <see cref="Current"/>. 13: v0.13 (building attack events, attacker kinds). 14: v0.14 (AI players, lobby
         /// Visibility, the end screen's AI styles). 15: v0.15.1 (reconnecting: rejoin, leave and refusal messages, the
         /// producers resent on rejoin). 16: v0.16 (owner wall targets in attack events, the order formation flag). 17: v0.17 (the
-        /// rich gem tile, a new terrain value).
+        /// rich gem tile, a new terrain value). 19: the host-leaving message, and owed upkeep with an unpaid flag in the resources update.
         /// </summary>
-        public const int Protocol = 18;
+        public const int Protocol = 19;
 
         public static string Current => UnityEngine.Application.version;
 

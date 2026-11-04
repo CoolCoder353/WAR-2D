@@ -164,10 +164,12 @@ From the whole-project scan of 2026-11-03 ([bug-review.md](bug-review.md), "Seve
 | Client positions creep after Stop                              | Presentation                      | Predicted positions converge on the server's at about 0.15 tiles/s instead of snapping; `HudTests.CommandCardStopHalts` can fail on timing.                                                                                                        |
 | Authored maps (`Size = 0`) get no terrain on a pure client      | Test-only                         | A pure client can't rebuild an authored map, so `WorldStateManager.OnStartClient` gives it no `ClientTerrain`; the host's client gets one. Real matches always use generated maps.                                            |
 | Footprints ignore rotation                                     | Latent                            | A rotated non-square building would cover the wrong tiles. Every building is square today.                                                                                                                                                         |
-| v0.18 not yet checked by hand | Test gap | 2026-11-04: the Attack order's target line and the held range rings were seen in an editor match through the new input commands. Still not checked: the Attack order's cursor (a hardware cursor is not in a screenshot), Rematch with a second human client, and client frame time with 10,000 units selected and Alt held. The sim, wire and rules behind them are tested. |
+| v0.18 not yet checked by hand | Test gap | 2026-11-04: the Attack order's target line and the held range rings were seen in an editor match through the new input commands. Rematch with a second human client worked in the second playtest below. Still not checked: the Attack order's cursor (a hardware cursor is not in a screenshot) and client frame time with 10,000 units selected and Alt held. The sim, wire and rules behind them are tested. |
 | Two PlayMode tests are timing-sensitive | Test flakiness | 2026-11-01, full PlayMode run (79/81): `HudTests.GiftToEnemyMovesResources` timed out after 5 s and passed alone; `PerformanceTests.MinimapRedrawAtTenThousandOwnUnitsIsUnderOneMillisecond` measured 1.08 then 1.81 ms against 1.0 ms, and failed the same way (timed out) on the code before that day's changes, so it follows the machine's load, not the code. On 2026-11-02 (v0.16 branch, editor freshly restarted) it measured 2.07 and 2.19 ms; the redraw it times is unchanged by v0.16. |
 | Low-severity review findings                                   | Mixed                             | The "Still open" lists in [bug-review.md](bug-review.md).                                                                                                                                                                                          |
 | Playtest findings (2026-11-04) | Partly open | The bugs and control-API gaps are fixed; balance, design choices and the layouts that need Figma stay open: [Playtest through the control API](#playtest-through-the-control-api-2026-11-04-v018). |
+| Two injected-input PlayMode tests fail in the live editor | Test flakiness | 2026-11-04: `DebugApiPlayModeTests.InjectedMouseAndKeyboardReachTheInputSystem` ("Expected 100" or "no camera") and `PlaytestFixPlayModeTests.TheMinersFacingWaitsBehindTheMenuAndCarriesToTheNextOne` ("Expected 90") fail in most full runs, the same way on `a4aaacd` without the second playtest's fixes. Each passes in some runs (alone, or in an earlier full run). Cause not found. `PlayerActionsTests.EachActionRefusesWhatItsCommandRefused` failed once in a full run and passed alone and in the next run. |
+| Second playtest findings (2026-11-04) | Partly open | The bugs are fixed; friction and control-API gaps stay open: [Second playtest through the control API](#second-playtest-through-the-control-api-2026-11-04-v018). |
 
 Developer-tool, networking and hygiene leftovers are further down.
 
@@ -221,6 +223,52 @@ All fixed; see [debugging.md](debugging.md).
 | `camera` can't read and fails in replays | **Fixed.** No arguments reads it; it and `mouse space=tile` find a replay's camera. |
 | `shot box=…` can't enlarge | **Fixed.** `scale` goes up to 8, by whole pixels. The Pixel Perfect warning across the top bar is the package's, in the editor at an odd resolution: keep the Game view's size even. |
 | `wait ticks=N` is ambiguous | **Fixed.** The help says N more ticks. |
+
+## Second playtest through the control API (2026-11-04, v0.18)
+
+Two matches' worth of play on the current branch: 1v1 against an Easy AI (256 map, surrendered at 9:36) through the input commands, then several short matches with the editor hosting and a dev build joining over Direct, some with an Easy AI. The second human was driven with `uiclick` and the scenario commands, because of the first control API row below. The Steam path was not run. The bugs are fixed; the friction and control API rows stay open.
+
+**Bugs**
+
+All fixed on the same branch, with `PlaytestFix2Tests` and `PlaytestFix2PlayModeTests`. The multiplayer ones were also checked with the editor hosting and a dev build joining over Direct. The perf gate was not re-run: the tick gained one float per unit on the once-a-second charge.
+
+| Finding | Status |
+| --- | --- |
+| A Random or timed-out HQ pick opened on a black screen | **Fixed.** `HudController.CentreOnOwnClearing` centred on `OwnStartOptions[0]` once, and nothing recentred when the server placed the HQ at another option (seen at HQ 176,200, camera 94,81). When the own HQ first appears and is out of view, the camera now moves to it (`ShowOwnHqOnce`). |
+| After the host left, a joined player was offered a Rejoin that couldn't work | **Fixed for a host who leaves through the menu.** The host now sends `HostLeaving` and waits 0.3 s for it to go out; the client drops its ticket, so `HostLeftNotice` shows its dialog. **Still open:** a host that crashes or is closed from the window can't say so, and that player still sees Rejoin, which fails with "Try again while the timer runs". |
+| The economy readout looked healthy while everything decayed | **Fixed.** The top bar's upkeep is now what is owed (`ServerPlayer.UpkeepOwedLastSecond`, from the sim's new `Owe` callback and `ResourceSystem`), and the server's unpaid flag makes the readout say "Decaying" whatever the net. `UpkeepLastSecond` stays what was paid, so the AI and its tuning see no change. Checked: 60 Heavies and a Tank read a steady "−362 upkeep", "Decaying". |
+| The timeline reported decay deaths as battles | **Fixed.** `FightDetector.Death` ignores a death with no killer. Decay still has no end-screen figure: that would be a new column, so a Figma change. |
+| A dropped player lost their name and colour | **Fixed.** `PlayerNameMemory` keeps what each player was last seen with, for the top bar and the end screen. |
+| The Delete key's label was a tofu box on Linux | **Fixed.** `Rebinding.CleanDisplay` spells out control characters in a key's name; the Demolish button reads "Del". |
+| A spectator kept controls that did nothing | **Fixed.** Gift, Diplomacy, the command card, the squad bar and the selection panel hide while spectating, as gameplay.md says. No new design, but the result has not been compared with the Figma frame `Panel / Spectating – v0.8`. |
+| A stranger joining during someone's away window got the wrong message | **Fixed.** A connection with no token is refused with `RejoinRefusal.NoTicket`, and the Play screen says "That match has already started." (the kick notice's slot). |
+| A joiner's Mirror error, first reported here as coming from Rematch | **Fixed.** Corrected cause: "There is already a player for this connection" came about 50 ms after a remote client joined a lobby the host had returned to by Rematch. The host then sends its scene on connect, so the client asked for its player on connecting and again when that scene loaded. It now asks once (`RejoinRules.AsksForPlayerAfterScene`). |
+
+**Harder than it should be**
+
+| Finding | Detail |
+| --- | --- |
+| A long production queue bankrupts you with no warning | Hit twice playing normally. The cost is charged at spawn and `SpawnerSystem` spends the same balance upkeep needs, so +50 Tanks or +10 Heavies drains the bank and everything starts to decay, Builders included. Two of four Builders died this way, with nothing saying so. Income then only covers upkeep, so nothing can be bought until something is demolished or dies. |
+| The host's Leave match has no confirm and ends the match for everyone | One click. Surrender, which only affects the player, does ask. |
+| A process crash can't rejoin (and now reads "That match has already started.") | `RejoinTicket` is static memory, so a restarted client has no ticket. The seat waits out its 60 s while the player is refused. |
+| Esc doesn't cancel a placement | It opens the menu, and the ghost stays armed behind it. Only a right-click cancels. |
+| The HQ prompt says "R rotates" | `HudOverlayController`, but only the Miner turns. |
+| Start badges overlap at the screen edge | Seen at 1080p: badge 2 is covered by badge 4, and badge 1 by the prompt panel. |
+| Left alone after the only opponent leaves the pick | You must still place an HQ and sit through the countdown for "Victory · 0:00". The prompt still says "Pick your start", and no alert says they left. |
+| Random picks can start very close | One 3-player match on 256 put two HQs 34 tiles apart. One observation, not measured. |
+| One gem can feed several Miners | Three Miners on one gem tile each earned the full 10/s (income 125 from 12 Miners). gameplay.md doesn't say whether this is intended. |
+| The Surrender dialog says "Your team keeps playing" in a Free-for-all | Seen in a 1v1. |
+
+**Control API (`tools/war2d`)**
+
+| Finding | Detail |
+| --- | --- |
+| Input injection does nothing in a background dev build | `mouse`, `key` and `type` reply OK but have no effect. No world click registered, no placement ghost appeared, and Esc opened no menu, although debugging.md says it works unfocused. `uiclick` works. Not root-caused. |
+| A client's `units` without `owner` always answers 0 | `ClientUnits` passes owner 0, and `QueryBox` matches it exactly. A leak check with plain `units` passes whatever was sent. |
+| `type` didn't reach the gift amount field | In the editor, after clicking the field, twice. So the gift dialog's server-side limits weren't exercised (a negative amount was not sent). |
+| `wait state=Playing` hangs after a `pause` during Countdown | The countdown doesn't advance while paused, and the CLI's socket waits up to 600 s. |
+
+Also checked: Rematch with a second human works, and leaving, surrendering, spectating (the whole map, units drawn), bomb, turret and wall placement, dig areas, the Attack order, the demolish refund, Ctrl-click to clear a queue and the menu pause all behaved as documented.
 
 ## Owner issues (2026-10-12)
 

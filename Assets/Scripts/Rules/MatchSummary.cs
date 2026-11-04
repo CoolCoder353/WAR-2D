@@ -224,6 +224,7 @@ public sealed class FightDetector
     /// <summary>A unit died.</summary>
     public void Death(float now, int owner, int killer, float worth, float x, float y)
     {
+        if (killer == 0) return; // decay or an eliminated player's army: nobody fought
         CloseQuiet(now);
         var cell = ((int)Math.Floor(x / cellTiles), (int)Math.Floor(y / cellTiles));
         var entry = new DeathEntry { Time = now, Worth = worth, X = x, Y = y, Owner = owner, Killer = killer };

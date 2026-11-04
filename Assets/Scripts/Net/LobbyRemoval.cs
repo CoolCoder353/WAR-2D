@@ -33,6 +33,9 @@ namespace WAR2D.Net
         /// <summary>Remembers a removal message from the server.</summary>
         public static void Received(RemovedFromLobby message) => Pending = Text(message.Banned, message.ServerName);
 
+        /// <summary>Remembers that a running match refused this client, which never had a seat in it.</summary>
+        public static void MatchStarted() => Pending = "That match has already started.";
+
         /// <summary>Returns the pending removal (once).</summary>
         public static string Take()
         {

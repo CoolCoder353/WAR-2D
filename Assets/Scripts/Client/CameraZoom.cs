@@ -18,6 +18,10 @@ public static class CameraZoom
     /// <summary>The orthographic size that draws the art at a whole-number <paramref name="scale"/>.</summary>
     public static float SizeAt(int scale, int ppu, int screenHeight) => screenHeight / (2f * scale * ppu);
 
+    /// <summary>True when <paramref name="point"/> is inside the box a camera centred on <paramref name="camera"/> shows.</summary>
+    public static bool InView(Unity.Mathematics.float2 camera, float orthoSize, float aspect, Unity.Mathematics.float2 point) =>
+        Mathf.Abs(point.x - camera.x) <= orthoSize * aspect && Mathf.Abs(point.y - camera.y) <= orthoSize;
+
     /// <summary>The default zoom: 1:1, inside the limits.</summary>
     public static float Default(int ppu, int screenHeight, float minSize, float maxSize) =>
         Mathf.Clamp(SizeAt(1, ppu, screenHeight), minSize, maxSize);
