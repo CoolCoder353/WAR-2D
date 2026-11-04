@@ -64,6 +64,7 @@ namespace WAR2D.Sim
             {
                 ClearFinishedWork(data, context, clock.UnitCount, clock.Tick);
                 ApplyDigMoves(data, context, clock.UnitCount, clock.Tick);
+                UpdateChases(data, context, clock.UnitCount, clock.Tick);
                 AdvanceWaypoints(data, context, clock.UnitCount, clock.Tick);
             }
             else

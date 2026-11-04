@@ -104,6 +104,21 @@ public sealed class SimHarness : IDisposable
         }
     }
 
+    /// <summary>Overwrites a unit's health (tests only; completes the tick's jobs first).</summary>
+    public void SetUnitHealth(int id, float health)
+    {
+        Em.CompleteAllTrackedJobs();
+        using var q = Em.CreateEntityQuery(typeof(Unit));
+        using var entities = q.ToEntityArray(Allocator.Temp);
+        foreach (Entity e in entities)
+        {
+            Unit u = Em.GetComponentData<Unit>(e);
+            if (u.Id != id) continue;
+            u.Health = health;
+            Em.SetComponentData(e, u);
+        }
+    }
+
     /// <summary>Queues a building (placement and payment skipped) and returns its id.</summary>
     public int PlaceBuilding(int owner, BuildingType type, int2 anchor, bool complete = false)
     {

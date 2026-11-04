@@ -215,6 +215,7 @@ namespace WAR2D.UI
             {
                 var l = new Label(line) { pickingMode = PickingMode.Ignore };
                 l.AddToClassList("hover-card__line");
+                l.EnableInClassList("hover-card__line--gold", line == c.Gold);
                 lines.Add(l);
             }
             Display(lines, c.Lines.Count > 0);

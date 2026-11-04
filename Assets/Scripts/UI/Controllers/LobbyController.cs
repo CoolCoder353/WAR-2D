@@ -59,6 +59,7 @@ namespace WAR2D.UI
         public const string PrivateRefusedHint = "Remove the other players first";
 
         private readonly Button invite;
+        private readonly Button resetButton;
         private readonly Label mapCaption;
 
         // Host tools (playtest 2026-11-02, Figma K1/K2).
@@ -144,6 +145,8 @@ namespace WAR2D.UI
             invite.clicked += () => InviteClicked?.Invoke();
             ready.clicked += () => ReadyClicked?.Invoke(!model.Local.Ready);
             seed.RegisterCallback<FocusOutEvent>(_ => SubmitSeed());
+            resetButton = root.Q<Button>("lobby-reset");
+            if (resetButton != null) resetButton.clicked += () => GameCore.Instance?.Cmd_ResetLobby();
             seed.RegisterCallback<KeyDownEvent>(e =>
             {
                 if (e.keyCode == UnityEngine.KeyCode.Return || e.keyCode == UnityEngine.KeyCode.KeypadEnter) SubmitSeed();
@@ -159,6 +162,7 @@ namespace WAR2D.UI
         {
             MatchSettings s = model.Settings;
             bool host = model.LocalIsHost;
+            resetButton?.EnableInClassList("hidden", !host);
             bool teams = s.Mode == MatchMode.Teams;
             LobbyPlayer me = model.Local;
 

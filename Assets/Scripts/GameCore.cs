@@ -171,6 +171,8 @@ public partial class GameCore : NetworkBehaviour
             joining.ready = false;
             if (Settings.Mode == MatchMode.FreeForAll) joining.lobbyTeam = TeamRules.NoTeam;
         }
+        // v0.18: the first player in is the host: their last lobby comes back now they have their seat and colour.
+        if (!lobbyRestored) { lobbyRestored = true; ApplyRememberedLobby(); }
     }
 
     /// <summary>
@@ -184,6 +186,7 @@ public partial class GameCore : NetworkBehaviour
         CommandGate.Forget(conn.connectionId);
         if (!kicked && TryMarkAway(conn)) return true;
         if (conn.identity == null || !ServerPlayers.Remove(conn.identity)) return false;
+        if (CurrentState == GameState.Playing) NoteElimination(BuildingData.UIntToInt(conn.identity.netId), EliminationCause.Left);
 
         Rejoin.Revoke(BuildingData.UIntToInt(conn.identity.netId), kicked ? WAR2D.Net.Rejoin.RejoinRefusal.Kicked : WAR2D.Net.Rejoin.RejoinRefusal.Left);
         ClientPlayer leaving = conn.identity.GetComponent<ClientPlayer>();
@@ -292,6 +295,7 @@ public partial class GameCore : NetworkBehaviour
     [Server]
     private void EndAway(int owner, WAR2D.Net.Rejoin.RejoinRefusal why)
     {
+        if (CurrentState == GameState.Playing) NoteElimination(owner, EliminationCause.TimedOut);
         Rejoin.Revoke(owner, why);
         NetworkIdentity identity = IdentityOf(owner);
         if (identity == null) return;
@@ -445,6 +449,7 @@ public partial class GameCore : NetworkBehaviour
 
     private void StartMatchServerSide()
     {
+        if (!DevApi.Allowed) RememberLobby();
         DiplomacyEnabled = Settings.Diplomacy;
         ResetPause();
         ForgetDiplomacyCooldowns(); // they count on the match clock, which starts again at 0
@@ -560,9 +565,30 @@ public partial class GameCore : NetworkBehaviour
         }
     }
 
+    private readonly HashSet<int> summaryEliminated = new HashSet<int>();
+    private bool lobbyRestored;
+
+    /// <summary>Puts a player leaving the match on the timeline, once.</summary>
     [Server]
-    public void EliminatePlayer(int playerId)
+    private void NoteElimination(int playerId, EliminationCause cause)
     {
+        if (!summaryEliminated.Add(playerId)) return;
+        Summary.Eliminated(MatchNow, playerId, cause, cause == EliminationCause.HqDestroyed ? HqLastHitBy(playerId) : 0);
+    }
+
+    /// <summary>Whoever last hit the player's HQ, as of the last settled tick (0 when nobody has).</summary>
+    public int HqLastHitBy(int owner) => hqLastHit.TryGetValue(owner, out int by) ? by : 0;
+
+    private readonly Dictionary<int, int> hqLastHit = new Dictionary<int, int>();
+
+    /// <summary>Records who last hit a player's HQ (from the settled world).</summary>
+    [Server]
+    public void NoteHqHit(int owner, int by) => hqLastHit[owner] = by;
+
+    [Server]
+    public void EliminatePlayer(int playerId, EliminationCause cause = EliminationCause.HqDestroyed)
+    {
+        if (CurrentState == GameState.Playing) NoteElimination(playerId, cause);
         if (AiPlayers.TryGetValue(playerId, out AiSeat seat))
         {
             if (seat.Player.state == PlayerState.Eliminated) return;
@@ -633,9 +659,9 @@ public partial class GameCore : NetworkBehaviour
         }
     }
 
-    /// <summary>Returns an empty server (e.g. a dedicated server whose players all left) to the lobby.</summary>
+    /// <summary>What every return to the lobby clears.</summary>
     [Server]
-    private void ResetToLobby()
+    private void ResetMatchState()
     {
         CurrentState = GameState.Lobby;
         ResetPause();
@@ -646,6 +672,13 @@ public partial class GameCore : NetworkBehaviour
         Teams.Clear();
         ForgetDiplomacyCooldowns();
         DiplomacyEnabled = false;
+    }
+
+    /// <summary>Returns an empty server (e.g. a dedicated server whose players all left) to the lobby.</summary>
+    [Server]
+    private void ResetToLobby()
+    {
+        ResetMatchState();
         ClearAiPlayers();
         foreach (ClientPlayer player in LobbyClientPlayers()) player.ready = false;
         if (SceneManager.GetActiveScene().name != LobbyScene && NetworkServer.active)

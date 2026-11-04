@@ -12,6 +12,9 @@ public partial class GameCore
     /// <summary>Every player's statistics for the current match (server only).</summary>
     public MatchStats Stats { get; } = new MatchStats();
 
+    /// <summary>The end screen's graphs and timeline, collected during Playing (v0.18, server only).</summary>
+    public MatchSummary Summary { get; } = new MatchSummary();
+
     /// <summary>Server time the match started playing (for the end screen's duration).</summary>
     [SyncVar]
     public double MatchStartTime;
@@ -62,7 +65,7 @@ public partial class GameCore
         if (CurrentState != GameState.Playing) return false;
         ServerPlayer player = GetServerPlayerById(owner);
         if (player == null || player.state != PlayerState.Playing) return false;
-        EliminatePlayer(owner);
+        EliminatePlayer(owner, EliminationCause.Surrendered);
         return true;
     }
 
@@ -75,11 +78,61 @@ public partial class GameCore
             player.TargetGift(connection, from, to, amount);
     }
 
+    /// <summary>
+    /// The host's Rematch (v0.18, Figma E2): everyone still connected goes back to this lobby with their seat, colour and team,
+    /// ready cleared; AI seats stay; the seed is new; everything else of the match is gone. Server owner only, once the match is
+    /// over and the replay is saved.
+    /// </summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_Rematch(NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_Rematch))) return;
+        WorldStateManager world = WorldStateManager.Instance;
+        bool replayPending = world != null && world.Recorder != null && !world.Recorder.Finished;
+        if (!RematchRules.May(CurrentState, IsServerOwner(sender), replayPending)) return;
+        RpcRematchStarting();
+        ResetForRematch();
+    }
+
+    /// <summary>The end screen says "Returning to the lobby" until the scene changes, and a rejoin ticket means nothing now.</summary>
+    [ClientRpc]
+    private void RpcRematchStarting()
+    {
+        RematchStarting?.Invoke();
+        WAR2D.Net.Rejoin.RejoinTicket.Clear();
+    }
+
+    /// <summary>Raised on clients when the host presses Rematch.</summary>
+    public static event System.Action RematchStarting;
+
+    /// <summary>Back to the lobby with the seats kept. Leaving the match's scene disposes its ECS world, as leaving does.</summary>
+    [Server]
+    private void ResetForRematch()
+    {
+        Rejoin.RevokeAll();
+        var away = new List<int>();
+        foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
+            if (entry.Key != null && entry.Value.Away) away.Add(BuildingData.UIntToInt(entry.Key.netId));
+        foreach (int owner in away) EndAway(owner, WAR2D.Net.Rejoin.RejoinRefusal.MatchOver);
+        ResetMatchState();
+        foreach (ClientPlayer player in LobbyClientPlayers()) player.ready = false;
+        MatchSettings settings = Settings;
+        settings.Seed = NewRematchSeed();
+        Settings = settings;
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != LobbyScene) GameManager.Instance.ServerChangeScene(LobbyScene);
+    }
+
+    private static uint NewRematchSeed() => (uint)UnityEngine.Random.Range(1, int.MaxValue);
+
     /// <summary>Starts counting a new match.</summary>
     [Server]
     private void BeginStats()
     {
         Stats.Clear();
+        Summary.Begin(Config.ConfigLoader.LoadConfig().Summary);
+        summaryEliminated.Clear();
+        hqLastHit.Clear();
+        hqTiles.Clear();
         lastGift.Clear();
     }
 
@@ -97,7 +150,48 @@ public partial class GameCore
         }
         var won = new List<int>(winners ?? new int[0]);
         RpcMatchStats(owners, Stats.Snapshot(owners), won.ToArray(), (float)(NetworkTime.time - MatchStartTime), ResolvedStyles(owners));
+        SummaryData summary = BuildSummary();
+        WorldStateManager.Instance?.Recorder?.Summary(summary);
+        RpcMatchSummary(summary);
     }
+
+    /// <summary>The summary with the map's size and each player's HQ, so a client can name places. Public at game over only.</summary>
+    [Server]
+    private SummaryData BuildSummary()
+    {
+        WorldStateManager world = WorldStateManager.Instance;
+        var owners = new List<int>();
+        var xs = new List<float>();
+        var ys = new List<float>();
+        if (world != null)
+            foreach (KeyValuePair<int, Unity.Mathematics.int2> hq in hqTiles)
+            {
+                owners.Add(hq.Key);
+                xs.Add(hq.Value.x);
+                ys.Add(hq.Value.y);
+            }
+        return Summary.Build(world != null && world.Map != null ? world.Map.Grid.Width : 0, owners.ToArray(), xs.ToArray(), ys.ToArray());
+    }
+
+    private readonly Dictionary<int, Unity.Mathematics.int2> hqTiles = new Dictionary<int, Unity.Mathematics.int2>();
+
+    /// <summary>Remembers where a player's HQ was placed, so the timeline can say "near their base" after it falls.</summary>
+    [Server]
+    public void NoteHq(int owner, Unity.Mathematics.int2 tile) => hqTiles[owner] = tile;
+
+    /// <summary>The end screen's graphs and timeline (v0.18), for every player, once the match is over.</summary>
+    [ClientRpc]
+    public void RpcMatchSummary(SummaryData summary)
+    {
+        LastMatchSummary = summary;
+        MatchSummaryReceived?.Invoke(summary);
+    }
+
+    /// <summary>The last match's graphs and timeline on this client.</summary>
+    public static SummaryData? LastMatchSummary { get; private set; }
+
+    /// <summary>Raised on clients when the graphs and timeline arrive.</summary>
+    public static event System.Action<SummaryData> MatchSummaryReceived;
 
     /// <summary>
     /// Each owner's played AI style (v0.14; <see cref="AiStyle.Random"/> for humans), by <paramref name="owners"/>. This
@@ -127,7 +221,11 @@ public partial class GameCore
     public static event System.Action<MatchResult> MatchStatsReceived;
 
     /// <summary>Forgets the last result (a new match starts).</summary>
-    public static void ClearMatchStats() => LastMatchStats = null;
+    public static void ClearMatchStats()
+    {
+        LastMatchStats = null;
+        LastMatchSummary = null;
+    }
 }
 
 /// <summary>The final result of a match as clients receive it.</summary>

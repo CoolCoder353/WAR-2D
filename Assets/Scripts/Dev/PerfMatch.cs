@@ -241,7 +241,11 @@ public sealed class PerfMatch : MonoBehaviour
             if (ids == null || ids.Count == 0) continue;
             var picked = new List<int>(ids.Count / 4 + 1);
             foreach (int id in ids) if (NetIdAllocator.IndexOf(id) % 4 == quarter) picked.Add(id);
-            sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.AttackMove, OwnerId = owners[i], Tile = armyStart[i ^ 1], Ids = picked.ToArray(), Formation = true }); // v0.16: the gate measures formations
+            // v0.18: one batch in four is an Attack order on one of the partner's units, the shared goal's repath being new tick work
+            // (a target their side doesn't see yet falls back to the Attack-move below).
+            int target = 0;
+            if (quarter == 3) foreach (int enemy in armyIds[i ^ 1]) { target = enemy; break; }
+            sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = target != 0 ? OrderKind.Attack : OrderKind.AttackMove, TargetId = target, OwnerId = owners[i], Tile = armyStart[i ^ 1], Ids = picked.ToArray(), Formation = true }); // v0.16: the gate measures formations
         }
     }
 

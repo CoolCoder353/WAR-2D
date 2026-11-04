@@ -34,6 +34,11 @@ namespace WAR2D.UI
         private ClientPlayer alertSource;
         private Button diplomacyButton;
         private InMatchMenuController matchMenu;
+        private ManualController manual;
+        private bool manualFromMenu;
+
+        /// <summary>The Field manual (tests).</summary>
+        public ManualController Manual => manual;
         private SettingsController settings;
         private GiftDialogController gift;
         private EndScreenController endScreen;
@@ -181,6 +186,10 @@ namespace WAR2D.UI
             matchMenu.SurrenderConfirmed += () => GameCore.Instance?.Cmd_Surrender();
             matchMenu.LeaveClicked += () => { HostLeftNotice.LeavingOnPurpose = true; GameManager.Instance?.LeaveLobby(); };
             topBar.MenuClicked += matchMenu.Toggle;
+            manual = new ManualController(root);
+            manual.SettingsRequested += () => { manualFromMenu = false; settings.Open(); SettingsRequested?.Invoke(); };
+            manual.Closed += () => { if (manualFromMenu) matchMenu.Open(); manualFromMenu = false; };
+            matchMenu.ManualClicked += () => { matchMenu.Close(); manualFromMenu = true; manual.Open(); };
 
             gift = new GiftDialogController(root, Model, config.Gifting.CooldownSeconds);
             gift.GiftRequested += (owner, amount) => GameCore.Instance?.Cmd_GiftResources((uint)owner, amount);
@@ -190,8 +199,11 @@ namespace WAR2D.UI
             endScreen = new EndScreenController(root);
             endScreen.MainMenuClicked += () => { HostLeftNotice.LeavingOnPurpose = true; GameManager.Instance?.LeaveLobby(); };
             endScreen.QuitClicked += () => GameManager.Instance?.QuitGame();
+            endScreen.RematchClicked += () => GameCore.Instance?.Cmd_Rematch();
             ClientPlayer.MatchEnded += OnMatchEnded;
             GameCore.MatchStatsReceived += OnMatchStats;
+            GameCore.MatchSummaryReceived += ShowSummary;
+            GameCore.RematchStarting += endScreen.ShowReturning;
             GameCore.ClearMatchStats(); // a new match
 
             Selection.FilterRequested += OnFilter;
@@ -231,6 +243,8 @@ namespace WAR2D.UI
             Palettes.Changed -= ApplyPalette;
             ClientPlayer.MatchEnded -= OnMatchEnded;
             GameCore.MatchStatsReceived -= OnMatchStats;
+            GameCore.MatchSummaryReceived -= ShowSummary;
+            GameCore.RematchStarting -= endScreen.ShowReturning;
             Model.DiplomacyChanged -= ShowDiplomacyButton;
             if (alertSource != null) alertSource.AlertsReceived -= OnAlerts;
             alertSource = null;
@@ -354,7 +368,7 @@ namespace WAR2D.UI
         private void SyncMenuPause()
         {
             GameCore core = GameCore.Instance;
-            bool want = (matchMenu.IsOpen || settings.IsOpen) && !endScreen.IsShown;
+            bool want = (matchMenu.IsOpen || settings.IsOpen || manual.IsOpen) && !endScreen.IsShown;
             if (core != null && NetworkClient.active && want != menuPauseSent)
             {
                 menuPauseSent = want;
@@ -367,10 +381,16 @@ namespace WAR2D.UI
         {
             CentreOnOwnClearing();
             Model.PullResources();
+            if (GameInput.FieldManual.WasPressedThisFrame() && !endScreen.IsShown && !settings.IsOpen)
+            {
+                if (manual.IsOpen) manual.Close();
+                else { matchMenu.Close(); manual.Open(ManualPageOfSelection()); }
+            }
             if (GameInput.Menu.WasPressedThisFrame() && !endScreen.IsShown)
             {
                 hover.Hide();
-                if (commandCard.CloseConfirm()) { }
+                if (manual.IsOpen) manual.Close();
+                else if (commandCard.CloseConfirm()) { }
                 else if (minimap.FiltersOpen) minimap.SetFiltersOpen(false);
                 else if (UnitCommander.Instance != null && UnitCommander.Instance.CancelWallDrag()) { }
                 else if (UnitCommander.Instance != null && UnitCommander.Instance.CancelDigDrag()) { }
@@ -379,14 +399,14 @@ namespace WAR2D.UI
                 else if (diplomacy.IsOpen) diplomacy.SetOpen(false);
                 else matchMenu.Toggle();
             }
-            if (GameInput.Cancel.WasPressedThisFrame() && !matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !diplomacy.IsOpen) commandCard.RequestRemove();
+            if (GameInput.Cancel.WasPressedThisFrame() && !manual.IsOpen && !matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !diplomacy.IsOpen) commandCard.RequestRemove();
             // Alerts leave after Alerts.ShowSeconds, but not from under the pointer (playtest 2026-10-30).
             if (alertFeed != null && alertFeed.Hovered) Alerts.Hold(Time.unscaledDeltaTime);
             else Alerts.Expire(Time.unscaledTime);
             // Next alert (Space, rebindable): the newest unvisited alert with a place, then the one before it.
-            if (GameInput.NextAlert.WasPressedThisFrame() && !matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !endScreen.IsShown) Alerts.FocusNextUnvisited();
+            if (GameInput.NextAlert.WasPressedThisFrame() && !manual.IsOpen && !matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !endScreen.IsShown) Alerts.FocusNextUnvisited();
             // v0.15.1 card-slot keys (Figma H1–H2): build and production, not while a menu or dialog has the keyboard.
-            if (!matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !diplomacy.IsOpen && !endScreen.IsShown && !Spectating)
+            if (!manual.IsOpen && !matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !diplomacy.IsOpen && !endScreen.IsShown && !Spectating)
             {
                 string why = commandCard.HandleHotkeys();
                 if (why != null)
@@ -403,6 +423,8 @@ namespace WAR2D.UI
             {
                 var (replayText, replayFraction) = EndScreenController.ReplayState(NetworkServer.active, WorldStateManager.Instance != null ? WorldStateManager.Instance.Recorder : null);
                 endScreen.ShowReplay(replayText, replayFraction);
+                bool owner = NetworkClient.localPlayer != null && NetworkClient.localPlayer.TryGetComponent(out ClientPlayer local) && local.isServerOwner;
+                endScreen.ShowRematch(owner, NetworkServer.active && WorldStateManager.Instance != null && WorldStateManager.Instance.Recorder != null && !WorldStateManager.Instance.Recorder.Finished);
             }
             minimap.Update(Time.unscaledDeltaTime);
             orderTags.Update(UnitCommander.Instance != null ? UnitCommander.Instance.Feedback : null, Camera.main, GameInput.Point.ReadValue<Vector2>());
@@ -591,6 +613,25 @@ namespace WAR2D.UI
             EndResult mine = result.Winners.Length == 0 ? EndResult.Draw : won ? EndResult.Victory : EndResult.Defeat;
             endScreen.Show(mine, EndScreenController.Line(mine, winners, result.DurationSeconds));
             endScreen.ShowStats(result, NameOf, PlayerPalette.ColourIndexOf, owner => ResultTagOf(owner, result));
+            if (GameCore.LastMatchSummary.HasValue) ShowSummary(GameCore.LastMatchSummary.Value);
+        }
+
+        /// <summary>The page of what is selected: the first unit's type, else the first building's; null for the last page opened.</summary>
+        private static string ManualPageOfSelection()
+        {
+            UnitCommander commander = UnitCommander.Instance;
+            if (commander == null) return null;
+            int first = commander.Selection.First;
+            if (first != 0 && WAR2D.Client.ClientWorld.Instance != null && WAR2D.Client.ClientWorld.Instance.TryGet(first, out WAR2D.Client.ClientUnitView unit)) return ManualModel.PageOf(unit.Type);
+            foreach (int id in commander.Selection.SelectedBuildings)
+                if (commander.KnownBuildings.Entries.TryGetValue(id, out WAR2D.Net.Replication.ClientBuildings.Entry e)) return ManualModel.PageOf(e.Data.buildingType);
+            return null;
+        }
+
+        private void ShowSummary(SummaryData summary)
+        {
+            if (!endScreen.IsShown) return; // the statistics show the screen; they call this again
+            endScreen.ShowSummary(summary, NameOf, PlayerPalette.OfOwner, Model.LocalOwnerId);
         }
 
         private VisualElement spectatingPanel;

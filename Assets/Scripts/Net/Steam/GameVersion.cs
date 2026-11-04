@@ -14,7 +14,7 @@ namespace WAR2D.Net.Steam
         /// producers resent on rejoin). 16: v0.16 (owner wall targets in attack events, the order formation flag). 17: v0.17 (the
         /// rich gem tile, a new terrain value).
         /// </summary>
-        public const int Protocol = 17;
+        public const int Protocol = 18;
 
         public static string Current => UnityEngine.Application.version;
 

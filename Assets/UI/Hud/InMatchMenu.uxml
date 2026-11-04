@@ -9,6 +9,7 @@
                 </ui:VisualElement>
                 <ui:Button name="resume-button" text="Resume" class="button button--primary match-menu__button" />
                 <ui:Button name="match-settings-button" text="Settings" class="button match-menu__button" />
+                <ui:Button name="match-manual-button" text="Manual" class="button match-menu__button" />
                 <ui:Button name="surrender-button" text="Surrender" class="button button--danger match-menu__button" />
                 <ui:Button name="leave-match-button" text="Leave match" class="button button--danger match-menu__button" />
                 <ui:Label name="match-menu-note" text="The match keeps running while this is open." class="text--secondary match-menu__note" />

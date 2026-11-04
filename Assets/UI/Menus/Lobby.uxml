@@ -3,6 +3,7 @@
         <ui:VisualElement class="row lobby__heading">
             <ui:Label text="Lobby" class="lobby__title" />
             <ui:Label name="lobby-subtitle" text="" class="text text--muted lobby__subtitle" />
+            <ui:Button name="lobby-manual" text="Manual" class="button lobby__manual" />
             <ui:VisualElement name="server-name" class="row lobby__server-name">
                 <ui:Label text="Server name" class="text--secondary lobby__server-name-label" />
                 <ui:TextField name="server-name-field" max-length="24" class="input__field lobby__server-name-field" />
@@ -35,7 +36,10 @@
             <ui:Button name="reroll-button" text="Reroll" class="button lobby__reroll" />
         </ui:VisualElement>
         <ui:ScrollView name="lobby-settings" mode="Vertical" horizontal-scroller-visibility="Hidden" class="lobby__settings">
-            <ui:Label name="settings-title" text="Match settings" class="lobby__column-title" />
+            <ui:VisualElement class="row lobby__settings-header">
+                <ui:Label name="settings-title" text="Match settings" class="lobby__column-title" />
+                <ui:Button name="lobby-reset" text="Reset" class="button lobby__reset" />
+            </ui:VisualElement>
             <ui:VisualElement name="lobby-block-map" class="panel lobby__block">
                 <ui:Label text="Map" class="panel__title" />
                 <ui:VisualElement class="lobby__block-content">

@@ -272,7 +272,7 @@ public class UnitCommander : NetworkBehaviour
         ushort token = (ushort)UnityEngine.Random.Range(0, ushort.MaxValue);
         List<byte[]> chunks = OrderIdCodec.EncodeChunks(builders);
         for (int i = 0; i < chunks.Count; i++)
-            WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, queue, tile, false);
+            WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, queue, tile, false, 0);
         Feedback?.Queue.Sent(builders, (float2)tile + 0.5f, queue, isWork: true);
         if (!queue) Feedback?.Unmark(builders);
     }
@@ -434,10 +434,63 @@ public class UnitCommander : NetworkBehaviour
         {
             target.HasBuilding = true;
             target.BuildingOwner = e.Data.ownerId;
+            target.BuildingId = id;
             target.Blueprint = e.Progress < 100;
             target.Damaged = e.Health.currentHealth < e.Health.maxHealth;
         }
         return target;
+    }
+
+    private readonly List<int> underPointer = new List<int>(8);
+
+    /// <summary>The nearest enemy unit this client holds (its side sees it now) under the point, or 0.</summary>
+    private int EnemyUnitAt(float2 point)
+    {
+        ClientWorld world = ClientWorld.Instance;
+        if (world == null || localPlayer == null) return 0;
+        underPointer.Clear();
+        world.CollectInRadius(point, PickRadius, BuildingData.UIntToInt(localPlayer.netId), underPointer);
+        int best = 0;
+        float bestSq = float.MaxValue;
+        foreach (int id in underPointer)
+        {
+            if (!world.TryGet(id, out ClientUnitView view) || !IsEnemy(view.OwnerId)) continue;
+            float d = math.distancesq(view.Position, point);
+            if (d < bestSq) { bestSq = d; best = id; }
+        }
+        return best;
+    }
+
+    /// <summary>Tiles from a unit's centre that count as clicking it.</summary>
+    private const float PickRadius = 0.7f;
+
+    /// <summary>
+    /// True when the pointer is over a seen enemy unit or building and a selected unit can attack it (the attack cursor,
+    /// Figma O1). A ghost isn't a target, and Builders and Diggers keep their own click.
+    /// </summary>
+    public bool PointerOverAttackTarget
+    {
+        get
+        {
+            if (Selection.Selected.Count == 0 || GameInput.PointerOverUI || ArmedOrder == OrderKind.Move) return false;
+            bool attackers = false;
+            foreach (int id in Selection.Selected)
+            {
+                UnitType type = TypeOf(id);
+                if (type != UnitType.Builder && type != UnitType.Digger && type != UnitType.None) { attackers = true; break; }
+            }
+            if (!attackers) return false;
+            Vector3 pointer = GetMouseWorldPosition();
+            return AttackTargetAt(new int2((int)pointer.x, (int)pointer.y), new float2(pointer.x, pointer.y)) != 0;
+        }
+    }
+
+    /// <summary>The seen enemy unit at the point, else the seen enemy building on its tile, else 0.</summary>
+    private int AttackTargetAt(int2 tile, float2 point)
+    {
+        ClickTarget target = TargetAt(tile);
+        target.EnemyUnit = EnemyUnitAt(point);
+        return ClickOrders.AttackTarget(target, IsEnemy);
     }
 
     /// <summary>True for an owner on the local player's attack mask (the only diplomacy row it knows).</summary>
@@ -452,13 +505,16 @@ public class UnitCommander : NetworkBehaviour
     /// <summary>The right-click: each part of the selection takes the order it can there (<see cref="ClickOrders"/>).</summary>
     private void OrderClick(int2 goal, bool queue)
     {
-        (OrderKind builders, OrderKind diggers, OrderKind others) = ClickOrders.For(TargetAt(goal), BuildingData.UIntToInt(localPlayer.netId), IsEnemy);
+        ClickTarget target = TargetAt(goal);
+        Vector3 pointer = GetMouseWorldPosition();
+        target.EnemyUnit = EnemyUnitAt(new float2(pointer.x, pointer.y));
+        (OrderKind builders, OrderKind diggers, OrderKind others) = ClickOrders.For(target, BuildingData.UIntToInt(localPlayer.netId), IsEnemy);
         Selection.OrderEach(id => TypeOf(id) switch
         {
             UnitType.Builder => builders,
             UnitType.Digger => diggers,
             _ => others,
-        }, queue, goal);
+        }, queue, goal, ClickOrders.AttackTarget(target, IsEnemy));
     }
 
     /// <summary>Selects one of the local player's buildings (others are ignored).</summary>
@@ -649,6 +705,7 @@ public class UnitCommander : NetworkBehaviour
             CentreCamera(rejoinHq.Data.position + new float2(2.5f, 2.5f));
         }
 
+        if (WAR2D.UI.ManualController.AnyOpen) return; // v0.18: the keyboard is the manual's (its search box), and clicks stop at it
         if (GameInput.AttackMove.WasPressedThisFrame()) Arm(OrderKind.AttackMove);
         if (GameInput.Repair.WasPressedThisFrame()) Arm(OrderKind.Repair);
         if (GameInput.Dig.WasPressedThisFrame()) Arm(OrderKind.Dig);
@@ -690,7 +747,13 @@ public class UnitCommander : NetworkBehaviour
             {
                 Vector3 target = GetMouseWorldPosition();
                 bool queue = GameInput.QueueModifier.IsPressed();
-                if (!QueueFull(queue)) Selection.Order(kind, queue, new int2((int)target.x, (int)target.y));
+                int2 tile = new int2((int)target.x, (int)target.y);
+                if (!QueueFull(queue))
+                {
+                    int enemy = kind == OrderKind.AttackMove ? AttackTargetAt(tile, new float2(target.x, target.y)) : 0;
+                    if (enemy != 0) Selection.OrderEach(id => TypeOf(id) == UnitType.Builder || TypeOf(id) == UnitType.Digger ? OrderKind.AttackMove : OrderKind.Attack, queue, tile, enemy);
+                    else Selection.Order(kind, queue, tile);
+                }
                 clickUsed = true;
             }
         }

@@ -27,6 +27,14 @@ namespace Config
         public OrdersConfig Orders = new OrdersConfig();
         /// <summary>v0.16: target lines for selected units (client presentation).</summary>
         public TargetLinesConfig TargetLines = new TargetLinesConfig();
+        /// <summary>The Attack order's shared goal (v0.18).</summary>
+        public AttackOrderConfig AttackOrder = new AttackOrderConfig();
+        /// <summary>The held-key range rings (v0.18).</summary>
+        public RangeRingsConfig RangeRings = new RangeRingsConfig();
+        /// <summary>The end screen's graphs and timeline (v0.18).</summary>
+        public SummaryConfig Summary = new SummaryConfig();
+        /// <summary>Suicide bombers' last gasp and aim (v0.18).</summary>
+        public BomberConfig Bomber = new BomberConfig();
         /// <summary>v0.16: fights pulsing on the minimap (client presentation).</summary>
         public MinimapCombatConfig MinimapCombat = new MinimapCombatConfig();
         /// <summary>v0.16: the minimap while placing the HQ (client presentation).</summary>
@@ -194,6 +202,58 @@ namespace Config
         public int MaxDigArea;
     }
 
+    /// <summary>The Attack order's shared goal (v0.18).</summary>
+    public class AttackOrderConfig
+    {
+        /// <summary>Tiles a visible target moves before the shared goal follows it.</summary>
+        public float RepathTiles;
+        /// <summary>Least seconds between two moves of the shared goal.</summary>
+        public float RepathSeconds;
+    }
+
+    /// <summary>The held-key range rings (v0.18).</summary>
+    public class RangeRingsConfig
+    {
+        /// <summary>Most ring sets at once.</summary>
+        public int Max;
+        /// <summary>Share two circles of a type must overlap to share one ring.</summary>
+        public float MergeOverlap;
+    }
+
+    /// <summary>The end screen's graphs and timeline (v0.18).</summary>
+    public class SummaryConfig
+    {
+        /// <summary>Seconds between samples.</summary>
+        public float SampleSeconds;
+        /// <summary>Most samples per player.</summary>
+        public int MaxPoints;
+        /// <summary>Side of a fight cell, in tiles.</summary>
+        public int FightCellTiles;
+        /// <summary>Seconds a fight's worth is counted over, and the quiet that closes it.</summary>
+        public float FightWindowSeconds;
+        /// <summary>Worth killed within the window that opens a fight.</summary>
+        public float FightMinWorth;
+        /// <summary>Most fights kept per match, the largest.</summary>
+        public int MaxFights;
+    }
+
+    /// <summary>Suicide bombers' last gasp and aim (v0.18).</summary>
+    public class BomberConfig
+    {
+        /// <summary>Share of its health at or below which a bomber explodes.</summary>
+        public float LastGaspHealth;
+        /// <summary>Most rounds of blasts setting off bombers in one tick.</summary>
+        public int ChainPasses;
+        /// <summary>Tiles from its target that candidates for the blast point may be.</summary>
+        public float AimTiles;
+        /// <summary>Weight of own and allied worth in the blast.</summary>
+        public float FriendlyWeight;
+        /// <summary>Tiles from the blast point at which it detonates.</summary>
+        public float AimReachTiles;
+        /// <summary>Share of the point's worth that makes a blast on contact good enough.</summary>
+        public float GoodEnough;
+    }
+
     /// <summary>Target lines (v0.16).</summary>
     public class TargetLinesConfig
     {
@@ -297,6 +357,10 @@ namespace Config
         public bool Enabled;
         public int MaxMegabytes;
         public int KeepCount;
+        /// <summary>Seconds between recorded fog changes (v0.18).</summary>
+        public float FogSeconds;
+        /// <summary>Seconds before its event a seek-bar marker seeks to (v0.18).</summary>
+        public float MarkerLeadSeconds;
     }
 
     /// <summary>Music tuning.</summary>

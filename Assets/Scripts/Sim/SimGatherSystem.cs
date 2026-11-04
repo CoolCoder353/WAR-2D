@@ -105,6 +105,8 @@ namespace WAR2D.Sim
                 FormationSpeed = data.FormationSpeed,
                 FormationLead = data.FormationLead,
                 Stance = data.Stance,
+                OrderTarget = data.OrderTarget,
+                OrderTargetKind = data.OrderTargetKind,
                 WorkTile = data.WorkTile,
                 WorkKind = data.WorkKind,
                 DigProgress = data.DigProgress,
@@ -141,6 +143,8 @@ namespace WAR2D.Sim
         [NativeDisableParallelForRestriction] public NativeArray<float> FormationSpeed;
         [NativeDisableParallelForRestriction] public NativeArray<int> FormationLead;
         [NativeDisableParallelForRestriction] public NativeArray<byte> Stance;
+        [NativeDisableParallelForRestriction] public NativeArray<int> OrderTarget;
+        [NativeDisableParallelForRestriction] public NativeArray<byte> OrderTargetKind;
         [NativeDisableParallelForRestriction] public NativeArray<float> DigProgress;
         [NativeDisableParallelForRestriction] public NativeArray<int> DigAt;
         [NativeDisableParallelForRestriction] public NativeArray<int> WorkTile;
@@ -170,6 +174,8 @@ namespace WAR2D.Sim
                 unit.FormationOffset = order.Offset; // v0.16: a formation order sets them, every other order clears them
                 unit.FormationSpeed = order.GroupSpeed;
                 unit.FormationLead = order.LeadSlot;
+                unit.OrderTarget = order.OrderTarget;
+                unit.OrderTargetKind = order.OrderTargetKind;
             }
             if (PendingMoves.TryGetValue(unit.Id, out float2 moved)) unit.Position = moved;
 
@@ -190,6 +196,8 @@ namespace WAR2D.Sim
             FormationSpeed[index] = unit.FormationSpeed;
             FormationLead[index] = unit.FormationLead;
             Stance[index] = unit.Stance;
+            OrderTarget[index] = unit.OrderTarget;
+            OrderTargetKind[index] = unit.OrderTargetKind;
             WorkTile[index] = unit.WorkTile;
             DigProgress[index] = unit.DigProgress;
             DigAt[index] = unit.DigAt;

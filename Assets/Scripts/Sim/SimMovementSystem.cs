@@ -44,6 +44,8 @@ namespace WAR2D.Sim
                 TargetKind = data.TargetKind,
                 BuildingPositions = data.BuildingPositions,
                 BlastRadiusByType = data.BlastRadiusByType,
+                BlastAims = data.BlastAims,
+                IdOf = data.IdOf,
                 OrderSlot = data.OrderSlot,
                 Stance = data.Stance,
                 Arrived = data.Arrived,
@@ -136,6 +138,8 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<byte> TargetKind;
         [ReadOnly] public NativeArray<float2> BuildingPositions;
         [ReadOnly] public NativeArray<float> BlastRadiusByType;
+        [ReadOnly] public NativeArray<BlastAim> BlastAims;
+        [ReadOnly] public NativeArray<int> IdOf;
         [ReadOnly] public NativeArray<int> OrderSlot;
         [ReadOnly] public NativeArray<byte> Stance;
         public NativeArray<byte> Arrived;
@@ -253,7 +257,8 @@ namespace WAR2D.Sim
             if (target >= 0 && Stance[i] != Stances.Move && Type[i] < BlastRadiusByType.Length && BlastRadiusByType[Type[i]] > 0f)
             {
                 byte kind = TargetKind[i];
-                float2 at = kind == TargetKinds.Unit ? Positions[target] : kind == TargetKinds.Wall ? new float2(target % Width + 0.5f, target / Width + 0.5f) : BuildingPositions[target];
+                int aimKey = NetIdAllocator.IndexOf(IdOf[i]);
+                float2 at = BlastAims[aimKey].Id == IdOf[i] ? BlastAims[aimKey].Point : kind == TargetKinds.Unit ? Positions[target] : kind == TargetKinds.Wall ? new float2(target % Width + 0.5f, target / Width + 0.5f) : BuildingPositions[target];
                 velocity = speed * math.normalizesafe(at - position);
             }
 

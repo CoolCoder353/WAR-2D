@@ -23,7 +23,8 @@ public class CommandValidatorTests
     [TestCase(5, true)]
     [TestCase(6, true)]
     [TestCase(7, true)]
-    [TestCase(8, false)]
+    [TestCase(8, true)]  // v0.18: Attack
+    [TestCase(9, false)]
     [TestCase(255, false)]
     public void OrderKindRange(int kind, bool valid) =>
         Assert.That(CommandValidator.IsOrderKindValid((byte)kind), Is.EqualTo(valid));

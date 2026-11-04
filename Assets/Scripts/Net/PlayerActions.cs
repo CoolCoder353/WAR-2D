@@ -215,12 +215,12 @@ public static class PlayerActions
     /// <paramref name="formation"/> (v0.16, the sender's Formations setting) forms a Move or Attack-move up; other kinds ignore it.
     /// True when the order was queued.
     /// </summary>
-    public static bool Order(int owner, IReadOnlyList<int> unitIds, OrderKind kind, bool queue, int2 goal, bool formation = false)
+    public static bool Order(int owner, IReadOnlyList<int> unitIds, OrderKind kind, bool queue, int2 goal, bool formation = false, int targetId = 0)
     {
         WorldStateManager world = World;
         if (unitIds == null || unitIds.Count == 0 || unitIds.Count > ConfigLoader.LoadConfig().Simulation.MaxUnitsPerPlayer) return false;
         if (!MayAct(owner) || !world.IsOrderValid((byte)kind, goal)) return false;
-        world.Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, Queue = queue, OwnerId = owner, Tile = goal, Ids = ToArray(unitIds), Formation = FormsUp(kind, formation) });
+        world.Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, Queue = queue, OwnerId = owner, TargetId = targetId, Tile = goal, Ids = ToArray(unitIds), Formation = FormsUp(kind, formation) });
         return true;
     }
 
@@ -255,14 +255,14 @@ public static class PlayerActions
     }
 
     /// <summary>Orders one of the owner's squads' living members, as <see cref="Order"/>. False for an empty squad.</summary>
-    public static bool OrderSquad(int owner, int squad, OrderKind kind, bool queue, int2 goal, bool formation = false)
+    public static bool OrderSquad(int owner, int squad, OrderKind kind, bool queue, int2 goal, bool formation = false, int targetId = 0)
     {
         WorldStateManager world = World;
         if (!CommandValidator.IsSquadIndexValid(squad) || !MayAct(owner) || !world.IsOrderValid((byte)kind, goal)) return false;
         if (world.Squads.Prune(owner, squad, world.Ids) > 0) world.MarkSquadCountsDirty(); // the HUD's count went stale
         IReadOnlyList<int> members = world.Squads.Members(owner, squad);
         if (members.Count == 0) return false;
-        world.Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, Queue = queue, OwnerId = owner, Tile = goal, Ids = ToArray(members), Formation = FormsUp(kind, formation) });
+        world.Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, Queue = queue, OwnerId = owner, TargetId = targetId, Tile = goal, Ids = ToArray(members), Formation = FormsUp(kind, formation) });
         return true;
     }
 

@@ -249,6 +249,7 @@ namespace WAR2D.Sim
         public void Execute(int i)
         {
             if (Slice > 1 && (i + Tick) % Slice != 0) return;
+            if (Stance[i] == Stances.Attack) return; // only its order's target (ResolveTargetsJob)
             if (Search.Health[i] <= 0f || TargetKinds.IgnoresEnemies(Stance[i], OrderSlot[i], OrderLive) || DamageByType[Type[i]] <= 0f) { Target[i] = -1; return; }
 
             int type = Type[i];

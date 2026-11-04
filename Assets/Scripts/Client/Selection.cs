@@ -92,8 +92,12 @@ namespace WAR2D.Client
             SelectedBuilding = 0;
             scratch.Clear();
             ClientWorld.Instance?.QueryBox(a, b, ownerId, scratch);
+            SelectionRules.PreferArmy(scratch, TypeOfKnown); // v0.18: applies to what the box adds, not to what was selected
             foreach (int id in scratch) selected.Add(id);
         }
+
+        private static UnitType TypeOfKnown(int id) =>
+            ClientWorld.Instance != null && ClientWorld.Instance.TryGet(id, out ClientUnitView view) ? view.Type : UnitType.None;
 
         /// <summary>
         /// Selects every own unit of the type of the own unit nearest <paramref name="at"/> (within a tile)
@@ -198,7 +202,7 @@ namespace WAR2D.Client
             ushort token = NextToken();
             List<byte[]> chunks = OrderIdCodec.EncodeChunks(ids);
             for (int i = 0; i < chunks.Count; i++)
-                WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, false, goal, false); // roaming units scatter on purpose
+                WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, false, goal, false, 0); // roaming units scatter on purpose
             foreach (int id in ids) attackMoveGoals.Remove(id); // a roaming unit has no attack-move goal (code review 2026-11-03)
         }
 
@@ -206,13 +210,35 @@ namespace WAR2D.Client
         public event Action<OrderKind, bool, int2, IReadOnlyList<int>> Ordered;
 
         private readonly Dictionary<int, int2> attackMoveGoals = new Dictionary<int, int2>();
+        private readonly Dictionary<int, (int target, float2 lastSeen)> attackTargets = new Dictionary<int, (int, float2)>();
+
+        /// <summary>The target of the Attack order this client last gave the unit, and where it was last seen (v0.18 target lines).</summary>
+        public bool AttackTarget(int id, out int target, out float2 lastSeen)
+        {
+            bool found = attackTargets.TryGetValue(id, out var entry);
+            target = entry.target;
+            lastSeen = entry.lastSeen;
+            return found;
+        }
+
+        /// <summary>Remembers where the unit's Attack target is now, while the client sees it.</summary>
+        public void SawAttackTarget(int id, int target, float2 at) => attackTargets[id] = (target, at);
+
+        /// <summary>The unit's Attack order is over, as far as this client can tell.</summary>
+        public void ForgetAttackTarget(int id) => attackTargets.Remove(id);
 
         /// <summary>The attack-move goal this client last gave the unit, while its last order was an attack-move (v0.16 target lines).</summary>
         public bool AttackMoveGoal(int id, out int2 goal) => attackMoveGoals.TryGetValue(id, out goal);
 
         /// <summary>Remembers attack-move goals (a queued order keeps the one before it), then raises <see cref="Ordered"/>.</summary>
-        private void RaiseOrdered(OrderKind kind, bool queue, int2 goal, IReadOnlyList<int> ids)
+        private void RaiseOrdered(OrderKind kind, bool queue, int2 goal, IReadOnlyList<int> ids, int targetId = 0)
         {
+            if (!queue)
+                foreach (int id in ids)
+                {
+                    if (kind == OrderKind.Attack && targetId != 0) attackTargets[id] = (targetId, (float2)goal + 0.5f);
+                    else attackTargets.Remove(id);
+                }
             if (kind == OrderKind.AttackMove && !queue) foreach (int id in ids) attackMoveGoals[id] = goal;
             else if (!queue) foreach (int id in ids) attackMoveGoals.Remove(id);
             Ordered?.Invoke(kind, queue, goal, ids);
@@ -233,21 +259,21 @@ namespace WAR2D.Client
         /// Gives the selection an order (the goal matters only for Move and AttackMove): one squad order
         /// when it is exactly a squad, chunked ids otherwise.
         /// </summary>
-        public void Order(OrderKind kind, bool queue, int2 goal)
+        public void Order(OrderKind kind, bool queue, int2 goal, int targetId = 0)
         {
             if (selected.Count == 0 || WorldStateManager.Instance == null) return;
             if (selectedSquad >= 0 && IsExactly(squads[selectedSquad]))
             {
-                WorldStateManager.Instance.CmdOrderSquad((byte)selectedSquad, (byte)kind, queue, goal, SettingsStore.Current.Formations);
-                RaiseOrdered(kind, queue, goal, Sorted());
+                WorldStateManager.Instance.CmdOrderSquad((byte)selectedSquad, (byte)kind, queue, goal, SettingsStore.Current.Formations, targetId);
+                RaiseOrdered(kind, queue, goal, Sorted(), targetId);
                 return;
             }
             ushort token = NextToken();
             List<int> ids = Sorted();
             List<byte[]> chunks = OrderIdCodec.EncodeChunks(ids);
             for (int i = 0; i < chunks.Count; i++)
-                WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, queue, goal, SettingsStore.Current.Formations);
-            RaiseOrdered(kind, queue, goal, ids);
+                WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)kind, queue, goal, SettingsStore.Current.Formations, targetId);
+            RaiseOrdered(kind, queue, goal, ids, targetId);
         }
 
         private readonly Dictionary<OrderKind, List<int>> byKind = new Dictionary<OrderKind, List<int>>();
@@ -257,7 +283,7 @@ namespace WAR2D.Client
         /// dig, the rest move): the plain <see cref="Order"/> when they all take the same one, else one chunked
         /// order per kind.
         /// </summary>
-        public void OrderEach(Func<int, OrderKind> kindOf, bool queue, int2 goal)
+        public void OrderEach(Func<int, OrderKind> kindOf, bool queue, int2 goal, int targetId = 0)
         {
             if (selected.Count == 0 || WorldStateManager.Instance == null) return;
             foreach (List<int> list in byKind.Values) list.Clear();
@@ -272,7 +298,7 @@ namespace WAR2D.Client
             foreach (KeyValuePair<OrderKind, List<int>> pair in byKind) if (pair.Value.Count > 0) { kinds++; only = pair.Key; }
             if (kinds == 1)
             {
-                Order(only, queue, goal);
+                Order(only, queue, goal, only == OrderKind.Attack ? targetId : 0);
                 return;
             }
             foreach (KeyValuePair<OrderKind, List<int>> pair in byKind)
@@ -281,8 +307,8 @@ namespace WAR2D.Client
                 ushort token = NextToken();
                 List<byte[]> chunks = OrderIdCodec.EncodeChunks(pair.Value);
                 for (int i = 0; i < chunks.Count; i++)
-                    WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)pair.Key, queue, goal, SettingsStore.Current.Formations);
-                RaiseOrdered(pair.Key, queue, goal, pair.Value);
+                    WorldStateManager.Instance.CmdOrderChunk(token, chunks[i], i == chunks.Count - 1, (byte)pair.Key, queue, goal, SettingsStore.Current.Formations, pair.Key == OrderKind.Attack ? targetId : 0);
+                RaiseOrdered(pair.Key, queue, goal, pair.Value, pair.Key == OrderKind.Attack ? targetId : 0);
             }
         }
 
@@ -292,6 +318,12 @@ namespace WAR2D.Client
             ClientWorld world = ClientWorld.Instance;
             if (world == null) return;
             selected.RemoveWhere(id => !world.IsKnownId(id));
+            if (attackTargets.Count > 0)
+            {
+                goneGoals.Clear();
+                foreach (int id in attackTargets.Keys) if (!world.IsKnownId(id)) goneGoals.Add(id);
+                foreach (int id in goneGoals) attackTargets.Remove(id);
+            }
             if (attackMoveGoals.Count == 0) return;
             // Dead units' attack-move goals go too (each id's reuse is a new id, so they would pile up all match).
             goneGoals.Clear();

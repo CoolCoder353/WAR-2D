@@ -1,0 +1,504 @@
+{
+  "_comment": "The words of the v0.18 Field manual, for review on the mock website (spec section 2.4). {Path} is a number from GameConfig.xml or a figure worked out from it, [[Name]] links to that page, **x** highlights. No literal balance numbers here: tools/manual-mock.js fills them. Once approved these words are carried into ManualText.",
+  "damageTable": {
+    "lead": "How much of its damage each attacker deals to each kind of target. Hover a cell for the damage per shot and per second.",
+    "notes": [
+      "Every unit is Light or Heavy armoured. With buildings and walls that makes four target classes.",
+      "A hit does the attacker's damage times the number in this table. 1 is full damage, 2 is double, 0 is none.",
+      "A [[Suicide bomber]]'s row applies to its blast, which goes off once."
+    ]
+  },
+  "units": {
+    "Tank": {
+      "role": "The all-round fighting vehicle.",
+      "body": [
+        "Your everyday fighter. It is cheap, quick to build and does full damage to everything except walls, so most armies are built around it.",
+        "It has no special strength, but in numbers it beats most things for its price. [[Flamethrower]]s burn through a crowd of them, so bring [[Heavy|Heavies]] for those."
+      ],
+      "claims": {
+        "Sniper": "beats",
+        "Flamethrower": "loses"
+      }
+    },
+    "Builder": {
+      "role": "Builds, repairs and lays walls.",
+      "body": [
+        "Nothing gets built without a Builder. Every building starts as a blueprint, and each Builder working on one adds {Siege/BuildPower} health a second until it is done.",
+        "It also repairs your and your allies' buildings and walls for {Siege/RepairCostPerHealth} resources per health. An idle Builder takes up blueprints and repairs within {AutoWork/Radius} tiles on its own. It never attacks."
+      ]
+    },
+    "Digger": {
+      "role": "Digs through rock, gems and enemy walls.",
+      "body": [
+        "Removes a rock tile every {Siege/DigTime} s, which opens new routes through the map. Digging a gem pays {Siege/GemPayout} at once (a rich gem {Siege/RichGemPayout}) and uses the gem up, so a Miner can no longer earn from it.",
+        "It breaks walls and buildings far faster than it hurts units. Keep it away from the fight until it reaches what it came for."
+      ]
+    },
+    "Scout": {
+      "role": "Fast and far-sighted; lightly armed.",
+      "body": [
+        "The fastest unit, with the widest sight. It finds enemies for your [[Sniper]]s and [[Artillery]], which can fire further than they can see.",
+        "Its weak gun only does real damage to light units. Use it to look and to hunt [[Sniper]]s and [[Builder]]s, not to fight armour or buildings."
+      ],
+      "claims": {
+        "Sniper": "beats",
+        "Heavy": "loses"
+      }
+    },
+    "Flamethrower": {
+      "role": "Short-range splash that burns through groups.",
+      "body": [
+        "Each hit also burns every enemy within {Unit/Flamethrower/Splash} tiles of the target: full damage at the centre, half at the edge. Allies are not hurt.",
+        "It is at its best inside a crowd of light units and weak against [[Heavy|Heavies]]. Its short range means it takes fire on the way in."
+      ],
+      "claims": {
+        "Scout": "beats",
+        "Heavy": "loses"
+      }
+    },
+    "Heavy": {
+      "role": "Slow, armoured front-line tank.",
+      "body": [
+        "Takes the fire so that the rest of your army doesn't. Its large gun hits buildings harder than anything else on the front line, and it shrugs off [[Flamethrower]]s and [[Gun turret]]s.",
+        "It is slow and large: it needs wider paths, and it passes a narrow chokepoint in single file. For the same money, massed [[Tank]]s out-damage it."
+      ],
+      "claims": {
+        "Flamethrower": "beats",
+        "GunTurret": "beats",
+        "Tank": "loses"
+      }
+    },
+    "Artillery": {
+      "role": "Long-range splash; can't fire up close.",
+      "body": [
+        "Shells from {Unit/Artillery/Range} tiles, with a splash of {Unit/Artillery/Splash} tiles, and does double damage to buildings. It out-ranges a [[Gun turret]] easily and wins against slow or short-sighted units it can see coming.",
+        "It sees only {Unit/Artillery/Sight} tiles and can't fire at anything closer than {Unit/Artillery/MinRange}. It needs something else to spot for it, and something to keep attackers off it."
+      ],
+      "claims": {
+        "GunTurret": "beats"
+      }
+    },
+    "Sniper": {
+      "role": "Very long range; needs something to spot for it.",
+      "body": [
+        "The longest range in the game. It is the safest way to kill a [[Gun turret]], which can't reach it, and it picks off targets from behind your army.",
+        "It can only fire at what your side can see, and it can't fire at anything closer than {Unit/Sniper/MinRange} tiles. It does little to buildings and walls.",
+        "It loses a straight fight at equal cost, and a [[Suicide bomber]] that reaches a group of Snipers is very costly. Keep something in front of it."
+      ],
+      "claims": {
+        "GunTurret": "beats",
+        "SuicideBomber": "loses",
+        "Scout": "loses"
+      }
+    },
+    "SuicideBomber": {
+      "role": "Drives in and explodes. Hurts friends too.",
+      "body": [
+        "On an attack-move, or idle with an enemy in sight, it runs in and explodes. Its blast hits every unit, building and wall within {Unit/SuicideBomber/BlastRadius} tiles, **your own and your allies' included**.",
+        "It aims for the middle of a group, where its blast catches the most value for the least harm to your side. Against a building it goes for the middle of a side. It can only aim at what your side sees.",
+        "**A bomber at {Derived/LastGaspPercent} % health or less explodes**, which in practice means a bomber shot down explodes where it falls. Shoot it down far from what you are protecting. The Detonate order sets off every selected bomber where it stands."
+      ]
+    }
+  },
+  "buildings": {
+    "Base": {
+      "role": "Your life. Lose it and you are out.",
+      "body": [
+        "Placed at the start of the match, in one of your start options, without a Builder. It is the only building that isn't a blueprint first, and it can't be demolished.",
+        "It makes [[Builder]]s. If it is destroyed you are eliminated, and everything else you own is destroyed with it."
+      ]
+    },
+    "Miner": {
+      "role": "Earns resources from the gem it faces.",
+      "body": [
+        "Earns {Resources/MiningRate} a second while the one tile it faces is a gem, and {Derived/RichMinerRate} a second facing a rich gem. It pays for itself in {Derived/MinerPayback} s and has no upkeep.",
+        "It can only be placed facing a gem. Press {Key/Rotate} while placing it to turn it. It stops earning if that gem is dug out."
+      ]
+    },
+    "Barracks": {
+      "role": "Makes Scouts, Tanks and Flamethrowers.",
+      "body": [
+        "Your first army building. Like every producer it makes one chosen type at a time and charges a unit's cost as the unit comes out.",
+        "Its upkeep is the income of {Derived/BarracksMiners} Miners, so don't build one before your income can carry it."
+      ]
+    },
+    "HeavyFactory": {
+      "role": "Makes Heavies, Artillery and Snipers.",
+      "body": [
+        "Makes the expensive units. Its upkeep is the income of {Derived/HeavyFactoryMiners} Miners, and each of its units takes several seconds to build.",
+        "Its large units come out on a tile with room around it, so leave space beside it."
+      ]
+    },
+    "SiegeWorkshop": {
+      "role": "Makes Diggers and Suicide bombers.",
+      "body": [
+        "Makes the units that change the map or break a line: [[Digger]]s to open a new route or take down walls, [[Suicide bomber]]s to blow a hole in a crowd."
+      ]
+    },
+    "Bomb": {
+      "role": "A hidden trap, walkable.",
+      "body": [
+        "Only you and those you share vision with can see it, and Radars can't. A unit of any player you attack sets it off: a blast of {Siege/BlastDamage} within {Siege/BlastRadius} tiles that hits everything, **your own units included**.",
+        "Everyone who can see the tile sees the explosion, and you get an alert. Place them where armies must pass: chokepoints and the entrances to your base."
+      ]
+    },
+    "Radar": {
+      "role": "Sees far, through walls and rock.",
+      "body": [
+        "Sees {Building/Radar/Sight} tiles ignoring walls and rock, and pings you when an enemy comes into range. It pings again only after the area has been clear for {Siege/RadarClearSeconds} s and at least {Siege/RadarAlertCooldownSeconds} s have passed.",
+        "It never sees [[Bomb]]s, and it sees nothing inside an enemy [[Jammer]]'s radius. Its sight lets your [[Artillery]] and [[Sniper]]s fire."
+      ]
+    },
+    "GunTurret": {
+      "role": "The only building that shoots.",
+      "body": [
+        "Fights like a unit that can't move: the nearest enemy unit in range it has a clear line to, else the nearest enemy building, else an enemy wall.",
+        "Strong against light units and weak against [[Heavy|Heavies]]. [[Artillery]] and [[Sniper]]s out-range it. It doesn't fire as a blueprint or while its upkeep is unpaid."
+      ],
+      "claims": {
+        "Scout": "beats",
+        "Heavy": "loses",
+        "Artillery": "loses",
+        "Sniper": "loses"
+      }
+    },
+    "Jammer": {
+      "role": "Hides an area from your enemies.",
+      "body": [
+        "While finished and paid it jams {Siege/JamRadius} tiles for every player you don't share vision with. They see in the jam only from within {Siege/JamSight} tiles, and their [[Radar]]s see nothing there.",
+        "Your units inside stay hidden and your buildings stay ghosts until they come close. It stops jamming while unpaid or destroyed."
+      ]
+    },
+    "Wall": {
+      "role": "Blocks movement and sight.",
+      "body": [
+        "Drag to lay a straight line of up to {Siege/MaxWallLine} segments. Each tile is its own blueprint that a [[Builder]] finishes, and units walk through a blueprint until a Builder starts it. A finished wall has no upkeep.",
+        "A wall blocks movement and sight, so it can close a chokepoint. Units attack an enemy wall they can see only on an attack-move or when you right-click it. [[Digger]]s break walls fastest. A destroyed wall becomes ground."
+      ]
+    }
+  },
+  "rules": [
+    {
+      "id": "economy",
+      "title": "Economy",
+      "lead": "There is one resource. It comes in slowly on its own and quickly from Miners, and everything you own costs upkeep.",
+      "diagram": "economy",
+      "sections": [
+        {
+          "heading": "Income",
+          "paras": [
+            "You start with {Resources/StartingResources} (the host can change this) and earn {Resources/PassiveGenerationRate} a second while you are in the match.",
+            "A [[Miner]] earns {Resources/MiningRate} a second facing a gem, {Derived/RichMinerRate} facing a rich gem. A [[Digger]] can dig a gem for {Siege/GemPayout} at once, or a rich gem for {Siege/RichGemPayout}, but then it is gone for good."
+          ]
+        },
+        {
+          "heading": "Upkeep and decay",
+          "paras": [
+            "Upkeep is charged once a second, per unit and per building. Your resources never go below zero: what you can't pay goes unpaid.",
+            "**Anything unpaid decays.** It loses {Resources/DecayPercentPerSecond}% of its maximum health every second, which destroys it in {Derived/DecaySeconds} s if you never catch up. An unpaid [[Gun turret]] doesn't fire, and an unpaid [[Jammer]] doesn't jam."
+          ]
+        },
+        {
+          "heading": "Spending",
+          "paras": [
+            "A blueprint charges its full cost when you place it. Cancelling it refunds everything; demolishing a finished building refunds {Derived/DemolishPercent}%. A unit is charged as it comes out of its producer.",
+            "You can gift resources to any other player, one gift every {Gifting/CooldownSeconds} s. Only you and they are told."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fog",
+      "title": "Fog of war",
+      "lead": "You see through the eyes of your units and buildings, and of everyone sharing vision with you.",
+      "diagram": "fog",
+      "sections": [
+        {
+          "heading": "Three kinds of ground",
+          "paras": [
+            "**Unexplored** is black. **Explored** is dimmed: you have been there, and you only see the ground and the last you saw of any buildings. **Visible** is clear, and it's the only place you see enemy units.",
+            "A building you saw stays on your map as a dimmed ghost when it goes out of sight. You only learn a ghost was destroyed when you see its spot again."
+          ]
+        },
+        {
+          "heading": "What blocks your view",
+          "paras": [
+            "Rock and walls block sight: you see a wall's face, not what is behind it. Each type has its own sight radius, on its page here. A blueprint sees nothing until it is finished.",
+            "A [[Radar]] sees through rock and walls. Inside an enemy [[Jammer]]'s radius you see only from within {Siege/JamSight} tiles."
+          ]
+        },
+        {
+          "heading": "You can only shoot what you see",
+          "paras": [
+            "A unit fires only at an enemy on ground your side sees now. [[Artillery]] and [[Sniper]]s out-range their own sight, so they need a [[Scout]], a [[Radar]] or an ally to spot for them."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "diplomacy",
+      "title": "Teams and diplomacy",
+      "lead": "Who attacks whom is each player's own choice, and it only runs one way.",
+      "diagram": "diplomacy",
+      "sections": [
+        {
+          "heading": "At the start",
+          "paras": [
+            "Teammates don't attack each other and share vision. Everyone else attacks and doesn't share."
+          ]
+        },
+        {
+          "heading": "When the match has diplomacy on",
+          "paras": [
+            "You choose whom you attack and with whom you share vision, at most one change per command every {Diplomacy/ChangeCooldownSeconds} s. Your units don't fire on a player you have stopped attacking, even if that player still attacks you.",
+            "Nobody learns your choices, except that a player is told when you start or stop sharing vision with them. Stopping sharing leaves them with what they already explored."
+          ]
+        },
+        {
+          "heading": "Peace wins matches",
+          "paras": [
+            "A match ends in a win when the players who still have an HQ no longer attack each other. Peace must be mutual: if one survivor still attacks another, the match goes on."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "combat",
+      "title": "Combat and orders",
+      "lead": "Units fight on their own. Your orders decide where they go and what they ignore on the way.",
+      "sections": [
+        {
+          "heading": "How units pick a target",
+          "paras": [
+            "A unit fires at the nearest enemy unit in range that it has a clear line to, and only when there is none, the nearest enemy building. Rock blocks shots; units and buildings don't.",
+            "\"Enemy\" means a player you attack. Damage is the attacker's damage times the [[Damage table]]'s number for the target."
+          ]
+        },
+        {
+          "heading": "The orders",
+          "paras": [
+            "**Move** ({Key/Command}): go there and ignore enemies until you arrive.",
+            "**Attack-move** ({Key/AttackMove}, then click): go there and stop to fight enemies in range on the way.",
+            "**Attack** (right-click an enemy, or Attack-move clicked on one): go after that target, fire at it in range and ignore everything else until it dies. If it slips out of your side's sight, they walk to the last tile it was seen on, and the order ends there if it still isn't seen.",
+            "**Stop** ({Key/Stop}) drops every order. **Hold** ({Key/Hold}) stands still and never gets pushed aside. Units with no order fight what comes in range. **Roam** ({Key/Roam}) scouts on its own.",
+            "Hold {Key/QueueModifier} to queue an order after the current ones, up to {Orders/MaxQueued} per unit."
+          ]
+        },
+        {
+          "heading": "Seeing your reach",
+          "paras": [
+            "Hold {Key/ShowRanges} to see the attack range, minimum range and sight of what you have selected and of whatever is under the pointer. A [[Gun turret]], [[Radar]] or [[Jammer]] always shows its reach while you place it."
+          ]
+        },
+        {
+          "heading": "Selecting",
+          "paras": [
+            "A drag box selects every unit inside it. If it catches [[Builder]]s and anything else, it keeps only the others; a box with only Builders selects them. {Key/SelectIdleBuilders} selects idle Builders, and {Key/AssignModifier} + {Key/SelectIdleBuilders} every Builder."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "siege",
+      "title": "Siege",
+      "lead": "The map itself can be changed: rock dug away, chokepoints walled off and ground mined with traps.",
+      "diagram": "siege",
+      "sections": [
+        {
+          "heading": "Blueprints and Builders",
+          "paras": [
+            "Every building except the HQ starts as a blueprint that charges its full cost and has health in proportion to its progress. Each [[Builder]] adds {Siege/BuildPower} health a second, so more Builders finish it faster."
+          ]
+        },
+        {
+          "heading": "Digging and walls",
+          "paras": [
+            "A [[Digger]] removes a rock tile in {Siege/DigTime} s. Digging is permanent. Rock within {Match/Map/EdgeTiles} tiles of the map's edge can't be dug, so nobody tunnels around the rim. A [[Wall]] segment costs {Siege/WallCost} and has {Siege/WallHealth} health."
+          ]
+        },
+        {
+          "heading": "Blasts hurt everyone",
+          "paras": [
+            "A [[Bomb]] (radius {Siege/BlastRadius}, damage {Siege/BlastDamage}) and a [[Suicide bomber]] (radius {Unit/SuicideBomber/BlastRadius}, damage {Unit/SuicideBomber/BlastDamage}) both hit friends as well as enemies. Splash from [[Flamethrower]]s and [[Artillery]] hits enemies only.",
+            "A bomber shot down explodes where it falls, and that blast can set off other bombers near it. Long-range fire keeps them away; a bomber killed inside your army takes your army with it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "winning",
+      "title": "Winning and losing",
+      "lead": "Every player has one HQ. Lose it and you are out.",
+      "diagram": "winning",
+      "sections": [
+        {
+          "heading": "Eliminated",
+          "paras": [
+            "A player with no HQ is eliminated: all their units and buildings are destroyed, and they can watch the rest of the match with the whole map shown."
+          ]
+        },
+        {
+          "heading": "The end of the match",
+          "paras": [
+            "The match is won when the players who still have an HQ no longer attack each other. In free-for-all that means one player left. Teammates of the winners win too, even if they were eliminated. If the last HQs fall together, it's a draw."
+          ]
+        },
+        {
+          "heading": "Leaving, and coming back",
+          "paras": [
+            "If your connection drops you have {Match/ReconnectSeconds} s to rejoin, and your economy and units wait for you. Surrender or leaving ends your part in the match.",
+            "If you are the only human in the match, the menu and this manual pause it. Otherwise the match runs on behind them."
+          ]
+        }
+      ]
+    }
+  ],
+  "controls": [
+    {
+      "group": "Camera",
+      "rows": [
+        [
+          "Pan camera",
+          "Arrow keys"
+        ],
+        [
+          "Drag the map",
+          "{Key/DragPan} + drag"
+        ],
+        [
+          "Zoom",
+          "Mouse wheel"
+        ],
+        [
+          "Pan faster",
+          "Hold {Key/FastPan}"
+        ]
+      ]
+    },
+    {
+      "group": "Selecting",
+      "rows": [
+        [
+          "Select / box select",
+          "{Key/Select}"
+        ],
+        [
+          "Add to selection",
+          "{Key/QueueModifier} + {Key/Select}"
+        ],
+        [
+          "Every unit of a type on screen",
+          "Double-click"
+        ],
+        [
+          "Select idle Builders",
+          "{Key/SelectIdleBuilders}"
+        ],
+        [
+          "Select army",
+          "{Key/SelectArmy}"
+        ],
+        [
+          "Assign squad",
+          "{Key/AssignModifier} + 1–0"
+        ],
+        [
+          "Select squad",
+          "1–0"
+        ]
+      ]
+    },
+    {
+      "group": "Orders",
+      "rows": [
+        [
+          "Move, or attack an enemy",
+          "{Key/Command}"
+        ],
+        [
+          "Attack-move",
+          "{Key/AttackMove}"
+        ],
+        [
+          "Stop",
+          "{Key/Stop}"
+        ],
+        [
+          "Hold",
+          "{Key/Hold}"
+        ],
+        [
+          "Roam (scout on their own)",
+          "{Key/Roam}"
+        ],
+        [
+          "Repair (Builders)",
+          "{Key/Repair}"
+        ],
+        [
+          "Dig (Diggers)",
+          "{Key/Dig}"
+        ],
+        [
+          "Detonate (Suicide bombers)",
+          "{Key/Detonate}"
+        ],
+        [
+          "Queue order",
+          "{Key/QueueModifier}"
+        ]
+      ]
+    },
+    {
+      "group": "Command card",
+      "rows": [
+        [
+          "Top row · Miner, Barracks, Heavy Factory, Siege Workshop, or a producer's unit types",
+          "{Key/CardTop1} {Key/CardTop2} {Key/CardTop3} {Key/CardTop4}"
+        ],
+        [
+          "Bottom row · Wall, Bomb, Radar, Gun turret, Jammer",
+          "{Key/CardBottom1} {Key/CardBottom2} {Key/CardBottom3} {Key/CardBottom4} {Key/CardBottom5}"
+        ],
+        [
+          "Rotate building",
+          "{Key/Rotate}"
+        ],
+        [
+          "Cancel / demolish",
+          "{Key/Cancel}"
+        ]
+      ]
+    },
+    {
+      "group": "Information and menus",
+      "rows": [
+        [
+          "Field manual",
+          "{Key/FieldManual}",
+          "new"
+        ],
+        [
+          "Show ranges",
+          "{Key/ShowRanges}",
+          "new"
+        ],
+        [
+          "Jump to HQ",
+          "{Key/JumpToHq}"
+        ],
+        [
+          "Next alert",
+          "{Key/NextAlert}"
+        ],
+        [
+          "Menu",
+          "{Key/Menu}"
+        ]
+      ]
+    }
+  ],
+  "counterNote": "From fights on open ground between armies of equal cost. Range, splash and numbers all count, so terrain and a good mix can turn them.",
+  "counterNoteBomber": "From what one blast takes out of a packed group of the target, after what that target shoots down on the way in.",
+  "noFight": "It can't fight. Anything armed beats it, so keep it behind your army."
+}

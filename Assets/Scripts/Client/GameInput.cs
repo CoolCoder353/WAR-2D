@@ -59,6 +59,10 @@ public static class GameInput
     public static InputAction JumpToHq => Map["JumpToHq"];
     /// <summary>Centres the camera on the newest alert you have not visited (Space).</summary>
     public static InputAction NextAlert => Map["NextAlert"];
+    /// <summary>v0.18: held, shows range and sight rings (<c>Show ranges</c> in Settings).</summary>
+    public static InputAction ShowRanges => Map["ShowRanges"];
+    /// <summary>v0.18: opens the Field manual on the selected type's page.</summary>
+    public static InputAction FieldManual => Map["FieldManual"];
 
     /// <summary>
     /// v0.15.1 card slots (Figma <c>v0.15.1 Hotkeys and polish</c>, H1–H3): the command card's top row (Make with Builders, the unit
@@ -161,6 +165,8 @@ public static class GameInput
         map.AddAction("SelectArmy", InputActionType.Button, "<Keyboard>/comma");
         map.AddAction("JumpToHq", InputActionType.Button, "<Keyboard>/backspace");
         map.AddAction("NextAlert", InputActionType.Button, "<Keyboard>/space");
+        map.AddAction("ShowRanges", InputActionType.Button, "<Keyboard>/alt");
+        map.AddAction("FieldManual", InputActionType.Button, "<Keyboard>/f1");
         for (int slot = 0; slot < CardTopSlots; slot++) map.AddAction($"CardTop{slot + 1}", InputActionType.Button, $"<Keyboard>/{CardTopKeys[slot]}");
         for (int slot = 0; slot < CardBottomSlots; slot++) map.AddAction($"CardBottom{slot + 1}", InputActionType.Button, $"<Keyboard>/{CardBottomKeys[slot]}");
         map.AddAction("DragPan", InputActionType.Button, "<Mouse>/middleButton");

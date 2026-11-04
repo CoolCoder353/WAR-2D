@@ -16,7 +16,7 @@ namespace WAR2D.Sim
             for (int i = 0; i < buckets.Length; i++) buckets[i] = new List<int>();
             return buckets;
         }
-        private readonly Dictionary<(int2 goal, byte stance, int sizeClass, int owner), List<int>> legs = new Dictionary<(int2, byte, int, int), List<int>>();
+        private readonly Dictionary<(int2 goal, byte stance, int sizeClass, int owner, int target), List<int>> legs = new Dictionary<(int2, byte, int, int, int), List<int>>();
         private readonly Stack<List<int>> spareLegs = new Stack<List<int>>();
 
         /// <summary>
@@ -40,11 +40,18 @@ namespace WAR2D.Sim
                 return;
             }
             foreach (List<int> list in moversByClass) list.Clear();
-            bool moves = command.Order == OrderKind.Move || command.Order == OrderKind.AttackMove;
+            int attackTick = SystemAPI.GetSingleton<SimClock>().Tick;
+            Chase chase = null;
+            // A target the side can't name now (gone, hidden, not attacked) makes this what the client could have sent anyway.
+            bool attack = command.Order == OrderKind.Attack && TryStartChase(data, command.OwnerId, command.TargetId, unitCount, attackTick, out chase);
+            bool moves = command.Order == OrderKind.Move || command.Order == OrderKind.AttackMove || command.Order == OrderKind.Attack;
+            int2 goal = attack ? chase.Goal : command.Tile;
+            int target = attack ? command.TargetId : 0;
             byte stance = command.Order switch
             {
                 OrderKind.Move => Stances.Move,
                 OrderKind.AttackMove => Stances.AttackMove,
+                OrderKind.Attack => attack ? Stances.Attack : Stances.AttackMove,
                 OrderKind.Hold => Stances.Hold,
                 _ => Stances.Idle,
             };
@@ -55,7 +62,7 @@ namespace WAR2D.Sim
                 {
                     int slot = data.SlotOf(id, unitCount);
                     if (slot < 0 || data.OwnerId[slot] != command.OwnerId || data.Health[slot] <= 0f) continue;
-                    Route(data, context, slot, queue, command.Tile, stance);
+                    Route(data, context, slot, queue, goal, stance, target);
                 }
             }
             else
@@ -66,7 +73,7 @@ namespace WAR2D.Sim
                     float2 p = data.Positions[slot];
                     if (data.OwnerId[slot] != command.OwnerId || data.Health[slot] <= 0f) continue;
                     if (p.x < lo.x || p.y < lo.y || p.x >= hi.x || p.y >= hi.y) continue;
-                    Route(data, context, slot, queue, command.Tile, stance);
+                    Route(data, context, slot, queue, goal, stance, target);
                 }
             }
 
@@ -74,6 +81,11 @@ namespace WAR2D.Sim
             {
                 foreach (List<int> slots in moversByClass)
                     AddPending(data, slots, new PendingOrder { Slot = -1, Stance = stance });
+                return;
+            }
+            if (attack)
+            {
+                IssueAttack(data, context, chase, attackTick); // never forms up: the group is going after one target
                 return;
             }
             if (command.Formation) AssignFormation(data, context, command.Tile);
@@ -176,12 +188,12 @@ namespace WAR2D.Sim
         }
 
         /// <summary>Queues the unit's waypoint, or clears its waypoints and adds it to this order's movers.</summary>
-        private void Route(SimData data, SimContext context, int slot, bool queue, int2 goal, byte stance)
+        private void Route(SimData data, SimContext context, int slot, bool queue, int2 goal, byte stance, int target = 0)
         {
             int id = data.IdOf[slot];
             if (queue && HasLiveOrder(data, slot, id))
             {
-                context.Waypoints.Append(id, goal, stance);
+                context.Waypoints.Append(id, goal, stance, WorkKinds.None, target);
                 return;
             }
             context.Waypoints.Clear(id);
@@ -208,9 +220,11 @@ namespace WAR2D.Sim
             while (data.Arrivals.TryDequeue(out int id))
             {
                 int arrivedSlot = data.SlotOf(id, unitCount);
+                // At the goal with its target still alive: the order isn't over (UpdateChases ends it).
+                if (arrivedSlot >= 0 && data.Stance[arrivedSlot] == Stances.Attack && !attackEnded.Contains(id)) continue;
                 // A worker that arrived at its job moves on only when the job is done (see ClearFinishedWork).
                 if (arrivedSlot >= 0 && data.WorkKind[arrivedSlot] != WorkKinds.None && !data.PendingOrders.ContainsKey(id)) continue;
-                if (!context.Waypoints.TryPop(id, out int2 goal, out byte stance, out byte work)) continue;
+                if (!context.Waypoints.TryPop(id, out int2 goal, out byte stance, out byte work, out int target)) continue;
                 int slot = arrivedSlot;
                 if (slot < 0 || data.Health[slot] <= 0f)
                 {
@@ -222,7 +236,13 @@ namespace WAR2D.Sim
                     StartQueuedWork(data, context, slot, goal, work, tick);
                     continue;
                 }
-                var key = (goal, stance, data.SizeClass[slot], data.OwnerId[slot]);
+                if (stance == Stances.Attack)
+                {
+                    // Named when queued; checked again now, on what the side sees now.
+                    if (TryStartChase(data, data.OwnerId[slot], target, unitCount, tick, out Chase chase)) goal = chase.Goal;
+                    else { stance = Stances.AttackMove; target = 0; }
+                }
+                var key = (goal, stance, data.SizeClass[slot], data.OwnerId[slot], target);
                 if (!legs.TryGetValue(key, out List<int> slots))
                 {
                     slots = spareLegs.Count > 0 ? spareLegs.Pop() : new List<int>();
@@ -230,9 +250,10 @@ namespace WAR2D.Sim
                 }
                 slots.Add(slot);
             }
-            foreach (KeyValuePair<(int2 goal, byte stance, int sizeClass, int owner), List<int>> leg in legs)
+            foreach (KeyValuePair<(int2 goal, byte stance, int sizeClass, int owner, int target), List<int>> leg in legs)
             {
-                Issue(data, context, leg.Value, leg.Key.sizeClass, leg.Key.goal, leg.Key.stance, tick, leg.Key.owner);
+                byte kind = leg.Key.target != 0 && chases.TryGetValue((leg.Key.owner, leg.Key.target), out Chase legChase) ? legChase.Kind : TargetKinds.Unit;
+                Issue(data, context, leg.Value, leg.Key.sizeClass, leg.Key.goal, leg.Key.stance, tick, leg.Key.owner, leg.Key.target, kind);
                 leg.Value.Clear();
                 spareLegs.Push(leg.Value);
             }
@@ -240,7 +261,7 @@ namespace WAR2D.Sim
         }
 
         /// <summary>Issues (or joins) the order for the goal and gives it to the units.</summary>
-        private static void Issue(SimData data, SimContext context, List<int> slots, int sizeClass, int2 goal, byte stance, int tick, int owner)
+        private static void Issue(SimData data, SimContext context, List<int> slots, int sizeClass, int2 goal, byte stance, int tick, int owner, int target = 0, byte targetKind = TargetKinds.Unit)
         {
             if (slots.Count == 0) return;
             var starts = new NativeArray<int>(slots.Count, Allocator.Temp);
@@ -252,7 +273,7 @@ namespace WAR2D.Sim
             int handle = context.Orders.Issue(goal, sizeClass, starts, tick, owner);
             starts.Dispose();
             if (handle < 0) return;
-            AddPending(data, slots, new PendingOrder { Slot = handle, Stance = stance });
+            AddPending(data, slots, new PendingOrder { Slot = handle, Stance = stance, OrderTarget = target, OrderTargetKind = targetKind });
         }
 
         /// <summary>

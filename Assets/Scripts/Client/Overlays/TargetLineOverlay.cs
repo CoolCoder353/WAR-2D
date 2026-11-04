@@ -51,11 +51,29 @@ namespace WAR2D.Client.Overlays
             foreach (int k in rules.Nearest(candidates, new float2(c.x, c.y), rules.Max))
             {
                 (int id, float2 from) = candidates[k];
+                if (selection.AttackTarget(id, out int ordered, out float2 lastSeen))
+                {
+                    // v0.18 (Figma O1): solid and red while the Attack order holds, to the target or the last tile the side saw it on.
+                    bool seen = f.World.TryTargetPosition(ordered, out Vector3 at) || TryBuildingCentre(ordered, out at);
+                    if (seen) selection.SawAttackTarget(id, ordered, lastSeen = new float2(at.x, at.y));
+                    else if (!f.World.IsMoving(id)) { selection.ForgetAttackTarget(id); continue; }
+                    f.Mesh.Segment(from, lastSeen, 1.5f * f.Px, OverlayColours.Alpha(f.Danger, 0.8f));
+                    continue;
+                }
                 if (rules.TryTarget(id, now, out int target) && f.World.TryTargetPosition(target, out Vector3 to))
                     f.Mesh.Segment(from, new float2(to.x, to.y), f.Px, TargetLineRules.KindOf(target) == TargetLineKind.Wall ? orange : red);
                 else if (selection.AttackMoveGoal(id, out int2 g) && f.World.IsMoving(id))
                     f.Mesh.Segment(from, (float2)g + 0.5f, f.Px, goal, 4f * f.Px);
             }
+        }
+
+        private static bool TryBuildingCentre(int id, out Vector3 at)
+        {
+            at = default;
+            if (!ClientBuildings.Current.Entries.TryGetValue(id, out ClientBuildings.Entry e) || e.Ghost) return false;
+            float2 c = Footprint.VisualCenter((int2)math.round(e.Data.position), WorldStateManager.GetBuildingSize(e.Data.buildingType));
+            at = new Vector3(c.x, c.y, 0f);
+            return true;
         }
 
         /// <summary>Stops listening (the overlay is destroyed).</summary>

@@ -126,6 +126,7 @@ namespace WAR2D.Sim
                 context.Ids.Free(death.Id);
                 context.RaiseUnitDied(death.Id, death.Position);
                 context.RaiseUnitKilled(death.OwnerId, death.Killer);
+                context.RaiseUnitDeath(death.OwnerId, death.Killer, death.Type, death.Position);
             }
             EntityManager.DestroyEntity(entities.AsArray());
             entities.Dispose();

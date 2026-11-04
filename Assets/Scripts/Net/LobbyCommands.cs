@@ -30,6 +30,49 @@ public partial class GameCore
         };
     }
 
+    /// <summary>The host's remembered settings and AI seats over the defaults (v0.18), when starting a lobby.</summary>
+    [Server]
+    private void ApplyRememberedLobby()
+    {
+        RememberedLobby lobby = LobbyMemory.Load();
+        if (lobby == null) return;
+        Settings = LobbyMemory.Apply(Settings, lobby, ConfigLoader.LoadConfig().Lobby);
+        if (!string.IsNullOrEmpty(lobby.ServerName)) ServerName = lobby.ServerName;
+        if (lobby.Ais == null) return;
+        foreach (RememberedAi ai in lobby.Ais)
+        {
+            if (SeatCount >= LobbyRules.MaxPlayers) break;
+            if (System.Enum.IsDefined(typeof(AiDifficulty), ai.Difficulty) && System.Enum.IsDefined(typeof(AiStyle), ai.Style)) AddAi(ai.Difficulty, ai.Style, -1, ai.Team);
+        }
+    }
+
+    /// <summary>What the host just started with, saved on their machine.</summary>
+    [Server]
+    private void RememberLobby()
+    {
+        var lobby = new RememberedLobby
+        {
+            Mode = Settings.Mode, Diplomacy = Settings.Diplomacy, MapSize = Settings.MapSize, StartingResources = Settings.StartingResources,
+            StartOptions = Settings.StartOptions, StartPickSeconds = Settings.StartPickSeconds, Visibility = Settings.Visibility, ServerName = ServerName,
+        };
+        foreach (AiSeat seat in AiPlayers.Values)
+            lobby.Ais.Add(new RememberedAi { Difficulty = seat.Difficulty, Style = seat.Style, Team = seat.Client != null ? seat.Client.lobbyTeam : TeamRules.NoTeam });
+        LobbyMemory.Save(lobby);
+    }
+
+    /// <summary>The lobby's Reset (v0.18, Figma L1): back to the config's defaults, with no AIs. Server owner only, in the lobby.</summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_ResetLobby(NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_ResetLobby))) return;
+        if (!IsServerOwner(sender) || CurrentState != GameState.Lobby) return;
+        ClearAiPlayers();
+        InitSettings();
+        ServerName = "";
+        LobbyMemory.Forget();
+        foreach (ClientPlayer player in LobbyClientPlayers()) player.ready = false;
+    }
+
     private static uint NewSeed() => (uint)UnityEngine.Random.Range(1, int.MaxValue);
 
     /// <summary>Replaces the match settings. Server owner only, in the lobby, and only with values the lobby offers. Clears every ready flag.</summary>

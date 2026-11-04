@@ -3,6 +3,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using Unity.Collections;
+using Unity.Jobs;
 using Unity.Mathematics;
 using WAR2D.Dev.Logging;
 using WAR2D.Net.Replication;
@@ -32,6 +34,11 @@ namespace WAR2D.Net.Replay
         private int currentTick, firstTick = -1;
         private readonly float tickSeconds;
         private long queuedBytes;
+        private NativeArray<byte> fogLast;
+        private double nextFogAt;
+        private bool fogDropped;
+        /// <summary>Past this share of the cap fog is dropped first, so a long match keeps its units and its end (spec 5.1).</summary>
+        private const float FogShareOfCap = 0.75f;
         private volatile bool stopped;
 
         /// <summary>Uncompressed payload bytes accepted so far (the perf run reports its rate).</summary>
@@ -101,6 +108,35 @@ namespace WAR2D.Net.Replay
             Enqueue(ReplayChannel.Timeline, System.Text.Encoding.UTF8.GetBytes(json));
         }
 
+        /// <summary>The end screen's graphs and timeline (v0.18), written once at game over so the viewer has them from the start of playback.</summary>
+        public void Summary(SummaryData summary)
+        {
+            bool wasStopped = stopped;
+            stopped = false; // goes in even when the size cap stopped the rest
+            Enqueue(ReplayChannel.Summary, System.Text.Encoding.UTF8.GetBytes(Newtonsoft.Json.JsonConvert.SerializeObject(summary)));
+            stopped = wasStopped;
+        }
+
+        /// <summary>Every <c>Replays/FogSeconds</c> of match time: each player's changed fog cells, on the settled world.</summary>
+        public void TeamFog(SimData data, int tick, double now, float fogSeconds)
+        {
+            if (stopped || fogDropped || now < nextFogAt) return;
+            nextFogAt = now + fogSeconds;
+            currentTick = tick;
+            if (queuedBytes > maxBytes * FogShareOfCap)
+            {
+                fogDropped = true;
+                Enqueue(ReplayChannel.TeamFogDropped, ReadOnlySpan<byte>.Empty);
+                WarLog.Warn(LogCategory.Replay, "recording: dropped the team fog channel near the size cap");
+                return;
+            }
+            int total = data.FogCells * SimData.MaxOwners;
+            if (!fogLast.IsCreated) fogLast = new NativeArray<byte>(total, Allocator.Persistent);
+            using var output = new NativeList<byte>(1024, Allocator.TempJob);
+            new TeamFogEncodeJob { Visible = data.Visible, Explored = data.Explored, OwnerBySlot = data.OwnerIdBySlot, Last = fogLast, Out = output, FogCells = data.FogCells, Slots = SimData.MaxOwners }.Run();
+            if (output.Length > 0) Enqueue(ReplayChannel.TeamFog, output.AsArray().AsReadOnlySpan());
+        }
+
         /// <summary>Writes the outcome, closes the file and renames it from <c>.part</c>.</summary>
         public void End(int tick, string outcomeJson)
         {
@@ -145,6 +181,7 @@ namespace WAR2D.Net.Replay
 
         public void Dispose()
         {
+            if (fogLast.IsCreated) fogLast.Dispose();
             if (!Finished)
             {
                 stopped = true;

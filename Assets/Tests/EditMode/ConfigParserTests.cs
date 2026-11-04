@@ -9,13 +9,17 @@ using NUnit.Framework;
 public class ConfigParserTests
 {
     internal const string ValidXml = @"<GameConfig>
-  <Release><Version>0.17.0</Version><Name>Heartland</Name></Release>
+  <Release><Version>0.18.0</Version><Name>Briefing</Name></Release>
   <Resources><PassiveGenerationRate>5</PassiveGenerationRate><StartingResources>1000</StartingResources><MiningRate>10</MiningRate><RichGemMultiplier>2.5</RichGemMultiplier><DecayPercentPerSecond>5</DecayPercentPerSecond></Resources>
   <Match><Scene>Map_2</Scene><CountdownSeconds>5</CountdownSeconds><ReconnectSeconds>60</ReconnectSeconds><Map><Size>1024</Size><Seed>0</Seed><GemChance>0.04</GemChance><LayoutSizes>128 256</LayoutSizes><StartSites>8 16</StartSites><Expansions>2 4</Expansions><CentralAreas>1 1</CentralAreas><RegionScale>100 100</RegionScale><LaneScale>100 100</LaneScale><CaveDepth>3 5</CaveDepth><OutcropShare>0.08</OutcropShare><ChokepointShare>0.4</ChokepointShare><LaneWidth>6 10</LaneWidth><ChokeWidth>3 6</ChokeWidth><MinStartDistance>0.1</MinStartDistance><MaxStartDistance>0.6</MaxStartDistance><ExpansionGemTiles>30</ExpansionGemTiles><CentralRichGemTiles>8 16</CentralRichGemTiles><RichMinStartDistance>0.15</RichMinStartDistance><EdgeTiles>4</EdgeTiles></Map></Match>
   <Simulation><TickRate>20</TickRate><TargetSearchSliceTicks>8</TargetSearchSliceTicks><SeparationIntervalTicks>2</SeparationIntervalTicks><SeparationStrength>1</SeparationStrength><HashCellSize>5</HashCellSize><MaxFieldRebuildsPerTick>2</MaxFieldRebuildsPerTick><MaxUnitsPerPlayer>10000</MaxUnitsPerPlayer><MaxEntities>131072</MaxEntities><FogCellSize>2</FogCellSize><VisionIntervalTicks>4</VisionIntervalTicks></Simulation>
   <Replication><CorrectionIntervalTicks>4</CorrectionIntervalTicks><CorrectionThreshold>0.25</CorrectionThreshold><DeltaScale>8</DeltaScale><OffscreenThreshold>2</OffscreenThreshold><OffscreenIntervalTicks>20</OffscreenIntervalTicks><SnapshotBytesPerSecond>262144</SnapshotBytesPerSecond><RouteTolerance>1</RouteTolerance></Replication>
   <Orders><MaxQueued>4</MaxQueued><MaxDigArea>24</MaxDigArea></Orders>
   <TargetLines><HoldSeconds>1.5</HoldSeconds><Max>200</Max></TargetLines>
+  <AttackOrder><RepathTiles>2</RepathTiles><RepathSeconds>0.5</RepathSeconds></AttackOrder>
+  <RangeRings><Max>64</Max><MergeOverlap>0.8</MergeOverlap></RangeRings>
+  <Summary><SampleSeconds>10</SampleSeconds><MaxPoints>360</MaxPoints><FightCellTiles>32</FightCellTiles><FightWindowSeconds>20</FightWindowSeconds><FightMinWorth>600</FightMinWorth><MaxFights>30</MaxFights></Summary>
+  <Bomber><LastGaspHealth>0.1</LastGaspHealth><ChainPasses>4</ChainPasses><AimTiles>6</AimTiles><FriendlyWeight>1.0</FriendlyWeight><AimReachTiles>0.5</AimReachTiles><GoodEnough>0.8</GoodEnough></Bomber>
   <MinimapCombat><CellTiles>16</CellTiles><PulseSeconds>1.5</PulseSeconds><QuietSeconds>3</QuietSeconds><Max>32</Max></MinimapCombat>
   <PlacementMinimap><MarkerPixels>8</MarkerPixels></PlacementMinimap>
   <Formation><Spacing>1.2</Spacing><LooseTiles>4</LooseTiles><SlotTiles>12</SlotTiles><LostTiles>20</LostTiles></Formation>
@@ -27,7 +31,7 @@ public class ConfigParserTests
   <Alerts><ThrottleSeconds>10</ThrottleSeconds><AreaTiles>32</AreaTiles><ShowSeconds>8</ShowSeconds></Alerts>
   <Siege><BuildPower>25</BuildPower><DemolishRefund>0.5</DemolishRefund><RepairCostPerHealth>0.2</RepairCostPerHealth><WorkReach>1.6</WorkReach><DigTime>1.5</DigTime><GemPayout>150</GemPayout><RichGemPayout>375</RichGemPayout><WallCost>5</WallCost><WallHealth>150</WallHealth><MaxWallLine>64</MaxWallLine><BlastRadius>2.5</BlastRadius><BlastDamage>200</BlastDamage><RadarClearSeconds>5</RadarClearSeconds><RadarAlertCooldownSeconds>30</RadarAlertCooldownSeconds><JamRadius>12</JamRadius><JamSight>3</JamSight></Siege>
   <Audio><BattleDeathsPerSecond>3</BattleDeathsPerSecond><BattleHoldSeconds>20</BattleHoldSeconds></Audio>
-  <Replays><Enabled>1</Enabled><MaxMegabytes>512</MaxMegabytes><KeepCount>50</KeepCount></Replays>
+  <Replays><Enabled>1</Enabled><MaxMegabytes>512</MaxMegabytes><KeepCount>50</KeepCount><FogSeconds>1</FogSeconds><MarkerLeadSeconds>5</MarkerLeadSeconds></Replays>
   <Ai><Callsigns>Cmdr. A, Maj. B, Capt. C, Col. D, Lt. E, Maj. F, Capt. G, Cmdr. H, Col. I</Callsigns>
     <Difficulty name=""Easy""><ThinkSeconds>1.0</ThinkSeconds><ActionsPerMinute>30</ActionsPerMinute><ReactionSeconds>6</ReactionSeconds><Insight>0.2</Insight><Attention>0.3</Attention><Ambition>0.4</Ambition><Mistakes>0.25</Mistakes><Peace>Always</Peace><GiftsSurplus>0</GiftsSurplus></Difficulty>
     <Difficulty name=""Normal""><ThinkSeconds>0.5</ThinkSeconds><ActionsPerMinute>80</ActionsPerMinute><ReactionSeconds>2</ReactionSeconds><Insight>0.6</Insight><Attention>0.7</Attention><Ambition>0.75</Ambition><Mistakes>0.1</Mistakes><Peace>UnlessWinning</Peace><GiftsSurplus>1</GiftsSurplus></Difficulty>
@@ -226,6 +230,24 @@ public class ConfigParserTests
         Assert.That(errors, Is.Empty);
         Assert.AreEqual(1.5f, c.TargetLines.HoldSeconds);
         Assert.AreEqual(200, c.TargetLines.Max);
+        Assert.AreEqual(2f, c.AttackOrder.RepathTiles);
+        Assert.AreEqual(0.5f, c.AttackOrder.RepathSeconds);
+        Assert.AreEqual(64, c.RangeRings.Max);
+        Assert.AreEqual(0.8f, c.RangeRings.MergeOverlap);
+        Assert.AreEqual(10f, c.Summary.SampleSeconds);
+        Assert.AreEqual(360, c.Summary.MaxPoints);
+        Assert.AreEqual(32, c.Summary.FightCellTiles);
+        Assert.AreEqual(20f, c.Summary.FightWindowSeconds);
+        Assert.AreEqual(600f, c.Summary.FightMinWorth);
+        Assert.AreEqual(30, c.Summary.MaxFights);
+        Assert.AreEqual(0.1f, c.Bomber.LastGaspHealth);
+        Assert.AreEqual(4, c.Bomber.ChainPasses);
+        Assert.AreEqual(6f, c.Bomber.AimTiles);
+        Assert.AreEqual(1f, c.Bomber.FriendlyWeight);
+        Assert.AreEqual(0.5f, c.Bomber.AimReachTiles);
+        Assert.AreEqual(0.8f, c.Bomber.GoodEnough);
+        Assert.AreEqual(1f, c.Replays.FogSeconds);
+        Assert.AreEqual(5f, c.Replays.MarkerLeadSeconds);
         Assert.AreEqual(16, c.MinimapCombat.CellTiles);
         Assert.AreEqual(3f, c.MinimapCombat.QuietSeconds);
         Assert.AreEqual(8, c.PlacementMinimap.MarkerPixels);

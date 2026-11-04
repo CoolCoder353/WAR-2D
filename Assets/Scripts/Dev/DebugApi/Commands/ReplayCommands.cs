@@ -18,6 +18,12 @@ namespace WAR2D.Dev.DebugApi
                     case "open":
                         if (WAR2D.Client.Replay.ReplayPlayer.Open(DebugArgs.Str(a, "path"), out string error) == null) throw new DebugError(error);
                         return "open";
+                    case "centre":
+                        WAR2D.Client.Replay.ReplayPlayer.Instance?.CentreOn(new Unity.Mathematics.float2((float)a["x"], (float)a["y"]));
+                        return "centred";
+                    case "view":
+                        WAR2D.Client.Replay.ReplayPlayer.Instance?.SetViewer((int)a["owner"]);
+                        return "view " + (int)a["owner"];
                     case "seek": (p ?? throw new DebugError("no replay open")).Seek(DebugArgs.Float(a, "seconds")); return p.Seconds;
                     case "speed": (p ?? throw new DebugError("no replay open")).Speed = Unity.Mathematics.math.clamp(DebugArgs.Float(a, "x"), 0.5f, 8f); return p.Speed;
                     case "play": (p ?? throw new DebugError("no replay open")).Playing = true; return "playing";

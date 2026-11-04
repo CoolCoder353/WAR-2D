@@ -42,6 +42,8 @@ namespace WAR2D.Sim
         public int OwnerId;
         /// <summary>The owner of the last unit that hit it (0 when none, e.g. upkeep decay).</summary>
         public int Killer;
+        /// <summary>v0.18: the dead unit's type, for what it was worth.</summary>
+        public byte Type;
     }
 
     /// <summary>
@@ -94,6 +96,9 @@ namespace WAR2D.Sim
         public float SeparationMargin;
         /// <summary>Percent of max health an unpaid unit loses per second.</summary>
         public float DecayPercentPerSecond;
+        /// <summary>v0.18: share of its health at or under which a bomber explodes, and most rounds of blasts a tick.</summary>
+        public float LastGaspHealth;
+        public int ChainPasses;
         /// <summary>Most units one owner may have.</summary>
         public int MaxUnitsPerPlayer;
 
@@ -124,6 +129,8 @@ namespace WAR2D.Sim
         public NativeArray<float> CooldownByType;
         /// <summary>Upkeep per second per unit type.</summary>
         public NativeArray<float> RunningCostByType;
+        /// <summary>v0.18: what a unit type and a building kind are worth to a bomber's aim.</summary>
+        public NativeArray<float> CostByType, BuildingCostByKind;
         /// <summary>Damage multipliers, <c>type * 4 + (int)TargetClass</c> (see <see cref="DamageTable"/>).</summary>
         public NativeArray<float> DamageTable;
         /// <summary>The <see cref="TargetClass"/> (LightUnit or HeavyUnit) a unit type is hit as.</summary>
@@ -166,6 +173,17 @@ namespace WAR2D.Sim
         public NativeParallelHashSet<int> ForcedBombs;
         /// <summary>Ids of Suicide bombers ordered to detonate this tick (cleared after the boundary).</summary>
         public NativeParallelHashSet<int> ForcedBombers;
+        /// <summary>Per unit (v0.18): 1 once a bomber has gone off this tick, so its zero health doesn't set it off again.</summary>
+        public NativeArray<byte> BomberSpent;
+        /// <summary>v0.18: each bomber's blast point, by its id's index.</summary>
+        public NativeArray<BlastAim> BlastAims;
+        /// <summary>Per owner slot (v0.18): the owner of whatever last hit that player's HQ.</summary>
+        public NativeArray<int> HqLastHitBy;
+        /// <summary>Per unit (v0.18): its Attack order's target id (0 for none) and kind, gathered from <see cref="Unit"/>.</summary>
+        public NativeArray<int> OrderTarget;
+        public NativeArray<byte> OrderTargetKind;
+        /// <summary>v0.18: the bomber's aim numbers (<c>Bomber</c> in the config).</summary>
+        public float AimTiles, FriendlyWeight, AimReachTiles, GoodEnough;
         public float BlastRadius, BlastDamage;
         /// <summary>Seconds spent digging, per unit slot.</summary>
         public NativeArray<float> DigProgress;
@@ -441,6 +459,12 @@ namespace WAR2D.Sim
                 AutoWorkSlice = math.max(1, config.AutoWork.SliceTicks),
                 SeparationMargin = maxRadius,
                 DecayPercentPerSecond = config.Resources.DecayPercentPerSecond,
+                LastGaspHealth = config.Bomber.LastGaspHealth,
+                ChainPasses = config.Bomber.ChainPasses,
+                AimTiles = config.Bomber.AimTiles,
+                FriendlyWeight = config.Bomber.FriendlyWeight,
+                AimReachTiles = config.Bomber.AimReachTiles,
+                GoodEnough = config.Bomber.GoodEnough,
                 MaxUnitsPerPlayer = sim.MaxUnitsPerPlayer,
                 CellSize = sim.HashCellSize,
                 CellsX = cellsX,
@@ -456,6 +480,8 @@ namespace WAR2D.Sim
                 DamageByType = new NativeArray<float>(typeCount, allocator),
                 CooldownByType = new NativeArray<float>(typeCount, allocator),
                 RunningCostByType = new NativeArray<float>(typeCount, allocator),
+                CostByType = new NativeArray<float>(typeCount, allocator),
+                BuildingCostByKind = new NativeArray<float>(System.Enum.GetValues(typeof(BuildingType)).Length, allocator),
                 DamageTable = WAR2D.Rules.DamageTable.Build(config.Damage, typeCount, allocator),
                 Positions = new NativeArray<float2>(capacity, allocator),
                 Velocity = new NativeArray<float2>(capacity, allocator),
@@ -476,6 +502,11 @@ namespace WAR2D.Sim
                 BombBlasts = new NativeQueue<BombBlast>(allocator),
                 ForcedBombs = new NativeParallelHashSet<int>(16, allocator),
                 ForcedBombers = new NativeParallelHashSet<int>(16, allocator),
+                BomberSpent = new NativeArray<byte>(capacity, allocator),
+                BlastAims = new NativeArray<BlastAim>(capacity, allocator),
+                HqLastHitBy = new NativeArray<int>(MaxOwners, allocator),
+                OrderTarget = new NativeArray<int>(capacity, allocator),
+                OrderTargetKind = new NativeArray<byte>(capacity, allocator),
                 ArmourByType = new NativeArray<byte>(typeCount, allocator),
                 SplashByType = new NativeArray<float>(typeCount, allocator),
                 MinRangeSqByType = new NativeArray<float>(typeCount, allocator),
@@ -596,6 +627,7 @@ namespace WAR2D.Sim
             data.JamRadius = config.Siege.JamRadius;
             data.JamSight = config.Siege.JamSight;
 
+            foreach (var pair in config.Buildings) data.BuildingCostByKind[(int)pair.Key] = pair.Value.UpfrontCost;
             foreach (var pair in config.Units)
             {
                 int t = (int)pair.Key;
@@ -613,6 +645,7 @@ namespace WAR2D.Sim
                 data.SearchSqByType[t] = search * search;
                 data.CooldownByType[t] = pair.Value.AttackInterval;
                 data.RunningCostByType[t] = pair.Value.RunningCost;
+                data.CostByType[t] = pair.Value.UpfrontCost;
                 data.SightByType[t] = pair.Value.Sight;
             }
             return data;
@@ -622,10 +655,10 @@ namespace WAR2D.Sim
         public void Dispose()
         {
             SpeedByType.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose(); CooldownByType.Dispose();
-            RunningCostByType.Dispose(); DamageTable.Dispose();
+            RunningCostByType.Dispose(); CostByType.Dispose(); BuildingCostByKind.Dispose(); BlastAims.Dispose(); HqLastHitBy.Dispose(); OrderTarget.Dispose(); OrderTargetKind.Dispose(); DamageTable.Dispose();
             Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Type.Dispose();
             SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose(); LastHitBy.Dispose();
-            OrderSlot.Dispose(); Arrived.Dispose(); WorkTile.Dispose(); WorkKind.Dispose(); WorkFinished.Dispose(); BombBlasts.Dispose(); ForcedBombs.Dispose(); ForcedBombers.Dispose(); ArmourByType.Dispose(); SplashByType.Dispose(); MinRangeSqByType.Dispose(); SearchSqByType.Dispose(); BlastRadiusByType.Dispose(); BlastDamageByType.Dispose(); DigProgress.Dispose(); DigAt.Dispose(); DigDone.Dispose(); DigMoves.Dispose(); WallOwnerSlot.Dispose(); WallState.Dispose(); WallHealth.Dispose(); WallWork.Dispose(); WallDamage.Dispose(); RepairWork.Dispose(); Unpaid.Dispose(); FormationOffset.Dispose(); FormationSpeed.Dispose(); FormationLead.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
+            OrderSlot.Dispose(); Arrived.Dispose(); WorkTile.Dispose(); WorkKind.Dispose(); WorkFinished.Dispose(); BombBlasts.Dispose(); ForcedBombs.Dispose(); ForcedBombers.Dispose(); BomberSpent.Dispose(); ArmourByType.Dispose(); SplashByType.Dispose(); MinRangeSqByType.Dispose(); SearchSqByType.Dispose(); BlastRadiusByType.Dispose(); BlastDamageByType.Dispose(); DigProgress.Dispose(); DigAt.Dispose(); DigDone.Dispose(); DigMoves.Dispose(); WallOwnerSlot.Dispose(); WallState.Dispose(); WallHealth.Dispose(); WallWork.Dispose(); WallDamage.Dispose(); RepairWork.Dispose(); Unpaid.Dispose(); FormationOffset.Dispose(); FormationSpeed.Dispose(); FormationLead.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
             Cell.Dispose(); CellStart.Dispose(); Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose();
             BuildingCount.Dispose(); BuildingPositions.Dispose(); BuildingOwnerId.Dispose(); BuildingOwnerSlot.Dispose(); BuildingHealth.Dispose();
             BuildingDamage.Dispose(); BuildingIds.Dispose(); BuildingEntities.Dispose(); BuildingSlotOfIndex.Dispose(); BuildingCell.Dispose();

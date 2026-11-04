@@ -40,6 +40,8 @@ public static class CommandGate
         ["Cmd_SetShareVision"] = (10f, 2f),
         ["CmdSetMenuPause"] = (6f, 2f),
         ["Cmd_AddAi"] = (10f, 4f),
+        ["Cmd_ResetLobby"] = (5f, 1f),
+        ["Cmd_Rematch"] = (3f, 0.5f),
         ["Cmd_SetAi"] = (20f, 8f),
         ["Cmd_RemoveAi"] = (10f, 4f),
         ["Cmd_SetServerName"] = (5f, 1f),

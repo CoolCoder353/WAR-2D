@@ -79,6 +79,10 @@ namespace WAR2D.Sim
         /// <summary>The formation's speed cap; 0 when the unit isn't in one.</summary>
         public float FormationSpeed;
 
+        /// <summary>v0.18: an Attack order's target id (0 for none) and what it is (<see cref="TargetKinds"/>).</summary>
+        public int OrderTarget;
+        public byte OrderTargetKind;
+
         /// <summary>The order handle that holds the formation's leader distance (<see cref="PendingOrder.LeadSlot"/>).</summary>
         public int FormationLead;
     }

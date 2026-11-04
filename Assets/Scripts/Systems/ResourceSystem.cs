@@ -31,6 +31,8 @@ public partial struct ResourceSystem : ISystem
             {
                 if (player.state == PlayerState.Playing) player.AddIncome(income);
             }
+            foreach (int owner in core.PlayerOrder)
+                if (core.GetServerPlayerById(owner)?.state == PlayerState.Playing) core.Summary.Income(owner, income);
             passiveTimer = 0f;
         }
 
@@ -53,6 +55,7 @@ public partial struct ResourceSystem : ISystem
                     float mined = config.Resources.MiningRate * MinerRules.RateOf(facedType, config.Resources.RichGemMultiplier) * mining.ValueRO.timeSinceLastMining;
                     owner.AddIncome(mined);
                     core.Stats.Mined(building.ValueRO.ownerId, mined);
+                    core.Summary.Income(building.ValueRO.ownerId, mined);
                 }
             }
             mining.ValueRW.timeSinceLastMining = 0f;

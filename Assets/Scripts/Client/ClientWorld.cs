@@ -390,7 +390,7 @@ namespace WAR2D.Client
                 health01[index] = healthBytes[index] / 100f;
                 TrackHit(index, healthBytes[index], p, owners[index], now, frameSeconds);
                 if (moving) worldEffects.Moved(index, store.IdOf(index), store.TypeOf(index), p, view);
-                drawScale[index] = ScaleOf(store.TypeOf(index));
+                drawScale[index] = UnitShown != null && !UnitShown(owners[index], p) ? -1f : ScaleOf(store.TypeOf(index));
             }
 
             instances.ResizeUninitialized(count);
@@ -483,9 +483,15 @@ namespace WAR2D.Client
         public uint LastBuildingColour(int ownerId) => buildingRenderer?.LastColourOf(ownerId, ClientBuildings.Current) ?? 0;
 
         /// <summary>Draws every building the client knows (seen, ghosts, blueprints, known bombs) in one instanced call.</summary>
+        /// <summary>A replay's per-player view (v0.18): the buildings to draw instead of everything known.</summary>
+        public ClientBuildings BuildingsShown;
+
+        /// <summary>A replay's per-player view (v0.18): whether to draw a unit (owner, position). Null draws them all.</summary>
+        public Func<int, float2, bool> UnitShown;
+
         private void DrawBuildings()
         {
-            ClientBuildings known = ClientBuildings.Current;
+            ClientBuildings known = BuildingsShown ?? ClientBuildings.Current;
             if (known.Entries.Count == 0) return;
             if (buildingRenderer == null)
             {

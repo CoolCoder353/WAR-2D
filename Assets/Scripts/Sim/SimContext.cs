@@ -216,6 +216,11 @@ namespace WAR2D.Sim
 
         internal void RaiseUnitKilled(int owner, int killer) => UnitKilled?.Invoke(owner, killer);
 
+        /// <summary>Raised for every unit removed, with what and where (v0.18, the big-fight detector): (owner, killer, type, position).</summary>
+        public event Action<int, int, byte, float2> UnitDeath;
+
+        internal void RaiseUnitDeath(int owner, int killer, byte type, float2 position) => UnitDeath?.Invoke(owner, killer, type, position);
+
         internal void RaiseUnitSpawned(int owner) => UnitSpawned?.Invoke(owner);
 
         internal void RaiseSettled(SimData data, int tick, int count) => Settled?.Invoke(data, tick, count);

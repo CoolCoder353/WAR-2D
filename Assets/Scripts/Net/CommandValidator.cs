@@ -11,12 +11,12 @@ public static class CommandValidator
     /// <summary>Squad numbers are 0..9 (keys 1..0).</summary>
     public static bool IsSquadIndexValid(int squad) => squad >= 0 && squad < WAR2D.Sim.Squads.Count;
 
-    /// <summary>Order kinds are the <see cref="OrderKind"/> values 0..7.</summary>
-    public static bool IsOrderKindValid(byte kind) => kind <= (byte)OrderKind.Detonate;
+    /// <summary>Order kinds are the <see cref="OrderKind"/> values 0..8.</summary>
+    public static bool IsOrderKindValid(byte kind) => kind <= (byte)OrderKind.Attack;
 
     /// <summary>True for orders that name a tile: moves and work.</summary>
     public static bool TargetsTile(OrderKind kind) =>
-        kind == OrderKind.Move || kind == OrderKind.AttackMove || kind == OrderKind.Build || kind == OrderKind.Repair || kind == OrderKind.Dig;
+        kind == OrderKind.Move || kind == OrderKind.AttackMove || kind == OrderKind.Attack || kind == OrderKind.Build || kind == OrderKind.Repair || kind == OrderKind.Dig;
 
     /// <summary>A known order kind, with a goal inside the inclusive bounds when the order moves.</summary>
     public static bool IsOrderValid(byte kind, int2 goal, int2 min, int2 max)

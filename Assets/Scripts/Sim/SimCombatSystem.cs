@@ -60,6 +60,8 @@ namespace WAR2D.Sim
             SearchInput search = SearchInput.From(data, count, buildings);
             state.Dependency = new ResolveTargetsJob
             {
+                OrderTarget = data.OrderTarget,
+                OrderTargetKind = data.OrderTargetKind,
                 Search = search,
                 Type = data.Type,
                 Stance = data.Stance,
@@ -134,22 +136,58 @@ namespace WAR2D.Sim
                 ArmourByType = data.ArmourByType, DamageTable = data.DamageTable,
             }.Schedule(splashes, 8, state.Dependency);
 
-            state.Dependency = new BomberJob
+            var blastWorld = new BlastWorld
             {
-                Hits = hits,
-                Blasts = data.BombBlasts,
-                Forced = data.ForcedBombers,
                 UnitCount = count,
                 BuildingCount = buildings,
                 Width = data.Width, Height = data.Height,
                 CellSize = data.CellSize, CellsX = data.CellsX, CellsY = data.CellsY,
-                Positions = data.Positions, UnitHealth = data.Health, Radius = data.Radius, OwnerSlot = data.OwnerSlot, OwnerId = data.OwnerId,
-                Type = data.Type, IdOf = data.IdOf, Target = data.Target, TargetKind = data.TargetKind,
+                OwnerId = data.OwnerId, Type = data.Type,
                 CellStart = data.CellStart, Sorted = data.Sorted,
-                BuildingPositions = data.BuildingPositions, BuildingAnchor = data.BuildingAnchor, BuildingSize = data.BuildingSize,
-                BuildingHealth = data.BuildingHealth, WallState = data.WallState,
-                RangeSqByType = data.RangeSqByType, BlastRadiusByType = data.BlastRadiusByType, BlastDamageByType = data.BlastDamageByType,
+                BuildingAnchor = data.BuildingAnchor, BuildingSize = data.BuildingSize,
+                WallState = data.WallState,
+                BlastRadiusByType = data.BlastRadiusByType, BlastDamageByType = data.BlastDamageByType,
                 ArmourByType = data.ArmourByType, DamageTable = data.DamageTable,
+            };
+            var blastWorth = new BlastWorth
+            {
+                Search = search,
+                Type = data.Type,
+                BuildingKind = data.BuildingKind,
+                CostByType = data.CostByType,
+                BuildingCostByKind = data.BuildingCostByKind,
+                BuildingAnchor = data.BuildingAnchor,
+                BuildingSize = data.BuildingSize,
+                FriendlyWeight = data.FriendlyWeight,
+            };
+            state.Dependency = new BlastAimJob
+            {
+                Worth = blastWorth,
+                Aims = data.BlastAims,
+                Target = data.Target,
+                TargetKind = data.TargetKind,
+                Stance = data.Stance,
+                BlastRadiusByType = data.BlastRadiusByType,
+                AimTiles = data.AimTiles,
+                Tick = clock.Tick % data.Slice,
+                Slice = data.Slice,
+            }.Schedule(count, 256, state.Dependency);
+
+            state.Dependency = new BomberJob
+            {
+                Aims = data.BlastAims,
+                Worth = blastWorth,
+                AimReachTiles = data.AimReachTiles,
+                GoodEnough = data.GoodEnough,
+                StuckTicks = (int)math.ceil(1f / data.Dt),
+                Hits = hits,
+                Blasts = data.BombBlasts,
+                Spent = data.BomberSpent,
+                Forced = data.ForcedBombers,
+                World = blastWorld,
+                Positions = data.Positions, UnitHealth = data.Health, BuildingHealth = data.BuildingHealth, Radius = data.Radius,
+                IdOf = data.IdOf, Target = data.Target, TargetKind = data.TargetKind,
+                RangeSqByType = data.RangeSqByType,
             }.Schedule(state.Dependency);
 
             // Attacker buildings (v0.13: Gun turrets), with the units' rules (TargetSearch); their hits go
@@ -209,6 +247,29 @@ namespace WAR2D.Sim
                 BuildingHealth = data.BuildingHealth,
                 BuildingDamage = data.BuildingDamage,
                 WallDamage = data.WallDamage,
+                HqLastHitBy = data.HqLastHitBy,
+                BuildingKind = data.BuildingKind,
+                BuildingOwnerSlot = data.BuildingOwnerSlot,
+            }.Schedule(state.Dependency);
+
+            state.Dependency = new LastGaspJob
+            {
+                Hits = hits,
+                Blasts = data.BombBlasts,
+                WallDamage = data.WallDamage,
+                Spent = data.BomberSpent,
+                Health = data.Health,
+                BuildingHealth = data.BuildingHealth,
+                BuildingDamage = data.BuildingDamage,
+                LastHitBy = data.LastHitBy,
+                HqLastHitBy = data.HqLastHitBy,
+                BuildingKind = data.BuildingKind,
+                BuildingOwnerSlot = data.BuildingOwnerSlot,
+                World = blastWorld,
+                Positions = data.Positions,
+                MaxHealth = data.MaxHealth,
+                Threshold = data.LastGaspHealth,
+                Passes = data.ChainPasses,
             }.Schedule(state.Dependency);
 
             state.Dependency = new WriteBackCombatJob
@@ -241,6 +302,8 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<float> RangeSqByType;
         [ReadOnly] public NativeArray<float> MinRangeSqByType;
         [ReadOnly] public NativeArray<float> DamageByType;
+        [ReadOnly] public NativeArray<int> OrderTarget;
+        [ReadOnly] public NativeArray<byte> OrderTargetKind;
         public NativeArray<int> Target;
         public NativeArray<byte> TargetKind;
 
@@ -248,6 +311,13 @@ namespace WAR2D.Sim
         {
             int id = Target[i];
             Target[i] = -1;
+            if (Stance[i] == Stances.Attack)
+            {
+                // An Attack order fires at its target when it can, and at nothing else.
+                id = OrderTarget[i];
+                TargetKind[i] = OrderTargetKind[i];
+                if (Search.Health[i] <= 0f || id <= 0 || DamageByType[Type[i]] <= 0f) return;
+            }
             if (Search.Health[i] <= 0f || id <= 0 || TargetKinds.IgnoresEnemies(Stance[i], OrderSlot[i], OrderLive) || DamageByType[Type[i]] <= 0f) return;
             int type = Type[i];
             float rangeSq = type < RangeSqByType.Length ? RangeSqByType[type] : 0f;
@@ -390,7 +460,7 @@ namespace WAR2D.Sim
     /// <summary>
     /// Attacks the resolved target when the cooldown allows; queues the hit (times the damage table's
     /// multiplier for the target's armour class, building or wall), a splash request for units that have
-    /// one, and a tracer event. A Suicide bomber never attacks: <see cref="BomberJob"/> detonates it.
+    /// one, and a tracer event. A Suicide bomber never attacks: <see cref="BomberJob"/> or <see cref="LastGaspJob"/> detonates it.
     /// </summary>
     [BurstCompile]
     public struct AttackJob : IJobParallelFor
@@ -541,23 +611,53 @@ namespace WAR2D.Sim
     {
         public NativeQueue<DamageHit> Hits;
         public NativeQueue<BombBlast> Blasts;
+        public NativeArray<byte> Spent;
+        public NativeArray<BlastAim> Aims;
         [ReadOnly] public NativeParallelHashSet<int> Forced;
-        public int UnitCount, BuildingCount, Width, Height, CellSize, CellsX, CellsY;
-        [ReadOnly] public NativeArray<float2> Positions, BuildingPositions;
-        [ReadOnly] public NativeArray<float> UnitHealth, Radius, BuildingHealth, RangeSqByType, BlastRadiusByType, BlastDamageByType, DamageTable;
-        [ReadOnly] public NativeArray<byte> OwnerSlot, Type, TargetKind, WallState, ArmourByType;
-        [ReadOnly] public NativeArray<int> OwnerId, IdOf, Target, CellStart, Sorted;
-        [ReadOnly] public NativeArray<int2> BuildingAnchor, BuildingSize;
+        public BlastWorld World;
+        public BlastWorth Worth;
+        public float AimReachTiles, GoodEnough;
+        public int StuckTicks;
+        [ReadOnly] public NativeArray<float2> Positions;
+        [ReadOnly] public NativeArray<float> UnitHealth, BuildingHealth, Radius, RangeSqByType;
+        [ReadOnly] public NativeArray<byte> TargetKind;
+        [ReadOnly] public NativeArray<int> IdOf, Target;
 
         public void Execute()
         {
-            for (int i = 0; i < UnitCount; i++)
+            for (int i = 0; i < World.UnitCount; i++)
             {
-                int type = Type[i];
-                if (UnitHealth[i] <= 0f || type >= BlastRadiusByType.Length || BlastRadiusByType[type] <= 0f) continue;
-                if (!Forced.Contains(IdOf[i]) && !InContact(i, type)) continue;
-                Detonate(i, type);
+                Spent[i] = 0;
+                int type = World.Type[i];
+                if (UnitHealth[i] <= 0f || type >= World.BlastRadiusByType.Length || World.BlastRadiusByType[type] <= 0f) continue;
+                if (!Forced.Contains(IdOf[i]) && !ShouldGoOff(i, type)) continue;
+                Spent[i] = 1;
+                World.Detonate(i, type, Positions, UnitHealth, BuildingHealth, Hits, Blasts);
+                // The bomber itself is spent.
+                Hits.Enqueue(new DamageHit { Kind = TargetKinds.Unit, Slot = i, Amount = UnitHealth[i], AttackerOwner = World.OwnerId[i] });
             }
+        }
+
+        /// <summary>
+        /// With an aim: at the blast point; or touching an enemy where the blast is already good enough; or touching one and
+        /// stuck for a second (bodies in the way). Without one (a wall): on contact with the target, as before v0.18.
+        /// </summary>
+        private bool ShouldGoOff(int i, int type)
+        {
+            int id = IdOf[i], key = NetIdAllocator.IndexOf(id);
+            BlastAim aim = Aims[key];
+            if (aim.Id != id) return InContact(i, type);
+            float2 p = Positions[i];
+            float distance = math.distance(p, aim.Point);
+            if (distance <= AimReachTiles) return true;
+            if (distance < aim.Closest - 0.05f) { aim.Closest = distance; aim.StuckTicks = 0; }
+            else aim.StuckTicks++;
+            Aims[key] = aim;
+            int slot = Worth.Search.OwnerSlot[i];
+            if (!InContact(i, type) && !Worth.TouchesEnemy(p, slot, math.sqrt(RangeSqByType[type]), Radius[i], Radius)) return false;
+            if (aim.StuckTicks >= StuckTicks) return true;
+            float here = Worth.At(p, slot, World.BlastRadiusByType[type], i);
+            return here > 0f && here >= GoodEnough * aim.Worth;
         }
 
         private bool InContact(int i, int type)
@@ -572,20 +672,31 @@ namespace WAR2D.Sim
                     return math.distance(p, Positions[target]) <= reach + Radius[target];
                 case TargetKinds.Wall:
                 {
-                    float2 lo = new float2(target % Width, target / Width);
+                    float2 lo = new float2(target % World.Width, target / World.Width);
                     return math.lengthsq(math.max(math.max(lo - p, p - (lo + 1f)), 0f)) <= reach * reach;
                 }
                 default:
                 {
-                    float2 lo = Footprint.Start(BuildingAnchor[target], BuildingSize[target]), hi = lo + BuildingSize[target];
+                    float2 lo = Footprint.Start(World.BuildingAnchor[target], World.BuildingSize[target]), hi = lo + World.BuildingSize[target];
                     return math.lengthsq(math.max(math.max(lo - p, p - hi), 0f)) <= reach * reach;
                 }
             }
         }
+    }
 
-        private void Detonate(int bomber, int type)
+    /// <summary>What a bomber's blast reaches: everything in its radius, friends included. Shared by contact, the Detonate order and the last gasp.</summary>
+    public struct BlastWorld
+    {
+        public int UnitCount, BuildingCount, Width, Height, CellSize, CellsX, CellsY;
+        [ReadOnly] public NativeArray<float> BlastRadiusByType, BlastDamageByType, DamageTable;
+        [ReadOnly] public NativeArray<byte> Type, WallState, ArmourByType;
+        [ReadOnly] public NativeArray<int> OwnerId, CellStart, Sorted;
+        [ReadOnly] public NativeArray<int2> BuildingAnchor, BuildingSize;
+
+        /// <summary>Queues the blast and its hits on everything but the bomber.</summary>
+        public void Detonate(int bomber, int type, NativeArray<float2> positions, NativeArray<float> unitHealth, NativeArray<float> buildingHealth, NativeQueue<DamageHit> hits, NativeQueue<BombBlast> blasts)
         {
-            float2 centre = Positions[bomber];
+            float2 centre = positions[bomber];
             float radius = BlastRadiusByType[type], rSq = radius * radius, damage = BlastDamageByType[type];
             int owner = OwnerId[bomber];
 
@@ -598,19 +709,19 @@ namespace WAR2D.Sim
                 for (int k = CellStart[c]; k < CellStart[c + 1]; k++)
                 {
                     int u = Sorted[k];
-                    if (u == bomber || UnitHealth[u] <= 0f || math.distancesq(Positions[u], centre) > rSq) continue;
+                    if (u == bomber || unitHealth[u] <= 0f || math.distancesq(positions[u], centre) > rSq) continue;
                     float amount = damage * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(type), (TargetClass)ArmourByType[Type[u]]);
-                    Hits.Enqueue(new DamageHit { Kind = TargetKinds.Unit, Slot = u, Amount = amount, AttackerOwner = owner });
+                    hits.Enqueue(new DamageHit { Kind = TargetKinds.Unit, Slot = u, Amount = amount, AttackerOwner = owner });
                 }
             }
 
             float buildingAmount = damage * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(type), TargetClass.Building);
             for (int b = 0; b < BuildingCount; b++)
             {
-                if (BuildingHealth[b] <= 0f) continue;
+                if (buildingHealth[b] <= 0f) continue;
                 float2 lo = Footprint.Start(BuildingAnchor[b], BuildingSize[b]), hi = lo + BuildingSize[b];
                 if (math.lengthsq(math.max(math.max(lo - centre, centre - hi), 0f)) > rSq) continue;
-                Hits.Enqueue(new DamageHit { Kind = TargetKinds.Building, Slot = b, Amount = buildingAmount, AttackerOwner = owner });
+                hits.Enqueue(new DamageHit { Kind = TargetKinds.Building, Slot = b, Amount = buildingAmount, AttackerOwner = owner });
             }
 
             float wallAmount = damage * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(type), TargetClass.Wall);
@@ -621,12 +732,53 @@ namespace WAR2D.Sim
             {
                 int w = y * Width + x;
                 if (WallState[w] == WallStates.None || math.distancesq(new float2(x + 0.5f, y + 0.5f), centre) > rSq) continue;
-                Hits.Enqueue(new DamageHit { Kind = TargetKinds.Wall, Slot = w, Amount = wallAmount, AttackerOwner = owner });
+                hits.Enqueue(new DamageHit { Kind = TargetKinds.Wall, Slot = w, Amount = wallAmount, AttackerOwner = owner });
             }
 
-            // The bomber itself is spent.
-            Hits.Enqueue(new DamageHit { Kind = TargetKinds.Unit, Slot = bomber, Amount = UnitHealth[bomber], AttackerOwner = owner });
-            Blasts.Enqueue(new BombBlast { Position = centre, OwnerId = owner, Bomber = 1 });
+            blasts.Enqueue(new BombBlast { Position = centre, OwnerId = owner, Bomber = 1 });
+        }
+    }
+
+    /// <summary>
+    /// A bomber at or under <c>Bomber/LastGaspHealth</c> of its health explodes where it stands, a killing hit included
+    /// (v0.18). A blast can set off more bombers: at most <see cref="Passes"/> rounds a tick. Nothing dead has left the
+    /// arrays yet (the lifecycle stage removes it), so a bomber shot down this tick still has its slot and position.
+    /// Its death keeps <c>LastHitBy</c>, so whoever shot it down gets the kill.
+    /// </summary>
+    [BurstCompile]
+    public struct LastGaspJob : IJob
+    {
+        public NativeQueue<DamageHit> Hits;
+        public NativeQueue<BombBlast> Blasts;
+        public NativeQueue<TileWork> WallDamage;
+        public NativeArray<byte> Spent;
+        public NativeArray<float> Health, BuildingHealth, BuildingDamage;
+        public NativeArray<int> LastHitBy, HqLastHitBy;
+        [ReadOnly] public NativeArray<byte> BuildingKind, BuildingOwnerSlot;
+        public BlastWorld World;
+        [ReadOnly] public NativeArray<float2> Positions;
+        [ReadOnly] public NativeArray<float> MaxHealth;
+        public float Threshold;
+        public int Passes;
+
+        public void Execute()
+        {
+            for (int pass = 0; pass < Passes; pass++)
+            {
+                bool any = false;
+                for (int i = 0; i < World.UnitCount; i++)
+                {
+                    int type = World.Type[i];
+                    if (Spent[i] != 0 || type >= World.BlastRadiusByType.Length || World.BlastRadiusByType[type] <= 0f) continue;
+                    if (Health[i] > MaxHealth[i] * Threshold) continue;
+                    Spent[i] = 1;
+                    any = true;
+                    World.Detonate(i, type, Positions, Health, BuildingHealth, Hits, Blasts);
+                }
+                if (!any) return;
+                for (int i = 0; i < World.UnitCount; i++) if (Spent[i] != 0) Health[i] = 0f;
+                new ApplyDamageJob { Hits = Hits, Health = Health, LastHitBy = LastHitBy, BuildingHealth = BuildingHealth, BuildingDamage = BuildingDamage, WallDamage = WallDamage, HqLastHitBy = HqLastHitBy, BuildingKind = BuildingKind, BuildingOwnerSlot = BuildingOwnerSlot }.Execute();
+            }
         }
     }
 
@@ -640,6 +792,8 @@ namespace WAR2D.Sim
         public NativeArray<float> BuildingHealth;
         public NativeArray<float> BuildingDamage;
         public NativeQueue<TileWork> WallDamage;
+        public NativeArray<int> HqLastHitBy;
+        [ReadOnly] public NativeArray<byte> BuildingKind, BuildingOwnerSlot;
 
         public void Execute()
         {
@@ -658,6 +812,7 @@ namespace WAR2D.Sim
                 {
                     BuildingHealth[hit.Slot] = math.max(0f, BuildingHealth[hit.Slot] - hit.Amount);
                     BuildingDamage[hit.Slot] += hit.Amount;
+                    if (BuildingKind[hit.Slot] == (byte)BuildingType.Base && BuildingOwnerSlot[hit.Slot] < HqLastHitBy.Length) HqLastHitBy[BuildingOwnerSlot[hit.Slot]] = hit.AttackerOwner;
                 }
             }
         }

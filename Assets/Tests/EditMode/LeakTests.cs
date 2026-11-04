@@ -452,6 +452,85 @@ public class LeakTests
         }
     }
 
+    /// <summary>An id the side can't see gets the Attack-move the client could have sent anyway: the reply says nothing about it.</summary>
+    [Test]
+    public void AnAttackOrderNeverNamesATargetTheSideCannotSee()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(128));
+        int[] attacker = sim.Spawn(SimHarness.OwnerA, new float2(20, 20));
+        int[] hidden = sim.Spawn(SimHarness.OwnerB, new float2(100, 100));
+        sim.Tick();
+        sim.Tick();
+        sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.Attack, OwnerId = SimHarness.OwnerA, TargetId = hidden[0], Tile = new int2(30, 20), Ids = attacker });
+        sim.Tick();
+        sim.Tick();
+        Unit a = sim.UnitById(attacker[0]);
+        Assert.AreEqual(Stances.AttackMove, a.Stance);
+        Assert.AreEqual(0, a.OrderTarget);
+        Assert.That(a.Position.y, Is.LessThan(25f), "it heads for the clicked tile, not the hidden unit");
+    }
+
+    /// <summary>The graphs and timeline say what every player did all match, so they travel with the statistics, behind the same gate.</summary>
+    [Test]
+    public void SummaryIsSentOnlyAtGameOver()
+    {
+        foreach (GameState state in System.Enum.GetValues(typeof(GameState)))
+            Assert.AreEqual(state == GameState.GameOver, StatsRules.MaySend(state), $"summary in {state}");
+        Assert.IsTrue(typeof(GameCore).GetMethod(nameof(GameCore.RpcMatchSummary)).IsDefined(typeof(Mirror.ClientRpcAttribute), false));
+    }
+
+    /// <summary>Routes reach their owner's client, so the shared goal must stop at the last tile the side saw the target on.</summary>
+    [Test]
+    public void AnAttackOrderNeverFollowsATargetIntoTheFog()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(128), c => c.GetUnit(UnitType.Tank).Damage = 0);
+        int[] attacker = sim.Spawn(SimHarness.OwnerA, new float2(20, 20));
+        int[] scout = sim.Spawn(SimHarness.OwnerB, new float2(25, 20), UnitType.Scout);
+        sim.Tick();
+        sim.Tick();
+        sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.Attack, OwnerId = SimHarness.OwnerA, TargetId = scout[0], Tile = new int2(25, 20), Ids = attacker });
+        sim.Move(SimHarness.OwnerB, new int2(110, 110), scout); // a Scout outruns a Tank and its sight at once
+        float furthest = 0f;
+        sim.Context.Settled += (data, tick, count) =>
+        {
+            int slot = data.SlotOf(attacker[0], count);
+            if (slot < 0 || data.OrderTarget[slot] == 0) return;
+            int order = data.OrderSlot[slot];
+            if ((uint)order < (uint)data.OrderLive.Length && data.OrderLive[order] != 0) furthest = math.max(furthest, data.OrderGoal[order].x);
+        };
+        for (int t = 0; t < 600; t++) sim.Tick();
+        Unit a = sim.UnitById(attacker[0]);
+        Assert.AreEqual(Stances.Idle, a.Stance, "the order ended where the target was last seen");
+        Assert.Less(a.Position.x, 60f);
+        Assert.Less(furthest, 60f, "no goal past what the side could see");
+    }
+
+    /// <summary>A bomber's route reaches its owner, so a block of Tanks in the fog beside its target must never draw its aim.</summary>
+    [Test]
+    public void ABombersAimUsesOnlyWhatItsSideSees()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(96), c => c.GetUnit(UnitType.Tank).Damage = 0);
+        sim.Spawn(SimHarness.OwnerB, new float2(30, 30)); // seen: within the bomber's sight
+        for (int y = 0; y < 3; y++)
+            for (int x = 0; x < 3; x++)
+                sim.Spawn(SimHarness.OwnerB, new float2(35f + x, 29f + y)); // within AimTiles of the target, past its sight
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(26, 30), UnitType.SuicideBomber);
+        float farthest = 0f;
+        int aims = 0;
+        sim.Context.Settled += (data, tick, count) =>
+        {
+            int id = bomber[0];
+            if (id <= 0) return;
+            BlastAim aim = data.BlastAims[NetIdAllocator.IndexOf(id)];
+            if (aim.Id != id) return;
+            aims++;
+            farthest = math.max(farthest, aim.Point.x);
+        };
+        for (int t = 0; t < 8; t++) sim.Tick();
+        Assert.Greater(aims, 0, "it aimed");
+        Assert.Less(farthest, 31f, "the aim stays on what it sees");
+    }
+
     [Test]
     public void BlastsInTheFogAreNotShown()
     {

@@ -103,6 +103,9 @@ public class GameManager : NetworkManager
     /// </summary>
     public override void OnDestroy()
     {
+        // The Main_Menu scene holds a copy of this object: coming back to it mid-session (v0.18 Rematch) destroys the copy,
+        // which must not take the running server with it.
+        if (singleton != this) return;
         //Make sure we disconnect
         if (NetworkServer.active)
         {

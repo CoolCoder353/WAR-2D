@@ -169,6 +169,8 @@ namespace WAR2D.Art
             new ArtEntry("IconJammer", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("IconDig", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("IconCancel", ArtKind.Icon, 1, 1, 1, 1, false),
+            new ArtEntry("MarkElimination", ArtKind.Icon, 1, 1, 1, 1, false),
+            new ArtEntry("MarkFight", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("CursorDefault", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("CursorMove", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("CursorAttack", ArtKind.Icon, 1, 1, 1, 1, false),
