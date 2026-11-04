@@ -163,26 +163,268 @@ public class SectorGraphTests
         }
     }
 
+    /// <summary>Where the directions from a tile end: its last tile, and the direction there (AtGoal, Stop or None).</summary>
+    private static (int2 tile, byte direction) Follow(SectorFieldCache cache, in PathMap map, int2 from)
+    {
+        int2 tile = from;
+        for (int step = 0; step < map.Width * map.Height; step++)
+        {
+            byte direction = cache.DirectionAtCell(0, Index(map, tile));
+            if (!FlowDirections.IsStep(direction)) return (tile, direction);
+            tile += FlowDirections.Step(direction);
+        }
+        Assert.Fail($"the directions from {from} go round for ever");
+        return default;
+    }
+
+    private static SectorFieldCache Routed(in PathMap map, int2 goal, params int2[] from)
+    {
+        var cache = new SectorFieldCache(map, Allocator.Persistent);
+        var starts = new NativeArray<int>(from.Length, Allocator.TempJob);
+        for (int i = 0; i < from.Length; i++) starts[i] = Index(map, from[i]);
+        Assert.AreEqual(0, cache.Acquire(goal, FlowSizeClass.Small, 1, starts));
+        starts.Dispose();
+        cache.RebuildDirty(2).Complete();
+        cache.CompleteRebuilds();
+        return cache;
+    }
+
+    /// <summary>A 64x64 map, floor inside a rock border, with rock wherever <paramref name="rock"/> says.</summary>
+    private static PathMap Carved(System.Func<int, int, bool> rock)
+    {
+        var map = new PathMap(64, 64, new NativeArray<byte>(64 * 64, Allocator.TempJob));
+        for (int y = 0; y < 64; y++)
+        for (int x = 0; x < 64; x++)
+            map.Tiles[y * 64 + x] = x == 0 || y == 0 || x == 63 || y == 63 || rock(x, y) ? Rock : Floor;
+        return map;
+    }
+
+    /// <summary>The route's first cause of stuck units: one exit per start sector, in whichever pocket held the cheapest.</summary>
     [Test]
-    public void UnreachableStartSectorIsLeftOutOfTheRoute()
+    public void EachPocketOfAStartSectorGetsItsOwnWayOut()
+    {
+        PathMap map = Carved((x, y) => y == 15 && x < 32); // splits sector 0 in two, both open to the east
+        try
+        {
+            int2 goal = new int2(40, 8), near = new int2(10, 5), far = new int2(10, 25);
+            using SectorFieldCache cache = Routed(map, goal, near, far);
+            Assert.AreEqual(FlowDirections.AtGoal, Follow(cache, map, near).direction);
+            Assert.AreEqual(FlowDirections.AtGoal, Follow(cache, map, far).direction, "the pocket without the cheapest portal");
+            Assert.AreEqual(0, cache.UnreachableRebuilds);
+        }
+        finally
+        {
+            map.Dispose();
+        }
+    }
+
+    /// <summary>A start sector holding the goal used to end the walk at once, whichever side of a wall the unit stood on.</summary>
+    [Test]
+    public void AStartBesideTheGoalButWalledOffGoesRoundThroughTheNextSector()
+    {
+        PathMap map = Carved((x, y) => x == 16 && y < 32); // through sector 0 from the border to its top edge
+        try
+        {
+            int2 goal = new int2(24, 8), start = new int2(8, 8);
+            using SectorFieldCache cache = Routed(map, goal, start);
+            Assert.AreEqual(FlowDirections.AtGoal, Follow(cache, map, start).direction);
+        }
+        finally
+        {
+            map.Dispose();
+        }
+    }
+
+    [Test]
+    public void AWalledOffStartStopsAtItsFloorNearestTheGoal()
     {
         PathMap map = WallMap(gapTiles: 0, Allocator.TempJob);
         try
         {
-            using var graph = new SectorGraph(map, Allocator.Persistent);
-            int goalSector = graph.SectorOf(new int2(40, 40));
-            var goals = new NativeArray<int>(1, Allocator.TempJob);
-            goals[0] = Index(map, new int2(40, 40));
-            var starts = new NativeArray<int>(1, Allocator.TempJob);
-            starts[0] = Index(map, new int2(10, 20));
+            int2 goal = new int2(40, 40), start = new int2(10, 20);
+            using SectorFieldCache cache = Routed(map, goal, start);
+            (int2 end, byte direction) = Follow(cache, map, start);
+            Assert.AreEqual(FlowDirections.Stop, direction);
+            Assert.AreEqual(new int2(31, 40), end);
+            Assert.AreEqual(1, cache.UnreachableRebuilds);
+            Assert.AreEqual(FlowDirections.AtGoal, cache.DirectionAtCell(0, Index(map, goal)), "the goal itself stays one");
+        }
+        finally
+        {
+            map.Dispose();
+        }
+    }
 
-            SectorFieldSpec[] specs = graph.BuildRoute(FlowSizeClass.Small, goals, starts, out int covered);
-            goals.Dispose();
+    [Test]
+    public void AWayOpeningFarFromAWalledOffRouteStillWakesIt()
+    {
+        const int size = 128;
+        var map = new PathMap(size, size, new NativeArray<byte>(size * size, Allocator.TempJob));
+        try
+        {
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+                map.Tiles[y * size + x] = x == 0 || y == 0 || x == size - 1 || y == size - 1 || x == 32 ? Rock : Floor;
+            int2 goal = new int2(60, 10), start = new int2(10, 10);
+            using SectorFieldCache cache = Routed(map, goal, start);
+            Assert.AreEqual(FlowDirections.Stop, Follow(cache, map, start).direction);
+
+            int2 breach = new int2(32, 120); // three sector rows from anything the route covers
+            map.Tiles[Index(map, breach)] = Floor;
+            cache.Invalidate(breach);
+            cache.RebuildDirty(2).Complete();
+            cache.CompleteRebuilds();
+            Assert.AreEqual(FlowDirections.AtGoal, Follow(cache, map, start).direction);
+        }
+        finally
+        {
+            map.Dispose();
+        }
+    }
+
+    [Test]
+    public void AFarTileChangeRebuildsAWalledOffOrderAtMostOnceASecond()
+    {
+        const int size = 128;
+        var map = new PathMap(size, size, new NativeArray<byte>(size * size, Allocator.TempJob));
+        try
+        {
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+                map.Tiles[y * size + x] = x == 0 || y == 0 || x == size - 1 || y == size - 1 || x == 32 ? Rock : Floor;
+            using SectorFieldCache cache = Routed(map, new int2(60, 10), new int2(10, 10));
+            void Change(int2 tile)
+            {
+                map.Tiles[Index(map, tile)] = Rock;
+                cache.Invalidate(tile);
+                cache.RebuildDirty(2).Complete();
+                cache.CompleteRebuilds();
+            }
+            long before = cache.ReSectorFields;
+            Change(new int2(100, 120));
+            long first = cache.ReSectorFields;
+            Assert.Greater(first, before, "the first look is at once");
+            Change(new int2(101, 120));
+            Assert.AreEqual(first, cache.ReSectorFields, "the next waits");
+            for (int i = 0; i < 20; i++)
+            {
+                cache.RebuildDirty(2).Complete();
+                cache.CompleteRebuilds();
+            }
+            Assert.Greater(cache.ReSectorFields, first, "and comes");
+        }
+        finally
+        {
+            map.Dispose();
+        }
+    }
+
+    /// <summary>A big order's Stop cells can't fill a sector's field, or the pockets after them would get no way out.</summary>
+    [Test]
+    public void ABigWalledOffOrderLeavesRoomForEveryPocket()
+    {
+        PathMap map = Carved((x, y) => x == 32 || (y == 10 || y == 20) && x < 32);
+        try
+        {
+            var starts = new NativeArray<int>(200, Allocator.TempJob);
+            for (int i = 0; i < starts.Length; i++) starts[i] = Index(map, new int2(5, i % 3 == 0 ? 5 : i % 3 == 1 ? 15 : 25));
+            using var cache = new SectorFieldCache(map, Allocator.Persistent);
+            Assert.AreEqual(0, cache.Acquire(new int2(40, 15), FlowSizeClass.Small, 1, starts));
             starts.Dispose();
+            cache.RebuildDirty(2).Complete();
+            cache.CompleteRebuilds();
+            foreach (int y in new[] { 5, 15, 25 })
+                Assert.AreEqual(FlowDirections.Stop, Follow(cache, map, new int2(5, y)).direction, $"the pocket at y {y}");
+        }
+        finally
+        {
+            map.Dispose();
+        }
+    }
 
-            Assert.AreEqual(1, covered, "with the wall sealed only the goal sector is covered");
-            Assert.AreEqual(1, specs.Length);
-            Assert.AreEqual(goalSector, specs[0].Sector);
+    [Test]
+    public void AWalledOffRoomInOneSectorStopsInsideIt()
+    {
+        PathMap map = Carved((x, y) => (x == 5 || x == 15) && y <= 15 || y == 15 && x >= 5 && x <= 15);
+        try
+        {
+            int2 goal = new int2(40, 40), start = new int2(10, 5);
+            using SectorFieldCache cache = Routed(map, goal, start);
+            (int2 end, byte direction) = Follow(cache, map, start);
+            Assert.AreEqual(FlowDirections.Stop, direction);
+            Assert.Less(end.x, 15);
+            Assert.Less(end.y, 15);
+        }
+        finally
+        {
+            map.Dispose();
+        }
+    }
+
+    /// <summary>An order kept its first 512 cells, and with them full a sector a later unit stood in was never added.</summary>
+    [Test]
+    public void AnOrderOfAnySizeKeepsEveryPocketItsUnitsStandIn()
+    {
+        PathMap map = Carved((x, y) => false);
+        try
+        {
+            using var cache = new SectorFieldCache(map, Allocator.Persistent);
+            var starts = new NativeArray<int>(600, Allocator.TempJob);
+            for (int i = 0; i < starts.Length; i++) starts[i] = Index(map, new int2(5 + i % 20, 5 + i / 60));
+            starts[599] = Index(map, new int2(10, 50));
+            int2 goal = new int2(50, 10);
+            Assert.AreEqual(0, cache.Acquire(goal, FlowSizeClass.Small, 1, starts));
+            starts.Dispose();
+            cache.RebuildDirty(2).Complete();
+            cache.CompleteRebuilds();
+            Assert.AreEqual(FlowDirections.AtGoal, Follow(cache, map, new int2(10, 50)).direction);
+
+            // A unit that later stands in a new pocket joins it, however many came before it.
+            var late = new NativeArray<int>(1, Allocator.TempJob);
+            late[0] = Index(map, new int2(50, 50));
+            cache.AddStartCells(0, late);
+            late.Dispose();
+            cache.RebuildDirty(2).Complete();
+            cache.CompleteRebuilds();
+            Assert.AreEqual(FlowDirections.AtGoal, Follow(cache, map, new int2(50, 50)).direction);
+        }
+        finally
+        {
+            map.Dispose();
+        }
+    }
+
+    [Test]
+    public void AGoalBesideAThinWallDoesNotSpreadToItsFarSide()
+    {
+        PathMap map = Carved((x, y) => x == 20);
+        try
+        {
+            NativeArray<int> goals = FlowGoals.Around(new int2(19, 30), map.Tiles, 64, 64, Allocator.TempJob, FlowGoals.Spread);
+            Assert.Greater(goals.Length, 8);
+            foreach (int cell in goals) Assert.Less(cell % 64, 20, "the far side of the wall");
+            goals.Dispose();
+        }
+        finally
+        {
+            map.Dispose();
+        }
+    }
+
+    [Test]
+    public void ReachesFollowsTheFloorAcrossSectors()
+    {
+        PathMap map = WallMap(gapTiles: 3, Allocator.TempJob);
+        try
+        {
+            using var graph = new SectorGraph(map, Allocator.Persistent);
+            Assert.IsTrue(graph.Reaches(FlowSizeClass.Small, new int2(5, 5), new int2(60, 60)), "through the gap");
+            map.Tiles[Index(map, new int2(32, 31))] = Rock;
+            map.Tiles[Index(map, new int2(32, 32))] = Rock;
+            map.Tiles[Index(map, new int2(32, 33))] = Rock;
+            graph.Invalidate(new int2(32, 32));
+            Assert.IsFalse(graph.Reaches(FlowSizeClass.Small, new int2(5, 5), new int2(60, 60)), "the gap is shut");
+            Assert.IsTrue(graph.Reaches(FlowSizeClass.Small, new int2(5, 5), new int2(30, 60)), "its own side still connects");
         }
         finally
         {
@@ -509,7 +751,7 @@ public class SectorGraphTests
                 int handle = cache.Acquire(goal, FlowSizeClass.Small, 1, starts);
                 cache.RebuildDirty(2).Complete();
                 cache.CompleteRebuilds();
-                Assert.AreEqual(FlowDirections.None, cache.DirectionAtCell(handle, Index(map, new int2(16, 16))),
+                Assert.AreNotEqual(FlowDirections.AtGoal, cache.DirectionAtCell(handle, Index(map, new int2(16, 16))),
                     "the half-resolution channel pinches on a 3-tile diagonal staircase");
                 Assert.Greater(cache.UnreachableRebuilds, 0, "and the rebuild reports its unreachable start sector");
             }

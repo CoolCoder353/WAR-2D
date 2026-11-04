@@ -261,7 +261,7 @@ namespace WAR2D.Sim
         }
 
         /// <summary>Issues (or joins) the order for the goal and gives it to the units.</summary>
-        private static void Issue(SimData data, SimContext context, List<int> slots, int sizeClass, int2 goal, byte stance, int tick, int owner, int target = 0, byte targetKind = TargetKinds.Unit)
+        private static void Issue(SimData data, SimContext context, List<int> slots, int sizeClass, int2 goal, byte stance, int tick, int owner, int target = 0, byte targetKind = TargetKinds.Unit, bool background = false)
         {
             if (slots.Count == 0) return;
             var starts = new NativeArray<int>(slots.Count, Allocator.Temp);
@@ -270,7 +270,7 @@ namespace WAR2D.Sim
                 int2 tile = math.clamp((int2)math.floor(data.Positions[slots[i]]), 0, new int2(data.Width - 1, data.Height - 1));
                 starts[i] = tile.y * data.Width + tile.x;
             }
-            int handle = context.Orders.Issue(goal, sizeClass, starts, tick, owner);
+            int handle = context.Orders.Issue(goal, sizeClass, starts, tick, owner, background);
             starts.Dispose();
             if (handle < 0) return;
             AddPending(data, slots, new PendingOrder { Slot = handle, Stance = stance, OrderTarget = target, OrderTargetKind = targetKind });
@@ -281,7 +281,7 @@ namespace WAR2D.Sim
         /// target at the order's tile, and a move to a floor tile next to it. Others are left alone. Shift
         /// queues the job behind the unit's current one.
         /// </summary>
-        private void ApplyWorkOrder(SimData data, SimContext context, in SimCommand command, int unitCount)
+        private void ApplyWorkOrder(SimData data, SimContext context, in SimCommand command, int unitCount, bool background = false)
         {
             if (command.Ids == null || !context.Map.Grid.Contains(command.Tile)) return;
             UnitType worker = command.Order == OrderKind.Dig ? UnitType.Digger : UnitType.Builder;
@@ -291,7 +291,7 @@ namespace WAR2D.Sim
             {
                 if (context.Map.Grid.TileAt(command.Tile) == TileType.Border) return;
             }
-            else if (!TryWorkTarget(data, context, command.OwnerId, command.Order, command.Tile, out standGoal)) return;
+            else if (!TryWorkTargetForAny(data, context, command, worker, unitCount, out standGoal)) return;
             foreach (List<int> list in moversByClass) list.Clear();
             foreach (int id in command.Ids)
             {
@@ -312,8 +312,21 @@ namespace WAR2D.Sim
             {
                 if (command.Order == OrderKind.Dig) // the dig stage asks for the move to the standing tile on its first tick
                     AddPending(data, moversByClass[sizeClass], new PendingOrder { Slot = -1, Stance = Stances.Idle, WorkTile = tileIndex, WorkKind = kind });
-                else IssueWork(data, context, moversByClass[sizeClass], sizeClass, standGoal, tick, command.OwnerId, tileIndex, kind);
+                else IssueWork(data, context, moversByClass[sizeClass], sizeClass, standGoal, tick, command.OwnerId, tileIndex, kind, background);
             }
+        }
+
+        /// <summary>Where an order's workers stand: from the first of them that can reach the job, so one walled-off Builder doesn't cost the rest the order.</summary>
+        private static bool TryWorkTargetForAny(SimData data, SimContext context, in SimCommand command, UnitType worker, int unitCount, out int2 standGoal)
+        {
+            standGoal = command.Tile;
+            foreach (int id in command.Ids)
+            {
+                int slot = data.SlotOf(id, unitCount);
+                if (slot < 0 || data.OwnerId[slot] != command.OwnerId || data.Health[slot] <= 0f || data.Type[slot] != (byte)worker) continue;
+                if (TryWorkTarget(data, context, command.OwnerId, command.Order, command.Tile, slot, out standGoal)) return true;
+            }
+            return false;
         }
 
         private static byte WorkKindOf(OrderKind order) =>
@@ -349,20 +362,24 @@ namespace WAR2D.Sim
                 AddPending(data, one, new PendingOrder { Slot = -1, Stance = Stances.Idle, WorkTile = context.Map.Grid.Index(tile), WorkKind = work });
                 return;
             }
-            if (!TryWorkTarget(data, context, owner, OrderOf(work), tile, out int2 standGoal)) return;
+            if (!TryWorkTarget(data, context, owner, OrderOf(work), tile, slot, out int2 standGoal)) return;
             IssueWork(data, context, one, data.SizeClass[slot], standGoal, tick, owner, context.Map.Grid.Index(tile), work);
         }
 
         /// <summary>
         /// Checks the order's target and finds the floor tile its workers head for. Build needs an own
         /// blueprint; Repair an own or allied building (an ally's bomb only when the ally shares vision).
+        /// The tile is the nearest free one the worker in <paramref name="slot"/> can walk to: the nearest of all can be
+        /// in a corner other buildings or rock wall off, where it would never arrive. False when it can reach no side of the job.
         /// Wall and dig targets are resolved by their stages.
         /// </summary>
-        private static bool TryWorkTarget(SimData data, SimContext context, int owner, OrderKind order, int2 tile, out int2 standGoal)
+        private static bool TryWorkTarget(SimData data, SimContext context, int owner, OrderKind order, int2 tile, int slot, out int2 standGoal)
         {
             standGoal = tile;
             WAR2D.World.MapGrid grid = context.Map.Grid;
-            if (!context.BuildingAt.TryGetValue(grid.Index(tile), out int buildingId)) return TryWallTarget(data, context, owner, order, tile, out standGoal);
+            int2 from = (int2)math.floor(data.Positions[slot]);
+            int sizeClass = data.SizeClass[slot];
+            if (!context.BuildingAt.TryGetValue(grid.Index(tile), out int buildingId)) return TryWallTarget(data, context, owner, order, tile, from, sizeClass, out standGoal);
             int index = NetIdAllocator.IndexOf(buildingId);
             int b = index < data.BuildingSlotOfIndex.Length ? data.BuildingSlotOfIndex[index] : -1;
             if (b < 0 || b >= data.BuildingCount[0] || data.BuildingIds[b] != buildingId) return false;
@@ -373,11 +390,11 @@ namespace WAR2D.Sim
             if (order == OrderKind.Repair && !own && !allied) return false;
             // A hidden bomb is a target only for players who may know it, or the Builder's walk would reveal it.
             if (!own && (data.BuildingFlag[b] & global::BuildingFlags.Hidden) != 0 && !context.Diplomacy.SharesVisionWith(targetSlot, ownerSlot)) return false;
-            return TileSearch.FindNearest(data.BuildingAnchor[b], context.Map.IsWalkable, t => TileRules.IsFloor(grid.TileAt(t)) || context.Map.IsUsed(t), 1024, out standGoal);
+            return TileSearch.FindNearest(data.BuildingAnchor[b], t => context.Map.IsWalkable(t) && context.Orders.Reaches(sizeClass, from, t), t => TileRules.IsFloor(grid.TileAt(t)) || context.Map.IsUsed(t), 1024, out standGoal);
         }
 
         /// <summary>A wall tile as a work target: Build needs an own one, Repair an own or allied one; workers stand on a free tile beside it.</summary>
-        private static bool TryWallTarget(SimData data, SimContext context, int owner, OrderKind order, int2 tile, out int2 standGoal)
+        private static bool TryWallTarget(SimData data, SimContext context, int owner, OrderKind order, int2 tile, int2 from, int sizeClass, out int2 standGoal)
         {
             standGoal = tile;
             WAR2D.World.MapGrid grid = context.Map.Grid;
@@ -388,11 +405,11 @@ namespace WAR2D.Sim
             bool allied = wallSlot != SimData.NoSlot && ownerSlot >= 0 && !SimData.Attacks(data.AttackMask, ownerSlot, wallSlot) && !SimData.Attacks(data.AttackMask, wallSlot, ownerSlot);
             if (order == OrderKind.Build && !own) return false;
             if (order == OrderKind.Repair && !own && !allied) return false;
-            return TileSearch.FindNearest(tile, t => !t.Equals(tile) && context.Map.IsWalkable(t), t => TileRules.IsFloor(grid.TileAt(t)) || t.Equals(tile) || context.Map.IsUsed(t), 1024, out standGoal);
+            return TileSearch.FindNearest(tile, t => !t.Equals(tile) && context.Map.IsWalkable(t) && context.Orders.Reaches(sizeClass, from, t), t => TileRules.IsFloor(grid.TileAt(t)) || t.Equals(tile) || context.Map.IsUsed(t), 1024, out standGoal);
         }
 
         /// <summary>Like <see cref="Issue"/>, with the work target the units start on arrival.</summary>
-        private static void IssueWork(SimData data, SimContext context, List<int> slots, int sizeClass, int2 goal, int tick, int owner, int tileIndex, byte kind)
+        private static void IssueWork(SimData data, SimContext context, List<int> slots, int sizeClass, int2 goal, int tick, int owner, int tileIndex, byte kind, bool background = false)
         {
             if (slots.Count == 0) return;
             var starts = new NativeArray<int>(slots.Count, Allocator.Temp);
@@ -401,7 +418,7 @@ namespace WAR2D.Sim
                 int2 tile = math.clamp((int2)math.floor(data.Positions[slots[i]]), 0, new int2(data.Width - 1, data.Height - 1));
                 starts[i] = tile.y * data.Width + tile.x;
             }
-            int handle = context.Orders.Issue(goal, sizeClass, starts, tick, owner);
+            int handle = context.Orders.Issue(goal, sizeClass, starts, tick, owner, background);
             starts.Dispose();
             if (handle < 0) return;
             AddPending(data, slots, new PendingOrder { Slot = handle, Stance = Stances.Move, WorkTile = tileIndex, WorkKind = kind });

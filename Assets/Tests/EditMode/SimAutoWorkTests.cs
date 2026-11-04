@@ -51,6 +51,103 @@ public class SimAutoWorkTests
         Assert.Greater(sim.UnitById(builder[0]).Position.x, 15f, "heading east to the nearer one");
     }
 
+    /// <summary>64x64 where the nearest free tile to a building at (20, 20), (19, 19), is a one-tile hole in rock.</summary>
+    private static WAR2D.World.MapStore HoleBesideTheJob()
+    {
+        var rows = new string[64];
+        for (int r = 0; r < 64; r++)
+        {
+            int y = 63 - r;
+            var row = new char[64];
+            for (int x = 0; x < 64; x++)
+            {
+                bool border = x == 0 || y == 0 || x == 63 || y == 63;
+                bool ring = x >= 18 && x <= 20 && y >= 18 && y <= 20 && !(x == 19 && y == 19) && !(x == 20 && y == 20);
+                row[x] = border ? 'B' : ring ? '#' : '.';
+            }
+            rows[r] = new string(row);
+        }
+        return WAR2D.World.MapStore.FromAscii(rows);
+    }
+
+    [Test]
+    public void ABuilderStandsWhereItCanWalkToNotInAHoleBesideTheJob()
+    {
+        using var sim = new SimHarness(HoleBesideTheJob());
+        int[] builder = sim.Spawn(SimHarness.OwnerA, new float2(30.5f, 30.5f), UnitType.Builder);
+        sim.Tick();
+        int turret = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.GunTurret, new int2(20, 20));
+        sim.Order(SimHarness.OwnerA, OrderKind.Build, new int2(20, 20), builder[0]);
+        sim.TickSeconds(60f);
+        Assert.IsFalse(sim.IsBlueprint(turret), $"the Builder ended at {sim.UnitById(builder[0]).Position}");
+    }
+
+    [Test]
+    public void AWalledOffBuilderDoesNotCostTheRestOfItsGroupTheOrder()
+    {
+        var rows = new string[64];
+        for (int r = 0; r < 64; r++)
+        {
+            int y = 63 - r;
+            var row = new char[64];
+            for (int x = 0; x < 64; x++)
+            {
+                bool border = x == 0 || y == 0 || x == 63 || y == 63;
+                bool room = (x == 4 || x == 10) && y >= 4 && y <= 10 || (y == 4 || y == 10) && x >= 4 && x <= 10;
+                row[x] = border ? 'B' : room ? '#' : '.';
+            }
+            rows[r] = new string(row);
+        }
+        using var sim = new SimHarness(WAR2D.World.MapStore.FromAscii(rows));
+        int[] shut = sim.Spawn(SimHarness.OwnerA, new float2(7.5f, 7.5f), UnitType.Builder);
+        int[] free = sim.Spawn(SimHarness.OwnerA, new float2(30.5f, 30.5f), UnitType.Builder);
+        sim.Tick();
+        int job = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(40, 40));
+        sim.Order(SimHarness.OwnerA, OrderKind.Build, new int2(40, 40), shut[0], free[0]);
+        sim.TickSeconds(40f);
+        Assert.IsFalse(sim.IsBlueprint(job), $"the free Builder ended at {sim.UnitById(free[0]).Position}");
+    }
+
+    [Test]
+    public void AnIdleBuilderPassesOverABlueprintItCantReach()
+    {
+        var rows = new string[64];
+        for (int r = 0; r < 64; r++)
+        {
+            int y = 63 - r;
+            var row = new char[64];
+            for (int x = 0; x < 64; x++)
+            {
+                bool border = x == 0 || y == 0 || x == 63 || y == 63;
+                bool room = (x == 16 || x == 24) && y >= 16 && y <= 24 || (y == 16 || y == 24) && x >= 16 && x <= 24;
+                row[x] = border ? 'B' : room ? '#' : '.';
+            }
+            rows[r] = new string(row);
+        }
+        using var sim = new SimHarness(WAR2D.World.MapStore.FromAscii(rows));
+        sim.Spawn(SimHarness.OwnerA, new float2(30.5f, 20.5f), UnitType.Builder);
+        sim.Tick();
+        int shut = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(20, 20));
+        int open = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(50, 50));
+        sim.TickSeconds(90f);
+        Assert.IsFalse(sim.IsBlueprint(open), "the one it could reach");
+        Assert.IsTrue(sim.IsBlueprint(shut));
+    }
+
+    [Test]
+    public void ABuilderLeftOutOfReachDropsTheJobAndComesBackToIt()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(64));
+        int[] builder = sim.Spawn(SimHarness.OwnerA, new float2(18.5f, 20.5f), UnitType.Builder);
+        sim.Tick();
+        int job = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(20, 20));
+        sim.Order(SimHarness.OwnerA, OrderKind.Build, new int2(20, 20), builder[0]);
+        sim.TickSeconds(2f);
+        sim.Teleport(builder[0], new float2(40.5f, 40.5f)); // as a crowd can push it, once its order is over
+        sim.TickSeconds(90f);
+        Assert.IsFalse(sim.IsBlueprint(job), $"the Builder ended at {sim.UnitById(builder[0]).Position}");
+    }
+
     [Test]
     public void ItLeavesRepairsBeyondTheRadius()
     {

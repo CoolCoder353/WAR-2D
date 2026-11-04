@@ -144,6 +144,145 @@ public class SimMovementTests
     }
 
     [Test]
+    public void TheGamesOwnOrdersLeaveRoomForAPlayersClick()
+    {
+        using MapStore open = WallWithGap();
+        using var book = new WAR2D.Sim.OrderBook(open.Grid);
+        var starts = new Unity.Collections.NativeArray<int>(1, Unity.Collections.Allocator.Temp);
+        try
+        {
+            starts[0] = 10 * open.Grid.Width + 40;
+            var granted = new System.Collections.Generic.HashSet<int>();
+            for (int x = 0; x < WAR2D.Sim.OrderBook.MaxOrdersPerOwner; x++)
+            {
+                int handle = book.Issue(new int2(2 + x % 25, 2 + x / 25 * 3), 0, starts, 1, owner: 7, background: true);
+                if (handle >= 0) granted.Add(handle);
+            }
+            Assert.AreEqual(WAR2D.Sim.OrderBook.MaxBackgroundOrdersPerOwner, granted.Count);
+            Assert.GreaterOrEqual(book.Issue(new int2(40, 40), 0, starts, 1, owner: 7), 0, "the player's own order");
+        }
+        finally { starts.Dispose(); }
+    }
+
+    /// <summary>A rock wall three thick down x = 30..32 with one gap of <paramref name="tiles"/> tiles around y = 32.</summary>
+    private static MapStore GapMap(int tiles)
+    {
+        var rows = new string[64];
+        for (int r = 0; r < 64; r++)
+        {
+            int y = 63 - r;
+            var row = new char[64];
+            for (int x = 0; x < 64; x++)
+            {
+                bool border = x == 0 || y == 0 || x == 63 || y == 63;
+                bool gap = y >= 32 - tiles / 2 && y < 32 - tiles / 2 + tiles;
+                row[x] = border ? 'B' : x >= 30 && x <= 32 && !gap ? '#' : '.';
+            }
+            rows[r] = new string(row);
+        }
+        return MapStore.FromAscii(rows);
+    }
+
+    /// <summary>
+    /// Two bodies wider than a tile, heading for the tile at a gap's mouth from either side of it: with equal pushes they
+    /// balanced just short of it and stood there for good.
+    /// </summary>
+    [TestCase(UnitType.Heavy)]
+    [TestCase(UnitType.Artillery)]
+    public void TwoBigUnitsMeetingAtAGapBothGetThrough(UnitType type)
+    {
+        using var sim = new SimHarness(GapMap(3));
+        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(28.68f, 31.98f), type);
+        int[] b = sim.Spawn(SimHarness.OwnerA, new float2(28.69f, 33.03f), type);
+        sim.Tick();
+        sim.Move(SimHarness.OwnerA, new int2(50, 32), a[0], b[0]);
+        sim.TickSeconds(30f);
+        Assert.Greater(sim.UnitById(a[0]).Position.x, 33f, $"ended at {sim.UnitById(a[0]).Position}");
+        Assert.Greater(sim.UnitById(b[0]).Position.x, 33f, $"ended at {sim.UnitById(b[0]).Position}");
+    }
+
+    /// <summary>Two bodies side by side at a one-tile gap: pushed apart, neither was on the line that fits through it.</summary>
+    [TestCase(UnitType.Tank)]
+    [TestCase(UnitType.Builder)]
+    public void TwoUnitsSideBySideAtAOneTileGapBothGetThrough(UnitType type)
+    {
+        using var sim = new SimHarness(GapMap(1));
+        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(29.6f, 32.25f), type);
+        int[] b = sim.Spawn(SimHarness.OwnerA, new float2(29.6f, 32.75f), type);
+        sim.Tick();
+        sim.Move(SimHarness.OwnerA, new int2(50, 32), a[0], b[0]);
+        sim.TickSeconds(10f);
+        Assert.Greater(sim.UnitById(a[0]).Position.x, 33f, $"ended at {sim.UnitById(a[0]).Position}");
+        Assert.Greater(sim.UnitById(b[0]).Position.x, 33f, $"ended at {sim.UnitById(b[0]).Position}");
+    }
+
+    /// <summary>64x64 cut in two by a rock wall down x = 32 with no gap.</summary>
+    private static MapStore Sealed()
+    {
+        var rows = new string[64];
+        for (int r = 0; r < 64; r++) rows[r] = r == 0 || r == 63 ? new string('B', 64) : "B" + new string('.', 31) + "#" + new string('.', 30) + "B";
+        return MapStore.FromAscii(rows);
+    }
+
+    [Test]
+    public void AMoveToAWalledOffGoalEndsAtTheNearestFloor()
+    {
+        using var sim = new SimHarness(Sealed());
+        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 40.5f));
+        sim.Tick();
+        sim.Move(SimHarness.OwnerA, new int2(50, 20), a[0]);
+        sim.TickSeconds(15f);
+        Unit unit = sim.UnitById(a[0]);
+        Assert.AreEqual(Stances.Idle, unit.Stance, "the order is over: it holds no order slot, and the unit can take new work");
+        Assert.AreEqual(-1, unit.OrderSlot);
+        Assert.Less(math.distance(unit.Position, new float2(31.5f, 20.5f)), 2f, $"ended at {unit.Position}");
+    }
+
+    [Test]
+    public void AnAttackMoveWaitsAtAWallAndGoesOnThroughWhenItFalls()
+    {
+        using var sim = new SimHarness(Sealed());
+        int2 gap = new int2(32, 40);
+        sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.SetTile, Tile = gap, TileType = TileType.Ground });
+        sim.PlaceWall(SimHarness.OwnerB, gap);
+        sim.Tick();
+        sim.ForceBuiltWall(gap);
+        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 40.5f));
+        sim.Tick();
+        sim.Order(SimHarness.OwnerA, OrderKind.AttackMove, new int2(50, 40), a[0]);
+        sim.TickSeconds(8f);
+        Assert.AreEqual(Stances.AttackMove, sim.UnitById(a[0]).Stance, "still on its way");
+        Assert.Less(sim.UnitById(a[0]).Position.x, 32f);
+        sim.Em.CompleteAllTrackedJobs();
+        sim.Context.Data.WallDamage.Enqueue(new TileWork { Tile = sim.Map.Grid.Index(gap), Amount = 1e6f });
+        sim.TickSeconds(8f);
+        Assert.Greater(sim.UnitById(a[0]).Position.x, 40f, "no new order needed");
+    }
+
+    /// <summary>A unit pushed into a pocket of a sector its route already covers: the route used to count the sector as done.</summary>
+    [Test]
+    public void AUnitInAnotherPocketOfACoveredSectorStillFindsItsWay()
+    {
+        var rows = new string[64];
+        for (int r = 0; r < 64; r++)
+        {
+            int y = 63 - r;
+            var row = new char[64];
+            for (int x = 0; x < 64; x++) row[x] = x == 0 || y == 0 || x == 63 || y == 63 ? 'B' : y == 15 && x < 32 ? '#' : '.';
+            rows[r] = new string(row);
+        }
+        using var sim = new SimHarness(MapStore.FromAscii(rows));
+        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 5.5f));
+        int[] b = sim.Spawn(SimHarness.OwnerA, new float2(11.5f, 5.5f));
+        sim.Tick();
+        sim.Move(SimHarness.OwnerA, new int2(50, 8), a[0], b[0]);
+        for (int i = 0; i < 3; i++) sim.Tick();
+        sim.Teleport(a[0], new float2(10.5f, 25.5f));
+        sim.TickSeconds(15f);
+        Assert.Less(math.distance(sim.UnitById(a[0]).Position, new float2(50.5f, 8.5f)), 3f, $"ended at {sim.UnitById(a[0]).Position}");
+    }
+
+    [Test]
     public void SnapGoalFindsNearestFloorOrNone()
     {
         using MapStore open = WallWithGap();

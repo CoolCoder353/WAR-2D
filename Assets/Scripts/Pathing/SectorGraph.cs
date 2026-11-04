@@ -47,6 +47,9 @@ namespace WAR2D.Pathing
         /// <summary>Tiles a sector spans on each side.</summary>
         public const int SectorSize = 32;
 
+        /// <summary>Most Stop cells one walled-off region gets: a sector's field has room for about 127 goal and exit cells, shared with its other pockets.</summary>
+        private const int MaxStopCells = 8;
+
         /// <summary>Cells a sector spans on each side.</summary>
         public const int SectorCellsPerSide = 32; // at one tile per cell
 
@@ -89,6 +92,9 @@ namespace WAR2D.Pathing
             public bool CostsReady;
             public NativeArray<byte> Crop;
             public int[] Matching;       // portal -> matching portal across the edge; -2 not looked up yet
+            public short[] PocketOf;     // cell -> its pocket of connected floor; -1 on rock
+            public short[] PortalPocket; // portal -> the pocket its cells are in
+            public int ExitPockets;      // pockets with a portal: the only ones a route can leave
         }
 
         private sealed class Layer
@@ -98,6 +104,7 @@ namespace WAR2D.Pathing
             public ushort[] Distance;    // node = sector * MaxPortals + portal
             public bool[] Settled;
             public List<int> Heap;       // one entry per relaxation, so it can repeat a node
+            public HashSet<int> Region;  // the pockets last walked by RegionOf; dropped by a terrain change
         }
 
         private readonly int width, height, sectorsX, sectorsY, sectorCount;
@@ -173,11 +180,39 @@ namespace WAR2D.Pathing
         }
 
         /// <summary>
-        /// Start sectors the last <see cref="BuildRoute"/> could not reach: their portals never settled,
-        /// so their units get no direction from that route. Non-zero means the class grid severed them,
-        /// which half-resolution cells do more readily than tiles.
+        /// Start pockets the last <see cref="BuildRoute"/> found no way to the goal from, so their units
+        /// head for the nearest floor to the goal they can reach instead (<see cref="FlowDirections.Stop"/>).
+        /// Non-zero means the goal is walled off from them, or the class grid severed them.
         /// </summary>
         public int UnreachableStartSectors { get; private set; }
+
+        /// <summary>
+        /// One number per pocket of connected floor per sector: the pocket a unit of the class at <paramref name="tile"/>
+        /// stands in, or the nearest one within two cells (a large unit's tile can be too narrow for its own grid), or -1.
+        /// A terrain change can renumber pockets, so don't keep the number across one.
+        /// </summary>
+        public int PocketOf(int sizeClass, int2 tile)
+        {
+            ThrowIfDisposed();
+            Layer layer = layers[sizeClass];
+            int2 cell = tile / cellSize;
+            for (int ring = 0; ring <= 2; ring++)
+            for (int i = 0; i < math.max(1, 8 * ring); i++)
+            {
+                int2 at = FlowGoals.RingTile(cell, ring, i);
+                if ((uint)at.x >= (uint)cellWidth || (uint)at.y >= (uint)cellHeight) continue;
+                int pocket = PocketAtCell(layer, at.y * cellWidth + at.x);
+                if (pocket >= 0) return pocket;
+            }
+            return -1;
+        }
+
+        /// <summary>True when a unit of the class at <paramref name="from"/> can walk to <paramref name="to"/>.</summary>
+        public bool Reaches(int sizeClass, int2 from, int2 to)
+        {
+            int a = PocketOf(sizeClass, from), b = PocketOf(sizeClass, to);
+            return a >= 0 && b >= 0 && (a == b || RegionOf(layers[sizeClass], a).Contains(b));
+        }
 
         /// <summary>Clearance per tile, capped at <see cref="ClearanceJob.MaxClearance"/>.</summary>
         public NativeArray<byte> Clearance => clearance;
@@ -312,7 +347,7 @@ namespace WAR2D.Pathing
         /// sector, seeded with that sector's exit portal at its cost to the goal.
         /// </summary>
         public SectorFieldSpec[] BuildRoute(
-            int sizeClass, NativeArray<int> goalCells, NativeArray<int> startCells, out int coveredSectors)
+            int sizeClass, NativeArray<int> goalCells, NativeArray<int> startCells, out int coveredSectors, int2? aim = null)
         {
             ThrowIfDisposed();
             Layer layer = layers[sizeClass];
@@ -322,6 +357,7 @@ namespace WAR2D.Pathing
             // 1. The goal sectors: one spec each, seeded with the goal cells that fall inside them.
             var goalSpecs = new Dictionary<int, SectorFieldSpec>();
             var goalCellsBySector = new Dictionary<int, List<int>>();
+            var goalPockets = new HashSet<int>();
             for (int i = 0; i < goalCells.Length; i++)
             {
                 // The caller passes map cell indices (tiles); routes live in cell-grid coordinates.
@@ -334,6 +370,8 @@ namespace WAR2D.Pathing
                     goalSpecs[sector] = NewSpec(sector);
                 }
                 list.Add(LocalCell(cell, sector));
+                int goalPocket = PocketAtCell(layer, cell);
+                if (goalPocket >= 0) goalPockets.Add(goalPocket);
             }
             foreach (KeyValuePair<int, List<int>> pair in goalCellsBySector)
             {
@@ -360,37 +398,49 @@ namespace WAR2D.Pathing
                 for (int p = 0; p < toGoals.Length; p++) Seed(layer, pair.Key, p, toGoals[p]);
             }
 
-            // 3. Expand the abstract graph until every start sector can leave, then walk each start
-            //    sector's route to a goal sector, collecting the fields that route needs.
-            int[] startSectors = StartSectors(startCells);
-            ExpandUntilSettled(layer, startSectors);
-            UnreachableStartSectors = 0;
-            foreach (int start in startSectors)
-                if (!HasSettledPortal(layer, start)) UnreachableStartSectors++;
-            // A sector's field gets one exit per pocket of floor the route passes through: past the start sector the
-            // walk leaves by the exit it can reach from where it came in (a cave sector can hold separate pockets, and
-            // its cheapest portal may be in another one), and a route that comes back through a sector in another
-            // pocket adds that pocket's exit to the same field. A (sector, exit) pair already walked ends the walk.
+            // 3. Expand the abstract graph until every start pocket can leave. A sector can hold pockets of floor walled
+            //    off from each other, and a pocket with the goal in it needs no exit. A pocket no way leads from gets its
+            //    own end to walk to: the floor of its region nearest the goal, marked Stop.
+            List<int> startPockets = StartPockets(sizeClass, startCells);
+            var waiting = new HashSet<int>(startPockets);
+            waiting.ExceptWith(goalPockets);
+            ExpandUntilSettled(layer, waiting);
+            UnreachableStartSectors = waiting.Count;
+            if (waiting.Count > 0 && (aim.HasValue || goalCells.Length > 0))
+            {
+                int2 target = (aim ?? new int2(goalCells[0] % width, goalCells[0] / width)) / cellSize;
+                foreach (int pocket in startPockets)
+                {
+                    if (!waiting.Contains(pocket)) continue;
+                    AddStop(layer, NearestCellOfRegion(layer, pocket, target), math.clamp(goalCells.Length, 1, MaxStopCells), goalSpecs, goalCellsBySector, goalSeeds, goalPockets, waiting);
+                    ExpandUntilSettled(layer, waiting);
+                }
+            }
+
+            // 4. Walk each start pocket's route to a goal sector, collecting the fields it needs. A sector's field gets
+            //    one exit per pocket of floor the route passes through: past the start the walk leaves by the exit it can
+            //    reach from where it came in, and a route that comes back through a sector in another pocket adds that
+            //    pocket's exit to the same field. A (sector, exit) pair already walked ends the walk.
             var routeSpecs = new Dictionary<int, SectorFieldSpec>();
             var walked = new HashSet<int>();
-            foreach (int start in startSectors)
+            foreach (int start in startPockets)
             {
-                int sector = start, entry = -1;
-                while (true)
+                if (goalPockets.Contains(start)) continue;
+                int sector = start / SectorCells;
+                Materialize(layer, sector);
+                int exit = BestCrossingOf(layer, sector, start % SectorCells);
+                while (exit >= 0 && walked.Add(sector * MaxPortals + exit))
                 {
-                    Materialize(layer, sector);
-                    bool isGoal = goalSpecs.ContainsKey(sector);
-                    // The goal sector ends the walk unless the route came in through a pocket its goal cells aren't in.
-                    if (isGoal && (entry < 0 || goalSeeds[sector][entry] < Infinite)) break;
-                    int exit = entry >= 0 ? BestExitFrom(layer, sector, entry) : BestCrossing(layer, sector);
-                    if (exit < 0 && !isGoal) exit = BestPortal(layer, sector);
-                    if (exit < 0 || !walked.Add(sector * MaxPortals + exit)) break; // nowhere to leave, or already walked
-                    if (isGoal) goalSpecs[sector] = WithExit(goalSpecs[sector], layer, sector, exit);
+                    if (goalSpecs.ContainsKey(sector)) goalSpecs[sector] = WithExit(goalSpecs[sector], layer, sector, exit);
                     else routeSpecs[sector] = WithExit(routeSpecs.TryGetValue(sector, out SectorFieldSpec spec) ? spec : NewSpec(sector), layer, sector, exit);
                     int neighbour = NeighbourSector(sector, layer.Sectors[sector].Portals[exit].Edge);
                     if (neighbour < 0) break;
-                    entry = Matching(layer, sector, exit);
+                    int entry = Matching(layer, sector, exit);
                     sector = neighbour;
+                    Materialize(layer, sector);
+                    // The goal sector ends the walk unless the route came in through a pocket its goal cells aren't in.
+                    if (goalSpecs.ContainsKey(sector) && goalSeeds[sector][entry] < Infinite) break;
+                    exit = BestExitFrom(layer, sector, entry);
                 }
             }
 
@@ -471,6 +521,7 @@ namespace WAR2D.Pathing
 
         private void DropSector(Layer layer, int sector)
         {
+            layer.Region = null;
             // A neighbour's matching cache holds portal indices into this sector, so it goes stale with
             // it: forget those caches too.
             for (int edge = West; edge <= North; edge++)
@@ -512,6 +563,9 @@ namespace WAR2D.Pathing
 
             var matching = new int[portals.Count];
             for (int i = 0; i < matching.Length; i++) matching[i] = NotLookedUp;
+            short[] pocketOf = LabelPockets(crop);
+            var portalPocket = new short[portals.Count];
+            for (int p = 0; p < portalPocket.Length; p++) portalPocket[p] = pocketOf[cells[offsets[p]]];
             layer.Sectors[sector] = new SectorState
             {
                 Crop = crop,
@@ -519,7 +573,150 @@ namespace WAR2D.Pathing
                 PortalCells = cells.ToArray(),
                 PortalOffsets = offsets.ToArray(),
                 Matching = matching,
+                PocketOf = pocketOf,
+                PortalPocket = portalPocket,
+                ExitPockets = new HashSet<short>(portalPocket).Count,
             };
+        }
+
+        /// <summary>
+        /// Numbers a crop's pockets of floor. Straight steps are enough to join them: a diagonal step needs both of the
+        /// straight cells beside it open, so the fields can't cross between two pockets either.
+        /// </summary>
+        private short[] LabelPockets(NativeArray<byte> crop)
+        {
+            var labels = new short[crop.Length];
+            for (int i = 0; i < labels.Length; i++) labels[i] = -1;
+            var open = new Stack<int>();
+            short next = 0;
+            for (int first = 0; first < labels.Length; first++)
+            {
+                if (labels[first] >= 0 || crop[first] != PathMap.Floor) continue;
+                labels[first] = next;
+                open.Push(first);
+                while (open.Count > 0)
+                {
+                    int cell = open.Pop();
+                    int x = cell % sectorCells, y = cell / sectorCells;
+                    if (x > 0) Join(cell - 1);
+                    if (x < sectorCells - 1) Join(cell + 1);
+                    if (y > 0) Join(cell - sectorCells);
+                    if (y < sectorCells - 1) Join(cell + sectorCells);
+                }
+                next++;
+            }
+            return labels;
+
+            void Join(int cell)
+            {
+                if (labels[cell] >= 0 || crop[cell] != PathMap.Floor) return;
+                labels[cell] = next;
+                open.Push(cell);
+            }
+        }
+
+        /// <summary>The pocket a cell of the cell grid is in, as <see cref="PocketOf"/> numbers it, or -1 on rock.</summary>
+        private int PocketAtCell(Layer layer, int cell)
+        {
+            int sector = SectorOfCell(cell);
+            Materialize(layer, sector);
+            short pocket = layer.Sectors[sector].PocketOf[LocalCell(cell, sector)];
+            return pocket < 0 ? -1 : sector * SectorCells + pocket;
+        }
+
+        /// <summary>
+        /// Every pocket a unit in <paramref name="pocket"/> can walk to, sector by sector through the portals. Kept until a
+        /// terrain change, because nearly every unit stands in the same big region and work orders ask for it often.
+        /// </summary>
+        private HashSet<int> RegionOf(Layer layer, int pocket)
+        {
+            if (layer.Region != null && layer.Region.Contains(pocket)) return layer.Region;
+            var region = new HashSet<int> { pocket };
+            var open = new Stack<int>();
+            open.Push(pocket);
+            while (open.Count > 0)
+            {
+                int key = open.Pop();
+                int sector = key / SectorCells;
+                Materialize(layer, sector);
+                SectorState state = layer.Sectors[sector];
+                for (int p = 0; p < state.Portals.Length; p++)
+                {
+                    if (state.PortalPocket[p] != key % SectorCells) continue;
+                    int matching = Matching(layer, sector, p);
+                    int neighbour = matching >= 0 ? NeighbourSector(sector, state.Portals[p].Edge) : -1;
+                    if (neighbour < 0) continue;
+                    int across = neighbour * SectorCells + layer.Sectors[neighbour].PortalPocket[matching];
+                    if (region.Add(across)) open.Push(across);
+                }
+            }
+            layer.Region = region;
+            return region;
+        }
+
+        /// <summary>The floor cell of a pocket's region nearest <paramref name="target"/> (a cell of the cell grid, as the result is).</summary>
+        private int NearestCellOfRegion(Layer layer, int pocket, int2 target)
+        {
+            int best = -1;
+            long bestDistance = long.MaxValue;
+            foreach (int key in RegionOf(layer, pocket))
+            {
+                int sector = key / SectorCells;
+                int2 origin = new int2(sector % sectorsX, sector / sectorsX) * sectorCells;
+                int2 inside = math.clamp(target, origin, origin + sectorCells - 1) - target;
+                if ((long)inside.x * inside.x + (long)inside.y * inside.y >= bestDistance) continue; // nothing here can be nearer
+                short[] labels = layer.Sectors[sector].PocketOf;
+                for (int local = 0; local < labels.Length; local++)
+                {
+                    if (labels[local] != key % SectorCells) continue;
+                    int2 at = origin + new int2(local % sectorCells, local / sectorCells) - target;
+                    long distance = (long)at.x * at.x + (long)at.y * at.y;
+                    if (distance >= bestDistance) continue;
+                    bestDistance = distance;
+                    best = (origin.y + local / sectorCells) * cellWidth + origin.x + local % sectorCells;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// Gives a region the goal is walled off from its own end: Stop cells around <paramref name="cell"/>, seeded like goal
+        /// cells. Regions don't connect, so the search from them can't disturb what it has already settled.
+        /// </summary>
+        private void AddStop(
+            Layer layer, int cell, int spread, Dictionary<int, SectorFieldSpec> goalSpecs, Dictionary<int, List<int>> goalCellsBySector,
+            Dictionary<int, ushort[]> goalSeeds, HashSet<int> goalPockets, HashSet<int> waiting)
+        {
+            NativeArray<int> around = FlowGoals.Around(new int2(cell % cellWidth, cell / cellWidth), layer.Grid, cellWidth, cellHeight, Allocator.Temp, spread);
+            var sectors = new HashSet<int>();
+            for (int i = 0; i < around.Length; i++)
+            {
+                int sector = SectorOfCell(around[i]), local = LocalCell(around[i], sector);
+                if (!goalCellsBySector.TryGetValue(sector, out List<int> list))
+                {
+                    goalCellsBySector[sector] = list = new List<int>(8);
+                    goalSpecs[sector] = NewSpec(sector);
+                }
+                SectorFieldSpec spec = goalSpecs[sector];
+                if (spec.GoalCells.Length >= spec.GoalCells.Capacity || spec.ExitDirections.Length >= spec.ExitDirections.Capacity) continue;
+                list.Add(local);
+                spec.GoalCells.Add(local);
+                spec.GoalCosts.Add(0);
+                spec.ExitCells.Add(local);
+                spec.ExitDirections.Add(FlowDirections.Stop);
+                goalSpecs[sector] = spec;
+                sectors.Add(sector);
+                int pocket = PocketAtCell(layer, around[i]);
+                goalPockets.Add(pocket);
+                waiting.Remove(pocket);
+            }
+            around.Dispose();
+            foreach (int sector in sectors)
+            {
+                ushort[] toGoals = BuildInSectorField(layer, sector, goalCellsBySector[sector]);
+                goalSeeds[sector] = toGoals;
+                for (int p = 0; p < toGoals.Length; p++) Seed(layer, sector, p, toGoals[p]);
+            }
         }
 
         private const int NotLookedUp = -2;
@@ -668,35 +865,38 @@ namespace WAR2D.Pathing
             HeapPush(layer, node);
         }
 
-        /// <summary>The distinct sectors the order's start cells fall in, at most 64 of them.</summary>
-        private int[] StartSectors(NativeArray<int> startCells)
+        /// <summary>The distinct pockets the order's start cells stand in, in the cells' order.</summary>
+        private List<int> StartPockets(int sizeClass, NativeArray<int> startCells)
         {
-            if (startCells.Length == 0) return Array.Empty<int>();
-            var sectors = new List<int>(8);
+            var pockets = new List<int>(8);
             var seen = new HashSet<int>();
-            for (int i = 0; i < startCells.Length && sectors.Count < 64; i++)
+            for (int i = 0; i < startCells.Length; i++)
             {
-                int sector = SectorOf(new int2(startCells[i] % width, startCells[i] / width));
-                if (seen.Add(sector)) sectors.Add(sector);
+                int pocket = PocketOf(sizeClass, new int2(startCells[i] % width, startCells[i] / width));
+                if (pocket >= 0 && seen.Add(pocket)) pockets.Add(pocket);
             }
-            return sectors.ToArray();
+            return pockets;
         }
 
-        private void ExpandUntilSettled(Layer layer, int[] startSectors)
+        /// <summary>
+        /// Runs the search until a portal of every <paramref name="waiting"/> pocket is settled. Dijkstra settles the cheapest
+        /// portal of a pocket first, and only a crossing can reach it, so the pocket's way out is known then.
+        /// ponytail: a pocket the goal is walled off from runs this to the end of the goal's region: on a 1024 map about 7 ms
+        /// a time, and about 390 ms the first time if no order has filled the cost tables yet. Check the region first
+        /// (<see cref="RegionOf"/>) if that ever shows.
+        /// </summary>
+        private void ExpandUntilSettled(Layer layer, HashSet<int> waiting)
         {
-            if (startSectors.Length == 0) return;
-            int remaining = startSectors.Length;
-            for (int expanded = 0; expanded < MaxSearchNodes && layer.Heap.Count > 0 && remaining > 0; expanded++)
+            for (int expanded = 0; expanded < MaxSearchNodes && layer.Heap.Count > 0 && waiting.Count > 0; expanded++)
             {
                 int node = HeapPop(layer);
                 if (layer.Settled[node]) continue;
                 int sector = node / MaxPortals, portal = node % MaxPortals;
-                bool reachedStart = !HasSettledPortal(layer, sector) && IsStartSector(startSectors, sector);
                 layer.Settled[node] = true;
-                if (reachedStart) remaining--;
 
                 EnsureCosts(layer, sector);
                 SectorState state = layer.Sectors[sector];
+                waiting.Remove(sector * SectorCells + state.PortalPocket[portal]);
                 int n = state.Portals.Length;
                 ushort distance = layer.Distance[node];
                 for (int q = 0; q < n; q++)
@@ -715,22 +915,6 @@ namespace WAR2D.Pathing
             }
         }
 
-        private static bool IsStartSector(int[] startSectors, int sector)
-        {
-            for (int i = 0; i < startSectors.Length; i++)
-                if (startSectors[i] == sector) return true;
-            return false;
-        }
-
-        private bool HasSettledPortal(Layer layer, int sector)
-        {
-            // A sector counts as reached once any portal of it is settled; Dijkstra settles the
-            // cheapest portal of a sector first, so its best exit is known then.
-            for (int p = 0; p < MaxPortals; p++)
-                if (layer.Settled[sector * MaxPortals + p]) return true;
-            return false;
-        }
-
         private void Relax(Layer layer, int sector, int portal, int cost)
         {
             if (cost >= Infinite) return;
@@ -739,18 +923,6 @@ namespace WAR2D.Pathing
             if (layer.Settled[node] || cost >= layer.Distance[node]) return;
             layer.Distance[node] = (ushort)cost;
             HeapPush(layer, node);
-        }
-
-        private int BestPortal(Layer layer, int sector)
-        {
-            int best = -1;
-            ushort bestCost = Infinite;
-            for (int p = 0; p < MaxPortals; p++)
-            {
-                ushort cost = layer.Distance[sector * MaxPortals + p];
-                if (cost < bestCost) { bestCost = cost; best = p; }
-            }
-            return best;
         }
 
         /// <summary>
@@ -775,12 +947,14 @@ namespace WAR2D.Pathing
             return best;
         }
 
-        /// <summary>The portal of <paramref name="sector"/> with the cheapest way to the goal by crossing it, or -1.</summary>
-        private int BestCrossing(Layer layer, int sector)
+        /// <summary>The portal of a sector's <paramref name="pocket"/> with the cheapest way to the goal by crossing it, or -1.</summary>
+        private int BestCrossingOf(Layer layer, int sector, int pocket)
         {
-            int n = layer.Sectors[sector].Portals.Length, best = -1, bestCost = Infinite;
+            SectorState state = layer.Sectors[sector];
+            int n = state.Portals.Length, best = -1, bestCost = Infinite;
             for (int q = 0; q < n; q++)
             {
+                if (state.PortalPocket[q] != pocket) continue;
                 int cost = CrossingCostOf(layer, sector, q);
                 if (cost < bestCost) { bestCost = cost; best = q; }
             }
@@ -899,11 +1073,15 @@ namespace WAR2D.Pathing
             int crossingCost = CrossingCostOf(layer, sector, exit);
             ushort cost = crossingCost < Infinite ? (ushort)crossingCost : layer.Distance[sector * MaxPortals + exit];
             byte crossing = Crossing[state.Portals[exit].Edge];
-            int offset = state.PortalOffsets[exit];
-            for (int i = 0; i < state.Portals[exit].Length; i++)
+            int offset = state.PortalOffsets[exit], length = state.Portals[exit].Length;
+            // A sector's lists are short, and a wide exit could fill them: each pocket keeps a share, or a later one has no way out.
+            int room = math.min(spec.GoalCells.Capacity - spec.GoalCells.Length, spec.ExitDirections.Capacity - spec.ExitDirections.Length);
+            int share = math.max(1, room / math.max(1, state.ExitPockets));
+            if (length > share) { offset += (length - share) / 2; length = share; }
+            length = math.min(length, room);
+            for (int i = 0; i < length; i++)
             {
                 int cell = state.PortalCells[offset + i];
-                if (spec.GoalCells.Length >= spec.GoalCells.Capacity || spec.ExitDirections.Length >= spec.ExitDirections.Capacity) break;
                 spec.GoalCells.Add(cell);
                 spec.GoalCosts.Add(cost);
                 spec.ExitCells.Add(cell);

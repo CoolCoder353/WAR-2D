@@ -50,6 +50,7 @@ namespace WAR2D.Sim
                 Positions = data.Positions, Radius = data.Radius, Health = data.Health, Type = data.Type, OwnerId = data.OwnerId,
                 OwnerSlot = data.OwnerSlot, AttackMask = data.AttackMask, BuildingOwnerSlot = data.BuildingOwnerSlot, WallOwnerSlot = data.WallOwnerSlot,
                 IdOf = data.IdOf, WorkTile = data.WorkTile, WorkKind = data.WorkKind,
+                OrderSlot = data.OrderSlot, OrderLive = data.OrderLive,
                 BuildingCount = math.min(data.BuildingCount[0], data.BuildingCapacity),
                 BuildingAnchor = data.BuildingAnchor, BuildingSize = data.BuildingSize, BuildingFlag = data.BuildingFlag,
                 BuildingHealth = data.BuildingHealth, BuildingMaxHealth = data.BuildingMaxHealth,
@@ -72,7 +73,8 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<float2> Positions;
         [ReadOnly] public NativeArray<float> Radius, Health, BuildingHealth, BuildingMaxHealth;
         [ReadOnly] public NativeArray<byte> Type, WorkKind, BuildingFlag;
-        [ReadOnly] public NativeArray<int> IdOf, WorkTile, OwnerId;
+        [ReadOnly] public NativeArray<int> IdOf, WorkTile, OwnerId, OrderSlot;
+        [ReadOnly] public NativeArray<byte> OrderLive;
         [ReadOnly] public NativeArray<int2> BuildingAnchor, BuildingSize;
         [ReadOnly] public NativeArray<byte> OwnerSlot, BuildingOwnerSlot, WallOwnerSlot;
         [ReadOnly] public NativeArray<ushort> AttackMask;
@@ -103,10 +105,23 @@ namespace WAR2D.Sim
                 if (kind == WorkKinds.Build && !blueprint) { Finished.Enqueue(IdOf[i]); continue; }
                 if (!Friendly(OwnerSlot[i], BuildingOwnerSlot[b])) { Finished.Enqueue(IdOf[i]); continue; }
                 if (kind == WorkKinds.Repair && !blueprint && BuildingHealth[b] >= BuildingMaxHealth[b]) { Finished.Enqueue(IdOf[i]); continue; }
-                if (DistanceToRect(Positions[i], BuildingAnchor[b], BuildingSize[b]) > Reach + Radius[i]) continue;
+                if (DistanceToRect(Positions[i], BuildingAnchor[b], BuildingSize[b]) > Reach + Radius[i])
+                {
+                    GiveUpIfStopped(i);
+                    continue;
+                }
                 if (blueprint) BuildingWork[b] += Power * Dt;
                 else Repairs.Enqueue(new RepairWork { Slot = b, Payer = OwnerId[i], Work = Power * Dt });
             }
+        }
+
+        /// <summary>
+        /// A Builder out of reach with no order left to walk it there (a big group stopped short of the job, or a crowd pushed it
+        /// away) would stand with the job for good, never idle. It drops the job, and auto-work sends it back on its own.
+        /// </summary>
+        private void GiveUpIfStopped(int i)
+        {
+            if ((uint)OrderSlot[i] >= (uint)OrderLive.Length || OrderLive[OrderSlot[i]] == 0) Finished.Enqueue(IdOf[i]);
         }
 
         /// <summary>One Builder's work on a wall tile: Blueprints wait while any unit's body overlaps the tile.</summary>
@@ -122,7 +137,11 @@ namespace WAR2D.Sim
             }
             float2 lo = tile, hi = tile + 1;
             float2 d = math.max(math.max(lo - Positions[i], Positions[i] - hi), 0f);
-            if (math.length(d) > Reach + Radius[i]) return;
+            if (math.length(d) > Reach + Radius[i])
+            {
+                GiveUpIfStopped(i);
+                return;
+            }
             if (state == WallStates.Blueprint && Occupied(tile)) return;
             Walls.Enqueue(new TileWork { Tile = index, Amount = Power * Dt, OwnerId = OwnerId[i] });
         }

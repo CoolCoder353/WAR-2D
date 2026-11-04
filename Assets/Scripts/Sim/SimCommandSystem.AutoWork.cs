@@ -34,10 +34,10 @@ namespace WAR2D.Sim
                 float2 at = data.Positions[slot];
                 OrderKind kind;
                 int2 tile;
-                if (TryNearestBuildWork(data, context, owner, ownerSlot, at, out tile)) kind = OrderKind.Build;
+                if (TryNearestBuildWork(data, context, owner, ownerSlot, at, data.SizeClass[slot], out tile)) kind = OrderKind.Build;
                 else if ((context.BudgetOf == null || context.BudgetOf(owner) > 0f) && TryNearestRepair(data, owner, ownerSlot, at, rSq, out tile)) kind = OrderKind.Repair;
                 else continue;
-                ApplyWorkOrder(data, context, new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, OwnerId = owner, Tile = tile, Ids = new[] { id } }, unitCount);
+                ApplyWorkOrder(data, context, new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, OwnerId = owner, Tile = tile, Ids = new[] { id } }, unitCount, background: true);
             }
         }
 
@@ -78,22 +78,30 @@ namespace WAR2D.Sim
             for (int next = 0; next < responders.Length;)
             {
                 int alarm = (int)(responders[next] >> 32);
+                int ownerSlot = alarm / DefendAlarms.PerOwner;
+                DefendAlarm raised = data.Alarms[alarm];
+                bool seen = NearestEnemyJob.Sees(data.Visible, ownerSlot * data.FogCells, raised.From, data.FogCellSize, data.FogW, data.FogH);
+                int2 goal = DefendAlarms.Goal(raised, seen, data.DefendStepTiles);
                 foreach (List<int> list in moversByClass) list.Clear();
                 for (; next < responders.Length && (int)(responders[next] >> 32) == alarm; next++)
                 {
                     int slot = (int)(responders[next] & 0xffffffffL);
                     int id = data.IdOf[slot];
-                    if (!data.PendingOrders.ContainsKey(id) && context.Waypoints.CountOf(id) == 0) moversByClass[data.SizeClass[slot]].Add(slot);
+                    if (!data.PendingOrders.ContainsKey(id) && context.Waypoints.CountOf(id) == 0 && CanWalkTo(data, context, slot, goal)) moversByClass[data.SizeClass[slot]].Add(slot);
                 }
-                int ownerSlot = alarm / DefendAlarms.PerOwner;
-                DefendAlarm raised = data.Alarms[alarm];
-                bool seen = NearestEnemyJob.Sees(data.Visible, ownerSlot * data.FogCells, raised.From, data.FogCellSize, data.FogW, data.FogH);
-                int2 goal = DefendAlarms.Goal(raised, seen, data.DefendStepTiles);
                 for (int sizeClass = 0; sizeClass < moversByClass.Length; sizeClass++)
-                    if (moversByClass[sizeClass].Count > 0) Issue(data, context, moversByClass[sizeClass], sizeClass, goal, Stances.AttackMove, tick, data.OwnerIdBySlot[ownerSlot]);
+                    if (moversByClass[sizeClass].Count > 0) Issue(data, context, moversByClass[sizeClass], sizeClass, goal, Stances.AttackMove, tick, data.OwnerIdBySlot[ownerSlot], background: true);
             }
             foreach (List<int> list in moversByClass) list.Clear();
             for (int s = 0; s < data.AlarmCount.Length; s++) data.AlarmCount[s] = 0;
+        }
+
+        /// <summary>True when the unit can walk to the goal as <see cref="OrderBook.Issue"/> will snap it, so nobody answers a shooter behind a wall by waiting at the wall for good.</summary>
+        private static bool CanWalkTo(SimData data, SimContext context, int slot, int2 goal)
+        {
+            int2 from = (int2)math.floor(data.Positions[slot]);
+            goal = math.clamp(goal, 0, new int2(data.Width - 1, data.Height - 1));
+            return OrderBook.SnapGoal(context.Map.Grid, goal, from, OrderBook.GoalSnapRadius, out int2 snapped) && context.Orders.Reaches(data.SizeClass[slot], from, snapped);
         }
 
         private readonly List<int> blueprints = new List<int>();
@@ -117,8 +125,8 @@ namespace WAR2D.Sim
             }
         }
 
-        /// <summary>The nearest own blueprint (a tile of its footprint) or unfinished own wall, however far.</summary>
-        private bool TryNearestBuildWork(SimData data, SimContext context, int owner, int ownerSlot, float2 at, out int2 tile)
+        /// <summary>The nearest own blueprint (a tile of its footprint) or unfinished own wall the Builder can walk to, however far.</summary>
+        private bool TryNearestBuildWork(SimData data, SimContext context, int owner, int ownerSlot, float2 at, int sizeClass, out int2 tile)
         {
             tile = default;
             float best = float.MaxValue;
@@ -126,16 +134,36 @@ namespace WAR2D.Sim
             {
                 if (data.BuildingOwnerId[b] != owner) continue;
                 float d = DistanceSqToFootprint(at, data.BuildingAnchor[b], data.BuildingSize[b]);
-                if (d < best) { best = d; tile = Footprint.Start(data.BuildingAnchor[b], data.BuildingSize[b]); }
+                if (d >= best) continue;
+                int2 start = Footprint.Start(data.BuildingAnchor[b], data.BuildingSize[b]);
+                if (!CanStandBeside(context, at, sizeClass, start, data.BuildingSize[b])) continue;
+                best = d;
+                tile = start;
             }
             foreach (int index in context.UnfinishedWalls)
             {
                 if (data.WallOwnerSlot[index] != (byte)ownerSlot) continue;
                 int2 wall = new int2(index % data.Width, index / data.Width);
                 float d = math.distancesq(at, (float2)wall + 0.5f);
-                if (d < best) { best = d; tile = wall; }
+                if (d >= best || !CanStandBeside(context, at, sizeClass, wall, new int2(1, 1))) continue;
+                best = d;
+                tile = wall;
             }
             return best < float.MaxValue;
+        }
+
+        /// <summary>True when a unit at <paramref name="at"/> can walk to a free tile touching the footprint, so a walled-off blueprint doesn't hold a Builder from the next one.</summary>
+        private static bool CanStandBeside(SimContext context, float2 at, int sizeClass, int2 start, int2 size)
+        {
+            int2 from = (int2)math.floor(at);
+            for (int y = start.y - 1; y <= start.y + size.y; y++)
+            for (int x = start.x - 1; x <= start.x + size.x; x++)
+            {
+                if (x >= start.x && x < start.x + size.x && y >= start.y && y < start.y + size.y) continue;
+                var t = new int2(x, y);
+                if (context.Map.IsWalkable(t) && context.Orders.Reaches(sizeClass, from, t)) return true;
+            }
+            return false;
         }
 
         /// <summary>The nearest own finished building or built wall under the repair share, within reach.</summary>

@@ -31,6 +31,9 @@ namespace WAR2D.Sim
         /// (<see cref="OrderFieldTable.MaxOrders"/>) and leave everyone else's orders refused.
         /// </summary>
         public const int MaxOrdersPerOwner = OrderFieldTable.MaxOrders / 8;
+
+        /// <summary>Most live orders an owner holds before the game's own orders (idle Builders' work, idle units answering fire) wait, so they can't leave a player's click refused.</summary>
+        public const int MaxBackgroundOrdersPerOwner = MaxOrdersPerOwner * 3 / 4;
         private JobHandle rebuilds;
         private bool disposed;
 
@@ -44,7 +47,7 @@ namespace WAR2D.Sim
         public NativeArray<int> Followers;
         /// <summary>Per order handle (v0.16): its leading follower's distance to the goal, written by the movement stage.</summary>
         public NativeArray<float> Lead;
-        /// <summary>(handle, sector) pairs where a unit of a ready order found no direction.</summary>
+        /// <summary>(handle, tile index) pairs where a unit of a ready order found no direction.</summary>
         public NativeQueue<int2> RouteMisses;
 
         public OrderBook(in MapGrid map)
@@ -73,9 +76,10 @@ namespace WAR2D.Sim
         /// Creates (or joins) the order for a goal and size class and returns its handle, or -1 when the
         /// table is full. <paramref name="startTiles"/> (tile indices of the ordered units) decide which
         /// sectors the route covers first. An <paramref name="owner"/> already holding
-        /// <see cref="MaxOrdersPerOwner"/> other orders is refused with -1.
+        /// <see cref="MaxOrdersPerOwner"/> other orders is refused with -1, or
+        /// <see cref="MaxBackgroundOrdersPerOwner"/> for an order the player didn't give.
         /// </summary>
-        public int Issue(int2 goal, int sizeClass, NativeArray<int> startTiles, int tick, int owner)
+        public int Issue(int2 goal, int sizeClass, NativeArray<int> startTiles, int tick, int owner, bool background = false)
         {
             goal = math.clamp(goal, 0, new int2(cache.Width - 1, cache.Height - 1));
             int2 from = startTiles.Length > 0 ? new int2(startTiles[0] % cache.Width, startTiles[0] / cache.Width) : goal;
@@ -87,7 +91,7 @@ namespace WAR2D.Sim
                 return -1;
             }
             if (!ordersByOwner.TryGetValue(owner, out HashSet<int> held)) ordersByOwner[owner] = held = new HashSet<int>();
-            if (!held.Contains(handle) && held.Count >= MaxOrdersPerOwner)
+            if (!held.Contains(handle) && held.Count >= (background ? MaxBackgroundOrdersPerOwner : MaxOrdersPerOwner))
             {
                 cache.Release(handle, 1);
                 return -1;
@@ -96,14 +100,16 @@ namespace WAR2D.Sim
             if (issuedTick.ContainsKey(handle))
             {
                 cache.Release(handle, 1); // joining a live order: keep one reference per order
-                for (int i = 0; i < startTiles.Length; i++)
-                    cache.AddStartSector(handle, table.SectorOf(new int2(startTiles[i] % cache.Width, startTiles[i] / cache.Width)));
+                cache.AddStartCells(handle, startTiles);
             }
             issuedTick[handle] = tick;
             Goal[handle] = (float2)goal + 0.5f;
             Live[handle] = 1;
             return handle;
         }
+
+        /// <summary>True when a unit of the size class at <paramref name="from"/> can walk to <paramref name="to"/>.</summary>
+        public bool Reaches(int sizeClass, int2 from, int2 to) => cache.Graph.Reaches(sizeClass, from, to);
 
         /// <summary>
         /// The goal itself when it is walkable, else the nearest walkable tile within <paramref name="radius"/>
@@ -160,11 +166,14 @@ namespace WAR2D.Sim
             }
 
             missSeen.Clear();
+            var missed = new NativeArray<int>(1, Allocator.Temp);
             while (RouteMisses.TryDequeue(out int2 miss))
             {
                 if (Live[miss.x] == 0 || !missSeen.Add(((long)miss.x << 32) | (uint)miss.y)) continue;
-                cache.AddStartSector(miss.x, miss.y);
+                missed[0] = miss.y;
+                cache.AddStartCells(miss.x, missed);
             }
+            missed.Dispose();
 
             foreach (int handle in issuedTick.Keys) Ready[handle] = cache.HasPublished(handle) ? (byte)1 : (byte)0;
         }
