@@ -18,6 +18,21 @@ The recorder's units go through `DeferredLane` (encoded during the next tick to 
 | A Heavy lost to turrets after the buff | **Changed on purpose.** Even at ×0.4 against heavy armour, a 500-health, 12-damage turret wins an equal-cost fight, so the manual no longer says Heavies beat turrets (×0.5 shipped). Artillery and Snipers still out-range it. The approved manual mock's counter lists changed with the numbers; regenerate it with `tools/manual-mock.js`. |
 | Numbers not measured | Artillery, Sniper, Gun turret, wall and bomb numbers were set by hand and checked with `balance-sheet.js` only. **Not yet run:** `ai-bench` and the perf gate, which the longer Sniper and Artillery sight (four times the vision cost per unit for a Sniper) makes worth re-running. |
 
+## Code review of the third-playtest commit (2026-11-04, `3b16990`)
+
+Found by reading the commit; none reproduced in a running match yet. Check these before touching the code they name.
+
+| Item | State |
+| --- | --- |
+| Ping cooldown outlives the match | **Open.** `PlayerActions.pingCooldown` is a static, built once and never reset. After a host returns to the menu and hosts again, `NetworkTime.time` restarts near 0 and netIds are reused, so `now - then` is negative and the player cannot ping until the clock passes the old time. A changed `Pings/CooldownSeconds` is also ignored for the rest of the process. Fix: reset it at match start, or keep the last-ping time on `ServerPlayer` (`ResetResources` clears it). |
+| `IntegrateJob.Escapes` is too permissive | **Open.** It allows any step while the body already overlaps something, if the new centre tile is free floor. It does not check that the step reduces the overlap, or the size class. A 2x2 unit that overlaps a wall corner may follow its path through 1-tile gaps it should not fit. Fix: allow only steps that reduce the overlap, or limit it to spawn and push-out cases. |
+| Unpaid HQ stops Builder production | **Open, unconfirmed.** `SpawnerSystem` skips every unpaid producer, the HQ included, and building upkeep is paid only from what is above the units' reserve. A player with no Builders and little money can lose Builder production while rebuilding their income. Consider exempting the HQ. |
+| `TargetSearch.BuildingReachCells` hard-codes 3 tiles | **Open.** It stands for half an HQ's footprint and breaks the "no hard-coded balance values" rule. A building with a footprint over 6 tiles is hashed by its centre and never found by units at its edge; every search also scans the wider block. Derive it from the largest configured footprint, as `SearchCells` is from the largest range. |
+| `DamageHit.From` uses (0, 0) for "no shooter" | **Open, low.** (0, 0) is a real map coordinate, so a shooter there raises no alarm, and a new hit producer that forgets `From` silently skips alarms. A flag or NaN would make it explicit. |
+| `SendSpectatorStats` allocates every second | **Open, low.** Three lists and three arrays per call, and a `GetComponent<ClientPlayer>()` per spectator, even with no spectator. Check for a spectator first and reuse scratch lists. |
+| Gifts under Infinite resources are no-ops that still count | **Open.** `GameCore.TryGift` spends from an infinite giver (nothing leaves) and `Add` ignores an infinite receiver, yet it still records `Stats.Gift`, sends both gift notices and raises a `GiftReceived` alert. The AI's `DiplomacyManager.Gift` sees a balance of 999999, always above `GiftSurplus`, so each AI gifts `999999 × GiftShare` to a teammate every surplus spell. Fix: refuse gifts when `Settings.InfiniteResources`, and hide the gift control. |
+| Pings and the spectate view have no end-to-end test | **Open.** Only `PingRules` and the sim rules are tested. `PlayerActions.Ping` (cooldown, Playing and tile checks, AI skip, share-vision recipients) and `SetSpectateView` are not, and a ping reaching another player has not been seen in a real match. |
+
 ## v0.12 Arsenal: built, perf gate passes
 
 The code, the atlases (`WAR-2D/Art/Build all`, the Barracks now keyed `Barracks`) and the sound effects (`WAR-2D/Audio/Build SFX`) are in. Still open:
