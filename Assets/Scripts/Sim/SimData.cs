@@ -89,7 +89,7 @@ namespace WAR2D.Sim
         public float SeparationStrength;
         /// <summary>Formations (v0.16, <c>&lt;Formation&gt;</c>): slot spacing, the loose radius, the slot-steering radius and the lost distance, in tiles.</summary>
         public float FormationSpacing, FormationLoose, FormationSlot, FormationLost;
-        /// <summary>Idle Builders' own work (v0.16, <c>&lt;AutoWork&gt;</c>): how far they look (tiles), the repair share, and ticks between looks.</summary>
+        /// <summary>Idle Builders' own work (v0.16, <c>&lt;AutoWork&gt;</c>): how far they look for repairs (tiles), the repair share, and ticks between looks.</summary>
         public float AutoWorkRadius, AutoWorkRepairBelow;
         public int AutoWorkSlice;
         /// <summary>Idle units answering fire (playtest 2026-11-04, <c>&lt;Defend&gt;</c>): how far from a victim they answer, the step into the fog, the alarm cell and ticks between answers.</summary>

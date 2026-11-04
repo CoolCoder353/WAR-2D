@@ -57,6 +57,9 @@ namespace WAR2D.Sim
         /// <summary>Dig areas and the Diggers sharing them (Dig drags).</summary>
         public DigAreaBook DigAreas { get; } = new DigAreaBook();
 
+        /// <summary>Tile indices of wall blueprints and rising walls, so an idle Builder can look for one without scanning the map.</summary>
+        public HashSet<int> UnfinishedWalls { get; } = new HashSet<int>();
+
         /// <summary>The config the sim was built from.</summary>
         public GameConfigData Config { get; }
 

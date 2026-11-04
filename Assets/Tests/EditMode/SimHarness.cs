@@ -148,6 +148,7 @@ public sealed class SimHarness : IDisposable
         Map.SetTile(tile, TileType.PlayerWall);
         data.RefreshTerrain(tile);
         data.WallState[index] = WallStates.Built;
+        Context.UnfinishedWalls.Remove(index);
         data.WallHealth[index] = data.WallMaxHealth;
         data.RebuildOpaqueSum();
     }

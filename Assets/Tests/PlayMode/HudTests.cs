@@ -574,6 +574,16 @@ public class HudTests
     }
 
     [UnityTest, Timeout(120000)]
+    public IEnumerator NothingSelectedShowsTheBuildRowWithoutRepair()
+    {
+        yield return WithBuilder(_ => { });
+        VisualElement root = HudRoot();
+        UnitCommander.Instance.Selection.SelectIds(new List<int>());
+        yield return PlayModeMatch.WaitUntil(() => Shown(root.Q<Button>("build-radar")), 5f);
+        Assert.That(Shown(root.Q<Button>("cmd-repair")), Is.False, "Repair needs Builders");
+    }
+
+    [UnityTest, Timeout(120000)]
     public IEnumerator BuilderCardShowsTheDefencesWithTheirCosts()
     {
         int builder = 0;

@@ -10,8 +10,8 @@ namespace WAR2D.Sim
         /// <summary>
         /// Idle Builders work on their own (v0.16): each Builder with no order, no work, no queued waypoints and nothing
         /// pending looks, once every <see cref="SimData.AutoWorkSlice"/> ticks, for its owner's nearest blueprint or unfinished
-        /// wall within <see cref="SimData.AutoWorkRadius"/> tiles, then for the nearest own building or wall below
-        /// <see cref="SimData.AutoWorkRepairBelow"/> of its health (not while the owner has no money), and takes it as a
+        /// wall anywhere on the map, then for the nearest own building or wall within <see cref="SimData.AutoWorkRadius"/> tiles
+        /// below <see cref="SimData.AutoWorkRepairBelow"/> of its health (not while the owner has no money), and takes it as a
         /// Build or Repair order, exactly as a click would (<see cref="ApplyWorkOrder"/>). Never a teammate's. Runs after the
         /// boundary's drained commands, so a player's order this boundary wins.
         /// </summary>
@@ -34,7 +34,7 @@ namespace WAR2D.Sim
                 float2 at = data.Positions[slot];
                 OrderKind kind;
                 int2 tile;
-                if (TryNearestBuildWork(data, owner, ownerSlot, at, rSq, out tile)) kind = OrderKind.Build;
+                if (TryNearestBuildWork(data, context, owner, ownerSlot, at, out tile)) kind = OrderKind.Build;
                 else if ((context.BudgetOf == null || context.BudgetOf(owner) > 0f) && TryNearestRepair(data, owner, ownerSlot, at, rSq, out tile)) kind = OrderKind.Repair;
                 else continue;
                 ApplyWorkOrder(data, context, new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, OwnerId = owner, Tile = tile, Ids = new[] { id } }, unitCount);
@@ -117,19 +117,25 @@ namespace WAR2D.Sim
             }
         }
 
-        /// <summary>The nearest own blueprint (a tile of its footprint) or unfinished own wall within reach.</summary>
-        private bool TryNearestBuildWork(SimData data, int owner, int ownerSlot, float2 at, float rSq, out int2 tile)
+        /// <summary>The nearest own blueprint (a tile of its footprint) or unfinished own wall, however far.</summary>
+        private bool TryNearestBuildWork(SimData data, SimContext context, int owner, int ownerSlot, float2 at, out int2 tile)
         {
             tile = default;
-            float best = rSq;
+            float best = float.MaxValue;
             foreach (int b in blueprints)
             {
                 if (data.BuildingOwnerId[b] != owner) continue;
                 float d = DistanceSqToFootprint(at, data.BuildingAnchor[b], data.BuildingSize[b]);
                 if (d < best) { best = d; tile = Footprint.Start(data.BuildingAnchor[b], data.BuildingSize[b]); }
             }
-            ScanWalls(data, at, ref best, ref tile, (byte)ownerSlot, false, 0f);
-            return best < rSq;
+            foreach (int index in context.UnfinishedWalls)
+            {
+                if (data.WallOwnerSlot[index] != (byte)ownerSlot) continue;
+                int2 wall = new int2(index % data.Width, index / data.Width);
+                float d = math.distancesq(at, (float2)wall + 0.5f);
+                if (d < best) { best = d; tile = wall; }
+            }
+            return best < float.MaxValue;
         }
 
         /// <summary>The nearest own finished building or built wall under the repair share, within reach.</summary>
@@ -143,15 +149,12 @@ namespace WAR2D.Sim
                 float d = DistanceSqToFootprint(at, data.BuildingAnchor[b], data.BuildingSize[b]);
                 if (d < best) { best = d; tile = Footprint.Start(data.BuildingAnchor[b], data.BuildingSize[b]); }
             }
-            ScanWalls(data, at, ref best, ref tile, (byte)ownerSlot, true, data.WallMaxHealth * data.AutoWorkRepairBelow);
+            ScanWalls(data, at, ref best, ref tile, (byte)ownerSlot, data.WallMaxHealth * data.AutoWorkRepairBelow);
             return best < rSq;
         }
 
-        /// <summary>
-        /// The nearest own wall tile within <paramref name="best"/> (squared): unfinished ones (a blueprint or rising) for
-        /// building, built ones under <paramref name="below"/> health for <paramref name="repair"/>.
-        /// </summary>
-        private static void ScanWalls(SimData data, float2 at, ref float best, ref int2 tile, byte ownerSlot, bool repair, float below)
+        /// <summary>The nearest built own wall tile under <paramref name="below"/> health, within <paramref name="best"/> (squared).</summary>
+        private static void ScanWalls(SimData data, float2 at, ref float best, ref int2 tile, byte ownerSlot, float below)
         {
             int r = (int)math.ceil(math.sqrt(best));
             int2 c = (int2)math.floor(at);
@@ -159,9 +162,7 @@ namespace WAR2D.Sim
             for (int x = math.max(0, c.x - r); x <= math.min(data.Width - 1, c.x + r); x++)
             {
                 int index = y * data.Width + x;
-                byte state = data.WallState[index];
-                if (state == WallStates.None || data.WallOwnerSlot[index] != ownerSlot) continue;
-                if (repair ? state != WallStates.Built || data.WallHealth[index] >= below : state == WallStates.Built) continue;
+                if (data.WallState[index] != WallStates.Built || data.WallOwnerSlot[index] != ownerSlot || data.WallHealth[index] >= below) continue;
                 float d = math.distancesq(at, new float2(x + 0.5f, y + 0.5f));
                 if (d < best) { best = d; tile = new int2(x, y); }
             }

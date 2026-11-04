@@ -325,7 +325,7 @@ namespace Config
     /// <summary>Builders working on their own when idle (v0.16).</summary>
     public class AutoWorkConfig
     {
-        /// <summary>Tiles an idle Builder looks for work.</summary>
+        /// <summary>Tiles an idle Builder looks for repairs (it looks for build work anywhere).</summary>
         public float Radius;
         /// <summary>Health share below which an own building or wall is repaired.</summary>
         public float RepairBelow;
