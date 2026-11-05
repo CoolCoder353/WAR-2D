@@ -34,6 +34,8 @@ public enum AlertKind : byte
     PlayerReturned,
     /// <summary>A player pinged the map (Tile) for the receiver: themselves or someone sharing vision with the receiver (OtherOwnerId). Playtest 2026-11-04.</summary>
     Ping,
+    /// <summary>The receiver's producers are waiting: a spawn was refused at the unit cap (playtest 2026-11-05). Once, again only after a spawn succeeds.</summary>
+    UnitCapReached,
 }
 
 /// <summary>

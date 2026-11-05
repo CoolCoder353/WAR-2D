@@ -117,7 +117,7 @@ public class PlaytestFix3Tests
     [Test]
     public void ABombersBlastDoesATenthToFriends()
     {
-        using var sim = new SimHarness(SimHarness.OpenMap(64), c => { c.Simulation.TargetSearchSliceTicks = 1; c.GetUnit(UnitType.Heavy).Damage = 0; });
+        using var sim = new SimHarness(SimHarness.OpenMap(64), c => { c.Simulation.TargetSearchSliceTicks = 1; c.GetUnit(UnitType.Heavy).Damage = 0; c.Bomber.FriendlyDamage = 0.1f; }); // pinned: the balance may set it to 0
         int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(20, 20), UnitType.SuicideBomber);
         int[] friend = sim.Spawn(SimHarness.OwnerA, new float2(21, 20), UnitType.Heavy);
         int[] enemy = sim.Spawn(SimHarness.OwnerB, new float2(20, 21), UnitType.Heavy);

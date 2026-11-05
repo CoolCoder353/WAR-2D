@@ -75,12 +75,12 @@ public class MapGeneratorTests
 
     /// <summary>
     /// Every lobby size's map for one seed, against its recorded hash: an accidental change to the generator (or to the
-    /// <c>&lt;Map&gt;</c> numbers) shows here. When the change is meant, record the new hashes (last: 2026-11-03, v0.17
-    /// rich gems in the central areas).
+    /// <c>&lt;Map&gt;</c> numbers) shows here. When the change is meant, record the new hashes (last: 2026-11-05, gem patches
+    /// and the rich gems' start clearance).
     /// </summary>
-    [TestCase(256, 4693615685231487340UL)]
-    [TestCase(512, 17454236144246519819UL)]
-    [TestCase(1024, 4745728311395710835UL)]
+    [TestCase(256, 3837137724347158538UL)]
+    [TestCase(512, 661219065714699307UL)]
+    [TestCase(1024, 7999288267031227692UL)]
     public void RecordedHashPerSize(int size, ulong expected)
     {
         using MapLayout l = Make(size, 12345u);
@@ -383,5 +383,20 @@ public class MapGeneratorTests
         int wanted = RegionMapGenerator.CentralRichGemTiles(Cfg, size);
         foreach (int r in RegionMapGenerator.RichAreas(l.Regions, l.Lanes, size, Cfg))
             Assert.That(CountRich(l, size, l.Regions[r].Centre, l.Regions[r].Radius + 4), Is.InRange(wanted * 3 / 4, wanted), $"area {r}");
+    }
+
+    [Test]
+    public void NoRichGemLiesNearAStartSite([Values(256, 512, 1024)] int size, [Values(3u, 21u, 77u)] uint seed)
+    {
+        // Playtest 2026-11-05: on 512 seed 21 a rich field grew 30 tiles from the start site at (141, 168).
+        using MapLayout l = Make(size, seed);
+        float clear = Cfg.RichStartClearance;
+        for (int i = 0; i < l.Tiles.Length; i++)
+        {
+            if (l.Tiles[i] != (byte)TileType.RichGem) continue;
+            var t = new int2(i % size, i / size);
+            foreach (int2 s in l.StartSites)
+                Assert.GreaterOrEqual(math.distance((float2)t, (float2)s), clear - 1f, $"rich gem at {t} beside the start at {s}");
+        }
     }
 }

@@ -99,6 +99,7 @@
                 <ui:Label name="production-mixed" text="These make different units. Select buildings of one kind to set their production." class="text command-card__hint" />
                 <ui:VisualElement name="production-rows" />
                 <ui:Label name="production-help" text="max 100 · cost charged at spawn" class="text--secondary" />
+                <ui:Label name="production-waiting" text="" class="text text--warning hidden" />
                 <ui:VisualElement name="production-rally" class="production__rally">
                     <ui:VisualElement class="production__rally-text">
                         <ui:Label text="Rally point" class="text production__rally-title" />

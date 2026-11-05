@@ -33,7 +33,7 @@ namespace WAR2D.Dev.DebugApi
             r.Add("text", DebugRole.Any, "text text: type characters into the focused text field", a =>
             {
                 string text = DebugArgs.Str(a, "text");
-                Configure();
+                Configure(); // before GetKeyboard, so a disabled keyboard is enabled first
                 Keyboard kb = GetKeyboard();
                 foreach (char c in text) InputSystem.QueueTextEvent(kb, c);
                 return "typed " + text.Length + " characters";
@@ -54,12 +54,38 @@ namespace WAR2D.Dev.DebugApi
                 }
                 return Run(MouseRoutine(action, mb, from, to, DebugArgs.Float(a, "hold", 0.08f), DebugArgs.Float(a, "duration", 0.4f)), new { x = from.x, y = Screen.height - from.y, to = new { x = to.x, y = Screen.height - to.y }, button, action });
             });
+            r.Add("inputstate", DebugRole.Any, "inputstate: what the Input System sees now (pointer, buttons, devices, focus), to check injected input arrives", a => new
+            {
+                pointer = Mouse.current == null ? null : new { x = Mouse.current.position.ReadValue().x, y = Screen.height - Mouse.current.position.ReadValue().y, left = Mouse.current.leftButton.isPressed, device = Mouse.current.name },
+                devices = InputSystem.devices.Count,
+                mice = string.Join(",", System.Linq.Enumerable.Select(System.Linq.Enumerable.OfType<Mouse>(InputSystem.devices), m => m.name + (m.enabled ? "" : " (disabled)"))),
+                focused = Application.isFocused,
+                runInBackground = Application.runInBackground,
+                background = InputSystem.settings?.backgroundBehavior.ToString(),
+                updateMode = InputSystem.settings?.updateMode.ToString(),
+                screen = new { w = Screen.width, h = Screen.height },
+                overUi = GameInput.PointerOverUI,
+                uiHits = UiHits(),
+            });
             r.Add("scroll", DebugRole.Any, "scroll dy [x y] [space]: turn the wheel (positive zooms in); optionally at a position first", a =>
             {
                 float dy = DebugArgs.Float(a, "dy");
                 Vector2? at = DebugArgs.Has(a, "x") ? ToScreen(DebugArgs.Str(a, "space", "screen").ToLowerInvariant(), DebugArgs.Float(a, "x"), DebugArgs.Float(a, "y")) : (Vector2?)null;
                 return Run(ScrollRoutine(dy, at));
             });
+        }
+
+        /// <summary>What the event system's raycasters hit under the pointer (the game treats any non-physics hit as UI).</summary>
+        private static string UiHits()
+        {
+            var system = UnityEngine.EventSystems.EventSystem.current;
+            if (system == null || Mouse.current == null) return "no event system";
+            var data = new UnityEngine.EventSystems.PointerEventData(system) { position = Mouse.current.position.ReadValue() };
+            var hits = new List<UnityEngine.EventSystems.RaycastResult>();
+            system.RaycastAll(data, hits);
+            var names = new List<string>();
+            foreach (var h in hits) names.Add((h.gameObject != null ? h.gameObject.name : "?") + " [" + (h.module != null ? h.module.GetType().Name : "?") + "]");
+            return string.Join("; ", names);
         }
 
         /// <summary>Releases everything this class holds down and restores the input settings it changed.</summary>
@@ -230,6 +256,11 @@ namespace WAR2D.Dev.DebugApi
         /// <summary>Lets injected input through when the game window is not focused (the editor's Game view, or a build in the background).</summary>
         private static void Configure()
         {
+            // Every command: a device the default background behaviour disabled while the editor was unfocused stays disabled
+            // after the switch to IgnoreFocus, and events queued to it are dropped (playtest 2026-11-05: no click or key
+            // reached the game until the editor happened to be focused).
+            foreach (InputDevice device in InputSystem.devices)
+                if (!device.enabled && (device is Mouse || device is Keyboard)) InputSystem.EnableDevice(device);
             if (configured) return;
             configured = true;
             InputSettings s = InputSystem.settings;

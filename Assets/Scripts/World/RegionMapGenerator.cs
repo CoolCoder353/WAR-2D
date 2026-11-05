@@ -428,8 +428,9 @@ namespace WAR2D.World
             if (richTiles > 0)
             {
                 var richRng = new Random(SubSeed(seed, attempt) ^ 0x2C1B3C6Du | 1u);
+                long clear = cfg.RichStartClearance;
                 foreach (int c in RichAreas(plan.Regions.ToArray(), LanesOf(plan), size, cfg))
-                    AddRichField(tiles, size, plan.Regions[c], richTiles, ref richRng);
+                    AddRichField(tiles, size, plan.Regions[c], richTiles, starts, clear, ref richRng);
             }
             WriteBorder(tiles, size, cfg.EdgeTiles);
 
@@ -686,14 +687,14 @@ namespace WAR2D.World
         /// Grows a cluster of up to <paramref name="count"/> gem tiles along the rim (rock facing floor) near
         /// <paramref name="centre"/>. With <paramref name="awayFrom"/> set, starts at the rim tile farthest from it.
         /// </summary>
-        private static int GrowGems(NativeArray<byte> tiles, int size, int2 centre, int reach, int count, int2 awayFrom, bool useAway, ref Random rng, byte kind = Gem)
+        private static int GrowGems(NativeArray<byte> tiles, int size, int2 centre, int reach, int count, int2 awayFrom, bool useAway, ref Random rng, byte kind = Gem, System.Func<int2, bool> allow = null)
         {
             var candidates = new List<int2>();
             for (int y = centre.y - reach; y <= centre.y + reach; y++)
             for (int x = centre.x - reach; x <= centre.x + reach; x++)
             {
                 int dx = x - centre.x, dy = y - centre.y;
-                if (dx * dx + dy * dy <= reach * reach && FacesFloor(tiles, size, x, y)) candidates.Add(new int2(x, y));
+                if (dx * dx + dy * dy <= reach * reach && FacesFloor(tiles, size, x, y) && (allow == null || allow(new int2(x, y)))) candidates.Add(new int2(x, y));
             }
             if (candidates.Count == 0) return 0;
 
@@ -812,21 +813,43 @@ namespace WAR2D.World
         /// Grows <paramref name="count"/> rich gem tiles in 2 to 4 clusters on the rock faces of a central area (v0.17), the
         /// clusters spread round it so more than one side is worth holding. Each cluster's reach stays inside the area's disc
         /// (centre 0.6 R out, reach 0.4 R + 4; the compass points are 1000 long), so no rich gem lies in a lane's chokepoint. Only rock facing floor turns:
-        /// ordinary gems stay.
+        /// ordinary gems stay. No rich gem lies within <paramref name="clear"/> tiles (straight line, <c>RichStartClearance</c>) of a start site
+        /// (playtest 2026-11-05: an area far from every start by lanes can still border one, and a cluster grew on the side
+        /// facing it, 30 tiles from the HQ site); a cluster whose compass point is that close tries the next points round.
         /// </summary>
-        private static void AddRichField(NativeArray<byte> tiles, int size, MapRegion region, int count, ref Random rng)
+        private static void AddRichField(NativeArray<byte> tiles, int size, MapRegion region, int count, List<int2> starts, long clear, ref Random rng)
         {
             // Integer arithmetic only (every machine regenerates the same map): the clusters' directions come from the
             // sixteen-point compass, evenly spaced from a random first one.
+            long clear2 = clear * clear;
+            System.Func<int2, bool> farFromStarts = t =>
+            {
+                foreach (int2 s in starts)
+                {
+                    long dx = t.x - s.x, dy = t.y - s.y;
+                    if (dx * dx + dy * dy < clear2) return false;
+                }
+                return true;
+            };
             int clusters = 2 + rng.NextInt(0, 3);
             int left = count;
             int turn = rng.NextInt(0, Directions.Length);
+            var used = new bool[Directions.Length];
             for (int k = 0; k < clusters && left > 0; k++)
             {
                 int share = k == clusters - 1 ? left : count / clusters;
-                int2 dir = Directions[(turn + k * Directions.Length / clusters) % Directions.Length];
-                int2 at = region.Centre + dir * region.Radius * 6 / 10000;
-                left -= GrowGems(tiles, size, at, region.Radius * 2 / 5 + 4, share, int2.zero, false, ref rng, RichGem);
+                int first = (turn + k * Directions.Length / clusters) % Directions.Length;
+                for (int step = 0; step < Directions.Length && share > 0; step++)
+                {
+                    int d = (first + step) % Directions.Length;
+                    if (used[d]) continue;
+                    int2 at = region.Centre + Directions[d] * region.Radius * 6 / 10000;
+                    if (!farFromStarts(at)) continue;
+                    used[d] = true;
+                    int placed = GrowGems(tiles, size, at, region.Radius * 2 / 5 + 4, share, int2.zero, false, ref rng, RichGem, farFromStarts);
+                    left -= placed;
+                    share -= placed;
+                }
             }
         }
 
@@ -846,14 +869,38 @@ namespace WAR2D.World
             GrowGems(tiles, size, region.Centre, region.Radius + 3, 6 + rng.NextInt(0, 5), away, true, ref rng);
         }
 
-        /// <summary>Each rock tile next to floor becomes a gem with probability <paramref name="gemChance"/>, in row-major order.</summary>
+        /// <summary>
+        /// Gem patches on the open map's rock faces (playtest 2026-11-05: no more lone gems here and there, only patches).
+        /// About <paramref name="gemChance"/> of the floor-facing rock turns to gem, as before, but grown as clusters of
+        /// <see cref="PatchMin"/> to <see cref="PatchMax"/> tiles around seeded rim points kept <see cref="PatchSpacing"/>
+        /// apart. Seeds are drawn in row-major order from one stream, so every machine grows the same map.
+        /// </summary>
         private static void SprinkleGems(NativeArray<byte> tiles, int size, ref Random rng, float gemChance)
         {
-            int threshold = (int)(math.clamp(gemChance, 0f, 1f) * 1000000f);
+            var rim = new List<int2>();
             for (int y = 1; y < size - 1; y++)
             for (int x = 1; x < size - 1; x++)
-                if (FacesFloor(tiles, size, x, y) && rng.NextInt(0, 1000000) < threshold) tiles[y * size + x] = Gem;
+                if (FacesFloor(tiles, size, x, y)) rim.Add(new int2(x, y));
+            long budget = (long)(rim.Count * math.clamp(gemChance, 0f, 1f));
+            if (budget <= 0) return;
+            var seeds = new List<int2>();
+            int spacing2 = PatchSpacing * PatchSpacing;
+            for (int tries = 0; budget > 0 && tries < rim.Count && tries < 20000; tries++)
+            {
+                int2 at = rim[rng.NextInt(0, rim.Count)];
+                if (!FacesFloor(tiles, size, at.x, at.y)) continue; // already gem
+                bool clear = true;
+                foreach (int2 sd in seeds)
+                    if (math.lengthsq(sd - at) < spacing2) { clear = false; break; }
+                if (!clear) continue;
+                seeds.Add(at);
+                int want = rng.NextInt(PatchMin, PatchMax + 1);
+                budget -= GrowGems(tiles, size, at, PatchReach, (int)math.min(want, math.max(PatchMin, budget)), int2.zero, false, ref rng);
+            }
         }
+
+        /// <summary>Gem patch size range and the least distance between two patch seeds (open-map gems, see <see cref="SprinkleGems"/>).</summary>
+        private const int PatchMin = 6, PatchMax = 12, PatchSpacing = 14, PatchReach = 5;
 
         /// <summary>
         /// The map's outer ring is border, and so is every rock tile within <paramref name="edgeTiles"/> of the edge

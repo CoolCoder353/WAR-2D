@@ -23,6 +23,8 @@ namespace WAR2D.Client
         private static readonly Color32 FloorColour = new Color32(0x58, 0x68, 0x78, 255);
         private static readonly Color32 RockColour = new Color32(0x1C, 0x23, 0x2B, 255);
         private static readonly Color32 GemColour = new Color32(0xE0, 0x3C, 0x3C, 255);
+        /// <summary>Rich gems: the in-game minimap's colour, drawn over everything in their block so a small field still shows.</summary>
+        private static Color32 RichColour => MapView.TileColor(TileType.RichGem);
 
         private (int size, uint seed) wanted = (-1, 0), pendingKey;
         private JobHandle pendingHandle;
@@ -103,6 +105,8 @@ namespace WAR2D.Client
             pending = false;
         }
 
+        private readonly List<int2> richTexels = new List<int2>();
+
         private void Show(NativeArray<byte> tiles, int2[] sites, int size)
         {
             if (Texture == null)
@@ -115,18 +119,30 @@ namespace WAR2D.Client
             for (int x = 0; x < Resolution; x++)
             {
                 int x0 = (int)(x * step), y0 = (int)(y * step);
-                int floor = 0, gem = 0, n = 0;
+                int floor = 0, gem = 0, rich = 0, n = 0;
                 for (int dy = 0; dy < block && y0 + dy < size; dy++)
                 for (int dx = 0; dx < block && x0 + dx < size; dx++)
                 {
                     byte tile = tiles[(y0 + dy) * size + x0 + dx];
                     if (tile == (byte)TileType.Ground) floor++;
+                    else if (tile == (byte)TileType.RichGem) rich++;
                     else if (TileRules.IsGem(tile)) gem++;
                     n++;
                 }
                 Color32 c = Color32.Lerp(RockColour, FloorColour, (float)floor / n);
+                if (rich > 0) richTexels.Add(new int2(x, y));
                 pixels[y * Resolution + x] = gem * 4 >= n ? GemColour : gem > 0 ? Color32.Lerp(c, GemColour, 0.5f) : c;
             }
+            // Rich gems drawn 3x3 texels each (playtest 2026-11-05: a field is a handful of tiles, one texel at 1024 lost them).
+            Color32 richColour = RichColour;
+            foreach (int2 t in richTexels)
+                for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    int px = t.x + dx, py = t.y + dy;
+                    if ((uint)px < Resolution && (uint)py < Resolution) pixels[py * Resolution + px] = richColour;
+                }
+            richTexels.Clear();
             Texture.Apply(false);
             var spawns = new int2[sites.Length];
             for (int i = 0; i < sites.Length; i++) spawns[i] = (int2)((float2)sites[i] / step);
