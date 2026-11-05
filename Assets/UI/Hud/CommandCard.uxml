@@ -103,7 +103,7 @@
                 <ui:VisualElement name="production-rally" class="production__rally">
                     <ui:VisualElement class="production__rally-text">
                         <ui:Label text="Rally point" class="text production__rally-title" />
-                        <ui:Label name="production-rally-help" text="Right-click: these producers. Ctrl + right-click: all of yours." class="text--secondary" />
+                        <ui:Label name="production-rally-help" text="Right-click: blue flag, units move. A, then click: red flag, units attack on the way. Ctrl: all of yours." class="text--secondary" />
                     </ui:VisualElement>
                     <ui:Button name="cmd-rally-all" class="command-button production__rally-all">
                         <war:CommandIcon icon="RallyAll" />

@@ -184,9 +184,10 @@ public static class PlayerActions
 
     /// <summary>
     /// Sets (or, with <paramref name="clear"/>, removes) the rally tile of each named spawner the owner has: new units
-    /// from it get a move order there. The tile must be on the map. True when any rally changed.
+    /// from it get a move order there, or an attack-move order with <paramref name="attack"/>. The tile must be on the
+    /// map. True when any rally changed.
     /// </summary>
-    public static bool SetRally(int owner, IReadOnlyList<int> buildingIds, int2 tile, bool clear)
+    public static bool SetRally(int owner, IReadOnlyList<int> buildingIds, int2 tile, bool clear, bool attack = false)
     {
         WorldStateManager world = World;
         if (buildingIds == null || buildingIds.Count > SpawnerRules.MaxSpawnersPerCommand || world == null || world.Map == null || !world.Map.Grid.Contains(tile)) return false;
@@ -199,8 +200,9 @@ public static class PlayerActions
             SpawnerData spawner = em.GetComponentData<SpawnerData>(building);
             spawner.rally = tile;
             spawner.hasRally = !clear;
+            spawner.rallyAttack = attack;
             em.SetComponentData(building, spawner);
-            world.SendSpawnerRally(owner, id, tile, !clear);
+            world.SendSpawnerRally(owner, id, tile, !clear, attack);
             any = true;
         }
         return any;

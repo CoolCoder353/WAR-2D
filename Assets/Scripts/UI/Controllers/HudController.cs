@@ -588,7 +588,8 @@ namespace WAR2D.UI
         {
             UnitCommander commander = UnitCommander.Instance;
             string text = Time.unscaledTime < noticeUntil ? noticeText : null;
-            if (text == null && commander != null && commander.RallyAllArmed) text = $"Rally all producers ({commander.OwnProducerIds().Count})";
+            if (text == null && commander != null && commander.RallyAllArmed) text = $"{(commander.AttackRallyArmed ? "Attack rally" : "Rally")} all producers ({commander.OwnProducerIds().Count})";
+            else if (text == null && commander != null && commander.AttackRallyArmed) text = "Attack rally: click the map";
             if (cursorNotice == null)
             {
                 if (text == null) return;

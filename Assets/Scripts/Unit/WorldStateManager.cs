@@ -1115,10 +1115,10 @@ public partial class WorldStateManager : NetworkBehaviour
 
     /// <summary>Sets or clears the rally tile of each named spawner the sender owns (<see cref="PlayerActions.SetRally"/>).</summary>
     [Command(requiresAuthority = false)]
-    public void CmdSetRally(int[] buildingIds, int2 tile, bool clear, NetworkConnectionToClient sender = null)
+    public void CmdSetRally(int[] buildingIds, int2 tile, bool clear, bool attack, NetworkConnectionToClient sender = null)
     {
         if (!CommandGate.Allow(sender, nameof(CmdSetRally)) || !TryOwnerOf(sender, out int owner)) return;
-        PlayerActions.SetRally(owner, buildingIds, tile, clear);
+        PlayerActions.SetRally(owner, buildingIds, tile, clear, attack);
     }
 
     /// <summary>True when <paramref name="buildingId"/> is a live spawner owned by <paramref name="owner"/>.</summary>
@@ -1157,11 +1157,11 @@ public partial class WorldStateManager : NetworkBehaviour
 
     /// <summary>Tells a spawner's owner (only) its rally; skipped for an AI, which has no connection.</summary>
     [Server]
-    internal void SendSpawnerRally(int ownerId, int buildingId, int2 tile, bool has)
+    internal void SendSpawnerRally(int ownerId, int buildingId, int2 tile, bool has, bool attack)
     {
         NetworkConnectionToClient connection = GameCore.Instance?.GetServerPlayerById(ownerId)?.connection;
         if (connection?.identity != null && connection.identity.TryGetComponent(out ClientPlayer player))
-            player.TargetSpawnerRally(connection, buildingId, tile, has);
+            player.TargetSpawnerRally(connection, buildingId, tile, has, attack);
     }
 
     /// <summary>Tells a producer's owner (only) its selected type and queue count.</summary>
@@ -1187,7 +1187,7 @@ public partial class WorldStateManager : NetworkBehaviour
             SpawnerData spawner = EntityManager.GetComponentData<SpawnerData>(entity);
             if (spawner.ownerId != ownerId) continue;
             SendSpawnerQueue(ownerId, pair.Key, spawner.unitType, spawner.count);
-            if (spawner.hasRally) SendSpawnerRally(ownerId, pair.Key, spawner.rally, true);
+            if (spawner.hasRally) SendSpawnerRally(ownerId, pair.Key, spawner.rally, true, spawner.rallyAttack);
         }
     }
 

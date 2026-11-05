@@ -199,6 +199,12 @@ public class UnitCommander : NetworkBehaviour
     /// <summary>True after the Rally all button: the next click sets every own producer's rally point (Esc or a right-click elsewhere cancels).</summary>
     public bool RallyAllArmed { get; private set; }
 
+    /// <summary>True after the Attack-move key with only producers selected: the next click sets an attack rally, the red flag (Esc cancels).</summary>
+    public bool AttackRallyArmed { get; private set; }
+
+    /// <summary>True with only spawners selected: a right-click sets their rally point.</summary>
+    private bool OnlySpawnersSelected => Selection.Selected.Count == 0 && Selection.SelectedBuildings.Count > 0 && AllSpawners(Selection.SelectedBuildings);
+
     /// <summary>Arms Rally all (the production card's Rally point row). Does nothing when there is no producer to set.</summary>
     public void ArmRallyAll()
     {
@@ -220,13 +226,13 @@ public class UnitCommander : NetworkBehaviour
     }
 
     /// <summary>Sets the rally point of these producers (in groups the server accepts) and shows where a goal on rock went.</summary>
-    private void SetRally(IReadOnlyList<int> ids, int2 goal)
+    private void SetRally(IReadOnlyList<int> ids, int2 goal, bool attack = false)
     {
         WorldStateManager wsm = WorldStateManager.Instance;
         if (wsm == null || ids.Count == 0) return;
         var all = new List<int>(ids);
         for (int i = 0; i < all.Count; i += SpawnerRules.MaxSpawnersPerCommand)
-            wsm.CmdSetRally(all.GetRange(i, System.Math.Min(SpawnerRules.MaxSpawnersPerCommand, all.Count - i)).ToArray(), goal, false);
+            wsm.CmdSetRally(all.GetRange(i, System.Math.Min(SpawnerRules.MaxSpawnersPerCommand, all.Count - i)).ToArray(), goal, false, attack);
         // The server moves a rally on rock to open ground like any goal: show where.
         if (wsm.Map != null && wsm.Map.Grid.Contains(goal) &&
             WAR2D.Sim.OrderBook.SnapGoal(wsm.Map.Grid, goal, goal, WAR2D.Sim.OrderBook.GoalSnapRadius, out int2 rally) && !rally.Equals(goal))
@@ -713,7 +719,11 @@ public class UnitCommander : NetworkBehaviour
             (ids, goal) => Selection.OrderIds(OrderKind.Move, ids, goal));
         // v0.18: the keyboard is the manual's (its search box), and clicks stop at it; so for the menu, Settings and the gift dialog.
         if (WAR2D.UI.HudController.DialogOpen || WAR2D.UI.ManualController.AnyOpen) { SendCameraView(); return; }
-        if (GameInput.AttackMove.WasPressedThisFrame()) Arm(OrderKind.AttackMove);
+        if (GameInput.AttackMove.WasPressedThisFrame())
+        {
+            if (OnlySpawnersSelected) AttackRallyArmed = true;
+            else Arm(OrderKind.AttackMove);
+        }
         if (GameInput.Repair.WasPressedThisFrame()) Arm(OrderKind.Repair);
         if (GameInput.Dig.WasPressedThisFrame()) Arm(OrderKind.Dig);
         if (GameInput.Stop.WasPressedThisFrame()) Order(OrderKind.Stop);
@@ -724,21 +734,23 @@ public class UnitCommander : NetworkBehaviour
         // While placing a building, clicks belong to the placement.
         BuildingPlacement placement = BuildingPlacement.Instance;
         bool clickUsed = placement != null && (placement.IsPlacing || placement.ActiveFrame == Time.frameCount);
-        if (clickUsed) { ArmedOrder = null; CancelWallDrag(); }
+        if (clickUsed) { ArmedOrder = null; AttackRallyArmed = false; CancelWallDrag(); }
         if (clickUsed) CancelDigDrag();
         clickUsed |= UpdateWallDrag();
         clickUsed |= UpdateDigDrag();
         Feedback?.ShowQueueOf(GameInput.QueueModifier.IsPressed() && Selection.Selected.Count > 0 ? Selection.LongestQueue(Feedback.Queue) : 0);
 
-        // Rally all armed: the next click on the map sets every producer's rally; Esc or a click on the HUD drops it.
-        if (RallyAllArmed)
+        // Rally all or an attack rally armed: the next click on the map sets the rally; Esc or a click on the HUD drops it.
+        if (AttackRallyArmed && !OnlySpawnersSelected) AttackRallyArmed = false;
+        if (RallyAllArmed || AttackRallyArmed)
         {
-            if (GameInput.Menu.WasPressedThisFrame()) RallyAllArmed = false;
+            if (GameInput.Menu.WasPressedThisFrame()) RallyAllArmed = AttackRallyArmed = false;
             else if (!clickUsed && !GameInput.PointerOverUI && (GameInput.Select.WasPressedThisFrame() || GameInput.Command.WasPressedThisFrame()))
             {
                 Vector3 target = GetMouseWorldPosition();
-                SetRally(OwnProducerIds(), new int2((int)target.x, (int)target.y));
-                RallyAllArmed = false;
+                bool all = RallyAllArmed || GameInput.AssignModifier.IsPressed();
+                SetRally(all ? OwnProducerIds() : Selection.SelectedBuildings, new int2((int)target.x, (int)target.y), AttackRallyArmed);
+                RallyAllArmed = AttackRallyArmed = false;
                 clickUsed = true;
             }
         }
@@ -839,7 +851,7 @@ public class UnitCommander : NetworkBehaviour
             Vector3 worldPosition = GetMouseWorldPosition();
             int2 goal = new int2((int)worldPosition.x, (int)worldPosition.y);
             // With only spawners selected, a right-click sets their rally point.
-            if (Selection.Selected.Count == 0 && Selection.SelectedBuildings.Count > 0 && AllSpawners(Selection.SelectedBuildings))
+            if (OnlySpawnersSelected)
             {
                 // Ctrl + right-click sets every producer's rally, not only the selected ones.
                 SetRally(GameInput.AssignModifier.IsPressed() ? OwnProducerIds() : Selection.SelectedBuildings, goal);
@@ -1038,7 +1050,7 @@ public class UnitCommander : NetworkBehaviour
             }
             SpriteRenderer f = rallyFlags[flags++];
             f.sprite = effects.Sprite("RallyFlag", (int)(Time.time * 2f) % Mathf.Max(1, effects.FrameCount("RallyFlag")));
-            f.sharedMaterial = TeamSpriteMaterial.For(e.Data.ownerId, false, ArtAtlas.Effects);
+            f.sharedMaterial = TeamSpriteMaterial.ForColour(WAR2D.Client.Overlays.OverlayColours.Rally(Palettes.Current, localPlayer.RallyIsAttack(ids[i])), false, ArtAtlas.Effects);
             f.transform.position = new Vector3(rally.x + 0.5f, rally.y + 0.5f, 0f);
             f.gameObject.SetActive(true);
         }

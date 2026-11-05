@@ -101,4 +101,6 @@ public struct SpawnerData : IComponentData
     /// <summary>The rally tile new units are sent to, when <see cref="hasRally"/> is set (the owner's choice).</summary>
     public int2 rally;
     public bool hasRally;
+    /// <summary>The rally is an attack rally (the red flag): new units attack-move to it instead of moving.</summary>
+    public bool rallyAttack;
 }

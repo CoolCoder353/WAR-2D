@@ -18,6 +18,9 @@ namespace WAR2D.Client.Overlays
             _ => new Color32(0xFF, 0x52, 0x63, 0xFF),
         };
 
+        /// <summary>A rally point's colour: blue for a regular rally, the palette's danger red for an attack rally.</summary>
+        public static Color32 Rally(string palette, bool attack) => attack ? Danger(palette) : new Color32(0x3D, 0x7B, 0xFF, 0xFF);
+
         /// <summary><c>--color-readout</c>: the gold of the HUD readouts and the Builder's "help build" flag.</summary>
         public static Color32 Readout(string palette) => palette switch
         {
