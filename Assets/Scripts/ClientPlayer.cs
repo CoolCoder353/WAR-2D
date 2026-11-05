@@ -238,12 +238,19 @@ public class ClientPlayer : NetworkBehaviour
     /// <summary>The rally tile of one of the local player's spawners, as last told by the server.</summary>
     public bool TryGetRally(int buildingId, out int2 tile) => spawnerRallies.TryGetValue(buildingId, out tile);
 
+    private readonly System.Collections.Generic.HashSet<int> attackRallies = new System.Collections.Generic.HashSet<int>();
+
+    /// <summary>True when one of the local player's spawners has an attack rally (the red flag), as last told by the server.</summary>
+    public bool RallyIsAttack(int buildingId) => attackRallies.Contains(buildingId);
+
     /// <summary>One of the owner's spawners set or cleared its rally point. Private: only the owner learns it.</summary>
     [TargetRpc]
-    public void TargetSpawnerRally(NetworkConnection target, int buildingId, int2 tile, bool has)
+    public void TargetSpawnerRally(NetworkConnection target, int buildingId, int2 tile, bool has, bool attack)
     {
         if (has) spawnerRallies[buildingId] = tile;
         else spawnerRallies.Remove(buildingId);
+        if (has && attack) attackRallies.Add(buildingId);
+        else attackRallies.Remove(buildingId);
     }
 
     /// <summary>The number of the local player's live units in each squad (0–9), as last told by the server.</summary>

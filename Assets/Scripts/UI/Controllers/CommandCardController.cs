@@ -37,6 +37,7 @@ namespace WAR2D.UI
         private readonly float repairCostPerHealth;
         private readonly CommandIcon cancelIcon;
         private readonly Button cancel, wall, detonate, rallyAll, roam;
+        private readonly Label rallyHelp;
         private readonly Dictionary<Label, Func<UnityEngine.InputSystem.InputAction>> keyLabels = new Dictionary<Label, Func<UnityEngine.InputSystem.InputAction>>();
         private readonly OrderKind? detonateKind;
         private readonly UnitType? bomberType;
@@ -177,6 +178,7 @@ namespace WAR2D.UI
             cancel.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); RequestRemove(); };
             keyLabels[cancelKey] = () => GameInput.Cancel;
             hover?.Attach(cancel, RemoveCard, WAR2D.UI.HoverCard.Side.Left, card);
+            rallyHelp = root.Q<Label>("production-rally-help");
             rallyAll = root.Q<Button>("cmd-rally-all");
             if (rallyAll != null)
             {
@@ -227,6 +229,7 @@ namespace WAR2D.UI
             for (int slot = 0; slot < typeKeyLabels.Count; slot++) typeKeyLabels[slot].text = WAR2D.UI.HoverCard.KeyOf(GameInput.CardTop(slot));
             Label rallyKey = rallyAll?.Q<Label>("cmd-rally-all-key");
             if (rallyKey != null) rallyKey.text = RallyAllKey();
+            if (rallyHelp != null) rallyHelp.text = $"Right-click: blue flag, units move. {WAR2D.UI.HoverCard.KeyOf(GameInput.AttackMove)}, then click: red flag, units attack on the way. {WAR2D.UI.HoverCard.KeyOf(GameInput.AssignModifier)}: all of yours.";
         }
 
         /// <summary>Shows Rally all as active while it waits for its click.</summary>

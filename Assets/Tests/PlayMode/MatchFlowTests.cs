@@ -94,7 +94,7 @@ public class MatchFlowTests
             if (wsm.Map.Grid.IsWalkable(t)) { rally = t; found = true; }
         }
         Assert.That(found, Is.True, "open floor near the spawner");
-        wsm.CmdSetRally(new[] { spawner }, rally, false);
+        wsm.CmdSetRally(new[] { spawner }, rally, false, false);
         yield return WaitUntil(() => local.TryGetRally(spawner, out _), 5f);
         Assert.That(local.TryGetRally(spawner, out int2 told) && told.Equals(rally), Is.True, "the owner is told the rally tile");
 
@@ -103,9 +103,19 @@ public class MatchFlowTests
         yield return WaitUntil(() => local.SpawnerQueue(spawner) >= 8, 5f);
         Assert.That(local.SpawnerQueue(spawner), Is.InRange(8, 10), "+10 queued (minus any already spawned), the 7 was refused");
 
+        yield return PlayModeMatch.WaitUntil(() => AnyUnitHasStance(WAR2D.Sim.Stances.Move), 20f, () => "a regular rally sends new units on a Move");
+        Assert.That(local.RallyIsAttack(spawner), Is.False, "the owner sees a regular rally (blue flag)");
+
         float2 goal = (float2)rally + 0.5f;
         yield return WaitUntil(() => CountUnits() > 0 && math.distance(FirstUnitPosition(), goal) < 3f, 20f);
         Assert.That(math.distance(FirstUnitPosition(), goal), Is.LessThan(3f), "new units drive to the rally point");
+
+        wsm.CmdSetRally(new[] { spawner }, rally, false, true);
+        yield return WaitUntil(() => local.RallyIsAttack(spawner), 5f);
+        yield return PlayModeMatch.WaitUntil(() => AnyUnitHasStance(WAR2D.Sim.Stances.AttackMove), 30f, () => "an attack rally sends new units on an Attack-move");
+
+        wsm.CmdSetRally(new[] { spawner }, rally, false, false);
+        yield return PlayModeMatch.WaitUntil(() => !local.RallyIsAttack(spawner), 5f, () => "a right-click turns an attack rally back into a regular one");
     }
 
     [UnityTest, Timeout(90000)]
@@ -151,6 +161,14 @@ public class MatchFlowTests
     {
         using var q = Em.CreateEntityQuery(typeof(WAR2D.Sim.Unit));
         return q.CalculateEntityCount();
+    }
+
+    private static bool AnyUnitHasStance(byte stance)
+    {
+        using var q = Em.CreateEntityQuery(typeof(WAR2D.Sim.Unit));
+        using var units = q.ToComponentDataArray<WAR2D.Sim.Unit>(Unity.Collections.Allocator.Temp);
+        foreach (WAR2D.Sim.Unit unit in units) if (unit.Stance == stance) return true;
+        return false;
     }
 
     private static float2 FirstUnitPosition()
