@@ -196,7 +196,7 @@ namespace WAR2D.Client
         // ---- building groups in the squad slots
 
         /// <summary>
-        /// Saves the selected own buildings in a squad slot (Ctrl + number with only producers selected). A slot holds units or
+        /// Saves the selected own buildings in a squad slot (Ctrl + number with only buildings selected). A slot holds units or
         /// buildings: any units saved there are forgotten, here and on the server. Returns false with no buildings selected.
         /// </summary>
         public bool AssignBuildingGroup(int slot)

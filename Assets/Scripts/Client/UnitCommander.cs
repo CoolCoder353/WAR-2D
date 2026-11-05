@@ -570,8 +570,8 @@ public class UnitCommander : NetworkBehaviour
         Selection.ClearWalls();
     }
 
-    /// <summary>The ids of our spawners (seen now) with a footprint tile inside the box.</summary>
-    private List<int> OwnSpawnersIn(float2 lo, float2 hi, int ownerId)
+    /// <summary>The ids of our buildings (seen now) with a footprint tile inside the box: only spawners, or every kind.</summary>
+    private List<int> OwnBuildingsIn(float2 lo, float2 hi, int ownerId, bool spawnersOnly)
     {
         var inBox = new List<int>();
         picker.InBox((int2)math.floor(lo), (int2)math.floor(hi), inBox);
@@ -579,7 +579,7 @@ public class UnitCommander : NetworkBehaviour
         ClientBuildings known = subscribedBuildings ?? ClientBuildings.Current;
         foreach (int id in inBox)
             if (known.Entries.TryGetValue(id, out ClientBuildings.Entry e) && !e.Ghost && e.Data.ownerId == ownerId &&
-                SpawnerRules.IsProducer(e.Data.buildingType)) ids.Add(id);
+                (!spawnersOnly || SpawnerRules.IsProducer(e.Data.buildingType))) ids.Add(id);
         return ids;
     }
 
@@ -804,6 +804,12 @@ public class UnitCommander : NetworkBehaviour
                 Selection.SelectTypeAt(b, viewMin, viewMax, me, GameInput.AssignModifier.IsPressed());
                 lastClickTime = -1f;
             }
+            else if (!click && GameInput.AssignModifier.IsPressed())
+            {
+                // Ctrl + drag: only buildings, of every kind, however many units the box catches.
+                Selection.ClearWalls();
+                Selection.SelectBuildings(OwnBuildingsIn(lo, hi, me, false), GameInput.AppendModifier.IsPressed());
+            }
             else
             {
                 bool append = GameInput.AppendModifier.IsPressed();
@@ -816,7 +822,7 @@ public class UnitCommander : NetworkBehaviour
                     // and a box selects our spawners inside it, so their queues and rally points act together.
                     if (append) Selection.SelectBuildings(keptBuildings, false);
                     if (click && TryOwnBuildingAt(b, me, out BuildingData building)) SelectBuilding(building, append);
-                    else if (!click) Selection.SelectBuildings(OwnSpawnersIn(lo, hi, me), append);
+                    else if (!click) Selection.SelectBuildings(OwnBuildingsIn(lo, hi, me, true), append);
                 }
                 if (Selection.Selected.Count == 0 && Selection.SelectedBuildings.Count == 0)
                 {
@@ -846,7 +852,7 @@ public class UnitCommander : NetworkBehaviour
             if (!GameInput.Squad(squad).WasPressedThisFrame()) continue;
             if (GameInput.AssignModifier.IsPressed())
             {
-                // Only producers selected: the slot holds those buildings (client side) instead of units.
+                // Only buildings selected: the slot holds those buildings (client side) instead of units.
                 if (Selection.Selected.Count == 0 && Selection.SelectedBuildings.Count > 0) Selection.AssignBuildingGroup(squad);
                 else Selection.AssignSquad(squad);
             }
