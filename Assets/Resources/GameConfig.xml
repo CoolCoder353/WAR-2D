@@ -9,12 +9,12 @@
   </Release>
 
   <Resources>
-    <PassiveGenerationRate>5.0</PassiveGenerationRate>
+    <PassiveGenerationRate>20.0</PassiveGenerationRate>
     <StartingResources>1000.0</StartingResources>
-    <MiningRate>10.0</MiningRate>
-    <RichGemMultiplier>2.5</RichGemMultiplier>      <!-- v0.17: a Miner facing a rich gem earns MiningRate × this -->
+    <MiningRate>25.0</MiningRate>
+    <RichGemMultiplier>15</RichGemMultiplier>      <!-- v0.17: a Miner facing a rich gem earns MiningRate × this -->
     <!-- Percent of max health lost per second while an entity's upkeep is unpaid. -->
-    <DecayPercentPerSecond>5.0</DecayPercentPerSecond>
+    <DecayPercentPerSecond>100.0</DecayPercentPerSecond>
   </Resources>
 
   <Match>
@@ -40,7 +40,7 @@
       <MinStartDistance>0.1</MinStartDistance>    <!-- path distance to the nearest other start site, share of map size -->
       <MaxStartDistance>0.6</MaxStartDistance>
       <ExpansionGemTiles>30</ExpansionGemTiles>
-      <CentralRichGemTiles>8 16 24 32</CentralRichGemTiles> <!-- v0.17: rich gem tiles per central area, per LayoutSizes row -->
+      <CentralRichGemTiles>16 24 32 64</CentralRichGemTiles> <!-- v0.17: rich gem tiles per central area, per LayoutSizes row -->
       <RichMinStartDistance>0.15</RichMinStartDistance>     <!-- v0.17: lane distance from any start site, share of map size -->
       <EdgeTiles>4</EdgeTiles>                     <!-- 2026-11-02 playtest: rock this close to the edge is undiggable border -->
     </Map>
@@ -117,7 +117,7 @@
   </Formation>
 
   <AutoWork>
-    <Radius>8</Radius>               <!-- v0.16: tiles an idle Builder looks for blueprints and repairs -->
+    <Radius>900</Radius>               <!-- v0.16: tiles an idle Builder looks for blueprints and repairs -->
     <RepairBelow>0.9</RepairBelow>   <!-- v0.16: repairs own buildings and walls under this share of health -->
     <SliceTicks>10</SliceTicks>      <!-- v0.16: each idle Builder looks once every this many ticks -->
   </AutoWork>
@@ -189,8 +189,8 @@
     <LastGaspHealth>0.1</LastGaspHealth> <!-- v0.18: a bomber at or below this share of its health explodes; a hit that kills it counts -->
     <ChainPasses>4</ChainPasses>         <!-- v0.18: blasts setting off bombers in one tick; the rest go next tick -->
     <AimTiles>6</AimTiles>               <!-- v0.18: enemies within this of its target are candidates for the blast point -->
-    <FriendlyWeight>0.1</FriendlyWeight> <!-- v0.18: own and allied worth in the blast, against the enemy's; follows FriendlyDamage -->
-    <FriendlyDamage>0.1</FriendlyDamage> <!-- playtest 2026-11-04: share of the blast that reaches its own side and allies -->
+    <FriendlyWeight>0</FriendlyWeight> <!-- v0.18: own and allied worth in the blast, against the enemy's; follows FriendlyDamage -->
+    <FriendlyDamage>0</FriendlyDamage> <!-- playtest 2026-11-04: share of the blast that reaches its own side and allies -->
     <AimReachTiles>0.5</AimReachTiles>   <!-- v0.18: detonates this close to the blast point -->
     <GoodEnough>0.8</GoodEnough>         <!-- v0.18: or touching an enemy, when the blast here is worth this share of the point's -->
   </Bomber>
@@ -559,7 +559,7 @@
       <AttackInterval>1.0</AttackInterval>
       <MoveSpeed>5.0</MoveSpeed>
       <UpfrontCost>50.0</UpfrontCost>
-      <RunningCost>2.0</RunningCost>
+      <RunningCost>0.5</RunningCost>
       <Radius>0.35</Radius>       <!-- collision radius in tiles (v0.3 D2) -->
       <SizeClass>0</SizeClass>    <!-- pathing size class: 0 small, 1 large -->
       <Sight>8.0</Sight>          <!-- v0.5: sight radius in tiles -->
@@ -568,53 +568,53 @@
     </Unit>
     <Unit type="Builder">
       <Health>60</Health><Damage>0</Damage><Range>1.0</Range><AttackInterval>1.0</AttackInterval>
-      <MoveSpeed>5.0</MoveSpeed><UpfrontCost>60.0</UpfrontCost><RunningCost>2.0</RunningCost>
+      <MoveSpeed>5.0</MoveSpeed><UpfrontCost>60.0</UpfrontCost><RunningCost>0.5</RunningCost>
       <Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>6.0</Sight>   <!-- v0.7 -->
       <Armour>Light</Armour><BuildSeconds>2.0</BuildSeconds>
     </Unit>
     <Unit type="Digger">
       <Health>120</Health><Damage>4</Damage><Range>1.5</Range><AttackInterval>1.0</AttackInterval>
-      <MoveSpeed>4.0</MoveSpeed><UpfrontCost>120.0</UpfrontCost><RunningCost>4.0</RunningCost>
+      <MoveSpeed>4.0</MoveSpeed><UpfrontCost>120.0</UpfrontCost><RunningCost>1.0</RunningCost>
       <Radius>0.4</Radius><SizeClass>0</SizeClass><Sight>6.0</Sight>    <!-- v0.7 -->
       <Armour>Light</Armour><BuildSeconds>1.0</BuildSeconds>
     </Unit>
     <!-- v0.12 Arsenal: starting numbers from the spec (section 3), to tune in play -->
     <Unit type="Scout">
       <Health>40</Health><Damage>4</Damage><Range>4.0</Range><AttackInterval>0.5</AttackInterval>
-      <MoveSpeed>9.0</MoveSpeed><UpfrontCost>30.0</UpfrontCost><RunningCost>1.0</RunningCost>
+      <MoveSpeed>9.0</MoveSpeed><UpfrontCost>30.0</UpfrontCost><RunningCost>0.25</RunningCost>
       <Radius>0.3</Radius><SizeClass>0</SizeClass><Sight>12.0</Sight>
       <Armour>Light</Armour><BuildSeconds>0.7</BuildSeconds>
     </Unit>
     <Unit type="Flamethrower">
       <Health>90</Health><Damage>6</Damage><Range>2.5</Range><AttackInterval>0.5</AttackInterval>
-      <MoveSpeed>4.5</MoveSpeed><UpfrontCost>70.0</UpfrontCost><RunningCost>2.0</RunningCost>
+      <MoveSpeed>4.5</MoveSpeed><UpfrontCost>70.0</UpfrontCost><RunningCost>0.5</RunningCost>
       <Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>6.0</Sight>
       <Armour>Light</Armour><BuildSeconds>1.5</BuildSeconds>
       <Splash>1.5</Splash>
     </Unit>
     <Unit type="Heavy">
       <Health>400</Health><Damage>30</Damage><Range>5.0</Range><AttackInterval>1.5</AttackInterval>
-      <MoveSpeed>2.5</MoveSpeed><UpfrontCost>200.0</UpfrontCost><RunningCost>6.0</RunningCost>
+      <MoveSpeed>2.5</MoveSpeed><UpfrontCost>200.0</UpfrontCost><RunningCost>2.5</RunningCost>
       <Radius>0.7</Radius><SizeClass>1</SizeClass><Sight>7.0</Sight>
       <Armour>Heavy</Armour><BuildSeconds>5.0</BuildSeconds>
     </Unit>
     <Unit type="Artillery">
       <Health>120</Health><Damage>70</Damage><Range>18.0</Range><AttackInterval>5.0</AttackInterval>
-      <MoveSpeed>2.0</MoveSpeed><UpfrontCost>220.0</UpfrontCost><RunningCost>6.0</RunningCost>
+      <MoveSpeed>2.0</MoveSpeed><UpfrontCost>220.0</UpfrontCost><RunningCost>2.5</RunningCost>
       <Radius>0.7</Radius><SizeClass>1</SizeClass><Sight>18.0</Sight>
       <Armour>Heavy</Armour><BuildSeconds>6.0</BuildSeconds>
       <Splash>2.0</Splash><MinRange>4.0</MinRange>
     </Unit>
     <Unit type="Sniper">
       <Health>70</Health><Damage>60</Damage><Range>20.0</Range><AttackInterval>3.0</AttackInterval>
-      <MoveSpeed>4.0</MoveSpeed><UpfrontCost>150.0</UpfrontCost><RunningCost>4.0</RunningCost>
+      <MoveSpeed>4.0</MoveSpeed><UpfrontCost>150.0</UpfrontCost><RunningCost>1.0</RunningCost>
       <Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>20.0</Sight>
       <Armour>Light</Armour><BuildSeconds>4.0</BuildSeconds>
       <MinRange>3.0</MinRange>
     </Unit>
     <Unit type="SuicideBomber">
       <Health>30</Health><Damage>0</Damage><Range>0.8</Range><AttackInterval>1.0</AttackInterval>
-      <MoveSpeed>8.0</MoveSpeed><UpfrontCost>60.0</UpfrontCost><RunningCost>1.0</RunningCost>
+      <MoveSpeed>8.0</MoveSpeed><UpfrontCost>60.0</UpfrontCost><RunningCost>0.25</RunningCost>
       <Radius>0.3</Radius><SizeClass>0</SizeClass><Sight>6.0</Sight>
       <Armour>Light</Armour><BuildSeconds>1.0</BuildSeconds>
       <BlastRadius>2.0</BlastRadius><BlastDamage>150.0</BlastDamage>

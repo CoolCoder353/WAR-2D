@@ -236,7 +236,7 @@ namespace Config
             XmlNode autoWork = Require(root, "AutoWork", errors);
             if (autoWork != null)
             {
-                config.AutoWork.Radius = Float(autoWork, "Radius", "AutoWork", errors, min: 1f, max: 32f);
+                config.AutoWork.Radius = Float(autoWork, "Radius", "AutoWork", errors, min: 1f, max: 10000f);
                 config.AutoWork.RepairBelow = Float(autoWork, "RepairBelow", "AutoWork", errors, min: 0.05f, max: 1f);
                 config.AutoWork.SliceTicks = Int(autoWork, "SliceTicks", "AutoWork", errors, min: 1, max: 200);
             }
