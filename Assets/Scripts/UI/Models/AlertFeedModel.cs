@@ -163,6 +163,7 @@ namespace WAR2D.UI
             AlertKind.UnderAttack => nearBuilding != null ? $"Under attack near your {nearBuilding}" : "Your units are under attack",
             AlertKind.UpkeepUnpaid => "Upkeep unpaid: buildings stop, then units decay",
             AlertKind.Ping => $"{nameOf(alert.OtherOwnerId)} pinged",
+            AlertKind.UnitCapReached => $"Unit cap reached ({alert.Amount:N0}): producers wait",
             AlertKind.GiftReceived => $"{nameOf(alert.OtherOwnerId)} gifted you {alert.Amount:N0}",
             AlertKind.VisionSharedWithYou => $"{nameOf(alert.OtherOwnerId)} shares vision with you",
             AlertKind.VisionUnshared => $"{nameOf(alert.OtherOwnerId)} stopped sharing vision with you",

@@ -136,6 +136,50 @@ public partial class GameCore
     }
 
     /// <summary>
+    /// Adds an AI straight into a team (playtest 2026-11-05, the team board's "+ Add AI" per row): server owner only,
+    /// in the lobby, a team the mode offers (<see cref="TeamRules.NoTeam"/> for Solo). Otherwise as <see cref="Cmd_AddAi"/>.
+    /// </summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_AddAiToTeam(AiDifficulty difficulty, AiStyle style, int team, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_AddAiToTeam))) return;
+        if (!IsServerOwner(sender) || CurrentState != GameState.Lobby) return;
+        if (!AiLobbyRules.IsValidChoice(difficulty, style) || !AiLobbyRules.HasFreeSeat(SeatCount)) return;
+        if (!LobbyRules.IsTeamChoiceValid(Settings.Mode, team)) return;
+        AddAi(difficulty, style, -1, team);
+    }
+
+    /// <summary>
+    /// Sets several players' lobby teams at once (playtest 2026-11-05, the team board's quick setup): server owner
+    /// only, in the lobby, humans and (not Scripted) AIs alike. Refused whole when the arrays differ in length, are
+    /// longer than <see cref="LobbyRules.MaxPlayers"/>, name a team the mode doesn't offer, or an owner nobody holds.
+    /// Doesn't clear ready (as <see cref="Cmd_SetTeam"/>).
+    /// </summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_SetTeams(int[] owners, int[] teams, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_SetTeams))) return;
+        if (!IsServerOwner(sender) || CurrentState != GameState.Lobby) return;
+        if (owners == null || teams == null || owners.Length != teams.Length || owners.Length > LobbyRules.MaxPlayers) return;
+        var humans = new Dictionary<int, ClientPlayer>();
+        foreach (NetworkIdentity identity in ServerPlayers.Keys)
+            if (identity != null && identity.TryGetComponent(out ClientPlayer player)) humans[BuildingData.UIntToInt(identity.netId)] = player;
+        for (int i = 0; i < owners.Length; i++)
+        {
+            if (!LobbyRules.IsTeamChoiceValid(Settings.Mode, teams[i])) return;
+            bool ai = AiPlayers.TryGetValue(owners[i], out AiSeat seat) && !seat.IsScripted;
+            if (!ai && !humans.ContainsKey(owners[i])) return;
+        }
+        for (int i = 0; i < owners.Length; i++)
+        {
+            if (humans.TryGetValue(owners[i], out ClientPlayer player)) { player.lobbyTeam = teams[i]; continue; }
+            AiSeat seat = AiPlayers[owners[i]];
+            seat.LobbyTeam = teams[i];
+            if (seat.Client != null) seat.Client.lobbyTeam = teams[i];
+        }
+    }
+
+    /// <summary>
     /// Changes a lobby AI (v0.14): server owner only, in the lobby, for an existing (not Scripted) AI, with a valid
     /// difficulty and style, a colour nobody else has and a team the mode offers. Clears every ready flag on a change.
     /// </summary>

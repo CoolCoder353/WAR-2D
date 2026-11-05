@@ -26,6 +26,41 @@ namespace WAR2D.Sim
         private readonly Dictionary<int, Area> areas = new Dictionary<int, Area>();
         private readonly Dictionary<int, (int area, int2 claim, bool claimed)> members = new Dictionary<int, (int, int2, bool)>();
         private readonly HashSet<int2> claims = new HashSet<int2>();
+        /// <summary>Members with no free tile while their area still has work (playtest 2026-11-05), and the tick they began waiting.</summary>
+        private readonly Dictionary<int, int> waiting = new Dictionary<int, int>();
+        private readonly List<int> waitScratch = new List<int>();
+
+        /// <summary>Ticks a member waits for a free tile before it leaves the area (30 s at 20 Hz).</summary>
+        public const int MaxWaitTicks = 600;
+
+        /// <summary>Members waiting for a free tile.</summary>
+        public int WaitingCount => waiting.Count;
+
+        /// <summary>True while the unit waits for a free tile in its area.</summary>
+        public bool IsWaiting(int unitId) => waiting.ContainsKey(unitId);
+
+        /// <summary>The tile claimed in the unit's area nearest <paramref name="position"/> (where a waiting member stands by). False when none is.</summary>
+        public bool TryNearestClaim(int unitId, float2 position, out int2 tile)
+        {
+            tile = default;
+            if (!members.TryGetValue(unitId, out var me)) return false;
+            float best = float.MaxValue;
+            foreach (var other in members.Values)
+            {
+                if (other.area != me.area || !other.claimed) continue;
+                float d = math.distancesq(position, (float2)other.claim + 0.5f);
+                if (d < best) { best = d; tile = other.claim; }
+            }
+            return best < float.MaxValue;
+        }
+
+        /// <summary>The waiting members' ids (a copy, so the caller may start them).</summary>
+        public List<int> Waiting()
+        {
+            waitScratch.Clear();
+            waitScratch.AddRange(waiting.Keys);
+            return waitScratch;
+        }
         private readonly List<int> scratch = new List<int>();
         private int nextId = 1;
 
@@ -83,6 +118,7 @@ namespace WAR2D.Sim
         /// <summary>Takes the unit out of its area (a new order, death, or the area is done). An area left without members is dropped.</summary>
         public void Leave(int unitId)
         {
+            waiting.Remove(unitId);
             if (!members.Remove(unitId, out var m)) return;
             if (areas.TryGetValue(m.area, out Area area) && --area.Members <= 0) areas.Remove(m.area);
         }
@@ -93,31 +129,54 @@ namespace WAR2D.Sim
         /// it. A previous claim that is still diggable was given up on (its job finished without digging it) and is
         /// skipped from now on. False, and the unit leaves the area, when nothing is left (or the unit is in no area).
         /// </summary>
-        public bool TryNext(int unitId, float2 position, Func<int2, bool> diggable, Func<int2, int2, bool> reachable, out int2 tile)
+        public bool TryNext(int unitId, float2 position, Func<int2, bool> diggable, Func<int2, int2, bool> reachable, out int2 tile) =>
+            TryNext(unitId, position, diggable, reachable, -1, out tile, out _);
+
+        /// <summary>
+        /// As <see cref="TryNext(int, float2, Func{int2, bool}, Func{int2, int2, bool}, out int2)"/>, but with
+        /// <paramref name="tick"/> ≥ 0 a member that finds no free tile while the area still has diggable tiles (claimed by
+        /// others, or not yet exposed) stays in the area and <paramref name="wait"/>s, up to <see cref="MaxWaitTicks"/>
+        /// (playtest 2026-11-05: in a big group every Digger past the rock face left the area and stood idle for good).
+        /// </summary>
+        public bool TryNext(int unitId, float2 position, Func<int2, bool> diggable, Func<int2, int2, bool> reachable, int tick, out int2 tile, out bool wait)
         {
             tile = default;
+            wait = false;
             if (!members.TryGetValue(unitId, out var me)) return false;
-            if (!areas.TryGetValue(me.area, out Area area)) { members.Remove(unitId); return false; }
+            if (!areas.TryGetValue(me.area, out Area area)) { members.Remove(unitId); waiting.Remove(unitId); return false; }
             if (me.claimed && diggable(me.claim)) area.Skipped.Add(me.claim);
             claims.Clear();
             foreach (KeyValuePair<int, (int area, int2 claim, bool claimed)> other in members)
                 if (other.Key != unitId && other.Value.area == me.area && other.Value.claimed) claims.Add(other.Value.claim);
             float best = float.MaxValue;
-            bool found = false;
+            bool found = false, workLeft = false;
             int2 from = (int2)math.floor(position);
             for (int y = area.Min.y; y <= area.Max.y; y++)
             for (int x = area.Min.x; x <= area.Max.x; x++)
             {
                 var t = new int2(x, y);
-                if (claims.Contains(t) || area.Skipped.Contains(t) || !diggable(t)) continue;
+                if (area.Skipped.Contains(t) || !diggable(t)) continue;
+                workLeft = true;
+                if (claims.Contains(t)) continue;
                 float d = math.distancesq(position, (float2)t + 0.5f);
                 if (d < best && reachable(from, t)) { best = d; tile = t; found = true; }
             }
             if (!found)
             {
+                members[unitId] = (me.area, default, false); // the old claim is done or skipped; free it either way
+                if (tick >= 0 && workLeft)
+                {
+                    if (!waiting.TryGetValue(unitId, out int since)) waiting[unitId] = since = tick;
+                    if (tick - since < MaxWaitTicks)
+                    {
+                        wait = true;
+                        return false;
+                    }
+                }
                 Leave(unitId);
                 return false;
             }
+            waiting.Remove(unitId);
             members[unitId] = (me.area, tile, true);
             return true;
         }

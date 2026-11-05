@@ -49,8 +49,6 @@ namespace WAR2D.Client
 
         private readonly Dictionary<int, Roamer> roamers = new Dictionary<int, Roamer>();
         private readonly List<int> gone = new List<int>();
-        private readonly List<int> one = new List<int>(1);
-        private readonly List<int> order = new List<int>();
         private int cursor;
         private Random random = new Random(0x5C07u);
         private float nextCheck;
@@ -98,41 +96,82 @@ namespace WAR2D.Client
 
         /// <summary>
         /// As <see cref="Update(float, int2, int2, System.Action{List{int}, int2})"/>, with the units' positions from
-        /// <paramref name="positionOf"/>. At most <see cref="MaxOrdersPerCheck"/> orders go out per check, starting where the
-        /// last check stopped.
+        /// <paramref name="positionOf"/>. The units that need a goal are grouped by <see cref="GroupCell"/>-tile cell, and
+        /// each group (at most <see cref="MaxGroup"/> units) shares one goal and one order (playtest 2026-11-05: one order per
+        /// unit, 8 a second, left most of 3,000 roamers waiting minutes for a goal, so they looked stuck). At most
+        /// <see cref="MaxOrdersPerCheck"/> orders go out per check, starting at the group after the last one served.
         /// </summary>
         public void Update(float now, int2 mapMin, int2 mapMax, System.Action<List<int>, int2> send, PositionOf positionOf)
         {
             if (roamers.Count == 0 || now < nextCheck) return;
             nextCheck = now + CheckSeconds;
             gone.Clear();
-            order.Clear();
-            order.AddRange(roamers.Keys);
-            int sent = 0, start = cursor % order.Count;
-            for (int k = 0; k < order.Count && sent < MaxOrdersPerCheck; k++)
+            groups.Clear();
+            groupKeys.Clear();
+            // Two passes: units that never had a goal first, so a crowded cell's MaxGroup never starves them.
+            for (int pass = 0; pass < 2; pass++)
+            foreach (KeyValuePair<int, Roamer> pair in roamers)
             {
-                int index = (start + k) % order.Count, id = order[index];
-                if (!positionOf(id, out float2 position)) { gone.Add(id); continue; }
-                Roamer r = roamers[id];
+                int id = pair.Key;
+                Roamer r = pair.Value;
+                if (r.HasGoal != (pass == 1)) continue;
+                if (!positionOf(id, out float2 position)) { gone.Add(id); continue; } // each unit is seen in one pass only
                 float distance = r.HasGoal ? math.distance(position, (float2)r.Goal + 0.5f) : 0f;
                 if (r.HasGoal && distance > ArriveTiles)
                 {
                     if (distance < r.Best - ProgressTiles) { r.Best = distance; r.BestAt = now; }
                     if (now - r.BestAt < StuckSeconds) continue;
                 }
-                if (!PickGoal(position, mapMin, mapMax, out int2 goal)) continue;
-                r.Goal = goal;
-                r.HasGoal = true;
-                r.Best = math.distance(position, (float2)goal + 0.5f);
-                r.BestAt = now;
-                one.Clear();
-                one.Add(id);
-                send(one, goal);
-                sent++;
-                cursor = index + 1; // the next check starts after the last unit served
+                int2 cell = (int2)math.floor(position / GroupCell);
+                long key = ((long)cell.y << 32) ^ (uint)cell.x;
+                if (!groups.TryGetValue(key, out Group g))
+                {
+                    g = new Group();
+                    groups[key] = g;
+                    groupKeys.Add(key);
+                }
+                if (g.Ids.Count >= MaxGroup) continue; // the rest of a crowded cell waits a check
+                g.Ids.Add(id);
+                g.Sum += position;
             }
             foreach (int id in gone) roamers.Remove(id);
+            if (groupKeys.Count == 0) return;
+            groupKeys.Sort(); // a steady order, so the round robin reaches every cell
+            int sent = 0, start = cursor % groupKeys.Count;
+            for (int k = 0; k < groupKeys.Count && sent < MaxOrdersPerCheck; k++)
+            {
+                Group g = groups[groupKeys[(start + k) % groupKeys.Count]];
+                float2 centre = g.Sum / g.Ids.Count;
+                if (!PickGoal(centre, mapMin, mapMax, out int2 goal)) continue;
+                foreach (int id in g.Ids)
+                {
+                    Roamer r = roamers[id];
+                    r.Goal = goal;
+                    r.HasGoal = true;
+                    r.Best = math.distance(centre, (float2)goal + 0.5f) + GroupCell; // each starts within a cell of the centre
+                    r.BestAt = now;
+                }
+                g.Ids.Sort(); // the id codec wants ascending ids
+                send(g.Ids, goal);
+                sent++;
+            }
+            cursor = start + math.max(1, sent);
         }
+
+        /// <summary>Tiles on a side of the cell whose roamers share a goal.</summary>
+        public const float GroupCell = 16f;
+
+        /// <summary>Most roamers one order sends to one goal (more would only queue at it).</summary>
+        public const int MaxGroup = 48;
+
+        private sealed class Group
+        {
+            public readonly List<int> Ids = new List<int>();
+            public float2 Sum;
+        }
+
+        private readonly Dictionary<long, Group> groups = new Dictionary<long, Group>();
+        private readonly List<long> groupKeys = new List<long>();
 
         /// <summary>A random floor tile <see cref="MinReach"/> to <see cref="MaxReach"/> tiles away, preferring ground not seen now.</summary>
         private bool PickGoal(float2 from, int2 mapMin, int2 mapMax, out int2 goal)

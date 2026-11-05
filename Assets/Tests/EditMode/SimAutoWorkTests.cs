@@ -54,7 +54,8 @@ public class SimAutoWorkTests
     [Test]
     public void ItRepairsAnOwnBuildingBelowTheShareAndNotAnEnemys()
     {
-        using var sim = new SimHarness(SimHarness.OpenMap(48));
+        // Radius pinned at 8: with the map-wide radius the enemy's own Builder (30 tiles away) repairs its building, rightly.
+        using var sim = new SimHarness(SimHarness.OpenMap(48), c => c.AutoWork.Radius = 8f);
         sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 13.5f), UnitType.Builder);
         sim.Spawn(SimHarness.OwnerB, new float2(40.5f, 40.5f), UnitType.Builder);
         sim.Tick();

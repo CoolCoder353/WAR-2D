@@ -652,7 +652,7 @@ public class UnitCommander : NetworkBehaviour
     public void JumpToHq(int owner)
     {
         if (!ClientBuildings.Current.TryFindOwn(owner, BuildingType.Base, out ClientBuildings.Entry hq)) return;
-        CentreCamera(hq.Data.position + new float2(2.5f, 2.5f));
+        CentreCamera(CentreOf(hq.Data)); // the anchor is the footprint's middle tile, not its corner (playtest 2026-11-05)
         if (Time.unscaledTime - lastHqJumpTime < DoubleTapSeconds)
         {
             Selection.ClearWalls();
@@ -705,7 +705,7 @@ public class UnitCommander : NetworkBehaviour
             ClientBuildings.Current.TryFindOwn(LocalOwner(), BuildingType.Base, out ClientBuildings.Entry rejoinHq))
         {
             GameManager.Instance.CentreOnHqPending = false;
-            CentreCamera(rejoinHq.Data.position + new float2(2.5f, 2.5f));
+            CentreCamera(CentreOf(rejoinHq.Data));
         }
 
         // Roaming runs on through a dialog: without a pause (two humans) the match goes on behind it.
@@ -856,7 +856,7 @@ public class UnitCommander : NetworkBehaviour
                 bool again = squad == lastSquadTap && Time.unscaledTime - lastSquadTapTime < DoubleTapSeconds;
                 if (Selection.SelectBuildingGroup(squad) && again && ClientBuildings.Current.Entries.TryGetValue(Selection.FirstOfBuildingGroup(squad), out ClientBuildings.Entry first))
                 {
-                    CentreCamera(first.Data.position);
+                    CentreCamera(CentreOf(first.Data));
                     lastSquadTap = -1;
                 }
                 else

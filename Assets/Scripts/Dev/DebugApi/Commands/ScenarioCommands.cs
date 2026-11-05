@@ -91,6 +91,27 @@ namespace WAR2D.Dev.DebugApi
                 if (!ok) throw new DebugError("placement refused (footprint not free, or off the map)");
                 return "queued";
             });
+            r.Add("produce", DebugRole.Server, "produce owner ids type [count=50]: set producers' unit type and add to their queues, as their owner would", a =>
+            {
+                int owner = DebugArgs.Int(a, "owner");
+                int[] ids = a["ids"] is JArray list ? list.Select(t => (int)t).ToArray() : throw new DebugError("ids must be a list");
+                PlayerActions.SetProduction(owner, ids, DebugArgs.Enum<UnitType>(a, "type"));
+                int count = DebugArgs.Int(a, "count", 50);
+                for (int left = count; left > 0;)
+                {
+                    int step = left >= 50 ? 50 : left >= 10 ? 10 : 1;
+                    PlayerActions.ChangeQueues(owner, ids, step);
+                    left -= step;
+                }
+                return "queued";
+            });
+            r.Add("digarea", DebugRole.Server, "digarea owner ids from to [queue]: a Dig drag over the box, as the owner would send it", a =>
+            {
+                int[] ids = a["ids"] is JArray list ? list.Select(t => (int)t).OrderBy(i => i).Distinct().ToArray() : throw new DebugError("ids must be a list");
+                if (!PlayerActions.DigArea(DebugArgs.Int(a, "owner"), ids, DebugArgs.Bool(a, "queue", false), DebugArgs.Int2(a, "from"), DebugArgs.Int2(a, "to")))
+                    throw new DebugError("refused");
+                return "queued";
+            });
             r.Add("resources", DebugRole.Server, "resources owner amount: set a player's resources", a =>
             {
                 ServerPlayer p = GameCore.Instance?.GetServerPlayerById(DebugArgs.Int(a, "owner")) ?? throw new DebugError("no such player");

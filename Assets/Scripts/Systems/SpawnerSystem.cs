@@ -47,6 +47,7 @@ public partial struct SpawnerSystem : ISystem
             int ownerId = spawner.ValueRO.ownerId;
             float cost = unitConfig.UpfrontCost;
             ServerPlayer owner = GameCore.Instance.GetServerPlayerById(ownerId);
+            int cap = config.Simulation.MaxUnitsPerPlayer;
             if (owner == null || owner.Away || !owner.TrySpend(cost)) continue; // an away player's producers wait
 
             spawner.ValueRW.count--;
@@ -64,6 +65,9 @@ public partial struct SpawnerSystem : ISystem
                 Position = (float2)tile + 0.5f,
                 OnSpawned = id =>
                 {
+                    // At the cap the owner hears it once (and their producers say "Waiting: unit cap") until a spawn succeeds again.
+                    if (owner.SetAtUnitCap(id == SimCommand.SpawnRefusedAtCap))
+                        WorldStateManager.Instance?.Alerts?.Add(ownerId, new Alert { Kind = AlertKind.UnitCapReached, Amount = cap });
                     if (id >= 0)
                     {
                         // A rally point sends the new unit on (applied at the next boundary, once it is settled).

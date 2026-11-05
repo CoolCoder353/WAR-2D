@@ -83,6 +83,9 @@ namespace WAR2D.Sim
         public BuildingSpec Building;
         /// <summary>Called with the new unit's id after a spawn is applied (or -1 when refused).</summary>
         public System.Action<int> OnSpawned;
+
+        /// <summary>The id <see cref="OnSpawned"/> gets when the owner is at the unit cap (any other refusal gets -1).</summary>
+        public const int SpawnRefusedAtCap = -2;
         /// <summary>Called after a <see cref="SimCommandKind.PlaceWall"/> is applied (true) or refused (false).</summary>
         public System.Action<bool> OnApplied;
         /// <summary>Called after a <see cref="SimCommandKind.RemoveWall"/> removed a tile, with the <see cref="WallStates"/> it was in (nothing is called when refused).</summary>

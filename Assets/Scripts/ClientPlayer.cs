@@ -189,9 +189,10 @@ public class ClientPlayer : NetworkBehaviour
 
     /// <summary>The owning player's own resources and last second's income and upkeep. Private: never a SyncVar.</summary>
     [TargetRpc]
-    public void TargetUpdateResources(NetworkConnection target, float newResources, float income, float upkeep, bool unpaid)
+    public void TargetUpdateResources(NetworkConnection target, float newResources, float income, float upkeep, bool unpaid, bool atUnitCap)
     {
         upkeepUnpaid = unpaid;
+        this.atUnitCap = atUnitCap;
         currentResources = newResources;
         incomePerSecond = income;
         upkeepPerSecond = upkeep;
@@ -213,6 +214,9 @@ public class ClientPlayer : NetworkBehaviour
 
     /// <summary>True when the server says some of this player's upkeep went unpaid last second.</summary>
     public bool upkeepUnpaid;
+
+    /// <summary>True when the server refused this player's last spawn at the unit cap (playtest 2026-11-05): producers wait.</summary>
+    public bool atUnitCap;
 
     private readonly System.Collections.Generic.Dictionary<int, (UnitType type, int count)> spawnerQueues = new System.Collections.Generic.Dictionary<int, (UnitType, int)>();
 

@@ -138,7 +138,7 @@ namespace WAR2D.UI
             selectionPanel = new SelectionPanelController(root, Selection, hover);
             commandCard = new CommandCardController(root, Selection, Model, costs, unitCosts, config.Siege.WallCost, config.Siege.DemolishRefund,
                 BuildSeconds, RoleOf, switchClearsQueue: true, BuildCard, unit => HoverText.Unit(unit, config.GetUnit(unit), Model.Resources),
-                hover, config.Siege.RepairCostPerHealth);
+                hover, config.Siege.RepairCostPerHealth, config.Simulation.MaxUnitsPerPlayer);
             squadBar = new SquadBarController(root, Selection, hover);
             overlay = new HudOverlayController(root);
             startMarkers = new StartMarkersController(root);
@@ -891,7 +891,7 @@ namespace WAR2D.UI
                 selection.ClearWalls();
                 if (selection.IsExactlyBuildingGroup(squad) &&
                     WAR2D.Net.Replication.ClientBuildings.Current.Entries.TryGetValue(selection.FirstOfBuildingGroup(squad), out WAR2D.Net.Replication.ClientBuildings.Entry first))
-                    CentreCamera(new Vector2(first.Data.position.x, first.Data.position.y));
+                    { Unity.Mathematics.float2 c = Footprint.VisualCenter((Unity.Mathematics.int2)Unity.Mathematics.math.round(first.Data.position), WorldStateManager.GetBuildingSize(first.Data.buildingType)); CentreCamera(new Vector2(c.x, c.y)); }
                 else selection.SelectBuildingGroup(squad);
             }
             else selection.SelectSquad(squad);

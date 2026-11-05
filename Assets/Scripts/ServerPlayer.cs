@@ -123,6 +123,24 @@ public class ServerPlayer
     /// <summary>Seconds of this match in which some of the player's upkeep went unpaid (statistics, tests and the AI bench).</summary>
     public int UnpaidSeconds { get; private set; }
 
+    /// <summary>
+    /// True from a spawn refused at the unit cap until one of the player's spawns succeeds again (playtest 2026-11-05): the
+    /// owner's producers show "Waiting: unit cap". Sent with the resources.
+    /// </summary>
+    public bool AtUnitCap { get; private set; }
+
+    /// <summary>
+    /// Records a spawn result: refused at the cap (true) or a unit made (false). True when the player has just reached the
+    /// cap, so the caller raises the alert once (again only after a spawn has succeeded below the cap).
+    /// </summary>
+    public bool SetAtUnitCap(bool atCap)
+    {
+        if (atCap == AtUnitCap) return false;
+        AtUnitCap = atCap;
+        ResourcesDirty = true;
+        return atCap;
+    }
+
     /// <summary>Records that some of the player's upkeep (units or buildings) went unpaid this second.</summary>
     public void MarkUnpaid() => unpaidThisSecond = true;
 

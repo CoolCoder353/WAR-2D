@@ -42,6 +42,7 @@
       <ExpansionGemTiles>30</ExpansionGemTiles>
       <CentralRichGemTiles>16 24 32 64</CentralRichGemTiles> <!-- v0.17: rich gem tiles per central area, per LayoutSizes row -->
       <RichMinStartDistance>0.15</RichMinStartDistance>     <!-- v0.17: lane distance from any start site, share of map size -->
+      <RichStartClearance>48</RichStartClearance>           <!-- playtest 2026-11-05: no rich gem within this many tiles (straight line) of a start site's centre -->
       <EdgeTiles>4</EdgeTiles>                     <!-- 2026-11-02 playtest: rock this close to the edge is undiggable border -->
     </Map>
   </Match>
