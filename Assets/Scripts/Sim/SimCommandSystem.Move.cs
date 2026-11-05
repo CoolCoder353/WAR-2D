@@ -224,18 +224,13 @@ namespace WAR2D.Sim
                 if (arrivedSlot >= 0 && data.Stance[arrivedSlot] == Stances.Attack && !attackEnded.Contains(id)) continue;
                 // A worker that arrived at its job moves on only when the job is done (see ClearFinishedWork).
                 if (arrivedSlot >= 0 && data.WorkKind[arrivedSlot] != WorkKinds.None && !data.PendingOrders.ContainsKey(id)) continue;
-                if (!context.Waypoints.TryPop(id, out int2 goal, out byte stance, out byte work, out int target)) continue;
                 int slot = arrivedSlot;
                 if (slot < 0 || data.Health[slot] <= 0f)
                 {
                     context.Waypoints.Forget(id);
                     continue;
                 }
-                if (work != WorkKinds.None)
-                {
-                    StartQueuedWork(data, context, slot, goal, work, tick);
-                    continue;
-                }
+                if (!TryNextWalk(data, context, id, slot, tick, out int2 goal, out byte stance, out int target)) continue;
                 if (stance == Stances.Attack)
                 {
                     // Named when queued; checked again now, on what the side sees now.
@@ -253,17 +248,33 @@ namespace WAR2D.Sim
             foreach (KeyValuePair<(int2 goal, byte stance, int sizeClass, int owner, int target), List<int>> leg in legs)
             {
                 byte kind = leg.Key.target != 0 && chases.TryGetValue((leg.Key.owner, leg.Key.target), out Chase legChase) ? legChase.Kind : TargetKinds.Unit;
-                Issue(data, context, leg.Value, leg.Key.sizeClass, leg.Key.goal, leg.Key.stance, tick, leg.Key.owner, leg.Key.target, kind);
+                if (!Issue(data, context, leg.Value, leg.Key.sizeClass, leg.Key.goal, leg.Key.stance, tick, leg.Key.owner, leg.Key.target, kind))
+                    foreach (int refused in leg.Value) context.Waypoints.Forget(data.IdOf[refused]);
                 leg.Value.Clear();
                 spareLegs.Push(leg.Value);
             }
             legs.Clear();
         }
 
-        /// <summary>Issues (or joins) the order for the goal and gives it to the units.</summary>
-        private static void Issue(SimData data, SimContext context, List<int> slots, int sizeClass, int2 goal, byte stance, int tick, int owner, int target = 0, byte targetKind = TargetKinds.Unit, bool background = false)
+        /// <summary>
+        /// Pops the unit's next queued leg: true with a walk for the caller to issue, false once a queued job has started or the
+        /// queue has run out. A job that can't start (a blueprint shot or cancelled since) is passed over: nothing else would
+        /// pop the queue, and auto-work skips a unit that still has one.
+        /// </summary>
+        private bool TryNextWalk(SimData data, SimContext context, int id, int slot, int tick, out int2 goal, out byte stance, out int target)
         {
-            if (slots.Count == 0) return;
+            while (context.Waypoints.TryPop(id, out goal, out stance, out byte work, out target))
+            {
+                if (work == WorkKinds.None) return true;
+                if (StartQueuedWork(data, context, slot, goal, work, tick)) return false;
+            }
+            return false;
+        }
+
+        /// <summary>Issues (or joins) the order for the goal and gives it to the units. False when the owner's order slots are full.</summary>
+        private static bool Issue(SimData data, SimContext context, List<int> slots, int sizeClass, int2 goal, byte stance, int tick, int owner, int target = 0, byte targetKind = TargetKinds.Unit, bool background = false)
+        {
+            if (slots.Count == 0) return false;
             var starts = new NativeArray<int>(slots.Count, Allocator.Temp);
             for (int i = 0; i < slots.Count; i++)
             {
@@ -272,8 +283,9 @@ namespace WAR2D.Sim
             }
             int handle = context.Orders.Issue(goal, sizeClass, starts, tick, owner, background);
             starts.Dispose();
-            if (handle < 0) return;
+            if (handle < 0) return false;
             AddPending(data, slots, new PendingOrder { Slot = handle, Stance = stance, OrderTarget = target, OrderTargetKind = targetKind });
+            return true;
         }
 
         /// <summary>
@@ -345,25 +357,21 @@ namespace WAR2D.Sim
             return oneScratch;
         }
 
-        /// <summary>Starts a queued job for one unit whose last one finished.</summary>
-        private void StartQueuedWork(SimData data, SimContext context, int slot, int2 tile, byte work, int tick)
+        /// <summary>Starts a queued job for one unit whose last one finished. False when it can't start.</summary>
+        private bool StartQueuedWork(SimData data, SimContext context, int slot, int2 tile, byte work, int tick)
         {
             int owner = data.OwnerId[slot];
-            if (work == WorkKinds.DigArea)
-            {
-                if (context.DigAreas.Join(data.IdOf[slot], tile.x)) StartAreaDig(data, context, slot);
-                return;
-            }
-            if (!context.Map.Grid.Contains(tile)) return;
+            if (work == WorkKinds.DigArea) return context.DigAreas.Join(data.IdOf[slot], tile.x) && StartAreaDig(data, context, slot);
+            if (!context.Map.Grid.Contains(tile)) return false;
             List<int> one = One(slot);
             if (work == WorkKinds.Dig)
             {
-                if (context.Map.Grid.TileAt(tile) == TileType.Border) return;
+                if (context.Map.Grid.TileAt(tile) == TileType.Border) return false;
                 AddPending(data, one, new PendingOrder { Slot = -1, Stance = Stances.Idle, WorkTile = context.Map.Grid.Index(tile), WorkKind = work });
-                return;
+                return true;
             }
-            if (!TryWorkTarget(data, context, owner, OrderOf(work), tile, slot, out int2 standGoal)) return;
-            IssueWork(data, context, one, data.SizeClass[slot], standGoal, tick, owner, context.Map.Grid.Index(tile), work);
+            if (!TryWorkTarget(data, context, owner, OrderOf(work), tile, slot, out int2 standGoal)) return false;
+            return IssueWork(data, context, one, data.SizeClass[slot], standGoal, tick, owner, context.Map.Grid.Index(tile), work);
         }
 
         /// <summary>
@@ -409,9 +417,9 @@ namespace WAR2D.Sim
         }
 
         /// <summary>Like <see cref="Issue"/>, with the work target the units start on arrival.</summary>
-        private static void IssueWork(SimData data, SimContext context, List<int> slots, int sizeClass, int2 goal, int tick, int owner, int tileIndex, byte kind, bool background = false)
+        private static bool IssueWork(SimData data, SimContext context, List<int> slots, int sizeClass, int2 goal, int tick, int owner, int tileIndex, byte kind, bool background = false)
         {
-            if (slots.Count == 0) return;
+            if (slots.Count == 0) return false;
             var starts = new NativeArray<int>(slots.Count, Allocator.Temp);
             for (int i = 0; i < slots.Count; i++)
             {
@@ -420,8 +428,9 @@ namespace WAR2D.Sim
             }
             int handle = context.Orders.Issue(goal, sizeClass, starts, tick, owner, background);
             starts.Dispose();
-            if (handle < 0) return;
+            if (handle < 0) return false;
             AddPending(data, slots, new PendingOrder { Slot = handle, Stance = Stances.Move, WorkTile = tileIndex, WorkKind = kind });
+            return true;
         }
 
         /// <summary>
@@ -436,12 +445,8 @@ namespace WAR2D.Sim
                 if (slot < 0 || data.Health[slot] <= 0f) { context.Waypoints.Forget(id); continue; }
                 AddPending(data, One(slot), new PendingOrder { Slot = -1, Stance = Stances.Idle, WorkKind = WorkKinds.None });
                 if (StartAreaDig(data, context, slot)) continue;
-                if (!context.Waypoints.TryPop(id, out int2 goal, out byte stance, out byte work)) continue;
-                if (work != WorkKinds.None) StartQueuedWork(data, context, slot, goal, work, tick);
-                else
-                {
-                    Issue(data, context, One(slot), data.SizeClass[slot], goal, stance, tick, data.OwnerId[slot]);
-                }
+                if (TryNextWalk(data, context, id, slot, tick, out int2 goal, out byte stance, out _) && !Issue(data, context, One(slot), data.SizeClass[slot], goal, stance, tick, data.OwnerId[slot]))
+                    context.Waypoints.Forget(id);
             }
         }
 

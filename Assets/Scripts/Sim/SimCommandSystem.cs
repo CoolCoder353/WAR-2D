@@ -36,6 +36,8 @@ namespace WAR2D.Sim
         {
             deferred.Clear();
             legs.Clear();
+            chases.Clear();
+            attackEnded.Clear();
         }
 
         protected override void OnUpdate()
@@ -66,11 +68,6 @@ namespace WAR2D.Sim
                 ApplyDigMoves(data, context, clock.UnitCount, clock.Tick);
                 UpdateChases(data, context, clock.UnitCount, clock.Tick);
                 AdvanceWaypoints(data, context, clock.UnitCount, clock.Tick);
-            }
-            else
-            {
-                data.Arrivals.Clear();
-                data.WorkFinished.Clear();
             }
 
             List<SimCommand> commands = context.Commands.Drain();

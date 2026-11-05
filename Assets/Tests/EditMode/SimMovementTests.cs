@@ -7,6 +7,26 @@ using WAR2D.World;
 /// <summary>Flow following, separation, off-route recovery and holding to fight.</summary>
 public class SimMovementTests
 {
+    [Test]
+    public void UnitsOnAGoalCellBehindAShortWallStopThere()
+    {
+        var rows = new string[96];
+        for (int r = 0; r < 96; r++)
+        {
+            int y = 95 - r;
+            var row = new char[96];
+            for (int x = 0; x < 96; x++) row[x] = x == 0 || y == 0 || x == 95 || y == 95 ? 'B' : x == 60 && y >= 50 && y <= 59 ? '#' : '.';
+            rows[r] = new string(row);
+        }
+        using var sim = new SimHarness(MapStore.FromAscii(rows));
+        var tanks = new System.Collections.Generic.List<int[]>();
+        for (int i = 0; i < 60; i++) tanks.Add(sim.Spawn(SimHarness.OwnerA, new float2(70.5f + i % 6 * 1.1f, 50.5f + i / 6 * 1.1f), UnitType.Tank));
+        sim.Tick();
+        sim.Move(SimHarness.OwnerA, new int2(59, 55), tanks.ConvertAll(t => t[0]).ToArray());
+        sim.TickSeconds(40f);
+        foreach (int[] tank in tanks) Assert.Less(sim.UnitById(tank[0]).OrderSlot, 0, sim.UnitById(tank[0]).Position.ToString());
+    }
+
     /// <summary>64×64 with a wall down x = 32 that has one 3-tile gap near the top.</summary>
     private static MapStore WallWithGap()
     {

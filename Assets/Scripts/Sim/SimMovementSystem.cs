@@ -199,7 +199,8 @@ namespace WAR2D.Sim
                 if (groupSpeed > 0f)
                 {
                     // v0.16 formation: hold to the group's speed until near its own slot or lost behind the leader,
-                    // and close to the goal walk straight to the slot (slots are on open floor; the integrator slides on walls).
+                    // and close to the goal or the slot walk straight to the slot (slots are on open floor; the integrator slides on
+                    // walls). A big group's slots lie beyond SlotTiles of the goal: nearness to the slot keeps its unit from turning back.
                     float2 goal = OrderGoal[slot];
                     bool seated = FormationRules.HasSeat(FormationOffset[i]); // a member with no slot stops around the goal
                     float2 seat = seated ? goal + FormationOffset[i] : goal;
@@ -207,7 +208,7 @@ namespace WAR2D.Sim
                     int lead = FormationLead[i];
                     bool lost = (uint)lead < (uint)OrderLead.Length && fromGoal - OrderLead[lead] > Lost;
                     if (!lost && toSeat > Loose) speed = math.min(speed, groupSpeed);
-                    if (seated && fromGoal <= SlotTiles && ClearLine(position, seat, Radius[i]))
+                    if (seated && (fromGoal <= SlotTiles || toSeat <= SlotTiles) && ClearLine(position, seat, Radius[i], SizeClass[i]))
                     {
                         steered = true;
                         if (toSeat <= 0.25f) Arrived[i] = 1;
@@ -219,12 +220,15 @@ namespace WAR2D.Sim
                     byte direction = Direction(slot, position);
                     float2 toGoal = OrderGoal[slot] - position;
                     float distance = math.length(toGoal);
-                    // A group packs around the goal: the stop radius grows with the square root of its size.
-                    float arriveRadius = 0.5f + 0.4f * math.sqrt(math.max(1, OrderFollowers[slot]));
+                    // A group packs around the goal: the stop radius grows with the square root of its size. An attacker
+                    // closes until its target is in range (the check above stops it): the group's radius could stop it short for good.
+                    bool attacking = Stance[i] == Stances.Attack;
+                    float arriveRadius = attacking ? 0.5f : 0.5f + 0.4f * math.sqrt(math.max(1, OrderFollowers[slot]));
                     if (direction == FlowDirections.AtGoal)
                     {
-                        // On a goal cell: close in on the goal itself, then stop.
-                        if (distance <= arriveRadius) Arrived[i] = 1;
+                        // On a goal cell: close in on the goal itself, then stop. A goal cell can lie behind a short wall (or one
+                        // built since), and walking straight would press on it for good, so a unit with no clear line stops here.
+                        if (distance <= arriveRadius || (!attacking && !ClearLine(position, OrderGoal[slot], Radius[i], SizeClass[i]))) Arrived[i] = 1;
                         else velocity = speed * toGoal / distance;
                     }
                     else if (direction == FlowDirections.Stop)
@@ -311,9 +315,10 @@ namespace WAR2D.Sim
         /// <summary>
         /// True when a body of <paramref name="radius"/> can slide straight from <paramref name="a"/> to <paramref name="b"/>:
         /// every tile under its corners, sampled every half tile, is open floor (playtest 2026-11-02: checking the centre
-        /// line alone let a body clip a rock corner beside it and stick there).
+        /// line alone let a body clip a rock corner beside it and stick there). A large body also needs its centre where
+        /// <see cref="LargeGrid"/> lets it stand, as the integrator does: a lone rock can sit between its corners.
         /// </summary>
-        private bool ClearLine(float2 a, float2 b, float radius)
+        private bool ClearLine(float2 a, float2 b, float radius, byte sizeClass)
         {
             float length = math.distance(a, b);
             int steps = (int)math.ceil(length * 2f);
@@ -322,6 +327,8 @@ namespace WAR2D.Sim
                 float2 p = math.lerp(a, b, k / (float)steps);
                 if (!Open(p + new float2(-radius, -radius)) || !Open(p + new float2(radius, -radius))
                     || !Open(p + new float2(-radius, radius)) || !Open(p + new float2(radius, radius))) return false;
+                int2 centre = (int2)math.floor(p);
+                if (sizeClass == 1 && LargeGrid[centre.y * Width + centre.x] != 0) return false;
             }
             return true;
         }

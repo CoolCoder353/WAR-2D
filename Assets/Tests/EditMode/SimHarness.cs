@@ -105,6 +105,21 @@ public sealed class SimHarness : IDisposable
     }
 
     /// <summary>Overwrites a unit's health (tests only; completes the tick's jobs first).</summary>
+    public void SetFormationSlot(int id, float2 offset, float speed)
+    {
+        Em.CompleteAllTrackedJobs();
+        using var q = Em.CreateEntityQuery(typeof(Unit));
+        using var entities = q.ToEntityArray(Allocator.Temp);
+        foreach (Entity e in entities)
+        {
+            Unit u = Em.GetComponentData<Unit>(e);
+            if (u.Id != id) continue;
+            u.FormationOffset = offset;
+            u.FormationSpeed = speed;
+            Em.SetComponentData(e, u);
+        }
+    }
+
     public void SetUnitHealth(int id, float health)
     {
         Em.CompleteAllTrackedJobs();

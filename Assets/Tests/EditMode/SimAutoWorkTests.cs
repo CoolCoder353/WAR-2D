@@ -267,6 +267,27 @@ public class SimAutoWorkTests
     }
 
     [Test]
+    public void ABuilderGoesOnPastAQueuedJobThatIsGone()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(48));
+        int[] builder = sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 10.5f), UnitType.Builder);
+        sim.Tick();
+        int2 first = new int2(14, 10), gone = new int2(20, 10), last = new int2(26, 10);
+        sim.PlaceWall(SimHarness.OwnerA, first);
+        sim.PlaceWall(SimHarness.OwnerA, gone);
+        sim.PlaceWall(SimHarness.OwnerA, last);
+        sim.Tick();
+        sim.Order(SimHarness.OwnerA, OrderKind.Build, first, builder[0]);
+        sim.Order(SimHarness.OwnerA, OrderKind.Build, true, gone, builder[0]);
+        sim.Order(SimHarness.OwnerA, OrderKind.Build, true, last, builder[0]);
+        sim.Tick();
+        sim.Em.CompleteAllTrackedJobs();
+        sim.Context.Data.WallDamage.Enqueue(new TileWork { Tile = sim.Map.Grid.Index(gone), Amount = 1f }); // a shot blueprint goes at once
+        sim.TickSeconds(40f);
+        Assert.AreEqual(TileType.PlayerWall, sim.Map.Grid.TileAt(last));
+    }
+
+    [Test]
     public void ALongWallDragGetsBuiltToTheEnd()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(96));

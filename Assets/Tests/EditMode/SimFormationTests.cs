@@ -1,3 +1,4 @@
+using System.Linq;
 using NUnit.Framework;
 using Unity.Mathematics;
 using WAR2D.Sim;
@@ -20,6 +21,41 @@ public class SimFormationTests
         float gap = math.abs(sim.UnitById(scout[0]).Position.y - sim.UnitById(heavy[0]).Position.y);
         Assert.Less(gap, 3f, "the Scout keeps with the Heavy");
         Assert.Greater(sim.UnitById(scout[0]).FormationSpeed, 0f, "still in formation on the way");
+    }
+
+    [Test]
+    public void AGroupTooBigForTheSlotRadiusStillArrives()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(128));
+        var boxes = new System.Collections.Generic.List<int[]>();
+        for (int i = 0; i < 300; i++) boxes.Add(sim.Spawn(SimHarness.OwnerA, new float2(10.5f + i % 20 * 1.1f, 10.5f + i / 20 * 1.1f), UnitType.Tank));
+        sim.Tick();
+        Formed(sim, SimHarness.OwnerA, new int2(64, 70), boxes.ConvertAll(b => b[0]).ToArray());
+        sim.TickSeconds(70f);
+        Assert.AreEqual(0, sim.Units().Count(u => u.OrderSlot >= 0), "the outer slots lie past Formation/SlotTiles");
+    }
+
+    [Test]
+    public void AHeavyWalksAroundALoneRockOnItsWayToASlot()
+    {
+        var rows = new string[96];
+        for (int r = 0; r < 96; r++)
+        {
+            int y = 95 - r;
+            var row = new char[96];
+            for (int x = 0; x < 96; x++) row[x] = x == 0 || y == 0 || x == 95 || y == 95 ? 'B' : x == 50 && y == 55 ? '#' : '.';
+            rows[r] = new string(row);
+        }
+        using var sim = new SimHarness(WAR2D.World.MapStore.FromAscii(rows));
+        int[] heavy = sim.Spawn(SimHarness.OwnerA, new float2(50.5f, 50.5f), UnitType.Heavy);
+        sim.Tick();
+        sim.Move(SimHarness.OwnerA, new int2(45, 60), heavy);
+        sim.Tick();
+        sim.Tick();
+        // Its slot is straight across the rock, which is narrower than the body and between its corners.
+        sim.SetFormationSlot(heavy[0], new float2(5f, 0f), 2.5f);
+        sim.TickSeconds(30f);
+        Assert.Less(math.distance(sim.UnitById(heavy[0]).Position, new float2(50.5f, 60.5f)), 1f, sim.UnitById(heavy[0]).Position.ToString());
     }
 
     [Test]
