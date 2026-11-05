@@ -25,7 +25,7 @@ namespace WAR2D.Sim
             if (maxQueued == 0) return;
             if (!queues.TryGetValue(unitId, out Queue<(int2, byte, byte, int)> queue))
             {
-                queue = spare.Count > 0 ? spare.Pop() : new Queue<(int2, byte, byte, int)>(maxQueued);
+                queue = spare.Count > 0 ? spare.Pop() : new Queue<(int2, byte, byte, int)>();
                 queues[unitId] = queue;
             }
             if (queue.Count < maxQueued) queue.Enqueue((goal, stance, work, target));

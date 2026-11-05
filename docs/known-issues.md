@@ -103,6 +103,12 @@ Found in the 2026-10-28 code review of the v0.15 reconnect; the UI states are on
 | Anything bought while away was free, and refunds while away were lost | **Fixed (v0.15.1).** `ServerPlayer.TrySpend` refuses while away (upkeep uses `TryPayUpkeep`, still frozen); `Refund` bypasses the away freeze. |
 | A map-hash mismatch offered a Rejoin that could never work; refused rejoins kept offering Rejoin | **Fixed (v0.15.1).** The mismatch clears the ticket; a refusal arrives as `RejoinRefused` with a reason, shown on the Play screen with Dismiss. |
 
+## Found in the optimisation scan (2026-11-05), not fixed
+
+- **AddPlayer during HQ placement:** `GameManager.OnServerAddPlayer` turns strangers away only in `Playing`. A connection that sends AddPlayer in `PlacingHQ` gets a seat with no start options, and the match waits for it. The perf harness may join in that state, so check it before closing such connections.
+- **`UnitCommander.Awake` on a rejoin:** it reads `NetworkClient.connection.identity`, which can be null if the scene objects spawn before the local player. Found by reading the code, not reproduced.
+- **Far zoom:** `UpdateClientView` refuses a box over `CommandValidator.MaxBoxSpan` (256), which far zoom on 512 and 1024 maps exceeds, and the server keeps the old box. The clamp below it already bounds the box. Removing the check raises bandwidth at far zoom, so run the perf gate there first.
+
 ## Owner sign-off (2026-11-01)
 
 The owner closed the v0.10 to v0.15.1 verification and tuning items: the playtests, the perf gates (windowed v0.13, v0.14 with the editor closed, the polish fog fade) and the v0.15.1 editor run are done with no major issues; the AI and the game are balanced (the v0.12 unit numbers, the v0.11 map numbers and the AI's strength ladder, including the 1024 caps of spec D9, stand as they are); and the Steam store page is done. Two security trade-offs are **accepted as they are**: build checks answer occupancy for explored but unseen tiles (`CheckPlacement`), and visible enemy units are sent with their whole route.

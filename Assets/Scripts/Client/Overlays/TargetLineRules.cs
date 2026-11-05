@@ -16,6 +16,8 @@ namespace WAR2D.Client.Overlays
         private readonly Dictionary<int, (int target, float at)> last = new Dictionary<int, (int, float)>();
         private readonly List<int> stale = new List<int>();
         private readonly List<int> kept = new List<int>();
+        private float[] sortKeys = new float[0];
+        private (int id, float2 at)[] sortItems = new (int, float2)[0];
         private readonly float hold;
 
         /// <summary>Most lines drawn at once.</summary>
@@ -56,7 +58,11 @@ namespace WAR2D.Client.Overlays
         /// </summary>
         public List<int> Nearest(List<(int id, float2 at)> from, float2 centre, int max)
         {
-            from.Sort((a, b) => math.distancesq(a.at, centre).CompareTo(math.distancesq(b.at, centre)));
+            int n = from.Count;
+            if (sortKeys.Length < n) { sortKeys = new float[n]; sortItems = new (int, float2)[n]; }
+            for (int i = 0; i < n; i++) { sortKeys[i] = math.distancesq(from[i].at, centre); sortItems[i] = from[i]; }
+            System.Array.Sort(sortKeys, sortItems, 0, n);
+            for (int i = 0; i < n; i++) from[i] = sortItems[i];
             kept.Clear();
             for (int i = 0; i < from.Count && i < max; i++) kept.Add(i);
             return kept;

@@ -226,10 +226,13 @@ namespace WAR2D.Client
             serverTime = math.max(serverTime, next);
         }
 
+        /// <summary>A replay's player advances the clock itself, at the playback speed and only while playing.</summary>
+        public bool ClockDriven { get; set; }
+
         private void Update()
         {
             // A paused match sends no ticks: the prediction clock waits with it, so units don't run ahead along their routes.
-            AdvanceClock(GameCore.Instance != null && GameCore.Instance.IsPaused ? 0f : Time.unscaledDeltaTime);
+            AdvanceClock(ClockDriven || (GameCore.Instance != null && GameCore.Instance.IsPaused) ? 0f : Time.unscaledDeltaTime);
             store.PredictAll(serverTime);
             FireTracers();
             FireTurrets();

@@ -31,6 +31,7 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<float2> Positions;
         [ReadOnly] public NativeArray<byte> OwnerSlot;
         [ReadOnly] public NativeArray<ushort> AttackMask;
+        [ReadOnly] public NativeArray<uint> CellOwners;
         [ReadOnly] public NativeArray<float> Health;
         [ReadOnly] public NativeArray<int> IdOf, IndexOfId;
         public int UnitCount;
@@ -58,6 +59,7 @@ namespace WAR2D.Sim
             Positions = data.Positions,
             OwnerSlot = data.OwnerSlot,
             AttackMask = data.AttackMask,
+            CellOwners = data.CellOwners,
             Health = data.Health,
             IdOf = data.IdOf,
             IndexOfId = data.IndexOfId,
@@ -130,10 +132,12 @@ namespace WAR2D.Sim
 
             float best = rangeSq;
             int bestIndex = -1;
+            uint attacked = ((uint)slot < SimData.MaxOwners ? s.AttackMask[slot] : 0u) | SimData.NoOwnerBit; // as SimData.Attacks
             for (int cy = lo.y; cy <= hi.y; cy++)
             for (int cx = lo.x; cx <= hi.x; cx++)
             {
                 int cell = cy * s.CellsX + cx;
+                if ((s.CellOwners[cell] & attacked) == 0) continue;
                 for (int k = s.CellStart[cell]; k < s.CellStart[cell + 1]; k++)
                 {
                     int j = s.Sorted[k];

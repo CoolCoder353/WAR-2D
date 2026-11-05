@@ -82,6 +82,9 @@ namespace WAR2D.Net.Replay
         public static void Prune(string folder, int keep, bool received)
         {
             if (!Directory.Exists(folder)) return;
+            // A crash leaves its recording's .part behind. A day old means no match is still writing it.
+            foreach (string part in Directory.GetFiles(folder, "*" + ReplayFile.Extension + ".part"))
+                try { if (File.GetLastWriteTimeUtc(part) < DateTime.UtcNow.AddDays(-1)) File.Delete(part); } catch (IOException) { }
             foreach (string old in Directory.GetFiles(folder, "*" + ReplayFile.Extension)
                          .Where(p => System.IO.Path.GetFileName(p).Contains(ReceivedTag) == received)
                          .OrderByDescending(File.GetLastWriteTimeUtc).Skip(keep))

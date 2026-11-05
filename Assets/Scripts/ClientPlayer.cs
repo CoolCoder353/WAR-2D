@@ -235,6 +235,16 @@ public class ClientPlayer : NetworkBehaviour
 
     private readonly System.Collections.Generic.Dictionary<int, int2> spawnerRallies = new System.Collections.Generic.Dictionary<int, int2>();
 
+    /// <summary>A rematch keeps this object, but ids restart and nothing of the last match carries over.</summary>
+    public void ResetForNewMatch()
+    {
+        gameOverDeclared = false;
+        drawDeclared = false;
+        spawnerQueues.Clear();
+        spawnerRallies.Clear();
+        OwnStartOptions = System.Array.Empty<int>();
+    }
+
     /// <summary>The rally tile of one of the local player's spawners, as last told by the server.</summary>
     public bool TryGetRally(int buildingId, out int2 tile) => spawnerRallies.TryGetValue(buildingId, out tile);
 

@@ -37,8 +37,8 @@ namespace WAR2D.Client
         {
             foreach (int id in ids)
             {
-                if (!goals.TryGetValue(id, out List<float2> list)) goals[id] = list = new List<float2>(Limit);
-                if (!work.TryGetValue(id, out List<bool> kinds)) work[id] = kinds = new List<bool>(Limit);
+                if (!goals.TryGetValue(id, out List<float2> list)) goals[id] = list = new List<float2>();
+                if (!work.TryGetValue(id, out List<bool> kinds)) work[id] = kinds = new List<bool>();
                 if (!queue || list.Count == 0) { list.Clear(); kinds.Clear(); list.Add(goal); kinds.Add(isWork); stoppedSince.Remove(id); }
                 else if (list.Count < Limit) { list.Add(goal); kinds.Add(isWork); }
             }

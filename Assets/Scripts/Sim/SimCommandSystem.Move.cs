@@ -18,6 +18,7 @@ namespace WAR2D.Sim
         }
         private readonly Dictionary<(int2 goal, byte stance, int sizeClass, int owner, int target), List<int>> legs = new Dictionary<(int2, byte, int, int, int), List<int>>();
         private readonly Stack<List<int>> spareLegs = new Stack<List<int>>();
+        private readonly FormationRules.SeatGrid formationSeats = new FormationRules.SeatGrid();
 
         /// <summary>
         /// Gives the owner's units (the listed ids, or every unit inside the box) an order. Move and
@@ -126,15 +127,19 @@ namespace WAR2D.Sim
             // to a place that is open and no other member's slot, or get no slot (code review 2026-11-03: every blocked slot
             // fell back to the goal itself, so several units shared it and never arrived).
             blockedSlots.Clear();
+            formationSeats.Reset(data.FormationSpacing);
             for (int k = 0; k < formationOffsets.Count; k++)
-                if (!OpenFrom(context, centre, formationOffsets[k])) { blockedSlots.Add((k, formationOffsets[k])); formationOffsets[k] = FormationRules.NoSeat; }
+            {
+                if (OpenFrom(context, centre, formationOffsets[k])) formationSeats.Add(formationOffsets[k]);
+                else { blockedSlots.Add((k, formationOffsets[k])); formationOffsets[k] = FormationRules.NoSeat; }
+            }
             foreach ((int k, float2 original) in blockedSlots)
             {
                 float2 offset = original;
                 for (int tries = 0; tries < 5; tries++)
                 {
                     offset = tries < 4 ? offset * 0.5f : float2.zero;
-                    if (OpenFrom(context, centre, offset) && !FormationRules.Taken(formationOffsets, k, offset, data.FormationSpacing)) { formationOffsets[k] = offset; break; }
+                    if (OpenFrom(context, centre, offset) && !formationSeats.Taken(offset)) { formationOffsets[k] = offset; formationSeats.Add(offset); break; }
                 }
             }
         }

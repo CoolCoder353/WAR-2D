@@ -43,6 +43,9 @@ namespace WAR2D.Client.Overlays
         /// </summary>
         public static float Overlap(float distance, float radius) => radius <= 0f ? 0f : 1f - math.min(1f, distance / (2f * radius));
 
+        private static float[] sortKeys = new float[0];
+        private static RingSet[] sortItems = new RingSet[0];
+
         /// <summary>
         /// Keeps the sets to draw in <paramref name="kept"/>: nearest <paramref name="centre"/> first, skipping any that shares
         /// more than <paramref name="mergeOverlap"/> with a kept one of its group, up to <paramref name="max"/>. Sorts
@@ -51,7 +54,11 @@ namespace WAR2D.Client.Overlays
         public static void Choose(List<RingSet> sets, float2 centre, int max, float mergeOverlap, List<RingSet> kept)
         {
             kept.Clear();
-            sets.Sort((a, b) => math.distancesq(a.At, centre).CompareTo(math.distancesq(b.At, centre)));
+            int n = sets.Count;
+            if (sortKeys.Length < n) { sortKeys = new float[n]; sortItems = new RingSet[n]; }
+            for (int i = 0; i < n; i++) { sortKeys[i] = math.distancesq(sets[i].At, centre); sortItems[i] = sets[i]; }
+            System.Array.Sort(sortKeys, sortItems, 0, n);
+            for (int i = 0; i < n; i++) sets[i] = sortItems[i];
             foreach (RingSet set in sets)
             {
                 if (kept.Count >= max) return;

@@ -643,7 +643,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0110f245bfcfc7d459681f7bd9ebc590, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  maxMessageSize: 16384
+  maxMessageSize: 262144
   maxHandshakeSize: 3000
   serverMaxMsgsPerTick: 10000
   clientMaxMsgsPerTick: 1000

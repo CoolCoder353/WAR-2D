@@ -5,6 +5,21 @@ using Unity.Mathematics;
 
 namespace WAR2D.Sim
 {
+    /// <summary>Works out which owners have a unit in each hash cell (<see cref="SimData.CellOwners"/>).</summary>
+    [BurstCompile]
+    public struct CellOwnersJob : IJob
+    {
+        [ReadOnly] public NativeArray<int> Cell;
+        [ReadOnly] public NativeArray<byte> OwnerSlot;
+        public NativeArray<uint> CellOwners;
+
+        public void Execute()
+        {
+            for (int c = 0; c < CellOwners.Length; c++) CellOwners[c] = 0u;
+            for (int i = 0; i < Cell.Length; i++) CellOwners[Cell[i]] |= 1u << math.min((int)OwnerSlot[i], SimData.MaxOwners);
+        }
+    }
+
     /// <summary>Writes each position's hash cell, clamped to the grid.</summary>
     [BurstCompile]
     public struct CellIndexJob : IJobParallelFor
