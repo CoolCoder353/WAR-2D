@@ -103,6 +103,8 @@ public class MatchFlowTests
         yield return WaitUntil(() => local.SpawnerQueue(spawner) >= 8, 5f);
         Assert.That(local.SpawnerQueue(spawner), Is.InRange(8, 10), "+10 queued (minus any already spawned), the 7 was refused");
 
+        yield return PlayModeMatch.WaitUntil(() => CountUnits() > 0 && FirstUnitStance() == WAR2D.Sim.Stances.AttackMove, 20f, () => "new units attack-move to the rally point");
+
         float2 goal = (float2)rally + 0.5f;
         yield return WaitUntil(() => CountUnits() > 0 && math.distance(FirstUnitPosition(), goal) < 3f, 20f);
         Assert.That(math.distance(FirstUnitPosition(), goal), Is.LessThan(3f), "new units drive to the rally point");
@@ -151,6 +153,13 @@ public class MatchFlowTests
     {
         using var q = Em.CreateEntityQuery(typeof(WAR2D.Sim.Unit));
         return q.CalculateEntityCount();
+    }
+
+    private static byte FirstUnitStance()
+    {
+        using var q = Em.CreateEntityQuery(typeof(WAR2D.Sim.Unit));
+        using var units = q.ToComponentDataArray<WAR2D.Sim.Unit>(Unity.Collections.Allocator.Temp);
+        return units[0].Stance;
     }
 
     private static float2 FirstUnitPosition()

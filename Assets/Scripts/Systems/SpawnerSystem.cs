@@ -11,7 +11,7 @@ using WAR2D.Sim;
 /// created by the simulation at its next boundary (<see cref="SimCommandKind.SpawnUnit"/>); if the
 /// simulation refuses it (the owner is at the unit cap), the cost is refunded and the queue kept.
 /// Each count change is sent to the owner only (<see cref="WorldStateManager.SendSpawnerQueue"/>). A spawner
-/// with a rally point gives each new unit a move order to it.
+/// with a rally point gives each new unit an attack-move order to it.
 /// Server only, Playing state only.
 /// </summary>
 public partial struct SpawnerSystem : ISystem
@@ -75,7 +75,7 @@ public partial struct SpawnerSystem : ISystem
                         if (rally)
                         {
                             bool help = type == UnitType.Builder && WorldStateManager.Instance.IsOwnBlueprintAt(ownerId, rallyTile);
-                            SimCommandQueue.Instance?.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = help ? OrderKind.Build : OrderKind.Move, OwnerId = ownerId, Tile = rallyTile, Ids = new[] { id } });
+                            SimCommandQueue.Instance?.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = help ? OrderKind.Build : OrderKind.AttackMove, OwnerId = ownerId, Tile = rallyTile, Ids = new[] { id } });
                         }
                         return;
                     }

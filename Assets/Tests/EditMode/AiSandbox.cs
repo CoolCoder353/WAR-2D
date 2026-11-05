@@ -448,7 +448,7 @@ public sealed class AiSandbox
                 b.Queued--;
                 int id = AddUnit(Ai, b.Producing, Footprint.VisualCenter(b.Anchor, Size(b.Type)) + new float2(Size(b.Type).x * 0.5f + 1f, 0f));
                 if (b.HasRally) goals[id] = (float2)b.Rally + 0.5f;
-                if (b.HasRally) { AiUnit u = Units[Units.Count - 1]; u.HasOrder = true; u.OrderGoal = (float2)b.Rally + 0.5f; u.Stance = 1; Units[Units.Count - 1] = u; }
+                if (b.HasRally) { AiUnit u = Units[Units.Count - 1]; u.HasOrder = true; u.OrderGoal = (float2)b.Rally + 0.5f; u.Stance = 2; Units[Units.Count - 1] = u; }
                 Buildings[i] = b;
             }
             progress[b.Id] = p;
