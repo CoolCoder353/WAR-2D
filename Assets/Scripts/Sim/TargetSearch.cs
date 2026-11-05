@@ -14,11 +14,11 @@ namespace WAR2D.Sim
         public const byte Wall = 2;
 
         /// <summary>
-        /// True for a unit on a <see cref="Stances.Move"/> order that is still live: it neither searches
-        /// for nor keeps a target until it arrives.
+        /// True for a Suicide bomber on a <see cref="Stances.Move"/> order that is still live: it neither searches for nor keeps
+        /// a target until it arrives, because a target would make it run at the enemy and go off. Every other unit fires on the way.
         /// </summary>
-        public static bool IgnoresEnemies(byte stance, int orderSlot, NativeArray<byte> orderLive) =>
-            stance == Stances.Move && (uint)orderSlot < (uint)orderLive.Length && orderLive[orderSlot] != 0;
+        public static bool IgnoresEnemies(byte stance, byte type, int orderSlot, NativeArray<byte> orderLive) =>
+            type == (byte)UnitType.SuicideBomber && stance == Stances.Move && (uint)orderSlot < (uint)orderLive.Length && orderLive[orderSlot] != 0;
     }
 
     /// <summary>
@@ -270,7 +270,7 @@ namespace WAR2D.Sim
         {
             if (Slice > 1 && (i + Tick) % Slice != 0) return;
             if (Stance[i] == Stances.Attack) return; // only its order's target (ResolveTargetsJob)
-            if (Search.Health[i] <= 0f || TargetKinds.IgnoresEnemies(Stance[i], OrderSlot[i], OrderLive) || DamageByType[Type[i]] <= 0f) { Target[i] = -1; return; }
+            if (Search.Health[i] <= 0f || TargetKinds.IgnoresEnemies(Stance[i], Type[i], OrderSlot[i], OrderLive) || DamageByType[Type[i]] <= 0f) { Target[i] = -1; return; }
 
             int type = Type[i];
             float range = type < RangeSqByType.Length ? RangeSqByType[type] : 0f;

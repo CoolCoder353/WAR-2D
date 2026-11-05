@@ -275,7 +275,7 @@
         {
           "heading": "The orders",
           "paras": [
-            "**Move** ({Key/Command}): go there and ignore enemies until you arrive.",
+            "**Move** ({Key/Command}): go there without stopping, firing at enemies in range on the way.",
             "**Attack-move** ({Key/AttackMove}, then click): go there and stop to fight enemies in range on the way.",
             "**Attack** (right-click an enemy, or Attack-move clicked on one): go after that target, fire at it in range and ignore everything else until it dies. If it slips out of your side's sight, they walk to the last tile it was seen on, and the order ends there if it still isn't seen.",
             "**Stop** ({Key/Stop}) drops every order. **Hold** ({Key/Hold}) stands still and never gets pushed aside. Units with no order fight what comes in range. **Roam** ({Key/Roam}) scouts on its own.",

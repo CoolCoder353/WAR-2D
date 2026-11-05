@@ -299,7 +299,7 @@ namespace WAR2D.Sim
     /// <summary>
     /// Turns each unit's stored target id into this tick's slot, dropping targets that died, left range,
     /// changed hands, are no longer attacked (diplomacy), went into the fog of the attacker's side or no longer exist
-    /// (<see cref="TargetSearch.Keep"/>), and the targets of units on a live Move order.
+    /// (<see cref="TargetSearch.Keep"/>), and the targets of Suicide bombers on a live Move order.
     /// </summary>
     [BurstCompile]
     public struct ResolveTargetsJob : IJobParallelFor
@@ -328,7 +328,7 @@ namespace WAR2D.Sim
                 TargetKind[i] = OrderTargetKind[i];
                 if (Search.Health[i] <= 0f || id <= 0 || DamageByType[Type[i]] <= 0f) return;
             }
-            if (Search.Health[i] <= 0f || id <= 0 || TargetKinds.IgnoresEnemies(Stance[i], OrderSlot[i], OrderLive) || DamageByType[Type[i]] <= 0f) return;
+            if (Search.Health[i] <= 0f || id <= 0 || TargetKinds.IgnoresEnemies(Stance[i], Type[i], OrderSlot[i], OrderLive) || DamageByType[Type[i]] <= 0f) return;
             int type = Type[i];
             float rangeSq = type < RangeSqByType.Length ? RangeSqByType[type] : 0f;
             float minSq = type < MinRangeSqByType.Length ? MinRangeSqByType[type] : 0f;

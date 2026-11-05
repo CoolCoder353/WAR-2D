@@ -186,7 +186,7 @@ namespace WAR2D.Sim
             float2 velocity = float2.zero;
 
             int slot = OrderSlot[i];
-            // Moving units ignore their target; the others hold to fight it.
+            // A Move order walks on while it fires; the others hold to fight their target.
             if ((Target[i] < 0 || Stance[i] == Stances.Move) && (uint)slot < (uint)OrderLive.Length && OrderLive[slot] != 0)
             {
                 bool steered = false;

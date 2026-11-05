@@ -7,7 +7,7 @@ namespace WAR2D.Sim
     {
         /// <summary>No order: fights whatever comes in range and is only moved by separation.</summary>
         public const byte Idle = 0;
-        /// <summary>Follows its order and ignores enemies until it arrives.</summary>
+        /// <summary>Follows its order and never stops for enemies, firing at those in range on the way (a Suicide bomber holds off until it arrives).</summary>
         public const byte Move = 1;
         /// <summary>Follows its order but stops to fight enemies in range.</summary>
         public const byte AttackMove = 2;

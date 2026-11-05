@@ -106,7 +106,7 @@ namespace WAR2D.UI
         {
             switch (kind)
             {
-                case OrderKind.Move: return new HoverCardContent("Move", key, "Drive to a point. Right-clicking the map does the same.");
+                case OrderKind.Move: return new HoverCardContent("Move", key, "Drive to a point without stopping, firing at enemies in range. Right-clicking the map does the same.");
                 case OrderKind.AttackMove:
                     return new HoverCardContent("Attack-move", key, "Move there and fight anything on the way.").Line($"{queueKey} + {key}: add to the queue").GoldLine("Click an enemy to attack it");
                 case OrderKind.Stop: return new HoverCardContent("Stop", key, "Drop every order now.");

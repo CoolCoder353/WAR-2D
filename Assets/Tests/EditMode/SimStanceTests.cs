@@ -7,6 +7,13 @@ public class SimStanceTests
 {
     private static SimHarness Sim() => new SimHarness(SimHarness.OpenMap(64), c => c.Simulation.TargetSearchSliceTicks = 1);
 
+    /// <summary>A map on which neither side can kill the other, to watch a whole pass.</summary>
+    private static SimHarness Tough() => new SimHarness(SimHarness.OpenMap(64), c =>
+    {
+        c.Simulation.TargetSearchSliceTicks = 1;
+        c.GetUnit(UnitType.Tank).Health = 1000000;
+    });
+
     /// <summary>True when the unit attacked during the last tick.</summary>
     private static bool Attacked(SimHarness sim, int id)
     {
@@ -16,21 +23,67 @@ public class SimStanceTests
     }
 
     [Test]
-    public void MovePassesEnemiesWithoutStopping()
+    public void MoveFiresAtEnemiesInRangeAndNeverStopsForThem()
     {
-        using var sim = Sim();
+        using var sim = Tough();
         int[] a = sim.Spawn(SimHarness.OwnerA, new float2(5, 32));
-        sim.Spawn(SimHarness.OwnerB, new float2(32, 33));
+        float2 enemyAt = new float2(32, 33);
+        sim.Spawn(SimHarness.OwnerB, enemyAt);
         sim.Tick();
         sim.Order(SimHarness.OwnerA, OrderKind.Move, new int2(58, 32), a[0]);
-        int ticks = (int)math.ceil(15f * sim.Config.Simulation.TickRate);
+        float range = sim.Config.GetUnit(UnitType.Tank).Range;
+        float step = sim.Config.GetUnit(UnitType.Tank).MoveSpeed / sim.Config.Simulation.TickRate;
+        int ticks = (int)math.ceil(15f * sim.Config.Simulation.TickRate), shots = 0, shotsWhileMoving = 0;
+        float2 last = sim.UnitById(a[0]).Position;
         for (int t = 0; t < ticks; t++)
         {
             sim.Tick();
             Unit u = sim.UnitById(a[0]);
-            if (u.OrderSlot >= 0) Assert.IsFalse(Attacked(sim, a[0]), $"attacked while moving on tick {t}");
+            bool fired = Attacked(sim, a[0]);
+            if (fired)
+            {
+                shots++;
+                if (math.distance(u.Position, last) > step / 2f) shotsWhileMoving++;
+                Assert.LessOrEqual(math.distance(u.Position, enemyAt), range + step, $"fired out of range on tick {t}");
+            }
+            last = u.Position;
         }
+        Assert.Greater(shots, 0, "it fires as it passes");
+        Assert.AreEqual(shots, shotsWhileMoving, "and it never stops to do so");
         Assert.Less(math.distance(sim.UnitById(a[0]).Position, new float2(58.5f, 32.5f)), 3f);
+    }
+
+    [Test]
+    public void MoveDropsItsTargetOnceThatLeavesRange()
+    {
+        using var sim = Tough();
+        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(30, 32));
+        sim.Spawn(SimHarness.OwnerB, new float2(32, 33));
+        sim.TickSeconds(0.5f);
+        Assert.Greater(sim.UnitById(a[0]).TargetId, 0, "idle in range, it fires");
+        sim.Order(SimHarness.OwnerA, OrderKind.Move, new int2(5, 32), a[0]);
+        sim.TickSeconds(5f);
+        Assert.Greater(math.distance(sim.UnitById(a[0]).Position, new float2(32, 33)), sim.Config.GetUnit(UnitType.Tank).Range);
+        Assert.LessOrEqual(sim.UnitById(a[0]).TargetId, 0, "it holds no target out of range");
+        Assert.IsFalse(Attacked(sim, a[0]));
+    }
+
+    [Test]
+    public void ASuicideBomberOnAMoveHoldsOffUntilItArrives()
+    {
+        using var sim = Sim();
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(5, 32), UnitType.SuicideBomber);
+        sim.Spawn(SimHarness.OwnerB, new float2(32, 33), UnitType.Builder); // unarmed, so nothing shoots the bomber down
+        sim.Tick();
+        sim.Order(SimHarness.OwnerA, OrderKind.Move, new int2(58, 32), bomber[0]);
+        sim.Tick();
+        int ticks = (int)math.ceil(5f * sim.Config.Simulation.TickRate);
+        for (int t = 0; t < ticks && sim.UnitById(bomber[0]).OrderSlot >= 0; t++)
+        {
+            sim.Tick();
+            Assert.LessOrEqual(sim.UnitById(bomber[0]).TargetId, 0, $"a target on tick {t}");
+        }
+        Assert.Greater(sim.UnitById(bomber[0]).Position.x, 40f, "it ran past the enemy");
     }
 
     [Test]
