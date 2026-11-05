@@ -118,6 +118,26 @@ namespace WAR2D.Net.Replication
     /// caller-owned lists) for every message. Decoders throw <see cref="InvalidDataException"/> or
     /// <see cref="EndOfStreamException"/> on malformed input and never allocate unbounded memory.
     /// </summary>
+    /// <summary>
+    /// Route waypoints on the wire, in half tiles: cell centres are x.5, and whole tiles cut them by up to 0.7 tiles, so the
+    /// client drew units off the server's copy of its prediction (bug review 2026-11-05). The server snaps its routes to this grid
+    /// (<see cref="Snap"/>), so both sides follow the same points exactly. A 1024 map is 2048 half tiles, inside a ushort.
+    /// </summary>
+    public static class RouteWire
+    {
+        /// <summary>Wire units per tile.</summary>
+        public const float Scale = 2f;
+
+        /// <summary>A position in wire units.</summary>
+        public static int2 Encode(float2 p) => (int2)math.round(p * Scale);
+
+        /// <summary>A wire point back in tiles (exact: halves are exact floats).</summary>
+        public static float2 Decode(int2 w) => (float2)w / Scale;
+
+        /// <summary>A position as the client will read it.</summary>
+        public static float2 Snap(float2 p) => Decode(Encode(p));
+    }
+
     public static class Messages
     {
         /// <summary>Most waypoints one route may carry.</summary>
@@ -148,7 +168,7 @@ namespace WAR2D.Net.Replication
 
         // ---------- encoders ----------
 
-        /// <summary>Writes a route: the first tile, then signed byte steps (an escape byte starts an absolute tile).</summary>
+        /// <summary>Writes a route (<see cref="RouteWire"/> half tiles): the first point, then signed byte steps (an escape byte starts an absolute point).</summary>
         public static void WriteRoute<W>(ref W writer, NativeArray<int2> waypoints, int first, int count) where W : struct, IWireWriter
         {
             VarInt.Write(ref writer, (uint)count);

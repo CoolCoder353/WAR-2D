@@ -37,20 +37,35 @@ namespace WAR2D.Net.Replication
         public const int MaxDeltaCells = 16384;
 
         /// <summary>
-        /// Writes a whole grid: kind, width, height, cell size, then runs of (state, varint length) over the
-        /// cells in row-major order.
+        /// Most bytes one payload should take: a server message past about 16 KB is dropped on the way (SimpleWeb's
+        /// <c>maxMessageSize</c> through <c>MultiplexTransport</c>) and never resent, so a big snapshot or delta is split
+        /// (bug review 2026-11-05).
         /// </summary>
-        public static void WriteSnapshot(NetworkWriter writer, int fogW, int fogH, int cellSize,
-            NativeArray<byte> visible, NativeArray<byte> explored, int offset)
+        public const int MaxPayloadBytes = 12 * 1024;
+
+        /// <summary>A run's most bytes: its state and a five-byte varint.</summary>
+        private const int MaxRunBytes = 6;
+
+        /// <summary>
+        /// Writes a grid, or the part of it from cell <paramref name="start"/>: kind, width, height, cell size, start, then runs
+        /// of (state, varint length) over the cells in row-major order, until the grid ends or the payload reaches
+        /// <paramref name="maxBytes"/>. Returns the cell the next part starts at (the cell count when the grid is done). The
+        /// part from 0 resets the client's grid; later parts continue it.
+        /// </summary>
+        public static int WriteSnapshot(NetworkWriter writer, int fogW, int fogH, int cellSize,
+            NativeArray<byte> visible, NativeArray<byte> explored, int offset, int start = 0, int maxBytes = int.MaxValue)
         {
+            int begin = writer.Position;
             writer.WriteByte(Snapshot);
             VarInt.Write(writer, (uint)fogW);
             VarInt.Write(writer, (uint)fogH);
             VarInt.Write(writer, (uint)cellSize);
+            VarInt.Write(writer, (uint)start);
             int cells = fogW * fogH;
-            int i = 0;
+            int i = start;
             while (i < cells)
             {
+                if (i > start && writer.Position - begin + MaxRunBytes > maxBytes) break;
                 byte state = StateAt(visible, explored, offset + i);
                 int run = 1;
                 while (i + run < cells && StateAt(visible, explored, offset + i + run) == state) run++;
@@ -58,6 +73,24 @@ namespace WAR2D.Net.Replication
                 VarInt.Write(writer, (uint)run);
                 i += run;
             }
+            return i;
+        }
+
+        /// <summary>How many of the sorted cells from <paramref name="start"/> one delta can carry in <paramref name="maxBytes"/> (at least one).</summary>
+        public static int DeltaCountWithin(List<int> sortedCells, int start, int maxBytes)
+        {
+            int bytes = 1 + 5; // kind and the count's varint, at its largest
+            int previous = -1; // each part's gaps count from -1, as WriteDelta writes them
+            int count = 0;
+            for (int k = start; k < sortedCells.Count && count < MaxDeltaCells; k++)
+            {
+                int size = VarInt.Size((uint)(sortedCells[k] - previous - 1));
+                if (count > 0 && bytes + size > maxBytes) break;
+                bytes += size;
+                previous = sortedCells[k];
+                count++;
+            }
+            return count;
         }
 
         private static byte StateAt(NativeArray<byte> visible, NativeArray<byte> explored, int index) =>
@@ -87,9 +120,14 @@ namespace WAR2D.Net.Replication
                 {
                     int w = (int)VarInt.Read(reader), h = (int)VarInt.Read(reader), size = (int)VarInt.Read(reader);
                     if (w <= 0 || h <= 0 || size <= 0 || (long)w * h > 1 << 24) return false;
-                    fog.Reset(w, h, size);
-                    int i = 0, cells = w * h;
-                    while (i < cells)
+                    int cells = w * h;
+                    uint first = VarInt.Read(reader);
+                    if (first >= (uint)cells) return false;
+                    // The first part starts the grid afresh; a later part continues one of the same shape.
+                    if (first == 0) fog.Reset(w, h, size);
+                    else if (fog.State == null || fog.Width != w || fog.Height != h || fog.CellSize != size) return false;
+                    int i = (int)first;
+                    while (reader.Remaining > 0)
                     {
                         byte state = reader.ReadByte();
                         int run = (int)VarInt.Read(reader);

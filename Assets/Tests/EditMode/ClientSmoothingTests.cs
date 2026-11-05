@@ -24,7 +24,7 @@ public class ClientSmoothingTests
         store = new ClientUnitStore(32, Dt);
         Send(1, (ref NativeSink sink) =>
         {
-            var tiles = new NativeArray<int2>(new[] { new int2(10, 10) }, Allocator.Temp);
+            var tiles = new NativeArray<int2>(new[] { RouteWire.Encode(new float2(10, 10)) }, Allocator.Temp);
             var units = new NativeArray<EnterUnit>(new[]
             {
                 new EnterUnit { Id = Id, Type = (byte)UnitType.Tank, OwnerId = 9, X = Quantise.Encode(10f), Y = Quantise.Encode(10f), Health = 100, First = 0, Count = 1 },
@@ -50,9 +50,11 @@ public class ClientSmoothingTests
         bytes.Dispose();
     }
 
+    /// <summary>Sends a route of whole tiles (on the wire in <see cref="RouteWire"/> half tiles).</summary>
     private void SendRoute(int tick, params int2[] route) => Send(tick, (ref NativeSink sink) =>
     {
-        var tiles = new NativeArray<int2>(route, Allocator.Temp);
+        var tiles = new NativeArray<int2>(route.Length, Allocator.Temp);
+        for (int i = 0; i < route.Length; i++) tiles[i] = RouteWire.Encode(route[i]);
         var units = new NativeArray<RouteUnit>(new[] { new RouteUnit { Index = Index, First = 0, Count = route.Length } }, Allocator.Temp);
         Messages.EncodeMoveOrder(ref sink, tick, tiles, units);
     });

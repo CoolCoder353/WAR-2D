@@ -37,6 +37,19 @@ public class SimClosestTargetTests
     }
 
     [Test]
+    public void AUnitAsNearAsABuildingKeepsTheFire()
+    {
+        // Exactly 1.5 tiles each: the Barracks' footprint (19..20, 22..23) starts 1.5 above the tank, the unit 1.5 below.
+        using var sim = Sim();
+        int[] tank = sim.Spawn(SimHarness.OwnerA, At);
+        int[] enemy = sim.Spawn(SimHarness.OwnerB, At + new float2(0f, -1.5f));
+        sim.PlaceBuilding(SimHarness.OwnerB, BuildingType.Barracks, new int2(20, 23), true);
+        Unit u = AttackMoved(sim, tank);
+        Assert.AreEqual(TargetKinds.Unit, u.TargetKind, "a tie goes to the unit, as when units are searched alone");
+        Assert.AreEqual(enemy[0], u.TargetId);
+    }
+
+    [Test]
     public void AUnitInRangeTakesTheFireFromACloserWall()
     {
         using var sim = Sim();

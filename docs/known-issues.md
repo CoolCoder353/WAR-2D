@@ -6,6 +6,22 @@ Bugs, mismatches and hygiene problems. The first two roadmaps (v0.2 to v0.9, and
 
 The recorder's units go through `DeferredLane` (encoded during the next tick to keep the boundary inside the perf budget), so a recording's unit records are one tick later than its buildings and terrain. Harmless for playback; don't "fix" it by moving the recorder back onto the boundary (`docs/perf/v0.10/README.md`).
 
+## Review fixes, round 3 (2026-11-06, on `unstable/pr30-routes-testing`)
+
+From the eighth scan in [bug-review.md](bug-review.md) and a review of the branch. EditMode 1482/1482; PlayMode 97/98, the miss being `PerformanceTests.MinimapRedrawAtTenThousandOwnUnitsIsUnderOneMillisecond` at 1.0065 ms (it passed alone). Protocol 21, replay format 4: older recordings no longer open.
+
+| Item | State |
+| --- | --- |
+| Route waypoints lost their half tile on the wire | **Fixed.** Routes go out in half tiles (`RouteWire`), and the server snaps each traced route to that grid before it compares or keeps it, so its copy of the client's prediction follows the same points (`ReplicationTests.RouteWaypointsKeepTheirHalfTiles`). Server movement doesn't read these routes, so the game itself is unchanged. This was behind the flaky `ReplicationPlayModeTests.UnitDrawsWhereServerHasIt`. |
+| A fog payload over 16 KB was dropped | **Fixed.** A snapshot goes in parts, each naming its start cell (the part from 0 resets the grid), and a delta is cut by bytes, both under `FogCodec.MaxPayloadBytes` and `BatchLimit` (`FogCodecTests.ABigSnapshotGoesInPartsUnderTheCap`, `ABigDeltaGoesInPartsUnderTheCap`). |
+| A building batch could pass its cap by one building | **Fixed.** The writer stops while one more building's records (`BuildingCodec.MaxViewBytes`) still fit, and the Gone and Hide records at the end stop too (`BuildingProgressCodecTests.ABatchNeverPassesItsByteCap`). |
+| The end screen's summary passed 16 KB in long matches | **Fixed.** `Summary/MaxPoints` is 80 (was 360), so a long match keeps 40 to 80 points per player; `SummaryTests.TheLargestSummaryFitsOneMessage` now checks the configured numbers against `WireLimits.TransportMessageCap`. |
+| An eliminated player's walls stayed for good | **Fixed.** `KillOwner` removes the owner's walls; their tiles become ground (`ReviewRound3Tests`). |
+| An unpaid Radar kept its 20-tile sight | **Fixed.** Its sight is a blueprint's (0) until paid again, as gameplay.md says. The client's ring still shows its normal reach. |
+| On an Attack-move a building won a tie with a unit | **Fixed.** A building takes the fire from a unit only by being nearer (`SimClosestTargetTests.AUnitAsNearAsABuildingKeepsTheFire`). |
+| Speed-ups | Work-target searches look up the worker's pocket once, not once per tile tried; `SectorGraph.SamePockets` reuses its buffer; the unused `CanWalkTo` is gone. Same results. |
+| Perf gate | Run 2026-11-06 on a Linux release build of these changes (headless host, 7 clients, 3 runs, the editor left open), against the `e0b099b` runs above: `perf.tick.main` p95 **26.3 ms** (26.5 / 25.6 / 26.3; was 27.7), still over 25. Replication p95 16.0 (was 16.7), commands 6.3 (6.2). Bandwidth average 220,713 (was 215,389; budget 262,144), peak 503,712 (579,214). The difference in tick time is within run-to-run noise; the half-tile routes cost about 2.5 % more bandwidth. |
+
 ## Owner playtest fixes (2026-11-04, third session)
 
 | Item | State |

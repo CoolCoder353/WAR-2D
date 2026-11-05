@@ -438,17 +438,17 @@ namespace WAR2D.Net.Replication
             MovementPrediction.ApplyCorrection(ref state, Waypoints, first, count, now, unit, Config.DeltaScale);
         }
 
-        /// <summary>Appends a unit's route (tiles) to a message's list; a unit with none gets its own tile.</summary>
+        /// <summary>Appends a unit's route (in <see cref="RouteWire"/> half tiles) to a message's list; a unit with none gets its own position.</summary>
         private int AppendRoute(int index, float2 position, NativeList<int2> into)
         {
             int count = RouteCount[index];
             if (count <= 0)
             {
-                into.Add((int2)math.round(position));
+                into.Add(RouteWire.Encode(position));
                 return 1;
             }
             int first = RouteStart[index];
-            for (int i = 0; i < count; i++) into.Add((int2)Waypoints[first + i]);
+            for (int i = 0; i < count; i++) into.Add(RouteWire.Encode(Waypoints[first + i]));
             return count;
         }
 

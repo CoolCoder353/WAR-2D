@@ -47,10 +47,12 @@ namespace WAR2D.Sim
                 data.BuildingOwnerSlot[b] = data.OwnerSlotOf(building.ValueRO.ownerId);
                 int buildingType = (int)building.ValueRO.buildingType;
                 bool underConstruction = SystemAPI.HasComponent<Construction>(entity);
-                data.BuildingSight[b] = underConstruction ? ConstructionRules.BlueprintSight
+                bool unpaid = SystemAPI.HasComponent<UpkeepComponent>(entity) && SystemAPI.GetComponent<UpkeepComponent>(entity).unpaid;
+                // An unpaid Radar doesn't scan (gameplay.md): it sees nothing beyond what a blueprint sees, not its 20 tiles (bug review 2026-11-05).
+                bool radarOff = building.ValueRO.buildingType == BuildingType.Radar && unpaid;
+                data.BuildingSight[b] = underConstruction || radarOff ? ConstructionRules.BlueprintSight
                     : (uint)buildingType < (uint)data.BuildingSightByType.Length ? data.BuildingSightByType[buildingType] : 0f;
                 byte flags = underConstruction ? BuildingFlags.UnderConstruction : (byte)0;
-                bool unpaid = SystemAPI.HasComponent<UpkeepComponent>(entity) && SystemAPI.GetComponent<UpkeepComponent>(entity).unpaid;
                 if (building.ValueRO.buildingType == BuildingType.Radar && !underConstruction && !unpaid) flags |= BuildingFlags.SeesThroughWalls;
                 if (building.ValueRO.buildingType == BuildingType.Bomb) flags |= BuildingFlags.Hidden;
                 if (unpaid) flags |= BuildingFlags.Unpaid;

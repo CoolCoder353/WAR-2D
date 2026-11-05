@@ -434,26 +434,40 @@ namespace WAR2D.Net.Replication
                         allSeen = new NativeArray<byte>(data.FogCells, Allocator.Persistent);
                         for (int i = 0; i < allSeen.Length; i++) allSeen[i] = 1;
                     }
-                    writer.Position = 0;
-                    FogCodec.WriteSnapshot(writer, data.FogW, data.FogH, data.FogCellSize, allSeen, allSeen, 0);
-                    SendFogPayload(client, writer.ToArraySegment());
+                    SendFogSnapshot(client, data, allSeen, allSeen, 0);
                     continue;
                 }
                 if (client.FogGrid != grid)
                 {
                     client.FogGrid = grid;
-                    writer.Position = 0;
-                    FogCodec.WriteSnapshot(writer, data.FogW, data.FogH, data.FogCellSize, data.Visible, data.Explored, grid * data.FogCells);
-                    SendFogPayload(client, writer.ToArraySegment());
+                    SendFogSnapshot(client, data, data.Visible, data.Explored, grid * data.FogCells);
                     continue;
                 }
                 if (!fogChanges.TryGetValue(grid, out List<int> cells)) continue;
-                for (int start = 0; start < cells.Count; start += FogCodec.MaxDeltaCells)
+                int limit = FogLimit;
+                for (int start = 0; start < cells.Count;)
                 {
+                    int count = FogCodec.DeltaCountWithin(cells, start, limit);
                     writer.Position = 0;
-                    FogCodec.WriteDelta(writer, cells, start, math.min(FogCodec.MaxDeltaCells, cells.Count - start));
+                    FogCodec.WriteDelta(writer, cells, start, count);
                     SendFogPayload(client, writer.ToArraySegment());
+                    start += count;
                 }
+            }
+        }
+
+        /// <summary>Largest fog payload: one that passes the transport's cap is dropped and never resent.</summary>
+        private static int FogLimit => BatchLimit(Channels.Reliable, FogCodec.MaxPayloadBytes);
+
+        /// <summary>Sends a whole fog grid as snapshot parts, each under <see cref="FogLimit"/>.</summary>
+        private void SendFogSnapshot(Client client, SimData data, NativeArray<byte> visible, NativeArray<byte> explored, int offset)
+        {
+            int cells = data.FogW * data.FogH, limit = FogLimit;
+            for (int start = 0; start < cells;)
+            {
+                writer.Position = 0;
+                start = FogCodec.WriteSnapshot(writer, data.FogW, data.FogH, data.FogCellSize, visible, explored, offset, start, limit);
+                SendFogPayload(client, writer.ToArraySegment());
             }
         }
 

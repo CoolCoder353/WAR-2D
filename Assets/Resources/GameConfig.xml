@@ -92,7 +92,7 @@
 
   <Summary>
     <SampleSeconds>10</SampleSeconds>  <!-- v0.18: the end screen's graphs sample this often -->
-    <MaxPoints>360</MaxPoints>         <!-- v0.18: most samples per player; past it pairs merge and the interval doubles -->
+    <MaxPoints>80</MaxPoints>          <!-- v0.18: most samples per player; past it pairs merge and the interval doubles. 8 players' worth must fit one 16 KB message (SummaryTests) -->
     <FightCellTiles>32</FightCellTiles>        <!-- v0.18: deaths are binned into cells this size -->
     <FightWindowSeconds>20</FightWindowSeconds> <!-- v0.18: a fight opens on this much worth within this window, and closes after a quiet one -->
     <FightMinWorth>600</FightMinWorth>

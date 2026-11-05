@@ -105,7 +105,8 @@ namespace WAR2D.Net.Replication
         /// <summary>
         /// Writes the records that take the client from what it knew to what it may know now; returns how
         /// many were written. <paramref name="sees"/> answers whether the client's grid sees a position.
-        /// Stops once the writer holds <paramref name="maxBytes"/>; the rest follows on the next update.
+        /// Never writes past <paramref name="maxBytes"/>: it stops while another building's records still fit, and the rest
+        /// follows on the next update (a batch past the transport's cap is dropped whole, bug review 2026-11-05).
         /// </summary>
         public int Update(List<BuildingView> views, HashSet<int> present, int ownerId, Func<float2, bool> sees, NetworkWriter writer, int maxBytes = int.MaxValue, Func<int, bool> mayKnowHidden = null)
         {
@@ -185,6 +186,7 @@ namespace WAR2D.Net.Replication
                     sink.Record(BuildingRecord.Gone, id, 0);
                     records++;
                     known.Remove(id);
+                    if (sink.Full) return records;
                 }
                 else if (k.Live)
                 {
@@ -193,6 +195,7 @@ namespace WAR2D.Net.Replication
                     records++;
                     k.Live = false;
                     known[id] = k;
+                    if (sink.Full) return records;
                 }
             }
             return records;
@@ -205,7 +208,8 @@ namespace WAR2D.Net.Replication
             public int MaxBytes;
             public void Enter(in BuildingView v) => BuildingCodec.WriteEnter(Writer, v);
             public void Record(BuildingRecord kind, int id, int value) => BuildingCodec.WriteId(Writer, kind, id, value);
-            public bool Full => Writer.Position >= MaxBytes;
+            /// <summary>Full once one more building's records (<see cref="BuildingCodec.MaxViewBytes"/>) might not fit under the cap.</summary>
+            public bool Full => Writer.Position > MaxBytes - BuildingCodec.MaxViewBytes;
         }
     }
 
@@ -223,6 +227,12 @@ namespace WAR2D.Net.Replication
     /// <summary>Encodes and decodes building records. Pure.</summary>
     public static class BuildingCodec
     {
+        /// <summary>
+        /// Most bytes one building's records take in one update: an Enter (at most 34) and an Unpaid (at most 11), or a Health,
+        /// a Progress and an Unpaid. A writer stops while this much room is left.
+        /// </summary>
+        public const int MaxViewBytes = 48;
+
         public static void WriteEnter(NetworkWriter writer, in BuildingView v)
         {
             writer.WriteByte((byte)BuildingRecord.Enter);

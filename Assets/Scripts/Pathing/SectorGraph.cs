@@ -606,7 +606,7 @@ namespace WAR2D.Pathing
         /// same number of pockets, every floor cell that stayed floor in the same pocket, and new floor only in pockets that kept
         /// an old cell. Then no region can have gained or lost a pocket or a crossing through it.
         /// </summary>
-        private static bool SamePockets(SectorState was, SectorState now)
+        private bool SamePockets(SectorState was, SectorState now)
         {
             if (was.Portals.Length != now.Portals.Length) return false;
             for (int p = 0; p < was.Portals.Length; p++)
@@ -621,7 +621,10 @@ namespace WAR2D.Pathing
                 countNow = math.max(countNow, now.PocketOf[i] + 1);
             }
             if (count != countNow) return false;
-            var kept = new bool[count];
+            // Reused: a wall line checks a suspect sector per tile it changed, and this ran once per check.
+            if (keptScratch.Length < count) keptScratch = new bool[math.max(count, keptScratch.Length * 2)];
+            bool[] kept = keptScratch;
+            System.Array.Clear(kept, 0, count);
             for (int i = 0; i < was.PocketOf.Length; i++)
             {
                 short o = was.PocketOf[i], n = now.PocketOf[i];
@@ -635,6 +638,8 @@ namespace WAR2D.Pathing
                 if (was.PocketOf[i] < 0 && now.PocketOf[i] >= 0 && !kept[now.PocketOf[i]]) return false;
             return true;
         }
+
+        private bool[] keptScratch = new bool[16];
 
         private void Materialize(Layer layer, int sector)
         {

@@ -370,7 +370,7 @@ namespace WAR2D.Client
             liveWaypoints += count - routeCount[index];
             routeStart[index] = arena.Length;
             routeCount[index] = count;
-            for (int i = 0; i < count; i++) arena.Add(waypoints[first + i]);
+            for (int i = 0; i < count; i++) arena.Add(RouteWire.Decode(waypoints[first + i]));
             if (arena.Length > 2 * liveWaypoints + 65536) Compact();
         }
 

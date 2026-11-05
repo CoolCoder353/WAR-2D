@@ -164,7 +164,9 @@ namespace WAR2D.Sim
                     if (s.BuildingHealth[j] <= 0f || (s.BuildingFlag[j] & BuildingFlags.Hidden) != 0 || !SimData.Attacks(s.AttackMask, slot, s.BuildingOwnerSlot[j])) continue;
                     float2 at = NearestPoint(s, j, p);
                     float d = math.distancesq(p, at);
-                    if (d <= best && d >= minSq && Sees(s, grid, at) && LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, at)) { best = d; target = j; kind = TargetKinds.Building; }
+                    // On an Attack-move a unit at the same distance keeps the shot: a building takes it only by being nearer.
+                    bool tieWins = !(target >= 0 && kind == TargetKinds.Unit);
+                    if ((d < best || (d == best && tieWins)) && d >= minSq && Sees(s, grid, at) && LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, at)) { best = d; target = j; kind = TargetKinds.Building; }
                 }
             }
             // A wall is a last resort even for an Attack-move: one beside the unit mustn't take its fire from enemies in range.

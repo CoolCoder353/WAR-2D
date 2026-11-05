@@ -403,7 +403,9 @@ namespace WAR2D.Sim
             if (order == OrderKind.Repair && !own && !allied) return false;
             // A hidden bomb is a target only for players who may know it, or the Builder's walk would reveal it.
             if (!own && (data.BuildingFlag[b] & global::BuildingFlags.Hidden) != 0 && !context.Diplomacy.SharesVisionWith(targetSlot, ownerSlot)) return false;
-            return TileSearch.FindNearest(data.BuildingAnchor[b], t => context.Map.IsWalkable(t) && context.Orders.Reaches(sizeClass, from, t), t => TileRules.IsFloor(grid.TileAt(t)) || context.Map.IsUsed(t), 1024, out standGoal);
+            // The worker's pocket once, not once per tile the search tries (Reaches would look it up for each of up to 1024).
+            int pocket = context.Orders.PocketOf(sizeClass, from);
+            return TileSearch.FindNearest(data.BuildingAnchor[b], t => context.Map.IsWalkable(t) && context.Orders.Connects(sizeClass, pocket, context.Orders.PocketOf(sizeClass, t)), t => TileRules.IsFloor(grid.TileAt(t)) || context.Map.IsUsed(t), 1024, out standGoal);
         }
 
         /// <summary>A wall tile as a work target: Build needs an own one, Repair an own or allied one; workers stand on a free tile beside it.</summary>
@@ -418,7 +420,8 @@ namespace WAR2D.Sim
             bool allied = wallSlot != SimData.NoSlot && ownerSlot >= 0 && !SimData.Attacks(data.AttackMask, ownerSlot, wallSlot) && !SimData.Attacks(data.AttackMask, wallSlot, ownerSlot);
             if (order == OrderKind.Build && !own) return false;
             if (order == OrderKind.Repair && !own && !allied) return false;
-            return TileSearch.FindNearest(tile, t => !t.Equals(tile) && context.Map.IsWalkable(t) && context.Orders.Reaches(sizeClass, from, t), t => TileRules.IsFloor(grid.TileAt(t)) || t.Equals(tile) || context.Map.IsUsed(t), 1024, out standGoal);
+            int pocket = context.Orders.PocketOf(sizeClass, from);
+            return TileSearch.FindNearest(tile, t => !t.Equals(tile) && context.Map.IsWalkable(t) && context.Orders.Connects(sizeClass, pocket, context.Orders.PocketOf(sizeClass, t)), t => TileRules.IsFloor(grid.TileAt(t)) || t.Equals(tile) || context.Map.IsUsed(t), 1024, out standGoal);
         }
 
         /// <summary>Like <see cref="Issue"/>, with the work target the units start on arrival.</summary>

@@ -118,6 +118,7 @@ namespace WAR2D.Sim
                         break;
                     case SimCommandKind.KillOwner:
                         KillUnits(data, context, command.OwnerId, all: false);
+                        terrainChanged |= RemoveOwnerWalls(data, context, command.OwnerId, clock.UnitCount);
                         break;
                     case SimCommandKind.DestroyAll:
                         KillUnits(data, context, 0, all: true);
@@ -238,6 +239,24 @@ namespace WAR2D.Sim
             if (state == WallStates.None || data.WallOwnerSlot[index] != (byte)slot) return WallStates.None;
             RemoveWall(data, context, index, unitCount);
             return state;
+        }
+
+        /// <summary>
+        /// An eliminated owner's walls go with its buildings: nobody could remove them or build there again (bug review 2026-11-05).
+        /// True when any went.
+        /// </summary>
+        private static bool RemoveOwnerWalls(SimData data, SimContext context, int ownerId, int unitCount)
+        {
+            int slot = context.SlotOf(ownerId);
+            if (slot < 0) return false;
+            bool any = false;
+            for (int index = 0; index < data.WallState.Length; index++)
+            {
+                if (data.WallState[index] == WallStates.None || data.WallOwnerSlot[index] != (byte)slot) continue;
+                RemoveWall(data, context, index, unitCount);
+                any = true;
+            }
+            return any;
         }
 
         /// <summary>Removes a wall tile: it becomes ground again.</summary>

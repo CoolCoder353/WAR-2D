@@ -240,6 +240,33 @@ public class ReplicationTests
     }
 
     [Test]
+    public void RouteWaypointsKeepTheirHalfTiles()
+    {
+        // Cell centres are x.5: whole tiles on the wire drew the client up to 0.7 tiles off the server (bug review 2026-11-05).
+        using var rig = new Rig(4);
+        int slot = rig.Add(7, 1, new float2(10.5f, 10.5f));
+        rig.Routes.Set(7, new float2(10.5f, 10.5f), new float2(14.5f, 10.5f), new float2(14.5f, 13.3f));
+        rig.Watch(0, 1, new int2(0, 0), new int2(100, 100));
+        for (int tick = 1; tick < 60; tick++)
+        {
+            rig.Positions[slot] += new float2(1.9f * Dt, 0f);
+            rig.Tick(tick);
+            Assert.AreEqual(rig.Encoder.PredictedPosition(0, 7), rig.ClientStores[0].PredictOne(7, tick * Dt), $"tick {tick}");
+        }
+        float2 end = rig.ClientStores[0].PredictOne(7, 1000f);
+        Assert.AreEqual(14.5f, end.x, 1e-4f);
+        Assert.AreEqual(13.5f, end.y, 1e-4f, "the server snaps a waypoint to the half-tile grid it sends");
+    }
+
+    [Test]
+    public void RouteWireIsExactOnHalfTiles()
+    {
+        Assert.AreEqual(new float2(511.5f, 0.5f), RouteWire.Snap(new float2(511.5f, 0.5f)));
+        Assert.AreEqual(new int2(2047, 1), RouteWire.Encode(new float2(1023.5f, 0.5f)));
+        Assert.AreEqual(new float2(3f, 7.5f), RouteWire.Snap(new float2(3.1f, 7.4f)));
+    }
+
+    [Test]
     public void EncoderNeverSeesHiddenEnemies()
     {
         using var rig = new Rig(4);

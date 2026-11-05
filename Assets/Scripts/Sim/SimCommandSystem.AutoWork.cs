@@ -105,10 +105,10 @@ namespace WAR2D.Sim
             for (int s = 0; s < data.AlarmCount.Length; s++) data.AlarmCount[s] = 0;
         }
 
-        /// <summary>True when the unit can walk to the goal as <see cref="OrderBook.Issue"/> will snap it, so nobody answers a shooter behind a wall by waiting at the wall for good.</summary>
         /// <summary>
-        /// <see cref="CanWalkTo"/> for one alarm's responders, remembered by size class, pocket and snapped goal: a crowd around a
-        /// shot unit is mostly in one pocket, so the reach is looked up once, not once a unit (perf gate 2026-11-06).
+        /// True when the unit can walk to the goal as <see cref="OrderBook.Issue"/> will snap it, so nobody answers a shooter behind a
+        /// wall by waiting at the wall for good. Remembered for one alarm's responders by size class, pocket and snapped goal: a crowd
+        /// around a shot unit is mostly in one pocket, so the reach is looked up once, not once a unit (perf gate 2026-11-06).
         /// </summary>
         private bool CanWalkToMemo(SimData data, SimContext context, int slot, int2 goal)
         {
@@ -126,13 +126,6 @@ namespace WAR2D.Sim
         }
 
         private readonly Dictionary<long, bool> reachMemo = new Dictionary<long, bool>();
-
-        private static bool CanWalkTo(SimData data, SimContext context, int slot, int2 goal)
-        {
-            int2 from = (int2)math.floor(data.Positions[slot]);
-            goal = math.clamp(goal, 0, new int2(data.Width - 1, data.Height - 1));
-            return OrderBook.SnapGoal(context.Map.Grid, goal, from, OrderBook.GoalSnapRadius, out int2 snapped) && context.Orders.Reaches(data.SizeClass[slot], from, snapped);
-        }
 
         private readonly List<int> blueprints = new List<int>();
         private readonly List<int> damaged = new List<int>();

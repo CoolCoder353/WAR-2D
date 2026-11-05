@@ -73,4 +73,39 @@ public class BuildingProgressCodecTests
         BuildingCodec.WriteId(writer, BuildingRecord.Unpaid, View(100).Id, 2);
         Assert.IsFalse(BuildingCodec.Apply(into, writer.ToArraySegment()));
     }
+
+    [Test]
+    public void ABatchNeverPassesItsByteCap()
+    {
+        // Mirror drops a batch past the cap whole, and the records are already marked known (bug review 2026-11-05).
+        var views = new List<BuildingView>();
+        var present = new HashSet<int>();
+        for (int i = 1; i <= 900; i++)
+        {
+            views.Add(new BuildingView { Id = i * 100003, OwnerId = 70000, Type = BuildingType.Miner, Anchor = new int2(1000, 1000), Health = 100000, MaxHealth = 100000, Progress = 100, Unpaid = true, Position = new float2(1000, 1000) });
+            present.Add(i * 100003);
+        }
+        const int cap = 1000;
+        var interest = new BuildingInterest();
+        var client = new ClientBuildings();
+        var writer = new NetworkWriter();
+        for (int round = 0; round < 200; round++)
+        {
+            writer.Position = 0;
+            if (interest.Update(views, present, 70000, _ => true, writer, cap) == 0) break;
+            Assert.LessOrEqual(writer.Position, cap, $"round {round}");
+            Assert.IsTrue(BuildingCodec.Apply(client, writer.ToArraySegment()));
+        }
+        Assert.AreEqual(900, client.Entries.Count, "every building arrives over the updates");
+
+        // Every one gone at once: the Gone records are capped too.
+        for (int round = 0; round < 200; round++)
+        {
+            writer.Position = 0;
+            if (interest.Update(new List<BuildingView>(), new HashSet<int>(), 70000, _ => true, writer, cap) == 0) break;
+            Assert.LessOrEqual(writer.Position, cap, $"gone round {round}");
+            Assert.IsTrue(BuildingCodec.Apply(client, writer.ToArraySegment()));
+        }
+        Assert.AreEqual(0, client.Entries.Count);
+    }
 }

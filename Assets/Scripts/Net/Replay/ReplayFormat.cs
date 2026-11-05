@@ -34,8 +34,9 @@ namespace WAR2D.Net.Replay
     /// <summary>File layout: GZip of ("W2DR", u16 format, u32 header length, header JSON, records). Record: varint tick delta, u8 channel, varint length, payload.</summary>
     public static class ReplayFile
     {
-        /// <summary>3 since v0.18: the summary and team fog channels; older players couldn't offer the per-player view.</summary>
-        public const int Format = 3;
+        /// <summary>3 since v0.18: the summary and team fog channels; older players couldn't offer the per-player view. 4: route
+        /// waypoints in half tiles (<see cref="WAR2D.Net.Replication.RouteWire"/>), which a format 3 file holds in whole tiles.</summary>
+        public const int Format = 4;
         public const string Extension = ".war2drec";
         public static readonly byte[] Magic = { (byte)'W', (byte)'2', (byte)'D', (byte)'R' };
         public const int MaxRecordBytes = 4 << 20;

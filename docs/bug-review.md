@@ -47,7 +47,7 @@ Three read-only passes over `fix/routes-chokes-builders`, by tracing the code. T
 
 | Severity | Where | Finding | Smallest fix |
 | --- | --- | --- | --- |
-| Medium | `ReplicationEncoder.AppendRoute` | Route waypoints lose their half tile on the wire: cells are one tile, so centres are x.5, and `(int2)` cuts them to x. The client draws units up to 0.7 tiles off the server's copy of its prediction, and corrections don't see it, because they compare with that copy. `ClientPredictionMatchesTheServerBitForBit` uses whole-number waypoints. This is why `ReplicationPlayModeTests.UnitDrawsWhereServerHasIt` is flaky on a busy PC: 2 failures in 5 runs on `main` and on this branch, each with the client at x = 2 and the server at x = 2.5. | Send half tiles and bump `GameVersion.Protocol`. Recordings hold these messages, so the replay format has to tell old from new. |
+| ~~Medium~~ Fixed | `ReplicationEncoder.AppendRoute` | Fixed 2026-11-06: half tiles on the wire (`RouteWire`), routes snapped on the server. See known-issues.md, "Review fixes, round 3". | |
 | Medium | `ReplicationEncoder` corrections | A correction is sent unreliably and applied to the server's copy at once. If it is lost, the server thinks the client knows, and the client shows the unit at its route's end until the next order. A correction can also pass the same tick's MoveOrder. | Skip the correction on a new MoveOrder's tick; send a reliable position when a unit stops. |
 | Low | `RouteStore`, `SectorFieldCache` | A reused order handle hides a new route for up to 2 s: a lone unit's next queued leg can take the same handle in the same boundary. | Treat `Arrived[i] != 0` as no order in the trace and commit jobs. |
 | Low | `SimCommandSystem.ClearFinishedWork` | A busy worker's queued Attack loses its target and stays in Attack stance, never firing. The UI doesn't send Attack to workers, so only a modified client can do this. | Handle the Attack stance as `AdvanceWaypoints` does. |
@@ -58,19 +58,19 @@ Three read-only passes over `fix/routes-chokes-builders`, by tracing the code. T
 
 | Severity | Where | Finding | Smallest fix |
 | --- | --- | --- | --- |
-| Medium | `ReplicationService` fog sends | SimpleWeb's `maxMessageSize: 16384` in `Main_Menu.unity` caps every server message at about 16 KB, through `MultiplexTransport`. A large fog snapshot or delta is dropped and never resent. A rejoin on a 1024 map can then have no fog drawn, and a lost delta leaves cells inverted. | End each fog payload at `BatchLimit`, with a start cell for snapshot parts. |
-| Medium | `BuildingReplication`, `WriterSink.Full` | A building batch can pass the cap by one record, and Mirror then drops the whole batch. `known` already marks those buildings, so a spectator or rejoiner with about 850 to enter never gets them. | Pass `limit - 32` as `maxBytes`. |
-| Medium | `MatchCommands.RpcMatchSummary`, `MaxPoints` 360 | The summary passes the same cap at about 18 minutes with 8 players, 24 with 6, 36 with 4, 47 with 3. The end screen's graphs and timeline stay empty. `SummaryTests` asserts under 64 KiB, so it passes. | `MaxPoints` about 80 with a test against the real cap, or one RPC per player. |
-| Low | `WorldStateManager.KillAllEntitiesOwnedBy` | An eliminated player's walls stay for good, and nobody can remove them or build there. It may be wanted; `gameplay.md` names only units and buildings. | Remove the owner's walls once per elimination. |
+| ~~Medium~~ Fixed | `ReplicationService` fog sends | Fixed 2026-11-06: snapshot parts and byte-cut deltas under the cap. | |
+| ~~Medium~~ Fixed | `BuildingReplication`, `WriterSink.Full` | Fixed 2026-11-06: stops while a building's records still fit, Gone and Hide included. | |
+| ~~Medium~~ Fixed | `MatchCommands.RpcMatchSummary`, `MaxPoints` 360 | Fixed 2026-11-06: `MaxPoints` 80, tested against the 16 KB cap. | |
+| ~~Low~~ Fixed | `WorldStateManager.KillAllEntitiesOwnedBy` | Fixed 2026-11-06: `KillOwner` removes the owner's walls. | |
 | Low | `WorldStateManager.KillAllEntitiesOwnedBy` | A building still queued at the kill is created afterwards, with a dead owner. | Record killed owners; set such a building's health to 0. |
-| Low | `SimGatherSystem` | An unpaid Radar loses `SeesThroughWalls` but keeps sight 20, while `gameplay.md` says it doesn't scan. It may be accepted: the ring stays bright too. | Write `BuildingSight[b] = 0` while unpaid. |
+| ~~Low~~ Fixed | `SimGatherSystem` | Fixed 2026-11-06: an unpaid Radar's sight is 0. | |
 
 ### Client
 
 | Severity | Where | Finding | Smallest fix |
 | --- | --- | --- | --- |
-| Medium | `ClientPlayer.spawnerQueues`, `spawnerRallies` | Never cleared, and building ids restart, so a Rematch can show old queues and rally flags on the new HQ. A stale count of 100 reads "Queue full" for good. | Clear both in `TargetStartOptions`. |
-| Medium | `ClientPlayer.gameOverDeclared` | Only the `hasPlacedHQ` hook resets it, and a joined winner's Rematch with Random pick never fires that hook, so match 2 has no end screen for that player. | Reset it in `TargetStartOptions`. |
+| ~~Medium~~ Fixed | `ClientPlayer.spawnerQueues`, `spawnerRallies` | Fixed on `unstable/pr30-routes-testing`: `ClientPlayer.ResetForNewMatch` (called on a Rematch from `MatchCommands`) clears them, and the attack rallies. | |
+| ~~Medium~~ Fixed | `ClientPlayer.gameOverDeclared` | Fixed the same way: `ResetForNewMatch` resets it. | |
 | Medium | `UnitCommander.Awake` | It assumes the local player spawned first, which slot reuse can break on a rejoin. It then throws, and `Update` throws every frame. | Null-check, and find the player lazily. |
 | Medium | `tools/ai-bench.sh` | The style generator seeds on size and k, not the seed, so the tuner replays the same pairs. On 512, k 0 to 7 never plays Balanced, and `"style": "Turtle"` throws after a full run. | Seed on `seed0 + k`. Old baselines then don't compare. |
 | Low | `UnitCommander.FinishDigDrag` | A dig box doesn't stop roaming, so roaming Diggers soon leave the job. | `Roaming.Stop(diggers)` after the chunk loop. |
