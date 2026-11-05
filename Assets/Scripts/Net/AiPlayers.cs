@@ -401,7 +401,7 @@ public partial class GameCore
         foreach (AiSeat seat in AiPlayers.Values)
         {
             seat.Player.state = PlayerState.Playing;
-            seat.Player.ResetResources(Settings.StartingResources);
+            seat.Player.ResetResources(Settings.StartingResources, Settings.InfiniteResources);
             seat.Player.StartOptions = null;
             seat.Player.StartPick = -1;
             if (seat.Client != null) seat.Client.hasPlacedHQ = false;

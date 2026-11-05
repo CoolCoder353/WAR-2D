@@ -732,7 +732,7 @@ public class LeakTests
     public void ATurretsAttackReachesOnlyClientsThatMayKnowTheTurret()
     {
         // C's Builder sees 2 tiles: the turret 6 away shoots it from C's fog.
-        using var sim = new SimHarness(Map(), c => { c.Simulation.TargetSearchSliceTicks = 1; c.Units[UnitType.Builder].Sight = 2f; });
+        using var sim = new SimHarness(Map(), c => { c.Simulation.TargetSearchSliceTicks = 1; c.Units[UnitType.Builder].Sight = 2f; c.GetBuilding(BuildingType.GunTurret).Damage = 8; });
         using var replication = new ReplicationService(sim.Context, sim.Config);
         replication.CollectBuildings = list => SimBuildings(sim, list);
         var a = new Spy(sim.Context, replication, SimHarness.OwnerA);
@@ -828,7 +828,8 @@ public class LeakTests
     [Test]
     public void AJammedTurretsAttackOnAnEnemyNeverReachesIt()
     {
-        using var sim = new SimHarness(Map(), c => c.Simulation.TargetSearchSliceTicks = 1);
+        // The Heavy stands in the jam: idle units answering fire would walk it within JamSight, where it may see the turret.
+        using var sim = new SimHarness(Map(), c => { c.Simulation.TargetSearchSliceTicks = 1; c.Defend.IntervalTicks = int.MaxValue; });
         using var replication = new ReplicationService(sim.Context, sim.Config);
         replication.CollectBuildings = list => SimBuildings(sim, list);
         var spy = new Spy(sim.Context, replication, OwnerC);
@@ -915,8 +916,8 @@ public class LeakTests
     [Test]
     public void AWallInTheFogIsNeverTargetedNorNamed()
     {
-        // Artillery outranges its own sight (14 against 7): a wall 11.5 tiles away, with nothing of A's seeing it, is in A's fog.
-        using var sim = new SimHarness(Map(), c => c.Simulation.TargetSearchSliceTicks = 1);
+        // With sight shorter than range (shipped Artillery sees as far as it shoots): a wall 11.5 tiles away, with nothing of A's seeing it, is in A's fog.
+        using var sim = new SimHarness(Map(), c => { c.Simulation.TargetSearchSliceTicks = 1; c.GetUnit(UnitType.Artillery).Sight = 7f; });
         using var replication = new ReplicationService(sim.Context, sim.Config);
         replication.CollectBuildings = list => SimBuildings(sim, list);
         var a = new Spy(sim.Context, replication, SimHarness.OwnerA);

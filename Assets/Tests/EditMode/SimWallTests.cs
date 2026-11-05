@@ -98,7 +98,7 @@ public class SimWallTests
         int[] tank = sim.Spawn(SimHarness.OwnerB, new float2(12.5f, 15.5f));
         sim.Tick();
         sim.Order(SimHarness.OwnerB, OrderKind.AttackMove, new int2(15, 15), tank[0]);
-        sim.TickSeconds(40f); // 150 health, 10 damage x 0.5 per second
+        sim.TickSeconds(90f); // 150 health, 10 damage x 0.2 per second
         Assert.AreEqual(TileType.Ground, sim.Map.Grid.TileAt(new int2(15, 15)));
         Assert.AreEqual(WallStates.None, sim.Context.Data.WallState[tile]);
     }

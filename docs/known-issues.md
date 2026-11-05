@@ -6,6 +6,33 @@ Bugs, mismatches and hygiene problems. The first two roadmaps (v0.2 to v0.9, and
 
 The recorder's units go through `DeferredLane` (encoded during the next tick to keep the boundary inside the perf budget), so a recording's unit records are one tick later than its buildings and terrain. Harmless for playback; don't "fix" it by moving the recorder back onto the boundary (`docs/perf/v0.10/README.md`).
 
+## Owner playtest fixes (2026-11-04, third session)
+
+| Item | State |
+| --- | --- |
+| Units beside a building never fired at it | **Fixed.** Range was measured to a building's centre, so a Digger (1.5) or Flamethrower (2.5) touching a 5×5 HQ was out of range for good. Range, fog and line of fire now use the footprint's nearest point (`TargetSearch.NearestPoint`). |
+| 2×2 units froze for good | **Fixed.** A Heavy or Artillery whose body overlapped a tile (spawned at a producer's side, pushed out by a new building, walled in) had every step refused, because every step still overlapped. A body already overlapping may now walk while its centre stays on free floor (`IntegrateJob.Escapes`). Not a flow-field problem: the field runs per tile, and the code comment about 2×2 cells is stale. |
+| Idle units stood still under fire from out of range | **Fixed.** See "Idle units answer fire" in gameplay.md (`DefendAlarms`, `SimCommandSystem.AnswerAlarms`). A responder's route to a shooter in the fog gives away the direction of fire only, never its position. There is no return to post: they stay where the fight ended. |
+| Decay | **Changed.** Buildings stop first, then whole units, then buildings decay (gameplay.md). The top bar still says "Decaying" when only buildings have stopped: the wording would be a Figma change. |
+| Rich gems drew as rock at max zoom | **Fixed.** The far-zoom colour slots stopped at `WallBlueprint`, one kind short of `RichGem`, so it fell back to the rock colour; `MapView.FlatType` covers it, and rich gems now show gold where normal gems show red. On the minimap they keep their true gold instead of the near-white brightened one. |
+| A Heavy lost to turrets after the buff | **Changed on purpose.** Even at ×0.4 against heavy armour, a 500-health, 12-damage turret wins an equal-cost fight, so the manual no longer says Heavies beat turrets (×0.5 shipped). Artillery and Snipers still out-range it. The approved manual mock's counter lists changed with the numbers; regenerate it with `tools/manual-mock.js`. |
+| Numbers not measured | Artillery, Sniper, Gun turret, wall and bomb numbers were set by hand and checked with `balance-sheet.js` only. **Not yet run:** `ai-bench` and the perf gate, which the longer Sniper and Artillery sight (four times the vision cost per unit for a Sniper) makes worth re-running. |
+
+## Code review of the third-playtest commit (2026-11-04, `3b16990`)
+
+Found by reading the commit; none reproduced in a running match yet. Check these before touching the code they name.
+
+| Item | State |
+| --- | --- |
+| Ping cooldown outlives the match | **Open.** `PlayerActions.pingCooldown` is a static, built once and never reset. After a host returns to the menu and hosts again, `NetworkTime.time` restarts near 0 and netIds are reused, so `now - then` is negative and the player cannot ping until the clock passes the old time. A changed `Pings/CooldownSeconds` is also ignored for the rest of the process. Fix: reset it at match start, or keep the last-ping time on `ServerPlayer` (`ResetResources` clears it). |
+| `IntegrateJob.Escapes` is too permissive | **Open.** It allows any step while the body already overlaps something, if the new centre tile is free floor. It does not check that the step reduces the overlap, or the size class. A 2x2 unit that overlaps a wall corner may follow its path through 1-tile gaps it should not fit. Fix: allow only steps that reduce the overlap, or limit it to spawn and push-out cases. |
+| Unpaid HQ stops Builder production | **Open, unconfirmed.** `SpawnerSystem` skips every unpaid producer, the HQ included, and building upkeep is paid only from what is above the units' reserve. A player with no Builders and little money can lose Builder production while rebuilding their income. Consider exempting the HQ. |
+| `TargetSearch.BuildingReachCells` hard-codes 3 tiles | **Open.** It stands for half an HQ's footprint and breaks the "no hard-coded balance values" rule. A building with a footprint over 6 tiles is hashed by its centre and never found by units at its edge; every search also scans the wider block. Derive it from the largest configured footprint, as `SearchCells` is from the largest range. |
+| `DamageHit.From` uses (0, 0) for "no shooter" | **Open, low.** (0, 0) is a real map coordinate, so a shooter there raises no alarm, and a new hit producer that forgets `From` silently skips alarms. A flag or NaN would make it explicit. |
+| `SendSpectatorStats` allocates every second | **Open, low.** Three lists and three arrays per call, and a `GetComponent<ClientPlayer>()` per spectator, even with no spectator. Check for a spectator first and reuse scratch lists. |
+| Gifts under Infinite resources are no-ops that still count | **Open.** `GameCore.TryGift` spends from an infinite giver (nothing leaves) and `Add` ignores an infinite receiver, yet it still records `Stats.Gift`, sends both gift notices and raises a `GiftReceived` alert. The AI's `DiplomacyManager.Gift` sees a balance of 999999, always above `GiftSurplus`, so each AI gifts `999999 × GiftShare` to a teammate every surplus spell. Fix: refuse gifts when `Settings.InfiniteResources`, and hide the gift control. |
+| Pings and the spectate view have no end-to-end test | **Open.** Only `PingRules` and the sim rules are tested. `PlayerActions.Ping` (cooldown, Playing and tile checks, AI skip, share-vision recipients) and `SetSpectateView` are not, and a ping reaching another player has not been seen in a real match. |
+
 ## v0.12 Arsenal: built, perf gate passes
 
 The code, the atlases (`WAR-2D/Art/Build all`, the Barracks now keyed `Barracks`) and the sound effects (`WAR-2D/Audio/Build SFX`) are in. Still open:
@@ -164,11 +191,111 @@ From the whole-project scan of 2026-11-03 ([bug-review.md](bug-review.md), "Seve
 | Client positions creep after Stop                              | Presentation                      | Predicted positions converge on the server's at about 0.15 tiles/s instead of snapping; `HudTests.CommandCardStopHalts` can fail on timing.                                                                                                        |
 | Authored maps (`Size = 0`) get no terrain on a pure client      | Test-only                         | A pure client can't rebuild an authored map, so `WorldStateManager.OnStartClient` gives it no `ClientTerrain`; the host's client gets one. Real matches always use generated maps.                                            |
 | Footprints ignore rotation                                     | Latent                            | A rotated non-square building would cover the wrong tiles. Every building is square today.                                                                                                                                                         |
-| v0.18 not yet checked by hand | Test gap | 2026-11-03: the Attack order's cursor and target line (the control API can't click the map), Rematch with a second human client, and client frame time with 10,000 units selected and Alt held. The sim, wire and rules behind them are tested. |
+| v0.18 not yet checked by hand | Test gap | 2026-11-04: the Attack order's target line and the held range rings were seen in an editor match through the new input commands. Rematch with a second human client worked in the second playtest below. Still not checked: the Attack order's cursor (a hardware cursor is not in a screenshot) and client frame time with 10,000 units selected and Alt held. The sim, wire and rules behind them are tested. |
 | Two PlayMode tests are timing-sensitive | Test flakiness | 2026-11-01, full PlayMode run (79/81): `HudTests.GiftToEnemyMovesResources` timed out after 5 s and passed alone; `PerformanceTests.MinimapRedrawAtTenThousandOwnUnitsIsUnderOneMillisecond` measured 1.08 then 1.81 ms against 1.0 ms, and failed the same way (timed out) on the code before that day's changes, so it follows the machine's load, not the code. On 2026-11-02 (v0.16 branch, editor freshly restarted) it measured 2.07 and 2.19 ms; the redraw it times is unchanged by v0.16. |
 | Low-severity review findings                                   | Mixed                             | The "Still open" lists in [bug-review.md](bug-review.md).                                                                                                                                                                                          |
+| Playtest findings (2026-11-04) | Partly open | The bugs and control-API gaps are fixed; balance, design choices and the layouts that need Figma stay open: [Playtest through the control API](#playtest-through-the-control-api-2026-11-04-v018). |
+| Two injected-input PlayMode tests fail in the live editor | Test flakiness | 2026-11-04: `DebugApiPlayModeTests.InjectedMouseAndKeyboardReachTheInputSystem` ("Expected 100" or "no camera") and `PlaytestFixPlayModeTests.TheMinersFacingWaitsBehindTheMenuAndCarriesToTheNextOne` ("Expected 90") fail in most full runs, the same way on `a4aaacd` without the second playtest's fixes. Each passes in some runs (alone, or in an earlier full run). Cause not found. `PlayerActionsTests.EachActionRefusesWhatItsCommandRefused` failed once in a full run and passed alone and in the next run. |
+| Second playtest findings (2026-11-04) | Partly open | The bugs are fixed; friction and control-API gaps stay open: [Second playtest through the control API](#second-playtest-through-the-control-api-2026-11-04-v018). |
 
 Developer-tool, networking and hygiene leftovers are further down.
+
+## Playtest through the control API (2026-11-04, v0.18)
+
+One 1v1 in the editor (Game view 916×529) against a Normal AI (Balanced) on a 256 map: 1000 resources, 30 s HQ pick, lost at about 6:20. It was played only through the new input commands (`click`, `tile`, `drag`, `key`, `scroll`, `shot`, `ui`, `uiclick`). The game ran in real time while each move was worked out, which cost the opening economy, so treat the balance numbers as an upper bound on the gap. Fixed the same day unless a row says otherwise, with `PlaytestFixTests` and `PlaytestFixPlayModeTests`, and checked in an editor match unless noted. The perf gate was not re-run; the one change on the tick's path, the blast alert below, runs only on a tick with a blast.
+
+**Balance**
+
+**Open: for the owner to decide.** The AI's numbers were signed off on 2026-11-01, and this is the first measure against a person.
+
+| Finding | Detail |
+| --- | --- |
+| The Normal AI's economy outruns any human | At 2.5 min it had 61 Miners, about 130 units and 634/s income, against 5 Miners and 45/s. End screen: mined 260,371 against 8,159, peak army 380. A Miner (50, 10/s, no upkeep) pays for itself in 5 s, so income grows as fast as Miners can be placed, and the AI places them far faster than a person. `tools/ai-bench.sh` only plays AI against AI, so it can't see this. |
+| An early raid on Normal | At about 4 min, Scouts and Suicide bombers killed all 5 Builders and 5 Miners (`aistate`: `raids` 1, `killed` 550). Bombers then waited 10–17 tiles from the HQ and destroyed a Barracks blueprint before work on it started. |
+
+**Bugs**
+
+| Finding | Status |
+| --- | --- |
+| The idle-Builders chip is greyed out while Builders stand idle | **Fixed.** A damaged building counted as work for any Builder within `WorkNear`, but idle Builders only take repairs under `AutoWork/RepairBelow` (90 %), so one scratch made them look busy for good. The chip now uses the same line (`Selection.IsWorkSite`). A Builder a player sent to repair a building at 90 % or more counts as idle while it does. |
+| The match length differs between screens | **Fixed.** The end screen used wall time since Playing, so a dev `step` or `timescale` moved it (a pause did not: `MatchStartTime` moves on with it). Worse, and not in the report: the graphs and timeline used the match clock, which also counts the HQ pick, so every row ran late by the pick's length in any match. All now count ticks (`WorldStateManager.PlayedSeconds`), as a replay does. The replay list reads about 3 s longer than the end screen, which is the recording's tail after game over (explosions). |
+| The Miner placement label can contradict the ghost | **Fixed for the contradiction and the silent click.** No rate shows under a red ghost. A click on a spot the preview shows as invalid gives the error sound and the cursor notice "Can't build here", sends nothing (Builders no longer walk to it) and stays in placement. **Not done:** naming the reason (unexplored, blocked), which needs the server's answer on the wire and a Figma round. |
+| Hotkeys work behind the pause menu | **Fixed.** Reproduced: a placement started before the menu kept following the pointer and R turned it, and Ctrl + number saved a squad. (Q itself was already gated; it only starts a placement with the menu closed.) `UnitCommander` and `BuildingPlacement` checked only the manual; they now wait for the menu, Settings, the manual and the gift dialog too (`HudController.DialogOpen`). Roaming and the camera view carry on behind them, because with two humans the match does. The diplomacy panel isn't modal and doesn't block play. |
+| Builders took damage with no Under attack alert | **Gunfire: no bug.** A Scout shooting a Builder raises "Under attack near your HQ", so that report was most likely the alert folded into "Next alert". **Blasts: fixed.** Checking this found that bombs and Suicide bombers left no attack event, so whoever they hit or killed got no alert. `AlertService.CollectBlasts` now raises the same throttled alert at the victim's own tile, for every owner but the blast's. The AI's team view hears these alerts too, so it can now react to them. |
+
+**Harder than it should be**
+
+| Finding | Status |
+| --- | --- |
+| The all-Builders chip shows a count but doesn't select | **Open, owner's choice.** A plain click moves the camera to the next Builder; selecting them all needs Ctrl + click (playtest 2026-10-30 choice). Box-selecting was the only obvious way. |
+| A match opens with no units | **Open, design.** The first Builders put you at −5/s at once, and "Resources will run out in 0:57" fires within the first minute. |
+| The HQ pick opens very zoomed in | **Fixed.** The pick opens zoomed out in wheel steps until the 12-tile start ring fits with 2 tiles to spare (`Character_Controler.ZoomOutToShow`); it never zooms in on a big screen. |
+| Miner rotation goes back to 0° on each placement | **Fixed.** The next Miner keeps the last facing (`BuildingPlacement.Rotation`). |
+| The command-card keys depend on the selection | **Open, design.** Q queues a Builder with the HQ selected and starts a Miner with Builders selected. With the HQ still selected, Q queued a Builder by mistake. |
+| The replay viewer is hard to follow | **Partly fixed.** It opens on the first player's HQ (from the recording's summary) instead of the map's middle, and the camera can go far enough below the map to show the bottom edge above the control bar (the second not looked at in a running replay). **Open, needs Figma:** a minimap and a way to jump to a player. Zoomed out, units are still too small to see. |
+| Small-window layout (916×529) | **Partly fixed.** The selection panel's HQ icon was an empty box (the type is `Base`, the icon `Hq`). **Open, needs Figma:** the selection panel covers squad buttons 8–0; Mode and Diplomacy sit below the fold of the lobby settings column with no hint that it scrolls; the main menu buttons are small and hard to read over the menu battle. |
+
+**Control API (`tools/war2d`)**
+
+All fixed; see [debugging.md](debugging.md).
+
+| Finding | Status |
+| --- | --- |
+| The match runs while the agent thinks | **Already possible, now written down.** `pause`, act through the input commands, `step ticks=N`. |
+| Builds placed while paused show up only after a tick | **Fixed.** `buildings` on a server answers `queued` and `paused`. |
+| `buildings` on a host answers from the host's fogged view | **Fixed.** A server answers with every building, as `units` does; a client still answers with what it knows. |
+| `units` stops at 200 without saying so | **Fixed.** The reply says `truncated`. |
+| `mouse` replies in Unity's bottom-left y | **Fixed.** It replies in the pixels sent. |
+| `ui` gaps | **Fixed.** It lists open dropdown menus, marks elements with something on top `covered`, leaves out what is scrolled away unless `all=true`, and has `compact=true`. The difficulty menu's items and the timeline's time column were seen listed in an editor match. |
+| `camera` can't read and fails in replays | **Fixed.** No arguments reads it; it and `mouse space=tile` find a replay's camera. |
+| `shot box=…` can't enlarge | **Fixed.** `scale` goes up to 8, by whole pixels. The Pixel Perfect warning across the top bar is the package's, in the editor at an odd resolution: keep the Game view's size even. |
+| `wait ticks=N` is ambiguous | **Fixed.** The help says N more ticks. |
+
+## Second playtest through the control API (2026-11-04, v0.18)
+
+Two matches' worth of play on the current branch: 1v1 against an Easy AI (256 map, surrendered at 9:36) through the input commands, then several short matches with the editor hosting and a dev build joining over Direct, some with an Easy AI. The second human was driven with `uiclick` and the scenario commands, because of the first control API row below. The Steam path was not run. The bugs are fixed; the friction and control API rows stay open.
+
+**Bugs**
+
+All fixed on the same branch, with `PlaytestFix2Tests` and `PlaytestFix2PlayModeTests`. The multiplayer ones were also checked with the editor hosting and a dev build joining over Direct. The perf gate was not re-run: the tick gained one float per unit on the once-a-second charge.
+
+| Finding | Status |
+| --- | --- |
+| A Random or timed-out HQ pick opened on a black screen | **Fixed.** `HudController.CentreOnOwnClearing` centred on `OwnStartOptions[0]` once, and nothing recentred when the server placed the HQ at another option (seen at HQ 176,200, camera 94,81). When the own HQ first appears and is out of view, the camera now moves to it (`ShowOwnHqOnce`). |
+| After the host left, a joined player was offered a Rejoin that couldn't work | **Fixed for a host who leaves through the menu.** The host now sends `HostLeaving` and waits 0.3 s for it to go out; the client drops its ticket, so `HostLeftNotice` shows its dialog. **Still open:** a host that crashes or is closed from the window can't say so, and that player still sees Rejoin, which fails with "Try again while the timer runs". |
+| The economy readout looked healthy while everything decayed | **Fixed.** The top bar's upkeep is now what is owed (`ServerPlayer.UpkeepOwedLastSecond`, from the sim's new `Owe` callback and `ResourceSystem`), and the server's unpaid flag makes the readout say "Decaying" whatever the net. `UpkeepLastSecond` stays what was paid, so the AI and its tuning see no change. Checked: 60 Heavies and a Tank read a steady "−362 upkeep", "Decaying". |
+| The timeline reported decay deaths as battles | **Fixed.** `FightDetector.Death` ignores a death with no killer. Decay still has no end-screen figure: that would be a new column, so a Figma change. |
+| A dropped player lost their name and colour | **Fixed.** `PlayerNameMemory` keeps what each player was last seen with, for the top bar and the end screen. |
+| The Delete key's label was a tofu box on Linux | **Fixed.** `Rebinding.CleanDisplay` spells out control characters in a key's name; the Demolish button reads "Del". |
+| A spectator kept controls that did nothing | **Fixed.** Gift, Diplomacy, the command card, the squad bar and the selection panel hide while spectating, as gameplay.md says. No new design, but the result has not been compared with the Figma frame `Panel / Spectating – v0.8`. |
+| A stranger joining during someone's away window got the wrong message | **Fixed.** A connection with no token is refused with `RejoinRefusal.NoTicket`, and the Play screen says "That match has already started." (the kick notice's slot). |
+| A joiner's Mirror error, first reported here as coming from Rematch | **Fixed.** Corrected cause: "There is already a player for this connection" came about 50 ms after a remote client joined a lobby the host had returned to by Rematch. The host then sends its scene on connect, so the client asked for its player on connecting and again when that scene loaded. It now asks once (`RejoinRules.AsksForPlayerAfterScene`). |
+
+**Harder than it should be**
+
+| Finding | Detail |
+| --- | --- |
+| A long production queue bankrupts you with no warning | Hit twice playing normally. The cost is charged at spawn and `SpawnerSystem` spends the same balance upkeep needs, so +50 Tanks or +10 Heavies drains the bank and everything starts to decay, Builders included. Two of four Builders died this way, with nothing saying so. Income then only covers upkeep, so nothing can be bought until something is demolished or dies. |
+| The host's Leave match has no confirm and ends the match for everyone | One click. Surrender, which only affects the player, does ask. |
+| A process crash can't rejoin (and now reads "That match has already started.") | `RejoinTicket` is static memory, so a restarted client has no ticket. The seat waits out its 60 s while the player is refused. |
+| Esc doesn't cancel a placement | It opens the menu, and the ghost stays armed behind it. Only a right-click cancels. |
+| The HQ prompt says "R rotates" | `HudOverlayController`, but only the Miner turns. |
+| Start badges overlap at the screen edge | Seen at 1080p: badge 2 is covered by badge 4, and badge 1 by the prompt panel. |
+| Left alone after the only opponent leaves the pick | You must still place an HQ and sit through the countdown for "Victory · 0:00". The prompt still says "Pick your start", and no alert says they left. |
+| Random picks can start very close | One 3-player match on 256 put two HQs 34 tiles apart. One observation, not measured. |
+| One gem can feed several Miners | Three Miners on one gem tile each earned the full 10/s (income 125 from 12 Miners). gameplay.md doesn't say whether this is intended. |
+| The Surrender dialog says "Your team keeps playing" in a Free-for-all | Seen in a 1v1. |
+
+**Control API (`tools/war2d`)**
+
+| Finding | Detail |
+| --- | --- |
+| Input injection does nothing in a background dev build | `mouse`, `key` and `type` reply OK but have no effect. No world click registered, no placement ghost appeared, and Esc opened no menu, although debugging.md says it works unfocused. `uiclick` works. Not root-caused. |
+| A client's `units` without `owner` always answers 0 | `ClientUnits` passes owner 0, and `QueryBox` matches it exactly. A leak check with plain `units` passes whatever was sent. |
+| `type` didn't reach the gift amount field | In the editor, after clicking the field, twice. So the gift dialog's server-side limits weren't exercised (a negative amount was not sent). |
+| `wait state=Playing` hangs after a `pause` during Countdown | The countdown doesn't advance while paused, and the CLI's socket waits up to 600 s. |
+
+Also checked: Rematch with a second human works, and leaving, surrendering, spectating (the whole map, units drawn), bomb, turret and wall placement, dig areas, the Attack order, the demolish refund, Ctrl-click to clear a queue and the menu pause all behaved as documented.
 
 ## Owner issues (2026-10-12)
 

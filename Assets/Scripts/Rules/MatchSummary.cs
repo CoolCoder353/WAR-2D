@@ -57,7 +57,7 @@ public struct SummaryData
 }
 
 /// <summary>
-/// Collects the graphs and timeline during Playing, on the match clock so a pause adds nothing (server only). Every
+/// Collects the graphs and timeline during Playing, in seconds of play (<c>WorldStateManager.PlayedSeconds</c>), so neither the HQ pick nor a pause adds anything (server only). Every
 /// <c>Summary/SampleSeconds</c>, one row per player; at <c>Summary/MaxPoints</c> neighbouring pairs merge (averages for income,
 /// the later value for the rest) and the interval doubles, so a long match keeps its whole shape. Pure.
 /// </summary>
@@ -224,6 +224,7 @@ public sealed class FightDetector
     /// <summary>A unit died.</summary>
     public void Death(float now, int owner, int killer, float worth, float x, float y)
     {
+        if (killer == 0) return; // decay or an eliminated player's army: nobody fought
         CloseQuiet(now);
         var cell = ((int)Math.Floor(x / cellTiles), (int)Math.Floor(y / cellTiles));
         var entry = new DeathEntry { Time = now, Worth = worth, X = x, Y = y, Owner = owner, Killer = killer };

@@ -132,7 +132,7 @@ public partial class GameCore : NetworkBehaviour
         {
             ServerPlayer player = entry.Value;
             if (!player.ResourcesDirty || entry.Key == null || player.connection == null) continue; // an away player has no connection
-            entry.Key.GetComponent<ClientPlayer>().TargetUpdateResources(player.connection, player.Resources, player.IncomeLastSecond, player.UpkeepLastSecond);
+            entry.Key.GetComponent<ClientPlayer>().TargetUpdateResources(player.connection, player.Resources, player.IncomeLastSecond, player.UpkeepOwedLastSecond, player.UnpaidLastSecond);
             player.MarkSynced();
         }
     }
@@ -457,7 +457,7 @@ public partial class GameCore : NetworkBehaviour
         foreach (KeyValuePair<NetworkIdentity, ServerPlayer> entry in ServerPlayers)
         {
             entry.Value.state = PlayerState.Playing;
-            entry.Value.ResetResources(Settings.StartingResources);
+            entry.Value.ResetResources(Settings.StartingResources, Settings.InfiniteResources);
             if (entry.Key != null) entry.Key.GetComponent<ClientPlayer>().hasPlacedHQ = false;
         }
         StartAiSeats();
@@ -573,7 +573,7 @@ public partial class GameCore : NetworkBehaviour
     private void NoteElimination(int playerId, EliminationCause cause)
     {
         if (!summaryEliminated.Add(playerId)) return;
-        Summary.Eliminated(MatchNow, playerId, cause, cause == EliminationCause.HqDestroyed ? HqLastHitBy(playerId) : 0);
+        Summary.Eliminated(WorldStateManager.Instance != null ? WorldStateManager.Instance.PlayedSeconds : 0f, playerId, cause, cause == EliminationCause.HqDestroyed ? HqLastHitBy(playerId) : 0);
     }
 
     /// <summary>Whoever last hit the player's HQ, as of the last settled tick (0 when nobody has).</summary>

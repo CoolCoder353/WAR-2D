@@ -24,8 +24,8 @@ public class SimArsenalTests
         Assert.AreEqual((400, 30, 5f, 1.5f), (heavy.Health, heavy.Damage, heavy.Range, heavy.AttackInterval));
         Assert.AreEqual((TargetClass.HeavyUnit, 1, 5f), (heavy.Armour, heavy.SizeClass, heavy.BuildSeconds));
         UnitConfig artillery = c.GetUnit(UnitType.Artillery);
-        Assert.AreEqual((14f, 2f, 4f, 1), (artillery.Range, artillery.Splash, artillery.MinRange, artillery.SizeClass));
-        Assert.AreEqual((16f, 3f), (c.GetUnit(UnitType.Sniper).Range, c.GetUnit(UnitType.Sniper).MinRange));
+        Assert.AreEqual((18f, 2f, 4f, 1), (artillery.Range, artillery.Splash, artillery.MinRange, artillery.SizeClass));
+        Assert.AreEqual((20f, 3f), (c.GetUnit(UnitType.Sniper).Range, c.GetUnit(UnitType.Sniper).MinRange));
         Assert.AreEqual(1.5f, c.GetUnit(UnitType.Flamethrower).Splash);
         Assert.AreEqual((2f, 150f), (c.GetUnit(UnitType.SuicideBomber).BlastRadius, c.GetUnit(UnitType.SuicideBomber).BlastDamage));
         Assert.AreEqual(12f, c.GetUnit(UnitType.Scout).Sight);
@@ -63,7 +63,7 @@ public class SimArsenalTests
         GameConfigData c = ConfigLoader.LoadConfig();
         Assert.AreEqual(0.25f, c.Damage.Multiplier(UnitType.Scout, TargetClass.HeavyUnit));
         Assert.AreEqual(2f, c.Damage.Multiplier(UnitType.Artillery, TargetClass.Building));
-        Assert.AreEqual(3f, c.Damage.Multiplier(UnitType.SuicideBomber, TargetClass.Wall));
+        Assert.AreEqual(2f, c.Damage.Multiplier(UnitType.SuicideBomber, TargetClass.Wall));
         Assert.AreEqual(DamageTable.Classes, System.Enum.GetValues(typeof(TargetClass)).Length);
     }
 
@@ -80,7 +80,8 @@ public class SimArsenalTests
     [Test]
     public void AnEnemyInRangeButInTheFogIsNotTargetedUntilSomeoneLightsIt()
     {
-        using var sim = Sim();
+        // Shipped Artillery sees as far as it shoots (playtest 2026-11-04); the fog rule still holds for any shorter sight.
+        using var sim = new SimHarness(SimHarness.OpenMap(64), c => { c.Simulation.TargetSearchSliceTicks = 1; c.GetUnit(UnitType.Artillery).Sight = 7f; });
         int[] gun = sim.Spawn(SimHarness.OwnerA, new float2(10, 10), UnitType.Artillery);
         int[] tank = sim.Spawn(SimHarness.OwnerB, new float2(22, 10)); // 12 away: in range 14, outside sight 7
         for (int i = 0; i < 30; i++) sim.Tick();
@@ -147,7 +148,7 @@ public class SimArsenalTests
     }
 
     [Test]
-    public void ABomberRunsAtAnEnemyAndTakesFriendsWithIt()
+    public void ABomberRunsAtAnEnemyAndBarelyScratchesFriends()
     {
         using var sim = Sim();
         int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(10, 10), UnitType.SuicideBomber);
@@ -159,7 +160,7 @@ public class SimArsenalTests
         sim.Tick();
         Assert.IsFalse(Alive(sim, bomber[0]), "the bomber is spent");
         Assert.IsFalse(Alive(sim, victim[0]), "150 damage kills a 60-health Builder");
-        Assert.IsFalse(Alive(sim, friend[0]), "friends in the blast die too");
+        Assert.AreEqual(60f - 150f * sim.Config.Bomber.FriendlyDamage, sim.UnitById(friend[0]).Health, 1e-3f, "friends take a tenth of the blast");
         Assert.IsTrue(Alive(sim, far[0]), "outside the radius");
     }
 
@@ -191,8 +192,8 @@ public class SimArsenalTests
         for (int i = 0; i < 3; i++) sim.Tick();
         sim.Tick();
         Assert.IsFalse(Alive(sim, a[0]) || Alive(sim, b[0]));
-        Assert.IsFalse(Alive(sim, near[0]));
-        Assert.IsTrue(Alive(sim, other[0]), "5 tiles from the blast");
+        Assert.Less(sim.UnitById(near[0]).Health, 60f, "a friend in the blast takes its share");
+        Assert.AreEqual(60f, sim.UnitById(other[0]).Health, "5 tiles from the blast");
     }
 
     [Test]

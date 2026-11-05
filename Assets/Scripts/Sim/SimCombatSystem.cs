@@ -15,6 +15,8 @@ namespace WAR2D.Sim
         public float Amount;
         /// <summary>The attacker's owner (who gets the kill).</summary>
         public int AttackerOwner;
+        /// <summary>Where a shot came from, which raises its victim's owner's alarm; (0, 0) for a blast, which doesn't.</summary>
+        public float2 From;
     }
 
     /// <summary>
@@ -146,6 +148,8 @@ namespace WAR2D.Sim
                 CellStart = data.CellStart, Sorted = data.Sorted,
                 BuildingAnchor = data.BuildingAnchor, BuildingSize = data.BuildingSize,
                 WallState = data.WallState,
+                AttackMask = data.AttackMask, OwnerSlot = data.OwnerSlot, BuildingOwnerSlot = data.BuildingOwnerSlot, WallOwnerSlot = data.WallOwnerSlot,
+                FriendlyDamage = data.BomberFriendlyDamage,
                 BlastRadiusByType = data.BlastRadiusByType, BlastDamageByType = data.BlastDamageByType,
                 ArmourByType = data.ArmourByType, DamageTable = data.DamageTable,
             };
@@ -250,6 +254,12 @@ namespace WAR2D.Sim
                 HqLastHitBy = data.HqLastHitBy,
                 BuildingKind = data.BuildingKind,
                 BuildingOwnerSlot = data.BuildingOwnerSlot,
+                OwnerSlot = data.OwnerSlot,
+                Positions = data.Positions,
+                BuildingPositions = data.BuildingPositions,
+                Alarms = data.Alarms,
+                AlarmCount = data.AlarmCount,
+                AlarmCellTiles = data.DefendAlarmCellTiles,
             }.Schedule(state.Dependency);
 
             state.Dependency = new LastGaspJob
@@ -432,7 +442,7 @@ namespace WAR2D.Sim
                 {
                     TargetClass targetClass = kind == TargetKinds.Unit ? (TargetClass)ArmourByType[Type[target]] : kind == TargetKinds.Wall ? TargetClass.Wall : TargetClass.Building;
                     float multiplier = WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.BuildingAttacker(type), targetClass);
-                    Hits.Enqueue(new DamageHit { Kind = kind, Slot = target, Amount = DamageByType[type] * multiplier, AttackerOwner = BuildingOwnerId[b] });
+                    Hits.Enqueue(new DamageHit { Kind = kind, Slot = target, Amount = DamageByType[type] * multiplier, AttackerOwner = BuildingOwnerId[b], From = Weapon.Centre(b) });
                     Events.Add(new int2(BuildingIds[b], kind == TargetKinds.Unit ? IdOf[target] : kind == TargetKinds.Wall ? 0 : BuildingIds[target]));
                     cooldown = IntervalByType[type];
                 }
@@ -455,6 +465,8 @@ namespace WAR2D.Sim
         /// <summary>The target of the direct hit, which the splash skips (the direct hit already landed on it).</summary>
         public byte PrimaryKind;
         public int PrimarySlot;
+        /// <summary>Where the attacker stands.</summary>
+        public float2 From;
     }
 
     /// <summary>
@@ -500,7 +512,7 @@ namespace WAR2D.Sim
             TargetClass targetClass = kind == TargetKinds.Unit ? (TargetClass)ArmourByType[Type[target]] : kind == TargetKinds.Wall ? TargetClass.Wall : TargetClass.Building;
             float multiplier = WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(type), targetClass);
             float baseDamage = type < DamageByType.Length ? DamageByType[type] : 0f;
-            Hits.Enqueue(new DamageHit { Kind = kind, Slot = target, Amount = baseDamage * multiplier, AttackerOwner = OwnerId[i] });
+            Hits.Enqueue(new DamageHit { Kind = kind, Slot = target, Amount = baseDamage * multiplier, AttackerOwner = OwnerId[i], From = Positions[i] });
             float splash = type < SplashByType.Length ? SplashByType[type] : 0f;
             if (splash > 0f)
             {
@@ -508,7 +520,7 @@ namespace WAR2D.Sim
                 Splashes.AddNoResize(new SplashRequest
                 {
                     Centre = centre, Radius = splash, Damage = baseDamage, AttackerType = (byte)type, AttackerSlot = OwnerSlot[i],
-                    AttackerOwner = OwnerId[i], PrimaryKind = kind, PrimarySlot = target,
+                    AttackerOwner = OwnerId[i], PrimaryKind = kind, PrimarySlot = target, From = Positions[i],
                 });
             }
             // A wall is a tile, not an entity: its damage travels in the terrain delta. Its event names the tile as
@@ -560,7 +572,7 @@ namespace WAR2D.Sim
                         float dSq = math.distancesq(Positions[u], r.Centre);
                         if (dSq > rSq) continue;
                         float amount = r.Damage * Falloff(math.sqrt(dSq), r.Radius) * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(r.AttackerType), (TargetClass)ArmourByType[Type[u]]);
-                        Hits.Enqueue(new DamageHit { Kind = TargetKinds.Unit, Slot = u, Amount = amount, AttackerOwner = r.AttackerOwner });
+                        Hits.Enqueue(new DamageHit { Kind = TargetKinds.Unit, Slot = u, Amount = amount, AttackerOwner = r.AttackerOwner, From = r.From });
                     }
                 }
 
@@ -580,7 +592,7 @@ namespace WAR2D.Sim
                         float gapSq = math.lengthsq(gap);
                         if (gapSq > rSq) continue;
                         float amount = r.Damage * Falloff(math.sqrt(gapSq), r.Radius) * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(r.AttackerType), TargetClass.Building);
-                        Hits.Enqueue(new DamageHit { Kind = TargetKinds.Building, Slot = b, Amount = amount, AttackerOwner = r.AttackerOwner });
+                        Hits.Enqueue(new DamageHit { Kind = TargetKinds.Building, Slot = b, Amount = amount, AttackerOwner = r.AttackerOwner, From = r.From });
                     }
                 }
 
@@ -602,8 +614,8 @@ namespace WAR2D.Sim
 
     /// <summary>
     /// Suicide bombers: one that has reached its target (within its range of the target's edge) or was
-    /// ordered to detonate blows up. The blast hurts every unit, building and wall tile in its radius,
-    /// friends included, with the damage table's multipliers for the bomber; the bomber itself dies. A
+    /// ordered to detonate blows up. The blast hurts every unit, building and wall tile in its radius with the
+    /// damage table's multipliers for the bomber, those its owner doesn't attack at <c>Bomber/FriendlyDamage</c>; the bomber itself dies. A
     /// bomber that was killed first never gets here (it has no health), so it does not explode.
     /// </summary>
     [BurstCompile]
@@ -684,7 +696,7 @@ namespace WAR2D.Sim
         }
     }
 
-    /// <summary>What a bomber's blast reaches: everything in its radius, friends included. Shared by contact, the Detonate order and the last gasp.</summary>
+    /// <summary>What a bomber's blast reaches: everything in its radius, friends at <see cref="FriendlyDamage"/> of the damage (playtest 2026-11-04). Shared by contact, the Detonate order and the last gasp.</summary>
     public struct BlastWorld
     {
         public int UnitCount, BuildingCount, Width, Height, CellSize, CellsX, CellsY;
@@ -692,13 +704,19 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<byte> Type, WallState, ArmourByType;
         [ReadOnly] public NativeArray<int> OwnerId, CellStart, Sorted;
         [ReadOnly] public NativeArray<int2> BuildingAnchor, BuildingSize;
+        [ReadOnly] public NativeArray<ushort> AttackMask;
+        [ReadOnly] public NativeArray<byte> OwnerSlot, BuildingOwnerSlot, WallOwnerSlot;
+        public float FriendlyDamage;
+
+        /// <summary>The share of a blast that reaches an owner: all of it for an enemy, <see cref="FriendlyDamage"/> for anyone else.</summary>
+        private float Share(int from, int to) => SimData.Attacks(AttackMask, from, to) ? 1f : FriendlyDamage;
 
         /// <summary>Queues the blast and its hits on everything but the bomber.</summary>
         public void Detonate(int bomber, int type, NativeArray<float2> positions, NativeArray<float> unitHealth, NativeArray<float> buildingHealth, NativeQueue<DamageHit> hits, NativeQueue<BombBlast> blasts)
         {
             float2 centre = positions[bomber];
             float radius = BlastRadiusByType[type], rSq = radius * radius, damage = BlastDamageByType[type];
-            int owner = OwnerId[bomber];
+            int owner = OwnerId[bomber], slot = OwnerSlot[bomber];
 
             int reach = (int)math.ceil(radius / CellSize) + 1;
             int2 cell = math.clamp((int2)math.floor(centre / CellSize), 0, new int2(CellsX - 1, CellsY - 1));
@@ -710,7 +728,7 @@ namespace WAR2D.Sim
                 {
                     int u = Sorted[k];
                     if (u == bomber || unitHealth[u] <= 0f || math.distancesq(positions[u], centre) > rSq) continue;
-                    float amount = damage * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(type), (TargetClass)ArmourByType[Type[u]]);
+                    float amount = damage * Share(slot, OwnerSlot[u]) * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(type), (TargetClass)ArmourByType[Type[u]]);
                     hits.Enqueue(new DamageHit { Kind = TargetKinds.Unit, Slot = u, Amount = amount, AttackerOwner = owner });
                 }
             }
@@ -721,7 +739,7 @@ namespace WAR2D.Sim
                 if (buildingHealth[b] <= 0f) continue;
                 float2 lo = Footprint.Start(BuildingAnchor[b], BuildingSize[b]), hi = lo + BuildingSize[b];
                 if (math.lengthsq(math.max(math.max(lo - centre, centre - hi), 0f)) > rSq) continue;
-                hits.Enqueue(new DamageHit { Kind = TargetKinds.Building, Slot = b, Amount = buildingAmount, AttackerOwner = owner });
+                hits.Enqueue(new DamageHit { Kind = TargetKinds.Building, Slot = b, Amount = buildingAmount * Share(slot, BuildingOwnerSlot[b]), AttackerOwner = owner });
             }
 
             float wallAmount = damage * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(type), TargetClass.Wall);
@@ -732,7 +750,7 @@ namespace WAR2D.Sim
             {
                 int w = y * Width + x;
                 if (WallState[w] == WallStates.None || math.distancesq(new float2(x + 0.5f, y + 0.5f), centre) > rSq) continue;
-                hits.Enqueue(new DamageHit { Kind = TargetKinds.Wall, Slot = w, Amount = wallAmount, AttackerOwner = owner });
+                hits.Enqueue(new DamageHit { Kind = TargetKinds.Wall, Slot = w, Amount = wallAmount * Share(slot, WallOwnerSlot[w]), AttackerOwner = owner });
             }
 
             blasts.Enqueue(new BombBlast { Position = centre, OwnerId = owner, Bomber = 1 });
@@ -794,6 +812,12 @@ namespace WAR2D.Sim
         public NativeQueue<TileWork> WallDamage;
         public NativeArray<int> HqLastHitBy;
         [ReadOnly] public NativeArray<byte> BuildingKind, BuildingOwnerSlot;
+        /// <summary>For the alarms (only hits with a <see cref="DamageHit.From"/> read them, so the last gasp's blasts leave them unset).</summary>
+        [ReadOnly] public NativeArray<byte> OwnerSlot;
+        [ReadOnly] public NativeArray<float2> Positions, BuildingPositions;
+        public NativeArray<DefendAlarm> Alarms;
+        public NativeArray<int> AlarmCount;
+        public float AlarmCellTiles;
 
         public void Execute()
         {
@@ -807,9 +831,11 @@ namespace WAR2D.Sim
                 {
                     Health[hit.Slot] = math.max(0f, Health[hit.Slot] - hit.Amount);
                     LastHitBy[hit.Slot] = hit.AttackerOwner;
+                    if (hit.From.x != 0f || hit.From.y != 0f) DefendAlarms.Raise(Alarms, AlarmCount, AlarmCellTiles, OwnerSlot[hit.Slot], Positions[hit.Slot], hit.From);
                 }
                 else
                 {
+                    if (hit.From.x != 0f || hit.From.y != 0f) DefendAlarms.Raise(Alarms, AlarmCount, AlarmCellTiles, BuildingOwnerSlot[hit.Slot], BuildingPositions[hit.Slot], hit.From);
                     BuildingHealth[hit.Slot] = math.max(0f, BuildingHealth[hit.Slot] - hit.Amount);
                     BuildingDamage[hit.Slot] += hit.Amount;
                     if (BuildingKind[hit.Slot] == (byte)BuildingType.Base && BuildingOwnerSlot[hit.Slot] < HqLastHitBy.Length) HqLastHitBy[BuildingOwnerSlot[hit.Slot]] = hit.AttackerOwner;

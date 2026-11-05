@@ -77,4 +77,4 @@ A building whose progress record reaches 100 % while the client sees it (`Client
 
 ## Not pursued
 
-Owner, 2026-10-30: screen shake, order-acknowledgement chirps, map pings, chat, floating resource numbers, an idle-producer alert, end-screen graphs, a Quick skirmish button, first-match hints, colourblind team colours.
+Owner, 2026-10-30: screen shake, order-acknowledgement chirps, map pings (asked for after all on 2026-11-04, for players sharing vision), chat, floating resource numbers, an idle-producer alert, end-screen graphs, a Quick skirmish button, first-match hints, colourblind team colours.

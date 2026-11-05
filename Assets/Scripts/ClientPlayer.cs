@@ -189,12 +189,30 @@ public class ClientPlayer : NetworkBehaviour
 
     /// <summary>The owning player's own resources and last second's income and upkeep. Private: never a SyncVar.</summary>
     [TargetRpc]
-    public void TargetUpdateResources(NetworkConnection target, float newResources, float income, float upkeep)
+    public void TargetUpdateResources(NetworkConnection target, float newResources, float income, float upkeep, bool unpaid)
     {
+        upkeepUnpaid = unpaid;
         currentResources = newResources;
         incomePerSecond = income;
         upkeepPerSecond = upkeep;
     }
+
+    /// <summary>A spectator's player bar: the players still in the match, their balances and unit counts. Sent only to spectators.</summary>
+    [TargetRpc]
+    public void TargetSpectatorStats(NetworkConnection target, int[] owners, float[] resources, int[] units)
+    {
+        SpectatorOwners = owners;
+        SpectatorResources = resources;
+        SpectatorUnits = units;
+    }
+
+    /// <summary>The last <see cref="TargetSpectatorStats"/>; null until one arrives.</summary>
+    public int[] SpectatorOwners;
+    public float[] SpectatorResources;
+    public int[] SpectatorUnits;
+
+    /// <summary>True when the server says some of this player's upkeep went unpaid last second.</summary>
+    public bool upkeepUnpaid;
 
     private readonly System.Collections.Generic.Dictionary<int, (UnitType type, int count)> spawnerQueues = new System.Collections.Generic.Dictionary<int, (UnitType, int)>();
 

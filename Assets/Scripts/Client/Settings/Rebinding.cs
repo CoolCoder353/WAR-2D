@@ -72,7 +72,14 @@ public static class Rebinding
     /// <summary>The game's overrides as JSON.</summary>
     public static string SaveGame() => Save(GameInput.Map);
 
+    /// <summary>A key's name with control characters spelled out: on Linux the input system names Delete after its character, U+007F.</summary>
+    public static string CleanDisplay(string display)
+    {
+        if (string.IsNullOrEmpty(display)) return display;
+        return display.Replace("\u007f", "Delete").Replace("\b", "Backspace").Replace("\t", "Tab").Replace("\r", "Enter").Replace("\n", "Enter").Replace("\u001b", "Escape");
+    }
+
     /// <summary>A binding as players read it ("A", "Left mouse", "Esc").</summary>
     public static string Display(InputAction action) =>
-        action == null || action.bindings.Count == 0 ? "" : action.GetBindingDisplayString(0, InputBinding.DisplayStringOptions.DontIncludeInteractions);
+        action == null || action.bindings.Count == 0 ? "" : CleanDisplay(action.GetBindingDisplayString(0, InputBinding.DisplayStringOptions.DontIncludeInteractions));
 }

@@ -87,6 +87,9 @@ public class MapView : MonoBehaviour
         };
     }
 
+    /// <summary>The tile kind whose flat colour a shader slot shows at far zoom; spare slots show rock. The slots run to the last kind: stopping at WallBlueprint drew rich gems as rock (playtest 2026-11-04).</summary>
+    public static TileType FlatType(int slot) => slot <= (int)TileType.RichGem ? (TileType)slot : TileType.Wall;
+
     /// <summary>The number of player colours the shader holds (index 0 of its table is "no owner").</summary>
     public const int TeamColours = 8;
 
@@ -207,7 +210,7 @@ public class MapView : MonoBehaviour
         {
             int cell = atlas != null && t < names.Length ? atlas.FirstFrame(names[t]) : -1;
             first[t] = cell < 0 ? (atlas != null ? atlas.FirstFrame(nameof(TileType.Border)) : 0) : cell;
-            Color c = TileColor(t <= (int)TileType.WallBlueprint ? (TileType)t : TileType.Wall);
+            Color c = TileColor(FlatType(t));
             flat[t] = linear ? (Vector4)c.linear : (Vector4)c;
         }
         _material.SetFloatArray("_TileFirst", first);

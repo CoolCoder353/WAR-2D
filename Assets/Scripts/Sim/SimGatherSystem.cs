@@ -50,9 +50,10 @@ namespace WAR2D.Sim
                 data.BuildingSight[b] = underConstruction ? ConstructionRules.BlueprintSight
                     : (uint)buildingType < (uint)data.BuildingSightByType.Length ? data.BuildingSightByType[buildingType] : 0f;
                 byte flags = underConstruction ? BuildingFlags.UnderConstruction : (byte)0;
-                if (building.ValueRO.buildingType == BuildingType.Radar && !underConstruction) flags |= BuildingFlags.SeesThroughWalls;
+                bool unpaid = SystemAPI.HasComponent<UpkeepComponent>(entity) && SystemAPI.GetComponent<UpkeepComponent>(entity).unpaid;
+                if (building.ValueRO.buildingType == BuildingType.Radar && !underConstruction && !unpaid) flags |= BuildingFlags.SeesThroughWalls;
                 if (building.ValueRO.buildingType == BuildingType.Bomb) flags |= BuildingFlags.Hidden;
-                if (SystemAPI.HasComponent<UpkeepComponent>(entity) && SystemAPI.GetComponent<UpkeepComponent>(entity).unpaid) flags |= BuildingFlags.Unpaid;
+                if (unpaid) flags |= BuildingFlags.Unpaid;
                 if (!underConstruction && SystemAPI.HasComponent<Jammer>(entity)) flags |= BuildingFlags.Jams;
                 data.BuildingFlag[b] = flags;
                 // Weapon state (v0.13): every slot is written, so a reused slot never inherits a target.

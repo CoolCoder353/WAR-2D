@@ -53,6 +53,13 @@ namespace Character
             playerCamera.orthographicSize = size;
         }
 
+        /// <summary>Zooms out in wheel steps until at least <paramref name="halfHeight"/> tiles show above and below the centre; never zooms in.</summary>
+        public void ZoomOutToShow(float halfHeight)
+        {
+            if (playerCamera == null || settings == null) return;
+            SetSize(CameraZoom.OutToShow(playerCamera.orthographicSize, halfHeight, ArtStyle.PixelsPerUnit, Screen.height, settings.zoomScale.x, settings.zoomScale.y));
+        }
+
         /// <summary>Panning from the pointer at a screen edge (when edge scrolling is on and the window has focus).</summary>
         private float zoomNotches;
 

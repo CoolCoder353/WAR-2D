@@ -63,6 +63,9 @@ namespace WAR2D.Sim
         /// <summary>Resources an owner has for upkeep; null means unlimited (tests).</summary>
         public Func<int, float> BudgetOf;
 
+        /// <summary>Told, once a second per owner, the unit upkeep charged whether or not it could be paid; null ignores it.</summary>
+        public Action<int, float> Owe;
+
         /// <summary>
         /// The team of an owner id, read when the owner first gets a slot (teams are fixed for a match).
         /// Null means every owner is on a team of its own (<see cref="SimData.TeamOfOwner"/>).

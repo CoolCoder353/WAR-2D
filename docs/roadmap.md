@@ -112,7 +112,7 @@ Considered on 2026-11-01 and left for later:
 - **Online:** a headless dedicated server and host migration (the match still ends when the host leaves), ranked matchmaking.
 - Mobile or console platforms.
 
-The owner turned down on 2026-10-30 (see [polish.md](polish.md)): screen shake, order-acknowledgement chirps, map pings, chat, floating resource numbers, an idle-producer alert, end-screen graphs (brought back for v0.18 on 2026-11-03), a Quick skirmish button, first-match hints, colourblind team colours.
+The owner turned down on 2026-10-30 (see [polish.md](polish.md)): screen shake, order-acknowledgement chirps, map pings (brought back on 2026-11-04), chat, floating resource numbers, an idle-producer alert, end-screen graphs (brought back for v0.18 on 2026-11-03), a Quick skirmish button, first-match hints, colourblind team colours.
 
 ---
 

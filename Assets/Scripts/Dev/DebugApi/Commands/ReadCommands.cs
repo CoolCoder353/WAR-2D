@@ -37,10 +37,10 @@ namespace WAR2D.Dev.DebugApi
                 units = SimContext.Current?.Clock.UnitCount ?? ClientWorld.Instance?.KnownCount ?? 0,
             });
             r.Add("players", DebugRole.Server, "players: every player's state, team, colour and resources", _ => Players());
-            r.Add("units", DebugRole.Any, "units [owner] [type] [box] [limit]: units (server: all; client: what it knows)", a =>
+            r.Add("units", DebugRole.Any, "units [owner] [type] [box] [limit=200]: units (server: all; client: what it knows); count is every match, truncated says the list stops at limit", a =>
                 NetworkServer.active ? Units(Require(SettledSnapshot.Current), a) : ClientUnits(a));
             r.Add("unit", DebugRole.Server, "unit id: one unit's full state", a => Unit(Require(SettledSnapshot.Current), DebugArgs.Int(a, "id")));
-            r.Add("buildings", DebugRole.Any, "buildings [owner] [type]: buildings (client: what it knows)", a => Buildings(a));
+            r.Add("buildings", DebugRole.Any, "buildings [owner] [type]: buildings (server: all, with queued = placements waiting for the next tick; client: what it knows)", a => Buildings(a));
             r.Add("tiles", DebugRole.Any, "tiles box: ASCII map of a box (. ground, # rock, * gem, B border, W wall, w blueprint)", a =>
             {
                 MapGrid grid = WorldStateManager.Instance?.Map?.Grid ?? throw new DebugError("no map loaded");
@@ -107,7 +107,7 @@ namespace WAR2D.Dev.DebugApi
                 if (list.Count < limit)
                     list.Add(new { id = s.Id[i], owner = s.Owner[i], type = ((UnitType)s.Type[i]).ToString(), pos = new[] { s.Position[i].x, s.Position[i].y }, health = s.Health[i], stance = s.Stance[i], target = s.Target[i] });
             }
-            return new { tick = s.Tick, count, units = list };
+            return new { tick = s.Tick, count, truncated = count > list.Count, units = list };
         }
 
         private static object Unit(SettledSnapshot s, int id)
@@ -125,7 +125,7 @@ namespace WAR2D.Dev.DebugApi
             var ids = new List<int>();
             var (min, max) = DebugArgs.Has(a, "box") ? DebugArgs.Box(a, "box") : (new int2(-100000), new int2(100000));
             world.QueryBox((float2)min, (float2)(max + 1), DebugArgs.Int(a, "owner", 0), ids);
-            return new { count = ids.Count, units = ids.Take(limit).Select(id => world.TryGet(id, out ClientUnitView v) ? (object)new { id, owner = v.OwnerId, type = v.Type.ToString(), pos = new[] { v.Position.x, v.Position.y }, health = v.Health01 } : null) };
+            return new { count = ids.Count, truncated = ids.Count > limit, units = ids.Take(limit).Select(id => world.TryGet(id, out ClientUnitView v) ? (object)new { id, owner = v.OwnerId, type = v.Type.ToString(), pos = new[] { v.Position.x, v.Position.y }, health = v.Health01 } : null) };
         }
 
         private static object Players()
@@ -145,10 +145,23 @@ namespace WAR2D.Dev.DebugApi
         private static object Buildings(JObject a)
         {
             int? owner = DebugArgs.Has(a, "owner") ? DebugArgs.Int(a, "owner") : (int?)null;
+            BuildingType? type = DebugArgs.Has(a, "type") ? DebugArgs.Enum<BuildingType>(a, "type") : (BuildingType?)null;
             var list = new List<object>();
+            // A host's own client holds only what its team sees, but the server answers for the whole match, as units does.
+            if (NetworkServer.active && WorldStateManager.Instance != null && SimContext.Current != null)
+            {
+                var views = new List<BuildingView>();
+                WorldStateManager.Instance.CollectBuildingViews(views);
+                foreach (BuildingView v in views)
+                {
+                    if ((owner.HasValue && v.OwnerId != owner.Value) || (type.HasValue && v.Type != type.Value)) continue;
+                    list.Add(new { id = v.Id, owner = v.OwnerId, type = v.Type.ToString(), pos = new[] { (float)v.Anchor.x, v.Anchor.y }, ghost = false });
+                }
+                return new { count = list.Count, queued = SimContext.Current.Commands.CountOf(SimCommandKind.CreateBuilding), paused = SimContext.Current.Pause.Paused, buildings = list };
+            }
             foreach (ClientBuildings.Entry e in ClientBuildings.Current.Entries.Values)
             {
-                if (owner.HasValue && e.Data.ownerId != owner.Value) continue;
+                if ((owner.HasValue && e.Data.ownerId != owner.Value) || (type.HasValue && e.Data.buildingType != type.Value)) continue;
                 list.Add(new { id = e.Data.id, owner = e.Data.ownerId, type = e.Data.buildingType.ToString(), pos = new[] { e.Data.position.x, e.Data.position.y }, ghost = e.Ghost });
             }
             return new { count = list.Count, buildings = list };

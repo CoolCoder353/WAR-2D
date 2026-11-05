@@ -318,7 +318,7 @@ public class AiLeakTests
     [Test]
     public void RadarContactsAndJamsNeverRevealTheEnemy()
     {
-        using var rig = new Rig(SimHarness.OpenMap(96), c => c.Simulation.TargetSearchSliceTicks = 1);
+        using var rig = new Rig(SimHarness.OpenMap(96), c => { c.Simulation.TargetSearchSliceTicks = 1; c.Defend.IntervalTicks = int.MaxValue; }); // the AI's unit stands in the jam
         rig.RealBuildings = true;
         int[] far = rig.Sim.Spawn(Ai, new float2(8.5f, 88.5f), UnitType.Builder); // a slot, far from everything
         // A Radar contact in the fog: an alert with the Radar's own tile, and nothing about the enemy.

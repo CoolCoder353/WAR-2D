@@ -40,6 +40,7 @@ public class BuildingPlacement : MonoBehaviour
 
     private int2 currentAnchor;
     private float currentRotation; // degrees: 0, 90, 180, 270
+    private float rememberedRotation; // the Miner's last facing: a vein is usually worked from one side (playtest 2026-11-04)
     private int2 displayedAnchor;
     private BuildingType displayedType;
     private float displayedRotation;
@@ -87,13 +88,20 @@ public class BuildingPlacement : MonoBehaviour
         EnsureStatusOutline(sprite);
         ShowHead(sprite);
         previewBuilding.SetActive(true);
-        currentRotation = 0f;
+        currentRotation = Turns(type) ? rememberedRotation : 0f;
+        if (Turns(type)) ShowFacing();
         hasDisplayedTarget = false;
         SetPreviewTint(Color.white, false);
         lastQueriedAnchor = new int2(int.MinValue, int.MinValue);
         lastQueriedRotation = float.MinValue; // Sentinels guarantee the next change check differs.
         queryTimer = 1f; // Mature timer, so the first frame asks immediately.
     }
+
+    /// <summary>True for a building drawn in several facings (the Miner): only those turn.</summary>
+    private static bool Turns(BuildingType type) => WAR2D.Client.Render.TeamSpriteMaterial.Facing(type, 90f) != 0;
+
+    /// <summary>The preview's facing in degrees.</summary>
+    public float Rotation => currentRotation;
 
     /// <summary>Stops placing without building.</summary>
     [Client]
@@ -184,6 +192,7 @@ public class BuildingPlacement : MonoBehaviour
         ShowOwnClearing(needHQ);
         if (!IsPlacing) return;
         ActiveFrame = Time.frameCount;
+        if (WAR2D.UI.HudController.DialogOpen || WAR2D.UI.ManualController.AnyOpen) return; // the preview waits behind a dialog
 
         int2 size = WorldStateManager.GetBuildingSize(PlacingType);
         Vector3 mouse = UnitCommander.GetMouseWorldPosition();
@@ -192,9 +201,10 @@ public class BuildingPlacement : MonoBehaviour
 
         // Rotate turns only buildings drawn in several facings (the Miner); the sprite stays upright and
         // shows the facing, since the 3/4 view only reads one way up.
-        if (GameInput.Rotate.WasPressedThisFrame() && WAR2D.Client.Render.TeamSpriteMaterial.Facing(PlacingType, 90f) != 0)
+        if (GameInput.Rotate.WasPressedThisFrame() && Turns(PlacingType))
         {
             currentRotation = (currentRotation + 90f) % 360f;
+            rememberedRotation = currentRotation;
             ShowFacing();
         }
         previewBuilding.transform.position = new Vector3(centre.x, centre.y, 0);
@@ -205,7 +215,8 @@ public class BuildingPlacement : MonoBehaviour
             Config.GameConfigData config = Config.ConfigLoader.LoadConfig();
             TileType faced = WorldStateManager.Instance.Map.Grid.TileAt(currentAnchor + MinerRules.FacingOffset(currentRotation));
             string label = MinerLabel(faced, config.Resources.MiningRate, config.Resources.RichGemMultiplier);
-            if (label != null) PlacementTag = (centre - new float2(0f, size.y * 0.5f), label);
+            // A spot the preview shows as invalid pays nothing: no rate under a red ghost.
+            if (label != null && PreviewValid != false) PlacementTag = (centre - new float2(0f, size.y * 0.5f), label);
         }
 
         if (!hasDisplayedTarget || math.any(currentAnchor != displayedAnchor) || PlacingType != displayedType || currentRotation != displayedRotation)
@@ -225,9 +236,16 @@ public class BuildingPlacement : MonoBehaviour
         }
         if (GameInput.Select.WasPressedThisFrame() && !GameInput.PointerOverUI)
         {
+            // The server would refuse a spot the preview shows as invalid: say so and stay placing, with a fresh answer.
+            if (PreviewValid == false)
+            {
+                WAR2D.Audio.AudioService.Ui("ui_error");
+                UnitCommander.Instance?.ShowNotice("Can't build here");
+                lastQueriedAnchor = new int2(int.MinValue, int.MinValue);
+                return;
+            }
             WorldStateManager.Instance?.TryAddBuilding(currentAnchor, PlacingType, currentRotation);
-            // The server refuses a spot the preview showed as invalid; say so instead of the placed sound.
-            WAR2D.Audio.AudioService.Ui(PreviewValid == false ? "ui_error" : "building_placed");
+            WAR2D.Audio.AudioService.Ui("building_placed");
             // Selected Builders go and build it (Shift queues it behind their current job).
             if (PlacingType != BuildingType.Base) UnitCommander.Instance?.OrderBuilders(OrderKind.Build, currentAnchor, GameInput.QueueModifier.IsPressed());
             // Holding the queue modifier (Shift) keeps placing the same type, as it queues unit orders.

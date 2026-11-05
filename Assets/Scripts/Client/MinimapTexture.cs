@@ -54,7 +54,8 @@ namespace WAR2D.Client
             {
                 TileType type = tileAt(new int2(x * cellSize + cellSize / 2, y * cellSize + cellSize / 2));
                 Color32 tile = MapView.TileColor(type);
-                visible[y * width + x] = Scale(tile, 1.6f);
+                // A rich gem stays its own gold: brightened like the rest it reads as near white (playtest 2026-11-04).
+                visible[y * width + x] = type == TileType.RichGem ? tile : Scale(tile, 1.6f);
                 explored[y * width + x] = Scale(tile, 0.75f);
                 // With the Gems layer off a gem cell reads as plain ground.
                 Color32 plain = TileRules.IsGem(type) ? MapView.TileColor(TileType.Ground) : tile; // both gem kinds (v0.17)

@@ -19,17 +19,19 @@ public class ConfigParserTests
   <AttackOrder><RepathTiles>2</RepathTiles><RepathSeconds>0.5</RepathSeconds></AttackOrder>
   <RangeRings><Max>64</Max><MergeOverlap>0.8</MergeOverlap></RangeRings>
   <Summary><SampleSeconds>10</SampleSeconds><MaxPoints>360</MaxPoints><FightCellTiles>32</FightCellTiles><FightWindowSeconds>20</FightWindowSeconds><FightMinWorth>600</FightMinWorth><MaxFights>30</MaxFights></Summary>
-  <Bomber><LastGaspHealth>0.1</LastGaspHealth><ChainPasses>4</ChainPasses><AimTiles>6</AimTiles><FriendlyWeight>1.0</FriendlyWeight><AimReachTiles>0.5</AimReachTiles><GoodEnough>0.8</GoodEnough></Bomber>
+  <Bomber><LastGaspHealth>0.1</LastGaspHealth><ChainPasses>4</ChainPasses><AimTiles>6</AimTiles><FriendlyWeight>1.0</FriendlyWeight><FriendlyDamage>0.1</FriendlyDamage><AimReachTiles>0.5</AimReachTiles><GoodEnough>0.8</GoodEnough></Bomber>
   <MinimapCombat><CellTiles>16</CellTiles><PulseSeconds>1.5</PulseSeconds><QuietSeconds>3</QuietSeconds><Max>32</Max></MinimapCombat>
   <PlacementMinimap><MarkerPixels>8</MarkerPixels></PlacementMinimap>
   <Formation><Spacing>1.2</Spacing><LooseTiles>4</LooseTiles><SlotTiles>12</SlotTiles><LostTiles>20</LostTiles></Formation>
   <AutoWork><Radius>8</Radius><RepairBelow>0.9</RepairBelow><SliceTicks>10</SliceTicks></AutoWork>
+  <Pings><CooldownSeconds>0.5</CooldownSeconds><ShowSeconds>4</ShowSeconds></Pings>
+  <Defend><RespondTiles>12</RespondTiles><StepTiles>8</StepTiles><AlarmCellTiles>16</AlarmCellTiles><IntervalTicks>10</IntervalTicks></Defend>
   <Diplomacy><ChangeCooldownSeconds>2</ChangeCooldownSeconds></Diplomacy>
   <Lobby><MapSizes>256 512 1024</MapSizes><StartingResources>500 1000 2500 5000</StartingResources><StartOptions>1 3 4</StartOptions><StartPickSeconds>0 15 45</StartPickSeconds><StartPickDefault>45</StartPickDefault><SpareStartSites>2</SpareStartSites><Visibility>Friends</Visibility></Lobby>
   <MenuBattle><UnitsPerArmy>1500</UnitsPerArmy><MapSize>512</MapSize><Seed>7</Seed></MenuBattle>
   <Gifting><CooldownSeconds>5</CooldownSeconds></Gifting>
   <Alerts><ThrottleSeconds>10</ThrottleSeconds><AreaTiles>32</AreaTiles><ShowSeconds>8</ShowSeconds></Alerts>
-  <Siege><BuildPower>25</BuildPower><DemolishRefund>0.5</DemolishRefund><RepairCostPerHealth>0.2</RepairCostPerHealth><WorkReach>1.6</WorkReach><DigTime>1.5</DigTime><GemPayout>150</GemPayout><RichGemPayout>375</RichGemPayout><WallCost>5</WallCost><WallHealth>150</WallHealth><MaxWallLine>64</MaxWallLine><BlastRadius>2.5</BlastRadius><BlastDamage>200</BlastDamage><RadarClearSeconds>5</RadarClearSeconds><RadarAlertCooldownSeconds>30</RadarAlertCooldownSeconds><JamRadius>12</JamRadius><JamSight>3</JamSight></Siege>
+  <Siege><BombTriggerRadius>1.5</BombTriggerRadius><BombFriendlyDamage>0.1</BombFriendlyDamage><BuildPower>25</BuildPower><DemolishRefund>0.5</DemolishRefund><RepairCostPerHealth>0.2</RepairCostPerHealth><WorkReach>1.6</WorkReach><DigTime>1.5</DigTime><GemPayout>150</GemPayout><RichGemPayout>375</RichGemPayout><WallCost>5</WallCost><WallHealth>150</WallHealth><MaxWallLine>64</MaxWallLine><BlastRadius>2.5</BlastRadius><BlastDamage>200</BlastDamage><RadarClearSeconds>5</RadarClearSeconds><RadarAlertCooldownSeconds>30</RadarAlertCooldownSeconds><JamRadius>12</JamRadius><JamSight>3</JamSight></Siege>
   <Audio><BattleDeathsPerSecond>3</BattleDeathsPerSecond><BattleHoldSeconds>20</BattleHoldSeconds></Audio>
   <Replays><Enabled>1</Enabled><MaxMegabytes>512</MaxMegabytes><KeepCount>50</KeepCount><FogSeconds>1</FogSeconds><MarkerLeadSeconds>5</MarkerLeadSeconds></Replays>
   <Ai><Callsigns>Cmdr. A, Maj. B, Capt. C, Col. D, Lt. E, Maj. F, Capt. G, Cmdr. H, Col. I</Callsigns>
@@ -481,16 +483,16 @@ public class ConfigParserTests
         GameConfigData c = ConfigLoader.LoadConfig();
         Assert.IsTrue(ConfigLoader.IsValid);
         BuildingConfig turret = c.GetBuilding(BuildingType.GunTurret);
-        Assert.AreEqual((350, 1, 1, 150f, 4f, 8f), (turret.Health, turret.Width, turret.Height, turret.UpfrontCost, turret.RunningCost, turret.Sight));
-        Assert.AreEqual((8, 7f, 0.4f), (turret.Damage, turret.Range, turret.AttackInterval));
+        Assert.AreEqual((500, 1, 1, 150f, 4f, 10f), (turret.Health, turret.Width, turret.Height, turret.UpfrontCost, turret.RunningCost, turret.Sight));
+        Assert.AreEqual((12, 9f, 0.4f), (turret.Damage, turret.Range, turret.AttackInterval));
         BuildingConfig jammer = c.GetBuilding(BuildingType.Jammer);
         Assert.AreEqual((200, 2, 2, 200f, 6f, 6f), (jammer.Health, jammer.Width, jammer.Height, jammer.UpfrontCost, jammer.RunningCost, jammer.Sight));
         Assert.IsFalse(jammer.IsAttacker);
         Assert.AreEqual((12f, 3f), (c.Siege.JamRadius, c.Siege.JamSight));
         Assert.AreEqual(1.5f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.LightUnit));
-        Assert.AreEqual(0.4f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.HeavyUnit));
+        Assert.AreEqual(0.5f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.HeavyUnit));
         Assert.AreEqual(0.5f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.Building));
-        Assert.AreEqual(0.5f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.Wall));
+        Assert.AreEqual(0.25f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.Wall));
     }
 
     // ---------- v0.14 AI ----------

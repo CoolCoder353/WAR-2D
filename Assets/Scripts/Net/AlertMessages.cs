@@ -32,6 +32,8 @@ public enum AlertKind : byte
     PlayerDisconnected,
     /// <summary>Made by the client, never sent (v0.15, item 19): an away player came back (OtherOwnerId is them).</summary>
     PlayerReturned,
+    /// <summary>A player pinged the map (Tile) for the receiver: themselves or someone sharing vision with the receiver (OtherOwnerId). Playtest 2026-11-04.</summary>
+    Ping,
 }
 
 /// <summary>

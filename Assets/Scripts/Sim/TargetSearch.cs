@@ -42,6 +42,7 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<int> BuildingIds, BuildingSlotOfIndex;
         public int BuildingCount;
         [ReadOnly] public NativeArray<int> BuildingCellStart, BuildingSorted;
+        [ReadOnly] public NativeArray<int2> BuildingAnchor, BuildingSize;
         public float InvCellSize;
         public int CellsX, CellsY, SearchCells; // SearchCells = ceil(max range / cell size): the cap on any type's reach
         /// <summary>Fog grids (see <see cref="SimData.Visible"/>): an attacker fires only at what its owner's grid sees now.</summary>
@@ -72,6 +73,8 @@ namespace WAR2D.Sim
             BuildingCount = buildingCount,
             BuildingCellStart = data.BuildingCellStart,
             BuildingSorted = data.BuildingSorted,
+            BuildingAnchor = data.BuildingAnchor,
+            BuildingSize = data.BuildingSize,
             InvCellSize = 1f / data.CellSize,
             CellsX = data.CellsX,
             CellsY = data.CellsY,
@@ -97,6 +100,17 @@ namespace WAR2D.Sim
         /// <summary>True when the fog grid starting at <paramref name="grid"/> (an owner slot times <c>FogCells</c>) sees the point now.</summary>
         public static bool Sees(in SearchInput s, int grid, float2 position) =>
             NearestEnemyJob.Sees(s.Visible, grid, position, s.FogCellSize, s.FogW, s.FogH);
+
+        /// <summary>
+        /// The point of a building's footprint nearest <paramref name="p"/>. A building is in range when its edge is (playtest
+        /// 2026-11-04: measured to its centre, a Digger or Flamethrower touching a 5x5 HQ was out of range for good), and the
+        /// fog and the line of fire are checked to the same point.
+        /// </summary>
+        public static float2 NearestPoint(in SearchInput s, int building, float2 p)
+        {
+            float2 lo = Footprint.Start(s.BuildingAnchor[building], s.BuildingSize[building]);
+            return math.clamp(p, lo, lo + s.BuildingSize[building] - 0.01f);
+        }
 
         /// <summary>
         /// The nearest living enemy unit within range (and outside the minimum range) that the owner's grid sees with a
@@ -136,16 +150,20 @@ namespace WAR2D.Sim
             }
 
             best = rangeSq;
-            for (int cy = lo.y; cy <= hi.y; cy++)
-            for (int cx = lo.x; cx <= hi.x; cx++)
+            // Buildings are hashed by centre, and range counts to the edge: up to half a footprint (an HQ's 2.5 tiles) further.
+            int2 buildingLo = math.max(c - reach - BuildingReachCells(s), 0);
+            int2 buildingHi = math.min(c + reach + BuildingReachCells(s), new int2(s.CellsX - 1, s.CellsY - 1));
+            for (int cy = buildingLo.y; cy <= buildingHi.y; cy++)
+            for (int cx = buildingLo.x; cx <= buildingHi.x; cx++)
             {
                 int cell = cy * s.CellsX + cx;
                 for (int k = s.BuildingCellStart[cell]; k < s.BuildingCellStart[cell + 1]; k++)
                 {
                     int j = s.BuildingSorted[k];
                     if (s.BuildingHealth[j] <= 0f || (s.BuildingFlag[j] & BuildingFlags.Hidden) != 0 || !SimData.Attacks(s.AttackMask, slot, s.BuildingOwnerSlot[j])) continue;
-                    float d = math.distancesq(p, s.BuildingPositions[j]);
-                    if (d <= best && d >= minSq && Sees(s, grid, s.BuildingPositions[j]) && LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, s.BuildingPositions[j])) { best = d; bestIndex = j; }
+                    float2 at = NearestPoint(s, j, p);
+                    float d = math.distancesq(p, at);
+                    if (d <= best && d >= minSq && Sees(s, grid, at) && LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, at)) { best = d; bestIndex = j; }
                 }
             }
             if (bestIndex >= 0)
@@ -159,6 +177,8 @@ namespace WAR2D.Sim
             if (target >= 0) kind = TargetKinds.Wall;
             return target >= 0;
         }
+
+        private static int BuildingReachCells(in SearchInput s) => (int)math.ceil(3f * s.InvCellSize);
 
         /// <summary>
         /// The nearest enemy wall tile within range with a clear line, on a fog cell the owner's grid sees now (v0.16: a
@@ -216,10 +236,10 @@ namespace WAR2D.Sim
             {
                 int j = s.BuildingSlotOfIndex[index];
                 if ((uint)j >= (uint)s.BuildingCount || s.BuildingIds[j] != id || s.BuildingHealth[j] <= 0f || (s.BuildingFlag[j] & BuildingFlags.Hidden) != 0 ||
-                    !SimData.Attacks(s.AttackMask, slot, s.BuildingOwnerSlot[j]) || math.distancesq(p, s.BuildingPositions[j]) > rangeSq ||
-                    math.distancesq(p, s.BuildingPositions[j]) < minSq ||
-                    !Sees(s, grid, s.BuildingPositions[j]) ||
-                    !LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, s.BuildingPositions[j])) return -1;
+                    !SimData.Attacks(s.AttackMask, slot, s.BuildingOwnerSlot[j])) return -1;
+                float2 at = NearestPoint(s, j, p);
+                if (math.distancesq(p, at) > rangeSq || math.distancesq(p, at) < minSq || !Sees(s, grid, at) ||
+                    !LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, at)) return -1;
                 return j;
             }
         }

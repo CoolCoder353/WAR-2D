@@ -25,12 +25,38 @@ tools/war2d --json state               # raw reply
 | Group | Commands |
 | --- | --- |
 | Session | `ping`, `info`, `host`, `join route=…`, `leave`, `start [size seed mode options pick team]` (`pick=-1` is Unlimited; `team=0` puts every player on one team, Teams mode only), `quit` |
-| Read | `state`, `players`, `units`, `unit id=…`, `buildings`, `tiles box=[x0,y0,x1,y1]`, `fog owner box`, `orders`, `perf`, `log`, `loglevel` |
+| Read | `state`, `players`, `units` (`count` is every match; `truncated` says the list stopped at `limit`, 200 by default), `unit id=…`, `buildings` (a server answers for the whole match, with `queued` placements waiting for the next tick; a client with what it knows), `tiles box=[x0,y0,x1,y1]`, `fog owner box`, `orders`, `perf`, `log`, `loglevel` |
 | Scenario | `ai difficulty [style] [team] [colour]` (a lobby AI seat), `aistate [owner]` (each AI's style, plans, counts, actions and unpaid seconds), `timescale [n]` (run the match n times faster, 0.1–32; the tick catches up several ticks per frame; dev only), `bots n` (Scripted AI seats, owner ids from `AiOwnerIds`), `spawn owner type tile count`, `build owner type tile`, `resources`, `order`, `diplomacy`, `kill ids`, `pause`, `resume`, `step`, `wait` |
-| View | `camera`, `select`, `screenshot`, `overlay layer on` |
+| View | `camera [x y] [zoom]` (no arguments reads it; works in a replay), `select`, `screenshot`, `ui`, `uiclick`, `overlay layer on` |
+| Input | `mouse`, `scroll`, `key`, `text` |
 | Replays | `record`, `replays`, `replay do=open/seek/speed/play/pause/stop/status` |
 
 Server-role commands refuse on a client. A client answers `units`/`buildings` only from what it was sent, which is how you check for leaks across two processes.
+
+## Seeing and driving the game (screenshots, mouse, keyboard)
+
+Input is injected through the Input System, so hotkeys, box-select, orders, the minimap and UI Toolkit panels react as for a person, even when the window is unfocused. **Screen coordinates are pixels from the top left, the same as a screenshot image**, so what you read off a picture goes straight into `mouse`.
+
+```bash
+tools/war2d shot /tmp/a.png            # whole screen, world and UI (path is printed); then look at the PNG
+tools/war2d shot box=[0,0,480,270] scale=0.5
+tools/war2d shot box=[300,40,620,90] scale=3   # enlarged by whole pixels, to read small text
+tools/war2d ui Start                   # visible UI elements matching "Start": name, text, rect, centre
+tools/war2d ui compact=true            # one 'name "text" x,y' line each
+tools/war2d ui all=true                # every named element too, and what is scrolled out of view
+tools/war2d click 960 540              # left click at a screen pixel ("click 960 540 right" for the right button)
+tools/war2d tile 60 60 right           # right-click the centre of a map tile (needs a match camera)
+tools/war2d drag 400 300 700 500       # box-select
+tools/war2d key ctrl+a                 # tap keys: F1, Escape, Digit1/1, leftShift/shift ...
+tools/war2d key shift action=down      # hold, then action=up
+tools/war2d type "hello"               # characters into the focused text field
+tools/war2d scroll dy=1                # zoom in one notch (optionally x= y=)
+tools/war2d mouse x=10 y=10 space=world action=move
+```
+
+`screenshot` captures at the end of the frame, so UI Toolkit panels are in the picture; `box` crops and `scale` (0.1–8) resizes it, and the reply gives the saved size and the screen size. `ui` lists what is on screen with `center` coordinates to click, open dropdown menus included (doc `popup`), and `covered` marks an element with something else on top; `uiclick name=…` presses a button by name instead. `mouse` replies in the pixels you sent. A screenshot needs a graphical player (not `-nographics`), and doesn't show the hardware cursor. In the editor keep the Game view's size even: at an odd size the Pixel Perfect package prints a warning across the top bar.
+
+**Playing a match as an agent.** The match doesn't wait for you, so `pause`, read and act, then `step ticks=N`, and repeat. Input commands work while paused; orders and placements apply on the next tick (`buildings` shows those as `queued`). Move the pointer into the view first (`mouse x=… y=… action=move`): with Edge scrolling on and the window focused, an injected pointer still at (0,0) scrolls the camera to the map's corner.
 
 ## Overlays
 

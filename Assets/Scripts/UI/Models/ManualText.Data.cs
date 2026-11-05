@@ -64,12 +64,11 @@ namespace WAR2D.UI
     ""Heavy"": {
       ""role"": ""Slow, armoured front-line tank."",
       ""body"": [
-        ""Takes the fire so that the rest of your army doesn't. Its large gun hits buildings harder than anything else on the front line, and it shrugs off [[Flamethrower]]s and [[Gun turret]]s."",
+        ""Takes the fire so that the rest of your army doesn't. Its large gun hits buildings harder than anything else on the front line, and it shrugs off [[Flamethrower]]s."",
         ""It is slow and large: it needs wider paths, and it passes a narrow chokepoint in single file. For the same money, massed [[Tank]]s out-damage it.""
       ],
       ""claims"": {
         ""Flamethrower"": ""beats"",
-        ""GunTurret"": ""beats"",
         ""Tank"": ""loses""
       }
     },
@@ -77,17 +76,17 @@ namespace WAR2D.UI
       ""role"": ""Long-range splash; can't fire up close."",
       ""body"": [
         ""Shells from {Unit/Artillery/Range} tiles, with a splash of {Unit/Artillery/Splash} tiles, and does double damage to buildings. It out-ranges a [[Gun turret]] easily and wins against slow or short-sighted units it can see coming."",
-        ""It sees only {Unit/Artillery/Sight} tiles and can't fire at anything closer than {Unit/Artillery/MinRange}. It needs something else to spot for it, and something to keep attackers off it.""
+        ""It sees as far as it shoots unless rock is in the way, and can't fire at anything closer than {Unit/Artillery/MinRange}. It needs something to keep attackers off it.""
       ],
       ""claims"": {
         ""GunTurret"": ""beats""
       }
     },
     ""Sniper"": {
-      ""role"": ""Very long range; needs something to spot for it."",
+      ""role"": ""Very long range, and sees as far as it shoots."",
       ""body"": [
         ""The longest range in the game. It is the safest way to kill a [[Gun turret]], which can't reach it, and it picks off targets from behind your army."",
-        ""It can only fire at what your side can see, and it can't fire at anything closer than {Unit/Sniper/MinRange} tiles. It does little to buildings and walls."",
+        ""It can only fire at what your side can see, rock blocks both, and it can't fire at anything closer than {Unit/Sniper/MinRange} tiles. It does little to buildings and walls."",
         ""It loses a straight fight at equal cost, and a [[Suicide bomber]] that reaches a group of Snipers is very costly. Keep something in front of it.""
       ],
       ""claims"": {
@@ -158,11 +157,10 @@ namespace WAR2D.UI
       ""role"": ""The only building that shoots."",
       ""body"": [
         ""Fights like a unit that can't move: the nearest enemy unit in range it has a clear line to, else the nearest enemy building, else an enemy wall."",
-        ""Strong against light units and weak against [[Heavy|Heavies]]. [[Artillery]] and [[Sniper]]s out-range it. It doesn't fire as a blueprint or while its upkeep is unpaid.""
+        ""Strong against light units, and a match for [[Heavy|Heavies]] at the same cost. [[Artillery]] and [[Sniper]]s out-range it. It doesn't fire as a blueprint or while its upkeep is unpaid.""
       ],
       ""claims"": {
         ""Scout"": ""beats"",
-        ""Heavy"": ""loses"",
         ""Artillery"": ""loses"",
         ""Sniper"": ""loses""
       }
@@ -200,7 +198,7 @@ namespace WAR2D.UI
           ""heading"": ""Upkeep and decay"",
           ""paras"": [
             ""Upkeep is charged once a second, per unit and per building. Your resources never go below zero: what you can't pay goes unpaid."",
-            ""**Anything unpaid decays.** It loses {Resources/DecayPercentPerSecond}% of its maximum health every second, which destroys it in {Derived/DecaySeconds} s if you never catch up. An unpaid [[Gun turret]] doesn't fire, and an unpaid [[Jammer]] doesn't jam.""
+            ""**Buildings give way first.** Your units are paid before your buildings, and an unpaid building stops working: an unpaid producer doesn't produce, a [[Gun turret]] doesn't fire, a [[Jammer]] doesn't jam, a [[Radar]] doesn't scan, and a [[Bomb]] is a dud. **Then units decay, one whole unit at a time:** each unpaid unit costs you {Resources/DecayPercentPerSecond}% of a unit every second, all of it taken from your weakest unpaid unit until it dies. With no units left, unpaid buildings lose {Resources/DecayPercentPerSecond}% of their maximum health every second.""
           ]
         },
         {

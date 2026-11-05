@@ -34,6 +34,7 @@ namespace WAR2D.Dev.DebugApi
                 if (DebugArgs.Has(a, "mode")) s.Mode = DebugArgs.Enum<MatchMode>(a, "mode");
                 if (DebugArgs.Has(a, "options")) s.StartOptions = DebugArgs.Int(a, "options");
                 if (DebugArgs.Has(a, "pick")) s.StartPickSeconds = DebugArgs.Int(a, "pick");
+                if (DebugArgs.Has(a, "infinite")) s.InfiniteResources = DebugArgs.Int(a, "infinite") != 0;
                 if (DebugArgs.Has(a, "team"))
                 {
                     if (s.Mode != MatchMode.Teams) throw new DebugError("team needs mode=Teams");

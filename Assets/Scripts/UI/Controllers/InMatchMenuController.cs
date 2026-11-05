@@ -41,7 +41,7 @@ namespace WAR2D.UI
             leave.clicked += () =>
             {
                 // v0.15.1 (Figma R1): a joined player waits up to a second for the server to let go of the seat, so the menu stays
-                // open with every button greyed out and Leave reading "Leaving…" (a host or a finished match leaves at once).
+                // open with every button greyed out and Leave reading "Leaving…" (a host with players tells them first; a finished match leaves at once).
                 screen.Query<Button>().ForEach(b => b.SetEnabled(false));
                 leave.text = "Leaving…";
                 LeaveClicked?.Invoke();

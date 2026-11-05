@@ -398,14 +398,28 @@ namespace WAR2D.Sim
             if (step.x != 0f)
             {
                 float2 candidate = new float2(position.x + step.x, position.y);
-                if (!Blocked(candidate, radius, sizeClass)) moved.x = candidate.x;
+                if (!Blocked(candidate, radius, sizeClass) || Escapes(position, candidate, radius, sizeClass)) moved.x = candidate.x;
             }
             if (step.y != 0f)
             {
                 float2 candidate = new float2(moved.x, position.y + step.y);
-                if (!Blocked(candidate, radius, sizeClass)) moved.y = candidate.y;
+                if (!Blocked(candidate, radius, sizeClass) || Escapes(moved, candidate, radius, sizeClass)) moved.y = candidate.y;
             }
             Positions[i] = moved;
+        }
+
+        /// <summary>
+        /// True when a body already overlapping something may take this step anyway, as long as its centre stays on free floor
+        /// (playtest 2026-11-04: a Heavy spawned at a producer's side, pushed out by a new building or walled in overlaps a tile,
+        /// and every step from there overlapped it too, so it stood frozen for good).
+        /// </summary>
+        private bool Escapes(float2 from, float2 to, float radius, byte sizeClass)
+        {
+            if (!Blocked(from, radius, sizeClass)) return false;
+            int2 centre = (int2)math.floor(to);
+            if ((uint)centre.x >= (uint)Width || (uint)centre.y >= (uint)Height) return false;
+            int t = centre.y * Width + centre.x;
+            return TileRules.IsFloor(Tiles[t]) && Used[t] == 0;
         }
 
         private bool Blocked(float2 position, float radius, byte sizeClass)

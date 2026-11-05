@@ -176,8 +176,23 @@ namespace WAR2D.UI
                     break;
                 }
             }
+            card.style.translate = new Translate(0f, 0f);
             card.EnableInClassList("hover-card--open", true);
             card.BringToFront();
+            // The card's size is known only after layout: nudge it back inside the screen then.
+            card.schedule.Execute(KeepOnScreen).ExecuteLater(0);
+        }
+
+        /// <summary>Shifts the open card so none of it lies outside its parent (a tall card near an edge).</summary>
+        private void KeepOnScreen()
+        {
+            VisualElement parent = card.parent;
+            if (parent == null || !IsOpen) return;
+            Rect bounds = parent.worldBound, box = card.worldBound;
+            if (box.width <= 0f) return;
+            float dx = Mathf.Max(0f, bounds.xMin + Gap - box.xMin) - Mathf.Max(0f, box.xMax - (bounds.xMax - Gap));
+            float dy = Mathf.Max(0f, bounds.yMin + Gap - box.yMin) - Mathf.Max(0f, box.yMax - (bounds.yMax - Gap));
+            if (dx != 0f || dy != 0f) card.style.translate = new Translate(dx, dy);
         }
 
         /// <summary>Lines the card up with the target's left edge, or its right edge on the right half of the screen.</summary>

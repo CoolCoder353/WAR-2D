@@ -25,6 +25,7 @@ namespace WAR2D.UI
         private readonly VisualElement visibilityOptions, addAiRow;
         private readonly Label visibilityHint, addAiHint;
         private readonly Button addAi;
+        private readonly Label resourcesHint;
         /// <summary>Set when the host clicked Private with another human connected: the hint says so until the selection or the players change.</summary>
         private bool privateRefused;
         private int refusedAtPlayers = -1;
@@ -100,6 +101,7 @@ namespace WAR2D.UI
             resourceOptions = root.Q("resource-options");
             startOptions = root.Q("start-options-row");
             pickTimes = root.Q("pick-time-row");
+            resourcesHint = root.Q<Label>("resources-hint");
             startOptionsHint = root.Q<Label>("start-options-hint");
             diplomacySlot = root.Q("diplomacy-switch-slot");
             previewImage = root.Q("preview-image");
@@ -485,11 +487,14 @@ namespace WAR2D.UI
                 sizeOptions.Add(Widgets.Option("size-" + size, size.ToString(), s.MapSize == size, host, () => Change(s, x => x.MapSize = value)));
             }
             resourceOptions.Clear();
-            foreach (float amount in lobby.StartingResources)
-            {
-                float value = amount;
-                resourceOptions.Add(Widgets.Option("resources-" + amount, amount.ToString("0"), s.StartingResources.Equals(amount), host, () => Change(s, x => x.StartingResources = value)));
-            }
+            if (host || !s.InfiniteResources)
+                foreach (float amount in lobby.StartingResources)
+                {
+                    float value = amount;
+                    resourceOptions.Add(Widgets.Option("resources-" + amount, amount.ToString("0"), !s.InfiniteResources && s.StartingResources.Equals(amount), host, () => Change(s, x => { x.StartingResources = value; x.InfiniteResources = false; })));
+                }
+            if (host || s.InfiniteResources) resourceOptions.Add(Widgets.Option("resources-infinite", "Infinite", s.InfiniteResources, host, () => Change(s, x => x.InfiniteResources = true)));
+            resourcesHint?.EnableInClassList("hidden", !s.InfiniteResources);
             ShowStartSettings(s, host);
         }
 
@@ -590,6 +595,7 @@ namespace WAR2D.UI
             public bool Diplomacy { set => Value.Diplomacy = value; }
             public int MapSize { set => Value.MapSize = value; }
             public float StartingResources { set => Value.StartingResources = value; }
+            public bool InfiniteResources { set => Value.InfiniteResources = value; }
         }
 
         private void SubmitSeed()

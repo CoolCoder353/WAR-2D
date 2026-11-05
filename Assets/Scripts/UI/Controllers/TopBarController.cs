@@ -115,11 +115,15 @@ namespace WAR2D.UI
             ShowQuick(default);
         }
 
+        private static bool Infinite => GameCore.Instance != null && GameCore.Instance.Settings.InfiniteResources;
+
         private void ShowResources()
         {
-            resources.text = model.Resources.ToString("N0");
+            bool infinite = Infinite;
+            resources.text = infinite ? "Infinite" : model.Resources.ToString("N0");
+            resources.EnableInClassList("top-bar__resources-value--infinite", infinite);
             income.text = $"+{model.IncomePerSecond:N0} income";
-            upkeep.text = $"−{model.UpkeepPerSecond:N0} upkeep";
+            upkeep.text = infinite ? $"−{model.UpkeepPerSecond:N0} upkeep (free)" : $"−{model.UpkeepPerSecond:N0} upkeep";
         }
 
         /// <summary>
@@ -128,6 +132,8 @@ namespace WAR2D.UI
         /// </summary>
         public void ShowNet()
         {
+            net.style.display = Infinite ? DisplayStyle.None : DisplayStyle.Flex; // Figma K1: nothing to run out
+            if (Infinite) return;
             EconomyReadout economy = model.Economy;
             EconomyState state = economy.State;
             net.text = state == EconomyState.Decaying && decaying > 0 ? $"{decaying:N0} decaying" : economy.Text();

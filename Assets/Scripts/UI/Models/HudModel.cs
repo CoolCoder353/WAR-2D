@@ -53,10 +53,24 @@ namespace WAR2D.UI
     /// only when a value changed. The only HUD type that reads <see cref="ClientPlayer"/> and
     /// <see cref="GameCore"/>; controllers read the model.
     /// </summary>
+    /// <summary>The name and colour each player was last seen with: a player who left has no object to read them from.</summary>
+    public sealed class PlayerNameMemory
+    {
+        private readonly Dictionary<int, (string name, int colour)> seen = new Dictionary<int, (string, int)>();
+
+        /// <summary>A live player's own values, remembered; else what was last seen, else "Player" and <paramref name="colour"/>.</summary>
+        public (string name, int colour) Resolve(int owner, string liveName, int colour, bool live)
+        {
+            if (live && !string.IsNullOrEmpty(liveName)) return seen[owner] = (liveName, colour);
+            return seen.TryGetValue(owner, out (string name, int colour) last) ? last : ("Player", colour);
+        }
+    }
+
     public sealed class HudModel
     {
         private readonly List<PlayerRow> players = new List<PlayerRow>();
         private readonly List<PlayerRow> scratch = new List<PlayerRow>();
+        private readonly PlayerNameMemory names = new PlayerNameMemory();
 
         /// <summary>The local player's resources.</summary>
         public float Resources { get; private set; }
@@ -80,9 +94,9 @@ namespace WAR2D.UI
         public event Action PlayersChanged;
 
         /// <summary>Sets the local player's own numbers.</summary>
-        public void SetResources(float resources, float incomePerSecond, float upkeepPerSecond)
+        public void SetResources(float resources, float incomePerSecond, float upkeepPerSecond, bool unpaid = false)
         {
-            Economy.Feed(resources, incomePerSecond, upkeepPerSecond, UnityEngine.Time.unscaledTime);
+            Economy.Feed(resources, incomePerSecond, upkeepPerSecond, UnityEngine.Time.unscaledTime, unpaid);
             if (WAR2D.Client.MinimapCombat.Current != null) WAR2D.Client.MinimapCombat.Current.OwnDecaying = Economy.State == EconomyState.Decaying;
             if (resources == Resources && incomePerSecond == IncomePerSecond && upkeepPerSecond == UpkeepPerSecond) return;
             Resources = resources;
@@ -145,7 +159,7 @@ namespace WAR2D.UI
         {
             ClientPlayer local = NetworkClient.localPlayer != null ? NetworkClient.localPlayer.GetComponent<ClientPlayer>() : null;
             if (local == null) return;
-            SetResources(local.currentResources, local.incomePerSecond, local.upkeepPerSecond);
+            SetResources(local.currentResources, local.incomePerSecond, local.upkeepPerSecond, local.upkeepUnpaid);
         }
 
         /// <summary>Reads the player list from <c>GameCore.PlayerOrder</c>, the starting teams and each player's SyncVars.</summary>
@@ -161,8 +175,7 @@ namespace WAR2D.UI
                 ClientPlayer.TryFind(owner, out player); // a human by netId, an AI by its owner id
                 // A player who left has no object; one whose HQ fell lost hasPlacedHQ while Playing.
                 bool eliminated = player == null || (core.CurrentState == GameState.Playing && !player.hasPlacedHQ);
-                string name = player != null && !string.IsNullOrEmpty(player.nickname) ? player.nickname : "Player";
-                int colour = player != null ? player.colourIndex : i;
+                (string name, int colour) = names.Resolve(owner, player != null ? player.nickname : null, player != null ? player.colourIndex : i, player != null);
                 scratch.Add(new PlayerRow(owner, name, colour, core.TeamOf(owner), eliminated, i,
                     player != null && player.isAi, player != null ? player.aiDifficulty : default, player != null ? player.aiStyle : default));
             }

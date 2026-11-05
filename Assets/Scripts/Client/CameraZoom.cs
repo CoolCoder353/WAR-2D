@@ -18,6 +18,10 @@ public static class CameraZoom
     /// <summary>The orthographic size that draws the art at a whole-number <paramref name="scale"/>.</summary>
     public static float SizeAt(int scale, int ppu, int screenHeight) => screenHeight / (2f * scale * ppu);
 
+    /// <summary>True when <paramref name="point"/> is inside the box a camera centred on <paramref name="camera"/> shows.</summary>
+    public static bool InView(Unity.Mathematics.float2 camera, float orthoSize, float aspect, Unity.Mathematics.float2 point) =>
+        Mathf.Abs(point.x - camera.x) <= orthoSize * aspect && Mathf.Abs(point.y - camera.y) <= orthoSize;
+
     /// <summary>The default zoom: 1:1, inside the limits.</summary>
     public static float Default(int ppu, int screenHeight, float minSize, float maxSize) =>
         Mathf.Clamp(SizeAt(1, ppu, screenHeight), minSize, maxSize);
@@ -27,6 +31,19 @@ public static class CameraZoom
     {
         float s = Scale(orthoSize, ppu, screenHeight);
         return s >= 1f - Epsilon && Mathf.Abs(s - Mathf.Round(s)) < Epsilon;
+    }
+
+    /// <summary>The size after zooming out in wheel steps until it is at least <paramref name="wanted"/>, or the limit; never smaller than now.</summary>
+    public static float OutToShow(float current, float wanted, int ppu, int screenHeight, float minSize, float maxSize)
+    {
+        float size = current;
+        while (size < wanted && size < maxSize)
+        {
+            float next = Step(size, -1f, ppu, screenHeight, minSize, maxSize);
+            if (next <= size) break;
+            size = next;
+        }
+        return size;
     }
 
     /// <summary>The size after one wheel step (<paramref name="scroll"/> &gt; 0 zooms in), within the limits.</summary>

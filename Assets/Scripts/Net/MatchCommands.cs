@@ -1,3 +1,4 @@
+using Unity.Mathematics;
 using System.Collections.Generic;
 using Config;
 using Mirror;
@@ -7,6 +8,13 @@ using UnityEngine;
 /// In-match player actions and the end of a match: surrendering, gifting resources to any other live
 /// player, and the match statistics (counted on the server, sent to everyone only once the match is over).
 /// </summary>
+/// <summary>A match's length from its ticks.</summary>
+public static class MatchLength
+{
+    /// <summary>Seconds of match for <paramref name="ticks"/> ticks.</summary>
+    public static float Seconds(int ticks, float tickSeconds) => ticks * tickSeconds;
+}
+
 public partial class GameCore
 {
     /// <summary>Every player's statistics for the current match (server only).</summary>
@@ -27,6 +35,22 @@ public partial class GameCore
     {
         if (!CommandGate.Allow(sender, nameof(Cmd_Surrender)) || !WorldStateManager.TryOwnerOf(sender, out int owner)) return;
         PlayerActions.Surrender(owner);
+    }
+
+    /// <summary>Chooses whose sight a spectator watches (<see cref="PlayerActions.SetSpectateView"/>).</summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_SetSpectateView(int view, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_SetSpectateView)) || !WorldStateManager.TryOwnerOf(sender, out int owner)) return;
+        PlayerActions.SetSpectateView(owner, view);
+    }
+
+    /// <summary>Marks a map tile for the sender and everyone the sender shares vision with (<see cref="PlayerActions.Ping"/>).</summary>
+    [Command(requiresAuthority = false)]
+    public void Cmd_Ping(int2 tile, NetworkConnectionToClient sender = null)
+    {
+        if (!CommandGate.Allow(sender, nameof(Cmd_Ping)) || !WorldStateManager.TryOwnerOf(sender, out int owner)) return;
+        PlayerActions.Ping(owner, tile);
     }
 
     /// <summary>Gives resources to any other live player, ally or enemy (<see cref="PlayerActions.Gift"/>).</summary>
@@ -149,11 +173,16 @@ public partial class GameCore
             if (player != null) Stats.Spent(owner, player.SpentThisMatch);
         }
         var won = new List<int>(winners ?? new int[0]);
-        RpcMatchStats(owners, Stats.Snapshot(owners), won.ToArray(), (float)(NetworkTime.time - MatchStartTime), ResolvedStyles(owners));
+        RpcMatchStats(owners, Stats.Snapshot(owners), won.ToArray(), PlayedSeconds(), ResolvedStyles(owners));
         SummaryData summary = BuildSummary();
         WorldStateManager.Instance?.Recorder?.Summary(summary);
         RpcMatchSummary(summary);
     }
+
+    /// <summary>The match's length in simulated time (<see cref="WorldStateManager.PlayedSeconds"/>), whatever a dev <c>step</c> or <c>timescale</c> did to the wall clock.</summary>
+    [Server]
+    private float PlayedSeconds() =>
+        WorldStateManager.Instance != null ? WorldStateManager.Instance.PlayedSeconds : (float)(NetworkTime.time - MatchStartTime);
 
     /// <summary>The summary with the map's size and each player's HQ, so a client can name places. Public at game over only.</summary>
     [Server]

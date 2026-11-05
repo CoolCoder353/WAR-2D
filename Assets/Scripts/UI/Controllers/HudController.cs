@@ -159,6 +159,7 @@ namespace WAR2D.UI
             ShowDiplomacyButton();
 
             Alerts.PingRequested += minimap.Ping;
+            worldMarkers = new WorldMarkersController(root, minimap);
             Alerts.FocusRequested += tile =>
             {
                 Camera cam = Camera.main;
@@ -222,6 +223,7 @@ namespace WAR2D.UI
 
         private void OnDisable()
         {
+            DialogOpen = false;
             Selection.FilterRequested -= OnFilter;
             Selection.EverywhereRequested -= OnEverywhere;
             Model.Economy.LowFunds -= OnLowFunds;
@@ -273,7 +275,31 @@ namespace WAR2D.UI
             if (sites == null || index < 0 || index >= sites.Length) return;
             Unity.Mathematics.int2 site = sites[index];
             CentreCamera(new Vector2(site.x + 0.5f, site.y + 0.5f));
+            // The pick needs the whole ring in view (playtest 2026-11-04: 1:1 on a small window was all HQ).
+            if (core.CurrentState == GameState.PlacingHQ && Camera.main != null && Camera.main.TryGetComponent(out Character.Character_Controler controller))
+                controller.ZoomOutToShow(WAR2D.World.MapGenerator.HqClearRadius + HqPickMargin);
         }
+
+        private bool ownHqSeen;
+
+        /// <summary>
+        /// When the own HQ first appears, brings it into view. A Random or timed-out pick places it at any of the player's options,
+        /// while the camera is still on the one it opened on, with nothing but fog to see there.
+        /// </summary>
+        private void ShowOwnHqOnce()
+        {
+            if (ownHqSeen || Model.LocalOwnerId == 0) return;
+            if (!WAR2D.Net.Replication.ClientBuildings.Current.TryFindOwn(Model.LocalOwnerId, BuildingType.Base, out WAR2D.Net.Replication.ClientBuildings.Entry hq)) return;
+            ownHqSeen = true;
+            Camera cam = Camera.main;
+            if (cam == null) return;
+            Unity.Mathematics.float2 centre = hq.Data.position + new Unity.Mathematics.float2(2.5f, 2.5f);
+            Vector3 at = cam.transform.position;
+            if (!CameraZoom.InView(new Unity.Mathematics.float2(at.x, at.y), cam.orthographicSize, cam.aspect, centre)) CentreCamera(new Vector2(centre.x, centre.y));
+        }
+
+        /// <summary>Tiles shown past the start ring when the HQ pick opens.</summary>
+        private const float HqPickMargin = 2f;
 
         private static void CentreCamera(Vector2 point)
         {
@@ -362,6 +388,12 @@ namespace WAR2D.UI
         private bool menuPauseSent;
 
         /// <summary>
+        /// True while the in-match menu, Settings, the Field manual or the gift dialog is open: hotkeys, orders and placement wait,
+        /// as they do for the card keys. The diplomacy panel isn't here: it is not modal, so the match can be played around it.
+        /// </summary>
+        public static bool DialogOpen { get; private set; }
+
+        /// <summary>
         /// Asks the server to pause while the in-match menu (or Settings opened from it) is open, and to resume when it
         /// closes; the server accepts only when this is the one human connected. The menu shows the server's answer.
         /// </summary>
@@ -380,6 +412,7 @@ namespace WAR2D.UI
         private void Update()
         {
             CentreOnOwnClearing();
+            ShowOwnHqOnce();
             Model.PullResources();
             if (GameInput.FieldManual.WasPressedThisFrame() && !endScreen.IsShown && !settings.IsOpen)
             {
@@ -399,6 +432,7 @@ namespace WAR2D.UI
                 else if (diplomacy.IsOpen) diplomacy.SetOpen(false);
                 else matchMenu.Toggle();
             }
+            DialogOpen = manual.IsOpen || matchMenu.IsOpen || settings.IsOpen || gift.IsOpen;
             if (GameInput.Cancel.WasPressedThisFrame() && !manual.IsOpen && !matchMenu.IsOpen && !settings.IsOpen && !gift.IsOpen && !diplomacy.IsOpen) commandCard.RequestRemove();
             // Alerts leave after Alerts.ShowSeconds, but not from under the pointer (playtest 2026-10-30).
             if (alertFeed != null && alertFeed.Hovered) Alerts.Hold(Time.unscaledDeltaTime);
@@ -427,6 +461,8 @@ namespace WAR2D.UI
                 endScreen.ShowRematch(owner, NetworkServer.active && WorldStateManager.Instance != null && WorldStateManager.Instance.Recorder != null && !WorldStateManager.Instance.Recorder.Finished);
             }
             minimap.Update(Time.unscaledDeltaTime);
+            if (Spectating) spectator.Tick(Time.unscaledDeltaTime);
+            worldMarkers.Update(!Spectating && !endScreen.IsShown && !matchMenu.IsOpen && !settings.IsOpen && !manual.IsOpen);
             orderTags.Update(UnitCommander.Instance != null ? UnitCommander.Instance.Feedback : null, Camera.main, GameInput.Point.ReadValue<Vector2>());
             ShowWallReadout();
             Model.PullDiplomacy();
@@ -612,7 +648,7 @@ namespace WAR2D.UI
             bool won = System.Array.IndexOf(result.Winners, Model.LocalOwnerId) >= 0;
             EndResult mine = result.Winners.Length == 0 ? EndResult.Draw : won ? EndResult.Victory : EndResult.Defeat;
             endScreen.Show(mine, EndScreenController.Line(mine, winners, result.DurationSeconds));
-            endScreen.ShowStats(result, NameOf, PlayerPalette.ColourIndexOf, owner => ResultTagOf(owner, result));
+            endScreen.ShowStats(result, NameOf, ColourIndexOf, owner => ResultTagOf(owner, result));
             if (GameCore.LastMatchSummary.HasValue) ShowSummary(GameCore.LastMatchSummary.Value);
         }
 
@@ -631,40 +667,35 @@ namespace WAR2D.UI
         private void ShowSummary(SummaryData summary)
         {
             if (!endScreen.IsShown) return; // the statistics show the screen; they call this again
-            endScreen.ShowSummary(summary, NameOf, PlayerPalette.OfOwner, Model.LocalOwnerId);
+            endScreen.ShowSummary(summary, NameOf, owner => PlayerPalette.Of(ColourIndexOf(owner)), Model.LocalOwnerId);
         }
 
-        private VisualElement spectatingPanel;
+        private SpectatorController spectator;
+        private WorldMarkersController worldMarkers;
 
         /// <summary>True while the local player, defeated, watches the rest of the match.</summary>
-        public bool Spectating => spectatingPanel != null && spectatingPanel.style.display == DisplayStyle.Flex;
+        public bool Spectating => spectator != null && spectator.Panel.style.display == DisplayStyle.Flex;
 
-        /// <summary>The approved <c>Panel / Spectating – v0.8</c>, top centre, with Leave match.</summary>
+        /// <summary>The replay viewer's layout for a live match (Figma R1; <see cref="SpectatorController"/>).</summary>
         private void ShowSpectating(bool show)
         {
-            if (spectatingPanel == null)
+            if (spectator == null)
             {
                 if (!show) return;
-                spectatingPanel = new VisualElement { name = "spectating-panel" };
-                spectatingPanel.AddToClassList("panel");
-                spectatingPanel.AddToClassList("spectating");
-                var title = new Label("Spectating");
-                title.AddToClassList("panel__title");
-                var body = new VisualElement();
-                body.AddToClassList("spectating__body");
-                var line = new Label("You were eliminated. You see the whole map: every player's units, buildings and fog.");
-                line.AddToClassList("text--secondary");
-                var leave = new Button(() => { HostLeftNotice.LeavingOnPurpose = true; GameManager.Instance?.LeaveLobby(); }) { text = "Leave match", name = "spectating-leave" };
-                leave.AddToClassList("button");
-                leave.AddToClassList("spectating__leave");
-                body.Add(line);
-                body.Add(leave);
-                spectatingPanel.Add(title);
-                spectatingPanel.Add(body);
-                root.Add(spectatingPanel);
+                spectator = new SpectatorController(root, () => Model.Players, AiTagOf, () => { HostLeftNotice.LeavingOnPurpose = true; GameManager.Instance?.LeaveLobby(); });
             }
-            spectatingPanel.style.display = show ? DisplayStyle.Flex : DisplayStyle.None;
+            spectator.Panel.style.display = show ? DisplayStyle.Flex : DisplayStyle.None;
+            // The panel replaces the controls: a player who is out has nothing to order, gift or negotiate with.
+            root.Q("gift-button")?.EnableInClassList("top-bar__hidden", show);
+            ShowDiplomacyButton();
+            foreach (string layer in SpectatorHiddenLayers)
+            {
+                VisualElement element = root.Q(layer);
+                if (element != null) element.style.display = show ? DisplayStyle.None : new StyleEnum<DisplayStyle>(StyleKeyword.Null);
+            }
         }
+
+        private static readonly string[] SpectatorHiddenLayers = { "command-card-instance", "squad-bar-instance", "selection-panel-instance", "top-bar-instance" };
 
         private VisualElement wallReadout;
         private Label wallCost, wallBlocked;
@@ -705,7 +736,7 @@ namespace WAR2D.UI
         /// <summary>The settings screen.</summary>
         public SettingsController Settings => settings;
 
-        private void ShowDiplomacyButton() => diplomacyButton.EnableInClassList("top-bar__hidden", !Model.DiplomacyEnabled);
+        private void ShowDiplomacyButton() => diplomacyButton.EnableInClassList("top-bar__hidden", !Model.DiplomacyEnabled || Spectating);
 
         /// <summary>Listens to the local player's alerts once it exists.</summary>
         private void SubscribeAlerts()
@@ -720,6 +751,12 @@ namespace WAR2D.UI
             string sound = "alert";
             foreach (Alert alert in alerts)
             {
+                if (alert.Kind == AlertKind.Ping)
+                {
+                    worldMarkers.AddPing(alert.Tile, PlayerPalette.Of(ColourIndexOf(alert.OtherOwnerId)), NameOf(alert.OtherOwnerId));
+                    sound = "radar_ping";
+                    if (alert.OtherOwnerId == Model.LocalOwnerId) continue; // your own ping shows without a row
+                }
                 string building = alert.Kind == AlertKind.UnderAttack ? NearestOwnBuilding(alert.Tile)
                     : alert.Kind == AlertKind.ConstructionFinished ? OwnBuildingAt(alert.Tile) : null;
                 // An AI named by the alert gets its tag after its callsign (Figma 95:563); Under attack never names anyone.
@@ -780,6 +817,13 @@ namespace WAR2D.UI
         }
 
         /// <summary>A player's public nickname.</summary>
+        /// <summary>A player's colour as last seen: one who left has no object for <see cref="PlayerPalette"/> to read it from.</summary>
+        private int ColourIndexOf(int ownerId)
+        {
+            foreach (PlayerRow row in Model.Players) if (row.OwnerId == ownerId) return row.ColourIndex;
+            return PlayerPalette.ColourIndexOf(ownerId);
+        }
+
         private string NameOf(int ownerId)
         {
             foreach (PlayerRow row in Model.Players) if (row.OwnerId == ownerId) return row.Nickname;

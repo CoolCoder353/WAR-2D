@@ -24,6 +24,8 @@ public struct MatchSettings
     /// <summary>The map generator's seed (never 0 once the lobby has one).</summary>
     public uint Seed;
     public float StartingResources;
+    /// <summary>Playtest 2026-11-04: no player's balance ever runs out (<see cref="StartingResources"/> doesn't matter then).</summary>
+    public bool InfiniteResources;
     /// <summary>Start points dealt to each player (the config's range).</summary>
     public int StartOptions;
     /// <summary>HQ pick time in seconds: 0 = random, &gt; 0 = a timed pick, <see cref="StartPickRules.Unlimited"/> = wait for everyone.</summary>
@@ -35,7 +37,7 @@ public struct MatchSettings
     public LobbyVisibility Visibility;
 
     public bool Equals(MatchSettings other) =>
-        Mode == other.Mode && Diplomacy == other.Diplomacy && MapSize == other.MapSize && Seed == other.Seed && StartingResources.Equals(other.StartingResources)
+        Mode == other.Mode && Diplomacy == other.Diplomacy && MapSize == other.MapSize && Seed == other.Seed && StartingResources.Equals(other.StartingResources) && InfiniteResources == other.InfiniteResources
         && StartOptions == other.StartOptions && StartPickSeconds == other.StartPickSeconds && Visibility == other.Visibility;
 }
 
