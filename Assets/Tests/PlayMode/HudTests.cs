@@ -566,7 +566,8 @@ public class HudTests
         yield return WithBuilder(b => builder = b);
         VisualElement root = HudRoot();
         UnitCommander.Instance.Selection.SelectIds(new List<int> { builder });
-        yield return PlayModeMatch.WaitUntil(() => Shown(root.Q<Button>("build-radar")), 5f);
+        // Repair, not the row: the row already shows with nothing selected.
+        yield return PlayModeMatch.WaitUntil(() => Shown(root.Q<Button>("cmd-repair")), 5f);
         foreach (string name in new[] { "build-miner", "build-barracks", "build-wall", "build-bomb", "build-radar", "cmd-repair" })
             Assert.That(Shown(root.Q<Button>(name)), Is.True, name);
         Assert.That(Shown(root.Q<Button>("cmd-dig")), Is.False, "no Diggers selected");
@@ -576,11 +577,14 @@ public class HudTests
     [UnityTest, Timeout(120000)]
     public IEnumerator NothingSelectedShowsTheBuildRowWithoutRepair()
     {
-        yield return WithBuilder(_ => { });
+        int builder = 0;
+        yield return WithBuilder(b => builder = b);
         VisualElement root = HudRoot();
+        UnitCommander.Instance.Selection.SelectIds(new List<int> { builder });
+        yield return PlayModeMatch.WaitUntil(() => Shown(root.Q<Button>("cmd-repair")), 5f);
         UnitCommander.Instance.Selection.SelectIds(new List<int>());
-        yield return PlayModeMatch.WaitUntil(() => Shown(root.Q<Button>("build-radar")), 5f);
-        Assert.That(Shown(root.Q<Button>("cmd-repair")), Is.False, "Repair needs Builders");
+        yield return PlayModeMatch.WaitUntil(() => !Shown(root.Q<Button>("cmd-repair")), 5f); // Repair needs Builders
+        Assert.That(Shown(root.Q<Button>("build-radar")), Is.True, "the row stays: an idle Builder comes to what is placed");
     }
 
     [UnityTest, Timeout(120000)]
