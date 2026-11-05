@@ -241,7 +241,8 @@ All numbers are starting values in `GameConfig.xml` (`Siege`, `Units`, `Building
 - It keeps attacking that target every attack interval while the target is alive and in range. When the target dies or leaves range, it picks a new one.
 - Buildings don't attack, except the **Gun turret** (v0.13, see "Siege").
 - Anything at 0 health is destroyed, and **every death plays an explosion**. The server sends each player only the deaths inside their camera view that they can see (their sight plus vision shared with them), at most 1,024 a tick; once the match is over, the end-of-match wipe shows wherever they look.
-- Clients see a short yellow tracer for each attack whose attacker is on screen, and a health bar over every damaged unit or building.
+- Clients see each attack whose attacker is on screen, and a health bar over every damaged unit or building. All of this is drawn only: damage lands when the shot is fired, as for every weapon, so on a long shot the target's health falls before the shell lands.
+- The Scout's, Tank's, Sniper's, Heavy's and Artillery's turrets turn at a limited rate: toward what the unit fires at, until a second after its next shot was due, otherwise the way the hull faces, so a unit can drive one way and aim another. Each gun shows a muzzle flash along its barrel and a thin tracer (the Heavy two, the Sniper's long). The Artillery raises its barrel while it aims and lobs a shell at 14 tiles a second along an arc capped at 4 tiles, with a shadow on the ground below it; where it lands it leaves a crater that fades over about 30 seconds. A Flamethrower's flame burns from its nozzle to its target (never past it, and no further than its range) with fire over its real splash circle, weaker toward the edge.
 
 ## Win, loss and leaving
 

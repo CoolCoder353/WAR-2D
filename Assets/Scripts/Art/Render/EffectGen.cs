@@ -123,61 +123,200 @@ namespace WAR2D.Art.Render
             return img.Done();
         }
 
-        /// <summary>A tracer streak along +x through the centre (rotated to its heading when drawn).</summary>
-        public static EffectFrame Tracer()
+        /// <summary>
+        /// A shot's streak along +x, heading right (turned to its heading when drawn, stretched along it), hard-edged as the sprites
+        /// are: hot at the head, then amber, then orange breaking up in dither at the tail. No glow.
+        /// </summary>
+        private static EffectFrame Shot(int tiles, int width)
         {
-            var img = new Img(T, T);
-            int c = T / 2;
-            for (int x = c - 9; x <= c + 9; x++)
+            int w = tiles * T;
+            var img = new Img(w, width);
+            for (int x = 0; x < w; x++)
             {
-                Color32 col = x > c + 4 ? ArtStyle.FireRamp[0] : x > c - 3 ? ArtStyle.FireRamp[1] : ArtStyle.FireRamp[2];
-                img.Set(x, c, col);
-                if (x > c - 3) img.Set(x, c - 1, col);
+                float t = (x + 0.5f) / w;
+                int band = t > 0.62f ? 0 : t > 0.3f ? 2 : 3;
+                for (int y = 0; y < width; y++)
+                    if (t > 0.3f || Bayer(x, y) < t / 0.3f) img.Set(x, y, ArtStyle.FireRamp[band]);
             }
             return img.Done();
         }
 
-        /// <summary>
-        /// The Sniper's tracer (v0.12): a long, thin, white-hot streak along +x the width of the tile, with a
-        /// dithered heat trail behind it (rotated to its heading when drawn, like <see cref="Tracer"/>).
-        /// </summary>
-        public static EffectFrame SniperTracer()
-        {
-            var img = new Img(T, T);
-            int c = T / 2;
-            for (int x = 2; x < T - 2; x++)
-            {
-                float along = x / (float)T;
-                if (along > 0.55f) img.Set(x, c, along > 0.8f ? new Color32(255, 255, 255, 255) : ArtStyle.FireRamp[0]);
-                else if (along > 0.15f && Bayer(x, c) < (along - 0.15f) * 2.2f) img.Set(x, c, ArtStyle.FireRamp[1]);
-            }
-            return img.Done();
-        }
+        /// <summary>The Tank's and Heavy's shot, 2 px thick (and the Builder's, Digger's and Gun turret's).</summary>
+        public static EffectFrame Tracer() => Shot(1, 2);
+
+        /// <summary>The Scout's shot, 1 px thick.</summary>
+        public static EffectFrame ScoutTracer() => Shot(1, 1);
+
+        /// <summary>The Sniper's shot, 1 px thick and long.</summary>
+        public static EffectFrame SniperTracer() => Shot(4, 1);
+
+        /// <summary>Muzzle flash sizes: tiles from the centre to the tip of the tongue, per gun.</summary>
+        public const float BurstScoutTiles = 0.22f, BurstSniperTiles = 0.26f, BurstTankTiles = 0.3f, BurstHeavyTiles = 0.34f;
 
         /// <summary>
-        /// The Artillery shell in flight (v0.12): a hot slug pointing along +x with a short smoke trail that
-        /// flickers between the two frames (rotated to its heading when drawn).
+        /// Paints a jagged burst pointing at <paramref name="forwardDegrees"/> into <paramref name="img"/>: a tongue and two short side
+        /// jets, reaching <paramref name="r"/> pixels, in hard bands of the fire ramp.
         /// </summary>
-        public static EffectFrame ArtilleryShell(int frame)
+        private static void Burst(Img img, float cx, float cy, float r, float forwardDegrees)
+        {
+            for (int y = 0; y < img.H; y++)
+            for (int x = 0; x < img.W; x++)
+            {
+                float dx = x + 0.5f - cx, dy = y + 0.5f - cy, d = Mathf.Sqrt(dx * dx + dy * dy);
+                float off = Mathf.Abs(Mathf.DeltaAngle(Mathf.Atan2(dy, dx) * Mathf.Rad2Deg, forwardDegrees));
+                float reach = off < 30f ? 1f - off / 34f : off < 62f && off > 34f ? 0.4f * (1f - Mathf.Abs(off - 48f) / 14f) : 0.14f;
+                float v = d / (r * reach);
+                if (v < 1f) img.Set(x, y, ArtStyle.FireRamp[v < 0.42f ? 0 : v < 0.72f ? 1 : 3]);
+            }
+        }
+
+        /// <summary>A gun's muzzle flash pointing along +x (turned to the barrel when drawn), with a charcoal outline; smaller in frame 1.</summary>
+        public static EffectFrame MuzzleBurst(float tiles, int frame)
         {
             var img = new Img(T, T);
-            int c = T / 2;
-            for (int y = -2; y <= 2; y++)
-            for (int x = -4; x <= 4; x++)
-            {
-                if ((x + 4) * (x + 4) / 64f + y * y / 6.5f > 1f) continue;
-                img.Set(c + 6 + x, c + y, x > 1 ? ArtStyle.FireRamp[0] : x > -2 ? ArtStyle.FireRamp[1] : ArtStyle.FireRamp[2]);
-            }
-            var rng = new ArtRandom(7 + frame, "shell smoke");
-            for (int k = 0; k < 40; k++)
-            {
-                int x = c - 18 + rng.Range(20), y = c - 2 + rng.Range(5);
-                float fade = 0.25f + (x - (c - 18)) / 20f;
-                if (Bayer(x, y) > fade) continue;
-                img.Set(x, y, rng.Range(2) == 0 ? Role(StylePalette.Body2, 1) : Role(StylePalette.Body3, 1));
-            }
+            Burst(img, T / 2f, T / 2f, tiles * T * (frame == 0 ? 1f : 0.7f), 0f);
             img.OutlineWith(Outline);
             return img.Done();
+        }
+
+        /// <summary>A lit canvas finished as the units' sprites are, without a team colour.</summary>
+        private static EffectFrame Finished(LitCanvas c)
+        {
+            Color32[] lit = c.Render(Color.white, shadow: false);
+            return new EffectFrame(PixelFinish.FinishTeam(lit, new bool[lit.Length], c.Width, c.Height, ArtStyle.Palette, ArtStyle.TeamKeyRamp, Outline), c.Width, c.Height);
+        }
+
+        /// <summary>
+        /// The Artillery shell in flight, facing <paramref name="facing"/> of <see cref="ArtManifest.TurretDirections"/>: the
+        /// lit body (<see cref="RenderGen.ArtilleryShellBody"/>) with a small flame at its tail that flickers between the two frames.
+        /// </summary>
+        public static EffectFrame ArtilleryShell(int facing, int frame)
+        {
+            float angle = facing * 2f * Mathf.PI / ArtManifest.TurretDirections, back = 0.24f * T;
+            var img = new Img(T, T);
+            Burst(img, T / 2f - Mathf.Cos(angle) * back, T / 2f - Mathf.Sin(angle) * back, (frame == 0 ? 0.15f : 0.12f) * T, angle * Mathf.Rad2Deg + 180f);
+            img.OutlineWith(Outline);
+            Color32[] body = Finished(RenderGen.ArtilleryShellBody(angle)).Pixels;
+            for (int i = 0; i < body.Length; i++)
+                if (body[i].a == 255 || (body[i].a > 0 && img.Px[i].a == 0)) img.Px[i] = body[i];
+            return img.Done();
+        }
+
+        /// <summary>A dithered disc of <paramref name="tiles"/> radius in a tile, as the game's own smoke is drawn: thinner toward its edge and at low <paramref name="density"/>.</summary>
+        private static EffectFrame Puff(float tiles, Color32 colour, float density)
+        {
+            var img = new Img(T, T);
+            float c = T / 2f, r = tiles * T;
+            for (int y = 0; y < T; y++)
+            for (int x = 0; x < T; x++)
+            {
+                float k = 1f - Mathf.Sqrt((x + 0.5f - c) * (x + 0.5f - c) + (y + 0.5f - c) * (y + 0.5f - c)) / r;
+                if (k > 0f && k * 1.6f * density > Bayer(x, y)) img.Set(x, y, colour);
+            }
+            return img.Done();
+        }
+
+        /// <summary>The shell's shadow on the ground, under its height in the air.</summary>
+        public static EffectFrame ShellShadow() => Puff(0.26f, ArtStyle.Soot, 0.95f);
+
+        /// <summary>A puff of the shell's trail at <paramref name="t"/> (0 = new, 1 = gone): small and dense, spreading as it thins.</summary>
+        public static EffectFrame ShellPuff(float t) => Puff(0.08f + 0.1f * t, ArtStyle.ShellSmoke, 1f - 0.72f * t);
+
+        /// <summary>Different craters drawn; each fades through <see cref="DecalFrames"/> frames.</summary>
+        public const int CraterVariants = 3;
+
+        /// <summary>
+        /// What a shell leaves: about a tile wide on a 2-tile canvas, in hard bands (a pit, a lit and a shaded wall, a raised rim), with
+        /// a dithered ring of soot and thrown stones. Fades by dithering, as the other ground marks do.
+        /// </summary>
+        public static EffectFrame Crater(int variant, int frame)
+        {
+            int s = 2 * T;
+            var img = new Img(s, s);
+            var rng = new ArtRandom(101 + variant, "crater");
+            float c = s / 2f, r = T * (0.46f + 0.02f * variant);
+            var bump = new float[10];
+            for (int i = 0; i < bump.Length; i++) bump[i] = 0.86f + 0.28f * rng.Range(100) / 100f;
+            for (int y = 0; y < s; y++)
+            for (int x = 0; x < s; x++)
+            {
+                float dx = x + 0.5f - c, dy = y + 0.5f - c, d = Mathf.Sqrt(dx * dx + dy * dy);
+                float at = (Mathf.Atan2(dy, dx) + Mathf.PI) / (2f * Mathf.PI) * bump.Length;
+                int i0 = (int)at % bump.Length;
+                float v = d / (r * Mathf.Lerp(bump[i0], bump[(i0 + 1) % bump.Length], at - Mathf.Floor(at)));
+                bool towardLight = dx * -0.55f + dy * 0.6f > 0f; // the light comes from the upper left
+                Color32 colour;
+                if (v < 0.55f) colour = ArtStyle.CraterPit;
+                else if (v < 0.8f) colour = towardLight ? ArtStyle.CraterWallDark : ArtStyle.CraterWallLit;
+                else if (v < 1f) colour = towardLight ? ArtStyle.CraterRimLit : ArtStyle.CraterRimDark;
+                else if (v < 1.75f && (1.75f - v) * 0.8f > Bayer(x, y)) colour = ArtStyle.Soot;
+                else continue;
+                if (Kept(x, y, frame)) img.Set(x, y, colour);
+            }
+            for (int k = 0; k < 8; k++)
+            {
+                float a = rng.Range(360) * Mathf.Deg2Rad, dist = r * (1.15f + rng.Range(80) / 100f);
+                int size = 2 + rng.Range(2);
+                if (!Kept(k, k * 2, frame)) continue;
+                for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                    img.Set((int)(c + Mathf.Cos(a) * dist) + x, (int)(c + Mathf.Sin(a) * dist) + y, y == size - 1 ? ArtStyle.StoneLit : ArtStyle.StoneDark);
+            }
+            return img.Done();
+        }
+
+        /// <summary>The effects drawn with partial alpha, off the palette: the flame's soft glow and the raised barrel's soft shadow. Everything else stays pixel art.</summary>
+        public static bool IsSoft(string id) => id == "FlameStream" || id == "FlameSplash" || id == "BarrelShadow";
+
+        private static readonly Color FlameHot = new Color(1f, 0.97f, 0.82f), FlameYellow = new Color(1f, 0.8f, 0.3f), FlameOrange = new Color(1f, 0.45f, 0.1f), FlameEmber = new Color(0.8f, 0.15f, 0.03f);
+
+        /// <summary>
+        /// A soft image built up as light added to the ground in display colours, then stored as the colour and alpha that give the same
+        /// result over the dark ground when the game blends them in linear light (without this a faint glow comes out far too strong).
+        /// </summary>
+        private sealed class Glow
+        {
+            private readonly Color[] light;
+            public readonly int W, H;
+            public Glow(int w, int h) { W = w; H = h; light = new Color[w * h]; }
+
+            public void Add(int x, int y, Color c, float alpha) => light[y * W + x] += c * alpha;
+
+            /// <summary>A round blob, bright at its centre.</summary>
+            public void Blob(float cx, float cy, float r, Color c, float alpha)
+            {
+                for (int y = Mathf.Max(0, (int)(cy - r)); y <= cy + r && y < H; y++)
+                for (int x = Mathf.Max(0, (int)(cx - r)); x <= cx + r && x < W; x++)
+                {
+                    float k = 1f - Mathf.Sqrt((x + 0.5f - cx) * (x + 0.5f - cx) + (y + 0.5f - cy) * (y + 0.5f - cy)) / r;
+                    if (k > 0f) Add(x, y, c, alpha * k * k);
+                }
+            }
+
+            /// <summary>Dims the light by <paramref name="keep"/> at each pixel (1 keeps it).</summary>
+            public void Fade(Func<int, int, float> keep)
+            {
+                for (int y = 0; y < H; y++)
+                for (int x = 0; x < W; x++)
+                    light[y * W + x] *= Mathf.Clamp01(keep(x, y));
+            }
+
+            public EffectFrame Done()
+            {
+                const float ground = 0.16f;
+                float under = Mathf.GammaToLinearSpace(ground);
+                float Lit(float c) => Mathf.GammaToLinearSpace(Mathf.Clamp01(ground + c));
+                var px = new Color32[W * H];
+                for (int i = 0; i < px.Length; i++)
+                {
+                    Color c = light[i];
+                    float a = Mathf.Clamp01((Lit(Mathf.Max(c.r, Mathf.Max(c.g, c.b))) - under) / (1f - under));
+                    if (a * 255f < 1f) continue;
+                    float Stored(float v) => Mathf.LinearToGammaSpace(Mathf.Clamp01((Lit(v) - under * (1f - a)) / a));
+                    px[i] = new Color(Stored(c.r), Stored(c.g), Stored(c.b), a);
+                }
+                return new EffectFrame(px, W, H);
+            }
         }
 
         /// <summary>
@@ -206,27 +345,78 @@ namespace WAR2D.Art.Render
         }
 
         /// <summary>
-        /// The Flamethrower's stream (v0.12), 3 tiles long (its 2.5-tile range) by 1 tile, from the nozzle at the
-        /// left edge along +x: a flickering tongue that widens and cools through the fire ramp, ending in a
-        /// rolling burst where it splashes. Rotated to its heading and stretched to the target when drawn.
+        /// The Flamethrower's stream, 2 tiles long by 1, from the nozzle at the left edge to the target at the right, turned to its
+        /// heading and stretched to its length when drawn: a white-hot core and an orange sheath that die away toward the target
+        /// under flames that widen and cool. Nothing is drawn past the right edge, and it fades out on the way there.
         /// </summary>
         public static EffectFrame FlameStream(int frame)
         {
-            int w = 3 * T, h = T;
-            var img = new Img(w, h);
-            float c = h / 2f;
-            for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x++)
+            var glow = new Glow(2 * T, T);
+            var rng = new ArtRandom(31 + frame, "flame stream");
+            float R() => rng.Range(1000) / 1000f;
+            float mid = T / 2f, w = glow.W;
+            void Streak(float width, Color head, float alpha)
             {
-                float along = x / (float)w;
-                float radius = 3f + 9f * along + (along > 0.8f ? (along - 0.8f) * 60f : 0f);
-                float n = Noise.Fbm(x - frame * 9, y, w, 6, 3, 31 + frame) - 0.5f;
-                float d = Mathf.Abs(y + 0.5f - c) / radius;
-                float fire = (1f - d + n * 0.9f) * (1.25f - along * 0.55f) * Mathf.Clamp01((1f - along) * 9f + n);
-                if (fire <= 0.1f) continue;
-                if (along > 0.75f && fire < 0.35f && Bayer(x / 2, y / 2) > fire * 2.5f) continue;
-                int i = fire > 1.05f ? 0 : fire > 0.85f ? 1 : fire > 0.65f ? 2 : fire > 0.48f ? 3 : fire > 0.32f ? 4 : 5;
-                img.Set(x, y, ArtStyle.FireRamp[Mathf.Min(6, i + (along > 0.6f ? 1 : 0))]);
+                for (int y = 0; y < glow.H; y++)
+                for (int x = 0; x < glow.W; x++)
+                {
+                    float t = 1f - (x + 0.5f) / w; // 1 at the nozzle
+                    float edge = Mathf.Clamp01(width * 0.5f * (0.35f + 0.65f * t) + 0.5f - Mathf.Abs(y + 0.5f - mid));
+                    glow.Add(x, y, Color.Lerp(FlameOrange, head, Mathf.Clamp01(t * 1.6f)), alpha * edge * Mathf.Pow(t, 1.3f));
+                }
+            }
+            Streak(11f, FlameOrange, 0.6f);
+            Streak(5f, FlameHot, 0.8f);
+            for (int i = 0; i < 150; i++)
+            {
+                float t = Mathf.Pow(R(), 0.75f);
+                Color c = t < 0.22f ? Color.Lerp(FlameHot, FlameYellow, t / 0.22f) : t < 0.6f ? Color.Lerp(FlameYellow, FlameOrange, (t - 0.22f) / 0.38f) : Color.Lerp(FlameOrange, FlameEmber, (t - 0.6f) / 0.4f);
+                glow.Blob(t * w, mid + (R() - 0.5f) * (0.08f + 0.5f * t) * T, (0.05f + 0.2f * t) * T, c, 0.3f);
+            }
+            glow.Fade((x, y) => (w - 1 - x) / 24f);
+            return glow.Done();
+        }
+
+        /// <summary>Tiles of splash radius <see cref="FlameSplash"/> is drawn for: scaled to the real one when shown.</summary>
+        public const float FlameSplashTiles = 1.5f;
+
+        /// <summary>
+        /// Fire where a flame lands, 3 tiles square: soft blobs scattered over the splash circle, hot and strong at its centre and
+        /// weak at its edge as the damage is, flickering between the frames. Nothing is drawn outside the circle.
+        /// </summary>
+        public static EffectFrame FlameSplash(int frame)
+        {
+            var glow = new Glow(3 * T, 3 * T);
+            var rng = new ArtRandom(43 + frame, "flame splash");
+            float R() => rng.Range(1000) / 1000f;
+            float c = glow.W / 2f, radius = FlameSplashTiles * T;
+            for (int i = 0; i < 26; i++)
+            {
+                float angle = R() * 2f * Mathf.PI, k = Mathf.Sqrt(R());
+                glow.Blob(c + Mathf.Cos(angle) * k * radius * 0.94f, c + Mathf.Sin(angle) * k * radius * 0.94f, (0.1f + 0.1f * R()) * T, Color.Lerp(FlameYellow, FlameEmber, k), 0.55f * (1f - 0.5f * k));
+            }
+            glow.Fade((x, y) => (radius - Mathf.Sqrt((x + 0.5f - c) * (x + 0.5f - c) + (y + 0.5f - c) * (y + 0.5f - c))) / 4f);
+            return glow.Done();
+        }
+
+        /// <summary>
+        /// A raised Artillery barrel's soft shadow on the ground, centred on the turret's pivot like its sprite: it runs from under the
+        /// barrel's root to far down-right of its muzzle, because the muzzle stands high.
+        /// </summary>
+        public static EffectFrame BarrelShadow(int facing)
+        {
+            int s = 3 * T;
+            var img = new Img(s, s);
+            float angle = facing * 2f * Mathf.PI / ArtManifest.TurretDirections, pivot = RenderGen.TurretPivot(UnitType.Artillery);
+            Vector2 dir = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)), o = new Vector2(s / 2f, s / 2f);
+            Vector2 a = o + dir * (8f - pivot) + new Vector2(4.8f, -5.1f), b = o + dir * (40f - pivot) + new Vector2(24f, -21.8f), d = b - a;
+            for (int y = 0; y < s; y++)
+            for (int x = 0; x < s; x++)
+            {
+                Vector2 p = new Vector2(x + 0.5f, y + 0.5f) - a;
+                float t = Mathf.Clamp01(Vector2.Dot(p, d) / d.sqrMagnitude), half = 4f * (0.8f + 0.4f * t);
+                float alpha = 0.55f * Mathf.Clamp01((half + 1.5f - (p - d * t).magnitude) / 3f);
+                if (alpha > 0f) img.Set(x, y, new Color32(ArtStyle.Soot.r, ArtStyle.Soot.g, ArtStyle.Soot.b, (byte)(alpha * 255f)));
             }
             return img.Done();
         }
@@ -681,9 +871,19 @@ namespace WAR2D.Art.Render
                 case "Explosion": return Blast(2, t, 11);
                 case "BombBlast": return Blast(3, t, 23);
                 case "MuzzleFlash": return MuzzleFlash(cell);
+                case "BurstScout": return MuzzleBurst(BurstScoutTiles, cell);
+                case "BurstSniper": return MuzzleBurst(BurstSniperTiles, cell);
+                case "BurstTank": return MuzzleBurst(BurstTankTiles, cell);
+                case "BurstHeavy": return MuzzleBurst(BurstHeavyTiles, cell);
                 case "Tracer": return Tracer();
+                case "ScoutTracer": return ScoutTracer();
                 case "SniperTracer": return SniperTracer();
-                case "ArtilleryShell": return ArtilleryShell(cell);
+                case "ArtilleryShell": return ArtilleryShell(cell / frames, cell % frames);
+                case "ShellShadow": return ShellShadow();
+                case "ShellPuff": return ShellPuff(t);
+                case "Crater": return Crater(cell / frames, cell % frames); // variant-major, like units
+                case "FlameSplash": return FlameSplash(cell);
+                case "BarrelShadow": return BarrelShadow(cell);
                 case "ShellImpact": return ShellImpact(t, 37);
                 case "FlameStream": return FlameStream(cell);
                 case "BomberBlast": return Blast(4, t, 29);

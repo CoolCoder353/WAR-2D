@@ -18,7 +18,10 @@ using WAR2D.Art.Render;
 public static class Decals
 {
     /// <summary>Pool sizes: the most of each kind on the map at once.</summary>
-    public const int ScorchPool = 256, LargeScorchPool = 64, RubblePool = 48, LargeRubblePool = 16, TrackPool = 2048, WreckPool = 192;
+    public const int ScorchPool = 256, LargeScorchPool = 64, RubblePool = 48, LargeRubblePool = 16, TrackPool = 2048, WreckPool = 192, CraterPool = 96;
+
+    /// <summary>Seconds a shell's crater holds before it fades, and the seconds the fade takes: about half a minute in all.</summary>
+    public const float CraterHold = 10f, CraterFade = 20f;
 
     /// <summary>Seconds a scorch holds before it fades, and the seconds the fade takes.</summary>
     public const float ScorchHold = 600f, ScorchFade = 20f;
@@ -67,8 +70,9 @@ public static class Decals
     private static readonly Pool Rubble5 = new Pool("Rubble5", LargeRubblePool, RubbleHold, RubbleFade);
     private static readonly Pool Tracks = new Pool("Tracks", TrackPool, TrackHold, TrackFade);
     private static readonly Pool Wrecks = new Pool("Wreck", WreckPool, WreckHold, WreckFade);
+    private static readonly Pool Craters = new Pool("Crater", CraterPool, CraterHold, CraterFade);
     private static readonly Pool[] RubblePools = { Rubble1, Rubble2, Rubble3, Rubble5 };
-    private static readonly Pool[] All = { Scorches, LargeScorches, Rubble1, Rubble2, Rubble3, Rubble5, Tracks, Wrecks };
+    private static readonly Pool[] All = { Scorches, LargeScorches, Rubble1, Rubble2, Rubble3, Rubble5, Tracks, Wrecks, Craters };
     private static Runner runner;
     private static ArtAtlas atlas;
 
@@ -86,6 +90,9 @@ public static class Decals
 
     /// <summary>Unit wrecks on the map now.</summary>
     public static int ActiveWrecks => Count(Wrecks);
+
+    /// <summary>Shell craters on the map now.</summary>
+    public static int ActiveCraters => Count(Craters);
 
     /// <summary>A wreck's alpha <paramref name="age"/> seconds after it was left: 1 while it holds, then down to 0; below 0 once it is gone.</summary>
     public static float WreckAlpha(float age) => age < WreckHold ? 1f : 1f - (age - WreckHold) / WreckFade;
@@ -151,6 +158,10 @@ public static class Decals
         Slot s = Place(Wrecks, position, 0, sprite);
         if (s != null) s.Sprite.color = WreckTint;
     }
+
+    /// <summary>The crater a shell leaves where it lands: one of the drawn craters, fixed by the spot so nothing random runs per shot.</summary>
+    public static void Crater(Vector2 position) =>
+        Place(Craters, position, (Mathf.FloorToInt(position.x * 7f) + Mathf.FloorToInt(position.y * 13f) & int.MaxValue) % EffectGen.CraterVariants);
 
     /// <summary>Destroys every pooled sprite (tests, and the end of a match).</summary>
     public static void Clear()
