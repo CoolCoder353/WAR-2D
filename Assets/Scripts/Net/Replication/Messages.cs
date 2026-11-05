@@ -246,6 +246,21 @@ namespace WAR2D.Net.Replication
             }
         }
 
+        /// <summary>The end (exclusive) of the Health message that starts at <paramref name="start"/>: as many units as fit <see cref="WireLimits.ReliableChunk"/>.</summary>
+        public static int HealthChunkEnd(NativeArray<HealthUnit> units, int start)
+        {
+            int size = 4, previous = 0, index = start; // 4: the type and the count
+            while (index < units.Length)
+            {
+                int cost = VarInt.Size((uint)(units[index].Index - previous)) + 1;
+                if (index > start && size + cost > WireLimits.ReliableChunk) break;
+                size += cost;
+                previous = units[index].Index;
+                index++;
+            }
+            return index;
+        }
+
         /// <summary>Encodes a Leave message for the given units.</summary>
         public static void EncodeLeave<W>(ref W writer, NativeArray<LeaveUnit> units) where W : struct, IWireWriter
         {

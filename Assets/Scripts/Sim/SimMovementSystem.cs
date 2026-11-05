@@ -400,11 +400,11 @@ namespace WAR2D.Sim
                 for (int k = CellStart[cell]; k < CellStart[cell + 1]; k++)
                 {
                     int j = Sorted[k];
-                    if (j == i || Health[j] <= 0f) continue;
                     float2 delta = position - Positions[j];
+                    float distanceSq = math.lengthsq(delta);
+                    if (distanceSq >= margin * margin || j == i || Health[j] <= 0f) continue; // margin: no body reaches further
                     float rj = Radius[j];
                     float sum = radius + rj;
-                    float distanceSq = math.lengthsq(delta);
                     if (distanceSq >= sum * sum) continue;
                     float distance = math.sqrt(distanceSq);
                     // Exactly stacked: push apart along a direction derived from the pair, deterministically.

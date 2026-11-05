@@ -40,6 +40,12 @@ namespace WAR2D.Sim
                 CellStart = data.CellStart,
                 Sorted = data.Sorted.GetSubArray(0, count),
             }.Schedule(units);
+            units = new CellOwnersJob
+            {
+                Cell = data.Cell.GetSubArray(0, count),
+                OwnerSlot = data.OwnerSlot,
+                CellOwners = data.CellOwners,
+            }.Schedule(units);
 
             int buildings = math.min(data.BuildingCount[0], data.BuildingCapacity);
             JobHandle b = new CellIndexJob

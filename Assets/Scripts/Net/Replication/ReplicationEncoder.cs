@@ -525,12 +525,14 @@ namespace WAR2D.Net.Replication
         private void FlushHealths()
         {
             var sink = new NativeSink(Reliable);
-            for (int start = 0; start < Healths.Length; start += 8192)
+            NativeArray<HealthUnit> units = Healths.AsArray();
+            for (int start = 0; start < units.Length;)
             {
-                int n = math.min(8192, Healths.Length - start);
+                int end = Messages.HealthChunkEnd(units, start);
                 int before = sink.Position;
-                Messages.EncodeHealth(ref sink, Healths.AsArray().GetSubArray(start, n));
+                Messages.EncodeHealth(ref sink, units.GetSubArray(start, end - start));
                 ReliableSizes.Add(sink.Position - before);
+                start = end;
             }
         }
 

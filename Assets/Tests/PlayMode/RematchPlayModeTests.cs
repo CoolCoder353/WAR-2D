@@ -43,6 +43,15 @@ public class RematchPlayModeTests
 
         yield return StartFromLobby();
         yield return PlayModeMatch.PlaceHQ(null);
+        ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+        int hq = 0;
+        yield return PlayModeMatch.WaitUntil(() =>
+        {
+            foreach (var entry in UnitCommander.Instance.KnownBuildings.Entries)
+                if (entry.Value.Data.ownerId == PlayModeMatch.LocalOwner) { hq = entry.Key; return true; }
+            return false;
+        }, 10f);
+        yield return PlayModeMatch.WaitUntil(() => PlayerActions.SetRally(PlayModeMatch.LocalOwner, new[] { hq }, new Unity.Mathematics.int2(1, 1), false) && local.TryGetRally(hq, out _), 10f);
         PlayModeMatch.FastForward(4);
         yield return PlayModeMatch.WaitUntil(() => core.Summary != null && core.MatchClock.Now > 12, 30f);
         uint firstSeed = core.Settings.Seed;
@@ -67,6 +76,7 @@ public class RematchPlayModeTests
         yield return null;
 
         Assert.That(NetworkClient.isConnected, Is.True, "still connected");
+        Assert.That(local.TryGetRally(hq, out _), Is.False, "ids restart, so the last match's rally points are forgotten");
         Assert.That(core.ServerPlayers.Count, Is.EqualTo(1), "the seat is kept");
         Assert.That(core.AiPlayers.Values.Single().Callsign, Is.EqualTo(callsign), "the AI seat is kept");
         Assert.That(NetworkClient.localPlayer.GetComponent<ClientPlayer>().colourIndex, Is.EqualTo(colour));

@@ -235,6 +235,7 @@ namespace WAR2D.Client.Replay
             ClientTerrain.Current.Changed += OnClientTerrainChanged;
             ReplayHeader header = cursor.Header;
             view = new GameObject("ReplayView").AddComponent<ClientWorld>();
+            view.ClockDriven = true;
             view.ColourIndexOf = owner =>
             {
                 int i = header.Players.FindIndex(p => p.OwnerId == owner);
@@ -414,6 +415,7 @@ namespace WAR2D.Client.Replay
             ClientTerrain.Current.Changed += OnClientTerrainChanged;
             ReplayHeader header = cursor.Header;
             view = new GameObject("ReplayView").AddComponent<ClientWorld>();
+            view.ClockDriven = true;
             view.ColourIndexOf = owner => { int i = header.Players.FindIndex(p => p.OwnerId == owner); return i >= 0 ? header.Players[i].Colour : 0; };
             view.ViewCamera = Camera.main;
             map.Dispose();

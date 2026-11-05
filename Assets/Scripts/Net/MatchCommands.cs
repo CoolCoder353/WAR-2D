@@ -124,6 +124,7 @@ public partial class GameCore
     {
         RematchStarting?.Invoke();
         WAR2D.Net.Rejoin.RejoinTicket.Clear();
+        if (NetworkClient.localPlayer != null && NetworkClient.localPlayer.TryGetComponent(out ClientPlayer local)) local.ResetForNewMatch();
     }
 
     /// <summary>Raised on clients when the host presses Rematch.</summary>

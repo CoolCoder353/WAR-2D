@@ -166,12 +166,38 @@ public class SimFormationTests
     }
 
     [Test]
+    public void TheSeatGridAgreesWithCheckingEverySeat()
+    {
+        const float spacing = 1.2f;
+        var random = new System.Random(7);
+        float Next() => (float)(random.NextDouble() * 40.0 - 20.0);
+        var seats = new FormationRules.SeatGrid();
+        seats.Reset(spacing);
+        var all = new System.Collections.Generic.List<float2>();
+        for (int i = 0; i < 400; i++)
+        {
+            float2 seat = new float2(Next(), Next());
+            all.Add(seat);
+            seats.Add(seat);
+        }
+        for (int i = 0; i < 5000; i++)
+        {
+            float2 at = new float2(Next(), Next());
+            bool expected = false;
+            foreach (float2 seat in all) expected |= math.distancesq(seat, at) < spacing * spacing * 0.25f;
+            Assert.AreEqual(expected, seats.Taken(at), $"at {at}");
+        }
+    }
+
+    [Test]
     public void ABlockedSlotPullsInOnlyToAFreePlace()
     {
-        var offsets = new System.Collections.Generic.List<float2> { new float2(0, 0), new float2(1.2f, 0), FormationRules.NoSeat };
-        Assert.IsTrue(FormationRules.Taken(offsets, 2, new float2(1.0f, 0), 1.2f), "too close to another member's slot");
-        Assert.IsFalse(FormationRules.Taken(offsets, 2, new float2(2.4f, 0), 1.2f));
-        Assert.IsFalse(FormationRules.Taken(offsets, 1, new float2(1.2f, 0), 1.2f), "its own slot doesn't count");
+        var seats = new FormationRules.SeatGrid();
+        seats.Reset(1.2f);
+        seats.Add(new float2(0, 0));
+        seats.Add(new float2(1.2f, 0));
+        Assert.IsTrue(seats.Taken(new float2(1.0f, 0)), "too close to another member's slot");
+        Assert.IsFalse(seats.Taken(new float2(2.4f, 0)));
         Assert.IsFalse(FormationRules.HasSeat(FormationRules.NoSeat));
     }
 
