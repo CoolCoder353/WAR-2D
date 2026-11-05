@@ -69,7 +69,6 @@ Three read-only passes over `fix/routes-chokes-builders`, by tracing the code. T
 
 | Severity | Where | Finding | Smallest fix |
 | --- | --- | --- | --- |
-| High | `ManualController.openCount` | It is static and nothing closes a manual when its scene unloads. Start a match with the Field manual open, or Rematch with F1 open, and `AnyOpen` stays true: all map input is dead until a restart. | In the constructor: `screen.RegisterCallback<DetachFromPanelEvent>(_ => Close());` |
 | Medium | `ClientPlayer.spawnerQueues`, `spawnerRallies` | Never cleared, and building ids restart, so a Rematch can show old queues and rally flags on the new HQ. A stale count of 100 reads "Queue full" for good. | Clear both in `TargetStartOptions`. |
 | Medium | `ClientPlayer.gameOverDeclared` | Only the `hasPlacedHQ` hook resets it, and a joined winner's Rematch with Random pick never fires that hook, so match 2 has no end screen for that player. | Reset it in `TargetStartOptions`. |
 | Medium | `UnitCommander.Awake` | It assumes the local player spawned first, which slot reuse can break on a rejoin. It then throws, and `Update` throws every frame. | Null-check, and find the player lazily. |

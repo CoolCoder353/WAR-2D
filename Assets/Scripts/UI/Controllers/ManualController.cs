@@ -90,6 +90,8 @@ namespace WAR2D.UI
             screen.style.display = DisplayStyle.None;
             ticker = screen.schedule.Execute(Animate).Every(100); // the game's 10 fps
             ticker.Pause();
+            // Open when its scene unloads, it would leave AnyOpen true for good, and all map input waits on that.
+            screen.RegisterCallback<DetachFromPanelEvent>(_ => Close());
         }
 
         /// <summary>Opens the manual: on a page, or on the last one opened on this machine.</summary>
