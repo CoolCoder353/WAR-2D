@@ -71,6 +71,19 @@ namespace WAR2D.UI
             ConstructionRules.Refund(true, cost, demolishShare) * BlueprintCount +
             ConstructionRules.Refund(false, cost, demolishShare) * (buildingIds.Count - BlueprintCount);
 
+        private readonly List<(BuildingType type, bool blueprint)> removalRows = new List<(BuildingType, bool)>();
+
+        /// <summary>
+        /// Like <see cref="RefundFor(float, float)"/>, each selected building at its own type's cost, so a box of mixed kinds
+        /// (Ctrl + drag) shows what the server will give back.
+        /// </summary>
+        public float RefundFor(Func<BuildingType, float> costOf, float demolishShare)
+        {
+            float back = 0f;
+            foreach ((BuildingType type, bool blueprint) in removalRows) back += ConstructionRules.Refund(blueprint, costOf(type), demolishShare);
+            return back;
+        }
+
         /// <summary>How many own wall tiles (blueprints included) are selected.</summary>
         public int WallCount { get; private set; }
 
@@ -278,6 +291,8 @@ namespace WAR2D.UI
         /// <summary>Sets what the panel shows for the selected own buildings (empty <paramref name="rows"/>: none).</summary>
         public void SetBuildingRows(IReadOnlyList<BuildingRow> rows, float turretRange, float jamRadius)
         {
+            removalRows.Clear();
+            foreach (BuildingRow r in rows) removalRows.Add((r.Type, r.Blueprint));
             scratchKinds.Clear();
             float health = 0f, upkeep = 0f;
             bool unpaid = false;

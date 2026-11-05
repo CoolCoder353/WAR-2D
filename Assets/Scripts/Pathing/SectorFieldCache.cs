@@ -36,6 +36,8 @@ namespace WAR2D.Pathing
             public List<JobHandle> Handles; // the jobs of the route being built
             public NativeArray<int> Goals;      // the goal spread
             public NativeArray<int> StartCells; // one of the order's unit cells per pocket they stand in
+            public HashSet<int> StartPockets;   // the pockets of StartCells, as numbered at StartPocketsVersion
+            public int StartPocketsVersion = -1;
             public NativeArray<ushort>[] Costs;
             public NativeArray<byte>[] Directions;
             public bool[] Covered;              // per sector: has a local field
@@ -409,13 +411,20 @@ namespace WAR2D.Pathing
         {
             Order order = OrderAt(handle);
             if (order == null) return;
-            var known = new HashSet<int>();
-            for (int i = 0; i < order.StartCells.Length; i++) known.Add(PocketOfCell(order.SizeClass, order.StartCells[i]));
-            var added = new List<int>();
+            // The start pockets are kept until a terrain change renumbers them, so a route miss costs a lookup, not a relabelling.
+            if (order.StartPockets == null || order.StartPocketsVersion != graph.TerrainVersion)
+            {
+                order.StartPockets ??= new HashSet<int>();
+                order.StartPockets.Clear();
+                for (int i = 0; i < order.StartCells.Length; i++) order.StartPockets.Add(PocketOfCell(order.SizeClass, order.StartCells[i]));
+                order.StartPocketsVersion = graph.TerrainVersion;
+            }
+            List<int> added = addedScratch;
+            added.Clear();
             for (int i = 0; i < tiles.Length; i++)
             {
                 int pocket = PocketOfCell(order.SizeClass, tiles[i]);
-                if (pocket >= 0 && known.Add(pocket)) added.Add(tiles[i]);
+                if (pocket >= 0 && order.StartPockets.Add(pocket)) added.Add(tiles[i]);
             }
             if (added.Count == 0) return;
             var grown = new NativeArray<int>(order.StartCells.Length + added.Count, Allocator.Persistent);
@@ -425,6 +434,8 @@ namespace WAR2D.Pathing
             order.StartCells = grown;
             MarkDirty(order);
         }
+
+        private readonly List<int> addedScratch = new List<int>();
 
         private int PocketOfCell(int sizeClass, int cell) => graph.PocketOf(sizeClass, new int2(cell % graph.Width, cell / graph.Width));
 

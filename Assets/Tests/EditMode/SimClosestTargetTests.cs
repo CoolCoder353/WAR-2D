@@ -2,7 +2,7 @@ using NUnit.Framework;
 using Unity.Mathematics;
 using WAR2D.Sim;
 
-/// <summary>An Attack-move fires at the closest thing in range, of any kind, unless the player named a target.</summary>
+/// <summary>An Attack-move fires at the closest unit or building in range, then at a wall, unless the player named a target.</summary>
 public class SimClosestTargetTests
 {
     /// <summary>Nothing dies, so each test reads the choice itself. Tank range 5, sight 8.</summary>
@@ -37,11 +37,25 @@ public class SimClosestTargetTests
     }
 
     [Test]
-    public void AWallCloserThanAUnitTakesTheFire()
+    public void AUnitInRangeTakesTheFireFromACloserWall()
     {
         using var sim = Sim();
         int[] tank = sim.Spawn(SimHarness.OwnerA, At);
-        sim.Spawn(SimHarness.OwnerB, At + new float2(0f, -4f));
+        int[] enemy = sim.Spawn(SimHarness.OwnerB, At + new float2(0f, -4f));
+        int2 tile = new int2(22, 20);
+        sim.PlaceWall(SimHarness.OwnerB, tile);
+        sim.Tick();
+        sim.ForceBuiltWall(tile);
+        Unit u = AttackMoved(sim, tank);
+        Assert.AreEqual(TargetKinds.Unit, u.TargetKind, "a wall is a last resort");
+        Assert.AreEqual(enemy[0], u.TargetId);
+    }
+
+    [Test]
+    public void AWallInRangeTakesTheFireWithNothingElse()
+    {
+        using var sim = Sim();
+        int[] tank = sim.Spawn(SimHarness.OwnerA, At);
         int2 tile = new int2(22, 20);
         sim.PlaceWall(SimHarness.OwnerB, tile);
         sim.Tick();
@@ -49,6 +63,25 @@ public class SimClosestTargetTests
         Unit u = AttackMoved(sim, tank);
         Assert.AreEqual(TargetKinds.Wall, u.TargetKind);
         Assert.AreEqual(sim.Map.Grid.Index(tile), u.TargetId);
+    }
+
+    [Test]
+    public void AWallInsideTheMinimumRangeIsNotATarget()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(64), c =>
+        {
+            c.Simulation.TargetSearchSliceTicks = 1;
+            c.GetUnit(UnitType.Artillery).Health = 1000000;
+        });
+        int[] artillery = sim.Spawn(SimHarness.OwnerA, At, UnitType.Artillery);
+        int2 tile = new int2(22, 20); // 2 tiles off: inside Artillery's minimum range of 4
+        sim.PlaceWall(SimHarness.OwnerB, tile);
+        sim.Tick();
+        sim.ForceBuiltWall(tile);
+        sim.Order(SimHarness.OwnerA, OrderKind.AttackMove, new int2(50, 20), artillery[0]);
+        sim.Tick();
+        Unit u = sim.UnitById(artillery[0]);
+        Assert.IsFalse(u.TargetKind == TargetKinds.Wall && u.TargetId == sim.Map.Grid.Index(tile), "inside the minimum range");
     }
 
     [Test]

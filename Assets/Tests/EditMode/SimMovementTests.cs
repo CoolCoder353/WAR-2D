@@ -259,6 +259,19 @@ public class SimMovementTests
     }
 
     [Test]
+    public void AnAttackMoveToAGoalSealedByRockEndsAtTheNearestFloor()
+    {
+        using var sim = new SimHarness(Sealed());
+        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 40.5f));
+        sim.Tick();
+        sim.Order(SimHarness.OwnerA, OrderKind.AttackMove, new int2(50, 20), a[0]);
+        sim.TickSeconds(15f);
+        Unit unit = sim.UnitById(a[0]);
+        Assert.AreEqual(Stances.Idle, unit.Stance, "nothing to shoot: the order ends and frees its slot");
+        Assert.AreEqual(-1, unit.OrderSlot);
+    }
+
+    [Test]
     public void AnAttackMoveWaitsAtAWallAndGoesOnThroughWhenItFalls()
     {
         using var sim = new SimHarness(Sealed());

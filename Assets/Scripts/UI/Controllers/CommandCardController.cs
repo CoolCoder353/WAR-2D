@@ -462,22 +462,21 @@ namespace WAR2D.UI
             if (WallsOnly) { ShowWalls(); return; }
             UnitType[] produced = SpawnerRules.Produces(selection.BuildingType);
             string name = AlertFeedModel.BuildingName(selection.BuildingType) ?? AlertFeedModel.Spaced(selection.BuildingType.ToString());
-            title.text = selection.MixedKinds ? $"Commands: {count} producers selected"
+            title.text = selection.MixedKinds ? $"Commands: {count} buildings selected"
                 : count > 1 ? $"Commands: {count} {Plural(name)} selected"
                 : selection.AllBlueprints ? $"{name} (blueprint) · {selection.BuildingProgress}%"
                 : name;
 
             if (produced.Length > 0 && selection.BlueprintCount == 0) ShowProduction(produced, count);
             if (!Removable) return;
-            float cost = buildCosts.TryGetValue(selection.BuildingType, out float c) ? c : 0f;
-            float back = selection.RefundFor(cost, demolishShare);
+            float back = selection.RefundFor(type => buildCosts.TryGetValue(type, out float c) ? c : 0f, demolishShare);
             bool blueprints = selection.AllBlueprints;
             cancelIcon.Icon = blueprints ? IconKind.Cancel : IconKind.Demolish;
             cancel.tooltip = blueprints ? "Cancel" : "Demolish";
             refund.text = blueprints ? $"Cancel: refunds {back:0} (the full cost) while it is a blueprint."
                 : $"Demolish: refunds {back:0} ({(demolishShare == 0.5f ? "half its cost" : $"{demolishShare:P0} of its cost")}).";
             confirm.EnableInClassList("removal__confirm--open", ConfirmOpen);
-            question.text = count > 1 ? $"Demolish {count} {Plural(name)}? You get {back:0} back." : $"Demolish {name}? You get {back:0} back.";
+            question.text = count > 1 ? $"Demolish {count} {(selection.MixedKinds ? "buildings" : Plural(name))}? You get {back:0} back." : $"Demolish {name}? You get {back:0} back.";
         }
 
         /// <summary>

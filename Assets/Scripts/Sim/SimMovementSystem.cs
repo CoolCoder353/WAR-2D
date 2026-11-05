@@ -233,9 +233,10 @@ namespace WAR2D.Sim
                     }
                     else if (direction == FlowDirections.Stop)
                     {
-                        // The goal is walled off from here, and this is as near as the unit can get. An attack-move stays on its
-                        // order: it may be here to break the wall, and it goes on through when the wall falls.
-                        if (Stance[i] != Stances.AttackMove) Arrived[i] = 1;
+                        // The goal is walled off from here, and this is as near as the unit can get, so the order ends. An attack-move
+                        // shooting a wall never gets here (it holds to fight above), so it stays on its order while the wall stands and
+                        // goes on through when it falls; one with nothing to shoot ends, freeing its order slot and the retries for a way.
+                        Arrived[i] = 1;
                     }
                     else if (FlowDirections.IsStep(direction))
                     {
@@ -371,9 +372,12 @@ namespace WAR2D.Sim
 
         /// <summary>
         /// How much more of a push one of two units takes than the other. With equal shares, two big units heading for one tile
-        /// from opposite sides balance just short of it and never move again; an uneven pair can't balance.
+        /// from opposite sides balance just short of it and never move again; an uneven pair can't balance. Only between two units on
+        /// live orders: uneven pushes don't sum to zero, so a group that has stopped would drift for good instead of settling.
         /// </summary>
         private const float GiveWay = 0.25f;
+
+        private bool OnOrder(int u) => (uint)OrderSlot[u] < (uint)OrderLive.Length && OrderLive[OrderSlot[u]] != 0;
 
         private float2 NeighbourPush(int i, float2 position, float radius)
         {
@@ -388,6 +392,7 @@ namespace WAR2D.Sim
             else if (local.y > size - margin) hi.y = math.min(c.y + 1, CellsY - 1);
 
             float2 push = float2.zero;
+            bool moving = OnOrder(i);
             for (int cy = lo.y; cy <= hi.y; cy++)
             for (int cx = lo.x; cx <= hi.x; cx++)
             {
@@ -404,7 +409,8 @@ namespace WAR2D.Sim
                     float distance = math.sqrt(distanceSq);
                     // Exactly stacked: push apart along a direction derived from the pair, deterministically.
                     float2 away = distance > 1e-4f ? delta / distance : (i < j ? new float2(1f, 0f) : new float2(-1f, 0f));
-                    float share = (rj * rj) / (radius * radius + rj * rj) * (i < j ? 1f - GiveWay : 1f + GiveWay);
+                    float share = (rj * rj) / (radius * radius + rj * rj);
+                    if (moving && OnOrder(j)) share *= i < j ? 1f - GiveWay : 1f + GiveWay;
                     push += Strength * share * ((sum - distance) * away);
                 }
             }

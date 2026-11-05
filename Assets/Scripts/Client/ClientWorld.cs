@@ -249,7 +249,8 @@ namespace WAR2D.Client
         /// </summary>
         public void ShowOrder(OrderKind kind, int2 goal, IReadOnlyList<int> ids)
         {
-            if (kind == OrderKind.Detonate) return;
+            // Work orders aren't shown: the server picks the tile a worker stands on, which can be another side of the job.
+            if (kind == OrderKind.Detonate || kind == OrderKind.Build || kind == OrderKind.Repair || kind == OrderKind.Dig) return;
             bool halt = kind == OrderKind.Stop || kind == OrderKind.Hold;
             bool walkAll = kind == OrderKind.Move || kind == OrderKind.AttackMove;
             for (int i = 0; i < ids.Count; i++)

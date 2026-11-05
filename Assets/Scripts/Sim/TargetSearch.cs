@@ -115,8 +115,8 @@ namespace WAR2D.Sim
         /// <summary>
         /// The nearest living enemy unit within range (and outside the minimum range) that the owner's grid sees with a
         /// clear line; with none, the nearest such enemy building that isn't hidden; with none and
-        /// <paramref name="walls"/>, the nearest enemy wall tile with a clear line. With <paramref name="anyKind"/> no kind comes
-        /// first and the closest of them wins (an Attack-move). <paramref name="target"/> is a unit slot, a building slot or a
+        /// <paramref name="walls"/>, the nearest enemy wall tile with a clear line. With <paramref name="anyKind"/> units and
+        /// buildings compete on distance (an Attack-move); a wall is still taken only when neither is in range. <paramref name="target"/> is a unit slot, a building slot or a
         /// tile index, or -1 (then <paramref name="kind"/> is <see cref="TargetKinds.Unit"/>).
         /// </summary>
         public static bool Nearest(in SearchInput s, float2 p, int slot, float rangeSq, float minSq, bool walls, bool anyKind, out int target, out byte kind)
@@ -163,8 +163,9 @@ namespace WAR2D.Sim
                     if (d <= best && d >= minSq && Sees(s, grid, at) && LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, at)) { best = d; target = j; kind = TargetKinds.Building; }
                 }
             }
-            if (target >= 0 && !anyKind) return true;
-            int wall = walls ? FindWall(s, p, slot, best) : -1;
+            // A wall is a last resort even for an Attack-move: one beside the unit mustn't take its fire from enemies in range.
+            if (target >= 0) return true;
+            int wall = walls ? FindWall(s, p, slot, best, minSq) : -1;
             if (wall >= 0)
             {
                 target = wall;
@@ -180,7 +181,7 @@ namespace WAR2D.Sim
         /// unit's wall shot names the tile to its owner, so a wall in the fog must never be a target), or -1. The wall tile
         /// ends the line, so it doesn't block its own line.
         /// </summary>
-        private static int FindWall(in SearchInput s, float2 p, int slot, float rangeSq)
+        private static int FindWall(in SearchInput s, float2 p, int slot, float rangeSq, float minSq)
         {
             int grid = slot * s.FogCells;
             int r = (int)math.ceil(math.sqrt(rangeSq));
@@ -195,7 +196,7 @@ namespace WAR2D.Sim
                 if (s.WallState[t] == WallStates.None || !SimData.Attacks(s.AttackMask, slot, s.WallOwnerSlot[t])) continue;
                 float2 centre = new float2(x + 0.5f, y + 0.5f);
                 float d = math.distancesq(p, centre);
-                if (d <= best && Sees(s, grid, centre) && LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, centre)) { best = d; bestTile = t; }
+                if (d <= best && d >= minSq && Sees(s, grid, centre) && LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, centre)) { best = d; bestTile = t; }
             }
             return bestTile;
         }

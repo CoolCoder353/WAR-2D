@@ -104,7 +104,7 @@ namespace WAR2D.Pathing
             public ushort[] Distance;    // node = sector * MaxPortals + portal
             public bool[] Settled;
             public List<int> Heap;       // one entry per relaxation, so it can repeat a node
-            public HashSet<int> Region;  // the pockets last walked by RegionOf; dropped by a terrain change
+            public readonly List<HashSet<int>> Regions = new List<HashSet<int>>(); // regions walked by RegionOf; dropped by a terrain change
         }
 
         private readonly int width, height, sectorsX, sectorsY, sectorCount;
@@ -519,9 +519,13 @@ namespace WAR2D.Pathing
             Heap = new List<int>(sectorCount),
         };
 
+        /// <summary>Counts terrain changes, so a caller keeping pocket numbers (<see cref="PocketOf"/>) knows when they went stale.</summary>
+        public int TerrainVersion { get; private set; }
+
         private void DropSector(Layer layer, int sector)
         {
-            layer.Region = null;
+            layer.Regions.Clear();
+            TerrainVersion++;
             // A neighbour's matching cache holds portal indices into this sector, so it goes stale with
             // it: forget those caches too.
             for (int edge = West; edge <= North; edge++)
@@ -626,11 +630,13 @@ namespace WAR2D.Pathing
 
         /// <summary>
         /// Every pocket a unit in <paramref name="pocket"/> can walk to, sector by sector through the portals. Kept until a
-        /// terrain change, because nearly every unit stands in the same big region and work orders ask for it often.
+        /// terrain change, because nearly every unit stands in the same big region and work orders ask for it often. Every region
+        /// walked is kept, so asking about a walled-off pocket doesn't cost the next unit in the main region a new walk.
         /// </summary>
         private HashSet<int> RegionOf(Layer layer, int pocket)
         {
-            if (layer.Region != null && layer.Region.Contains(pocket)) return layer.Region;
+            foreach (HashSet<int> known in layer.Regions)
+                if (known.Contains(pocket)) return known;
             var region = new HashSet<int> { pocket };
             var open = new Stack<int>();
             open.Push(pocket);
@@ -650,7 +656,7 @@ namespace WAR2D.Pathing
                     if (region.Add(across)) open.Push(across);
                 }
             }
-            layer.Region = region;
+            layer.Regions.Add(region);
             return region;
         }
 
