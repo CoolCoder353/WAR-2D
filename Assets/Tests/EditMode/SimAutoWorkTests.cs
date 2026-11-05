@@ -51,6 +51,50 @@ public class SimAutoWorkTests
         Assert.Greater(sim.UnitById(builder[0]).Position.x, 15f, "heading east to the nearer one");
     }
 
+    [Test]
+    public void AnIdleBuilderTakesARepairCloserThanABlueprint()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(64));
+        int[] builder = sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 10.5f), UnitType.Builder);
+        sim.Tick();
+        int near = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(20, 10), complete: true);
+        sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(10, 55));
+        sim.Tick();
+        sim.SetBuildingHealthShare(near, 0.5f);
+        sim.TickSeconds(3f);
+        Assert.Less(sim.UnitById(builder[0]).Position.y, 14f, "heading east to the closer job, not north");
+    }
+
+    [Test]
+    public void AnIdleBuilderTakesABlueprintCloserThanARepair()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(64));
+        int[] builder = sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 10.5f), UnitType.Builder);
+        sim.Tick();
+        int far = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(10, 55), complete: true);
+        sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(20, 10));
+        sim.Tick();
+        sim.SetBuildingHealthShare(far, 0.5f);
+        sim.TickSeconds(3f);
+        Assert.Less(sim.UnitById(builder[0]).Position.y, 14f, "heading east to the closer job, not north");
+    }
+
+    [Test]
+    public void ItRepairsADamagedWall()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(48));
+        sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 10.5f), UnitType.Builder);
+        sim.Tick();
+        var wall = new int2(16, 10);
+        sim.PlaceWall(SimHarness.OwnerA, wall);
+        sim.Tick();
+        sim.ForceBuiltWall(wall);
+        int index = sim.Map.Grid.Index(wall);
+        sim.Context.Data.WallDamage.Enqueue(new TileWork { Tile = index, Amount = sim.Context.Data.WallMaxHealth * 0.5f });
+        sim.TickSeconds(30f);
+        Assert.Greater(sim.Context.Data.WallHealth[index], sim.Context.Data.WallMaxHealth * 0.85f);
+    }
+
     /// <summary>64x64 where the nearest free tile to a building at (20, 20), (19, 19), is a one-tile hole in rock.</summary>
     private static WAR2D.World.MapStore HoleBesideTheJob()
     {
@@ -108,8 +152,8 @@ public class SimAutoWorkTests
         Assert.IsFalse(sim.IsBlueprint(job), $"the free Builder ended at {sim.UnitById(free[0]).Position}");
     }
 
-    [Test]
-    public void AnIdleBuilderPassesOverABlueprintItCantReach()
+    /// <summary>64x64 with a walled room, 16 to 24 each way, that nothing outside can reach.</summary>
+    private static WAR2D.World.MapStore SealedRoom()
     {
         var rows = new string[64];
         for (int r = 0; r < 64; r++)
@@ -124,7 +168,27 @@ public class SimAutoWorkTests
             }
             rows[r] = new string(row);
         }
-        using var sim = new SimHarness(WAR2D.World.MapStore.FromAscii(rows));
+        return WAR2D.World.MapStore.FromAscii(rows);
+    }
+
+    [Test]
+    public void AnIdleBuilderPassesOverARepairItCantReach()
+    {
+        using var sim = new SimHarness(SealedRoom());
+        sim.Spawn(SimHarness.OwnerA, new float2(30.5f, 20.5f), UnitType.Builder);
+        sim.Tick();
+        int shut = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(20, 20), complete: true);
+        int open = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(50, 50));
+        sim.Tick();
+        sim.SetBuildingHealthShare(shut, 0.5f);
+        sim.TickSeconds(90f);
+        Assert.IsFalse(sim.IsBlueprint(open), "the one it could reach");
+    }
+
+    [Test]
+    public void AnIdleBuilderPassesOverABlueprintItCantReach()
+    {
+        using var sim = new SimHarness(SealedRoom());
         sim.Spawn(SimHarness.OwnerA, new float2(30.5f, 20.5f), UnitType.Builder);
         sim.Tick();
         int shut = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(20, 20));
@@ -151,7 +215,7 @@ public class SimAutoWorkTests
     [Test]
     public void ItLeavesRepairsBeyondTheRadius()
     {
-        using var sim = new SimHarness(SimHarness.OpenMap(64));
+        using var sim = new SimHarness(SimHarness.OpenMap(64), c => c.AutoWork.Radius = 8f);
         sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 10.5f), UnitType.Builder);
         sim.Tick();
         int far = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(40, 40), complete: true);
@@ -188,7 +252,7 @@ public class SimAutoWorkTests
     [Test]
     public void ItRepairsAnOwnBuildingBelowTheShareAndNotAnEnemys()
     {
-        using var sim = new SimHarness(SimHarness.OpenMap(48));
+        using var sim = new SimHarness(SimHarness.OpenMap(48), c => c.AutoWork.Radius = 8f); // the enemy's own Builder stays out of it
         sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 13.5f), UnitType.Builder);
         sim.Spawn(SimHarness.OwnerB, new float2(40.5f, 40.5f), UnitType.Builder);
         sim.Tick();

@@ -9,9 +9,9 @@ namespace WAR2D.Sim
     {
         /// <summary>
         /// Idle Builders work on their own (v0.16): each Builder with no order, no work, no queued waypoints and nothing
-        /// pending looks, once every <see cref="SimData.AutoWorkSlice"/> ticks, for its owner's nearest blueprint or unfinished
-        /// wall anywhere on the map, then for the nearest own building or wall within <see cref="SimData.AutoWorkRadius"/> tiles
-        /// below <see cref="SimData.AutoWorkRepairBelow"/> of its health (not while the owner has no money), and takes it as a
+        /// pending looks, once every <see cref="SimData.AutoWorkSlice"/> ticks, for the closest job it can walk to: its owner's
+        /// blueprint or unfinished wall anywhere on the map, or an own building or wall within <see cref="SimData.AutoWorkRadius"/>
+        /// tiles below <see cref="SimData.AutoWorkRepairBelow"/> of its health (not while the owner has no money). It takes that as a
         /// Build or Repair order, exactly as a click would (<see cref="ApplyWorkOrder"/>). Never a teammate's. Runs after the
         /// boundary's drained commands, so a player's order this boundary wins.
         /// </summary>
@@ -32,10 +32,12 @@ namespace WAR2D.Sim
                 if (ownerSlot < 0) continue;
                 if (!collected) { CollectWorkBuildings(data); collected = true; }
                 float2 at = data.Positions[slot];
+                int sizeClass = data.SizeClass[slot];
+                bool build = TryNearestBuildWork(data, context, owner, ownerSlot, at, sizeClass, out int2 buildTile, out float buildSq);
                 OrderKind kind;
                 int2 tile;
-                if (TryNearestBuildWork(data, context, owner, ownerSlot, at, data.SizeClass[slot], out tile)) kind = OrderKind.Build;
-                else if ((context.BudgetOf == null || context.BudgetOf(owner) > 0f) && TryNearestRepair(data, owner, ownerSlot, at, rSq, out tile)) kind = OrderKind.Repair;
+                if ((context.BudgetOf == null || context.BudgetOf(owner) > 0f) && TryNearestRepair(data, context, owner, ownerSlot, at, sizeClass, build ? math.min(buildSq, rSq) : rSq, out tile)) kind = OrderKind.Repair;
+                else if (build) { kind = OrderKind.Build; tile = buildTile; }
                 else continue;
                 ApplyWorkOrder(data, context, new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, OwnerId = owner, Tile = tile, Ids = new[] { id } }, unitCount, background: true);
             }
@@ -126,7 +128,7 @@ namespace WAR2D.Sim
         }
 
         /// <summary>The nearest own blueprint (a tile of its footprint) or unfinished own wall the Builder can walk to, however far.</summary>
-        private bool TryNearestBuildWork(SimData data, SimContext context, int owner, int ownerSlot, float2 at, int sizeClass, out int2 tile)
+        private bool TryNearestBuildWork(SimData data, SimContext context, int owner, int ownerSlot, float2 at, int sizeClass, out int2 tile, out float distanceSq)
         {
             tile = default;
             float best = float.MaxValue;
@@ -149,6 +151,7 @@ namespace WAR2D.Sim
                 best = d;
                 tile = wall;
             }
+            distanceSq = best;
             return best < float.MaxValue;
         }
 
@@ -166,34 +169,32 @@ namespace WAR2D.Sim
             return false;
         }
 
-        /// <summary>The nearest own finished building or built wall under the repair share, within reach.</summary>
-        private bool TryNearestRepair(SimData data, int owner, int ownerSlot, float2 at, float rSq, out int2 tile)
+        /// <summary>The nearest own finished building or built wall under the repair share that the Builder can walk to, closer than <paramref name="within"/> (squared).</summary>
+        private bool TryNearestRepair(SimData data, SimContext context, int owner, int ownerSlot, float2 at, int sizeClass, float within, out int2 tile)
         {
             tile = default;
-            float best = rSq;
+            float best = within;
             foreach (int b in damaged)
             {
                 if (data.BuildingOwnerId[b] != owner) continue;
                 float d = DistanceSqToFootprint(at, data.BuildingAnchor[b], data.BuildingSize[b]);
-                if (d < best) { best = d; tile = Footprint.Start(data.BuildingAnchor[b], data.BuildingSize[b]); }
+                if (d >= best) continue;
+                int2 start = Footprint.Start(data.BuildingAnchor[b], data.BuildingSize[b]);
+                if (!CanStandBeside(context, at, sizeClass, start, data.BuildingSize[b])) continue;
+                best = d;
+                tile = start;
             }
-            ScanWalls(data, at, ref best, ref tile, (byte)ownerSlot, data.WallMaxHealth * data.AutoWorkRepairBelow);
-            return best < rSq;
-        }
-
-        /// <summary>The nearest built own wall tile under <paramref name="below"/> health, within <paramref name="best"/> (squared).</summary>
-        private static void ScanWalls(SimData data, float2 at, ref float best, ref int2 tile, byte ownerSlot, float below)
-        {
-            int r = (int)math.ceil(math.sqrt(best));
-            int2 c = (int2)math.floor(at);
-            for (int y = math.max(0, c.y - r); y <= math.min(data.Height - 1, c.y + r); y++)
-            for (int x = math.max(0, c.x - r); x <= math.min(data.Width - 1, c.x + r); x++)
+            float below = data.WallMaxHealth * data.AutoWorkRepairBelow;
+            foreach (int index in context.DamagedWalls)
             {
-                int index = y * data.Width + x;
-                if (data.WallState[index] != WallStates.Built || data.WallOwnerSlot[index] != ownerSlot || data.WallHealth[index] >= below) continue;
-                float d = math.distancesq(at, new float2(x + 0.5f, y + 0.5f));
-                if (d < best) { best = d; tile = new int2(x, y); }
+                if (data.WallOwnerSlot[index] != (byte)ownerSlot || data.WallHealth[index] >= below) continue;
+                int2 wall = new int2(index % data.Width, index / data.Width);
+                float d = math.distancesq(at, (float2)wall + 0.5f);
+                if (d >= best || !CanStandBeside(context, at, sizeClass, wall, new int2(1, 1))) continue;
+                best = d;
+                tile = wall;
             }
+            return best < within;
         }
 
         private static float DistanceSqToFootprint(float2 p, int2 anchor, int2 size)

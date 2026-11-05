@@ -234,6 +234,7 @@ namespace WAR2D.Sim
             data.WallOwnerSlot[index] = SimData.NoSlot;
             data.WallState[index] = WallStates.None;
             context.UnfinishedWalls.Remove(index);
+            context.DamagedWalls.Remove(index);
             data.WallHealth[index] = 0f;
             ApplySetTile(data, context, tile, TileType.Ground, unitCount);
         }
@@ -271,6 +272,7 @@ namespace WAR2D.Sim
                         continue;
                     }
                     data.WallHealth[work.Tile] += restore;
+                    if (data.WallHealth[work.Tile] >= data.WallMaxHealth) context.DamagedWalls.Remove(work.Tile);
                     context.Map.MarkChanged(work.Tile);
                     context.Spend?.Invoke(work.OwnerId, restore * data.RepairCostPerHealth);
                 }
@@ -286,6 +288,7 @@ namespace WAR2D.Sim
                 if (data.WallState[hit.Tile] != WallStates.Blueprint)
                 {
                     data.WallHealth[hit.Tile] -= hit.Amount;
+                    if (data.WallState[hit.Tile] == WallStates.Built) context.DamagedWalls.Add(hit.Tile);
                     context.Map.MarkChanged(hit.Tile);
                 }
                 if (data.WallState[hit.Tile] == WallStates.Blueprint || data.WallHealth[hit.Tile] <= 0f)
