@@ -242,6 +242,7 @@ public class ClientPlayer : NetworkBehaviour
         drawDeclared = false;
         spawnerQueues.Clear();
         spawnerRallies.Clear();
+        attackRallies.Clear();
         OwnStartOptions = System.Array.Empty<int>();
     }
 
