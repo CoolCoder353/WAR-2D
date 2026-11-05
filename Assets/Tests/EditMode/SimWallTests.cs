@@ -2,7 +2,7 @@ using NUnit.Framework;
 using Unity.Mathematics;
 using WAR2D.Sim;
 
-/// <summary>Walls: blueprints, construction waits for an empty tile, blocking, combat and destruction.</summary>
+/// <summary>Walls: blueprints, construction moves units off the tile, blocking, combat and destruction.</summary>
 public class SimWallTests
 {
     [Test]
@@ -52,26 +52,62 @@ public class SimWallTests
     }
 
     [Test]
-    public void ConstructionWaitsWhileAUnitStandsOnTheTile()
+    public void ConstructionMovesAUnitOffTheTileLikeABuildingDoes()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(32));
-        sim.PlaceWall(SimHarness.OwnerA, new int2(10, 10));
+        var tile = new int2(10, 10);
+        sim.PlaceWall(SimHarness.OwnerA, tile);
         int[] sitter = sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 10.5f));
         int[] builder = sim.Spawn(SimHarness.OwnerA, new float2(9.5f, 10.5f), UnitType.Builder);
         sim.Tick();
-        sim.Order(SimHarness.OwnerA, OrderKind.Hold, new int2(10, 10), sitter[0]);
-        sim.Order(SimHarness.OwnerA, OrderKind.Build, new int2(10, 10), builder[0]);
+        sim.Order(SimHarness.OwnerA, OrderKind.Hold, tile, sitter[0]);
+        sim.Order(SimHarness.OwnerA, OrderKind.Build, tile, builder[0]);
         sim.TickSeconds(3f);
-        Assert.AreEqual(TileType.WallBlueprint, sim.Map.Grid.TileAt(new int2(10, 10)), "nobody is walled in");
-        sim.Move(SimHarness.OwnerA, new int2(20, 20), sitter[0]);
+        Assert.AreEqual(TileType.PlayerWall, sim.Map.Grid.TileAt(tile));
+        float2 p = sim.UnitById(sitter[0]).Position;
+        Assert.IsFalse(math.all((int2)math.floor(p) == tile), $"the unit was left inside the wall at {p}");
+    }
+
+    [Test]
+    public void AnEnemyOnTheTileMakesConstructionWait()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(32), c => c.GetUnit(UnitType.Tank).Damage = 0); // it must not shoot the Builder
+        var tile = new int2(10, 10);
+        sim.PlaceWall(SimHarness.OwnerA, tile);
+        int[] enemy = sim.Spawn(SimHarness.OwnerB, new float2(10.5f, 10.5f));
+        int[] builder = sim.Spawn(SimHarness.OwnerA, new float2(9.5f, 10.5f), UnitType.Builder);
+        sim.Tick();
+        sim.Order(SimHarness.OwnerB, OrderKind.Hold, tile, enemy[0]);
+        sim.Order(SimHarness.OwnerA, OrderKind.Build, tile, builder[0]);
+        sim.TickSeconds(3f);
+        Assert.AreEqual(TileType.WallBlueprint, sim.Map.Grid.TileAt(tile), "a wall doesn't shove an enemy aside");
+        sim.Move(SimHarness.OwnerB, new int2(20, 20), enemy[0]);
         sim.TickSeconds(10f);
-        Assert.AreEqual(TileType.PlayerWall, sim.Map.Grid.TileAt(new int2(10, 10)));
+        Assert.AreEqual(TileType.PlayerWall, sim.Map.Grid.TileAt(tile));
+    }
+
+    [Test]
+    public void BuildersStandingOnADragFinishEveryWall()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(64));
+        var builders = new int[6][];
+        for (int i = 0; i < builders.Length; i++) builders[i] = sim.Spawn(SimHarness.OwnerA, new float2(20.5f + i, 20.5f), UnitType.Builder);
+        sim.Tick(); // owner A exists from here, so it can own walls
+        for (int x = 20; x < 32; x++) sim.PlaceWall(SimHarness.OwnerA, new int2(x, 20));
+        sim.Tick();
+        var ids = new int[builders.Length];
+        for (int i = 0; i < ids.Length; i++) ids[i] = builders[i][0];
+        for (int x = 20; x < 32; x++) sim.Order(SimHarness.OwnerA, OrderKind.Build, x > 20, new int2(x, 20), ids); // what a drag sends
+        sim.TickSeconds(60f);
+        sim.Em.CompleteAllTrackedJobs();
+        for (int x = 20; x < 32; x++)
+            Assert.AreEqual(WallStates.Built, sim.Context.Data.WallState[sim.Map.Grid.Index(new int2(x, 20))], $"tile {x} of the line");
     }
 
     [Test]
     public void AUnitOnARisingWallIsPushedOffIt()
     {
-        // Builders wait while a body overlaps the tile, so the push is the backstop: give the work by hand.
+        // The work by hand, so nothing but the push moves the unit.
         using var sim = new SimHarness(SimHarness.OpenMap(32));
         var tile = new int2(10, 10);
         sim.PlaceWall(SimHarness.OwnerA, tile);

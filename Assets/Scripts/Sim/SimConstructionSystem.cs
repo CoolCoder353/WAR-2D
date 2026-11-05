@@ -127,9 +127,14 @@ namespace WAR2D.Sim
             Walls.Enqueue(new TileWork { Tile = index, Amount = Power * Dt, OwnerId = OwnerId[i] });
         }
 
-        /// <summary>True when a living unit's body overlaps the tile (read from the spatial hash).</summary>
+        /// <summary>
+        /// True when a living enemy's body overlaps the tile (read from the spatial hash). The wall's own side and allies don't
+        /// hold it up: as with a building, they are moved off the tile when it rises (<c>PushUnitsOffTiles</c>). That includes the
+        /// Builders working on it, which would otherwise wait for themselves for good.
+        /// </summary>
         private bool Occupied(int2 tile)
         {
+            int wallOwner = WallOwnerSlot[tile.y * Width + tile.x];
             int2 cell = math.clamp(tile / CellSize, 0, new int2(CellsX - 1, CellsY - 1));
             for (int cy = math.max(cell.y - 1, 0); cy <= math.min(cell.y + 1, CellsY - 1); cy++)
             for (int cx = math.max(cell.x - 1, 0); cx <= math.min(cell.x + 1, CellsX - 1); cx++)
@@ -138,7 +143,7 @@ namespace WAR2D.Sim
                 for (int k = CellStart[c]; k < CellStart[c + 1]; k++)
                 {
                     int j = Sorted[k];
-                    if (Health[j] <= 0f) continue;
+                    if (Health[j] <= 0f || Friendly(OwnerSlot[j], wallOwner)) continue;
                     float2 lo = tile, hi = tile + 1;
                     float2 gap = math.max(math.max(lo - Positions[j], Positions[j] - hi), 0f);
                     if (math.length(gap) < Radius[j]) return true;
