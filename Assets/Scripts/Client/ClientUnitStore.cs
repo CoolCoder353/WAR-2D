@@ -31,12 +31,25 @@ namespace WAR2D.Client
         // Drawing only: the jump each correction or new route made, faded out over BlendSeconds.
         private NativeArray<float2> blend;
         private NativeList<float2> drawn;
+        // Drawing only: own orders shown before the server answers them, by index.
+        private NativeArray<OrderLead> leads;
+        private int leadCount;
         private float lastPredictTime = -1f;
 
         /// <summary>How long a correction's jump takes to fade out of the drawn position.</summary>
         public const float BlendSeconds = 0.1f;
         /// <summary>Jumps longer than this (tiles) are drawn as they are: the unit really was somewhere else.</summary>
         public const float MaxBlendTiles = 2f;
+        /// <summary>A long jump fades no faster than this share of the unit's speed, so a moving unit never draws backward.</summary>
+        public const float CatchUpShare = 0.5f;
+        /// <summary>The slowest a jump may fade, however slow the unit (its time constant in seconds), so jumps can't pile up.</summary>
+        public const float CatchUpSeconds = 0.5f;
+        /// <summary>The share of its speed a unit is drawn at while its order waits for the server. Below full speed, so it has less to give back.</summary>
+        public const float LeadShare = 0.6f;
+        /// <summary>The farthest an order is drawn ahead of the server's answer (tiles).</summary>
+        public const float MaxLeadTiles = 1.5f;
+        /// <summary>How long a shown order waits for the server. With no answer (it refused) the unit glides back to where the server has it.</summary>
+        public const float LeadSeconds = 1f;
 
         /// <summary>
         /// The client's clock, which the drawn-position blend measures jumps at. Prediction itself never
@@ -44,6 +57,9 @@ namespace WAR2D.Client
         /// Zero turns the blend off.
         /// </summary>
         public float Now { get; set; }
+
+        /// <summary>Whether a shown order may draw a unit at a point (open floor); null allows every point.</summary>
+        public Func<float2, bool> LeadOpen { get; set; }
 
         // Decode scratch, reused.
         private readonly List<EnterUnit> enters = new List<EnterUnit>();
@@ -81,6 +97,7 @@ namespace WAR2D.Client
             predicted = new NativeList<float2>(1024, allocator);
             blend = new NativeArray<float2>(idCapacity, allocator);
             drawn = new NativeList<float2>(1024, allocator);
+            leads = new NativeArray<OrderLead>(idCapacity, allocator);
         }
 
         /// <summary>Units known.</summary>
@@ -191,6 +208,7 @@ namespace WAR2D.Client
                         MovementPrediction.StartRoute(ref s, arena[routeStart[u.Index]], tick * dt);
                         states[u.Index] = s;
                         Blend(u.Index, before);
+                        EndLead(u.Index, Now);
                     }
                     break;
                 }
@@ -206,6 +224,7 @@ namespace WAR2D.Client
                         MovementPrediction.ApplyCorrection(ref s, arena.AsArray(), routeStart[c.Index], routeCount[c.Index], tick * dt, c, scale);
                         states[c.Index] = s;
                         Blend(c.Index, before);
+                        if (c.Speed == 0 && leads[c.Index].Kind == OrderLead.Halted) EndLead(c.Index, Now);
                     }
                     break;
                 }
@@ -242,6 +261,7 @@ namespace WAR2D.Client
             int index = NetIdAllocator.IndexOf(u.Id);
             if (index >= states.Length) throw new InvalidDataException("unit index beyond the client's capacity");
             blend[index] = float2.zero;
+            ClearLead(index);
             bool appeared = !IsKnown(index);
             if (appeared)
             {
@@ -284,6 +304,65 @@ namespace WAR2D.Client
             routeCount[u.Index] = 0;
             states[u.Index] = default;
             blend[u.Index] = float2.zero;
+            ClearLead(u.Index);
+        }
+
+        /// <summary>
+        /// Draws a known unit setting off for <paramref name="goal"/> at once, until it is within <paramref name="stopTiles"/> of it, instead of
+        /// after the order's round trip to the server. Drawing only: <see cref="Predicted"/> stays bit-identical to the server's copy, the
+        /// server's route ends this, and the unit glides onto it.
+        /// </summary>
+        public void ShowMove(int index, float2 goal, float stopTiles) => StartLead(index, OrderLead.Going, goal, stopTiles);
+
+        /// <summary>Draws a known unit stopped at once, until the server's correction says it has stopped. Drawing only.</summary>
+        public void ShowHalt(int index) => StartLead(index, OrderLead.Halted, default, 0f);
+
+        private void StartLead(int index, byte kind, float2 goal, float stopTiles)
+        {
+            if (!IsKnown(index)) return;
+            float now = math.max(0f, lastPredictTime);
+            bool running = leads[index].Kind != 0;
+            float2 at = running ? leads[index].At : PredictOne(index, now) + blend[index];
+            leads[index] = new OrderLead { At = at, Goal = goal, StopTiles = stopTiles, Left = MaxLeadTiles, Until = now + LeadSeconds, Kind = kind };
+            blend[index] = float2.zero;
+            if (!running) leadCount++;
+        }
+
+        /// <summary>Ends a shown order: the unit glides from where it is drawn onto its prediction.</summary>
+        private void EndLead(int index, float now)
+        {
+            if (leads[index].Kind == 0) return;
+            float2 offset = leads[index].At - PredictOne(index, now);
+            blend[index] = math.lengthsq(offset) > MaxBlendTiles * MaxBlendTiles ? float2.zero : offset;
+            ClearLead(index);
+        }
+
+        private void ClearLead(int index)
+        {
+            if (leads[index].Kind != 0) leadCount--;
+            leads[index] = default;
+        }
+
+        private void AdvanceLeads(float now, float elapsed)
+        {
+            if (leadCount == 0) return;
+            for (int i = 0; i < known.Length; i++)
+            {
+                int index = known[i];
+                OrderLead lead = leads[index];
+                if (lead.Kind == 0) continue;
+                if (now >= lead.Until) { EndLead(index, now); continue; }
+                if (lead.Kind != OrderLead.Going) continue;
+                float2 toGoal = lead.Goal - lead.At;
+                float distance = math.length(toGoal);
+                float step = math.min(states[index].FullSpeed * LeadShare * elapsed, math.min(lead.Left, distance - lead.StopTiles));
+                if (step <= 0f) continue;
+                float2 next = lead.At + toGoal / distance * step;
+                if (LeadOpen != null && !LeadOpen(next)) continue;
+                lead.At = next;
+                lead.Left -= step;
+                leads[index] = lead;
+            }
         }
 
         private void SetRoute(int index, int first, int count)
@@ -317,6 +396,7 @@ namespace WAR2D.Client
             drawn.ResizeUninitialized(known.Length);
             float elapsed = lastPredictTime < 0f ? 0f : math.max(0f, now - lastPredictTime);
             lastPredictTime = now;
+            AdvanceLeads(now, elapsed);
             new PredictJob
             {
                 Known = known.AsArray(),
@@ -328,6 +408,8 @@ namespace WAR2D.Client
                 Positions = predicted.AsArray(),
                 Blend = blend,
                 BlendKeep = math.exp(-elapsed / BlendSeconds),
+                Elapsed = elapsed,
+                Leads = leads,
                 Drawn = drawn.AsArray(),
             }.Schedule(known.Length, 256).Complete();
         }
@@ -337,7 +419,18 @@ namespace WAR2D.Client
             if (disposed) return;
             disposed = true;
             states.Dispose(); routeStart.Dispose(); routeCount.Dispose(); owner.Dispose(); type.Dispose(); health.Dispose();
-            arena.Dispose(); known.Dispose(); knownSlot.Dispose(); predicted.Dispose(); blend.Dispose(); drawn.Dispose();
+            arena.Dispose(); known.Dispose(); knownSlot.Dispose(); predicted.Dispose(); blend.Dispose(); drawn.Dispose(); leads.Dispose();
+        }
+
+        /// <summary>An own order drawn before the server answers it.</summary>
+        private struct OrderLead
+        {
+            public const byte Going = 1, Halted = 2;
+            public float2 At, Goal;
+            /// <summary>How near the goal it stops, how many tiles it may still go ahead, and when it gives up waiting.</summary>
+            public float StopTiles, Left, Until;
+            /// <summary>0 when no order is shown.</summary>
+            public byte Kind;
         }
 
         [BurstCompile(FloatMode = FloatMode.Deterministic)]
@@ -350,7 +443,8 @@ namespace WAR2D.Client
             public float Now;
             public NativeArray<float2> Positions;
             [NativeDisableParallelForRestriction] public NativeArray<float2> Blend; // by index; each index is in one slot
-            public float BlendKeep;
+            public float BlendKeep, Elapsed;
+            [ReadOnly] public NativeArray<OrderLead> Leads;
             public NativeArray<float2> Drawn;
 
             public void Execute(int i)
@@ -358,11 +452,17 @@ namespace WAR2D.Client
                 int index = Known[i];
                 PredictState s = States[index];
                 float2 p = MovementPrediction.Predict(ref s, Waypoints, RouteStart[index], RouteCount[index], Now);
-                float2 b = Blend[index] * BlendKeep;
-                if (math.lengthsq(b) < 1e-8f) b = float2.zero;
+                float2 b = Blend[index];
+                float length = math.length(b);
+                if (length > 0f)
+                {
+                    float fade = length * (1f - BlendKeep), walk = math.max(s.FullSpeed * CatchUpShare, length / CatchUpSeconds) * Elapsed;
+                    b *= (length - math.min(fade, walk)) / length;
+                    if (math.lengthsq(b) < 1e-8f) b = float2.zero;
+                }
                 Blend[index] = b;
                 Positions[i] = p;
-                Drawn[i] = p + b;
+                Drawn[i] = Leads[index].Kind != 0 ? Leads[index].At : p + b;
             }
         }
     }

@@ -26,8 +26,8 @@ namespace WAR2D.Client
 
     /// <summary>
     /// The client's units: replication batches in, predicted positions out, drawn with GPU instancing.
-    /// Its clock (<see cref="ServerTime"/>) runs on real time and is nudged toward the newest batch's tick,
-    /// never backward. Created by <c>UnitCommander</c> on clients.
+    /// Its clock (<see cref="ServerTime"/>) runs on real time and drifts toward the batches' average, never
+    /// backward. Created by <c>UnitCommander</c> on clients.
     /// </summary>
     public sealed class ClientWorld : MonoBehaviour
     {
@@ -39,7 +39,14 @@ namespace WAR2D.Client
         private float dt;
         private int lastBatchTick = -1;
         private float serverTime;
-        private float sinceBatch; // seconds since the newest batch arrived: the server kept ticking meanwhile
+        private float clockEstimate; // the server's clock going by the batches, their late and early arrivals averaged out
+
+        /// <summary>How much of each batch's arrival time moves the estimate.</summary>
+        private const float ClockBatchShare = 0.1f;
+        /// <summary>The share of real time the clock may run fast or slow to reach the estimate: too little for any eye to catch.</summary>
+        private const float ClockDrift = 0.1f;
+        /// <summary>Further off than this (seconds) the clock is simply wrong, and closes the gap quickly.</summary>
+        private const float ClockFarSeconds = 0.25f;
         private NativeArray<float2> lastPosition;
         private NativeArray<float> rotation;
         private NativeArray<uint> frame;
@@ -125,7 +132,7 @@ namespace WAR2D.Client
             GameConfigData config = ConfigLoader.LoadConfig();
             dt = config.Simulation.TickSeconds;
             int capacity = config.Simulation.MaxEntities;
-            store = new ClientUnitStore(capacity, dt);
+            store = new ClientUnitStore(capacity, dt) { LeadOpen = IsOpenFloor };
             store.Attack += (attacker, target) =>
             {
                 attacks.Add((attacker, target));
@@ -205,24 +212,25 @@ namespace WAR2D.Client
             }
             if (batch.Tick > lastBatchTick)
             {
-                if (lastBatchTick < 0) serverTime = batch.Tick * dt;
+                float at = batch.Tick * dt;
+                if (lastBatchTick < 0) serverTime = at;
+                clockEstimate = lastBatchTick < 0 || math.abs(at - clockEstimate) > ClockFarSeconds ? at : clockEstimate + (at - clockEstimate) * ClockBatchShare;
                 lastBatchTick = batch.Tick;
-                sinceBatch = 0f;
             }
         }
 
         /// <summary>
-        /// Advances the clock by <paramref name="deltaSeconds"/>, nudged (at most 10 % a frame, never
-        /// backward) toward the server's estimated time: the newest batch's tick plus the time since it
-        /// arrived. A quiet server sends no batches, but its clock keeps running.
+        /// Advances the clock by <paramref name="deltaSeconds"/>, never backward, drifting toward the server's estimated
+        /// time. One late batch must not stop it: every unit on screen would stall with it. A quiet server sends no
+        /// batches, but its clock keeps running.
         /// </summary>
         public void AdvanceClock(float deltaSeconds)
         {
             if (lastBatchTick < 0) return;
-            sinceBatch += deltaSeconds;
-            float target = lastBatchTick * dt + sinceBatch;
+            clockEstimate += deltaSeconds;
+            float off = clockEstimate - serverTime, drift = ClockDrift * deltaSeconds;
             float next = serverTime + deltaSeconds;
-            next += (target - next) * 0.1f;
+            next += math.abs(off) > ClockFarSeconds ? (clockEstimate - next) * 0.1f : math.clamp(off, -drift, drift);
             serverTime = math.max(serverTime, next);
         }
 
@@ -233,6 +241,30 @@ namespace WAR2D.Client
             store.PredictAll(serverTime);
             FireTracers();
             FireTurrets();
+        }
+
+        /// <summary>
+        /// Shows an own order on screen at once, as a racing game moves your kart before the server hears of it. Drawing only: the order
+        /// still goes to the server, which checks it, and the units glide onto whatever it decides.
+        /// </summary>
+        public void ShowOrder(OrderKind kind, int2 goal, IReadOnlyList<int> ids)
+        {
+            if (kind == OrderKind.Detonate) return;
+            bool halt = kind == OrderKind.Stop || kind == OrderKind.Hold;
+            bool walkAll = kind == OrderKind.Move || kind == OrderKind.AttackMove;
+            for (int i = 0; i < ids.Count; i++)
+            {
+                int index = NetIdAllocator.IndexOf(ids[i]);
+                if (store.IdOf(index) != ids[i]) continue;
+                if (halt) store.ShowHalt(index);
+                else store.ShowMove(index, (float2)goal + 0.5f, walkAll ? 0.5f : ConfigLoader.LoadConfig().GetUnit((UnitType)store.TypeOf(index)).Range);
+            }
+        }
+
+        private static bool IsOpenFloor(float2 p)
+        {
+            WorldStateManager manager = WorldStateManager.Instance;
+            return manager == null || manager.Map == null || manager.Map.Grid.IsWalkable((int2)math.floor(p));
         }
 
         /// <summary>Copies a known unit's route (dev overlay).</summary>
