@@ -132,7 +132,7 @@ public partial class GameCore : NetworkBehaviour
         {
             ServerPlayer player = entry.Value;
             if (!player.ResourcesDirty || entry.Key == null || player.connection == null) continue; // an away player has no connection
-            entry.Key.GetComponent<ClientPlayer>().TargetUpdateResources(player.connection, player.Resources, player.IncomeLastSecond, player.UpkeepOwedLastSecond, player.UnpaidLastSecond);
+            entry.Key.GetComponent<ClientPlayer>().TargetUpdateResources(player.connection, player.Resources, player.IncomeLastSecond, player.UpkeepOwedLastSecond, player.UnpaidLastSecond, player.AtUnitCap);
             player.MarkSynced();
         }
     }

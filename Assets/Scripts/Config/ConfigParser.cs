@@ -93,6 +93,7 @@ namespace Config
                     if (m.CentralRichGemTiles.Length != m.LayoutSizes.Length)
                         errors.Add("Map: <CentralRichGemTiles> must have one entry per <LayoutSizes> entry.");
                     m.RichMinStartDistance = Float(map, "RichMinStartDistance", "Map", errors, min: 0, max: 2);
+                    m.RichStartClearance = Int(map, "RichStartClearance", "Map", errors, min: 0, max: 256);
                     m.EdgeTiles = Int(map, "EdgeTiles", "Map", errors, min: 1, max: 16);
                 }
             }

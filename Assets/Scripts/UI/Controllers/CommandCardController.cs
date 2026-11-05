@@ -28,7 +28,8 @@ namespace WAR2D.UI
         private readonly bool switchClearsQueue;
         private readonly VisualElement card, divider, rows, removal, confirm, production, typesRow;
         private readonly Label title, help, queueLabel, buildLabel, buildHint, digHint, detonateHint, refund, question, cancelKey;
-        private readonly Label info, mixedHint;
+        private readonly Label info, mixedHint, waiting;
+        private readonly int unitCap;
         private readonly VisualElement buildArea;
         private readonly Func<BuildingType, HoverCardContent> buildCard;
         private readonly Func<UnitType, HoverCardContent> unitCard;
@@ -100,8 +101,9 @@ namespace WAR2D.UI
         public CommandCardController(VisualElement root, SelectionModel selection, HudModel hud, IReadOnlyDictionary<BuildingType, float> buildCosts,
             IReadOnlyDictionary<UnitType, float> unitCosts, float wallCost, float demolishShare, Func<UnitType, BuildingType, float> buildSeconds,
             Func<UnitType, string> roleOf, bool switchClearsQueue, Func<BuildingType, HoverCardContent> buildCard = null,
-            Func<UnitType, HoverCardContent> unitCard = null, WAR2D.UI.HoverCard hover = null, float repairCostPerHealth = 0f)
+            Func<UnitType, HoverCardContent> unitCard = null, WAR2D.UI.HoverCard hover = null, float repairCostPerHealth = 0f, int unitCap = 0)
         {
+            this.unitCap = unitCap;
             this.buildCard = buildCard;
             this.unitCard = unitCard;
             this.hover = hover;
@@ -135,6 +137,7 @@ namespace WAR2D.UI
             typesRow = root.Q("production-types");
             info = root.Q<Label>("production-info");
             mixedHint = root.Q<Label>("production-mixed");
+            waiting = root.Q<Label>("production-waiting");
             detonateHint = root.Q<Label>("detonate-hint");
             detonate = root.Q<Button>("cmd-detonate");
             buildArea = root.Q("builds");
@@ -491,6 +494,13 @@ namespace WAR2D.UI
             Display(rows, !mixed);
             Display(help, !mixed);
             Display(mixedHint, mixed);
+            // Playtest 2026-11-05 (Figma L4): a producer at the unit cap keeps its queue but makes nothing; say why.
+            bool capped = !mixed && hud.AtUnitCap && selection.SpawnerQueue > 0;
+            if (waiting != null)
+            {
+                waiting.text = capped ? $"Waiting: unit cap ({unitCap:N0} units)" : "";
+                waiting.EnableInClassList("hidden", !capped);
+            }
             if (mixed) return;
             if (rowsFor != selection.BuildingType) BuildProduction(produced);
             UnitType chosen = Chosen();

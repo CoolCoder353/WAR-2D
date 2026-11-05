@@ -471,8 +471,21 @@ namespace WAR2D.Sim
                 context.Waypoints.Clear(id);
                 context.DigAreas.Join(id, area);
                 if (!StartAreaDig(data, context, slot)) AddPending(data, One(slot), new PendingOrder { Slot = -1, Stance = Stances.Idle, WorkKind = WorkKinds.None });
+                else if (context.DigAreas.IsWaiting(id)) digWaiters.Add(slot);
+            }
+            // Diggers past the rock face wait for a tile; they stand by at the claimed tile nearest the first of them, in one
+            // order (playtest 2026-11-05: in a big group they used to drop out of the area and idle wherever they were).
+            if (digWaiters.Count > 0)
+            {
+                int first = digWaiters[0];
+                if (context.DigAreas.TryNearestClaim(data.IdOf[first], data.Positions[first], out int2 claim) && TryApproach(context, claim, data.Positions[first], out int2 stand))
+                    Issue(data, context, digWaiters, data.SizeClass[first], stand, Stances.Move, SystemAPI.GetSingleton<SimClock>().Tick, command.OwnerId);
+                else AddPending(data, digWaiters, new PendingOrder { Slot = -1, Stance = Stances.Idle, WorkKind = WorkKinds.None });
+                digWaiters.Clear();
             }
         }
+
+        private readonly List<int> digWaiters = new List<int>();
 
         /// <summary>
         /// Gives a dig-area member its next tile as a Dig job, with a move to the floor tile beside it nearest the
@@ -484,11 +497,30 @@ namespace WAR2D.Sim
             int id = data.IdOf[slot], owner = data.OwnerId[slot];
             if (context.DigAreas.AreaOf(id) == 0) return false;
             float2 position = data.Positions[slot];
-            if (!context.DigAreas.TryNext(id, position, t => IsAreaDiggable(data, context, owner, t), (_, t) => TryApproach(context, t, position, out _), out int2 tile)) return false;
-            TryApproach(context, tile, position, out int2 approach);
             int tick = SystemAPI.GetSingleton<SimClock>().Tick;
+            if (!context.DigAreas.TryNext(id, position, t => IsAreaDiggable(data, context, owner, t), (_, t) => TryApproach(context, t, position, out _), tick, out int2 tile, out bool wait))
+                return wait; // a waiting member stays in its area; RetryWaitingDiggers starts it once a tile frees up
+            TryApproach(context, tile, position, out int2 approach);
             IssueWork(data, context, One(slot), data.SizeClass[slot], approach, tick, owner, context.Map.Grid.Index(tile), WorkKinds.Dig);
             return true;
+        }
+
+        /// <summary>Ticks between retries of the dig-area members waiting for a free tile.</summary>
+        private const int DigWaitRetryTicks = 10;
+
+        /// <summary>Every <see cref="DigWaitRetryTicks"/> ticks, gives each waiting dig-area member a tile if one is free now.</summary>
+        private void RetryWaitingDiggers(SimData data, SimContext context, int unitCount, int tick)
+        {
+            if (context.DigAreas.WaitingCount == 0 || tick % DigWaitRetryTicks != 0) return;
+            foreach (int id in context.DigAreas.Waiting())
+            {
+                int slot = data.SlotOf(id, unitCount);
+                if (slot < 0 || data.Health[slot] <= 0f) { context.DigAreas.Leave(id); continue; }
+                if (StartAreaDig(data, context, slot) || !context.Waypoints.TryPop(id, out int2 goal, out byte stance, out byte work)) continue;
+                // The area is done or the wait ran out: on to the next queued order, as when a job finishes.
+                if (work != WorkKinds.None) StartQueuedWork(data, context, slot, goal, work, tick);
+                else Issue(data, context, One(slot), data.SizeClass[slot], goal, stance, tick, data.OwnerId[slot]);
+            }
         }
 
         private static readonly int2[] Sides = { new int2(1, 0), new int2(-1, 0), new int2(0, 1), new int2(0, -1) };

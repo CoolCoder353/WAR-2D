@@ -87,6 +87,9 @@ namespace WAR2D.UI
         /// <summary>Every player in match order.</summary>
         public IReadOnlyList<PlayerRow> Players => players;
 
+        /// <summary>True when the server refused the local player's last spawn at the unit cap: their producers wait (playtest 2026-11-05).</summary>
+        public bool AtUnitCap { get; private set; }
+
         /// <summary>Raised when the local player's resources, income or upkeep changed.</summary>
         public event Action ResourcesChanged;
 
@@ -94,8 +97,13 @@ namespace WAR2D.UI
         public event Action PlayersChanged;
 
         /// <summary>Sets the local player's own numbers.</summary>
-        public void SetResources(float resources, float incomePerSecond, float upkeepPerSecond, bool unpaid = false)
+        public void SetResources(float resources, float incomePerSecond, float upkeepPerSecond, bool unpaid = false, bool atUnitCap = false)
         {
+            if (atUnitCap != AtUnitCap)
+            {
+                AtUnitCap = atUnitCap;
+                ResourcesChanged?.Invoke();
+            }
             Economy.Feed(resources, incomePerSecond, upkeepPerSecond, UnityEngine.Time.unscaledTime, unpaid);
             if (WAR2D.Client.MinimapCombat.Current != null) WAR2D.Client.MinimapCombat.Current.OwnDecaying = Economy.State == EconomyState.Decaying;
             if (resources == Resources && incomePerSecond == IncomePerSecond && upkeepPerSecond == UpkeepPerSecond) return;
@@ -159,7 +167,7 @@ namespace WAR2D.UI
         {
             ClientPlayer local = NetworkClient.localPlayer != null ? NetworkClient.localPlayer.GetComponent<ClientPlayer>() : null;
             if (local == null) return;
-            SetResources(local.currentResources, local.incomePerSecond, local.upkeepPerSecond, local.upkeepUnpaid);
+            SetResources(local.currentResources, local.incomePerSecond, local.upkeepPerSecond, local.upkeepUnpaid, local.atUnitCap);
         }
 
         /// <summary>Reads the player list from <c>GameCore.PlayerOrder</c>, the starting teams and each player's SyncVars.</summary>

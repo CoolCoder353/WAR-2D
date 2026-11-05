@@ -299,7 +299,8 @@ public class AiManagerTests
         string why = $"mode {army.Mode}, group {army.Group.Count}, centre {centre}, seen {world.View.OtherUnits.Count}, own {world.View.OwnUnits.Count}, attacks {army.Attacks}, target {army.Target}";
         Assert.That(army.Retreats, Is.EqualTo(1), "outnumbered: it pulls back; " + why);
         Assert.That(army.Mode, Is.Not.EqualTo(ArmyMode.Attack), "and stops attacking");
-        int2 gather = world.Brain.Context.State.GatherPoint;
+        int2 gather = world.Brain.Context.State.GatherPoint; // where the retreat was sent (it can move later)
+        world.Run(1.0); // the retreat Move is proposed; the action budget spends it on a following think
         Assert.That(world.Actions.Skip(before).Any(a => a.Kind == AiActionKind.Order && a.Order == OrderKind.Move && a.Tile.Equals(gather)), Is.True, "a Move back to its gathering point");
     }
 }
