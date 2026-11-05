@@ -13,7 +13,8 @@ public class ManualTests
     public void TheCompiledWordsAreTheApprovedFile()
     {
         string approved = File.ReadAllText(Path.Combine(UnityEngine.Application.dataPath, "..", "tools", "manual-text.json")).Replace("\r", "");
-        Assert.AreEqual(approved, ManualText.Raw, "run node tools/manual-mock.js --write-text");
+        // The compiled literal has the line endings of its checkout (CRLF on Windows), and they are not words.
+        Assert.AreEqual(approved, ManualText.Raw.Replace("\r", ""), "run node tools/manual-mock.js --write-text");
     }
 
     [Test]

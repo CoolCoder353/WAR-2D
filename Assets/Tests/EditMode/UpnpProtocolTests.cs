@@ -39,7 +39,7 @@ public class UpnpProtocolTests
     [Test]
     public void UsesUrlBaseWhenGiven()
     {
-        string xml = Description.Replace("<device>\n    <deviceType>", "<URLBase>http://10.0.0.1:49000/</URLBase><device>\n    <deviceType>");
+        string xml = Description.Replace("device-1-0\">", "device-1-0\"><URLBase>http://10.0.0.1:49000/</URLBase>");
         StringAssert.Contains("URLBase", xml);
         Assert.IsTrue(UpnpProtocol.TryFindWanService(xml, new Uri("http://192.168.1.1:5000/rootDesc.xml"), out WanService s));
         Assert.AreEqual(new Uri("http://10.0.0.1:49000/upnp/control/WANIPConn1"), s.ControlUrl);

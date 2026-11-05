@@ -23,6 +23,7 @@ public class LobbyTests
     public IEnumerator TearDown()
     {
         DevApi.AllowForTests = false;
+        WAR2D.Client.MenuBattle.AllowInBatchModeForTests = false;
         yield return PlayModeMatch.TearDown();
     }
 
@@ -174,6 +175,7 @@ public class LobbyTests
     public IEnumerator MenuBattleRunsAndIsGoneOnceHostIsPressed()
     {
         WAR2D.Client.MenuBattle.Enabled = true;
+        WAR2D.Client.MenuBattle.AllowInBatchModeForTests = true; // the test runner may run headless; a real batch-mode player stays without the battle
         yield return PlayModeMatch.WaitUntil(() => WAR2D.Client.MenuBattle.Instance != null && WAR2D.Client.MenuBattle.Instance.Running, 10f);
         yield return PlayModeMatch.WaitUntil(() => WAR2D.Client.ClientWorld.Instance != null && WAR2D.Client.ClientWorld.Instance.KnownCount > 100, 20f);
 
