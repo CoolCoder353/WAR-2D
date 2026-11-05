@@ -355,13 +355,15 @@ public sealed class PerfMatch : MonoBehaviour
         }
     }
 
-    private readonly long[] typeBytes = new long[8], typeUnits = new long[8];
+    private readonly long[] typeBytes = new long[9], typeUnits = new long[9];
     private readonly List<EnterUnit> scratchEnters = new List<EnterUnit>();
     private readonly List<RouteUnit> scratchRoutes = new List<RouteUnit>();
     private readonly List<CorrectionUnit> scratchCorrections = new List<CorrectionUnit>();
     private readonly List<HealthUnit> scratchHealth = new List<HealthUnit>();
     private readonly List<LeaveUnit> scratchLeaves = new List<LeaveUnit>();
     private readonly List<AttackEvent> scratchAttacks = new List<AttackEvent>();
+    private readonly List<ShellEvent> scratchShells = new List<ShellEvent>();
+    private readonly List<ShellPoint> scratchShellPoints = new List<ShellPoint>();
     private readonly List<int2> scratchTiles = new List<int2>();
 
     /// <summary>Diagnostics (-perfBreakdown): bytes and units per message type in one bot's stream.</summary>
@@ -383,6 +385,8 @@ public sealed class PerfMatch : MonoBehaviour
                 case MessageType.Health: scratchHealth.Clear(); Messages.DecodeHealth(reader, scratchHealth); units = scratchHealth.Count; break;
                 case MessageType.Leave: scratchLeaves.Clear(); Messages.DecodeLeave(reader, scratchLeaves); units = scratchLeaves.Count; break;
                 case MessageType.Attack: scratchAttacks.Clear(); Messages.DecodeAttack(reader, scratchAttacks); units = scratchAttacks.Count; break;
+                case MessageType.Shell: scratchShells.Clear(); Messages.DecodeShell(reader, scratchShells); units = scratchShells.Count; break;
+                case MessageType.ShellLanded: scratchShellPoints.Clear(); Messages.DecodeShellLanded(reader, scratchShellPoints); units = scratchShellPoints.Count; break;
                 default: return;
             }
             typeBytes[(int)type] += reader.Position - before;

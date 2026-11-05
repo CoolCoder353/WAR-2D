@@ -75,7 +75,8 @@ namespace WAR2D.UI
     ""Artillery"": {
       ""role"": ""Long-range splash; can't fire up close."",
       ""body"": [
-        ""Shells from {Unit/Artillery/Range} tiles, with a splash of {Unit/Artillery/Splash} tiles, and does double damage to buildings. It out-ranges a [[Gun turret]] easily and wins against slow or short-sighted units it can see coming."",
+        ""Shells from {Unit/Artillery/Range} tiles and does double damage to buildings. It out-ranges a [[Gun turret]] easily and wins against slow or short-sighted units it can see coming."",
+        ""A shell flies at {Unit/Artillery/ShellSpeed} tiles a second and does its damage where it lands. It aims at where its target is heading, so a unit that drives straight is hit and one that turns or stops can dodge it. Its blast reaches {Unit/Artillery/Splash} tiles on [[Heavy|Heavies]], buildings and walls, {Unit/Artillery/SplashMedium} on most units such as [[Tank]]s, and {Unit/Artillery/SplashFast} on [[Scout]]s and [[Suicide bomber]]s: full damage at the centre, half at the edge."",
         ""It sees as far as it shoots unless rock is in the way, and can't fire at anything closer than {Unit/Artillery/MinRange}. It needs something to keep attackers off it.""
       ],
       ""claims"": {

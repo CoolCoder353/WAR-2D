@@ -84,6 +84,7 @@ namespace WAR2D.Sim
                 CellsY = data.CellsY,
                 CellSize = data.CellSize,
                 Velocity = data.Velocity,
+                DriveVelocity = data.DriveVelocity,
             }.Schedule(count, 256, state.Dependency);
 
             state.Dependency = new IntegrateJob
@@ -171,6 +172,8 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<int> Sorted;
         public int CellsX, CellsY, CellSize;
         public NativeArray<float2> Velocity;
+        // Each index writes its own unit's id index.
+        [NativeDisableParallelForRestriction] public NativeArray<float2> DriveVelocity;
 
         public void Execute(int i)
         {
@@ -179,6 +182,7 @@ namespace WAR2D.Sim
             {
                 // Holding units stand still: no flow and no separation push of their own.
                 Velocity[i] = float2.zero;
+                DriveVelocity[NetIdAllocator.IndexOf(IdOf[i])] = float2.zero;
                 return;
             }
             float2 position = Positions[i];
@@ -261,6 +265,7 @@ namespace WAR2D.Sim
                 float2 at = BlastAims[aimKey].Id == IdOf[i] ? BlastAims[aimKey].Point : kind == TargetKinds.Unit ? Positions[target] : kind == TargetKinds.Wall ? new float2(target % Width + 0.5f, target / Width + 0.5f) : BuildingPositions[target];
                 velocity = speed * math.normalizesafe(at - position);
             }
+            DriveVelocity[NetIdAllocator.IndexOf(IdOf[i])] = velocity;
 
             if (SeparationInterval <= 1 || (i + Tick) % SeparationInterval == 0)
                 velocity += NeighbourPush(i, position, Radius[i]) / Dt;

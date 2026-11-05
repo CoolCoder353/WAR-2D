@@ -53,6 +53,8 @@ namespace WAR2D.Client
         private readonly List<LeaveUnit> leaves = new List<LeaveUnit>();
         private readonly List<int2> waypoints = new List<int2>();
         private readonly List<AttackEvent> attacks = new List<AttackEvent>();
+        private readonly List<ShellEvent> shells = new List<ShellEvent>();
+        private readonly List<ShellPoint> shellPoints = new List<ShellPoint>();
         private bool disposed;
 
         /// <summary>Raised for each attack event: (attacker id index, target id).</summary>
@@ -60,6 +62,10 @@ namespace WAR2D.Client
 
         /// <summary>A building attacked (v0.13): (building id, target id or 0). Raised for every one the server sent, which only a client that may know the building gets.</summary>
         public event Action<int, int> BuildingAttack;
+        /// <summary>A shell was fired: (gun's id index, where it will come down, seconds of flight).</summary>
+        public event Action<int, float2, float> ShellFired;
+        /// <summary>A shell came down here, hit or miss.</summary>
+        public event Action<float2> ShellLanded;
         /// <summary>Raised for each unit that left because it died: (index, last predicted position).</summary>
         public event Action<int, float2> Died;
         /// <summary>Raised when a unit the client didn't know becomes known: (index, where it is). Own units are always known, so for them it means a new unit.</summary>
@@ -223,6 +229,17 @@ namespace WAR2D.Client
                         if (a.AttackerKind == AttackerKinds.Building) BuildingAttack?.Invoke(a.AttackerId, a.TargetId);
                         else if (IsKnown(a.AttackerIndex)) Attack?.Invoke(a.AttackerIndex, a.TargetId);
                     }
+                    break;
+                case MessageType.Shell:
+                    shells.Clear();
+                    Messages.DecodeShell(reader, shells);
+                    foreach (ShellEvent s in shells)
+                        if (IsKnown(s.AttackerIndex)) ShellFired?.Invoke(s.AttackerIndex, new float2(Quantise.Decode(s.X), Quantise.Decode(s.Y)), s.FlightTicks * dt);
+                    break;
+                case MessageType.ShellLanded:
+                    shellPoints.Clear();
+                    Messages.DecodeShellLanded(reader, shellPoints);
+                    foreach (ShellPoint p in shellPoints) ShellLanded?.Invoke(new float2(Quantise.Decode(p.X), Quantise.Decode(p.Y)));
                     break;
                 default:
                     throw new InvalidDataException("unknown replication message");

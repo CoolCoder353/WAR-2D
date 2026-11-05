@@ -49,6 +49,50 @@ public class MatchRecorderTests
     }
 
     [Test]
+    public void ShellsGoToTheirOwnChannelsAndNeverIntoTheUnits()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(96), c => c.Simulation.TargetSearchSliceTicks = 1);
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        string path = Path.Combine(dir, "shells" + ReplayFile.Extension);
+        var recorder = new MatchRecorder(replication, sim.Context, new ReplayHeader { MapSize = 96, TickSeconds = sim.Config.Simulation.TickSeconds, GameVersion = "t" }, path, 64 << 20);
+        sim.Context.Settled += (data, tick, count) => recorder.Shells(data, tick);
+        float2 landing = new float2(26f, 30f);
+        sim.Spawn(SimHarness.OwnerA, new float2(10f, 30f), UnitType.Artillery);
+        sim.Spawn(SimHarness.OwnerB, landing);
+        for (int t = 0; t < 40; t++) { sim.Tick(); recorder.OnTick(sim.Context.Clock.Tick); }
+        recorder.End(sim.Context.Clock.Tick, "{}");
+
+        int flights = 0, landings = 0;
+        var store = new ClientUnitStore(sim.Config.Simulation.MaxEntities, sim.Config.Simulation.TickSeconds);
+        store.ShellFired += (gun, at, seconds) => Assert.Fail("a recording has no shell messages");
+        store.ShellLanded += at => Assert.Fail("a recording has no shell messages");
+        using (FileStream f = File.OpenRead(recorder.FinishedPath))
+        {
+            Assert.IsTrue(ReplayReader.TryOpen(f, out ReplayReader r, out string e), e);
+            using (r)
+                while (r.TryNext(out int tick, out ReplayChannel ch, out ArraySegment<byte> p))
+                {
+                    if (ch == ReplayChannel.UnitsReliable || ch == ReplayChannel.UnitsUnreliable) Assert.IsTrue(store.Apply(p, 0));
+                    if (ch == ReplayChannel.ShellFlights)
+                    {
+                        flights++;
+                        Assert.AreEqual(20, p.Count);
+                        Assert.AreEqual(landing.x, BitConverter.ToSingle(p.Array, p.Offset + 8));
+                        Assert.AreEqual(16f / 14f, BitConverter.ToSingle(p.Array, p.Offset + 16), 0.06f);
+                    }
+                    if (ch == ReplayChannel.ShellLandings)
+                    {
+                        landings++;
+                        Assert.AreEqual(landing.x, BitConverter.ToSingle(p.Array, p.Offset));
+                    }
+                }
+        }
+        Assert.AreEqual(1, flights);
+        Assert.AreEqual(1, landings);
+        store.Dispose(); recorder.Dispose();
+    }
+
+    [Test]
     public void StopsAtTheSizeCapAndKeepsAPlayableFile()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(96));

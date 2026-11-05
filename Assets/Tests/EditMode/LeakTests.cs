@@ -36,6 +36,8 @@ public class LeakTests
         public readonly List<int> AttackTargets = new List<int>();
         /// <summary>The targets unit attack events named (v0.16: negative is a wall tile).</summary>
         public readonly List<int> UnitAttackTargets = new List<int>();
+        /// <summary>Shells this client was told were fired, and told came down.</summary>
+        public int ShellsFired, ShellsLanded;
         /// <summary>Other players' unit ids this client was ever told about.</summary>
         public readonly HashSet<int> OthersKnown = new HashSet<int>();
         private readonly SimContext sim;
@@ -48,6 +50,8 @@ public class LeakTests
             Terrain.Init(sim.Map.Grid); // before any tick: the map is still as generated
             Units.BuildingAttack += OnBuildingAttack;
             Units.Attack += (attacker, target) => UnitAttackTargets.Add(target);
+            Units.ShellFired += OnShellFired;
+            Units.ShellLanded += OnShellLanded;
             replication.AddVirtualClient(owner, Receive);
         }
 
@@ -68,6 +72,36 @@ public class LeakTests
             bool known = unit >= 0 ? data.OwnerId[unit] == Owner || data.Sees(grid, data.Positions[unit])
                 : tb >= 0 && (data.BuildingOwnerId[tb] == Owner || data.Sees(grid, data.BuildingPositions[tb]));
             if (!known) Failures.Add($"building attack names target {target} unknown to {Owner}");
+        }
+
+        /// <summary>A shell's firing may only come from a gun this client knows, and only name a landing point its grid sees (its own gun's excepted).</summary>
+        private void OnShellFired(int gun, float2 landing, float seconds)
+        {
+            ShellsFired++;
+            SimData data = sim.Data;
+            int grid = sim.VisionOf(Owner);
+            int slot = data.SlotOf(Units.IdOf(gun), sim.Clock.UnitCount);
+            if (slot < 0) { Failures.Add($"shell from gun {gun}, which isn't live"); return; }
+            if (data.OwnerId[slot] == Owner) return;
+            if (!data.Sees(grid, data.Positions[slot])) Failures.Add($"shell from gun {gun} sent to {Owner} while the gun is unseen");
+            if (!SeesAbout(data, grid, landing)) Failures.Add($"shell landing {landing} sent to {Owner} while unseen");
+        }
+
+        /// <summary>A landing may only reach the shell's owner or a client whose grid sees the point.</summary>
+        private void OnShellLanded(float2 point)
+        {
+            ShellsLanded++;
+            SimData data = sim.Data;
+            foreach (ShellLanding landing in data.ShellLandings)
+                if (landing.OwnerId == Owner && math.distance(landing.Point, point) < 0.1f) return;
+            if (!SeesAbout(data, sim.VisionOf(Owner), point)) Failures.Add($"shell landing {point} sent to {Owner} while unseen");
+        }
+
+        /// <summary>True when the grid sees a quantised point, whichever side of a fog cell's edge the real point was on.</summary>
+        private static bool SeesAbout(SimData data, int grid, float2 p)
+        {
+            const float Step = 1f / WAR2D.Net.Replication.Quantise.Scale;
+            return data.Sees(grid, p) || data.Sees(grid, p + Step) || data.Sees(grid, p - Step) || data.Sees(grid, p + new float2(Step, -Step)) || data.Sees(grid, p + new float2(-Step, Step));
         }
 
         private static int BuildingSlot(SimData data, int id)
@@ -938,6 +972,59 @@ public class LeakTests
         foreach (int target in a.UnitAttackTargets) Assert.GreaterOrEqual(target, 0, "no wall tile named from the fog");
         CollectionAssert.IsEmpty(a.Failures);
         a.Dispose();
+    }
+
+    /// <summary>A gun of A shelling C's Tank from outside its sight, with D beside the gun but out of sight of the Tank, and B far away from all of it.</summary>
+    private static Spy[] ShellWatchers(SimHarness sim, ReplicationService replication, out int[] tank)
+    {
+        const int OwnerD = 404;
+        var spies = new[] { new Spy(sim.Context, replication, SimHarness.OwnerA), new Spy(sim.Context, replication, OwnerC), new Spy(sim.Context, replication, OwnerD), new Spy(sim.Context, replication, SimHarness.OwnerB) };
+        foreach (Spy spy in spies) replication.SetVirtualView(spy.Owner, new int2(0, 0), new int2(95, 95));
+        sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 20.5f), UnitType.Artillery);
+        tank = sim.Spawn(OwnerC, new float2(26.5f, 20.5f));
+        sim.Spawn(OwnerD, new float2(6.5f, 20.5f), UnitType.Scout); // sight 12: sees the gun, not the Tank
+        sim.Spawn(SimHarness.OwnerB, new float2(80.5f, 80.5f));
+        foreach ((int from, int to) in new[] { (SimHarness.OwnerA, OwnerD), (OwnerD, SimHarness.OwnerA) })
+            sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.SetAttack, OwnerId = from, TargetOwnerId = to, Flag = false });
+        return spies;
+    }
+
+    [Test]
+    public void AShellReachesOnlyWhoMaySeeItAndALandingNamesNoGun()
+    {
+        using var sim = new SimHarness(Map(), c => c.Simulation.TargetSearchSliceTicks = 1);
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        Spy[] spies = ShellWatchers(sim, replication, out int[] tank);
+        Spy a = spies[0], c = spies[1], d = spies[2], b = spies[3];
+        for (int t = 0; t < 40; t++) sim.Tick();
+        Assert.Less(sim.UnitById(tank[0]).Health, sim.Config.GetUnit(UnitType.Tank).Health, "the shell came down on the Tank");
+        Assert.AreEqual(1, a.ShellsFired, "the gun's owner sees it fired");
+        Assert.AreEqual(1, a.ShellsLanded, "and land");
+        Assert.AreEqual(0, c.ShellsFired, "the gun is in the Tank's owner's fog");
+        Assert.AreEqual(1, c.ShellsLanded, "but it sees the explosion among its own units");
+        Assert.AreEqual(0, d.ShellsFired, "D sees the gun, but its landing would give away the Tank in its fog");
+        Assert.AreEqual(0, d.ShellsLanded);
+        Assert.Greater(d.UnitAttackTargets.Count, 0, "D still sees the gun fire, as for any attack");
+        foreach (int target in d.UnitAttackTargets) Assert.AreEqual(0, target, "naming no target");
+        Assert.AreEqual(0, b.ShellsFired + b.ShellsLanded, "B sees none of it");
+        foreach (Spy spy in spies) { CollectionAssert.IsEmpty(spy.Failures, $"owner {spy.Owner}"); spy.Dispose(); }
+    }
+
+    [Test]
+    public void AShellFollowsTheCameraLikeAnAttackEvent()
+    {
+        using var sim = new SimHarness(Map(), c => c.Simulation.TargetSearchSliceTicks = 1);
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        Spy[] spies = ShellWatchers(sim, replication, out _);
+        Spy a = spies[0], c = spies[1];
+        replication.SetVirtualView(SimHarness.OwnerA, new int2(24, 18), new int2(30, 24)); // the landing, not the gun
+        replication.SetVirtualView(OwnerC, new int2(60, 60), new int2(70, 70)); // neither
+        for (int t = 0; t < 40; t++) sim.Tick();
+        Assert.AreEqual(1, a.ShellsFired, "a gun off screen can shell what the camera shows");
+        Assert.AreEqual(1, a.ShellsLanded);
+        CollectionAssert.IsEmpty(a.UnitAttackTargets, "its attack event still needs the gun on screen");
+        Assert.AreEqual(0, c.ShellsLanded, "nothing for a camera elsewhere");
+        foreach (Spy spy in spies) { CollectionAssert.IsEmpty(spy.Failures, $"owner {spy.Owner}"); spy.Dispose(); }
     }
 
     [Test]

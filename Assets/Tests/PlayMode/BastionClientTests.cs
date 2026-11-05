@@ -87,6 +87,41 @@ public class BastionClientTests
         Assert.That(ClientBuildings.Current.HeadOf(turretId).Facing, Is.EqualTo(0), "facing east, toward the Heavy");
     }
 
+    [UnityTest, Timeout(120000)]
+    public IEnumerator AShellFliesThenLeavesACraterWhenItLands()
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        int2 hq = default;
+        yield return PlayModeMatch.PlaceHQ(a => hq = a);
+        yield return PlayModeMatch.WaitForSight(hq);
+        WorldStateManager wsm = WorldStateManager.Instance;
+        DevApi.AllowForTests = true;
+        GameCore.Instance.DevAddScriptedAi(Bot, 1e9f);
+        PlaceFar(BuildingType.Base, hq, 1e7f); // keeps the bot in the match
+
+        // A gun of ours and, 12 tiles east of it, a Heavy of the bot's that holds its fire.
+        int2 gunAt = default, heavyAt = default;
+        bool found = false;
+        (int2 min, int2 max) = wsm.MapBounds;
+        for (int ring = 13; ring < 30 && !found; ring++)
+        for (int i = 0; i < 8 * ring && !found; i++)
+        {
+            gunAt = Ring(hq, ring, i);
+            heavyAt = gunAt + new int2(12, 0);
+            found = !math.any(gunAt < min) && !math.any(heavyAt > max) && wsm.Map.Grid.IsWalkable(gunAt) && wsm.Map.Grid.IsWalkable(heavyAt) && LineClear(wsm, gunAt, heavyAt);
+        }
+        Assert.That(found, Is.True, "room for the gun and its target");
+        WAR2D.Sim.SimContext.Current.Commands.Enqueue(new WAR2D.Sim.SimCommand { Kind = WAR2D.Sim.SimCommandKind.SetAttack, OwnerId = Bot, TargetOwnerId = PlayModeMatch.LocalOwner, Flag = false });
+        Camera.main.transform.position = new Vector3(gunAt.x + 6f, gunAt.y + 0.5f, Camera.main.transform.position.z);
+        int craters = Decals.ActiveCraters;
+        Assert.That(wsm.DevSpawnUnit(Bot, (float2)heavyAt + 0.5f, _ => { }, UnitType.Heavy), Is.True);
+        Assert.That(wsm.DevSpawnUnit(PlayModeMatch.LocalOwner, (float2)gunAt + 0.5f, _ => { }, UnitType.Artillery), Is.True);
+
+        yield return PlayModeMatch.WaitUntil(() => Effects.ActiveShells > 0, 30f, () => $"gun at {gunAt}, Heavy at {heavyAt}");
+        Assert.That(Decals.ActiveCraters, Is.EqualTo(craters), "no crater until it lands");
+        yield return PlayModeMatch.WaitUntil(() => Decals.ActiveCraters > craters, 5f, () => "the shell never landed");
+    }
+
     /// <summary>True when every tile on the row from <paramref name="a"/> to <paramref name="b"/> is open ground.</summary>
     private static bool LineClear(WorldStateManager wsm, int2 a, int2 b)
     {

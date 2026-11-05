@@ -303,7 +303,8 @@ namespace WAR2D.Net.Replication
             using NativeArray<AttackTarget> targets = AttackTargets(data, attacks);
             using NativeArray<BuildingAttack> buildingAttacks = BuildingAttacks(data);
             PerfSplits.Mark(12, ref t);
-            encoder.Schedule(tick, input, attacks, targets, buildingAttacks, encodeNow, default).Complete();
+            // The recorder's lane gets no shells: MatchRecorder writes them to their own channels.
+            encoder.Schedule(tick, input, attacks, targets, buildingAttacks, encodeNow, default, data.ShellsFired(tick), data.ShellLandings.AsArray()).Complete();
             PerfSplits.Mark(13, ref t);
 
             for (int c = 0; c < MaxClients; c++)

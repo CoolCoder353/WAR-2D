@@ -106,6 +106,23 @@ public class ConfigParserTests
     }
 
     [Test]
+    public void AShellGunNeedsItsRadiiAndAFastListOfUnitTypes()
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(ValidXml.Replace(@"<Unit type=""Tank"">", @"<Unit type=""Tank""><ShellSpeed>14</ShellSpeed>"), errors);
+        Assert.That(errors, Has.Some.Contains("<ShellSpeed>"));
+
+        errors.Clear();
+        ConfigParser.Parse(ValidXml.Replace(@"<Unit type=""Tank"">", @"<Unit type=""Tank""><FastUnits>Scout Spaceship</FastUnits>"), errors);
+        Assert.That(errors, Has.Some.Contains("Spaceship"));
+
+        errors.Clear();
+        GameConfigData c = ConfigParser.Parse(ValidXml.Replace(@"<Unit type=""Tank"">", @"<Unit type=""Tank""><FastUnits>Scout SuicideBomber</FastUnits>"), errors);
+        CollectionAssert.IsEmpty(errors);
+        CollectionAssert.AreEqual(new[] { UnitType.Scout, UnitType.SuicideBomber }, c.GetUnit(UnitType.Tank).FastUnits);
+    }
+
+    [Test]
     public void MissingSiegeSection_IsAnError()
     {
         var errors = new List<string>();

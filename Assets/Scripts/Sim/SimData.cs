@@ -147,6 +147,11 @@ namespace WAR2D.Sim
         public NativeArray<byte> ArmourByType;
         /// <summary>Splash radius in tiles per unit type (0 = none).</summary>
         public NativeArray<float> SplashByType;
+        /// <summary>Tiles a second a unit type's shell flies (0: it hits at once).</summary>
+        public NativeArray<float> ShellSpeedByType;
+        /// <summary>A shell's blast radius per target unit type (by that unit's class), and the largest of them.</summary>
+        public NativeArray<float> ShellBlastByType;
+        public float ShellReach;
         /// <summary>Squared minimum range per unit type: targets closer than this are ignored.</summary>
         public NativeArray<float> MinRangeSqByType;
         /// <summary>Squared radius a type searches for targets in: its range, or its sight for a bomber (which runs at what it finds).</summary>
@@ -313,6 +318,12 @@ namespace WAR2D.Sim
         /// <see cref="AttackEvents"/> so the readers of unit attacks are unchanged; the wire carries the kind.
         /// </summary>
         public NativeList<int2> BuildingAttackEvents;
+        /// <summary>Shells in flight, oldest first. Only the combat stage's jobs write it; the match-end wipe clears it.</summary>
+        public NativeList<Shell> Shells;
+        /// <summary>Shells that came down this tick, hit or miss (cleared after the boundary reports them).</summary>
+        public NativeList<ShellLanding> ShellLandings;
+        /// <summary>By each unit's id index: its velocity last tick without the separation push, which a crowd makes a jitter. What a shell aims by.</summary>
+        public NativeArray<float2> DriveVelocity;
         /// <summary>Units the lifecycle found dead this tick.</summary>
         public NativeQueue<DeathRecord> Deaths;
         /// <summary>Position to move a unit to (out of a new building's footprint), applied by the next gather.</summary>
@@ -531,6 +542,8 @@ namespace WAR2D.Sim
                 OrderTargetKind = new NativeArray<byte>(capacity, allocator),
                 ArmourByType = new NativeArray<byte>(typeCount, allocator),
                 SplashByType = new NativeArray<float>(typeCount, allocator),
+                ShellSpeedByType = new NativeArray<float>(typeCount, allocator),
+                ShellBlastByType = new NativeArray<float>(typeCount, allocator),
                 MinRangeSqByType = new NativeArray<float>(typeCount, allocator),
                 SearchSqByType = new NativeArray<float>(typeCount, allocator),
                 BlastRadiusByType = new NativeArray<float>(typeCount, allocator),
@@ -584,6 +597,9 @@ namespace WAR2D.Sim
                 BuildingSorted = new NativeArray<int>(buildingCapacity, allocator),
                 AttackEvents = new NativeList<int2>(1024, allocator),
                 BuildingAttackEvents = new NativeList<int2>(64, allocator),
+                Shells = new NativeList<Shell>(64, allocator),
+                ShellLandings = new NativeList<ShellLanding>(64, allocator),
+                DriveVelocity = new NativeArray<float2>(sim.MaxEntities, allocator),
                 BuildingTarget = new NativeArray<int>(buildingCapacity, allocator),
                 BuildingTargetKind = new NativeArray<byte>(buildingCapacity, allocator),
                 BuildingCooldown = new NativeArray<float>(buildingCapacity, allocator),
@@ -670,6 +686,15 @@ namespace WAR2D.Sim
                 data.RunningCostByType[t] = pair.Value.RunningCost;
                 data.CostByType[t] = pair.Value.UpfrontCost;
                 data.SightByType[t] = pair.Value.Sight;
+                data.ShellSpeedByType[t] = pair.Value.ShellSpeed;
+                if (pair.Value.ShellSpeed <= 0f) continue;
+                // ponytail: one radius table, as only the Artillery fires shells; a second shell gun with other radii needs one per attacker.
+                foreach (var target in config.Units)
+                {
+                    float blast = pair.Value.ShellBlast(target.Key, target.Value.Armour);
+                    data.ShellBlastByType[(int)target.Key] = blast;
+                    data.ShellReach = math.max(data.ShellReach, blast);
+                }
             }
             return data;
         }
@@ -696,6 +721,7 @@ namespace WAR2D.Sim
             BuildingDamageByType.Dispose(); BuildingRangeSqByType.Dispose(); BuildingIntervalByType.Dispose();
             BuildingTarget.Dispose(); BuildingTargetKind.Dispose(); BuildingCooldown.Dispose(); AttackerBuildings.Dispose();
             JamMask.Dispose(); JamSources.Dispose(); JamShare.Dispose(); JamDirty.Dispose();
+            ShellSpeedByType.Dispose(); ShellBlastByType.Dispose(); Shells.Dispose(); ShellLandings.Dispose(); DriveVelocity.Dispose();
         }
 
         /// <summary>1 per fog cell where any of its tiles blocks sight: only the fast path's "no tile test needed" flag.</summary>
@@ -779,6 +805,14 @@ namespace WAR2D.Sim
             for (int y = 1; y <= FogH; y++)
             for (int x = 1; x <= FogW; x++)
                 OpaqueSum[y * (FogW + 1) + x] = Opaque[(y - 1) * FogW + x - 1] + OpaqueSum[(y - 1) * (FogW + 1) + x] + OpaqueSum[y * (FogW + 1) + x - 1] - OpaqueSum[(y - 1) * (FogW + 1) + x - 1];
+        }
+
+        /// <summary>The shells fired on <paramref name="tick"/>: the list's tail, as what lands keeps its order and the attack job appends.</summary>
+        public NativeArray<Shell> ShellsFired(int tick)
+        {
+            int first = Shells.Length;
+            while (first > 0 && Shells[first - 1].FiredTick == tick) first--;
+            return Shells.AsArray().GetSubArray(first, Shells.Length - first);
         }
 
         /// <summary>The owner id's slot, or <see cref="NoSlot"/>. Scans the slots, so it is Burst-safe.</summary>

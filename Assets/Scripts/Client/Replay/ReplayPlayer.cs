@@ -353,6 +353,17 @@ namespace WAR2D.Client.Replay
                 case ReplayChannel.TeamFog:
                     if (playerView != null) { playerView.Fog(payload, ClientBuildings.Current); fogDirty = true; }
                     break;
+                case ReplayChannel.ShellFlights:
+                    if (quiet) break;
+                    for (int i = 0; i + 20 <= payload.Count; i += 20)
+                    {
+                        var from = new float2(BitConverter.ToSingle(payload.Array, payload.Offset + i), BitConverter.ToSingle(payload.Array, payload.Offset + i + 4));
+                        var to = new float2(BitConverter.ToSingle(payload.Array, payload.Offset + i + 8), BitConverter.ToSingle(payload.Array, payload.Offset + i + 12));
+                        if (Viewer != 0 && !(playerView.Sees(Viewer, from) && playerView.Sees(Viewer, to))) continue; // only what that player's team saw
+                        Effects.ShellFlight(new Vector2(from.x, from.y), new Vector2(to.x, to.y), BitConverter.ToSingle(payload.Array, payload.Offset + i + 16) / Mathf.Max(Speed, 0.01f));
+                    }
+                    break;
+                case ReplayChannel.ShellLandings:
                 case ReplayChannel.Explosions:
                 case ReplayChannel.Blasts:
                 case ReplayChannel.BomberBlasts:
@@ -361,7 +372,7 @@ namespace WAR2D.Client.Replay
                     {
                         var p = new Vector2(BitConverter.ToSingle(payload.Array, payload.Offset + i), BitConverter.ToSingle(payload.Array, payload.Offset + i + 4));
                         if (Viewer != 0 && !playerView.Sees(Viewer, new float2(p.x, p.y))) continue; // only what that player's team saw
-                        if (channel == ReplayChannel.Explosions) Effects.Explosion(p); else if (channel == ReplayChannel.Blasts) Effects.BombBlast(p); else Effects.BomberBlast(p);
+                        if (channel == ReplayChannel.Explosions) Effects.Explosion(p); else if (channel == ReplayChannel.Blasts) Effects.BombBlast(p); else if (channel == ReplayChannel.ShellLandings) Effects.ShellLanded(p); else Effects.BomberBlast(p);
                     }
                     break;
                 case ReplayChannel.Timeline:

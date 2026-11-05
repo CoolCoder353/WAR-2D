@@ -16,6 +16,8 @@ namespace WAR2D.Net.Replication
         Enter = 4,
         Leave = 5,
         Attack = 6,
+        Shell = 7,
+        ShellLanded = 8,
     }
 
     /// <summary>Why a unit left a client's knowledge.</summary>
@@ -111,6 +113,21 @@ namespace WAR2D.Net.Replication
         public byte AttackerKind;
         /// <summary>The attacking building's full id (building attackers only).</summary>
         public int AttackerId;
+    }
+
+    /// <summary>A shell a client may see fired: the gun, where it will come down (in <see cref="Quantise"/> units) and how long it flies.</summary>
+    public struct ShellEvent
+    {
+        /// <summary>The gun's id index.</summary>
+        public int AttackerIndex;
+        public ushort X, Y;
+        public int FlightTicks;
+    }
+
+    /// <summary>Where a shell came down, hit or miss, in <see cref="Quantise"/> units: the crater and the explosion.</summary>
+    public struct ShellPoint
+    {
+        public ushort X, Y;
     }
 
     /// <summary>
@@ -283,6 +300,32 @@ namespace WAR2D.Net.Replication
             }
         }
 
+        /// <summary>Encodes a Shell message: each gun's id index, its landing point and its flight in ticks.</summary>
+        public static void EncodeShell<W>(ref W writer, NativeArray<ShellEvent> shells) where W : struct, IWireWriter
+        {
+            writer.WriteByte((byte)MessageType.Shell);
+            VarInt.Write(ref writer, (uint)shells.Length);
+            for (int i = 0; i < shells.Length; i++)
+            {
+                VarInt.Write(ref writer, (uint)shells[i].AttackerIndex);
+                writer.WriteUShort(shells[i].X);
+                writer.WriteUShort(shells[i].Y);
+                VarInt.Write(ref writer, (uint)shells[i].FlightTicks);
+            }
+        }
+
+        /// <summary>Encodes a ShellLanded message.</summary>
+        public static void EncodeShellLanded<W>(ref W writer, NativeArray<ShellPoint> points) where W : struct, IWireWriter
+        {
+            writer.WriteByte((byte)MessageType.ShellLanded);
+            VarInt.Write(ref writer, (uint)points.Length);
+            for (int i = 0; i < points.Length; i++)
+            {
+                writer.WriteUShort(points[i].X);
+                writer.WriteUShort(points[i].Y);
+            }
+        }
+
         // ---------- decoders ----------
 
         /// <summary>The type of the next message, without consuming it.</summary>
@@ -443,6 +486,32 @@ namespace WAR2D.Net.Replication
                 previous = index;
                 events.Add(new AttackEvent { AttackerIndex = index, TargetId = VarInt.ReadInt(reader) });
             }
+        }
+
+        /// <summary>Decodes a Shell message.</summary>
+        public static void DecodeShell(NetworkReader reader, List<ShellEvent> shells)
+        {
+            Expect(reader, MessageType.Shell);
+            int count = Count(reader, 6);
+            for (int i = 0; i < count; i++)
+            {
+                uint index = VarInt.Read(reader);
+                if (index >= NetIdAllocator.MaxCapacity) throw new InvalidDataException("attacker index out of range");
+                var shell = new ShellEvent { AttackerIndex = (int)index, X = reader.ReadUShort(), Y = reader.ReadUShort() };
+                uint ticks = VarInt.Read(reader);
+                if (ticks == 0 || ticks > ushort.MaxValue) throw new InvalidDataException("bad shell flight");
+                shell.FlightTicks = (int)ticks;
+                shells.Add(shell);
+            }
+        }
+
+        /// <summary>Decodes a ShellLanded message.</summary>
+        public static void DecodeShellLanded(NetworkReader reader, List<ShellPoint> points)
+        {
+            Expect(reader, MessageType.ShellLanded);
+            int count = Count(reader, 4);
+            for (int i = 0; i < count; i++)
+                points.Add(new ShellPoint { X = reader.ReadUShort(), Y = reader.ReadUShort() });
         }
     }
 }

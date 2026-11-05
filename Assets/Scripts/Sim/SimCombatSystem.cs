@@ -92,9 +92,20 @@ namespace WAR2D.Sim
                 TargetKind = data.TargetKind,
             }.Schedule(count, 256, state.Dependency);
 
-            // Every unit may queue one splash this tick; the parallel writer can't grow the list.
+            // Every unit may fire one shell or queue one splash this tick, and every shell may land; the parallel writers can't grow the lists.
+            int flying = data.Shells.Length;
             splashes.Clear();
-            if (splashes.Capacity < count) splashes.Capacity = count;
+            if (splashes.Capacity < count + flying) splashes.Capacity = count + flying;
+            if (data.Shells.Capacity < count + flying) data.Shells.Capacity = count + flying;
+            if (data.ShellLandings.Capacity < flying) data.ShellLandings.Capacity = flying;
+            state.Dependency = new ShellLandingJob
+            {
+                Shells = data.Shells,
+                Splashes = splashes,
+                Landings = data.ShellLandings,
+                Tick = clock.Tick,
+            }.Schedule(state.Dependency);
+
             state.Dependency = new AttackJob
             {
                 Health = data.Health,
@@ -114,11 +125,16 @@ namespace WAR2D.Sim
                 ArmourByType = data.ArmourByType,
                 SplashByType = data.SplashByType,
                 BlastRadiusByType = data.BlastRadiusByType,
+                ShellSpeedByType = data.ShellSpeedByType,
+                DriveVelocity = data.DriveVelocity,
                 DamageTable = data.DamageTable,
                 Hits = hits.AsParallelWriter(),
                 Splashes = splashes.AsParallelWriter(),
+                Shells = data.Shells.AsParallelWriter(),
                 Events = data.AttackEvents.AsParallelWriter(),
                 Dt = data.Dt,
+                Tick = clock.Tick,
+                Height = data.Height,
             }.Schedule(count, 256, state.Dependency);
 
             state.Dependency = new SplashJob
@@ -136,6 +152,7 @@ namespace WAR2D.Sim
                 BuildingCellStart = data.BuildingCellStart, BuildingSorted = data.BuildingSorted,
                 WallState = data.WallState, WallOwnerSlot = data.WallOwnerSlot,
                 ArmourByType = data.ArmourByType, DamageTable = data.DamageTable,
+                ShellBlastByType = data.ShellBlastByType, ShellReach = data.ShellReach,
             }.Schedule(splashes, 8, state.Dependency);
 
             var blastWorld = new BlastWorld
@@ -467,12 +484,15 @@ namespace WAR2D.Sim
         public int PrimarySlot;
         /// <summary>Where the attacker stands.</summary>
         public float2 From;
+        /// <summary>1 for a shell: a unit is hit by its own class's radius (<see cref="SimData.ShellBlastByType"/>), and <see cref="Radius"/> covers buildings and walls.</summary>
+        public byte ByClass;
     }
 
     /// <summary>
     /// Attacks the resolved target when the cooldown allows; queues the hit (times the damage table's
     /// multiplier for the target's armour class, building or wall), a splash request for units that have
-    /// one, and a tracer event. A Suicide bomber never attacks: <see cref="BomberJob"/> or <see cref="LastGaspJob"/> detonates it.
+    /// one, and a tracer event. A gun with a shell speed instead fires a <see cref="Shell"/> at where the target will be, which does the damage
+    /// when it lands (<see cref="ShellLandingJob"/>). A Suicide bomber never attacks: <see cref="BomberJob"/> or <see cref="LastGaspJob"/> detonates it.
     /// </summary>
     [BurstCompile]
     public struct AttackJob : IJobParallelFor
@@ -485,8 +505,9 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<byte> TargetKind;
         [ReadOnly] public NativeArray<int> IdOf;
         [ReadOnly] public NativeArray<int> BuildingIds;
-        [ReadOnly] public NativeArray<float2> Positions, BuildingPositions;
-        public int Width;
+        [ReadOnly] public NativeArray<float2> Positions, BuildingPositions, DriveVelocity;
+        public int Width, Height, Tick;
+        [ReadOnly] public NativeArray<float> ShellSpeedByType;
         [ReadOnly] public NativeArray<float> DamageByType;
         [ReadOnly] public NativeArray<float> CooldownByType;
         [ReadOnly] public NativeArray<byte> ArmourByType;
@@ -495,6 +516,7 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<byte> OwnerSlot;
         public NativeQueue<DamageHit>.ParallelWriter Hits;
         public NativeList<SplashRequest>.ParallelWriter Splashes;
+        public NativeList<Shell>.ParallelWriter Shells;
         public NativeList<int2>.ParallelWriter Events;
         public float Dt;
 
@@ -512,16 +534,29 @@ namespace WAR2D.Sim
             TargetClass targetClass = kind == TargetKinds.Unit ? (TargetClass)ArmourByType[Type[target]] : kind == TargetKinds.Wall ? TargetClass.Wall : TargetClass.Building;
             float multiplier = WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(type), targetClass);
             float baseDamage = type < DamageByType.Length ? DamageByType[type] : 0f;
-            Hits.Enqueue(new DamageHit { Kind = kind, Slot = target, Amount = baseDamage * multiplier, AttackerOwner = OwnerId[i], From = Positions[i] });
             float splash = type < SplashByType.Length ? SplashByType[type] : 0f;
-            if (splash > 0f)
+            float2 centre = kind == TargetKinds.Unit ? Positions[target] : kind == TargetKinds.Wall ? new float2(target % Width + 0.5f, target / Width + 0.5f) : BuildingPositions[target];
+            float shellSpeed = type < ShellSpeedByType.Length ? ShellSpeedByType[type] : 0f;
+            if (shellSpeed > 0f)
             {
-                float2 centre = kind == TargetKinds.Unit ? Positions[target] : kind == TargetKinds.Wall ? new float2(target % Width + 0.5f, target / Width + 0.5f) : BuildingPositions[target];
-                Splashes.AddNoResize(new SplashRequest
+                float2 velocity = kind == TargetKinds.Unit ? DriveVelocity[NetIdAllocator.IndexOf(IdOf[target])] : float2.zero;
+                int ticks = ShellAim.Ticks(ShellAim.Seconds(Positions[i], centre, velocity, shellSpeed), Dt);
+                Shells.AddNoResize(new Shell
                 {
-                    Centre = centre, Radius = splash, Damage = baseDamage, AttackerType = (byte)type, AttackerSlot = OwnerSlot[i],
-                    AttackerOwner = OwnerId[i], PrimaryKind = kind, PrimarySlot = target, From = Positions[i],
+                    From = Positions[i], Landing = math.clamp(centre + velocity * (ticks * Dt), float2.zero, new float2(Width, Height)),
+                    FiredTick = Tick, LandTick = Tick + ticks, AttackerId = IdOf[i], AttackerOwner = OwnerId[i],
+                    Damage = baseDamage, Radius = splash, AttackerType = (byte)type, AttackerSlot = OwnerSlot[i],
                 });
+            }
+            else
+            {
+                Hits.Enqueue(new DamageHit { Kind = kind, Slot = target, Amount = baseDamage * multiplier, AttackerOwner = OwnerId[i], From = Positions[i] });
+                if (splash > 0f)
+                    Splashes.AddNoResize(new SplashRequest
+                    {
+                        Centre = centre, Radius = splash, Damage = baseDamage, AttackerType = (byte)type, AttackerSlot = OwnerSlot[i],
+                        AttackerOwner = OwnerId[i], PrimaryKind = kind, PrimarySlot = target, From = Positions[i],
+                    });
             }
             // A wall is a tile, not an entity: its damage travels in the terrain delta. Its event names the tile as
             // -(tile + 1) for the shooter's owner only (v0.16 target lines; InterestRules.UnitAttack drops it for others).
@@ -534,7 +569,8 @@ namespace WAR2D.Sim
     /// Spreads each splash request: every enemy unit, building and wall tile within the radius of the impact
     /// (the target of the direct hit excepted) takes the attacker's damage, 100 % at the centre to 50 % at
     /// the edge, times the damage table's multiplier for its class. Allies are not hit. The hits go through
-    /// the same queue, so <see cref="ApplyDamageJob"/> stays the single writer.
+    /// the same queue, so <see cref="ApplyDamageJob"/> stays the single writer. A shell has no direct hit: this is
+    /// all its damage, one hit on whatever its own class's radius reaches.
     /// </summary>
     [BurstCompile]
     public struct SplashJob : IJobParallelForDefer
@@ -548,7 +584,8 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<int> CellStart, Sorted, BuildingCellStart, BuildingSorted;
         [ReadOnly] public NativeArray<ushort> AttackMask;
         [ReadOnly] public NativeArray<int2> BuildingAnchor, BuildingSize;
-        [ReadOnly] public NativeArray<float> DamageTable;
+        [ReadOnly] public NativeArray<float> DamageTable, ShellBlastByType;
+        public float ShellReach;
 
         /// <summary>100 % at the centre falling to 50 % at the edge.</summary>
         public static float Falloff(float distance, float radius) => 1f - 0.5f * math.saturate(distance / radius);
@@ -560,7 +597,7 @@ namespace WAR2D.Sim
                 float rSq = r.Radius * r.Radius;
                 int2 cell = math.clamp((int2)math.floor(r.Centre / CellSize), 0, new int2(CellsX - 1, CellsY - 1));
 
-                int reach = (int)math.ceil(r.Radius / CellSize) + 1;
+                int reach = (int)math.ceil((r.ByClass != 0 ? ShellReach : r.Radius) / CellSize) + 1;
                 for (int cy = math.max(cell.y - reach, 0); cy <= math.min(cell.y + reach, CellsY - 1); cy++)
                 for (int cx = math.max(cell.x - reach, 0); cx <= math.min(cell.x + reach, CellsX - 1); cx++)
                 {
@@ -570,8 +607,9 @@ namespace WAR2D.Sim
                         int u = Sorted[k];
                         if (UnitHealth[u] <= 0f || (r.PrimaryKind == TargetKinds.Unit && r.PrimarySlot == u) || !SimData.Attacks(AttackMask, r.AttackerSlot, OwnerSlot[u])) continue;
                         float dSq = math.distancesq(Positions[u], r.Centre);
-                        if (dSq > rSq) continue;
-                        float amount = r.Damage * Falloff(math.sqrt(dSq), r.Radius) * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(r.AttackerType), (TargetClass)ArmourByType[Type[u]]);
+                        float unitRadius = r.ByClass != 0 ? ShellBlastByType[Type[u]] : r.Radius;
+                        if (dSq > unitRadius * unitRadius) continue;
+                        float amount = r.Damage * Falloff(math.sqrt(dSq), unitRadius) * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(r.AttackerType), (TargetClass)ArmourByType[Type[u]]);
                         Hits.Enqueue(new DamageHit { Kind = TargetKinds.Unit, Slot = u, Amount = amount, AttackerOwner = r.AttackerOwner, From = r.From });
                     }
                 }

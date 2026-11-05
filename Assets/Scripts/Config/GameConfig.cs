@@ -530,6 +530,16 @@ namespace Config
         public float BlastRadius;
         /// <summary>Suicide bomber blast damage before the damage table (0 for other units).</summary>
         public float BlastDamage;
+        /// <summary>Tiles a second its shell flies, its damage landing with it (0: it hits at once).</summary>
+        public float ShellSpeed;
+        /// <summary>Its shell's blast radius on a unit in <see cref="FastUnits"/>, and on a unit neither fast nor Heavy armoured. <see cref="Splash"/> covers Heavy armour, buildings and walls.</summary>
+        public float SplashMedium, SplashFast;
+        /// <summary>The unit types its shell treats as fast.</summary>
+        public List<UnitType> FastUnits = new List<UnitType>();
+
+        /// <summary>This unit's shell's blast radius on a target unit, by that unit's own class.</summary>
+        public float ShellBlast(UnitType target, TargetClass armour) =>
+            FastUnits.Contains(target) ? SplashFast : armour == TargetClass.HeavyUnit ? Splash : SplashMedium;
     }
 
     /// <summary>One building type's stats.</summary>

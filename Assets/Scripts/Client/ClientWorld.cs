@@ -87,6 +87,8 @@ namespace WAR2D.Client
         }
         private readonly List<(int attacker, int target)> attacks = new List<(int, int)>();
         private readonly List<(int building, int target)> buildingAttacks = new List<(int, int)>();
+        private readonly List<(int gun, float2 landing, float seconds)> shellsFired = new List<(int, float2, float)>();
+        private readonly List<float2> shellsLanded = new List<float2>();
         private readonly Dictionary<int, float> nextPulse = new Dictionary<int, float>();
         private readonly List<int> pulseGone = new List<int>();
 
@@ -152,6 +154,8 @@ namespace WAR2D.Client
             {
                 DecayPercentPerSecond = config.Resources.DecayPercentPerSecond,
             };
+            store.ShellFired += (gun, landing, seconds) => shellsFired.Add((gun, landing, seconds));
+            store.ShellLanded += shellsLanded.Add;
             store.Died += OnUnitDied;
             store.Appeared += (index, at) => worldEffects.UnitAppeared(new Vector2(at.x, at.y), store.OwnerOf(index), Time.time - firstBatchAt);
             lastPosition = new NativeArray<float2>(capacity, Allocator.Persistent);
@@ -249,6 +253,7 @@ namespace WAR2D.Client
             AdvanceClock(GameCore.Instance != null && GameCore.Instance.IsPaused ? 0f : Time.unscaledDeltaTime);
             store.PredictAll(serverTime);
             FireTracers();
+            FireShells();
             FireTurrets();
         }
 
@@ -724,6 +729,30 @@ namespace WAR2D.Client
             float2 ahead = store.PredictOne(attacker, serverTime + DriftSampleSeconds) - from;
             Vector3 drift = new Vector3(ahead.x, ahead.y, 0f) / DriftSampleSeconds;
             Effects.GunShot(type, new Vector2(from.x, from.y), TurretAim.HullAngle(rotation[attacker]), turret, to, TargetRadius(target), line, drift);
+        }
+
+        /// <summary>
+        /// This frame's shells: each flies from its gun's bore to where the server says it comes down (after <see cref="FireTracers"/>, so the
+        /// turret aims there, not at the target), and each landing is an explosion and a crater, which is what a miss looks like too.
+        /// </summary>
+        private void FireShells()
+        {
+            for (int i = math.max(0, shellsFired.Count - MaxTracersPerFrame); i < shellsFired.Count; i++)
+            {
+                var (gun, landing, seconds) = shellsFired[i];
+                if (!store.IsKnown(gun)) continue;
+                ResetTurretIfNew(gun);
+                aimAt[gun] = landing;
+                aimUntil[gun] = Time.time + ConfigLoader.LoadConfig().GetUnit((UnitType)store.TypeOf(gun)).AttackInterval + TurretAim.HoldSeconds;
+                float turret = TurretAim.FacingAngle(TurretAim.Facing(turretAngle[gun]));
+                float2 from = store.PredictOne(gun, serverTime);
+                Vector2 bore = new Vector2(from.x, from.y) + TurretAim.ArtilleryBore(TurretAim.HullAngle(rotation[gun]), turret) / ArtStyle.PixelsPerUnit;
+                Effects.ShellFlight(bore, new Vector2(landing.x, landing.y), seconds);
+            }
+            shellsFired.Clear();
+            for (int i = math.max(0, shellsLanded.Count - MaxTracersPerFrame); i < shellsLanded.Count; i++)
+                Effects.ShellLanded(new Vector2(shellsLanded[i].x, shellsLanded[i].y));
+            shellsLanded.Clear();
         }
 
         /// <summary>Seconds ahead a gun's speed is read from its route.</summary>

@@ -486,6 +486,7 @@ public partial class WorldStateManager : NetworkBehaviour
             Recorder?.TeamFog(data, tick, GameCore.MatchNow, ConfigLoader.LoadConfig().Replays.FogSeconds);
         double t = PerfSplits.Now;
         FlushBlasts(data, count);
+        Recorder?.Shells(data, tick);
         PerfSplits.Mark(1, ref t);
         if ((tick - 1) % data.VisionInterval == 0) { WatchRadars(data, count); SnapshotExplored(data); }
         PerfSplits.Mark(0, ref t);

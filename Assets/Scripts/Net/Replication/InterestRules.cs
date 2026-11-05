@@ -1,5 +1,6 @@
 using Unity.Collections;
 using Unity.Mathematics;
+using WAR2D.Sim;
 
 namespace WAR2D.Net.Replication
 {
@@ -72,6 +73,30 @@ namespace WAR2D.Net.Replication
             shown = new AttackEvent { AttackerIndex = index, TargetId = named };
             return true;
         }
+
+        /// <summary>
+        /// The shell a player is told about when it is fired, or false: as for an attack event the gun must be known, and inside
+        /// <paramref name="view"/> (or its landing point must be: a gun off screen can shell what the camera shows); and the landing point
+        /// could give away what it is aimed at in the fog, so only the gun's owner or a grid that sees that point learns it.
+        /// </summary>
+        public static bool ShellFired(in ReplicationInput input, NativeArray<ulong> allowed, int4 view, in Shell shell, int owner, int grid, out ShellEvent shown)
+        {
+            shown = default;
+            int index = NetIdAllocator.IndexOf(shell.AttackerId);
+            if (!UnitKnown(input, allowed, index, owner, grid)) return false;
+            int slot = input.SlotOfIndex(index);
+            if (slot < 0 || (!InView(view, input.Positions[slot]) && !InView(view, shell.Landing))) return false;
+            if (shell.AttackerOwner != owner && !input.Sees(grid, shell.Landing)) return false;
+            shown = new ShellEvent { AttackerIndex = index, X = Quantise.Encode(shell.Landing.x), Y = Quantise.Encode(shell.Landing.y), FlightTicks = shell.LandTick - shell.FiredTick };
+            return true;
+        }
+
+        /// <summary>
+        /// True when a player is told a shell came down: inside <paramref name="view"/>, and its own shell or on a point its grid sees now. It says
+        /// nothing of the gun, so a player under fire from the fog sees the explosion and no more.
+        /// </summary>
+        public static bool ShellLanded(in ReplicationInput input, int4 view, in ShellLanding landing, int owner, int grid) =>
+            InView(view, landing.Point) && (landing.OwnerId == owner || input.Sees(grid, landing.Point));
 
         /// <summary>True when the player's grid sees the wall tile a negative attack target names (v0.16).</summary>
         private static bool SeesWall(in ReplicationInput input, int target, int grid)

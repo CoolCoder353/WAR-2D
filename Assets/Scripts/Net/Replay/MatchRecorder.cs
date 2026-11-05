@@ -100,6 +100,33 @@ namespace WAR2D.Net.Replay
             Enqueue(channel, bytes);
         }
 
+        /// <summary>The settled tick's shells: each one fired (from, landing, seconds of flight, as floats), and each landing. Attack events never reach a recording (its view box is empty), so these have channels of their own.</summary>
+        public void Shells(SimData data, int tick)
+        {
+            NativeArray<Shell> fired = data.ShellsFired(tick);
+            if (fired.Length > 0)
+            {
+                currentTick = tick;
+                var floats = new float[fired.Length * 5];
+                for (int i = 0; i < fired.Length; i++)
+                {
+                    Shell s = fired[i];
+                    floats[i * 5] = s.From.x;
+                    floats[i * 5 + 1] = s.From.y;
+                    floats[i * 5 + 2] = s.Landing.x;
+                    floats[i * 5 + 3] = s.Landing.y;
+                    floats[i * 5 + 4] = (s.LandTick - s.FiredTick) * tickSeconds;
+                }
+                var bytes = new byte[floats.Length * sizeof(float)];
+                Buffer.BlockCopy(floats, 0, bytes, 0, bytes.Length);
+                Enqueue(ReplayChannel.ShellFlights, bytes);
+            }
+            if (data.ShellLandings.Length == 0) return;
+            var points = new List<float2>(data.ShellLandings.Length);
+            foreach (ShellLanding landing in data.ShellLandings) points.Add(landing.Point);
+            Positions(tick, ReplayChannel.ShellLandings, points);
+        }
+
         /// <summary>Once a second: each player's public numbers, for the viewer's player list.</summary>
         public void Timeline(int tick, IEnumerable<(int owner, float resources, int units, int buildings)> rows)
         {

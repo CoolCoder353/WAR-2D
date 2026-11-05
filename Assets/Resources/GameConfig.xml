@@ -605,6 +605,10 @@
       <Radius>0.7</Radius><SizeClass>1</SizeClass><Sight>18.0</Sight>
       <Armour>Heavy</Armour><BuildSeconds>6.0</BuildSeconds>
       <Splash>2.0</Splash><MinRange>4.0</MinRange>
+      <ShellSpeed>14.0</ShellSpeed>   <!-- tiles a second: its damage lands when the shell does (0: at once) -->
+      <!-- A shell's blast radius by what it hits: Splash for Heavy armour, buildings and walls, SplashFast for FastUnits, SplashMedium for the rest. -->
+      <SplashMedium>2.5</SplashMedium><SplashFast>4.5</SplashFast>
+      <FastUnits>Scout SuicideBomber</FastUnits>
     </Unit>
     <Unit type="Sniper">
       <Health>70</Health><Damage>60</Damage><Range>20.0</Range><AttackInterval>3.0</AttackInterval>

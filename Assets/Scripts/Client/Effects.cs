@@ -48,12 +48,6 @@ public static class Effects
     /// <summary>How long a shot's streak is in the air, in tiles.</summary>
     public const float ScoutShotTiles = 1f, TankShotTiles = 1.5f, HeavyShotTiles = 1.8f, SniperShotTiles = 10f;
 
-    /// <summary>The fewest seconds an artillery shell takes to land.</summary>
-    public const float ShellSeconds = 0.5f;
-
-    /// <summary>Tiles a second a shell flies, slow enough to watch one cross the screen.</summary>
-    public const float ShellTilesPerSecond = 14f;
-
     /// <summary>How high a shell's arc rises: this share of the shot's length, up to <see cref="ShellMaxHeight"/> tiles.</summary>
     public const float ShellArcShare = 0.25f, ShellMaxHeight = 4f;
 
@@ -74,8 +68,8 @@ public static class Effects
         public bool Active;
         /// <summary>Seconds a flying effect takes (tracer or shell).</summary>
         public float Seconds = TracerSeconds;
-        /// <summary>True for a shell: it plays a <see cref="ShellImpact"/> where it lands.</summary>
-        public bool ImpactOnLanding;
+        /// <summary>True for a shell: it flies on an arc over its shadow (its landing comes from the server: <see cref="ShellLanded"/>).</summary>
+        public bool IsShell;
         /// <summary>True for a bullet: it plays a <see cref="HitSpark"/> where it lands.</summary>
         public bool SparkOnLanding;
         /// <summary>World units per second the effect drifts while it plays (rising smoke, a flash on a moving gun).</summary>
@@ -281,7 +275,7 @@ public static class Effects
     /// A shot from a gun on a turning turret (<see cref="WAR2D.Client.Render.TurretAim.Has"/>) at the unit's centre: its sound, one flash per
     /// barrel along the turret's drawn angle (radians), and a tracer from each barrel to <paramref name="to"/>, stopping
     /// <paramref name="stopShort"/> tiles before it (the target's near side). Without <paramref name="line"/> (the Tracers setting) only the flash and
-    /// sound play. The Artillery fires a shell instead of a tracer, always, which lands on <paramref name="to"/> itself.
+    /// sound play. The Artillery has no tracer: its shell comes with its own message (<see cref="ShellFlight"/>).
     /// </summary>
     public static void GunShot(UnitType gun, Vector2 centre, float hull, float turret, Vector3 to, float stopShort, bool line, Vector3 drift)
     {
@@ -292,7 +286,6 @@ public static class Effects
             Vector2 axis = WAR2D.Client.Render.TurretAim.ArtilleryBarrelAxis(turret);
             WAR2D.Audio.AudioService.Sfx(ShotSound(gun), bore);
             Burst(BurstsTank, centre + WAR2D.Client.Render.TurretAim.ArtilleryFlash(hull, turret) / ppu, Mathf.Atan2(axis.y, axis.x) * Mathf.Rad2Deg, drift);
-            Shell(bore, to);
             return;
         }
         Pool flashes = gun == UnitType.Scout ? BurstsScout : gun == UnitType.Sniper ? BurstsSniper : gun == UnitType.Heavy ? BurstsHeavy : BurstsTank;
@@ -313,9 +306,6 @@ public static class Effects
         }
     }
 
-    /// <summary>Seconds a shell takes over a shot of this many tiles.</summary>
-    public static float ShellFlightSeconds(float tiles) => Mathf.Max(ShellSeconds, tiles / ShellTilesPerSecond);
-
     /// <summary>Where a shell is drawn at <paramref name="t"/> (0 to 1) of its flight: along the ground line, raised on the screen by its arc.</summary>
     public static Vector3 ShellPoint(Vector3 from, Vector3 to, float t)
     {
@@ -323,13 +313,13 @@ public static class Effects
         return Vector3.Lerp(from, to, t) + Vector3.up * (height * 4f * t * (1f - t));
     }
 
-    /// <summary>A shell flying from the gun's bore: its height is only drawn, by a sprite rising over a shadow that keeps to the ground line. It lands as a <see cref="ShellImpact"/> and leaves a crater.</summary>
-    private static void Shell(Vector2 from, Vector3 to)
+    /// <summary>A shell flying from the gun's bore for <paramref name="seconds"/>: its height is only drawn, by a sprite rising over a shadow that keeps to the ground line.</summary>
+    public static void ShellFlight(Vector2 from, Vector2 to, float seconds)
     {
         Slot s = Take(Shells);
         if (s == null) return;
-        s.Seconds = ShellFlightSeconds(Vector2.Distance(from, to));
-        s.ImpactOnLanding = true;
+        s.Seconds = seconds;
+        s.IsShell = true;
         s.From = new Vector3(from.x, from.y, 0f);
         s.To = new Vector3(to.x, to.y, 0f);
         s.LastPuff = s.From;
@@ -339,6 +329,13 @@ public static class Effects
         if (shadow == null) return;
         shadow.Sprite.sortingOrder = WAR2D.Client.Render.SortingOrders.Decals + 2; // on the ground, under the units
         shadow.Go.transform.SetPositionAndRotation(s.From, Quaternion.identity);
+    }
+
+    /// <summary>A shell coming down at <paramref name="position"/>, hit or miss: the explosion, its sound and a crater.</summary>
+    public static void ShellLanded(Vector2 position)
+    {
+        ShellImpact(position);
+        Decals.Crater(position);
     }
 
     /// <summary>Where a flame ends: on the target, or as far toward it as its range reaches (a big building's centre can be further).</summary>
@@ -639,7 +636,7 @@ public static class Effects
         s.Active = true;
         s.Start = Time.time;
         s.Go.transform.localScale = Vector3.one;
-        s.ImpactOnLanding = false;
+        s.IsShell = false;
         s.SparkOnLanding = false;
         s.Drift = Vector3.zero;
         s.Seconds = TracerSeconds;
@@ -711,17 +708,12 @@ public static class Effects
                     float t = age / s.Seconds;
                     if (t >= 1f)
                     {
-                        if (s.ImpactOnLanding)
-                        {
-                            ShellImpact(s.To);
-                            Decals.Crater(s.To);
-                            if (s.Partner != null) Stop(s.Partner);
-                        }
+                        if (s.IsShell && s.Partner != null) Stop(s.Partner);
                         else if (s.SparkOnLanding) HitSpark(s.To);
                         Stop(s);
                         continue;
                     }
-                    if (s.ImpactOnLanding) Fly(s, t, age);
+                    if (s.IsShell) Fly(s, t, age);
                     else
                     {
                         s.Go.transform.position = ShotCentre(s.From, s.To, t, s.Length, out float drawn);

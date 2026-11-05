@@ -128,7 +128,14 @@ namespace Config
                         MinRange = OptionalFloat(node, "MinRange", ctx, errors, 0, 32),
                         BlastRadius = OptionalFloat(node, "BlastRadius", ctx, errors, 0, 8),
                         BlastDamage = OptionalFloat(node, "BlastDamage", ctx, errors, 0, 100000),
+                        ShellSpeed = OptionalFloat(node, "ShellSpeed", ctx, errors, 0, 100),
+                        SplashMedium = OptionalFloat(node, "SplashMedium", ctx, errors, 0, 8),
+                        SplashFast = OptionalFloat(node, "SplashFast", ctx, errors, 0, 8),
+                        FastUnits = UnitTypes(node, "FastUnits", ctx, errors),
                     };
+                    UnitConfig shelled = config.Units[type];
+                    if (shelled.ShellSpeed > 0f && (shelled.Splash <= 0f || shelled.SplashMedium <= 0f || shelled.SplashFast <= 0f))
+                        errors.Add($"{ctx}: a unit with <ShellSpeed> needs <Splash>, <SplashMedium> and <SplashFast>.");
                 }
             }
 
@@ -882,6 +889,20 @@ namespace Config
         /// <summary>An optional number (0 when the element is missing) in [min, max].</summary>
         private static float OptionalFloat(XmlNode parent, string name, string ctx, List<string> errors, float min, float max) =>
             parent.SelectSingleNode(name) == null ? 0f : Float(parent, name, ctx, errors, min, max);
+
+        /// <summary>An optional, space-separated list of unit type names (none when absent).</summary>
+        private static List<UnitType> UnitTypes(XmlNode parent, string name, string ctx, List<string> errors)
+        {
+            var types = new List<UnitType>();
+            XmlNode node = parent.SelectSingleNode(name);
+            if (node == null) return types;
+            foreach (string word in node.InnerText.Split((char[])null, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (Enum.TryParse(word, out UnitType type) && Enum.IsDefined(typeof(UnitType), type)) types.Add(type);
+                else errors.Add($"{ctx}: <{name}> \"{word}\" is not a unit type.");
+            }
+            return types;
+        }
 
         private static XmlNode Require(XmlNode parent, string name, List<string> errors)
         {

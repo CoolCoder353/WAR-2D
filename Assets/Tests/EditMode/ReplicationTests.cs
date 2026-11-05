@@ -165,6 +165,38 @@ public class ReplicationTests
     }
 
     [Test]
+    public void ShellMessagesRoundTripAndABadFlightIsRefused()
+    {
+        using var bytes = new NativeList<byte>(64, Allocator.Temp);
+        var sink = new NativeSink(bytes);
+        using var shells = new NativeArray<ShellEvent>(new[] { new ShellEvent { AttackerIndex = 70000, X = Quantise.Encode(26.5f), Y = 0, FlightTicks = 23 }, new ShellEvent { AttackerIndex = 3, X = ushort.MaxValue, Y = 7, FlightTicks = 1 } }, Allocator.Temp);
+        Messages.EncodeShell(ref sink, shells);
+        using var points = new NativeArray<ShellPoint>(new[] { new ShellPoint { X = 9, Y = Quantise.Encode(40.25f) } }, Allocator.Temp);
+        Messages.EncodeShellLanded(ref sink, points);
+
+        using var reader = NetworkReaderPool.Get(new ArraySegment<byte>(bytes.AsArray().ToArray()));
+        Assert.AreEqual(MessageType.Shell, Messages.PeekType(reader));
+        var s = new List<ShellEvent>();
+        Messages.DecodeShell(reader, s);
+        Assert.AreEqual(2, s.Count);
+        Assert.AreEqual(70000, s[0].AttackerIndex);
+        Assert.AreEqual(26.5f, Quantise.Decode(s[0].X));
+        Assert.AreEqual(23, s[0].FlightTicks);
+        Assert.AreEqual(ushort.MaxValue, s[1].X);
+        Assert.AreEqual(MessageType.ShellLanded, Messages.PeekType(reader));
+        var p = new List<ShellPoint>();
+        Messages.DecodeShellLanded(reader, p);
+        Assert.AreEqual(40.25f, Quantise.Decode(p[0].Y));
+        Assert.AreEqual(0, reader.Remaining);
+
+        bytes.Clear();
+        using var noFlight = new NativeArray<ShellEvent>(new[] { new ShellEvent { AttackerIndex = 1, FlightTicks = 0 } }, Allocator.Temp);
+        Messages.EncodeShell(ref sink, noFlight);
+        using var bad = NetworkReaderPool.Get(new ArraySegment<byte>(bytes.AsArray().ToArray()));
+        Assert.Throws<System.IO.InvalidDataException>(() => Messages.DecodeShell(bad, new List<ShellEvent>()));
+    }
+
+    [Test]
     public void AttackEventsCarryTheAttackerKind()
     {
         using var bytes = new NativeList<byte>(256, Allocator.Temp);

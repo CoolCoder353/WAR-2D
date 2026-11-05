@@ -119,6 +119,7 @@ namespace WAR2D.Sim
                         break;
                     case SimCommandKind.DestroyAll:
                         KillUnits(data, context, 0, all: true);
+                        data.Shells.Clear(); // the match is over: nothing still in the air comes down
                         break;
                     case SimCommandKind.SetAttack:
                     case SimCommandKind.SetShareVision:

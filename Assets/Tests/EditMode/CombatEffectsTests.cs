@@ -34,10 +34,8 @@ public class CombatEffectsTests
     }
 
     [Test]
-    public void AShellLandsOnTheTargetAtTheRateOfItsFlight()
+    public void AShellFliesAnArcFromTheGunToItsLandingPoint()
     {
-        Assert.AreEqual(Effects.ShellSeconds, Effects.ShellFlightSeconds(1f), "a short shot is never instant");
-        Assert.AreEqual(14f / Effects.ShellTilesPerSecond, Effects.ShellFlightSeconds(14f), Tolerance);
         Vector3 from = new Vector3(2f, 3f, 0f), to = new Vector3(14f, 3f, 0f);
         Assert.AreEqual(from, Effects.ShellPoint(from, to, 0f));
         Assert.AreEqual(to, Effects.ShellPoint(from, to, 1f));
@@ -107,7 +105,7 @@ public class CombatEffectsTests
     }
 
     [Test]
-    public void GunsFireAFlashAndTracerEachAndTheArtilleryAShell()
+    public void GunsFireAFlashAndTracerEachAndTheArtilleryOnlyItsFlash()
     {
         Effects.GunShot(UnitType.Tank, Vector2.zero, 0f, 0f, new Vector3(5f, 0f, 0f), 0.35f, true, Vector3.zero);
         Assert.AreEqual(1, Effects.ActiveTracers);
@@ -118,7 +116,18 @@ public class CombatEffectsTests
         Assert.AreEqual(3, Effects.ActiveTracers, "the Tracers setting hides the line");
         Assert.AreEqual(2, Effects.ActiveTankBursts, "and leaves the flash");
         Effects.GunShot(UnitType.Artillery, Vector2.zero, 0f, 0f, new Vector3(9f, 0f, 0f), 0f, false, Vector3.zero);
-        Assert.AreEqual(1, Effects.ActiveShells, "a shell always flies");
+        Assert.AreEqual(3, Effects.ActiveTankBursts, "the Artillery flashes");
+        Assert.AreEqual(0, Effects.ActiveShells, "its shell comes with its own message, to where the server says");
+    }
+
+    [Test]
+    public void AShellFlightDrawsTheShellAndOnlyItsLandingLeavesACrater()
+    {
+        Effects.ShellFlight(Vector2.zero, new Vector2(9f, 0f), 0.6f);
+        Assert.AreEqual(1, Effects.ActiveShells);
+        Assert.AreEqual(0, Decals.ActiveCraters, "nothing on the ground while it flies");
+        Effects.ShellLanded(new Vector2(9f, 0f));
+        Assert.AreEqual(1, Decals.ActiveCraters);
     }
 
     [Test]

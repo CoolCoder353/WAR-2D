@@ -15,7 +15,7 @@ The bench and the tuner need a Linux build (`Builds/Linux/WAR-2D.x86_64`, any bu
 | Section | What it sets |
 | --- | --- |
 | `<Resources>` | Starting resources, passive and Miner income, decay while upkeep is unpaid |
-| `<Units>` | Per unit: `Health`, `Damage`, `Range`, `AttackInterval`, `MoveSpeed`, `UpfrontCost`, `RunningCost` (upkeep per second), `Radius`, `SizeClass`, `Sight`, `Armour`, `BuildSeconds`, and `Splash`, `MinRange`, `BlastRadius`/`BlastDamage` where they apply |
+| `<Units>` | Per unit: `Health`, `Damage`, `Range`, `AttackInterval`, `MoveSpeed`, `UpfrontCost`, `RunningCost` (upkeep per second), `Radius`, `SizeClass`, `Sight`, `Armour`, `BuildSeconds`, and `Splash`, `MinRange`, `BlastRadius`/`BlastDamage`, `ShellSpeed`/`SplashMedium`/`SplashFast`/`FastUnits` where they apply (`ArtilleryBalanceTests` measures the last four against an instant hit: run it by name) |
 | `<DamageTable>` | A multiplier per attacker and target class (`LightUnit`, `HeavyUnit`, `Building`, `Wall`; `Unit` means both unit classes; 1.0 when missing) |
 | `<Buildings>` | Per building: health, footprint, price, upkeep, sight; the Gun turret's `Damage`, `Range` and `AttackInterval` |
 | `<Siege>` | Walls, bombs, Builders' build power, repair, digging, gem payout, Radar, Jammer |

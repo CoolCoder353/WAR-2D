@@ -74,6 +74,7 @@ namespace WAR2D.Sim
             SimTiming.CommandsEndMs = mark; // until the command stage moves it
             data.AttackEvents.Clear();
             data.BuildingAttackEvents.Clear();
+            data.ShellLandings.Clear();
             data.BombBlasts.Clear();
             data.ForcedBombs.Clear();
             data.ForcedBombers.Clear();

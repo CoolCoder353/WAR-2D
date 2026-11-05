@@ -4,6 +4,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
+using WAR2D.Sim;
 
 namespace WAR2D.Net.Replication
 {
@@ -43,7 +44,8 @@ namespace WAR2D.Net.Replication
     /// camera view, coarser outside it. Attack events go to clients whose view holds the attacker; the target is
     /// named only when the client may know it (see <see cref="AttackTarget"/>), else it is sent as 0. A building's
     /// attack (v0.13, <see cref="BuildingAttack"/>) goes only to a client that may know the building: it owns it, or its
-    /// grid sees it now (the rule <see cref="BuildingInterest"/> follows).
+    /// grid sees it now (the rule <see cref="BuildingInterest"/> follows). Shells fired and landed follow
+    /// <see cref="InterestRules.ShellFired"/> and <see cref="InterestRules.ShellLanded"/>.
     ///
     /// <para><b>What it can see.</b> Every unit loop is driven by the client's
     /// <see cref="InterestSets"/>: a unit outside the allowed set is never encoded for that client.</para>
@@ -90,14 +92,14 @@ namespace WAR2D.Net.Replication
         public JobHandle Schedule(int tick, in ReplicationInput input, NativeArray<int2> attacks, NativeArray<AttackTarget> targets, bool[] active, JobHandle dependency) =>
             Schedule(tick, input, attacks, targets, default, active, dependency);
 
-        /// <summary>As above, with this tick's building attacks (v0.13; may be default for none).</summary>
-        public JobHandle Schedule(int tick, in ReplicationInput input, NativeArray<int2> attacks, NativeArray<AttackTarget> targets, NativeArray<BuildingAttack> buildingAttacks, bool[] active, JobHandle dependency)
+        /// <summary>As above, with this tick's building attacks (v0.13; may be default for none) and the shells fired and landed (the same).</summary>
+        public JobHandle Schedule(int tick, in ReplicationInput input, NativeArray<int2> attacks, NativeArray<AttackTarget> targets, NativeArray<BuildingAttack> buildingAttacks, bool[] active, JobHandle dependency, NativeArray<Shell> shellsFired = default, NativeArray<ShellLanding> shellLandings = default)
         {
             var handles = new NativeArray<JobHandle>(buffers.Length, Allocator.Temp);
             for (int c = 0; c < buffers.Length; c++)
             {
                 if (active != null && !active[c]) { handles[c] = dependency; continue; }
-                handles[c] = Job(c, tick, input, attacks, targets, buildingAttacks).Schedule(dependency);
+                handles[c] = Job(c, tick, input, attacks, targets, buildingAttacks, shellsFired, shellLandings).Schedule(dependency);
             }
             JobHandle all = JobHandle.CombineDependencies(handles);
             handles.Dispose();
@@ -129,7 +131,7 @@ namespace WAR2D.Net.Replication
         /// <summary>The client's prediction state for a unit (by id index).</summary>
         public PredictState State(int client, int index) => buffers[client].States[index];
 
-        private EncodeClientJob Job(int client, int tick, in ReplicationInput input, NativeArray<int2> attacks, NativeArray<AttackTarget> targets, NativeArray<BuildingAttack> buildingAttacks)
+        private EncodeClientJob Job(int client, int tick, in ReplicationInput input, NativeArray<int2> attacks, NativeArray<AttackTarget> targets, NativeArray<BuildingAttack> buildingAttacks, NativeArray<Shell> shellsFired, NativeArray<ShellLanding> shellLandings)
         {
             ClientBuffers b = buffers[client];
             return new EncodeClientJob
@@ -148,6 +150,10 @@ namespace WAR2D.Net.Replication
                 Attacks = attacks,
                 AttackTargets = targets.IsCreated ? targets : b.NoTargets,
                 BuildingAttacks = buildingAttacks.IsCreated ? buildingAttacks : b.NoBuildingAttacks,
+                ShellsFired = shellsFired.IsCreated ? shellsFired : b.NoShells,
+                ShellLandings = shellLandings.IsCreated ? shellLandings : b.NoLandings,
+                ShellOut = b.Shells,
+                LandedOut = b.Landed,
                 Owner = interests.OwnerOf(client),
                 Grid = interests.GridOf(client),
                 View = b.View,
@@ -197,6 +203,12 @@ namespace WAR2D.Net.Replication
             public NativeList<CorrectionUnit> Corrections;
             /// <summary>Scratch: attacks to show.</summary>
             public NativeList<AttackEvent> Attacks;
+            /// <summary>Scratch: shells fired and landed to show.</summary>
+            public NativeList<ShellEvent> Shells;
+            public NativeList<ShellPoint> Landed;
+            /// <summary>Empty shell lists, for encodes given none.</summary>
+            public NativeArray<Shell> NoShells;
+            public NativeArray<ShellLanding> NoLandings;
             /// <summary>An empty target list, for encodes given none.</summary>
             public NativeArray<AttackTarget> NoTargets;
             /// <summary>An empty building attack list, for encodes given none.</summary>
@@ -219,6 +231,10 @@ namespace WAR2D.Net.Replication
                 Healths = new NativeList<HealthUnit>(256, allocator);
                 Corrections = new NativeList<CorrectionUnit>(1024, allocator);
                 Attacks = new NativeList<AttackEvent>(256, allocator);
+                Shells = new NativeList<ShellEvent>(16, allocator);
+                Landed = new NativeList<ShellPoint>(16, allocator);
+                NoShells = new NativeArray<Shell>(0, allocator);
+                NoLandings = new NativeArray<ShellLanding>(0, allocator);
                 NoTargets = new NativeArray<AttackTarget>(0, allocator);
                 NoBuildingAttacks = new NativeArray<BuildingAttack>(0, allocator);
             }
@@ -229,6 +245,7 @@ namespace WAR2D.Net.Replication
                 States.Dispose(); View.Dispose(); Reliable.Dispose(); Unreliable.Dispose(); ReliableSizes.Dispose();
                 UnreliableSizes.Dispose(); Enters.Dispose(); EnterTiles.Dispose(); MoveOrders.Dispose(); MoveTiles.Dispose();
                 Leaves.Dispose(); Healths.Dispose(); Corrections.Dispose(); Attacks.Dispose(); NoTargets.Dispose(); NoBuildingAttacks.Dispose();
+                Shells.Dispose(); Landed.Dispose(); NoShells.Dispose(); NoLandings.Dispose();
             }
         }
     }
@@ -252,6 +269,12 @@ namespace WAR2D.Net.Replication
         [ReadOnly] public NativeArray<AttackTarget> AttackTargets;
         /// <summary>This tick's building attacks (v0.13), each with what its attacker and target are.</summary>
         [ReadOnly] public NativeArray<BuildingAttack> BuildingAttacks;
+        /// <summary>This tick's shells fired and landed.</summary>
+        [ReadOnly] public NativeArray<Shell> ShellsFired;
+        [ReadOnly] public NativeArray<ShellLanding> ShellLandings;
+        /// <summary>Output: shells fired and landed to send this client.</summary>
+        public NativeList<ShellEvent> ShellOut;
+        public NativeList<ShellPoint> LandedOut;
         /// <summary>The client's owner id and fog grid (as its interest set uses them).</summary>
         public int Owner, Grid;
         [ReadOnly] public NativeArray<int4> View;
@@ -280,7 +303,7 @@ namespace WAR2D.Net.Replication
             float now = Tick * Config.Dt;
             Reliable.Clear(); Unreliable.Clear(); ReliableSizes.Clear(); UnreliableSizes.Clear();
             Enters.Clear(); EnterTiles.Clear(); MoveOrders.Clear(); MoveTiles.Clear();
-            Leaves.Clear(); Healths.Clear(); Corrections.Clear(); AttackOut.Clear();
+            Leaves.Clear(); Healths.Clear(); Corrections.Clear(); AttackOut.Clear(); ShellOut.Clear(); LandedOut.Clear();
             int4 view = View[0];
 
             // Departures first: the interest diff has already moved on, so this is the only report.
@@ -368,12 +391,19 @@ namespace WAR2D.Net.Replication
             for (int i = 0; i < BuildingAttacks.Length; i++)
                 if (InterestRules.BuildingAttack(Input, Allowed, view, BuildingAttacks[i], Owner, Grid, out AttackEvent shown)) AttackOut.Add(shown);
 
+            for (int i = 0; i < ShellsFired.Length; i++)
+                if (InterestRules.ShellFired(Input, Allowed, view, ShellsFired[i], Owner, Grid, out ShellEvent shell)) ShellOut.Add(shell);
+            for (int i = 0; i < ShellLandings.Length; i++)
+                if (InterestRules.ShellLanded(Input, view, ShellLandings[i], Owner, Grid))
+                    LandedOut.Add(new ShellPoint { X = Quantise.Encode(ShellLandings[i].Point.x), Y = Quantise.Encode(ShellLandings[i].Point.y) });
+
             FlushLeaves();
             FlushEnters();
             FlushMoveOrders();
             FlushHealths();
             FlushCorrections();
             FlushAttacks();
+            FlushShells();
 
             for (int i = 0; i < Enters.Length; i++)
             {
@@ -566,6 +596,27 @@ namespace WAR2D.Net.Replication
                 int before = sink.Position;
                 Messages.EncodeAttack(ref sink, AttackOut.AsArray().GetSubArray(start, n));
                 UnreliableSizes.Add(sink.Position - before);
+            }
+        }
+
+        /// <summary>A flight is only drawn, so it is unreliable like an attack; a landing is what leaves the crater, so it is reliable.</summary>
+        private void FlushShells()
+        {
+            var sink = new NativeSink(Unreliable);
+            for (int start = 0; start < ShellOut.Length; start += 100) // ~10 bytes each, well inside one datagram
+            {
+                int n = math.min(100, ShellOut.Length - start);
+                int before = sink.Position;
+                Messages.EncodeShell(ref sink, ShellOut.AsArray().GetSubArray(start, n));
+                UnreliableSizes.Add(sink.Position - before);
+            }
+            var landed = new NativeSink(Reliable);
+            for (int start = 0; start < LandedOut.Length; start += 4096)
+            {
+                int n = math.min(4096, LandedOut.Length - start);
+                int before = landed.Position;
+                Messages.EncodeShellLanded(ref landed, LandedOut.AsArray().GetSubArray(start, n));
+                ReliableSizes.Add(landed.Position - before);
             }
         }
     }

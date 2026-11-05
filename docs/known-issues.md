@@ -6,6 +6,14 @@ Bugs, mismatches and hygiene problems. The first two roadmaps (v0.2 to v0.9, and
 
 The recorder's units go through `DeferredLane` (encoded during the next tick to keep the boundary inside the perf budget), so a recording's unit records are one tick later than its buildings and terrain. Harmless for playback; don't "fix" it by moving the recorder back onto the boundary (`docs/perf/v0.10/README.md`).
 
+## Real artillery shells (2026-11-06)
+
+| Item | State |
+| --- | --- |
+| Numbers | `Splash` 2, `SplashMedium` 2.5, `SplashFast` 4.5 keep the Artillery near its old instant hit in `ArtilleryBalanceTests` (EditMode, 4 guns, 24 fights each way): within about 15 % against an attack-moving swarm, weaker (down about 20 %) against one marching past, which is the dodge the rule wants. **Not run:** `ai-bench` and the perf gate, which need a Linux build. |
+| Replays never had attack events | **Found, open.** The recorder's lane has an empty view box (`DeferredLane`) and `InterestRules.UnitAttack` needs the attacker in the box, so a recording holds no attack events: no tracers, flashes or turret aim in a replay, for any gun. Shells have their own channels (format 4), so they do show. |
+| "Under attack" comes when the gun fires | **Open, on purpose.** `AlertService` reads attack events, as for every gun, so a dodged shell has raised an alert and a splash victim raises none. Reading landings instead (`CollectBlasts`) would measure every unit on every tick a shell lands. |
+
 ## Owner playtest fixes (2026-11-04, third session)
 
 | Item | State |
