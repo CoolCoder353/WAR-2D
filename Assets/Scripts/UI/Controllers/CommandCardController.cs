@@ -282,25 +282,25 @@ namespace WAR2D.UI
         }
 
         /// <summary>
-        /// The card-slot keys (v0.15.1, Figma H1–H2), once a frame while the HUD has the keyboard. With the build row showing a key does what
-        /// its build button does (place that building, or arm the Wall drag). With own producers of one kind selected the top-row keys
-        /// work the type selector: on the type being made a key adds one to every selected producer's queue (ten with the queue
-        /// modifier), on another type it switches to it, as a click does. Returns the cursor notice when the key's button is greyed
-        /// out ("Radar: need 250 (you have 90)", "Queue full"), else null.
+        /// The card-slot keys (v0.15.1, Figma H1–H2), once a frame while the HUD has the keyboard. A key does what its build button does
+        /// (place that building, or arm the Wall drag) whatever is selected, row showing or not: an idle Builder comes to what is placed.
+        /// The exception: with own producers of one kind selected the top-row keys work the type selector: on the type being made a
+        /// key adds one to every selected producer's queue (ten with the queue modifier), on another type it switches to it, as a
+        /// click does. Returns the cursor notice when the key's button is greyed out ("Radar: need 250 (you have 90)", "Queue full"), else null.
         /// </summary>
         public string HandleHotkeys()
         {
             int top = PressedSlot(GameInput.CardTopSlots, GameInput.CardTop);
             int bottom = top >= 0 ? -1 : PressedSlot(GameInput.CardBottomSlots, GameInput.CardBottom);
             if (top < 0 && bottom < 0) return null;
-            bool building = selection.BuildingId != 0 || WallsOnly;
-            if (BuildRowShown)
+            bool producing = selection.BuildingId != 0 && SpawnerRules.IsProducer(selection.BuildingType) && selection.BlueprintCount == 0 && !selection.MixedKinds;
+            if (!producing || top < 0)
             {
+                if (!canBuild && !BuildRowShown) return null;
                 if (top >= TopBuilds.Length || bottom >= BottomBuilds.Length) return null;
                 return Build(top >= 0 ? TopBuilds[top] : BottomBuilds[bottom]);
             }
-            bool producing = building && !WallsOnly && SpawnerRules.IsProducer(selection.BuildingType) && selection.BlueprintCount == 0 && !selection.MixedKinds;
-            if (!producing || top < 0 || rowsFor != selection.BuildingType || top >= shownTypes.Length) return null;
+            if (rowsFor != selection.BuildingType || top >= shownTypes.Length) return null;
             UnitType type = shownTypes[top];
             if (type != Chosen()) { Pick(type); return null; }
             if (selection.SpawnerQueue >= SpawnerRules.MaxQueue * selection.BuildingIds.Count) return "Queue full";

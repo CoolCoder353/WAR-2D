@@ -121,7 +121,7 @@ public class HudTests
     }
 
     /// <summary>The local player's units the client knows, anywhere on the map.</summary>
-    private static List<int> OwnUnits()
+    internal static List<int> OwnUnits()
     {
         var ids = new List<int>();
         (int2 min, int2 max) = WorldStateManager.Instance.MapBounds;
@@ -771,7 +771,7 @@ public class HudTests
         }
     }
 
-    private static bool TryOwnBuilding(BuildingType type, out int id)
+    internal static bool TryOwnBuilding(BuildingType type, out int id)
     {
         foreach (ClientBuildings.Entry e in ClientBuildings.Current.Entries.Values)
             if (e.Data.buildingType == type && e.Data.ownerId == PlayModeMatch.LocalOwner && !e.Ghost) { id = e.Data.id; return true; }

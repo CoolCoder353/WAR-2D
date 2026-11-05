@@ -67,13 +67,6 @@ public class BuildingPlacement : MonoBehaviour
         if (rangeRing != null) Destroy(rangeRing.gameObject);
     }
 
-    [ClientCallback]
-    private void Start()
-    {
-        localPlayer = NetworkClient.localPlayer != null ? NetworkClient.localPlayer.GetComponent<ClientPlayer>() : null;
-        if (localPlayer != null) localPlayer.onResponseFromCanBuildBuilding.AddListener(ResultFromCommand);
-    }
-
     /// <summary>Starts placing a building (replacing any placement in progress).</summary>
     [Client]
     public void BeginPlacement(BuildingType type)
@@ -182,6 +175,9 @@ public class BuildingPlacement : MonoBehaviour
     [ClientCallback]
     private void Update()
     {
+        // Found here, not in Start: on a rejoin the scene loads before the local player spawns.
+        if (localPlayer == null && NetworkClient.localPlayer != null && NetworkClient.localPlayer.TryGetComponent(out localPlayer))
+            localPlayer.onResponseFromCanBuildBuilding.AddListener(ResultFromCommand);
         GameCore core = GameCore.Instance;
         if (core == null || localPlayer == null) return;
 
