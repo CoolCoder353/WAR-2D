@@ -825,6 +825,34 @@ public class LeakTests
         spy.Dispose();
     }
 
+    /// <summary>A Large Jammer hides a unit a small one wouldn't (15 tiles out); up close it is seen, as in any jam.</summary>
+    [Test]
+    public void NothingInALargeJamBeyondTheSmallRadiusReachesTheEnemyClient()
+    {
+        using var sim = new SimHarness(Map(), c => c.Simulation.TargetSearchSliceTicks = 1);
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        var spy = new Spy(sim.Context, replication, OwnerC);
+        replication.SetVirtualView(OwnerC, new int2(0, 0), new int2(95, 95));
+        sim.Context.TeamResolver = owner => owner == OwnerC ? 1 : 0;
+        replication.CollectBuildings = list => SimBuildings(sim, list);
+        int jammer = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.LargeJammer, new int2(30, 30), complete: true);
+        float2 inside = Footprint.VisualCenter(new int2(30, 30), new int2(3, 3)) + new float2(15f, 0f);
+        int[] aUnit = sim.Spawn(SimHarness.OwnerA, inside, UnitType.Builder);
+        int[] cTank = sim.Spawn(OwnerC, inside + new float2(6f, 0f), UnitType.Tank); // sight 8, outside the jam
+        for (int t = 0; t < 40; t++) sim.Tick();
+        sim.Em.CompleteAllTrackedJobs();
+        Assert.IsTrue(sim.Context.Data.Jammed(sim.Context.VisionOf(OwnerC), inside), "the unit stands in the jam");
+        Assert.IsFalse(spy.OthersKnown.Contains(aUnit[0]), "no record of the unit");
+        Assert.IsFalse(spy.Buildings.Entries.ContainsKey(jammer), "nor of the Large Jammer");
+        CollectionAssert.IsEmpty(spy.Failures);
+
+        sim.Teleport(cTank[0], inside + new float2(2f, 0f));
+        for (int t = 0; t < 12; t++) sim.Tick();
+        Assert.IsTrue(spy.OthersKnown.Contains(aUnit[0]), "2 tiles away: seen");
+        CollectionAssert.IsEmpty(spy.Failures);
+        spy.Dispose();
+    }
+
     [Test]
     public void AJammedTurretsAttackOnAnEnemyNeverReachesIt()
     {

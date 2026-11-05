@@ -73,6 +73,7 @@ namespace WAR2D.Sim
             {
                 BuildingCount = math.min(data.BuildingCount[0], data.BuildingCapacity),
                 BuildingFlag = data.BuildingFlag,
+                BuildingKind = data.BuildingKind,
                 BuildingHealth = data.BuildingHealth,
                 BuildingOwnerSlot = data.BuildingOwnerSlot,
                 BuildingAnchor = data.BuildingAnchor,
@@ -83,6 +84,7 @@ namespace WAR2D.Sim
                 JamShare = data.JamShare,
                 JamDirty = data.JamDirty,
                 JamRadius = data.JamRadius,
+                LargeJamRadius = data.LargeJamRadius,
                 FogCellSize = data.FogCellSize,
                 FogW = data.FogW,
                 FogH = data.FogH,
@@ -219,14 +221,14 @@ namespace WAR2D.Sim
     /// <see cref="BuildingFlags.Jams"/>) or the share-vision masks differ from the ones it was built from, or
     /// <see cref="SimData.JamDirty"/> is set. A Jammer finishing, dying, going unpaid or paid again, being built
     /// complete, and a share-vision change at the boundary all show up as such a difference, so no event needs a hook.
-    /// A cell of grid g is jammed when its centre lies within the radius of a Jammer whose owner slot is not g and
+    /// A cell of grid g is jammed when its centre lies within the radius of a Jammer or Large Jammer whose owner slot is not g and
     /// doesn't share vision with g. Most passes only compare the lists.
     /// </summary>
     [BurstCompile]
     public struct RebuildJamJob : IJob
     {
         public int BuildingCount;
-        [ReadOnly] public NativeArray<byte> BuildingFlag, BuildingOwnerSlot;
+        [ReadOnly] public NativeArray<byte> BuildingFlag, BuildingKind, BuildingOwnerSlot;
         [ReadOnly] public NativeArray<float> BuildingHealth;
         [ReadOnly] public NativeArray<int2> BuildingAnchor, BuildingSize;
         [ReadOnly] public NativeArray<ushort> ShareVisionMask;
@@ -234,7 +236,7 @@ namespace WAR2D.Sim
         public NativeList<int3> JamSources;
         public NativeArray<ushort> JamShare;
         public NativeArray<byte> JamDirty;
-        public float JamRadius;
+        public float JamRadius, LargeJamRadius;
         public int FogCellSize, FogW, FogH, FogCells;
 
         /// <summary>True for a slot that jams now.</summary>
@@ -260,11 +262,11 @@ namespace WAR2D.Sim
             for (int s = 0; s < SimData.MaxOwners; s++) JamShare[s] = ShareVisionMask[s];
             JamSources.Clear();
             for (int i = 0; i < JamMask.Length; i++) JamMask[i] = 0;
-            float radiusSq = JamRadius * JamRadius;
-            int reach = (int)math.ceil(JamRadius / FogCellSize) + 1;
             for (int b = 0; b < BuildingCount; b++)
             {
                 if (!Jams(b)) continue;
+                float radius = BuildingKind[b] == (byte)BuildingType.LargeJammer ? LargeJamRadius : JamRadius, radiusSq = radius * radius;
+                int reach = (int)math.ceil(radius / FogCellSize) + 1;
                 int slot = BuildingOwnerSlot[b];
                 JamSources.Add(new int3(slot, BuildingAnchor[b]));
                 float2 centre = Footprint.VisualCenter(BuildingAnchor[b], BuildingSize[b]);

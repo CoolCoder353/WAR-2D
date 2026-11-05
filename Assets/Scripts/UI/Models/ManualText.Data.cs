@@ -172,6 +172,18 @@ namespace WAR2D.UI
         ""Your units inside stay hidden and your buildings stay ghosts until they come close. It stops jamming while unpaid or destroyed.""
       ]
     },
+    ""LargeRadar"": {
+      ""role"": ""A Radar that sees farther."",
+      ""body"": [
+        ""Does what a [[Radar]] does over {Building/LargeRadar/Sight} tiles, for a higher cost and upkeep. It has no key: click its button on the command card.""
+      ]
+    },
+    ""LargeJammer"": {
+      ""role"": ""A Jammer that hides a wider area."",
+      ""body"": [
+        ""Does what a [[Jammer]] does over {Siege/LargeJamRadius} tiles, for a higher cost and upkeep. It has no key: click its button on the command card.""
+      ]
+    },
     ""Wall"": {
       ""role"": ""Blocks movement and sight."",
       ""body"": [

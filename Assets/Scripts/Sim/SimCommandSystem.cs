@@ -590,9 +590,11 @@ namespace WAR2D.Sim
                     break;
                 case BuildingType.Bomb:
                 case BuildingType.Radar:
+                case BuildingType.LargeRadar:
                 case BuildingType.GunTurret:
                     break; // no components of their own: their stages read the building's slot flags (the turret's weapon is added below)
                 case BuildingType.Jammer:
+                case BuildingType.LargeJammer:
                     EntityManager.AddComponent<Jammer>(building);
                     break;
                 default:

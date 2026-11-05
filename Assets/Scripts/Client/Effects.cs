@@ -262,12 +262,13 @@ public static class Effects
         s.Go.transform.SetPositionAndRotation(s.From, Quaternion.Euler(0f, 0f, Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg));
     }
 
-    /// <summary>A Jammer's pulse (v0.13), centred on its footprint (the art places the rings on its dish).</summary>
-    public static void JamPulse(Vector2 centre)
+    /// <summary>A Jammer's pulse (v0.13), centred on its footprint (the art places the rings on its dish), <paramref name="scale"/> times the 2×2 Jammer's.</summary>
+    public static void JamPulse(Vector2 centre, float scale = 1f)
     {
         Slot s = Take(Pulses);
         if (s == null) return;
         s.Go.transform.SetPositionAndRotation(new Vector3(centre.x, centre.y, 0f), Quaternion.identity);
+        s.Go.transform.localScale = new Vector3(scale, scale, 1f);
     }
 
     /// <summary>A puff of smoke rising from <paramref name="position"/> (a damaged building).</summary>

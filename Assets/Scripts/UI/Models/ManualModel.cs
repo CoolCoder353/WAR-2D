@@ -103,7 +103,7 @@ namespace WAR2D.UI
         }
 
         private static readonly UnitType[] UnitOrder = { UnitType.Tank, UnitType.Builder, UnitType.Digger, UnitType.Scout, UnitType.Flamethrower, UnitType.Heavy, UnitType.Artillery, UnitType.Sniper, UnitType.SuicideBomber };
-        private static readonly BuildingType[] BuildingOrder = { BuildingType.Base, BuildingType.Miner, BuildingType.Barracks, BuildingType.HeavyFactory, BuildingType.SiegeWorkshop, BuildingType.Bomb, BuildingType.Radar, BuildingType.GunTurret, BuildingType.Jammer };
+        private static readonly BuildingType[] BuildingOrder = { BuildingType.Base, BuildingType.Miner, BuildingType.Barracks, BuildingType.HeavyFactory, BuildingType.SiegeWorkshop, BuildingType.Bomb, BuildingType.Radar, BuildingType.GunTurret, BuildingType.Jammer, BuildingType.LargeRadar, BuildingType.LargeJammer };
 
         /// <summary>The unit types with pages.</summary>
         public static IEnumerable<UnitType> UnitTypes
@@ -133,6 +133,8 @@ namespace WAR2D.UI
             "HeavyFactory" => "Heavy Factory",
             "SiegeWorkshop" => "Siege Workshop",
             "GunTurret" => "Gun turret",
+            "LargeRadar" => "Large Radar",
+            "LargeJammer" => "Large Jammer",
             "SuicideBomber" => "Suicide bomber",
             _ => type,
         };
@@ -286,10 +288,12 @@ namespace WAR2D.UI
                     Stat("Blast radius", Number(config.Siege.BlastRadius) + " tiles");
                     break;
                 case BuildingType.Radar:
+                case BuildingType.LargeRadar:
                     Stat("Radar range", Number(b.Sight) + " tiles");
                     break;
                 case BuildingType.Jammer:
-                    Stat("Jam radius", Number(config.Siege.JamRadius) + " tiles");
+                case BuildingType.LargeJammer:
+                    Stat("Jam radius", Number(SensorRules.JamRadius(type, config.Siege)) + " tiles");
                     Stat("Sight inside a jam", Number(config.Siege.JamSight) + " tiles");
                     break;
                 case BuildingType.GunTurret:

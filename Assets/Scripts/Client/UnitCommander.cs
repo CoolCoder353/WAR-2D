@@ -1083,7 +1083,7 @@ public class UnitCommander : NetworkBehaviour
             if (!Known.Entries.TryGetValue(id, out ClientBuildings.Entry e) || e.Ghost || e.Data.ownerId != own) continue;
             float radius = DefenceView.RingRadius(e.Data.buildingType);
             if (radius <= 0f) continue;
-            bool idle = e.Progress < 100 || (e.Data.buildingType != BuildingType.Radar && DefenceView.Unpaid(e));
+            bool idle = e.Progress < 100 || (!SensorRules.IsRadar(e.Data.buildingType) && DefenceView.Unpaid(e));
             Color32 c = colour;
             c.a = (byte)(idle ? 255 * IdleRingOpacity : 255);
             if (shown == rangeRings.Count) rangeRings.Add(ClearingRing.Create("RangeRing", SortingOrders.ClearingRing));

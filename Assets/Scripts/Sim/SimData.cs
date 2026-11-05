@@ -383,7 +383,7 @@ namespace WAR2D.Sim
         public NativeList<int3> RadarSources;
         /// <summary>
         /// Per grid and fog cell (same layout as <see cref="Visible"/>), 1 where the cell is jammed for that grid: it lies
-        /// within <see cref="JamRadius"/> of a complete, paid Jammer whose owner is not the grid's and doesn't share vision
+        /// within <see cref="JamRadius"/> (<see cref="LargeJamRadius"/>) of a complete, paid Jammer (Large Jammer) whose owner is not the grid's and doesn't share vision
         /// with it (v0.13). The grid's sources see a jammed cell only from within <see cref="JamSight"/>, and its Radars not at all.
         /// </summary>
         public NativeArray<byte> JamMask;
@@ -393,8 +393,8 @@ namespace WAR2D.Sim
         public NativeArray<ushort> JamShare;
         /// <summary>1 forces the next vision pass to rebuild the jam mask (set at creation).</summary>
         public NativeArray<byte> JamDirty;
-        /// <summary>Jam radius and the sight that still reaches into a jam, in tiles.</summary>
-        public float JamRadius, JamSight;
+        /// <summary>Jam radius, a Large Jammer's, and the sight that still reaches into a jam, in tiles.</summary>
+        public float JamRadius, LargeJamRadius, JamSight;
 
         /// <summary>
         /// Indices (grid * FogCells + cell) whose <see cref="Visible"/> value changed in the last vision
@@ -648,6 +648,7 @@ namespace WAR2D.Sim
             data.JamDirty = new NativeArray<byte>(1, allocator);
             data.JamDirty[0] = 1;
             data.JamRadius = config.Siege.JamRadius;
+            data.LargeJamRadius = config.Siege.LargeJamRadius;
             data.JamSight = config.Siege.JamSight;
 
             foreach (var pair in config.Buildings) data.BuildingCostByKind[(int)pair.Key] = pair.Value.UpfrontCost;

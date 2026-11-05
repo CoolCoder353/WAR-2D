@@ -19,13 +19,9 @@ namespace WAR2D.Client
         public static float RingRadius(BuildingType type)
         {
             GameConfigData config = ConfigLoader.LoadConfig();
-            return type switch
-            {
-                BuildingType.Radar => config.GetBuilding(BuildingType.Radar).Sight,
-                BuildingType.GunTurret => config.GetBuilding(BuildingType.GunTurret).Range,
-                BuildingType.Jammer => config.Siege.JamRadius,
-                _ => 0f,
-            };
+            if (SensorRules.IsRadar(type)) return config.GetBuilding(type).Sight;
+            if (SensorRules.IsJammer(type)) return SensorRules.JamRadius(type, config.Siege);
+            return type == BuildingType.GunTurret ? config.GetBuilding(type).Range : 0f;
         }
 
         /// <summary>The local player, or null (not in a match).</summary>

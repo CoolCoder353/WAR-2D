@@ -45,7 +45,11 @@ public enum BuildingType
     /// <summary>A static defence (1x1): shoots units, then buildings, then walls, like a unit that can't move.</summary>
     GunTurret,
     /// <summary>Jams its radius (2x2): enemies see in it only up close, and their Radars not at all.</summary>
-    Jammer
+    Jammer,
+    /// <summary>A Radar with a longer reach (3x3).</summary>
+    LargeRadar,
+    /// <summary>A Jammer with a longer reach (3x3).</summary>
+    LargeJammer
 }
 
 /// <summary>A building under construction (v0.7). Removed when <see cref="Progress"/> reaches 1.</summary>

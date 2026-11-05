@@ -23,6 +23,8 @@ public class RangeRulesTests
     [TestCase(BuildingType.GunTurret, 9f)]
     [TestCase(BuildingType.Radar, 20f)]
     [TestCase(BuildingType.Jammer, 12f)]
+    [TestCase(BuildingType.LargeRadar, 30f)]
+    [TestCase(BuildingType.LargeJammer, 18f)]
     [TestCase(BuildingType.Barracks, 0f)]
     public void PlacementShowsTheBuildingsReach(BuildingType type, float reach) =>
         Assert.AreEqual(reach, WAR2D.Client.DefenceView.RingRadius(type));

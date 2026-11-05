@@ -173,7 +173,7 @@ namespace WAR2D.Ai
             int2 near = state.Hq.Anchor;
             float radius = play.BaseRadius;
             int gap = 0;
-            if (type == BuildingType.GunTurret || type == BuildingType.Bomb || type == BuildingType.Jammer || type == BuildingType.Radar)
+            if (type == BuildingType.GunTurret || type == BuildingType.Bomb || SensorRules.IsJammer(type) || SensorRules.IsRadar(type))
             {
                 // A defence in the opening goes towards its front (the Builder manager's spots, or its gathering point).
                 if (state.DefenceSpots.Count > 0) near = (int2)math.floor(state.DefenceSpots[0]);

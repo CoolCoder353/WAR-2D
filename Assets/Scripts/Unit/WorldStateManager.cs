@@ -509,15 +509,16 @@ public partial class WorldStateManager : NetworkBehaviour
     private void WatchRadars(SimData data, int unitCount)
     {
         radarScratch.Clear();
-        BuildingConfig radarConfig = ConfigLoader.LoadConfig().GetBuilding(BuildingType.Radar);
+        GameConfigData config = ConfigLoader.LoadConfig();
         foreach (Entity entity in Buildings.Values)
         {
             if (!EntityManager.Exists(entity)) continue;
             BuildingData building = EntityManager.GetComponentData<BuildingData>(entity);
-            if (building.buildingType != BuildingType.Radar || EntityManager.HasComponent<Construction>(entity)) continue;
+            if (!SensorRules.IsRadar(building.buildingType) || EntityManager.HasComponent<Construction>(entity)) continue;
             if (EntityManager.HasComponent<UpkeepComponent>(entity) && EntityManager.GetComponentData<UpkeepComponent>(entity).unpaid) continue; // an unpaid Radar is off
             if (EntityManager.GetComponentData<HealthComponent>(entity).currentHealth <= 0f) continue;
             int2 anchor = (int2)math.round(building.position);
+            BuildingConfig radarConfig = config.GetBuilding(building.buildingType);
             radarScratch.Add(new RadarView { Id = building.id, OwnerId = building.ownerId, Tile = anchor, Centre = Footprint.VisualCenter(anchor, radarConfig.Size), Radius = radarConfig.Sight });
         }
         radars.Update(data, unitCount, radarScratch, GameCore.MatchNow, Alerts.Add);
@@ -768,7 +769,7 @@ public partial class WorldStateManager : NetworkBehaviour
                 // Only this bomb's entry: another may have been laid on the tile too.
                 bombTiles.Remove((int2)math.round(building.position), id);
             }
-            if (building.buildingType == BuildingType.Radar) radars?.Forget(id);
+            if (SensorRules.IsRadar(building.buildingType)) radars?.Forget(id);
             Sim?.ForgetBuilding(id);
             Ids?.Free(id);
             if (buildingFootprints.Remove(id, out List<int2> footprint))

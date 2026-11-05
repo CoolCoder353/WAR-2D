@@ -127,6 +127,51 @@ public class BastionTests
         }
     }
 
+    [UnityTest, Timeout(120000)]
+    public IEnumerator ALargeRadarPingsAtAReachTheSmallOneLacks()
+    {
+        int2 hq = default;
+        yield return HostWithBot(a => hq = a);
+        WorldStateManager wsm = WorldStateManager.Instance;
+        SimContext.Current.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.SetAttack, OwnerId = Bot, TargetOwnerId = PlayModeMatch.LocalOwner, Flag = false });
+
+        // Our Large Radar at r, room for a bot unit 25 tiles east of its centre (the small Radar reaches 20).
+        int2 radar = default;
+        bool found = false;
+        (int2 min, int2 max) = wsm.MapBounds;
+        for (int ring = 40; ring < 120 && !found; ring++)
+        for (int i = 0; i < 8 * ring && !found; i++)
+        {
+            int2 r = Ring(hq, ring, i);
+            if (math.any(r - 2 < min + 2) || math.any(r + new int2(30, 3) > max - 2)) continue;
+            if (!Open(wsm, r - 1, r + 1) || !Open(wsm, r + new int2(24, -1), r + new int2(26, 1)) || math.distance(r + new int2(25, 0), hq) < 30f) continue;
+            found = true;
+            radar = r;
+        }
+        Assert.That(found, Is.True, "room for the layout");
+
+        int pings = 0;
+        ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+        void OnAlerts(Alert[] alerts)
+        {
+            foreach (Alert a in alerts) if (a.Kind == AlertKind.EnemySpotted) pings++;
+        }
+        local.AlertsReceived += OnAlerts;
+        try
+        {
+            float2 centre = Footprint.VisualCenter(radar, WorldStateManager.GetBuildingSize(BuildingType.LargeRadar));
+            int contact = 0;
+            Assert.That(wsm.DevSpawnUnit(Bot, centre + new float2(25f, 0f), id => contact = id, UnitType.Tank), Is.True);
+            Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.LargeRadar, radar), Is.True);
+            DevApi.AllowForTests = true; // PlaceBuilt turns it off
+            yield return PlayModeMatch.WaitUntil(() => pings > 0 && contact > 0 && ClientWorld.Instance.TryGet(contact, out _), 15f);
+        }
+        finally
+        {
+            local.AlertsReceived -= OnAlerts;
+        }
+    }
+
     private sealed class ChokeResult
     {
         public int Turret;

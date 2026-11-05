@@ -171,7 +171,7 @@ namespace WAR2D.Client.Render
         /// <summary>The idle frame at <paramref name="time"/>: the Spawner's lamp and the Jammer's aerial lamps blink once a second, the rest turn every tick; neighbours are staggered.</summary>
         private static int AnimationFrame(BuildingType type, float2 centre, float time, int frames)
         {
-            int hold = type == BuildingType.Barracks || type == BuildingType.Jammer ? math.max(1, ArtStyle.FramesPerSecond / 2) : 1;
+            int hold = type == BuildingType.Barracks || SensorRules.IsJammer(type) ? math.max(1, ArtStyle.FramesPerSecond / 2) : 1;
             float phase = (centre.x * 0.37f + centre.y * 0.61f) % 1f;
             return (int)((time + phase) * ArtStyle.FramesPerSecond) / hold % frames;
         }

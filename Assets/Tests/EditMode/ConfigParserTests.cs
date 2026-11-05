@@ -31,7 +31,7 @@ public class ConfigParserTests
   <MenuBattle><UnitsPerArmy>1500</UnitsPerArmy><MapSize>512</MapSize><Seed>7</Seed></MenuBattle>
   <Gifting><CooldownSeconds>5</CooldownSeconds></Gifting>
   <Alerts><ThrottleSeconds>10</ThrottleSeconds><AreaTiles>32</AreaTiles><ShowSeconds>8</ShowSeconds></Alerts>
-  <Siege><BombTriggerRadius>1.5</BombTriggerRadius><BombFriendlyDamage>0.1</BombFriendlyDamage><BuildPower>25</BuildPower><DemolishRefund>0.5</DemolishRefund><RepairCostPerHealth>0.2</RepairCostPerHealth><WorkReach>1.6</WorkReach><DigTime>1.5</DigTime><GemPayout>150</GemPayout><RichGemPayout>375</RichGemPayout><WallCost>5</WallCost><WallHealth>150</WallHealth><MaxWallLine>64</MaxWallLine><BlastRadius>2.5</BlastRadius><BlastDamage>200</BlastDamage><RadarClearSeconds>5</RadarClearSeconds><RadarAlertCooldownSeconds>30</RadarAlertCooldownSeconds><JamRadius>12</JamRadius><JamSight>3</JamSight></Siege>
+  <Siege><BombTriggerRadius>1.5</BombTriggerRadius><BombFriendlyDamage>0.1</BombFriendlyDamage><BuildPower>25</BuildPower><DemolishRefund>0.5</DemolishRefund><RepairCostPerHealth>0.2</RepairCostPerHealth><WorkReach>1.6</WorkReach><DigTime>1.5</DigTime><GemPayout>150</GemPayout><RichGemPayout>375</RichGemPayout><WallCost>5</WallCost><WallHealth>150</WallHealth><MaxWallLine>64</MaxWallLine><BlastRadius>2.5</BlastRadius><BlastDamage>200</BlastDamage><RadarClearSeconds>5</RadarClearSeconds><RadarAlertCooldownSeconds>30</RadarAlertCooldownSeconds><JamRadius>12</JamRadius><LargeJamRadius>18</LargeJamRadius><JamSight>3</JamSight></Siege>
   <Audio><BattleDeathsPerSecond>3</BattleDeathsPerSecond><BattleHoldSeconds>20</BattleHoldSeconds></Audio>
   <Replays><Enabled>1</Enabled><MaxMegabytes>512</MaxMegabytes><KeepCount>50</KeepCount><FogSeconds>1</FogSeconds><MarkerLeadSeconds>5</MarkerLeadSeconds></Replays>
   <Ai><Callsigns>Cmdr. A, Maj. B, Capt. C, Col. D, Lt. E, Maj. F, Capt. G, Cmdr. H, Col. I</Callsigns>
@@ -66,6 +66,8 @@ public class ConfigParserTests
     <Building type=""SiegeWorkshop""><Health>300</Health><Width>2</Width><Height>2</Height><UpfrontCost>250</UpfrontCost><RunningCost>20</RunningCost><Sight>6</Sight></Building>
     <Building type=""GunTurret""><Health>350</Health><Width>1</Width><Height>1</Height><UpfrontCost>150</UpfrontCost><RunningCost>4</RunningCost><Sight>8</Sight><Damage>8</Damage><Range>7</Range><AttackInterval>0.4</AttackInterval></Building>
     <Building type=""Jammer""><Health>200</Health><Width>2</Width><Height>2</Height><UpfrontCost>200</UpfrontCost><RunningCost>6</RunningCost><Sight>6</Sight></Building>
+    <Building type=""LargeRadar""><Health>450</Health><Width>3</Width><Height>3</Height><UpfrontCost>625</UpfrontCost><RunningCost>12.5</RunningCost><Sight>30</Sight></Building>
+    <Building type=""LargeJammer""><Health>450</Health><Width>3</Width><Height>3</Height><UpfrontCost>500</UpfrontCost><RunningCost>15</RunningCost><Sight>6</Sight></Building>
   </Buildings>
 </GameConfig>";
 

@@ -515,7 +515,7 @@ namespace WAR2D.Client
             float now = Time.time;
             foreach (ClientBuildings.Entry e in known.Entries.Values)
             {
-                if (e.Data.buildingType != BuildingType.Jammer) continue;
+                if (!SensorRules.IsJammer(e.Data.buildingType)) continue;
                 int id = e.Data.id;
                 if (e.Ghost || e.Progress < 100 || DefenceView.Unpaid(e))
                 {
@@ -529,7 +529,8 @@ namespace WAR2D.Client
                 }
                 if (now < at) continue;
                 nextPulse[id] = now + PulseSeconds;
-                Effects.JamPulse(Footprint.VisualCenter((int2)math.round(e.Data.position), WorldStateManager.GetBuildingSize(BuildingType.Jammer)));
+                int2 size = WorldStateManager.GetBuildingSize(e.Data.buildingType);
+                Effects.JamPulse(Footprint.VisualCenter((int2)math.round(e.Data.position), size), size.x / 2f);
             }
             if (nextPulse.Count == 0) return;
             pulseGone.Clear();

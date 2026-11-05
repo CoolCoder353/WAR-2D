@@ -52,7 +52,7 @@ namespace WAR2D.Client.Overlays
             if (!f.Commander.KnownBuildings.Entries.TryGetValue(id, out ClientBuildings.Entry e)) return;
             if (!config.Buildings.TryGetValue(e.Data.buildingType, out Config.BuildingConfig building)) return;
             float2 at = Footprint.VisualCenter((int2)math.round(e.Data.position), WorldStateManager.GetBuildingSize(e.Data.buildingType));
-            Add(RangeRules.OfBuilding(e.Data.buildingType, building, config.Siege.JamRadius, at, e.Data.ownerId), 1000 + (int)e.Data.buildingType);
+            Add(RangeRules.OfBuilding(e.Data.buildingType, building, SensorRules.JamRadius(e.Data.buildingType, config.Siege), at, e.Data.ownerId), 1000 + (int)e.Data.buildingType);
         }
 
         private void AddUnderPointer(OverlayFrame f, Config.GameConfigData config)

@@ -189,7 +189,7 @@ namespace WAR2D.Ai
             }
         }
 
-        private static bool IsDefence(BuildingType t) => t == BuildingType.GunTurret || t == BuildingType.Bomb || t == BuildingType.Jammer;
+        private static bool IsDefence(BuildingType t) => t == BuildingType.GunTurret || t == BuildingType.Bomb || SensorRules.IsJammer(t);
 
         private static int DefenceBlueprints(TeamView view, AiState state)
         {

@@ -18,6 +18,8 @@ namespace WAR2D.UI
         Hq, IdleBuilders, Army, RallyAll, Eye,
         // Playtest 2026-10-30: the Roam order.
         Roam,
+        // The large defences (named as BuildingType).
+        LargeRadar, LargeJammer,
     }
 
     /// <summary>

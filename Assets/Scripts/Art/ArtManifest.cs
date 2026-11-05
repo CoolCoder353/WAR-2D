@@ -88,6 +88,8 @@ namespace WAR2D.Art
             new ArtEntry(nameof(BuildingType.GunTurret), ArtKind.Building, 1, 1, 2, 1, true),
             new ArtEntry(TurretHead, ArtKind.Building, 1, 1, 2, UnitDirections, true),
             new ArtEntry(nameof(BuildingType.Jammer), ArtKind.Building, 2, 2, 2, 1, true),
+            new ArtEntry(nameof(BuildingType.LargeRadar), ArtKind.Building, 3, 3, 2, 1, true),
+            new ArtEntry(nameof(BuildingType.LargeJammer), ArtKind.Building, 3, 3, 2, 1, true),
 
             // Tiles: frames are variants (random for floor and gems, autotile masks for walls).
             new ArtEntry(nameof(TileType.Ground), ArtKind.Tile, 1, 1, Render.RenderGen.FloorVariants, 1, false),
@@ -167,6 +169,8 @@ namespace WAR2D.Art
             new ArtEntry("IconRadar", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("IconGunTurret", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("IconJammer", ArtKind.Icon, 1, 1, 1, 1, false),
+            new ArtEntry("IconLargeRadar", ArtKind.Icon, 1, 1, 1, 1, false),
+            new ArtEntry("IconLargeJammer", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("IconDig", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("IconCancel", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("MarkElimination", ArtKind.Icon, 1, 1, 1, 1, false),

@@ -161,7 +161,7 @@ function sheet(cfg, opts) {
   const upkeepRatio = army.map((u) => (horizon * u.upkeep) / u.cost);
   lines.push('## Economy', '',
     `- Income: passive ${cfg.passive}/s; a Miner (${B.Miner ? B.Miner.cost : '?'}) makes ${cfg.mining}/s while it faces a gem, paying for itself in ${B.Miner ? r1(B.Miner.cost / cfg.mining) : '?'} s.`,
-    `- Producers: ${['Barracks', 'HeavyFactory', 'SiegeWorkshop'].map(bline).filter(Boolean).join('; ')}. Defences: ${['GunTurret', 'Jammer', 'Radar', 'Bomb'].map(bline).filter(Boolean).join('; ')}; a wall segment ${cfg.wallCost} for ${cfg.wallHp} HP, no upkeep.`,
+    `- Producers: ${['Barracks', 'HeavyFactory', 'SiegeWorkshop'].map(bline).filter(Boolean).join('; ')}. Defences: ${['GunTurret', 'Jammer', 'LargeJammer', 'Radar', 'LargeRadar', 'Bomb'].map(bline).filter(Boolean).join('; ')}; a wall segment ${cfg.wallCost} for ${cfg.wallHp} HP, no upkeep.`,
     `- Most a producer can spend (cost ÷ build time): ${spend.map((s) => `${s.b} ${r1(s.rate)}/s (${s.unit})`).join(', ')}.`,
     `- Upkeep over ${horizon} s is ${r1(Math.min(...upkeepRatio))}–${r1(Math.max(...upkeepRatio))}× an army unit's price.`, '');
   const maxSpend = Math.max(...spend.filter((s) => ARMY_PRODUCERS.includes(s.b)).map((s) => s.rate));

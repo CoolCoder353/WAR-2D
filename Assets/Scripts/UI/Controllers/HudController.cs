@@ -117,8 +117,10 @@ namespace WAR2D.UI
                     BuildingType.SiegeWorkshop => "Makes Diggers, Suicide bombers",
                     BuildingType.Bomb => "Hidden from your enemies",
                     BuildingType.Radar => "Sees over walls",
+                    BuildingType.LargeRadar => "Sees over walls, farther",
                     BuildingType.GunTurret => "Defence: shoots units, then buildings and walls",
                     BuildingType.Jammer => "Hides an area from enemies",
+                    BuildingType.LargeJammer => "Hides a wider area from enemies",
                     _ => null,
                 };
                 var card = new HoverCardContent(null, null, role);
@@ -127,8 +129,8 @@ namespace WAR2D.UI
                 if (b.RunningCost > 0f) card.Pair("Upkeep", $"{b.RunningCost:0.#}/s");
                 card.Pair("Size", $"{b.Width}×{b.Height}");
                 if (type == BuildingType.GunTurret) card.Pair("Range", $"{b.Range:0.#}");
-                else if (type == BuildingType.Jammer) card.Pair("Jams", $"{config.Siege.JamRadius:0.#} tiles");
-                else if (type == BuildingType.Radar) card.Pair("Sight", $"{b.Sight:0.#}");
+                else if (SensorRules.IsJammer(type)) card.Pair("Jams", $"{SensorRules.JamRadius(type, config.Siege):0.#} tiles");
+                else if (SensorRules.IsRadar(type)) card.Pair("Sight", $"{b.Sight:0.#}");
                 return card;
             }
 
@@ -763,7 +765,7 @@ namespace WAR2D.UI
                 bool names = AlertFeedModel.NamesAPlayer(alert.Kind);
                 Alerts.Add(alert, AlertFeedModel.Text(alert, NameOf, building), Time.unscaledTime,
                     names ? NameOf(alert.OtherOwnerId) : null, names ? AiTagOf(alert.OtherOwnerId) : null);
-                if (alert.Kind == AlertKind.ConstructionFinished) sound = building == AlertFeedModel.BuildingName(BuildingType.Jammer) ? "jammer_online" : "construction_finished";
+                if (alert.Kind == AlertKind.ConstructionFinished) sound = building == AlertFeedModel.BuildingName(BuildingType.Jammer) || building == AlertFeedModel.BuildingName(BuildingType.LargeJammer) ? "jammer_online" : "construction_finished";
                 if (alert.Kind == AlertKind.EnemySpotted) sound = "radar_ping";
             }
             // One sound per batch; a Radar contact or a finished building has its own (a Jammer coming online hums, v0.13).

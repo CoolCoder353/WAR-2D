@@ -167,6 +167,9 @@ namespace WAR2D.UI
             AddBuild(root, "build-radar", BuildingType.Radar);
             AddBuild(root, "build-gun-turret", BuildingType.GunTurret);
             AddBuild(root, "build-jammer", BuildingType.Jammer);
+            // After the Defend row's five keyed slots: these two have no card-slot key.
+            AddBuild(root, "build-large-radar", BuildingType.LargeRadar);
+            AddBuild(root, "build-large-jammer", BuildingType.LargeJammer);
             AddSlotKeys(root);
             wall = root.Q<Button>("build-wall");
             wall.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); WallClicked?.Invoke(); };

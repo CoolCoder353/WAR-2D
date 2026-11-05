@@ -266,7 +266,7 @@ namespace WAR2D.UI
                 unpaid |= r.Unpaid;
                 firing |= r.Firing;
             }
-            if (type != BuildingType.GunTurret && type != BuildingType.Jammer) return ("", StatusTone.Idle);
+            if (type != BuildingType.GunTurret && !SensorRules.IsJammer(type)) return ("", StatusTone.Idle);
             if (!built) return ("Blueprint: works when built", StatusTone.Idle);
             if (type == BuildingType.GunTurret)
                 return unpaid ? ("Unpaid: not firing", StatusTone.Danger)
@@ -463,7 +463,7 @@ namespace WAR2D.UI
                     Firing = e.Data.buildingType == BuildingType.GunTurret && DefenceView.Firing(WAR2D.Net.Replication.ClientBuildings.Current, id, now),
                 });
             }
-            SetBuildingRows(pulledRows, config.GetBuilding(BuildingType.GunTurret).Range, config.Siege.JamRadius);
+            SetBuildingRows(pulledRows, config.GetBuilding(BuildingType.GunTurret).Range, SensorRules.JamRadius(pulledRows.Count > 0 ? pulledRows[0].Type : BuildingType.None, config.Siege));
         }
 
         private readonly List<int> pulledByType = new List<int>();

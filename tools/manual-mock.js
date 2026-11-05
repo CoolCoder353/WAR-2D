@@ -19,7 +19,7 @@ const CLASSES = ['LightUnit', 'HeavyUnit', 'Building', 'Wall'];
 const CLASS_NAMES = { LightUnit: 'Light units', HeavyUnit: 'Heavy units', Building: 'Buildings', Wall: 'Walls' };
 // Mirrors SpawnerRules.Produces (code, not config), as balance-sheet.js does.
 const PRODUCERS = { Base: ['Builder'], Barracks: ['Scout', 'Tank', 'Flamethrower'], HeavyFactory: ['Heavy', 'Artillery', 'Sniper'], SiegeWorkshop: ['Digger', 'SuicideBomber'] };
-const NAMES = { Base: 'HQ', HeavyFactory: 'Heavy Factory', SiegeWorkshop: 'Siege Workshop', GunTurret: 'Gun turret', SuicideBomber: 'Suicide bomber' };
+const NAMES = { Base: 'HQ', HeavyFactory: 'Heavy Factory', SiegeWorkshop: 'Siege Workshop', GunTurret: 'Gun turret', LargeRadar: 'Large Radar', LargeJammer: 'Large Jammer', SuicideBomber: 'Suicide bomber' };
 const nameOf = (t) => NAMES[t] || t;
 // Mirrors GameInput's default bindings; the last two are new in v0.18 (spec sections 2.2 and 3).
 const KEYS = {
@@ -341,6 +341,8 @@ function render(cfg, text, sprites, fontUri, table) {
     Bomb: () => [['Blast', fmt(cfg.lookup('Siege/BlastDamage'))], ['Blast radius', `${fmt(cfg.lookup('Siege/BlastRadius'))} tiles`]],
     Radar: () => [['Radar range', `${fmt(cfg.buildings.find((b) => b.type === 'Radar').Sight)} tiles`]],
     Jammer: () => [['Jam radius', `${fmt(cfg.lookup('Siege/JamRadius'))} tiles`], ['Sight inside a jam', `${fmt(cfg.lookup('Siege/JamSight'))} tiles`]],
+    LargeRadar: () => [['Radar range', `${fmt(cfg.buildings.find((b) => b.type === 'LargeRadar').Sight)} tiles`]],
+    LargeJammer: () => [['Jam radius', `${fmt(cfg.lookup('Siege/LargeJamRadius'))} tiles`], ['Sight inside a jam', `${fmt(cfg.lookup('Siege/JamSight'))} tiles`]],
     GunTurret: (b) => [['Damage', `${fmt(b.Damage)} every ${fmt(b.AttackInterval)} s`], ['Per second', fmt(dps(b, 1))], ['Range', `${fmt(b.Range)} tiles`]],
   };
   const power = cfg.lookup('Siege/BuildPower');

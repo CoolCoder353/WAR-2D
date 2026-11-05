@@ -51,7 +51,7 @@ namespace WAR2D.Sim
                     : (uint)buildingType < (uint)data.BuildingSightByType.Length ? data.BuildingSightByType[buildingType] : 0f;
                 byte flags = underConstruction ? BuildingFlags.UnderConstruction : (byte)0;
                 bool unpaid = SystemAPI.HasComponent<UpkeepComponent>(entity) && SystemAPI.GetComponent<UpkeepComponent>(entity).unpaid;
-                if (building.ValueRO.buildingType == BuildingType.Radar && !underConstruction && !unpaid) flags |= BuildingFlags.SeesThroughWalls;
+                if (SensorRules.IsRadar(building.ValueRO.buildingType) && !underConstruction && !unpaid) flags |= BuildingFlags.SeesThroughWalls;
                 if (building.ValueRO.buildingType == BuildingType.Bomb) flags |= BuildingFlags.Hidden;
                 if (unpaid) flags |= BuildingFlags.Unpaid;
                 if (!underConstruction && SystemAPI.HasComponent<Jammer>(entity)) flags |= BuildingFlags.Jams;

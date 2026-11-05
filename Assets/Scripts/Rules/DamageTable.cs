@@ -19,7 +19,7 @@ namespace WAR2D.Rules
         public const int UnitTypeCount = (int)UnitType.SuicideBomber + 1;
 
         /// <summary><see cref="BuildingType"/> values (rows after the unit rows). <c>DamageTableTests</c> checks it against the enum.</summary>
-        public const int BuildingTypeCount = (int)BuildingType.Jammer + 1;
+        public const int BuildingTypeCount = (int)BuildingType.LargeJammer + 1;
 
         /// <summary>Attacker rows in the table.</summary>
         public const int Rows = UnitTypeCount + BuildingTypeCount;

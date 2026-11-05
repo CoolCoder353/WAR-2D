@@ -594,6 +594,31 @@ public class HudTests
     }
 
     [UnityTest, Timeout(120000)]
+    public IEnumerator TheLargeDefencesFitTheBuildRowWithTheirCostsAndNoKey()
+    {
+        int builder = 0;
+        yield return WithBuilder(b => builder = b);
+        VisualElement root = HudRoot();
+        UnitCommander.Instance.Selection.SelectIds(new List<int> { builder });
+        yield return PlayModeMatch.WaitUntil(() => Shown(root.Q<Button>("build-large-jammer")), 5f);
+        yield return null;
+        VisualElement card = root.Q("command-card");
+        foreach ((string name, BuildingType type, string icon) in new[] { ("build-large-radar", BuildingType.LargeRadar, "LargeRadar"), ("build-large-jammer", BuildingType.LargeJammer, "LargeJammer") })
+        {
+            Button button = root.Q<Button>(name);
+            Assert.That(Shown(button), Is.True, name);
+            Assert.That(button.parent.name, Is.EqualTo("builds-defend"), name);
+            Assert.That(root.Q<Label>(name + "-cost").text, Is.EqualTo(config.GetBuilding(type).UpfrontCost.ToString("0.##")), name);
+            Assert.That(button.Q<CommandIcon>().Icon.ToString(), Is.EqualTo(icon), name);
+            Assert.That(button.worldBound.xMax, Is.LessThanOrEqualTo(card.worldBound.xMax), name + " stays inside the card");
+            Assert.That(button.resolvedStyle.width, Is.EqualTo(root.Q<Button>("build-wall").resolvedStyle.width).Within(4f), name + " is about as wide as the others (panel units snap to a small test window's pixels)");
+            Assert.That(root.Q<Label>(name + "-key"), Is.Null, name + " has no card-slot key");
+        }
+        Assert.That(root.Q<Button>("build-jammer").worldBound.xMax, Is.LessThan(root.Q<Button>("build-large-radar").worldBound.xMin), "the existing buttons keep their slots");
+        Assert.That(System.Array.IndexOf(CommandCardController.BottomBuilds, BuildingType.LargeRadar), Is.EqualTo(-1), "no key moved");
+    }
+
+    [UnityTest, Timeout(120000)]
     public IEnumerator WallDragPlacesBlueprintsAndTheBuilderRaisesThem()
     {
         config.Match.Map.Size = 256; // terrain deltas reach clients of generated maps

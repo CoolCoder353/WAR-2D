@@ -89,6 +89,14 @@
                         <war:CommandIcon icon="Jammer" />
                         <ui:Label name="build-jammer-cost" text=" " class="command-button__key command-button__cost" />
                     </ui:Button>
+                    <ui:Button name="build-large-radar" class="command-button">
+                        <war:CommandIcon icon="LargeRadar" />
+                        <ui:Label name="build-large-radar-cost" text=" " class="command-button__key command-button__cost" />
+                    </ui:Button>
+                    <ui:Button name="build-large-jammer" class="command-button">
+                        <war:CommandIcon icon="LargeJammer" />
+                        <ui:Label name="build-large-jammer-cost" text=" " class="command-button__key command-button__cost" />
+                    </ui:Button>
                 </ui:VisualElement>
             </ui:VisualElement>
             <ui:Label name="build-hint" text="Wall: press and drag on the map to lay a line." class="text--secondary command-card__hint" />

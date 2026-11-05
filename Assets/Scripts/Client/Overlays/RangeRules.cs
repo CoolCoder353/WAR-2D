@@ -32,8 +32,8 @@ namespace WAR2D.Client.Overlays
         {
             var set = new RingSet { At = at, Sight = building.Sight, Owner = owner };
             if (type == BuildingType.GunTurret) set.Range = building.Range;
-            else if (type == BuildingType.Radar) { set.Range = building.Sight; set.Sight = 0f; }
-            else if (type == BuildingType.Jammer) set.Range = jamRadius;
+            else if (SensorRules.IsRadar(type)) { set.Range = building.Sight; set.Sight = 0f; }
+            else if (SensorRules.IsJammer(type)) set.Range = jamRadius;
             return set;
         }
 

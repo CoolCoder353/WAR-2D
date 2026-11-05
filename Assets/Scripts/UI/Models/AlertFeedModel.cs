@@ -194,6 +194,8 @@ namespace WAR2D.UI
             BuildingType.Radar => "Radar",
             BuildingType.GunTurret => "Gun turret",
             BuildingType.Jammer => "Jammer",
+            BuildingType.LargeRadar => "Large Radar",
+            BuildingType.LargeJammer => "Large Jammer",
             _ => null,
         };
 

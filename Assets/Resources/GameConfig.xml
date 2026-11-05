@@ -183,6 +183,7 @@
     <RadarClearSeconds>5.0</RadarClearSeconds>          <!-- v0.7: radius clear this long before it may ping again -->
     <RadarAlertCooldownSeconds>30.0</RadarAlertCooldownSeconds> <!-- v0.7: least time between two pings from one Radar -->
     <JamRadius>12.0</JamRadius>                         <!-- v0.13 starting value: tiles a complete, paid Jammer jams for players its owner doesn't share vision with -->
+    <LargeJamRadius>18.0</LargeJamRadius>               <!-- tiles a complete, paid Large Jammer jams: 1.5 times JamRadius -->
     <JamSight>3.0</JamSight>                            <!-- v0.13 starting value: inside the jam, those players see a fog cell only from this close -->
   </Siege>
 
@@ -666,6 +667,14 @@
     </Building>
     <Building type="Jammer"> <!-- jams Siege/JamRadius for players its owner doesn't share vision with -->
       <Health>200</Health><Width>2</Width><Height>2</Height><UpfrontCost>200.0</UpfrontCost><RunningCost>6.0</RunningCost>
+      <Sight>6.0</Sight>
+    </Building>
+    <!-- The Large Radar and Large Jammer: 1.5 times the reach, 2.5 times the costs, health (so build work) 2.25 times, as the footprint -->
+    <Building type="LargeRadar">
+      <Health>450</Health><Width>3</Width><Height>3</Height><UpfrontCost>625.0</UpfrontCost><RunningCost>12.5</RunningCost><Sight>30.0</Sight>
+    </Building>
+    <Building type="LargeJammer"> <!-- jams Siege/LargeJamRadius for players its owner doesn't share vision with -->
+      <Health>450</Health><Width>3</Width><Height>3</Height><UpfrontCost>500.0</UpfrontCost><RunningCost>15.0</RunningCost>
       <Sight>6.0</Sight>
     </Building>
   </Buildings>

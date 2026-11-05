@@ -437,6 +437,8 @@ namespace Config
         public float RadarAlertCooldownSeconds;
         /// <summary>Radius in tiles a complete, paid Jammer jams for owners its owner doesn't share vision with (v0.13).</summary>
         public float JamRadius;
+        /// <summary>Radius in tiles a complete, paid Large Jammer jams, on the same terms.</summary>
+        public float LargeJamRadius;
         /// <summary>Tiles from which such an owner's sources still see a jammed fog cell (less than <see cref="JamRadius"/>).</summary>
         public float JamSight;
     }

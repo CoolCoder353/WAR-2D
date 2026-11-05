@@ -322,6 +322,7 @@ namespace Config
                 config.Siege.RadarClearSeconds = Float(siege, "RadarClearSeconds", s, errors, min: 0, max: 600);
                 config.Siege.RadarAlertCooldownSeconds = Float(siege, "RadarAlertCooldownSeconds", s, errors, min: 0, max: 600);
                 config.Siege.JamRadius = Float(siege, "JamRadius", s, errors, min: 0.5f, max: 64);
+                config.Siege.LargeJamRadius = Float(siege, "LargeJamRadius", s, errors, min: 0.5f, max: 64);
                 config.Siege.JamSight = Float(siege, "JamSight", s, errors, min: 0.5f, max: 32);
                 if (config.Siege.JamSight >= config.Siege.JamRadius)
                     errors.Add($"Siege: <JamSight> {config.Siege.JamSight} must be less than <JamRadius> {config.Siege.JamRadius}.");
