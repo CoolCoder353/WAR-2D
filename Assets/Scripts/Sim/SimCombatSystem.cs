@@ -402,7 +402,7 @@ namespace WAR2D.Sim
             int b = Weapon.Attackers[i];
             if (Slice > 1 && (NetIdAllocator.IndexOf(Search.BuildingIds[b]) + Tick) % Slice != 0) return;
             if (!BuildingWeaponInput.Armed(Search, b)) { Target[b] = -1; return; }
-            TargetSearch.Nearest(Search, Weapon.Centre(b), Search.BuildingOwnerSlot[b], Weapon.RangeSq(b), 0f, true, out int target, out byte kind);
+            TargetSearch.Nearest(Search, Weapon.Centre(b), Search.BuildingOwnerSlot[b], Weapon.RangeSq(b), 0f, true, false, out int target, out byte kind);
             Target[b] = target;
             TargetKind[b] = kind;
         }
