@@ -203,11 +203,12 @@ namespace Config
             XmlNode bomber = Require(root, "Bomber", errors);
             if (bomber != null)
             {
-                config.Bomber.LastGaspHealth = Float(bomber, "LastGaspHealth", "Bomber", errors, min: 0f, max: 1f);
+                config.Bomber.ChainBlasts = Int(bomber, "ChainBlasts", "Bomber", errors, min: 1, max: 16);
                 config.Bomber.ChainPasses = Int(bomber, "ChainPasses", "Bomber", errors, min: 1, max: 16);
                 config.Bomber.AimTiles = Float(bomber, "AimTiles", "Bomber", errors, min: 0f, max: 64f);
                 config.Bomber.FriendlyWeight = Float(bomber, "FriendlyWeight", "Bomber", errors, min: 0f, max: 10f);
                 config.Bomber.FriendlyDamage = Float(bomber, "FriendlyDamage", "Bomber", errors, min: 0f, max: 1f);
+                config.Bomber.FriendlyUnitDamage = Float(bomber, "FriendlyUnitDamage", "Bomber", errors, min: 0f, max: 1f);
                 config.Bomber.AimReachTiles = Float(bomber, "AimReachTiles", "Bomber", errors, min: 0.1f, max: 8f);
                 config.Bomber.GoodEnough = Float(bomber, "GoodEnough", "Bomber", errors, min: 0f, max: 1f);
             }

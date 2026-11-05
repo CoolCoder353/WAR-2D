@@ -19,7 +19,7 @@ public class ConfigParserTests
   <AttackOrder><RepathTiles>2</RepathTiles><RepathSeconds>0.5</RepathSeconds></AttackOrder>
   <RangeRings><Max>64</Max><MergeOverlap>0.8</MergeOverlap></RangeRings>
   <Summary><SampleSeconds>10</SampleSeconds><MaxPoints>360</MaxPoints><FightCellTiles>32</FightCellTiles><FightWindowSeconds>20</FightWindowSeconds><FightMinWorth>600</FightMinWorth><MaxFights>30</MaxFights></Summary>
-  <Bomber><LastGaspHealth>0.1</LastGaspHealth><ChainPasses>4</ChainPasses><AimTiles>6</AimTiles><FriendlyWeight>1.0</FriendlyWeight><FriendlyDamage>0.1</FriendlyDamage><AimReachTiles>0.5</AimReachTiles><GoodEnough>0.8</GoodEnough></Bomber>
+  <Bomber><ChainBlasts>2</ChainBlasts><ChainPasses>4</ChainPasses><AimTiles>6</AimTiles><FriendlyWeight>1.0</FriendlyWeight><FriendlyDamage>0.1</FriendlyDamage><FriendlyUnitDamage>0.3</FriendlyUnitDamage><AimReachTiles>0.5</AimReachTiles><GoodEnough>0.8</GoodEnough></Bomber>
   <MinimapCombat><CellTiles>16</CellTiles><PulseSeconds>1.5</PulseSeconds><QuietSeconds>3</QuietSeconds><Max>32</Max></MinimapCombat>
   <PlacementMinimap><MarkerPixels>8</MarkerPixels></PlacementMinimap>
   <Formation><Spacing>1.2</Spacing><LooseTiles>4</LooseTiles><SlotTiles>12</SlotTiles><LostTiles>20</LostTiles></Formation>
@@ -242,10 +242,11 @@ public class ConfigParserTests
         Assert.AreEqual(20f, c.Summary.FightWindowSeconds);
         Assert.AreEqual(600f, c.Summary.FightMinWorth);
         Assert.AreEqual(30, c.Summary.MaxFights);
-        Assert.AreEqual(0.1f, c.Bomber.LastGaspHealth);
+        Assert.AreEqual(2, c.Bomber.ChainBlasts);
         Assert.AreEqual(4, c.Bomber.ChainPasses);
         Assert.AreEqual(6f, c.Bomber.AimTiles);
         Assert.AreEqual(1f, c.Bomber.FriendlyWeight);
+        Assert.AreEqual(0.3f, c.Bomber.FriendlyUnitDamage);
         Assert.AreEqual(0.5f, c.Bomber.AimReachTiles);
         Assert.AreEqual(0.8f, c.Bomber.GoodEnough);
         Assert.AreEqual(1f, c.Replays.FogSeconds);

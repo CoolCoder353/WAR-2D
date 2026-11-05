@@ -244,16 +244,18 @@ namespace Config
     /// <summary>Suicide bombers' last gasp and aim (v0.18).</summary>
     public class BomberConfig
     {
-        /// <summary>Share of its health at or below which a bomber explodes.</summary>
-        public float LastGaspHealth;
+        /// <summary>Blasts from other bombers that set off a bomber at full health.</summary>
+        public int ChainBlasts;
         /// <summary>Most rounds of blasts setting off bombers in one tick.</summary>
         public int ChainPasses;
         /// <summary>Tiles from its target that candidates for the blast point may be.</summary>
         public float AimTiles;
         /// <summary>Weight of own and allied worth in the blast.</summary>
         public float FriendlyWeight;
-        /// <summary>Share of the blast that reaches own and allied units, buildings and walls.</summary>
+        /// <summary>Share of the blast that reaches own and allied buildings and walls.</summary>
         public float FriendlyDamage;
+        /// <summary>Share of the blast that reaches own and allied units, other bombers aside.</summary>
+        public float FriendlyUnitDamage;
         /// <summary>Tiles from the blast point at which it detonates.</summary>
         public float AimReachTiles;
         /// <summary>Share of the point's worth that makes a blast on contact good enough.</summary>

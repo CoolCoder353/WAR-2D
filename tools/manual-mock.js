@@ -165,7 +165,7 @@ function resolver(cfg) {
     HeavyFactoryMiners: bld('HeavyFactory').RunningCost / mining,
     DecaySeconds: 100 / cfg.lookup('Resources/DecayPercentPerSecond'),
     DemolishPercent: cfg.lookup('Siege/DemolishRefund') * 100,
-    LastGaspPercent: cfg.lookup('Bomber/LastGaspHealth') * 100,
+    FriendlyUnitPercent: cfg.lookup('Bomber/FriendlyUnitDamage') * 100,
   };
   return (p) => {
     const [head, ...rest] = p.split('/');

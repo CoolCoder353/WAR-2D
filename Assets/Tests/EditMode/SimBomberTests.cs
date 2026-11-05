@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using Unity.Mathematics;
 using WAR2D.Sim;
 
-/// <summary>v0.18 Suicide bombers: the last gasp at 10 % health, and aiming for the middle.</summary>
+/// <summary>Suicide bombers: only blasts set them off, and aiming for the middle.</summary>
 public class SimBomberTests
 {
     private static SimHarness Sim(int size = 64) => new SimHarness(SimHarness.OpenMap(size));
@@ -11,75 +11,98 @@ public class SimBomberTests
     private static float Health(SimHarness sim, int id) => sim.UnitById(id).Health;
 
     [Test]
-    public void ABomberShotDownExplodesWhereItFell()
+    public void ABomberShotDownDoesNotExplode()
     {
         using var sim = Sim();
         int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.SuicideBomber);
         int[] friend = sim.Spawn(SimHarness.OwnerA, new float2(14, 10));
         for (int i = 0; i < 6; i++) sim.Spawn(SimHarness.OwnerB, new float2(19.5f, 8.5f + i * 0.5f));
-        int[] nearby = sim.Spawn(SimHarness.OwnerB, new float2(16, 11));
+        int blasts = 0;
+        sim.Context.Settled += (data, tick, count) => blasts += data.BombBlasts.Count;
         sim.Tick(); // the spawns
         for (int i = 0; i < 40 && Alive(sim, bomber[0]); i++) sim.Tick();
         sim.Tick();
         Assert.IsFalse(Alive(sim, bomber[0]));
-        float blast = sim.Config.GetUnit(UnitType.SuicideBomber).BlastDamage;
-        Assert.That(Alive(sim, friend[0]) ? Health(sim, friend[0]) : 0f, Is.EqualTo(100f - blast * sim.Config.Bomber.FriendlyDamage).Within(1e-3f), "its own side's Tank takes its share");
-        Assert.IsFalse(Alive(sim, nearby[0]), "the enemy beside it is caught");
-    }
-
-    /// <summary>A bomber left at 2 of its 30 health (a Digger's hit does that) is under the 3 that is 10 %.</summary>
-    [Test]
-    public void AHitThatLeavesItUnderTheThresholdSetsItOff()
-    {
-        using var sim = Sim();
-        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.SuicideBomber);
-        int[] nearby = sim.Spawn(SimHarness.OwnerB, new float2(16, 10));
-        sim.Tick(); // the spawns
-        sim.SetUnitHealth(bomber[0], 2f);
-        sim.Tick();
-        sim.Tick();
-        Assert.IsFalse(Alive(sim, bomber[0]));
-        Assert.IsFalse(Alive(sim, nearby[0]), "150 kills a Tank");
+        Assert.AreEqual(0, blasts, "no blast");
+        Assert.AreEqual(100f, Health(sim, friend[0]), 1e-3f, "its own side's Tank is not hurt by it");
     }
 
     [Test]
-    public void ABomberAboveTheThresholdDoesNotGoOff()
+    public void DecayDoesNotSetItOff()
     {
         using var sim = Sim();
         int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.SuicideBomber);
+        int[] nearby = sim.Spawn(SimHarness.OwnerA, new float2(16, 10));
+        int blasts = 0;
+        sim.Context.Settled += (data, tick, count) => blasts += data.BombBlasts.Count;
         sim.Tick(); // the spawns
-        sim.SetUnitHealth(bomber[0], 4f);
-        sim.Tick();
-        Assert.AreEqual(4f, Health(sim, bomber[0]), 0.001f);
-    }
-
-    [Test]
-    public void DecaySetsItOff()
-    {
-        using var sim = Sim();
-        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.SuicideBomber);
-        sim.Tick(); // the spawns
-        sim.SetUnitHealth(bomber[0], 3.05f);
+        sim.SetUnitHealth(bomber[0], 1f);
+        sim.SetUnitHealth(nearby[0], 100f);
         sim.Context.BudgetOf = _ => 0f; // nothing to pay upkeep with: it decays
         sim.TickSeconds(3f);
         Assert.IsFalse(Alive(sim, bomber[0]));
+        Assert.AreEqual(0, blasts);
+    }
+
+    [Test]
+    public void OneBlastTakesHalfAFriendlyBombersHealthAndDoesNotSetItOff()
+    {
+        using var sim = Sim();
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.SuicideBomber);
+        int[] other = sim.Spawn(SimHarness.OwnerA, new float2(16.5f, 10), UnitType.SuicideBomber);
+        int blasts = 0;
+        sim.Context.Settled += (data, tick, count) => blasts += data.BombBlasts.Count;
+        sim.Tick(); // the spawns
+        sim.Order(SimHarness.OwnerA, OrderKind.Detonate, int2.zero, bomber);
+        for (int i = 0; i < 3; i++) sim.Tick();
+        Assert.AreEqual(1, blasts);
+        Assert.AreEqual(15f, Health(sim, other[0]), 1e-3f);
+    }
+
+    [Test]
+    public void AnEnemyBomberAlsoTakesHalfItsHealthFromABlast()
+    {
+        using var sim = Sim();
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.SuicideBomber);
+        int[] enemy = sim.Spawn(SimHarness.OwnerB, new float2(16.5f, 10), UnitType.SuicideBomber);
+        sim.Tick(); // the spawns
+        sim.Order(SimHarness.OwnerB, OrderKind.Hold, int2.zero, enemy);
+        sim.Order(SimHarness.OwnerA, OrderKind.Detonate, int2.zero, bomber);
+        for (int i = 0; i < 3; i++) sim.Tick();
+        Assert.AreEqual(15f, Health(sim, enemy[0]), 1e-3f);
+    }
+
+    [Test]
+    public void TwoBlastsSetOffABomberAndAChainSlowsDown()
+    {
+        using var sim = Sim();
+        int[] left = sim.Spawn(SimHarness.OwnerA, new float2(10, 10), UnitType.SuicideBomber);
+        int[] right = sim.Spawn(SimHarness.OwnerA, new float2(13, 10), UnitType.SuicideBomber);
+        int[] between = sim.Spawn(SimHarness.OwnerA, new float2(11.5f, 10), UnitType.SuicideBomber);
+        int[] beyond = sim.Spawn(SimHarness.OwnerA, new float2(11.5f, 11.9f), UnitType.SuicideBomber); // only the middle one's blast reaches it
+        int blasts = 0;
+        sim.Context.Settled += (data, tick, count) => blasts += data.BombBlasts.Count;
+        sim.Tick(); // the spawns
+        sim.Order(SimHarness.OwnerA, OrderKind.Detonate, int2.zero, left[0], right[0]);
+        for (int i = 0; i < 3; i++) sim.Tick();
+        Assert.AreEqual(3, blasts, "the two ordered, and the one both of them hit");
+        Assert.IsFalse(Alive(sim, between[0]));
+        Assert.AreEqual(15f, Health(sim, beyond[0]), 1e-3f, "one blast only");
     }
 
     [Test]
     public void AChainGoesOffInOneTickUpToThePassLimit()
     {
-        // A blast only sets off friendly bombers when friends take enough of it (shipped, they take a tenth).
-        using var sim = new SimHarness(SimHarness.OpenMap(96), c => c.Bomber.FriendlyDamage = 1f);
+        using var sim = new SimHarness(SimHarness.OpenMap(96), c => c.Bomber.ChainBlasts = 1);
         var chain = new List<int[]>(); // each id is filled in when the spawn runs
-        for (int i = 0; i < 6; i++) chain.Add(sim.Spawn(SimHarness.OwnerA, new float2(10 + i * 1.5f, 10), UnitType.SuicideBomber));
+        for (int i = 0; i < 7; i++) chain.Add(sim.Spawn(SimHarness.OwnerA, new float2(10 + i * 1.5f, 10), UnitType.SuicideBomber));
         int blasts = 0;
         sim.Context.Settled += (data, tick, count) => blasts += data.BombBlasts.Count;
         sim.Tick(); // the spawns
-        sim.SetUnitHealth(chain[0][0], 1f);
-        sim.Tick();
-        sim.Tick();
-        sim.Tick();
-        Assert.AreEqual(sim.Config.Bomber.ChainPasses, blasts, "one blast per pass; the fifth bomber dies in the fourth's blast");
+        sim.Order(SimHarness.OwnerA, OrderKind.Detonate, int2.zero, chain[0]);
+        for (int i = 0; i < 3; i++) sim.Tick();
+        Assert.AreEqual(1 + sim.Config.Bomber.ChainPasses, blasts, "the ordered one and one blast per pass; the next dies without one");
+        Assert.IsTrue(Alive(sim, chain[6][0]), "the chain stopped short of the last");
     }
 
     [Test]

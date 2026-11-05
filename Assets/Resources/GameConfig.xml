@@ -187,11 +187,12 @@
   </Siege>
 
   <Bomber>
-    <LastGaspHealth>0.1</LastGaspHealth> <!-- v0.18: a bomber at or below this share of its health explodes; a hit that kills it counts -->
+    <ChainBlasts>2</ChainBlasts>         <!-- blasts from other bombers that set off a bomber at full health; killed any other way it does not explode -->
     <ChainPasses>4</ChainPasses>         <!-- v0.18: blasts setting off bombers in one tick; the rest go next tick -->
     <AimTiles>6</AimTiles>               <!-- v0.18: enemies within this of its target are candidates for the blast point -->
-    <FriendlyWeight>0</FriendlyWeight> <!-- v0.18: own and allied worth in the blast, against the enemy's; follows FriendlyDamage -->
-    <FriendlyDamage>0</FriendlyDamage> <!-- playtest 2026-11-04: share of the blast that reaches its own side and allies -->
+    <FriendlyWeight>0.3</FriendlyWeight> <!-- v0.18: own and allied worth in the blast, against the enemy's; follows FriendlyUnitDamage -->
+    <FriendlyDamage>0</FriendlyDamage> <!-- playtest 2026-11-04: share of the blast that reaches its own side's and allies' buildings and walls -->
+    <FriendlyUnitDamage>0.3</FriendlyUnitDamage> <!-- share of the blast that reaches its own side's and allies' units, other bombers aside -->
     <AimReachTiles>0.5</AimReachTiles>   <!-- v0.18: detonates this close to the blast point -->
     <GoodEnough>0.8</GoodEnough>         <!-- v0.18: or touching an enemy, when the blast here is worth this share of the point's -->
   </Bomber>
@@ -615,7 +616,7 @@
     </Unit>
     <Unit type="SuicideBomber">
       <Health>30</Health><Damage>0</Damage><Range>0.8</Range><AttackInterval>1.0</AttackInterval>
-      <MoveSpeed>8.0</MoveSpeed><UpfrontCost>60.0</UpfrontCost><RunningCost>0.25</RunningCost>
+      <MoveSpeed>8.0</MoveSpeed><UpfrontCost>45.0</UpfrontCost><RunningCost>0.25</RunningCost>
       <Radius>0.3</Radius><SizeClass>0</SizeClass><Sight>6.0</Sight>
       <Armour>Light</Armour><BuildSeconds>1.0</BuildSeconds>
       <BlastRadius>2.0</BlastRadius><BlastDamage>150.0</BlastDamage>

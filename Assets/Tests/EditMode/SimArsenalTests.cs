@@ -148,7 +148,7 @@ public class SimArsenalTests
     }
 
     [Test]
-    public void ABomberRunsAtAnEnemyAndBarelyScratchesFriends()
+    public void ABomberRunsAtAnEnemyAndFriendsTakeTheirShare()
     {
         using var sim = Sim();
         int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(10, 10), UnitType.SuicideBomber);
@@ -160,7 +160,7 @@ public class SimArsenalTests
         sim.Tick();
         Assert.IsFalse(Alive(sim, bomber[0]), "the bomber is spent");
         Assert.IsFalse(Alive(sim, victim[0]), "150 damage kills a 60-health Builder");
-        Assert.AreEqual(60f - 150f * sim.Config.Bomber.FriendlyDamage, sim.UnitById(friend[0]).Health, 1e-3f, "friends take a tenth of the blast");
+        Assert.AreEqual(60f - 150f * sim.Config.Bomber.FriendlyUnitDamage, sim.UnitById(friend[0]).Health, 1e-3f, "friends take their share of the blast");
         Assert.IsTrue(Alive(sim, far[0]), "outside the radius");
     }
 

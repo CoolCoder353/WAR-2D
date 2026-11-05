@@ -93,9 +93,9 @@
     "SuicideBomber": {
       "role": "Drives in and explodes. Hurts friends too.",
       "body": [
-        "On an attack-move, or idle with an enemy in sight, it runs in and explodes. Its blast hits every unit, building and wall within {Unit/SuicideBomber/BlastRadius} tiles, **your own and your allies' included**.",
+        "On an attack-move, or idle with an enemy in sight, it runs in and explodes. Its blast hits every unit, building and wall within {Unit/SuicideBomber/BlastRadius} tiles. **Your own and your allies' units take {Derived/FriendlyUnitPercent} % of it.**",
         "It aims for the middle of a group, where its blast catches the most value for the least harm to your side. Against a building it goes for the middle of a side. It can only aim at what your side sees.",
-        "**A bomber at {Derived/LastGaspPercent} % health or less explodes**, which in practice means a bomber shot down explodes where it falls. Shoot it down far from what you are protecting. The Detonate order sets off every selected bomber where it stands."
+        "**A bomber shot down does not explode.** Only blasts set it off: any other bomber's blast, friend or foe, takes 1/{Bomber/ChainBlasts} of its health, and the one that kills it makes it go off. The Detonate order sets off every selected bomber where it stands."
       ]
     }
   },
@@ -318,7 +318,7 @@
           "heading": "Blasts hurt everyone",
           "paras": [
             "A [[Bomb]] (radius {Siege/BlastRadius}, damage {Siege/BlastDamage}) and a [[Suicide bomber]] (radius {Unit/SuicideBomber/BlastRadius}, damage {Unit/SuicideBomber/BlastDamage}) both hit friends as well as enemies. Splash from [[Flamethrower]]s and [[Artillery]] hits enemies only.",
-            "A bomber shot down explodes where it falls, and that blast can set off other bombers near it. Long-range fire keeps them away; a bomber killed inside your army takes your army with it."
+            "A bomber shot down does not explode, so fire kills them cheaply. Blasts set off other bombers, but it takes {Bomber/ChainBlasts} blasts from full health, so a chain dies out. Keep bombers spread out so one blast can't catch them all."
           ]
         }
       ]

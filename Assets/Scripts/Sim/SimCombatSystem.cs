@@ -17,6 +17,8 @@ namespace WAR2D.Sim
         public int AttackerOwner;
         /// <summary>Where a shot came from, which raises its victim's owner's alarm; (0, 0) for a blast, which doesn't.</summary>
         public float2 From;
+        /// <summary>A bomber's blast on another bomber: if it kills, that bomber goes off too.</summary>
+        public byte ChainHit;
     }
 
     /// <summary>
@@ -150,6 +152,9 @@ namespace WAR2D.Sim
                 WallState = data.WallState,
                 AttackMask = data.AttackMask, OwnerSlot = data.OwnerSlot, BuildingOwnerSlot = data.BuildingOwnerSlot, WallOwnerSlot = data.WallOwnerSlot,
                 FriendlyDamage = data.BomberFriendlyDamage,
+                FriendlyUnitDamage = data.BomberFriendlyUnitDamage,
+                ChainBlasts = data.ChainBlasts,
+                MaxHealth = data.MaxHealth,
                 BlastRadiusByType = data.BlastRadiusByType, BlastDamageByType = data.BlastDamageByType,
                 ArmourByType = data.ArmourByType, DamageTable = data.DamageTable,
             };
@@ -245,6 +250,7 @@ namespace WAR2D.Sim
 
             state.Dependency = new ApplyDamageJob
             {
+                Spent = data.BomberSpent,
                 Hits = hits,
                 Health = data.Health,
                 LastHitBy = data.LastHitBy,
@@ -262,7 +268,7 @@ namespace WAR2D.Sim
                 AlarmCellTiles = data.DefendAlarmCellTiles,
             }.Schedule(state.Dependency);
 
-            state.Dependency = new LastGaspJob
+            state.Dependency = new BomberChainJob
             {
                 Hits = hits,
                 Blasts = data.BombBlasts,
@@ -277,8 +283,6 @@ namespace WAR2D.Sim
                 BuildingOwnerSlot = data.BuildingOwnerSlot,
                 World = blastWorld,
                 Positions = data.Positions,
-                MaxHealth = data.MaxHealth,
-                Threshold = data.LastGaspHealth,
                 Passes = data.ChainPasses,
             }.Schedule(state.Dependency);
 
@@ -472,7 +476,7 @@ namespace WAR2D.Sim
     /// <summary>
     /// Attacks the resolved target when the cooldown allows; queues the hit (times the damage table's
     /// multiplier for the target's armour class, building or wall), a splash request for units that have
-    /// one, and a tracer event. A Suicide bomber never attacks: <see cref="BomberJob"/> or <see cref="LastGaspJob"/> detonates it.
+    /// one, and a tracer event. A Suicide bomber never attacks: <see cref="BomberJob"/> or <see cref="BomberChainJob"/> detonates it.
     /// </summary>
     [BurstCompile]
     public struct AttackJob : IJobParallelFor
@@ -615,7 +619,7 @@ namespace WAR2D.Sim
     /// <summary>
     /// Suicide bombers: one that has reached its target (within its range of the target's edge) or was
     /// ordered to detonate blows up. The blast hurts every unit, building and wall tile in its radius with the
-    /// damage table's multipliers for the bomber, those its owner doesn't attack at <c>Bomber/FriendlyDamage</c>; the bomber itself dies. A
+    /// damage table's multipliers for the bomber, those its owner doesn't attack at their share (<see cref="BlastWorld"/>); the bomber itself dies. A
     /// bomber that was killed first never gets here (it has no health), so it does not explode.
     /// </summary>
     [BurstCompile]
@@ -696,7 +700,11 @@ namespace WAR2D.Sim
         }
     }
 
-    /// <summary>What a bomber's blast reaches: everything in its radius, friends at <see cref="FriendlyDamage"/> of the damage (playtest 2026-11-04). Shared by contact, the Detonate order and the last gasp.</summary>
+    /// <summary>
+    /// What a bomber's blast reaches: everything in its radius, friends' units at <see cref="FriendlyUnitDamage"/> of the damage and
+    /// their buildings and walls at <see cref="FriendlyDamage"/>. Another bomber, friend or foe, loses its health over <see cref="ChainBlasts"/>
+    /// blasts instead. Shared by contact, the Detonate order and the chain.
+    /// </summary>
     public struct BlastWorld
     {
         public int UnitCount, BuildingCount, Width, Height, CellSize, CellsX, CellsY;
@@ -706,9 +714,14 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<int2> BuildingAnchor, BuildingSize;
         [ReadOnly] public NativeArray<ushort> AttackMask;
         [ReadOnly] public NativeArray<byte> OwnerSlot, BuildingOwnerSlot, WallOwnerSlot;
-        public float FriendlyDamage;
+        [ReadOnly] public NativeArray<float> MaxHealth;
+        public float FriendlyDamage, FriendlyUnitDamage;
+        public int ChainBlasts;
 
-        /// <summary>The share of a blast that reaches an owner: all of it for an enemy, <see cref="FriendlyDamage"/> for anyone else.</summary>
+        /// <summary>A <see cref="BomberChainJob"/> mark in <c>BomberSpent</c>: a blast killed this bomber, so it goes off.</summary>
+        public const byte SetOff = 2;
+
+        /// <summary>The share of a blast that reaches an owner's buildings and walls: all of it for an enemy, <see cref="FriendlyDamage"/> for anyone else.</summary>
         private float Share(int from, int to) => SimData.Attacks(AttackMask, from, to) ? 1f : FriendlyDamage;
 
         /// <summary>Queues the blast and its hits on everything but the bomber.</summary>
@@ -728,7 +741,13 @@ namespace WAR2D.Sim
                 {
                     int u = Sorted[k];
                     if (u == bomber || unitHealth[u] <= 0f || math.distancesq(positions[u], centre) > rSq) continue;
-                    float amount = damage * Share(slot, OwnerSlot[u]) * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(type), (TargetClass)ArmourByType[Type[u]]);
+                    if (Type[u] < BlastRadiusByType.Length && BlastRadiusByType[Type[u]] > 0f)
+                    {
+                        hits.Enqueue(new DamageHit { Kind = TargetKinds.Unit, Slot = u, Amount = MaxHealth[u] / ChainBlasts, AttackerOwner = owner, ChainHit = 1 });
+                        continue;
+                    }
+                    float share = SimData.Attacks(AttackMask, slot, OwnerSlot[u]) ? 1f : FriendlyUnitDamage;
+                    float amount = damage * share * WAR2D.Rules.DamageTable.Get(DamageTable, WAR2D.Rules.DamageTable.UnitAttacker(type), (TargetClass)ArmourByType[Type[u]]);
                     hits.Enqueue(new DamageHit { Kind = TargetKinds.Unit, Slot = u, Amount = amount, AttackerOwner = owner });
                 }
             }
@@ -758,13 +777,13 @@ namespace WAR2D.Sim
     }
 
     /// <summary>
-    /// A bomber at or under <c>Bomber/LastGaspHealth</c> of its health explodes where it stands, a killing hit included
-    /// (v0.18). A blast can set off more bombers: at most <see cref="Passes"/> rounds a tick. Nothing dead has left the
-    /// arrays yet (the lifecycle stage removes it), so a bomber shot down this tick still has its slot and position.
-    /// Its death keeps <c>LastHitBy</c>, so whoever shot it down gets the kill.
+    /// A bomber killed by another bomber's blast explodes where it stands, so a blast can set off more bombers: at most
+    /// <see cref="Passes"/> rounds a tick, and those the last round kills die without a blast. A bomber killed any other way
+    /// (gunfire, decay, a Bomb building) does not explode. Nothing dead has left the arrays yet (the lifecycle stage removes
+    /// it), so a bomber killed this tick still has its slot and position.
     /// </summary>
     [BurstCompile]
-    public struct LastGaspJob : IJob
+    public struct BomberChainJob : IJob
     {
         public NativeQueue<DamageHit> Hits;
         public NativeQueue<BombBlast> Blasts;
@@ -775,8 +794,6 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<byte> BuildingKind, BuildingOwnerSlot;
         public BlastWorld World;
         [ReadOnly] public NativeArray<float2> Positions;
-        [ReadOnly] public NativeArray<float> MaxHealth;
-        public float Threshold;
         public int Passes;
 
         public void Execute()
@@ -786,16 +803,13 @@ namespace WAR2D.Sim
                 bool any = false;
                 for (int i = 0; i < World.UnitCount; i++)
                 {
-                    int type = World.Type[i];
-                    if (Spent[i] != 0 || type >= World.BlastRadiusByType.Length || World.BlastRadiusByType[type] <= 0f) continue;
-                    if (Health[i] > MaxHealth[i] * Threshold) continue;
+                    if (Spent[i] != BlastWorld.SetOff) continue;
                     Spent[i] = 1;
                     any = true;
-                    World.Detonate(i, type, Positions, Health, BuildingHealth, Hits, Blasts);
+                    World.Detonate(i, World.Type[i], Positions, Health, BuildingHealth, Hits, Blasts);
                 }
                 if (!any) return;
-                for (int i = 0; i < World.UnitCount; i++) if (Spent[i] != 0) Health[i] = 0f;
-                new ApplyDamageJob { Hits = Hits, Health = Health, LastHitBy = LastHitBy, BuildingHealth = BuildingHealth, BuildingDamage = BuildingDamage, WallDamage = WallDamage, HqLastHitBy = HqLastHitBy, BuildingKind = BuildingKind, BuildingOwnerSlot = BuildingOwnerSlot }.Execute();
+                new ApplyDamageJob { Hits = Hits, Spent = Spent, Health = Health, LastHitBy = LastHitBy, BuildingHealth = BuildingHealth, BuildingDamage = BuildingDamage, WallDamage = WallDamage, HqLastHitBy = HqLastHitBy, BuildingKind = BuildingKind, BuildingOwnerSlot = BuildingOwnerSlot }.Execute();
             }
         }
     }
@@ -805,6 +819,7 @@ namespace WAR2D.Sim
     public struct ApplyDamageJob : IJob
     {
         public NativeQueue<DamageHit> Hits;
+        public NativeArray<byte> Spent;
         public NativeArray<float> Health;
         public NativeArray<int> LastHitBy;
         public NativeArray<float> BuildingHealth;
@@ -812,7 +827,7 @@ namespace WAR2D.Sim
         public NativeQueue<TileWork> WallDamage;
         public NativeArray<int> HqLastHitBy;
         [ReadOnly] public NativeArray<byte> BuildingKind, BuildingOwnerSlot;
-        /// <summary>For the alarms (only hits with a <see cref="DamageHit.From"/> read them, so the last gasp's blasts leave them unset).</summary>
+        /// <summary>For the alarms (only hits with a <see cref="DamageHit.From"/> read them, so the chain's blasts leave them unset).</summary>
         [ReadOnly] public NativeArray<byte> OwnerSlot;
         [ReadOnly] public NativeArray<float2> Positions, BuildingPositions;
         public NativeArray<DefendAlarm> Alarms;
@@ -831,6 +846,7 @@ namespace WAR2D.Sim
                 {
                     Health[hit.Slot] = math.max(0f, Health[hit.Slot] - hit.Amount);
                     LastHitBy[hit.Slot] = hit.AttackerOwner;
+                    if (hit.ChainHit != 0 && Health[hit.Slot] <= 0f && Spent[hit.Slot] == 0) Spent[hit.Slot] = BlastWorld.SetOff;
                     if (hit.From.x != 0f || hit.From.y != 0f) DefendAlarms.Raise(Alarms, AlarmCount, AlarmCellTiles, OwnerSlot[hit.Slot], Positions[hit.Slot], hit.From);
                 }
                 else

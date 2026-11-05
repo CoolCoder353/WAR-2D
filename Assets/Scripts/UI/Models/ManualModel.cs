@@ -405,7 +405,7 @@ namespace WAR2D.UI
             "HeavyFactoryMiners" => config.GetBuilding(BuildingType.HeavyFactory).RunningCost / config.Resources.MiningRate,
             "DecaySeconds" => 100f / config.Resources.DecayPercentPerSecond,
             "DemolishPercent" => config.Siege.DemolishRefund * 100f,
-            "LastGaspPercent" => config.Bomber.LastGaspHealth * 100f,
+            "FriendlyUnitPercent" => config.Bomber.FriendlyUnitDamage * 100f,
             _ => throw new ArgumentException("no figure " + name),
         };
     }

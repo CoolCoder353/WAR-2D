@@ -99,16 +99,15 @@ namespace WAR2D.Sim
         public NativeArray<DefendAlarm> Alarms;
         public NativeArray<int> AlarmCount;
         /// <summary>Share of a blast that reaches whoever its owner doesn't attack: a bomber's, a hidden bomb's (playtest 2026-11-04).</summary>
-        public float BomberFriendlyDamage, BombFriendlyDamage;
+        public float BomberFriendlyDamage, BomberFriendlyUnitDamage, BombFriendlyDamage;
         /// <summary>Tiles from a hidden bomb's tile centre at which an enemy sets it off.</summary>
         public float BombTriggerRadius;
         /// <summary>The largest body radius, so a separation scan reaches every possible neighbour.</summary>
         public float SeparationMargin;
         /// <summary>Percent of max health an unpaid unit loses per second.</summary>
         public float DecayPercentPerSecond;
-        /// <summary>v0.18: share of its health at or under which a bomber explodes, and most rounds of blasts a tick.</summary>
-        public float LastGaspHealth;
-        public int ChainPasses;
+        /// <summary>Blasts from other bombers that set off a bomber at full health, and most rounds of blasts a tick.</summary>
+        public int ChainBlasts, ChainPasses;
         /// <summary>Most units one owner may have.</summary>
         public int MaxUnitsPerPlayer;
 
@@ -477,11 +476,12 @@ namespace WAR2D.Sim
                 Alarms = new NativeArray<DefendAlarm>(MaxOwners * DefendAlarms.PerOwner, allocator),
                 AlarmCount = new NativeArray<int>(MaxOwners, allocator),
                 BomberFriendlyDamage = config.Bomber.FriendlyDamage,
+                BomberFriendlyUnitDamage = config.Bomber.FriendlyUnitDamage,
                 BombFriendlyDamage = config.Siege.BombFriendlyDamage,
                 BombTriggerRadius = config.Siege.BombTriggerRadius,
                 SeparationMargin = maxRadius,
                 DecayPercentPerSecond = config.Resources.DecayPercentPerSecond,
-                LastGaspHealth = config.Bomber.LastGaspHealth,
+                ChainBlasts = config.Bomber.ChainBlasts,
                 ChainPasses = config.Bomber.ChainPasses,
                 AimTiles = config.Bomber.AimTiles,
                 FriendlyWeight = config.Bomber.FriendlyWeight,
