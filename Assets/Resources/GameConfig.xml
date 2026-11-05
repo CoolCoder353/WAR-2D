@@ -117,7 +117,7 @@
   </Formation>
 
   <AutoWork>
-    <Radius>900</Radius>             <!-- v0.16: tiles an idle Builder looks for repairs (blueprints: anywhere) -->
+    <Radius>900</Radius>               <!-- v0.16: tiles an idle Builder looks for blueprints and repairs -->
     <RepairBelow>0.9</RepairBelow>   <!-- v0.16: repairs own buildings and walls under this share of health -->
     <SliceTicks>10</SliceTicks>      <!-- v0.16: each idle Builder looks once every this many ticks -->
   </AutoWork>

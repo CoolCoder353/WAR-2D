@@ -9,7 +9,7 @@ namespace WAR2D.UI
     /// Binds the command card (<c>Assets/UI/Hud/CommandCard.uxml</c>, Figma <c>Command card – v0.7</c> and
     /// <c>Command card – v0.12</c>): the order buttons (Move, Attack-move, Stop, Hold, and Repair with Builders,
     /// Dig with Diggers or Detonate with Suicide bombers selected; the armed order shows as active), the build row
-    /// with Builders or nothing selected (v0.13, Figma <c>Command card – v0.13</c> layout B: Make — Miner and the producers —
+    /// with Builders selected (v0.13, Figma <c>Command card – v0.13</c> layout B: Make — Miner and the producers —
     /// over Defend — Wall, Bomb, Radar, Gun turret, Jammer — with their costs, disabled while the player can't afford
     /// them, and one hover card for every build button: name and cost, role, footprint and upkeep), and, with own producers selected, the type selector (one button per type the building
     /// makes, the selected one active, a hover card with its cost, build time and role) above one queue row for
@@ -282,25 +282,25 @@ namespace WAR2D.UI
         }
 
         /// <summary>
-        /// The card-slot keys (v0.15.1, Figma H1–H2), once a frame while the HUD has the keyboard. A key does what its build button does
-        /// (place that building, or arm the Wall drag) whatever is selected, row showing or not: an idle Builder comes to what is placed.
-        /// The exception: with own producers of one kind selected the top-row keys work the type selector: on the type being made a
-        /// key adds one to every selected producer's queue (ten with the queue modifier), on another type it switches to it, as a
-        /// click does. Returns the cursor notice when the key's button is greyed out ("Radar: need 250 (you have 90)", "Queue full"), else null.
+        /// The card-slot keys (v0.15.1, Figma H1–H2), once a frame while the HUD has the keyboard. With Builders selected a key does what
+        /// its build button does (place that building, or arm the Wall drag). With own producers of one kind selected the top-row keys
+        /// work the type selector: on the type being made a key adds one to every selected producer's queue (ten with the queue
+        /// modifier), on another type it switches to it, as a click does. Returns the cursor notice when the key's button is greyed
+        /// out ("Radar: need 250 (you have 90)", "Queue full"), else null.
         /// </summary>
         public string HandleHotkeys()
         {
             int top = PressedSlot(GameInput.CardTopSlots, GameInput.CardTop);
             int bottom = top >= 0 ? -1 : PressedSlot(GameInput.CardBottomSlots, GameInput.CardBottom);
             if (top < 0 && bottom < 0) return null;
-            bool producing = selection.BuildingId != 0 && SpawnerRules.IsProducer(selection.BuildingType) && selection.BlueprintCount == 0 && !selection.MixedKinds;
-            if (!producing || top < 0)
+            bool building = selection.BuildingId != 0 || WallsOnly;
+            if (!building && selection.HasBuilders)
             {
-                if (!canBuild && !BuildRowShown) return null;
                 if (top >= TopBuilds.Length || bottom >= BottomBuilds.Length) return null;
                 return Build(top >= 0 ? TopBuilds[top] : BottomBuilds[bottom]);
             }
-            if (rowsFor != selection.BuildingType || top >= shownTypes.Length) return null;
+            bool producing = building && !WallsOnly && SpawnerRules.IsProducer(selection.BuildingType) && selection.BlueprintCount == 0 && !selection.MixedKinds;
+            if (!producing || top < 0 || rowsFor != selection.BuildingType || top >= shownTypes.Length) return null;
             UnitType type = shownTypes[top];
             if (type != Chosen()) { Pick(type); return null; }
             if (selection.SpawnerQueue >= SpawnerRules.MaxQueue * selection.BuildingIds.Count) return "Queue full";
@@ -393,22 +393,6 @@ namespace WAR2D.UI
         /// <summary>True when own walls or wall blueprints are selected and nothing else.</summary>
         private bool WallsOnly => selection.WallCount > 0 && selection.BuildingId == 0 && selection.Count == 0;
 
-        /// <summary>
-        /// True when the build row shows: with Builders selected, or with nothing selected while <see cref="SetCanBuild"/> allows it
-        /// (an idle Builder comes to whatever is placed).
-        /// </summary>
-        private bool BuildRowShown => selection.BuildingId == 0 && !WallsOnly && (selection.HasBuilders || (canBuild && selection.Count == 0));
-
-        private bool canBuild;
-
-        /// <summary>Whether the build row may show with nothing selected: only for a player in play, so not while placing the HQ or spectating.</summary>
-        public void SetCanBuild(bool value)
-        {
-            if (canBuild == value) return;
-            canBuild = value;
-            Show();
-        }
-
         private void Show()
         {
             bool building = selection.BuildingId != 0 || WallsOnly;
@@ -417,16 +401,16 @@ namespace WAR2D.UI
             bool builders = !building && selection.HasBuilders, diggers = !building && selection.HasDiggers;
             bool bombers = !building && bomberType.HasValue && detonateKind.HasValue && selection.HasType(bomberType.Value);
             card.EnableInClassList("command-card--building", building);
-            bool buildRow = BuildRowShown;
-            card.EnableInClassList("command-card--builders", buildRow);
+            card.EnableInClassList("command-card--builders", builders);
             if (!building || !Removable) ConfirmOpen = false;
             // Inline display wins over the stylesheet, so every section is set either way.
             Display(digHint, diggers && !builders);
             Display(detonateHint, bombers && !builders && !diggers);
-            Display(divider, buildRow);
-            Display(buildLabel, buildRow);
-            Display(buildArea, buildRow);
-            Display(buildHint, buildRow);
+            // The build row is the Builders' (v0.7): without them, nothing can build.
+            Display(divider, builders);
+            Display(buildLabel, builders);
+            Display(buildArea, builders);
+            Display(buildHint, builders);
             Display(removal, building && Removable);
             // A blueprint makes nothing yet: production shows once the selected buildings are all finished.
             bool producing = building && SpawnerRules.IsProducer(selection.BuildingType) && selection.BlueprintCount == 0;

@@ -452,7 +452,6 @@ namespace WAR2D.UI
             SubscribeNotices();
             ShowCursorNotice();
             matchMenu.SetCanSurrender(root, GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing && !endScreen.IsShown);
-            commandCard.SetCanBuild(GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing && !endScreen.IsShown && !Spectating);
             SyncMenuPause();
             if (endScreen.IsShown)
             {

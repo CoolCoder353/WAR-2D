@@ -2,7 +2,7 @@ using NUnit.Framework;
 using Unity.Mathematics;
 using WAR2D.Sim;
 
-/// <summary>Idle Builders build anywhere and repair nearby on their own (v0.16).</summary>
+/// <summary>Idle Builders build and repair within <c>AutoWork/Radius</c> on their own (v0.16).</summary>
 public class SimAutoWorkTests
 {
     [Test]
@@ -17,9 +17,20 @@ public class SimAutoWorkTests
     }
 
     [Test]
-    public void AnIdleBuilderGoesAcrossTheMapToABlueprint()
+    public void ItLeavesBlueprintsBeyondTheRadius()
     {
-        using var sim = new SimHarness(SimHarness.OpenMap(64));
+        using var sim = new SimHarness(SimHarness.OpenMap(64), c => c.AutoWork.Radius = 8f);
+        sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 10.5f), UnitType.Builder);
+        sim.Tick();
+        int far = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(40, 40));
+        sim.TickSeconds(10f);
+        Assert.IsTrue(sim.IsBlueprint(far));
+    }
+
+    [Test]
+    public void AnIdleBuilderGoesAcrossTheMapToABlueprintWithinTheRadius()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(64), c => c.AutoWork.Radius = 900f);
         sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 10.5f), UnitType.Builder);
         sim.Tick();
         int far = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Barracks, new int2(40, 40));
@@ -28,15 +39,15 @@ public class SimAutoWorkTests
     }
 
     [Test]
-    public void AnIdleBuilderGoesAcrossTheMapToAWallBlueprint()
+    public void ItLeavesWallBlueprintsBeyondTheRadius()
     {
-        using var sim = new SimHarness(SimHarness.OpenMap(64));
+        using var sim = new SimHarness(SimHarness.OpenMap(64), c => c.AutoWork.Radius = 8f);
         sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 10.5f), UnitType.Builder);
         sim.Tick(); // owner A exists from here, so it can own walls
         var far = new int2(50, 50);
         sim.PlaceWall(SimHarness.OwnerA, far);
-        sim.TickSeconds(60f);
-        Assert.AreEqual(TileType.PlayerWall, sim.Map.Grid.TileAt(far));
+        sim.TickSeconds(20f);
+        Assert.AreEqual(WallStates.Blueprint, sim.Context.Data.WallState[sim.Map.Grid.Index(far)]);
     }
 
     [Test]

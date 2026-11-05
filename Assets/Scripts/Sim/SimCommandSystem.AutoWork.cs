@@ -9,9 +9,9 @@ namespace WAR2D.Sim
     {
         /// <summary>
         /// Idle Builders work on their own (v0.16): each Builder with no order, no work, no queued waypoints and nothing
-        /// pending looks, once every <see cref="SimData.AutoWorkSlice"/> ticks, for the closest job it can walk to: its owner's
-        /// blueprint or unfinished wall anywhere on the map, or an own building or wall within <see cref="SimData.AutoWorkRadius"/>
-        /// tiles below <see cref="SimData.AutoWorkRepairBelow"/> of its health (not while the owner has no money). It takes that as a
+        /// pending looks, once every <see cref="SimData.AutoWorkSlice"/> ticks, for the closest job it can walk to within
+        /// <see cref="SimData.AutoWorkRadius"/> tiles: its owner's blueprint or unfinished wall, or an own building or wall below
+        /// <see cref="SimData.AutoWorkRepairBelow"/> of its health (not while the owner has no money). It takes that as a
         /// Build or Repair order, exactly as a click would (<see cref="ApplyWorkOrder"/>). Never a teammate's. Runs after the
         /// boundary's drained commands, so a player's order this boundary wins.
         /// </summary>
@@ -33,10 +33,10 @@ namespace WAR2D.Sim
                 if (!collected) { CollectWorkBuildings(data); collected = true; }
                 float2 at = data.Positions[slot];
                 int sizeClass = data.SizeClass[slot];
-                bool build = TryNearestBuildWork(data, context, owner, ownerSlot, at, sizeClass, out int2 buildTile, out float buildSq);
+                bool build = TryNearestBuildWork(data, context, owner, ownerSlot, at, sizeClass, rSq, out int2 buildTile, out float buildSq);
                 OrderKind kind;
                 int2 tile;
-                if ((context.BudgetOf == null || context.BudgetOf(owner) > 0f) && TryNearestRepair(data, context, owner, ownerSlot, at, sizeClass, build ? math.min(buildSq, rSq) : rSq, out tile)) kind = OrderKind.Repair;
+                if ((context.BudgetOf == null || context.BudgetOf(owner) > 0f) && TryNearestRepair(data, context, owner, ownerSlot, at, sizeClass, build ? buildSq : rSq, out tile)) kind = OrderKind.Repair;
                 else if (build) { kind = OrderKind.Build; tile = buildTile; }
                 else continue;
                 ApplyWorkOrder(data, context, new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, OwnerId = owner, Tile = tile, Ids = new[] { id } }, unitCount, background: true);
@@ -127,11 +127,11 @@ namespace WAR2D.Sim
             }
         }
 
-        /// <summary>The nearest own blueprint (a tile of its footprint) or unfinished own wall the Builder can walk to, however far.</summary>
-        private bool TryNearestBuildWork(SimData data, SimContext context, int owner, int ownerSlot, float2 at, int sizeClass, out int2 tile, out float distanceSq)
+        /// <summary>The nearest own blueprint (a tile of its footprint) or unfinished own wall the Builder can walk to, closer than <paramref name="within"/> (squared).</summary>
+        private bool TryNearestBuildWork(SimData data, SimContext context, int owner, int ownerSlot, float2 at, int sizeClass, float within, out int2 tile, out float distanceSq)
         {
             tile = default;
-            float best = float.MaxValue;
+            float best = within;
             foreach (int b in blueprints)
             {
                 if (data.BuildingOwnerId[b] != owner) continue;
@@ -152,7 +152,7 @@ namespace WAR2D.Sim
                 tile = wall;
             }
             distanceSq = best;
-            return best < float.MaxValue;
+            return best < within;
         }
 
         /// <summary>True when a unit at <paramref name="at"/> can walk to a free tile touching the footprint, so a walled-off blueprint doesn't hold a Builder from the next one.</summary>

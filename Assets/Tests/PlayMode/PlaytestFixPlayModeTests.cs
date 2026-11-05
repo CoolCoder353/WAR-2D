@@ -41,7 +41,7 @@ public class PlaytestFixPlayModeTests
     }
 
     [UnityTest]
-    public IEnumerator ABuildKeyWorksWithNoBuilderSelected()
+    public IEnumerator ABuildKeyNeedsABuilderSelected()
     {
         yield return PlayModeMatch.StartMatchAsHost(config);
         int2 anchor = default;
@@ -52,8 +52,7 @@ public class PlaytestFixPlayModeTests
         BuildingPlacement placement = BuildingPlacement.Instance;
 
         yield return Press("C");
-        Assert.AreEqual(BuildingType.Radar, placement.PlacingType, "nothing selected");
-        placement.Cancel();
+        Assert.IsFalse(placement.IsPlacing, "nothing selected");
 
         DevApi.AllowForTests = true;
         WorldStateManager wsm = WorldStateManager.Instance;
@@ -68,17 +67,7 @@ public class PlaytestFixPlayModeTests
         UnitCommander.Instance.Selection.SelectIds(HudTests.OwnUnits());
         yield return PlayModeMatch.WaitUntil(() => hud.Selection.Count > 0, 5f);
         yield return Press("C");
-        Assert.AreEqual(BuildingType.Radar, placement.PlacingType, "a Scout selected");
-        placement.Cancel();
-
-        Assert.IsTrue(HudTests.TryOwnBuilding(BuildingType.Base, out int hq));
-        UnitCommander.Instance.Selection.SelectBuilding(hq);
-        yield return PlayModeMatch.WaitUntil(() => hud.Selection.BuildingId == hq, 5f);
-        yield return Press("Q");
-        Assert.IsFalse(placement.IsPlacing, "with the HQ selected Q makes a Builder");
-        yield return Press("C");
-        Assert.AreEqual(BuildingType.Radar, placement.PlacingType, "the HQ doesn't use the bottom row");
-        placement.Cancel();
+        Assert.IsFalse(placement.IsPlacing, "a Scout selected");
     }
 
     [UnityTest]
