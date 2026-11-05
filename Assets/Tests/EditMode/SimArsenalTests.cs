@@ -182,7 +182,7 @@ public class SimArsenalTests
     [Test]
     public void TheDetonateOrderBlowsUpEverySelectedBomber()
     {
-        using var sim = Sim();
+        using var sim = new SimHarness(SimHarness.OpenMap(64), c => { c.Simulation.TargetSearchSliceTicks = 1; c.Bomber.FriendlyDamage = 0.1f; }); // pinned: the balance may set it to 0
         int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10, 10), UnitType.SuicideBomber);
         int[] b = sim.Spawn(SimHarness.OwnerA, new float2(30, 30), UnitType.SuicideBomber);
         int[] near = sim.Spawn(SimHarness.OwnerA, new float2(11, 10), UnitType.Builder);

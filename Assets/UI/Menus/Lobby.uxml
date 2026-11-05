@@ -9,37 +9,46 @@
                 <ui:TextField name="server-name-field" max-length="24" class="input__field lobby__server-name-field" />
             </ui:VisualElement>
         </ui:VisualElement>
-        <ui:ScrollView name="lobby-left" mode="Vertical" horizontal-scroller-visibility="Hidden" class="lobby__left">
-            <ui:Label name="players-title" text="Players" class="lobby__column-title" />
-            <ui:VisualElement name="lobby-cards">
-                <ui:VisualElement name="player-rows" class="lobby__cards" />
-            </ui:VisualElement>
-            <ui:VisualElement name="add-ai-row" class="row lobby__add-ai">
-                <ui:Button name="add-ai-button" text="Add AI" class="button" />
-                <ui:Label name="add-ai-hint" text="AIs are always ready. Shown while a seat is free (8 at most)." class="text--secondary lobby__add-ai-hint" />
-            </ui:VisualElement>
-            <ui:VisualElement name="local-pickers" class="lobby__pickers">
-                <ui:Label text="Your colour (other players' colours are crossed out; an AI gives its colour up)" class="text--secondary lobby__label" />
-                <ui:VisualElement name="colour-picker" class="row lobby__colours" />
-                <ui:VisualElement name="team-section">
-                    <ui:Label text="Your team" class="text--secondary lobby__label" />
-                    <ui:VisualElement name="team-picker" class="row segmented" />
+        <ui:VisualElement name="lobby-left" class="lobby__left">
+            <ui:VisualElement class="row lobby__players-header">
+                <ui:Label name="players-title" text="Players" class="lobby__column-title lobby__players-title" />
+                <ui:VisualElement class="row lobby__mode">
+                    <ui:Label text="Mode" class="text--secondary lobby__mode-label" />
+                    <ui:VisualElement name="mode-options" class="row segmented" />
+                    <ui:VisualElement name="diplomacy-switch-slot" class="lobby__diplomacy" />
                 </ui:VisualElement>
             </ui:VisualElement>
-        </ui:ScrollView>
+            <ui:VisualElement name="quick-setup" class="row lobby__quick hidden">
+                <ui:Label text="Quick setup" class="text--secondary lobby__quick-label" />
+                <ui:VisualElement name="quick-setup-buttons" class="row lobby__quick-buttons" />
+            </ui:VisualElement>
+            <ui:ScrollView name="lobby-board-scroll" mode="Vertical" horizontal-scroller-visibility="Hidden" class="lobby__board-scroll">
+                <ui:VisualElement name="lobby-cards" class="lobby__players">
+                    <ui:VisualElement name="team-board" class="lobby__board" />
+                    <ui:VisualElement name="player-rows" class="lobby__cards" />
+                    <ui:VisualElement name="add-ai-row" class="row lobby__add-ai">
+                        <ui:Button name="add-ai-button" text="+ Add AI" class="button lobby__add-ai-button" />
+                        <ui:Label name="add-ai-hint" text="AIs are always ready. Shown while a seat is free (8 at most)." class="text--secondary lobby__add-ai-hint" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:ScrollView>
+            <ui:Label name="board-help" text="" class="text--secondary lobby__board-help" />
+        </ui:VisualElement>
         <ui:VisualElement class="lobby__preview">
-            <ui:Label text="Map" class="lobby__column-title" />
+            <ui:VisualElement class="row lobby__preview-header">
+                <ui:Label text="Map" class="lobby__column-title" />
+                <ui:Button name="lobby-reset" text="Reset settings" class="button lobby__reset" />
+            </ui:VisualElement>
             <ui:VisualElement name="preview-image" class="lobby__preview-image">
                 <ui:VisualElement name="preview-markers" class="lobby__markers" picking-mode="Ignore" />
             </ui:VisualElement>
-            <ui:Label name="lobby-map-caption" text="" class="text lobby__map-caption" />
-            <ui:Button name="reroll-button" text="Reroll" class="button lobby__reroll" />
+            <ui:VisualElement class="row lobby__caption-row">
+                <ui:Label name="lobby-map-caption" text="" class="text lobby__map-caption" />
+                <ui:Button name="reroll-button" text="Reroll" class="button lobby__reroll" />
+            </ui:VisualElement>
         </ui:VisualElement>
         <ui:ScrollView name="lobby-settings" mode="Vertical" horizontal-scroller-visibility="Hidden" class="lobby__settings">
-            <ui:VisualElement class="row lobby__settings-header">
-                <ui:Label name="settings-title" text="Match settings" class="lobby__column-title" />
-                <ui:Button name="lobby-reset" text="Reset" class="button lobby__reset" />
-            </ui:VisualElement>
+            <ui:Label name="settings-title" text="Match settings" class="lobby__column-title lobby__settings-title" />
             <ui:VisualElement name="lobby-block-map" class="panel lobby__block">
                 <ui:Label text="Map" class="panel__title" />
                 <ui:VisualElement class="lobby__block-content">
@@ -80,13 +89,6 @@
                         <ui:Label text="Visibility" class="text--secondary lobby__label" />
                         <ui:VisualElement name="visibility-row" class="row segmented" />
                         <ui:Label name="visibility-hint" text="" class="text--secondary lobby__hint" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="row lobby__mode-row">
-                        <ui:VisualElement class="option-group">
-                            <ui:Label text="Mode" class="text--secondary lobby__label" />
-                            <ui:VisualElement name="mode-options" class="row segmented" />
-                        </ui:VisualElement>
-                        <ui:VisualElement name="diplomacy-switch-slot" class="lobby__diplomacy" />
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>

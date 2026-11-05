@@ -61,7 +61,7 @@ public class LobbyTests
         StringAssert.Contains($"512 × 512 · seed {GameCore.Instance.Settings.Seed}", root.Q<Label>("lobby-map-caption").text);
         Assert.That(root.Q("lobby-block-map").Q("size-options"), Is.Not.Null);
         Assert.That(root.Q("lobby-block-start").Q("pick-time-row"), Is.Not.Null);
-        Assert.That(root.Q("lobby-block-rules").Q("mode-options"), Is.Not.Null);
+        Assert.That(root.Q("lobby-left").Q("mode-options"), Is.Not.Null, "Mode sits beside the Players title (playtest 2026-11-05)");
     }
 
     [UnityTest, Timeout(60000)]
@@ -141,7 +141,8 @@ public class LobbyTests
     {
         yield return HostFromMenu();
         VisualElement root = Root();
-        HudTests.Click(root.Q<Button>("colour-3"));
+        Assert.That(root.Q<Button>("own-colour"), Is.Not.Null, "your card has the colour dropdown");
+        GameCore.Instance.Cmd_SetColour(3); // what its menu item sends
         yield return PlayModeMatch.WaitUntil(() => Local.colourIndex == 3, 5f);
 
         HudTests.Click(root.Q<Button>("size-256")); // a generated map (the test config uses the scene's tilemaps)

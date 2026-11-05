@@ -20,7 +20,13 @@ namespace WAR2D.UI
         private readonly LobbyConfig lobby;
         private readonly MapConfig map;
         private readonly Func<string> hostAddress;
-        private readonly VisualElement rows, colourPicker, teamSection, teamPicker;
+        private readonly VisualElement root, rows, board, quickSetup, quickSetupButtons;
+        private readonly Label boardHelp;
+        private readonly List<VisualElement> teamRows = new List<VisualElement>();
+        private readonly System.Random shuffle = new System.Random();
+        /// <summary>The card being dragged by its handle, or null; redraws wait until it is dropped.</summary>
+        private VisualElement dragging;
+        private bool redrawPending;
         private readonly VisualElement modeOptions, sizeOptions, resourceOptions, diplomacySlot, startOptions, pickTimes;
         private readonly VisualElement visibilityOptions, addAiRow;
         private readonly Label visibilityHint, addAiHint;
@@ -48,6 +54,10 @@ namespace WAR2D.UI
         public event Action<bool> ReadyClicked;
         /// <summary>The host pressed Add AI (the server picks Normal, Random, the first free colour and the emptiest team).</summary>
         public event Action AddAiClicked;
+        /// <summary>The host pressed a team row's + Add AI (a Normal, Random AI into that team; <see cref="TeamRules.NoTeam"/> = Solo).</summary>
+        public event Action<int> AddAiToTeamClicked;
+        /// <summary>The host pressed a quick setup: (owners, their new teams), sent as one command.</summary>
+        public event Action<int[], int[]> TeamsChanged;
         /// <summary>The host changed an AI's row: (owner, difficulty, style, colour, team).</summary>
         public event Action<int, AiDifficulty, AiStyle, int, int> AiChanged;
         /// <summary>The host removed an AI (its ×).</summary>
@@ -92,10 +102,12 @@ namespace WAR2D.UI
             this.preview = preview;
             this.lobby = lobby;
             this.hostAddress = hostAddress;
+            this.root = root;
             rows = root.Q("player-rows");
-            colourPicker = root.Q("colour-picker");
-            teamSection = root.Q("team-section");
-            teamPicker = root.Q("team-picker");
+            board = root.Q("team-board");
+            quickSetup = root.Q("quick-setup");
+            quickSetupButtons = root.Q("quick-setup-buttons");
+            boardHelp = root.Q<Label>("board-help");
             modeOptions = root.Q("mode-options");
             sizeOptions = root.Q("size-options");
             resourceOptions = root.Q("resource-options");
@@ -162,6 +174,11 @@ namespace WAR2D.UI
 
         private void Show()
         {
+            if (dragging != null)
+            {
+                redrawPending = true; // rebuilding now would drop the card from under the pointer
+                return;
+            }
             MatchSettings s = model.Settings;
             bool host = model.LocalIsHost;
             resetButton?.EnableInClassList("hidden", !host);
@@ -181,9 +198,13 @@ namespace WAR2D.UI
             if (isPrivate) invite.AddToClassList("hidden");
             settingsTitle.text = host ? "Match settings" : "Match settings (host only)";
 
+            root.Q("lobby")?.EnableInClassList("lobby--ffa", !teams);
             ShowRows(host, teams);
-            ShowAddAi(host, isPrivate);
-            ShowPickers(host, teams, me);
+            ShowQuickSetup(host, teams);
+            ShowAddAi(host, isPrivate, teams);
+            boardHelp.text = !teams ? "Free-for-all: everyone is an enemy, so players have no team. Switch Mode to Teams to set teams."
+                : host ? "Move a player: drag their card by ⠿ onto another team's row, or pick the team in the card's dropdown. + Add AI adds a Normal Random AI to that row."
+                : "Move yourself: drag your card by ⠿ onto another team's row, or pick your team in its dropdown. The host can move anyone.";
             ShowSettings(s, host);
 
             if (seed.focusController?.focusedElement != seed) seed.SetValueWithoutNotify(s.Seed.ToString());
@@ -203,59 +224,276 @@ namespace WAR2D.UI
             markers.Clear(); // start points are private (v0.11): the preview shows terrain only
         }
 
+        /// <summary>
+        /// The players (playtest 2026-11-05, Figma L1–L3). Teams mode: the team board, one row per team (Team 1–4, then
+        /// Solo) with its cards side by side and "+ Add AI" at the end. Free-for-all: the cards two per row, no teams.
+        /// </summary>
         private void ShowRows(bool host, bool teams)
         {
             rows.Clear();
-            // Playtest 2026-11-02: grouped by team in Teams mode (Solo last), join order within a team. LINQ's sort is stable.
-            IEnumerable<LobbyPlayer> ordered = teams ? System.Linq.Enumerable.OrderBy(model.Players, p => TeamRules.ListOrder(p.Team)) : model.Players;
-            foreach (LobbyPlayer p in ordered)
+            board.Clear();
+            teamRows.Clear();
+            Display(board, teams);
+            Display(rows, !teams);
+            if (!teams)
             {
-                if (p.IsAi) { rows.Add(AiRow(p, host, teams)); continue; }
-                bool you = p.OwnerId == model.Local.OwnerId;
-                var (card, info, side) = Card(p.OwnerId, you);
-                card.Insert(0, Strip(p.ColourIndex));
-                if (host && !you && !p.IsHost) card.Insert(2, PlayerMenu(p)); // after the strip and the name, before team and ready
-                AddName(info, p.Nickname + (you ? " (you)" : ""));
-                var sub = Sub(info);
-                sub.Add(SubText(p.IsHost ? "Host" : "Player"));
-                if (teams)
-                {
-                    string team = TeamName(p.Team);
-                    if (host)
-                    {
-                        int owner = p.OwnerId, next = NextTeam(p.Team);
-                        var pill = new Button(() => HostTeamClicked?.Invoke(owner, next)) { text = team + " ▸", name = "team-" + owner };
-                        pill.AddToClassList("lobby-row__team");
-                        side.Add(pill);
-                    }
-                    else
-                    {
-                        var pill = new Label(team);
-                        pill.AddToClassList("lobby-row__team");
-                        side.Add(pill);
-                    }
-                }
-                side.Add(ReadyLabel(p.Ready));
-                rows.Add(card);
+                foreach (LobbyPlayer p in model.Players) rows.Add(PlayerCard(p, host, false));
+                return;
             }
+            for (int t = 0; t < LobbyRules.PickableTeams; t++) board.Add(TeamRow(t, host));
+            board.Add(TeamRow(TeamRules.NoTeam, host));
+        }
+
+        /// <summary>One team's row: its name and player count, its cards, an empty drop zone when it has none, and the host's + Add AI.</summary>
+        private VisualElement TeamRow(int team, bool host)
+        {
+            var row = new VisualElement { name = team == TeamRules.NoTeam ? "team-row-solo" : "team-row-" + team, userData = team };
+            row.AddToClassList("lobby-team");
+            var header = new VisualElement();
+            header.AddToClassList("lobby-team__header");
+            var title = new Label(TeamName(team));
+            title.AddToClassList("lobby-team__title");
+            header.Add(title);
+            int count = 0;
+            foreach (LobbyPlayer p in model.Players) if (p.Team == team) count++;
+            var players = new Label(count == 1 ? "1 player" : $"{count} players");
+            players.AddToClassList("lobby-team__count");
+            header.Add(players);
+            if (team == TeamRules.NoTeam)
+            {
+                var note = new Label("everyone is an enemy");
+                note.AddToClassList("lobby-team__count");
+                header.Add(note);
+            }
+            row.Add(header);
+            var cards = new VisualElement();
+            cards.AddToClassList("lobby-team__cards");
+            foreach (LobbyPlayer p in model.Players) if (p.Team == team) cards.Add(PlayerCard(p, host, true));
+            if (count == 0)
+            {
+                var empty = new Label(team == TeamRules.NoTeam ? "Empty\nDrag a card here, or pick Solo" : $"Empty\nDrag a card here, or pick {TeamName(team)}");
+                empty.AddToClassList("lobby-team__empty");
+                cards.Add(empty);
+            }
+            if (host && model.HasFreeSeat)
+            {
+                int target = team;
+                var add = new Button(() => AddAiToTeamClicked?.Invoke(target)) { text = "+ Add AI", name = team == TeamRules.NoTeam ? "add-ai-solo" : "add-ai-team-" + team };
+                add.AddToClassList("lobby-team__add");
+                cards.Add(add);
+            }
+            row.Add(cards);
+            teamRows.Add(row);
+            return row;
         }
 
         /// <summary>
-        /// A player card (v0.16, Figma M2): colour strip, name over a second line, team and ready on the right; the local
-        /// player's card outlined in the accent. Named <c>lobby-row-&lt;owner&gt;</c> as the rows were.
+        /// A player's card (Figma <c>Lobby / Player card</c>): colour strip; the drag handle (when this viewer may move them),
+        /// name, ready and the remove ×; a second line (AI: difficulty ▾ and style ▾; you: colour ▾; another human, for the
+        /// host: ⋯); and, in Teams mode, the team dropdown, live for whoever may move them (the host: anyone; a joined
+        /// player: themselves). Named <c>lobby-row-&lt;owner&gt;</c>.
         /// </summary>
-        private static (VisualElement card, VisualElement info, VisualElement side) Card(int owner, bool you)
+        private VisualElement PlayerCard(LobbyPlayer p, bool host, bool teams)
         {
+            int owner = p.OwnerId;
+            bool you = owner == model.Local.OwnerId;
+            bool movable = teams && (host || you) && !(p.IsAi && p.Difficulty == AiDifficulty.Scripted);
             var card = new VisualElement { name = "lobby-row-" + owner };
             card.AddToClassList("lobby-card");
             card.EnableInClassList("lobby-card--you", you);
-            var info = new VisualElement();
-            info.AddToClassList("lobby-card__info");
-            var side = new VisualElement();
-            side.AddToClassList("lobby-card__side");
-            card.Add(info);
-            card.Add(side);
-            return (card, info, side);
+            card.EnableInClassList("ai-row", p.IsAi);
+            if (p.IsAi && host)
+            {
+                var swatch = new Button(() => AiChanged?.Invoke(owner, p.Difficulty, p.Style, model.NextFreeColour(owner, p.ColourIndex), p.Team))
+                    { name = "ai-colour-" + owner, tooltip = "Change colour" };
+                swatch.AddToClassList("lobby-card__strip");
+                swatch.AddToClassList("player-" + (p.ColourIndex % LobbyRules.Colours + 1));
+                card.Add(swatch);
+            }
+            else card.Add(Strip(p.ColourIndex));
+
+            var body = new VisualElement();
+            body.AddToClassList("lobby-card__body");
+            card.Add(body);
+            var top = new VisualElement();
+            top.AddToClassList("lobby-card__top");
+            body.Add(top);
+            if (movable)
+            {
+                var handle = new Label("⠿") { name = "drag-" + owner, tooltip = "Drag onto another team" };
+                handle.AddToClassList("lobby-card__handle");
+                MakeDraggable(handle, card, p);
+                top.Add(handle);
+            }
+            var name = new Label(p.Nickname + (you ? " (you)" : ""));
+            name.AddToClassList("lobby-card__name");
+            top.Add(name);
+            top.Add(ReadyLabel(p.IsAi || p.Ready));
+            if (p.IsAi && host)
+            {
+                var remove = new Button(() => AiRemoved?.Invoke(owner)) { text = "×", name = "ai-remove-" + owner, tooltip = "Remove" };
+                remove.AddToClassList("lobby-card__remove");
+                top.Add(remove);
+            }
+
+            var sub = new VisualElement();
+            sub.AddToClassList("lobby-card__sub");
+            body.Add(sub);
+            if (p.IsAi && host)
+            {
+                sub.Add(PlayerNameLabel.Tag("AI"));
+                var difficulty = Pill("ai-difficulty-" + owner, AiLobbyRules.DifficultyName(p.Difficulty) + " ▾");
+                difficulty.clicked += () => Menu(difficulty, new[] { AiDifficulty.Easy, AiDifficulty.Normal, AiDifficulty.Hard }, p.Difficulty, AiLobbyRules.DifficultyName,
+                    d => AiChanged?.Invoke(owner, d, p.Style, p.ColourIndex, p.Team));
+                sub.Add(difficulty);
+                var style = Pill("ai-style-" + owner, AiLobbyRules.StyleName(p.Style) + " ▾");
+                style.clicked += () => Menu(style, new[] { AiStyle.Random, AiStyle.Rusher, AiStyle.Turtle, AiStyle.Expander, AiStyle.Balanced }, p.Style, AiLobbyRules.StyleName,
+                    st => AiChanged?.Invoke(owner, p.Difficulty, st, p.ColourIndex, p.Team));
+                sub.Add(style);
+            }
+            else if (p.IsAi)
+            {
+                sub.Add(PlayerNameLabel.Tag(PlayerNameLabel.TagText(p.Difficulty)));
+                sub.Add(SubText("· " + AiLobbyRules.StyleName(p.Style), "ai-style-" + owner));
+            }
+            else
+            {
+                sub.Add(SubText(you ? (p.IsHost ? "You · host" : "You") : p.IsHost ? "Host" : "Joined"));
+                if (you) sub.Add(ColourPill());
+                else if (host && !p.IsHost) sub.Add(PlayerMenu(p));
+            }
+
+            if (teams)
+            {
+                var team = new Button { name = "team-" + owner, text = TeamName(p.Team) + " ▾" };
+                team.AddToClassList("lobby-card__team");
+                if (movable) team.clicked += () => TeamMenu(team, p);
+                else
+                {
+                    team.SetEnabled(false);
+                    team.pickingMode = PickingMode.Ignore;
+                }
+                body.Add(team);
+            }
+            return card;
+        }
+
+        /// <summary>The team dropdown: Team 1–4 and Solo, the current one checked.</summary>
+        private void TeamMenu(VisualElement anchor, LobbyPlayer p)
+        {
+            var teams = new int[LobbyRules.PickableTeams + 1];
+            for (int t = 0; t < LobbyRules.PickableTeams; t++) teams[t] = t;
+            teams[LobbyRules.PickableTeams] = TeamRules.NoTeam;
+            Menu(anchor, teams, p.Team, TeamName, t => MoveToTeam(p, t));
+        }
+
+        /// <summary>Moves a player to a team: yourself through your own team choice, an AI through its settings, another human as the host.</summary>
+        private void MoveToTeam(LobbyPlayer p, int team)
+        {
+            if (p.Team == team) return;
+            if (p.OwnerId == model.Local.OwnerId) TeamClicked?.Invoke(team);
+            else if (!model.LocalIsHost) return;
+            else if (p.IsAi) AiChanged?.Invoke(p.OwnerId, p.Difficulty, p.Style, p.ColourIndex, team);
+            else HostTeamClicked?.Invoke(p.OwnerId, team);
+        }
+
+        /// <summary>Your colour ▾ on your own card: every palette colour, the ones other humans hold disabled (an AI gives its colour up).</summary>
+        private Button ColourPill()
+        {
+            var pill = Pill("own-colour", "colour ▾");
+            pill.clicked += () =>
+            {
+                var menu = new GenericDropdownMenu();
+                for (int c = 0; c < LobbyRules.Colours; c++)
+                {
+                    int colour = c;
+                    string label = $"Colour {c + 1}" + (model.Local.ColourIndex == c ? " (yours)" : "");
+                    if (model.IsColourTakenByHuman(c) && model.Local.ColourIndex != c) menu.AddDisabledItem(label + " (taken)", false);
+                    else menu.AddItem(label, model.Local.ColourIndex == c, () => { if (colour != model.Local.ColourIndex) ColourClicked?.Invoke(colour); });
+                }
+                menu.DropDown(pill.worldBound, pill, false);
+            };
+            return pill;
+        }
+
+        /// <summary>
+        /// Drag by the ⠿ handle: the card follows the pointer, the row under it lights up, and letting go over another
+        /// team's row moves the player there (the same as the dropdown). Redraws wait until the drag ends.
+        /// </summary>
+        private void MakeDraggable(VisualElement handle, VisualElement card, LobbyPlayer p)
+        {
+            UnityEngine.Vector2 start = default;
+            handle.RegisterCallback<PointerDownEvent>(e =>
+            {
+                if (e.button != 0) return;
+                dragging = card;
+                start = e.position;
+                handle.CapturePointer(e.pointerId);
+                card.AddToClassList("lobby-card--dragging");
+                e.StopPropagation();
+            });
+            handle.RegisterCallback<PointerMoveEvent>(e =>
+            {
+                if (dragging != card || !handle.HasPointerCapture(e.pointerId)) return;
+                UnityEngine.Vector2 delta = (UnityEngine.Vector2)e.position - start;
+                card.style.translate = new Translate(delta.x, delta.y);
+                VisualElement over = RowAt(e.position);
+                foreach (VisualElement row in teamRows) row.EnableInClassList("lobby-team--drop", row == over && (int)row.userData != p.Team);
+            });
+            void End(UnityEngine.Vector2 at, int pointerId, bool drop)
+            {
+                if (dragging != card) return;
+                if (handle.HasPointerCapture(pointerId)) handle.ReleasePointer(pointerId);
+                dragging = null;
+                card.style.translate = StyleKeyword.Null;
+                card.RemoveFromClassList("lobby-card--dragging");
+                VisualElement over = drop ? RowAt(at) : null;
+                foreach (VisualElement row in teamRows) row.RemoveFromClassList("lobby-team--drop");
+                if (over != null) MoveToTeam(p, (int)over.userData);
+                if (redrawPending)
+                {
+                    redrawPending = false;
+                    Show();
+                }
+            }
+            handle.RegisterCallback<PointerUpEvent>(e => End(e.position, e.pointerId, true));
+            handle.RegisterCallback<PointerCaptureOutEvent>(e => End(default, e.pointerId, false));
+        }
+
+        private VisualElement RowAt(UnityEngine.Vector2 position)
+        {
+            foreach (VisualElement row in teamRows) if (row.worldBound.Contains(position)) return row;
+            return null;
+        }
+
+        private static void Display(VisualElement element, bool shown)
+        {
+            if (element != null) element.style.display = shown ? DisplayStyle.Flex : DisplayStyle.None;
+        }
+
+        /// <summary>The quick setup buttons (host, Teams mode): one <see cref="TeamsChanged"/> with every player's new team.</summary>
+        private void ShowQuickSetup(bool host, bool teams)
+        {
+            quickSetup.EnableInClassList("hidden", !host || !teams);
+            quickSetupButtons.Clear();
+            if (!host || !teams) return;
+            foreach ((QuickSetup setup, string text) in LobbyTeamSetup.Buttons)
+            {
+                QuickSetup chosen = setup;
+                quickSetupButtons.Add(Widgets.TextButton("quick-" + setup.ToString().ToLowerInvariant(), text, false, () => ApplyQuickSetup(chosen)));
+            }
+        }
+
+        /// <summary>Works out and sends a quick setup (Scripted seats keep their teams: the server refuses to move them).</summary>
+        public void ApplyQuickSetup(QuickSetup setup)
+        {
+            if (!model.LocalIsHost || model.Settings.Mode != MatchMode.Teams) return;
+            var players = new List<LobbyPlayer>();
+            foreach (LobbyPlayer p in model.Players) if (!(p.IsAi && p.Difficulty == AiDifficulty.Scripted)) players.Add(p);
+            int[] teams = LobbyTeamSetup.Teams(setup, players, model.Local.OwnerId, shuffle);
+            var owners = new int[players.Count];
+            for (int i = 0; i < owners.Length; i++) owners[i] = players[i].OwnerId;
+            TeamsChanged?.Invoke(owners, teams);
         }
 
         private static VisualElement Strip(int colourIndex)
@@ -264,21 +502,6 @@ namespace WAR2D.UI
             strip.AddToClassList("lobby-card__strip");
             strip.AddToClassList("player-" + (colourIndex % LobbyRules.Colours + 1));
             return strip;
-        }
-
-        private static void AddName(VisualElement info, string text)
-        {
-            var name = new Label(text);
-            name.AddToClassList("lobby-card__name");
-            info.Add(name);
-        }
-
-        private static VisualElement Sub(VisualElement info)
-        {
-            var sub = new VisualElement();
-            sub.AddToClassList("lobby-card__sub");
-            info.Add(sub);
-            return sub;
         }
 
         private static Label SubText(string text, string name = null)
@@ -294,68 +517,6 @@ namespace WAR2D.UI
             label.AddToClassList("lobby-row__ready");
             label.EnableInClassList("lobby-row__ready--yes", ready);
             return label;
-        }
-
-        /// <summary>
-        /// An AI's card (Figma M2; v0.14 controls). Host: the strip is a button (the next free colour), the tag ("AI") with
-        /// the Difficulty and Style dropdowns under the name, Team (Teams mode) and Ready on the right, × in the corner.
-        /// Everyone else: "AI · Hard · Rusher" under the name (Random stays "Random"), team and Ready.
-        /// </summary>
-        private VisualElement AiRow(LobbyPlayer p, bool host, bool teams)
-        {
-            int owner = p.OwnerId;
-            var (card, info, side) = Card(owner, false);
-            card.AddToClassList("ai-row");
-            if (host)
-            {
-                var swatch = new Button(() => AiChanged?.Invoke(owner, p.Difficulty, p.Style, model.NextFreeColour(owner, p.ColourIndex), p.Team))
-                    { name = "ai-colour-" + owner, tooltip = "Change colour" };
-                swatch.AddToClassList("lobby-card__strip");
-                swatch.AddToClassList("player-" + (p.ColourIndex % LobbyRules.Colours + 1));
-                card.Insert(0, swatch);
-            }
-            else card.Insert(0, Strip(p.ColourIndex));
-            AddName(info, p.Nickname);
-            VisualElement sub = Sub(info);
-            if (host)
-            {
-                sub.Add(PlayerNameLabel.Tag("AI"));
-                var difficulty = Pill("ai-difficulty-" + owner, AiLobbyRules.DifficultyName(p.Difficulty) + " ▾");
-                difficulty.clicked += () => Menu(difficulty, new[] { AiDifficulty.Easy, AiDifficulty.Normal, AiDifficulty.Hard }, p.Difficulty, AiLobbyRules.DifficultyName,
-                    d => AiChanged?.Invoke(owner, d, p.Style, p.ColourIndex, p.Team));
-                sub.Add(difficulty);
-                var style = Pill("ai-style-" + owner, AiLobbyRules.StyleName(p.Style) + " ▾");
-                style.clicked += () => Menu(style, new[] { AiStyle.Random, AiStyle.Rusher, AiStyle.Turtle, AiStyle.Expander, AiStyle.Balanced }, p.Style, AiLobbyRules.StyleName,
-                    st => AiChanged?.Invoke(owner, p.Difficulty, st, p.ColourIndex, p.Team));
-                sub.Add(style);
-                if (teams)
-                {
-                    int next = NextTeam(p.Team);
-                    var team = new Button(() => AiChanged?.Invoke(owner, p.Difficulty, p.Style, p.ColourIndex, next)) { text = TeamName(p.Team) + " ▸", name = "team-" + owner };
-                    team.AddToClassList("lobby-row__pill");
-                    side.Add(team);
-                }
-            }
-            else
-            {
-                sub.Add(PlayerNameLabel.Tag(PlayerNameLabel.TagText(p.Difficulty)));
-                sub.Add(SubText("· " + AiLobbyRules.StyleName(p.Style), "ai-style-" + owner));
-                if (teams)
-                {
-                    var team = new Label(TeamName(p.Team)) { name = "team-" + owner };
-                    team.AddToClassList("lobby-row__text");
-                    side.Add(team);
-                }
-            }
-            side.Add(ReadyLabel(true));
-            if (host)
-            {
-                var remove = new Button(() => AiRemoved?.Invoke(owner)) { text = "×", name = "ai-remove-" + owner, tooltip = "Remove" };
-                remove.AddToClassList("lobby-row__remove");
-                remove.AddToClassList("lobby-card__remove");
-                card.Add(remove);
-            }
-            return card;
         }
 
         /// <summary>
@@ -441,35 +602,10 @@ namespace WAR2D.UI
         }
 
         /// <summary>Add AI and its hint: the host's, while a seat is free (decision 4).</summary>
-        private void ShowAddAi(bool host, bool isPrivate)
+        private void ShowAddAi(bool host, bool isPrivate, bool teams)
         {
-            addAiRow.EnableInClassList("hidden", !host || !model.HasFreeSeat);
+            addAiRow.EnableInClassList("hidden", !host || !model.HasFreeSeat || teams); // Teams mode: + Add AI on each row instead
             addAiHint.text = isPrivate ? "Add AIs to play against; you need two teams to start." : "AIs are always ready. Shown while a seat is free (8 at most).";
-        }
-
-        private void ShowPickers(bool host, bool teams, LobbyPlayer me)
-        {
-            colourPicker.Clear();
-            for (int c = 0; c < LobbyRules.Colours; c++)
-            {
-                int colour = c;
-                bool taken = model.IsColourTakenByHuman(c); // an AI's colour can be taken: the AI moves (humans over AIs)
-                var chip = new Button(() => ColourClicked?.Invoke(colour)) { name = "colour-" + c, text = taken ? "×" : "" };
-                chip.AddToClassList("colour-chip");
-                chip.AddToClassList("player-" + (c + 1));
-                chip.EnableInClassList("colour-chip--mine", me.ColourIndex == c);
-                chip.SetEnabled(!taken);
-                colourPicker.Add(chip);
-            }
-            teamSection.EnableInClassList("hidden", !teams);
-            teamPicker.Clear();
-            if (!teams) return;
-            for (int t = 0; t < LobbyRules.PickableTeams; t++)
-            {
-                int team = t;
-                teamPicker.Add(Widgets.Option("own-team-" + t, TeamName(t), me.Team == t, true, () => TeamClicked?.Invoke(team)));
-            }
-            teamPicker.Add(Widgets.Option("own-team-solo", "Solo", me.Team == TeamRules.NoTeam, true, () => TeamClicked?.Invoke(TeamRules.NoTeam)));
         }
 
         private void ShowSettings(MatchSettings s, bool host)

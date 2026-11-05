@@ -65,6 +65,7 @@ namespace WAR2D.Sim
             if (clock.Running)
             {
                 ClearFinishedWork(data, context, clock.UnitCount, clock.Tick);
+                RetryWaitingDiggers(data, context, clock.UnitCount, clock.Tick);
                 ApplyDigMoves(data, context, clock.UnitCount, clock.Tick);
                 UpdateChases(data, context, clock.UnitCount, clock.Tick);
                 AdvanceWaypoints(data, context, clock.UnitCount, clock.Tick);
@@ -393,7 +394,7 @@ namespace WAR2D.Sim
             }
             if (data.UnitsBySlot[slot] >= data.MaxUnitsPerPlayer || context.Ids.Capacity <= 0)
             {
-                command.OnSpawned?.Invoke(-1);
+                command.OnSpawned?.Invoke(SimCommand.SpawnRefusedAtCap); // the producer says why (playtest 2026-11-05)
                 return;
             }
             // The spawner chose this tile when it queued the unit; a building placed over it since (applied later in this same

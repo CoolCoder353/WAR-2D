@@ -33,7 +33,7 @@ public class SimLifecycleTests
     [Test]
     public void UpkeepChargesPerUnitUntilBudgetRunsOut()
     {
-        using var sim = new SimHarness(SimHarness.OpenMap(64));
+        using var sim = new SimHarness(SimHarness.OpenMap(64), c => c.GetUnit(UnitType.Tank).RunningCost = 2f); // pinned: 2/s (the harness spawns Tanks)
         float wallet = 5f;
         sim.Context.BudgetOf = _ => wallet;
         sim.Context.Spend = (_, amount) => wallet -= amount;
@@ -48,7 +48,7 @@ public class SimLifecycleTests
     [Test]
     public void UnpaidUnitsDecay()
     {
-        using var sim = new SimHarness(SimHarness.OpenMap(64));
+        using var sim = new SimHarness(SimHarness.OpenMap(64), c => c.Resources.DecayPercentPerSecond = 5f); // pinned: 5 %/s
         sim.Context.BudgetOf = _ => 0f;
         int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10, 10));
         for (int i = 0; i < 39; i++) sim.Tick(); // unpaid from tick 20, decaying for 20 ticks = 1 s
@@ -93,6 +93,6 @@ public class SimLifecycleTests
         for (int i = 0; i < 4; i++) boxes.Add(sim.Spawn(SimHarness.OwnerA, new float2(10 + i * 2, 10)));
         sim.Tick();
         Assert.AreEqual(3, sim.UnitCount);
-        Assert.AreEqual(-1, boxes[3][0], "the fourth spawn reports a refusal so the spawner keeps its queue");
+        Assert.AreEqual(SimCommand.SpawnRefusedAtCap, boxes[3][0], "the fourth spawn reports a refusal at the cap, so the spawner keeps its queue and says why");
     }
 }

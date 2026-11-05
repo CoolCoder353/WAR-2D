@@ -56,7 +56,7 @@ public class PlaytestFix2Tests
     [Test]
     public void TheSimReportsTheUpkeepOwedNotJustWhatWasAfforded()
     {
-        using var sim = new SimHarness(SimHarness.OpenMap(64));
+        using var sim = new SimHarness(SimHarness.OpenMap(64), c => c.GetUnit(UnitType.Tank).RunningCost = 2f); // pinned: 2/s (the harness spawns Tanks)
         float wallet = 5f, owed = 0f;
         sim.Context.BudgetOf = _ => wallet;
         sim.Context.Spend = (_, amount) => wallet -= amount;

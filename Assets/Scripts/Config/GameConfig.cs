@@ -149,6 +149,8 @@ namespace Config
         public int[] CentralRichGemTiles = System.Array.Empty<int>();
         /// <summary>v0.17: no rich gem within this lane distance of a start site, as a share of the map size.</summary>
         public float RichMinStartDistance;
+        /// <summary>Playtest 2026-11-05: no rich gem within this many tiles (straight line) of a start site's centre.</summary>
+        public int RichStartClearance;
         /// <summary>
         /// Playtest 2026-11-02: rock within this many tiles of the map's edge becomes undiggable border, so Diggers can't open
         /// a path around the map's rim (floor and gems there stay). 1 is the old one-tile border.

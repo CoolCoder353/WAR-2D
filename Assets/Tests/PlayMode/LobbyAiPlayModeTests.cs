@@ -117,12 +117,29 @@ public class LobbyAiPlayModeTests
         Assert.That((ai.Difficulty, ai.Style, ai.Colour, ai.LobbyTeam), Is.EqualTo((AiDifficulty.Hard, AiStyle.Turtle, 5, 2)), "every bad change is refused");
         Assert.That(core.AiPlayers.Count, Is.EqualTo(1));
 
-        // The swatch takes the next free colour; the team pill cycles like a human's.
+        // The swatch takes the next free colour; the AI's card sits in its team's row with a live team dropdown (playtest 2026-11-05).
         HudTests.Click(root.Q<Button>("ai-colour-" + owner));
         yield return PlayModeMatch.WaitUntil(() => ai.Colour == 6, 5f);
-        yield return PlayModeMatch.WaitUntil(() => root.Q<Button>("team-" + owner) != null && root.Q<Button>("team-" + owner).text.StartsWith("Team 3"), 5f);
-        HudTests.Click(root.Q<Button>("team-" + owner));
-        yield return PlayModeMatch.WaitUntil(() => ai.LobbyTeam == 3, 5f);
+        yield return PlayModeMatch.WaitUntil(() => root.Q("team-row-2")?.Q("lobby-row-" + owner) != null
+            && root.Q<Button>("team-" + owner) != null && root.Q<Button>("team-" + owner).text.StartsWith("Team 3"), 5f);
+        Assert.That(root.Q<Button>("team-" + owner).enabledSelf, Is.True, "the host may move an AI");
+        Assert.That(root.Q<Button>("add-ai-team-0"), Is.Not.Null, "+ Add AI on each row");
+        Assert.That(root.Q("add-ai-row").ClassListContains("hidden"), Is.True, "Teams mode has no separate Add AI");
+        core.Cmd_SetTeams(new[] { owner, PlayModeMatch.LocalOwner }, new[] { 3, 1 });
+        yield return PlayModeMatch.WaitUntil(() => ai.LobbyTeam == 3 && Local.lobbyTeam == 1, 5f);
+        yield return PlayModeMatch.WaitUntil(() => root.Q("team-row-3")?.Q("lobby-row-" + owner) != null, 5f);
+        core.Cmd_SetTeams(new[] { owner }, new[] { 7 });
+        core.Cmd_SetTeams(new[] { owner, AiOwnerIds.First + 77 }, new[] { 0, 0 });
+        core.Cmd_SetTeams(new[] { owner }, new[] { 0, 1 });
+        yield return new WaitForSeconds(0.3f);
+        Assert.That(ai.LobbyTeam, Is.EqualTo(3), "a bad team, an unknown owner or mismatched arrays change nothing");
+        int seats = core.AiPlayers.Count;
+        HudTests.Click(root.Q<Button>("add-ai-team-1"));
+        yield return PlayModeMatch.WaitUntil(() => core.AiPlayers.Count == seats + 1, 5f);
+        Assert.That(core.AiPlayers.Values.Count(s => s.LobbyTeam == 1 && s.OwnerId != owner), Is.EqualTo(1), "the row's + Add AI adds into that team");
+        int added = core.AiPlayers.Keys.Max();
+        core.Cmd_RemoveAi(added);
+        yield return PlayModeMatch.WaitUntil(() => core.AiPlayers.Count == seats, 5f);
 
         // Free-for-all forces every AI Solo.
         HudTests.Click(root.Q<Button>("mode-ffa"));
