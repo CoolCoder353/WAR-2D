@@ -233,6 +233,7 @@ namespace WAR2D.Client
         /// <summary>Remembers attack-move goals (a queued order keeps the one before it), then raises <see cref="Ordered"/>.</summary>
         private void RaiseOrdered(OrderKind kind, bool queue, int2 goal, IReadOnlyList<int> ids, int targetId = 0)
         {
+            if (!queue) ClientWorld.Instance?.ShowOrder(kind, goal, ids);
             if (!queue)
                 foreach (int id in ids)
                 {
