@@ -5,6 +5,7 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
 using WAR2D.Art;
+using WAR2D.Art.Render;
 using WAR2D.EditorTools;
 
 /// <summary>The generated atlases (<c>WAR-2D/Art/Build all</c>), the team key split and the import settings.</summary>
@@ -72,17 +73,26 @@ public class ArtImportTests
     [Test]
     public void AtlasPixelsArePaletteTeamGreyOrShadow()
     {
-        foreach (var (name, _) in ArtBuild.Atlases)
+        foreach (var (name, kind) in ArtBuild.Atlases)
         {
             Color32[] palette = name == ArtAtlas.Effects ? ArtStyle.EffectPalette : ArtStyle.Palette;
             var allowed = new HashSet<Color32>(palette.Concat(ArtStyle.TeamGrey)) { new Color32(0, 0, 0, ArtStyle.ShadowAlpha) };
             Color32[] colour = ReadPng($"{ArtImporter.AtlasFolder}{name}.png", out _, out _);
             Color32[] mask = ReadPng($"{ArtImporter.AtlasFolder}{name}_mask.png", out _, out _);
-            int team = 0;
+            int team = 0, width = ArtAtlas.Load(name).Data.width;
+            var soft = new HashSet<int>(); // the flame's glow and the raised barrel's shadow are soft on purpose (EffectGen.IsSoft)
+            foreach (ArtEntry e in ArtManifest.All.Where(e => e.Kind == kind && EffectGen.IsSoft(e.Id)))
+                for (int f = 0; f < e.Frames * e.Directions; f++)
+                {
+                    AtlasFrame r = ArtAtlas.Load(name).Data.frames[ArtAtlas.Load(name).FirstFrame(e.Id) + f];
+                    for (int y = r.y; y < r.y + r.h; y++)
+                    for (int x = r.x; x < r.x + r.w; x++)
+                        soft.Add(y * width + x);
+                }
             for (int i = 0; i < colour.Length; i++)
             {
                 Color32 c = colour[i];
-                if (c.a == 0) continue;
+                if (c.a == 0 || soft.Contains(i)) continue;
                 Assert.IsTrue(allowed.Contains(c), $"{name} pixel {i}: {c}");
                 if (mask[i].r == 0) continue;
                 team++;

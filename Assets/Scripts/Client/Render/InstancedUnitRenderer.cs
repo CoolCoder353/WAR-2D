@@ -55,11 +55,11 @@ namespace WAR2D.Client.Render
             return (uint)(255f * (1f - h)) | ((uint)(255f * h) << 8) | (40u << 16) | (255u << 24);
         }
 
-        private readonly Material unitMaterial, barMaterial, ringMaterial;
+        private readonly Material unitMaterial, barMaterial, ringMaterial, turretMaterial;
         private readonly Texture2D barAtlas;
-        private GraphicsBuffer instances, barInstances, ringInstances;
+        private GraphicsBuffer instances, barInstances, ringInstances, turretInstances;
         private readonly GraphicsBuffer unitFrameRects, barFrameRects, ringFrameRects;
-        private int capacity, barCapacity, ringCapacity;
+        private int capacity, barCapacity, ringCapacity, turretCapacity;
 
         /// <summary>The selection ring's cell in the <c>Effects</c> atlas (0 without one).</summary>
         public uint RingFrame { get; }
@@ -69,6 +69,9 @@ namespace WAR2D.Client.Render
 
         /// <summary>The cell of the dashed ring under a roaming unit (<c>RoamRing</c>), in the ring material's cells.</summary>
         public uint RoamRingFrame { get; }
+
+        /// <summary>The first cell of the raised barrel's shadow (<c>BarrelShadow</c>, one per turret facing), in the ring material's cells: it lies under the units too.</summary>
+        public uint BarrelShadowFrame { get; }
 
         /// <param name="atlas">The <c>Units</c> atlas; without one, every unit draws as a white square.</param>
         public InstancedUnitRenderer(ArtAtlas atlas, int initialCapacity = 4096)
@@ -83,7 +86,9 @@ namespace WAR2D.Client.Render
             unitMaterial.SetFloat("_TeamGain", TeamGain());
             unitMaterial.SetTexture("_MainTex", atlas != null ? atlas.Texture : Texture2D.whiteTexture);
             unitMaterial.SetTexture("_MaskTex", atlas != null && atlas.Mask != null ? atlas.Mask : Texture2D.blackTexture);
-            barMaterial = new Material(shader) { name = "Unit health bars", renderQueue = 3001 };
+            // Turrets: the same atlas over the hulls, as a second call so every turret covers every hull.
+            turretMaterial = new Material(unitMaterial) { name = "Unit turrets", renderQueue = 3001 };
+            barMaterial = new Material(shader) { name = "Unit health bars", renderQueue = 3002 };
             barMaterial.SetFloat("_UnitSize", (float)BarWidth / ArtStyle.PixelsPerUnit);
             barMaterial.SetFloat("_Aspect", (float)BarHeight / BarWidth);
             barMaterial.SetFloat("_PixelsPerUnit", ArtStyle.PixelsPerUnit);
@@ -99,6 +104,7 @@ namespace WAR2D.Client.Render
             for (int i = 0; i < BarFrames; i++) rects[i] = new Vector4((float)i / BarFrames, 0f, 1f / BarFrames, 1f);
             barFrameRects.SetData(rects);
             unitMaterial.SetBuffer("_FrameRects", unitFrameRects);
+            turretMaterial.SetBuffer("_FrameRects", unitFrameRects);
             barMaterial.SetBuffer("_FrameRects", barFrameRects);
 
             // Selection rings: the Effects atlas, drawn just under the units.
@@ -116,8 +122,10 @@ namespace WAR2D.Client.Render
             RingFrame = (uint)Mathf.Max(0, effects != null ? effects.FirstFrame("SelectionRingSmall") : 0);
             LargeRingFrame = (uint)Mathf.Max(0, effects != null ? effects.FirstFrame("SelectionRingLarge") : 0);
             RoamRingFrame = (uint)Mathf.Max(0, effects != null ? effects.FirstFrame("RoamRing") : 0);
+            BarrelShadowFrame = (uint)Mathf.Max(0, effects != null ? effects.FirstFrame("BarrelShadow") : 0);
 
             EnsureCapacity(ref instances, ref capacity, initialCapacity, unitMaterial);
+            EnsureCapacity(ref turretInstances, ref turretCapacity, 1024, turretMaterial);
             EnsureCapacity(ref barInstances, ref barCapacity, initialCapacity / 4, barMaterial);
             EnsureCapacity(ref ringInstances, ref ringCapacity, 1024, ringMaterial);
         }
@@ -192,6 +200,15 @@ namespace WAR2D.Client.Render
             Graphics.RenderPrimitives(new RenderParams(unitMaterial) { worldBounds = WorldBounds }, MeshTopology.Triangles, QuadVertices, count);
         }
 
+        /// <summary>Uploads and draws the turrets of the units on screen (after the hulls, which they stand on).</summary>
+        public void DrawTurrets(NativeArray<UnitInstance> turrets, int count)
+        {
+            if (count <= 0) return;
+            EnsureCapacity(ref turretInstances, ref turretCapacity, count, turretMaterial);
+            turretInstances.SetData(turrets, 0, 0, count);
+            Graphics.RenderPrimitives(new RenderParams(turretMaterial) { worldBounds = WorldBounds }, MeshTopology.Triangles, QuadVertices, count);
+        }
+
         /// <summary>Uploads and draws the selected units' rings (before the units, which draw over them).</summary>
         public void DrawRings(NativeArray<UnitInstance> rings, int count)
         {
@@ -217,12 +234,14 @@ namespace WAR2D.Client.Render
             instances?.Dispose();
             barInstances?.Dispose();
             ringInstances?.Dispose();
+            turretInstances?.Dispose();
             unitFrameRects.Dispose();
             barFrameRects.Dispose();
             ringFrameRects.Dispose();
             UnityEngine.Object.Destroy(unitMaterial);
             UnityEngine.Object.Destroy(barMaterial);
             UnityEngine.Object.Destroy(ringMaterial);
+            UnityEngine.Object.Destroy(turretMaterial);
             UnityEngine.Object.Destroy(barAtlas);
         }
     }

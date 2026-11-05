@@ -128,6 +128,10 @@ namespace WAR2D.EditorTools
         private static (string key, Func<LitCanvas> make, float lift) Generator(ArtEntry e, int cell)
         {
             int frame = cell % e.Frames, direction = cell / e.Frames;
+            if (e.Kind == ArtKind.Unit && Layer(e.Id, ArtManifest.HullSuffix, out UnitType hull))
+                return ($"{e.Id} {direction} {frame}", () => RenderGen.HullLayer(hull, direction * 2f * Mathf.PI / e.Directions, frame), 0f);
+            if (e.Kind == ArtKind.Unit && Layer(e.Id, ArtManifest.TurretSuffix, out UnitType turret))
+                return ($"{e.Id} {direction} {frame}", () => RenderGen.TurretLayer(turret, direction * 2f * Mathf.PI / e.Directions, frame), 0f);
             switch (e.Id)
             {
                 case nameof(UnitType.Tank):
@@ -198,6 +202,13 @@ namespace WAR2D.EditorTools
                 default:
                     return ($"Placeholder {Math.Max(e.WidthTiles, e.HeightTiles)}", () => RenderGen.Placeholder(Math.Max(e.WidthTiles, e.HeightTiles)), 0f);
             }
+        }
+
+        /// <summary>True for a unit's layer id: the unit type's name followed by <paramref name="suffix"/>.</summary>
+        private static bool Layer(string id, string suffix, out UnitType type)
+        {
+            type = default;
+            return id.EndsWith(suffix) && Enum.TryParse(id.Substring(0, id.Length - suffix.Length), out type);
         }
 
         /// <summary>

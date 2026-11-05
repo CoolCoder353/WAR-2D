@@ -13,6 +13,8 @@ The [style guide](style-guide.md) sets the values: 64 px per tile (PPU 64), 8 un
 | `Digger` | 1×1 | 4 (move 2, dig 2) | 8 | yes | none (v0.7) |
 | `Scout`, `Flamethrower`, `Sniper`, `SuicideBomber` | 1×1 | 4 (move 2, fire 2) | 8 | yes | `RenderGen.Arsenal.cs` (v0.12) |
 | `Heavy`, `Artillery` | 2×2 (drawn at twice the size; large selection ring) | 4 (move 2, fire 2) | 8 | yes | `RenderGen.Arsenal.cs` (v0.12, 128 px canvases) |
+| `TankHull`, `ScoutHull`, `SniperHull`, `HeavyHull`, `ArtilleryHull` | as the unit | 2 (move) | 8 | yes | `RenderGen.HullLayer`: what a match draws under the turret. The plain ids above stay whole for thumbnails and wrecks |
+| `TankTurret`, `ScoutTurret` / `SniperTurret`, `HeavyTurret` / `ArtilleryTurret` | 1×1 / 2×2 / 3×3 (centred on the pivot, room for the barrel in every facing) | 2 (rest, recoil); the Artillery 3 (level, raised, raised in recoil) | 16 | yes | `RenderGen.TurretLayer`, drawn over the hull at the facing `TurretAim` gives |
 
 Units draw with pre-drawn facings, not a rotated quad (rotation breaks the pixel grid under Pixel Perfect): `UnitFrames` picks the cell from the facing and state, and `InstancedUnitRenderer` tints the team mask with the owner's colour. A type with no frames in the atlas draws as the Tank.
 
@@ -54,11 +56,16 @@ Unused today: `Spawner.asset`, `Test.asset` and the `Pallets` tile palette (remo
 |---|---|---|---|
 | `Explosion` | 2×2 | 6 | `Effects` atlas (`EffectGen.Blast`), pooled in `Effects` (128) |
 | `BombBlast` | 3×3 | 8 | `Effects` atlas (`EffectGen.Blast`); unused until v0.7 |
-| `MuzzleFlash` | 1×1 | 2 | `Effects` atlas, pooled (128), at the shooter's barrel with each tracer |
-| `Tracer` | 1×1 | 1 | `Effects` atlas, pooled (256), turned to its heading |
-| `SniperTracer` | 1×1 | 1 | `Effects` atlas, pooled (64): the Sniper's shot (v0.12) |
-| `ArtilleryShell` / `ShellImpact` | 1×1 / 4×4 | 2 / 6 | `Effects` atlas, pooled (64 each): the shell flies 0.5 s, then the impact plays (v0.12) |
-| `FlameStream` | 3×1 | 4 | `Effects` atlas, pooled (128), stretched from the nozzle to the target (v0.12) |
+| `MuzzleFlash` | 1×1 | 2 | `Effects` atlas, pooled (128), at the barrel of a Builder or Digger with each tracer |
+| `BurstScout`, `BurstSniper`, `BurstTank`, `BurstHeavy` | 1×1 | 2 | `Effects` atlas, pooled (96 each): a gun's flash, one size each (the Artillery uses the Tank's), turned along the barrel (2026-11-06) |
+| `Tracer` | 1×1, 2 px thick | 1 | `Effects` atlas, pooled (256), turned to its heading and stretched along it: the Tank's and Heavy's shot, the Builder's, Digger's and Gun turret's |
+| `ScoutTracer` / `SniperTracer` | 1×1 / 4×1, 1 px thick | 1 | `Effects` atlas, pooled (128 / 64): their shots (2026-11-06) |
+| `ArtilleryShell` | 1×1 | 2 × 16 facings | `Effects` atlas, pooled (64): the lit body (`RenderGen.ArtilleryShellBody`) with a flame at its tail, rising on its arc (2026-11-06) |
+| `ShellShadow` / `ShellPuff` | 1×1 | 1 / 6 | `Effects` atlas, pooled (64 / 160): dithered: the shell's shadow on the ground line, and its trail |
+| `ShellImpact` | 4×4 | 6 | `Effects` atlas, pooled (64): where the shell lands (v0.12) |
+| `Crater` | 2×2 canvas, about a tile wide | 4 (fade) × 3 variants | `Effects` atlas, pooled in `Decals` (96): where a shell landed, under the units; hold 10 s, fade 20 s, then or when the pool is full it goes (2026-11-06) |
+| `FlameStream` / `FlameSplash` | 2×1 / 3×3 | 6 / 4 | `Effects` atlas, pooled (128 each), looping while the unit burns: stretched from the nozzle to the target, and scaled to the real splash radius there. Soft, on purpose (`EffectGen.IsSoft`; 2026-11-06) |
+| `BarrelShadow` | 3×3 | 1 × 16 facings | `Effects` atlas: a raised Artillery barrel's soft shadow, drawn under the hull with the selection rings (`EffectGen.IsSoft`; 2026-11-06) |
 | `BomberBlast` | 4×4 | 8 | `Effects` atlas (v0.12): Suicide bomber blasts, and the main blast of a destroyed building 4 tiles or wider (polish: smaller buildings use `BombBlast`, 1-tile ones `Explosion`, each followed by a ripple of explosions and debris across the footprint) |
 | `TurretMuzzle` | 1×1 | 3 | `Effects` atlas, pooled (64): at the turret's muzzle (`RenderGen.TurretMuzzleReach`/`Height`), turned to the head's facing, with a tracer to the target (v0.13) |
 | `JamPulse` | 3×3 | 6 | `Effects` atlas, pooled (32): every 2.5 s over each finished Jammer the client sees (its own only while paid) (v0.13) |

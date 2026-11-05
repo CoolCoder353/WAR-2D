@@ -178,7 +178,7 @@ namespace WAR2D.EditorTools
             var effects = new (string name, List<EffectFrame> frames)[]
             {
                 ("SniperTracer", Frames(1, (i, t) => EffectGen.SniperTracer())),
-                ("ArtilleryShell", Frames(2, (i, t) => EffectGen.ArtilleryShell(i))),
+                ("ArtilleryShell", Frames(2, (i, t) => EffectGen.ArtilleryShell(0, i))),
                 ("FlameStream", Frames(4, (i, t) => EffectGen.FlameStream(i))),
                 ("ShellImpact", Frames(6, (i, t) => EffectGen.ShellImpact(t, 37))),
                 ("BomberBlast", Frames(8, (i, t) => EffectGen.Blast(4, t, 29))),
