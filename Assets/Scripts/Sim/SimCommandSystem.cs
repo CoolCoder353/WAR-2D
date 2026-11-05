@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Config;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.Transforms;
 using UnityEngine;
@@ -55,6 +56,7 @@ namespace WAR2D.Sim
             SimData data = SystemAPI.GetSingleton<SimData>();
             SimClock clock = SystemAPI.GetSingleton<SimClock>();
 
+            double split = PerfSplits.Now, ordersMs = 0;
             // Cleared first: a wall rising below applies tiles that push units off them (PushUnitsOffTiles).
             data.PendingOrders.Clear();
             data.PendingMoves.Clear();
@@ -67,9 +69,12 @@ namespace WAR2D.Sim
                 ClearFinishedWork(data, context, clock.UnitCount, clock.Tick);
                 RetryWaitingDiggers(data, context, clock.UnitCount, clock.Tick);
                 ApplyDigMoves(data, context, clock.UnitCount, clock.Tick);
+                PerfSplits.Mark(PerfSplits.CmdWork, ref split);
                 UpdateChases(data, context, clock.UnitCount, clock.Tick);
                 AdvanceWaypoints(data, context, clock.UnitCount, clock.Tick);
             }
+            else PerfSplits.Mark(PerfSplits.CmdWork, ref split);
+            PerfSplits.Mark(PerfSplits.CmdWaypoints, ref split);
 
             List<SimCommand> commands = context.Commands.Drain();
             deferred.Clear();
@@ -126,7 +131,12 @@ namespace WAR2D.Sim
                         else deferred.Add(command);
                         break;
                     case SimCommandKind.OrderUnits:
-                        if (clock.Running && !TargetsBuildingCreatedNow(context, command)) ApplyOrder(data, context, command, clock.UnitCount);
+                        if (clock.Running && !TargetsBuildingCreatedNow(context, command))
+                        {
+                            double start = PerfSplits.Now;
+                            ApplyOrder(data, context, command, clock.UnitCount);
+                            ordersMs += PerfSplits.Now - start;
+                        }
                         else deferred.Add(command);
                         break;
                     case SimCommandKind.DigArea:
@@ -137,8 +147,13 @@ namespace WAR2D.Sim
             }
             if (terrainChanged) data.RebuildOpaqueSum();
             if (deferred.Count > 0) context.Commands.Requeue(deferred);
+            PerfSplits.Mark(PerfSplits.CmdOther, ref split);
+            PerfSplits.Ms[PerfSplits.CmdOrders] = ordersMs;
+            PerfSplits.Ms[PerfSplits.CmdOther] -= ordersMs;
             if (clock.Running) AutoWork(data, context, clock.UnitCount, clock.Tick); // v0.16: after the players' orders, which win
+            PerfSplits.Mark(PerfSplits.CmdAutoWork, ref split);
             if (clock.Running) AnswerAlarms(data, context, clock.UnitCount, clock.Tick);
+            PerfSplits.Mark(PerfSplits.CmdAlarms, ref split);
             if (context.Diplomacy.Dirty) context.Diplomacy.CopyTo(data);
         }
 
@@ -349,16 +364,19 @@ namespace WAR2D.Sim
         private void WriteBackBuildingDamage(SimData data)
         {
             int count = data.BuildingCount[0];
+            // A lookup, not four EntityManager calls a building: a siege hits many buildings a tick (perf gate 2026-11-06).
+            // TryGetComponent is false for a gone entity as for one without the component, as the checks were.
+            EntityManager.CompleteDependencyBeforeRW<HealthComponent>();
+            ComponentLookup<HealthComponent> healths = GetComponentLookup<HealthComponent>(false);
             for (int b = 0; b < count; b++)
             {
                 float damage = data.BuildingDamage[b];
                 if (damage <= 0f) continue;
                 data.BuildingDamage[b] = 0f;
                 Entity entity = data.BuildingEntities[b];
-                if (!EntityManager.Exists(entity) || !EntityManager.HasComponent<HealthComponent>(entity)) continue;
-                HealthComponent health = EntityManager.GetComponentData<HealthComponent>(entity);
+                if (!healths.TryGetComponent(entity, out HealthComponent health)) continue;
                 health.currentHealth = math.max(0f, health.currentHealth - damage);
-                EntityManager.SetComponentData(entity, health);
+                healths[entity] = health;
             }
         }
 
@@ -369,18 +387,20 @@ namespace WAR2D.Sim
         private void WriteBackBuildingWeapons(SimData data)
         {
             int count = data.BuildingCount[0];
+            EntityManager.CompleteDependencyBeforeRW<BuildingWeapon>();
+            ComponentLookup<BuildingWeapon> weapons = GetComponentLookup<BuildingWeapon>(false);
             for (int i = 0; i < data.AttackerBuildings.Length; i++)
             {
                 int b = data.AttackerBuildings[i];
                 if ((uint)b >= (uint)count) continue;
                 Entity entity = data.BuildingEntities[b];
-                if (!EntityManager.Exists(entity) || !EntityManager.HasComponent<BuildingWeapon>(entity)) continue;
-                EntityManager.SetComponentData(entity, new BuildingWeapon
+                if (!weapons.HasComponent(entity)) continue;
+                weapons[entity] = new BuildingWeapon
                 {
                     TargetId = data.BuildingTarget[b],
                     TargetKind = data.BuildingTargetKind[b],
                     Cooldown = data.BuildingCooldown[b],
-                });
+                };
             }
         }
 
@@ -510,11 +530,12 @@ namespace WAR2D.Sim
         /// <summary>Moves every unit overlapping the inclusive tile box to the nearest free floor tile.</summary>
         private static void PushUnitsOffTiles(SimData data, SimContext context, int2 lo, int2 hi, int unitCount)
         {
-            for (int slot = 0; slot < unitCount; slot++)
+            // The overlap scan over every unit runs in Burst: each wall tile that rises runs it (perf gate 2026-11-06).
+            using var hits = new NativeList<int>(16, Allocator.TempJob);
+            new OverlapTilesJob { Positions = data.Positions, Radius = data.Radius, Count = unitCount, Lo = lo, Hi = hi, Hits = hits }.Run();
+            foreach (int slot in hits)
             {
                 float2 p = data.Positions[slot];
-                float r = data.Radius[slot];
-                if (p.x + r < lo.x || p.y + r < lo.y || p.x - r > hi.x + 1 || p.y - r > hi.y + 1) continue;
                 bool large = data.SizeClass[slot] == WAR2D.Pathing.FlowSizeClass.Large;
                 int2 at = (int2)math.floor(p);
                 if (!TryFindFreeTile(data, context, at, large, out int2 free))
@@ -609,6 +630,28 @@ namespace WAR2D.Sim
             if (buildingConfig.IsAttacker) EntityManager.AddComponentData(building, new BuildingWeapon { TargetId = -1 });
 
             context.RaiseBuildingCreated(buildingData.id, building);
+        }
+    }
+
+    /// <summary>The unit slots whose bodies overlap an inclusive tile box (<see cref="SimCommandSystem"/>'s push off new walls and footprints).</summary>
+    [Unity.Burst.BurstCompile]
+    public struct OverlapTilesJob : Unity.Jobs.IJob
+    {
+        [ReadOnly] public NativeArray<float2> Positions;
+        [ReadOnly] public NativeArray<float> Radius;
+        public int Count;
+        public int2 Lo, Hi;
+        public NativeList<int> Hits;
+
+        public void Execute()
+        {
+            for (int slot = 0; slot < Count; slot++)
+            {
+                float2 p = Positions[slot];
+                float r = Radius[slot];
+                if (p.x + r < Lo.x || p.y + r < Lo.y || p.x - r > Hi.x + 1 || p.y - r > Hi.y + 1) continue;
+                Hits.Add(slot);
+            }
         }
     }
 }

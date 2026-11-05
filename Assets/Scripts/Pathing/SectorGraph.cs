@@ -105,6 +105,9 @@ namespace WAR2D.Pathing
             public bool[] Settled;
             public List<int> Heap;       // one entry per relaxation, so it can repeat a node
             public readonly List<HashSet<int>> Regions = new List<HashSet<int>>(); // regions walked by RegionOf; dropped by a terrain change
+            public readonly Dictionary<int, HashSet<int>> RegionByPocket = new Dictionary<int, HashSet<int>>(); // each walked pocket's region, so a lookup needn't scan them all
+            public readonly Dictionary<int, List<HashSet<int>>> RegionsBySector = new Dictionary<int, List<HashSet<int>>>(); // the regions with a pocket in each sector
+            public readonly Dictionary<int, SectorState> Suspect = new Dictionary<int, SectorState>(); // dropped sectors and their state when the regions were walked, checked before the next region use
         }
 
         private readonly int width, height, sectorsX, sectorsY, sectorCount;
@@ -208,11 +211,10 @@ namespace WAR2D.Pathing
         }
 
         /// <summary>True when a unit of the class at <paramref name="from"/> can walk to <paramref name="to"/>.</summary>
-        public bool Reaches(int sizeClass, int2 from, int2 to)
-        {
-            int a = PocketOf(sizeClass, from), b = PocketOf(sizeClass, to);
-            return a >= 0 && b >= 0 && (a == b || RegionOf(layers[sizeClass], a).Contains(b));
-        }
+        public bool Reaches(int sizeClass, int2 from, int2 to) => Connects(sizeClass, PocketOf(sizeClass, from), PocketOf(sizeClass, to));
+
+        /// <summary>True when two pockets (<see cref="PocketOf"/>, -1 for none) of the class are joined by floor.</summary>
+        public bool Connects(int sizeClass, int a, int b) => a >= 0 && b >= 0 && (a == b || RegionOf(layers[sizeClass], a).Contains(b));
 
         /// <summary>Clearance per tile, capped at <see cref="ClearanceJob.MaxClearance"/>.</summary>
         public NativeArray<byte> Clearance => clearance;
@@ -524,7 +526,14 @@ namespace WAR2D.Pathing
 
         private void DropSector(Layer layer, int sector)
         {
-            layer.Regions.Clear();
+            // The regions stay until the next region use checks whether this sector's pockets and portals really changed
+            // (CheckSuspects): most terrain changes in a fight don't join or split anything (perf gate 2026-11-06). With no
+            // state to compare against, the regions near it go now.
+            if (layer.Regions.Count > 0 && !layer.Suspect.ContainsKey(sector))
+            {
+                if (layer.Sectors[sector] != null) layer.Suspect[sector] = layer.Sectors[sector];
+                else DropRegionsNear(layer, sector);
+            }
             TerrainVersion++;
             // A neighbour's matching cache holds portal indices into this sector, so it goes stale with
             // it: forget those caches too.
@@ -541,6 +550,90 @@ namespace WAR2D.Pathing
             if (state == null) return;
             if (state.Crop.IsCreated) state.Crop.Dispose();
             layer.Sectors[sector] = null;
+        }
+
+        /// <summary>
+        /// Forgets the regions a change to <paramref name="sector"/> can split or join: those with a pocket in it or in a sector beside it
+        /// (two regions can only join through its floor, from its edges). The rest of the map's regions stay, so a wall going up or down
+        /// doesn't make the next reach check flood the whole map again (perf gate 2026-11-06).
+        /// </summary>
+        private void DropRegionsNear(Layer layer, int sector)
+        {
+            if (layer.Regions.Count == 0) return;
+            dropRegions.Clear();
+            for (int edge = -1; edge <= North; edge++)
+            {
+                int at = edge < 0 ? sector : NeighbourSector(sector, edge);
+                if (at >= 0 && layer.RegionsBySector.TryGetValue(at, out List<HashSet<int>> here)) dropRegions.UnionWith(here);
+            }
+            foreach (HashSet<int> region in dropRegions)
+            {
+                layer.Regions.Remove(region);
+                foreach (int member in region)
+                {
+                    layer.RegionByPocket.Remove(member);
+                    if (layer.RegionsBySector.TryGetValue(member / SectorCells, out List<HashSet<int>> list))
+                    {
+                        list.Remove(region);
+                        if (list.Count == 0) layer.RegionsBySector.Remove(member / SectorCells);
+                    }
+                }
+            }
+        }
+
+        private readonly HashSet<HashSet<int>> dropRegions = new HashSet<HashSet<int>>();
+        private readonly List<int> suspectSectors = new List<int>();
+
+        /// <summary>
+        /// Rebuilds each sector dropped since the regions were walked and drops the regions near it only if its pockets or portals
+        /// changed (<see cref="SamePockets"/>). The regions then match a fresh walk exactly.
+        /// </summary>
+        private void CheckSuspects(Layer layer)
+        {
+            if (layer.Suspect.Count == 0) return;
+            suspectSectors.Clear();
+            suspectSectors.AddRange(layer.Suspect.Keys);
+            foreach (int sector in suspectSectors)
+            {
+                Materialize(layer, sector);
+                if (!SamePockets(layer.Suspect[sector], layer.Sectors[sector])) DropRegionsNear(layer, sector);
+            }
+            layer.Suspect.Clear();
+        }
+
+        /// <summary>
+        /// True when a sector rebuilt after a terrain change connects exactly as before: the same portals in the same pockets, the
+        /// same number of pockets, every floor cell that stayed floor in the same pocket, and new floor only in pockets that kept
+        /// an old cell. Then no region can have gained or lost a pocket or a crossing through it.
+        /// </summary>
+        private static bool SamePockets(SectorState was, SectorState now)
+        {
+            if (was.Portals.Length != now.Portals.Length) return false;
+            for (int p = 0; p < was.Portals.Length; p++)
+            {
+                Portal a = was.Portals[p], b = now.Portals[p];
+                if (a.Edge != b.Edge || a.Start != b.Start || a.Length != b.Length || was.PortalPocket[p] != now.PortalPocket[p]) return false;
+            }
+            int count = 0, countNow = 0;
+            for (int i = 0; i < was.PocketOf.Length; i++)
+            {
+                count = math.max(count, was.PocketOf[i] + 1);
+                countNow = math.max(countNow, now.PocketOf[i] + 1);
+            }
+            if (count != countNow) return false;
+            var kept = new bool[count];
+            for (int i = 0; i < was.PocketOf.Length; i++)
+            {
+                short o = was.PocketOf[i], n = now.PocketOf[i];
+                if (o >= 0 && n >= 0)
+                {
+                    if (o != n) return false;
+                    kept[n] = true;
+                }
+            }
+            for (int i = 0; i < was.PocketOf.Length; i++)
+                if (was.PocketOf[i] < 0 && now.PocketOf[i] >= 0 && !kept[now.PocketOf[i]]) return false;
+            return true;
         }
 
         private void Materialize(Layer layer, int sector)
@@ -635,8 +728,8 @@ namespace WAR2D.Pathing
         /// </summary>
         private HashSet<int> RegionOf(Layer layer, int pocket)
         {
-            foreach (HashSet<int> known in layer.Regions)
-                if (known.Contains(pocket)) return known;
+            CheckSuspects(layer);
+            if (layer.RegionByPocket.TryGetValue(pocket, out HashSet<int> known)) return known;
             var region = new HashSet<int> { pocket };
             var open = new Stack<int>();
             open.Push(pocket);
@@ -657,6 +750,13 @@ namespace WAR2D.Pathing
                 }
             }
             layer.Regions.Add(region);
+            foreach (int member in region)
+            {
+                layer.RegionByPocket[member] = region;
+                int sector = member / SectorCells;
+                if (!layer.RegionsBySector.TryGetValue(sector, out List<HashSet<int>> list)) layer.RegionsBySector[sector] = list = new List<HashSet<int>>(1);
+                if (!list.Contains(region)) list.Add(region);
+            }
             return region;
         }
 

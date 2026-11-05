@@ -266,23 +266,49 @@ namespace WAR2D.Pathing
         public void Invalidate(int2 changedTile)
         {
             ThrowIfDisposed();
+            if (!InvalidateTile(changedTile)) return;
+            DirtyOrdersNear(graph.SectorOf(changedTile));
+        }
+
+        /// <summary>
+        /// <see cref="Invalidate(int2)"/> for a boundary's changed tiles: each tile updates the graph, and the orders are checked once per
+        /// changed sector rather than once per tile (a wall line changes many tiles of one sector). The same orders end dirty or woken:
+        /// the flags are set, not counted, and <c>DirtySeq</c> is only compared for equality (perf gate 2026-11-06).
+        /// </summary>
+        public void Invalidate(List<int2> changedTiles)
+        {
+            ThrowIfDisposed();
+            changedSectors.Clear();
+            foreach (int2 tile in changedTiles)
+                if (InvalidateTile(tile)) changedSectors.Add(graph.SectorOf(tile));
+            foreach (int sector in changedSectors) DirtyOrdersNear(sector);
+        }
+
+        private readonly HashSet<int> changedSectors = new HashSet<int>();
+
+        /// <summary>Updates the blocked map and the graph for one tile. False when the tile's blocking didn't change (nothing to do).</summary>
+        private bool InvalidateTile(int2 changedTile)
+        {
             if (ownsBlocked)
             {
-                if (!source.Contains(changedTile)) return;
+                if (!source.Contains(changedTile)) return false;
                 int index = source.Index(changedTile);
                 byte value = PathMap.Blocked(source, index);
-                if (blocked[index] == value) return;
+                if (blocked[index] == value) return false;
                 blocked[index] = value;
             }
             graph.Invalidate(changedTile);
+            return true;
+        }
 
+        private void DirtyOrdersNear(int sector)
+        {
             // Selectivity: the change can only alter a route that runs through the changed sector, one
             // of its neighbours, or the crossings between them, so an order whose covered sectors all
             // sit at least two sectors away keeps its materialised fields (and stays ready). A route
             // that passes further away cannot cross the changed portals; the one approximation is that
             // a far-away change that would have offered a cheaper route is only picked up when that
             // order is next rebuilt.
-            int sector = graph.SectorOf(changedTile);
             int sx = sector % graph.SectorsX, sy = sector / graph.SectorsX;
             foreach (Order order in orders)
             {

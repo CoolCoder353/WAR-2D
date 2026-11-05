@@ -432,6 +432,51 @@ public class SectorGraphTests
         }
     }
 
+    /// <summary>
+    /// Regions survive a terrain change that joins or splits nothing (perf gate 2026-11-06), and still follow one that does: a
+    /// closed gap, a reopened gap, and a lone new floor cell inside rock.
+    /// </summary>
+    [Test]
+    public void ReachesStaysRightWhenRegionsAreKeptAcrossChanges()
+    {
+        PathMap map = WallMap(gapTiles: 3, Allocator.TempJob);
+        try
+        {
+            for (int y = 19; y <= 23; y++)
+            for (int x = 19; x <= 23; x++) map.Tiles[Index(map, new int2(x, y))] = Rock;
+            using var graph = new SectorGraph(map, Allocator.Persistent);
+            int2 home = new int2(5, 5), far = new int2(60, 60);
+            Assert.IsTrue(graph.Reaches(FlowSizeClass.Small, home, far), "through the gap");
+
+            map.Tiles[Index(map, new int2(10, 10))] = Rock; // splits nothing
+            graph.Invalidate(new int2(10, 10));
+            Assert.IsTrue(graph.Reaches(FlowSizeClass.Small, home, far), "a lone rock changes nothing");
+
+            map.Tiles[Index(map, new int2(21, 21))] = Floor; // a floor cell walled in by rock: a new pocket
+            graph.Invalidate(new int2(21, 21));
+            Assert.IsFalse(graph.Reaches(FlowSizeClass.Small, new int2(21, 21), home), "the new cell is walled in");
+
+            for (int y = 31; y <= 33; y++) map.Tiles[Index(map, new int2(32, y))] = Rock;
+            graph.Invalidate(new int2(32, 32));
+            Assert.IsFalse(graph.Reaches(FlowSizeClass.Small, home, far), "the gap is shut");
+
+            map.Tiles[Index(map, new int2(32, 32))] = Floor;
+            graph.Invalidate(new int2(32, 32));
+            Assert.IsTrue(graph.Reaches(FlowSizeClass.Small, home, far), "the gap is open again");
+
+            map.Tiles[Index(map, new int2(22, 21))] = Floor; // joins the walled-in cell to nothing yet
+            graph.Invalidate(new int2(22, 21));
+            Assert.IsFalse(graph.Reaches(FlowSizeClass.Small, new int2(21, 21), home), "still walled in");
+            map.Tiles[Index(map, new int2(23, 21))] = Floor; // now through to the open floor
+            graph.Invalidate(new int2(23, 21));
+            Assert.IsTrue(graph.Reaches(FlowSizeClass.Small, new int2(21, 21), home), "the cell is joined to the floor");
+        }
+        finally
+        {
+            map.Dispose();
+        }
+    }
+
     [Test]
     public void SectorCacheSamplesItsRouteAndNoneOutsideIt()
     {

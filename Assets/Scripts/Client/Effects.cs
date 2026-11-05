@@ -112,6 +112,8 @@ public static class Effects
     private static readonly Pool Shells = new Pool("ArtilleryShell", ShellPool);
     private static readonly Pool Impacts = new Pool("ShellImpact", ImpactPool);
     private static readonly Pool Streams = new Pool("FlameStream", StreamPool);
+    /// <summary>Each Flamethrower's stream slot, by unit id (checked against the slot, which may since serve another unit).</summary>
+    private static readonly Dictionary<int, Slot> flameOf = new Dictionary<int, Slot>();
     private static readonly Pool FlameFires = new Pool("FlameSplash", StreamPool);
     private static readonly Pool BurstsScout = new Pool("BurstScout", BurstPool);
     private static readonly Pool BurstsSniper = new Pool("BurstSniper", BurstPool);
@@ -357,14 +359,15 @@ public static class Effects
     public static void Flame(int attacker, int target, Vector3 nozzle, Vector3 end, float splash, float seconds)
     {
         WAR2D.Audio.AudioService.Sfx(ShotSound(UnitType.Flamethrower), nozzle);
-        Slot stream = null;
-        foreach (Slot s in Streams.Slots) if (s.Active && s.Attacker == attacker) { stream = s; break; }
-        if (stream == null)
+        // By attacker, not a scan of every stream: a big flame fight fires hundreds a second. A slot reused for another unit no longer matches.
+        if (!flameOf.TryGetValue(attacker, out Slot stream) || !stream.Active || stream.Attacker != attacker)
         {
             stream = Take(Streams);
             if (stream == null) return;
+            if (flameOf.TryGetValue(stream.Attacker, out Slot was) && was == stream) flameOf.Remove(stream.Attacker);
             stream.Partner = Take(FlameFires);
             stream.Attacker = attacker;
+            flameOf[attacker] = stream;
         }
         stream.Target = target;
         stream.Until = Time.time + seconds;
@@ -395,6 +398,7 @@ public static class Effects
             {
                 Runner.Stop(s);
                 Runner.Stop(s.Partner);
+                if (flameOf.TryGetValue(s.Attacker, out Slot was) && was == s) flameOf.Remove(s.Attacker);
                 continue;
             }
             PlaceFlame(s, nozzle, end);
@@ -592,6 +596,7 @@ public static class Effects
         TurretShots = 0;
         TurretTracers = 0;
         delayed.Clear();
+        flameOf.Clear();
         foreach (Pool p in new[] { Explosions, Flashes, Tracers, Blasts, Debris, Sparks, SniperTracers, Shells, Impacts, Streams, BomberBlasts, TurretFlashes, Pulses, Smokes, Fires, Sparkles, Collapses, HitSparks, Dust, FlameFires, BurstsScout, BurstsSniper, BurstsTank, BurstsHeavy, ScoutTracers, ShellShadows, ShellPuffs })
         {
             p.Slots.Clear();

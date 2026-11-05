@@ -287,6 +287,9 @@ namespace WAR2D.Net.Replication
                 encodeNow[c] = active[c] && clients[c].Lane == null;
                 if (encodeNow[c]) interests.SetClient(c, clients[c].OwnerId, GridFor(clients[c]));
             }
+            // Interest reads only the settled sim arrays (read-only, as the route jobs do) and writes its own sets, so it runs
+            // alongside the route upkeep and the sends below instead of after them (perf gate 2026-11-06). Same sets, same order.
+            JobHandle interestHandle = interests.Schedule(input, default);
             double t = PerfSplits.Now;
             SendFog(data);
             PerfSplits.Mark(8, ref t);
@@ -296,19 +299,23 @@ namespace WAR2D.Net.Replication
             PerfSplits.Mark(10, ref t);
             handle.Complete(); // timed alone: the route upkeep ran alongside the sends above
             PerfSplits.Mark(7, ref t);
-            handle = interests.Schedule(input, handle);
-            handle.Complete(); // the encoder reads the route arena by value, so it must not move under it
+            interestHandle.Complete(); // the encoder reads the route arena by value, so it must not move under it
             PerfSplits.Mark(11, ref t);
             using var attacks = new NativeArray<int2>(data.AttackEvents.AsArray(), Allocator.TempJob);
             using NativeArray<AttackTarget> targets = AttackTargets(data, attacks);
             using NativeArray<BuildingAttack> buildingAttacks = BuildingAttacks(data);
             PerfSplits.Mark(12, ref t);
-            encoder.Schedule(tick, input, attacks, targets, buildingAttacks, encodeNow, default).Complete();
+            // Each client's bytes go out as soon as that client is encoded, while the workers encode the rest (perf gate
+            // 2026-11-06): the same bytes in the same order; repl.encode is now the wait for the first client only.
+            using var encoded = new NativeArray<JobHandle>(MaxClients, Allocator.Temp);
+            encoder.ScheduleEach(tick, input, attacks, targets, buildingAttacks, encodeNow, default, encoded);
+            for (int c = 0; c < MaxClients; c++) if (encodeNow[c]) { encoded[c].Complete(); break; }
             PerfSplits.Mark(13, ref t);
 
             for (int c = 0; c < MaxClients; c++)
             {
                 if (!active[c]) continue;
+                encoded[c].Complete(); // before anything that could reset this client's buffers (OnClientLeft)
                 Client client = clients[c];
                 if (client.Connection != null && (client.Connection.identity == null || !NetworkServer.connections.ContainsKey(client.Connection.connectionId)))
                 {
@@ -334,6 +341,7 @@ namespace WAR2D.Net.Replication
                 SendSplit(client, tick, reliable, reliableSizes, Channels.Reliable, BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4));
                 SendSplit(client, tick, unreliable, unreliableSizes, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
             }
+            for (int c = 0; c < MaxClients; c++) encoded[c].Complete(); // a client that left mid-loop: its job still has to finish
             PerfSplits.Mark(14, ref t);
             LastMilliseconds = watch.Elapsed.TotalMilliseconds;
         }

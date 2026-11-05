@@ -111,6 +111,12 @@ namespace WAR2D.Sim
         /// <summary>True when a unit of the size class at <paramref name="from"/> can walk to <paramref name="to"/>.</summary>
         public bool Reaches(int sizeClass, int2 from, int2 to) => cache.Graph.Reaches(sizeClass, from, to);
 
+        /// <summary>The pocket of floor a tile is in for the class (-1 for none): units in one pocket reach the same places.</summary>
+        public int PocketOf(int sizeClass, int2 tile) => cache.Graph.PocketOf(sizeClass, tile);
+
+        /// <summary>True when two pockets of the class are joined by floor.</summary>
+        public bool Connects(int sizeClass, int a, int b) => cache.Graph.Connects(sizeClass, a, b);
+
         /// <summary>
         /// The goal itself when it is walkable, else the nearest walkable tile within <paramref name="radius"/>
         /// (ties go to the one nearest <paramref name="from"/>, the side the units come from). False when there
@@ -149,7 +155,7 @@ namespace WAR2D.Sim
             rebuilds = default;
 
             map.ApplyPendingUsed(); // footprints placed or freed since the last boundary
-            foreach (int2 tile in map.ChangedTiles) cache.Invalidate(tile);
+            if (map.ChangedTiles.Count > 0) cache.Invalidate(map.ChangedTiles);
             map.ChangedTiles.Clear();
 
             var dead = new List<int>();

@@ -84,7 +84,7 @@ namespace WAR2D.Net.Replay
             if (!Directory.Exists(folder)) return;
             // A crash leaves its recording's .part behind. A day old means no match is still writing it.
             foreach (string part in Directory.GetFiles(folder, "*" + ReplayFile.Extension + ".part"))
-                try { if (File.GetLastWriteTimeUtc(part) < DateTime.UtcNow.AddDays(-1)) File.Delete(part); } catch (IOException) { }
+                try { if (File.GetLastWriteTimeUtc(part) < DateTime.UtcNow.AddDays(-1)) File.Delete(part); } catch (IOException) { } catch (UnauthorizedAccessException) { } // one locked file mustn't stop the pruning
             foreach (string old in Directory.GetFiles(folder, "*" + ReplayFile.Extension)
                          .Where(p => System.IO.Path.GetFileName(p).Contains(ReceivedTag) == received)
                          .OrderByDescending(File.GetLastWriteTimeUtc).Skip(keep))

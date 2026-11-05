@@ -13,7 +13,11 @@ namespace WAR2D.Sim
         {
             "match.radars", "match.blasts", "match.deaths", "match.squads", "match.unpaid", "match.damageAlerts", "match.alertFlush",
             "repl.routes", "repl.fog", "repl.terrain", "repl.buildings", "repl.interest", "repl.attackTargets", "repl.encode", "repl.send",
+            "cmd.work", "cmd.waypoints", "cmd.orders", "cmd.other", "cmd.autoWork", "cmd.alarms",
         };
+
+        /// <summary>Indices of the command stage's splits (<c>cmd.*</c>).</summary>
+        public const int CmdWork = 15, CmdWaypoints = 16, CmdOrders = 17, CmdOther = 18, CmdAutoWork = 19, CmdAlarms = 20;
 
         /// <summary>Milliseconds of the last run of each split, by index into <see cref="Names"/>.</summary>
         public static readonly double[] Ms = new double[Names.Length];

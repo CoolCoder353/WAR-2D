@@ -94,14 +94,24 @@ namespace WAR2D.Net.Replication
         public JobHandle Schedule(int tick, in ReplicationInput input, NativeArray<int2> attacks, NativeArray<AttackTarget> targets, NativeArray<BuildingAttack> buildingAttacks, bool[] active, JobHandle dependency)
         {
             var handles = new NativeArray<JobHandle>(buffers.Length, Allocator.Temp);
+            ScheduleEach(tick, input, attacks, targets, buildingAttacks, active, dependency, handles);
+            JobHandle all = JobHandle.CombineDependencies(handles);
+            handles.Dispose();
+            return all;
+        }
+
+        /// <summary>
+        /// As above, with each client's own handle in <paramref name="handles"/> (one per client; an inactive client's is
+        /// <paramref name="dependency"/>), so a caller can send a client's bytes as soon as that client is encoded.
+        /// </summary>
+        public void ScheduleEach(int tick, in ReplicationInput input, NativeArray<int2> attacks, NativeArray<AttackTarget> targets, NativeArray<BuildingAttack> buildingAttacks, bool[] active, JobHandle dependency, NativeArray<JobHandle> handles)
+        {
             for (int c = 0; c < buffers.Length; c++)
             {
                 if (active != null && !active[c]) { handles[c] = dependency; continue; }
                 handles[c] = Job(c, tick, input, attacks, targets, buildingAttacks).Schedule(dependency);
             }
-            JobHandle all = JobHandle.CombineDependencies(handles);
-            handles.Dispose();
-            return all;
+            JobHandle.ScheduleBatchedJobs();
         }
 
         /// <summary>Encodes every client now (the interest sets must be built for this tick).</summary>

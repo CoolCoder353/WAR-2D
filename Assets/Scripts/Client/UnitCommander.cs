@@ -199,11 +199,14 @@ public class UnitCommander : NetworkBehaviour
     /// <summary>True after the Rally all button: the next click sets every own producer's rally point (Esc or a right-click elsewhere cancels).</summary>
     public bool RallyAllArmed { get; private set; }
 
-    /// <summary>True after the Attack-move key with only producers selected: the next click sets an attack rally, the red flag (Esc cancels).</summary>
+    /// <summary>True after the Attack-move key with only producers selected, Rally all armed or nothing selected: the next left click sets an attack rally, the red flag (Esc cancels; a right-click sets a blue one).</summary>
     public bool AttackRallyArmed { get; private set; }
 
     /// <summary>True with only spawners selected: a right-click sets their rally point.</summary>
     private bool OnlySpawnersSelected => Selection.Selected.Count == 0 && Selection.SelectedBuildings.Count > 0 && AllSpawners(Selection.SelectedBuildings);
+
+    /// <summary>True with no unit and no building selected.</summary>
+    public bool NothingSelected => Selection.Selected.Count == 0 && Selection.SelectedBuildings.Count == 0;
 
     /// <summary>Arms Rally all (the production card's Rally point row). Does nothing when there is no producer to set.</summary>
     public void ArmRallyAll()
@@ -721,7 +724,8 @@ public class UnitCommander : NetworkBehaviour
         if (WAR2D.UI.HudController.DialogOpen || WAR2D.UI.ManualController.AnyOpen) { SendCameraView(); return; }
         if (GameInput.AttackMove.WasPressedThisFrame())
         {
-            if (OnlySpawnersSelected) AttackRallyArmed = true;
+            // With producers selected, Rally all armed, or nothing selected (then Rally all or Ctrl + click), A arms the red flag.
+            if (OnlySpawnersSelected || RallyAllArmed || NothingSelected) AttackRallyArmed = true;
             else Arm(OrderKind.AttackMove);
         }
         if (GameInput.Repair.WasPressedThisFrame()) Arm(OrderKind.Repair);
@@ -741,7 +745,7 @@ public class UnitCommander : NetworkBehaviour
         Feedback?.ShowQueueOf(GameInput.QueueModifier.IsPressed() && Selection.Selected.Count > 0 ? Selection.LongestQueue(Feedback.Queue) : 0);
 
         // Rally all or an attack rally armed: the next click on the map sets the rally; Esc or a click on the HUD drops it.
-        if (AttackRallyArmed && !OnlySpawnersSelected) AttackRallyArmed = false;
+        if (AttackRallyArmed && !OnlySpawnersSelected && !RallyAllArmed && !NothingSelected) AttackRallyArmed = false;
         if (RallyAllArmed || AttackRallyArmed)
         {
             if (GameInput.Menu.WasPressedThisFrame()) RallyAllArmed = AttackRallyArmed = false;
@@ -749,7 +753,10 @@ public class UnitCommander : NetworkBehaviour
             {
                 Vector3 target = GetMouseWorldPosition();
                 bool all = RallyAllArmed || GameInput.AssignModifier.IsPressed();
-                SetRally(all ? OwnProducerIds() : Selection.SelectedBuildings, new int2((int)target.x, (int)target.y), AttackRallyArmed);
+                // A right-click always gives the blue flag, as the card says; the red one is a left click.
+                bool attack = AttackRallyArmed && GameInput.Select.WasPressedThisFrame();
+                // With nothing selected, only Rally all or Ctrl + click names producers: a plain click drops the red flag.
+                if (all || OnlySpawnersSelected) SetRally(all ? OwnProducerIds() : Selection.SelectedBuildings, new int2((int)target.x, (int)target.y), attack);
                 RallyAllArmed = AttackRallyArmed = false;
                 clickUsed = true;
             }

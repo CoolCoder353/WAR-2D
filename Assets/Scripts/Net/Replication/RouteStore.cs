@@ -303,7 +303,6 @@ namespace WAR2D.Net.Replication
                     }
                     else
                     {
-                        bool fresh = TracedId[index] != id;
                         int first = Arena.Length;
                         for (int k = 0; k < length; k++) Arena.Add(In.Read<float2>());
                         Counters[1] += length - RouteCount[index];

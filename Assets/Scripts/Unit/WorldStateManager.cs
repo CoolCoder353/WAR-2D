@@ -923,6 +923,8 @@ public partial class WorldStateManager : NetworkBehaviour
 
         ServerPlayer acting = GameCore.Instance?.GetServerPlayerById(owner);
         if (acting == null || acting.state != PlayerState.Playing) return PlacementResult.WrongGameState;
+        // A building past the simulation's slots could never be hit or built (PR 39 review).
+        if (Buildings.Count >= WAR2D.Sim.SimData.MaxBuildings - WAR2D.Sim.SimData.BuildingHeadroom) return PlacementResult.TooManyBuildings;
 
         // Only on ground the player's side has seen: a blueprint in the fog would probe it (the HQ is placed before anyone sees).
         if (type != BuildingType.Base)
