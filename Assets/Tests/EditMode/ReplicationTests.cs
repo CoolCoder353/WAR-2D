@@ -361,6 +361,25 @@ public class ReplicationTests
     }
 
     [Test]
+    public void RoutesLongerThanAnyServerSendsAreRefusedBeforeTheUnitIsKnown()
+    {
+        // Four ids hold at most 4 x RouteMaintenance.MaxWaypoints (1,024) live waypoints: an Enter with 1,100 is a hostile host's.
+        var store = new ClientUnitStore(4, Dt, Allocator.Temp);
+        var tiles = new NativeArray<int2>(1100, Allocator.Temp);
+        for (int i = 0; i < tiles.Length; i++) tiles[i] = new int2(10 + i % 2, 10 + i % 3);
+        var enter = new NativeArray<EnterUnit>(new[]
+        {
+            new EnterUnit { Id = (1 << NetIdAllocator.IndexBits) | 1, Type = (byte)UnitType.Tank, OwnerId = 1, X = 100, Y = 100, Health = 100, First = 0, Count = tiles.Length },
+        }, Allocator.Temp);
+        var bytes = new NativeList<byte>(4096, Allocator.Temp);
+        var sink = new NativeSink(bytes);
+        Messages.EncodeEnter(ref sink, tiles, enter);
+        Assert.IsFalse(store.Apply(new ArraySegment<byte>(bytes.AsArray().ToArray()), 1), "refused, not thrown");
+        Assert.AreEqual(0, store.Count, "and the unit isn't half known");
+        store.Dispose(); bytes.Dispose(); enter.Dispose(); tiles.Dispose();
+    }
+
+    [Test]
     public void CopyStepsThatReachOutsideTheirMessageAreRefused()
     {
         // A MoveOrder of two routes: (10,10) (12,10) (14,10), then four waypoints from (8,10) whose last three copy (back, start, run).

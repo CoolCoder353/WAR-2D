@@ -266,6 +266,7 @@ namespace WAR2D.Client
         {
             int index = NetIdAllocator.IndexOf(u.Id);
             if (index >= states.Length) throw new InvalidDataException("unit index beyond the client's capacity");
+            CheckRouteRoom(index, u.Count); // before anything changes: a refused Enter leaves no half-known unit
             blend[index] = float2.zero;
             ClearLead(index);
             bool appeared = !IsKnown(index);
@@ -371,12 +372,19 @@ namespace WAR2D.Client
             }
         }
 
-        private void SetRoute(int index, int first, int count)
+        /// <summary>
+        /// Copy steps make long routes cheap on the wire: the live total stays at most what a real server can send (every id at its
+        /// longest route), so a hostile host or recording can't make the client allocate more. Throws before anything changes.
+        /// </summary>
+        private void CheckRouteRoom(int index, int count)
         {
-            // Copy steps make long routes cheap on the wire: hold the live total to what a real server can send (every id at its longest
-            // route), so a hostile host or recording can't make the client allocate more.
             if (liveWaypoints + count - routeCount[index] > (long)knownSlot.Length * RouteMaintenance.MaxWaypoints)
                 throw new InvalidDataException("the routes are longer than any server sends");
+        }
+
+        private void SetRoute(int index, int first, int count)
+        {
+            CheckRouteRoom(index, count);
             liveWaypoints += count - routeCount[index];
             routeStart[index] = arena.Length;
             routeCount[index] = count;
