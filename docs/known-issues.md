@@ -2,6 +2,16 @@
 
 Bugs, mismatches and hygiene problems. The first three roadmaps (v0.2 to v0.9, v0.10 to v0.14 with v0.15 and v0.15.1, and v0.16 to v0.18) are complete; open items are backlog, and the sections after "Open" are the log of what past reviews and playtests found and fixed. Code-review findings that were triaged but not fixed are in [bug-review.md](bug-review.md). See the archived roadmaps ([v0.2 to v0.9](archive/roadmap-v0.2-v0.9.md), [v0.10 to v0.14](archive/roadmap-v0.10-v0.14.md), [v0.16 to v0.18](archive/roadmap-v0.16-v0.18.md)) for what each version delivered; the current plan is [roadmap.md](roadmap.md).
 
+### 10,000 units at 120 fps (2026-11-07, on `perf/10k-units-120fps`)
+
+[perf/v0.20](perf/v0.20/README.md) has the benchmark and results. Fixed on the way: the client's per-unit draw loop and its route apply ran as managed loops (now Burst jobs), and a client's routes went out whole (now copy steps, protocol 22, replay format 5; older recordings are refused). Found, not fixed:
+
+- `PerformanceTests.MinimapRedrawAtTenThousandOwnUnitsIsUnderOneMillisecond` sometimes times out in its 30 s wait for 9,000 known units, on `release/v0.20` too.
+- A windowed player behind another window can stall about 500 ms in `DXGI.WaitOnSwapChain` (seen on an Optimus laptop); fullscreen doesn't.
+- `tools/war2d` finds instances only under Linux's `~/.config/unity3d`; on Windows they are in `%USERPROFILE%/AppData/LocalLow/CoolCoder64/WAR-2D/debugapi`.
+- Encoding the route copies costs the server about 0.9 ms of tick at p95 at 10,000 units (each route is matched twice, to size and to write).
+- Incremental GC is off: at 10,000 units a collection takes 8 to 12 ms every 12 to 15 s on the client.
+
 ### v0.10: replays are a tick behind on units
 
 The recorder's units go through `DeferredLane` (encoded during the next tick to keep the boundary inside the perf budget), so a recording's unit records are one tick later than its buildings and terrain. Harmless for playback; don't "fix" it by moving the recorder back onto the boundary (`docs/perf/v0.10/README.md`).
