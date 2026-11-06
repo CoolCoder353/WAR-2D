@@ -107,14 +107,14 @@ Base camera values (speed, zoom range) are in `Assets/Resources/Character_Settin
 
 ## Map and tiles
 
-The map is a grid of 1×1 tiles. By default it is **generated from a seed** at the start of each match (`Match/Map`): a 1024×1024 **region-graph** map: start sites (40 at 1024), rich expansions (14), and large central areas (12) joined by a looped graph of lanes, some with narrow chokepoints (3–6 tiles wide, so Heavies pass single file and walls can close them). Regions are irregular, lobed caves with wandering edges, and central areas and expansions have rock outcrops to fight around; the rock beside regions and lanes is eaten back into ragged cave edges and side pockets (`CaveDepth` tiles deep), but never at a chokepoint. Regions, lanes and cave edges grow with the map size (`RegionScale`, `LaneScale`, `CaveDepth`), so about 40 % of a 512 or 1024 map is floor. The map has a guaranteed gem vein at every start site, rich gem fields at expansions and, elsewhere, gems only in **patches** of 6 to 12 tiles on the rock faces, seeded at least 14 tiles apart, `GemChance` (0.04) of the floor-facing rock in all (playtest 2026-11-05: no more lone gems here and there), and (v0.17 Heartland) **rich gems** in the central areas far from every start site: `<Map><CentralRichGemTiles>` (8, 16, 24, 32 by map size) per chosen area, in 2 to 4 clusters, in every central area at least `<RichMinStartDistance>` (0.15 of the map size, by lanes) from every start site, or in the farthest one if none is that far, so every map has some. Every start site passes the same fairness tests (open area, vein, distance to the nearest other site and to an expansion); no start site is beside a rich field (and no rich gem lies within `<RichStartClearance>` 48 tiles of a start site's centre in a straight line: an area far by lanes can still border a start, playtest 2026-11-05), and every one can reach one. `Seed` 0 picks a new seed every match; every client regenerates the same map and checks it against the server. With `Size` 0 the game uses the small hand-built tilemaps in `Map_2` instead.
+The map is a grid of 1×1 tiles. By default it is **generated from a seed** at the start of each match (`Match/Map`): a 1024×1024 **region-graph** map: start sites (40 at 1024), rich expansions (14), and large central areas (12) joined by a looped graph of lanes, some with narrow chokepoints (3–6 tiles wide, so Heavies pass single file and walls can close them). Regions are irregular, lobed caves with wandering edges, and central areas and expansions have rock outcrops to fight around; the rock beside regions and lanes is eaten back into ragged cave edges and side pockets (`CaveDepth` tiles deep), but never at a chokepoint. Regions, lanes and cave edges grow with the map size (`RegionScale`, `LaneScale`, `CaveDepth`), so about 40 % of a 512 or 1024 map is floor. The map has a guaranteed gem vein at every start site, rich gem fields at expansions and, elsewhere, gems only in **patches** of 6 to 12 tiles on the rock faces, seeded at least 14 tiles apart, `GemChance` (0.04) of the floor-facing rock in all (playtest 2026-11-05: no more lone gems here and there), and (v0.17 Heartland) **rich gems** in the central areas far from every start site: `<Map><CentralRichGemTiles>` (16, 24, 32, 64 by map size) per chosen area, in 2 to 4 clusters, in every central area at least `<RichMinStartDistance>` (0.15 of the map size, by lanes) from every start site, or in the farthest one if none is that far, so every map has some. Every start site passes the same fairness tests (open area, vein, distance to the nearest other site and to an expansion); no start site is beside a rich field (and no rich gem lies within `<RichStartClearance>` 48 tiles of a start site's centre in a straight line: an area far by lanes can still border a start, playtest 2026-11-05), and every one can reach one. `Seed` 0 picks a new seed every match; every client regenerates the same map and checks it against the server. With `Size` 0 the game uses the small hand-built tilemaps in `Map_2` instead.
 
 | Tile | Walkable | Buildable | Notes |
 |---|---|---|---|
 | Ground (floor) | Yes | Yes | |
 | Wall | No | No | |
 | Gem | No | No | Miners must face a gem tile to produce resources. A Digger can dig it for a payout. |
-| Rich gem (v0.17) | No | No | A gem worth `<Resources><RichGemMultiplier>` (2.5) times as much: a Miner facing one earns 25/s, for good. A Digger can dig it for `<Siege><RichGemPayout>` (375), and it is gone. Gold crystals; gold on the minimap. |
+| Rich gem (v0.17) | No | No | A gem worth `<Resources><RichGemMultiplier>` (15) times as much: a Miner facing one earns 375/s, for good. A Digger can dig it for `<Siege><RichGemPayout>` (375), and it is gone. Gold crystals; gold on the minimap. |
 | Border | No | No | The map's outer ring. Never dug. |
 | Wall blueprint | Yes | No | A planned wall segment. Units walk through and see through it until a Builder starts it. |
 | Player wall | No | No | A built wall: blocks movement and sight, has an owner and health. A destroyed wall becomes ground. |
@@ -128,12 +128,12 @@ There is one resource (shown as **Resources** in the HUD).
 | Source / sink | Rate | Notes |
 |---|---|---|
 | Starting resources | **1000** | Per player. The lobby's **Infinite** option (playtest 2026-11-04) means no balance runs out: nothing is charged, nothing decays, and spending still counts on the end screen. |
-| Passive income | **5 / second** | Players still in the match, during *Playing* only |
-| Miner income | **10 / second** per active miner (**25** facing a rich gem, v0.17) | Only while the miner faces a gem tile |
+| Passive income | **20 / second** | Players still in the match, during *Playing* only |
+| Miner income | **25 / second** per active miner (**375** facing a rich gem, v0.17) | Only while the miner faces a gem tile |
 | Building upkeep | Per building, per second | See table below |
 | Unit upkeep | Per unit, per second | See table below |
 
-Upkeep is charged once per second. Units are paid first, one by one (oldest slot first), and a building's upkeep is only paid from what the units' last charge leaves in the bank. **Buildings give way first:** an unpaid building stops working until it is paid, but takes no damage: a producer holds its progress, a Gun turret doesn't fire, a Jammer doesn't jam, a Radar doesn't scan or ping, and a bomb is a dud that only its owner can set off. **Then units decay, one whole unit at a time:** each unpaid unit costs its owner `DecayPercentPerSecond` (5%) of a unit every second, and all of that comes off the weakest unpaid unit until it dies. **With no units left, unpaid buildings decay too**, each losing that share of its max health per second. Miners and the HQ have no upkeep and keep working. Resources never go negative. The top bar shows the upkeep owed, paid or not, and reads "Decaying" while any of it goes unpaid.
+Upkeep is charged once per second. Units are paid first, one by one (oldest slot first), and a building's upkeep is only paid from what the units' last charge leaves in the bank. **Buildings give way first:** an unpaid building stops working until it is paid, but takes no damage: a producer holds its progress, a Gun turret doesn't fire, a Jammer doesn't jam, a Radar doesn't scan or ping, and a bomb is a dud that only its owner can set off. **Then units decay, one whole unit at a time:** each unpaid unit costs its owner `DecayPercentPerSecond` (100%) of a unit every second, so one unit a second, and all of that comes off the weakest unpaid unit until it dies. **With no units left, unpaid buildings decay too**, each losing that share of its max health per second. Miners and the HQ have no upkeep and keep working. Resources never go negative. The top bar shows the upkeep owed, paid or not, and reads "Decaying" while any of it goes unpaid.
 
 ## Buildings
 
@@ -142,7 +142,7 @@ Buildings are placed from the HUD and must sit entirely on free ground your side
 | Building | Size | Health | Upfront cost | Upkeep / s | Function |
 |---|---|---|---|---|---|
 | **Base (HQ)** | 5×5 | 500 | 0 | 0 | Your life. Placed during *PlacingHQ*. Click it to queue Builders (one per `BuildSeconds`, 2 s). It can't be demolished. |
-| **Miner** | 1×1 | 50 | 50 | 0 | Produces 10 resources/s while the tile it faces is a gem (25/s for a rich gem, v0.17). Placement is only allowed when it faces a gem. |
+| **Miner** | 1×1 | 50 | 50 | 0 | Produces 25 resources/s while the tile it faces is a gem (375/s for a rich gem, v0.17). Placement is only allowed when it faces a gem. |
 | **Barracks** | 2×2 | 300 | 200 | 20 | (v0.12: the old Small Unit Spawner.) Makes **Scouts, Tanks and Flamethrowers**, one type at a time. |
 | **Heavy Factory** | 3×3 | 500 | 400 | 30 | (v0.12, proposed numbers.) Makes **Heavies, Artillery and Snipers**; its large units leave on a tile with 2 tiles of clearance. |
 | **Siege Workshop** | 2×2 | 300 | 250 | 20 | (v0.12, proposed numbers.) Makes **Diggers and Suicide bombers**. |
@@ -168,15 +168,15 @@ A Miner checks the single tile next to it in the direction it faces:
 
 | Unit | Health | Damage | Range | Interval | Speed | Cost | Upkeep / s | Sight | Radius | Armour | Build s | Special |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **Tank** | 100 | 10 | 5 | 1 s | 5 | 50 | 2 | 8 | 0.35 | Light | 1 | |
-| **Builder** | 60 | 0 | 1 | 1 s | 5 | 60 | 2 | 6 | 0.35 | Light | 2 | Never attacks |
-| **Digger** | 120 | 4 | 1.5 | 1 s | 4 | 120 | 4 | 6 | 0.4 | Light | 1 | |
-| **Scout** | 40 | 4 | 4 | 0.5 s | 9 | 30 | 1 | 12 | 0.3 | Light | 0.7 | Widest sight, fastest |
-| **Flamethrower** | 90 | 6 | 2.5 | 0.5 s | 4.5 | 70 | 2 | 6 | 0.35 | Light | 1.5 | Splash 1.5 |
-| **Heavy** | 400 | 30 | 5 | 1.5 s | 2.5 | 200 | 6 | 7 | 0.7 | Heavy | 5 | Large pathing class |
-| **Artillery** | 120 | 70 | 18 | 5 s | 2 | 220 | 6 | 18 | 0.7 | Heavy | 6 | Splash 2, can't fire inside 4; large pathing class |
-| **Sniper** | 70 | 60 | 20 | 3 s | 4 | 150 | 4 | 20 | 0.35 | Light | 4 | Can't fire inside 3 |
-| **Suicide bomber** | 30 | (blast 150) | 0.8 | n/a | 8 | 60 | 1 | 6 | 0.3 | Light | 1 | Blast radius 2 |
+| **Tank** | 100 | 10 | 5 | 1 s | 5 | 50 | 0.5 | 8 | 0.35 | Light | 1 | |
+| **Builder** | 60 | 0 | 1 | 1 s | 5 | 60 | 0.5 | 6 | 0.35 | Light | 2 | Never attacks |
+| **Digger** | 120 | 4 | 1.5 | 1 s | 4 | 120 | 1 | 6 | 0.4 | Light | 1 | |
+| **Scout** | 40 | 4 | 4 | 0.5 s | 9 | 30 | 0.25 | 12 | 0.3 | Light | 0.7 | Widest sight, fastest |
+| **Flamethrower** | 90 | 6 | 2.5 | 0.5 s | 4.5 | 70 | 0.5 | 6 | 0.35 | Light | 1.5 | Splash 1.5 |
+| **Heavy** | 400 | 30 | 5 | 1.5 s | 2.5 | 200 | 2.5 | 7 | 0.7 | Heavy | 5 | Large pathing class |
+| **Artillery** | 120 | 70 | 18 | 5 s | 2 | 220 | 2.5 | 18 | 0.7 | Heavy | 6 | Splash 2, can't fire inside 4; large pathing class |
+| **Sniper** | 70 | 60 | 20 | 3 s | 4 | 150 | 1 | 20 | 0.35 | Light | 4 | Can't fire inside 3 |
+| **Suicide bomber** | 30 | (blast 150) | 0.8 | n/a | 8 | 60 | 0.25 | 6 | 0.3 | Light | 1 | Blast radius 2 |
 
 The v0.12 numbers are starting values to tune in play ([tuning.md](tuning.md) says how). Speeds are in tiles per second.
 
@@ -190,7 +190,7 @@ The v0.12 numbers are starting values to tune in play ([tuning.md](tuning.md) sa
 
 **Minimum range.** Artillery and Snipers ignore targets closer than their minimum range and look for another.
 
-**Suicide bomber.** On an attack-move, or when idle with an enemy in sight, it runs at a blast point chosen on its target search (v0.18): of the enemy units its side sees within `Bomber/AimTiles` (6) of its target, the position where its blast is worth most (enemy cost, less `Bomber/FriendlyWeight` times its own side's and allies' cost). Against a building it runs to the middle of a side. It goes off within `Bomber/AimReachTiles` (0.5) of the point, or touching an enemy where the blast is already worth `Bomber/GoodEnough` (0.8) of the point's, or touching one and blocked for a second. Against a wall it explodes on contact. The **Detonate** order (key `B`, rebindable) explodes every selected bomber where it stands. The blast hurts every unit, building and wall in its radius, with the damage-table multipliers (buildings ×2, walls ×2); **its own side and allies take only `Bomber/FriendlyDamage` (10 %) of it**, units, buildings and walls alike. **A bomber at 10 % of its health or less explodes where it stands (v0.18, `Bomber/LastGaspHealth`), so one shot down explodes where it falls:** a killing hit counts, and so does decay. A blast can set off more bombers, up to `Bomber/ChainPasses` (4) rounds a tick. Whoever shot a bomber down gets that kill; what its blast kills is credited to its owner.
+**Suicide bomber.** On an attack-move, or when idle with an enemy in sight, it runs at a blast point chosen on its target search (v0.18): of the enemy units its side sees within `Bomber/AimTiles` (6) of its target, the position where its blast is worth most (enemy cost, less `Bomber/FriendlyWeight` times its own side's and allies' cost). Against a building it runs to the middle of a side. It goes off within `Bomber/AimReachTiles` (0.5) of the point, or touching an enemy where the blast is already worth `Bomber/GoodEnough` (0.8) of the point's, or touching one and blocked for a second. Against a wall it explodes on contact. The **Detonate** order (key `B`, rebindable) explodes every selected bomber where it stands. The blast hurts every unit, building and wall in its radius, with the damage-table multipliers (buildings ×2, walls ×2); **its own side and allies take none of it (`Bomber/FriendlyDamage`, 0 since the 2026-11-05 balance)**, units, buildings and walls alike. **A bomber at 10 % of its health or less explodes where it stands (v0.18, `Bomber/LastGaspHealth`), so one shot down explodes where it falls:** a killing hit counts, and so does decay. A blast can set off more bombers, up to `Bomber/ChainPasses` (4) rounds a tick. Whoever shot a bomber down gets that kill; what its blast kills is credited to its owner.
 
 Units reach full speed at once (the unused `Acceleration` setting was dropped). Builders never attack (their damage multiplier is 0). Radius (in the table) is a unit's collision radius in tiles.
 - A player can own at most **10,000 units** (`Simulation/MaxUnitsPerPlayer`). A spawner at the cap keeps its queue and refunds the unit. The owner gets one alert, "Unit cap reached (10,000): producers wait", and a selected producer with a queue says "Waiting: unit cap (10,000 units)" (playtest 2026-11-05); both clear once a unit spawns again, and the alert comes again only after that.
@@ -200,7 +200,7 @@ Units reach full speed at once (the unused `Acceleration` setting was dropped). 
 
 ## Fog of war, teams and diplomacy
 
-- Each player sees through the eyes of all their units and buildings, plus those of every player sharing vision with them. Teammates share vision with each other from the start. Sight radius (`Sight`) is per unit and building type in `GameConfig.xml`: Tank 8 tiles, Builder 6, Digger 6, HQ 10, Spawner 6, Miner 4, Radar 20 (Radar sight ignores walls), Bomb 0, Gun turret 8, Jammer 6. A blueprint sees nothing until it is finished.
+- Each player sees through the eyes of all their units and buildings, plus those of every player sharing vision with them. Teammates share vision with each other from the start. Sight radius (`Sight`) is per unit and building type in `GameConfig.xml`: Tank 8 tiles, Builder 6, Digger 6, HQ 10, Spawner 6, Miner 4, Radar 20 (Radar sight ignores walls), Bomb 0, Gun turret 10, Jammer 6. A blueprint sees nothing until it is finished.
 - Walls block sight; you can see a wall's face but not what's behind it. Fog is tracked on a grid of 2×2-tile cells and updated 5 times a second.
 - **Jams (v0.13).** Inside a finished, paid enemy Jammer's radius (`Siege/JamRadius`, 12 tiles), your side sees a fog cell only when one of your sources is within `Siege/JamSight` (3 tiles) of it, measured between the closest tiles of the source's cell and that cell (line of sight still applies), and your Radars see nothing there and never ping for a contact in it. Units, buildings, wall and terrain changes, explosions and alerts in the jam follow what you see, so a building there stays a ghost until you come close. A Jammer never jams its owner or anyone its owner shares vision with. Its dark disc does show roughly where it is.
 - The map shows three states: **unexplored** (black), **explored** (dimmed: you've seen it before), and **visible** (clear).

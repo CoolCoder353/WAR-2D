@@ -1,5 +1,7 @@
 # Art and audio inventory (v0.8)
 
+> v0.20 Onslaught adds a 2×2 Sniper and Gun turret (hull and head), effects for leaps, fire, aim, shells and deaths, and new sounds. They are approved and generated but not yet registered here or built into the atlases; see [v0.20-asset-review.md](v0.20-asset-review.md). Until then this inventory describes what ships.
+
 Every placeholder the game uses today and every asset v0.7 Siege will need. `Assets/Scripts/Art/ArtManifest.cs` is the code version of the art tables: tests fail when a `UnitType`, `BuildingType` or `TileType` value has no entry. Sizes are in tiles (one tile is one world unit). A sprite has `frames × directions` cells in its atlas.
 
 The [style guide](style-guide.md) sets the values: 64 px per tile (PPU 64), 8 unit facings, 10 fps. `WAR-2D/Art/Build all` (`Editor/ArtBuild.cs`) renders every unit, building and tile entry into `Assets/Resources/Art/{Units,Buildings,Tiles}` (`.png`, `_mask.png` for the team colour, `.json` frame table, loaded with `ArtAtlas`). Entries with no generator yet (the v0.7 kit: Builder, Digger, Bomb, PlayerWall, WallBlueprint) get a placeholder block. Effects, icons and UI get their atlases with plan Tasks 11 and 12.

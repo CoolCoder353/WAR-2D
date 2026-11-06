@@ -184,9 +184,9 @@ Claude can't run the game in a cloud session, so give it summaries, not raw outp
 
 | Number | Where | Default | What it does |
 | --- | --- | --- | --- |
-| `RichGemMultiplier` | `<Resources>` | 2.5 | A Miner facing a rich gem earns `MiningRate` × this (25/s). |
+| `RichGemMultiplier` | `<Resources>` | 15 | A Miner facing a rich gem earns `MiningRate` × this (375/s). |
 | `RichGemPayout` | `<Siege>` | 375 | Digging a rich gem pays this once (the tile is gone). |
-| `CentralRichGemTiles` | `<Match><Map>` | 8 16 24 32 | Rich gem tiles per chosen central area, per `LayoutSizes` row. |
+| `CentralRichGemTiles` | `<Match><Map>` | 16 24 32 64 | Rich gem tiles per chosen central area, per `LayoutSizes` row. |
 | `RichMinStartDistance` | `<Match><Map>` | 0.15 | No rich field within this lane distance (share of map size) of a start site. |
 | `ExpansionDistanceScale` | `<Ai><Play>` | 120 | Tiles from home that halve an expansion candidate's score (its gem worth); lower makes the AI stay nearer home, higher sends it to the rich middle sooner. |
 

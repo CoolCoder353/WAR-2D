@@ -229,7 +229,7 @@ The owner closed the v0.10 to v0.15.1 verification and tuning items: the playtes
 | ---- | ------ |
 | The `Tiles` atlas outgrew Unity's default 2048 import size | **Fixed.** The rich gem frames took it to 4096×2048 and the importer's default cap halved it, so every frame past the old edge sampled the wrong art (rich gems drew as plain rock). `ArtImporter` now imports every atlas at up to `MaxSize` (8192), and `ArtImportTests.ImporterSettingsApplyToEveryArtTexture` checks it. The Tiles atlas and its mask cost about twice the GPU memory they did (4096×2048, uncompressed). |
 | Rich fields' fairness band (spec D5) | **Decided** (owner, 2026-11-03): no upper band. As written, every start within the expansions' 0.6 × size of a rich field rejected most plans at every size; what holds is that no start is beside a rich field and every start can reach one. |
-| The rich gem colour and HUD lines (Figma H1) | **Built** (approved 2026-11-03, colour A: the palette's gold `Warn` #F2C14E). An own finished Miner's hover card says "Mining rich gem: 25/s" or "Mining: 10/s"; a Miner being placed has a label under its ghost ("Rich gem: 25/s", "Gem: 10/s"); the minimap draws rich gems gold and its Gems swatch shows both colours. Checked in a hosted match through the control API (the hover line's text, and 201 mined in about 8 s); the hover card and placement label were not seen on screen (they follow the real pointer). |
+| The rich gem colour and HUD lines (Figma H1) | **Built** (approved 2026-11-03, colour A: the palette's gold `Warn` #F2C14E). An own finished Miner's hover card says "Mining rich gem: 375/s" or "Mining: 25/s"; a Miner being placed has a label under its ghost ("Rich gem: 375/s", "Gem: 25/s"); the minimap draws rich gems gold and its Gems swatch shows both colours. Checked in a hosted match through the control API (the hover line's text, and 201 mined in about 8 s); the hover card and placement label were not seen on screen (they follow the real pointer). |
 | The AI difficulty ladder on v0.16 (measured 2026-11-03 as v0.17's baseline) | Open. `tools/ai-bench.sh --brief 16` on v0.16: Hard beats Normal 81 % on 256, 69 % on 512 and 31 % on 1024 (9 of 16 capped); Normal beats Easy 81 to 100 %. Before any v0.17 change, so it is v0.16's (formations, auto-work) or earlier. Results: `PerfResults/ai-bench-v016-baseline`. |
 | The v0.17 perf gate (2026-11-03) | **Passes** on a quiet machine: 22.6 ms p95 (v0.16 19.7 ms in the same conditions; every part within 0.2 ms, the gap inside the runs' spread). A first run on a busy machine (Firefox, the file indexer) read 26.6 ms, with v0.16 at 24.9 ms. [perf/v0.17](perf/v0.17/README.md). |
 | `HudTests.DiplomacyToggleStopsMyUnitsAttacking` failed once in a full PlayMode run (2026-11-03, v0.17) | Test flakiness. It passed alone twice on the same code; it follows load or test order, like the other timing-sensitive PlayMode tests. |
@@ -277,7 +277,7 @@ One 1v1 in the editor (Game view 916×529) against a Normal AI (Balanced) on a 2
 
 | Finding | Detail |
 | --- | --- |
-| The Normal AI's economy outruns any human | At 2.5 min it had 61 Miners, about 130 units and 634/s income, against 5 Miners and 45/s. End screen: mined 260,371 against 8,159, peak army 380. A Miner (50, 10/s, no upkeep) pays for itself in 5 s, so income grows as fast as Miners can be placed, and the AI places them far faster than a person. `tools/ai-bench.sh` only plays AI against AI, so it can't see this. |
+| The Normal AI's economy outruns any human | At 2.5 min it had 61 Miners, about 130 units and 634/s income, against 5 Miners and 45/s. End screen: mined 260,371 against 8,159, peak army 380. A Miner (50, then 10/s, no upkeep) paid for itself in 5 s (25/s since the 2026-11-05 balance), so income grows as fast as Miners can be placed, and the AI places them far faster than a person. `tools/ai-bench.sh` only plays AI against AI, so it can't see this. |
 | An early raid on Normal | At about 4 min, Scouts and Suicide bombers killed all 5 Builders and 5 Miners (`aistate`: `raids` 1, `killed` 550). Bombers then waited 10–17 tiles from the HQ and destroyed a Barracks blueprint before work on it started. |
 
 **Bugs**
@@ -295,7 +295,7 @@ One 1v1 in the editor (Game view 916×529) against a Normal AI (Balanced) on a 2
 | Finding | Status |
 | --- | --- |
 | The all-Builders chip shows a count but doesn't select | **Open, owner's choice.** A plain click moves the camera to the next Builder; selecting them all needs Ctrl + click (playtest 2026-10-30 choice). Box-selecting was the only obvious way. |
-| A match opens with no units | **Open, design.** The first Builders put you at −5/s at once, and "Resources will run out in 0:57" fires within the first minute. |
+| A match opens with no units | **Open, design; re-measure.** The first Builders put you at −5/s at once (measured before the 2026-11-05 balance raised passive income to 20/s and cut unit upkeep), and "Resources will run out in 0:57" fires within the first minute. |
 | The HQ pick opens very zoomed in | **Fixed.** The pick opens zoomed out in wheel steps until the 12-tile start ring fits with 2 tiles to spare (`Character_Controler.ZoomOutToShow`); it never zooms in on a big screen. |
 | Miner rotation goes back to 0° on each placement | **Fixed.** The next Miner keeps the last facing (`BuildingPlacement.Rotation`). |
 | The command-card keys depend on the selection | **Open, design.** Q queues a Builder with the HQ selected and starts a Miner with Builders selected. With the HQ still selected, Q queued a Builder by mistake. |
@@ -350,7 +350,7 @@ All fixed on the same branch, with `PlaytestFix2Tests` and `PlaytestFix2PlayMode
 | Start badges overlap at the screen edge | Seen at 1080p: badge 2 is covered by badge 4, and badge 1 by the prompt panel. |
 | Left alone after the only opponent leaves the pick | You must still place an HQ and sit through the countdown for "Victory · 0:00". The prompt still says "Pick your start", and no alert says they left. |
 | Random picks can start very close | One 3-player match on 256 put two HQs 34 tiles apart. One observation, not measured. |
-| One gem can feed several Miners | Three Miners on one gem tile each earned the full 10/s (income 125 from 12 Miners). gameplay.md doesn't say whether this is intended. |
+| One gem can feed several Miners | Three Miners on one gem tile each earned the full rate (10/s then, 25/s now; income 125 from 12 Miners). gameplay.md doesn't say whether this is intended. |
 | The Surrender dialog says "Your team keeps playing" in a Free-for-all | Seen in a 1v1. |
 
 **Control API (`tools/war2d`)**
