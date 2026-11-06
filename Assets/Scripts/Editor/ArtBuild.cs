@@ -145,7 +145,7 @@ namespace WAR2D.EditorTools
                 case nameof(UnitType.Flamethrower):
                     return ($"Flamethrower {direction} {frame}", () => RenderGen.Flamethrower(direction * Mathf.PI / 4f, frame), 0f);
                 case nameof(UnitType.Sniper):
-                    return ($"Sniper {direction} {frame}", () => RenderGen.Sniper(direction * Mathf.PI / 4f, frame), 0f);
+                    return ($"Sniper {direction} {frame}", () => RenderGen.Sniper2x2(direction * Mathf.PI / 4f, frame), 0f);
                 case nameof(UnitType.Bomber):
                     return ($"Bomber {direction} {frame}", () => RenderGen.Bomber(direction * Mathf.PI / 4f, frame), 0f);
                 case nameof(UnitType.Heavy):
@@ -161,9 +161,9 @@ namespace WAR2D.EditorTools
                 case "Radar":
                     return ($"Radar {frame}", () => RenderGen.Radar(frame), RenderGen.Lift);
                 case nameof(BuildingType.GunTurret):
-                    return ($"GunTurret {frame}", () => RenderGen.GunTurretBase(frame), RenderGen.Lift);
+                    return ($"GunTurret {frame}", () => RenderGen.GunTurret2x2Base(frame), RenderGen.Lift);
                 case ArtManifest.TurretHead:
-                    return ($"GunTurretHead {direction} {frame}", () => RenderGen.GunTurretHead(direction * Mathf.PI / 4f, frame), RenderGen.Lift);
+                    return ($"GunTurretHead {direction} {frame}", () => RenderGen.GunTurret2x2Head(direction * Mathf.PI / 4f, frame), RenderGen.Lift);
                 case nameof(BuildingType.Jammer):
                     return ($"Jammer {frame}", () => RenderGen.Jammer(frame), RenderGen.Lift);
                 case "PlayerWall":

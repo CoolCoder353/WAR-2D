@@ -122,7 +122,7 @@ public static class Effects
     private static readonly Pool ScoutTracers = new Pool("ScoutTracer", ScoutTracerPool);
     private static readonly Pool ShellShadows = new Pool("ShellShadow", ShellPool);
     private static readonly Pool ShellPuffs = new Pool("ShellPuff", ShellPuffPool);
-    private static readonly Pool BomberBlasts = new Pool("BomberBlast", BomberBlastPool);
+    private static readonly Pool BomberBlasts = new Pool("BomberLanding", BomberBlastPool); // v0.20: the landing blast with its shockwave
     private static readonly Pool TurretFlashes = new Pool("TurretMuzzle", TurretFlashPool);
     private static readonly Pool Pulses = new Pool("JamPulse", PulsePool);
     private static readonly Pool Smokes = new Pool("Smoke", SmokePool);
@@ -131,6 +131,28 @@ public static class Effects
     private static readonly Pool Collapses = new Pool("BomberBlast", CollapsePool);
     private static readonly Pool HitSparks = new Pool("HitSpark", HitSparkPool);
     private static readonly Pool Dust = new Pool("DustPuff", DustPool);
+    // v0.20 Onslaught (approved 2026-11-06).
+    private static readonly Pool LeapSparksPool = new Pool("LeapSparks", 64);
+    private static readonly Pool ArtilleryBlasts = new Pool("ArtilleryBlast", 16);
+    private static readonly Pool LaunchPuffs = new Pool("LaunchPuff", 32);
+    private static readonly Pool IncomingShells = new Pool("IncomingShell", 32);
+    private static readonly Pool SniperHits = new Pool("SniperHit", 64);
+    private static readonly Pool ArmourSparksPool = new Pool("ArmourSparks", 64);
+    private static readonly Pool Glints = new Pool("MuzzleGlint", 32);
+    private static readonly Pool TwinMuzzles = new Pool("TwinMuzzle", 64);
+    private static readonly Pool TracerStreams = new Pool("TracerStream", 64);
+    private static readonly Pool DeathsSmall = new Pool("DeathSmall", 64);
+    private static readonly Pool DeathsLarge = new Pool("DeathLarge", 32);
+    private static readonly Pool BlastDebris = new Pool("Debris", 32);
+    private static readonly Pool DustClouds = new Pool("DustCloud", 24);
+    private static readonly Pool Soot = new Pool("SootSmoke", 128);
+    private static readonly Pool Scorches = new Pool("FlameScorch", 64);
+    private static readonly Pool FinaleBlasts = new Pool("ArtilleryBlast", 4);
+    private static readonly Pool[] Onslaught =
+    {
+        LeapSparksPool, ArtilleryBlasts, LaunchPuffs, IncomingShells, SniperHits, ArmourSparksPool, Glints, TwinMuzzles, TracerStreams,
+        DeathsSmall, DeathsLarge, BlastDebris, DustClouds, Soot, Scorches, FinaleBlasts,
+    };
 
     /// <summary>A blast waiting to go off (a collapse's follow-up explosions and debris).</summary>
     private struct Delayed
@@ -138,6 +160,8 @@ public static class Effects
         public float At;
         public Vector2 Position;
         public bool Debris;
+        /// <summary>v0.20: a large death's second blast (a <see cref="DeathLarge"/> frame, not a small explosion).</summary>
+        public bool Large;
     }
 
     private static readonly List<Delayed> delayed = new List<Delayed>();
@@ -168,7 +192,7 @@ public static class Effects
         WAR2D.Audio.AudioService.Sfx("mine_blast", position);
     }
 
-    /// <summary>A Bomber going off at <paramref name="position"/> (4 × 4 tiles of blast).</summary>
+    /// <summary>A Bomber going off at <paramref name="position"/> (v0.20: the landing blast, with a shockwave ring sized to its blast radius).</summary>
     public static void BomberBlast(Vector2 position)
     {
         Slot s = Take(BomberBlasts);
@@ -176,6 +200,159 @@ public static class Effects
         s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
         WAR2D.Audio.AudioService.Sfx("bomber_blast", position);
     }
+
+    // ---------- v0.20 Onslaught ----------
+
+    /// <summary>
+    /// Answers whether the client sees a point now (its fog). A shell's blast and crater are drawn only where the client sees the landing
+    /// (spec §4.3: the crater and blast follow what the client sees). Null shows them everywhere (a replay of the whole map).
+    /// </summary>
+    public static System.Func<Vector2, bool> LandingShown;
+
+    /// <summary>Seconds a led shell is drawn falling steeply onto a point (the incoming drop).</summary>
+    public const float IncomingDropTiles = 3f;
+
+    /// <summary>A Bomber leaving the ground: its sound and a spray of sparks.</summary>
+    public static void Leap(Vector2 at)
+    {
+        WAR2D.Audio.AudioService.Sfx("bomber_leap", at);
+        LeapSparks(at);
+    }
+
+    /// <summary>A spark of an airborne Bomber's trail.</summary>
+    public static void LeapSparks(Vector2 at)
+    {
+        Slot s = Take(LeapSparksPool);
+        if (s != null) s.Go.transform.SetPositionAndRotation(new Vector3(at.x, at.y, 0f), Quaternion.identity);
+    }
+
+    /// <summary>
+    /// A shell the client saw fired: it flies from <paramref name="from"/> to <paramref name="to"/> over <paramref name="seconds"/> on
+    /// v0.19's arc, the larger v0.20 shell, and lands in <see cref="ArtilleryLanding"/>.
+    /// </summary>
+    public static void ShellFlight(Vector2 from, Vector2 to, float seconds)
+    {
+        Slot s = Take(Shells);
+        if (s == null) return;
+        s.Seconds = Mathf.Max(0.05f, seconds);
+        s.ImpactOnLanding = true;
+        s.From = new Vector3(from.x, from.y, 0f);
+        s.To = new Vector3(to.x, to.y, 0f);
+        s.LastPuff = s.From;
+        s.Go.transform.SetPositionAndRotation(s.From, Quaternion.identity);
+        Slot shadow = Take(ShellShadows);
+        s.Partner = shadow;
+        if (shadow == null) return;
+        shadow.Sprite.sortingOrder = WAR2D.Client.Render.SortingOrders.Decals + 2;
+        shadow.Go.transform.SetPositionAndRotation(s.From, Quaternion.identity);
+    }
+
+    /// <summary>
+    /// A shell the client sees only land (spec §4.3): falling nearly straight down onto <paramref name="to"/> over
+    /// <paramref name="seconds"/>, with its whistle, so where it came from isn't shown.
+    /// </summary>
+    public static void IncomingShell(Vector2 to, float seconds)
+    {
+        Slot s = Take(IncomingShells);
+        if (s == null) return;
+        s.Seconds = Mathf.Max(0.05f, seconds);
+        s.ImpactOnLanding = true;
+        s.To = new Vector3(to.x, to.y, 0f);
+        s.From = s.To + Vector3.up * IncomingDropTiles;
+        s.Go.transform.SetPositionAndRotation(s.From, Quaternion.identity);
+        WAR2D.Audio.AudioService.Sfx("shell_incoming", to);
+    }
+
+    /// <summary>A shell landing (v0.20): the big blast with its shockwave and dust, the larger crater, the large impact sound; only where the client sees it.</summary>
+    public static void ArtilleryLanding(Vector2 at)
+    {
+        if (LandingShown != null && !LandingShown(at)) return;
+        Slot s = Take(ArtilleryBlasts);
+        if (s != null) s.Go.transform.SetPositionAndRotation(new Vector3(at.x, at.y, 0f), Quaternion.identity);
+        Decals.CraterLarge(at);
+        WAR2D.Audio.AudioService.Sfx("shell_impact_large", at);
+    }
+
+    /// <summary>The Artillery's launch puff at its bore.</summary>
+    public static void LaunchPuff(Vector2 at)
+    {
+        Slot s = Take(LaunchPuffs);
+        if (s == null) return;
+        s.Go.transform.SetPositionAndRotation(new Vector3(at.x, at.y, 0f), Quaternion.identity);
+        s.Drift = new Vector3(0f, SmokeRise * 0.5f, 0f);
+    }
+
+    /// <summary>The Sniper's shot striking (v0.20): a hard spark.</summary>
+    public static void SniperHit(Vector2 at)
+    {
+        Slot s = Take(SniperHits);
+        if (s != null) s.Go.transform.SetPositionAndRotation(new Vector3(at.x, at.y, 0f), Quaternion.identity);
+    }
+
+    /// <summary>The glint at a Sniper's muzzle as its aim completes.</summary>
+    public static void MuzzleGlint(Vector2 at)
+    {
+        Slot s = Take(Glints);
+        if (s != null) s.Go.transform.SetPositionAndRotation(new Vector3(at.x, at.y, 0f), Quaternion.identity);
+    }
+
+    /// <summary>Least seconds between two armour pings (a swarm's small arms on a Heavy would be a wall of sound).</summary>
+    public const float ArmourPingSeconds = 0.15f;
+    private static float lastArmourPing = float.NegativeInfinity;
+
+    /// <summary>Armour taking a hit (v0.20): a spark ring, so small arms visibly bounce off; its ping, rate-limited.</summary>
+    public static void ArmourSpark(Vector2 at)
+    {
+        Slot s = Take(ArmourSparksPool);
+        if (s != null) s.Go.transform.SetPositionAndRotation(new Vector3(at.x, at.y, 0f), Quaternion.identity);
+        if (Time.time - lastArmourPing < ArmourPingSeconds) return;
+        lastArmourPing = Time.time;
+        WAR2D.Audio.AudioService.Sfx("armour_ping", at);
+    }
+
+    /// <summary>A puff of black smoke rising from a fire or a burnt wreck.</summary>
+    public static void SootPuff(Vector2 at)
+    {
+        Slot s = Take(Soot);
+        if (s == null) return;
+        s.Go.transform.SetPositionAndRotation(new Vector3(at.x, at.y, 0f), Quaternion.identity);
+        s.Drift = new Vector3(0.1f, SmokeRise, 0f);
+    }
+
+    /// <summary>A scorch left on the ground along a flame stream, along <paramref name="degrees"/>.</summary>
+    public static void FlameScorch(Vector2 at, float degrees)
+    {
+        Slot s = Take(Scorches);
+        if (s == null) return;
+        s.Sprite.sortingOrder = WAR2D.Client.Render.SortingOrders.Decals + 1; // on the ground, under the units
+        s.Go.transform.SetPositionAndRotation(new Vector3(at.x, at.y, 0f), Quaternion.Euler(0f, 0f, degrees));
+    }
+
+    /// <summary>
+    /// A unit's death by size and cause (v0.20, spec §8.1). Shot: a small explosion, or for a large unit a large one with a second blast a
+    /// beat later. Blast: debris flung from the wreck. Fire: soot over the black wreck. With the death sound for its size or cause.
+    /// </summary>
+    public static void UnitDeath(Vector2 at, bool large, byte cause)
+    {
+        Slot s = Take(large ? DeathsLarge : DeathsSmall);
+        if (s != null) s.Go.transform.SetPositionAndRotation(new Vector3(at.x, at.y, 0f), Quaternion.identity);
+        if (cause == 2) WAR2D.Audio.AudioService.Sfx("burn_death", at);
+        else WAR2D.Audio.AudioService.Sfx(large ? "death_large" : "death_small", at);
+        if (cause == 1)
+        {
+            Slot d = Take(BlastDebris);
+            if (d != null) d.Go.transform.SetPositionAndRotation(new Vector3(at.x, at.y, 0f), Quaternion.identity);
+        }
+        if (cause == 2) SootPuff(at);
+        if (large && delayed.Count < MaxDelayed)
+        {
+            delayed.Add(new Delayed { At = Time.time + 0.25f, Position = at + new Vector2(0.3f, 0.2f), Large = true });
+            EnsureRunner();
+        }
+    }
+
+    /// <summary>Turret shots drawn as a stream since the pools were made (tests): ten a second merge into one per turret.</summary>
+    public static int TurretStreams { get; private set; }
 
     /// <summary>Rock breaking where a tile was dug out (or a wall fell), centred on the tile.</summary>
     public static void DigDebris(Vector2 position)
@@ -290,18 +467,19 @@ public static class Effects
         const float ppu = ArtStyle.PixelsPerUnit;
         if (gun == UnitType.Artillery)
         {
+            // v0.20: the shell itself comes with the combat news (its real flight, or only its drop for a client that can't see the gun).
             Vector2 bore = centre + WAR2D.Client.Render.TurretAim.ArtilleryBore(hull, turret) / ppu;
             Vector2 axis = WAR2D.Client.Render.TurretAim.ArtilleryBarrelAxis(turret);
-            WAR2D.Audio.AudioService.Sfx(ShotSound(gun), bore);
+            WAR2D.Audio.AudioService.Sfx("artillery_launch", bore);
             Burst(BurstsTank, centre + WAR2D.Client.Render.TurretAim.ArtilleryFlash(hull, turret) / ppu, Mathf.Atan2(axis.y, axis.x) * Mathf.Rad2Deg, drift);
-            Shell(bore, to);
+            LaunchPuff(bore);
             return;
         }
         Pool flashes = gun == UnitType.Scout ? BurstsScout : gun == UnitType.Sniper ? BurstsSniper : gun == UnitType.Heavy ? BurstsHeavy : BurstsTank;
         Pool shots = gun == UnitType.Scout ? ScoutTracers : gun == UnitType.Sniper ? SniperTracers : Tracers;
         float length = gun == UnitType.Scout ? ScoutShotTiles : gun == UnitType.Sniper ? SniperShotTiles : gun == UnitType.Heavy ? HeavyShotTiles : TankShotTiles;
         float degrees = turret * Mathf.Rad2Deg;
-        WAR2D.Audio.AudioService.Sfx(ShotSound(gun), centre);
+        WAR2D.Audio.AudioService.Sfx(gun == UnitType.Sniper ? "sniper_shot" : ShotSound(gun), centre); // v0.20: the Sniper's crack
         for (int barrel = 0; barrel < WAR2D.Client.Render.TurretAim.Barrels(gun); barrel++)
         {
             Vector2 muzzle = centre + WAR2D.Client.Render.TurretAim.Muzzle(gun, hull, turret, barrel) / ppu;
@@ -311,7 +489,8 @@ public static class Effects
             float side = WAR2D.Client.Render.TurretAim.MuzzleSide(gun, barrel) / ppu;
             Vector2 along = fire.sqrMagnitude > 1e-6f ? fire.normalized : new Vector2(Mathf.Cos(turret), Mathf.Sin(turret));
             Vector2 end = (Vector2)to - along * Mathf.Min(stopShort, fire.magnitude) + new Vector2(-along.y, along.x) * side;
-            Shot(shots, muzzle, end, length);
+            Slot shot = Shot(shots, muzzle, end, length);
+            if (gun == UnitType.Sniper && shot != null) { shot.SparkOnLanding = false; SniperHit(end); }
         }
     }
 
@@ -323,24 +502,6 @@ public static class Effects
     {
         float height = Mathf.Min(Vector3.Distance(from, to) * ShellArcShare, ShellMaxHeight);
         return Vector3.Lerp(from, to, t) + Vector3.up * (height * 4f * t * (1f - t));
-    }
-
-    /// <summary>A shell flying from the gun's bore: its height is only drawn, by a sprite rising over a shadow that keeps to the ground line. It lands as a <see cref="ShellImpact"/> and leaves a crater.</summary>
-    private static void Shell(Vector2 from, Vector3 to)
-    {
-        Slot s = Take(Shells);
-        if (s == null) return;
-        s.Seconds = ShellFlightSeconds(Vector2.Distance(from, to));
-        s.ImpactOnLanding = true;
-        s.From = new Vector3(from.x, from.y, 0f);
-        s.To = new Vector3(to.x, to.y, 0f);
-        s.LastPuff = s.From;
-        s.Go.transform.SetPositionAndRotation(s.From, Quaternion.identity);
-        Slot shadow = Take(ShellShadows);
-        s.Partner = shadow;
-        if (shadow == null) return;
-        shadow.Sprite.sortingOrder = WAR2D.Client.Render.SortingOrders.Decals + 2; // on the ground, under the units
-        shadow.Go.transform.SetPositionAndRotation(s.From, Quaternion.identity);
     }
 
     /// <summary>Where a flame ends: on the target, or as far toward it as its range reaches (a big building's centre can be further).</summary>
@@ -372,7 +533,7 @@ public static class Effects
         stream.Target = target;
         stream.Until = Time.time + seconds;
         stream.Partner.Until = stream.Until;
-        stream.Partner.Go.transform.localScale = Vector3.one * (splash / EffectGen.FlameSplashTiles);
+        stream.Partner.Go.transform.localScale = Vector3.one * (splash / EffectGen.FlameSpreadArtTiles);
         PlaceFlame(stream, nozzle, end);
     }
 
@@ -410,29 +571,50 @@ public static class Effects
     /// (radians): <see cref="WAR2D.Art.Render.RenderGen.TurretMuzzleReach"/> along the facing, raised by the
     /// muzzle's height in the 3/4 view.
     /// </summary>
-    public static Vector3 TurretMuzzle(Vector2 centre, float angle)
+    public static Vector3 TurretMuzzle(Vector2 centre, float angle, int barrel = 0)
     {
+        // v0.20: the 2×2 turret's head, with a barrel each side of its centre line (0 left, 1 right).
         const float ppu = ArtStyle.PixelsPerUnit;
-        float reach = WAR2D.Art.Render.RenderGen.TurretMuzzleReach / ppu;
-        float rise = WAR2D.Art.Render.RenderGen.TurretMuzzleHeight * WAR2D.Art.Render.RenderGen.Lift / ppu;
-        return new Vector3(centre.x + Mathf.Cos(angle) * reach, centre.y + Mathf.Sin(angle) * reach + rise, 0f);
+        float reach = WAR2D.Art.Render.RenderGen.Turret2x2MuzzleReach / ppu;
+        float rise = WAR2D.Art.Render.RenderGen.Turret2x2MuzzleHeight * WAR2D.Art.Render.RenderGen.Lift / ppu;
+        float side = (barrel == 0 ? 1f : -1f) * WAR2D.Art.Render.RenderGen.Turret2x2BarrelSide / ppu;
+        return new Vector3(centre.x + Mathf.Cos(angle) * reach - Mathf.Sin(angle) * side, centre.y + Mathf.Sin(angle) * reach + Mathf.Cos(angle) * side + rise, 0f);
     }
+
+    /// <summary>Least seconds between two of a turret's drawn shots: at ten a second its tracers merge into one stream (spec §8.2).</summary>
+    public const float TurretStreamSeconds = 0.2f;
+
+    /// <summary>Seconds the turret's fast-fire loop sound is let ring before another may start.</summary>
+    public const float TurretLoopSeconds = 0.5f;
+    private static readonly Dictionary<int, float> turretDrawnAt = new Dictionary<int, float>(), turretSoundAt = new Dictionary<int, float>();
+    private static readonly Dictionary<int, int> turretBarrel = new Dictionary<int, int>();
 
     /// <summary>
     /// A Gun turret's shot (v0.13): the <c>TurretMuzzle</c> flash at the muzzle of a head facing
     /// <paramref name="angle"/> (turned to it), <c>shot_turret</c>, and a tracer from the muzzle to
     /// <paramref name="to"/> when the client was told the target (null: flash and sound only).
     /// </summary>
-    public static void TurretShot(Vector2 centre, float angle, Vector3? to)
+    public static void TurretShot(Vector2 centre, float angle, Vector3? to, int turret = 0)
     {
-        Vector3 muzzle = TurretMuzzle(centre, angle);
-        WAR2D.Audio.AudioService.Sfx("shot_turret", muzzle);
-        Slot flash = Take(TurretFlashes);
-        if (flash == null) return;
+        // v0.20: barrels alternate; ten shots a second draw as a short stream (one shot drawn each TurretStreamSeconds) under one loop sound.
+        int barrel = turretBarrel.TryGetValue(turret, out int b) ? 1 - b : 0;
+        turretBarrel[turret] = barrel;
+        Vector3 muzzle = TurretMuzzle(centre, angle, barrel);
+        float now = Time.time;
+        if (!turretSoundAt.TryGetValue(turret, out float sounded) || now - sounded >= TurretLoopSeconds)
+        {
+            turretSoundAt[turret] = now;
+            WAR2D.Audio.AudioService.Sfx("turret_fire_loop", muzzle);
+        }
         TurretShots++;
+        if (turretDrawnAt.TryGetValue(turret, out float drawn) && now - drawn < TurretStreamSeconds && turret != 0) return;
+        turretDrawnAt[turret] = now;
+        Slot flash = Take(TwinMuzzles);
+        if (flash == null) return;
         flash.Go.transform.SetPositionAndRotation(muzzle, Quaternion.Euler(0f, 0f, angle * Mathf.Rad2Deg));
         if (!to.HasValue) return;
-        if (Shot(Tracers, muzzle, to.Value, TankShotTiles) != null) TurretTracers++;
+        TurretStreams++;
+        if (Shot(TracerStreams, muzzle, to.Value, StreamTiles) != null) TurretTracers++;
     }
 
     /// <summary>A Jammer's pulse (v0.13), centred on its footprint (the art places the rings on its dish).</summary>
@@ -520,8 +702,16 @@ public static class Effects
         Slot s = Take(tiles >= 4 ? Collapses : Blasts);
         // The blast art is 3 or 4 tiles (never scaled: the pixels stay crisp); the ripple below covers a larger footprint.
         if (s != null) s.Go.transform.SetPositionAndRotation(new Vector3(centre.x, centre.y, 0f), Quaternion.identity);
-        WAR2D.Audio.AudioService.Sfx("explosion_large", centre);
+        WAR2D.Audio.AudioService.Sfx("building_collapse", centre); // v0.20
         WAR2D.Audio.AudioService.Sfx("building_destroyed", centre);
+        // v0.20 (spec §8.1): a dust cloud over the footprint, and the HQ ends with a larger blast.
+        Slot dust = Take(DustClouds);
+        if (dust != null) { dust.Go.transform.SetPositionAndRotation(new Vector3(centre.x, centre.y, 0f), Quaternion.identity); dust.Go.transform.localScale = Vector3.one * Mathf.Max(1f, tiles / 3f); }
+        if (tiles >= 5)
+        {
+            Slot finale = Take(FinaleBlasts);
+            if (finale != null) finale.Go.transform.SetPositionAndRotation(new Vector3(centre.x, centre.y, 0f), Quaternion.identity);
+        }
         int follow = tiles * tiles / 2;
         float now = Time.time, half = tiles * 0.4f;
         for (int k = 0; k < follow && delayed.Count < MaxDelayed; k++)
@@ -597,6 +787,16 @@ public static class Effects
         TurretTracers = 0;
         delayed.Clear();
         flameOf.Clear();
+        TurretStreams = 0;
+        lastArmourPing = float.NegativeInfinity;
+        turretDrawnAt.Clear();
+        turretSoundAt.Clear();
+        turretBarrel.Clear();
+        foreach (Pool p in Onslaught)
+        {
+            p.Slots.Clear();
+            p.Next = 0;
+        }
         foreach (Pool p in new[] { Explosions, Flashes, Tracers, Blasts, Debris, Sparks, SniperTracers, Shells, Impacts, Streams, BomberBlasts, TurretFlashes, Pulses, Smokes, Fires, Sparkles, Collapses, HitSparks, Dust, FlameFires, BurstsScout, BurstsSniper, BurstsTank, BurstsHeavy, ScoutTracers, ShellShadows, ShellPuffs })
         {
             p.Slots.Clear();
@@ -688,6 +888,8 @@ public static class Effects
             Animate(Collapses, now, false);
             Animate(HitSparks, now, false);
             Animate(Dust, now, false);
+            foreach (Pool p in Onslaught) if (p != IncomingShells) Animate(p, now, false);
+            Animate(IncomingShells, now, true);
             Release(now);
         }
 
@@ -699,7 +901,12 @@ public static class Effects
                 Delayed d = delayed[i];
                 if (d.At > now) continue;
                 delayed.RemoveAt(i);
-                if (d.Debris) DigDebris(d.Position);
+                if (d.Large)
+                {
+                    Slot s = Take(DeathsLarge);
+                    if (s != null) s.Go.transform.SetPositionAndRotation(new Vector3(d.Position.x, d.Position.y, 0f), Quaternion.identity);
+                }
+                else if (d.Debris) DigDebris(d.Position);
                 else Explosion(d.Position);
             }
         }
@@ -718,15 +925,20 @@ public static class Effects
                     {
                         if (s.ImpactOnLanding)
                         {
-                            ShellImpact(s.To);
-                            Decals.Crater(s.To);
+                            ArtilleryLanding(s.To); // v0.20: every shell is the big one
                             if (s.Partner != null) Stop(s.Partner);
                         }
                         else if (s.SparkOnLanding) HitSpark(s.To);
                         Stop(s);
                         continue;
                     }
-                    if (s.ImpactOnLanding) Fly(s, t, age);
+                    if (s.ImpactOnLanding && pool == IncomingShells)
+                    {
+                        // Falling steeply onto its point: straight down, the two frames flickering.
+                        s.Go.transform.position = Vector3.Lerp(s.From, s.To, t * t);
+                        s.Sprite.sprite = atlas.Sprite(pool.Id, (int)(age * ArtStyle.FramesPerSecond) % atlas.FrameCount(pool.Id));
+                    }
+                    else if (s.ImpactOnLanding) Fly(s, t, age);
                     else
                     {
                         s.Go.transform.position = ShotCentre(s.From, s.To, t, s.Length, out float drawn);

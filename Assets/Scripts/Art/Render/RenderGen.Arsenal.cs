@@ -72,7 +72,7 @@ namespace WAR2D.Art.Render
         public static float TurretPivot(UnitType type) => type switch
         {
             UnitType.Scout => -2f,
-            UnitType.Sniper => -4f,
+            UnitType.Sniper => Sniper2x2Pivot, // v0.20: the 2×2 Sniper
             UnitType.Heavy => -6f,
             UnitType.Artillery => -8f,
             _ => 0f,
@@ -94,7 +94,7 @@ namespace WAR2D.Art.Render
         {
             UnitType.Tank => Tank(angle, frame, angle, UnitLayer.Hull),
             UnitType.Scout => Scout(angle, frame, angle, UnitLayer.Hull),
-            UnitType.Sniper => Sniper(angle, frame, angle, UnitLayer.Hull),
+            UnitType.Sniper => Sniper2x2(angle, frame, angle, UnitLayer.Hull),
             UnitType.Heavy => Heavy(angle, frame, angle, UnitLayer.Hull),
             UnitType.Artillery => Artillery(angle, frame, false, angle, UnitLayer.Hull),
             _ => throw new ArgumentException($"{type} has no turret"),
@@ -108,7 +108,7 @@ namespace WAR2D.Art.Render
         {
             UnitType.Tank => Tank(turret, frame == 1 ? 2 : 0, turret, UnitLayer.Turret),
             UnitType.Scout => Scout(turret, frame == 1 ? 2 : 0, turret, UnitLayer.Turret),
-            UnitType.Sniper => Sniper(turret, frame == 1 ? 2 : 0, turret, UnitLayer.Turret),
+            UnitType.Sniper => Sniper2x2(turret, frame == 1 ? 2 : 0, turret, UnitLayer.Turret),
             UnitType.Heavy => Heavy(turret, frame == 1 ? 2 : 0, turret, UnitLayer.Turret),
             UnitType.Artillery => Artillery(turret, frame == 2 ? 2 : 0, frame >= 1, turret, UnitLayer.Turret),
             _ => throw new ArgumentException($"{type} has no turret"),
@@ -205,7 +205,7 @@ namespace WAR2D.Art.Render
             var c = new LitCanvas(size, size);
             float o = size / 2f;
             var L = Local(angle, o);
-            var T = TurretLocal(angle, turret, o, TurretPivot(UnitType.Sniper), layer);
+            var T = TurretLocal(angle, turret, o, -4f, layer); // the 1×1 Sniper before v0.20 (render samples only)
             float spin = frame == 1 ? 1.5f : 0f, recoil = frame == 2 ? 2f : 0f;
             if (layer == UnitLayer.Turret) c.Floor(10);
             else

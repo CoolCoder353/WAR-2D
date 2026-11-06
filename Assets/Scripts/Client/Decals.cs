@@ -71,8 +71,10 @@ public static class Decals
     private static readonly Pool Tracks = new Pool("Tracks", TrackPool, TrackHold, TrackFade);
     private static readonly Pool Wrecks = new Pool("Wreck", WreckPool, WreckHold, WreckFade);
     private static readonly Pool Craters = new Pool("Crater", CraterPool, CraterHold, CraterFade);
+    /// <summary>v0.20: the larger crater an Artillery shell's 3.5-tile blast leaves.</summary>
+    private static readonly Pool LargeCraters = new Pool("CraterLarge", CraterPool, CraterHold, CraterFade);
     private static readonly Pool[] RubblePools = { Rubble1, Rubble2, Rubble3, Rubble5 };
-    private static readonly Pool[] All = { Scorches, LargeScorches, Rubble1, Rubble2, Rubble3, Rubble5, Tracks, Wrecks, Craters };
+    private static readonly Pool[] All = { Scorches, LargeScorches, Rubble1, Rubble2, Rubble3, Rubble5, Tracks, Wrecks, Craters, LargeCraters };
     private static Runner runner;
     private static ArtAtlas atlas;
 
@@ -162,6 +164,21 @@ public static class Decals
     /// <summary>The crater a shell leaves where it lands: one of the drawn craters, fixed by the spot so nothing random runs per shot.</summary>
     public static void Crater(Vector2 position) =>
         Place(Craters, position, (Mathf.FloorToInt(position.x * 7f) + Mathf.FloorToInt(position.y * 13f) & int.MaxValue) % EffectGen.CraterVariants);
+
+    /// <summary>v0.20: the larger crater of an Artillery shell's blast, chosen by the spot like <see cref="Crater"/>.</summary>
+    public static void CraterLarge(Vector2 position) =>
+        Place(LargeCraters, position, (Mathf.FloorToInt(position.x * 7f) + Mathf.FloorToInt(position.y * 13f) & int.MaxValue) % EffectGen.CraterVariants);
+
+    /// <summary>v0.20: a wreck burnt black (a fire death): the wreck, darker.</summary>
+    public static void BurntWreck(Vector2 position, Sprite sprite)
+    {
+        if (sprite == null) return;
+        Slot s = Place(Wrecks, position, 0, sprite);
+        if (s != null) s.Sprite.color = BurntTint;
+    }
+
+    /// <summary>v0.20: a burnt wreck's tint, darker than <see cref="WreckTint"/>.</summary>
+    private static readonly Color BurntTint = new Color(0.22f, 0.2f, 0.19f, 1f);
 
     /// <summary>Destroys every pooled sprite (tests, and the end of a match).</summary>
     public static void Clear()

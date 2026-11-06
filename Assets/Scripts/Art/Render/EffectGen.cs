@@ -383,6 +383,9 @@ namespace WAR2D.Art.Render
         /// <summary>Tiles of splash radius <see cref="FlameSplash"/> is drawn for: scaled to the real one when shown.</summary>
         public const float FlameSplashTiles = 1.5f;
 
+        /// <summary>v0.20: the splash radius the atlas's FlameSplash (<see cref="FlameSplashSized"/>) is drawn for; the client scales it to the real one.</summary>
+        public const float FlameSpreadArtTiles = 2.5f;
+
         /// <summary>
         /// Fire where a flame lands, 3 tiles square: soft blobs scattered over the splash circle, hot and strong at its centre and
         /// weak at its edge as the damage is, flickering between the frames. Nothing is drawn outside the circle.
@@ -865,6 +868,21 @@ namespace WAR2D.Art.Render
             return img.Done();
         }
 
+        /// <summary>A frame centred on a larger transparent canvas of <paramref name="w"/> × <paramref name="h"/> (whole tiles for the atlas).</summary>
+        private static EffectFrame Padded(EffectFrame f, int w, int h)
+        {
+            if (f.Width == w && f.Height == h) return f;
+            var px = new Color32[w * h];
+            int ox = (w - f.Width) / 2, oy = (h - f.Height) / 2;
+            for (int y = 0; y < f.Height; y++)
+            for (int x = 0; x < f.Width; x++)
+            {
+                int tx = x + ox, ty = y + oy;
+                if ((uint)tx < (uint)w && (uint)ty < (uint)h) px[ty * w + tx] = f.Pixels[y * f.Width + x];
+            }
+            return new EffectFrame(px, w, h);
+        }
+
         /// <summary>The frame for cell <paramref name="cell"/> of an effect id, or null when it has no generator.</summary>
         public static EffectFrame? For(string id, int cell, int frames)
         {
@@ -880,12 +898,12 @@ namespace WAR2D.Art.Render
                 case "BurstHeavy": return MuzzleBurst(BurstHeavyTiles, cell);
                 case "Tracer": return Tracer();
                 case "ScoutTracer": return ScoutTracer();
-                case "SniperTracer": return SniperTracer();
-                case "ArtilleryShell": return ArtilleryShell(cell / frames, cell % frames);
+                case "SniperTracer": return SniperTrail(t); // v0.20
+                case "ArtilleryShell": return HeavyShell((cell / frames) * 2f * Mathf.PI / 16f, cell % frames); // v0.20: the larger shell
                 case "ShellShadow": return ShellShadow();
                 case "ShellPuff": return ShellPuff(t);
                 case "Crater": return Crater(cell / frames, cell % frames); // variant-major, like units
-                case "FlameSplash": return FlameSplash(cell);
+                case "FlameSplash": return FlameSplashSized(cell, 2.5f); // v0.20: over the 2.5-tile spread
                 case "BarrelShadow": return BarrelShadow(cell);
                 case "ShellImpact": return ShellImpact(t, 37);
                 case "FlameStream": return FlameStream(cell);
@@ -913,6 +931,29 @@ namespace WAR2D.Art.Render
                 case "GemSparkle": return GemSparkle(cell);
                 case "HitSpark": return HitSpark(cell);
                 case "DustPuff": return DustPuff(t, 71);
+                // v0.20 Onslaught (EffectGen.Onslaught), approved 2026-11-06.
+                case "LeapSparks": return LeapSparks(t, 7);
+                case "LeapShadow": return LeapShadow(t);
+                case "BomberLanding": return ShockBlast(5, 2f, t, 29);
+                case "BurnFlames1": return Padded(BurnFlames(1, cell), T, 2 * T);
+                case "BurnFlames2": return Padded(BurnFlames(2, cell), 2 * T, 3 * T);
+                case "BurnFlames3": return Padded(BurnFlames(3, cell), 3 * T, 4 * T);
+                case "SootSmoke": return SootSmoke(t, 3);
+                case "FlameScorch": return FlameScorch(cell, 9);
+                case "AimLaser": return AimLaser(t);
+                case "MuzzleGlint": return Padded(MuzzleGlint(cell), T, T);
+                case "SniperHit": return SniperHit(cell);
+                case "ArmourSparks": return ArmourSparks(cell);
+                case "IncomingShell": return IncomingShell(cell);
+                case "LaunchPuff": return LaunchPuff(t, 5);
+                case "ArtilleryBlast": return ShockBlast(8, 3.5f, t, 37, dust: true);
+                case "CraterLarge": return CraterLarge(cell / frames, cell % frames);
+                case "TwinMuzzle": return TwinMuzzle(cell);
+                case "TracerStream": return TracerStream(cell);
+                case "DeathSmall": return DeathSmall(t, 41);
+                case "DeathLarge": return DeathLarge(t, 43);
+                case "Debris": return Debris(t, 47);
+                case "DustCloud": return DustCloud(2, t, 53);
                 default: return null;
             }
         }

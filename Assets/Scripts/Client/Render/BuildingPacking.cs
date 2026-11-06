@@ -131,7 +131,9 @@ namespace WAR2D.Client.Render
                     ClientBuildings.TurretHead head = headOf != null ? headOf(d.id) : new ClientBuildings.TurretHead { FiredAt = float.NegativeInfinity };
                     var (headFirst, headFrames, headDirections) = frames.Head;
                     int headFacing = head.Facing % headDirections;
-                    int recoil = !e.Ghost && headFrames > 1 && time - head.FiredAt < RecoilSeconds && time >= head.FiredAt ? 1 : 0;
+                    // v0.20: the 2×2 head's frames 1 and 2 fire its left and right barrels; ten shots a second alternate them.
+                    int recoil = !e.Ghost && headFrames > 1 && time - head.FiredAt < RecoilSeconds && time >= head.FiredAt
+                        ? 1 + ((int)(time * 20f) & 1) % (headFrames - 1) : 0;
                     into.Buildings.Add(new UnitInstance
                     {
                         position = centre, rotation = HeadLayer, frame = (uint)(headFirst + headFacing * headFrames + recoil),

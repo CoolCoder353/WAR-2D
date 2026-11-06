@@ -74,7 +74,7 @@ namespace WAR2D.Client.Render
         public static float MuzzleForward(UnitType type) => type switch
         {
             UnitType.Scout => 17f,
-            UnitType.Sniper => 33.5f,
+            UnitType.Sniper => RenderGen.Sniper2x2Pivot + RenderGen.Sniper2x2MuzzleReach, // v0.20: the 2×2 Sniper's long barrel
             UnitType.Heavy => 60f,
             UnitType.Artillery => ArtilleryBoreForward,
             _ => 34f,

@@ -59,6 +59,10 @@ namespace WAR2D.Client
         private NativeList<UnitInstance> turrets;
         private NativeList<UnitInstance> barrelShadows;
         private Effects.FlameLine flameLine;
+        /// <summary>v0.20: fires, lasers, leaps and reload bars (<see cref="CombatVisuals"/>), and the health bars hidden in the air.</summary>
+        private CombatVisuals combatVisuals;
+        private NativeArray<byte> hideBar;
+        private readonly List<int> ownSelected = new List<int>();
         private UnitFrames.Table frames;
         private NativeArray<uint> color;
         private NativeArray<float> health01;
@@ -160,6 +164,11 @@ namespace WAR2D.Client
                 DecayPercentPerSecond = config.Resources.DecayPercentPerSecond,
             };
             store.Died += OnUnitDied;
+            // v0.20: the combat news's drawing, and what it forgets when a unit leaves.
+            combatVisuals = new CombatVisuals(dt, config);
+            hideBar = new NativeArray<byte>(capacity, Allocator.Persistent);
+            store.Forgotten += index => { ClientCombat.Current.Forget(index); combatVisuals.Forget(index); };
+            Effects.LandingShown = p => UnitShown == null ? ClientFog.Current.State == null || ClientFog.Current.Sees(p.x, p.y) : UnitShown(0, new float2(p.x, p.y));
             store.Appeared += (index, at) => worldEffects.UnitAppeared(new Vector2(at.x, at.y), store.OwnerOf(index), Time.time - firstBatchAt);
             lastPosition = new NativeArray<float2>(capacity, Allocator.Persistent);
             rotation = new NativeArray<float>(capacity, Allocator.Persistent);
@@ -198,6 +207,9 @@ namespace WAR2D.Client
             ReplicationClient.Received -= OnBatch;
             Palettes.Changed -= colorOfOwner.Clear;
             worldEffects?.Dispose();
+            combatVisuals?.Dispose();
+            Effects.LandingShown = null;
+            if (hideBar.IsCreated) hideBar.Dispose();
             ClientFog.Clear(); // the match is over; the next one starts with a fresh snapshot
             ClientBuildings.Clear();
             ClientCombat.Clear();
@@ -439,6 +451,14 @@ namespace WAR2D.Client
             {
                 int index = known[i];
                 float2 p = positions[i];
+                // v0.20: a Bomber in the air flies its leap's line, drawn raised on its arc (its shadow keeps to the ground).
+                hideBar[index] = 0;
+                if (combatVisuals.Airborne(index, out float2 raised, out float2 ground, out _))
+                {
+                    p = raised;
+                    positions[i] = raised;
+                    hideBar[index] = 1;
+                }
                 float2 delta = p - lastPosition[index];
                 bool moving = math.lengthsq(delta) > 1e-6f && math.lengthsq(delta) < 4f;
                 if (moving) rotation[index] = math.atan2(delta.y, delta.x);
@@ -454,6 +474,10 @@ namespace WAR2D.Client
                     PackTurret(index, store.TypeOf(index), p, now);
             }
             Effects.FollowFlames(flameLine);
+            ownSelected.Clear();
+            foreach (int index in selectedIndices)
+                if ((selected[index] & 1) != 0 && store.IsKnown(index) && store.OwnerOf(index) == WorldEffects.LocalOwner) ownSelected.Add(index);
+            combatVisuals.Draw(now, serverTime, view, UnitAt, ownSelected, BuildingsShown ?? ClientBuildings.Current);
 
             instances.ResizeUninitialized(count);
             bars.ResizeUninitialized(count);
@@ -471,6 +495,7 @@ namespace WAR2D.Client
                 BarMode = SettingsStore.Current.HealthBars,
                 Selected = selected,
                 Flash = flash,
+                HideBar = hideBar,
                 Trail = trail,
                 UnitHalfSize = 0.4f,
                 RingFrame = unitRenderer.RingFrame,
@@ -499,6 +524,8 @@ namespace WAR2D.Client
         {
             UnitType unit = (UnitType)type;
             ResetTurretIfNew(index);
+            // v0.20 (spec §8.3): a Sniper's head turns to what it aims at and holds there while it aims.
+            if (combatVisuals.AimTarget(index, out float2 aimed)) { aimAt[index] = aimed; aimUntil[index] = now + TurretAim.HoldSeconds; }
             bool aiming = now < aimUntil[index];
             float hull = rotation[index];
             float goal = TurretAim.Goal(hull, aiming ? math.atan2(aimAt[index].y - p.y, aimAt[index].x - p.x) : 0f, aiming);
@@ -567,12 +594,28 @@ namespace WAR2D.Client
         {
             byte type = store.TypeOf(index);
             var position = new Vector2(at.x, at.y);
-            worldEffects.UnitDied(position, ScaleOf(type) > 1.5f);
+            bool large = ScaleOf(type) > 1.5f;
+            worldEffects.UnitDied(position, large);
+            // v0.20 (spec §8.1): the death by its cause and size; a Bomber's own blast is its death.
+            byte cause = store.LastDeathReason == LeaveReason.DiedBlast ? (byte)1 : store.LastDeathReason == LeaveReason.DiedFire ? (byte)2 : (byte)0;
+            if (type != (byte)UnitType.Bomber) Effects.UnitDeath(position, large, cause);
             if (unitAtlas == null || type == (byte)UnitType.Bomber || (uint)index >= (uint)rotation.Length) return;
             string id = ((UnitType)type).ToString();
             int directions = unitAtlas.Directions(id);
             if (directions <= 0) return;
-            Decals.Wreck(position, unitAtlas.Sprite(id, UnitFrames.Direction(rotation[index], directions) * unitAtlas.Frames(id)));
+            Sprite wreck = unitAtlas.Sprite(id, UnitFrames.Direction(rotation[index], directions) * unitAtlas.Frames(id));
+            // A blast flings the wreck up to a tile from where it stood; fire leaves it burnt black.
+            if (cause == 1) position += new Vector2(Mathf.Cos(index * 2.39996f), Mathf.Sin(index * 2.39996f)) * 0.6f;
+            if (cause == 2) Decals.BurntWreck(position, wreck);
+            else Decals.Wreck(position, wreck);
+        }
+
+        /// <summary>v0.20: a known unit's drawn position, type and size by id index, for <see cref="CombatVisuals"/>.</summary>
+        private (bool known, float2 at, byte type, float scale) UnitAt(int index)
+        {
+            if (!store.IsKnown(index) || (uint)index >= (uint)lastPosition.Length) return (false, default, 0, 0f);
+            byte type = store.TypeOf(index);
+            return (true, lastPosition[index], type, ScaleOf(type));
         }
 
         private float ScaleOf(byte type)
@@ -701,7 +744,7 @@ namespace WAR2D.Client
                 if (viewport.x < 0 || viewport.x > 1 || viewport.y < 0 || viewport.y > 1) continue;
                 float angle = known.HeadOf(building).Facing * math.PI / 4f;
                 bool line = named && Overlays.OverlayRules.KeepTracer(tracerMode, tracerSerial++);
-                Effects.TurretShot(new Vector2(centre.x, centre.y), angle, line ? to : (Vector3?)null);
+                Effects.TurretShot(new Vector2(centre.x, centre.y), angle, line ? to : (Vector3?)null, building);
             }
             buildingAttacks.Clear();
         }
@@ -734,9 +777,11 @@ namespace WAR2D.Client
                 UnitType type = (UnitType)store.TypeOf(attacker);
                 // The Gameplay setting thins or hides the tracer lines; the flash, sound, shells and flame streams stay.
                 bool line = Overlays.OverlayRules.KeepTracer(tracerMode, tracerSerial++);
+                ArmourCheck(type, target, to);
                 if (TurretAim.Has(type))
                 {
                     FireGun(attacker, type, from, target, to, line);
+                    if (store.OwnerOf(attacker) == WorldEffects.LocalOwner) combatVisuals.Fired(attacker);
                     continue;
                 }
                 // Face the target: the facing picks the drawn direction, and the fire frames show the barrel.
@@ -763,6 +808,21 @@ namespace WAR2D.Client
             float2 ahead = store.PredictOne(attacker, serverTime + DriftSampleSeconds) - from;
             Vector3 drift = new Vector3(ahead.x, ahead.y, 0f) / DriftSampleSeconds;
             Effects.GunShot(type, new Vector2(from.x, from.y), TurretAim.HullAngle(rotation[attacker]), turret, to, TargetRadius(target), line, drift);
+        }
+
+        /// <summary>
+        /// v0.20 (spec §8.2): a shot a known armoured unit's flat armour cuts to the least hit shows the armour spark ring, so small arms
+        /// visibly bounce off. Worked out here from the config the client already has, from shots it was already told about.
+        /// </summary>
+        private void ArmourCheck(UnitType attacker, int target, Vector3 to)
+        {
+            int index = NetIdAllocator.IndexOf(target);
+            if (target <= 0 || store.IdOf(index) != target) return;
+            GameConfigData config = ConfigLoader.LoadConfig();
+            UnitConfig victim = config.GetUnit((UnitType)store.TypeOf(index)), gun = config.GetUnit(attacker);
+            if (victim.FlatArmour <= 0f || gun.FiresShells || gun.IsBomber) return;
+            float raw = gun.Damage * config.Damage.Multiplier(attacker, victim.Armour);
+            if (raw > 0f && raw - victim.FlatArmour <= config.Combat.MinHit) Effects.ArmourSpark(new Vector2(to.x, to.y));
         }
 
         /// <summary>Seconds ahead a gun's speed is read from its route.</summary>
