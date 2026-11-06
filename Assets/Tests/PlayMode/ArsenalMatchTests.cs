@@ -112,6 +112,133 @@ public class ArsenalMatchTests
         Assert.That(PlayModeMatch.Em.GetComponentData<HealthComponent>(target).currentHealth, Is.EqualTo(before - 300f).Within(0.01f));
     }
 
+    // ---------- v0.20 Onslaught in a hosted match (spec §13) ----------
+
+    /// <summary>A Flamethrower sets an enemy Barracks burning, and the host's client is told it burns.</summary>
+    [UnityTest, Timeout(120000)]
+    public IEnumerator AFlamethrowerSetsAnEnemyBarracksBurning()
+    {
+        int2 hq = default;
+        yield return HostWithHQ(a => hq = a);
+        WorldStateManager wsm = WorldStateManager.Instance;
+        DevApi.AllowForTests = true;
+        GameCore.Instance.DevAddScriptedAi(Bot, 1e9f);
+        PlaceFar(BuildingType.Base, hq, 1e7f);
+        int2 barracks = PlaceNear(BuildingType.Barracks, hq, 14);
+        yield return PlayModeMatch.WaitUntil(() => FindBuilding(BuildingType.Barracks) > 0, 10f);
+        int id = FindBuilding(BuildingType.Barracks);
+        Assert.That(SpawnNear(PlayModeMatch.LocalOwner, barracks, 4, UnitType.Flamethrower), Is.True, "room for the Flamethrower");
+        yield return PlayModeMatch.WaitUntil(() => WAR2D.Net.Replication.ClientBuildings.Current.Burning.Contains(id), 20f, () => "the client never saw the Barracks burn");
+    }
+
+    /// <summary>A Sniper aims (its side is told), then one shot takes most of a Heavy.</summary>
+    [UnityTest, Timeout(120000)]
+    public IEnumerator ASniperAimsAndHitsAHeavyHard()
+    {
+        int2 hq = default;
+        yield return HostWithHQ(a => hq = a);
+        DevApi.AllowForTests = true;
+        GameCore.Instance.DevAddScriptedAi(Bot, 1e9f);
+        PlaceFar(BuildingType.Base, hq, 1e7f);
+        int2 at = default;
+        bool spawned = false;
+        for (int i = 0; i < 80 && !spawned; i++) { at = Ring(hq, 12, i); spawned = WorldStateManager.Instance.Map.Grid.IsWalkable(at) && WorldStateManager.Instance.DevSpawnUnit(Bot, (float2)at + 0.5f, null, UnitType.Heavy); }
+        Assert.That(spawned, Is.True, "room for the Heavy");
+        Assert.That(SpawnNear(PlayModeMatch.LocalOwner, at, 9, UnitType.Sniper), Is.True, "room for the Sniper");
+        bool aimed = false;
+        System.Action<WAR2D.Net.Replication.CombatNews> onNews = news => aimed |= news.Aims.Count > 0;
+        WAR2D.Net.Replication.ClientCombat.Received += onNews;
+        try
+        {
+            yield return PlayModeMatch.WaitUntil(() => CountUnits(PlayModeMatch.LocalOwner, UnitType.Sniper) == 1 && CountUnits(Bot, UnitType.Heavy) == 1, 5f);
+            // One aimed shot: 160 × 2 less the Heavy's armour (an unscreened Sniper then loses to the Heavy closing in: it needs a screen).
+            float hit = config.GetUnit(UnitType.Sniper).Damage * config.Damage.Multiplier(UnitType.Sniper, TargetClass.HeavyUnit) - config.GetUnit(UnitType.Heavy).FlatArmour;
+            yield return PlayModeMatch.WaitUntil(() => HealthOf(Bot, UnitType.Heavy) <= config.GetUnit(UnitType.Heavy).Health - hit + 0.01f, 30f,
+                () => $"no aimed shot: {Describe(Bot, UnitType.Heavy)}, {Describe(PlayModeMatch.LocalOwner, UnitType.Sniper)}");
+            Assert.That(aimed, Is.True, "the Sniper's side was told of its aim");
+        }
+        finally { WAR2D.Net.Replication.ClientCombat.Received -= onNews; }
+    }
+
+    /// <summary>Artillery fires at a target 30 tiles off, past its own sight, on a Scout's sight, and the shell's flight reaches its side.</summary>
+    [UnityTest, Timeout(120000)]
+    public IEnumerator ArtilleryShellsATargetOnAScoutsSight()
+    {
+        int2 hq = default;
+        yield return HostWithHQ(a => hq = a);
+        WorldStateManager wsm = WorldStateManager.Instance;
+        DevApi.AllowForTests = true;
+        GameCore.Instance.DevAddScriptedAi(Bot, 1e9f);
+        PlaceFar(BuildingType.Base, hq, 1e7f);
+        // A straight open line of 31 tiles: the gun at one end, a Scout 8 tiles short of the other, the target at the end.
+        int2 gun = default, step = default;
+        bool found = false;
+        int2[] directions = { new int2(1, 0), new int2(-1, 0), new int2(0, 1), new int2(0, -1) };
+        for (int ring = 6; ring < 30 && !found; ring++)
+        for (int i = 0; i < 8 * ring && !found; i++)
+        foreach (int2 d in directions)
+        {
+            int2 start = Ring(hq, ring, i);
+            bool open = true;
+            for (int k = 0; k <= 31 && open; k++) open = wsm.Map.Grid.IsWalkable(start + d * k) && wsm.Map.Grid.IsWalkable(start + d * k + new int2(d.y, d.x)) && wsm.Map.Grid.IsWalkable(start + d * k - new int2(d.y, d.x));
+            if (!open) continue;
+            gun = start; step = d; found = true;
+            break;
+        }
+        Assert.That(found, Is.True, "an open 31-tile line");
+        int full = 0;
+        System.Action<WAR2D.Net.Replication.CombatNews> onNews = news => { foreach (var shell in news.Shells) if (shell.Full) full++; };
+        WAR2D.Net.Replication.ClientCombat.Received += onNews;
+        try
+        {
+            Assert.That(wsm.DevSpawnUnit(Bot, (float2)(gun + step * 30) + 0.5f, null, UnitType.Tank), Is.True);
+            Assert.That(wsm.DevSpawnUnit(PlayModeMatch.LocalOwner, (float2)(gun + step * 22) + 0.5f, null, UnitType.Scout), Is.True);
+            Assert.That(wsm.DevSpawnUnit(PlayModeMatch.LocalOwner, (float2)gun + 0.5f, null, UnitType.Artillery), Is.True);
+            yield return PlayModeMatch.WaitUntil(() => full > 0, 30f, () => "no shell was fired");
+        }
+        finally { WAR2D.Net.Replication.ClientCombat.Received -= onNews; }
+    }
+
+    private static float HealthOf(int owner, UnitType type)
+    {
+        using var q = PlayModeMatch.Em.CreateEntityQuery(typeof(WAR2D.Sim.Unit));
+        using var units = q.ToComponentDataArray<WAR2D.Sim.Unit>(Allocator.Temp);
+        foreach (WAR2D.Sim.Unit u in units) if (u.OwnerId == owner && u.Type == (byte)type) return u.Health;
+        return 0f;
+    }
+
+    private static string Describe(int owner, UnitType type)
+    {
+        using var q = PlayModeMatch.Em.CreateEntityQuery(typeof(WAR2D.Sim.Unit));
+        using var units = q.ToComponentDataArray<WAR2D.Sim.Unit>(Allocator.Temp);
+        foreach (WAR2D.Sim.Unit u in units) if (u.OwnerId == owner && u.Type == (byte)type) return $"{type} at {u.Position} hp {u.Health} target {u.TargetId} stance {u.Stance}";
+        return $"no {type}";
+    }
+
+    private static int2 PlaceNear(BuildingType type, int2 from, int distance)
+    {
+        WorldStateManager wsm = WorldStateManager.Instance;
+        for (int ring = distance; ring < distance + 16; ring++)
+        for (int i = 0; i < 8 * ring; i++)
+        {
+            int2 at = Ring(from, ring, i);
+            if (wsm.DevPlaceBuilding(Bot, type, at)) return at;
+        }
+        Assert.Fail($"no room for the bot's {type}");
+        return default;
+    }
+
+    private static bool SpawnNear(int owner, int2 at, int distance, UnitType type)
+    {
+        WorldStateManager wsm = WorldStateManager.Instance;
+        for (int i = 0; i < 8 * distance; i++)
+        {
+            int2 tile = Ring(at, distance, i);
+            if (wsm.Map.Grid.IsWalkable(tile) && wsm.DevSpawnUnit(owner, (float2)tile + 0.5f, null, type)) return true;
+        }
+        return false;
+    }
+
     private IEnumerator HostWithHQ(System.Action<int2> anchorOut = null)
     {
         yield return PlayModeMatch.StartMatchAsHost(config);
