@@ -34,6 +34,9 @@ public partial class GameCore
     [Server]
     private void ApplyRememberedLobby()
     {
+        // A perf or bench host (-perf) plays its own scripted match: the player's remembered AI seats would take its bots' places
+        // (2026-11-07: the gate refused two of its seven clients), so it neither reads nor (below) overwrites the player's lobby.
+        if (DevApi.PerfFlag) return;
         RememberedLobby lobby = LobbyMemory.Load();
         if (lobby == null) return;
         Settings = LobbyMemory.Apply(Settings, lobby, ConfigLoader.LoadConfig().Lobby);
@@ -50,6 +53,7 @@ public partial class GameCore
     [Server]
     private void RememberLobby()
     {
+        if (DevApi.PerfFlag) return;
         var lobby = new RememberedLobby
         {
             Mode = Settings.Mode, Diplomacy = Settings.Diplomacy, MapSize = Settings.MapSize, StartingResources = Settings.StartingResources, InfiniteResources = Settings.InfiniteResources,
