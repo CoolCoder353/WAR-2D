@@ -158,19 +158,54 @@ namespace WAR2D.Net.Replication
         /// <summary>Most waypoints one route may carry.</summary>
         public const int MaxRouteWaypoints = 4096;
 
+        /// <summary>Most waypoints one MoveOrder message may decode to (copy steps make routes cheap, so the payload no longer bounds them).</summary>
+        public const int MaxMessageWaypoints = 1 << 17;
+
+        /// <summary>
+        /// Route step markers, read where a step's x byte would be: an absolute point follows, or (MoveOrder only, protocol 22) a copy
+        /// of an earlier route's run in the same message. So a step's x delta is never -128 or -127.
+        /// </summary>
+        public const byte AbsoluteMarker = 0x80, CopyMarker = 0x81;
+
+        /// <summary>The shortest run a copy step is used for: it costs about four bytes, a waypoint step two.</summary>
+        public const int MinCopy = 3;
+
         // ---------- sizes, for packing ----------
 
-        /// <summary>Bytes a route takes on the wire.</summary>
+        /// <summary>Bytes a route takes on the wire without copy steps (Enter).</summary>
         public static int RouteSize(NativeArray<int2> waypoints, int first, int count)
         {
             int size = VarInt.Size((uint)count) + 4;
-            for (int i = 1; i < count; i++)
-            {
-                int2 d = waypoints[first + i] - waypoints[first + i - 1];
-                size += d.x >= -127 && d.x <= 127 && d.y >= -127 && d.y <= 127 ? 2 : 5;
-            }
+            for (int i = 1; i < count; i++) size += IsStep(waypoints[first + i] - waypoints[first + i - 1]) ? 2 : 5;
             return size;
         }
+
+        /// <summary>
+        /// Where the MoveOrder message that starts at <paramref name="start"/> ends: as many routes as fit <see cref="WireLimits.ReliableChunk"/>
+        /// bytes, each sized as written (its copy steps depend on the routes before it), and <see cref="MaxMessageWaypoints"/> waypoints,
+        /// which the decoder holds a message to. Always at least one route.
+        /// </summary>
+        public static int MoveOrderChunkEnd(NativeArray<int2> tiles, NativeArray<RouteUnit> units, int start, ref RouteCopies copies)
+        {
+            copies.Clear();
+            int index = start, size = 8, previous = 0, waypoints = 0;
+            while (index < units.Length)
+            {
+                RouteUnit u = units[index];
+                var counted = new CountingSink();
+                copies.Write(ref counted, tiles, u.First, u.Count);
+                int cost = VarInt.Size((uint)(u.Index - previous)) + counted.Position;
+                if (index > start && (size + cost > WireLimits.ReliableChunk || waypoints + u.Count > MaxMessageWaypoints)) break;
+                size += cost;
+                waypoints += u.Count;
+                previous = u.Index;
+                index++;
+            }
+            return index;
+        }
+
+        /// <summary>True when a waypoint's delta from the last one fits a two-byte step.</summary>
+        private static bool IsStep(int2 d) => d.x >= -126 && d.x <= 127 && d.y >= -127 && d.y <= 127;
 
         /// <summary>Bytes one Enter entry takes on the wire.</summary>
         public static int EnterUnitSize(NativeArray<int2> waypoints, in EnterUnit u, int previousIndex) =>
@@ -190,22 +225,84 @@ namespace WAR2D.Net.Replication
             int2 tile = waypoints[first];
             writer.WriteUShort((ushort)tile.x);
             writer.WriteUShort((ushort)tile.y);
-            for (int i = 1; i < count; i++)
+            for (int i = 1; i < count; i++) WriteStep(ref writer, ref tile, waypoints[first + i]);
+        }
+
+        /// <summary>One waypoint after <paramref name="previous"/>: a two-byte step, or the absolute marker and the point.</summary>
+        private static void WriteStep<W>(ref W writer, ref int2 previous, int2 tile) where W : struct, IWireWriter
+        {
+            int2 d = tile - previous;
+            if (IsStep(d))
             {
-                int2 previous = waypoints[first + i - 1];
-                tile = waypoints[first + i];
-                int2 d = tile - previous;
-                if (d.x >= -127 && d.x <= 127 && d.y >= -127 && d.y <= 127)
+                writer.WriteByte((byte)(sbyte)d.x);
+                writer.WriteByte((byte)(sbyte)d.y);
+            }
+            else
+            {
+                writer.WriteByte(AbsoluteMarker);
+                writer.WriteUShort((ushort)tile.x);
+                writer.WriteUShort((ushort)tile.y);
+            }
+            previous = tile;
+        }
+
+        /// <summary>
+        /// The routes already written to one MoveOrder message, so a later route can copy runs of them (protocol 22): units of one
+        /// order walk the same corridor, so their routes share most of their waypoints. Remembers where each waypoint value last
+        /// appeared (entry in the message, position in its route). Make one per message; it never reaches past the message.
+        /// </summary>
+        public struct RouteCopies : System.IDisposable
+        {
+            private NativeHashMap<int2, int2> lastSeen;
+            private NativeList<int2> entries; // per route written: first, count in the waypoint array
+
+            public RouteCopies(Allocator allocator)
+            {
+                lastSeen = new NativeHashMap<int2, int2>(256, allocator);
+                entries = new NativeList<int2>(64, allocator);
+            }
+
+            /// <summary>Forgets every route (a new message starts).</summary>
+            public void Clear() { lastSeen.Clear(); entries.Clear(); }
+
+            public void Dispose() { lastSeen.Dispose(); entries.Dispose(); }
+
+            /// <summary>
+            /// Writes a route as <see cref="WriteRoute"/> does, except that any run of at least <see cref="MinCopy"/> waypoints that repeats
+            /// an earlier route of the message becomes one copy step: <see cref="CopyMarker"/>, then varints back (routes before this
+            /// one), start (in that route) and length. Then remembers the route for the ones after it.
+            /// </summary>
+            public void Write<W>(ref W writer, NativeArray<int2> waypoints, int first, int count) where W : struct, IWireWriter
+            {
+                int entry = entries.Length;
+                VarInt.Write(ref writer, (uint)count);
+                int2 tile = waypoints[first];
+                writer.WriteUShort((ushort)tile.x);
+                writer.WriteUShort((ushort)tile.y);
+                for (int i = 1; i < count;)
                 {
-                    writer.WriteByte((byte)(sbyte)d.x);
-                    writer.WriteByte((byte)(sbyte)d.y);
+                    int2 next = waypoints[first + i];
+                    if (lastSeen.TryGetValue(next, out int2 at))
+                    {
+                        int2 other = entries[at.x];
+                        int run = 0;
+                        while (i + run < count && at.y + run < other.y && waypoints[other.x + at.y + run].Equals(waypoints[first + i + run])) run++;
+                        if (run >= MinCopy)
+                        {
+                            writer.WriteByte(CopyMarker);
+                            VarInt.Write(ref writer, (uint)(entry - at.x));
+                            VarInt.Write(ref writer, (uint)at.y);
+                            VarInt.Write(ref writer, (uint)run);
+                            i += run;
+                            tile = waypoints[first + i - 1];
+                            continue;
+                        }
+                    }
+                    WriteStep(ref writer, ref tile, next);
+                    i++;
                 }
-                else
-                {
-                    writer.WriteByte(0x80);
-                    writer.WriteUShort((ushort)tile.x);
-                    writer.WriteUShort((ushort)tile.y);
-                }
+                entries.Add(new int2(first, count));
+                for (int k = 0; k < count; k++) lastSeen[waypoints[first + k]] = new int2(entry, k);
             }
         }
 
@@ -238,13 +335,15 @@ namespace WAR2D.Net.Replication
             VarInt.Write(ref writer, (uint)tick);
             VarInt.Write(ref writer, (uint)units.Length);
             int previous = 0;
+            var copies = new RouteCopies(Allocator.Temp);
             for (int i = 0; i < units.Length; i++)
             {
                 RouteUnit u = units[i];
                 VarInt.Write(ref writer, (uint)(u.Index - previous));
                 previous = u.Index;
-                WriteRoute(ref writer, waypoints, u.First, u.Count);
+                copies.Write(ref writer, waypoints, u.First, u.Count);
             }
+            copies.Dispose();
         }
 
         /// <summary>Encodes a Correction message for the given units.</summary>
@@ -377,10 +476,47 @@ namespace WAR2D.Net.Replication
             waypoints.Add(tile);
             for (int i = 1; i < count; i++)
             {
-                sbyte dx = reader.ReadSByte();
-                if ((byte)dx == 0x80) tile = new int2(reader.ReadUShort(), reader.ReadUShort());
-                else tile += new int2(dx, reader.ReadSByte());
+                byte marker = reader.ReadByte();
+                if (marker == AbsoluteMarker) tile = new int2(reader.ReadUShort(), reader.ReadUShort());
+                else if (marker == CopyMarker) throw new InvalidDataException("a copy step outside a MoveOrder");
+                else tile += new int2((sbyte)marker, reader.ReadSByte());
                 waypoints.Add(tile);
+            }
+            return count;
+        }
+
+        /// <summary>
+        /// Reads a MoveOrder route, whose copy steps (<see cref="RouteCopies"/>) repeat runs of the routes read before it from the same
+        /// message (<paramref name="units"/> from <paramref name="firstOfMessage"/> on); returns its length. Throws on a malformed route,
+        /// a copy that reaches outside those routes, or a message past <see cref="MaxMessageWaypoints"/>.
+        /// </summary>
+        public static int ReadRouteCopying(NetworkReader reader, List<int2> waypoints, List<RouteUnit> units, int firstOfMessage, int messageStart)
+        {
+            int count = (int)VarInt.Read(reader);
+            if (count < 1 || count > MaxRouteWaypoints || 4 > reader.Remaining) throw new InvalidDataException($"route of {count} waypoints");
+            if (waypoints.Count - messageStart + count > MaxMessageWaypoints) throw new InvalidDataException("a MoveOrder's routes are too long");
+            var tile = new int2(reader.ReadUShort(), reader.ReadUShort());
+            waypoints.Add(tile);
+            for (int i = 1; i < count;)
+            {
+                byte marker = reader.ReadByte();
+                if (marker == CopyMarker)
+                {
+                    uint back = VarInt.Read(reader), start = VarInt.Read(reader), run = VarInt.Read(reader);
+                    int earlier = units.Count - firstOfMessage;
+                    if (back < 1 || back > earlier) throw new InvalidDataException($"a copy from route {back} back of {earlier}");
+                    RouteUnit from = units[units.Count - (int)back];
+                    if (run < 1 || run > count - i || start >= from.Count || run > from.Count - start)
+                        throw new InvalidDataException($"a copy of {run} from {start} in a route of {from.Count}");
+                    for (int k = 0; k < run; k++) waypoints.Add(waypoints[from.First + (int)start + k]);
+                    i += (int)run;
+                    tile = waypoints[waypoints.Count - 1];
+                    continue;
+                }
+                if (marker == AbsoluteMarker) tile = new int2(reader.ReadUShort(), reader.ReadUShort());
+                else tile += new int2((sbyte)marker, reader.ReadSByte());
+                waypoints.Add(tile);
+                i++;
             }
             return count;
         }
@@ -406,10 +542,15 @@ namespace WAR2D.Net.Replication
                     Health = reader.ReadByte(),
                     First = waypoints.Count,
                 };
+                // Types index per-type tables on the client, some in Burst jobs without bounds checks.
+                if (u.Type >= UnitTypeCount) throw new InvalidDataException($"unit type {u.Type}");
                 u.Count = ReadRoute(reader, waypoints);
                 units.Add(u);
             }
         }
+
+        /// <summary>How many <see cref="UnitType"/> values there are: an Enter's type is below it.</summary>
+        private static readonly int UnitTypeCount = System.Enum.GetValues(typeof(UnitType)).Length;
 
         /// <summary>Decodes a MoveOrder message and returns its tick.</summary>
         public static int DecodeMoveOrder(NetworkReader reader, List<RouteUnit> units, List<int2> waypoints)
@@ -417,11 +558,11 @@ namespace WAR2D.Net.Replication
             Expect(reader, MessageType.MoveOrder);
             int tick = (int)VarInt.Read(reader);
             int count = Count(reader, 6);
-            int previous = 0;
+            int previous = 0, firstOfMessage = units.Count, messageStart = waypoints.Count;
             for (int i = 0; i < count; i++)
             {
                 var u = new RouteUnit { Index = NextIndex(reader, ref previous), First = waypoints.Count };
-                u.Count = ReadRoute(reader, waypoints);
+                u.Count = ReadRouteCopying(reader, waypoints, units, firstOfMessage, messageStart);
                 units.Add(u);
             }
             return tick;

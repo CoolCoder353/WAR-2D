@@ -36,7 +36,8 @@ namespace WAR2D.Net.Replay
     {
         /// <summary>3 since v0.18: the summary and team fog channels; older players couldn't offer the per-player view. 4: route
         /// waypoints in half tiles (<see cref="WAR2D.Net.Replication.RouteWire"/>), which a format 3 file holds in whole tiles. 5: v0.20's
-        /// combat channel (status, leaps, aims and shells), deaths with a cause and burning buildings.</summary>
+        /// combat channel (status, leaps, aims and shells), deaths with a cause and burning buildings, and MoveOrder routes with copy steps
+        /// (<see cref="WAR2D.Net.Replication.Messages.RouteCopies"/>), which a format 4 reader can't follow.</summary>
         public const int Format = 5;
         public const string Extension = ".war2drec";
         public static readonly byte[] Magic = { (byte)'W', (byte)'2', (byte)'D', (byte)'R' };

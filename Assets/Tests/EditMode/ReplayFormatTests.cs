@@ -63,7 +63,7 @@ public class ReplayFormatTests
     [TestCase(1)]  // before v0.13's attack events with an attacker kind
     [TestCase(2)]  // before v0.18's summary and team fog
     [TestCase(3)]  // before route waypoints in half tiles
-    [TestCase(4)]  // before v0.20's combat channel and death causes
+    [TestCase(4)]  // before v0.20's combat channel, death causes and MoveOrder routes with copy steps
     [TestCase(99)] // a newer build's
     public void RefusesOtherFormats(int format)
     {

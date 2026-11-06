@@ -14,7 +14,8 @@ namespace WAR2D.Net.Steam
         /// producers resent on rejoin). 16: v0.16 (owner wall targets in attack events, the order formation flag). 17: v0.17 (the
         /// rich gem tile, a new terrain value). 19: the host-leaving message, and owed upkeep with an unpaid flag in the resources update.
         /// 20: the attack flag on a rally point. 21: route waypoints in half tiles. 22: v0.20 (the combat batch: status bits, leaps,
-        /// aims and shells; deaths with a cause; a building's burning flag).
+        /// aims and shells; deaths with a cause; a building's burning flag; MoveOrder routes copy runs of the routes before them in their
+        /// message, <see cref="WAR2D.Net.Replication.Messages.RouteCopies"/>).
         /// </summary>
         public const int Protocol = 22;
 
