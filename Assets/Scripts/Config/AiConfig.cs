@@ -140,6 +140,8 @@ namespace Config
         public bool FocusFire;
         /// <summary>True when it keeps Artillery and Snipers behind its front line.</summary>
         public bool KeepsBacklineBack;
+        /// <summary>v0.20: Scouts it keeps ahead of its Artillery and Snipers as spotters (0 at low Insight: Easy has none).</summary>
+        public int Spotters;
         /// <summary>True when its Diggers tunnel through enemy walls near its attacking army.</summary>
         public bool DigsPastWalls;
         /// <summary>How it scouts.</summary>
@@ -243,6 +245,8 @@ namespace Config
         public float EstimateNoise;
         /// <summary>Extra targets a splash hit is counted against.</summary>
         public float SplashTargets;
+        /// <summary>v0.20: the share of an Artillery's shells that land on a target that keeps moving (the rest it dodges).</summary>
+        public float ShellHitShare;
         /// <summary>Damage bonus for out-ranging the other side, at a full range's lead.</summary>
         public float RangeWeight;
         /// <summary>Seconds of fight a Bomber's blast is spread over.</summary>
@@ -253,6 +257,8 @@ namespace Config
         public bool FocusFire;
         /// <summary>True when it keeps Artillery and Snipers behind the front.</summary>
         public bool KeepsBacklineBack;
+        /// <summary>v0.20: Scouts kept ahead of its Artillery and Snipers to spot for them, at full Insight (none below <c>AiPolicy.SpotterInsight</c>).</summary>
+        public int Spotters;
         /// <summary>True when its Diggers dig past enemy walls.</summary>
         public bool DigsPastWalls;
 
@@ -472,6 +478,8 @@ namespace Config
         public float LightTurretShare;
         /// <summary>Tiles behind the front its Artillery and Snipers stay (Hard).</summary>
         public float BacklineDistance;
+        /// <summary>v0.20: tiles ahead of the front its spotters go, so its gun line can fire to full range.</summary>
+        public float SpotterLead;
         /// <summary>Visible enemy units within a bomber's blast that make it detonate.</summary>
         public int BomberClump;
         /// <summary>Bombers it checks for a detonation per think (a bound on its work in a huge fight).</summary>

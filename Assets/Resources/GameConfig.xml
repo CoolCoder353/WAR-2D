@@ -305,8 +305,8 @@
       <Raids>1</Raids>
     </Style>
     <Style name="Turtle">  <!-- walls, turrets, Jammers and bombs at its chokepoints; a big Heavy and Artillery army later -->
-      <BuildOrder>Miner Miner Builder Miner Barracks GunTurret GunTurret Miner Builder HeavyFactory Radar Jammer</BuildOrder>  <!-- turrets first -->
-      <BuildOrder>Miner Miner Builder Miner Miner HeavyFactory GunTurret Builder Heavy Heavy GunTurret Radar</BuildOrder>         <!-- Heavies first -->
+      <BuildOrder>Miner Miner Builder Miner Barracks GunTurret Miner Builder HeavyFactory Radar Jammer</BuildOrder>  <!-- a turret first (v0.20: one, at 400) -->
+      <BuildOrder>Miner Miner Builder Miner Miner HeavyFactory GunTurret Builder Heavy Heavy Radar</BuildOrder>         <!-- Heavies first -->
       <ArmyMix>Tank:2 Heavy:4 Artillery:4 Sniper:2 Flamethrower:1 Digger:1</ArmyMix>
       <Producers>Barracks:1 HeavyFactory:2 SiegeWorkshop:1</Producers>
       <Miners>6</Miners>
@@ -317,8 +317,8 @@
       <AttackArmySize>14</AttackArmySize>
       <AttackRatioScale>1.5</AttackRatioScale>
       <AttackIntervalSeconds>180</AttackIntervalSeconds>
-      <Turrets>6</Turrets>
-      <HomeTurrets>4</HomeTurrets>  <!-- playtest 2026-10-30: turrets ringed round its HQ -->
+      <Turrets>3</Turrets>          <!-- v0.20: fewer, as each 2×2 turret costs 400 (were 6 and 4) -->
+      <HomeTurrets>2</HomeTurrets>  <!-- playtest 2026-10-30: turrets ringed round its HQ -->
       <DefenceStart>0.4</DefenceStart>  <!-- factor on Play DefenceAfterSeconds: Turtle defends from ~1:36 -->
       <Jammers>2</Jammers>
       <Mines>8</Mines>
@@ -340,7 +340,7 @@
       <AttackArmySize>15</AttackArmySize>
       <AttackRatioScale>1.2</AttackRatioScale>
       <AttackIntervalSeconds>120</AttackIntervalSeconds>
-      <Turrets>2</Turrets>
+      <Turrets>1</Turrets>          <!-- v0.20: was 2 -->
       <HomeTurrets>1</HomeTurrets>
       <DefenceStart>1.0</DefenceStart>
       <Jammers>0</Jammers>
@@ -364,7 +364,7 @@
       <AttackArmySize>12</AttackArmySize>
       <AttackRatioScale>1.0</AttackRatioScale>
       <AttackIntervalSeconds>120</AttackIntervalSeconds>
-      <Turrets>3</Turrets>
+      <Turrets>2</Turrets>          <!-- v0.20: was 3 -->
       <HomeTurrets>1</HomeTurrets>
       <DefenceStart>1.0</DefenceStart>
       <Jammers>1</Jammers>
@@ -434,6 +434,7 @@
       <BuildingCounterWeight>0.5</BuildingCounterWeight> <!-- Hard: building counters against unit counters -->
       <LightTurretShare>0.6</LightTurretShare>         <!-- massed light enemies above this share add a turret per defended spot -->
       <BacklineDistance>6</BacklineDistance>           <!-- Hard: Artillery and Snipers stay this far behind the front -->
+      <SpotterLead>4</SpotterLead>                     <!-- v0.20: its spotting Scouts go this far ahead of the front, so the gun line fires to full range -->
       <BomberClump>3</BomberClump>                     <!-- visible enemies in a bomber's blast that make it detonate -->
       <BomberChecks>16</BomberChecks>                  <!-- bombers checked for a detonation per think -->
       <ScoutAfterSeconds>20</ScoutAfterSeconds>        <!-- with no Scout by then, any unit scouts -->
@@ -471,7 +472,7 @@
       <BuildingUpkeepShare>0.6</BuildingUpkeepShare> <!-- buildings costing upkeep may take this share of its projected income together -->
       <BankHigh>1500</BankHigh>                      <!-- a balance above this ... -->
       <BankSeconds>30</BankSeconds>                  <!-- ... this long: it adds production (fills queues, extra producers, expands) -->
-      <EarlyTurrets>3</EarlyTurrets>
+      <EarlyTurrets>1</EarlyTurrets>                 <!-- v0.20: one, as the 2×2 turret costs 400 and takes 90 s with one Builder (was 3) -->
       <DefendsChokepoints>1</DefendsChokepoints>
       <Scouts>3</Scouts>                             <!-- at full Insight (at least 1) -->
       <RescoutSeconds>60</RescoutSeconds>            <!-- at full Insight; divided by the Insight -->
@@ -480,11 +481,13 @@
       <CounterAttackAdvantage>4</CounterAttackAdvantage> <!-- defending with this advantage, the rest of the army counter-attacks -->
       <EstimateNoise>0.4</EstimateNoise>             <!-- at zero Insight an estimate is off by up to this share -->
       <SplashTargets>1.5</SplashTargets>             <!-- extra targets a splash hit counts against -->
+      <ShellHitShare>0.7</ShellHitShare>             <!-- v0.20: share of Artillery shells that land on a moving target (the rest are dodged) -->
       <RangeWeight>0.3</RangeWeight>                 <!-- damage bonus for a full range's lead -->
       <BomberFightSeconds>10</BomberFightSeconds>    <!-- a bomber's blast spread over this much fight -->
       <Retreats>1</Retreats>
       <FocusFire>1</FocusFire>                       <!-- units in range attack-move onto the weakest enemy -->
       <KeepsBacklineBack>1</KeepsBacklineBack>
+      <Spotters>1</Spotters>                         <!-- v0.20: Scouts kept ahead of its Artillery and Snipers (Normal, Hard; Easy none) -->
       <DigsPastWalls>1</DigsPastWalls>
       <TargetDistanceScale>150</TargetDistanceScale> <!-- tiles of distance that halve a target's score -->
       <HqValue>1500</HqValue>                        <!-- an enemy HQ's worth as a target -->
@@ -521,18 +524,18 @@
       <GatherAngle>30</GatherAngle>                  <!-- degrees its gathering point may turn off the line to the enemy -->
     </Policy>
     <Counters>  <!-- spec 5.5: units weighted against each enemy unit seen (Normal, Hard) and what each enemy building makes (Hard) -->
-      <Counter seen="Heavy">Sniper:2 Artillery:2 Heavy:1</Counter>
+      <Counter seen="Heavy">Sniper:3 Artillery:1 Heavy:1</Counter>  <!-- v0.20: the Sniper is the heavy-killer -->
       <Counter seen="Artillery">Scout:1 Tank:2 Bomber:1</Counter>
       <Counter seen="Sniper">Scout:2 Tank:2</Counter>
-      <Counter seen="Tank">Flamethrower:3 Heavy:1</Counter>
+      <Counter seen="Tank">Flamethrower:3 Heavy:1 Artillery:1</Counter>
       <Counter seen="Scout">Flamethrower:2 Tank:1</Counter>
-      <Counter seen="Flamethrower">Artillery:1 Sniper:2 Heavy:1</Counter>
-      <Counter seen="Bomber">Tank:2 Sniper:1</Counter>
+      <Counter seen="Flamethrower">Artillery:2 Heavy:1</Counter>  <!-- v0.20: a Sniper does little to light units now -->
+      <Counter seen="Bomber">Tank:2 Flamethrower:2</Counter>  <!-- v0.20: gunfire before the leap; blasts barely touch Bombers -->
       <Counter seen="Digger">Tank:2</Counter>
       <Counter building="Barracks">Flamethrower:2 Tank:1</Counter>
       <Counter building="HeavyFactory">Sniper:2 Artillery:2</Counter>
       <Counter building="SiegeWorkshop">Tank:2 Sniper:1</Counter>
-      <Counter building="GunTurret">Artillery:3 Heavy:1</Counter>
+      <Counter building="GunTurret">Artillery:3 Heavy:2</Counter>  <!-- v0.20: Heavies' armour shrugs off its small rounds -->
     </Counters>
   </Ai>
 

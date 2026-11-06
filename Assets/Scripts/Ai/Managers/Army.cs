@@ -38,7 +38,7 @@ namespace WAR2D.Ai
         private readonly HashSet<int> group = new HashSet<int>();
         private readonly HashSet<int> alive = new HashSet<int>();
         private readonly HashSet<int> holding = new HashSet<int>();
-        private readonly List<int> ids = new List<int>(256), back = new List<int>(32), stale = new List<int>(32);
+        private readonly List<int> ids = new List<int>(256), back = new List<int>(32), stale = new List<int>(32), spotters = new List<int>(4);
         private readonly List<AiAlert> alerts = new List<AiAlert>(8);
         private readonly Dictionary<int, double> orderedAt = new Dictionary<int, double>();
         private double lastAttackEnd = double.NegativeInfinity, retreatStarted, nextGather = double.NegativeInfinity, stagedAt;
@@ -618,7 +618,7 @@ namespace WAR2D.Ai
                 foreach (int i in state.Combat)
                 {
                     AiUnit u = view.OwnUnits[i];
-                    if (group.Contains(u.Id) && !u.HasOrder && !(ai.Difficulty.KeepsBacklineBack && IsBackline(u.Type))) ids.Add(u.Id);
+                    if (group.Contains(u.Id) && !u.HasOrder && !(ai.Difficulty.KeepsBacklineBack && IsBackline(u.Type)) && !spotters.Contains(u.Id)) ids.Add(u.Id);
                 }
                 if (ids.Count > 0 && Due(ai, AiKeys.Army)) ai.Propose(AiPriority.Normal, AiAction.OrderUnits(ids, OrderKind.AttackMove, Target), AiKeys.Of(AiKeys.Army));
             }
@@ -793,13 +793,35 @@ namespace WAR2D.Ai
                 AiUnit u = view.OwnUnits[i];
                 if (group.Contains(u.Id) && IsBackline(u.Type)) back.Add(u.Id);
             }
-            if (back.Count == 0) return;
+            if (back.Count == 0) { spotters.Clear(); return; }
             float2 toTarget = math.normalizesafe((float2)Target - front);
             float2 spot = front - toTarget * ai.Config.Play.BacklineDistance;
             if (math.distancesq(front, state.Home) < 1f) spot = math.lerp(state.Home, Target, 0.5f);
             int2 tile = math.clamp((int2)math.floor(spot), 0, new int2(view.Width - 1, view.Height - 1));
             ai.Propose(AiPriority.Normal, AiAction.OrderUnits(back, OrderKind.AttackMove, tile), AiKeys.Of(AiKeys.Backline));
             orderedAt[AiKeys.Backline] = ai.Now;
+            Spot(ai, view, state, front, toTarget);
+        }
+
+        /// <summary>
+        /// v0.20 (spec §10): its Scouts in the group, up to <c>Spotters</c>, go ahead of the front so its Artillery (which fires twice as
+        /// far as it sees) and Snipers fire to their full range on what they see. They walk there (a Move), so they look rather than fight.
+        /// </summary>
+        private void Spot(AiContext ai, TeamView view, AiState state, float2 front, float2 toTarget)
+        {
+            int want = ai.Difficulty.Spotters;
+            spotters.Clear();
+            if (want <= 0) return;
+            foreach (int i in state.Combat)
+            {
+                if (spotters.Count >= want) break;
+                AiUnit u = view.OwnUnits[i];
+                if (u.Type == UnitType.Scout && group.Contains(u.Id)) spotters.Add(u.Id);
+            }
+            if (spotters.Count == 0) return;
+            float2 ahead = front + toTarget * ai.Config.Play.SpotterLead;
+            int2 tile = math.clamp((int2)math.floor(ahead), 0, new int2(view.Width - 1, view.Height - 1));
+            ai.Propose(AiPriority.Normal, AiAction.OrderUnits(spotters, OrderKind.Move, tile), AiKeys.Of(AiKeys.Backline, 1));
         }
 
         private static bool IsBackline(UnitType t) => t == UnitType.Artillery || t == UnitType.Sniper;

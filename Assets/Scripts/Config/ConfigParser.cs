@@ -636,6 +636,7 @@ namespace Config
                 p.BuildingCounterWeight = Float(play, "BuildingCounterWeight", c, errors, min: 0, max: 100);
                 p.LightTurretShare = Float(play, "LightTurretShare", c, errors, min: 0, max: 1);
                 p.BacklineDistance = Float(play, "BacklineDistance", c, errors, min: 0, max: 64);
+                p.SpotterLead = Float(play, "SpotterLead", c, errors, min: 0, max: 64);
                 p.BomberClump = Int(play, "BomberClump", c, errors, min: 1, max: 1000);
                 p.BomberChecks = Int(play, "BomberChecks", c, errors, min: 1, max: 10000);
                 p.ScoutAfterSeconds = Float(play, "ScoutAfterSeconds", c, errors, min: 0, max: 3600);
@@ -703,11 +704,13 @@ namespace Config
             p.CounterAttackAdvantage = Float(node, "CounterAttackAdvantage", c, errors, min: 1, max: 1000);
             p.EstimateNoise = Float(node, "EstimateNoise", c, errors, min: 0, max: 0.95f);
             p.SplashTargets = Float(node, "SplashTargets", c, errors, min: 0, max: 20);
+            p.ShellHitShare = Float(node, "ShellHitShare", c, errors, min: 0, max: 1);
             p.RangeWeight = Float(node, "RangeWeight", c, errors, min: 0, max: 10);
             p.BomberFightSeconds = Float(node, "BomberFightSeconds", c, errors, min: 1, max: 600);
             p.Retreats = Flag(node, "Retreats", c, errors);
             p.FocusFire = Flag(node, "FocusFire", c, errors);
             p.KeepsBacklineBack = Flag(node, "KeepsBacklineBack", c, errors);
+            p.Spotters = Int(node, "Spotters", c, errors, min: 0, max: 16);
             p.DigsPastWalls = Flag(node, "DigsPastWalls", c, errors);
             p.TargetDistanceScale = Float(node, "TargetDistanceScale", c, errors, min: 1, max: 100000);
             p.HqValue = Float(node, "HqValue", c, errors, min: 0, max: 1e7f);

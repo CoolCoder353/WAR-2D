@@ -25,9 +25,32 @@ public static class ManualRules
     {
         public string Type;
         public float Hp, Damage, Range, Interval, Speed, Cost, Radius, Splash, MinRange;
+        /// <summary>v0.20: flat armour, blast resistance, aim seconds; whether its shots are shells, and whether they set fire.</summary>
+        public float Armour, Resist, Aim;
+        public bool Shell, Ignites;
         public TargetClass Class;
         public float[] Mult;
         public float Against(TargetClass c) => Mult[Array.IndexOf(Classes, c)];
+        public float Cycle => Interval + Aim;
+    }
+
+    /// <summary>v0.20's shot rules, as <c>tools/balance-sheet.js</c>'s <c>hitOn</c>: the least hit, fire and the shells' hit share.</summary>
+    private sealed class Rules
+    {
+        public float MinHit, BurnDps, ShellHitShare;
+        public BurnConfig Burn;
+    }
+
+    private static Rules rules;
+
+    /// <summary>One shot of <paramref name="a"/> on <paramref name="b"/> (see <c>hitOn</c> in balance-sheet.js).</summary>
+    private static float HitOn(Fighter a, Fighter b)
+    {
+        float raw = a.Damage * a.Against(b.Class);
+        if (a.Shell) return raw * (1f - b.Resist) * rules.ShellHitShare;
+        float hit = raw > 0f ? Math.Max(rules.MinHit, raw - b.Armour) : 0f;
+        if (a.Ignites) hit += rules.BurnDps * rules.Burn.Rate(b.Class) * a.Cycle;
+        return hit;
     }
 
     /// <summary>The whole table, by attacker then target; missing means no fight (Builders).</summary>
@@ -42,6 +65,7 @@ public static class ManualRules
             rb[a] = -v;
         }
 
+        rules = new Rules { MinHit = config.Combat.MinHit, BurnDps = config.Burn.Dps, Burn = config.Burn, ShellHitShare = config.Ai?.Policy != null ? config.Ai.Policy.ShellHitShare : 1f };
         var fighters = new List<Fighter>();
         Fighter bomber = null;
         foreach (UnitType type in UnitOrder)
@@ -50,7 +74,9 @@ public static class ManualRules
             var f = new Fighter
             {
                 Type = type.ToString(), Hp = u.Health, Damage = u.Damage, Range = u.Range, Interval = u.AttackInterval, Speed = u.MoveSpeed, Cost = u.UpfrontCost,
-                Radius = u.Radius, Splash = u.Splash, MinRange = u.MinRange, Class = u.Armour, Mult = new float[Classes.Length],
+                Radius = u.Radius, Splash = u.FiresShells ? u.BlastRadius : u.Splash, MinRange = u.MinRange, Class = u.Armour, Mult = new float[Classes.Length],
+                Armour = u.FlatArmour, Resist = u.BlastResist, Aim = type == UnitType.Sniper ? config.Sniper.AimSeconds : 0f,
+                Shell = u.FiresShells, Ignites = type == UnitType.Flamethrower,
             };
             for (int c = 0; c < Classes.Length; c++) f.Mult[c] = config.Damage.Multiplier(type, Classes[c]);
             if (u.IsBomber) bomber = f;
@@ -79,7 +105,7 @@ public static class ManualRules
             {
                 float hits = x.Radius > 0f ? 1f + (Packing / ((float)Math.PI * x.Radius * x.Radius)) * (float)Math.PI * b.BlastRadius * b.BlastRadius : 1f;
                 float perBlast = Math.Min(1f, b.BlastDamage * bomber.Against(x.Class) / x.Hp) * hits * x.Cost;
-                float shotDown = Count(x) * (x.Range / bomber.Speed / x.Interval) * Math.Min(1f, x.Damage * x.Against(bomber.Class) / bomber.Hp);
+                float shotDown = Count(x) * (x.Range / bomber.Speed / x.Cycle) * Math.Min(1f, HitOn(x, bomber) / bomber.Hp);
                 worth.Add((x.Type, perBlast * Math.Max(0f, 1f - shotDown / Count(bomber))));
             }
             worth.Sort((p, q) => q.v.CompareTo(p.v));
@@ -159,14 +185,14 @@ public static class ManualRules
             for (int s = 0; s < 2; s++)
             {
                 if (!can[s]) { due[s] = 0f; volleys[s] = 0; continue; }
-                due[s] += counts[s] * Dt / f[s].Interval;
+                due[s] += counts[s] * Dt / f[s].Cycle;
                 volleys[s] = (int)Math.Floor(due[s]);
                 due[s] -= volleys[s];
             }
             for (int s = 0; s < 2; s++)
             {
                 float[] enemy = hp[1 - s];
-                float hit = f[s].Damage * f[s].Against(f[1 - s].Class), w = weights[s];
+                float hit = HitOn(f[s], f[1 - s]), w = weights[s];
                 for (int k = 0; k < volleys[s]; k++)
                 {
                     int front = Array.FindIndex(enemy, h => h > 0f);

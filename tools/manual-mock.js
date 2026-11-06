@@ -80,7 +80,7 @@ const dps = (f, m) => (f.Damage ? (f.Damage / f.AttackInterval) * m : 0);
 function counterTable(configFile) {
   const cfg = sheet.load(fs.readFileSync(configFile, 'utf8'));
   const { budget, packing } = FIGHT;
-  const turret = { ...cfg.buildings.GunTurret, speed: 0, minRange: 0, splash: 0, blastDamage: 0, cls: 'Building', radius: 0 };
+  const turret = { ...cfg.buildings.GunTurret, speed: 0, minRange: 0, splash: 0, blastDamage: 0, cls: 'Building', radius: 0, rules: cfg.rules };
   const fighters = [...cfg.units.filter((u) => u.dmg > 0 && !u.blastDamage), turret];
   const count = (u) => Math.max(1, Math.floor(budget / u.cost));
   const once = (a, b) => { const r = sheet.duel(a, count(a), b, count(b), packing); return r.winner === null ? 0 : r.winner === 0 ? r.keep : -r.keep; };
@@ -92,7 +92,7 @@ function counterTable(configFile) {
     const worth = fighters.map((x) => {
       const hits = x.radius ? 1 + (packing / (Math.PI * x.radius * x.radius)) * Math.PI * bomber.blastRadius * bomber.blastRadius : 1;
       const perBlast = Math.min(1, (bomber.blastDamage * bomber.mult[x.cls]) / x.hp) * hits * x.cost;
-      const shotDown = count(x) * (x.range / bomber.speed / x.interval) * Math.min(1, (x.dmg * x.mult[bomber.cls]) / bomber.hp);
+      const shotDown = count(x) * (x.range / bomber.speed / sheet.cycle(x)) * Math.min(1, sheet.hitOn(x, bomber) / bomber.hp);
       return { type: x.type, v: perBlast * Math.max(0, 1 - shotDown / count(bomber)) };
     }).sort((a, b) => b.v - a.v);
     worth.slice(0, MAX_LISTED).forEach((x) => set(bomber.type, x.type, BOMBER_MARGIN));

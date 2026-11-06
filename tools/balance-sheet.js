@@ -10,6 +10,11 @@
 // the units behind the target, 100% at the centre falling to 50% at the edge, as many as the target army's packing
 // puts in the radius. No formation depth, kiting, retreats or focus fire: a first look, to confirm in the AI bench.
 //
+// v0.20 Onslaught: a shot loses the target's flat armour (never under Combat/MinHit); a Flamethrower's hits (and its splash)
+// also burn for Burn/Dps × the class's rate over the shot's interval; a Sniper aims for Sniper/AimSeconds before each shot;
+// the Artillery's shell is a blast (its Damage over its BlastRadius, less the target's BlastResist), and only
+// Ai/Policy/ShellHitShare of its shells land on target (a moving target dodges the rest). ManualRules.cs mirrors this.
+//
 // Usage: node tools/balance-sheet.js [config=Assets/Resources/GameConfig.xml] [--budget 3000] [--packing 0.2]
 //                                    [--horizon 300] [--out <file>]
 //   --budget   resources per side in the fights (default 3000; large enough that whole units round off little)
@@ -48,6 +53,7 @@ function load(src) {
       speed: num(u, 'MoveSpeed', 0), cost: num(u, 'UpfrontCost'), upkeep: num(u, 'RunningCost', 0), radius: num(u, 'Radius', 0.35),
       cls: `${xml.text(src, one(u, 'Armour'))}Unit`, build: num(u, 'BuildSeconds', 1), splash: num(u, 'Splash', 0), minRange: num(u, 'MinRange', 0),
       blastRadius: num(u, 'BlastRadius', 0), blastDamage: num(u, 'BlastDamage', 0), mult: mult(type),
+      armour: num(u, 'FlatArmour', 0), resist: num(u, 'BlastResist', 0),
       madeIn: Object.keys(PRODUCERS).find((b) => PRODUCERS[b].includes(type)) || '?',
     };
   });
@@ -56,17 +62,48 @@ function load(src) {
     return [type, { type, hp: num(b, 'Health'), cost: num(b, 'UpfrontCost', 0), upkeep: num(b, 'RunningCost', 0), dmg: num(b, 'Damage', 0), range: num(b, 'Range', 0), interval: num(b, 'AttackInterval', 1), mult: mult(type) }];
   }));
   const res = one(gc, 'Resources'), siege = one(gc, 'Siege');
+  // v0.20 rules the duel needs (see the header).
+  const burn = one(gc, 'Burn'), sniper = one(gc, 'Sniper'), combat = one(gc, 'Combat');
+  const pol = one(gc, 'Ai') ? one(gc, 'Ai').children.find((c) => c.tag === 'Policy') : null;
+  const rules = {
+    minHit: num(combat, 'MinHit', 0), burnDps: num(burn, 'Dps', 0),
+    burnRate: { LightUnit: num(burn, 'LightUnit', 0), HeavyUnit: num(burn, 'HeavyUnit', 0), Building: num(burn, 'Building', 0), Wall: 0 },
+    aim: num(sniper, 'AimSeconds', 0), shellHitShare: pol ? num(pol, 'ShellHitShare', 1) : 1,
+  };
+  for (const u of units) {
+    u.shell = u.blastRadius > 0 && !u.blastDamage;
+    if (u.shell) u.splash = u.blastRadius;
+    u.ignites = u.type === 'Flamethrower';
+    u.aim = u.type === 'Sniper' ? rules.aim : 0;
+    u.rules = rules;
+  }
   // The AI overhaul moved IncomePerProducer from each <Difficulty> to the one <Policy> every difficulty plays.
   const policy = one(gc, 'Ai') ? one(gc, 'Ai').children.find((c) => c.tag === 'Policy') : null;
   const difficulties = policy ? [{ name: 'policy', incomePerProducer: num(policy, 'IncomePerProducer', 0) }] : [];
   return {
-    units, buildings, difficulties,
+    units, buildings, difficulties, rules,
     passive: num(res, 'PassiveGenerationRate', 0), mining: num(res, 'MiningRate', 0),
     wallCost: num(siege, 'WallCost', 0), wallHp: num(siege, 'WallHealth', 0),
   };
 }
 
-const dps = (f, cls) => (f.dmg / f.interval) * f.mult[cls];
+/** Seconds from one shot to the next: the reload, and a Sniper's aim (v0.20). */
+const cycle = (f) => f.interval + (f.aim || 0);
+
+/**
+ * One shot of <f> on a <target> (v0.20): a shell's blast less the target's resistance, times the share that lands; a shot less
+ * the target's flat armour, never under the least hit; plus, for a Flamethrower, the fire it keeps burning until the next shot.
+ */
+function hitOn(f, target) {
+  const r = f.rules || { minHit: 0, burnDps: 0, burnRate: {}, shellHitShare: 1 };
+  const raw = f.dmg * f.mult[target.cls];
+  if (f.shell) return raw * (1 - (target.resist || 0)) * r.shellHitShare;
+  let hit = raw > 0 ? Math.max(r.minHit, raw - (target.armour || 0)) : 0;
+  if (f.ignites) hit += r.burnDps * (r.burnRate[target.cls] || 0) * cycle(f);
+  return hit;
+}
+
+const dps = (f, cls) => (f.dmg / cycle(f)) * f.mult[cls];
 
 /** Splash targets behind the one hit, weighted by the falloff (100% at the centre to 50% at the edge: 2πR²/3 per unit of density). */
 function splashWeight(attacker, target, packing) {
@@ -95,14 +132,14 @@ function duel(A, nA, B, nB, packing) {
     if (!moved && !can[0] && !can[1]) return { winner: null, keep: 0, seconds: t }; // nobody can close or fire
     const volleys = sides.map((s, i) => {
       if (!can[i]) { s.due = 0; return 0; }
-      s.due += (counts[i] * dt) / s.f.interval;
+      s.due += (counts[i] * dt) / cycle(s.f);
       const shots = Math.floor(s.due);
       s.due -= shots;
       return shots;
     });
     sides.forEach((s, i) => {
       const enemy = sides[1 - i];
-      const hit = s.f.dmg * s.f.mult[enemy.f.cls];
+      const hit = hitOn(s.f, enemy.f);
       const w = splashWeight(s.f, enemy.f, packing);
       for (let k = 0; k < volleys[i]; k++) {
         const front = enemy.hp.findIndex((h) => h > 0);
@@ -130,7 +167,7 @@ function sheet(cfg, opts) {
   const army = cfg.units.filter((u) => u.dmg > 0 && !u.blastDamage);
   const turretB = cfg.buildings.GunTurret;
   const hq = cfg.buildings.Base;
-  const turret = turretB && { ...turretB, speed: 0, minRange: 0, cls: 'Building', radius: 0 };
+  const turret = turretB && { ...turretB, speed: 0, minRange: 0, cls: 'Building', radius: 0, rules: cfg.rules };
   const lines = [];
   const flags = [];
   const r1 = (x) => (Math.round(x * 10) / 10).toString();
@@ -161,7 +198,7 @@ function sheet(cfg, opts) {
   const upkeepRatio = army.map((u) => (horizon * u.upkeep) / u.cost);
   lines.push('## Economy', '',
     `- Income: passive ${cfg.passive}/s; a Miner (${B.Miner ? B.Miner.cost : '?'}) makes ${cfg.mining}/s while it faces a gem, paying for itself in ${B.Miner ? r1(B.Miner.cost / cfg.mining) : '?'} s.`,
-    `- Producers: ${['Barracks', 'HeavyFactory', 'SiegeWorkshop'].map(bline).filter(Boolean).join('; ')}. Defences: ${['GunTurret', 'Jammer', 'Radar', 'Bomb'].map(bline).filter(Boolean).join('; ')}; a wall segment ${cfg.wallCost} for ${cfg.wallHp} HP, no upkeep.`,
+    `- Producers: ${['Barracks', 'HeavyFactory', 'SiegeWorkshop'].map(bline).filter(Boolean).join('; ')}. Defences: ${['GunTurret', 'Jammer', 'Radar', 'Mine'].map(bline).filter(Boolean).join('; ')}; a wall segment ${cfg.wallCost} for ${cfg.wallHp} HP, no upkeep.`,
     `- Most a producer can spend (cost ÷ build time): ${spend.map((s) => `${s.b} ${r1(s.rate)}/s (${s.unit})`).join(', ')}.`,
     `- Upkeep over ${horizon} s is ${r1(Math.min(...upkeepRatio))}–${r1(Math.max(...upkeepRatio))}× an army unit's price.`, '');
   const maxSpend = Math.max(...spend.filter((s) => ARMY_PRODUCERS.includes(s.b)).map((s) => s.rate));
@@ -244,4 +281,4 @@ if (require.main === module) {
   process.stdout.write(text);
 }
 
-module.exports = { load, duel, sheet };
+module.exports = { load, duel, sheet, hitOn, cycle };

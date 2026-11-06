@@ -54,21 +54,20 @@ namespace WAR2D.Ai
             float share = math.saturate(healthShare);
             float hp = c.Health * share;
             if (c.Armour == TargetClass.HeavyUnit) f.HpHeavy += hp; else f.HpLight += hp;
-            float rate, splash;
-            if (c.BlastDamage > 0f)
+            if (c.IsBomber)
             {
-                rate = c.BlastDamage / math.max(1f, policy.BomberFightSeconds);
-                splash = 1f + c.BlastRadius * policy.SplashTargets;
+                // Its leap can't be shot down, so only its run in counts against it (the blast is the whole of its damage).
+                float rate = c.BlastDamage / math.max(1f, policy.BomberFightSeconds) * (1f + c.BlastRadius * policy.SplashTargets);
+                f.DpsLight += rate * game.Damage.Multiplier(type, TargetClass.LightUnit);
+                f.DpsHeavy += rate * game.Damage.Multiplier(type, TargetClass.HeavyUnit) * (1f - ClassResist(game, TargetClass.HeavyUnit));
+                f.DpsBuilding += rate * game.Damage.Multiplier(type, TargetClass.Building);
             }
             else
             {
-                rate = c.AttackInterval > 0f ? c.Damage / c.AttackInterval : 0f;
-                splash = 1f + c.Splash * policy.SplashTargets;
+                f.DpsLight += Rate(game, type, c, TargetClass.LightUnit, policy);
+                f.DpsHeavy += Rate(game, type, c, TargetClass.HeavyUnit, policy);
+                f.DpsBuilding += Rate(game, type, c, TargetClass.Building, policy);
             }
-            rate *= splash;
-            f.DpsLight += rate * game.Damage.Multiplier(type, TargetClass.LightUnit);
-            f.DpsHeavy += rate * game.Damage.Multiplier(type, TargetClass.HeavyUnit);
-            f.DpsBuilding += rate * game.Damage.Multiplier(type, TargetClass.Building);
             f.RangeHp += c.Range * hp;
             f.Value += c.UpfrontCost * share;
             f.Count++;
@@ -81,13 +80,56 @@ namespace WAR2D.Ai
             float share = math.saturate(healthShare);
             float hp = c.Health * share;
             f.HpBuilding += hp;
-            float rate = c.AttackInterval > 0f ? c.Damage / c.AttackInterval : 0f;
-            f.DpsLight += rate * game.Damage.Multiplier(type, TargetClass.LightUnit);
-            f.DpsHeavy += rate * game.Damage.Multiplier(type, TargetClass.HeavyUnit);
-            f.DpsBuilding += rate * game.Damage.Multiplier(type, TargetClass.Building);
+            float shots = c.AttackInterval > 0f ? 1f / c.AttackInterval : 0f;
+            float minHit = game.Combat.MinHit;
+            float Hit(TargetClass k) { float raw = c.Damage * game.Damage.Multiplier(type, k); return raw <= 0f ? 0f : math.max(minHit, raw - ClassArmour(game, k)); }
+            f.DpsLight += shots * Hit(TargetClass.LightUnit);
+            f.DpsHeavy += shots * Hit(TargetClass.HeavyUnit);
+            f.DpsBuilding += shots * Hit(TargetClass.Building);
             f.RangeHp += c.Range * hp;
             f.Value += c.UpfrontCost * share;
             f.Count++;
+        }
+
+        /// <summary>
+        /// v0.20: a unit's damage per second against a target class, the way <c>tools/balance-sheet.js</c> works a shot out: less the
+        /// class's flat armour (never under <c>Combat/MinHit</c>), plus a Flamethrower's fire, over its reload and a Sniper's aim; a
+        /// shell's blast less the class's resistance, times <c>ShellHitShare</c>; splash counted against <c>SplashTargets</c> more targets.
+        /// </summary>
+        public static float Rate(GameConfigData game, UnitType type, UnitConfig c, TargetClass k, AiPolicyConfig policy)
+        {
+            float cycle = c.AttackInterval + (type == UnitType.Sniper ? game.Sniper.AimSeconds : 0f);
+            if (cycle <= 0f) return 0f;
+            float raw = c.Damage * game.Damage.Multiplier(type, k);
+            float hit, radius;
+            if (c.FiresShells)
+            {
+                hit = raw * (1f - ClassResist(game, k)) * policy.ShellHitShare;
+                radius = c.BlastRadius;
+            }
+            else
+            {
+                hit = raw <= 0f ? 0f : math.max(game.Combat.MinHit, raw - ClassArmour(game, k));
+                if (type == UnitType.Flamethrower) hit += game.Burn.Dps * game.Burn.Rate(k) * cycle;
+                radius = c.Splash;
+            }
+            return hit / cycle * (1f + radius * policy.SplashTargets);
+        }
+
+        /// <summary>The flat armour a class is modelled with: its most armoured unit's (a Heavy's for heavy units).</summary>
+        public static float ClassArmour(GameConfigData game, TargetClass k)
+        {
+            float armour = 0f;
+            foreach (UnitConfig u in game.Units.Values) if (u.Armour == k) armour = math.max(armour, u.FlatArmour);
+            return armour;
+        }
+
+        /// <summary>The blast resistance a class is modelled with: its most resistant fighting unit's (Bombers aside: they never take a fight).</summary>
+        public static float ClassResist(GameConfigData game, TargetClass k)
+        {
+            float resist = 0f;
+            foreach (UnitConfig u in game.Units.Values) if (u.Armour == k && !u.IsBomber) resist = math.max(resist, u.BlastResist);
+            return resist;
         }
 
         /// <summary>A force's damage per second against another's armour mix (weighted by the other's hit points per class).</summary>
