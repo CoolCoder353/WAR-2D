@@ -112,6 +112,10 @@ public sealed class PerfClient : MonoBehaviour
         };
         if (View)
         {
+            // The frame rate is frames over time (the mean of each frame's own rate reads high when frame times vary).
+            double totalMs = 0;
+            foreach (double ms in frameMs) totalMs += ms;
+            if (frameMs.Count > 0) stats.Add("perf.client.fps", frameMs.Count * 1000.0 / Math.Max(1e-3, totalMs));
             stats.Add("perf.client.low1", OnePercentLow(frameMs));
             // Every frame (seconds into the measurement, milliseconds, garbage collections so far), to find what the slow ones line up with.
             var frames = new System.Text.StringBuilder("t,ms,gc\n");
@@ -150,7 +154,6 @@ public sealed class PerfClient : MonoBehaviour
         frameMs.Add(ms);
         frameAt.Add(Time.realtimeSinceStartup - measureStart);
         frameGc.Add(GC.CollectionCount(0));
-        stats.Add("perf.client.fps", 1000.0 / Math.Max(1e-3, ms));
         stats.Add("perf.client.frame.ms", ms);
         FrameTimingManager.CaptureFrameTimings();
         if (FrameTimingManager.GetLatestTimings(1, timing) < 1) return;

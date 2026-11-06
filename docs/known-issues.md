@@ -11,6 +11,8 @@ Bugs, mismatches and hygiene problems. The first three roadmaps (v0.2 to v0.9, v
 - `tools/war2d` finds instances only under Linux's `~/.config/unity3d`; on Windows they are in `%USERPROFILE%/AppData/LocalLow/CoolCoder64/WAR-2D/debugapi`.
 - Encoding the route copies costs the server about 0.9 ms of tick at p95 at 10,000 units (each route is matched twice, to size and to write).
 - Incremental GC is off: at 10,000 units a collection takes 8 to 12 ms every 12 to 15 s on the client.
+- Frame Timing Stats is now on in the player settings, for every build: `FrameTimingManager` needs it for the GPU time. Unity documents a small cost (GPU timestamp queries); not measured apart.
+- From the UI check of the branch's Development build (code the branch didn't touch, so on `release/v0.20` too): F1 opens the Field manual and also turns on the Flow debug overlay, whose `DebugOverlays.DrawLines` throws (`Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default")` is null in a build) and leaves the Development Console open; the selection panel covers the squad slots 1 to 9; a range ring's label near the top edge goes under the top bar.
 
 ### v0.10: replays are a tick behind on units
 

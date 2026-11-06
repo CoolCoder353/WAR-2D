@@ -364,7 +364,7 @@ public class ReplicationTests
     public void RoutesLongerThanAnyServerSendsAreRefusedBeforeTheUnitIsKnown()
     {
         // Four ids hold at most 4 x RouteMaintenance.MaxWaypoints (1,024) live waypoints: an Enter with 1,100 is a hostile host's.
-        var store = new ClientUnitStore(4, Dt, Allocator.Temp);
+        var store = new ClientUnitStore(4, Dt);
         var tiles = new NativeArray<int2>(1100, Allocator.Temp);
         for (int i = 0; i < tiles.Length; i++) tiles[i] = new int2(10 + i % 2, 10 + i % 3);
         var enter = new NativeArray<EnterUnit>(new[]
@@ -377,6 +377,74 @@ public class ReplicationTests
         Assert.IsFalse(store.Apply(new ArraySegment<byte>(bytes.AsArray().ToArray()), 1), "refused, not thrown");
         Assert.AreEqual(0, store.Count, "and the unit isn't half known");
         store.Dispose(); bytes.Dispose(); enter.Dispose(); tiles.Dispose();
+    }
+
+    private static byte[] EnterOne(int index, params float2[] route)
+    {
+        var tiles = new NativeArray<int2>(route.Length, Allocator.Temp);
+        for (int i = 0; i < route.Length; i++) tiles[i] = RouteWire.Encode(route[i]);
+        var enter = new NativeArray<EnterUnit>(new[]
+        {
+            new EnterUnit { Id = (1 << NetIdAllocator.IndexBits) | index, Type = (byte)UnitType.Tank, OwnerId = 1, X = Quantise.Encode(route[0].x), Y = Quantise.Encode(route[0].y), Health = 100, First = 0, Count = route.Length },
+        }, Allocator.Temp);
+        var bytes = new NativeList<byte>(256, Allocator.Temp);
+        var sink = new NativeSink(bytes);
+        Messages.EncodeEnter(ref sink, tiles, enter);
+        byte[] result = bytes.AsArray().ToArray();
+        bytes.Dispose(); enter.Dispose(); tiles.Dispose();
+        return result;
+    }
+
+    private static byte[] Order(int tick, params (int index, float2[] route)[] units)
+    {
+        var tileList = new List<int2>();
+        var unitList = new List<RouteUnit>();
+        foreach (var (index, route) in units)
+        {
+            unitList.Add(new RouteUnit { Index = index, First = tileList.Count, Count = route.Length });
+            foreach (float2 p in route) tileList.Add(RouteWire.Encode(p));
+        }
+        var tiles = new NativeArray<int2>(tileList.ToArray(), Allocator.Temp);
+        var list = new NativeArray<RouteUnit>(unitList.ToArray(), Allocator.Temp);
+        var bytes = new NativeList<byte>(4096, Allocator.Temp);
+        var sink = new NativeSink(bytes);
+        Messages.EncodeMoveOrder(ref sink, tick, tiles, list);
+        byte[] result = bytes.AsArray().ToArray();
+        bytes.Dispose(); list.Dispose(); tiles.Dispose();
+        return result;
+    }
+
+    [Test]
+    public void AUnitOrderedTwiceInOneMessageEndsOnTheSecondRoute()
+    {
+        // ApplyRoutesJob applies a message's routes in order, as the managed loop did (code review 2026-11-07).
+        var store = new ClientUnitStore(16, Dt);
+        Assert.IsTrue(store.Apply(new ArraySegment<byte>(EnterOne(3, new float2(10.5f, 10.5f))), 1));
+        float2[] first = { new float2(10.5f, 10.5f), new float2(20.5f, 10.5f) }, second = { new float2(10.5f, 10.5f), new float2(10.5f, 30.5f) };
+        Assert.IsTrue(store.Apply(new ArraySegment<byte>(Order(2, (3, first), (3, second))), 2));
+        var route = new List<float2>();
+        Assert.IsTrue(store.CopyRoute(3, route));
+        CollectionAssert.AreEqual(second, route);
+        store.Dispose();
+    }
+
+    [Test]
+    public void AMoveOrderPastTheRouteCapChangesNothing()
+    {
+        // Four ids hold at most 1,024 live waypoints: a MoveOrder with a 1,100-waypoint route is refused before any route changes.
+        var store = new ClientUnitStore(4, Dt);
+        float2[] start = { new float2(10.5f, 10.5f), new float2(12.5f, 10.5f) };
+        Assert.IsTrue(store.Apply(new ArraySegment<byte>(EnterOne(1, start)), 1));
+        float2 before = store.PredictOne(1, 0.2f);
+        var longRoute = new float2[1100];
+        for (int i = 0; i < longRoute.Length; i++) longRoute[i] = new float2(10.5f + i % 2, 10.5f + i % 3);
+        Assert.IsFalse(store.Apply(new ArraySegment<byte>(Order(2, (1, longRoute))), 2), "refused, not thrown");
+        var route = new List<float2>();
+        Assert.IsTrue(store.CopyRoute(1, route));
+        CollectionAssert.AreEqual(start, route, "the old route stays");
+        Assert.AreEqual(before, store.PredictOne(1, 0.2f), "and so does the prediction");
+        Assert.AreEqual(1, store.Count);
+        store.Dispose();
     }
 
     [Test]

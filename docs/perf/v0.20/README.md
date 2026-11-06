@@ -18,7 +18,9 @@ at a new scale:
   every unit it knows is on screen: about 9,300 of 10,135 are inside the view at the median.
 - **Sampling.** The client warms up for 10 s after the match starts and then records every frame until the host ends the match
   (1,200 sampled ticks, 60 s, after the host's own warm-up). Frame time is `Time.unscaledDeltaTime`; CPU main thread, render
-  thread and GPU time come from `FrameTimingManager` (Frame Timing Stats is now on in the player settings). The 1 % low is the
+  thread and GPU time come from `FrameTimingManager` (Frame Timing Stats is now on in the player settings). The frame rate is
+  frames over time (fixed 2026-11-07: it was the mean of each frame's own rate, which reads 2 to 3 % high here; the table's
+  values come from `frames.csv`, so they are frames over time; the committed CSVs' `perf.client.fps` rows are the old mean). The 1 % low is the
   frame rate over the slowest 1 % of frames (their mean frame time). `client1/frames.csv` keeps every frame with the GC count.
 - **Server metrics.** `perf.tick.main` (main-thread tick, the boundary's wait excluded), CPU of the process, Unity memory
   (native and managed reserved: Mono reports no working set on Windows) each second in `memory.csv`, its growth over the
@@ -57,7 +59,7 @@ plus the benchmark harness (commits `50ecf7f9`, `ead08668`); **after** is the br
 
 | Metric | Before (3 runs) | Before | After (3 runs) | After |
 |---|---|---|---|---|
-| Client fps, mean | 168.6 / 180.3 / 181.7 | **180.3** | 441.5 / 429.0 / 438.4 | **438.4** |
+| Client fps (frames ÷ time) | 162.0 / 176.4 / 177.5 | **176.4** | 430.6 / 416.2 / 427.4 | **427.4** |
 | Client 1 % low fps | 69.7 / 102.3 / 97.1 | **97.1** | 218.7 / 201.2 / 213.2 | **213.2** |
 | Frame time p50 (ms) | 5.9 / 5.7 / 5.7 | **5.7** | 2.3 / 2.3 / 2.3 | **2.3** |
 | Frame time p95 (ms) | 9.0 / 7.0 / 7.0 | **7.0** | 3.0 / 3.3 / 3.1 | **3.1** |
@@ -85,8 +87,8 @@ plus the benchmark harness (commits `50ecf7f9`, `ead08668`); **after** is the br
 | Command queue, longest | 830 / 776 / 860 | **830** | 788 / 806 / 762 | **788** |
 
 Every budget passes after (`tools/perf-10k.sh` exits 0); before, the client's 1 % low and the bandwidth fail. Run-to-run
-noise on this machine is large: an hour earlier, with less else running, the same before build measured 186 fps and the
-after build 454. Compare runs taken side by side only.
+noise on this machine is large: an hour earlier, with less else running, the same before build measured 182 fps and an
+earlier after build 440. Compare runs taken side by side only.
 
 The server's tick rose 0.9 ms at p95 (encoding the route copies, `Messages.RouteCopies`, for each client and the recorder);
 it is a third of the 25 ms budget.
@@ -112,7 +114,7 @@ flat, slope 0.0 MB a minute over the second half); its managed heap moves betwee
 7.0 ms (one tick of 12,000 reached 25.1 ms); process CPU 60 % of a core on average, 162 % at most; no errors, no dropped
 connections; the command queue, sampled each tick, was empty at p95 and peaked at 761, as in the one-minute runs (the battle
 script's order batches), so it doesn't grow. The client
-held 428 fps on average and 169 in its slowest 1 % over the ten minutes; bandwidth 45 KB/s mean, 103 KB/s peak.
+held 413 fps and 169 in its slowest 1 % over the ten minutes; bandwidth 45 KB/s mean, 103 KB/s peak.
 
 ## What was slow (profiler evidence)
 
@@ -141,8 +143,8 @@ EditMode and PlayMode through the editor in batch mode (`Unity -runTests`), agai
 
 | Suite | release/v0.20 | Branch |
 |---|---|---|
-| EditMode | 1,482: 1,475 pass, 4 fail, 3 skipped | TESTS_EDIT |
-| PlayMode | 100: 98 pass, 2 fail | TESTS_PLAY |
+| EditMode | 1,482: 1,475 pass, 4 fail, 3 skipped | 1,489: 1,482 pass, the same 4 fail, the same 3 skipped |
+| PlayMode | 100: 98 pass, 2 fail | 100: 98 pass, the same 2 fail (in an earlier full run the flaky minimap test also failed; alone it passed twice on the branch and once on `release/v0.20`) |
 
 The failures are the same on both and already known (`known-issues.md`, the eighth scan): `ManualTests.TheCompiledWordsAreTheApprovedFile`,
 `ReplayCursorTests.AdvancesByTickTimeAndRestarts`, `ReplayCursorTests.ReachesTheEndOfARecordingWithoutAnEndRecord`,
@@ -151,7 +153,8 @@ The 3 skipped are the same 3 on both. `PerformanceTests.MinimapRedrawAtTenThousa
 both: alone, it timed out once on `release/v0.20` and once of twice on the branch (its 30 s wait for 9,000 known units).
 
 New tests: `ReplicationTests.MoveOrderRoutesCopyTheRunsTheyShareAndDecodeExactly`, `MoveOrderMessagesStayInsideTheBytesAndWaypointsTheDecoderAllows`,
-`CopyStepsThatReachOutsideTheirMessageAreRefused`, `RoutesLongerThanAnyServerSendsAreRefusedBeforeTheUnitIsKnown`;
+`CopyStepsThatReachOutsideTheirMessageAreRefused`, `RoutesLongerThanAnyServerSendsAreRefusedBeforeTheUnitIsKnown`,
+`AUnitOrderedTwiceInOneMessageEndsOnTheSecondRoute`, `AMoveOrderPastTheRouteCapChangesNothing`;
 `ReplayFormatTests.RefusesOtherFormats(4)`.
 
 ## Changes to checks (flagged)
