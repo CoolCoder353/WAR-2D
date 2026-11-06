@@ -96,6 +96,9 @@ namespace WAR2D.Client
                     int2 size = WorldStateManager.GetBuildingSize(e.Data.buildingType);
                     float2 centre = Footprint.VisualCenter((int2)math.round(e.Data.position), size);
                     Effects.BuildingCollapse(centre, size.x);
+                    // v0.20 (spec §8.1): the building's own sprite darkens and sinks into its rubble as it collapses.
+                    WAR2D.Art.ArtAtlas buildingAtlas = WAR2D.Art.ArtAtlas.Load(WAR2D.Art.ArtAtlas.Buildings);
+                    if (buildingAtlas != null) Effects.Sinking(buildingAtlas.Sprite(e.Data.buildingType.ToString(), 0), new Vector2(centre.x, centre.y));
                     Decals.Rubble(centre, size.x);
                 }
                 else Effects.DeathExplosion(p); // v0.20: one burst with the unit's own death effect (Effects.UnitDeath)

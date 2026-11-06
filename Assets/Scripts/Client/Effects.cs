@@ -355,6 +355,52 @@ public static class Effects
         }
     }
 
+    /// <summary>Seconds a destroyed building's sprite takes to sink into its rubble, and how far it sinks (tiles).</summary>
+    public const float SinkSeconds = 1.5f, SinkTiles = 0.5f;
+    private static readonly List<(SpriteRenderer sprite, float start, Vector3 from)> sinking = new List<(SpriteRenderer, float, Vector3)>();
+    private static readonly Stack<SpriteRenderer> sinkPool = new Stack<SpriteRenderer>();
+
+    /// <summary>A destroyed building's sprite at <paramref name="centre"/>, darkening and sinking over <see cref="SinkSeconds"/>, then gone.</summary>
+    public static void Sinking(Sprite sprite, Vector2 centre)
+    {
+        if (sprite == null || sinking.Count >= CollapsePool) return;
+        EnsureRunner();
+        SpriteRenderer r = sinkPool.Count > 0 ? sinkPool.Pop() : null;
+        if (r == null)
+        {
+            var go = new GameObject("Sinking");
+            go.transform.SetParent(runner.transform, false);
+            r = go.AddComponent<SpriteRenderer>();
+        }
+        r.sprite = sprite;
+        r.sortingOrder = WAR2D.Client.Render.SortingOrders.Decals + 3;
+        r.color = Color.white;
+        var at = new Vector3(centre.x, centre.y, 0f);
+        r.transform.position = at;
+        r.gameObject.SetActive(true);
+        sinking.Add((r, Time.time, at));
+    }
+
+    private static void Sink(float now)
+    {
+        for (int i = sinking.Count - 1; i >= 0; i--)
+        {
+            var (r, start, from) = sinking[i];
+            float t = (now - start) / SinkSeconds;
+            if (r == null) { sinking.RemoveAt(i); continue; }
+            if (t >= 1f)
+            {
+                r.gameObject.SetActive(false);
+                sinkPool.Push(r);
+                sinking.RemoveAt(i);
+                continue;
+            }
+            r.transform.position = from + Vector3.down * (SinkTiles * t);
+            float shade = Mathf.Lerp(0.8f, 0.15f, t);
+            r.color = new Color(shade, shade * 0.95f, shade * 0.9f, t < 0.7f ? 1f : 1f - (t - 0.7f) / 0.3f);
+        }
+    }
+
     /// <summary>Seconds and tiles within which a unit's death and the server's death explosion are the same death.</summary>
     public const float SameDeathSeconds = 0.5f, SameDeathTiles = 0.75f;
     private static readonly List<(Vector2 at, float time)> recentBursts = new List<(Vector2, float)>(64);
@@ -829,6 +875,8 @@ public static class Effects
         turretSoundAt.Clear();
         turretBarrel.Clear();
         recentBursts.Clear();
+        sinking.Clear();
+        sinkPool.Clear();
         foreach (Pool p in Onslaught)
         {
             p.Slots.Clear();
@@ -927,6 +975,7 @@ public static class Effects
             Animate(Dust, now, false);
             foreach (Pool p in Onslaught) if (p != IncomingShells) Animate(p, now, false);
             Animate(IncomingShells, now, true);
+            Sink(now);
             Release(now);
         }
 

@@ -498,7 +498,9 @@ namespace WAR2D.UI
             scratchTypes.Sort((a, b) => a.type.CompareTo(b.type));
             float combined = next.Count > 0 ? health / next.Count : 0f;
 
-            bool same = squad == Squad && combined == CombinedHealth01 && scratchTypes.Count == byType.Count;
+            int burning = 0; // v0.20 (Figma B1): which types have a unit burning, one bit per UnitType
+            foreach (ClientUnitView unit in next) if (unit.Burning) burning |= 1 << (int)unit.Type;
+            bool same = squad == Squad && combined == CombinedHealth01 && scratchTypes.Count == byType.Count && burning == burningTypes;
             for (int i = 0; same && i < byType.Count; i++) same = scratchTypes[i] == byType[i];
 
             units.Clear();
@@ -508,7 +510,13 @@ namespace WAR2D.UI
             byType.AddRange(scratchTypes);
             CombinedHealth01 = combined;
             Squad = squad;
+            burningTypes = burning;
             Changed?.Invoke();
         }
+
+        private int burningTypes;
+
+        /// <summary>v0.20 (Figma B1): true when any selected unit of <paramref name="type"/> burns.</summary>
+        public bool AnyBurning(UnitType type) => (burningTypes >> (int)type & 1) != 0;
     }
 }

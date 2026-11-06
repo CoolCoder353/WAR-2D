@@ -22,6 +22,8 @@ namespace WAR2D.Client
         public UnitType Type;
         public float2 Position;
         public float Health01;
+        /// <summary>v0.20: the unit burns (its status bit, from the combat news this client was sent).</summary>
+        public bool Burning;
     }
 
     /// <summary>
@@ -319,6 +321,7 @@ namespace WAR2D.Client
                 Type = (UnitType)store.TypeOf(index),
                 Position = store.PredictOne(index, serverTime),
                 Health01 = store.Health01(index),
+                Burning = (ClientCombat.Current.StatusOf(index) & WAR2D.Sim.UnitStatusBits.Burning) != 0,
             };
             return true;
         }
@@ -612,6 +615,15 @@ namespace WAR2D.Client
             if (cause == 1) position += new Vector2(Mathf.Cos(index * 2.39996f), Mathf.Sin(index * 2.39996f)) * 0.6f;
             if (cause == 2) Decals.BurntWreck(position, wreck);
             else Decals.Wreck(position, wreck);
+            // v0.20 (spec §8.1): shot dead, a turreted unit's head is thrown off to land beside its wreck, at the facing it last had.
+            string head = id + ArtManifest.TurretSuffix;
+            int headDirections = cause == 0 && TurretAim.Has((UnitType)type) ? unitAtlas.Directions(head) : 0;
+            if (headDirections > 0 && turretAngle != null && (uint)index < (uint)turretAngle.Length)
+            {
+                float a = turretAngle[index] + 2.4f, throwTiles = large ? 0.9f : 0.6f;
+                Decals.Wreck(position + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * throwTiles,
+                    unitAtlas.Sprite(head, TurretAim.Facing(turretAngle[index]) % headDirections * unitAtlas.Frames(head)));
+            }
         }
 
         /// <summary>v0.20: a known unit's drawn position, type and size by id index, for <see cref="CombatVisuals"/>.</summary>
