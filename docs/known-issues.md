@@ -20,14 +20,25 @@ The recorder's units go through `DeferredLane` (encoded during the next tick to 
 
 ## v0.20 Onslaught: built on `release/v0.20` (2026-11-07), not yet signed off
 
-The rules, wire, client drawing, art, sound, AI, manual and docs are in. Left open:
+The rules, wire, client drawing, art, sound, AI, manual and docs are in, with PR 45 (10,000 units at 120 fps) merged in. Left open:
 
-- **Not run yet:** the perf gate with fire, shells, leaps and aims in the load (`docs/perf/v0.20/`), `ai-bench --brief`, the PlayMode match of each rework through the control API, and a full match on Linux. The 4096×4096 Effects atlas (it was 4096×2048) is part of what the client-frame measurement must cover.
+- **The perf gate fails: tick.main p95 32.6 ms against 28** (v0.19 26.4 ms on the same machine, the same day). Errors, drops and
+  bandwidth pass. Blast alerts (35 ms a tick), the status news (3 ms, then 2.7 ms) and GC stalls were found and fixed on the way;
+  what is left is about 2.4 ms more main-thread work a tick on average and the bots' order waves at the tail. Details, numbers and
+  the options in [perf/v0.20](perf/v0.20/README.md#v020-onslaught-the-41-gate-with-fire-shells-leaps-and-aims-2026-11-07).
+- **The 10k client benchmark's 1 % low is 99 fps on this machine** (budget 120; PR 45 measured 201 to 219 on its own machine). Not
+  compared with the tree before v0.20 here.
+- **Incremental GC is now on** (perf gate: collections stalled ticks by 20 to 60 ms with it off). It adds write barriers to
+  managed code; the 10k client was no slower with it.
+- **`ai-bench` misses its exit criteria** (2026-11-07, 90 matches): Hard beats Normal 83 % and Normal beats Easy 94 % (better than
+  the 2026-11-03 bench's 71 % and 83 %), but Hard-Normal on 512 is 4/6 and 19 matches reached the 40-minute cap.
+- **`PerformanceTests.MinimapRedrawAtTenThousandOwnUnitsIsUnderOneMillisecond`** also fails on timing (2.0 ms median) when the
+  machine is busy (the full PlayMode suite ran beside `ai-bench`); it passed run alone.
+- **Not run yet:** a full match on Linux played by a person.
 - **Owner approvals still wanted:** the Field manual's v0.20 words went in from `tools/manual-text.v0.20-draft.json` (Figma B3 was approved from them) without a fresh mock review; the Strong/Weak lists on the reworked units' pages are the model's new ones. The asset review's last two items (snapping the larger shell's soft edges and one armour-spark shade to the effect palette, and replacing the staged clips with clips from a real match) are not done.
-- **Not built from the approved set:** the burning marker on the selection panel's per-type button (B1; the world health-bar marker is in), a thrown turret head beside a shot unit's wreck (the wreck is flung by a blast and burnt black by fire, but no separate head), and the building sprite darkening and sinking as it collapses (the staged explosions, dust cloud and HQ finale are in).
+- **Not built from the approved set:** a thrown turret head beside a shot unit's wreck (the wreck is flung by a blast and burnt black by fire, but no separate head), and the building sprite darkening and sinking as it collapses (the staged explosions, dust cloud and HQ finale are in).
 - **Model choices:** the fight model's heavy class uses the Heavy's armour and resistance for every heavy unit (Artillery has neither armour nor the Heavy's resistance); its Bomber still counts as `BomberFightSeconds` of blast.
-- **A Bomber shot down on the tick it leaps** explodes where it stood (the leap had already been reported to clients that tick, so they may draw the leap's start before the blast).
-- **Reviews (2026-11-07):** code review (10 findings, all fixed), security review (no finding above the bar: the combat news follows the leak rule; spec-accepted: a leap's landing point and a whole shell flight go to whoever knew the Bomber or gun), performance review by reading the new hot paths (fixed: the fire, airborne, status and movement passes read combat records only for burning units, Bombers and Snipers; the client keeps a set of burning buildings instead of scanning them all each frame). The perf gate itself still has to be run on a Linux build.
+- **Reviews (2026-11-07):** code review (10 findings, all fixed), security review (no finding above the bar: the combat news follows the leak rule; spec-accepted: a leap's landing point and a whole shell flight go to whoever knew the Bomber or gun), performance review (the hot paths by reading, then the gate above).
 - **Fire on own units:** none, as flame splash never hits allies (D11).
 
 ## Owner playtest fixes (2026-11-06, on `fix/pr30-review-round3`)

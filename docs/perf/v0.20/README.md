@@ -168,3 +168,64 @@ New tests: `ReplicationTests.MoveOrderRoutesCopyTheRunsTheyShareAndDecodeExactly
 - New budgets: errors 0 and dropped connections 0 (every PerfMatch run), memory growth ≤ 64 MB (10,000-unit runs). The 80k gate
   grew 98 MB in its minute, mostly the managed heap and lists reaching working size; it has no memory budget.
 - The benchmark's client runs fullscreen (the game's default) after windowed runs stalled in the OS's presentation.
+
+## v0.20 Onslaught: the §4.1 gate with fire, shells, leaps and aims (2026-11-07)
+
+`tools/perf-run.sh 3` against the `release/v0.20` Linux build, 80,000 units, the roster with Bombers in it (`PerfMatch.MixedType`:
+5 % each of Artillery, Snipers, Flamethrowers and Bombers). Run on the owner's machine, side by side with the v0.19 build
+(`Builds/LinuxReview`, run with an empty config folder so its remembered lobby couldn't take two clients' seats). Files:
+`gate-run1..3.csv` and `gate-v0.19-baseline.csv`.
+
+| | v0.19 (1 run) | v0.20 (3 runs, median) | budget |
+|---|---|---|---|
+| tick.main p95 | 26.4 ms | **32.6 ms** (30.8, 32.6, 32.7) | 28 ms: **fails** |
+| tick.main mean | 19.9 ms | 22.3 ms | |
+| host fps mean | 18.7 | 22.8 | 60: fails on this machine for both |
+| errors, drops | 0, 0 | 0, 0 | pass |
+| bandwidth avg / peak 1 s | | 167 / 319 KB/s | pass |
+
+**Fixed on the way** (each measured with one gate run):
+
+- Blast alerts scanned every unit for every blast: 35 ms a tick (p95 62 ms). They now walk the hash cells each blast reaches: 0.2 ms.
+- The combat news's status bits: a full diff for every client every tick (3 ms), then its list of every unit's bits built on the
+  main thread (2.7 ms at 80,000 units). Now a client in sync gets only the tick's changes and the units it met or lost, and the
+  list is built by a job running alongside the sends (0.1 ms). Landed and incoming shells are worked out once a tick.
+- Bombers of one owner after the same unit share its army's centre (one scan a tick, not one per Bomber).
+- **Incremental GC is on** (it was off). With it off, collections of the ~110 MB host heap (about 17 a minute) stalled a tick by
+  20 to 60 ms: 37 slow ticks outside the order waves in one run, 8 with it on; tick p95 33.9 → 32.2 ms. The 10k client benchmark
+  on this machine (1 run each): mean 196 / 198 fps, 1 % low 94.8 fps off, 98.8 fps on.
+
+**What is left over 28 ms.** Against v0.19, the main thread's mean is up 2.4 ms: the combat news 1.1 to 1.8 ms (about 90 µs of
+managed dictionary work per client), the wait for the route upkeep +0.6 ms and the sends +0.4 ms (the workers are busier: the
+combat jobs +0.7 to 1.4 ms, vision +0.7 to 1.0 ms with the Scout's sight of 21), match work +0.35 ms. Two things set the p95:
+
+1. **The bots' order waves.** About 2.3 % of ticks carry a wave of orders from the harness's bots (`cmd.orders` 45 to 72 ms; those
+   ticks take 63 to 101 ms). They were in v0.19's run too. Without them v0.20's p95 is about 28.4 ms.
+2. **The rest of the tail**: ticks where the periodic work (radars, interest rebuilds, alarms, auto-work) lands with the heavier
+   replication, 29 to 44 ms.
+
+Not the Bombers: with the v0.19 roster (`WAR_PERF_NO_BOMBERS=1`) the p95 was 32.3 ms. Removing the combat news entirely would
+take it to about 31 ms (from the per-tick numbers). Passing 28 ms needs either a cheaper tail (the status pass as a Burst job per
+client, the route and send waits) or a decision on the budget or on the order waves in the harness: the owner's call.
+
+New gate diagnostics: `perf.split.repl.combat` and `perf.split.repl.combatStatus`; `WAR_PERF_TICKS=1` writes every tick's numbers
+to `ticks.csv` beside `perf.csv` (to see what is slow together on the slow ticks); `WAR_PERF_NO_BOMBERS=1` deals the v0.19 roster.
+
+**The 10k client benchmark on this machine** (`tools/perf-10k.sh 1`, v0.20): mean 198 fps, 1 % low 98.8 fps (budget 120:
+fails), server tick p95 13.6 ms. PR 45 measured 201 to 219 fps 1 % low on its machine; this machine wasn't measured on the tree
+before v0.20, so how much of the gap is v0.20's combat drawing and how much the machine isn't known.
+
+## v0.20 Onslaught: `ai-bench --brief` (2026-11-07)
+
+90 matches (6 seeds × 256/512/1024 × five pairings), the build's own config; the full report is [ai-bench.md](ai-bench.md).
+
+| | v0.20 | last bench (2026-11-03, 240 matches) |
+|---|---|---|
+| Hard beats Normal | **83 %** (15/18; 256 6/6, 512 4/6, 1024 5/6) | 71 % |
+| Normal beats Easy | **94 %** (17/18; 256 6/6, 512 6/6, 1024 5/6) | 83 % |
+| matches at the 40-minute cap | 19 of 90 (21 %), 0 errors | 70 of 240 (29 %) |
+
+The exit criteria (every match ends; the stronger side wins at least 80 % on every map size) are **not met**: Hard-Normal on 512
+is 4/6, and 19 matches capped (8 of them Hard-Hard). They were not met on 2026-11-03 either; the ladder is better than then.
+Banks are far larger than on 2026-11-03 (Hard 1.57 M at 10 minutes, 6,210/s income) from the owner's `Balance` commit on
+`main` (mining 10 → 25, rich gems ×2.5 → ×15, passive 5 → 20), not from v0.20, which changed no economy number.
