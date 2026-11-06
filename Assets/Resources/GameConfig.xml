@@ -617,7 +617,7 @@
     <Unit type="Scout">  <!-- v0.20: the spotter, with the longest sight -->
       <Health>40</Health><Damage>4</Damage><Range>4.0</Range><AttackInterval>0.5</AttackInterval>
       <MoveSpeed>9.0</MoveSpeed><UpfrontCost>30.0</UpfrontCost><RunningCost>0.25</RunningCost>
-      <Radius>0.3</Radius><SizeClass>0</SizeClass><Sight>16.0</Sight>
+      <Radius>0.3</Radius><SizeClass>0</SizeClass><Sight>21.0</Sight>  <!-- owner, 2026-11-07: 21, past the Artillery's 18 -->
       <Armour>Light</Armour><BuildSeconds>0.7</BuildSeconds>
     </Unit>
     <Unit type="Flamethrower">

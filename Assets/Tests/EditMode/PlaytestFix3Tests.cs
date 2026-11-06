@@ -276,8 +276,7 @@ public class PlaytestFix3Tests
         var c = Config.ConfigLoader.LoadConfig();
         Assert.Less(c.GetUnit(UnitType.Artillery).Sight, c.GetUnit(UnitType.Artillery).Range);
         Assert.Less(c.GetUnit(UnitType.Sniper).Sight, c.GetUnit(UnitType.Sniper).Range);
-        // Not the Artillery: the spec keeps its sight at 18 though it calls the Scout's 16 the longest (known-issues.md).
-        foreach (UnitType t in new[] { UnitType.Tank, UnitType.Heavy, UnitType.Sniper, UnitType.Flamethrower })
+        foreach (UnitType t in new[] { UnitType.Tank, UnitType.Heavy, UnitType.Artillery, UnitType.Sniper, UnitType.Flamethrower })
             Assert.Greater(c.GetUnit(UnitType.Scout).Sight, c.GetUnit(t).Sight, $"the Scout out-sees the {t}");
         Assert.GreaterOrEqual(c.GetBuilding(BuildingType.GunTurret).Sight, c.GetBuilding(BuildingType.GunTurret).Range);
     }

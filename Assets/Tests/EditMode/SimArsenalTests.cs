@@ -30,7 +30,7 @@ public class SimArsenalTests
         Assert.AreEqual((28f, 5f, 1), (c.GetUnit(UnitType.Sniper).Range, c.GetUnit(UnitType.Sniper).MinRange, c.GetUnit(UnitType.Sniper).SizeClass));
         Assert.AreEqual((2.5f, 5.5f), (c.GetUnit(UnitType.Flamethrower).Splash, c.GetUnit(UnitType.Flamethrower).Range));
         Assert.AreEqual((2f, 150f), (c.GetUnit(UnitType.Bomber).BlastRadius, c.GetUnit(UnitType.Bomber).BlastDamage));
-        Assert.AreEqual(16f, c.GetUnit(UnitType.Scout).Sight);
+        Assert.AreEqual(21f, c.GetUnit(UnitType.Scout).Sight); // owner, 2026-11-07
         Assert.AreEqual(TargetClass.LightUnit, c.GetUnit(UnitType.Tank).Armour);
         Assert.AreEqual(2f, c.GetUnit(UnitType.Builder).BuildSeconds);
         Assert.AreEqual(1f, c.GetUnit(UnitType.Tank).BuildSeconds);

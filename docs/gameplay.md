@@ -171,7 +171,7 @@ A Miner checks the single tile next to it in the direction it faces:
 | **Tank** | 100 | 10 | 5 | 1 s | 5 | 50 | 0.5 | 8 | 0.35 | Light | 1 | The baseline (v0.20) |
 | **Builder** | 60 | 0 | 1 | 1 s | 5 | 60 | 0.5 | 6 | 0.35 | Light | 2 | Never attacks |
 | **Digger** | 120 | 4 | 1.5 | 1 s | 4 | 120 | 1 | 6 | 0.4 | Light | 1 | |
-| **Scout** | 40 | 4 | 4 | 0.5 s | 9 | 30 | 0.25 | 16 | 0.3 | Light | 0.7 | The spotter: the longest sight, fastest |
+| **Scout** | 40 | 4 | 4 | 0.5 s | 9 | 30 | 0.25 | 21 | 0.3 | Light | 0.7 | The spotter: the longest sight, fastest |
 | **Flamethrower** | 90 | 2 | 5.5 | 0.5 s | 4.5 | 70 | 0.5 | 6 | 0.35 | Light | 1.5 | Splash 2.5; every hit sets the target on fire |
 | **Heavy** | 400 | 30 | 5 | 1.5 s | 2.5 | 200 | 2.5 | 7 | 0.7 | Heavy | 5 | Flat armour 4, blast resistance 50 %; large pathing class |
 | **Artillery** | 120 | 160 (shell blast) | 36 | 15 s | 2 | 220 | 2.5 | 18 | 0.7 | Heavy | 6 | Blast radius 3.5, fires over walls, can't fire inside 6; blast resistance 25 %; large pathing class |
@@ -182,7 +182,7 @@ The v0.20 numbers (spec §11) are starting values to tune in play ([tuning.md](t
 
 **Armour and damage classes.** Every unit is *Light* or *Heavy* armoured (`<Armour>`); with buildings and walls that gives four target classes (`LightUnit`, `HeavyUnit`, `Building`, `Wall`). The damage table holds one multiplier per attacker and class (`target="Unit"` in the XML means both unit classes). Scouts do a quarter of their damage to Heavies; Snipers do half to light units and double to heavy ones (v0.20); Artillery does double to buildings.
 
-**Fire only at what you see.** A unit only fires at an enemy whose fog cell its owner's side sees now (own units, allies who share vision, Radars). **v0.20: Artillery (range 36, sight 18) and Snipers (range 28, sight 12) fire further than they see**, so they need **spotters**: a Scout (sight 16), a Radar, an ally or any unit further forward. Jammers blind them too.
+**Fire only at what you see.** A unit only fires at an enemy whose fog cell its owner's side sees now (own units, allies who share vision, Radars). **v0.20: Artillery (range 36, sight 18) and Snipers (range 28, sight 12) fire further than they see**, so they need **spotters**: a Scout (sight 21, owner 2026-11-07), a Radar, an ally or any unit further forward. Jammers blind them too.
 
 **Armour, blasts and fire (v0.20).** A unit's `FlatArmour` comes off every shot after the damage table, never below `Combat/MinHit` (1): a Heavy's 4 makes a Scout's or a Flamethrower's hit 1 and a Tank's 6. A **blast** (a Bomber, an Artillery shell, a Mine) ignores armour; each unit shrugs off its `BlastResist` share of it (Bomber 99 %, Heavy 50 %, Artillery 25 %, others none). **Fire**: every Flamethrower hit, direct or splash, sets its target burning for `Burn/Seconds` (4 s), losing `Burn/Dps` (6) a second times its class's rate (light units and buildings 1, heavy units 0.5; walls never burn). A new hit only restarts the fire; fire never spreads and nothing but time puts it out; it ignores armour and resistance, and its damage and kills go to whoever lit it last.
 
@@ -206,7 +206,7 @@ Units reach full speed at once (the unused `Acceleration` setting was dropped). 
 
 ## Fog of war, teams and diplomacy
 
-- Each player sees through the eyes of all their units and buildings, plus those of every player sharing vision with them. Teammates share vision with each other from the start. Sight radius (`Sight`) is per unit and building type in `GameConfig.xml`: Tank 8 tiles, Builder 6, Digger 6, Scout 16, Sniper 12, Artillery 18, HQ 10, Spawner 6, Miner 4, Radar 20 (Radar sight ignores walls), Mine 0, Gun turret 10, Jammer 6. A blueprint sees nothing until it is finished.
+- Each player sees through the eyes of all their units and buildings, plus those of every player sharing vision with them. Teammates share vision with each other from the start. Sight radius (`Sight`) is per unit and building type in `GameConfig.xml`: Tank 8 tiles, Builder 6, Digger 6, Scout 21, Sniper 12, Artillery 18, HQ 10, Spawner 6, Miner 4, Radar 20 (Radar sight ignores walls), Mine 0, Gun turret 10, Jammer 6. A blueprint sees nothing until it is finished.
 - Walls block sight; you can see a wall's face but not what's behind it. Fog is tracked on a grid of 2×2-tile cells and updated 5 times a second.
 - **Jams (v0.13).** Inside a finished, paid enemy Jammer's radius (`Siege/JamRadius`, 12 tiles), your side sees a fog cell only when one of your sources is within `Siege/JamSight` (3 tiles) of it, measured between the closest tiles of the source's cell and that cell (line of sight still applies), and your Radars see nothing there and never ping for a contact in it. Units, buildings, wall and terrain changes, explosions and alerts in the jam follow what you see, so a building there stays a ghost until you come close. A Jammer never jams its owner or anyone its owner shares vision with. Its dark disc does show roughly where it is.
 - The map shows three states: **unexplored** (black), **explored** (dimmed: you've seen it before), and **visible** (clear).
