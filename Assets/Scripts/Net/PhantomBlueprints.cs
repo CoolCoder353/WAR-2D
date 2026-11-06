@@ -45,15 +45,13 @@ public partial class WorldStateManager
     /// <summary>True when one of the owner's own buildings (a blueprint included) takes <paramref name="tile"/>.</summary>
     private bool OwnFootprintAt(int2 tile, int owner) => footprintOwners.TryGetValue(tile, out int at) && at == owner;
 
-    /// <summary>True when one of the owner's waiting blueprints covers <paramref name="tile"/>.</summary>
-    private bool OwnPhantomAt(int2 tile, int owner) => PhantomAt(tile, owner, out _);
-
-    /// <summary>The owner's waiting blueprint covering <paramref name="tile"/>, if any.</summary>
-    internal bool PhantomAt(int2 tile, int owner, out int2 anchor)
+    /// <summary>The owner's waiting blueprint covering <paramref name="tile"/>, if any (<paramref name="skip"/>'s id aside).</summary>
+    internal bool PhantomAt(int2 tile, int owner, out int2 anchor, int skip = 0)
     {
-        foreach (Phantom p in phantoms.Values)
+        foreach (KeyValuePair<int, Phantom> pair in phantoms)
         {
-            if (p.Owner != owner) continue;
+            Phantom p = pair.Value;
+            if (p.Owner != owner || pair.Key == skip) continue;
             int2 size = GetBuildingSize(p.Type);
             int2 start = Footprint.Start(p.Anchor, size);
             if (math.all(tile >= start) && math.all(tile < start + size))
@@ -86,8 +84,10 @@ public partial class WorldStateManager
     }
 
     /// <summary>
-    /// At each vision pass: a waiting blueprint whose ground is free now is placed for real; one whose footprint its owner's
-    /// side sees, still taken, is cancelled and refunded, and the owner alerted.
+    /// At each vision pass: a waiting blueprint whose ground is free now is placed for real; one the owner can now see is
+    /// blocked (the rules fail on the real map where their side sees and on what they know elsewhere) is cancelled and
+    /// refunded, and the owner alerted. Seeing part of the footprint while the blocker stays in the fog changes nothing,
+    /// or the cancel would tell them something stands there unseen (security review 2026-11-06).
     /// </summary>
     [Server]
     private void ResolvePhantoms()
@@ -111,14 +111,24 @@ public partial class WorldStateManager
                 QueueBlueprint(p.Owner, p.Anchor, p.Type, p.Rotation, id, ConfigLoader.LoadConfig().GetBuilding(p.Type));
                 continue;
             }
-            bool seen = false;
-            foreach (int2 tile in Footprint.Tiles(p.Anchor, GetBuildingSize(p.Type))) seen |= SeesNow(p.Owner, tile);
-            if (!seen) continue;
+            if (!SeesBlocked(id, p)) continue;
             phantoms.Remove(id);
             player.Refund(p.Paid);
             Ids?.Free(id);
             Alerts?.Add(p.Owner, new Alert { Kind = AlertKind.BlueprintBlocked, Tile = p.Anchor });
         }
+    }
+
+    /// <summary>
+    /// True when the owner can tell the waiting blueprint is blocked: the rules fail as the owner judges them, or (with nothing
+    /// to judge by: the owner has no client now, or sees the whole footprint) on the real map once every tile is seen.
+    /// </summary>
+    private bool SeesBlocked(int id, Phantom p)
+    {
+        if (KnownPlacement(p.Type, p.Anchor, p.Rotation, p.Owner, id, out PlacementResult known)) return known != PlacementResult.Ok;
+        foreach (int2 tile in Footprint.Tiles(p.Anchor, GetBuildingSize(p.Type)))
+            if (!SeesNow(p.Owner, tile)) return false;
+        return true; // seen whole, and the real placement already failed above
     }
 
     /// <summary>Each waiting blueprint as its owner sees it: a fresh blueprint (<see cref="BuildingView.OwnerOnly"/>).</summary>

@@ -942,8 +942,9 @@ public partial class WorldStateManager : NetworkBehaviour
 
         ServerPlayer acting = GameCore.Instance?.GetServerPlayerById(owner);
         if (acting == null || acting.state != PlayerState.Playing) return PlacementResult.WrongGameState;
-        // A building past the simulation's slots could never be hit or built (PR 39 review).
-        if (Buildings.Count >= WAR2D.Sim.SimData.MaxBuildings - WAR2D.Sim.SimData.BuildingHeadroom) return PlacementResult.TooManyBuildings;
+        // A building past the simulation's slots could never be hit or built (PR 39 review). Waiting blueprints count: each
+        // becomes a building once its ground is free (security review 2026-11-06).
+        if (Buildings.Count + PhantomCount >= WAR2D.Sim.SimData.MaxBuildings - WAR2D.Sim.SimData.BuildingHeadroom) return PlacementResult.TooManyBuildings;
 
         // Only on ground the player's side has seen: a blueprint in the fog would probe it (the HQ is placed before anyone sees).
         if (type != BuildingType.Base)
@@ -951,21 +952,35 @@ public partial class WorldStateManager : NetworkBehaviour
                 if (!HasExplored(owner, tile)) return PlacementResult.Unexplored;
 
         PlacementResult truth = TruePlacement(type, anchor, rotation, owner);
-        if (type == BuildingType.Base || ReplicationService.Instance == null || !ReplicationService.Instance.TryKnowledgeOf(owner, out BuildingInterest knownBuildings, out TerrainInterest knownTerrain))
-            return truth;
-        bool anyHidden = false;
-        foreach (int2 tile in Footprint.Tiles(anchor, GetBuildingSize(type))) anyHidden |= !SeesNow(owner, tile);
-        if (!anyHidden) return truth;
-        byte[] initial = Map.InitialTiles;
-        PlacementResult known = PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
-            GameCore.Instance.HasPlacedHq(owner),
-            tile => SeesNow(owner, tile) || !Map.Grid.Contains(tile) ? Map.Grid.TileAt(tile) : (TileType)knownTerrain.KnownType(Map.Grid.Index(tile), initial),
-            tile => SeesNow(owner, tile) ? Map.IsUsed(tile) || KnownBombAt(tile, owner)
-                : knownBuildings.KnownCovers(tile, GetBuildingSize) || OwnFootprintAt(tile, owner) || OwnPhantomAt(tile, owner) || KnownBombAt(tile, owner),
-            tile => false, OwnStartOptions(owner));
+        if (type == BuildingType.Base || !KnownPlacement(type, anchor, rotation, owner, 0, out PlacementResult known)) return truth;
         if (known != PlacementResult.Ok) return known;
         phantom = truth != PlacementResult.Ok;
         return PlacementResult.Ok;
+    }
+
+    /// <summary>
+    /// The placement rules as the owner can judge them: the real map on tiles their side sees now, what they were told on the
+    /// rest (terrain, buildings and ghosts, their own footprints and waiting blueprints, <paramref name="skipPhantom"/> aside).
+    /// False when there is no such judgement: an owner with no network client (an AI), or a footprint the side sees whole
+    /// (then the real map is all there is).
+    /// </summary>
+    [Server]
+    private bool KnownPlacement(BuildingType type, int2 anchor, float rotation, int owner, int skipPhantom, out PlacementResult known)
+    {
+        known = PlacementResult.Ok;
+        if (ReplicationService.Instance == null || !ReplicationService.Instance.TryKnowledgeOf(owner, out BuildingInterest knownBuildings, out TerrainInterest knownTerrain))
+            return false;
+        bool anyHidden = false;
+        foreach (int2 tile in Footprint.Tiles(anchor, GetBuildingSize(type))) anyHidden |= !SeesNow(owner, tile);
+        if (!anyHidden) return false;
+        byte[] initial = Map.InitialTiles;
+        known = PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
+            GameCore.Instance.HasPlacedHq(owner),
+            tile => SeesNow(owner, tile) || !Map.Grid.Contains(tile) ? Map.Grid.TileAt(tile) : (TileType)knownTerrain.KnownType(Map.Grid.Index(tile), initial),
+            tile => SeesNow(owner, tile) ? Map.IsUsed(tile) || KnownBombAt(tile, owner)
+                : knownBuildings.KnownCovers(tile, GetBuildingSize) || OwnFootprintAt(tile, owner) || PhantomAt(tile, owner, out _, skipPhantom) || KnownBombAt(tile, owner),
+            tile => false, OwnStartOptions(owner));
+        return true;
     }
 
     /// <summary>The placement rules on the real map (what an AI, a seen spot, or a waiting blueprint is judged by).</summary>
