@@ -15,6 +15,7 @@ public sealed class AlertService
     private readonly Dictionary<int, List<Alert>> pending = new Dictionary<int, List<Alert>>();
     private readonly List<(int owner, int2 tile)> damaged = new List<(int, int2)>();
     private readonly HashSet<int> seenTargets = new HashSet<int>();
+    private readonly HashSet<int> blastVictims = new HashSet<int>();
     private readonly Action<int, Alert> add;
     private readonly Action<int, Alert[]> send;
 
@@ -66,24 +67,50 @@ public sealed class AlertService
     {
         if (blasts.Count == 0) return;
         damaged.Clear();
-        float2 lo = new float2(float.MaxValue), hi = new float2(float.MinValue);
+        // Each blast looks only at the spatial hash's cells it reaches (v0.20: Bombers and shells put blasts all over the map, and a
+        // pass over every unit for their bounding box cost 35 ms a tick in the perf gate). The hash is this tick's; units moved at
+        // most a tick's step since, which the one-cell margin covers. A unit the blast killed is still here, at 0 health.
+        blastVictims.Clear();
+        int cellsX = data.CellsX, cellsY = data.CellsY, cellSize = data.CellSize;
         foreach ((float2 at, int _, float radius) in blasts)
         {
-            lo = math.min(lo, at - radius);
-            hi = math.max(hi, at + radius);
+            int2 lo = math.clamp((int2)math.floor((at - radius) / cellSize) - 1, 0, new int2(cellsX - 1, cellsY - 1));
+            int2 hi = math.clamp((int2)math.floor((at + radius) / cellSize) + 1, 0, new int2(cellsX - 1, cellsY - 1));
+            for (int cy = lo.y; cy <= hi.y; cy++)
+            for (int cx = lo.x; cx <= hi.x; cx++)
+            {
+                int cell = cy * cellsX + cx;
+                for (int k = data.CellStart[cell]; k < data.CellStart[cell + 1]; k++)
+                {
+                    int slot = data.Sorted[k];
+                    if (slot >= unitCount || blastVictims.Contains(slot)) continue;
+                    float2 p = data.Positions[slot];
+                    if (!Hit(blasts, p, p, data.OwnerId[slot])) continue;
+                    blastVictims.Add(slot);
+                    damaged.Add((data.OwnerId[slot], (int2)math.floor(p)));
+                }
+            }
         }
-        for (int slot = 0; slot < unitCount; slot++)
+        blastVictims.Clear();
+        foreach ((float2 at, int _, float radius) in blasts)
         {
-            float2 p = data.Positions[slot];
-            if (math.all(p >= lo & p <= hi) && Hit(blasts, p, p, data.OwnerId[slot])) // a unit the blast killed is still here, at 0 health
-                damaged.Add((data.OwnerId[slot], (int2)math.floor(p)));
-        }
-        int buildings = data.BuildingCount[0];
-        for (int b = 0; b < buildings; b++)
-        {
-            if ((data.BuildingFlag[b] & BuildingFlags.Hidden) != 0) continue; // a hidden bomb is the blast's cause, not its victim
-            float2 start = Footprint.Start(data.BuildingAnchor[b], data.BuildingSize[b]);
-            if (Hit(blasts, start, start + data.BuildingSize[b], data.BuildingOwnerId[b])) damaged.Add((data.BuildingOwnerId[b], data.BuildingAnchor[b]));
+            // Buildings are hashed by centre: a footprint reaches up to half its size (an HQ's 2.5 tiles) further.
+            int2 lo = math.clamp((int2)math.floor((at - radius - 3f) / cellSize), 0, new int2(cellsX - 1, cellsY - 1));
+            int2 hi = math.clamp((int2)math.floor((at + radius + 3f) / cellSize), 0, new int2(cellsX - 1, cellsY - 1));
+            for (int cy = lo.y; cy <= hi.y; cy++)
+            for (int cx = lo.x; cx <= hi.x; cx++)
+            {
+                int cell = cy * cellsX + cx;
+                for (int k = data.BuildingCellStart[cell]; k < data.BuildingCellStart[cell + 1]; k++)
+                {
+                    int b = data.BuildingSorted[k];
+                    if (blastVictims.Contains(b) || (data.BuildingFlag[b] & BuildingFlags.Hidden) != 0) continue; // a hidden Mine is the blast's cause, not its victim
+                    float2 start = Footprint.Start(data.BuildingAnchor[b], data.BuildingSize[b]);
+                    if (!Hit(blasts, start, start + data.BuildingSize[b], data.BuildingOwnerId[b])) continue;
+                    blastVictims.Add(b);
+                    damaged.Add((data.BuildingOwnerId[b], data.BuildingAnchor[b]));
+                }
+            }
         }
         AlertRules.UnderAttack(damaged, throttle, now, add);
     }

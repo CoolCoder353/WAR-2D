@@ -512,7 +512,7 @@ public sealed class PerfMatch : MonoBehaviour
         string path = Path.Combine(dir, "perf.csv");
         var budgets = new Dictionary<string, (string, double, bool)>
         {
-            ["perf.tick.main"] = ("p95", 25.0, true),
+            ["perf.tick.main"] = ("p95", 28.0, true), // raised from 25 from v0.19 on (owner, 2026-11-06; roadmap §3)
             ["perf.bw.avg"] = ("mean", 262144.0, true),
             ["perf.bw.peak1s"] = ("max", 786432.0, true),
         };
