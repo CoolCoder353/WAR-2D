@@ -92,6 +92,7 @@ public sealed class AlertService
             }
         }
         blastVictims.Clear();
+        int buildingCount = data.BuildingCount[0];
         foreach ((float2 at, int by, float radius) in blasts)
         {
             float rSq = radius * radius;
@@ -105,6 +106,7 @@ public sealed class AlertService
                 for (int k = data.BuildingCellStart[cell]; k < data.BuildingCellStart[cell + 1]; k++)
                 {
                     int b = data.BuildingSorted[k];
+                    if (b >= buildingCount) continue; // removed since the hash, as units past the count above
                     if (data.BuildingOwnerId[b] == by || (data.BuildingFlag[b] & BuildingFlags.Hidden) != 0) continue; // a hidden Mine is the blast's cause, not its victim
                     float2 start = Footprint.Start(data.BuildingAnchor[b], data.BuildingSize[b]), end = start + data.BuildingSize[b];
                     if (math.lengthsq(math.max(math.max(start - at, at - end), 0f)) > rSq || !blastVictims.Add(b)) continue;
