@@ -797,6 +797,9 @@ namespace WAR2D.Sim
 
         public void Execute()
         {
+            // Bombers of one owner after the same unit share its army's centre: worked out once a tick (perf gate 2026-11-07: a
+            // crowd of Bombers each scanning the same army was most of the job's time at 80,000 units).
+            var centres = new NativeHashMap<long, float2>(64, Allocator.Temp);
             for (int i = 0; i < World.UnitCount; i++)
             {
                 Spent[i] = 0;
@@ -824,7 +827,12 @@ namespace WAR2D.Sim
                     {
                         case TargetKinds.Unit:
                         {
-                            float2 centre = ArmyCentre(i, target);
+                            long key = ((long)target << 8) | (uint)Search.OwnerSlot[i];
+                            if (!centres.TryGetValue(key, out float2 centre))
+                            {
+                                centre = ArmyCentre(i, target);
+                                centres.Add(key, centre);
+                            }
                             c.RunPoint = centre;
                             c.HasRunPoint = 1;
                             if (math.distance(p, Positions[target]) <= range + Radius[target])

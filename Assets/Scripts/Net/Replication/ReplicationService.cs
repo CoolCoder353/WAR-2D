@@ -300,6 +300,10 @@ namespace WAR2D.Net.Replication
             // Interest reads only the settled sim arrays (read-only, as the route jobs do) and writes its own sets, so it runs
             // alongside the route upkeep and the sends below instead of after them (perf gate 2026-11-06). Same sets, same order.
             JobHandle interestHandle = interests.Schedule(input, default);
+            // The combat news's status list reads only the settled unit arrays too: its pass over every unit runs on a worker
+            // alongside the sends (perf gate 2026-11-07: 2.7 ms on the main thread at 80,000 units).
+            using var statuses = new NativeList<int2>(256, Allocator.TempJob);
+            JobHandle statusHandle = ScheduleStatuses(data, tick, input.Count, statuses);
             double t = PerfSplits.Now;
             SendFog(data);
             PerfSplits.Mark(8, ref t);
@@ -353,8 +357,9 @@ namespace WAR2D.Net.Replication
                 SendSplit(client, tick, unreliable, unreliableSizes, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
             }
             for (int c = 0; c < MaxClients; c++) encoded[c].Complete(); // a client that left mid-loop: its job still has to finish
-            SendCombat(data, tick, input);
             PerfSplits.Mark(14, ref t);
+            SendCombat(data, tick, input, statuses, statusHandle);
+            PerfSplits.Mark(PerfSplits.ReplCombat, ref t);
             LastMilliseconds = watch.Elapsed.TotalMilliseconds;
         }
 

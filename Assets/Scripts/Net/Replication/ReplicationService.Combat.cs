@@ -20,23 +20,27 @@ namespace WAR2D.Net.Replication
         private const int MaxStatusesPerBatch = 4096;
 
         private readonly CombatNews combatNews = new CombatNews();
-        private readonly HashSet<int> shellsInFlight = new HashSet<int>();
+        /// <summary>Shells in flight this tick and last, the ones that landed in between, and those near enough landing to be announced.</summary>
+        private HashSet<int> shellsInFlight = new HashSet<int>(), shellsBefore = new HashSet<int>();
+        private readonly List<int> shellsLanded = new List<int>(), shellsIncoming = new List<int>();
         private readonly HashSet<int> seenStatus = new HashSet<int>();
         private readonly List<int> staleStatus = new List<int>();
-        private readonly List<int> staleShells = new List<int>();
         /// <summary>Every unit's status bits now and last tick (by id index), and what changed between them (bits 0: cleared).</summary>
         private Dictionary<int, byte> statusNow = new Dictionary<int, byte>(), statusBefore = new Dictionary<int, byte>();
         private readonly List<int2> statusChanged = new List<int2>();
 
-        /// <summary>Builds and sends (or, for a lane client, holds) every active client's combat news for <paramref name="tick"/>.</summary>
-        private void SendCombat(SimData data, int tick, in ReplicationInput input)
+        /// <summary>Schedules the list of every living unit's status bits (<see cref="StatusListJob"/>) for <see cref="SendCombat"/>.</summary>
+        private static JobHandle ScheduleStatuses(SimData data, int tick, int count, NativeList<int2> statuses) => new StatusListJob
         {
-            using var statuses = new NativeList<int2>(256, Allocator.TempJob);
-            new StatusListJob
-            {
-                Count = input.Count, IdOf = data.IdOf, IndexOfId = data.IndexOfId, Health = data.Health, Type = data.Type, Combat = data.Combat,
-                BlastRadiusByType = data.BlastRadiusByType, AimByType = data.AimByType, Burning = data.BurningUnits, Tick = tick, Out = statuses,
-            }.Run();
+            Count = count, IdOf = data.IdOf, IndexOfId = data.IndexOfId, Health = data.Health, Type = data.Type, Combat = data.Combat,
+            BlastRadiusByType = data.BlastRadiusByType, AimByType = data.AimByType, Burning = data.BurningUnits, Tick = tick, Out = statuses,
+        }.Schedule();
+
+        /// <summary>Builds and sends (or, for a lane client, holds) every active client's combat news for <paramref name="tick"/>.</summary>
+        private void SendCombat(SimData data, int tick, in ReplicationInput input, NativeList<int2> statuses, JobHandle statusHandle)
+        {
+            double splitAt = PerfSplits.Now;
+            statusHandle.Complete();
             (statusBefore, statusNow) = (statusNow, statusBefore);
             statusNow.Clear();
             statusChanged.Clear();
@@ -47,9 +51,20 @@ namespace WAR2D.Net.Replication
             }
             foreach (KeyValuePair<int, byte> pair in statusBefore)
                 if (!statusNow.ContainsKey(pair.Key)) statusChanged.Add(new int2(pair.Key, 0));
-            shellsInFlight.Clear();
-            for (int k = 0; k < data.Shells.Length; k++) shellsInFlight.Add(data.Shells[k].Id);
+            PerfSplits.Mark(PerfSplits.ReplCombatStatus, ref splitAt);
+            // Shell bookkeeping once for every client (perf gate 2026-11-07): which landed, and which are close enough to landing for
+            // a client that never knew the gun to be told where (each client then touches only those, not every shell it was sent).
             int incomingTicks = math.max(1, (int)math.round(config.Artillery.IncomingSeconds / math.max(1e-4f, config.Simulation.TickSeconds)));
+            (shellsBefore, shellsInFlight) = (shellsInFlight, shellsBefore);
+            shellsInFlight.Clear();
+            shellsIncoming.Clear();
+            for (int k = 0; k < data.Shells.Length; k++)
+            {
+                shellsInFlight.Add(data.Shells[k].Id);
+                if (tick >= data.Shells[k].LandTick - incomingTicks) shellsIncoming.Add(k);
+            }
+            shellsLanded.Clear();
+            foreach (int id in shellsBefore) if (!shellsInFlight.Contains(id)) shellsLanded.Add(id);
 
             for (int c = 0; c < MaxClients; c++)
             {
@@ -90,16 +105,14 @@ namespace WAR2D.Net.Replication
                     client.SentShells.Add(shell.Id);
                     news.Shells.Add(new ShellEntry { Full = true, From = shell.From, To = shell.To, Launch = shell.LaunchTick, Land = shell.LandTick });
                 }
-                for (int k = 0; k < data.Shells.Length; k++)
+                foreach (int k in shellsIncoming)
                 {
                     Shell shell = data.Shells[k];
-                    if (tick < shell.LandTick - incomingTicks || client.SentShells.Contains(shell.Id) || !input.Sees(grid, shell.To)) continue;
+                    if (client.SentShells.Contains(shell.Id) || !input.Sees(grid, shell.To)) continue;
                     client.SentShells.Add(shell.Id);
                     news.Shells.Add(new ShellEntry { Full = false, To = shell.To, Land = shell.LandTick });
                 }
-                staleShells.Clear();
-                foreach (int id in client.SentShells) if (!shellsInFlight.Contains(id)) staleShells.Add(id);
-                foreach (int id in staleShells) client.SentShells.Remove(id);
+                foreach (int id in shellsLanded) client.SentShells.Remove(id);
 
                 if (news.Empty) continue;
                 writer.Position = 0;

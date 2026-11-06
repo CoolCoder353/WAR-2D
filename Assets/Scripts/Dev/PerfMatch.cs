@@ -474,6 +474,9 @@ public sealed class PerfMatch : MonoBehaviour
     /// <summary>WAR_PERF_TANKS_ONLY=1 deals the old all-Tank armies, to tell the roster's cost from the code's.</summary>
     private static readonly bool TanksOnly = System.Environment.GetEnvironmentVariable("WAR_PERF_TANKS_ONLY") == "1";
 
+    /// <summary>WAR_PERF_NO_BOMBERS=1 deals the v0.19 roster (a Tank for the Bomber), to tell the Bombers' cost from the rest of v0.20's.</summary>
+    private static readonly bool NoBombers = System.Environment.GetEnvironmentVariable("WAR_PERF_NO_BOMBERS") == "1";
+
     /// <summary>
     /// The gate roster, dealt by a counter: 55 % Tanks, 15 % Scouts, 10 % Heavies, and 5 % each of Artillery, Snipers,
     /// Flamethrowers and (v0.20, spec §13: leaps, fire, shells and aims in the load) Bombers.
@@ -482,7 +485,7 @@ public sealed class PerfMatch : MonoBehaviour
     {
         if (TanksOnly) return UnitType.Tank;
         int slot = k % 20;
-        if (slot == 11) return UnitType.Bomber;
+        if (slot == 11) return NoBombers ? UnitType.Tank : UnitType.Bomber;
         if (slot < 12) return UnitType.Tank;
         if (slot < 15) return UnitType.Scout;
         if (slot < 17) return UnitType.Heavy;
@@ -532,6 +535,8 @@ public sealed class PerfMatch : MonoBehaviour
             budgets["perf.server.drops"] = ("max", 0.0, true);
         }
         stats.WriteCsv(path, budgets);
+        // WAR_PERF_TICKS=1: every tick's numbers as well (ticks.csv), to see what lines up on the slow ticks.
+        if (Environment.GetEnvironmentVariable("WAR_PERF_TICKS") == "1") stats.WriteSeries(Path.Combine(dir, "ticks.csv"), "perf.tick.main");
         if (memorySeries.Length > 0) File.WriteAllText(Path.Combine(dir, "memory.csv"), memorySeries.ToString());
         WarLog.Info(LogCategory.Dev, $"wrote {path}");
         if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0)

@@ -20,6 +20,27 @@ public sealed class PerfStats
         list.Add(value);
     }
 
+    /// <summary>
+    /// Writes one row per sample of every series with as many samples as <paramref name="key"/> (those added alongside it), one
+    /// column per metric: which parts are slow together on the slow ticks, which the percentiles alone can't show.
+    /// </summary>
+    public void WriteSeries(string path, string key)
+    {
+        int rows = CountOf(key);
+        var columns = order.FindAll(m => series[m].Count == rows);
+        var text = new StringBuilder(string.Join(",", columns)).Append('\n');
+        for (int r = 0; r < rows; r++)
+        {
+            for (int c = 0; c < columns.Count; c++)
+            {
+                if (c > 0) text.Append(',');
+                text.Append(series[columns[c]][r].ToString("0.###", CultureInfo.InvariantCulture));
+            }
+            text.Append('\n');
+        }
+        File.WriteAllText(path, text.ToString());
+    }
+
     public int CountOf(string metric) => series.TryGetValue(metric, out List<double> list) ? list.Count : 0;
 
     public double Mean(string metric)
