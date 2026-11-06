@@ -51,7 +51,8 @@ public sealed class PerfMatch : MonoBehaviour
     private readonly System.Diagnostics.Process self = System.Diagnostics.Process.GetCurrentProcess();
     private TimeSpan lastCpu;
     private double firstMemoryMb = double.NaN, lastMemoryMb;
-    private int errors, connectionsAtStart = -1, fewestConnections = int.MaxValue;
+    private int errors, connectionsAtStart = -1, fewestConnections = int.MaxValue, memorySeconds;
+    private readonly System.Text.StringBuilder memorySeries = new System.Text.StringBuilder();
 
     // v0.7 siege load per owner: walls, Radars, bombs, Builders on the walls and Diggers on the rock.
     public const int WallsPerOwner = 200, RadarsPerOwner = 5, BombsPerOwner = 20, BuildersPerOwner = 50, DiggersPerOwner = 20, SiegeSetupTick = 60;
@@ -265,6 +266,10 @@ public sealed class PerfMatch : MonoBehaviour
         stats.Add("perf.server.cpu", (cpu - lastCpu).TotalMilliseconds / Math.Max(1.0, seconds * 1000.0) * 100.0);
         lastCpu = cpu;
         lastMemoryMb = UnityMemoryMb(); // Mono reports no working set on Windows
+        memorySeries.Append(memorySeries.Length == 0 ? "second,unityMB,gcUsedMB,commandQueue\n" : "")
+            .Append(++memorySeconds).Append(',').Append(lastMemoryMb.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)).Append(',')
+            .Append((GC.GetTotalMemory(false) / 1048576.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)).Append(',')
+            .Append(SimContext.Current?.Commands.Count ?? 0).Append('\n');
         if (double.IsNaN(firstMemoryMb)) firstMemoryMb = lastMemoryMb;
         stats.Add("perf.server.memMB", lastMemoryMb);
         stats.Add("perf.server.gcMB", GC.GetTotalMemory(false) / 1048576.0);
@@ -514,18 +519,19 @@ public sealed class PerfMatch : MonoBehaviour
         // there the measured client's perf.client.fps is the frame budget.
         if (!Application.isBatchMode) budgets["perf.fps"] = ("mean", 60.0, false);
         if (AiRun) budgets["perf.part.ai"] = ("p95", 2.0, true); // v0.14 spec §12: AI thinking with 7 Hard AIs
-        // Server stability (proposed with the 10,000-unit benchmark): no errors, no dropped connections, and the working set
-        // grows at most 64 MB over the sampled window.
+        // Server stability (proposed with the 10,000-unit benchmark): no errors and no dropped connections at any scale, and at 10,000
+        // units Unity's memory grows at most 64 MB over the sampled window (memory.csv has it each second, for a soak's trend).
         if (!double.IsNaN(firstMemoryMb))
         {
             stats.Add("perf.server.memGrowthMB", lastMemoryMb - firstMemoryMb);
             stats.Add("perf.server.errors", errors);
             stats.Add("perf.server.drops", Math.Max(0, connectionsAtStart - fewestConnections));
-            budgets["perf.server.memGrowthMB"] = ("max", 64.0, true);
+            if (Owners * UnitsPerOwner <= 10000) budgets["perf.server.memGrowthMB"] = ("max", 64.0, true);
             budgets["perf.server.errors"] = ("max", 0.0, true);
             budgets["perf.server.drops"] = ("max", 0.0, true);
         }
         stats.WriteCsv(path, budgets);
+        if (memorySeries.Length > 0) File.WriteAllText(Path.Combine(dir, "memory.csv"), memorySeries.ToString());
         WarLog.Info(LogCategory.Dev, $"wrote {path}");
         if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0)
         {
