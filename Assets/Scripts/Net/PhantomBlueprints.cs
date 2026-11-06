@@ -148,7 +148,7 @@ public partial class WorldStateManager
                 Rotation = (byte)((int)math.round(p.Rotation / 90f) & 3),
                 Health = (int)math.ceil(ConstructionRules.StartHealth),
                 MaxHealth = config.GetBuilding(p.Type).Health,
-                Hidden = p.Type == BuildingType.Bomb,
+                Hidden = p.Type == BuildingType.Mine,
                 Progress = 0,
                 Position = p.Anchor,
                 OwnerOnly = true,

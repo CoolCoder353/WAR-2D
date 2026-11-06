@@ -175,7 +175,7 @@ namespace WAR2D.AiView
     {
         /// <summary>A bomb.</summary>
         Bomb,
-        /// <summary>A Suicide bomber's blast.</summary>
+        /// <summary>A Bomber's blast.</summary>
         Bomber,
         /// <summary>A unit's or building's death explosion.</summary>
         Death,

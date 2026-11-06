@@ -30,7 +30,7 @@ namespace WAR2D.Ai
     /// never anything it hasn't seen; a turret-guarded target with turrets it out-ranges is sieged. After a threat at its
     /// base an attack leaves a home guard. On its attentive thinks: it retreats from a losing fight (or regroups a strung
     /// out vanguard), its units in range focus fire, Artillery and Snipers stay behind the front, Diggers dig through enemy
-    /// walls, and Suicide bombers detonate on clumps and walls. Each attack's trade (from the kill ledger) moves its
+    /// walls, and Bombers detonate on clumps and walls. Each attack's trade (from the kill ledger) moves its
     /// caution and marks a target that beat it. Scouts and raiders are left alone.
     /// </summary>
     public sealed class ArmyManager : IAiManager
@@ -184,7 +184,7 @@ namespace WAR2D.Ai
         private bool Sweep(AiContext ai, TeamView view, AiState state, int army)
         {
             if (state.PlayingSeconds < FirstAttackAt(ai, state) || army < ai.Style.AttackArmySize) { sweeping = false; return false; }
-            foreach (AiBuilding b in ai.Board.EnemyBuildings.Values) if (b.Type != BuildingType.Bomb) { sweeping = false; return false; }
+            foreach (AiBuilding b in ai.Board.EnemyBuildings.Values) if (b.Type != BuildingType.Mine) { sweeping = false; return false; }
             if (ai.Board.KnownHqs.Count > 0 || ai.Board.Armies.Count > 0) { sweeping = false; return false; }
             float2 centre = GroupCentreOf(view, state);
             if (sweeping && (view.FogAt((float2)sweepSite + 0.5f) == 2 || math.distancesq(centre, (float2)sweepSite) < ai.Config.Play.ArmyRadius * ai.Config.Play.ArmyRadius))
@@ -388,7 +388,7 @@ namespace WAR2D.Ai
             }
             foreach (AiBuilding b in ai.Board.EnemyBuildings.Values)
             {
-                if (b.Type == BuildingType.Bomb) continue;
+                if (b.Type == BuildingType.Mine) continue;
                 Consider(b.Id, b.OwnerId, b.Anchor, WorthOf(ai, ai.View, b));
             }
             // An HQ it saw that its view doesn't show any more (a Jammer hides it): its remembered spot (id -1).
@@ -873,18 +873,18 @@ namespace WAR2D.Ai
             orderedAt[AiKeys.Dig] = ai.Now;
         }
 
-        /// <summary>Suicide bombers blow up beside a clump of enemies it sees, or beside an enemy wall.</summary>
+        /// <summary>Bombers blow up beside a clump of enemies it sees, or beside an enemy wall.</summary>
         private void Detonate(AiContext ai, TeamView view, AiState state)
         {
             back.Clear();
             int checks = 0;
-            UnitConfig bomber = state.UnitOf(UnitType.SuicideBomber);
+            UnitConfig bomber = state.UnitOf(UnitType.Bomber);
             if (bomber == null) return;
             float r2 = bomber.BlastRadius * bomber.BlastRadius;
             foreach (int i in state.Combat)
             {
                 AiUnit u = view.OwnUnits[i];
-                if (u.Type != UnitType.SuicideBomber || !group.Contains(u.Id) || checks++ >= ai.Config.Play.BomberChecks) continue;
+                if (u.Type != UnitType.Bomber || !group.Contains(u.Id) || checks++ >= ai.Config.Play.BomberChecks) continue;
                 int near = 0;
                 foreach (AiUnit e in view.OtherUnits)
                     if (view.IsEnemy(e.OwnerId) && math.distancesq(e.Position, u.Position) <= r2 && ++near >= ai.Config.Play.BomberClump) break;

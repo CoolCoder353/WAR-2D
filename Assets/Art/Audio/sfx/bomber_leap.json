@@ -1,0 +1,12 @@
+{
+  "wave": "Saw",
+  "attack": 0.02,
+  "sustain": 0.12,
+  "decay": 0.35,
+  "frequency": 180,
+  "slide": 2.2,
+  "deltaSlide": -4,
+  "lowPass": 0.5,
+  "volume": 0.5,
+  "seed": 71
+}

@@ -131,7 +131,7 @@ namespace WAR2D.UI
             {
                 OrderKind.Repair => "Needs a Builder selected",
                 OrderKind.Dig => "Needs a Digger selected",
-                OrderKind.Detonate => "Needs a Suicide bomber selected",
+                OrderKind.Detonate => "Needs a Bomber selected",
                 _ => "Needs units selected",
             };
         }
@@ -145,30 +145,40 @@ namespace WAR2D.UI
             UnitType.Builder => "Builds, repairs and lays walls.",
             UnitType.Tank => "The all-round fighting vehicle.",
             UnitType.Digger => "Digs through rock, gems and enemy walls.",
-            UnitType.Scout => "Fast and far-sighted; lightly armed.",
+            UnitType.Scout => "Fast, and sees furthest: the spotter.",
             UnitType.Heavy => "Slow, armoured front-line tank.",
-            UnitType.Artillery => "Long-range splash; can't fire up close.",
-            UnitType.Sniper => "Very long range, and sees as far as it shoots.",
-            UnitType.Flamethrower => "Short-range splash that burns through groups.",
-            UnitType.SuicideBomber => "Drives in and explodes. Hurts friends too.",
+            UnitType.Artillery => "Shells far past its sight, over walls.",
+            UnitType.Sniper => "Stops and aims, then one huge shot. Best against Heavies.",
+            UnitType.Flamethrower => "Sets groups on fire at range.",
+            UnitType.Bomber => "Leaps into an army and explodes. Hurts friends too.",
             _ => null,
         };
 
-        /// <summary>A production type's card: role, then cost, build time, health, damage (or blast) and range.</summary>
-        public static HoverCardContent Unit(UnitType type, UnitConfig u, float have)
+        /// <summary>
+        /// A production type's card: role, then cost, build time, health, damage (or blast) and range, and (v0.20, Figma B2) the new
+        /// lines where they apply: blast resistance, armour, sets on fire, aim time and reload.
+        /// </summary>
+        public static HoverCardContent Unit(UnitType type, UnitConfig u, float have, Config.GameConfigData config = null)
         {
             var card = new HoverCardContent(AlertFeedModel.UnitName(type), null, UnitRole(type));
             if (u == null) return card;
+            config ??= Config.ConfigLoader.LoadConfig();
             card.Pair("Cost", $"{u.UpfrontCost:0}", have >= u.UpfrontCost ? HoverTone.Cost : HoverTone.Danger)
                 .Pair("Build", $"{u.BuildSeconds:0.#} s")
                 .Pair("Health", $"{u.Health:0}");
-            if (u.BlastRadius > 0f) card.Pair("Blast", $"{u.BlastDamage:0} · {u.BlastRadius:0.#}");
+            if (u.IsBomber) card.Pair("Blast", $"{u.BlastDamage:0} · {u.BlastRadius:0.#}");
             else if (u.Damage > 0)
             {
                 card.Pair("Damage", $"{u.Damage}").Pair("Range", $"{u.Range:0.#}");
                 if (u.MinRange > 0f) card.Pair("Min", $"{u.MinRange:0.#}");
                 if (u.Splash > 0f) card.Pair("Splash", $"{u.Splash:0.#}");
+                if (u.FiresShells) card.Pair("Blast", $"{u.BlastRadius:0.#}");
             }
+            if (u.BlastResist > 0f) card.Pair("Blast resistance", $"{u.BlastResist * 100f:0}%");
+            if (u.FlatArmour > 0f) card.Pair("Armour", $"{u.FlatArmour:0.#}");
+            if (type == UnitType.Flamethrower && config.Burn.Dps > 0f) card.Pair("Sets on fire", $"{config.Burn.Dps:0.#}/s · {config.Burn.Seconds:0.#} s");
+            if (type == UnitType.Sniper && config.Sniper.AimSeconds > 0f) card.Pair("Aim time", $"{config.Sniper.AimSeconds:0.#} s");
+            if (type == UnitType.Sniper || u.FiresShells) card.Pair("Reload", $"{u.AttackInterval:0.#} s");
             if (u.RunningCost > 0f) card.Pair("Upkeep", $"{u.RunningCost:0.#}/s");
             return card;
         }

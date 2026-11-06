@@ -53,7 +53,7 @@ public static class ManualRules
                 Radius = u.Radius, Splash = u.Splash, MinRange = u.MinRange, Class = u.Armour, Mult = new float[Classes.Length],
             };
             for (int c = 0; c < Classes.Length; c++) f.Mult[c] = config.Damage.Multiplier(type, Classes[c]);
-            if (u.BlastRadius > 0f) bomber = f;
+            if (u.IsBomber) bomber = f;
             else if (u.Damage > 0) fighters.Add(f);
         }
         BuildingConfig t = config.GetBuilding(BuildingType.GunTurret);
@@ -92,7 +92,7 @@ public static class ManualRules
     /// <summary>The config's unit order, which breaks ties as the mock's script does.</summary>
     private static readonly UnitType[] UnitOrder =
     {
-        UnitType.Tank, UnitType.Builder, UnitType.Digger, UnitType.Scout, UnitType.Flamethrower, UnitType.Heavy, UnitType.Artillery, UnitType.Sniper, UnitType.SuicideBomber,
+        UnitType.Tank, UnitType.Builder, UnitType.Digger, UnitType.Scout, UnitType.Flamethrower, UnitType.Heavy, UnitType.Artillery, UnitType.Sniper, UnitType.Bomber,
     };
 
     /// <summary>One type's lists: up to three wins and three losses by at least the margin; workers aren't named as "strong against".</summary>

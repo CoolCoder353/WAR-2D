@@ -78,7 +78,7 @@ namespace WAR2D.Client.Replay
                 Player player = pair.Value;
                 foreach (ClientBuildings.Entry e in all.Entries.Values)
                 {
-                    if (e.Data.buildingType == BuildingType.Bomb && e.Data.ownerId != pair.Key) continue;
+                    if (e.Data.buildingType == BuildingType.Mine && e.Data.ownerId != pair.Key) continue;
                     if (e.Data.ownerId == pair.Key || player.State[CellOf(PositionOf(e))] == (byte)FogState.Visible) player.Memory[e.Data.id] = e;
                 }
                 gone.Clear();

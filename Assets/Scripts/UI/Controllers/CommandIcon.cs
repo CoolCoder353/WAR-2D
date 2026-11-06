@@ -9,7 +9,7 @@ namespace WAR2D.UI
     {
         Move, AttackMove, Stop, Hold, Miner, Spawner, Wall, Radar, Dig, Cancel, Bomb, Repair, Demolish,
         // v0.12: units (named as UnitType), Detonate and the producers.
-        Builder, Tank, Digger, Scout, Heavy, Artillery, Sniper, Flamethrower, SuicideBomber, Detonate, Barracks, HeavyFactory, SiegeWorkshop,
+        Builder, Tank, Digger, Scout, Heavy, Artillery, Sniper, Flamethrower, Bomber, Detonate, Barracks, HeavyFactory, SiegeWorkshop,
         // v0.13: the defences (named as BuildingType).
         GunTurret, Jammer,
         // v0.14: the AI player tag.

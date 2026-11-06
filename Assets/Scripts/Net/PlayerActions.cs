@@ -238,7 +238,7 @@ public static class PlayerActions
     /// <summary>True when an order of this kind forms up (v0.16): only a Move or Attack-move sent with formations on.</summary>
     public static bool FormsUp(OrderKind kind, bool formation) => formation && (kind == OrderKind.Move || kind == OrderKind.AttackMove);
 
-    /// <summary>Every listed Suicide bomber of the owner's blows up where it stands (an <see cref="OrderKind.Detonate"/> order).</summary>
+    /// <summary>Every listed Bomber of the owner's blows up where it stands (an <see cref="OrderKind.Detonate"/> order).</summary>
     public static bool Detonate(int owner, IReadOnlyList<int> unitIds) => Order(owner, unitIds, OrderKind.Detonate, false, int2.zero);
 
     /// <summary>

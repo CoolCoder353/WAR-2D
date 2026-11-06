@@ -34,7 +34,7 @@ public class TurretAimTests
     }
 
     [TestCase(UnitType.Tank, true), TestCase(UnitType.Scout, true), TestCase(UnitType.Sniper, true), TestCase(UnitType.Heavy, true), TestCase(UnitType.Artillery, true)]
-    [TestCase(UnitType.Flamethrower, false), TestCase(UnitType.Builder, false), TestCase(UnitType.Digger, false), TestCase(UnitType.SuicideBomber, false)]
+    [TestCase(UnitType.Flamethrower, false), TestCase(UnitType.Builder, false), TestCase(UnitType.Digger, false), TestCase(UnitType.Bomber, false)]
     public void OnlyTheGunsTurn(UnitType type, bool turns)
     {
         Assert.AreEqual(turns, TurretAim.Has(type));

@@ -33,7 +33,7 @@ public static class SpawnerRules
     private static readonly UnitType[] HqUnits = { UnitType.Builder };
     private static readonly UnitType[] BarracksUnits = { UnitType.Scout, UnitType.Tank, UnitType.Flamethrower };
     private static readonly UnitType[] HeavyFactoryUnits = { UnitType.Heavy, UnitType.Artillery, UnitType.Sniper };
-    private static readonly UnitType[] SiegeWorkshopUnits = { UnitType.Digger, UnitType.SuicideBomber };
+    private static readonly UnitType[] SiegeWorkshopUnits = { UnitType.Digger, UnitType.Bomber };
 
     /// <summary>The units a building may produce, in button order (empty for non-producers).</summary>
     public static UnitType[] Produces(BuildingType building) => building switch

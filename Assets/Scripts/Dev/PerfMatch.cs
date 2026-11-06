@@ -271,7 +271,7 @@ public sealed class PerfMatch : MonoBehaviour
             {
                 step++;
                 if (radars < RadarsPerOwner && step % 37 == 0 && world.DevPlaceBuilding(owner, BuildingType.Radar, tile, 1e6f)) radars++;
-                else if (bombs < BombsPerOwner && step % 11 == 0 && world.DevPlaceBuilding(owner, BuildingType.Bomb, tile, 1e6f)) bombs++;
+                else if (bombs < BombsPerOwner && step % 11 == 0 && world.DevPlaceBuilding(owner, BuildingType.Mine, tile, 1e6f)) bombs++;
             }
             PlaceDefences(world, i);
             int walls = 0;

@@ -165,10 +165,10 @@ public static class Effects
         Slot s = Take(Blasts);
         if (s == null) return;
         s.Go.transform.SetPositionAndRotation(new Vector3(position.x, position.y, 0f), Quaternion.identity);
-        WAR2D.Audio.AudioService.Sfx("bomb_blast", position);
+        WAR2D.Audio.AudioService.Sfx("mine_blast", position);
     }
 
-    /// <summary>A Suicide bomber going off at <paramref name="position"/> (4 × 4 tiles of blast).</summary>
+    /// <summary>A Bomber going off at <paramref name="position"/> (4 × 4 tiles of blast).</summary>
     public static void BomberBlast(Vector2 position)
     {
         Slot s = Take(BomberBlasts);

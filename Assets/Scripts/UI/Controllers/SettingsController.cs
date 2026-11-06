@@ -30,7 +30,7 @@ namespace WAR2D.UI
             ("Roam (scout on their own)", "Roam", null),
             ("Repair (Builders)", "Repair", null),
             ("Dig (Diggers)", "Dig", null),
-            ("Detonate (Suicide bombers)", "Detonate", null), // shown once GameInput has the action (v0.12 plan)
+            ("Detonate (Bombers)", "Detonate", null), // shown once GameInput has the action (v0.12 plan)
             ("Cancel / demolish", "Cancel", null),
             ("Queue order", "QueueModifier", null),
             ("Assign squad", "AssignModifier", null),
@@ -58,7 +58,7 @@ namespace WAR2D.UI
         private static readonly (AlertKind kind, string label)[] AlertRows =
         {
             (AlertKind.UnderAttack, "Under attack"),
-            (AlertKind.BombTriggered, "Bomb triggered"),
+            (AlertKind.MineTriggered, "Mine triggered"),
             (AlertKind.EnemySpotted, "Enemy spotted"),
             (AlertKind.ConstructionFinished, "Construction finished"),
             (AlertKind.UpkeepUnpaid, "Upkeep unpaid"),

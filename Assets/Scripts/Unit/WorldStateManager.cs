@@ -538,10 +538,13 @@ public partial class WorldStateManager : NetworkBehaviour
         {
             // The alert below needs no more than a handful: one per area, and most ticks with a blast have one.
             if (blastHits.Count < MaxBlastAlertsPerTick)
-                blastHits.Add((blast.Position, blast.OwnerId, blast.Bomber != 0 ? data.BlastRadiusByType[(int)UnitType.SuicideBomber] : data.BlastRadius));
-            // A bomber's owner set it off (or sent it in): only hidden bombs alert their owner.
+                blastHits.Add((blast.Position, blast.OwnerId, blast.Bomber == 2 ? data.ShellRadiusByType[(int)UnitType.Artillery]
+                    : blast.Bomber != 0 ? data.BlastRadiusByType[(int)UnitType.Bomber] : data.BlastRadius));
+            // v0.20: a shell's blast reaches clients with its flight (CombatBatch), drawn where they see the landing.
+            if (blast.Bomber == 2) continue;
+            // A bomber's owner set it off (or sent it in): only hidden Mines alert their owner.
             if (blast.Bomber != 0) { bomberScratch.Add(blast.Position); continue; }
-            Alerts.Add(blast.OwnerId, new Alert { Kind = AlertKind.BombTriggered, Tile = (int2)math.floor(blast.Position) });
+            Alerts.Add(blast.OwnerId, new Alert { Kind = AlertKind.MineTriggered, Tile = (int2)math.floor(blast.Position) });
             blastScratch.Add(blast.Position);
         }
         Alerts.CollectBlasts(data, unitCount, blastHits, GameCore.MatchNow);
@@ -691,7 +694,7 @@ public partial class WorldStateManager : NetworkBehaviour
                 Rotation = (byte)((int)math.round(MinerRules.ZDegrees(transform.Rotation) / 90f) & 3),
                 Health = (int)math.ceil(health.currentHealth),
                 MaxHealth = (int)math.ceil(health.maxHealth),
-                Hidden = building.buildingType == BuildingType.Bomb,
+                Hidden = building.buildingType == BuildingType.Mine,
                 Unpaid = EntityManager.HasComponent<UpkeepComponent>(entity) && EntityManager.GetComponentData<UpkeepComponent>(entity).unpaid,
                 Progress = EntityManager.HasComponent<Construction>(entity)
                     ? (byte)math.clamp((int)math.floor(EntityManager.GetComponentData<Construction>(entity).Progress * 100f), 0, 99)
@@ -764,7 +767,7 @@ public partial class WorldStateManager : NetworkBehaviour
                 else GameCore.Instance.Stats.BuildingLost(building.ownerId);
             }
             Buildings.Remove(id);
-            if (building.buildingType == BuildingType.Bomb)
+            if (building.buildingType == BuildingType.Mine)
             {
                 // Only this bomb's entry: another may have been laid on the tile too.
                 bombTiles.Remove((int2)math.round(building.position), id);
@@ -1149,7 +1152,7 @@ public partial class WorldStateManager : NetworkBehaviour
         List<int2> tiles = Footprint.Tiles(positon, GetBuildingSize(type));
         // Building over a hidden bomb the placer may not know sets it off (the placement never says it was there).
         foreach (int2 tile in tiles) DetonateUnknownBomb(tile, buildingData.ownerId);
-        if (type == BuildingType.Bomb)
+        if (type == BuildingType.Mine)
         {
             // A bomb's tile is not marked used: units walk over it.
             bombTiles.Add(positon, buildingData.id, buildingData.ownerId);

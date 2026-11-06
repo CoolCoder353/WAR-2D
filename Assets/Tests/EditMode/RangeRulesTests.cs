@@ -16,8 +16,8 @@ public class RangeRulesTests
         Assert.AreEqual((18f, 4f, 18f), (arty.Range, arty.Min, arty.Sight));
         RingSet builder = RangeRules.OfUnit(Config_.GetUnit(UnitType.Builder), float2.zero, 7);
         Assert.AreEqual(0f, builder.Range, "a Builder can't attack");
-        RingSet bomber = RangeRules.OfUnit(Config_.GetUnit(UnitType.SuicideBomber), float2.zero, 7);
-        Assert.AreEqual(Config_.GetUnit(UnitType.SuicideBomber).BlastRadius, bomber.Range, "a bomber's reach is its blast");
+        RingSet bomber = RangeRules.OfUnit(Config_.GetUnit(UnitType.Bomber), float2.zero, 7);
+        Assert.AreEqual(Config_.GetUnit(UnitType.Bomber).BlastRadius, bomber.Range, "a bomber's reach is its blast");
     }
 
     [TestCase(BuildingType.GunTurret, 9f)]

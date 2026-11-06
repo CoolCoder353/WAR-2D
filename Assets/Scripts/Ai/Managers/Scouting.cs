@@ -189,7 +189,7 @@ namespace WAR2D.Ai
                 AiUnit u = view.OwnUnits[i];
                 if (Has(u.Id)) continue;
                 if (u.Type == UnitType.Scout) { scouts.Add(new ScoutRun { Id = u.Id, Stop = -1 }); continue; }
-                if (u.Type == UnitType.Builder || u.Type == UnitType.SuicideBomber) continue;
+                if (u.Type == UnitType.Builder || u.Type == UnitType.Bomber) continue;
                 UnitConfig c = state.UnitOf(u.Type);
                 if (c != null && c.MoveSpeed > speed) { speed = c.MoveSpeed; fastest = i; }
             }

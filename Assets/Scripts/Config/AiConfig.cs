@@ -146,7 +146,7 @@ namespace Config
         public AiScouting Scouting;
         /// <summary>Seconds between re-scouting runs (Regular scouting).</summary>
         public float RescoutSeconds;
-        /// <summary>Share (0..1) of its style's Diggers, Suicide bombers, bombs and Jammers it uses.</summary>
+        /// <summary>Share (0..1) of its style's Diggers, Bombers, bombs and Jammers it uses.</summary>
         public float SpecialUse;
         /// <summary>True when it puts defences at chokepoints between its base and known enemies (else beside its buildings).</summary>
         public bool DefendsChokepoints;
@@ -245,7 +245,7 @@ namespace Config
         public float SplashTargets;
         /// <summary>Damage bonus for out-ranging the other side, at a full range's lead.</summary>
         public float RangeWeight;
-        /// <summary>Seconds of fight a Suicide bomber's blast is spread over.</summary>
+        /// <summary>Seconds of fight a Bomber's blast is spread over.</summary>
         public float BomberFightSeconds;
         /// <summary>True when it retreats from losing fights.</summary>
         public bool Retreats;
@@ -373,8 +373,8 @@ namespace Config
         public float DefenceStart;
         /// <summary>Jammers it keeps per defended spot.</summary>
         public int Jammers;
-        /// <summary>Bombs it keeps per defended spot.</summary>
-        public int Bombs;
+        /// <summary>Mines it keeps per defended spot.</summary>
+        public int Mines;
         /// <summary>True when it walls its chokepoints.</summary>
         public bool Walls;
         /// <summary>True when it builds a Radar.</summary>
@@ -474,7 +474,7 @@ namespace Config
         public float BacklineDistance;
         /// <summary>Visible enemy units within a bomber's blast that make it detonate.</summary>
         public int BomberClump;
-        /// <summary>Suicide bombers it checks for a detonation per think (a bound on its work in a huge fight).</summary>
+        /// <summary>Bombers it checks for a detonation per think (a bound on its work in a huge fight).</summary>
         public int BomberChecks;
         /// <summary>Match seconds before it scouts with any unit when it has no Scout.</summary>
         public float ScoutAfterSeconds;

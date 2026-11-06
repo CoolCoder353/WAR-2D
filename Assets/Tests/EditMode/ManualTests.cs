@@ -69,13 +69,13 @@ public class ManualTests
     /// <summary>The lists <c>tools/manual-mock.js</c> prints for the shipped config, which the owner approved.</summary>
     [TestCase("Tank", "Sniper,Heavy,Scout", "GunTurret,Flamethrower")]
     [TestCase("Digger", "Sniper,Artillery", "Tank,Flamethrower,GunTurret")]
-    [TestCase("Scout", "SuicideBomber,Sniper", "GunTurret,Artillery,Flamethrower")]
+    [TestCase("Scout", "Bomber,Sniper", "GunTurret,Artillery,Flamethrower")]
     [TestCase("Flamethrower", "Scout,Sniper,Tank", "GunTurret,Heavy")]
-    [TestCase("Heavy", "SuicideBomber,Scout,Sniper", "Tank,GunTurret")]
-    [TestCase("Artillery", "GunTurret,Scout,Sniper", "SuicideBomber,Flamethrower,Heavy")]
-    [TestCase("Sniper", "GunTurret", "SuicideBomber,Scout,Tank")]
-    [TestCase("SuicideBomber", "Sniper,Artillery", "Scout,Heavy,GunTurret")]
-    [TestCase("GunTurret", "Flamethrower,Scout,SuicideBomber", "Artillery,Sniper")]
+    [TestCase("Heavy", "Bomber,Scout,Sniper", "Tank,GunTurret")]
+    [TestCase("Artillery", "GunTurret,Scout,Sniper", "Bomber,Flamethrower,Heavy")]
+    [TestCase("Sniper", "GunTurret", "Bomber,Scout,Tank")]
+    [TestCase("Bomber", "Sniper,Artillery", "Scout,Heavy,GunTurret")]
+    [TestCase("GunTurret", "Flamethrower,Scout,Bomber", "Artillery,Sniper")]
     public void TheCountersMatchTheMock(string type, string strong, string weak)
     {
         ManualRules.Lists lists = ManualRules.Counters(ManualRules.Table(Config_()), type);

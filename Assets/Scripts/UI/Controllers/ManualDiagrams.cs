@@ -188,7 +188,7 @@ namespace WAR2D.UI
         {
             const float T = 22f;
             const int W = 30, H = 8;
-            float bomb = c.Siege.BlastRadius, bomber = c.GetUnit(UnitType.SuicideBomber).BlastRadius;
+            float bomb = c.Siege.BlastRadius, bomber = c.GetUnit(UnitType.Bomber).BlastRadius;
             var e = Canvas(W * T, H * T + 34f, p =>
             {
                 for (int x = 0; x <= W; x++) Rect(p, x * T, 0f, 1f, H * T, Panel);

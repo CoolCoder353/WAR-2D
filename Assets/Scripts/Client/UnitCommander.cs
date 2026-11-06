@@ -649,7 +649,7 @@ public class UnitCommander : NetworkBehaviour
         if (ClientWorld.Instance != null && ClientWorld.Instance.TryGet(ids[idleCycle], out ClientUnitView view)) CentreCamera(view.Position);
     }
 
-    /// <summary>The Army chip and key: every own unit that attacks. Pressed again it adds the Diggers and Suicide bombers.</summary>
+    /// <summary>The Army chip and key: every own unit that attacks. Pressed again it adds the Diggers and Bombers.</summary>
     public void SelectArmy(int owner)
     {
         Selection.ClearWalls();

@@ -91,7 +91,7 @@ namespace WAR2D.Client
             foreach (Vector2 p in positions)
             {
                 if (known.TryTakeDying((int2)math.round((float2)p), now, out ClientBuildings.Entry e)
-                    && e.Progress >= 100 && e.Data.buildingType != BuildingType.Bomb)
+                    && e.Progress >= 100 && e.Data.buildingType != BuildingType.Mine)
                 {
                     int2 size = WorldStateManager.GetBuildingSize(e.Data.buildingType);
                     float2 centre = Footprint.VisualCenter((int2)math.round(e.Data.position), size);
@@ -177,7 +177,7 @@ namespace WAR2D.Client
                     if (distance < loopDistance) { loopDistance = distance; loopAt = (Vector2)centre; }
                     continue;
                 }
-                if (type == BuildingType.Bomb) continue;
+                if (type == BuildingType.Mine) continue;
                 float health = e.Health.maxHealth > 0f ? e.Health.currentHealth / e.Health.maxHealth : 1f;
                 if (health < SmokeBelow) Emit(smoke, id, now, SmokeSeconds, centre, size, true);
                 if (health < FireBelow) Emit(fire, id, now, FireSeconds, centre, size, false);
@@ -264,7 +264,7 @@ namespace WAR2D.Client
         {
             progressAt[id] = Time.time;
             if (progress < 100 || buildingsSeen == null || !buildingsSeen.Entries.TryGetValue(id, out ClientBuildings.Entry e) || e.Ghost) return;
-            if (e.Data.buildingType == BuildingType.Bomb) return;
+            if (e.Data.buildingType == BuildingType.Mine) return;
             int2 size = WorldStateManager.GetBuildingSize(e.Data.buildingType);
             Effects.BuildingFinished((Vector2)Footprint.VisualCenter((int2)math.round(e.Data.position), size), size.x);
         }

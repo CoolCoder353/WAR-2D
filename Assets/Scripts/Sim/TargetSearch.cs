@@ -52,6 +52,13 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<byte> OpaqueTile;
         [ReadOnly] public NativeArray<byte> WallState, WallOwnerSlot;
         public int Width, Height;
+        /// <summary>v0.20: per unit slot, 1 while it is in the air (an airborne Bomber can't be targeted).</summary>
+        [ReadOnly] public NativeArray<byte> Airborne;
+        /// <summary>v0.20: the tiles that block a shell (rock, not walls): a shell's line of fire is checked against these.</summary>
+        [ReadOnly] public NativeArray<byte> RockTile;
+
+        /// <summary>The line-of-fire grid: <see cref="RockTile"/> for a shot that flies over walls, else <see cref="OpaqueTile"/>.</summary>
+        public NativeArray<byte> FireGrid(bool overWalls) => overWalls ? RockTile : OpaqueTile;
 
         /// <summary>Everything a search reads, from the tick's data.</summary>
         public static SearchInput From(in SimData data, int unitCount, int buildingCount) => new SearchInput
@@ -88,6 +95,8 @@ namespace WAR2D.Sim
             WallOwnerSlot = data.WallOwnerSlot,
             Width = data.Width,
             Height = data.Height,
+            Airborne = data.Airborne,
+            RockTile = data.RockTile,
         };
     }
 
@@ -121,9 +130,10 @@ namespace WAR2D.Sim
         /// buildings compete on distance (an Attack-move); a wall is still taken only when neither is in range. <paramref name="target"/> is a unit slot, a building slot or a
         /// tile index, or -1 (then <paramref name="kind"/> is <see cref="TargetKinds.Unit"/>).
         /// </summary>
-        public static bool Nearest(in SearchInput s, float2 p, int slot, float rangeSq, float minSq, bool walls, bool anyKind, out int target, out byte kind)
+        public static bool Nearest(in SearchInput s, float2 p, int slot, float rangeSq, float minSq, bool walls, bool anyKind, out int target, out byte kind, bool overWalls = false)
         {
             int grid = slot * s.FogCells;
+            NativeArray<byte> fire = s.FireGrid(overWalls);
             int2 c = (int2)math.floor(p * s.InvCellSize);
             // Each attacker scans only the cells its own range reaches: the longest range (a Sniper's) would
             // otherwise make every Tank scan nine times the cells.
@@ -142,9 +152,9 @@ namespace WAR2D.Sim
                 for (int k = s.CellStart[cell]; k < s.CellStart[cell + 1]; k++)
                 {
                     int j = s.Sorted[k];
-                    if (s.Health[j] <= 0f || !SimData.Attacks(s.AttackMask, slot, s.OwnerSlot[j])) continue;
+                    if (s.Health[j] <= 0f || s.Airborne[j] != 0 || !SimData.Attacks(s.AttackMask, slot, s.OwnerSlot[j])) continue;
                     float d = math.distancesq(p, s.Positions[j]);
-                    if (d <= best && d >= minSq && Sees(s, grid, s.Positions[j]) && LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, s.Positions[j])) { best = d; bestIndex = j; }
+                    if (d <= best && d >= minSq && Sees(s, grid, s.Positions[j]) && LineOfSight.ClearTiles(fire, s.Width, s.Height, p, s.Positions[j])) { best = d; bestIndex = j; }
                 }
             }
             target = bestIndex;
@@ -166,12 +176,12 @@ namespace WAR2D.Sim
                     float d = math.distancesq(p, at);
                     // On an Attack-move a unit at the same distance keeps the shot: a building takes it only by being nearer.
                     bool tieWins = !(target >= 0 && kind == TargetKinds.Unit);
-                    if ((d < best || (d == best && tieWins)) && d >= minSq && Sees(s, grid, at) && LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, at)) { best = d; target = j; kind = TargetKinds.Building; }
+                    if ((d < best || (d == best && tieWins)) && d >= minSq && Sees(s, grid, at) && LineOfSight.ClearTiles(fire, s.Width, s.Height, p, at)) { best = d; target = j; kind = TargetKinds.Building; }
                 }
             }
             // A wall is a last resort even for an Attack-move: one beside the unit mustn't take its fire from enemies in range.
             if (target >= 0) return true;
-            int wall = walls ? FindWall(s, p, slot, best, minSq) : -1;
+            int wall = walls ? FindWall(s, p, slot, best, minSq, fire) : -1;
             if (wall >= 0)
             {
                 target = wall;
@@ -187,7 +197,7 @@ namespace WAR2D.Sim
         /// unit's wall shot names the tile to its owner, so a wall in the fog must never be a target), or -1. The wall tile
         /// ends the line, so it doesn't block its own line.
         /// </summary>
-        private static int FindWall(in SearchInput s, float2 p, int slot, float rangeSq, float minSq)
+        private static int FindWall(in SearchInput s, float2 p, int slot, float rangeSq, float minSq, NativeArray<byte> fire)
         {
             int grid = slot * s.FogCells;
             int r = (int)math.ceil(math.sqrt(rangeSq));
@@ -202,7 +212,7 @@ namespace WAR2D.Sim
                 if (s.WallState[t] == WallStates.None || !SimData.Attacks(s.AttackMask, slot, s.WallOwnerSlot[t])) continue;
                 float2 centre = new float2(x + 0.5f, y + 0.5f);
                 float d = math.distancesq(p, centre);
-                if (d <= best && d >= minSq && Sees(s, grid, centre) && LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, centre)) { best = d; bestTile = t; }
+                if (d <= best && d >= minSq && Sees(s, grid, centre) && LineOfSight.ClearTiles(fire, s.Width, s.Height, p, centre)) { best = d; bestTile = t; }
             }
             return bestTile;
         }
@@ -212,9 +222,10 @@ namespace WAR2D.Sim
         /// left range (or came inside the minimum range), lost the line of fire, went into the fog of the owner's grid
         /// (units, buildings and, since v0.16, walls), changed hands, is no longer attacked (diplomacy), is a hidden building, or no longer exists.
         /// </summary>
-        public static int Keep(in SearchInput s, float2 p, int slot, float rangeSq, float minSq, int id, byte kind)
+        public static int Keep(in SearchInput s, float2 p, int slot, float rangeSq, float minSq, int id, byte kind, bool overWalls = false)
         {
             if (id <= 0) return -1;
+            NativeArray<byte> fire = s.FireGrid(overWalls);
             int index = kind == TargetKinds.Wall ? 0 : NetIdAllocator.IndexOf(id);
             if (index >= s.IndexOfId.Length) return -1;
 
@@ -222,17 +233,17 @@ namespace WAR2D.Sim
             {
                 if ((uint)id >= (uint)s.WallState.Length || s.WallState[id] == WallStates.None || !SimData.Attacks(s.AttackMask, slot, s.WallOwnerSlot[id])) return -1;
                 float2 centre = new float2(id % s.Width + 0.5f, id / s.Width + 0.5f);
-                if (math.distancesq(p, centre) > rangeSq || !Sees(s, slot * s.FogCells, centre) || !LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, centre)) return -1;
+                if (math.distancesq(p, centre) > rangeSq || !Sees(s, slot * s.FogCells, centre) || !LineOfSight.ClearTiles(fire, s.Width, s.Height, p, centre)) return -1;
                 return id;
             }
             int grid = slot * s.FogCells;
             if (kind == TargetKinds.Unit)
             {
                 int j = s.IndexOfId[index];
-                if ((uint)j >= (uint)s.UnitCount || s.IdOf[j] != id || s.Health[j] <= 0f || !SimData.Attacks(s.AttackMask, slot, s.OwnerSlot[j]) ||
+                if ((uint)j >= (uint)s.UnitCount || s.IdOf[j] != id || s.Health[j] <= 0f || s.Airborne[j] != 0 || !SimData.Attacks(s.AttackMask, slot, s.OwnerSlot[j]) ||
                     math.distancesq(p, s.Positions[j]) > rangeSq || math.distancesq(p, s.Positions[j]) < minSq ||
                     !Sees(s, grid, s.Positions[j]) ||
-                    !LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, s.Positions[j])) return -1;
+                    !LineOfSight.ClearTiles(fire, s.Width, s.Height, p, s.Positions[j])) return -1;
                 return j;
             }
             {
@@ -241,9 +252,40 @@ namespace WAR2D.Sim
                     !SimData.Attacks(s.AttackMask, slot, s.BuildingOwnerSlot[j])) return -1;
                 float2 at = NearestPoint(s, j, p);
                 if (math.distancesq(p, at) > rangeSq || math.distancesq(p, at) < minSq || !Sees(s, grid, at) ||
-                    !LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, at)) return -1;
+                    !LineOfSight.ClearTiles(fire, s.Width, s.Height, p, at)) return -1;
                 return j;
             }
+        }
+
+        /// <summary>
+        /// v0.20 (turret priority, spec §6.3): the nearest living enemy Bomber on the ground within range that the owner's grid sees with
+        /// a clear line, or -1. <paramref name="bomber"/> is 1 per unit type that is a Bomber.
+        /// </summary>
+        public static int NearestBomber(in SearchInput s, float2 p, int slot, float rangeSq, NativeArray<byte> type, NativeArray<float> blastRadiusByType)
+        {
+            int grid = slot * s.FogCells;
+            int2 c = (int2)math.floor(p * s.InvCellSize);
+            int reach = math.clamp((int)math.ceil(math.sqrt(rangeSq) * s.InvCellSize), 1, s.SearchCells);
+            int2 lo = math.max(c - reach, 0), hi = math.min(c + reach, new int2(s.CellsX - 1, s.CellsY - 1));
+            float best = rangeSq;
+            int bestIndex = -1;
+            uint attacked = ((uint)slot < SimData.MaxOwners ? s.AttackMask[slot] : 0u) | SimData.NoOwnerBit;
+            for (int cy = lo.y; cy <= hi.y; cy++)
+            for (int cx = lo.x; cx <= hi.x; cx++)
+            {
+                int cell = cy * s.CellsX + cx;
+                if ((s.CellOwners[cell] & attacked) == 0) continue;
+                for (int k = s.CellStart[cell]; k < s.CellStart[cell + 1]; k++)
+                {
+                    int j = s.Sorted[k];
+                    int t = type[j];
+                    if (t >= blastRadiusByType.Length || blastRadiusByType[t] <= 0f) continue;
+                    if (s.Health[j] <= 0f || s.Airborne[j] != 0 || !SimData.Attacks(s.AttackMask, slot, s.OwnerSlot[j])) continue;
+                    float d = math.distancesq(p, s.Positions[j]);
+                    if (d <= best && Sees(s, grid, s.Positions[j]) && LineOfSight.ClearTiles(s.OpaqueTile, s.Width, s.Height, p, s.Positions[j])) { best = d; bestIndex = j; }
+                }
+            }
+            return bestIndex;
         }
     }
 
@@ -252,7 +294,7 @@ namespace WAR2D.Sim
     /// <see cref="Slice"/> (staggered by slot) and keeps its resolved target in between. It looks for
     /// the nearest living enemy unit within its type's range; with none in range it falls back to the
     /// nearest enemy building. On an Attack-move order it takes the closest of units, buildings and wall
-    /// tiles instead, except that a Suicide bomber still prefers what its blast is worth
+    /// tiles instead, except that a Bomber still prefers what its blast is worth
     /// (<see cref="TargetSearch.Nearest"/>).
     /// </summary>
     [BurstCompile]
@@ -265,6 +307,8 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<byte> OrderLive;
         [ReadOnly] public NativeArray<float> RangeSqByType, MinRangeSqByType;
         [ReadOnly] public NativeArray<float> DamageByType;
+        /// <summary>v0.20: per type, a shell blast radius (above 0: it fires over walls).</summary>
+        [ReadOnly] public NativeArray<float> ShellRadiusByType;
         public int Tick, Slice;
         public NativeArray<int> Target;
         public NativeArray<byte> TargetKind;
@@ -278,7 +322,9 @@ namespace WAR2D.Sim
             int type = Type[i];
             float range = type < RangeSqByType.Length ? RangeSqByType[type] : 0f;
             float minSq = type < MinRangeSqByType.Length ? MinRangeSqByType[type] : 0f;
-            TargetSearch.Nearest(Search, Search.Positions[i], Search.OwnerSlot[i], range, minSq, Stance[i] == Stances.AttackMove, Stance[i] == Stances.AttackMove && type != (int)UnitType.SuicideBomber, out int target, out byte kind);
+            if (Search.Airborne[i] != 0) return; // a Bomber in the air keeps the target it leapt at
+            bool overWalls = type < ShellRadiusByType.Length && ShellRadiusByType[type] > 0f;
+            TargetSearch.Nearest(Search, Search.Positions[i], Search.OwnerSlot[i], range, minSq, Stance[i] == Stances.AttackMove, Stance[i] == Stances.AttackMove && type != (int)UnitType.Bomber, out int target, out byte kind, overWalls);
             Target[i] = target;
             TargetKind[i] = kind;
         }

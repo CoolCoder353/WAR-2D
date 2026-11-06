@@ -6,7 +6,7 @@ public static class SelectionRules
 {
     /// <summary>
     /// A box that catches Builders and any other unit keeps only the others; a box of nothing but Builders keeps them.
-    /// Diggers and Suicide bombers count as army. There is no override key: <c>.</c> and Ctrl + <c>.</c> select Builders, and
+    /// Diggers and Bombers count as army. There is no override key: <c>.</c> and Ctrl + <c>.</c> select Builders, and
     /// a double-click selects those on screen.
     /// </summary>
     public static void PreferArmy(List<int> caught, Func<int, UnitType> typeOf)

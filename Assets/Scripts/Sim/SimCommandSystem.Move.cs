@@ -173,7 +173,7 @@ namespace WAR2D.Sim
             formationSlots.Clear();
         }
 
-        /// <summary>Sets off the owner's listed Suicide bombers (or those inside the box) at the next combat stage.</summary>
+        /// <summary>Sets off the owner's listed Bombers (or those inside the box) at the next combat stage.</summary>
         private static void ApplyDetonate(SimData data, in SimCommand command, int unitCount)
         {
             if (command.Ids != null)

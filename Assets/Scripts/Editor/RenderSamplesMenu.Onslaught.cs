@@ -73,19 +73,19 @@ namespace WAR2D.EditorTools
 
             // The renamed Bomber and Mine: the same art under the new names (spec §2.6), every facing and frame.
             var bomber = new List<(LitCanvas, Color)>();
-            for (int d = 0; d < 8; d++) bomber.Add((RenderGen.SuicideBomber(d * Mathf.PI / 4, 0), blue));
-            for (int f = 1; f < 4; f++) bomber.Add((RenderGen.SuicideBomber(0, f), blue));
-            bomber.Add((RenderGen.SuicideBomber(Mathf.PI, 2), red));
+            for (int d = 0; d < 8; d++) bomber.Add((RenderGen.Bomber(d * Mathf.PI / 4, 0), blue));
+            for (int f = 1; f < 4; f++) bomber.Add((RenderGen.Bomber(0, f), blue));
+            bomber.Add((RenderGen.Bomber(Mathf.PI, 2), red));
             Strip(F("bomber.png"), bomber, gap, 1);
-            Strip(F("mine.png"), new List<(LitCanvas, Color)> { (RenderGen.Bomb(0), blue), (RenderGen.Bomb(1), blue), (RenderGen.Bomb(0), red), (RenderGen.Bomb(1), red) }, gap, 1);
+            Strip(F("mine.png"), new List<(LitCanvas, Color)> { (RenderGen.Mine(0), blue), (RenderGen.Mine(1), blue), (RenderGen.Mine(0), red), (RenderGen.Mine(1), red) }, gap, 1);
 
             // Every player colour, one row per asset.
             var colours = new (string name, Func<int, LitCanvas[]> make, float lift)[]
             {
                 ("sniper", i => new[] { RenderGen.Sniper2x2(-Mathf.PI / 4, 0) }, 0f),
                 ("turret", i => new[] { RenderGen.GunTurret2x2Base(0), RenderGen.GunTurret2x2Head(-Mathf.PI / 4) }, RenderGen.Lift),
-                ("bomber", i => new[] { RenderGen.SuicideBomber(-Mathf.PI / 4, 0) }, 0f),
-                ("mine", i => new[] { RenderGen.Bomb(0) }, 0f),
+                ("bomber", i => new[] { RenderGen.Bomber(-Mathf.PI / 4, 0) }, 0f),
+                ("mine", i => new[] { RenderGen.Mine(0) }, 0f),
             };
             foreach (var (name, make, lift) in colours)
             {
@@ -200,7 +200,7 @@ namespace WAR2D.EditorTools
             Put(() => new[] { RenderGen.Heavy(east, 2) }, blue, hq + new float2(10, -3), 2);
             for (int k = 0; k < 4; k++) Put(() => new[] { RenderGen.Tank(east, k % 3) }, blue, hq + new float2(12, -4 + k * 2.5f), 1);
             Put(() => new[] { RenderGen.Scout(east, 0) }, blue, hq + new float2(15, 0), 1);
-            for (int k = 0; k < 5; k++) Put(() => new[] { RenderGen.SuicideBomber(west, k % 2) }, red, hq + new float2(18, -4 + k * 2), 1);
+            for (int k = 0; k < 5; k++) Put(() => new[] { RenderGen.Bomber(west, k % 2) }, red, hq + new float2(18, -4 + k * 2), 1);
             for (int k = 0; k < 4; k++) Put(() => new[] { RenderGen.Tank(west, k % 2) }, red, hq + new float2(21, -3 + k * 2), 1);
             Put(() => new[] { RenderGen.Heavy(west, 0) }, red, hq + new float2(23, 0), 2);
             Put(() => new[] { RenderGen.Sniper2x2(west, 0, west - 0.2f) }, red, hq + new float2(25, -3), 2);

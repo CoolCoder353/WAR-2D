@@ -8,7 +8,7 @@ using WAR2D.Rules;
 using WAR2D.Sim;
 using WAR2D.World;
 
-/// <summary>The v0.12 units: armour classes, fog-gated targeting, splash, minimum range and the Suicide bomber.</summary>
+/// <summary>The v0.12 units: armour classes, fog-gated targeting, splash, minimum range and the Bomber.</summary>
 public class SimArsenalTests
 {
     private static SimHarness Sim() => new SimHarness(SimHarness.OpenMap(64), c => c.Simulation.TargetSearchSliceTicks = 1);
@@ -27,7 +27,7 @@ public class SimArsenalTests
         Assert.AreEqual((18f, 2f, 4f, 1), (artillery.Range, artillery.Splash, artillery.MinRange, artillery.SizeClass));
         Assert.AreEqual((20f, 3f), (c.GetUnit(UnitType.Sniper).Range, c.GetUnit(UnitType.Sniper).MinRange));
         Assert.AreEqual(1.5f, c.GetUnit(UnitType.Flamethrower).Splash);
-        Assert.AreEqual((2f, 150f), (c.GetUnit(UnitType.SuicideBomber).BlastRadius, c.GetUnit(UnitType.SuicideBomber).BlastDamage));
+        Assert.AreEqual((2f, 150f), (c.GetUnit(UnitType.Bomber).BlastRadius, c.GetUnit(UnitType.Bomber).BlastDamage));
         Assert.AreEqual(12f, c.GetUnit(UnitType.Scout).Sight);
         Assert.AreEqual(TargetClass.LightUnit, c.GetUnit(UnitType.Tank).Armour);
         Assert.AreEqual(2f, c.GetUnit(UnitType.Builder).BuildSeconds);
@@ -63,7 +63,7 @@ public class SimArsenalTests
         GameConfigData c = ConfigLoader.LoadConfig();
         Assert.AreEqual(0.25f, c.Damage.Multiplier(UnitType.Scout, TargetClass.HeavyUnit));
         Assert.AreEqual(2f, c.Damage.Multiplier(UnitType.Artillery, TargetClass.Building));
-        Assert.AreEqual(2f, c.Damage.Multiplier(UnitType.SuicideBomber, TargetClass.Wall));
+        Assert.AreEqual(2f, c.Damage.Multiplier(UnitType.Bomber, TargetClass.Wall));
         Assert.AreEqual(DamageTable.Classes, System.Enum.GetValues(typeof(TargetClass)).Length);
     }
 
@@ -151,7 +151,7 @@ public class SimArsenalTests
     public void ABomberRunsAtAnEnemyAndBarelyScratchesFriends()
     {
         using var sim = Sim();
-        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(10, 10), UnitType.SuicideBomber);
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(10, 10), UnitType.Bomber);
         int[] victim = sim.Spawn(SimHarness.OwnerB, new float2(14, 10), UnitType.Builder);
         int[] friend = sim.Spawn(SimHarness.OwnerA, new float2(13.5f, 10.8f), UnitType.Builder);
         int[] far = sim.Spawn(SimHarness.OwnerA, new float2(14, 20), UnitType.Builder);
@@ -169,7 +169,7 @@ public class SimArsenalTests
     {
         using var sim = Sim();
         int factory = sim.PlaceBuilding(SimHarness.OwnerB, BuildingType.HeavyFactory, new int2(16, 10), complete: true);
-        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(11.5f, 10.5f), UnitType.SuicideBomber);
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(11.5f, 10.5f), UnitType.Bomber);
         sim.Tick();
         float before = sim.Em.GetComponentData<HealthComponent>(sim.BuildingEntity(factory)).currentHealth;
         for (int i = 0; i < 80 && Alive(sim, bomber[0]); i++) sim.Tick();
@@ -183,8 +183,8 @@ public class SimArsenalTests
     public void TheDetonateOrderBlowsUpEverySelectedBomber()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(64), c => { c.Simulation.TargetSearchSliceTicks = 1; c.Bomber.FriendlyDamage = 0.1f; }); // pinned: the balance may set it to 0
-        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10, 10), UnitType.SuicideBomber);
-        int[] b = sim.Spawn(SimHarness.OwnerA, new float2(30, 30), UnitType.SuicideBomber);
+        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10, 10), UnitType.Bomber);
+        int[] b = sim.Spawn(SimHarness.OwnerA, new float2(30, 30), UnitType.Bomber);
         int[] near = sim.Spawn(SimHarness.OwnerA, new float2(11, 10), UnitType.Builder);
         int[] other = sim.Spawn(SimHarness.OwnerA, new float2(30, 25), UnitType.Builder);
         sim.Tick(); // the units exist from the next tick on
@@ -200,7 +200,7 @@ public class SimArsenalTests
     public void AForeignPlayerCannotDetonateABomber()
     {
         using var sim = Sim();
-        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10, 10), UnitType.SuicideBomber);
+        int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10, 10), UnitType.Bomber);
         sim.Order(SimHarness.OwnerB, OrderKind.Detonate, default, a[0]);
         for (int i = 0; i < 3; i++) sim.Tick();
         Assert.IsTrue(Alive(sim, a[0]));

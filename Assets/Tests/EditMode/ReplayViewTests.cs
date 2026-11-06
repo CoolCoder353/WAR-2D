@@ -119,8 +119,8 @@ public class ReplayViewTests
     {
         ReplayView view = ViewWithSight(0);
         var all = new ClientBuildings();
-        all.Entries[5] = Building(5, Them, BuildingType.Bomb, 1, 1);
-        all.Entries[6] = Building(6, Me, BuildingType.Bomb, 9, 9);
+        all.Entries[5] = Building(5, Them, BuildingType.Mine, 1, 1);
+        all.Entries[6] = Building(6, Me, BuildingType.Mine, 9, 9);
         view.Fog(Nothing, all);
         var shown = new ClientBuildings();
         view.BuildingsFor(Me, all, shown);

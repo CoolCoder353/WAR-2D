@@ -6,7 +6,7 @@ public class SelectionRulesTests
 {
     private static readonly Dictionary<int, UnitType> Types = new Dictionary<int, UnitType>
     {
-        [1] = UnitType.Builder, [2] = UnitType.Builder, [3] = UnitType.Tank, [4] = UnitType.Digger, [5] = UnitType.SuicideBomber,
+        [1] = UnitType.Builder, [2] = UnitType.Builder, [3] = UnitType.Tank, [4] = UnitType.Digger, [5] = UnitType.Bomber,
     };
 
     private static List<int> Box(params int[] ids)

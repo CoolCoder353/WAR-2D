@@ -12,7 +12,7 @@ namespace WAR2D.Art.Render
 
     /// <summary>
     /// The v0.12 Arsenal sprites (spec <c>2026-10-16-v0.12-arsenal-design.md</c> §5): the Scout, Flamethrower,
-    /// Sniper and Suicide bomber (1×1 like the Tank), the Heavy and Artillery (2×2 canvases for the large size
+    /// Sniper and Bomber (1×1 like the Tank), the Heavy and Artillery (2×2 canvases for the large size
     /// class), the Heavy Factory (3×3) and the Siege Workshop (2×2). Same look and light as the rest of
     /// <see cref="RenderGen"/>. Unit frames are move (0–1) then the unit's action (2–3).
     /// </summary>
@@ -233,10 +233,10 @@ namespace WAR2D.Art.Render
         }
 
         /// <summary>
-        /// The Suicide bomber: a fast little four-wheeled cart carrying a big striped explosive drum with a
+        /// The Bomber: a fast little four-wheeled cart carrying a big striped explosive drum with a
         /// detonator lamp. Frames 0–1 move (the lamp blinks slowly); 2–3 are armed (a fast, hot blink).
         /// </summary>
-        public static LitCanvas SuicideBomber(float angle, int frame)
+        public static LitCanvas Bomber(float angle, int frame)
         {
             var c = new LitCanvas(TileSize, TileSize);
             float o = TileSize / 2f;
@@ -448,7 +448,7 @@ namespace WAR2D.Art.Render
 
         /// <summary>
         /// The Siege Workshop (2×2): a gabled shed with an open bay, a team band on its gable end, a drill bit on a
-        /// rack and a stack of striped explosive drums in the yard (it makes Diggers and Suicide bombers).
+        /// rack and a stack of striped explosive drums in the yard (it makes Diggers and Bombers).
         /// Frame 1 dims the bay lamp.
         /// </summary>
         public static LitCanvas SiegeWorkshop(int frame)

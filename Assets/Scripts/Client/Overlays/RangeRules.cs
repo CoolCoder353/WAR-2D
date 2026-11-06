@@ -23,7 +23,7 @@ namespace WAR2D.Client.Overlays
         /// <summary>A unit type's rings. A bomber's reach is its blast; a Builder has only its sight.</summary>
         public static RingSet OfUnit(Config.UnitConfig unit, float2 at, int owner)
         {
-            float range = unit.BlastRadius > 0f ? unit.BlastRadius : unit.Damage > 0 ? unit.Range : 0f;
+            float range = unit.IsBomber ? unit.BlastRadius : unit.Damage > 0 ? unit.Range : 0f;
             return new RingSet { At = at, Range = range, Min = unit.MinRange, Sight = unit.Sight, Owner = owner };
         }
 

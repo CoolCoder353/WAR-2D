@@ -33,8 +33,18 @@ namespace Config
         public RangeRingsConfig RangeRings = new RangeRingsConfig();
         /// <summary>The end screen's graphs and timeline (v0.18).</summary>
         public SummaryConfig Summary = new SummaryConfig();
-        /// <summary>Suicide bombers' last gasp and aim (v0.18).</summary>
+        /// <summary>Bombers' last gasp and leap (v0.18, v0.20).</summary>
         public BomberConfig Bomber = new BomberConfig();
+        /// <summary>v0.20: the smallest direct hit, after flat armour.</summary>
+        public CombatConfig Combat = new CombatConfig();
+        /// <summary>v0.20: fire from Flamethrowers.</summary>
+        public BurnConfig Burn = new BurnConfig();
+        /// <summary>v0.20: Artillery shells in flight.</summary>
+        public ArtilleryConfig Artillery = new ArtilleryConfig();
+        /// <summary>v0.20: the Sniper's aim.</summary>
+        public SniperConfig Sniper = new SniperConfig();
+        /// <summary>v0.20: combat effects (client presentation).</summary>
+        public EffectsConfig Effects = new EffectsConfig();
         /// <summary>v0.16: fights pulsing on the minimap (client presentation).</summary>
         public MinimapCombatConfig MinimapCombat = new MinimapCombatConfig();
         /// <summary>v0.16: the minimap while placing the HQ (client presentation).</summary>
@@ -241,23 +251,79 @@ namespace Config
         public int MaxFights;
     }
 
-    /// <summary>Suicide bombers' last gasp and aim (v0.18).</summary>
+    /// <summary>Bombers' last gasp (v0.18) and leap (v0.20).</summary>
     public class BomberConfig
     {
         /// <summary>Share of its health at or below which a bomber explodes.</summary>
         public float LastGaspHealth;
         /// <summary>Most rounds of blasts setting off bombers in one tick.</summary>
         public int ChainPasses;
-        /// <summary>Tiles from its target that candidates for the blast point may be.</summary>
-        public float AimTiles;
-        /// <summary>Weight of own and allied worth in the blast.</summary>
-        public float FriendlyWeight;
         /// <summary>Share of the blast that reaches own and allied units, buildings and walls.</summary>
         public float FriendlyDamage;
-        /// <summary>Tiles from the blast point at which it detonates.</summary>
-        public float AimReachTiles;
-        /// <summary>Share of the point's worth that makes a blast on contact good enough.</summary>
-        public float GoodEnough;
+        /// <summary>v0.20: farthest a leap goes, in tiles.</summary>
+        public float LeapReach;
+        /// <summary>v0.20: seconds a leap takes, whatever its length.</summary>
+        public float LeapSeconds;
+        /// <summary>v0.20: enemy units within this many tiles of the nearest one are its army.</summary>
+        public float ArmyTiles;
+    }
+
+    /// <summary>Hits after armour (v0.20).</summary>
+    public class CombatConfig
+    {
+        /// <summary>The least a direct hit does after flat armour.</summary>
+        public float MinHit;
+    }
+
+    /// <summary>Fire (v0.20): a Flamethrower's hit sets its target burning.</summary>
+    public class BurnConfig
+    {
+        /// <summary>Damage a second at the full rate.</summary>
+        public float Dps;
+        /// <summary>Seconds a fire burns after its last flame hit.</summary>
+        public float Seconds;
+        /// <summary>Rate for light units, heavy units and buildings (walls never burn).</summary>
+        public float LightUnit, HeavyUnit, Building;
+
+        /// <summary>The rate for a target class (0 for a wall).</summary>
+        public float Rate(TargetClass c) => c switch
+        {
+            TargetClass.LightUnit => LightUnit,
+            TargetClass.HeavyUnit => HeavyUnit,
+            TargetClass.Building => Building,
+            _ => 0f,
+        };
+    }
+
+    /// <summary>Artillery shells (v0.20).</summary>
+    public class ArtilleryConfig
+    {
+        /// <summary>Tiles a second a shell flies.</summary>
+        public float ShellSpeed;
+        /// <summary>Whether it aims where the target will be when the shell lands.</summary>
+        public bool LeadAim;
+        /// <summary>Tiles past its range a led shot may land.</summary>
+        public float LeadCapTiles;
+        /// <summary>Share of a shell's blast its own side and allies take.</summary>
+        public float FriendlyDamage;
+        /// <summary>Seconds of a shell's flight a client that sees only the landing point is shown.</summary>
+        public float IncomingSeconds;
+    }
+
+    /// <summary>The Sniper's aim (v0.20).</summary>
+    public class SniperConfig
+    {
+        /// <summary>Seconds a Sniper aims, standing still, before each shot.</summary>
+        public float AimSeconds;
+    }
+
+    /// <summary>Combat effects (v0.20, client presentation).</summary>
+    public class EffectsConfig
+    {
+        /// <summary>Most fires drawn at once, nearest the view's centre first.</summary>
+        public int MaxFires;
+        /// <summary>Seconds a burnt wreck smokes.</summary>
+        public float SmoulderSeconds;
     }
 
     /// <summary>Target lines (v0.16).</summary>
@@ -404,9 +470,9 @@ namespace Config
     public class SiegeConfig
     {
         /// <summary>Tiles from a hidden bomb's tile centre at which an enemy sets it off.</summary>
-        public float BombTriggerRadius;
+        public float MineTriggerRadius;
         /// <summary>Share of a hidden bomb's blast that reaches its own side.</summary>
-        public float BombFriendlyDamage;
+        public float MineFriendlyDamage;
         /// <summary>Health per second one Builder adds to a blueprint, a rising wall or (for a price) a damaged building.</summary>
         public float BuildPower;
         /// <summary>Share of its cost (0..1) a completed building refunds when its owner demolishes it; blueprints refund in full.</summary>
@@ -526,10 +592,22 @@ namespace Config
         public float Splash;
         /// <summary>Targets closer than this many tiles are ignored (0 = none).</summary>
         public float MinRange;
-        /// <summary>Suicide bomber blast radius in tiles (0 for other units).</summary>
+        /// <summary>
+        /// Blast radius in tiles (0 for none): a Bomber's blast, or (v0.20) with no <see cref="BlastDamage"/> the radius of the
+        /// shell's blast of a unit that fires shells (the Artillery), whose blast is its <see cref="Damage"/>.
+        /// </summary>
         public float BlastRadius;
-        /// <summary>Suicide bomber blast damage before the damage table (0 for other units).</summary>
+        /// <summary>Bomber blast damage before the damage table (0 for other units).</summary>
         public float BlastDamage;
+        /// <summary>v0.20: share of any blast it shrugs off (0 to 0.99).</summary>
+        public float BlastResist;
+        /// <summary>v0.20: taken off every hit that is not a blast or fire, down to <c>Combat/MinHit</c>.</summary>
+        public float FlatArmour;
+
+        /// <summary>v0.20: true for a Bomber (it has a blast of its own and never fires).</summary>
+        public bool IsBomber => BlastDamage > 0f;
+        /// <summary>v0.20: true for a unit whose shots are shells that fly and land in a blast (the Artillery).</summary>
+        public bool FiresShells => BlastRadius > 0f && BlastDamage <= 0f;
     }
 
     /// <summary>One building type's stats.</summary>
@@ -553,6 +631,11 @@ namespace Config
         public float Range;
         /// <summary>Seconds between attacks (attackers only).</summary>
         public float AttackInterval;
+        /// <summary>v0.20: seconds one Builder takes to build it, in place of health over <c>Siege/BuildPower</c> (0: the health rule).</summary>
+        public float BuildSeconds;
+
+        /// <summary>v0.20: health one Builder adds a second: health over <see cref="BuildSeconds"/> where given, else <paramref name="buildPower"/>.</summary>
+        public float BuildRate(float buildPower) => BuildSeconds > 0f ? Health / BuildSeconds : buildPower;
 
         /// <summary>True for a building that attacks (<see cref="Damage"/> &gt; 0): the Gun turret.</summary>
         public bool IsAttacker => Damage > 0;

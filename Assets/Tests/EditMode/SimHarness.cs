@@ -145,7 +145,7 @@ public sealed class SimHarness : IDisposable
             OwnerId = owner,
             Building = new BuildingSpec { Data = new BuildingData { id = id, ownerId = owner, buildingType = type, position = (float2)anchor }, Config = config, Complete = complete },
         });
-        if (type != BuildingType.Bomb) // a bomb does not mark its tile used: units walk over it
+        if (type != BuildingType.Mine) // a bomb does not mark its tile used: units walk over it
             foreach (int2 t in Footprint.Tiles(anchor, config.Size)) Map.QueueUsed(t, true);
         return id;
     }

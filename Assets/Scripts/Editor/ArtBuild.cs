@@ -146,8 +146,8 @@ namespace WAR2D.EditorTools
                     return ($"Flamethrower {direction} {frame}", () => RenderGen.Flamethrower(direction * Mathf.PI / 4f, frame), 0f);
                 case nameof(UnitType.Sniper):
                     return ($"Sniper {direction} {frame}", () => RenderGen.Sniper(direction * Mathf.PI / 4f, frame), 0f);
-                case nameof(UnitType.SuicideBomber):
-                    return ($"SuicideBomber {direction} {frame}", () => RenderGen.SuicideBomber(direction * Mathf.PI / 4f, frame), 0f);
+                case nameof(UnitType.Bomber):
+                    return ($"Bomber {direction} {frame}", () => RenderGen.Bomber(direction * Mathf.PI / 4f, frame), 0f);
                 case nameof(UnitType.Heavy):
                     return ($"Heavy {direction} {frame}", () => RenderGen.Heavy(direction * Mathf.PI / 4f, frame), 0f);
                 case nameof(UnitType.Artillery):
@@ -156,8 +156,8 @@ namespace WAR2D.EditorTools
                     return ($"HeavyFactory {frame}", () => RenderGen.HeavyFactory(frame), RenderGen.Lift);
                 case nameof(BuildingType.SiegeWorkshop):
                     return ($"SiegeWorkshop {frame}", () => RenderGen.SiegeWorkshop(frame), RenderGen.Lift);
-                case "Bomb":
-                    return ($"Bomb {frame}", () => RenderGen.Bomb(frame), 0f);
+                case "Mine":
+                    return ($"Bomb {frame}", () => RenderGen.Mine(frame), 0f);
                 case "Radar":
                     return ($"Radar {frame}", () => RenderGen.Radar(frame), RenderGen.Lift);
                 case nameof(BuildingType.GunTurret):

@@ -8,7 +8,7 @@ namespace WAR2D.UI
     /// <summary>
     /// Binds the command card (<c>Assets/UI/Hud/CommandCard.uxml</c>, Figma <c>Command card – v0.7</c> and
     /// <c>Command card – v0.12</c>): the order buttons (Move, Attack-move, Stop, Hold, and Repair with Builders,
-    /// Dig with Diggers or Detonate with Suicide bombers selected; the armed order shows as active), the build row
+    /// Dig with Diggers or Detonate with Bombers selected; the armed order shows as active), the build row
     /// with Builders selected (v0.13, Figma <c>Command card – v0.13</c> layout B: Make — Miner and the producers —
     /// over Defend — Wall, Bomb, Radar, Gun turret, Jammer — with their costs, disabled while the player can't afford
     /// them, and one hover card for every build button: name and cost, role, footprint and upkeep), and, with own producers selected, the type selector (one button per type the building
@@ -59,7 +59,7 @@ namespace WAR2D.UI
         public static readonly BuildingType[] TopBuilds = { BuildingType.Miner, BuildingType.Barracks, BuildingType.HeavyFactory, BuildingType.SiegeWorkshop };
 
         /// <inheritdoc cref="TopBuilds"/>
-        public static readonly BuildingType[] BottomBuilds = { BuildingType.None, BuildingType.Bomb, BuildingType.Radar, BuildingType.GunTurret, BuildingType.Jammer };
+        public static readonly BuildingType[] BottomBuilds = { BuildingType.None, BuildingType.Mine, BuildingType.Radar, BuildingType.GunTurret, BuildingType.Jammer };
 
         /// <summary>Raised by an order button (Move and AttackMove arm, Repair and Dig arm, Stop and Hold act).</summary>
         public event Action<OrderKind> OrderClicked;
@@ -156,12 +156,12 @@ namespace WAR2D.UI
             }
             detonateKind = OrderKind.Detonate;
             AddOrder(root, "cmd-detonate", OrderKind.Detonate, () => GameInput.Detonate);
-            bomberType = UnitType.SuicideBomber;
+            bomberType = UnitType.Bomber;
             AddBuild(root, "build-miner", BuildingType.Miner);
             AddBuild(root, "build-barracks", BuildingType.Barracks);
             AddBuild(root, "build-heavy-factory", BuildingType.HeavyFactory);
             AddBuild(root, "build-siege-workshop", BuildingType.SiegeWorkshop);
-            AddBuild(root, "build-bomb", BuildingType.Bomb);
+            AddBuild(root, "build-mine", BuildingType.Mine);
             AddBuild(root, "build-radar", BuildingType.Radar);
             AddBuild(root, "build-gun-turret", BuildingType.GunTurret);
             AddBuild(root, "build-jammer", BuildingType.Jammer);

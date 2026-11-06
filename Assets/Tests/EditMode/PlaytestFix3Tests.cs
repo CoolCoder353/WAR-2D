@@ -93,7 +93,7 @@ public class PlaytestFix3Tests
     public void AnUnpaidBombIsADud()
     {
         using var sim = Sim();
-        int bomb = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Bomb, new int2(20, 20), complete: true);
+        int bomb = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Mine, new int2(20, 20), complete: true);
         sim.Tick();
         sim.Em.SetComponentData(sim.BuildingEntity(bomb), new UpkeepComponent { ownerId = SimHarness.OwnerA, runningCostPerSecond = 1f, unpaid = true });
         int[] tank = sim.Spawn(SimHarness.OwnerB, new float2(20.5f, 20.5f));
@@ -105,26 +105,26 @@ public class PlaytestFix3Tests
     public void ABombGoesOffForAnEnemyNearItAndSparesItsOwnSide()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(64), c => c.GetUnit(UnitType.Heavy).Damage = 0); // only the blast hurts here
-        sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Bomb, new int2(20, 20), complete: true);
+        sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Mine, new int2(20, 20), complete: true);
         int[] friend = sim.Spawn(SimHarness.OwnerA, new float2(21.5f, 22f), UnitType.Heavy);
         int[] enemy = sim.Spawn(SimHarness.OwnerB, new float2(21.5f, 20.5f), UnitType.Heavy); // a tile off the bomb
         sim.TickSeconds(0.5f);
         float damage = sim.Config.Siege.BlastDamage;
         Assert.AreEqual(400f - damage, sim.UnitById(enemy[0]).Health, 1e-3f, "the bomb went off beside it");
-        Assert.AreEqual(400f - damage * sim.Config.Siege.BombFriendlyDamage, sim.UnitById(friend[0]).Health, 1e-3f);
+        Assert.AreEqual(400f - damage * sim.Config.Siege.MineFriendlyDamage, sim.UnitById(friend[0]).Health, 1e-3f);
     }
 
     [Test]
     public void ABombersBlastDoesATenthToFriends()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(64), c => { c.Simulation.TargetSearchSliceTicks = 1; c.GetUnit(UnitType.Heavy).Damage = 0; c.Bomber.FriendlyDamage = 0.1f; }); // pinned: the balance may set it to 0
-        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(20, 20), UnitType.SuicideBomber);
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(20, 20), UnitType.Bomber);
         int[] friend = sim.Spawn(SimHarness.OwnerA, new float2(21, 20), UnitType.Heavy);
         int[] enemy = sim.Spawn(SimHarness.OwnerB, new float2(20, 21), UnitType.Heavy);
         sim.Tick();
         sim.Order(SimHarness.OwnerA, OrderKind.Detonate, new int2(20, 20), bomber);
         sim.TickSeconds(0.25f);
-        float blast = sim.Config.GetUnit(UnitType.SuicideBomber).BlastDamage;
+        float blast = sim.Config.GetUnit(UnitType.Bomber).BlastDamage;
         Assert.AreEqual(400f - blast * 0.1f, sim.UnitById(friend[0]).Health, 1e-2f);
         Assert.AreEqual(400f - blast, sim.UnitById(enemy[0]).Health, 1e-2f);
     }

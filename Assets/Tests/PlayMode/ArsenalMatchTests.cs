@@ -8,7 +8,7 @@ using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine.TestTools;
 
-/// <summary>v0.12 in a hosted match: every producer makes each of its units, and a Suicide bomber run on an enemy building.</summary>
+/// <summary>v0.12 in a hosted match: every producer makes each of its units, and a Bomber run on an enemy building.</summary>
 public class ArsenalMatchTests
 {
     private static readonly int Bot = AiOwnerIds.For(2);
@@ -101,13 +101,13 @@ public class ArsenalMatchTests
         {
             int2 tile = Ring(factory, 5, i);
             if (!wsm.Map.Grid.IsWalkable(tile)) continue;
-            spawned = wsm.DevSpawnUnit(PlayModeMatch.LocalOwner, (float2)tile + 0.5f, null, UnitType.SuicideBomber);
+            spawned = wsm.DevSpawnUnit(PlayModeMatch.LocalOwner, (float2)tile + 0.5f, null, UnitType.Bomber);
         }
         Assert.That(spawned, Is.True, "room for the bomber");
-        yield return PlayModeMatch.WaitUntil(() => CountUnits(PlayModeMatch.LocalOwner, UnitType.SuicideBomber) == 1, 5f);
+        yield return PlayModeMatch.WaitUntil(() => CountUnits(PlayModeMatch.LocalOwner, UnitType.Bomber) == 1, 5f);
 
         // It sees the factory, runs at it and blows up on contact: 150 blast damage, x2 against buildings.
-        yield return PlayModeMatch.WaitUntil(() => CountUnits(PlayModeMatch.LocalOwner, UnitType.SuicideBomber) == 0, 20f);
+        yield return PlayModeMatch.WaitUntil(() => CountUnits(PlayModeMatch.LocalOwner, UnitType.Bomber) == 0, 20f);
         yield return PlayModeMatch.WaitUntil(() => PlayModeMatch.Em.GetComponentData<HealthComponent>(target).currentHealth < before, 5f);
         Assert.That(PlayModeMatch.Em.GetComponentData<HealthComponent>(target).currentHealth, Is.EqualTo(before - 300f).Within(0.01f));
     }

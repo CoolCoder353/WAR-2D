@@ -34,12 +34,12 @@ public enum BuildingType
     Barracks,
     Base,
     /// <summary>A hidden mine: detonates when an enemy steps on it; visible only to its owner's side.</summary>
-    Bomb,
+    Mine,
     /// <summary>Sees over walls and pings its owner when an enemy comes into range.</summary>
     Radar,
     /// <summary>Makes Heavy, Artillery and Sniper (3x3).</summary>
     HeavyFactory,
-    /// <summary>Makes Digger and Suicide bomber (2x2).</summary>
+    /// <summary>Makes Digger and Bomber (2x2).</summary>
     SiegeWorkshop,
     // v0.13: appended, so the bytes already on the wire and in replays keep their meaning.
     /// <summary>A static defence (1x1): shoots units, then buildings, then walls, like a unit that can't move.</summary>

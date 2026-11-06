@@ -18,8 +18,8 @@ const ROOT = path.resolve(__dirname, '..');
 const CLASSES = ['LightUnit', 'HeavyUnit', 'Building', 'Wall'];
 const CLASS_NAMES = { LightUnit: 'Light units', HeavyUnit: 'Heavy units', Building: 'Buildings', Wall: 'Walls' };
 // Mirrors SpawnerRules.Produces (code, not config), as balance-sheet.js does.
-const PRODUCERS = { Base: ['Builder'], Barracks: ['Scout', 'Tank', 'Flamethrower'], HeavyFactory: ['Heavy', 'Artillery', 'Sniper'], SiegeWorkshop: ['Digger', 'SuicideBomber'] };
-const NAMES = { Base: 'HQ', HeavyFactory: 'Heavy Factory', SiegeWorkshop: 'Siege Workshop', GunTurret: 'Gun turret', SuicideBomber: 'Suicide bomber' };
+const PRODUCERS = { Base: ['Builder'], Barracks: ['Scout', 'Tank', 'Flamethrower'], HeavyFactory: ['Heavy', 'Artillery', 'Sniper'], SiegeWorkshop: ['Digger', 'Bomber'] };
+const NAMES = { Base: 'HQ', HeavyFactory: 'Heavy Factory', SiegeWorkshop: 'Siege Workshop', GunTurret: 'Gun turret', Bomber: 'Bomber' };
 const nameOf = (t) => NAMES[t] || t;
 // Mirrors GameInput's default bindings; the last two are new in v0.18 (spec sections 2.2 and 3).
 const KEYS = {
@@ -311,7 +311,7 @@ function render(cfg, text, sprites, fontUri, table) {
   const counterBlock = (type) => {
     if (!table[type]) return `<p class="note">${words(text.noFight)}</p>`;
     const c = counters(table, type);
-    return `<div class="counters"><div><h3>Strong against</h3><div class="minis">${chips(c.strong)}</div></div><div><h3>Weak against</h3><div class="minis">${chips(c.weak)}</div></div></div><p class="note small">${words(type === 'SuicideBomber' ? text.counterNoteBomber : text.counterNote)}</p>`;
+    return `<div class="counters"><div><h3>Strong against</h3><div class="minis">${chips(c.strong)}</div></div><div><h3>Weak against</h3><div class="minis">${chips(c.weak)}</div></div></div><p class="note small">${words(type === 'Bomber' ? text.counterNoteBomber : text.counterNote)}</p>`;
   };
 
   // Units.
@@ -614,7 +614,7 @@ function ruleDiagrams(cfg) {
 
   // Siege: blast circles to scale over a tile grid, with a 2 × 2 Barracks for size.
   const t = 22, gridW = 30, gridH = 8;
-  const bombR = cfg.lookup('Siege/BlastRadius'), bomberR = unit('SuicideBomber').BlastRadius;
+  const bombR = cfg.lookup('Siege/BlastRadius'), bomberR = unit('Bomber').BlastRadius;
   let tiles = '';
   for (let x = 0; x <= gridW; x++) tiles += `<line x1="${x * t}" y1="0" x2="${x * t}" y2="${gridH * t}" stroke="#34404C"/>`;
   for (let y = 0; y <= gridH; y++) tiles += `<line x1="0" y1="${y * t}" x2="${gridW * t}" y2="${y * t}" stroke="#34404C"/>`;

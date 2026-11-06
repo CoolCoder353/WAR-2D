@@ -57,7 +57,7 @@ public sealed class AlertService
     }
 
     /// <summary>
-    /// Bombs and Suicide bombers hurt everything around them and leave no attack event, so <see cref="CollectDamage"/> never hears
+    /// Bombs and Bombers hurt everything around them and leave no attack event, so <see cref="CollectDamage"/> never hears
     /// of it: every other owner's unit (alive or just killed) and building inside a blast (<paramref name="blasts"/>) gets the same
     /// throttled UnderAttack alert, at its own tile. A player's own blast is theirs, and tells them nothing new. Runs only on a
     /// tick with a blast; the box cuts the units it has to measure.

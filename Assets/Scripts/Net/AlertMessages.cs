@@ -18,7 +18,7 @@ public enum AlertKind : byte
     /// <summary>One of the receiver's blueprints was finished (Tile is the building).</summary>
     ConstructionFinished,
     /// <summary>One of the receiver's bombs went off (Tile is the bomb).</summary>
-    BombTriggered,
+    MineTriggered,
     /// <summary>One of the receiver's Radars saw an enemy come into range (Tile is the Radar, never the enemy).</summary>
     EnemySpotted,
     /// <summary>The receiver's Builders stopped repairing because the receiver ran out of resources (Tile is the target).</summary>

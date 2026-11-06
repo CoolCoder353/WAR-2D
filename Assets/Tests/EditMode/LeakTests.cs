@@ -147,7 +147,7 @@ public class LeakTests
             {
                 Id = building.id, OwnerId = building.ownerId, Type = building.buildingType, Anchor = (int2)math.round(p),
                 Health = (int)math.ceil(health.currentHealth), MaxHealth = (int)math.ceil(health.maxHealth),
-                Hidden = building.buildingType == BuildingType.Bomb,
+                Hidden = building.buildingType == BuildingType.Mine,
                 Progress = sim.Em.HasComponent<Construction>(e) ? (byte)0 : (byte)100,
                 Position = p,
             });
@@ -415,7 +415,7 @@ public class LeakTests
         using var replication = new ReplicationService(sim.Context, sim.Config);
         var spies = new[] { new Spy(sim.Context, replication, SimHarness.OwnerA), new Spy(sim.Context, replication, OwnerC) };
         var random = new Unity.Mathematics.Random((uint)seed);
-        UnitType[] roster = { UnitType.Tank, UnitType.Scout, UnitType.Heavy, UnitType.Artillery, UnitType.Sniper, UnitType.Flamethrower, UnitType.SuicideBomber };
+        UnitType[] roster = { UnitType.Tank, UnitType.Scout, UnitType.Heavy, UnitType.Artillery, UnitType.Sniper, UnitType.Flamethrower, UnitType.Bomber };
         var aBoxes = new List<int[]>();
         var cBoxes = new List<int[]>();
         for (int u = 0; u < 35; u++)
@@ -505,30 +505,33 @@ public class LeakTests
         Assert.Less(furthest, 60f, "no goal past what the side could see");
     }
 
-    /// <summary>A bomber's route reaches its owner, so a block of Tanks in the fog beside its target must never draw its aim.</summary>
+    /// <summary>
+    /// A bomber's route reaches its owner, so a block of Tanks in the fog beside its target must never pull its run-in point (v0.20:
+    /// the army's centre counts only the units its side sees).
+    /// </summary>
     [Test]
-    public void ABombersAimUsesOnlyWhatItsSideSees()
+    public void ABombersRunInPointUsesOnlyWhatItsSideSees()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(96), c => c.GetUnit(UnitType.Tank).Damage = 0);
         sim.Spawn(SimHarness.OwnerB, new float2(30, 30)); // seen: within the bomber's sight
         for (int y = 0; y < 3; y++)
             for (int x = 0; x < 3; x++)
-                sim.Spawn(SimHarness.OwnerB, new float2(35f + x, 29f + y)); // within AimTiles of the target, past its sight
-        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(26, 30), UnitType.SuicideBomber);
+                sim.Spawn(SimHarness.OwnerB, new float2(34f + x, 29f + y)); // within ArmyTiles of the target, past its sight
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(25, 30), UnitType.Bomber);
         float farthest = 0f;
         int aims = 0;
         sim.Context.Settled += (data, tick, count) =>
         {
             int id = bomber[0];
             if (id <= 0) return;
-            BlastAim aim = data.BlastAims[NetIdAllocator.IndexOf(id)];
-            if (aim.Id != id) return;
+            UnitCombat c = data.Combat[NetIdAllocator.IndexOf(id)];
+            if (c.Id != id || c.HasRunPoint == 0) return;
             aims++;
-            farthest = math.max(farthest, aim.Point.x);
+            farthest = math.max(farthest, c.RunPoint.x);
         };
         for (int t = 0; t < 8; t++) sim.Tick();
-        Assert.Greater(aims, 0, "it aimed");
-        Assert.Less(farthest, 31f, "the aim stays on what it sees");
+        Assert.Greater(aims, 0, "it ran in");
+        Assert.Less(farthest, 31f, "the run-in point stays on what it sees");
     }
 
     [Test]
@@ -633,7 +636,7 @@ public class LeakTests
         sim.Spawn(SimHarness.OwnerB, new float2(21, 21)); // right next to the bomb: B sees the tile
         sim.Spawn(OwnerC, new float2(22, 19));            // so does C
         sim.Tick();
-        views.Add(new BuildingView { Id = 500, OwnerId = SimHarness.OwnerA, Type = BuildingType.Bomb, Anchor = new int2(21, 20), Health = 40, MaxHealth = 40, Position = new float2(21, 20), Hidden = true, Progress = 100 });
+        views.Add(new BuildingView { Id = 500, OwnerId = SimHarness.OwnerA, Type = BuildingType.Mine, Anchor = new int2(21, 20), Health = 40, MaxHealth = 40, Position = new float2(21, 20), Hidden = true, Progress = 100 });
         for (int i = 0; i < 8; i++) sim.Tick();
         Assert.IsTrue(a.Buildings.Entries.ContainsKey(500), "the owner knows its bomb");
         Assert.IsFalse(b.Buildings.Entries.ContainsKey(500), "B sees the tile but A doesn't share vision with B");
@@ -664,7 +667,7 @@ public class LeakTests
         replication.AddVirtualClient(OwnerC, (p, ch) => { if (ch == ReplicationService.BuildingSinkChannel) BuildingCodec.Apply(spectator, p); });
         sim.Spawn(SimHarness.OwnerA, new float2(20, 20));
         sim.Tick();
-        views.Add(new BuildingView { Id = 500, OwnerId = SimHarness.OwnerA, Type = BuildingType.Bomb, Anchor = new int2(21, 20), Health = 40, MaxHealth = 40, Position = new float2(21, 20), Hidden = true, Progress = 100 });
+        views.Add(new BuildingView { Id = 500, OwnerId = SimHarness.OwnerA, Type = BuildingType.Mine, Anchor = new int2(21, 20), Health = 40, MaxHealth = 40, Position = new float2(21, 20), Hidden = true, Progress = 100 });
         for (int i = 0; i < 8; i++) sim.Tick();
         Assert.IsTrue(recorder.Entries.ContainsKey(500), "the recorder sees every bomb");
         Assert.IsFalse(spectator.Entries.ContainsKey(500), "a spectator sees the map, never another player's bombs");

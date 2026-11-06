@@ -22,10 +22,10 @@ const xml = require('./lib/config-xml');
 
 const CLASSES = ['LightUnit', 'HeavyUnit', 'Building', 'Wall'];
 // Mirrors SpawnerRules.Produces (code, not config): keep the two in step.
-const PRODUCERS = { Base: ['Builder'], Barracks: ['Scout', 'Tank', 'Flamethrower'], HeavyFactory: ['Heavy', 'Artillery', 'Sniper'], SiegeWorkshop: ['Digger', 'SuicideBomber'] };
+const PRODUCERS = { Base: ['Builder'], Barracks: ['Scout', 'Tank', 'Flamethrower'], HeavyFactory: ['Heavy', 'Artillery', 'Sniper'], SiegeWorkshop: ['Digger', 'Bomber'] };
 // The producers of the main army (the Siege workshop's Diggers and bombers are special units, the HQ makes Builders).
 const ARMY_PRODUCERS = ['Barracks', 'HeavyFactory'];
-const SHORT = { Flamethrower: 'Flame', Artillery: 'Arty', SuicideBomber: 'Bomber' };
+const SHORT = { Flamethrower: 'Flame', Artillery: 'Arty', Bomber: 'Bomber' };
 const short = (t) => SHORT[t] || t;
 
 function load(src) {

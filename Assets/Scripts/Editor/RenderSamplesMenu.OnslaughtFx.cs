@@ -205,9 +205,9 @@ namespace WAR2D.EditorTools
                     else Sprite(px, W, H, RenderGen.Tank(Mathf.PI, f % 2), red, (int)(tx * T), (int)(ty * T));
                 }
                 if (f < 5)
-                    Sprite(px, W, H, RenderGen.SuicideBomber(0, f % 2), blue, (int)((1f + f * 0.35f) * T), cy);
+                    Sprite(px, W, H, RenderGen.Bomber(0, f % 2), blue, (int)((1f + f * 0.35f) * T), cy);
                 else if (f == 5)
-                    Darkened(px, W, H, RenderGen.SuicideBomber(0, 2), blue, (int)(2.75f * T), cy - 3, 0.9f);
+                    Darkened(px, W, H, RenderGen.Bomber(0, 2), blue, (int)(2.75f * T), cy - 3, 0.9f);
                 else if (f < 12)
                 {
                     float u = (f - 5) / 6f, x = Mathf.Lerp(2.75f, land, u) * T, height = Mathf.Sin(Mathf.PI * u);
@@ -217,7 +217,7 @@ namespace WAR2D.EditorTools
                         float pu = Mathf.Max(0, u - k * 0.12f), sx = Mathf.Lerp(2.75f, land, pu) * T, sy = cy + Mathf.Sin(Mathf.PI * pu) * 1.1f * T;
                         Fx(px, W, H, EffectGen.LeapSparks(k * 0.3f, 7 + f), sx, sy);
                     }
-                    Sprite(px, W, H, RenderGen.SuicideBomber(0, 2 + f % 2), blue, (int)x, (int)(cy + height * 1.1f * T));
+                    Sprite(px, W, H, RenderGen.Bomber(0, 2 + f % 2), blue, (int)x, (int)(cy + height * 1.1f * T));
                 }
                 if (landed && f < 21) Fx(px, W, H, EffectGen.ShockBlast(5, 2f, (f - 12) / 8f, 29), land * T, cy);
             }
@@ -387,7 +387,7 @@ namespace WAR2D.EditorTools
             {
                 Color32[] px = clip.Next();
                 float bx = (7.8f - f * 0.25f) * T;
-                if (f < 10) Sprite(px, W, H, RenderGen.SuicideBomber(Mathf.PI, f % 2), red, (int)bx, (int)cy);
+                if (f < 10) Sprite(px, W, H, RenderGen.Bomber(Mathf.PI, f % 2), red, (int)bx, (int)cy);
                 else Fx(px, W, H, EffectGen.ShockBlast(5, 2f, (f - 10) / 7f, 29), bx, cy);
                 Sprite(px, W, H, RenderGen.GunTurret2x2Base(0), blue, (int)tx, (int)cy, RenderGen.Lift);
                 Sprite(px, W, H, RenderGen.GunTurret2x2Head(0, 1 + f % 2), blue, (int)tx, (int)cy, RenderGen.Lift);

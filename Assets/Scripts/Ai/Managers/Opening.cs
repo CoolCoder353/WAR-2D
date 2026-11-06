@@ -173,14 +173,14 @@ namespace WAR2D.Ai
             int2 near = state.Hq.Anchor;
             float radius = play.BaseRadius;
             int gap = 0;
-            if (type == BuildingType.GunTurret || type == BuildingType.Bomb || type == BuildingType.Jammer || type == BuildingType.Radar)
+            if (type == BuildingType.GunTurret || type == BuildingType.Mine || type == BuildingType.Jammer || type == BuildingType.Radar)
             {
                 // A defence in the opening goes towards its front (the Builder manager's spots, or its gathering point).
                 if (state.DefenceSpots.Count > 0) near = (int2)math.floor(state.DefenceSpots[0]);
                 else if (state.HasGatherPoint) near = state.GatherPoint;
                 radius = play.BaseRadius / 2f;
             }
-            if (type != BuildingType.Miner && type != BuildingType.GunTurret && type != BuildingType.Bomb) gap = play.BuildingGap;
+            if (type != BuildingType.Miner && type != BuildingType.GunTurret && type != BuildingType.Mine) gap = play.BuildingGap;
             state.RequestBuilding(type, near, radius, AiPriority.High, AiKeys.Of(AiKeys.Place, (int)type, 1000 + step), gap, save: true);
         }
     }

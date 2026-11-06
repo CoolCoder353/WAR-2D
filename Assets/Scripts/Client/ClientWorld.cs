@@ -561,13 +561,13 @@ namespace WAR2D.Client
         }
 
         /// <summary>How many tiles across a unit type is drawn (2 for the large units), from the art manifest.</summary>
-        /// <summary>A known unit died: its scorch, and its wreck at its last facing (not a Suicide bomber, which blew itself up).</summary>
+        /// <summary>A known unit died: its scorch, and its wreck at its last facing (not a Bomber, which blew itself up).</summary>
         private void OnUnitDied(int index, float2 at)
         {
             byte type = store.TypeOf(index);
             var position = new Vector2(at.x, at.y);
             worldEffects.UnitDied(position, ScaleOf(type) > 1.5f);
-            if (unitAtlas == null || type == (byte)UnitType.SuicideBomber || (uint)index >= (uint)rotation.Length) return;
+            if (unitAtlas == null || type == (byte)UnitType.Bomber || (uint)index >= (uint)rotation.Length) return;
             string id = ((UnitType)type).ToString();
             int directions = unitAtlas.Directions(id);
             if (directions <= 0) return;

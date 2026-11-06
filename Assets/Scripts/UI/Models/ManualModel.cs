@@ -102,8 +102,8 @@ namespace WAR2D.UI
             Build();
         }
 
-        private static readonly UnitType[] UnitOrder = { UnitType.Tank, UnitType.Builder, UnitType.Digger, UnitType.Scout, UnitType.Flamethrower, UnitType.Heavy, UnitType.Artillery, UnitType.Sniper, UnitType.SuicideBomber };
-        private static readonly BuildingType[] BuildingOrder = { BuildingType.Base, BuildingType.Miner, BuildingType.Barracks, BuildingType.HeavyFactory, BuildingType.SiegeWorkshop, BuildingType.Bomb, BuildingType.Radar, BuildingType.GunTurret, BuildingType.Jammer };
+        private static readonly UnitType[] UnitOrder = { UnitType.Tank, UnitType.Builder, UnitType.Digger, UnitType.Scout, UnitType.Flamethrower, UnitType.Heavy, UnitType.Artillery, UnitType.Sniper, UnitType.Bomber };
+        private static readonly BuildingType[] BuildingOrder = { BuildingType.Base, BuildingType.Miner, BuildingType.Barracks, BuildingType.HeavyFactory, BuildingType.SiegeWorkshop, BuildingType.Mine, BuildingType.Radar, BuildingType.GunTurret, BuildingType.Jammer };
 
         /// <summary>The unit types with pages.</summary>
         public static IEnumerable<UnitType> UnitTypes
@@ -133,7 +133,6 @@ namespace WAR2D.UI
             "HeavyFactory" => "Heavy Factory",
             "SiegeWorkshop" => "Siege Workshop",
             "GunTurret" => "Gun turret",
-            "SuicideBomber" => "Suicide bomber",
             _ => type,
         };
 
@@ -281,7 +280,7 @@ namespace WAR2D.UI
                     Stat("Earns", Number(config.Resources.MiningRate) + " /s");
                     Stat("On a rich gem", Number(config.Resources.MiningRate * config.Resources.RichGemMultiplier) + " /s");
                     break;
-                case BuildingType.Bomb:
+                case BuildingType.Mine:
                     Stat("Blast", Number(config.Siege.BlastDamage));
                     Stat("Blast radius", Number(config.Siege.BlastRadius) + " tiles");
                     break;

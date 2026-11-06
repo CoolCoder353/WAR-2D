@@ -44,7 +44,7 @@ public class SpawnerRulesTests
         CollectionAssert.AreEqual(new[] { UnitType.Builder }, SpawnerRules.Produces(BuildingType.Base));
         CollectionAssert.AreEqual(new[] { UnitType.Scout, UnitType.Tank, UnitType.Flamethrower }, SpawnerRules.Produces(BuildingType.Barracks));
         CollectionAssert.AreEqual(new[] { UnitType.Heavy, UnitType.Artillery, UnitType.Sniper }, SpawnerRules.Produces(BuildingType.HeavyFactory));
-        CollectionAssert.AreEqual(new[] { UnitType.Digger, UnitType.SuicideBomber }, SpawnerRules.Produces(BuildingType.SiegeWorkshop));
+        CollectionAssert.AreEqual(new[] { UnitType.Digger, UnitType.Bomber }, SpawnerRules.Produces(BuildingType.SiegeWorkshop));
         Assert.IsEmpty(SpawnerRules.Produces(BuildingType.Miner));
         Assert.IsFalse(SpawnerRules.MayProduce(BuildingType.Base, UnitType.Tank));
         Assert.IsFalse(SpawnerRules.MayProduce(BuildingType.Barracks, UnitType.Digger), "Diggers moved to the Siege Workshop");

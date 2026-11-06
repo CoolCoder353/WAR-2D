@@ -234,7 +234,7 @@ public static class Decals
 
         private void OnEntered(BuildingData data, HealthComponent health)
         {
-            if (data.buildingType == BuildingType.Bomb) return;
+            if (data.buildingType == BuildingType.Mine) return;
             int2 size = WorldStateManager.GetBuildingSize(data.buildingType);
             float2 centre = Footprint.VisualCenter((int2)math.round(data.position), size);
             ClearRubbleUnder(new Vector2(centre.x, centre.y), size);

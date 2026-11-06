@@ -173,7 +173,7 @@ namespace WAR2D.Ai
             if (state.PlayingSeconds < play.DefenceAfterSeconds * ai.Style.DefenceStart || DefenceBlueprints(view, state) >= MaxDefenceBlueprints(ai)) return;
             int turrets = ai.Style.Turrets + (LightEnemies(ai) ? 1 : 0);
             int jammers = (int)math.round(ai.Style.Jammers * ai.Difficulty.SpecialUse);
-            int bombs = (int)math.round(ai.Style.Bombs * ai.Difficulty.SpecialUse);
+            int bombs = (int)math.round(ai.Style.Mines * ai.Difficulty.SpecialUse);
             for (int s = 0; s < state.DefenceSpots.Count; s++)
             {
                 float2 spot = state.DefenceSpots[s], dir = state.DefenceDirs[s];
@@ -181,15 +181,15 @@ namespace WAR2D.Ai
                 float2 front = spot + dir * spread * 0.5f, back = spot - dir * spread * 0.5f;
                 if (state.CountNear(BuildingType.GunTurret, spot, spread + 2f) < turrets)
                     state.RequestBuilding(BuildingType.GunTurret, (int2)math.floor(spot), spread, AiPriority.Low + 2f, AiKeys.Of(AiKeys.Place, (int)BuildingType.GunTurret, s));
-                else if (state.CountNear(BuildingType.Bomb, front, spread) < bombs)
-                    state.RequestBuilding(BuildingType.Bomb, (int2)math.floor(front), spread, AiPriority.Low + 1f, AiKeys.Of(AiKeys.Place, (int)BuildingType.Bomb, s));
+                else if (state.CountNear(BuildingType.Mine, front, spread) < bombs)
+                    state.RequestBuilding(BuildingType.Mine, (int2)math.floor(front), spread, AiPriority.Low + 1f, AiKeys.Of(AiKeys.Place, (int)BuildingType.Mine, s));
                 else if (state.CountNear(BuildingType.Jammer, back, spread + 2f) < jammers)
                     state.RequestBuilding(BuildingType.Jammer, (int2)math.floor(back), spread, AiPriority.Low, AiKeys.Of(AiKeys.Place, (int)BuildingType.Jammer, s), play.BuildingGap);
                 else if (ai.Style.Walls && ai.Difficulty.DefendsChokepoints) Wall(ai, state, spot, dir, s);
             }
         }
 
-        private static bool IsDefence(BuildingType t) => t == BuildingType.GunTurret || t == BuildingType.Bomb || t == BuildingType.Jammer;
+        private static bool IsDefence(BuildingType t) => t == BuildingType.GunTurret || t == BuildingType.Mine || t == BuildingType.Jammer;
 
         private static int DefenceBlueprints(TeamView view, AiState state)
         {

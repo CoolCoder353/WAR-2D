@@ -8,7 +8,7 @@ namespace WAR2D.Ai
     /// Production (spec §5.3, §5.5, plan Task 7): keeps <c>QueueAhead</c> units queued on each finished producer (a whole
     /// <c>QueueBatch</c> while money piles up, AI overhaul §3.3). The HQ makes the Builders the Economy asks for; the
     /// others first make what the managers request (opening steps, a Scout) and, once the opening is done, the army: the
-    /// type furthest below its share of the army mix. The mix is the style's (Diggers and Suicide bombers scaled by
+    /// type furthest below its share of the army mix. The mix is the style's (Diggers and Bombers scaled by
     /// <c>SpecialUse</c>), moved by <c>CounterShift</c> towards counters of the enemy units its enemy models remember
     /// (by its <c>CounterWeight</c>) and of the enemy buildings it has seen (by its <c>BuildingCounterWeight</c>), then
     /// scaled by the strategy's <c>MixBias</c>. A producer switches type only with an empty queue (switching clears the
@@ -157,7 +157,7 @@ namespace WAR2D.Ai
 
         private readonly float[] scratch = new float[Types];
 
-        private static bool IsSpecial(UnitType t) => t == UnitType.Digger || t == UnitType.SuicideBomber;
+        private static bool IsSpecial(UnitType t) => t == UnitType.Digger || t == UnitType.Bomber;
 
         /// <summary>Sends every producer's new units to the army's gathering point (one action for all that rally elsewhere).</summary>
         private void Rally(AiContext ai, TeamView view, AiState state)

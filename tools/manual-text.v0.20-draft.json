@@ -1,5 +1,5 @@
 {
-  "_comment": "v0.20 Onslaught draft of the Field manual's words (spec section 13, brief B3), for the owner's review on the v0.20 review page and the B3 Figma frame. Only the pages that change. Same rules as manual-text.json: {Path} is a number from GameConfig.xml or a derived figure, [[Name]] links a page, **x** highlights, no typed balance numbers. New paths ({Burn/...}, {Bomber/LeapReach}, {Sniper/AimSeconds}, {Combat/MinHit}, BlastResist, FlatArmour, BuildSeconds on a building) and the derived figures marked NEW exist once v0.20's config lands. Once approved, these replace the matching entries in manual-text.json (SuicideBomber becomes Bomber, Bomb becomes Mine) and the hover cards' role lines follow (HoverText.UnitRole). Strong / Weak claims are left out until the balance pass: manual-mock.js checks them against balance-sheet.js, which learns the v0.20 rules first (spec section 10).",
+  "_comment": "v0.20 Onslaught draft of the Field manual's words (spec section 13, brief B3), for the owner's review on the v0.20 review page and the B3 Figma frame. Only the pages that change. Same rules as manual-text.json: {Path} is a number from GameConfig.xml or a derived figure, [[Name]] links a page, **x** highlights, no typed balance numbers. New paths ({Burn/...}, {Bomber/LeapReach}, {Sniper/AimSeconds}, {Combat/MinHit}, BlastResist, FlatArmour, BuildSeconds on a building) and the derived figures marked NEW exist once v0.20's config lands. Once approved, these replace the matching entries in manual-text.json (Bomber becomes Bomber, Bomb becomes Mine) and the hover cards' role lines follow (HoverText.UnitRole). Strong / Weak claims are left out until the balance pass: manual-mock.js checks them against balance-sheet.js, which learns the v0.20 rules first (spec section 10).",
   "derived": {
     "BomberBlastResistPercent": "NEW: Unit/Bomber/BlastResist x 100",
     "HeavyBlastResistPercent": "NEW: Unit/Heavy/BlastResist x 100",
@@ -9,7 +9,7 @@
   },
   "units": {
     "Bomber": {
-      "was": "SuicideBomber",
+      "was": "Bomber",
       "role": "Leaps into an army and explodes. Hurts friends too.",
       "body": [
         "On an attack-move, or idle with an enemy in sight, it runs at the middle of the nearest army. Once an enemy unit is within {Unit/Bomber/Range} tiles it **leaps** over the units in its way, lands in that army's centre, at most {Bomber/LeapReach} tiles away, and explodes: everything within {Unit/Bomber/BlastRadius} tiles is hit, **your own and your allies' included**.",

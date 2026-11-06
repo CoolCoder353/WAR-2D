@@ -10,7 +10,7 @@ namespace WAR2D.UI
     ""notes"": [
       ""Every unit is Light or Heavy armoured. With buildings and walls that makes four target classes."",
       ""A hit does the attacker's damage times the number in this table. 1 is full damage, 2 is double, 0 is none."",
-      ""A [[Suicide bomber]]'s row applies to its blast, which goes off once.""
+      ""A [[Bomber]]'s row applies to its blast, which goes off once.""
     ]
   },
   ""units"": {
@@ -87,18 +87,18 @@ namespace WAR2D.UI
       ""body"": [
         ""The longest range in the game. It is the safest way to kill a [[Gun turret]], which can't reach it, and it picks off targets from behind your army."",
         ""It can only fire at what your side can see, rock blocks both, and it can't fire at anything closer than {Unit/Sniper/MinRange} tiles. It does little to buildings and walls."",
-        ""It loses a straight fight at equal cost, and a [[Suicide bomber]] that reaches a group of Snipers is very costly. Keep something in front of it.""
+        ""It loses a straight fight at equal cost, and a [[Bomber]] that reaches a group of Snipers is very costly. Keep something in front of it.""
       ],
       ""claims"": {
         ""GunTurret"": ""beats"",
-        ""SuicideBomber"": ""loses"",
+        ""Bomber"": ""loses"",
         ""Scout"": ""loses""
       }
     },
-    ""SuicideBomber"": {
+    ""Bomber"": {
       ""role"": ""Drives in and explodes. Hurts friends too."",
       ""body"": [
-        ""On an attack-move, or idle with an enemy in sight, it runs in and explodes. Its blast hits every unit, building and wall within {Unit/SuicideBomber/BlastRadius} tiles, **your own and your allies' included**."",
+        ""On an attack-move, or idle with an enemy in sight, it runs in and explodes. Its blast hits every unit, building and wall within {Unit/Bomber/BlastRadius} tiles, **your own and your allies' included**."",
         ""It aims for the middle of a group, where its blast catches the most value for the least harm to your side. Against a building it goes for the middle of a side. It can only aim at what your side sees."",
         ""**A bomber at {Derived/LastGaspPercent} % health or less explodes**, which in practice means a bomber shot down explodes where it falls. Shoot it down far from what you are protecting. The Detonate order sets off every selected bomber where it stands.""
       ]
@@ -134,12 +134,12 @@ namespace WAR2D.UI
       ]
     },
     ""SiegeWorkshop"": {
-      ""role"": ""Makes Diggers and Suicide bombers."",
+      ""role"": ""Makes Diggers and Bombers."",
       ""body"": [
-        ""Makes the units that change the map or break a line: [[Digger]]s to open a new route or take down walls, [[Suicide bomber]]s to blow a hole in a crowd.""
+        ""Makes the units that change the map or break a line: [[Digger]]s to open a new route or take down walls, [[Bomber]]s to blow a hole in a crowd.""
       ]
     },
-    ""Bomb"": {
+    ""Mine"": {
       ""role"": ""A hidden trap, walkable."",
       ""body"": [
         ""Only you and those you share vision with can see it, and Radars can't. A unit of any player you attack sets it off: a blast of {Siege/BlastDamage} within {Siege/BlastRadius} tiles that hits everything, **your own units included**."",
@@ -150,7 +150,7 @@ namespace WAR2D.UI
       ""role"": ""Sees far, through walls and rock."",
       ""body"": [
         ""Sees {Building/Radar/Sight} tiles ignoring walls and rock, and pings you when an enemy comes into range. It pings again only after the area has been clear for {Siege/RadarClearSeconds} s and at least {Siege/RadarAlertCooldownSeconds} s have passed."",
-        ""It never sees [[Bomb]]s, and it sees nothing inside an enemy [[Jammer]]'s radius. Its sight lets your [[Artillery]] and [[Sniper]]s fire.""
+        ""It never sees [[Mine]]s, and it sees nothing inside an enemy [[Jammer]]'s radius. Its sight lets your [[Artillery]] and [[Sniper]]s fire.""
       ]
     },
     ""GunTurret"": {
@@ -198,7 +198,7 @@ namespace WAR2D.UI
           ""heading"": ""Upkeep and decay"",
           ""paras"": [
             ""Upkeep is charged once a second, per unit and per building. Your resources never go below zero: what you can't pay goes unpaid."",
-            ""**Buildings give way first.** Your units are paid before your buildings, and an unpaid building stops working: an unpaid producer doesn't produce, a [[Gun turret]] doesn't fire, a [[Jammer]] doesn't jam, a [[Radar]] doesn't scan, and a [[Bomb]] is a dud. **Then units decay, one whole unit at a time:** each unpaid unit costs you {Resources/DecayPercentPerSecond}% of a unit every second, all of it taken from your weakest unpaid unit until it dies. With no units left, unpaid buildings lose {Resources/DecayPercentPerSecond}% of their maximum health every second.""
+            ""**Buildings give way first.** Your units are paid before your buildings, and an unpaid building stops working: an unpaid producer doesn't produce, a [[Gun turret]] doesn't fire, a [[Jammer]] doesn't jam, a [[Radar]] doesn't scan, and a [[Mine]] is a dud. **Then units decay, one whole unit at a time:** each unpaid unit costs you {Resources/DecayPercentPerSecond}% of a unit every second, all of it taken from your weakest unpaid unit until it dies. With no units left, unpaid buildings lose {Resources/DecayPercentPerSecond}% of their maximum health every second.""
           ]
         },
         {
@@ -322,7 +322,7 @@ namespace WAR2D.UI
         {
           ""heading"": ""Blasts hurt everyone"",
           ""paras"": [
-            ""A [[Bomb]] (radius {Siege/BlastRadius}, damage {Siege/BlastDamage}) and a [[Suicide bomber]] (radius {Unit/SuicideBomber/BlastRadius}, damage {Unit/SuicideBomber/BlastDamage}) both hit friends as well as enemies. Splash from [[Flamethrower]]s and [[Artillery]] hits enemies only."",
+            ""A [[Mine]] (radius {Siege/BlastRadius}, damage {Siege/BlastDamage}) and a [[Bomber]] (radius {Unit/Bomber/BlastRadius}, damage {Unit/Bomber/BlastDamage}) both hit friends as well as enemies. Splash from [[Flamethrower]]s and [[Artillery]] hits enemies only."",
             ""A bomber shot down explodes where it falls, and that blast can set off other bombers near it. Long-range fire keeps them away; a bomber killed inside your army takes your army with it.""
           ]
         }
@@ -443,7 +443,7 @@ namespace WAR2D.UI
           ""{Key/Dig}""
         ],
         [
-          ""Detonate (Suicide bombers)"",
+          ""Detonate (Bombers)"",
           ""{Key/Detonate}""
         ],
         [

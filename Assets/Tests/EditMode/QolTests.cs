@@ -132,7 +132,7 @@ public class QolTests
         var feed = new AlertFeedModel(10f);
         feed.Add(At(AlertKind.UnderAttack, 1), "a", 0f);
         feed.Add(At(AlertKind.GiftReceived, 2), "gift", 1f); // no place
-        feed.Add(At(AlertKind.BombTriggered, 3), "b", 2f);
+        feed.Add(At(AlertKind.MineTriggered, 3), "b", 2f);
         Assert.AreEqual(2, feed.UnvisitedCount);
         int2? went = null;
         feed.FocusRequested += tile => went = tile;
@@ -230,8 +230,8 @@ public class QolTests
         Assert.IsTrue(Selection.IsArmy(UnitType.Tank, gun));
         Assert.IsFalse(Selection.IsArmy(UnitType.Builder, builder));
         Assert.IsFalse(Selection.IsArmy(UnitType.Digger, gun), "a Digger does 4 damage but belongs to the siege group");
-        Assert.IsFalse(Selection.IsArmy(UnitType.SuicideBomber, gun));
-        Assert.IsTrue(Selection.IsSiege(UnitType.Digger) && Selection.IsSiege(UnitType.SuicideBomber));
+        Assert.IsFalse(Selection.IsArmy(UnitType.Bomber, gun));
+        Assert.IsTrue(Selection.IsSiege(UnitType.Digger) && Selection.IsSiege(UnitType.Bomber));
         Assert.IsFalse(Selection.IsArmy(UnitType.Tank, null));
     }
 }

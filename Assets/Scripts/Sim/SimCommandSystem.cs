@@ -633,7 +633,7 @@ namespace WAR2D.Sim
                         unitType = (byte)SpawnerRules.DefaultUnit(buildingData.buildingType),
                     });
                     break;
-                case BuildingType.Bomb:
+                case BuildingType.Mine:
                 case BuildingType.Radar:
                 case BuildingType.GunTurret:
                     break; // no components of their own: their stages read the building's slot flags (the turret's weapon is added below)

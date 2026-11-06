@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using Unity.Mathematics;
 using WAR2D.Sim;
 
-/// <summary>v0.18 Suicide bombers: the last gasp at 10 % health, and aiming for the middle.</summary>
+/// <summary>v0.18 Bombers: the last gasp at 10 % health, and aiming for the middle.</summary>
 public class SimBomberTests
 {
     private static SimHarness Sim(int size = 64) => new SimHarness(SimHarness.OpenMap(size));
@@ -14,7 +14,7 @@ public class SimBomberTests
     public void ABomberShotDownExplodesWhereItFell()
     {
         using var sim = Sim();
-        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.SuicideBomber);
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.Bomber);
         int[] friend = sim.Spawn(SimHarness.OwnerA, new float2(14, 10));
         for (int i = 0; i < 6; i++) sim.Spawn(SimHarness.OwnerB, new float2(19.5f, 8.5f + i * 0.5f));
         int[] nearby = sim.Spawn(SimHarness.OwnerB, new float2(16, 11));
@@ -22,7 +22,7 @@ public class SimBomberTests
         for (int i = 0; i < 40 && Alive(sim, bomber[0]); i++) sim.Tick();
         sim.Tick();
         Assert.IsFalse(Alive(sim, bomber[0]));
-        float blast = sim.Config.GetUnit(UnitType.SuicideBomber).BlastDamage;
+        float blast = sim.Config.GetUnit(UnitType.Bomber).BlastDamage;
         Assert.That(Alive(sim, friend[0]) ? Health(sim, friend[0]) : 0f, Is.EqualTo(100f - blast * sim.Config.Bomber.FriendlyDamage).Within(1e-3f), "its own side's Tank takes its share");
         Assert.IsFalse(Alive(sim, nearby[0]), "the enemy beside it is caught");
     }
@@ -32,7 +32,7 @@ public class SimBomberTests
     public void AHitThatLeavesItUnderTheThresholdSetsItOff()
     {
         using var sim = Sim();
-        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.SuicideBomber);
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.Bomber);
         int[] nearby = sim.Spawn(SimHarness.OwnerB, new float2(16, 10));
         sim.Tick(); // the spawns
         sim.SetUnitHealth(bomber[0], 2f);
@@ -46,7 +46,7 @@ public class SimBomberTests
     public void ABomberAboveTheThresholdDoesNotGoOff()
     {
         using var sim = Sim();
-        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.SuicideBomber);
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.Bomber);
         sim.Tick(); // the spawns
         sim.SetUnitHealth(bomber[0], 4f);
         sim.Tick();
@@ -57,7 +57,7 @@ public class SimBomberTests
     public void DecaySetsItOff()
     {
         using var sim = Sim();
-        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.SuicideBomber);
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.Bomber);
         sim.Tick(); // the spawns
         sim.SetUnitHealth(bomber[0], 3.05f);
         sim.Context.BudgetOf = _ => 0f; // nothing to pay upkeep with: it decays
@@ -71,7 +71,7 @@ public class SimBomberTests
         // A blast only sets off friendly bombers when friends take enough of it (shipped, they take a tenth).
         using var sim = new SimHarness(SimHarness.OpenMap(96), c => c.Bomber.FriendlyDamage = 1f);
         var chain = new List<int[]>(); // each id is filled in when the spawn runs
-        for (int i = 0; i < 6; i++) chain.Add(sim.Spawn(SimHarness.OwnerA, new float2(10 + i * 1.5f, 10), UnitType.SuicideBomber));
+        for (int i = 0; i < 6; i++) chain.Add(sim.Spawn(SimHarness.OwnerA, new float2(10 + i * 1.5f, 10), UnitType.Bomber));
         int blasts = 0;
         sim.Context.Settled += (data, tick, count) => blasts += data.BombBlasts.Count;
         sim.Tick(); // the spawns
@@ -86,7 +86,7 @@ public class SimBomberTests
     public void AKillShotDownStillCreditsWhoeverShotIt()
     {
         using var sim = Sim();
-        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.SuicideBomber);
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.Bomber);
         var killers = new List<int>();
         sim.Context.UnitKilled += (owner, killer) => { if (owner == SimHarness.OwnerA) killers.Add(killer); };
         for (int i = 0; i < 6; i++) sim.Spawn(SimHarness.OwnerB, new float2(19.5f, 8.5f + i * 0.5f));
@@ -100,7 +100,7 @@ public class SimBomberTests
     public void DetonatingOnceGoesOffOnce()
     {
         using var sim = Sim();
-        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.SuicideBomber);
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(15, 10), UnitType.Bomber);
         int blasts = 0;
         sim.Context.Settled += (data, tick, count) => blasts += data.BombBlasts.Count;
         sim.Tick(); // the spawns
@@ -158,7 +158,7 @@ public class SimBomberAimTests
     {
         using var sim = Sim();
         List<int[]> tanks = Block(sim, SimHarness.OwnerB, new float2(30, 30), 4);
-        sim.Spawn(SimHarness.OwnerA, new float2(25, 31.5f), UnitType.SuicideBomber);
+        sim.Spawn(SimHarness.OwnerA, new float2(25, 31.5f), UnitType.Bomber);
         List<float2> blasts = RunUntilBlast(sim);
         Assert.AreEqual(1, blasts.Count);
         Assert.That(blasts[0].x, Is.GreaterThan(30f), "past the block's edge");
@@ -172,7 +172,7 @@ public class SimBomberAimTests
         sim.Spawn(SimHarness.OwnerB, new float2(30, 30));
         sim.Spawn(SimHarness.OwnerB, new float2(30.8f, 30));
         sim.Spawn(SimHarness.OwnerB, new float2(31.6f, 30));
-        sim.Spawn(SimHarness.OwnerA, new float2(25, 30), UnitType.SuicideBomber);
+        sim.Spawn(SimHarness.OwnerA, new float2(25, 30), UnitType.Bomber);
         List<float2> blasts = RunUntilBlast(sim);
         Assert.AreEqual(1, blasts.Count);
         Assert.That(blasts[0].x, Is.LessThan(30.5f), "on contact at the near edge: all three are in the blast already");
@@ -185,7 +185,7 @@ public class SimBomberAimTests
         sim.Spawn(SimHarness.OwnerB, new float2(30, 26));
         int[] enemy = sim.Spawn(SimHarness.OwnerB, new float2(30, 31));
         var friends = new List<int[]> { sim.Spawn(SimHarness.OwnerA, new float2(31, 26)), sim.Spawn(SimHarness.OwnerA, new float2(31, 27)) };
-        sim.Spawn(SimHarness.OwnerA, new float2(25, 29), UnitType.SuicideBomber);
+        sim.Spawn(SimHarness.OwnerA, new float2(25, 29), UnitType.Bomber);
         List<float2> blasts = RunUntilBlast(sim);
         Assert.AreEqual(1, blasts.Count);
         Assert.That(Hurt(sim, friends), Is.EqualTo(0), "the blast keeps clear of its own side");
@@ -199,7 +199,7 @@ public class SimBomberAimTests
         int hq = sim.PlaceBuilding(SimHarness.OwnerB, BuildingType.Base, new int2(40, 40), complete: true);
         sim.Tick();
         float2 lo = Footprint.Start(new int2(40, 40), new int2(5, 5)), hi = lo + 5f, mid = (lo + hi) * 0.5f;
-        sim.Spawn(SimHarness.OwnerA, lo - 1f, UnitType.SuicideBomber); // just off a corner
+        sim.Spawn(SimHarness.OwnerA, lo - 1f, UnitType.Bomber); // just off a corner
         List<float2> blasts = RunUntilBlast(sim);
         Assert.AreEqual(1, blasts.Count);
         Assert.That(sim.BuildingHealthShare(hq), Is.LessThan(1f));

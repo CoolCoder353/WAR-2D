@@ -212,7 +212,7 @@ namespace WAR2D.Art
                 "................",
                 "................",
             },
-            ["IconBomb"] = new[]
+            ["IconMine"] = new[]
             {
                 "................",
                 "................",
@@ -422,7 +422,7 @@ namespace WAR2D.Art
                 "................",
                 "................",
             },
-            ["IconSuicideBomber"] = new[]
+            ["IconBomber"] = new[]
             {
                 "................",
                 "...........+.+..",
@@ -858,7 +858,7 @@ namespace WAR2D.Art
             ["IconSpawner"] = (White, new Color32(0xF2, 0xC1, 0x4E, 255)),
             ["IconRadar"] = (White, new Color32(0xE0, 0x40, 0x5A, 255)),
             ["IconDig"] = (White, new Color32(0xF2, 0xC1, 0x4E, 255)),
-            ["IconBomb"] = (White, new Color32(0xE0, 0x40, 0x5A, 255)),
+            ["IconMine"] = (White, new Color32(0xE0, 0x40, 0x5A, 255)),
             ["IconRepair"] = (White, new Color32(0x4C, 0xD0, 0x7D, 255)),
             ["IconDemolish"] = (White, new Color32(0xF2, 0xC1, 0x4E, 255)),
             ["IconRallyFlag"] = (White, new Color32(0x4F, 0xC3, 0xF7, 255)),
@@ -871,7 +871,7 @@ namespace WAR2D.Art
             ["IconArtillery"] = (White, new Color32(0x2F, 0x3A, 0x46, 255)),
             ["IconSniper"] = (White, new Color32(0x4F, 0xC3, 0xF7, 255)),
             ["IconFlamethrower"] = (White, new Color32(0xF2, 0xC1, 0x4E, 255)),
-            ["IconSuicideBomber"] = (White, new Color32(0xE0, 0x40, 0x5A, 255)),
+            ["IconBomber"] = (White, new Color32(0xE0, 0x40, 0x5A, 255)),
             ["IconDetonate"] = (White, new Color32(0xE0, 0x40, 0x5A, 255)),
             ["IconBarracks"] = (White, new Color32(0xE0, 0x40, 0x5A, 255)),
             ["IconHeavyFactory"] = (White, new Color32(0xF2, 0xC1, 0x4E, 255)),

@@ -97,7 +97,7 @@ namespace WAR2D.UI
             string RoleOf(UnitType unit)
             {
                 if (!config.Units.TryGetValue(unit, out UnitConfig u)) return null;
-                if (u.BlastRadius > 0f) return $"Blast {u.BlastRadius:0.#}, health {u.Health:0}";
+                if (u.IsBomber) return $"Blast {u.BlastRadius:0.#}, health {u.Health:0}";
                 if (u.Damage <= 0) return null;
                 string role = $"Range {u.Range:0.#}";
                 if (u.Splash > 0f) role += $", splash {u.Splash:0.#}";
@@ -114,10 +114,10 @@ namespace WAR2D.UI
                     BuildingType.Miner => "Income: mines the gem tile it faces (R turns it)",
                     BuildingType.Barracks => "Makes Scouts, Tanks, Flamethrowers",
                     BuildingType.HeavyFactory => "Makes Heavies, Artillery, Snipers",
-                    BuildingType.SiegeWorkshop => "Makes Diggers, Suicide bombers",
-                    BuildingType.Bomb => "Hidden from your enemies",
+                    BuildingType.SiegeWorkshop => "Makes Diggers, Bombers",
+                    BuildingType.Mine => "A hidden trap, walkable",
                     BuildingType.Radar => "Sees over walls",
-                    BuildingType.GunTurret => "Defence: shoots units, then buildings and walls",
+                    BuildingType.GunTurret => "Fires ten shots a second. Shoots Bombers first",
                     BuildingType.Jammer => "Hides an area from enemies",
                     _ => null,
                 };
@@ -126,6 +126,8 @@ namespace WAR2D.UI
                 if (!config.Buildings.TryGetValue(type, out BuildingConfig b)) return card;
                 if (b.RunningCost > 0f) card.Pair("Upkeep", $"{b.RunningCost:0.#}/s");
                 card.Pair("Size", $"{b.Width}×{b.Height}");
+                // v0.20 (Figma B2): the build time with one Builder, which the Gun turret's BuildSeconds makes long.
+                if (type != BuildingType.Base) card.Pair("Build", $"{b.Health / Mathf.Max(0.01f, b.BuildRate(config.Siege.BuildPower)):0} s");
                 if (type == BuildingType.GunTurret) card.Pair("Range", $"{b.Range:0.#}");
                 else if (type == BuildingType.Jammer) card.Pair("Jams", $"{config.Siege.JamRadius:0.#} tiles");
                 else if (type == BuildingType.Radar) card.Pair("Sight", $"{b.Sight:0.#}");
@@ -137,7 +139,7 @@ namespace WAR2D.UI
             topBar = new TopBarController(root, Model, hover);
             selectionPanel = new SelectionPanelController(root, Selection, hover);
             commandCard = new CommandCardController(root, Selection, Model, costs, unitCosts, config.Siege.WallCost, config.Siege.DemolishRefund,
-                BuildSeconds, RoleOf, switchClearsQueue: true, BuildCard, unit => HoverText.Unit(unit, config.GetUnit(unit), Model.Resources),
+                BuildSeconds, RoleOf, switchClearsQueue: true, BuildCard, unit => HoverText.Unit(unit, config.GetUnit(unit), Model.Resources, config),
                 hover, config.Siege.RepairCostPerHealth, config.Simulation.MaxUnitsPerPlayer);
             squadBar = new SquadBarController(root, Selection, hover);
             overlay = new HudOverlayController(root);
