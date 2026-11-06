@@ -507,10 +507,12 @@ public sealed class PerfMatch : MonoBehaviour
         var budgets = new Dictionary<string, (string, double, bool)>
         {
             ["perf.tick.main"] = ("p95", 25.0, true),
-            ["perf.fps"] = ("mean", 60.0, false),
             ["perf.bw.avg"] = ("mean", 262144.0, true),
             ["perf.bw.peak1s"] = ("max", 786432.0, true),
         };
+        // A headless host (WAR_PERF_HEADLESS_HOST=1, tools/perf-10k.sh) draws nothing, so its frame rate means nothing (perf-run.sh);
+        // there the measured client's perf.client.fps is the frame budget.
+        if (!Application.isBatchMode) budgets["perf.fps"] = ("mean", 60.0, false);
         if (AiRun) budgets["perf.part.ai"] = ("p95", 2.0, true); // v0.14 spec §12: AI thinking with 7 Hard AIs
         // Server stability (proposed with the 10,000-unit benchmark): no errors, no dropped connections, and the working set
         // grows at most 64 MB over the sampled window.
