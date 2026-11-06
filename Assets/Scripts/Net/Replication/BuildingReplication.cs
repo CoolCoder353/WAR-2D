@@ -460,15 +460,20 @@ namespace WAR2D.Net.Replication
 
         internal void Enter(BuildingData data, HealthComponent health, byte progress = 100)
         {
+            Burning.Remove(data.id); // an Enter starts clear (a Burning record follows)
             Entries[data.id] = new Entry { Data = data, Health = health, Progress = progress };
             Entered?.Invoke(data, health);
         }
+
+        /// <summary>v0.20: the ids of the seen buildings that burn, so the drawing visits only those (never a scan of every building).</summary>
+        public readonly HashSet<int> Burning = new HashSet<int>();
 
         internal void SetBurning(int id, bool burning)
         {
             if (!Entries.TryGetValue(id, out Entry e) || e.Ghost) return;
             e.Burning = burning;
             Entries[id] = e;
+            if (burning) Burning.Add(id); else Burning.Remove(id);
         }
 
         internal void SetUnpaid(int id, bool unpaid)
@@ -492,6 +497,7 @@ namespace WAR2D.Net.Replication
             if (!Entries.TryGetValue(id, out Entry e)) return;
             e.Ghost = true;
             e.Burning = false;
+            Burning.Remove(id);
             e.LastSeenAt = UnityEngine.Time.time;
             Entries[id] = e;
             Hidden?.Invoke(id);
@@ -500,6 +506,7 @@ namespace WAR2D.Net.Replication
         internal void Remove(int id)
         {
             Heads.Remove(id);
+            Burning.Remove(id);
             if (Entries.TryGetValue(id, out Entry e) && !e.Ghost)
             {
                 // A seen building's Gone record can arrive before the death explosion that names its tile: keep it a moment.

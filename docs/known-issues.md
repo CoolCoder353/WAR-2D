@@ -16,6 +16,7 @@ The rules, wire, client drawing, art, sound, AI, manual and docs are in. Left op
 - **Model choices:** the fight model's heavy class uses the Heavy's armour and resistance for every heavy unit (Artillery has neither armour nor the Heavy's resistance); its Bomber still counts as `BomberFightSeconds` of blast.
 - **A Bomber shot down on the tick it leaps** explodes where it stood (the leap had already been reported to clients that tick, so they may draw the leap's start before the blast).
 - **Spec contradiction:** §6.1 calls the Scout's sight 16 "the longest of any unit", but §4.1 keeps the Artillery's at 18. Both numbers are as the spec gives them; the owner should pick one.
+- **Reviews (2026-11-07):** code review (10 findings, all fixed), security review (no finding above the bar: the combat news follows the leak rule; spec-accepted: a leap's landing point and a whole shell flight go to whoever knew the Bomber or gun), performance review by reading the new hot paths (fixed: the fire, airborne, status and movement passes read combat records only for burning units, Bombers and Snipers; the client keeps a set of burning buildings instead of scanning them all each frame). The perf gate itself still has to be run on a Linux build.
 - **Fire on own units:** none, as flame splash never hits allies (D11).
 
 ## Owner playtest fixes (2026-11-06, on `fix/pr30-review-round3`)

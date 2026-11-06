@@ -203,10 +203,10 @@ namespace WAR2D.Client
             }
             burningBefore.Clear();
             foreach (int k in burningNow) burningBefore.Add(k);
-            foreach (KeyValuePair<int, ClientBuildings.Entry> pair in buildings.Entries)
+            foreach (int burningId in buildings.Burning)
             {
-                ClientBuildings.Entry e = pair.Value;
-                if (!e.Burning || e.Ghost) continue;
+                if (!buildings.Entries.TryGetValue(burningId, out ClientBuildings.Entry e) || !e.Burning || e.Ghost) continue;
+                var pair = new KeyValuePair<int, ClientBuildings.Entry>(burningId, e);
                 int2 size = WorldStateManager.GetBuildingSize(e.Data.buildingType);
                 float2 c = Footprint.VisualCenter((int2)math.round(e.Data.position), size);
                 var p = new Vector2(c.x, c.y);

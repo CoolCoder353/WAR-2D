@@ -95,6 +95,7 @@ namespace WAR2D.Client.Replay
         public void BuildingsFor(int owner, ClientBuildings all, ClientBuildings shown)
         {
             shown.Entries.Clear();
+            shown.Burning.Clear();
             if (!players.TryGetValue(owner, out Player player)) return;
             foreach (KeyValuePair<int, ClientBuildings.Entry> seen in player.Memory)
             {
@@ -105,6 +106,7 @@ namespace WAR2D.Client.Replay
                 {
                     live.Ghost = false;
                     shown.Entries[seen.Key] = live;
+                    if (live.Burning) shown.Burning.Add(seen.Key); // v0.20: fires show where the player sees them
                     continue;
                 }
                 if (own) continue; // gone
