@@ -35,8 +35,9 @@ namespace WAR2D.Net.Replay
     public static class ReplayFile
     {
         /// <summary>3 since v0.18: the summary and team fog channels; older players couldn't offer the per-player view. 4: route
-        /// waypoints in half tiles (<see cref="WAR2D.Net.Replication.RouteWire"/>), which a format 3 file holds in whole tiles.</summary>
-        public const int Format = 4;
+        /// waypoints in half tiles (<see cref="WAR2D.Net.Replication.RouteWire"/>), which a format 3 file holds in whole tiles. 5: MoveOrder
+        /// routes with copy steps (<see cref="WAR2D.Net.Replication.Messages.RouteCopies"/>), which a format 4 reader can't follow.</summary>
+        public const int Format = 5;
         public const string Extension = ".war2drec";
         public static readonly byte[] Magic = { (byte)'W', (byte)'2', (byte)'D', (byte)'R' };
         public const int MaxRecordBytes = 4 << 20;

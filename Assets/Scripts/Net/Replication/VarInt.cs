@@ -101,6 +101,17 @@ namespace WAR2D.Net.Replication
         }
     }
 
+    /// <summary>Counts the bytes an encoder would write, writing nothing (sizing a message before it is packed).</summary>
+    public struct CountingSink : IWireWriter
+    {
+        /// <summary>Bytes counted so far.</summary>
+        public int Position { get; private set; }
+        /// <summary>Counts one byte.</summary>
+        public void WriteByte(byte value) => Position++;
+        /// <summary>Counts two bytes.</summary>
+        public void WriteUShort(ushort value) => Position += 2;
+    }
+
     /// <summary>Mirror and KCP's size limits (KCP MTU 1200), and the wire-cost model the perf gate uses.</summary>
     public static class WireLimits
     {

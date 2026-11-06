@@ -513,14 +513,19 @@ namespace WAR2D.Net.Replication
             if (MoveOrders.Length == 0) return;
             NativeArray<int2> tiles = MoveTiles.AsArray();
             var sink = new NativeSink(Reliable);
+            // Sized as written: a route's copy steps (Messages.RouteCopies) depend on the routes before it in its message.
+            var copies = new Messages.RouteCopies(Allocator.Temp);
             int index = 0;
             while (index < MoveOrders.Length)
             {
                 int start = index, size = 8, previous = 0;
+                copies.Clear();
                 while (index < MoveOrders.Length)
                 {
                     RouteUnit u = MoveOrders[index];
-                    int cost = VarInt.Size((uint)(u.Index - previous)) + Messages.RouteSize(tiles, u.First, u.Count);
+                    var counted = new CountingSink();
+                    copies.Write(ref counted, tiles, u.First, u.Count);
+                    int cost = VarInt.Size((uint)(u.Index - previous)) + counted.Position;
                     if (index > start && size + cost > WireLimits.ReliableChunk) break;
                     size += cost;
                     previous = u.Index;
@@ -530,6 +535,7 @@ namespace WAR2D.Net.Replication
                 Messages.EncodeMoveOrder(ref sink, Tick, tiles, MoveOrders.AsArray().GetSubArray(start, index - start));
                 ReliableSizes.Add(sink.Position - before);
             }
+            copies.Dispose();
         }
 
         private void FlushHealths()
