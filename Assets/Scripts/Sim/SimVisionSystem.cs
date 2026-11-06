@@ -377,7 +377,7 @@ namespace WAR2D.Sim
             for (int x = lo.x; x <= hi.x; x++)
             {
                 int2 d = new int2(x, y) - c;
-                if (d.x * d.x + d.y * d.y > limit) continue;
+                if (d.x * d.x + d.y * d.y > limit || Visible[baseIndex + y * FogW + x] != 0) continue; // cells only go from unseen to seen in a pass
                 if (JamMask[baseIndex + y * FogW + x] != 0 && math.lengthsq((float2)NearestTileGap(d)) > JamSightSq) continue;
                 if (opaque > 0)
                 {

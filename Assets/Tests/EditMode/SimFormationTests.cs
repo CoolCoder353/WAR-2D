@@ -1,3 +1,4 @@
+using System.Linq;
 using NUnit.Framework;
 using Unity.Mathematics;
 using WAR2D.Sim;
@@ -20,6 +21,56 @@ public class SimFormationTests
         float gap = math.abs(sim.UnitById(scout[0]).Position.y - sim.UnitById(heavy[0]).Position.y);
         Assert.Less(gap, 3f, "the Scout keeps with the Heavy");
         Assert.Greater(sim.UnitById(scout[0]).FormationSpeed, 0f, "still in formation on the way");
+    }
+
+    [Test]
+    public void OnAnAttackMoveEachUnitGoesAtItsOwnSpeed()
+    {
+        // Owner playtest 2026-11-06: a Move travels as a group, an Attack-move doesn't hold anyone back.
+        using var sim = new SimHarness(SimHarness.OpenMap(96));
+        int[] scout = sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 10.5f), UnitType.Scout);
+        int[] heavy = sim.Spawn(SimHarness.OwnerA, new float2(12.5f, 10.5f), UnitType.Heavy);
+        sim.Tick();
+        sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.AttackMove, OwnerId = SimHarness.OwnerA, Tile = new int2(11, 80), Ids = new[] { scout[0], heavy[0] }, Formation = true });
+        sim.TickSeconds(3f);
+        float gap = sim.UnitById(scout[0]).Position.y - sim.UnitById(heavy[0]).Position.y;
+        Assert.Greater(gap, 3f, "the Scout runs ahead of the Heavy");
+        Assert.Greater(sim.UnitById(scout[0]).FormationSpeed, 0f, "still heading for its slot");
+    }
+
+    [Test]
+    public void AGroupTooBigForTheSlotRadiusStillArrives()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(128));
+        var boxes = new System.Collections.Generic.List<int[]>();
+        for (int i = 0; i < 300; i++) boxes.Add(sim.Spawn(SimHarness.OwnerA, new float2(10.5f + i % 20 * 1.1f, 10.5f + i / 20 * 1.1f), UnitType.Tank));
+        sim.Tick();
+        Formed(sim, SimHarness.OwnerA, new int2(64, 70), boxes.ConvertAll(b => b[0]).ToArray());
+        sim.TickSeconds(70f);
+        Assert.AreEqual(0, sim.Units().Count(u => u.OrderSlot >= 0), "the outer slots lie past Formation/SlotTiles");
+    }
+
+    [Test]
+    public void AHeavyWalksAroundALoneRockOnItsWayToASlot()
+    {
+        var rows = new string[96];
+        for (int r = 0; r < 96; r++)
+        {
+            int y = 95 - r;
+            var row = new char[96];
+            for (int x = 0; x < 96; x++) row[x] = x == 0 || y == 0 || x == 95 || y == 95 ? 'B' : x == 50 && y == 55 ? '#' : '.';
+            rows[r] = new string(row);
+        }
+        using var sim = new SimHarness(WAR2D.World.MapStore.FromAscii(rows));
+        int[] heavy = sim.Spawn(SimHarness.OwnerA, new float2(50.5f, 50.5f), UnitType.Heavy);
+        sim.Tick();
+        sim.Move(SimHarness.OwnerA, new int2(45, 60), heavy);
+        sim.Tick();
+        sim.Tick();
+        // Its slot is straight across the rock, which is narrower than the body and between its corners.
+        sim.SetFormationSlot(heavy[0], new float2(5f, 0f), 2.5f);
+        sim.TickSeconds(30f);
+        Assert.Less(math.distance(sim.UnitById(heavy[0]).Position, new float2(50.5f, 60.5f)), 1f, sim.UnitById(heavy[0]).Position.ToString());
     }
 
     [Test]
@@ -130,12 +181,38 @@ public class SimFormationTests
     }
 
     [Test]
+    public void TheSeatGridAgreesWithCheckingEverySeat()
+    {
+        const float spacing = 1.2f;
+        var random = new System.Random(7);
+        float Next() => (float)(random.NextDouble() * 40.0 - 20.0);
+        var seats = new FormationRules.SeatGrid();
+        seats.Reset(spacing);
+        var all = new System.Collections.Generic.List<float2>();
+        for (int i = 0; i < 400; i++)
+        {
+            float2 seat = new float2(Next(), Next());
+            all.Add(seat);
+            seats.Add(seat);
+        }
+        for (int i = 0; i < 5000; i++)
+        {
+            float2 at = new float2(Next(), Next());
+            bool expected = false;
+            foreach (float2 seat in all) expected |= math.distancesq(seat, at) < spacing * spacing * 0.25f;
+            Assert.AreEqual(expected, seats.Taken(at), $"at {at}");
+        }
+    }
+
+    [Test]
     public void ABlockedSlotPullsInOnlyToAFreePlace()
     {
-        var offsets = new System.Collections.Generic.List<float2> { new float2(0, 0), new float2(1.2f, 0), FormationRules.NoSeat };
-        Assert.IsTrue(FormationRules.Taken(offsets, 2, new float2(1.0f, 0), 1.2f), "too close to another member's slot");
-        Assert.IsFalse(FormationRules.Taken(offsets, 2, new float2(2.4f, 0), 1.2f));
-        Assert.IsFalse(FormationRules.Taken(offsets, 1, new float2(1.2f, 0), 1.2f), "its own slot doesn't count");
+        var seats = new FormationRules.SeatGrid();
+        seats.Reset(1.2f);
+        seats.Add(new float2(0, 0));
+        seats.Add(new float2(1.2f, 0));
+        Assert.IsTrue(seats.Taken(new float2(1.0f, 0)), "too close to another member's slot");
+        Assert.IsFalse(seats.Taken(new float2(2.4f, 0)));
         Assert.IsFalse(FormationRules.HasSeat(FormationRules.NoSeat));
     }
 

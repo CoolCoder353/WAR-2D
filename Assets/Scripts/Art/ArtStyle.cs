@@ -121,13 +121,26 @@ namespace WAR2D.Art
             StylePalette.Hex(0xE8501A), StylePalette.Hex(0xA8281A), StylePalette.Hex(0x6B1C10),
         };
 
-        /// <summary>The effects' palette: <see cref="Palette"/> plus <see cref="FireRamp"/>.</summary>
+        /// <summary>
+        /// Darks on the ground, darker than the machine ramps go, as the owner approved them in the 2026-11-06 concepts: the soot of a
+        /// crater's ring and a shell's shadow, then the crater's pit, shaded wall, lit wall, lit rim and shaded rim.
+        /// </summary>
+        public static readonly Color32 Soot = new Color(0.075f, 0.07f, 0.07f), CraterPit = new Color(0.05f, 0.05f, 0.055f),
+            CraterWallDark = new Color(0.065f, 0.06f, 0.06f), CraterWallLit = new Color(0.115f, 0.105f, 0.095f),
+            CraterRimLit = new Color(0.17f, 0.155f, 0.14f), CraterRimDark = new Color(0.1f, 0.095f, 0.09f);
+
+        /// <summary>The stones a crater throws (lit top, shaded side) and a shell's smoke.</summary>
+        public static readonly Color32 StoneLit = new Color(0.3f, 0.27f, 0.23f), StoneDark = new Color(0.13f, 0.12f, 0.11f), ShellSmoke = new Color(0.46f, 0.45f, 0.43f);
+
+        /// <summary>The effects' palette: <see cref="Palette"/> plus <see cref="FireRamp"/> and the ground's darks.</summary>
         public static readonly Color32[] EffectPalette = BuildEffects();
 
         private static Color32[] BuildEffects()
         {
             var colours = new List<Color32>(Palette);
             foreach (Color32 c in FireRamp)
+                if (!colours.Contains(c)) colours.Add(c);
+            foreach (Color32 c in new[] { Soot, CraterPit, CraterWallDark, CraterWallLit, CraterRimLit, CraterRimDark, StoneLit, StoneDark, ShellSmoke })
                 if (!colours.Contains(c)) colours.Add(c);
             return colours.ToArray();
         }

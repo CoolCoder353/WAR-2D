@@ -29,6 +29,7 @@ public class SpatialHashTests
         public Rig(int units, int buildings, int size)
         {
             CellsAcross = (size + CellSize - 1) / CellSize;
+            CellOwners = new NativeArray<uint>(CellsAcross * CellsAcross, Allocator.Persistent);
             int cells = CellsAcross * CellsAcross + 1;
             Positions = new NativeArray<float2>(units, Allocator.TempJob);
             Owner = new NativeArray<byte>(units, Allocator.TempJob);
@@ -60,6 +61,7 @@ public class SpatialHashTests
         }
 
         private NativeArray<byte> Opaque = new NativeArray<byte>(1, Allocator.Persistent);
+        private NativeArray<uint> CellOwners;
 
         /// <summary>Hash cells any type may reach (the longest range); defaults to <see cref="Range"/>'s.</summary>
         public int SearchCells = (int)math.ceil(Range / CellSize);
@@ -72,6 +74,7 @@ public class SpatialHashTests
             h = new CountingSortJob { Cell = Cell, CellStart = CellStart, Sorted = Sorted }.Schedule(h);
             h = new CellIndexJob { Positions = BuildingPositions, Cell = BCell, InvCellSize = inv, CellsX = CellsAcross, CellsY = CellsAcross }.Schedule(BuildingPositions.Length, 64, h);
             h = new CountingSortJob { Cell = BCell, CellStart = BCellStart, Sorted = BSorted }.Schedule(h);
+            h = new CellOwnersJob { Cell = Cell, OwnerSlot = Owner, CellOwners = CellOwners }.Schedule(h);
             h = new NearestEnemyJob
             {
                 Search = new SearchInput
@@ -79,7 +82,7 @@ public class SpatialHashTests
                     Positions = Positions, OwnerSlot = Owner, AttackMask = AttackMask, Health = Health,
                     IdOf = Cell, IndexOfId = Cell, UnitCount = Positions.Length, // unused by the search; every container must be valid
                     Visible = Visible, FogCellSize = 100000, FogW = 1, FogH = 1, FogCells = 1,
-                    CellStart = CellStart, Sorted = Sorted,
+                    CellStart = CellStart, Sorted = Sorted, CellOwners = CellOwners,
                     BuildingPositions = BuildingPositions, BuildingOwnerSlot = BuildingOwner, BuildingHealth = BuildingHealth,
                     BuildingIds = BCell, BuildingSlotOfIndex = BCell, BuildingCount = BuildingPositions.Length,
                     BuildingCellStart = BCellStart, BuildingSorted = BSorted, BuildingAnchor = BAnchor, BuildingSize = BSize,
@@ -97,6 +100,7 @@ public class SpatialHashTests
         public void Dispose()
         {
             Opaque.Dispose();
+            CellOwners.Dispose();
             Positions.Dispose(); Owner.Dispose(); AttackMask.Dispose(); Health.Dispose(); Type.Dispose(); Stance.Dispose(); OrderSlot.Dispose(); OrderLive.Dispose(); Cell.Dispose(); CellStart.Dispose();
             Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose(); BuildingPositions.Dispose(); BuildingOwner.Dispose();
             BAnchor.Dispose(); BSize.Dispose(); BuildingHealth.Dispose(); BCell.Dispose(); BCellStart.Dispose(); BSorted.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose(); MinRangeSqByType.Dispose(); Visible.Dispose(); WallState.Dispose(); BuildingFlag.Dispose();

@@ -16,6 +16,9 @@ namespace WAR2D.Pathing
         /// <summary>The cell is a goal: units have arrived.</summary>
         public const byte AtGoal = 254;
 
+        /// <summary>The cell is as near the goal as its unit can get (the goal is walled off from it): the unit stops here.</summary>
+        public const byte Stop = 253;
+
         /// <summary>The cell is blocked, out of the field's size class, or unreachable.</summary>
         public const byte None = 255;
 
@@ -298,6 +301,8 @@ namespace WAR2D.Pathing
     /// <summary>
     /// The free cells a goal spreads over, so a group does not funnel into one tile: the clicked cell
     /// when the class can stand there, then free cells in rings around it, up to <see cref="Spread"/>.
+    /// All of them connect to the first, so a goal beside a thin wall doesn't spill to its far side,
+    /// where a unit would stand on a goal cell with no way to the goal.
     /// </summary>
     public static class FlowGoals
     {
@@ -310,19 +315,46 @@ namespace WAR2D.Pathing
         {
             spread = math.clamp(spread, 1, Spread);
             var picked = new System.Collections.Generic.List<int>(spread);
-            if (classGrid[click.y * width + click.x] == PathMap.Floor) picked.Add(click.y * width + click.x);
-            for (int ring = 1; ring <= 8 && picked.Count < spread; ring++)
-            for (int i = 0; i < 8 * ring && picked.Count < spread; i++)
+            System.Collections.Generic.HashSet<int> connected = null;
+            for (int ring = 0; ring <= Rings && picked.Count < spread; ring++)
+            for (int i = 0; i < math.max(1, 8 * ring) && picked.Count < spread; i++)
             {
                 int2 tile = RingTile(click, ring, i);
                 if ((uint)tile.x >= (uint)width || (uint)tile.y >= (uint)height) continue;
-                if (classGrid[tile.y * width + tile.x] != PathMap.Floor) continue;
-                picked.Add(tile.y * width + tile.x);
+                int cell = tile.y * width + tile.x;
+                if (classGrid[cell] != PathMap.Floor) continue;
+                connected ??= ConnectedTo(cell, click, classGrid, width, height);
+                if (connected.Contains(cell)) picked.Add(cell);
             }
 
             var goals = new NativeArray<int>(picked.Count, allocator);
             for (int i = 0; i < picked.Count; i++) goals[i] = picked[i];
             return goals;
+        }
+
+        /// <summary>Rings of cells a goal may spread over.</summary>
+        private const int Rings = 8;
+
+        /// <summary>The floor cells joined to <paramref name="from"/> by straight steps inside the rings around <paramref name="click"/>.</summary>
+        private static System.Collections.Generic.HashSet<int> ConnectedTo(int from, int2 click, NativeArray<byte> classGrid, int width, int height)
+        {
+            var reached = new System.Collections.Generic.HashSet<int> { from };
+            var open = new System.Collections.Generic.Stack<int>();
+            open.Push(from);
+            while (open.Count > 0)
+            {
+                int cell = open.Pop();
+                int2 at = new int2(cell % width, cell / width);
+                for (int d = 0; d < 4; d++)
+                {
+                    int2 next = at + new int2(d == 0 ? 1 : d == 1 ? -1 : 0, d == 2 ? 1 : d == 3 ? -1 : 0);
+                    if ((uint)next.x >= (uint)width || (uint)next.y >= (uint)height) continue;
+                    if (math.max(math.abs(next.x - click.x), math.abs(next.y - click.y)) > Rings) continue;
+                    int index = next.y * width + next.x;
+                    if (classGrid[index] == PathMap.Floor && reached.Add(index)) open.Push(index);
+                }
+            }
+            return reached;
         }
 
         /// <summary>

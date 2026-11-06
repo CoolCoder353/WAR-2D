@@ -41,6 +41,36 @@ public class PlaytestFixPlayModeTests
     }
 
     [UnityTest]
+    public IEnumerator ABuildKeyNeedsABuilderSelected()
+    {
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        int2 anchor = default;
+        yield return PlayModeMatch.PlaceHQ(a => anchor = a);
+        yield return PlayModeMatch.WaitUntil(() => GameCore.Instance.CurrentState == GameState.Playing, 20f);
+        HudController hud = Object.FindAnyObjectByType<HudController>();
+        yield return PlayModeMatch.WaitUntil(() => hud.Model.Resources >= config.GetBuilding(BuildingType.Radar).UpfrontCost, 10f);
+        BuildingPlacement placement = BuildingPlacement.Instance;
+
+        yield return Press("C");
+        Assert.IsFalse(placement.IsPlacing, "nothing selected");
+
+        DevApi.AllowForTests = true;
+        WorldStateManager wsm = WorldStateManager.Instance;
+        bool spawned = false;
+        for (int x = 4; x < 40 && !spawned; x++)
+        {
+            int2 tile = anchor + new int2(x, 0);
+            if (wsm.Map.Grid.IsWalkable(tile)) spawned = wsm.DevSpawnUnit(PlayModeMatch.LocalOwner, (float2)tile + 0.5f, null, UnitType.Scout);
+        }
+        Assert.IsTrue(spawned, "room for the Scout");
+        yield return PlayModeMatch.WaitUntil(() => HudTests.OwnUnits().Count > 0, 5f);
+        UnitCommander.Instance.Selection.SelectIds(HudTests.OwnUnits());
+        yield return PlayModeMatch.WaitUntil(() => hud.Selection.Count > 0, 5f);
+        yield return Press("C");
+        Assert.IsFalse(placement.IsPlacing, "a Scout selected");
+    }
+
+    [UnityTest]
     public IEnumerator TheMinersFacingWaitsBehindTheMenuAndCarriesToTheNextOne()
     {
         yield return PlayModeMatch.StartMatchAsHost(config);

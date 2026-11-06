@@ -2,6 +2,7 @@ using System;
 using Config;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Jobs;
 using Unity.Mathematics;
 using WAR2D.World;
 
@@ -62,6 +63,12 @@ namespace WAR2D.Sim
     {
         /// <summary>Owner slots in every per-owner table.</summary>
         public const int MaxOwners = 16;
+        /// <summary>Building slots: the gather stops here, so placement refuses past <see cref="MaxBuildings"/> less <see cref="BuildingHeadroom"/>.</summary>
+        public const int MaxBuildings = 32768;
+        /// <summary>Slots kept for buildings already queued (placed this tick) but not yet created.</summary>
+        public const int BuildingHeadroom = 256;
+        /// <summary>The <see cref="CellOwners"/> bit of a unit with no owner slot (<see cref="Attacks"/>: everyone attacks it).</summary>
+        public const uint NoOwnerBit = 1u << MaxOwners;
 
         /// <summary>The owner slot of an owner that has none.</summary>
         public const byte NoSlot = 255;
@@ -242,6 +249,8 @@ namespace WAR2D.Sim
         public NativeArray<int> Cell;
         /// <summary>Counting-sort offsets: cell c's units are <c>Sorted[CellStart[c] .. CellStart[c + 1])</c>.</summary>
         public NativeArray<int> CellStart;
+        /// <summary>Per hash cell, a bit for each owner slot with a unit there, and <see cref="NoOwnerBit"/> for a unit with no slot.</summary>
+        public NativeArray<uint> CellOwners;
         /// <summary>Unit slots grouped by cell.</summary>
         public NativeArray<int> Sorted;
         /// <summary>Combat target per unit: a stable id from the gather, a slot after resolution, or -1.</summary>
@@ -447,7 +456,7 @@ namespace WAR2D.Sim
             foreach (BuildingConfig building in config.Buildings.Values)
                 if (building.IsAttacker) maxRange = math.max(maxRange, building.Range);
             int capacity = sim.MaxEntities;
-            int buildingCapacity = 4096;
+            int buildingCapacity = MaxBuildings;
             int cellsX = (map.Width + sim.HashCellSize - 1) / sim.HashCellSize;
             int cellsY = (map.Height + sim.HashCellSize - 1) / sim.HashCellSize;
             int cells = cellsX * cellsY;
@@ -561,6 +570,7 @@ namespace WAR2D.Sim
                 IndexOfId = new NativeArray<int>(sim.MaxEntities, allocator),
                 Cell = new NativeArray<int>(capacity, allocator),
                 CellStart = new NativeArray<int>(cells + 1, allocator),
+                CellOwners = new NativeArray<uint>(cells, allocator),
                 Sorted = new NativeArray<int>(capacity, allocator),
                 Target = new NativeArray<int>(capacity, allocator),
                 TargetKind = new NativeArray<byte>(capacity, allocator),
@@ -682,7 +692,7 @@ namespace WAR2D.Sim
             Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Type.Dispose();
             SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose(); LastHitBy.Dispose();
             OrderSlot.Dispose(); Arrived.Dispose(); WorkTile.Dispose(); WorkKind.Dispose(); WorkFinished.Dispose(); BombBlasts.Dispose(); ForcedBombs.Dispose(); ForcedBombers.Dispose(); BomberSpent.Dispose(); ArmourByType.Dispose(); SplashByType.Dispose(); MinRangeSqByType.Dispose(); SearchSqByType.Dispose(); BlastRadiusByType.Dispose(); BlastDamageByType.Dispose(); DigProgress.Dispose(); DigAt.Dispose(); DigDone.Dispose(); DigMoves.Dispose(); WallOwnerSlot.Dispose(); WallState.Dispose(); WallHealth.Dispose(); WallWork.Dispose(); WallDamage.Dispose(); RepairWork.Dispose(); Unpaid.Dispose(); FormationOffset.Dispose(); FormationSpeed.Dispose(); FormationLead.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
-            Cell.Dispose(); CellStart.Dispose(); Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose();
+            Cell.Dispose(); CellStart.Dispose(); CellOwners.Dispose(); Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose();
             BuildingCount.Dispose(); BuildingPositions.Dispose(); BuildingOwnerId.Dispose(); BuildingOwnerSlot.Dispose(); BuildingHealth.Dispose();
             BuildingDamage.Dispose(); BuildingIds.Dispose(); BuildingEntities.Dispose(); BuildingSlotOfIndex.Dispose(); BuildingCell.Dispose();
             BuildingCellStart.Dispose(); BuildingSorted.Dispose();
@@ -774,12 +784,7 @@ namespace WAR2D.Sim
         }
 
         /// <summary>Refills <see cref="OpaqueSum"/> in place from <see cref="Opaque"/> (after a drain of terrain changes).</summary>
-        public void RebuildOpaqueSum()
-        {
-            for (int y = 1; y <= FogH; y++)
-            for (int x = 1; x <= FogW; x++)
-                OpaqueSum[y * (FogW + 1) + x] = Opaque[(y - 1) * FogW + x - 1] + OpaqueSum[(y - 1) * (FogW + 1) + x] + OpaqueSum[y * (FogW + 1) + x - 1] - OpaqueSum[(y - 1) * (FogW + 1) + x - 1];
-        }
+        public void RebuildOpaqueSum() => new OpaqueSumJob { Opaque = Opaque, OpaqueSum = OpaqueSum, FogW = FogW, FogH = FogH }.Run();
 
         /// <summary>The owner id's slot, or <see cref="NoSlot"/>. Scans the slots, so it is Burst-safe.</summary>
         public byte OwnerSlotOf(int ownerId)
@@ -810,6 +815,26 @@ namespace WAR2D.Sim
             if (index >= IndexOfId.Length) return -1;
             int slot = IndexOfId[index];
             return (uint)slot < (uint)unitCount && IdOf[slot] == id ? slot : -1;
+        }
+    }
+
+    /// <summary>
+    /// The opaque cells' prefix sum (<see cref="SimData.OpaqueSum"/>), in Burst: the whole fog grid is redone on every terrain change, which
+    /// in managed code cost milliseconds of the command stage in a siege (perf gate 2026-11-06).
+    /// </summary>
+    [Unity.Burst.BurstCompile]
+    public struct OpaqueSumJob : Unity.Jobs.IJob
+    {
+        [ReadOnly] public NativeArray<byte> Opaque;
+        public NativeArray<int> OpaqueSum;
+        public int FogW, FogH;
+
+        public void Execute()
+        {
+            int stride = FogW + 1;
+            for (int y = 1; y <= FogH; y++)
+            for (int x = 1; x <= FogW; x++)
+                OpaqueSum[y * stride + x] = Opaque[(y - 1) * FogW + x - 1] + OpaqueSum[(y - 1) * stride + x] + OpaqueSum[y * stride + x - 1] - OpaqueSum[(y - 1) * stride + x - 1];
         }
     }
 }

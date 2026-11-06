@@ -1,18 +1,17 @@
-# WAR-2D Roadmap: v0.16 to v0.18
+# WAR-2D Roadmap: v0.19 and v0.20
 
-The third roadmap: polish and usability, with one piece of new content, then an update about showing players what they need to know (added 2026-11-03). The second roadmap (v0.10 to v0.14, then v0.15 and v0.15.1) is complete and archived in [archive/roadmap-v0.10-v0.14.md](archive/roadmap-v0.10-v0.14.md); the first (v0.2 to v0.9) is in [archive/roadmap-v0.2-v0.9.md](archive/roadmap-v0.2-v0.9.md).
+The fourth roadmap, planned 2026-11-06. v0.19 ships the routing, Builder, control and combat-visual work built on the unstable branch since v0.18, and v0.20 is a combat overhaul: clearer fights and units that each do one job their own way. The third roadmap (v0.16 to v0.18) is merged and archived in [archive/roadmap-v0.16-v0.18.md](archive/roadmap-v0.16-v0.18.md); the second (v0.10 to v0.14, then v0.15 and v0.15.1) is in [archive/roadmap-v0.10-v0.14.md](archive/roadmap-v0.10-v0.14.md), and the first (v0.2 to v0.9) is in [archive/roadmap-v0.2-v0.9.md](archive/roadmap-v0.2-v0.9.md).
 
 - **Designs:** one spec per update in [`superpowers/specs/`](superpowers/specs/). If this file and a spec disagree, the spec wins and this file gets fixed.
 - **Step-by-step plans:** each update's implementation plan goes in [`superpowers/plans/`](superpowers/plans/), written when the update starts.
 - **Current state of the game:** [gameplay.md](gameplay.md), [architecture.md](architecture.md), [known-issues.md](known-issues.md), [bug-review.md](bug-review.md).
 
-| Update | Name      | Delivers                                                                                                                                                         | Status                         | Design                                                                                          | Plan                      |
-| ------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------- | ------------------------- |
-| v0.16  | Clarity   | Reading the battle (target lines, minimap combat, a clear HQ-placement minimap), controls (formations, Builder auto-repair) and menu presentation | Built on `release/v0.16` (2026-11-02), tests pass; perf gate passes on a quiet machine (19.7 ms, 2026-11-03, [perf/v0.16](perf/v0.16/README.md)); code review and a Linux match to do | [design](superpowers/specs/2026-11-01-v0.16-clarity-design.md), [Figma brief](ux/v0.16-figma.md) | [plan](superpowers/plans/2026-11-01-v0.16-clarity.md) |
-| v0.17  | Heartland | Rich gems: a new gem tile in the middle of every map that pays 2.5 times as much, and an AI that values it                                                      | In progress on `release/v0.17` (2026-11-03): built (Figma H1 approved), tests pass, perf gate passes (22.6 ms, [perf/v0.17](perf/v0.17/README.md)), AI bench accepted (longer 1024 games); a Linux match to do | [design](superpowers/specs/2026-11-01-v0.17-heartland-design.md), [Figma brief](ux/v0.17-figma.md) | [plan](superpowers/plans/2026-11-03-v0.17-heartland.md) |
-| v0.18  | Briefing  | Showing information and ease of use: a Field manual generated from the config, range rings on a held key, end-screen graphs and a timeline, replay graphs, markers and a per-player fog view, an Attack order, a drag box that prefers the army, Rematch and remembered lobby settings; Suicide bombers explode at 10 % health and aim for the middle | Built on `release/v0.18` (2026-11-03), all Figma approved; perf gate passes (24.5 ms, [perf/v0.18](perf/v0.18/README.md)); a full match on Linux is still to play | [design](superpowers/specs/2026-11-03-v0.18-briefing-design.md), [Figma brief](ux/v0.18-figma.md) | Written when the update starts |
+| Update | Name      | Delivers | Status | Design | Plan |
+| ------ | --------- | -------- | ------ | ------ | ---- |
+| v0.19  | Steady    | The unstable branch, finished and shipped: routes and jams fixed, idle Builders take the closest job, build keys with nothing selected, Ctrl + drag for buildings, Attack-move fires at the closest thing, orders drawn at once and smoothed, blue and red rally flags, cheaper ticks and a 100-order queue, Builders finish walls, turning turrets, real-looking shells, craters and flames, blueprints on ground you last saw, and the review fixes | Built on `unstable/pr30-routes-testing` plus the 2026-11-06 playtest fixes (uncommitted on `fix/pr30-review-round3`); EditMode 1482/1482, PlayMode 97/98 (a timing test), perf gate 26.3 ms against the new 28 ms budget; `ai-bench`, three live checks and a Linux match to do | [design](superpowers/specs/2026-11-06-v0.19-steady-design.md) | Not needed: the work is built; the spec's §4 checklist is the plan |
+| v0.20  | Onslaught | A combat overhaul. **Bombers** (renamed from Suicide bombers) leap into the middle of an army and can't be shot down in the air; **Flamethrowers** reach further, hit softer and set units and buildings on fire; **Artillery** fires much further than it sees, with a huge blast and a very long reload, from shells that fly and land; **Snipers** become 2×2 heavy-killers that stop and aim; **Scouts** spot, **Heavies** carry armour, **Gun turrets** shred swarms, **Tanks** stay the baseline. A blast-resistance stat, flat armour and burning; the Bomb is renamed the Mine. New deaths and wrecks, new attack effects and a combat sound pass | Designed 2026-11-06; nothing built | [design](superpowers/specs/2026-11-06-v0.20-onslaught-design.md), [Figma brief](ux/v0.20-figma.md) | Written when the update starts |
 
-The owner set the direction, the split and the order on 2026-11-01 ("polish and usability, with some new content sprinkled in"; two bigger updates), and added v0.18 on 2026-11-03 ("displaying information to users and ease of use"). Decisions still open are listed at the end of each spec.
+The owner set both updates on 2026-11-06: v0.19 is "the completed content from the PRs currently in development under the unstable branch", and v0.20 is "a major combat overhaul, both improving the visual of combat and making each unit more unique". Decisions still open are listed at the end of each spec.
 
 ---
 
@@ -20,15 +19,13 @@ The owner set the direction, the split and the order on 2026-11-01 ("polish and 
 
 ```mermaid
 flowchart LR
-    v016[v0.16 Clarity<br/>read the battle, formations,<br/>auto-repair, menus] --> v017[v0.17 Heartland<br/>rich gems in the middle]
-    v017 --> v018[v0.18 Briefing<br/>manual, rings, graphs, replays,<br/>attack order, rematch]
+    v019[v0.19 Steady<br/>routes, Builders, controls,<br/>turrets, shells, flames] --> v020[v0.20 Onslaught<br/>unit reworks, burning, blasts,<br/>deaths, combat sound]
 ```
 
-- **Polish first:** the game's balance and AI were signed off on 2026-11-01. v0.16 changes how the game reads and handles, not what anything is worth, so the sign-off still holds when it ships.
-- **The economy change last:** rich gems change every seed's map, the value of the middle and the AI's scoring. Doing it last means one balance and AI re-check at the end, against the finished controls (formations change how armies arrive at a contested middle).
-- **One Figma round for v0.16:** target lines, minimap combat, the HQ-placement minimap and the menus are all HUD or menu work, so one brief ([ux/v0.16-figma.md](ux/v0.16-figma.md)) covers them before any is built.
-
-- **Briefing after Heartland:** v0.18's one balance change is the Suicide bomber (owner addition: it explodes at 10 % health and aims for the middle of an army or building), which gets its own `balance-sheet` and `ai-bench` check; the rest changes no balance number; its manual reads the finished v0.17 config, rich gems included. It starts once v0.16 and v0.17 have had their Linux matches.
+- **Ship what is built first.** Eight PRs and three rounds of review fixes sit on the unstable branch, together with the owner's 2026-11-06 playtest fixes. They change how units move, find work and look in a fight, but only one balance number (`Orders/MaxQueued`), so they are finished and shipped as they are, with nothing new added. v0.20 then starts from a `main` that has them.
+- **The combat overhaul second, and as one update.** Every v0.20 rework changes what the others are worth: a Bomber that leaps past the screen, a Flamethrower that burns, Artillery that out-ranges its own sight and a Sniper that hunts Heavies all move the same counters. Building them together means one `balance-sheet`, `ai-bench` and Field-manual pass at the end, against the finished set, rather than one per unit.
+- **The visuals with the rules.** v0.19's turning turrets, shells, craters and flames are the base. v0.20's leap arc, burning units, aim laser, big blast and new deaths each show a rule v0.20 adds, so they are built with that rule and tested against it.
+- **Closed PRs stay out.** PR 42 (real shells), PR 43 (Large Radar and Large Jammer) and PR 38 (the bomber chain rework) are in neither update. v0.20 designs shells and bombers again from the owner's 2026-11-06 answers.
 
 Every update ships a playable, tested build.
 
@@ -36,50 +33,46 @@ Every update ships a playable, tested build.
 
 ## 2. The updates
 
-### v0.16: Clarity
+### v0.19: Steady
 
-> See what's happening at a glance, move armies with less babysitting, and a front end that looks finished.
+> Units get where they are sent, Builders keep busy, orders feel instant, and fights look the part.
 
-- **Reading the battle (client only):** target lines for selected units, fights flashing on the minimap, and a minimap that shows the whole map and your start options clearly while you place your HQ.
-- **Controls (server):** formations (a group arrives together, at its slowest member's pace, heavy units in front) and Builders that repair nearby damage on their own when idle. The wall drag that stops after `Orders/MaxQueued + 1` tiles is fixed along the way.
-- **Menu presentation:** transitions and motion through the main menu, Play, lobby and Settings, and a better-looking lobby.
+- **Movement and routes:** routes per pocket of floor, jams at narrow gaps end, big formations arrive, attackers in a crowd close to range, units on an Attack-move go at their own speed, and route waypoints keep their half tile on the wire.
+- **Builders:** an idle Builder takes the closest job it can walk to, anywhere; Builders finish walls by moving own and allied units off the tile; build keys and the build row work with nothing selected; a blueprint can go on ground you last saw, and is placed or refunded once your side sees the spot.
+- **Controls:** Ctrl + drag selects only buildings; an Attack-move fires at the closest thing in range; blue (Move) and red (Attack-move) rally flags; a 100-order queue; own orders drawn at once and corrections smoothed.
+- **Combat visuals:** turrets that turn, a raised Artillery barrel, shells on an arc with a shadow, craters, muzzle flashes, tracers and flame streams.
+- **Under the hood:** cheaper ticks and formation orders, messages kept under the transport cap, rematches that forget the last match, and the lobby team board without Quick setup.
 
-**Exit criteria:** every feature's rules tests; `LeakTests` unchanged (nothing new is sent to clients); the perf gate passes with formations in the load; the owner approves the Figma frames before any HUD or menu item is built.
+**Exit criteria:** both suites pass; the perf gate is at or under the new **28 ms** tick budget with client frame time measured with the turret layer on; an `ai-bench` check that the difficulty ladder still holds; the three "not reproduced" playtest reports checked in a live match; a full match on Linux. Details in the [spec](superpowers/specs/2026-11-06-v0.19-steady-design.md).
 
-### v0.17: Heartland
+### v0.20: Onslaught
 
-> Something in the middle worth fighting for.
+> Every unit fights its own way, and every fight shows you what happened.
 
-- **Rich gems:** a new tile, generated only in central areas, that a Miner mines for 2.5 times the ordinary rate, for good.
-- **The AI** scores start options, expansions and targets with rich gems in mind.
+- **Bomber** (renamed from Suicide bomber): runs at the nearest army and, in leap range, leaps over units to its centre and explodes. In the air it can't be hit. Gunfire, decay, fire or a blast that kills it, or one that leaves it at 10 % or less, sets it off where it is. It resists blasts, so one blast doesn't chain a pack.
+- **Flamethrower:** longer range, much less damage per hit, and every hit sets the target on fire (one burn, refreshed by the next hit). Units and buildings burn, Heavies at half rate; walls don't.
+- **Artillery:** fires much further than it sees, so it needs spotters; a shell flies, lands where it aimed and can miss; a big blast that hurts its own side a little; a very long reload.
+- **Sniper:** a 2×2 unit with long range and middling sight; it stops and aims before each shot, with a laser that shows its target; it does great damage to one unit, most of all to Heavies; weak against buildings, and it still can't fire up close.
+- **Scout** spots for the gun line with the longest sight; **Heavy** gets flat armour that shrugs off small arms, and blast resistance; **Gun turret** fires fast, light shots against swarms; **Tank** stays the all-rounder.
+- **Shared rules:** a per-unit blast resistance, flat armour, burning, and the Bomb building renamed the Mine.
+- **Visuals and sound:** deaths by size and cause, wrecks and collapsing buildings; the leap arc, burning units and scorch, the aim laser and shot trail, the big shell and its blast; generated sounds for each.
+- **HUD and manual:** a small Figma round (burning and aiming shown on the selection and hover cards, the new stats, the renamed icons), and the Field manual's words for the new rules approved through its mock website again.
 
-**Exit criteria:** tile and generator tests (fairness on 1,000 seeds at every map size), Miner payout tests, `LeakTests`; an `ai-bench` check that the difficulty ladder still holds; the perf gate passes on the new maps.
-
-### v0.18: Briefing
-
-> Know what everything does, see what your units can reach, and understand how the match went.
-
-- **Knowing the game (client only):** a Field manual from the main menu, the lobby, the in-match menu and F1 (opens at the selected type): every unit and building with its stats, counters worked out from the damage table, the damage grid, the rules and the current bindings, all generated from `GameConfig.xml`.
-- **Reading the battle (client only):** hold Alt for range, minimum-range and sight rings on the selection and on whatever is under the pointer; a turret, Radar or Jammer shows its reach while being placed.
-- **Looking back:** end-screen graphs (army value, income, kills, losses) and a timeline of eliminations and big fights, sent only at _GameOver_; the replay viewer gets the same graphs, markers on its seek bar and a per-player view through that player's recorded fog (replay format 3).
-- **Ease of use (server and client):** an Attack order (right-click or A-click on an enemy; never follows a target into the fog), a drag box that drops Builders when it catches army, Rematch back to the same lobby with the AIs, and the host's lobby settings remembered.
-- **Suicide bombers (server; owner addition):** a bomber brought to 10 % health or below, shot down included, explodes where it is; bombers aim at the point of an army that catches the most worth, and the middle of a building's side, instead of the nearest edge.
-
-**Exit criteria:** the owner approves a mock website of the Field manual (generated from the config) before it is built; every feature's rules tests; `LeakTests` with the new Attack-order and summary tests; the manual's every-type and every-number tests; a two-match Rematch PlayMode test; the bomber tests and an `ai-bench` check that the difficulty ladder still holds; the perf gate passes with Attack orders, bombers and the team-fog recording in the load; the owner approves the Figma frames before any HUD or menu item is built.
+**Exit criteria:** every rule's tests; `LeakTests` with the new burning, leap, aim and shell cases; the Field manual's every-type and every-number tests on the new stats; `balance-sheet` with no new flags and an `ai-bench` check that the difficulty ladder holds with the AI using spotters, leaps and burning; the perf gate passes at 28 ms with fire, shells, leaps and aims in the load; the owner approves the Figma frames and the manual's words before they are built; a full match on Linux.
 
 ---
 
 ## 3. Performance budget
 
-Unchanged, on the same reference machine (Ryzen 5 5600GT, 32 GB, Radeon RX 6600, Linux, hosting and playing):
+On the same reference machine (Ryzen 5 5600GT, 32 GB, Radeon RX 6600, Linux, hosting and playing). **The tick budget is raised from 25 to 28 ms from v0.19 on** (owner, 2026-11-06), after the review rounds left the main tick at 26.3 ms:
 
 | Metric               | Target                                                       |
 | -------------------- | ------------------------------------------------------------ |
-| Server simulation    | 20 ticks/s, **≤ 25 ms main-thread tick p95** at 80,000 units |
+| Server simulation    | 20 ticks/s, **≤ 28 ms main-thread tick p95** at 80,000 units |
 | Client frame rate    | **≥ 60 fps** with 10,000 own units on screen                 |
 | Bandwidth per client | **≤ 256 KB/s average**, ≤ 768 KB/s peak 1 s                  |
 
-v0.16's formations and auto-repair add tick work, and the 2026-11-01 terrain-replication change hasn't been measured yet, so v0.16 runs `tools/perf-run.sh` before it lands. v0.18's Attack-order repaths and the recorder's team-fog channel add tick work too, and the range rings are measured on the client frame. Target lines and the minimap flashes are measured on the client frame. New results go in `docs/perf/v0.N/`.
+v0.19 has never had its client frame measured with the turret layer (PR 41 adds a second instanced layer for units on screen) or its 4096×2048 atlases, so v0.19 measures it. v0.20 adds tick work (burning, shells in flight, leaps, Sniper aim) and client work (fire on units, lasers, death effects), and runs `tools/perf-run.sh` with all of it in the load. New results go in `docs/perf/v0.N/`.
 
 ---
 
@@ -101,34 +94,30 @@ Unchanged from the earlier roadmaps.
 
 ## 5. Not in this roadmap
 
-Considered on 2026-11-01 and left for later:
+- **Closed PRs (owner, 2026-11-06):** real artillery shells as PR 42 built them, the Large Radar and Large Jammer (PR 43) and the bomber chain rework (PR 38). v0.20 designs shells and bombers fresh.
+- **Combat ideas left out of v0.20:** damage states on hurt units and buildings (smoke and flames by health; the owner left them out of the visual pass), fire that spreads from unit to unit, a fire-at-ground order for Artillery, healer and stealth units, new unit types.
+- **Carried from the last roadmap:** a tutorial, a guided first match, explanatory tooltips, a hotkey overlay; richer hover cards beyond v0.20's stat lines, an economy breakdown, a production overview, a live stats screen, an always-on waypoint view; status markers over units and buildings, strategic zoom; a Patrol order, repeat production, mixed production queues, camera bookmarks, selection-panel clicks, squad add/steal, select damaged or idle; unit idle animation; dynamic (combat-layer) music, ambient sound beds; new terrain (water, forest), more defences (gates, tank traps, shields, decoys), new modes; a headless dedicated server, host migration, ranked matchmaking; mobile or console platforms.
 
-- **Learning the game:** a tutorial, a guided first match, explanatory tooltips (the v0.18 manual covers the reference side), a hotkey overlay.
-- **Information (considered 2026-11-03):** richer hover cards, an economy breakdown, a production overview, a live stats screen, an always-on waypoint view.
-- **Battle view:** status markers over units and buildings (idle, unpaid, under attack, producing); strategic zoom (units and buildings as icons when zoomed far out; drawn for v0.16 and dropped at the owner's Figma review, 2026-11-01).
-- **Controls:** a Patrol order, repeat production, mixed production queues, camera bookmarks, selection-panel clicks, squad add/steal, select damaged or idle (the last five considered 2026-11-03).
-- **Feel:** unit turn, idle, recoil and death animation; dynamic (combat-layer) music; ambient sound beds.
-- **Content:** new terrain (water, forest), more defences (gates, tank traps, shields, decoys), healer and stealth units, new modes.
-- **Online:** a headless dedicated server and host migration (the match still ends when the host leaves), ranked matchmaking.
-- Mobile or console platforms.
-
-The owner turned down on 2026-10-30 (see [polish.md](polish.md)): screen shake, order-acknowledgement chirps, map pings (brought back on 2026-11-04), chat, floating resource numbers, an idle-producer alert, end-screen graphs (brought back for v0.18 on 2026-11-03), a Quick skirmish button, first-match hints, colourblind team colours.
+The owner turned down on 2026-10-30 (see [polish.md](polish.md)): screen shake, order-acknowledgement chirps, chat, floating resource numbers, an idle-producer alert, a Quick skirmish button, first-match hints, colourblind team colours.
 
 ---
 
 ## 6. Decisions log
 
-| Topic (2026-11-01) | Decision |
+| Topic (2026-11-06) | Decision |
 | ------------------ | -------- |
-| Direction | Polish and usability, with some new content sprinkled in |
-| Polish themes | Reading the battle; controls and flow; look, sound and feel. Not a tutorial |
-| Content | Dense resources at the middle of maps, as a richer gem type, paying 2.5× and never running out |
-| Split | Two bigger updates: v0.16 Clarity (all three polish themes), v0.17 Heartland (rich gems) |
-| v0.16 picks | Target lines, minimap combat, the HQ-placement minimap (owner addition), formations, Builder auto-repair, menu presentation |
-| v0.16 Figma review | Every frame approved except strategic zoom, which leaves v0.16 and the roadmap |
-| v0.18 (2026-11-03) | Added as one update the size of v0.16, one Figma round: "displaying information to users and ease of use" |
-| v0.18 picks | Field manual (main menu, lobby, in-match menu, F1), range rings on a held key, end-screen graphs and timeline, replay graphs, markers and per-player fog view, Attack order, drag box prefers the army (no override), Rematch to the same lobby, remembered lobby settings |
-| v0.18 not | Hover-card changes (the manual carries the detail), status markers, economy breakdown, production overview, live stats, Patrol, repeat production, tutorial, camera bookmarks |
-| v0.18 name | Briefing |
-| v0.18 bombers (2026-11-03) | Owner addition: a Suicide bomber near 0 health (10 %) explodes; bombers aim for the centre of an army or building rather than its side |
-| v0.18 manual approval (2026-11-03) | The Field manual is approved as a mock website, generated from the config, before it goes into the game |
+| v0.19 scope | Exactly the unstable branch (PRs 30, 31, 33, 34, 37, 39, 40, 41, review rounds 2 and 3) plus the owner's 2026-11-06 playtest fixes; nothing added |
+| Closed PRs | 42 (real shells), 43 (Large Radar and Jammer) and 38 (bomber chain rework) go in neither update |
+| v0.19 exit | The full bar (both suites, perf gate, `ai-bench`, the live checks, a Linux match) with the tick budget relaxed |
+| Tick budget | 28 ms p95 from v0.19 on (was 25) |
+| v0.20 shape | One update: every unit rework and the combat visuals, one balance and AI pass at the end |
+| Names | v0.19 Steady, v0.20 Onslaught |
+| Bomber | Renamed from Suicide bomber; leaps into the centre of the nearest army, over units but not walls or rock; can't be hit while leaping; explodes on any death and at 10 % health; blast resistant |
+| Blast resistance | A per-unit stat: Bombers high, Heavies some, light units none |
+| Flamethrower | Longer range, much less damage, sets targets on fire; one burn per target, refreshed by each hit; light units, heavy units (half rate) and buildings burn; fire doesn't spread |
+| Artillery | Much longer range, similar sight, a much bigger blast and damage, a very long reload; shells fly and land; its own side and allies take a reduced share |
+| Sniper | 2×2, long range, medium sight, big single-target damage, best against Heavies; stops and aims before each shot; weak against buildings; keeps its minimum range |
+| Other units | Scout as spotter, Heavy armoured, Gun turret anti-swarm, Tank as the baseline |
+| Bomb building | Renamed the Mine |
+| Visuals | Deaths and wrecks, new attack effects and a combat sound pass; not damage states |
+| HUD | A small Figma round |

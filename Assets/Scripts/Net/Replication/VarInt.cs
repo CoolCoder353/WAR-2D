@@ -120,6 +120,11 @@ namespace WAR2D.Net.Replication
         public const int ReliableMaxMessageSize = (Mtu - SegmentOverhead - MetadataSize) * (255 - 1) - 1;
         /// <summary>Reliable chunk the encoder packs a message type into (well under Mirror's ~16 KB message cap).</summary>
         public const int ReliableChunk = 12 * 1024;
+        /// <summary>
+        /// Largest message the server may send at all: SimpleWeb's <c>maxMessageSize</c> (16384 in <c>Main_Menu.unity</c>), which
+        /// <c>MultiplexTransport</c> applies to every connection. Anything bigger is dropped. Tests check one-off messages against it.
+        /// </summary>
+        public const int TransportMessageCap = 16384;
 
         /// <summary>Approximate bytes on the wire for a payload sent as one batch.</summary>
         public static long WireBytes(int payloadBytes)

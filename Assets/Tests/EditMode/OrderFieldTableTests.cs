@@ -71,13 +71,16 @@ public class OrderFieldTableTests
     }
 
     [Test]
-    public void AddStartSectorCoversItAfterRebuild()
+    public void AddStartCellsCoversTheirPocketAfterRebuild()
     {
         using var rig = new Rig();
         int handle = rig.Order(new int2(20, 20), new int2(5, 5));
         var far = new float2(150.5f, 10.5f);
         Assert.AreEqual(FlowDirections.None, rig.Table.DirectionAt(handle, far, Size));
-        rig.Cache.AddStartSector(handle, rig.Table.SectorOf((int2)far));
+        var tiles = new NativeArray<int>(1, Allocator.Temp);
+        tiles[0] = ((int2)far).y * Size + ((int2)far).x;
+        rig.Cache.AddStartCells(handle, tiles);
+        tiles.Dispose();
         rig.Rebuild();
         byte direction = rig.Table.DirectionAt(handle, far, Size);
         Assert.IsTrue(FlowDirections.IsStep(direction), $"direction {direction}");

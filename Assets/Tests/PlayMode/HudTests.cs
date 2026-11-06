@@ -121,7 +121,7 @@ public class HudTests
     }
 
     /// <summary>The local player's units the client knows, anywhere on the map.</summary>
-    private static List<int> OwnUnits()
+    internal static List<int> OwnUnits()
     {
         var ids = new List<int>();
         (int2 min, int2 max) = WorldStateManager.Instance.MapBounds;
@@ -144,6 +144,39 @@ public class HudTests
             yield return null;
         }
         yield return PlayModeMatch.WaitUntil(() => OwnUnits().Count >= count, 20f);
+    }
+
+    [UnityTest, Timeout(90000)]
+    public IEnumerator SeveralProducersShowTheirTotalQueue()
+    {
+        // Owner playtest 2026-11-06: with three Barracks selected, + queued one on each but the count went up by 1.
+        BuildingData first = default;
+        yield return WithSpawner(config, s => first = s);
+        ServerPlayer server = GameCore.Instance.GetServerPlayerById(PlayModeMatch.LocalOwner);
+        bool Broke() { server.TrySpend(server.Resources); return true; }
+        WorldStateManager wsm = WorldStateManager.Instance;
+        ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+        for (int i = 0; i < 2; i++)
+        {
+            Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Barracks, 0f, local, out int2 anchor), Is.True);
+            Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.Barracks, anchor), Is.True);
+            yield return null;
+            yield return PlayModeMatch.WaitUntil(() => !wsm.TryFindBuildableAnchor(BuildingType.Barracks, 0f, local, out int2 next) || !next.Equals(anchor), 5f);
+        }
+        var ids = new List<int>();
+        yield return PlayModeMatch.WaitUntil(() =>
+        {
+            ids.Clear();
+            foreach (KeyValuePair<int, ClientBuildings.Entry> e in ClientBuildings.Current.Entries)
+                if (e.Value.Data.buildingType == BuildingType.Barracks && e.Value.Data.ownerId == PlayModeMatch.LocalOwner && !e.Value.Ghost) ids.Add(e.Key);
+            return ids.Count == 3;
+        }, 10f, () => $"{ids.Count} Barracks known");
+
+        VisualElement root = HudRoot();
+        UnitCommander.Instance.Selection.SelectBuildings(ids, false);
+        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q<Label>("command-title").text.Contains("3"), 5f, () => root.Q<Label>("command-title").text);
+        Click(root.Q<Button>("production-plus"));
+        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q<Label>("production-count").text == "3", 5f, () => "count " + root.Q<Label>("production-count").text);
     }
 
     [UnityTest, Timeout(90000)]
@@ -574,6 +607,19 @@ public class HudTests
     }
 
     [UnityTest, Timeout(120000)]
+    public IEnumerator NothingSelectedHidesTheBuildRow()
+    {
+        int builder = 0;
+        yield return WithBuilder(b => builder = b);
+        VisualElement root = HudRoot();
+        UnitCommander.Instance.Selection.SelectIds(new List<int> { builder });
+        yield return PlayModeMatch.WaitUntil(() => Shown(root.Q<Button>("build-radar")), 5f);
+        UnitCommander.Instance.Selection.SelectIds(new List<int>());
+        yield return PlayModeMatch.WaitUntil(() => !Shown(root.Q<Button>("build-radar")), 5f);
+        Assert.That(Shown(root.Q<Button>("build-radar")), Is.False, "the build row is the Builders'");
+    }
+
+    [UnityTest, Timeout(120000)]
     public IEnumerator BuilderCardShowsTheDefencesWithTheirCosts()
     {
         int builder = 0;
@@ -757,7 +803,7 @@ public class HudTests
         }
     }
 
-    private static bool TryOwnBuilding(BuildingType type, out int id)
+    internal static bool TryOwnBuilding(BuildingType type, out int id)
     {
         foreach (ClientBuildings.Entry e in ClientBuildings.Current.Entries.Values)
             if (e.Data.buildingType == type && e.Data.ownerId == PlayModeMatch.LocalOwner && !e.Ghost) { id = e.Data.id; return true; }

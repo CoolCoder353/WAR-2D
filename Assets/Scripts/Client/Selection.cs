@@ -23,7 +23,7 @@ namespace WAR2D.Client
 
         private readonly List<int> buildings = new List<int>();
 
-        /// <summary>The selected own buildings (several only for spawners). Selecting units clears them, and the reverse.</summary>
+        /// <summary>The selected own buildings (several from a box or a group; a Shift-click combines only spawners). Selecting units clears them, and the reverse.</summary>
         public IReadOnlyList<int> SelectedBuildings => buildings;
 
         /// <summary>The first selected own building's id (0 when none).</summary>
@@ -48,7 +48,7 @@ namespace WAR2D.Client
             if (!buildings.Remove(buildingId)) buildings.Add(buildingId);
         }
 
-        /// <summary>Selects these own buildings (a box over spawners), dropping the unit selection; <paramref name="append"/> keeps the current ones.</summary>
+        /// <summary>Selects these own buildings (a box), dropping the unit selection; <paramref name="append"/> keeps the current ones.</summary>
         public void SelectBuildings(IEnumerable<int> ids, bool append)
         {
             selected.Clear();
@@ -233,6 +233,7 @@ namespace WAR2D.Client
         /// <summary>Remembers attack-move goals (a queued order keeps the one before it), then raises <see cref="Ordered"/>.</summary>
         private void RaiseOrdered(OrderKind kind, bool queue, int2 goal, IReadOnlyList<int> ids, int targetId = 0)
         {
+            if (!queue) ClientWorld.Instance?.ShowOrder(kind, goal, ids);
             if (!queue)
                 foreach (int id in ids)
                 {

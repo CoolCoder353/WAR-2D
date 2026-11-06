@@ -439,7 +439,7 @@ Button.lobby-card__strip:hover { border-width: 0 2px 0 0; border-color: var(--co
 .lobby__diplomacy .switch { width: auto; }
 .lobby__preview { position: absolute; left: 1420px; top: 104px; width: 450px; }
 .lobby__preview > * { margin-bottom: var(--space-3); }
-.lobby__preview-image { width: 450px; height: 330px; background-color: var(--color-surface-raised); border-width: 12px; border-color: var(--color-surface-panel); }
+.lobby__preview-image { width: 450px; height: 330px; background-color: var(--color-surface-raised); border-width: 12px; border-color: var(--color-surface-panel); -unity-background-scale-mode: scale-to-fit; }
 .lobby__map-caption { padding: 0; color: var(--color-text-primary); }
 .lobby__markers { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }
 .spawn-marker { position: absolute; width: 20px; height: 20px; margin-left: -10px; margin-top: -10px; border-radius: 10px; border-width: 2px; border-color: var(--color-surface-base); background-color: var(--color-text-secondary); }
@@ -873,11 +873,7 @@ Button.lobby-card__strip:hover { border-width: 0 2px 0 0; border-color: var(--co
 .lobby__mode { align-items: center; }
 .lobby__mode-label { padding: 0; margin-right: 10px; font-size: var(--font-size-12); }
 .lobby__mode .lobby__diplomacy { padding: 0; margin-left: 20px; }
-.lobby__quick { align-items: center; margin-bottom: 10px; flex-shrink: 0; }
-.lobby__quick-label { padding: 0; margin-right: 10px; font-size: var(--font-size-12); }
-.lobby__quick-buttons > * { margin-right: 8px; }
 .lobby__board-scroll { flex-grow: 1; flex-shrink: 1; }
-.lobby__board-help { white-space: normal; padding: 0; margin-top: 8px; flex-shrink: 0; }
 .lobby-team { flex-direction: row; min-height: 112px; margin-bottom: 8px; padding: 10px; background-color: var(--color-surface-panel); border-width: 1px; border-color: var(--color-border); }
 .lobby-team--drop { border-color: var(--color-accent); background-color: var(--color-surface-raised); }
 .lobby-team__header { width: 130px; flex-shrink: 0; align-items: center; padding-top: 6px; }
@@ -893,7 +889,8 @@ Button.lobby-card__strip:hover { border-width: 0 2px 0 0; border-color: var(--co
 .lobby-card__top .lobby-row__ready { min-width: 0; }
 .lobby-card__handle { padding: 0; margin-right: 6px; font-size: var(--font-size-16); color: var(--color-text-secondary); }
 .lobby-card__handle:hover { color: var(--color-accent); }
-.lobby-card--dragging { opacity: 0.85; border-color: var(--color-accent); }
+.lobby-card--dragging { opacity: 0.85; border-color: var(--color-accent); margin: 0; }
+
 .lobby-card__sub { flex-wrap: wrap; }
 .lobby-card__sub .lobby-row__pill { margin: 0 4px 0 0; }
 .lobby-card__sub .lobby-card__menu { margin: 0 0 0 4px; height: 21px; }

@@ -5,6 +5,12 @@ using WAR2D.Art.Style;
 namespace WAR2D.Art.Render
 {
     /// <summary>
+    /// Which parts of a turreted unit its generator draws: all of it (thumbnails and wrecks), or the hull and the turret apart,
+    /// for the sprites drawn over each other in a match.
+    /// </summary>
+    public enum UnitLayer { Whole, Hull, Turret }
+
+    /// <summary>
     /// The v0.12 Arsenal sprites (spec <c>2026-10-16-v0.12-arsenal-design.md</c> §5): the Scout, Flamethrower,
     /// Sniper and Suicide bomber (1×1 like the Tank), the Heavy and Artillery (2×2 canvases for the large size
     /// class), the Heavy Factory (3×3) and the Siege Workshop (2×2). Same look and light as the rest of
@@ -60,6 +66,54 @@ namespace WAR2D.Art.Render
             }
         }
 
+        /// <summary>
+        /// Art pixels along the hull's centre line from the unit's centre to the point its turret turns about (negative: behind it).
+        /// </summary>
+        public static float TurretPivot(UnitType type) => type switch
+        {
+            UnitType.Scout => -2f,
+            UnitType.Sniper => -4f,
+            UnitType.Heavy => -6f,
+            UnitType.Artillery => -8f,
+            _ => 0f,
+        };
+
+        /// <summary>
+        /// Like <see cref="Local"/>, for parts that turn to <paramref name="turret"/> about a point <paramref name="pivot"/> along the
+        /// hull's centre line. A <see cref="UnitLayer.Turret"/> has that point at the canvas's centre, wherever the hull faces.
+        /// </summary>
+        private static Func<Func<float, float, float>, Func<float, float, float>> TurretLocal(float hull, float turret, float o, float pivot, UnitLayer layer = UnitLayer.Whole)
+        {
+            float shift = layer == UnitLayer.Turret ? 0f : pivot;
+            float px = o + Mathf.Cos(hull) * shift, py = o + Mathf.Sin(hull) * shift, cos = Mathf.Cos(turret), sin = Mathf.Sin(turret);
+            return local => (x, y) => local((x - px) * cos + (y - py) * sin + pivot, -(x - px) * sin + (y - py) * cos);
+        }
+
+        /// <summary>A unit's hull alone, frame 0 or 1 of its move cycle. The turret is drawn over it as its own sprite.</summary>
+        public static LitCanvas HullLayer(UnitType type, float angle, int frame) => type switch
+        {
+            UnitType.Tank => Tank(angle, frame, angle, UnitLayer.Hull),
+            UnitType.Scout => Scout(angle, frame, angle, UnitLayer.Hull),
+            UnitType.Sniper => Sniper(angle, frame, angle, UnitLayer.Hull),
+            UnitType.Heavy => Heavy(angle, frame, angle, UnitLayer.Hull),
+            UnitType.Artillery => Artillery(angle, frame, false, angle, UnitLayer.Hull),
+            _ => throw new ArgumentException($"{type} has no turret"),
+        };
+
+        /// <summary>
+        /// A unit's turret alone, turning about the canvas's centre. Frame 0 rests and frame 1 recoils; the Artillery's frames are
+        /// its barrel level, raised, and raised in recoil.
+        /// </summary>
+        public static LitCanvas TurretLayer(UnitType type, float turret, int frame) => type switch
+        {
+            UnitType.Tank => Tank(turret, frame == 1 ? 2 : 0, turret, UnitLayer.Turret),
+            UnitType.Scout => Scout(turret, frame == 1 ? 2 : 0, turret, UnitLayer.Turret),
+            UnitType.Sniper => Sniper(turret, frame == 1 ? 2 : 0, turret, UnitLayer.Turret),
+            UnitType.Heavy => Heavy(turret, frame == 1 ? 2 : 0, turret, UnitLayer.Turret),
+            UnitType.Artillery => Artillery(turret, frame == 2 ? 2 : 0, frame >= 1, turret, UnitLayer.Turret),
+            _ => throw new ArgumentException($"{type} has no turret"),
+        };
+
         /// <summary>A muzzle flash centred ahead of local (<paramref name="x"/>, <paramref name="y"/>).</summary>
         private static void MuzzleFlash(LitCanvas c, Func<Func<float, float, float>, Func<float, float, float>> L, float x, float y, float size, float top)
         {
@@ -71,24 +125,35 @@ namespace WAR2D.Art.Render
         /// The Scout: a light four-wheeled buggy with a team-coloured cab, a roll bar, a sensor mast with a lamp
         /// (it has the widest sight) and a light gun. Frames 0–1 move, 2–3 fire.
         /// </summary>
-        public static LitCanvas Scout(float angle, int frame)
+        public static LitCanvas Scout(float angle, int frame) => Scout(angle, frame, angle);
+
+        /// <summary>The Scout with its cab and gun turned to <paramref name="turret"/>.</summary>
+        public static LitCanvas Scout(float angle, int frame, float turret, UnitLayer layer = UnitLayer.Whole)
         {
             var c = new LitCanvas(TileSize, TileSize);
             float o = TileSize / 2f;
             var L = Local(angle, o);
+            var T = TurretLocal(angle, turret, o, TurretPivot(UnitType.Scout), layer);
             float spin = frame == 1 ? 1.5f : 0f, recoil = frame == 2 ? 1.5f : 0f;
-            Wheels(c, L, new[] { -10f, 10f }, 10.5f, 5, 3, spin);
-            c.Shape(L((x, y) => Box(x, y, 0, 0, 15, 8, 4)), Hull, 9, 3, 3);
-            c.Shape(L((x, y) => Box(x, y, 10, 0, 5, 7, 2)), Plate, 1, 1, 1, stack: true);
-            c.Shape(L((x, y) => Box(x, y, -2, 0, 6, 6.5f, 2.5f)), Team, 13, 2, 2.5f);
-            c.Shape(L((x, y) => Box(x, y, 3.5f, 0, 1.2f, 5, 0.6f)), Glass, 0.6f, 0.5f, 0.5f, stack: true);
-            c.Shape(L((x, y) => Capsule(x, y, -7, -6, -7, 6, 1.2f)), Steel, 15, 1, 1.2f);
-            // The gun on the cab, then the sensor mast at the back.
-            c.Shape(L((x, y) => Box(x, y, 8 - recoil, -3, 6, 1.1f, 1)), Steel, 14.5f, 1, 1.2f);
-            c.Shape(L((x, y) => Circle(x, y, -11, 4, 2.6f)), Steel, 17, 1, 1.5f);
-            c.Shape(L((x, y) => Circle(x, y, -11, 4, 1.3f)), Lamp, 18, 0.5f, 0.3f);
+            if (layer == UnitLayer.Turret) c.Floor(9);
+            else
+            {
+                Wheels(c, L, new[] { -10f, 10f }, 10.5f, 5, 3, spin);
+                c.Shape(L((x, y) => Box(x, y, 0, 0, 15, 8, 4)), Hull, 9, 3, 3);
+                c.Shape(L((x, y) => Box(x, y, 10, 0, 5, 7, 2)), Plate, 1, 1, 1, stack: true);
+            }
+            if (layer != UnitLayer.Hull)
+            {
+                c.Shape(T((x, y) => Box(x, y, -2, 0, 6, 6.5f, 2.5f)), Team, 13, 2, 2.5f);
+                c.Shape(T((x, y) => Box(x, y, 3.5f, 0, 1.2f, 5, 0.6f)), Glass, 0.6f, 0.5f, 0.5f, stack: true);
+                c.Shape(T((x, y) => Capsule(x, y, -7, -6, -7, 6, 1.2f)), Steel, 15, 1, 1.2f);
+                // The gun on the cab, then the sensor mast at the back.
+                c.Shape(T((x, y) => Box(x, y, 8 - recoil, -3, 6, 1.1f, 1)), Steel, 14.5f, 1, 1.2f);
+                c.Shape(T((x, y) => Circle(x, y, -11, 4, 2.6f)), Steel, 17, 1, 1.5f);
+                c.Shape(T((x, y) => Circle(x, y, -11, 4, 1.3f)), Lamp, 18, 0.5f, 0.3f);
+            }
             c.Grime(41, 0.3f, 0.12f, 6);
-            if (frame >= 2) MuzzleFlash(c, L, 14 - recoil, -3, frame == 2 ? 3.5f : 2.2f, 17);
+            if (frame >= 2 && layer == UnitLayer.Whole) MuzzleFlash(c, T, 14 - recoil, -3, frame == 2 ? 3.5f : 2.2f, 17);
             return c;
         }
 
@@ -130,24 +195,40 @@ namespace WAR2D.Art.Render
         /// The Sniper: a slim six-wheeled armoured car with a small team turret, a scope and a very long, thin
         /// barrel. Frames 0–1 move, 2–3 fire (a sharp, small flash).
         /// </summary>
-        public static LitCanvas Sniper(float angle, int frame)
+        public static LitCanvas Sniper(float angle, int frame) => Sniper(angle, frame, angle);
+
+        /// <summary>The Sniper with its turret turned to <paramref name="turret"/>.</summary>
+        public static LitCanvas Sniper(float angle, int frame, float turret, UnitLayer layer = UnitLayer.Whole)
         {
-            var c = new LitCanvas(TileSize, TileSize);
-            float o = TileSize / 2f;
+            // Alone, the turret needs 2 tiles: the barrel reaches 35 px from the pivot.
+            int size = layer == UnitLayer.Turret ? 2 * TileSize : TileSize;
+            var c = new LitCanvas(size, size);
+            float o = size / 2f;
             var L = Local(angle, o);
+            var T = TurretLocal(angle, turret, o, TurretPivot(UnitType.Sniper), layer);
             float spin = frame == 1 ? 1.5f : 0f, recoil = frame == 2 ? 2f : 0f;
-            Wheels(c, L, new[] { -12f, 0f, 12f }, 11, 4.2f, 3, spin);
-            c.Shape(L((x, y) => Mathf.Max(Box(x, y, 0, 0, 18, 8.5f, 4), Polygon(x, y, -2, 0, 21, 6, 0))), Hull, 10, 3, 3);
-            c.Groove(L((x, y) => Box(x, y, -12, 0, 4, 6) > 0 ? 9 : Mathf.Abs(Mod(x, 2) - 1) - 0.45f), 1, 0.45f);
-            c.Shape(L((x, y) => Box(x, y, -4, 0, 7, 6, 3)), Team, 15, 2, 2.5f);
-            c.Shape(L((x, y) => Box(x, y, 12 - recoil, 0, 17, 1.2f, 1)), Steel, 14, 1, 1.2f);
-            c.Shape(L((x, y) => Box(x, y, 29 - recoil, 0, 1.6f, 2, 0.8f)), Steel, 14, 0.8f, 1);
-            c.Shape(L((x, y) => Box(x, y, -3, 4.8f, 5, 1.5f, 1)), Dark, 17, 0.8f, 1);
-            c.Shape(L((x, y) => Circle(x, y, 2, 4.8f, 1.3f)), Glass, 17.5f, 0.5f, 0.5f);
-            var (rx, ry) = LocalPoint(angle, o, -7, -3);
-            c.Rivet(rx, ry, 1.2f, 0.9f);
+            if (layer == UnitLayer.Turret) c.Floor(10);
+            else
+            {
+                Wheels(c, L, new[] { -12f, 0f, 12f }, 11, 4.2f, 3, spin);
+                c.Shape(L((x, y) => Mathf.Max(Box(x, y, 0, 0, 18, 8.5f, 4), Polygon(x, y, -2, 0, 21, 6, 0))), Hull, 10, 3, 3);
+                c.Groove(L((x, y) => Box(x, y, -12, 0, 4, 6) > 0 ? 9 : Mathf.Abs(Mod(x, 2) - 1) - 0.45f), 1, 0.45f);
+            }
+            if (layer != UnitLayer.Hull)
+            {
+                c.Shape(T((x, y) => Box(x, y, -4, 0, 7, 6, 3)), Team, 15, 2, 2.5f);
+                c.Shape(T((x, y) => Box(x, y, 12 - recoil, 0, 17, 1.2f, 1)), Steel, 14, 1, 1.2f);
+                c.Shape(T((x, y) => Box(x, y, 29 - recoil, 0, 1.6f, 2, 0.8f)), Steel, 14, 0.8f, 1);
+                c.Shape(T((x, y) => Box(x, y, -3, 4.8f, 5, 1.5f, 1)), Dark, 17, 0.8f, 1);
+                c.Shape(T((x, y) => Circle(x, y, 2, 4.8f, 1.3f)), Glass, 17.5f, 0.5f, 0.5f);
+            }
+            if (layer != UnitLayer.Turret)
+            {
+                var (rx, ry) = LocalPoint(angle, o, -7, -3);
+                c.Rivet(rx, ry, 1.2f, 0.9f);
+            }
             c.Grime(47, 0.3f, 0.12f, 6);
-            if (frame >= 2) MuzzleFlash(c, L, 30.5f - recoil, 0, frame == 2 ? 2.4f : 1.4f, 16);
+            if (frame >= 2 && layer == UnitLayer.Whole) MuzzleFlash(c, T, 30.5f - recoil, 0, frame == 2 ? 2.4f : 1.4f, 16);
             return c;
         }
 
@@ -181,37 +262,48 @@ namespace WAR2D.Art.Render
         /// The Heavy (large size class, 2×2 canvas): a wide assault tank with side skirts, a sloped front glacis,
         /// a big team turret and twin barrels with muzzle brakes. Frames 0–1 move, 2–3 fire both barrels.
         /// </summary>
-        public static LitCanvas Heavy(float angle, int frame)
+        public static LitCanvas Heavy(float angle, int frame) => Heavy(angle, frame, angle);
+
+        /// <summary>The Heavy with its turret turned to <paramref name="turret"/>.</summary>
+        public static LitCanvas Heavy(float angle, int frame, float turret, UnitLayer layer = UnitLayer.Whole)
         {
             var c = new LitCanvas(LargeUnitSize, LargeUnitSize);
             float o = LargeUnitSize / 2f;
             var L = Local(angle, o);
+            var T = TurretLocal(angle, turret, o, TurretPivot(UnitType.Heavy), layer);
             float tread = frame == 1 ? 2.5f : 0f, recoil = frame == 2 ? 4f : 0f;
-            Tracks(c, L, 0, 46, 33, 11, tread, 5);
-            foreach (float side in new[] { -1f, 1f })
-                c.Shape(L((x, y) => Box(x, y, -2, side * 38, 40, 4, 1.5f)), Plate, 10, 1.2f, 1.5f);
-            c.Shape(L((x, y) => Box(x, y, 0, 0, 44, 27, 7)), Hull, 16, 4, 4);
-            c.Shape(L((x, y) => Box(x, y, 30, 0, 12, 23, 4)), Plate, 1.5f, 1.5f, 1.5f, stack: true);
-            c.Groove(L((x, y) => Box(x, y, -35, 0, 6, 16) > 0 ? 9 : Mathf.Abs(Mod(x, 2.5f) - 1.25f) - 0.5f), 1, 0.5f);
-            foreach (float s in new[] { -1f, 1f })
-                for (int k = -2; k <= 2; k++)
-                {
-                    var (rx, ry) = LocalPoint(angle, o, k * 12, s * 23);
-                    c.Rivet(rx, ry, 1f, 0.8f);
-                }
-            c.Shape(L((x, y) => Box(x, y, -6, 0, 24, 20, 8)), Team, 28, 4, 5);
-            c.Shape(L((x, y) => Circle(x, y, -15, 9, 5.5f)), Plate, 29, 1.2f, 1.2f);
-            c.Groove(L((x, y) => Circle(x, y, -15, 9, 3.6f)), 0.7f, 0.5f);
-            c.Shape(L((x, y) => Box(x, y, 10, 0, 6, 15, 3)), Steel, 29, 2, 2);
-            foreach (float side in new[] { -6f, 6f })
+            if (layer == UnitLayer.Turret) c.Floor(16);
+            else
             {
-                c.Shape(L((x, y) => Box(x, y, 32 - recoil, side, 20, 2.6f, 2)), Steel, 26, 1.8f, 2.2f);
-                c.Shape(L((x, y) => Box(x, y, 52 - recoil, side, 3, 3.8f, 1)), Steel, 26, 1, 1.5f);
+                Tracks(c, L, 0, 46, 33, 11, tread, 5);
+                foreach (float side in new[] { -1f, 1f })
+                    c.Shape(L((x, y) => Box(x, y, -2, side * 38, 40, 4, 1.5f)), Plate, 10, 1.2f, 1.5f);
+                c.Shape(L((x, y) => Box(x, y, 0, 0, 44, 27, 7)), Hull, 16, 4, 4);
+                c.Shape(L((x, y) => Box(x, y, 30, 0, 12, 23, 4)), Plate, 1.5f, 1.5f, 1.5f, stack: true);
+                c.Groove(L((x, y) => Box(x, y, -35, 0, 6, 16) > 0 ? 9 : Mathf.Abs(Mod(x, 2.5f) - 1.25f) - 0.5f), 1, 0.5f);
+                foreach (float s in new[] { -1f, 1f })
+                    for (int k = -2; k <= 2; k++)
+                    {
+                        var (rx, ry) = LocalPoint(angle, o, k * 12, s * 23);
+                        c.Rivet(rx, ry, 1f, 0.8f);
+                    }
+            }
+            if (layer != UnitLayer.Hull)
+            {
+                c.Shape(T((x, y) => Box(x, y, -6, 0, 24, 20, 8)), Team, 28, 4, 5);
+                c.Shape(T((x, y) => Circle(x, y, -15, 9, 5.5f)), Plate, 29, 1.2f, 1.2f);
+                c.Groove(T((x, y) => Circle(x, y, -15, 9, 3.6f)), 0.7f, 0.5f);
+                c.Shape(T((x, y) => Box(x, y, 10, 0, 6, 15, 3)), Steel, 29, 2, 2);
+                foreach (float side in new[] { -6f, 6f })
+                {
+                    c.Shape(T((x, y) => Box(x, y, 32 - recoil, side, 20, 2.6f, 2)), Steel, 26, 1.8f, 2.2f);
+                    c.Shape(T((x, y) => Box(x, y, 52 - recoil, side, 3, 3.8f, 1)), Steel, 26, 1, 1.5f);
+                }
             }
             c.Grime(59, 0.3f, 0.12f, 8);
-            if (frame >= 2)
+            if (frame >= 2 && layer == UnitLayer.Whole)
                 foreach (float side in new[] { -6f, 6f })
-                    MuzzleFlash(c, L, 55 - recoil, side, frame == 2 ? 6f : 3.5f, 32);
+                    MuzzleFlash(c, T, 55 - recoil, side, frame == 2 ? 6f : 3.5f, 32);
             return c;
         }
 
@@ -220,31 +312,96 @@ namespace WAR2D.Art.Render
         /// back, a very long barrel with a muzzle brake, ammunition racks and a recoil spade. Direct fire.
         /// Frames 0–1 move, 2–3 fire (a big flash and a long recoil).
         /// </summary>
-        public static LitCanvas Artillery(float angle, int frame)
+        public static LitCanvas Artillery(float angle, int frame) => Artillery(angle, frame, false, angle);
+
+        /// <summary>The Artillery, with its barrel tilted up to fire when <paramref name="raised"/>: seen from above it looks shorter, widens toward the muzzle and throws a longer shadow.</summary>
+        public static LitCanvas Artillery(float angle, int frame, bool raised) => Artillery(angle, frame, raised, angle);
+
+        /// <summary>The Artillery with its casemate and barrel turned to <paramref name="turret"/>, the barrel tilted up when <paramref name="raised"/>.</summary>
+        public static LitCanvas Artillery(float angle, int frame, bool raised, float turret, UnitLayer layer = UnitLayer.Whole)
         {
-            var c = new LitCanvas(LargeUnitSize, LargeUnitSize);
-            float o = LargeUnitSize / 2f;
+            // Alone, the turret needs 3 tiles: the barrel reaches 70 px from the pivot.
+            int size = layer == UnitLayer.Turret ? 3 * TileSize : LargeUnitSize;
+            var c = new LitCanvas(size, size);
+            float o = size / 2f;
             var L = Local(angle, o);
+            float pivot = TurretPivot(UnitType.Artillery);
+            var T = TurretLocal(angle, turret, o, pivot, layer);
             float tread = frame == 1 ? 2.5f : 0f, recoil = frame == 2 ? 6f : frame == 3 ? 3f : 0f;
-            c.Shape(L((x, y) => Box(x, y, -45, 0, 3, 15, 1)), Dark, 6, 1, 1.5f);
-            Tracks(c, L, -4, 40, 26, 9, tread, 5);
-            c.Shape(L((x, y) => Box(x, y, -4, 0, 38, 21, 6)), Hull, 14, 3.5f, 4);
-            c.Groove(L((x, y) => Box(x, y, 26, 0, 6, 14) > 0 ? 9 : Mathf.Abs(Mod(y, 3) - 1.5f) - 0.5f), 0.8f, 0.5f);
-            foreach (float side in new[] { -1f, 1f })
-                for (int k = 0; k < 4; k++)
+            if (layer == UnitLayer.Turret) c.Floor(14);
+            else
+            {
+                c.Shape(L((x, y) => Box(x, y, -45, 0, 3, 15, 1)), Dark, 6, 1, 1.5f);
+                Tracks(c, L, -4, 40, 26, 9, tread, 5);
+                c.Shape(L((x, y) => Box(x, y, -4, 0, 38, 21, 6)), Hull, 14, 3.5f, 4);
+                c.Groove(L((x, y) => Box(x, y, 26, 0, 6, 14) > 0 ? 9 : Mathf.Abs(Mod(y, 3) - 1.5f) - 0.5f), 0.8f, 0.5f);
+                foreach (float side in new[] { -1f, 1f })
+                    for (int k = 0; k < 4; k++)
+                    {
+                        float sx = 6 + k * 5, sy = side * 15;
+                        c.Shape(L((x, y) => Circle(x, y, sx, sy, 2)), Hazard, 16, 0.8f, 0.8f);
+                    }
+            }
+            if (layer == UnitLayer.Hull)
+            {
+                c.Grime(61, 0.3f, 0.12f, 8);
+                return c;
+            }
+            c.Shape(T((x, y) => Box(x, y, -16, 0, 20, 18, 6)), Team, 24, 3, 4);
+            c.Shape(T((x, y) => Box(x, y, -20, 0, 10, 12, 3)), Dark, 19, 1.5f, 1.5f);
+            c.Shape(T((x, y) => Circle(x, y, -22, 5, 3)), Plate, 21, 1, 1);
+            c.Shape(T((x, y) => Box(x, y, 6, 0, 6, 9, 3)), Steel, 25, 2, 2);
+            if (raised)
+            {
+                // The level barrel's own parts (a steel tube, a seam, a muzzle brake), with RimWorld's height trick: the far end sits
+                // higher on screen, and the bore shows in the brake because we see it at a slant.
+                float back = recoil * 0.4f, cos = Mathf.Cos(turret), sin = Mathf.Sin(turret);
+                float shift = layer == UnitLayer.Turret ? 0f : pivot;
+                float px = o + Mathf.Cos(angle) * shift, py = o + Mathf.Sin(angle) * shift;
+                Vector2 a = new Vector2(px + cos * (8 - back - pivot), py + sin * (8 - back - pivot) + 1);
+                Vector2 b = new Vector2(px + cos * (40 - back - pivot), py + sin * (40 - back - pivot) + 17);
+                Vector2 along = b - a, axis = along.normalized;
+                float lengthSq = along.sqrMagnitude, length = along.magnitude;
+                c.Shape((x, y) =>
                 {
-                    float sx = 6 + k * 5, sy = side * 15;
-                    c.Shape(L((x, y) => Circle(x, y, sx, sy, 2)), Hazard, 16, 0.8f, 0.8f);
-                }
-            c.Shape(L((x, y) => Box(x, y, -16, 0, 20, 18, 6)), Team, 24, 3, 4);
-            c.Shape(L((x, y) => Box(x, y, -20, 0, 10, 12, 3)), Dark, 19, 1.5f, 1.5f);
-            c.Shape(L((x, y) => Circle(x, y, -22, 5, 3)), Plate, 21, 1, 1);
-            c.Shape(L((x, y) => Box(x, y, 6, 0, 6, 9, 3)), Steel, 25, 2, 2);
-            c.Shape(L((x, y) => Box(x, y, 32 - recoil, 0, 26, 3, 2.5f)), Steel, 24, 2, 2.5f);
-            c.Shape(L((x, y) => Box(x, y, 59 - recoil, 0, 2.5f, 5, 1)), Steel, 24, 1, 1.5f);
-            c.Groove(L((x, y) => Mathf.Abs(x - (20 - recoil)) - 0.4f > 0 || Mathf.Abs(y) > 3 ? 9 : 0), 0.8f, 0.5f);
+                    Vector2 p = new Vector2(x, y) - a;
+                    float t = Mathf.Clamp01(Vector2.Dot(p, along) / lengthSq);
+                    return (p - along * t).magnitude - Mathf.Lerp(2.7f, 3.3f, t);
+                }, Steel, 28, 2, 2.5f);
+                c.Groove((x, y) =>
+                {
+                    Vector2 p = new Vector2(x, y) - a;
+                    return Mathf.Abs(Vector2.Dot(p, axis) - length * 0.32f) > 0.4f || Mathf.Abs(p.y * axis.x - p.x * axis.y) > 3f ? 9f : 0f;
+                }, 0.8f, 0.5f);
+                Func<float, float, float> AtMuzzle(float hu, float hv, float round) => (x, y) =>
+                {
+                    Vector2 p = new Vector2(x, y) - b;
+                    return Box(Vector2.Dot(p, axis), p.y * axis.x - p.x * axis.y, 0, 0, hu, hv, round);
+                };
+                c.Shape(AtMuzzle(2.5f, 5f, 1f), Steel, 29, 1, 1.5f);
+                c.Shape(AtMuzzle(1.2f, 3f, 0.8f), Dark, 30, 0.5f, 0.5f);
+            }
+            else
+            {
+                c.Shape(T((x, y) => Box(x, y, 32 - recoil, 0, 26, 3, 2.5f)), Steel, 24, 2, 2.5f);
+                c.Shape(T((x, y) => Box(x, y, 59 - recoil, 0, 2.5f, 5, 1)), Steel, 24, 1, 1.5f);
+                c.Groove(T((x, y) => Mathf.Abs(x - (20 - recoil)) - 0.4f > 0 || Mathf.Abs(y) > 3 ? 9 : 0), 0.8f, 0.5f);
+            }
             c.Grime(61, 0.3f, 0.12f, 8);
-            if (frame >= 2) MuzzleFlash(c, L, 61.5f - recoil, 0, frame == 2 ? 8f : 4.5f, 30);
+            if (frame >= 2 && !raised && layer == UnitLayer.Whole) MuzzleFlash(c, T, 61.5f - recoil, 0, frame == 2 ? 8f : 4.5f, 30);
+            return c;
+        }
+
+        /// <summary>An artillery shell in flight, in the units' lit style: a steel body, a brass band and tail fins.</summary>
+        public static LitCanvas ArtilleryShellBody(float angle)
+        {
+            var c = new LitCanvas(TileSize, TileSize);
+            var L = Local(angle, TileSize / 2f);
+            foreach (float side in new[] { -1f, 1f }) c.Shape(L((x, y) => Box(x, y, -10, side * 3.4f, 2.4f, 2, 0.7f)), Dark, 5, 0.8f, 0.8f);
+            c.Shape(L((x, y) => Box(x, y, -2, 0, 8, 4.7f, 2)), Steel, 8, 2, 2.5f);
+            c.Shape(L((x, y) => Circle(x, y, 6, 0, 4.7f)), Steel, 8, 2, 2.5f);
+            c.Shape(L((x, y) => Circle(x, y, 9.5f, 0, 2.2f)), Plate, 9, 1, 1);
+            c.Shape(L((x, y) => Box(x, y, 0, 0, 1.1f, 4.9f)), Hazard, 9, 0.6f, 0.6f);
             return c;
         }
 

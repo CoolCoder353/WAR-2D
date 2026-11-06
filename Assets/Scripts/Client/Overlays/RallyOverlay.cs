@@ -9,6 +9,7 @@ namespace WAR2D.Client.Overlays
     /// Rally spokes (Figma <c>v0.15 QoL – redesign</c>, item 8, frames 124:753 and 130:1371). A selected producer gets a
     /// thin dashed spoke to its rally point (the flag itself is <see cref="UnitCommander"/>'s sprite). While Rally all is
     /// armed, or Ctrl is held with producers selected, every own producer's spoke and a small flag at its rally show.
+    /// Both are blue for a regular rally and red for an attack rally (<see cref="OverlayColours.Rally"/>).
     /// A rally on one of the player's own blueprints is drawn in the Builder gold with the blueprint outlined, since new
     /// Builders go and help build it; pointing at one while rallying tags "Builders will help build". The rally points
     /// are the owner's own (<see cref="ClientPlayer.TryGetRally"/>); only the local player sees them.
@@ -67,14 +68,15 @@ namespace WAR2D.Client.Overlays
             if (!help) rally = Snapped(rally);
             float2 from = Footprint.VisualCenter((int2)math.round(e.Data.position), WorldStateManager.GetBuildingSize(e.Data.buildingType));
             float2 to = (float2)rally + 0.5f;
-            Color32 c = help ? f.Readout : f.Accent;
+            Color32 colour = OverlayColours.Rally(f.Palette, local.RallyIsAttack(id));
+            Color32 c = help ? f.Readout : colour;
             f.Mesh.Segment(from, to, f.Px, OverlayColours.Alpha(c, 0.85f), 4f * f.Px);
             if (help)
             {
                 OutlineBlueprint(f, bp);
                 OverlayShapes.Flag(f.Mesh, to, 0.8f, 2f * f.Px, new Color32(0xF0, 0xF4, 0xF8, 0xFF), f.Readout);
             }
-            else if (flag) OverlayShapes.Flag(f.Mesh, to, 0.7f, 2f * f.Px, new Color32(0xF0, 0xF4, 0xF8, 0xFF), f.Accent);
+            else if (flag) OverlayShapes.Flag(f.Mesh, to, 0.7f, 2f * f.Px, new Color32(0xF0, 0xF4, 0xF8, 0xFF), colour);
             return true;
         }
 

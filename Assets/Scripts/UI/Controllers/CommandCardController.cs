@@ -27,7 +27,7 @@ namespace WAR2D.UI
         private readonly Func<UnitType, string> roleOf;
         private readonly bool switchClearsQueue;
         private readonly VisualElement card, divider, rows, removal, confirm, production, typesRow;
-        private readonly Label title, help, queueLabel, buildLabel, buildHint, digHint, detonateHint, refund, question, cancelKey;
+        private readonly Label title, help, queueLabel, buildLabel, refund, question, cancelKey;
         private readonly Label info, mixedHint, waiting;
         private readonly int unitCap;
         private readonly VisualElement buildArea;
@@ -37,6 +37,7 @@ namespace WAR2D.UI
         private readonly float repairCostPerHealth;
         private readonly CommandIcon cancelIcon;
         private readonly Button cancel, wall, detonate, rallyAll, roam;
+        private readonly Label rallyHelp;
         private readonly Dictionary<Label, Func<UnityEngine.InputSystem.InputAction>> keyLabels = new Dictionary<Label, Func<UnityEngine.InputSystem.InputAction>>();
         private readonly OrderKind? detonateKind;
         private readonly UnitType? bomberType;
@@ -124,8 +125,6 @@ namespace WAR2D.UI
             rows = root.Q("production-rows");
             divider = root.Q("divider");
             buildLabel = root.Q<Label>("build-label");
-            buildHint = root.Q<Label>("build-hint");
-            digHint = root.Q<Label>("dig-hint");
             removal = root.Q("removal");
             confirm = root.Q("removal-confirm");
             refund = root.Q<Label>("removal-refund");
@@ -138,7 +137,6 @@ namespace WAR2D.UI
             info = root.Q<Label>("production-info");
             mixedHint = root.Q<Label>("production-mixed");
             waiting = root.Q<Label>("production-waiting");
-            detonateHint = root.Q<Label>("detonate-hint");
             detonate = root.Q<Button>("cmd-detonate");
             buildArea = root.Q("builds");
 
@@ -172,11 +170,11 @@ namespace WAR2D.UI
             wall.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); WallClicked?.Invoke(); };
             AttachBuildCard(wall, BuildingType.None);
             root.Q<Label>("build-wall-cost").text = $"{wallCost:0.##}/tile";
-            buildHint.text = $"Wall: press and drag on the map to lay a line ({wallCost:0.##} per tile).";
 
             cancel.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); RequestRemove(); };
             keyLabels[cancelKey] = () => GameInput.Cancel;
             hover?.Attach(cancel, RemoveCard, WAR2D.UI.HoverCard.Side.Left, card);
+            rallyHelp = root.Q<Label>("production-rally-help");
             rallyAll = root.Q<Button>("cmd-rally-all");
             if (rallyAll != null)
             {
@@ -227,6 +225,7 @@ namespace WAR2D.UI
             for (int slot = 0; slot < typeKeyLabels.Count; slot++) typeKeyLabels[slot].text = WAR2D.UI.HoverCard.KeyOf(GameInput.CardTop(slot));
             Label rallyKey = rallyAll?.Q<Label>("cmd-rally-all-key");
             if (rallyKey != null) rallyKey.text = RallyAllKey();
+            if (rallyHelp != null) rallyHelp.text = $"Right-click: blue flag, units move. {WAR2D.UI.HoverCard.KeyOf(GameInput.AttackMove)}, then click: red flag, units attack on the way. {WAR2D.UI.HoverCard.KeyOf(GameInput.AssignModifier)}: all of yours.";
         }
 
         /// <summary>Shows Rally all as active while it waits for its click.</summary>
@@ -407,13 +406,10 @@ namespace WAR2D.UI
             card.EnableInClassList("command-card--builders", builders);
             if (!building || !Removable) ConfirmOpen = false;
             // Inline display wins over the stylesheet, so every section is set either way.
-            Display(digHint, diggers && !builders);
-            Display(detonateHint, bombers && !builders && !diggers);
             // The build row is the Builders' (v0.7): without them, nothing can build.
             Display(divider, builders);
             Display(buildLabel, builders);
             Display(buildArea, builders);
-            Display(buildHint, builders);
             Display(removal, building && Removable);
             // A blueprint makes nothing yet: production shows once the selected buildings are all finished.
             bool producing = building && SpawnerRules.IsProducer(selection.BuildingType) && selection.BlueprintCount == 0;
@@ -465,22 +461,21 @@ namespace WAR2D.UI
             if (WallsOnly) { ShowWalls(); return; }
             UnitType[] produced = SpawnerRules.Produces(selection.BuildingType);
             string name = AlertFeedModel.BuildingName(selection.BuildingType) ?? AlertFeedModel.Spaced(selection.BuildingType.ToString());
-            title.text = selection.MixedKinds ? $"Commands: {count} producers selected"
+            title.text = selection.MixedKinds ? $"Commands: {count} buildings selected"
                 : count > 1 ? $"Commands: {count} {Plural(name)} selected"
                 : selection.AllBlueprints ? $"{name} (blueprint) · {selection.BuildingProgress}%"
                 : name;
 
             if (produced.Length > 0 && selection.BlueprintCount == 0) ShowProduction(produced, count);
             if (!Removable) return;
-            float cost = buildCosts.TryGetValue(selection.BuildingType, out float c) ? c : 0f;
-            float back = selection.RefundFor(cost, demolishShare);
+            float back = selection.RefundFor(type => buildCosts.TryGetValue(type, out float c) ? c : 0f, demolishShare);
             bool blueprints = selection.AllBlueprints;
             cancelIcon.Icon = blueprints ? IconKind.Cancel : IconKind.Demolish;
             cancel.tooltip = blueprints ? "Cancel" : "Demolish";
             refund.text = blueprints ? $"Cancel: refunds {back:0} (the full cost) while it is a blueprint."
                 : $"Demolish: refunds {back:0} ({(demolishShare == 0.5f ? "half its cost" : $"{demolishShare:P0} of its cost")}).";
             confirm.EnableInClassList("removal__confirm--open", ConfirmOpen);
-            question.text = count > 1 ? $"Demolish {count} {Plural(name)}? You get {back:0} back." : $"Demolish {name}? You get {back:0} back.";
+            question.text = count > 1 ? $"Demolish {count} {(selection.MixedKinds ? "buildings" : Plural(name))}? You get {back:0} back." : $"Demolish {name}? You get {back:0} back.";
         }
 
         /// <summary>

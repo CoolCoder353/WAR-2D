@@ -287,6 +287,9 @@ namespace WAR2D.Net.Replication
                 encodeNow[c] = active[c] && clients[c].Lane == null;
                 if (encodeNow[c]) interests.SetClient(c, clients[c].OwnerId, GridFor(clients[c]));
             }
+            // Interest reads only the settled sim arrays (read-only, as the route jobs do) and writes its own sets, so it runs
+            // alongside the route upkeep and the sends below instead of after them (perf gate 2026-11-06). Same sets, same order.
+            JobHandle interestHandle = interests.Schedule(input, default);
             double t = PerfSplits.Now;
             SendFog(data);
             PerfSplits.Mark(8, ref t);
@@ -296,19 +299,23 @@ namespace WAR2D.Net.Replication
             PerfSplits.Mark(10, ref t);
             handle.Complete(); // timed alone: the route upkeep ran alongside the sends above
             PerfSplits.Mark(7, ref t);
-            handle = interests.Schedule(input, handle);
-            handle.Complete(); // the encoder reads the route arena by value, so it must not move under it
+            interestHandle.Complete(); // the encoder reads the route arena by value, so it must not move under it
             PerfSplits.Mark(11, ref t);
             using var attacks = new NativeArray<int2>(data.AttackEvents.AsArray(), Allocator.TempJob);
             using NativeArray<AttackTarget> targets = AttackTargets(data, attacks);
             using NativeArray<BuildingAttack> buildingAttacks = BuildingAttacks(data);
             PerfSplits.Mark(12, ref t);
-            encoder.Schedule(tick, input, attacks, targets, buildingAttacks, encodeNow, default).Complete();
+            // Each client's bytes go out as soon as that client is encoded, while the workers encode the rest (perf gate
+            // 2026-11-06): the same bytes in the same order; repl.encode is now the wait for the first client only.
+            using var encoded = new NativeArray<JobHandle>(MaxClients, Allocator.Temp);
+            encoder.ScheduleEach(tick, input, attacks, targets, buildingAttacks, encodeNow, default, encoded);
+            for (int c = 0; c < MaxClients; c++) if (encodeNow[c]) { encoded[c].Complete(); break; }
             PerfSplits.Mark(13, ref t);
 
             for (int c = 0; c < MaxClients; c++)
             {
                 if (!active[c]) continue;
+                encoded[c].Complete(); // before anything that could reset this client's buffers (OnClientLeft)
                 Client client = clients[c];
                 if (client.Connection != null && (client.Connection.identity == null || !NetworkServer.connections.ContainsKey(client.Connection.connectionId)))
                 {
@@ -334,6 +341,7 @@ namespace WAR2D.Net.Replication
                 SendSplit(client, tick, reliable, reliableSizes, Channels.Reliable, BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4));
                 SendSplit(client, tick, unreliable, unreliableSizes, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
             }
+            for (int c = 0; c < MaxClients; c++) encoded[c].Complete(); // a client that left mid-loop: its job still has to finish
             PerfSplits.Mark(14, ref t);
             LastMilliseconds = watch.Elapsed.TotalMilliseconds;
         }
@@ -389,6 +397,25 @@ namespace WAR2D.Net.Replication
         public Func<int, int> SpectatorGrid;
 
         /// <summary>A client's grid: everything for the recorder, else as <see cref="GridOf"/>.</summary>
+        /// <summary>
+        /// What the owner's own (network) client was told: its buildings, ghosts included, and its terrain. False for an owner
+        /// with no such client (an AI, or nobody connected), whose placements are judged on the real map.
+        /// </summary>
+        public bool TryKnowledgeOf(int ownerId, out BuildingInterest buildings, out TerrainInterest terrain)
+        {
+            for (int c = 0; c < MaxClients; c++)
+            {
+                Client client = clients[c];
+                if (!active[c] || client == null || client.SeesAll || client.VirtualSink != null || client.OwnerId != ownerId) continue;
+                buildings = client.Buildings;
+                terrain = client.Terrain;
+                return true;
+            }
+            buildings = null;
+            terrain = null;
+            return false;
+        }
+
         private int GridFor(Client client) => client.SeesAll ? SimData.SeesAll : GridOf(client.OwnerId);
 
         /// <summary>The fog grid an owner's client is replicated against.</summary>
@@ -426,26 +453,40 @@ namespace WAR2D.Net.Replication
                         allSeen = new NativeArray<byte>(data.FogCells, Allocator.Persistent);
                         for (int i = 0; i < allSeen.Length; i++) allSeen[i] = 1;
                     }
-                    writer.Position = 0;
-                    FogCodec.WriteSnapshot(writer, data.FogW, data.FogH, data.FogCellSize, allSeen, allSeen, 0);
-                    SendFogPayload(client, writer.ToArraySegment());
+                    SendFogSnapshot(client, data, allSeen, allSeen, 0);
                     continue;
                 }
                 if (client.FogGrid != grid)
                 {
                     client.FogGrid = grid;
-                    writer.Position = 0;
-                    FogCodec.WriteSnapshot(writer, data.FogW, data.FogH, data.FogCellSize, data.Visible, data.Explored, grid * data.FogCells);
-                    SendFogPayload(client, writer.ToArraySegment());
+                    SendFogSnapshot(client, data, data.Visible, data.Explored, grid * data.FogCells);
                     continue;
                 }
                 if (!fogChanges.TryGetValue(grid, out List<int> cells)) continue;
-                for (int start = 0; start < cells.Count; start += FogCodec.MaxDeltaCells)
+                int limit = FogLimit;
+                for (int start = 0; start < cells.Count;)
                 {
+                    int count = FogCodec.DeltaCountWithin(cells, start, limit);
                     writer.Position = 0;
-                    FogCodec.WriteDelta(writer, cells, start, math.min(FogCodec.MaxDeltaCells, cells.Count - start));
+                    FogCodec.WriteDelta(writer, cells, start, count);
                     SendFogPayload(client, writer.ToArraySegment());
+                    start += count;
                 }
+            }
+        }
+
+        /// <summary>Largest fog payload: one that passes the transport's cap is dropped and never resent.</summary>
+        private static int FogLimit => BatchLimit(Channels.Reliable, FogCodec.MaxPayloadBytes);
+
+        /// <summary>Sends a whole fog grid as snapshot parts, each under <see cref="FogLimit"/>.</summary>
+        private void SendFogSnapshot(Client client, SimData data, NativeArray<byte> visible, NativeArray<byte> explored, int offset)
+        {
+            int cells = data.FogW * data.FogH, limit = FogLimit;
+            for (int start = 0; start < cells;)
+            {
+                writer.Position = 0;
+                start = FogCodec.WriteSnapshot(writer, data.FogW, data.FogH, data.FogCellSize, visible, explored, offset, start, limit);
+                SendFogPayload(client, writer.ToArraySegment());
             }
         }
 

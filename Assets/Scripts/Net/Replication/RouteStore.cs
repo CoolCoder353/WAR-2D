@@ -44,7 +44,7 @@ namespace WAR2D.Net.Replication
         public void Set(int index, params float2[] waypoints)
         {
             Start[index] = Arena.Length;
-            foreach (float2 w in waypoints) Arena.Add(w);
+            foreach (float2 w in waypoints) Arena.Add(RouteWire.Snap(w));
             Count[index] = waypoints.Length;
             Counters[0] = Counters[0] + 1;
             Generation[index] = Counters[0];
@@ -164,6 +164,9 @@ namespace WAR2D.Net.Replication
 
             var route = new FixedList4096Bytes<float2>();
             Trace(order, Positions[i], ref route);
+            // On the wire grid (half tiles) before anything compares or keeps it: the server's copy of the client's prediction
+            // must follow the same points the client gets, or corrections can't see the difference (bug review 2026-11-05).
+            for (int k = 0; k < route.Length; k++) route[k] = RouteWire.Snap(route[k]);
             if (!fresh && SameRoute(index, ref route)) { Out.Write(RouteResult.Same); return; }
             Out.Write(fresh || changed ? RouteResult.Fresh : RouteResult.Rotated);
             Out.Write(route.Length);
@@ -303,10 +306,9 @@ namespace WAR2D.Net.Replication
                     }
                     else
                     {
-                        bool fresh = TracedId[index] != id;
                         int first = Arena.Length;
                         for (int k = 0; k < length; k++) Arena.Add(In.Read<float2>());
-                        Counters[1] += length - (fresh ? 0 : RouteCount[index]);
+                        Counters[1] += length - RouteCount[index];
                         Start[index] = first;
                         RouteCount[index] = length;
                         Counters[0]++;

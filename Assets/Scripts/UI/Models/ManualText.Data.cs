@@ -282,7 +282,7 @@ namespace WAR2D.UI
           ""paras"": [
             ""**Move** ({Key/Command}): go there and ignore enemies until you arrive."",
             ""**Attack-move** ({Key/AttackMove}, then click): go there and stop to fight enemies in range on the way."",
-            ""**Attack** (right-click an enemy, or Attack-move clicked on one): go after that target, fire at it in range and ignore everything else until it dies. If it slips out of your side's sight, they walk to the last tile it was seen on, and the order ends there if it still isn't seen."",
+            ""**Attack** (right-click an enemy, or Attack-move clicked on one): go after that target, fire at it in range and ignore everything else until it dies. If it slips out of your side's sight, they walk to the last tile it was seen on, and the order ends there if it still isn't seen. With no target named, an Attack-move fires at the closest thing in range: a unit, a building or a wall."",
             ""**Stop** ({Key/Stop}) drops every order. **Hold** ({Key/Hold}) stands still and never gets pushed aside. Units with no order fight what comes in range. **Roam** ({Key/Roam}) scouts on its own."",
             ""Hold {Key/QueueModifier} to queue an order after the current ones, up to {Orders/MaxQueued} per unit.""
           ]
@@ -296,7 +296,7 @@ namespace WAR2D.UI
         {
           ""heading"": ""Selecting"",
           ""paras"": [
-            ""A drag box selects every unit inside it. If it catches [[Builder]]s and anything else, it keeps only the others; a box with only Builders selects them. {Key/SelectIdleBuilders} selects idle Builders, and {Key/AssignModifier} + {Key/SelectIdleBuilders} every Builder.""
+            ""A drag box selects every unit inside it. If it catches [[Builder]]s and anything else, it keeps only the others; a box with only Builders selects them. {Key/AssignModifier} + drag selects only your buildings, of every kind, and leaves the units out. {Key/SelectIdleBuilders} selects idle Builders, and {Key/AssignModifier} + {Key/SelectIdleBuilders} every Builder.""
           ]
         }
       ]

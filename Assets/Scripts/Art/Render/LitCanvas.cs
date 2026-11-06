@@ -166,6 +166,15 @@ namespace WAR2D.Art.Render
         /// <summary>Fills the whole canvas as opaque ground at height 0 (terrain tiles).</summary>
         public void Ground(Material m) => Shape((x, y) => -1000f, m, 0f, 0f, 0f);
 
+        /// <summary>
+        /// Sets the height under the shapes to come without drawing anything: a part rendered on its own (a turret) is lit as if
+        /// it stood on a hull of that height, not on the bare ground.
+        /// </summary>
+        public void Floor(float h)
+        {
+            for (int i = 0; i < height.Length; i++) height[i] = h * Scale;
+        }
+
         /// <summary>Raises (or lowers) the height field by a function of position, where drawn.</summary>
         public void Displace(Func<float, float, float> dh)
         {

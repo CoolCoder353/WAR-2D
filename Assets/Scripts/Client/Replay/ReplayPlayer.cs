@@ -235,6 +235,7 @@ namespace WAR2D.Client.Replay
             ClientTerrain.Current.Changed += OnClientTerrainChanged;
             ReplayHeader header = cursor.Header;
             view = new GameObject("ReplayView").AddComponent<ClientWorld>();
+            view.ClockDriven = true;
             view.ColourIndexOf = owner =>
             {
                 int i = header.Players.FindIndex(p => p.OwnerId == owner);
@@ -414,8 +415,11 @@ namespace WAR2D.Client.Replay
             ClientTerrain.Current.Changed += OnClientTerrainChanged;
             ReplayHeader header = cursor.Header;
             view = new GameObject("ReplayView").AddComponent<ClientWorld>();
+            view.ClockDriven = true;
             view.ColourIndexOf = owner => { int i = header.Players.FindIndex(p => p.OwnerId == owner); return i >= 0 ? header.Players[i].Colour : 0; };
-            view.ViewCamera = Camera.main;
+            // The camera Build found: the replay scene's camera isn't tagged MainCamera, and with no camera the view culls every
+            // turret, so a seek back drew every unit without its head (owner playtest 2026-11-06).
+            view.ViewCamera = replayCamera != null ? replayCamera : Camera.main;
             map.Dispose();
             map = MapStore.Generate(header.MapSize, header.Seed, ConfigLoader.LoadConfig().Match.Map.GemChance);
             MapView.Show(map.Grid);

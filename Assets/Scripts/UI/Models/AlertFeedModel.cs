@@ -62,7 +62,7 @@ namespace WAR2D.UI
         /// <summary>True for the alerts that happened somewhere on the map, so clicking them moves the camera there.</summary>
         public static bool HasPlace(AlertKind kind) =>
             kind == AlertKind.UnderAttack || kind == AlertKind.BombTriggered || kind == AlertKind.EnemySpotted ||
-            kind == AlertKind.ConstructionFinished || kind == AlertKind.RepairsStopped || kind == AlertKind.Ping;
+            kind == AlertKind.ConstructionFinished || kind == AlertKind.RepairsStopped || kind == AlertKind.Ping || kind == AlertKind.BlueprintBlocked;
 
         /// <summary>Asks the camera to go to an alert's place (its row was clicked). Does nothing for alerts without one.</summary>
         public void Focus(int id)
@@ -171,6 +171,7 @@ namespace WAR2D.UI
             AlertKind.BombTriggered => "Bomb triggered",
             AlertKind.EnemySpotted => "Enemy spotted by Radar",
             AlertKind.RepairsStopped => "Out of resources: repairs stopped",
+            AlertKind.BlueprintBlocked => "Blueprint cancelled: something is in the way (refunded)",
             AlertKind.ResourcesLow => "Resources will run out in 1:00",
             AlertKind.PlayerDisconnected => $"{nameOf(alert.OtherOwnerId)} disconnected",
             AlertKind.PlayerReturned => $"{nameOf(alert.OtherOwnerId)} returned",

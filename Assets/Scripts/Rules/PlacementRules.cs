@@ -13,7 +13,9 @@ public enum PlacementResult
     MinerMustFaceGem,
     OutsideStartOptions,
     /// <summary>Part of the footprint is ground the player's side has never seen.</summary>
-    Unexplored
+    Unexplored,
+    /// <summary>The world holds as many buildings as the simulation has slots for (<see cref="WAR2D.Sim.SimData.MaxBuildings"/>).</summary>
+    TooManyBuildings
 }
 
 /// <summary>Server-authoritative building placement rules. Pure: all world access is passed in.</summary>

@@ -20,10 +20,8 @@ namespace WAR2D.UI
         private readonly LobbyConfig lobby;
         private readonly MapConfig map;
         private readonly Func<string> hostAddress;
-        private readonly VisualElement root, rows, board, quickSetup, quickSetupButtons;
-        private readonly Label boardHelp;
+        private readonly VisualElement root, rows, board;
         private readonly List<VisualElement> teamRows = new List<VisualElement>();
-        private readonly System.Random shuffle = new System.Random();
         /// <summary>The card being dragged by its handle, or null; redraws wait until it is dropped.</summary>
         private VisualElement dragging;
         private bool redrawPending;
@@ -56,8 +54,6 @@ namespace WAR2D.UI
         public event Action AddAiClicked;
         /// <summary>The host pressed a team row's + Add AI (a Normal, Random AI into that team; <see cref="TeamRules.NoTeam"/> = Solo).</summary>
         public event Action<int> AddAiToTeamClicked;
-        /// <summary>The host pressed a quick setup: (owners, their new teams), sent as one command.</summary>
-        public event Action<int[], int[]> TeamsChanged;
         /// <summary>The host changed an AI's row: (owner, difficulty, style, colour, team).</summary>
         public event Action<int, AiDifficulty, AiStyle, int, int> AiChanged;
         /// <summary>The host removed an AI (its ×).</summary>
@@ -105,9 +101,6 @@ namespace WAR2D.UI
             this.root = root;
             rows = root.Q("player-rows");
             board = root.Q("team-board");
-            quickSetup = root.Q("quick-setup");
-            quickSetupButtons = root.Q("quick-setup-buttons");
-            boardHelp = root.Q<Label>("board-help");
             modeOptions = root.Q("mode-options");
             sizeOptions = root.Q("size-options");
             resourceOptions = root.Q("resource-options");
@@ -200,11 +193,7 @@ namespace WAR2D.UI
 
             root.Q("lobby")?.EnableInClassList("lobby--ffa", !teams);
             ShowRows(host, teams);
-            ShowQuickSetup(host, teams);
             ShowAddAi(host, isPrivate, teams);
-            boardHelp.text = !teams ? "Free-for-all: everyone is an enemy, so players have no team. Switch Mode to Teams to set teams."
-                : host ? "Move a player: drag their card by ⠿ onto another team's row, or pick the team in the card's dropdown. + Add AI adds a Normal Random AI to that row."
-                : "Move yourself: drag your card by ⠿ onto another team's row, or pick your team in its dropdown. The host can move anyone.";
             ShowSettings(s, host);
 
             if (seed.focusController?.focusedElement != seed) seed.SetValueWithoutNotify(s.Seed.ToString());
@@ -271,7 +260,7 @@ namespace WAR2D.UI
             foreach (LobbyPlayer p in model.Players) if (p.Team == team) cards.Add(PlayerCard(p, host, true));
             if (count == 0)
             {
-                var empty = new Label(team == TeamRules.NoTeam ? "Empty\nDrag a card here, or pick Solo" : $"Empty\nDrag a card here, or pick {TeamName(team)}");
+                var empty = new Label("Empty");
                 empty.AddToClassList("lobby-team__empty");
                 cards.Add(empty);
             }
@@ -288,7 +277,7 @@ namespace WAR2D.UI
         }
 
         /// <summary>
-        /// A player's card (Figma <c>Lobby / Player card</c>): colour strip; the drag handle (when this viewer may move them),
+        /// A player's card (Figma <c>Lobby / Player card</c>): colour strip; the drag handle (when this viewer may move them: the whole card drags),
         /// name, ready and the remove ×; a second line (AI: difficulty ▾ and style ▾; you: colour ▾; another human, for the
         /// host: ⋯); and, in Teams mode, the team dropdown, live for whoever may move them (the host: anyone; a joined
         /// player: themselves). Named <c>lobby-row-&lt;owner&gt;</c>.
@@ -322,8 +311,8 @@ namespace WAR2D.UI
             {
                 var handle = new Label("⠿") { name = "drag-" + owner, tooltip = "Drag onto another team" };
                 handle.AddToClassList("lobby-card__handle");
-                MakeDraggable(handle, card, p);
                 top.Add(handle);
+                MakeDraggable(card, p);
             }
             var name = new Label(p.Nickname + (you ? " (you)" : ""));
             name.AddToClassList("lobby-card__name");
@@ -416,48 +405,91 @@ namespace WAR2D.UI
             return pill;
         }
 
+        /// <summary>Pixels the pointer moves before a press on a card becomes a drag (a shorter move is still a click).</summary>
+        private const float DragThreshold = 4f;
+
         /// <summary>
-        /// Drag by the ⠿ handle: the card follows the pointer, the row under it lights up, and letting go over another
+        /// Drag a card by any part of it but its buttons (playtest 2026-11-06: only the ⠿ handle worked). Once the pointer
+        /// has moved <see cref="DragThreshold"/>, the card lifts out of the scrolling board onto the lobby's top layer, so no
+        /// row or panel draws over it, and follows the pointer; the row under it lights up, and letting go over another
         /// team's row moves the player there (the same as the dropdown). Redraws wait until the drag ends.
         /// </summary>
-        private void MakeDraggable(VisualElement handle, VisualElement card, LobbyPlayer p)
+        private void MakeDraggable(VisualElement card, LobbyPlayer p)
         {
-            UnityEngine.Vector2 start = default;
-            handle.RegisterCallback<PointerDownEvent>(e =>
+            UnityEngine.Vector2 start = default, grab = default;
+            int pointer = -1;
+            bool pressed = false, lifted = false, lifting = false;
+            card.RegisterCallback<PointerDownEvent>(e =>
             {
-                if (e.button != 0) return;
-                dragging = card;
+                if (e.button != 0 || dragging != null || InButton(e.target as VisualElement, card)) return;
+                pressed = true;
+                lifted = false;
+                pointer = e.pointerId;
                 start = e.position;
-                handle.CapturePointer(e.pointerId);
-                card.AddToClassList("lobby-card--dragging");
+                grab = (UnityEngine.Vector2)e.position - card.worldBound.position;
+                card.CapturePointer(e.pointerId);
                 e.StopPropagation();
             });
-            handle.RegisterCallback<PointerMoveEvent>(e =>
+            card.RegisterCallback<PointerMoveEvent>(e =>
             {
-                if (dragging != card || !handle.HasPointerCapture(e.pointerId)) return;
-                UnityEngine.Vector2 delta = (UnityEngine.Vector2)e.position - start;
-                card.style.translate = new Translate(delta.x, delta.y);
-                VisualElement over = RowAt(e.position);
+                if (!pressed || e.pointerId != pointer) return;
+                UnityEngine.Vector2 at = e.position;
+                if (!lifted)
+                {
+                    if ((at - start).sqrMagnitude < DragThreshold * DragThreshold) return;
+                    Lift();
+                }
+                Place(at);
+                VisualElement over = RowAt(at);
                 foreach (VisualElement row in teamRows) row.EnableInClassList("lobby-team--drop", row == over && (int)row.userData != p.Team);
             });
-            void End(UnityEngine.Vector2 at, int pointerId, bool drop)
+            void Lift()
             {
-                if (dragging != card) return;
-                if (handle.HasPointerCapture(pointerId)) handle.ReleasePointer(pointerId);
+                float width = card.resolvedStyle.width, height = card.resolvedStyle.height;
+                lifted = true;
+                dragging = card;
+                lifting = true; // leaving the board drops the capture: that isn't the end of the drag
+                card.RemoveFromHierarchy();
+                root.Add(card);
+                card.style.position = Position.Absolute;
+                card.style.width = width;
+                card.style.height = height;
+                card.pickingMode = PickingMode.Position;
+                card.AddToClassList("lobby-card--dragging");
+                card.CapturePointer(pointer);
+                lifting = false;
+            }
+            void Place(UnityEngine.Vector2 at)
+            {
+                UnityEngine.Vector2 local = root.WorldToLocal(at - grab);
+                card.style.left = local.x;
+                card.style.top = local.y;
+            }
+            void End(UnityEngine.Vector2 at, bool drop)
+            {
+                if (!pressed || lifting) return;
+                pressed = false;
+                if (card.HasPointerCapture(pointer)) card.ReleasePointer(pointer);
+                if (!lifted) return; // a click, not a drag
+                lifted = false;
                 dragging = null;
-                card.style.translate = StyleKeyword.Null;
-                card.RemoveFromClassList("lobby-card--dragging");
                 VisualElement over = drop ? RowAt(at) : null;
                 foreach (VisualElement row in teamRows) row.RemoveFromClassList("lobby-team--drop");
-                if (over != null) MoveToTeam(p, (int)over.userData);
-                if (redrawPending)
-                {
-                    redrawPending = false;
-                    Show();
-                }
+                card.RemoveFromHierarchy();
+                redrawPending = false;
+                if (over != null && (int)over.userData != p.Team) MoveToTeam(p, (int)over.userData);
+                Show(); // the board is rebuilt with the card back in its row (or in its new one once the server agrees)
             }
-            handle.RegisterCallback<PointerUpEvent>(e => End(e.position, e.pointerId, true));
-            handle.RegisterCallback<PointerCaptureOutEvent>(e => End(default, e.pointerId, false));
+            card.RegisterCallback<PointerUpEvent>(e => { if (e.pointerId == pointer) End(e.position, true); });
+            card.RegisterCallback<PointerCaptureOutEvent>(e => End(default, false));
+        }
+
+        /// <summary>True when <paramref name="element"/> is a button (or inside one) on the card: those keep their clicks.</summary>
+        private static bool InButton(VisualElement element, VisualElement card)
+        {
+            for (VisualElement e = element; e != null && e != card; e = e.parent)
+                if (e is Button) return true;
+            return false;
         }
 
         private VisualElement RowAt(UnityEngine.Vector2 position)
@@ -469,31 +501,6 @@ namespace WAR2D.UI
         private static void Display(VisualElement element, bool shown)
         {
             if (element != null) element.style.display = shown ? DisplayStyle.Flex : DisplayStyle.None;
-        }
-
-        /// <summary>The quick setup buttons (host, Teams mode): one <see cref="TeamsChanged"/> with every player's new team.</summary>
-        private void ShowQuickSetup(bool host, bool teams)
-        {
-            quickSetup.EnableInClassList("hidden", !host || !teams);
-            quickSetupButtons.Clear();
-            if (!host || !teams) return;
-            foreach ((QuickSetup setup, string text) in LobbyTeamSetup.Buttons)
-            {
-                QuickSetup chosen = setup;
-                quickSetupButtons.Add(Widgets.TextButton("quick-" + setup.ToString().ToLowerInvariant(), text, false, () => ApplyQuickSetup(chosen)));
-            }
-        }
-
-        /// <summary>Works out and sends a quick setup (Scripted seats keep their teams: the server refuses to move them).</summary>
-        public void ApplyQuickSetup(QuickSetup setup)
-        {
-            if (!model.LocalIsHost || model.Settings.Mode != MatchMode.Teams) return;
-            var players = new List<LobbyPlayer>();
-            foreach (LobbyPlayer p in model.Players) if (!(p.IsAi && p.Difficulty == AiDifficulty.Scripted)) players.Add(p);
-            int[] teams = LobbyTeamSetup.Teams(setup, players, model.Local.OwnerId, shuffle);
-            var owners = new int[players.Count];
-            for (int i = 0; i < owners.Length; i++) owners[i] = players[i].OwnerId;
-            TeamsChanged?.Invoke(owners, teams);
         }
 
         private static VisualElement Strip(int colourIndex)

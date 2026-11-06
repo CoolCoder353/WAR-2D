@@ -93,21 +93,26 @@ public class SummaryTests
         Assert.AreEqual(10f, fight.CentreX, 0.01f);
     }
 
-    /// <summary>8 players × 360 samples × 4 values, plus 30 fights and 8 eliminations, in one message.</summary>
+    /// <summary>
+    /// 8 players × the configured most samples × 4 values, plus the most fights and 8 eliminations, in one message under the
+    /// transport's cap (bug review 2026-11-05: at 360 points it passed 16 KB after 18 minutes, and the end screen stayed empty).
+    /// </summary>
     [Test]
     public void TheLargestSummaryFitsOneMessage()
     {
+        Config.SummaryConfig config = Config.ConfigLoader.LoadConfig().Summary;
         var s = new MatchSummary();
-        s.Begin(new Config.SummaryConfig { SampleSeconds = 10f, MaxPoints = 361, FightCellTiles = 32, FightWindowSeconds = 1f, FightMinWorth = 1f, MaxFights = 30 });
+        s.Begin(new Config.SummaryConfig { SampleSeconds = 10f, MaxPoints = config.MaxPoints, FightCellTiles = 32, FightWindowSeconds = 1f, FightMinWorth = 1f, MaxFights = config.MaxFights });
         int[] owners = { 1, 2, 3, 4, 5, 6, 7, 8 };
-        for (int t = 10; t <= 3600; t += 10) s.Sample(t, owners, _ => (12345f, 1000, 1000));
+        for (int t = 10; t < 10 * config.MaxPoints; t += 10) s.Sample(t, owners, _ => (12345f, 1000, 1000)); // one short of a merge: the most it holds
         for (int i = 0; i < 40; i++)
             foreach (int o in owners) s.Death(i * 10, o, o % 8 + 1, 100f, 10f + i * 40, 10f);
         foreach (int o in owners) s.Eliminated(100, o, EliminationCause.HqDestroyed, 1);
         SummaryData d = s.Build(1024, owners, new float[8], new float[8]);
         using NetworkWriterPooled writer = NetworkWriterPool.Get();
         writer.Write(d);
-        Assert.Less(writer.Position, 64 * 1024);
+        Assert.AreEqual(config.MaxPoints - 1, d.Times.Length, "the summary is at its most points");
+        Assert.Less(writer.Position, WAR2D.Net.Replication.WireLimits.TransportMessageCap - 256, "room for the RPC's header");
     }
 }
 

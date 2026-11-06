@@ -100,43 +100,56 @@ namespace WAR2D.Art.Render
         // ---------- Units ----------
 
         /// <summary>The Tank facing <paramref name="angle"/> (radians, 0 = east). Frames 0–1 move, 2–3 fire.</summary>
-        public static LitCanvas Tank(float angle, int frame)
+        public static LitCanvas Tank(float angle, int frame) => Tank(angle, frame, angle);
+
+        /// <summary>The Tank with its turret turned to <paramref name="turret"/> (radians, 0 = east).</summary>
+        public static LitCanvas Tank(float angle, int frame, float turret, UnitLayer layer = UnitLayer.Whole)
         {
             var c = new LitCanvas(TileSize, TileSize);
             float cos = Mathf.Cos(angle), sin = Mathf.Sin(angle), o = TileSize / 2f;
+            float tCos = Mathf.Cos(turret), tSin = Mathf.Sin(turret);
+            Func<float, float, float> T(Func<float, float, float> local) =>
+                (x, y) => local((x - o) * tCos + (y - o) * tSin, -(x - o) * tSin + (y - o) * tCos);
             // Local (tank) coordinates of an output point: x forward, y left.
             Func<float, float, float> L(Func<float, float, float> local) =>
                 (x, y) => local((x - o) * cos + (y - o) * sin, -(x - o) * sin + (y - o) * cos);
             float tread = frame == 1 ? 2f : 0f, recoil = frame == 2 ? 3f : 0f;
 
-            // Tracks, with link grooves that advance with the move frame.
-            foreach (float side in new[] { -1f, 1f })
+            if (layer == UnitLayer.Turret) c.Floor(10);
+            else
             {
-                c.Shape(L((x, y) => Box(x, y, 0, side * 17, 25, 6.5f, 3)), Rubber, 6, 2, 3);
-                c.Groove(L((x, y) => Box(x, y, 0, side * 17, 24, 5.5f) > 0 ? 9 : Mathf.Abs(Mod(x + tread, 4) - 2) - 1.2f), 1.2f, 0.7f);
-            }
-            // Hull, with a raised front plate and a rear engine grille.
-            c.Shape(L((x, y) => Box(x, y, 0, 0, 22, 13, 5)), Hull, 10, 3, 3.5f);
-            c.Shape(L((x, y) => Box(x, y, 14, 0, 7, 10, 3)), Plate, 1.2f, 1, 1, stack: true);
-            c.Groove(L((x, y) => Box(x, y, -16, 0, 4, 8) > 0 ? 9 : Mathf.Abs(Mod(x, 2) - 1) - 0.45f), 1, 0.45f);
-            foreach (float s in new[] { -1f, 1f })
-                for (int k = -1; k <= 1; k++)
+                // Tracks, with link grooves that advance with the move frame.
+                foreach (float side in new[] { -1f, 1f })
                 {
-                    float lx = k * 8, ly = s * 11;
-                    c.Rivet(o + lx * cos - ly * sin, o + lx * sin + ly * cos, 0.8f, 0.7f);
+                    c.Shape(L((x, y) => Box(x, y, 0, side * 17, 25, 6.5f, 3)), Rubber, 6, 2, 3);
+                    c.Groove(L((x, y) => Box(x, y, 0, side * 17, 24, 5.5f) > 0 ? 9 : Mathf.Abs(Mod(x + tread, 4) - 2) - 1.2f), 1.2f, 0.7f);
                 }
-            // Turret (team colour) with a hatch, and the barrel.
-            c.Shape(L((x, y) => Box(x, y, -3, 0, 11, 10, 5)), Team, 17, 3, 4);
-            c.Shape(L((x, y) => Circle(x, y, -6, 4, 3.4f)), Plate, 18, 1, 1);
-            c.Groove(L((x, y) => Circle(x, y, -6, 4, 2.2f)), 0.6f, 0.4f);
-            c.Shape(L((x, y) => Box(x, y, 18 - recoil, 0, 12, 2.1f, 1.8f)), Steel, 16, 1.8f, 2.2f);
-            c.Shape(L((x, y) => Box(x, y, 29 - recoil, 0, 2, 3, 1)), Steel, 16, 1, 1.5f);
+                // Hull, with a raised front plate and a rear engine grille.
+                c.Shape(L((x, y) => Box(x, y, 0, 0, 22, 13, 5)), Hull, 10, 3, 3.5f);
+                c.Shape(L((x, y) => Box(x, y, 14, 0, 7, 10, 3)), Plate, 1.2f, 1, 1, stack: true);
+                c.Groove(L((x, y) => Box(x, y, -16, 0, 4, 8) > 0 ? 9 : Mathf.Abs(Mod(x, 2) - 1) - 0.45f), 1, 0.45f);
+                foreach (float s in new[] { -1f, 1f })
+                    for (int k = -1; k <= 1; k++)
+                    {
+                        float lx = k * 8, ly = s * 11;
+                        c.Rivet(o + lx * cos - ly * sin, o + lx * sin + ly * cos, 0.8f, 0.7f);
+                    }
+            }
+            if (layer != UnitLayer.Hull)
+            {
+                // Turret (team colour) with a hatch, and the barrel.
+                c.Shape(T((x, y) => Box(x, y, -3, 0, 11, 10, 5)), Team, 17, 3, 4);
+                c.Shape(T((x, y) => Circle(x, y, -6, 4, 3.4f)), Plate, 18, 1, 1);
+                c.Groove(T((x, y) => Circle(x, y, -6, 4, 2.2f)), 0.6f, 0.4f);
+                c.Shape(T((x, y) => Box(x, y, 18 - recoil, 0, 12, 2.1f, 1.8f)), Steel, 16, 1.8f, 2.2f);
+                c.Shape(T((x, y) => Box(x, y, 29 - recoil, 0, 2, 3, 1)), Steel, 16, 1, 1.5f);
+            }
             c.Grime(7, 0.3f, 0.12f, 6);
-            if (frame >= 2)
+            if (frame >= 2 && layer == UnitLayer.Whole)
             {
                 float size = frame == 2 ? 5f : 3f;
-                c.Shape(L((x, y) => Circle(x, y, 33 - recoil + size * 0.5f, 0, size)), new Material(C(StylePalette.Warn), 0, 1, glow: 2.2f), 18, 2, 0);
-                c.Shape(L((x, y) => Circle(x, y, 33 - recoil + size * 0.5f, 0, size * 0.45f)), new Material(Color.white, 0, 1, glow: 2.5f), 18.5f, 1, 0);
+                c.Shape(T((x, y) => Circle(x, y, 33 - recoil + size * 0.5f, 0, size)), new Material(C(StylePalette.Warn), 0, 1, glow: 2.2f), 18, 2, 0);
+                c.Shape(T((x, y) => Circle(x, y, 33 - recoil + size * 0.5f, 0, size * 0.45f)), new Material(Color.white, 0, 1, glow: 2.5f), 18.5f, 1, 0);
             }
             return c;
         }

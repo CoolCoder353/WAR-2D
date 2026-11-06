@@ -42,8 +42,70 @@ public class FogCodecTests
     {
         var fog = new ClientFog();
         Assert.IsFalse(FogCodec.Apply(fog, new ArraySegment<byte>(new byte[] { FogCodec.Delta, 1, 0 })), "a delta before any snapshot");
-        Assert.IsFalse(FogCodec.Apply(fog, new ArraySegment<byte>(new byte[] { FogCodec.Snapshot, 2, 2, 1, 0, 9 })), "a run past the grid");
+        Assert.IsFalse(FogCodec.Apply(fog, new ArraySegment<byte>(new byte[] { FogCodec.Snapshot, 2, 2, 1, 0, 0, 9 })), "a run past the grid");
+        Assert.IsFalse(FogCodec.Apply(new ClientFog(), new ArraySegment<byte>(new byte[] { FogCodec.Snapshot, 2, 2, 1, 2, 0, 1 })), "a later part with no first part");
+        var other = new ClientFog();
+        Assert.IsTrue(FogCodec.Apply(other, new ArraySegment<byte>(new byte[] { FogCodec.Snapshot, 3, 1, 1, 0, 0, 3 })));
+        Assert.IsFalse(FogCodec.Apply(other, new ArraySegment<byte>(new byte[] { FogCodec.Snapshot, 2, 2, 1, 2, 0, 1 })), "a later part of a grid of another shape");
+        Assert.IsFalse(FogCodec.Apply(fog, new ArraySegment<byte>(new byte[] { FogCodec.Snapshot, 2, 2, 1, 4, 0, 1 })), "a part starting past the grid");
         Assert.IsFalse(FogCodec.Apply(fog, new ArraySegment<byte>(new byte[] { 7 })), "an unknown kind");
         Assert.IsFalse(FogCodec.Apply(fog, new ArraySegment<byte>(new byte[] { FogCodec.Snapshot, 2 })), "truncated");
+    }
+
+    [Test]
+    public void ABigSnapshotGoesInPartsUnderTheCap()
+    {
+        // A checkerboard is the worst case for runs: a 512 x 512 grid of single cells is far past the 16 KB a message may take.
+        const int W = 512, H = 512;
+        var visible = new NativeArray<byte>(W * H, Allocator.Temp);
+        var explored = new NativeArray<byte>(W * H, Allocator.Temp);
+        for (int i = 0; i < W * H; i++) { visible[i] = (byte)((i + i / W) & 1); explored[i] = (byte)(i % 3 == 0 ? 1 : 0); }
+        var fog = new ClientFog();
+        var writer = new NetworkWriter();
+        int parts = 0;
+        for (int start = 0; start < W * H; parts++)
+        {
+            writer.Position = 0;
+            int next = FogCodec.WriteSnapshot(writer, W, H, 2, visible, explored, 0, start, FogCodec.MaxPayloadBytes);
+            Assert.Greater(next, start);
+            Assert.LessOrEqual(writer.Position, FogCodec.MaxPayloadBytes);
+            Assert.IsTrue(FogCodec.Apply(fog, writer.ToArraySegment()), $"part {parts}");
+            start = next;
+        }
+        Assert.Greater(parts, 1);
+        for (int i = 0; i < W * H; i++)
+            Assert.AreEqual(visible[i] != 0 ? 2 : explored[i] != 0 ? 1 : 0, fog.State[i], $"cell {i}");
+        visible.Dispose();
+        explored.Dispose();
+    }
+
+    [Test]
+    public void ABigDeltaGoesInPartsUnderTheCap()
+    {
+        const int W = 1024, H = 1024;
+        var visible = new NativeArray<byte>(W * H, Allocator.Temp);
+        var explored = new NativeArray<byte>(W * H, Allocator.Temp);
+        var fog = new ClientFog();
+        var writer = new NetworkWriter();
+        FogCodec.WriteSnapshot(writer, W, H, 1, visible, explored, 0);
+        Assert.IsTrue(FogCodec.Apply(fog, writer.ToArraySegment()));
+        visible.Dispose();
+        explored.Dispose();
+
+        var cells = new List<int>();
+        for (int i = 0; i < W * H; i += 130) cells.Add(i); // 8000-odd gaps of two-byte varints: about 16 KB in one
+        int parts = 0;
+        for (int start = 0; start < cells.Count; parts++)
+        {
+            int count = FogCodec.DeltaCountWithin(cells, start, FogCodec.MaxPayloadBytes);
+            writer.Position = 0;
+            FogCodec.WriteDelta(writer, cells, start, count);
+            Assert.LessOrEqual(writer.Position, FogCodec.MaxPayloadBytes);
+            Assert.IsTrue(FogCodec.Apply(fog, writer.ToArraySegment()));
+            start += count;
+        }
+        Assert.Greater(parts, 1);
+        foreach (int cell in cells) Assert.AreEqual((byte)FogState.Visible, fog.State[cell]);
+        Assert.AreEqual((byte)FogState.Unexplored, fog.State[1]);
     }
 }

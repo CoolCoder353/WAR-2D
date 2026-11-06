@@ -10,8 +10,8 @@ namespace WAR2D.Sim
     /// <summary>
     /// Movement: each unit with an order follows its order's flow field (read from the
     /// <see cref="OrderFieldTable"/>) unless it has a target in range, separates from its neighbours,
-    /// and integrates without entering blocked tiles. A unit standing in a sector its route does not
-    /// cover steers straight at the goal and reports the sector, so the route is extended.
+    /// and integrates without entering blocked tiles. A unit standing where its route gives no direction
+    /// steers straight at the goal and reports the tile, so the route is extended to its pocket of floor.
     /// </summary>
     [BurstCompile]
     [UpdateInGroup(typeof(SimTickGroup))]
@@ -68,6 +68,8 @@ namespace WAR2D.Sim
                 Lost = data.FormationLost,
                 Tiles = data.Tiles,
                 Used = data.Used,
+                SizeClass = data.SizeClass,
+                LargeGrid = data.LargeGrid,
                 RouteMisses = data.RouteMisses.AsParallelWriter(),
                 SpeedByType = data.SpeedByType,
                 Width = data.Width,
@@ -161,6 +163,8 @@ namespace WAR2D.Sim
         /// <summary>The map's tiles and footprints: a unit steers straight at its slot only over clear floor.</summary>
         [ReadOnly] public NativeArray<byte> Tiles;
         [ReadOnly] public NativeArray<byte> Used;
+        [ReadOnly] public NativeArray<byte> SizeClass;
+        [ReadOnly] public NativeArray<byte> LargeGrid;
         public NativeQueue<int2>.ParallelWriter RouteMisses;
         [ReadOnly] public NativeArray<float> SpeedByType;
         public int Width, Height;
@@ -184,6 +188,7 @@ namespace WAR2D.Sim
             float2 position = Positions[i];
             float speed = Type[i] < SpeedByType.Length ? SpeedByType[Type[i]] : 0f;
             float2 velocity = float2.zero;
+            bool lining = false;
 
             int slot = OrderSlot[i];
             // Moving units ignore their target; the others hold to fight it.
@@ -194,7 +199,8 @@ namespace WAR2D.Sim
                 if (groupSpeed > 0f)
                 {
                     // v0.16 formation: hold to the group's speed until near its own slot or lost behind the leader,
-                    // and close to the goal walk straight to the slot (slots are on open floor; the integrator slides on walls).
+                    // and close to the goal or the slot walk straight to the slot (slots are on open floor; the integrator slides on
+                    // walls). A big group's slots lie beyond SlotTiles of the goal: nearness to the slot keeps its unit from turning back.
                     float2 goal = OrderGoal[slot];
                     bool seated = FormationRules.HasSeat(FormationOffset[i]); // a member with no slot stops around the goal
                     float2 seat = seated ? goal + FormationOffset[i] : goal;
@@ -202,7 +208,7 @@ namespace WAR2D.Sim
                     int lead = FormationLead[i];
                     bool lost = (uint)lead < (uint)OrderLead.Length && fromGoal - OrderLead[lead] > Lost;
                     if (!lost && toSeat > Loose) speed = math.min(speed, groupSpeed);
-                    if (seated && fromGoal <= SlotTiles && ClearLine(position, seat, Radius[i]))
+                    if (seated && (fromGoal <= SlotTiles || toSeat <= SlotTiles) && ClearLine(position, seat, Radius[i], SizeClass[i]))
                     {
                         steered = true;
                         if (toSeat <= 0.25f) Arrived[i] = 1;
@@ -214,16 +220,27 @@ namespace WAR2D.Sim
                     byte direction = Direction(slot, position);
                     float2 toGoal = OrderGoal[slot] - position;
                     float distance = math.length(toGoal);
-                    // A group packs around the goal: the stop radius grows with the square root of its size.
-                    float arriveRadius = 0.5f + 0.4f * math.sqrt(math.max(1, OrderFollowers[slot]));
+                    // A group packs around the goal: the stop radius grows with the square root of its size. An attacker
+                    // closes until its target is in range (the check above stops it): the group's radius could stop it short for good.
+                    bool attacking = Stance[i] == Stances.Attack;
+                    float arriveRadius = attacking ? 0.5f : 0.5f + 0.4f * math.sqrt(math.max(1, OrderFollowers[slot]));
                     if (direction == FlowDirections.AtGoal)
                     {
-                        // On a goal cell: close in on the goal itself, then stop.
-                        if (distance <= arriveRadius) Arrived[i] = 1;
+                        // On a goal cell: close in on the goal itself, then stop. A goal cell can lie behind a short wall (or one
+                        // built since), and walking straight would press on it for good, so a unit with no clear line stops here.
+                        if (distance <= arriveRadius || (!attacking && !ClearLine(position, OrderGoal[slot], Radius[i], SizeClass[i]))) Arrived[i] = 1;
                         else velocity = speed * toGoal / distance;
+                    }
+                    else if (direction == FlowDirections.Stop)
+                    {
+                        // The goal is walled off from here, and this is as near as the unit can get, so the order ends. An attack-move
+                        // shooting a wall never gets here (it holds to fight above), so it stays on its order while the wall stands and
+                        // goes on through when it falls; one with nothing to shoot ends, freeing its order slot and the retries for a way.
+                        Arrived[i] = 1;
                     }
                     else if (FlowDirections.IsStep(direction))
                     {
+                        lining = EntersGap(i, position, direction);
                         // Aim at the centre of the next cell rather than along the raw step, so units
                         // line up with corridors and gaps the cell grid says are open.
                         int2 cell = (int2)math.floor(position / FieldCellSize);
@@ -246,7 +263,8 @@ namespace WAR2D.Sim
                         else if (OrderReady[slot] != 0)
                         {
                             velocity = speed * toGoal / distance;
-                            if ((i + Tick) % Slice == 0) RouteMisses.Enqueue(new int2(slot, SectorOf((int2)math.floor(position))));
+                            int2 tile = (int2)math.floor(position);
+                            if ((i + Tick) % Slice == 0) RouteMisses.Enqueue(new int2(slot, tile.y * Width + tile.x));
                         }
                     }
                 }
@@ -262,7 +280,7 @@ namespace WAR2D.Sim
                 velocity = speed * math.normalizesafe(at - position);
             }
 
-            if (SeparationInterval <= 1 || (i + Tick) % SeparationInterval == 0)
+            if (!lining && (SeparationInterval <= 1 || (i + Tick) % SeparationInterval == 0))
                 velocity += NeighbourPush(i, position, Radius[i]) / Dt;
 
             // The push is a per-tick correction; cap it so a crowd cannot fling a unit.
@@ -286,7 +304,7 @@ namespace WAR2D.Sim
                 if (dx == 0 && dy == 0) continue;
                 float2 c = ((float2)(cell + new int2(dx, dy)) + 0.5f) * FieldCellSize;
                 byte direction = Direction(handle, c);
-                if (direction != FlowDirections.AtGoal && !FlowDirections.IsStep(direction)) continue;
+                if (direction != FlowDirections.AtGoal && direction != FlowDirections.Stop && !FlowDirections.IsStep(direction)) continue;
                 float d = math.distancesq(c, position);
                 if (d >= best) continue;
                 best = d;
@@ -298,9 +316,10 @@ namespace WAR2D.Sim
         /// <summary>
         /// True when a body of <paramref name="radius"/> can slide straight from <paramref name="a"/> to <paramref name="b"/>:
         /// every tile under its corners, sampled every half tile, is open floor (playtest 2026-11-02: checking the centre
-        /// line alone let a body clip a rock corner beside it and stick there).
+        /// line alone let a body clip a rock corner beside it and stick there). A large body also needs its centre where
+        /// <see cref="LargeGrid"/> lets it stand, as the integrator does: a lone rock can sit between its corners.
         /// </summary>
-        private bool ClearLine(float2 a, float2 b, float radius)
+        private bool ClearLine(float2 a, float2 b, float radius, byte sizeClass)
         {
             float length = math.distance(a, b);
             int steps = (int)math.ceil(length * 2f);
@@ -309,6 +328,8 @@ namespace WAR2D.Sim
                 float2 p = math.lerp(a, b, k / (float)steps);
                 if (!Open(p + new float2(-radius, -radius)) || !Open(p + new float2(radius, -radius))
                     || !Open(p + new float2(-radius, radius)) || !Open(p + new float2(radius, radius))) return false;
+                int2 centre = (int2)math.floor(p);
+                if (sizeClass == 1 && LargeGrid[centre.y * Width + centre.x] != 0) return false;
             }
             return true;
         }
@@ -321,7 +342,21 @@ namespace WAR2D.Sim
             return TileRules.IsFloor(Tiles[index]) && Used[index] == 0;
         }
 
-        private int SectorOf(int2 tile) => tile.y / SectorGraph.SectorSize * SectorsX + tile.x / SectorGraph.SectorSize;
+        /// <summary>
+        /// True when a straight step enters a tile with no room on either side, where a body must be on the tile's centre line
+        /// to fit. Two units pushing each other apart there balance off that line for good, so a unit lining up takes no push.
+        /// </summary>
+        private bool EntersGap(int i, float2 position, byte direction)
+        {
+            if (direction % 2 != 0) return false; // the odd directions are the diagonals
+            int2 step = FlowDirections.Step(direction);
+            int2 next = (int2)math.floor(position) + step;
+            int2 side = new int2(step.y, step.x);
+            return ClosedFor(i, next + side) && ClosedFor(i, next - side);
+        }
+
+        private bool ClosedFor(int i, int2 tile) =>
+            !Open((float2)tile + 0.5f) || (SizeClass[i] == 1 && LargeGrid[tile.y * Width + tile.x] != 0);
 
         private byte Direction(int handle, float2 position)
         {
@@ -334,6 +369,15 @@ namespace WAR2D.Sim
             int cx = tile.x % SectorGraph.SectorSize / FieldCellSize, cy = tile.y % SectorGraph.SectorSize / FieldCellSize;
             return Blocks[block * side * side + cy * side + cx];
         }
+
+        /// <summary>
+        /// How much more of a push one of two units takes than the other. With equal shares, two big units heading for one tile
+        /// from opposite sides balance just short of it and never move again; an uneven pair can't balance. Only between two units on
+        /// live orders: uneven pushes don't sum to zero, so a group that has stopped would drift for good instead of settling.
+        /// </summary>
+        private const float GiveWay = 0.25f;
+
+        private bool OnOrder(int u) => (uint)OrderSlot[u] < (uint)OrderLive.Length && OrderLive[OrderSlot[u]] != 0;
 
         private float2 NeighbourPush(int i, float2 position, float radius)
         {
@@ -348,6 +392,7 @@ namespace WAR2D.Sim
             else if (local.y > size - margin) hi.y = math.min(c.y + 1, CellsY - 1);
 
             float2 push = float2.zero;
+            bool moving = OnOrder(i);
             for (int cy = lo.y; cy <= hi.y; cy++)
             for (int cx = lo.x; cx <= hi.x; cx++)
             {
@@ -355,16 +400,17 @@ namespace WAR2D.Sim
                 for (int k = CellStart[cell]; k < CellStart[cell + 1]; k++)
                 {
                     int j = Sorted[k];
-                    if (j == i || Health[j] <= 0f) continue;
                     float2 delta = position - Positions[j];
+                    float distanceSq = math.lengthsq(delta);
+                    if (distanceSq >= margin * margin || j == i || Health[j] <= 0f) continue; // margin: no body reaches further
                     float rj = Radius[j];
                     float sum = radius + rj;
-                    float distanceSq = math.lengthsq(delta);
                     if (distanceSq >= sum * sum) continue;
                     float distance = math.sqrt(distanceSq);
                     // Exactly stacked: push apart along a direction derived from the pair, deterministically.
                     float2 away = distance > 1e-4f ? delta / distance : (i < j ? new float2(1f, 0f) : new float2(-1f, 0f));
                     float share = (rj * rj) / (radius * radius + rj * rj);
+                    if (moving && OnOrder(j)) share *= i < j ? 1f - GiveWay : 1f + GiveWay;
                     push += Strength * share * ((sum - distance) * away);
                 }
             }

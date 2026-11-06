@@ -50,6 +50,17 @@ public class ManualPlayModeTests
     }
 
     [UnityTest, Timeout(120000)]
+    public IEnumerator AManualOpenWhenItsSceneUnloadsLeavesTheInputFree()
+    {
+        MenuController menu = Object.FindAnyObjectByType<MenuController>();
+        yield return null;
+        menu.Manual.Open();
+        Assert.That(ManualController.AnyOpen, Is.True);
+        yield return PlayModeMatch.StartMatchAsHost(config);
+        Assert.That(ManualController.AnyOpen, Is.False, "all map input waits on this");
+    }
+
+    [UnityTest, Timeout(120000)]
     public IEnumerator InAMatchItOpensOnASelectedTypeAndPausesASoloHost()
     {
         yield return PlayModeMatch.StartMatchAsHost(config);

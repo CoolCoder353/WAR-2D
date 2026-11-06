@@ -36,8 +36,6 @@
                     <ui:Label name="cmd-detonate-key" text="B" class="command-button__key" />
                 </ui:Button>
             </ui:VisualElement>
-            <ui:Label name="dig-hint" text="Dig: click a tile or drag an area. Diggers share the area out. Right-click on rock digs too." class="text--secondary command-card__hint" />
-            <ui:Label name="detonate-hint" text="Detonate (B): every selected bomber explodes now. Your own units and buildings in the blast are hit too." class="text--secondary command-card__hint" />
             <ui:VisualElement name="divider" class="command-card__divider" />
             <ui:Label name="build-label" text="Build" class="text--secondary" />
             <ui:VisualElement name="builds" class="command-card__builds">
@@ -91,7 +89,6 @@
                     </ui:Button>
                 </ui:VisualElement>
             </ui:VisualElement>
-            <ui:Label name="build-hint" text="Wall: press and drag on the map to lay a line." class="text--secondary command-card__hint" />
             <ui:VisualElement name="production" class="production">
                 <ui:Label name="production-label" text="Production" class="text--secondary" />
                 <ui:VisualElement name="production-types" class="command-card__row production__types" />
@@ -103,7 +100,7 @@
                 <ui:VisualElement name="production-rally" class="production__rally">
                     <ui:VisualElement class="production__rally-text">
                         <ui:Label text="Rally point" class="text production__rally-title" />
-                        <ui:Label name="production-rally-help" text="Right-click: these producers. Ctrl + right-click: all of yours." class="text--secondary" />
+                        <ui:Label name="production-rally-help" text="Right-click: blue flag, units move. A, then click: red flag, units attack on the way. Ctrl: all of yours." class="text--secondary" />
                     </ui:VisualElement>
                     <ui:Button name="cmd-rally-all" class="command-button production__rally-all">
                         <war:CommandIcon icon="RallyAll" />

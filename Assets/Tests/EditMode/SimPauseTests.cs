@@ -18,6 +18,28 @@ public class SimPauseTests
     }
 
     [Test]
+    public void AnArrivalJustBeforeAPauseStillTakesTheNextWaypoint()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(64));
+        int[] unit = sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 10.5f));
+        sim.Tick();
+        sim.Move(SimHarness.OwnerA, new int2(14, 10), unit);
+        sim.Order(SimHarness.OwnerA, OrderKind.Move, true, new int2(30, 10), unit);
+        sim.Em.CompleteAllTrackedJobs();
+        for (int i = 0; i < 400 && sim.Context.Data.Arrivals.IsEmpty(); i++)
+        {
+            sim.Tick();
+            sim.Em.CompleteAllTrackedJobs();
+        }
+        Assert.IsFalse(sim.Context.Data.Arrivals.IsEmpty(), "it arrived on the tick before the pause");
+        sim.Context.Pause.Paused = true;
+        sim.Tick();
+        sim.Context.Pause.Paused = false;
+        sim.TickSeconds(10f);
+        Assert.Greater(sim.UnitById(unit[0]).Position.x, 25f, "on to the second leg");
+    }
+
+    [Test]
     public void StepRunsExactlyThatManyTicks()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(64));

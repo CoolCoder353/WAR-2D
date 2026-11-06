@@ -9,7 +9,7 @@ namespace WAR2D.Sim
         public const byte Idle = 0;
         /// <summary>Follows its order and ignores enemies until it arrives.</summary>
         public const byte Move = 1;
-        /// <summary>Follows its order but stops to fight enemies in range.</summary>
+        /// <summary>Follows its order but stops to fight the closest enemy thing in range: a unit, a building or a wall.</summary>
         public const byte AttackMove = 2;
         /// <summary>Never moves (not even by separation); fights enemies in range.</summary>
         public const byte Hold = 3;

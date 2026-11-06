@@ -152,7 +152,6 @@ namespace WAR2D.UI
             lobby.StartClicked += () => GameCore.Instance?.Cmd_StartGame();
             lobby.AddAiClicked += () => GameCore.Instance?.Cmd_AddAi(AiDifficulty.Normal, AiStyle.Random);
             lobby.AddAiToTeamClicked += team => GameCore.Instance?.Cmd_AddAiToTeam(AiDifficulty.Normal, AiStyle.Random, team);
-            lobby.TeamsChanged += (owners, teams) => GameCore.Instance?.Cmd_SetTeams(owners, teams);
             lobby.AiChanged += (owner, difficulty, style, colour, team) => GameCore.Instance?.Cmd_SetAi(owner, difficulty, style, colour, team);
             lobby.AiRemoved += owner => GameCore.Instance?.Cmd_RemoveAi(owner);
             lobby.ServerNameChanged += name => GameCore.Instance?.Cmd_SetServerName(name);

@@ -58,6 +58,16 @@ namespace WAR2D.Art
         /// <summary>The Gun turret's head (v0.13): drawn over its base (<c>GunTurret</c>) in 8 facings, 2 frames (rest, recoil).</summary>
         public const string TurretHead = "GunTurretHead";
 
+        /// <summary>Facings drawn for a unit's turret (22.5° apart: quads don't rotate, and a barrel shows a coarser step).</summary>
+        public const int TurretDirections = 16;
+
+        /// <summary>
+        /// A turreted unit's two layers, drawn over each other in a match: <c>Tank + HullSuffix</c> (move frames, 8 facings) and
+        /// <c>Tank + TurretSuffix</c> (<see cref="Render.RenderGen.TurretLayer"/>'s frames, <see cref="TurretDirections"/> facings).
+        /// The plain <c>Tank</c> stays whole for what shows the unit standing still: thumbnails and wrecks.
+        /// </summary>
+        public const string HullSuffix = "Hull", TurretSuffix = "Turret";
+
         /// <summary>The floor and rock feature stamps (<see cref="Render.RenderGen.FloorFeature"/>, <see cref="Render.RenderGen.RockFeature"/>).</summary>
         public const string FloorFeature = "FloorFeature", RockFeature = "RockFeature";
 
@@ -74,6 +84,17 @@ namespace WAR2D.Art
             // Large units draw on 2×2-tile canvases.
             new ArtEntry(nameof(UnitType.Heavy), ArtKind.Unit, 2, 2, 4, UnitDirections, true),
             new ArtEntry(nameof(UnitType.Artillery), ArtKind.Unit, 2, 2, 4, UnitDirections, true),
+            // Their layers: a turret's canvas is big enough for its barrel in every facing, centred on its pivot.
+            new ArtEntry(nameof(UnitType.Tank) + HullSuffix, ArtKind.Unit, 1, 1, 2, UnitDirections, true),
+            new ArtEntry(nameof(UnitType.Tank) + TurretSuffix, ArtKind.Unit, 1, 1, 2, TurretDirections, true),
+            new ArtEntry(nameof(UnitType.Scout) + HullSuffix, ArtKind.Unit, 1, 1, 2, UnitDirections, true),
+            new ArtEntry(nameof(UnitType.Scout) + TurretSuffix, ArtKind.Unit, 1, 1, 2, TurretDirections, true),
+            new ArtEntry(nameof(UnitType.Sniper) + HullSuffix, ArtKind.Unit, 1, 1, 2, UnitDirections, true),
+            new ArtEntry(nameof(UnitType.Sniper) + TurretSuffix, ArtKind.Unit, 2, 2, 2, TurretDirections, true),
+            new ArtEntry(nameof(UnitType.Heavy) + HullSuffix, ArtKind.Unit, 2, 2, 2, UnitDirections, true),
+            new ArtEntry(nameof(UnitType.Heavy) + TurretSuffix, ArtKind.Unit, 2, 2, 2, TurretDirections, true),
+            new ArtEntry(nameof(UnitType.Artillery) + HullSuffix, ArtKind.Unit, 2, 2, 2, UnitDirections, true),
+            new ArtEntry(nameof(UnitType.Artillery) + TurretSuffix, ArtKind.Unit, 3, 3, 3, TurretDirections, true),
 
             // Buildings: footprint from GameConfig.xml; drawn upright. Only the Miner's rotation shows (4 rendered facings).
             new ArtEntry(nameof(BuildingType.Base), ArtKind.Building, 5, 5, 1, 1, true),
@@ -108,10 +129,22 @@ namespace WAR2D.Art
             new ArtEntry("Explosion", ArtKind.Effect, 2, 2, 6, 1, false),
             new ArtEntry("BombBlast", ArtKind.Effect, 3, 3, 8, 1, false),
             new ArtEntry("MuzzleFlash", ArtKind.Effect, 1, 1, 2, 1, false),
+            // Combat animations (2026-11-06): a flash per gun size along the barrel, a thin shot per gun, the shell with its ground
+            // shadow and trail, a crater, the flame and the raised barrel's shadow (the last three soft: EffectGen.IsSoft).
+            new ArtEntry("BurstScout", ArtKind.Effect, 1, 1, 2, 1, false),
+            new ArtEntry("BurstSniper", ArtKind.Effect, 1, 1, 2, 1, false),
+            new ArtEntry("BurstTank", ArtKind.Effect, 1, 1, 2, 1, false),
+            new ArtEntry("BurstHeavy", ArtKind.Effect, 1, 1, 2, 1, false),
             new ArtEntry("Tracer", ArtKind.Effect, 1, 1, 1, 1, false),
-            new ArtEntry("SniperTracer", ArtKind.Effect, 1, 1, 1, 1, false),
-            new ArtEntry("ArtilleryShell", ArtKind.Effect, 1, 1, 2, 1, false),
-            new ArtEntry("FlameStream", ArtKind.Effect, 3, 1, 4, 1, false),
+            new ArtEntry("ScoutTracer", ArtKind.Effect, 1, 1, 1, 1, false),
+            new ArtEntry("SniperTracer", ArtKind.Effect, 4, 1, 1, 1, false),
+            new ArtEntry("ArtilleryShell", ArtKind.Effect, 1, 1, 2, TurretDirections, false),
+            new ArtEntry("ShellShadow", ArtKind.Effect, 1, 1, 1, 1, false),
+            new ArtEntry("ShellPuff", ArtKind.Effect, 1, 1, 6, 1, false),
+            new ArtEntry("Crater", ArtKind.Effect, 2, 2, Render.EffectGen.DecalFrames, Render.EffectGen.CraterVariants, false),
+            new ArtEntry("FlameStream", ArtKind.Effect, 2, 1, 6, 1, false),
+            new ArtEntry("FlameSplash", ArtKind.Effect, 3, 3, 4, 1, false),
+            new ArtEntry("BarrelShadow", ArtKind.Effect, 3, 3, 1, TurretDirections, false),
             new ArtEntry("ShellImpact", ArtKind.Effect, 4, 4, 6, 1, false),
             new ArtEntry("BomberBlast", ArtKind.Effect, 4, 4, 8, 1, false),
             new ArtEntry("DigDebris", ArtKind.Effect, 1, 1, 4, 1, false),

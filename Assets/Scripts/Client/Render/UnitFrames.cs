@@ -54,6 +54,12 @@ namespace WAR2D.Client.Render
         {
             public readonly int[] First, Frames, Directions;
 
+            /// <summary>
+            /// By type: the sprite a match draws under the turret (its hull, or the whole unit for a type without a turret), and its
+            /// turret: first cell (-1 without one), frames per facing and tiles across.
+            /// </summary>
+            public readonly int[] HullFirst, HullFrames, TurretFirst, TurretFrames, TurretTiles;
+
             public Table(ArtAtlas atlas)
             {
                 var types = (UnitType[])Enum.GetValues(typeof(UnitType));
@@ -62,6 +68,11 @@ namespace WAR2D.Client.Render
                 First = new int[n];
                 Frames = new int[n];
                 Directions = new int[n];
+                HullFirst = new int[n];
+                HullFrames = new int[n];
+                TurretFirst = new int[n];
+                TurretFrames = new int[n];
+                TurretTiles = new int[n];
                 // Fallback for a type the atlas lacks: the Tank.
                 AtlasSprite tank = atlas.Data.sprites.Find(x => x.id == nameof(UnitType.Tank));
                 for (int i = 0; i < n; i++)
@@ -71,6 +82,13 @@ namespace WAR2D.Client.Render
                     First[i] = s.first;
                     Frames[i] = s.frames;
                     Directions[i] = s.directions;
+                    AtlasSprite hull = atlas.Data.sprites.Find(x => x.id == id + ArtManifest.HullSuffix);
+                    HullFirst[i] = hull?.first ?? s.first;
+                    HullFrames[i] = hull?.frames ?? s.frames;
+                    AtlasSprite turret = atlas.Data.sprites.Find(x => x.id == id + ArtManifest.TurretSuffix);
+                    TurretFirst[i] = turret?.first ?? -1;
+                    TurretFrames[i] = turret?.frames ?? 0;
+                    TurretTiles[i] = turret != null ? atlas.Data.frames[turret.first].w / atlas.Data.pixelsPerUnit : 0;
                 }
             }
 
@@ -80,6 +98,16 @@ namespace WAR2D.Client.Render
                 int t = (uint)type < (uint)First.Length ? type : 0;
                 return UnitFrames.Cell(First[t], Frames[t], Directions[t], rotationRad, moving, time, sinceAction, phase);
             }
+
+            /// <summary>The cell a match draws for a unit's body: its hull, whose two frames have no firing frames, or the whole unit.</summary>
+            public uint BodyCell(int type, float rotationRad, bool moving, float time, float sinceAction, int phase)
+            {
+                int t = (uint)type < (uint)First.Length ? type : 0;
+                return UnitFrames.Cell(HullFirst[t], HullFrames[t], Directions[t], rotationRad, moving, time, sinceAction, phase);
+            }
+
+            /// <summary>The cell of a turret at a rendered facing and frame.</summary>
+            public uint TurretCell(int type, int facing, int frame) => (uint)(TurretFirst[type] + facing * TurretFrames[type] + frame);
         }
     }
 }

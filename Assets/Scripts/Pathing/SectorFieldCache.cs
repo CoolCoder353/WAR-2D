@@ -23,9 +23,6 @@ namespace WAR2D.Pathing
     /// </summary>
     public sealed class SectorFieldCache : IDisposable
     {
-        /// <summary>Start cells one order keeps, enough to find the sectors its units stand in.</summary>
-        private const int MaxStartCells = 512;
-
         private sealed class Order
         {
             public int2 Goal;
@@ -33,9 +30,14 @@ namespace WAR2D.Pathing
             public int RefCount;
             public int DirtySeq, BuiltSeq;
             public bool Dirty, Ready, InFlight, EverBuilt, Dead;
+            public bool WalledOff;              // some start pocket has no way to the goal, so any new way anywhere may be the one
+            public bool WakeWanted;             // walled off, and the terrain changed away from its route
+            public int NextWake;                // the RebuildDirty call it may next look for a new way on
             public List<JobHandle> Handles; // the jobs of the route being built
             public NativeArray<int> Goals;      // the goal spread
-            public NativeArray<int> StartCells; // the order's unit cells, subsampled
+            public NativeArray<int> StartCells; // one of the order's unit cells per pocket they stand in
+            public HashSet<int> StartPockets;   // the pockets of StartCells, as numbered at StartPocketsVersion
+            public int StartPocketsVersion = -1;
             public NativeArray<ushort>[] Costs;
             public NativeArray<byte>[] Directions;
             public bool[] Covered;              // per sector: has a local field
@@ -57,7 +59,12 @@ namespace WAR2D.Pathing
         private int inFlight;
         private long rebuilds;
         private long newRoutes, reRoutes, newSectorFields, reSectorFields;
+
+        /// <summary>RebuildDirty calls between a walled-off order's looks for a new way: once a second at one call a tick, as each look searches the goal's whole region.</summary>
+        private const int WalledOffWakeCalls = 20;
+        private int rebuildCalls;
         private long unreachableRebuilds, unreachableStartSectors;
+        private int rebuildCursor;
         private bool disposed;
 
         private readonly WAR2D.World.MapGrid source;
@@ -259,28 +266,58 @@ namespace WAR2D.Pathing
         public void Invalidate(int2 changedTile)
         {
             ThrowIfDisposed();
+            if (!InvalidateTile(changedTile)) return;
+            DirtyOrdersNear(graph.SectorOf(changedTile));
+        }
+
+        /// <summary>
+        /// <see cref="Invalidate(int2)"/> for a boundary's changed tiles: each tile updates the graph, and the orders are checked once per
+        /// changed sector rather than once per tile (a wall line changes many tiles of one sector). The same orders end dirty or woken:
+        /// the flags are set, not counted, and <c>DirtySeq</c> is only compared for equality (perf gate 2026-11-06).
+        /// </summary>
+        public void Invalidate(List<int2> changedTiles)
+        {
+            ThrowIfDisposed();
+            changedSectors.Clear();
+            foreach (int2 tile in changedTiles)
+                if (InvalidateTile(tile)) changedSectors.Add(graph.SectorOf(tile));
+            foreach (int sector in changedSectors) DirtyOrdersNear(sector);
+        }
+
+        private readonly HashSet<int> changedSectors = new HashSet<int>();
+
+        /// <summary>Updates the blocked map and the graph for one tile. False when the tile's blocking didn't change (nothing to do).</summary>
+        private bool InvalidateTile(int2 changedTile)
+        {
             if (ownsBlocked)
             {
-                if (!source.Contains(changedTile)) return;
+                if (!source.Contains(changedTile)) return false;
                 int index = source.Index(changedTile);
                 byte value = PathMap.Blocked(source, index);
-                if (blocked[index] == value) return;
+                if (blocked[index] == value) return false;
                 blocked[index] = value;
             }
             graph.Invalidate(changedTile);
+            return true;
+        }
 
+        private void DirtyOrdersNear(int sector)
+        {
             // Selectivity: the change can only alter a route that runs through the changed sector, one
             // of its neighbours, or the crossings between them, so an order whose covered sectors all
             // sit at least two sectors away keeps its materialised fields (and stays ready). A route
             // that passes further away cannot cross the changed portals; the one approximation is that
             // a far-away change that would have offered a cheaper route is only picked up when that
             // order is next rebuilt.
-            int sector = graph.SectorOf(changedTile);
             int sx = sector % graph.SectorsX, sy = sector / graph.SectorsX;
             foreach (Order order in orders)
             {
                 if (!Live(order)) continue;
-                if (!Touches(order, sx, sy)) continue;
+                if (!Touches(order, sx, sy))
+                {
+                    order.WakeWanted |= order.WalledOff;
+                    continue;
+                }
                 order.DirtySeq++;
                 order.Dirty = true;
                 order.Ready = false;
@@ -311,18 +348,33 @@ namespace WAR2D.Pathing
             ThrowIfDisposed();
             if (maxPerTick <= 0) return pending;
 
+            rebuildCalls++;
+            foreach (Order order in orders)
+            {
+                if (!Live(order) || !order.WakeWanted || rebuildCalls < order.NextWake) continue;
+                order.WakeWanted = false;
+                order.NextWake = rebuildCalls + WalledOffWakeCalls;
+                order.DirtySeq++;
+                order.Dirty = true;
+                order.Ready = false;
+            }
+
             int scheduled = 0;
             var handles = new List<JobHandle>(maxPerTick * 4);
+            int first = rebuildCursor;
             for (int pass = 0; pass < 2 && scheduled < maxPerTick; pass++)
             {
                 bool newOnly = pass == 0;
-                for (int i = 0; i < orders.Count && scheduled < maxPerTick; i++)
+                // In turn from where the last rebuild stopped: from handle 0 each time, digging near the first orders starved the rest.
+                for (int k = 0; k < orders.Count && scheduled < maxPerTick; k++)
                 {
+                    int i = (first + k) % orders.Count;
                     Order order = orders[i];
                     if (order == null || !Live(order) || !order.Dirty || order.InFlight) continue;
                     if (newOnly != !order.EverBuilt) continue;
                     handles.AddRange(Rebuild(i, order));
                     scheduled++;
+                    rebuildCursor = i + 1;
                 }
             }
             if (handles.Count > 0)
@@ -377,29 +429,41 @@ namespace WAR2D.Pathing
             new OrderFieldTable(graph.SectorsX, graph.SectorsY, graph.CellSize, allocator);
 
         /// <summary>
-        /// Extends an order's route to cover a sector a unit wandered into (pushed off the route, or
-        /// spawned outside it): the sector's centre tile joins the order's start cells (up to the cap)
-        /// and the order is rebuilt on a later tick.
+        /// Extends an order's route to the pockets these tiles stand in (a unit pushed off the route or spawned outside it, or
+        /// units joining the order): a pocket it doesn't start from yet joins its start cells, and the order is rebuilt on a
+        /// later tick. A pocket it already starts from needs nothing: a rebuild would find the same route.
         /// </summary>
-        public void AddStartSector(int handle, int sector)
+        public void AddStartCells(int handle, NativeArray<int> tiles)
         {
             Order order = OrderAt(handle);
-            if (order == null || sector < 0 || sector >= graph.SectorsX * graph.SectorsY) return;
-            if (order.Covered != null && order.Covered[sector]) return;
-            int sx = sector % graph.SectorsX, sy = sector / graph.SectorsX;
-            int2 centre = math.min(new int2(sx, sy) * SectorGraph.SectorSize + SectorGraph.SectorSize / 2,
-                new int2(graph.Width - 1, graph.Height - 1));
-            int cell = centre.y * graph.Width + centre.x;
-            for (int i = 0; i < order.StartCells.Length; i++)
-                if (order.StartCells[i] == cell) { MarkDirty(order); return; }
-            if (order.StartCells.Length >= MaxStartCells) return;
-            var grown = new NativeArray<int>(order.StartCells.Length + 1, Allocator.Persistent);
+            if (order == null) return;
+            // The start pockets are kept until a terrain change renumbers them, so a route miss costs a lookup, not a relabelling.
+            if (order.StartPockets == null || order.StartPocketsVersion != graph.TerrainVersion)
+            {
+                order.StartPockets ??= new HashSet<int>();
+                order.StartPockets.Clear();
+                for (int i = 0; i < order.StartCells.Length; i++) order.StartPockets.Add(PocketOfCell(order.SizeClass, order.StartCells[i]));
+                order.StartPocketsVersion = graph.TerrainVersion;
+            }
+            List<int> added = addedScratch;
+            added.Clear();
+            for (int i = 0; i < tiles.Length; i++)
+            {
+                int pocket = PocketOfCell(order.SizeClass, tiles[i]);
+                if (pocket >= 0 && order.StartPockets.Add(pocket)) added.Add(tiles[i]);
+            }
+            if (added.Count == 0) return;
+            var grown = new NativeArray<int>(order.StartCells.Length + added.Count, Allocator.Persistent);
             NativeArray<int>.Copy(order.StartCells, grown, order.StartCells.Length);
-            grown[order.StartCells.Length] = cell;
+            for (int i = 0; i < added.Count; i++) grown[order.StartCells.Length + i] = added[i];
             order.StartCells.Dispose();
             order.StartCells = grown;
             MarkDirty(order);
         }
+
+        private readonly List<int> addedScratch = new List<int>();
+
+        private int PocketOfCell(int sizeClass, int cell) => graph.PocketOf(sizeClass, new int2(cell % graph.Width, cell / graph.Width));
 
         private static void MarkDirty(Order order)
         {
@@ -533,9 +597,16 @@ namespace WAR2D.Pathing
         {
             NativeArray<byte> grid = graph.GridOf(sizeClass);
 
-            int count = math.min(startCells.Length, MaxStartCells);
-            var starts = new NativeArray<int>(count, Allocator.Persistent);
-            for (int i = 0; i < count; i++) starts[i] = startCells[i];
+            // One cell per pocket is all a route needs, however big the order.
+            var seen = new HashSet<int>();
+            var kept = new List<int>();
+            for (int i = 0; i < startCells.Length; i++)
+            {
+                int pocket = PocketOfCell(sizeClass, startCells[i]);
+                if (pocket >= 0 && seen.Add(pocket)) kept.Add(startCells[i]);
+            }
+            var starts = new NativeArray<int>(kept.Count, Allocator.Persistent);
+            for (int i = 0; i < kept.Count; i++) starts[i] = kept[i];
 
             // The goal spread is a set of free cells, so it is laid out on the cell grid (half-resolution
             // cells at cellSize 2) and reported back as map cell indices for the route search.
@@ -616,8 +687,9 @@ namespace WAR2D.Pathing
                 newRoutes++;
             }
 
-            SectorFieldSpec[] specs = graph.BuildRoute(order.SizeClass, order.Goals, order.StartCells, out int covered);
-            if (graph.UnreachableStartSectors > 0)
+            SectorFieldSpec[] specs = graph.BuildRoute(order.SizeClass, order.Goals, order.StartCells, out int covered, order.Goal);
+            order.WalledOff = graph.UnreachableStartSectors > 0;
+            if (order.WalledOff)
             {
                 unreachableRebuilds++;
                 unreachableStartSectors += graph.UnreachableStartSectors;

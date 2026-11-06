@@ -26,8 +26,8 @@ namespace WAR2D.Client
 
     /// <summary>
     /// The client's units: replication batches in, predicted positions out, drawn with GPU instancing.
-    /// Its clock (<see cref="ServerTime"/>) runs on real time and is nudged toward the newest batch's tick,
-    /// never backward. Created by <c>UnitCommander</c> on clients.
+    /// Its clock (<see cref="ServerTime"/>) runs on real time and drifts toward the batches' average, never
+    /// backward. Created by <c>UnitCommander</c> on clients.
     /// </summary>
     public sealed class ClientWorld : MonoBehaviour
     {
@@ -39,11 +39,26 @@ namespace WAR2D.Client
         private float dt;
         private int lastBatchTick = -1;
         private float serverTime;
-        private float sinceBatch; // seconds since the newest batch arrived: the server kept ticking meanwhile
+        private float clockEstimate; // the server's clock going by the batches, their late and early arrivals averaged out
+
+        /// <summary>How much of each batch's arrival time moves the estimate.</summary>
+        private const float ClockBatchShare = 0.1f;
+        /// <summary>The share of real time the clock may run fast or slow to reach the estimate: too little for any eye to catch.</summary>
+        private const float ClockDrift = 0.1f;
+        /// <summary>Further off than this (seconds) the clock is simply wrong, and closes the gap quickly.</summary>
+        private const float ClockFarSeconds = 0.25f;
         private NativeArray<float2> lastPosition;
         private NativeArray<float> rotation;
         private NativeArray<uint> frame;
         private NativeArray<float> lastAction; // server time of the unit's last attack, by index
+        // Turrets (TurretAim), by index: whose it is (an index is reused with a new id), its angle and when it last turned, and what it
+        // aims at until when. Only ever touched on the main thread, for units on screen or firing.
+        private int[] turretOf;
+        private float[] turretAngle, turretTurnedAt, aimUntil;
+        private float2[] aimAt;
+        private NativeList<UnitInstance> turrets;
+        private NativeList<UnitInstance> barrelShadows;
+        private Effects.FlameLine flameLine;
         private UnitFrames.Table frames;
         private NativeArray<uint> color;
         private NativeArray<float> health01;
@@ -125,7 +140,7 @@ namespace WAR2D.Client
             GameConfigData config = ConfigLoader.LoadConfig();
             dt = config.Simulation.TickSeconds;
             int capacity = config.Simulation.MaxEntities;
-            store = new ClientUnitStore(capacity, dt);
+            store = new ClientUnitStore(capacity, dt) { LeadOpen = IsOpenFloor };
             store.Attack += (attacker, target) =>
             {
                 attacks.Add((attacker, target));
@@ -160,6 +175,14 @@ namespace WAR2D.Client
             hitAt = new NativeArray<float>(capacity, Allocator.Persistent);
             trail = new NativeArray<float>(capacity, Allocator.Persistent);
             flash = new NativeArray<byte>(capacity, Allocator.Persistent);
+            turretOf = new int[capacity];
+            turretAngle = new float[capacity];
+            turretTurnedAt = new float[capacity];
+            aimUntil = new float[capacity];
+            aimAt = new float2[capacity];
+            turrets = new NativeList<UnitInstance>(1024, Allocator.Persistent);
+            barrelShadows = new NativeList<UnitInstance>(64, Allocator.Persistent);
+            flameLine = TryFlameLine;
             instances = new NativeList<UnitInstance>(4096, Allocator.Persistent);
             bars = new NativeList<UnitInstance>(1024, Allocator.Persistent);
             barCount = new NativeArray<int>(1, Allocator.Persistent);
@@ -182,6 +205,7 @@ namespace WAR2D.Client
             unitRenderer?.Dispose();
             buildingRenderer?.Dispose();
             store?.Dispose();
+            if (turrets.IsCreated) { turrets.Dispose(); barrelShadows.Dispose(); }
             if (lastPosition.IsCreated)
             {
                 lastPosition.Dispose(); rotation.Dispose(); frame.Dispose(); lastAction.Dispose(); color.Dispose(); health01.Dispose(); drawScale.Dispose(); selected.Dispose();
@@ -205,34 +229,63 @@ namespace WAR2D.Client
             }
             if (batch.Tick > lastBatchTick)
             {
-                if (lastBatchTick < 0) serverTime = batch.Tick * dt;
+                float at = batch.Tick * dt;
+                if (lastBatchTick < 0) serverTime = at;
+                clockEstimate = lastBatchTick < 0 || math.abs(at - clockEstimate) > ClockFarSeconds ? at : clockEstimate + (at - clockEstimate) * ClockBatchShare;
                 lastBatchTick = batch.Tick;
-                sinceBatch = 0f;
             }
         }
 
         /// <summary>
-        /// Advances the clock by <paramref name="deltaSeconds"/>, nudged (at most 10 % a frame, never
-        /// backward) toward the server's estimated time: the newest batch's tick plus the time since it
-        /// arrived. A quiet server sends no batches, but its clock keeps running.
+        /// Advances the clock by <paramref name="deltaSeconds"/>, never backward, drifting toward the server's estimated
+        /// time. One late batch must not stop it: every unit on screen would stall with it. A quiet server sends no
+        /// batches, but its clock keeps running.
         /// </summary>
         public void AdvanceClock(float deltaSeconds)
         {
             if (lastBatchTick < 0) return;
-            sinceBatch += deltaSeconds;
-            float target = lastBatchTick * dt + sinceBatch;
+            clockEstimate += deltaSeconds;
+            float off = clockEstimate - serverTime, drift = ClockDrift * deltaSeconds;
             float next = serverTime + deltaSeconds;
-            next += (target - next) * 0.1f;
+            next += math.abs(off) > ClockFarSeconds ? (clockEstimate - next) * 0.1f : math.clamp(off, -drift, drift);
             serverTime = math.max(serverTime, next);
         }
+
+        /// <summary>A replay's player advances the clock itself, at the playback speed and only while playing.</summary>
+        public bool ClockDriven { get; set; }
 
         private void Update()
         {
             // A paused match sends no ticks: the prediction clock waits with it, so units don't run ahead along their routes.
-            AdvanceClock(GameCore.Instance != null && GameCore.Instance.IsPaused ? 0f : Time.unscaledDeltaTime);
+            AdvanceClock(ClockDriven || (GameCore.Instance != null && GameCore.Instance.IsPaused) ? 0f : Time.unscaledDeltaTime);
             store.PredictAll(serverTime);
             FireTracers();
             FireTurrets();
+        }
+
+        /// <summary>
+        /// Shows an own order on screen at once, as a racing game moves your kart before the server hears of it. Drawing only: the order
+        /// still goes to the server, which checks it, and the units glide onto whatever it decides.
+        /// </summary>
+        public void ShowOrder(OrderKind kind, int2 goal, IReadOnlyList<int> ids)
+        {
+            // Work orders aren't shown: the server picks the tile a worker stands on, which can be another side of the job.
+            if (kind == OrderKind.Detonate || kind == OrderKind.Build || kind == OrderKind.Repair || kind == OrderKind.Dig) return;
+            bool halt = kind == OrderKind.Stop || kind == OrderKind.Hold;
+            bool walkAll = kind == OrderKind.Move || kind == OrderKind.AttackMove;
+            for (int i = 0; i < ids.Count; i++)
+            {
+                int index = NetIdAllocator.IndexOf(ids[i]);
+                if (store.IdOf(index) != ids[i]) continue;
+                if (halt) store.ShowHalt(index);
+                else store.ShowMove(index, (float2)goal + 0.5f, walkAll ? 0.5f : ConfigLoader.LoadConfig().GetUnit((UnitType)store.TypeOf(index)).Range);
+            }
+        }
+
+        private static bool IsOpenFloor(float2 p)
+        {
+            WorldStateManager manager = WorldStateManager.Instance;
+            return manager == null || manager.Map == null || manager.Map.Grid.IsWalkable((int2)math.floor(p));
         }
 
         /// <summary>Copies a known unit's route (dev overlay).</summary>
@@ -376,6 +429,11 @@ namespace WAR2D.Client
             float now = Time.time, frameSeconds = lastDrawAt > 0f ? math.max(0f, now - lastDrawAt) : 0f;
             lastDrawAt = now;
             Rect view = WorldEffects.ViewOf(ViewCamera != null ? ViewCamera : Camera.main);
+            Camera viewCamera = ViewCamera != null ? ViewCamera : Camera.main;
+            // With no camera to cull by, every turret draws: culling against an empty view hid every unit's head (replay, 2026-11-06).
+            Rect turretView = viewCamera != null ? WorldEffects.ViewOf(viewCamera, TurretViewMargin) : new Rect(-1e6f, -1e6f, 2e6f, 2e6f);
+            turrets.Clear();
+            barrelShadows.Clear();
             for (int i = 0; i < count; i++)
             {
                 int index = known[i];
@@ -385,17 +443,20 @@ namespace WAR2D.Client
                 if (moving) rotation[index] = math.atan2(delta.y, delta.x);
                 lastPosition[index] = p;
                 if (frames != null)
-                    frame[index] = frames.Cell(store.TypeOf(index), rotation[index], moving, serverTime, serverTime - lastAction[index], index);
+                    frame[index] = frames.BodyCell(store.TypeOf(index), rotation[index], moving, serverTime, serverTime - lastAction[index], index);
                 color[index] = ColorOf(owners[index]);
                 health01[index] = healthBytes[index] / 100f;
                 TrackHit(index, healthBytes[index], p, owners[index], now, frameSeconds);
                 if (moving) worldEffects.Moved(index, store.IdOf(index), store.TypeOf(index), p, view);
                 drawScale[index] = UnitShown != null && !UnitShown(owners[index], p) ? -1f : ScaleOf(store.TypeOf(index));
+                if (frames != null && frames.TurretFirst[store.TypeOf(index)] >= 0 && drawScale[index] > 0f && turretView.Contains((Vector2)p))
+                    PackTurret(index, store.TypeOf(index), p, now);
             }
+            Effects.FollowFlames(flameLine);
 
             instances.ResizeUninitialized(count);
             bars.ResizeUninitialized(count);
-            rings.ResizeUninitialized(count * 2); // a selected roaming unit has both rings
+            rings.ResizeUninitialized(count * 2 + barrelShadows.Length); // a selected roaming unit has both rings
             new PackUnitsJob
             {
                 Known = known,
@@ -419,9 +480,57 @@ namespace WAR2D.Client
                 Rings = rings.AsArray(),
                 RingCount = ringCount,
             }.Run();
-            unitRenderer.DrawRings(rings.AsArray(), ringCount[0]);
+            for (int i = 0; i < barrelShadows.Length; i++) rings[ringCount[0] + i] = barrelShadows[i];
+            unitRenderer.DrawRings(rings.AsArray(), ringCount[0] + barrelShadows.Length);
             unitRenderer.Draw(instances.AsArray(), count);
+            unitRenderer.DrawTurrets(turrets.AsArray(), turrets.Length);
             unitRenderer.DrawHealthBars(bars.AsArray(), barCount[0]);
+        }
+
+        /// <summary>Tiles past the screen's edge a unit's turret is still drawn: the longest barrel and its shadow reach this far.</summary>
+        private const float TurretViewMargin = 2.5f;
+
+        /// <summary>
+        /// Turns a unit's turret toward what it fired at while it holds its aim, else toward the way it faces, and packs it (and a raised
+        /// barrel's shadow) to be drawn. Turns by the time since it last did, so a unit that was off screen catches up at once.
+        /// </summary>
+        private void PackTurret(int index, byte type, float2 p, float now)
+        {
+            UnitType unit = (UnitType)type;
+            ResetTurretIfNew(index);
+            bool aiming = now < aimUntil[index];
+            float hull = rotation[index];
+            float goal = TurretAim.Goal(hull, aiming ? math.atan2(aimAt[index].y - p.y, aimAt[index].x - p.x) : 0f, aiming);
+            turretAngle[index] = TurretAim.Step(turretAngle[index], goal, TurretAim.TurnRate(unit) * (now - turretTurnedAt[index]));
+            turretTurnedAt[index] = now;
+            int facing = TurretAim.Facing(turretAngle[index]);
+            int cell = TurretAim.TurretFrame(frames.TurretFrames[type], aiming, TurretAim.Recoiling(serverTime - lastAction[index]));
+            Vector2 pivot = TurretAim.PivotPixels(unit, TurretAim.HullAngle(hull)) / ArtStyle.PixelsPerUnit;
+            float2 at = p + new float2(pivot.x, pivot.y);
+            turrets.Add(new UnitInstance
+            {
+                position = at,
+                frame = frames.TurretCell(type, facing, cell),
+                color = color[index],
+                scale = frames.TurretTiles[type],
+                pad = (uint)(selected[index] & 1) | (uint)flash[index] << 1,
+            });
+            if (unit == UnitType.Artillery && aiming)
+                barrelShadows.Add(new UnitInstance { position = at, frame = unitRenderer.BarrelShadowFrame + (uint)facing, color = 0xFFFFFFFFu, scale = BarrelShadowTiles });
+        }
+
+        /// <summary>Tiles across the raised barrel's shadow sprite is drawn.</summary>
+        private const float BarrelShadowTiles = 3f;
+
+        /// <summary>A new unit on this index starts with its turret straight ahead and no aim.</summary>
+        private void ResetTurretIfNew(int index)
+        {
+            int id = store.IdOf(index);
+            if (turretOf[index] == id) return;
+            turretOf[index] = id;
+            turretAngle[index] = rotation[index];
+            turretTurnedAt[index] = Time.time;
+            aimUntil[index] = float.NegativeInfinity;
         }
 
         /// <summary>
@@ -621,13 +730,77 @@ namespace WAR2D.Client
                 Vector3 viewport = cam.WorldToViewportPoint(new Vector3(from.x, from.y, 0));
                 if (viewport.x < 0 || viewport.x > 1 || viewport.y < 0 || viewport.y > 1) continue;
                 if (!TryTargetPosition(target, out Vector3 to)) continue;
+                UnitType type = (UnitType)store.TypeOf(attacker);
+                // The Gameplay setting thins or hides the tracer lines; the flash, sound, shells and flame streams stay.
+                bool line = Overlays.OverlayRules.KeepTracer(tracerMode, tracerSerial++);
+                if (TurretAim.Has(type))
+                {
+                    FireGun(attacker, type, from, target, to, line);
+                    continue;
+                }
                 // Face the target: the facing picks the drawn direction, and the fire frames show the barrel.
                 if ((uint)attacker < (uint)rotation.Length && (to.x != from.x || to.y != from.y))
                     rotation[attacker] = math.atan2(to.y - from.y, to.x - from.x);
-                // The Gameplay setting thins or hides the tracer lines; the flash, sound, shells and flame streams stay.
-                Effects.Tracer(new Vector3(from.x, from.y, 0), to, (UnitType)store.TypeOf(attacker), Overlays.OverlayRules.KeepTracer(tracerMode, tracerSerial++));
+                if (type == UnitType.Flamethrower) FireFlame(attacker, target, to);
+                else Effects.Tracer(new Vector3(from.x, from.y, 0), to, type, line);
             }
             attacks.Clear();
+        }
+
+        /// <summary>
+        /// A turreted unit's shot: its turret aims at the target, for as long as the gun takes to fire again and a short hold after, and the
+        /// flash and shot leave the barrel where it is drawn now. The hull keeps the way it drives.
+        /// </summary>
+        private void FireGun(int attacker, UnitType type, float2 from, int target, Vector3 to, bool line)
+        {
+            ResetTurretIfNew(attacker);
+            UnitConfig gun = ConfigLoader.LoadConfig().GetUnit(type);
+            aimAt[attacker] = new float2(to.x, to.y);
+            aimUntil[attacker] = Time.time + gun.AttackInterval + TurretAim.HoldSeconds;
+            float turret = TurretAim.FacingAngle(TurretAim.Facing(turretAngle[attacker]));
+            // A flash stays on a gun that moves: it plays for a moment at the speed the unit drives.
+            float2 ahead = store.PredictOne(attacker, serverTime + DriftSampleSeconds) - from;
+            Vector3 drift = new Vector3(ahead.x, ahead.y, 0f) / DriftSampleSeconds;
+            Effects.GunShot(type, new Vector2(from.x, from.y), TurretAim.HullAngle(rotation[attacker]), turret, to, TargetRadius(target), line, drift);
+        }
+
+        /// <summary>Seconds ahead a gun's speed is read from its route.</summary>
+        private const float DriftSampleSeconds = 0.1f;
+
+        /// <summary>A known unit's radius, 0 for anything else: a shot stops at a unit's near side, and at a building's or wall's aim point.</summary>
+        private float TargetRadius(int target)
+        {
+            int index = NetIdAllocator.IndexOf(target);
+            return target > 0 && store.IdOf(index) == target ? ConfigLoader.LoadConfig().GetUnit((UnitType)store.TypeOf(index)).Radius : 0f;
+        }
+
+        /// <summary>A Flamethrower's shot: its flame burns until just after its next one is due, so a unit that keeps firing keeps one flame going.</summary>
+        private void FireFlame(int attacker, int target, Vector3 to)
+        {
+            int id = store.IdOf(attacker);
+            if (!TryFlameLine(id, target, out Vector3 nozzle, out Vector3 end)) return;
+            UnitConfig flamer = ConfigLoader.LoadConfig().GetUnit(UnitType.Flamethrower);
+            Effects.Flame(id, target, nozzle, end, flamer.Splash, flamer.AttackInterval + FlameOverlapSeconds);
+        }
+
+        /// <summary>Seconds a flame outlasts the time to its unit's next shot.</summary>
+        private const float FlameOverlapSeconds = 0.15f;
+
+        /// <summary>
+        /// Where a unit's flame runs now, facing it at the target: from its nozzle, at the drawn facing nearest the target, to the target or
+        /// as far as its range reaches. False once the unit or its target has gone.
+        /// </summary>
+        private bool TryFlameLine(int attacker, int target, out Vector3 nozzle, out Vector3 end)
+        {
+            nozzle = end = default;
+            int index = NetIdAllocator.IndexOf(attacker);
+            if (store.IdOf(index) != attacker || !TryTargetPosition(target, out Vector3 to)) return false;
+            float2 p = lastPosition[index];
+            rotation[index] = math.atan2(to.y - p.y, to.x - p.x);
+            float facing = TurretAim.HullAngle(rotation[index]);
+            nozzle = new Vector3(p.x + math.cos(facing) * Effects.BarrelReach, p.y + math.sin(facing) * Effects.BarrelReach, 0f);
+            end = Effects.FlameEnd(new Vector2(p.x, p.y), to, ConfigLoader.LoadConfig().GetUnit(UnitType.Flamethrower).Range);
+            return true;
         }
     }
 }

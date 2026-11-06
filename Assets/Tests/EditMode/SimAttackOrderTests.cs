@@ -14,6 +14,22 @@ public class SimAttackOrderTests
         sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.Attack, Queue = queue, OwnerId = owner, TargetId = target, Tile = new int2(1, 1), Ids = ids });
 
     [Test]
+    public void ACrowdAttackingABuildingKeepsClosingUntilInRange()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(96), c => c.GetBuilding(BuildingType.Barracks).Health = 1000000);
+        var crowd = new List<int[]>();
+        for (int i = 0; i < 100; i++) crowd.Add(sim.Spawn(SimHarness.OwnerA, new float2(20.5f + i % 10 * 1.1f, 20.5f + i / 10 * 1.1f), UnitType.Flamethrower));
+        sim.Spawn(SimHarness.OwnerB, new float2(90.5f, 90.5f));
+        sim.Tick();
+        int target = sim.PlaceBuilding(SimHarness.OwnerB, BuildingType.Barracks, new int2(33, 25), complete: true);
+        sim.TickSeconds(0.5f);
+        Attack(sim, SimHarness.OwnerA, target, false, crowd.ConvertAll(c => c[0]).ToArray());
+        sim.TickSeconds(20f);
+        Assert.AreEqual(100, sim.Units().Count(u => u.OwnerId == SimHarness.OwnerA && u.Stance == Stances.Attack), "it saw the target");
+        Assert.AreEqual(0, sim.Units().Count(u => u.OwnerId == SimHarness.OwnerA && u.OrderSlot < 0), "none stops for good, out of its range of 2.5");
+    }
+
+    [Test]
     public void ItChasesAndKillsAMovingTarget()
     {
         using var sim = Sim();

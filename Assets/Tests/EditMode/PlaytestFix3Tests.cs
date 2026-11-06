@@ -155,6 +155,60 @@ public class PlaytestFix3Tests
     }
 
     [Test]
+    public void AnAlarmFromTheFogDoesNotNameTheTileOfANearShooter()
+    {
+        var near = new DefendAlarm { Victim = new float2(10, 10), From = new float2(14, 10) };
+        Assert.AreEqual(new int2(18, 10), DefendAlarms.Goal(near, false, 8f), "the same step as for a far shooter");
+        Assert.AreEqual(new int2(14, 10), DefendAlarms.Goal(near, true, 8f), "seen: its own tile");
+        var same = new DefendAlarm { Victim = new float2(10, 10), From = new float2(10, 10) };
+        Assert.AreEqual(new int2(10, 10), DefendAlarms.Goal(same, false, 8f), "no direction to go in");
+    }
+
+    /// <summary>A route reaches its owner's client, so units answering a near shooter their side can't see must not be sent to its tile.</summary>
+    [Test]
+    public void UnitsAnsweringANearShooterInTheFogAreNotSentToItsTile()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(64), c => { c.Simulation.TargetSearchSliceTicks = 1; c.GetUnit(UnitType.Builder).Sight = 3f; });
+        sim.Spawn(SimHarness.OwnerB, new float2(25.5f, 20.5f), UnitType.Sniper);
+        sim.Spawn(SimHarness.OwnerA, new float2(20.5f, 20.5f), UnitType.Builder); // the victim: sees 3, the shooter is 5 off
+        int[] nearby = sim.Spawn(SimHarness.OwnerA, new float2(11.5f, 20.5f), UnitType.Heavy); // sees 8, stands 9 off the victim
+        float2 goal = default;
+        bool ordered = false;
+        sim.Context.Settled += (data, tick, count) =>
+        {
+            int slot = data.SlotOf(nearby[0], count);
+            if (ordered || slot < 0) return;
+            int order = data.OrderSlot[slot];
+            if ((uint)order >= (uint)data.OrderLive.Length || data.OrderLive[order] == 0) return;
+            goal = data.OrderGoal[order];
+            ordered = true;
+        };
+        for (int t = 0; t < 100 && !ordered; t++) sim.Tick();
+        Assert.IsTrue(ordered, "the Heavy answered the alarm");
+        Assert.AreEqual(28.5f, goal.x, 1f, "the whole step from the victim, past the shooter at 25.5");
+    }
+
+    [Test]
+    public void AUnitWithNoWayToAShooterStaysIdle()
+    {
+        var rows = new string[64];
+        for (int r = 0; r < 64; r++)
+        {
+            int y = 63 - r;
+            var row = new char[64];
+            for (int x = 0; x < 64; x++) row[x] = x == 0 || y == 0 || x == 63 || y == 63 ? 'B' : x == 20 && y != 20 ? '#' : '.';
+            rows[r] = new string(row);
+        }
+        using var sim = new SimHarness(WAR2D.World.MapStore.FromAscii(rows), c => c.Simulation.TargetSearchSliceTicks = 1);
+        sim.Spawn(SimHarness.OwnerB, new float2(26.5f, 20.5f), UnitType.Sniper);
+        int[] heavy = sim.Spawn(SimHarness.OwnerA, new float2(14.5f, 20.5f), UnitType.Heavy);
+        sim.TickSeconds(3f);
+        Unit unit = sim.UnitById(heavy[0]);
+        Assert.Less(unit.Health, unit.MaxHealth, "shots pass the one-tile gap");
+        Assert.AreEqual(Stances.Idle, unit.Stance, "a Heavy doesn't, so it has nowhere to go");
+    }
+
+    [Test]
     public void AnInfiniteBalanceNeverMoves()
     {
         var player = new ServerPlayer(null, 100f);

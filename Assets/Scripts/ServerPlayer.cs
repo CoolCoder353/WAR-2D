@@ -53,6 +53,7 @@ public class ServerPlayer
     public void ResetResources(float amount, bool infinite = false)
     {
         Infinite = infinite;
+        AtUnitCap = false;
         SpectateView = 0;
         Resources = infinite ? InfiniteBalance : amount > 0f ? amount : 0f;
         incomeThisSecond = upkeepThisSecond = 0f;

@@ -94,14 +94,24 @@ namespace WAR2D.Net.Replication
         public JobHandle Schedule(int tick, in ReplicationInput input, NativeArray<int2> attacks, NativeArray<AttackTarget> targets, NativeArray<BuildingAttack> buildingAttacks, bool[] active, JobHandle dependency)
         {
             var handles = new NativeArray<JobHandle>(buffers.Length, Allocator.Temp);
+            ScheduleEach(tick, input, attacks, targets, buildingAttacks, active, dependency, handles);
+            JobHandle all = JobHandle.CombineDependencies(handles);
+            handles.Dispose();
+            return all;
+        }
+
+        /// <summary>
+        /// As above, with each client's own handle in <paramref name="handles"/> (one per client; an inactive client's is
+        /// <paramref name="dependency"/>), so a caller can send a client's bytes as soon as that client is encoded.
+        /// </summary>
+        public void ScheduleEach(int tick, in ReplicationInput input, NativeArray<int2> attacks, NativeArray<AttackTarget> targets, NativeArray<BuildingAttack> buildingAttacks, bool[] active, JobHandle dependency, NativeArray<JobHandle> handles)
+        {
             for (int c = 0; c < buffers.Length; c++)
             {
                 if (active != null && !active[c]) { handles[c] = dependency; continue; }
                 handles[c] = Job(c, tick, input, attacks, targets, buildingAttacks).Schedule(dependency);
             }
-            JobHandle all = JobHandle.CombineDependencies(handles);
-            handles.Dispose();
-            return all;
+            JobHandle.ScheduleBatchedJobs();
         }
 
         /// <summary>Encodes every client now (the interest sets must be built for this tick).</summary>
@@ -428,17 +438,17 @@ namespace WAR2D.Net.Replication
             MovementPrediction.ApplyCorrection(ref state, Waypoints, first, count, now, unit, Config.DeltaScale);
         }
 
-        /// <summary>Appends a unit's route (tiles) to a message's list; a unit with none gets its own tile.</summary>
+        /// <summary>Appends a unit's route (in <see cref="RouteWire"/> half tiles) to a message's list; a unit with none gets its own position.</summary>
         private int AppendRoute(int index, float2 position, NativeList<int2> into)
         {
             int count = RouteCount[index];
             if (count <= 0)
             {
-                into.Add((int2)math.round(position));
+                into.Add(RouteWire.Encode(position));
                 return 1;
             }
             int first = RouteStart[index];
-            for (int i = 0; i < count; i++) into.Add((int2)Waypoints[first + i]);
+            for (int i = 0; i < count; i++) into.Add(RouteWire.Encode(Waypoints[first + i]));
             return count;
         }
 
@@ -525,12 +535,14 @@ namespace WAR2D.Net.Replication
         private void FlushHealths()
         {
             var sink = new NativeSink(Reliable);
-            for (int start = 0; start < Healths.Length; start += 8192)
+            NativeArray<HealthUnit> units = Healths.AsArray();
+            for (int start = 0; start < units.Length;)
             {
-                int n = math.min(8192, Healths.Length - start);
+                int end = Messages.HealthChunkEnd(units, start);
                 int before = sink.Position;
-                Messages.EncodeHealth(ref sink, Healths.AsArray().GetSubArray(start, n));
+                Messages.EncodeHealth(ref sink, units.GetSubArray(start, end - start));
                 ReliableSizes.Add(sink.Position - before);
+                start = end;
             }
         }
 

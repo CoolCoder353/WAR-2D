@@ -18,10 +18,6 @@
                     <ui:VisualElement name="diplomacy-switch-slot" class="lobby__diplomacy" />
                 </ui:VisualElement>
             </ui:VisualElement>
-            <ui:VisualElement name="quick-setup" class="row lobby__quick hidden">
-                <ui:Label text="Quick setup" class="text--secondary lobby__quick-label" />
-                <ui:VisualElement name="quick-setup-buttons" class="row lobby__quick-buttons" />
-            </ui:VisualElement>
             <ui:ScrollView name="lobby-board-scroll" mode="Vertical" horizontal-scroller-visibility="Hidden" class="lobby__board-scroll">
                 <ui:VisualElement name="lobby-cards" class="lobby__players">
                     <ui:VisualElement name="team-board" class="lobby__board" />
@@ -32,7 +28,6 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:ScrollView>
-            <ui:Label name="board-help" text="" class="text--secondary lobby__board-help" />
         </ui:VisualElement>
         <ui:VisualElement class="lobby__preview">
             <ui:VisualElement class="row lobby__preview-header">
