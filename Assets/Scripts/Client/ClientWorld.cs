@@ -200,6 +200,7 @@ namespace WAR2D.Client
             worldEffects?.Dispose();
             ClientFog.Clear(); // the match is over; the next one starts with a fresh snapshot
             ClientBuildings.Clear();
+            ClientCombat.Clear();
             ClientTerrain.Clear();
             if (Instance == this) Instance = null;
             unitRenderer?.Dispose();

@@ -77,6 +77,7 @@ namespace WAR2D.Net.Replay
                 ReplicationService.FogSinkChannel => ReplayChannel.Fog,
                 ReplicationService.BuildingSinkChannel => ReplayChannel.Buildings,
                 ReplicationService.TerrainSinkChannel => ReplayChannel.Terrain,
+                ReplicationService.CombatSinkChannel => ReplayChannel.Combat,
                 _ when sinkChannel == Mirror.Channels.Unreliable => ReplayChannel.UnitsUnreliable,
                 _ => ReplayChannel.UnitsReliable,
             };

@@ -41,8 +41,6 @@ namespace WAR2D.Sim
         /// <summary>A Bomber's run-in point this tick (the army's centre, or a building side's middle) when <see cref="HasRunPoint"/>.</summary>
         public float2 RunPoint;
         public byte HasRunPoint;
-        /// <summary>The <see cref="HitKinds"/> of the last hit it took: its death's cause.</summary>
-        public byte LastHit;
 
         /// <summary>The record for <paramref name="id"/>: the stored one when it is that unit's, else a fresh one.</summary>
         public static UnitCombat For(in UnitCombat stored, int id) => stored.Id == id ? stored : new UnitCombat { Id = id };

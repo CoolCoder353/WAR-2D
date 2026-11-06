@@ -38,6 +38,8 @@ namespace WAR2D.Net.Replication
         /// stands, kept on the server until the owner sees the spot; <c>WorldStateManager</c>'s phantom blueprints).
         /// </summary>
         public bool OwnerOnly;
+        /// <summary>v0.20: the building is burning (a seen building only: a ghost never shows fire).</summary>
+        public bool Burning;
     }
 
     /// <summary>The kinds of building record.</summary>
@@ -58,6 +60,8 @@ namespace WAR2D.Net.Replication
         /// a building is paid tells its owner's budget, so no other client ever gets this record.
         /// </summary>
         Unpaid = 5,
+        /// <summary>v0.20: a seen building started (1) or stopped (0) burning. A ghost never burns: Hide clears it on the client.</summary>
+        Burning = 6,
     }
 
     /// <summary>
@@ -75,6 +79,8 @@ namespace WAR2D.Net.Replication
             public bool Hidden;
             /// <summary>The unpaid state last sent (only ever set for the receiver's own buildings).</summary>
             public bool Unpaid;
+            /// <summary>The burning state last sent (v0.20).</summary>
+            public bool Burning;
             public float2 Position;
             public int OwnerId;
             public BuildingType Type;
@@ -161,7 +167,15 @@ namespace WAR2D.Net.Replication
                         records++;
                         unpaid = v.Unpaid;
                     }
-                    known[v.Id] = new Known { Live = true, Health = v.Health, Progress = progress, Hidden = v.Hidden, Unpaid = unpaid, Position = v.Position, OwnerId = v.OwnerId, Type = v.Type };
+                    // v0.20: burning goes to anyone who sees the building; an Enter (or a ghost seen again) starts it clear.
+                    bool burning = wasKnown && k.Live && k.Burning;
+                    if (v.Burning != burning)
+                    {
+                        sink.Record(BuildingRecord.Burning, v.Id, v.Burning ? 1 : 0);
+                        records++;
+                        burning = v.Burning;
+                    }
+                    known[v.Id] = new Known { Live = true, Health = v.Health, Progress = progress, Hidden = v.Hidden, Unpaid = unpaid, Burning = burning, Position = v.Position, OwnerId = v.OwnerId, Type = v.Type };
                     if (sink.Full) return records;
                 }
                 else if (wasKnown && k.Hidden)
@@ -177,6 +191,7 @@ namespace WAR2D.Net.Replication
                     sink.Record(BuildingRecord.Hide, v.Id, 0);
                     records++;
                     k.Live = false;
+                    k.Burning = false;
                     known[v.Id] = k;
                     if (sink.Full) return records;
                 }
@@ -201,6 +216,7 @@ namespace WAR2D.Net.Replication
                     sink.Record(BuildingRecord.Hide, id, 0);
                     records++;
                     k.Live = false;
+                    k.Burning = false;
                     known[id] = k;
                     if (sink.Full) return records;
                 }
@@ -252,10 +268,10 @@ namespace WAR2D.Net.Replication
     public static class BuildingCodec
     {
         /// <summary>
-        /// Most bytes one building's records take in one update: an Enter (at most 34) and an Unpaid (at most 11), or a Health,
-        /// a Progress and an Unpaid. A writer stops while this much room is left.
+        /// Most bytes one building's records take in one update: an Enter (at most 34), an Unpaid and a Burning (at most 11 each),
+        /// or a Health, a Progress, an Unpaid and a Burning. A writer stops while this much room is left.
         /// </summary>
-        public const int MaxViewBytes = 48;
+        public const int MaxViewBytes = 60;
 
         public static void WriteEnter(NetworkWriter writer, in BuildingView v)
         {
@@ -276,7 +292,7 @@ namespace WAR2D.Net.Replication
         {
             writer.WriteByte((byte)kind);
             VarInt.Write(writer, (uint)id);
-            if (kind == BuildingRecord.Health || kind == BuildingRecord.Progress || kind == BuildingRecord.Unpaid) VarInt.Write(writer, (uint)math.max(0, value));
+            if (kind == BuildingRecord.Health || kind == BuildingRecord.Progress || kind == BuildingRecord.Unpaid || kind == BuildingRecord.Burning) VarInt.Write(writer, (uint)math.max(0, value));
         }
 
         /// <summary>Applies every record to <paramref name="into"/>. False when malformed.</summary>
@@ -315,6 +331,11 @@ namespace WAR2D.Net.Replication
                             if (flag > 1) return false;
                             into.SetUnpaid(id, flag != 0);
                             break;
+                        case BuildingRecord.Burning:
+                            uint burning = VarInt.Read(reader);
+                            if (burning > 1) return false;
+                            into.SetBurning(id, burning != 0);
+                            break;
                         case BuildingRecord.Hide:
                             into.Hide(id);
                             break;
@@ -352,6 +373,8 @@ namespace WAR2D.Net.Replication
             public bool Unpaid;
             /// <summary>Client time (<c>Time.time</c>) the building went out of sight; 0 while it is in sight (the ghost card's "last seen").</summary>
             public float LastSeenAt;
+            /// <summary>v0.20: the building is burning (never on a ghost).</summary>
+            public bool Burning;
         }
 
         /// <summary>The first building of this type owned by <paramref name="ownerId"/> that is not a ghost; false when none.</summary>
@@ -441,6 +464,13 @@ namespace WAR2D.Net.Replication
             Entered?.Invoke(data, health);
         }
 
+        internal void SetBurning(int id, bool burning)
+        {
+            if (!Entries.TryGetValue(id, out Entry e) || e.Ghost) return;
+            e.Burning = burning;
+            Entries[id] = e;
+        }
+
         internal void SetUnpaid(int id, bool unpaid)
         {
             if (!Entries.TryGetValue(id, out Entry e)) return;
@@ -461,6 +491,7 @@ namespace WAR2D.Net.Replication
         {
             if (!Entries.TryGetValue(id, out Entry e)) return;
             e.Ghost = true;
+            e.Burning = false;
             e.LastSeenAt = UnityEngine.Time.time;
             Entries[id] = e;
             Hidden?.Invoke(id);

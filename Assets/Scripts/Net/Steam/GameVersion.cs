@@ -13,9 +13,10 @@ namespace WAR2D.Net.Steam
         /// Visibility, the end screen's AI styles). 15: v0.15.1 (reconnecting: rejoin, leave and refusal messages, the
         /// producers resent on rejoin). 16: v0.16 (owner wall targets in attack events, the order formation flag). 17: v0.17 (the
         /// rich gem tile, a new terrain value). 19: the host-leaving message, and owed upkeep with an unpaid flag in the resources update.
-        /// 20: the attack flag on a rally point. 21: route waypoints in half tiles.
+        /// 20: the attack flag on a rally point. 21: route waypoints in half tiles. 22: v0.20 (the combat batch: status bits, leaps,
+        /// aims and shells; deaths with a cause; a building's burning flag).
         /// </summary>
-        public const int Protocol = 21;
+        public const int Protocol = 22;
 
         public static string Current => UnityEngine.Application.version;
 

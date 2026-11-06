@@ -677,6 +677,9 @@ public partial class WorldStateManager : NetworkBehaviour
     [Server]
     private void FillBuildingViews(List<BuildingView> views)
     {
+        // v0.20: a building's fire, from the settled sim (by its id's index; stale when the id differs).
+        bool hasFires = Sim != null && Sim.Data.BuildingFires.IsCreated;
+        NativeArray<BuildingFire> fires = hasFires ? Sim.Data.BuildingFires : default;
         foreach (Entity entity in Buildings.Values)
         {
             if (!EntityManager.Exists(entity)) continue;
@@ -684,6 +687,8 @@ public partial class WorldStateManager : NetworkBehaviour
             LocalTransform transform = EntityManager.GetComponentData<LocalTransform>(entity);
             HealthComponent health = EntityManager.GetComponentData<HealthComponent>(entity);
             if (health.currentHealth <= 0f) continue;
+            int fireIndex = NetIdAllocator.IndexOf(building.id);
+            bool burning = hasFires && (uint)fireIndex < (uint)fires.Length && fires[fireIndex].Id == building.id && fires[fireIndex].Left > 0f;
             float2 p = transform.Position.xy;
             views.Add(new BuildingView
             {
@@ -700,6 +705,7 @@ public partial class WorldStateManager : NetworkBehaviour
                     ? (byte)math.clamp((int)math.floor(EntityManager.GetComponentData<Construction>(entity).Progress * 100f), 0, 99)
                     : (byte)100,
                 Position = p,
+                Burning = burning,
             });
         }
         AddPhantomViews(views);

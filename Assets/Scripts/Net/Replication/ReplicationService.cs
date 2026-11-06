@@ -31,7 +31,7 @@ namespace WAR2D.Net.Replication
     /// client reports only tunes correction fidelity; it never widens what the client may know. A joining client's snapshot is paced: at most a tick's share of
     /// <c>SnapshotBytesPerSecond</c> of new units is admitted per tick.
     /// </summary>
-    public sealed class ReplicationService : IDisposable
+    public sealed partial class ReplicationService : IDisposable
     {
         public const int MaxClients = 16;
         /// <summary>The channel a virtual sink is given for fog payloads (they are not replication messages).</summary>
@@ -40,6 +40,8 @@ namespace WAR2D.Net.Replication
         public const int BuildingSinkChannel = -2;
         /// <summary>The channel a virtual sink is given for terrain payloads.</summary>
         public const int TerrainSinkChannel = -3;
+        /// <summary>v0.20: the virtual sink channel of <see cref="CombatBatch"/> payloads.</summary>
+        public const int CombatSinkChannel = -4;
 
         /// <summary>Answers what a tile index currently is (set by the world; null sends the plain kind). Walls add owner and health.</summary>
         public Func<int, TerrainCell> TerrainCellOf;
@@ -85,6 +87,12 @@ namespace WAR2D.Net.Replication
             public readonly TerrainInterest Terrain = new TerrainInterest();
             public long EntersSent;
             public long BytesSent;
+            /// <summary>v0.20: status bits last sent, by unit id index; shells this client was told about.</summary>
+            public readonly Dictionary<int, byte> SentStatus = new Dictionary<int, byte>();
+            public readonly HashSet<int> SentShells = new HashSet<int>();
+            /// <summary>v0.20: a lane client's combat payload, held until its units (a tick late) have gone out, and its tick.</summary>
+            public byte[] PendingCombat;
+            public int PendingCombatTick = -1;
         }
 
         /// <summary>The live service (server only), or null.</summary>
@@ -331,6 +339,7 @@ namespace WAR2D.Net.Replication
                         SinkTick = client.Lane.PendingTick;
                         SendSplit(client, SinkTick, r, rs, Channels.Reliable, BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4));
                         SendSplit(client, SinkTick, u, us, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
+                        FlushPendingCombat(client);
                         SinkTick = tick;
                     }
                     client.Lane.Schedule(data, tick, count, routes, attacks, targets, buildingAttacks);
@@ -342,6 +351,7 @@ namespace WAR2D.Net.Replication
                 SendSplit(client, tick, unreliable, unreliableSizes, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
             }
             for (int c = 0; c < MaxClients; c++) encoded[c].Complete(); // a client that left mid-loop: its job still has to finish
+            SendCombat(data, tick, input);
             PerfSplits.Mark(14, ref t);
             LastMilliseconds = watch.Elapsed.TotalMilliseconds;
         }

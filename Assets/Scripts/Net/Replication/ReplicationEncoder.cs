@@ -300,7 +300,9 @@ namespace WAR2D.Net.Replication
                 int index = NetIdAllocator.IndexOf(id);
                 int slot = Input.SlotOfIndex(index);
                 bool alive = slot >= 0 && Input.IdOf[slot] == id;
-                Leaves.Add(new LeaveUnit { Index = index, Reason = alive ? LeaveReason.LeftView : LeaveReason.Died });
+                LeaveReason reason = alive ? LeaveReason.LeftView
+                    : (uint)index < (uint)Input.LastHitKind.Length ? LeaveReasons.Death(Input.LastHitKind[index]) : LeaveReason.Died;
+                Leaves.Add(new LeaveUnit { Index = index, Reason = reason });
                 States[index] = default;
             }
             SortLeaves();

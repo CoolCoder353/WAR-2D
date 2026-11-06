@@ -18,11 +18,26 @@ namespace WAR2D.Net.Replication
         Attack = 6,
     }
 
-    /// <summary>Why a unit left a client's knowledge.</summary>
+    /// <summary>Why a unit left a client's knowledge (v0.20: a death carries its cause).</summary>
     public enum LeaveReason : byte
     {
+        /// <summary>Died to gunfire (or anything but a blast or fire).</summary>
         Died = 0,
         LeftView = 1,
+        /// <summary>v0.20: died to a blast (a Bomber, a shell, a Mine).</summary>
+        DiedBlast = 2,
+        /// <summary>v0.20: burnt to death.</summary>
+        DiedFire = 3,
+    }
+
+    /// <summary>Reading <see cref="LeaveReason"/>s.</summary>
+    public static class LeaveReasons
+    {
+        /// <summary>True for a death of any cause.</summary>
+        public static bool IsDeath(LeaveReason r) => r != LeaveReason.LeftView;
+
+        /// <summary>The death reason for a last hit's kind (<c>HitKinds</c>: 0 shot, 1 blast, 2 fire).</summary>
+        public static LeaveReason Death(byte hitKind) => hitKind == 1 ? LeaveReason.DiedBlast : hitKind == 2 ? LeaveReason.DiedFire : LeaveReason.Died;
     }
 
     // Units are addressed by their id's index (NetIdAllocator.IndexOf) in ascending order, delta coded.
@@ -452,7 +467,7 @@ namespace WAR2D.Net.Replication
             {
                 int index = NextIndex(reader, ref previous);
                 byte reason = reader.ReadByte();
-                if (reason > (byte)LeaveReason.LeftView) throw new InvalidDataException("bad leave reason");
+                if (reason > (byte)LeaveReason.DiedFire) throw new InvalidDataException("bad leave reason");
                 units.Add(new LeaveUnit { Index = index, Reason = (LeaveReason)reason });
             }
         }

@@ -63,8 +63,9 @@ namespace WAR2D.Sim
             SimData data = SystemAPI.GetSingleton<SimData>();
             int count = clock.UnitCount;
             int buildings = math.min(data.BuildingCount[0], data.BuildingCapacity);
-            if (data.AttackEvents.Capacity < count) data.AttackEvents.Capacity = count;
-            if (data.AimEvents.Capacity < count) data.AimEvents.Capacity = count;
+            // The parallel writers can't grow these lists: room for one event per unit beyond what they hold (the boundary empties them).
+            if (data.AttackEvents.Capacity < data.AttackEvents.Length + count) data.AttackEvents.Capacity = data.AttackEvents.Length + count;
+            if (data.AimEvents.Capacity < data.AimEvents.Length + count) data.AimEvents.Capacity = data.AimEvents.Length + count;
 
             // v0.20: who is in the air this tick, by slot, before anything targets or hurts them.
             state.Dependency = new AirborneJob { IdOf = data.IdOf, Combat = data.Combat, Tick = clock.Tick, Airborne = data.Airborne }.Schedule(count, 512, state.Dependency);
@@ -305,6 +306,7 @@ namespace WAR2D.Sim
                 Airborne = data.Airborne,
                 Combat = data.Combat,
                 BuildingFires = data.BuildingFires,
+                LastHitKind = data.LastHitKind,
                 BurnSeconds = data.BurnSeconds,
             };
             state.Dependency = apply.Schedule(state.Dependency);
@@ -1203,6 +1205,7 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<byte> Airborne;
         public NativeArray<UnitCombat> Combat;
         public NativeArray<BuildingFire> BuildingFires;
+        public NativeArray<byte> LastHitKind;
         public float BurnSeconds;
 
         public void Execute()
@@ -1219,10 +1222,14 @@ namespace WAR2D.Sim
                     Health[hit.Slot] = math.max(0f, Health[hit.Slot] - hit.Amount);
                     LastHitBy[hit.Slot] = hit.AttackerOwner;
                     int id = IdOf[hit.Slot], index = NetIdAllocator.IndexOf(id);
-                    UnitCombat c = UnitCombat.For(Combat[index], id);
-                    c.LastHit = hit.HitKind;
-                    if (hit.Ignite != 0) { c.BurnLeft = BurnSeconds; c.BurnBy = hit.AttackerOwner; }
-                    Combat[index] = c;
+                    LastHitKind[index] = hit.HitKind;
+                    if (hit.Ignite != 0)
+                    {
+                        UnitCombat c = UnitCombat.For(Combat[index], id);
+                        c.BurnLeft = BurnSeconds;
+                        c.BurnBy = hit.AttackerOwner;
+                        Combat[index] = c;
+                    }
                     if (hit.From.x != 0f || hit.From.y != 0f) DefendAlarms.Raise(Alarms, AlarmCount, AlarmCellTiles, OwnerSlot[hit.Slot], Positions[hit.Slot], hit.From);
                 }
                 else

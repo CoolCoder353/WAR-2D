@@ -230,6 +230,7 @@ namespace WAR2D.Client.Replay
             map = MapStore.Generate(cursor.Header.MapSize, cursor.Header.Seed, config.Match.Map.GemChance);
             MapView.Show(map.Grid);
             ClientBuildings.Clear();
+            ClientCombat.Clear();
             ClientTerrain.Clear();
             ClientTerrain.Current.Init(map.Grid);
             ClientTerrain.Current.Changed += OnClientTerrainChanged;
@@ -351,6 +352,7 @@ namespace WAR2D.Client.Replay
                     break;
                 case ReplayChannel.Buildings: BuildingCodec.Apply(ClientBuildings.Current, payload); break;
                 case ReplayChannel.Terrain: TerrainCodec.Apply(ClientTerrain.Current, payload); break;
+                case ReplayChannel.Combat: ClientCombat.Current.Apply(payload); break;
                 case ReplayChannel.TeamFog:
                     if (playerView != null) { playerView.Fog(payload, ClientBuildings.Current); fogDirty = true; }
                     break;
@@ -410,6 +412,7 @@ namespace WAR2D.Client.Replay
             if (view != null) DestroyImmediate(view.gameObject);
             ClientTerrain.Current.Changed -= OnClientTerrainChanged;
             ClientBuildings.Clear();
+            ClientCombat.Clear();
             ClientTerrain.Clear();
             ClientTerrain.Current.Init(map.Grid);
             ClientTerrain.Current.Changed += OnClientTerrainChanged;
@@ -437,6 +440,7 @@ namespace WAR2D.Client.Replay
             ClientTerrain.Current.Changed -= OnClientTerrainChanged;
             MapView.Hide();
             ClientBuildings.Clear();
+            ClientCombat.Clear();
             ClientTerrain.Clear();
             cursor?.Dispose();
             cursor = null;

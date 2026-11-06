@@ -78,6 +78,10 @@ namespace WAR2D.Client
         public event Action<int, int> BuildingAttack;
         /// <summary>Raised for each unit that left because it died: (index, last predicted position).</summary>
         public event Action<int, float2> Died;
+        /// <summary>v0.20: why the unit <see cref="Died"/> is reporting died (its cause), valid during that event.</summary>
+        public LeaveReason LastDeathReason { get; private set; }
+        /// <summary>v0.20: a unit left the client's knowledge for any reason (its id index).</summary>
+        public event Action<int> Forgotten;
         /// <summary>Raised when a unit the client didn't know becomes known: (index, where it is). Own units are always known, so for them it means a new unit.</summary>
         public event Action<int, float2> Appeared;
 
@@ -293,7 +297,12 @@ namespace WAR2D.Client
         private void Leave(in LeaveUnit u, int tick)
         {
             if (!IsKnown(u.Index)) return;
-            if (u.Reason == LeaveReason.Died) Died?.Invoke(u.Index, PredictOne(u.Index, tick * dt));
+            if (LeaveReasons.IsDeath(u.Reason))
+            {
+                LastDeathReason = u.Reason;
+                Died?.Invoke(u.Index, PredictOne(u.Index, tick * dt));
+            }
+            Forgotten?.Invoke(u.Index);
             int slot = knownSlot[u.Index];
             int last = known[known.Length - 1];
             known[slot] = last;

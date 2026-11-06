@@ -205,6 +205,8 @@ namespace WAR2D.Sim
         // ---- v0.20 Onslaught combat ----
         /// <summary>Per id index: each unit's fire, aim, leap and last hit (<see cref="UnitCombat"/>).</summary>
         public NativeArray<UnitCombat> Combat;
+        /// <summary>Per id index: the <see cref="HitKinds"/> of the last hit each unit took, its death's cause on the wire (reset when the index is reused).</summary>
+        public NativeArray<byte> LastHitKind;
         /// <summary>Per id index: each building's fire (<see cref="BuildingFire"/>).</summary>
         public NativeArray<BuildingFire> BuildingFires;
         /// <summary>Per unit slot, this tick: 1 while it is in the air (filled at the start of combat; read by movement and upkeep).</summary>
@@ -537,6 +539,7 @@ namespace WAR2D.Sim
                 LeadAim = (byte)(config.Artillery.LeadAim ? 1 : 0),
                 Combat = new NativeArray<UnitCombat>(sim.MaxEntities, allocator),
                 BuildingFires = new NativeArray<BuildingFire>(sim.MaxEntities, allocator),
+                LastHitKind = new NativeArray<byte>(sim.MaxEntities, allocator),
                 Airborne = new NativeArray<byte>(capacity, allocator),
                 Shells = new NativeList<Shell>(64, allocator),
                 ShellSerial = new NativeArray<int>(1, allocator),
@@ -752,7 +755,7 @@ namespace WAR2D.Sim
         {
             SpeedByType.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose(); CooldownByType.Dispose();
             RunningCostByType.Dispose(); CostByType.Dispose(); BuildingCostByKind.Dispose();
-            Combat.Dispose(); BuildingFires.Dispose(); Airborne.Dispose(); Shells.Dispose(); ShellSerial.Dispose(); ShellsLaunched.Dispose(); Leaps.Dispose(); AimEvents.Dispose();
+            Combat.Dispose(); BuildingFires.Dispose(); LastHitKind.Dispose(); Airborne.Dispose(); Shells.Dispose(); ShellSerial.Dispose(); ShellsLaunched.Dispose(); Leaps.Dispose(); AimEvents.Dispose();
             BlastResistByType.Dispose(); FlatArmourByType.Dispose(); ShellRadiusByType.Dispose(); AimByType.Dispose(); IgnitesByType.Dispose(); BuildRateByKind.Dispose(); RockTile.Dispose(); HqLastHitBy.Dispose(); OrderTarget.Dispose(); OrderTargetKind.Dispose(); DamageTable.Dispose();
             Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Type.Dispose();
             SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose(); LastHitBy.Dispose();

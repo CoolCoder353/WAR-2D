@@ -47,7 +47,7 @@ namespace WAR2D.Sim
                 BuildingOwnerSlot = data.BuildingOwnerSlot, BuildingOwnerId = data.BuildingOwnerId, BuildingIds = data.BuildingIds,
                 WallState = data.WallState, WallOwnerSlot = data.WallOwnerSlot, WallDamage = data.WallDamage,
                 Blasts = data.BombBlasts, Forced = data.ForcedBombs,
-                Type = data.Type, IdOf = data.IdOf, BlastResistByType = data.BlastResistByType, Combat = data.Combat, Tick = clock.Tick,
+                Type = data.Type, IdOf = data.IdOf, BlastResistByType = data.BlastResistByType, Combat = data.Combat, LastHitKind = data.LastHitKind, Tick = clock.Tick,
             }.Schedule(state.Dependency);
         }
     }
@@ -72,7 +72,8 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<byte> Type;
         [ReadOnly] public NativeArray<int> IdOf;
         [ReadOnly] public NativeArray<float> BlastResistByType;
-        public NativeArray<UnitCombat> Combat;
+        [ReadOnly] public NativeArray<UnitCombat> Combat;
+        public NativeArray<byte> LastHitKind;
         public int Tick;
 
         public void Execute()
@@ -129,8 +130,7 @@ namespace WAR2D.Sim
                     if (state.AirborneAt(id, Tick)) continue;
                     UnitHealth[u] = math.max(0f, UnitHealth[u] - CombatRules.Resisted(Damage * Share(slot, OwnerSlot[u]), BlastResistByType[Type[u]]));
                     LastHitBy[u] = owner;
-                    state.LastHit = HitKinds.Blast;
-                    Combat[index] = state;
+                    LastHitKind[index] = HitKinds.Blast;
                 }
             }
 
