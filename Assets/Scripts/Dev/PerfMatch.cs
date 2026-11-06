@@ -475,13 +475,14 @@ public sealed class PerfMatch : MonoBehaviour
     private static readonly bool TanksOnly = System.Environment.GetEnvironmentVariable("WAR_PERF_TANKS_ONLY") == "1";
 
     /// <summary>
-    /// The v0.12 gate roster, dealt by a counter: 60 % Tanks, 15 % Scouts, 10 % Heavies, and 5 % each of
-    /// Artillery, Snipers and Flamethrowers.
+    /// The gate roster, dealt by a counter: 55 % Tanks, 15 % Scouts, 10 % Heavies, and 5 % each of Artillery, Snipers,
+    /// Flamethrowers and (v0.20, spec §13: leaps, fire, shells and aims in the load) Bombers.
     /// </summary>
     public static UnitType MixedType(int k)
     {
         if (TanksOnly) return UnitType.Tank;
         int slot = k % 20;
+        if (slot == 11) return UnitType.Bomber;
         if (slot < 12) return UnitType.Tank;
         if (slot < 15) return UnitType.Scout;
         if (slot < 17) return UnitType.Heavy;
