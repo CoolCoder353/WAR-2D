@@ -231,6 +231,12 @@ namespace WAR2D.UI
             if (armed) Stat("Range", Number(u.Range) + " tiles");
             if (u.MinRange > 0f) Stat("Minimum range", Number(u.MinRange) + " tiles");
             if (u.Splash > 0f) Stat("Splash", Number(u.Splash) + " tiles");
+            // v0.20 (Figma B3): a shell's blast, armour, blast resistance, fire, aim and reload.
+            if (u.FiresShells) Stat("Blast radius", Number(u.BlastRadius) + " tiles");
+            if (u.FlatArmour > 0f) Stat("Armour per shot", Number(u.FlatArmour));
+            if (u.BlastResist > 0f) Stat("Blast resistance", Number(u.BlastResist * 100f) + "%");
+            if (type == UnitType.Flamethrower) Stat("Sets on fire", $"{Number(config.Burn.Dps)} /s for {Number(config.Burn.Seconds)} s");
+            if (type == UnitType.Sniper) Stat("Aim time", Number(config.Sniper.AimSeconds) + " s");
             Stat("Sight", Number(u.Sight) + " tiles");
             Stat("Speed", Number(u.MoveSpeed) + " tiles/s");
             Stat("Size", u.SizeClass > 0 ? "Large" : "Small");
@@ -273,7 +279,7 @@ namespace WAR2D.UI
             Stat("Upkeep", b.RunningCost > 0f ? Number(b.RunningCost) + " /s" : "None");
             Stat("Health", Number(b.Health));
             Stat("Sight", b.Sight > 0f ? Number(b.Sight) + " tiles" : "None");
-            if (type != BuildingType.Base) Stat("Time for one Builder", Number(b.Health / config.Siege.BuildPower) + " s");
+            if (type != BuildingType.Base) Stat("Time for one Builder", Number(b.Health / b.BuildRate(config.Siege.BuildPower)) + " s");
             switch (type)
             {
                 case BuildingType.Miner:
@@ -405,6 +411,11 @@ namespace WAR2D.UI
             "DecaySeconds" => 100f / config.Resources.DecayPercentPerSecond,
             "DemolishPercent" => config.Siege.DemolishRefund * 100f,
             "LastGaspPercent" => config.Bomber.LastGaspHealth * 100f,
+            // v0.20
+            "BomberBlastResistPercent" => config.GetUnit(UnitType.Bomber).BlastResist * 100f,
+            "HeavyBlastResistPercent" => config.GetUnit(UnitType.Heavy).BlastResist * 100f,
+            "SniperHeavyMultiplier" => config.Damage.Multiplier(UnitType.Sniper, TargetClass.HeavyUnit),
+            "ArtilleryFriendlyPercent" => config.Artillery.FriendlyDamage * 100f,
             _ => throw new ArgumentException("no figure " + name),
         };
     }

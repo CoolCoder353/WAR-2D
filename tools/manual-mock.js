@@ -166,6 +166,11 @@ function resolver(cfg) {
     DecaySeconds: 100 / cfg.lookup('Resources/DecayPercentPerSecond'),
     DemolishPercent: cfg.lookup('Siege/DemolishRefund') * 100,
     LastGaspPercent: cfg.lookup('Bomber/LastGaspHealth') * 100,
+    // v0.20
+    BomberBlastResistPercent: unit('Bomber').BlastResist * 100,
+    HeavyBlastResistPercent: unit('Heavy').BlastResist * 100,
+    SniperHeavyMultiplier: multiplier(cfg, 'Sniper', 'HeavyUnit'),
+    ArtilleryFriendlyPercent: cfg.lookup('Artillery/FriendlyDamage') * 100,
   };
   return (p) => {
     const [head, ...rest] = p.split('/');
@@ -325,6 +330,12 @@ function render(cfg, text, sprites, fontUri, table) {
       !blast && u.Damage ? ['Per second', fmt(dps(u, 1))] : null,
       blast ? ['Blast', `${fmt(u.BlastDamage)}, once`] : null, blast ? ['Blast radius', `${fmt(u.BlastRadius)} tiles`] : null,
       !blast && u.Damage ? ['Range', `${fmt(u.Range)} tiles`] : null, u.MinRange ? ['Minimum range', `${fmt(u.MinRange)} tiles`] : null, u.Splash ? ['Splash', `${fmt(u.Splash)} tiles`] : null,
+      // v0.20 (Figma B3): a shell's blast, armour, blast resistance, fire, aim and reload.
+      !blast && u.BlastRadius ? ['Blast radius', `${fmt(u.BlastRadius)} tiles`] : null,
+      u.FlatArmour ? ['Armour per shot', fmt(u.FlatArmour)] : null,
+      u.BlastResist ? ['Blast resistance', `${fmt(u.BlastResist * 100)}%`] : null,
+      u.type === 'Flamethrower' ? ['Sets on fire', `${fmt(cfg.lookup('Burn/Dps'))} /s for ${fmt(cfg.lookup('Burn/Seconds'))} s`] : null,
+      u.type === 'Sniper' ? ['Aim time', `${fmt(cfg.lookup('Sniper/AimSeconds'))} s`] : null,
       ['Sight', `${fmt(u.Sight)} tiles`], ['Speed', `${fmt(u.MoveSpeed)} tiles/s`], ['Size', u.SizeClass ? 'Large' : 'Small'],
       ['Made by', link(madeBy(u.type))],
     ]);
@@ -338,7 +349,7 @@ function render(cfg, text, sprites, fontUri, table) {
   const mining = cfg.lookup('Resources/MiningRate');
   const specials = {
     Miner: () => [['Earns', `${fmt(mining)} /s`], ['On a rich gem', `${fmt(mining * cfg.lookup('Resources/RichGemMultiplier'))} /s`]],
-    Bomb: () => [['Blast', fmt(cfg.lookup('Siege/BlastDamage'))], ['Blast radius', `${fmt(cfg.lookup('Siege/BlastRadius'))} tiles`]],
+    Mine: () => [['Blast', fmt(cfg.lookup('Siege/BlastDamage'))], ['Blast radius', `${fmt(cfg.lookup('Siege/BlastRadius'))} tiles`]],
     Radar: () => [['Radar range', `${fmt(cfg.buildings.find((b) => b.type === 'Radar').Sight)} tiles`]],
     Jammer: () => [['Jam radius', `${fmt(cfg.lookup('Siege/JamRadius'))} tiles`], ['Sight inside a jam', `${fmt(cfg.lookup('Siege/JamSight'))} tiles`]],
     GunTurret: (b) => [['Damage', `${fmt(b.Damage)} every ${fmt(b.AttackInterval)} s`], ['Per second', fmt(dps(b, 1))], ['Range', `${fmt(b.Range)} tiles`]],
@@ -350,7 +361,7 @@ function render(cfg, text, sprites, fontUri, table) {
     const t = need('buildings', b.type), makes = PRODUCERS[b.type];
     const stats = rows([
       ['Size', `${fmt(b.Width)} × ${fmt(b.Height)} tiles`], ['Cost', b.type === 'Base' ? 'Free' : fmt(b.UpfrontCost)], ['Upkeep', b.RunningCost ? `${fmt(b.RunningCost)} /s` : 'None'], ['Health', fmt(b.Health)],
-      ['Sight', b.Sight ? `${fmt(b.Sight)} tiles` : 'None'], b.type === 'Base' ? null : ['Time for one Builder', `${fmt(b.Health / power)} s`],
+      ['Sight', b.Sight ? `${fmt(b.Sight)} tiles` : 'None'], b.type === 'Base' ? null : ['Time for one Builder', `${fmt(b.BuildSeconds ? b.BuildSeconds : b.Health / power)} s`],
       ...(specials[b.type] ? specials[b.type](b) : []),
     ]);
     const turret = b.type === 'GunTurret' ? `<h3>Damage</h3>${damageRow(b.type, b)}${counterBlock(b.type)}` : '';
@@ -619,12 +630,25 @@ function ruleDiagrams(cfg) {
   for (let x = 0; x <= gridW; x++) tiles += `<line x1="${x * t}" y1="0" x2="${x * t}" y2="${gridH * t}" stroke="#34404C"/>`;
   for (let y = 0; y <= gridH; y++) tiles += `<line x1="0" y1="${y * t}" x2="${gridW * t}" y2="${y * t}" stroke="#34404C"/>`;
   const circle = (x, r, c, n, later) => `<circle class="blast${later ? ' later' : ''}" cx="${x * t}" cy="${4 * t}" r="${r * t}" fill="${c}" fill-opacity=".22" stroke="${c}" stroke-width="2"/><rect x="${x * t - t / 2}" y="${4 * t - t / 2}" width="${t}" height="${t}" fill="${c}"/><text x="${x * t}" y="${gridH * t + 24}" text-anchor="middle" class="m">${n}</text>`;
-  const siege = `<svg viewBox="0 0 ${gridW * t} ${gridH * t + 34}" role="img" aria-label="Blast sizes to scale on the tile grid">${tiles}${circle(5, bombR, '#FF9A3D', `Bomb, radius ${fmt(bombR)}`)}${circle(14, bomberR, '#FF5263', `Bomber, radius ${fmt(bomberR)}`, true)}<rect x="${21 * t}" y="${3 * t}" width="${2 * t}" height="${2 * t}" fill="#4DA3FF"/><text x="${22 * t}" y="${gridH * t + 24}" text-anchor="middle" class="m">Barracks (2 × 2)</text><text x="${gridW * t - 4}" y="16" text-anchor="end" class="m">1 square = 1 tile</text></svg>`;
+  const siege = `<svg viewBox="0 0 ${gridW * t} ${gridH * t + 34}" role="img" aria-label="Blast sizes to scale on the tile grid">${tiles}${circle(5, bombR, '#FF9A3D', `Mine, radius ${fmt(bombR)}`)}${circle(14, bomberR, '#FF5263', `Bomber, radius ${fmt(bomberR)}`, true)}<rect x="${21 * t}" y="${3 * t}" width="${2 * t}" height="${2 * t}" fill="#4DA3FF"/><text x="${22 * t}" y="${gridH * t + 24}" text-anchor="middle" class="m">Barracks (2 × 2)</text><text x="${gridW * t - 4}" y="16" text-anchor="end" class="m">1 square = 1 tile</text></svg>`;
 
   const stepsW = 164, steps = ['HQ destroyed', 'Eliminated: all you own is lost', 'You can watch the rest', 'Survivors at peace: they win'];
   const winning = `<svg viewBox="0 0 700 92" role="img" aria-label="HQ destroyed, then eliminated, then spectating; the match ends when the survivors are at peace"><defs>${marker('#AEBBCB')}</defs>${steps.map((s, i) => { const x = i * (stepsW + 12); const w = s.split(': '); return `<rect class="step" style="--i:${i}" x="${x}" y="8" width="${stepsW}" height="72" fill="#34404C" stroke="#52627A" stroke-width="2"/><text x="${x + stepsW / 2}" y="${w[1] ? 40 : 50}" text-anchor="middle">${w[0]}${w[1] ? ':' : ''}</text>${w[1] ? `<text x="${x + stepsW / 2}" y="60" text-anchor="middle" class="m" style="font-size:16px">${w[1]}</text>` : ''}${i < 3 ? `<line x1="${x + stepsW}" y1="44" x2="${x + stepsW + 11}" y2="44" stroke="#AEBBCB" stroke-width="2" marker-end="url(#h-AEBBCB)"/>` : ''}`; }).join('')}</svg>`;
 
-  return { economy, fog, diplomacy, siege, winning };
+  // v0.20 spotting: the Artillery's sight and reach, and a Scout ahead of it seeing an enemy behind a wall that the shell flies over.
+  const tile = 16, span = 44, art = unit('Artillery'), scout = unit('Scout');
+  const scoutAt = Math.min(span - 4, art.Sight + 4), enemyAt = Math.min(art.Range - 2, scoutAt + scout.Sight - 2), wallAt = Math.round((scoutAt + enemyAt) / 2);
+  const bar = (y, from, to, c, n) => `<rect class="grow" x="${from * tile}" y="${y}" width="${Math.max(0, (Math.min(span, to) - from) * tile)}" height="14" fill="${c}" fill-opacity=".5"/><text x="${from * tile + 4}" y="${y - 4}" class="m">${n}</text>`;
+  const combat = `<svg viewBox="0 0 ${span * tile} 150" role="img" aria-label="Spotting: a Scout ahead lets the Artillery fire beyond its own sight, over a wall">`
+    + bar(22, 0, art.Sight, '#5BE37D', `Artillery sight ${fmt(art.Sight)}`)
+    + bar(58, art.MinRange, art.Range, '#FF5263', `Artillery range ${fmt(art.MinRange)} to ${fmt(art.Range)}`)
+    + bar(94, Math.max(0, scoutAt - scout.Sight), scoutAt + scout.Sight, '#4DA3FF', `Scout sight ${fmt(scout.Sight)}`)
+    + `<rect x="0" y="124" width="${tile}" height="${tile}" fill="#4DA3FF"/><text x="0" y="146" class="m" style="font-size:14px">Artillery</text>`
+    + `<rect x="${scoutAt * tile}" y="124" width="${tile * 0.8}" height="${tile * 0.8}" fill="#4DA3FF"/><text x="${scoutAt * tile}" y="146" class="m" style="font-size:14px">Scout</text>`
+    + `<rect x="${wallAt * tile}" y="112" width="${tile * 0.6}" height="${tile * 2}" fill="#6B7A8C"/>`
+    + `<rect x="${enemyAt * tile}" y="124" width="${tile}" height="${tile}" fill="#E5484D"/><text x="${enemyAt * tile}" y="146" class="m" style="font-size:14px">Enemy</text></svg>`;
+
+  return { economy, fog, diplomacy, siege, winning, combat };
 }
 
 if (require.main === module) {

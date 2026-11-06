@@ -21,6 +21,7 @@ namespace WAR2D.UI
                 "diplomacy" => Diplomacy(),
                 "siege" => Siege(config),
                 "winning" => Winning(),
+                "combat" => Spotting(config),
                 _ => null,
             };
             d?.AddToClassList("manual__diagram");
@@ -89,6 +90,36 @@ namespace WAR2D.UI
             e.style.width = w;
             e.style.height = h;
             e.generateVisualContent += m => draw(m.painter2D);
+            return e;
+        }
+
+        /// <summary>
+        /// v0.20 spotting (the Combat page): the Artillery's sight and reach as bars to scale, a Scout ahead of it whose sight covers an
+        /// enemy behind a wall, which the shell flies over. The same layout as the mock's.
+        /// </summary>
+        private static VisualElement Spotting(GameConfigData c)
+        {
+            const float Tile = 16f;
+            const int Span = 44;
+            UnitConfig art = c.GetUnit(UnitType.Artillery), scout = c.GetUnit(UnitType.Scout);
+            float scoutAt = Mathf.Min(Span - 4, art.Sight + 4), enemyAt = Mathf.Min(art.Range - 2, scoutAt + scout.Sight - 2), wallAt = Mathf.Round((scoutAt + enemyAt) / 2f);
+            var e = Canvas(Span * Tile, 150f, p =>
+            {
+                void Bar(float y, float from, float to, Color colour) => Rect(p, from * Tile, y, Mathf.Max(0f, (Mathf.Min(Span, to) - from) * Tile), 14f, new Color(colour.r, colour.g, colour.b, 0.5f));
+                Bar(22f, 0f, art.Sight, Good);
+                Bar(58f, art.MinRange, art.Range, Bad);
+                Bar(94f, Mathf.Max(0f, scoutAt - scout.Sight), scoutAt + scout.Sight, Blue);
+                Rect(p, 0f, 124f, Tile, Tile, Blue);
+                Rect(p, scoutAt * Tile, 124f, Tile * 0.8f, Tile * 0.8f, Blue);
+                Rect(p, wallAt * Tile, 112f, Tile * 0.6f, Tile * 2f, new Color(0.42f, 0.478f, 0.549f));
+                Rect(p, enemyAt * Tile, 124f, Tile, Tile, Red);
+            });
+            e.Add(At($"Artillery sight {ManualModel.Number(art.Sight)}", 4f, 2f));
+            e.Add(At($"Artillery range {ManualModel.Number(art.MinRange)} to {ManualModel.Number(art.Range)}", art.MinRange * Tile + 4f, 38f));
+            e.Add(At($"Scout sight {ManualModel.Number(scout.Sight)}", Mathf.Max(0f, scoutAt - scout.Sight) * Tile + 4f, 74f));
+            e.Add(At("Artillery", 0f, 132f));
+            e.Add(At("Scout", scoutAt * Tile, 132f));
+            e.Add(At("Enemy", enemyAt * Tile, 132f));
             return e;
         }
 
@@ -199,7 +230,7 @@ namespace WAR2D.UI
                 Rect(p, 14 * T - T / 2f, 4 * T - T / 2f, T, T, Bad);
                 Rect(p, 21 * T, 3 * T, 2 * T, 2 * T, Blue);
             });
-            e.Add(At($"Bomb, radius {ManualModel.Number(bomb)}", 3 * T - 10f, H * T + 6f));
+            e.Add(At($"Mine, radius {ManualModel.Number(bomb)}", 3 * T - 10f, H * T + 6f));
             e.Add(At($"Bomber, radius {ManualModel.Number(bomber)}", 12 * T - 10f, H * T + 6f));
             e.Add(At("Barracks (2 × 2)", 20 * T - 10f, H * T + 6f));
             e.Add(At("1 square = 1 tile", (W - 6) * T, 2f));
