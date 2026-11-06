@@ -38,9 +38,18 @@ for run in $(seq 1 "$runs"); do
   host=$!
   sleep 5
   for c in $(seq 1 "$clients"); do
-    "$player" -batchmode -nographics -perf -perfClient 127.0.0.1 -perfOut "$dir/client$c" -logFile "$dir/client$c.log" &
+    # WAR_PERF_VIEW=1: the first client renders and measures its frames (PerfClient -perfView; tools/perf-10k.sh).
+    clientArgs=(-batchmode -nographics)
+    if [[ "${WAR_PERF_VIEW:-0}" == "1" && "$c" == "1" ]]; then clientArgs=(-perfView -screen-width 1920 -screen-height 1080 -screen-fullscreen 0); fi
+    "$player" "${clientArgs[@]}" -perf -perfClient 127.0.0.1 -perfOut "$dir/client$c" -logFile "$dir/client$c.log" &
   done
+  gpu=""
+  if [[ "${WAR_PERF_VIEW:-0}" == "1" ]] && command -v nvidia-smi >/dev/null 2>&1; then
+    nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader,nounits -l 1 > "$dir/gpu.csv" &
+    gpu=$!
+  fi
   wait "$host" || true
+  [[ -n "$gpu" ]] && kill "$gpu" 2>/dev/null || true
   wait || true # the clients quit once the host has gone
   [[ -f "$dir/perf.csv" ]] || { echo "Run $run produced no perf.csv (see $dir/player.log)"; exit 1; }
   for c in $(seq 1 "$clients"); do
@@ -81,7 +90,7 @@ for metric, row in tables[0].items():
     budget = row["budget"]
     result = ""
     if budget:
-        upper = metric != "perf.fps"
+        upper = metric not in ("perf.fps", "perf.client.fps", "perf.client.low1")
         ok = median <= float(budget) if upper else median >= float(budget)
         result = "PASS" if ok else "FAIL"
         failed |= not ok

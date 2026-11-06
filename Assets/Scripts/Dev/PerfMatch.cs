@@ -22,7 +22,15 @@ using WAR2D.Sim;
 /// </summary>
 public sealed class PerfMatch : MonoBehaviour
 {
-    public const int Owners = 8, UnitsPerOwner = 10000, WarmupTicks = 100, SampleTicks = 1200, OrderEveryTicks = 40;
+    public const int WarmupTicks = 100, OrderEveryTicks = 40;
+
+    /// <summary>
+    /// The gate's 8 owners × 10,000 units and 1,200 sampled ticks, or other scales for the client benchmark
+    /// (<c>tools/perf-10k.sh</c>: 2 × 5,000): <c>-perfOwners</c> (an even 2 to 8; front partners are pairs),
+    /// <c>-perfUnitsPerOwner</c> (100 to 10,000) and <c>-perfSampleTicks</c> (a longer soak).
+    /// </summary>
+    public static readonly int Owners = ArgInt("-perfOwners", 8, 2, 8) & ~1, UnitsPerOwner = ArgInt("-perfUnitsPerOwner", 10000, 100, 10000),
+        SampleTicks = ArgInt("-perfSampleTicks", 1200, 100, 1200000);
 
     private readonly PerfStats stats = new PerfStats();
     private readonly HashSet<int>[] armyIds = new HashSet<int>[Owners];
@@ -39,6 +47,11 @@ public sealed class PerfMatch : MonoBehaviour
     private int2[] armyStart;
     private int lastTick = -1, startTick = -1;
     private float secondTimer;
+    // Server stability while sampling: this process's CPU and memory, logged errors and dropped connections.
+    private readonly System.Diagnostics.Process self = System.Diagnostics.Process.GetCurrentProcess();
+    private TimeSpan lastCpu;
+    private double firstMemoryMb = double.NaN, lastMemoryMb;
+    private int errors, connectionsAtStart = -1, fewestConnections = int.MaxValue;
 
     // v0.7 siege load per owner: walls, Radars, bombs, Builders on the walls and Diggers on the rock.
     public const int WallsPerOwner = 200, RadarsPerOwner = 5, BombsPerOwner = 20, BuildersPerOwner = 50, DiggersPerOwner = 20, SiegeSetupTick = 60;
@@ -62,6 +75,10 @@ public sealed class PerfMatch : MonoBehaviour
     {
         Application.targetFrameRate = -1;
         QualitySettings.vSyncCount = 0;
+        Application.logMessageReceivedThreaded += (_, _, type) =>
+        {
+            if (startTick >= 0 && (type == LogType.Error || type == LogType.Exception || type == LogType.Assert)) System.Threading.Interlocked.Increment(ref errors);
+        };
         yield return new WaitUntil(() => GameManager.Instance != null);
 
         GameConfigData config = ConfigLoader.LoadConfig();
@@ -134,6 +151,12 @@ public sealed class PerfMatch : MonoBehaviour
         reinforcementTiles = new List<int2>[Owners];
         for (int i = 0; i < Owners; i++) reinforcementTiles[i] = new List<int2>(WalkableSpiral(world, sites[i] + new int2(0, 6), ReinforcementTiles));
         world.Sim.UnitDied += (id, _) => { foreach (HashSet<int> army in armyIds) if (army.Remove(id)) break; };
+        // -perfShareVision (the 10,000-unit benchmark): every owner shares its vision with the others, so the measured player
+        // knows, and draws, every unit in the match, not only the enemies its own army sees.
+        if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfShareVision") >= 0)
+            for (int a = 0; a < Owners; a++)
+            for (int b = 0; b < Owners; b++)
+                if (a != b) world.Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.SetShareVision, OwnerId = owners[a], TargetOwnerId = owners[b], Flag = true });
 
         if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfRecord") >= 0)
         {
@@ -191,6 +214,7 @@ public sealed class PerfMatch : MonoBehaviour
                     stats.Add("perf.recordKBps", (perfRecorder.QueuedBytes - lastRecordBytes) / 1024.0 / secondTimer);
                     lastRecordBytes = perfRecorder.QueuedBytes;
                 }
+                SampleServer(secondTimer);
                 secondTimer = 0f;
             }
         }
@@ -208,9 +232,11 @@ public sealed class PerfMatch : MonoBehaviour
                 startTick = tick;
                 for (int i = 0; i < Owners; i++) botBytesThisSecond[i] = 0;
                 secondTimer = 0f;
+                lastCpu = self.TotalProcessorTime;
             }
             return;
         }
+        stats.Add("perf.server.commandQueue", sim.Commands.Count);
         stats.Add("perf.tick.main", SimTiming.LastMainThreadMs - SimTiming.LastBoundaryWaitMs);
         stats.Add("perf.tick.wait", SimTiming.LastBoundaryWaitMs);
         stats.Add("perf.tick.replication", ReplicationService.LastMilliseconds);
@@ -230,6 +256,26 @@ public sealed class PerfMatch : MonoBehaviour
         stats.Add("perf.units", sim.Clock.UnitCount);
         if (tick - startTick >= SampleTicks) Finish();
     }
+
+    /// <summary>Once a second while sampling: this process's CPU (% of one core) and memory, and the server's connections.</summary>
+    private void SampleServer(float seconds)
+    {
+        self.Refresh();
+        TimeSpan cpu = self.TotalProcessorTime;
+        stats.Add("perf.server.cpu", (cpu - lastCpu).TotalMilliseconds / Math.Max(1.0, seconds * 1000.0) * 100.0);
+        lastCpu = cpu;
+        lastMemoryMb = UnityMemoryMb(); // Mono reports no working set on Windows
+        if (double.IsNaN(firstMemoryMb)) firstMemoryMb = lastMemoryMb;
+        stats.Add("perf.server.memMB", lastMemoryMb);
+        stats.Add("perf.server.gcMB", GC.GetTotalMemory(false) / 1048576.0);
+        stats.Add("perf.server.unityMB", UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong() / 1048576.0);
+        if (connectionsAtStart < 0) connectionsAtStart = NetworkServer.connections.Count;
+        fewestConnections = Math.Min(fewestConnections, NetworkServer.connections.Count);
+    }
+
+    /// <summary>Memory Unity has reserved, native and managed, in MB.</summary>
+    internal static double UnityMemoryMb() =>
+        (UnityEngine.Profiling.Profiler.GetTotalReservedMemoryLong() + UnityEngine.Profiling.Profiler.GetMonoHeapSizeLong()) / 1048576.0;
 
     /// <summary>A quarter of each army (rotating) heads for its front partner's start point.</summary>
     private void IssueOrders(SimContext sim, int tick)
@@ -456,6 +502,17 @@ public sealed class PerfMatch : MonoBehaviour
             ["perf.bw.peak1s"] = ("max", 786432.0, true),
         };
         if (AiRun) budgets["perf.part.ai"] = ("p95", 2.0, true); // v0.14 spec §12: AI thinking with 7 Hard AIs
+        // Server stability (proposed with the 10,000-unit benchmark): no errors, no dropped connections, and the working set
+        // grows at most 64 MB over the sampled window.
+        if (!double.IsNaN(firstMemoryMb))
+        {
+            stats.Add("perf.server.memGrowthMB", lastMemoryMb - firstMemoryMb);
+            stats.Add("perf.server.errors", errors);
+            stats.Add("perf.server.drops", Math.Max(0, connectionsAtStart - fewestConnections));
+            budgets["perf.server.memGrowthMB"] = ("max", 64.0, true);
+            budgets["perf.server.errors"] = ("max", 0.0, true);
+            budgets["perf.server.drops"] = ("max", 0.0, true);
+        }
         stats.WriteCsv(path, budgets);
         WarLog.Info(LogCategory.Dev, $"wrote {path}");
         if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0)
@@ -616,6 +673,8 @@ public sealed class PerfMatch : MonoBehaviour
         int i = Array.IndexOf(args, name);
         return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
     }
+
+    private static int ArgInt(string name, int fallback, int min, int max) => int.TryParse(ArgValue(name), out int v) ? math.clamp(v, min, max) : fallback;
 
     private void Fail(string reason)
     {
