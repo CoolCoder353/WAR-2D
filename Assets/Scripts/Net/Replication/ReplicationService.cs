@@ -89,6 +89,8 @@ namespace WAR2D.Net.Replication
             public long BytesSent;
             /// <summary>v0.20: status bits last sent, by unit id index; shells this client was told about.</summary>
             public readonly Dictionary<int, byte> SentStatus = new Dictionary<int, byte>();
+            /// <summary>True once a full status diff fitted its batch: from then on its status news can be this tick's changes alone.</summary>
+            public bool StatusSynced;
             public readonly HashSet<int> SentShells = new HashSet<int>();
             /// <summary>v0.20: a lane client's combat payload, held until its units (a tick late) have gone out, and its tick.</summary>
             public byte[] PendingCombat;

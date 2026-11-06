@@ -72,8 +72,9 @@ public sealed class AlertService
         // most a tick's step since, which the one-cell margin covers. A unit the blast killed is still here, at 0 health.
         blastVictims.Clear();
         int cellsX = data.CellsX, cellsY = data.CellsY, cellSize = data.CellSize;
-        foreach ((float2 at, int _, float radius) in blasts)
+        foreach ((float2 at, int by, float radius) in blasts)
         {
+            float rSq = radius * radius;
             int2 lo = math.clamp((int2)math.floor((at - radius) / cellSize) - 1, 0, new int2(cellsX - 1, cellsY - 1));
             int2 hi = math.clamp((int2)math.floor((at + radius) / cellSize) + 1, 0, new int2(cellsX - 1, cellsY - 1));
             for (int cy = lo.y; cy <= hi.y; cy++)
@@ -83,17 +84,17 @@ public sealed class AlertService
                 for (int k = data.CellStart[cell]; k < data.CellStart[cell + 1]; k++)
                 {
                     int slot = data.Sorted[k];
-                    if (slot >= unitCount || blastVictims.Contains(slot)) continue;
+                    if (slot >= unitCount || data.OwnerId[slot] == by) continue;
                     float2 p = data.Positions[slot];
-                    if (!Hit(blasts, p, p, data.OwnerId[slot])) continue;
-                    blastVictims.Add(slot);
+                    if (math.distancesq(p, at) > rSq || !blastVictims.Add(slot)) continue; // this blast reaches it, and no other already did
                     damaged.Add((data.OwnerId[slot], (int2)math.floor(p)));
                 }
             }
         }
         blastVictims.Clear();
-        foreach ((float2 at, int _, float radius) in blasts)
+        foreach ((float2 at, int by, float radius) in blasts)
         {
+            float rSq = radius * radius;
             // Buildings are hashed by centre: a footprint reaches up to half its size (an HQ's 2.5 tiles) further.
             int2 lo = math.clamp((int2)math.floor((at - radius - 3f) / cellSize), 0, new int2(cellsX - 1, cellsY - 1));
             int2 hi = math.clamp((int2)math.floor((at + radius + 3f) / cellSize), 0, new int2(cellsX - 1, cellsY - 1));
@@ -104,26 +105,14 @@ public sealed class AlertService
                 for (int k = data.BuildingCellStart[cell]; k < data.BuildingCellStart[cell + 1]; k++)
                 {
                     int b = data.BuildingSorted[k];
-                    if (blastVictims.Contains(b) || (data.BuildingFlag[b] & BuildingFlags.Hidden) != 0) continue; // a hidden Mine is the blast's cause, not its victim
-                    float2 start = Footprint.Start(data.BuildingAnchor[b], data.BuildingSize[b]);
-                    if (!Hit(blasts, start, start + data.BuildingSize[b], data.BuildingOwnerId[b])) continue;
-                    blastVictims.Add(b);
+                    if (data.BuildingOwnerId[b] == by || (data.BuildingFlag[b] & BuildingFlags.Hidden) != 0) continue; // a hidden Mine is the blast's cause, not its victim
+                    float2 start = Footprint.Start(data.BuildingAnchor[b], data.BuildingSize[b]), end = start + data.BuildingSize[b];
+                    if (math.lengthsq(math.max(math.max(start - at, at - end), 0f)) > rSq || !blastVictims.Add(b)) continue;
                     damaged.Add((data.BuildingOwnerId[b], data.BuildingAnchor[b]));
                 }
             }
         }
         AlertRules.UnderAttack(damaged, throttle, now, add);
-    }
-
-    /// <summary>True when a blast by another owner reaches the box from <paramref name="min"/> to <paramref name="max"/>.</summary>
-    private static bool Hit(IReadOnlyList<(float2 at, int owner, float radius)> blasts, float2 min, float2 max, int owner)
-    {
-        for (int i = 0; i < blasts.Count; i++)
-        {
-            (float2 at, int by, float radius) = blasts[i];
-            if (by != owner && math.lengthsq(math.max(math.max(min - at, at - max), 0f)) <= radius * radius) return true;
-        }
-        return false;
     }
 
     /// <summary>Adds a hit target's own owner and tile, once per target.</summary>

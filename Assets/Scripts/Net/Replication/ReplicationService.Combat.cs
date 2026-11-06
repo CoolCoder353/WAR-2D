@@ -24,6 +24,9 @@ namespace WAR2D.Net.Replication
         private readonly HashSet<int> seenStatus = new HashSet<int>();
         private readonly List<int> staleStatus = new List<int>();
         private readonly List<int> staleShells = new List<int>();
+        /// <summary>Every unit's status bits now and last tick (by id index), and what changed between them (bits 0: cleared).</summary>
+        private Dictionary<int, byte> statusNow = new Dictionary<int, byte>(), statusBefore = new Dictionary<int, byte>();
+        private readonly List<int2> statusChanged = new List<int2>();
 
         /// <summary>Builds and sends (or, for a lane client, holds) every active client's combat news for <paramref name="tick"/>.</summary>
         private void SendCombat(SimData data, int tick, in ReplicationInput input)
@@ -34,6 +37,16 @@ namespace WAR2D.Net.Replication
                 Count = input.Count, IdOf = data.IdOf, IndexOfId = data.IndexOfId, Health = data.Health, Type = data.Type, Combat = data.Combat,
                 BlastRadiusByType = data.BlastRadiusByType, AimByType = data.AimByType, Burning = data.BurningUnits, Tick = tick, Out = statuses,
             }.Run();
+            (statusBefore, statusNow) = (statusNow, statusBefore);
+            statusNow.Clear();
+            statusChanged.Clear();
+            for (int k = 0; k < statuses.Length; k++)
+            {
+                statusNow[statuses[k].x] = (byte)statuses[k].y;
+                if (!statusBefore.TryGetValue(statuses[k].x, out byte was) || was != statuses[k].y) statusChanged.Add(statuses[k]);
+            }
+            foreach (KeyValuePair<int, byte> pair in statusBefore)
+                if (!statusNow.ContainsKey(pair.Key)) statusChanged.Add(new int2(pair.Key, 0));
             shellsInFlight.Clear();
             for (int k = 0; k < data.Shells.Length; k++) shellsInFlight.Add(data.Shells[k].Id);
             int incomingTicks = math.max(1, (int)math.round(config.Artillery.IncomingSeconds / math.max(1e-4f, config.Simulation.TickSeconds)));
@@ -48,27 +61,10 @@ namespace WAR2D.Net.Replication
                 news.Clear();
                 news.Tick = tick;
 
-                // Status bits: what changed for units it knows; a unit it no longer knows left (its Leave cleared them).
-                seenStatus.Clear();
-                for (int k = 0; k < statuses.Length; k++)
-                {
-                    int index = statuses[k].x;
-                    if (!InterestRules.UnitKnown(input, allowed, index, owner, grid)) continue;
-                    byte bits = (byte)statuses[k].y;
-                    seenStatus.Add(index); // past the cap too, so a unit waiting for the next batch isn't taken for one that stopped
-                    if (client.SentStatus.TryGetValue(index, out byte sent) && sent == bits) continue;
-                    if (news.Statuses.Count >= MaxStatusesPerBatch) continue; // the rest go next tick
-                    client.SentStatus[index] = bits;
-                    news.Statuses.Add(new StatusEntry { Index = index, Bits = bits });
-                }
-                staleStatus.Clear();
-                foreach (KeyValuePair<int, byte> pair in client.SentStatus)
-                    if (!seenStatus.Contains(pair.Key)) staleStatus.Add(pair.Key);
-                foreach (int index in staleStatus)
-                {
-                    client.SentStatus.Remove(index);
-                    if (InterestRules.UnitKnown(input, allowed, index, owner, grid)) news.Statuses.Add(new StatusEntry { Index = index, Bits = 0 });
-                }
+                // Status bits: what changed for units it knows; a unit it no longer knows left (its Leave cleared them). A client the
+                // boundary encodes takes only this tick's changes and the units it met or lost (perf gate 2026-11-07: a full diff for
+                // every client every tick was 3 ms at 80,000 units); the recorder's lane, or a batch past the cap, takes the full diff.
+                if (!encodeNow[c] || !client.StatusSynced || !StatusDelta(c, client, input, allowed, owner, grid, news)) FullStatus(client, statuses, input, allowed, owner, grid, news);
 
                 for (int k = 0; k < data.Leaps.Length; k++)
                 {
@@ -120,6 +116,66 @@ namespace WAR2D.Net.Replication
                 if (client.VirtualSink != null) client.VirtualSink(payload, CombatSinkChannel);
                 else client.Connection.Send(new CombatBatch { Payload = payload }, Channels.Reliable);
             }
+        }
+
+        /// <summary>The full status diff: every unit it knows with bits, against what it was last sent; units it no longer knows dropped.</summary>
+        private void FullStatus(Client client, NativeList<int2> statuses, in ReplicationInput input, NativeArray<ulong> allowed, int owner, int grid, CombatNews news)
+        {
+            seenStatus.Clear();
+            bool behind = false;
+            for (int k = 0; k < statuses.Length; k++)
+            {
+                int index = statuses[k].x;
+                if (!InterestRules.UnitKnown(input, allowed, index, owner, grid)) continue;
+                byte bits = (byte)statuses[k].y;
+                seenStatus.Add(index); // past the cap too, so a unit waiting for the next batch isn't taken for one that stopped
+                if (client.SentStatus.TryGetValue(index, out byte sent) && sent == bits) continue;
+                if (news.Statuses.Count >= MaxStatusesPerBatch) { behind = true; continue; } // the rest go next tick
+                client.SentStatus[index] = bits;
+                news.Statuses.Add(new StatusEntry { Index = index, Bits = bits });
+            }
+            staleStatus.Clear();
+            foreach (KeyValuePair<int, byte> pair in client.SentStatus)
+                if (!seenStatus.Contains(pair.Key)) staleStatus.Add(pair.Key);
+            foreach (int index in staleStatus)
+            {
+                client.SentStatus.Remove(index);
+                if (InterestRules.UnitKnown(input, allowed, index, owner, grid)) news.Statuses.Add(new StatusEntry { Index = index, Bits = 0 });
+            }
+            client.StatusSynced = !behind;
+        }
+
+        /// <summary>
+        /// The status delta for a client the boundary encodes: forget what it lost (its Leave cleared them on its side), send what it just
+        /// met, then this tick's changes for units it knows. False (and nothing changed) when that would pass the cap: take the full diff.
+        /// </summary>
+        private bool StatusDelta(int c, Client client, in ReplicationInput input, NativeArray<ulong> allowed, int owner, int grid, CombatNews news)
+        {
+            NativeList<int> entered = interests.Entered(c), left = interests.Left(c);
+            if (entered.Length + statusChanged.Count > MaxStatusesPerBatch) return false;
+            for (int k = 0; k < left.Length; k++) client.SentStatus.Remove(NetIdAllocator.IndexOf(left[k]));
+            for (int k = 0; k < entered.Length; k++)
+            {
+                int index = NetIdAllocator.IndexOf(entered[k]);
+                if (!statusNow.TryGetValue(index, out byte bits) || !InterestRules.UnitKnown(input, allowed, index, owner, grid)) continue;
+                client.SentStatus[index] = bits;
+                news.Statuses.Add(new StatusEntry { Index = index, Bits = bits });
+            }
+            foreach (int2 change in statusChanged)
+            {
+                int index = change.x;
+                byte bits = (byte)change.y;
+                if (bits != 0)
+                {
+                    if (!InterestRules.UnitKnown(input, allowed, index, owner, grid)) continue;
+                    if (client.SentStatus.TryGetValue(index, out byte sent) && sent == bits) continue; // just met: already sent above
+                    client.SentStatus[index] = bits;
+                    news.Statuses.Add(new StatusEntry { Index = index, Bits = bits });
+                }
+                else if (client.SentStatus.Remove(index) && InterestRules.UnitKnown(input, allowed, index, owner, grid))
+                    news.Statuses.Add(new StatusEntry { Index = index, Bits = 0 });
+            }
+            return true;
         }
 
         /// <summary>Sends a lane client's held combat news, once its units of that tick have gone out.</summary>
