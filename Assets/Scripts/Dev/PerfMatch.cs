@@ -171,7 +171,7 @@ public sealed class PerfMatch : MonoBehaviour
             int bot = i;
             if (breakdown && i == firstBot)
             {
-                world.Replication.AddVirtualClient(owners[i], (segment, channel) => { botBytesThisSecond[bot] += WireLimits.WireBytes(segment.Count); if (channel >= 0) CountTypes(segment); });
+                world.Replication.AddVirtualClient(owners[i], (segment, channel) => { botBytesThisSecond[bot] += WireLimits.WireBytes(segment.Count); if (channel >= 0 && startTick >= 0) CountTypes(segment, typeBytes, typeUnits); });
                 world.Replication.SetVirtualView(owners[i], armyStart[i] - new int2(32, 18), armyStart[i] + new int2(32, 18));
                 continue;
             }
@@ -402,18 +402,20 @@ public sealed class PerfMatch : MonoBehaviour
     }
 
     private readonly long[] typeBytes = new long[8], typeUnits = new long[8];
-    private readonly List<EnterUnit> scratchEnters = new List<EnterUnit>();
-    private readonly List<RouteUnit> scratchRoutes = new List<RouteUnit>();
-    private readonly List<CorrectionUnit> scratchCorrections = new List<CorrectionUnit>();
-    private readonly List<HealthUnit> scratchHealth = new List<HealthUnit>();
-    private readonly List<LeaveUnit> scratchLeaves = new List<LeaveUnit>();
-    private readonly List<AttackEvent> scratchAttacks = new List<AttackEvent>();
-    private readonly List<int2> scratchTiles = new List<int2>();
+    private static readonly List<EnterUnit> scratchEnters = new List<EnterUnit>();
+    private static readonly List<RouteUnit> scratchRoutes = new List<RouteUnit>();
+    private static readonly List<CorrectionUnit> scratchCorrections = new List<CorrectionUnit>();
+    private static readonly List<HealthUnit> scratchHealth = new List<HealthUnit>();
+    private static readonly List<LeaveUnit> scratchLeaves = new List<LeaveUnit>();
+    private static readonly List<AttackEvent> scratchAttacks = new List<AttackEvent>();
+    private static readonly List<int2> scratchTiles = new List<int2>();
 
-    /// <summary>Diagnostics (-perfBreakdown): bytes and units per message type in one bot's stream.</summary>
-    private void CountTypes(ArraySegment<byte> segment)
+    /// <summary>
+    /// Diagnostics (-perfBreakdown): adds a replication payload's bytes and units per message type (one bot's stream here, the
+    /// measured player's in <see cref="PerfClient"/>). Main thread only.
+    /// </summary>
+    internal static void CountTypes(ArraySegment<byte> segment, long[] typeBytes, long[] typeUnits)
     {
-        if (startTick < 0) return;
         var reader = new NetworkReader(segment);
         while (reader.Remaining > 0)
         {
@@ -434,6 +436,14 @@ public sealed class PerfMatch : MonoBehaviour
             typeBytes[(int)type] += reader.Position - before;
             typeUnits[(int)type] += units;
         }
+    }
+
+    /// <summary>Writes <see cref="CountTypes"/>' totals as <c>type,bytes,units</c>.</summary>
+    internal static void WriteBreakdown(string path, long[] typeBytes, long[] typeUnits)
+    {
+        var lines = new System.Text.StringBuilder("type,bytes,units\n");
+        for (int t = 1; t < typeBytes.Length; t++) lines.AppendLine($"{(MessageType)t},{typeBytes[t]},{typeUnits[t]}");
+        File.WriteAllText(path, lines.ToString());
     }
 
     /// <summary>Spawns a unit for army <paramref name="army"/> on each of <paramref name="tiles"/> (up to <paramref name="count"/>).</summary>
@@ -517,9 +527,7 @@ public sealed class PerfMatch : MonoBehaviour
         WarLog.Info(LogCategory.Dev, $"wrote {path}");
         if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0)
         {
-            var lines = new System.Text.StringBuilder("type,bytes,units\n");
-            for (int t = 1; t < typeBytes.Length; t++) lines.AppendLine($"{(MessageType)t},{typeBytes[t]},{typeUnits[t]}");
-            File.WriteAllText(Path.Combine(dir, "breakdown.csv"), lines.ToString());
+            WriteBreakdown(Path.Combine(dir, "breakdown.csv"), typeBytes, typeUnits);
         }
         enabled = false;
         Application.Quit();

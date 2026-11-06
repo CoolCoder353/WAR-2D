@@ -58,6 +58,8 @@ public sealed class PerfClient : MonoBehaviour
             // matters: a window behind another one stalls in DXGI.WaitOnSwapChain for ~500 ms at a time (profiled 2026-11-06).
             SettingsStore.Current = new GameSettings { VSync = false, FpsCap = 0, EdgeScroll = false };
             SettingsStore.Apply(SettingsStore.Current);
+            // -perfBreakdown: bytes per message type in this player's unit stream (decodes every batch twice: not for timing runs).
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0) WAR2D.Net.Replication.ReplicationClient.Received += CountBatch;
         }
         UseMeteredTransport();
         GameManager.Instance.ConnectToServer(PerfMatch.ArgValue("-perfClient"));
@@ -118,10 +120,25 @@ public sealed class PerfClient : MonoBehaviour
             File.WriteAllText(Path.Combine(dir, "frames.csv"), frames.ToString());
             budgets["perf.client.fps"] = ("mean", FpsBudget, false);
             budgets["perf.client.low1"] = ("mean", FpsBudget, false);
+            if (batchBytes > 0)
+            {
+                stats.Add("perf.client.batchKBps", batchBytes / 1024.0 / Math.Max(1.0, frameAt[frameAt.Count - 1]));
+                PerfMatch.WriteBreakdown(Path.Combine(dir, "breakdown.csv"), typeBytes, typeUnits);
+            }
         }
         stats.WriteCsv(path, budgets);
         WarLog.Info(LogCategory.Dev, $"wrote {path}");
         Application.Quit();
+    }
+
+    private readonly long[] typeBytes = new long[8], typeUnits = new long[8];
+    private long batchBytes;
+
+    private void CountBatch(WAR2D.Net.Replication.ReplicationBatch batch)
+    {
+        if (!measuring) return;
+        batchBytes += batch.Payload.Count;
+        PerfMatch.CountTypes(batch.Payload, typeBytes, typeUnits);
     }
 
     /// <summary>The view's frames, from the warm-up's end until the host ends the match (not the menu that follows).</summary>
