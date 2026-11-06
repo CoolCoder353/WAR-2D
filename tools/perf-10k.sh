@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The 10,000-unit benchmark: one match of 10,000 active units (two owners x 5,000 on one front, the gate's battle script,
 # siege load, defences and reinforcements, the 1024 map, seed 1), hosted by a headless server (the host's own army is one
-# side), with one real player joined over KCP who renders at 1920x1080 windowed (default settings, VSync off, no frame cap)
+# side), with one real player joined over KCP who renders at 1920x1080 fullscreen (default settings, VSync off, no frame cap)
 # and zooms out, as a player can, until every unit it knows is on screen (PerfClient -perfView). Both sides share vision
 # (-perfShareVision), so the player knows and draws all 10,000 units, not only the enemies its own army sees. Each run's
 # client1/frames.csv holds every measured frame.

@@ -40,7 +40,7 @@ for run in $(seq 1 "$runs"); do
   for c in $(seq 1 "$clients"); do
     # WAR_PERF_VIEW=1: the first client renders and measures its frames (PerfClient -perfView; tools/perf-10k.sh).
     clientArgs=(-batchmode -nographics)
-    if [[ "${WAR_PERF_VIEW:-0}" == "1" && "$c" == "1" ]]; then clientArgs=(-perfView -screen-width 1920 -screen-height 1080 -screen-fullscreen 0); fi
+    if [[ "${WAR_PERF_VIEW:-0}" == "1" && "$c" == "1" ]]; then clientArgs=(-perfView -screen-width 1920 -screen-height 1080 -screen-fullscreen 1); fi
     "$player" "${clientArgs[@]}" -perf -perfClient 127.0.0.1 -perfOut "$dir/client$c" -logFile "$dir/client$c.log" &
   done
   gpu=""

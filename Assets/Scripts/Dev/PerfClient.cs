@@ -32,7 +32,7 @@ public sealed class PerfClient : MonoBehaviour
 
     /// <summary>
     /// True with <c>-perfView</c> (the 10,000-unit benchmark, <c>tools/perf-10k.sh</c>): this client renders, at 1920×1080
-    /// windowed with the default settings, VSync off and no frame cap, frames every unit it knows, and records its frames
+    /// fullscreen with the default settings, VSync off and no frame cap, frames every unit it knows, and records its frames
     /// (fps, 1 % low, CPU main and render thread, GPU), its process CPU and memory, and the units it knows and has on screen.
     /// </summary>
     private static readonly bool View = Array.IndexOf(Environment.GetCommandLineArgs(), "-perfView") >= 0;
@@ -54,8 +54,9 @@ public sealed class PerfClient : MonoBehaviour
         yield return new WaitUntil(() => GameManager.Instance != null);
         if (View)
         {
-            // After SettingsStore.ApplyOnStart: the defaults, whatever this machine saved, uncapped.
-            SettingsStore.Current = new GameSettings { Width = 1920, Height = 1080, Fullscreen = false, VSync = false, FpsCap = 0, EdgeScroll = false };
+            // After SettingsStore.ApplyOnStart: the defaults (1920×1080 fullscreen), whatever this machine saved, uncapped. Fullscreen
+            // matters: a window behind another one stalls in DXGI.WaitOnSwapChain for ~500 ms at a time (profiled 2026-11-06).
+            SettingsStore.Current = new GameSettings { VSync = false, FpsCap = 0, EdgeScroll = false };
             SettingsStore.Apply(SettingsStore.Current);
         }
         UseMeteredTransport();
