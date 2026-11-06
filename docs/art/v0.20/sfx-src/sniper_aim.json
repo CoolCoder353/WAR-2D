@@ -1,0 +1,12 @@
+{
+  "wave": "Sine",
+  "attack": 0.1,
+  "sustain": 1.8,
+  "decay": 0.1,
+  "frequency": 500,
+  "slide": 0.55,
+  "vibratoDepth": 0.02,
+  "vibratoSpeed": 12,
+  "volume": 0.25,
+  "seed": 76
+}

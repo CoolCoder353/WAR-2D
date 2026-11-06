@@ -23,7 +23,7 @@ namespace WAR2D.Art.Render
     /// <see cref="ArtStyle.FireRamp"/>, smoke and debris from the machine and rock greys, fades by ordered
     /// dithering (no partial alpha, so they stay pixel art). Deterministic.
     /// </summary>
-    public static class EffectGen
+    public static partial class EffectGen
     {
         private const int T = RenderGen.TileSize;
 
@@ -229,12 +229,15 @@ namespace WAR2D.Art.Render
         /// What a shell leaves: about a tile wide on a 2-tile canvas, in hard bands (a pit, a lit and a shaded wall, a raised rim), with
         /// a dithered ring of soot and thrown stones. Fades by dithering, as the other ground marks do.
         /// </summary>
-        public static EffectFrame Crater(int variant, int frame)
+        public static EffectFrame Crater(int variant, int frame) => CraterSized(variant, frame, 2, T * (0.46f + 0.02f * variant), 8);
+
+        /// <summary>A crater of radius <paramref name="r"/> px on a <paramref name="tiles"/>-square canvas, throwing <paramref name="stones"/> stones.</summary>
+        private static EffectFrame CraterSized(int variant, int frame, int tiles, float r, int stones)
         {
-            int s = 2 * T;
+            int s = tiles * T;
             var img = new Img(s, s);
             var rng = new ArtRandom(101 + variant, "crater");
-            float c = s / 2f, r = T * (0.46f + 0.02f * variant);
+            float c = s / 2f;
             var bump = new float[10];
             for (int i = 0; i < bump.Length; i++) bump[i] = 0.86f + 0.28f * rng.Range(100) / 100f;
             for (int y = 0; y < s; y++)
@@ -253,7 +256,7 @@ namespace WAR2D.Art.Render
                 else continue;
                 if (Kept(x, y, frame)) img.Set(x, y, colour);
             }
-            for (int k = 0; k < 8; k++)
+            for (int k = 0; k < stones; k++)
             {
                 float a = rng.Range(360) * Mathf.Deg2Rad, dist = r * (1.15f + rng.Range(80) / 100f);
                 int size = 2 + rng.Range(2);

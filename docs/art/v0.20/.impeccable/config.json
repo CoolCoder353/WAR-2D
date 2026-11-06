@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "low-contrast",
+        "value": "*",
+        "files": [
+          "docs/art/v0.20/index.html"
+        ],
+        "createdAt": "2026-11-06T05:28:22.058Z",
+        "reason": "Claude: scanner measures text against #ffffff, but body background is var(--bg) #15191e (single dark look like the v0.12/v0.13 review pages); actual contrast >= 7:1"
+      }
+    ]
+  }
+}

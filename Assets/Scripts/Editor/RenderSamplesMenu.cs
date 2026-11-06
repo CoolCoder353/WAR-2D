@@ -15,7 +15,7 @@ namespace WAR2D.EditorTools
     /// Charcoal palette) to <c>docs/art/render/</c>: the sprites close up, and an in-game scene on a real
     /// generated map at 1:1 (64 px per tile).
     /// </summary>
-    public static class RenderSamplesMenu
+    public static partial class RenderSamplesMenu
     {
         public const string LitFolder = "docs/art/render", PixelFolder = "docs/art/pixel", PixelHdFolder = "docs/art/pixel-hd";
 

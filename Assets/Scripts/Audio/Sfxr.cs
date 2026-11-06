@@ -49,6 +49,10 @@ namespace WAR2D.Audio
         public float phaserSweep = 0f;
         /// <summary>The rendered sound's peak level (0..1): filters and the phaser can't make it clip or vanish.</summary>
         public float volume = 0.5f;
+        /// <summary>Times the sound is laid down (1 = once): a burst of shots as one clip (v0.20's Gun turret).</summary>
+        public int repeat = 1;
+        /// <summary>Seconds between repeats when <see cref="repeat"/> is more than 1.</summary>
+        public float repeatEvery = 0f;
         /// <summary>The seed <c>WAR-2D/Audio/Build SFX</c> renders this sound with.</summary>
         public int seed = 1;
     }
@@ -61,7 +65,7 @@ namespace WAR2D.Audio
     {
         private const int PhaserSize = 1024, NoiseSize = 32;
 
-        /// <summary>The sound's samples, mono in [-1, 1]; length is attack + sustain + decay.</summary>
+        /// <summary>The sound's samples, mono in [-1, 1]; length is attack + sustain + decay (and the repeats, when it repeats).</summary>
         public static float[] Render(SfxrParams p, int seed, int sampleRate = 44100)
         {
             float attack = Mathf.Max(0f, p.attack), sustain = Mathf.Max(0f, p.sustain), decay = Mathf.Max(0f, p.decay);
@@ -135,6 +139,18 @@ namespace WAR2D.Audio
 
                 float value = sample * Envelope(t, attack, sustain, decay, p.punch);
                 output[i] = float.IsNaN(value) || float.IsInfinity(value) ? 0f : value;
+            }
+
+            if (p.repeat > 1 && p.repeatEvery > 0f)
+            {
+                // A burst: the same shot laid down again every repeatEvery seconds (a fast-firing gun as one loop).
+                int step = Mathf.Max(1, Mathf.RoundToInt(p.repeatEvery * sampleRate));
+                var burst = new float[step * (p.repeat - 1) + length];
+                for (int r = 0; r < p.repeat; r++)
+                for (int i = 0; i < length; i++)
+                    burst[r * step + i] += output[i];
+                output = burst;
+                length = burst.Length;
             }
 
             float peak = 0f;
