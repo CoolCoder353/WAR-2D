@@ -222,8 +222,11 @@ namespace WAR2D.Net.Replication
         /// <summary>Drops a unit's status (it left the client's knowledge or died).</summary>
         public void Forget(int index) => status.Remove(index);
 
-        /// <summary>Applies a payload; false (nothing applied) when it is malformed.</summary>
-        public bool Apply(ArraySegment<byte> payload)
+        /// <summary>
+        /// Applies a payload; false (nothing applied) when it is malformed. <paramref name="quiet"/> (a replay seeking) keeps the
+        /// statuses but raises nothing to draw, so a skipped span's shells and leaps don't all play at once.
+        /// </summary>
+        public bool Apply(ArraySegment<byte> payload, bool quiet = false)
         {
             try { CombatCodec.Read(payload, scratch); }
             catch (Exception e) when (e is InvalidDataException || e is EndOfStreamException)
@@ -235,7 +238,7 @@ namespace WAR2D.Net.Replication
                 if (s.Bits == 0) status.Remove(s.Index);
                 else status[s.Index] = s.Bits;
             }
-            Received?.Invoke(scratch);
+            if (!quiet) Received?.Invoke(scratch);
             return true;
         }
 

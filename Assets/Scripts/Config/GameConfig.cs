@@ -266,6 +266,8 @@ namespace Config
         public float LeapSeconds;
         /// <summary>v0.20: enemy units within this many tiles of the nearest one are its army.</summary>
         public float ArmyTiles;
+        /// <summary>v0.20: tiles beyond its body at which a Bomber touching its target goes off without leaping.</summary>
+        public float ContactTiles;
     }
 
     /// <summary>Hits after armour (v0.20).</summary>
@@ -315,6 +317,8 @@ namespace Config
     {
         /// <summary>Seconds a Sniper aims, standing still, before each shot.</summary>
         public float AimSeconds;
+        /// <summary>Tiles a second under which it counts as standing still (a crowd's push aside).</summary>
+        public float StillSpeed;
     }
 
     /// <summary>Combat effects (v0.20, client presentation).</summary>

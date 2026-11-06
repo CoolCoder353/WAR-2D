@@ -29,7 +29,11 @@ namespace WAR2D.Net.Replication
         private void SendCombat(SimData data, int tick, in ReplicationInput input)
         {
             using var statuses = new NativeList<int2>(256, Allocator.TempJob);
-            new StatusListJob { Count = input.Count, IdOf = data.IdOf, Health = data.Health, Combat = data.Combat, Tick = tick, Out = statuses }.Run();
+            new StatusListJob
+            {
+                Count = input.Count, IdOf = data.IdOf, IndexOfId = data.IndexOfId, Health = data.Health, Type = data.Type, Combat = data.Combat,
+                BlastRadiusByType = data.BlastRadiusByType, AimByType = data.AimByType, Burning = data.BurningUnits, Tick = tick, Out = statuses,
+            }.Run();
             shellsInFlight.Clear();
             for (int k = 0; k < data.Shells.Length; k++) shellsInFlight.Add(data.Shells[k].Id);
             int incomingTicks = math.max(1, (int)math.round(config.Artillery.IncomingSeconds / math.max(1e-4f, config.Simulation.TickSeconds)));
@@ -46,13 +50,14 @@ namespace WAR2D.Net.Replication
 
                 // Status bits: what changed for units it knows; a unit it no longer knows left (its Leave cleared them).
                 seenStatus.Clear();
-                for (int k = 0; k < statuses.Length && news.Statuses.Count < MaxStatusesPerBatch; k++)
+                for (int k = 0; k < statuses.Length; k++)
                 {
                     int index = statuses[k].x;
                     if (!InterestRules.UnitKnown(input, allowed, index, owner, grid)) continue;
                     byte bits = (byte)statuses[k].y;
-                    seenStatus.Add(index);
+                    seenStatus.Add(index); // past the cap too, so a unit waiting for the next batch isn't taken for one that stopped
                     if (client.SentStatus.TryGetValue(index, out byte sent) && sent == bits) continue;
+                    if (news.Statuses.Count >= MaxStatusesPerBatch) continue; // the rest go next tick
                     client.SentStatus[index] = bits;
                     news.Statuses.Add(new StatusEntry { Index = index, Bits = bits });
                 }
@@ -132,26 +137,45 @@ namespace WAR2D.Net.Replication
         }
     }
 
-    /// <summary>v0.20: every living unit with a status bit set, as (id index, bits).</summary>
+    /// <summary>
+    /// v0.20: every living unit with a status bit set, as (id index, bits). Only a Bomber can leap and only a Sniper aim, so only their
+    /// records are read in the pass over the units; burning units come from <see cref="SimData.BurningUnits"/>.
+    /// </summary>
     [BurstCompile]
     public struct StatusListJob : IJob
     {
         public int Count, Tick;
-        [Unity.Collections.ReadOnly] public NativeArray<int> IdOf;
-        [Unity.Collections.ReadOnly] public NativeArray<float> Health;
+        [Unity.Collections.ReadOnly] public NativeArray<int> IdOf, IndexOfId;
+        [Unity.Collections.ReadOnly] public NativeArray<float> Health, BlastRadiusByType, AimByType;
+        [Unity.Collections.ReadOnly] public NativeArray<byte> Type;
         [Unity.Collections.ReadOnly] public NativeArray<UnitCombat> Combat;
+        [Unity.Collections.ReadOnly] public NativeList<int> Burning;
         public NativeList<int2> Out;
+
+        private bool Special(int type) => (type < BlastRadiusByType.Length && BlastRadiusByType[type] > 0f) || (type < AimByType.Length && AimByType[type] > 0f);
 
         public void Execute()
         {
             for (int i = 0; i < Count; i++)
             {
-                if (Health[i] <= 0f) continue;
-                int id = IdOf[i], index = NetIdAllocator.IndexOf(id);
-                if ((uint)index >= (uint)Combat.Length) continue;
-                byte bits = Combat[index].StatusAt(id, Tick);
-                if (bits != 0) Out.Add(new int2(index, bits));
+                if (Health[i] <= 0f || !Special(Type[i])) continue;
+                Add(i);
             }
+            for (int k = 0; k < Burning.Length; k++)
+            {
+                int index = NetIdAllocator.IndexOf(Burning[k]);
+                int i = (uint)index < (uint)IndexOfId.Length ? IndexOfId[index] : -1;
+                if ((uint)i >= (uint)Count || IdOf[i] != Burning[k] || Health[i] <= 0f || Special(Type[i])) continue; // the special ones are in already
+                Add(i);
+            }
+        }
+
+        private void Add(int i)
+        {
+            int id = IdOf[i], index = NetIdAllocator.IndexOf(id);
+            if ((uint)index >= (uint)Combat.Length) return;
+            byte bits = Combat[index].StatusAt(id, Tick);
+            if (bits != 0) Out.Add(new int2(index, bits));
         }
     }
 }

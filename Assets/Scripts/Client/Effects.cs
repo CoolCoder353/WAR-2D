@@ -334,8 +334,12 @@ public static class Effects
     /// </summary>
     public static void UnitDeath(Vector2 at, bool large, byte cause)
     {
-        Slot s = Take(large ? DeathsLarge : DeathsSmall);
-        if (s != null) s.Go.transform.SetPositionAndRotation(new Vector3(at.x, at.y, 0f), Quaternion.identity);
+        // The server's death explosion for the same death may come first (its RPC and the unit's Leave race): one burst, not two.
+        if (!TookBurst(at))
+        {
+            Slot s = Take(large ? DeathsLarge : DeathsSmall);
+            if (s != null) s.Go.transform.SetPositionAndRotation(new Vector3(at.x, at.y, 0f), Quaternion.identity);
+        }
         if (cause == 2) WAR2D.Audio.AudioService.Sfx("burn_death", at);
         else WAR2D.Audio.AudioService.Sfx(large ? "death_large" : "death_small", at);
         if (cause == 1)
@@ -349,6 +353,34 @@ public static class Effects
             delayed.Add(new Delayed { At = Time.time + 0.25f, Position = at + new Vector2(0.3f, 0.2f), Large = true });
             EnsureRunner();
         }
+    }
+
+    /// <summary>Seconds and tiles within which a unit's death and the server's death explosion are the same death.</summary>
+    public const float SameDeathSeconds = 0.5f, SameDeathTiles = 0.75f;
+    private static readonly List<(Vector2 at, float time)> recentBursts = new List<(Vector2, float)>(64);
+
+    /// <summary>
+    /// The server's death explosion at <paramref name="position"/> (<c>WorldEffects.Explosions</c>): skipped when a known unit's death
+    /// (<see cref="UnitDeath"/>) already drew its burst there; otherwise drawn and remembered so that death draws none.
+    /// </summary>
+    public static void DeathExplosion(Vector2 position)
+    {
+        if (TookBurst(position)) return;
+        Explosion(position);
+    }
+
+    /// <summary>True (and forgets it) when a burst was drawn here a moment ago; otherwise remembers this one and returns false.</summary>
+    private static bool TookBurst(Vector2 at)
+    {
+        float now = Time.time;
+        for (int i = recentBursts.Count - 1; i >= 0; i--)
+        {
+            if (now - recentBursts[i].time > SameDeathSeconds) { recentBursts.RemoveAt(i); continue; }
+            if ((recentBursts[i].at - at).sqrMagnitude <= SameDeathTiles * SameDeathTiles) { recentBursts.RemoveAt(i); return true; }
+        }
+        if (recentBursts.Count >= 64) recentBursts.RemoveAt(0);
+        recentBursts.Add((at, now));
+        return false;
     }
 
     /// <summary>Turret shots drawn as a stream since the pools were made (tests): ten a second merge into one per turret.</summary>
@@ -586,6 +618,9 @@ public static class Effects
 
     /// <summary>Seconds the turret's fast-fire loop sound is let ring before another may start.</summary>
     public const float TurretLoopSeconds = 0.5f;
+
+    /// <summary>Most turrets whose stream timing is kept (cleared past this: a turret only loses a stream beat).</summary>
+    public const int MaxTrackedTurrets = 512;
     private static readonly Dictionary<int, float> turretDrawnAt = new Dictionary<int, float>(), turretSoundAt = new Dictionary<int, float>();
     private static readonly Dictionary<int, int> turretBarrel = new Dictionary<int, int>();
 
@@ -607,6 +642,7 @@ public static class Effects
             WAR2D.Audio.AudioService.Sfx("turret_fire_loop", muzzle);
         }
         TurretShots++;
+        if (turretDrawnAt.Count > MaxTrackedTurrets) { turretDrawnAt.Clear(); turretSoundAt.Clear(); turretBarrel.Clear(); } // bounded over a long match
         if (turretDrawnAt.TryGetValue(turret, out float drawn) && now - drawn < TurretStreamSeconds && turret != 0) return;
         turretDrawnAt[turret] = now;
         Slot flash = Take(TwinMuzzles);
@@ -792,6 +828,7 @@ public static class Effects
         turretDrawnAt.Clear();
         turretSoundAt.Clear();
         turretBarrel.Clear();
+        recentBursts.Clear();
         foreach (Pool p in Onslaught)
         {
             p.Slots.Clear();

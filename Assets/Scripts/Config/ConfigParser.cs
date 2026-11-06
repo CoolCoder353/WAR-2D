@@ -213,6 +213,7 @@ namespace Config
                 config.Bomber.LeapReach = Float(bomber, "LeapReach", "Bomber", errors, min: 0.5f, max: 32f);
                 config.Bomber.LeapSeconds = Float(bomber, "LeapSeconds", "Bomber", errors, min: 0.05f, max: 5f);
                 config.Bomber.ArmyTiles = Float(bomber, "ArmyTiles", "Bomber", errors, min: 0f, max: 32f);
+                config.Bomber.ContactTiles = Float(bomber, "ContactTiles", "Bomber", errors, min: 0f, max: 8f);
             }
 
             XmlNode combat = Require(root, "Combat", errors);
@@ -240,7 +241,11 @@ namespace Config
             }
 
             XmlNode sniper = Require(root, "Sniper", errors);
-            if (sniper != null) config.Sniper.AimSeconds = Float(sniper, "AimSeconds", "Sniper", errors, min: 0f, max: 30f);
+            if (sniper != null)
+            {
+                config.Sniper.AimSeconds = Float(sniper, "AimSeconds", "Sniper", errors, min: 0f, max: 30f);
+                config.Sniper.StillSpeed = Float(sniper, "StillSpeed", "Sniper", errors, min: 0f, max: 10f);
+            }
 
             XmlNode effects = Require(root, "Effects", errors);
             if (effects != null)

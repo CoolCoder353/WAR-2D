@@ -68,7 +68,7 @@ namespace WAR2D.Sim
             if (data.AimEvents.Capacity < data.AimEvents.Length + count) data.AimEvents.Capacity = data.AimEvents.Length + count;
 
             // v0.20: who is in the air this tick, by slot, before anything targets or hurts them.
-            state.Dependency = new AirborneJob { IdOf = data.IdOf, Combat = data.Combat, Tick = clock.Tick, Airborne = data.Airborne }.Schedule(count, 512, state.Dependency);
+            state.Dependency = new AirborneJob { IdOf = data.IdOf, Combat = data.Combat, Type = data.Type, BlastRadiusByType = data.BlastRadiusByType, Tick = clock.Tick, Airborne = data.Airborne }.Schedule(count, 512, state.Dependency);
 
             SearchInput search = SearchInput.From(data, count, buildings);
             state.Dependency = new ResolveTargetsJob
@@ -139,6 +139,7 @@ namespace WAR2D.Sim
                 ShellSpeed = data.ShellSpeed,
                 LeadAim = data.LeadAim,
                 LeadCapTiles = data.LeadCapTiles,
+                StillSpeed = data.StillSpeed,
                 DamageTable = data.DamageTable,
                 Combat = data.Combat,
                 Hits = hits.AsParallelWriter(),
@@ -196,7 +197,7 @@ namespace WAR2D.Sim
                 IdOf = data.IdOf, Target = data.Target, TargetKind = data.TargetKind,
                 RangeSqByType = data.RangeSqByType,
                 Tiles = data.Tiles, Used = data.Used,
-                LeapReach = data.LeapReach, ArmyTiles = data.ArmyTiles, LeapTicks = data.LeapTicks,
+                LeapReach = data.LeapReach, ArmyTiles = data.ArmyTiles, ContactTiles = data.ContactTiles, LeapTicks = data.LeapTicks,
                 Tick = clock.Tick,
             }.Schedule(state.Dependency);
 
@@ -222,10 +223,11 @@ namespace WAR2D.Sim
             {
                 Count = count,
                 BuildingCount = buildings,
-                IdOf = data.IdOf, BuildingIds = data.BuildingIds,
+                IdOf = data.IdOf, BuildingIds = data.BuildingIds, IndexOfId = data.IndexOfId, BuildingSlotOfIndex = data.BuildingSlotOfIndex,
                 Health = data.Health, BuildingHealth = data.BuildingHealth,
                 Type = data.Type, ArmourByType = data.ArmourByType, Airborne = data.Airborne,
                 Combat = data.Combat, BuildingFires = data.BuildingFires,
+                BurningUnits = data.BurningUnits, BurningBuildings = data.BurningBuildings,
                 Dps = data.BurnDps, Light = data.BurnLight, Heavy = data.BurnHeavy, Building = data.BurnBuilding,
                 Dt = data.Dt,
                 Hits = hits,
@@ -307,6 +309,7 @@ namespace WAR2D.Sim
                 Combat = data.Combat,
                 BuildingFires = data.BuildingFires,
                 LastHitKind = data.LastHitKind,
+                BurningUnits = data.BurningUnits, BurningBuildings = data.BurningBuildings,
                 BurnSeconds = data.BurnSeconds,
             };
             state.Dependency = apply.Schedule(state.Dependency);
@@ -314,6 +317,7 @@ namespace WAR2D.Sim
             state.Dependency = new LastGaspJob
             {
                 Apply = apply,
+                Leaps = data.Leaps,
                 Blasts = data.BombBlasts,
                 Spent = data.BomberSpent,
                 World = blastWorld,
@@ -343,11 +347,16 @@ namespace WAR2D.Sim
     {
         [ReadOnly] public NativeArray<int> IdOf;
         [ReadOnly] public NativeArray<UnitCombat> Combat;
+        /// <summary>Only Bombers leap: no other unit's combat record is read.</summary>
+        [ReadOnly] public NativeArray<byte> Type;
+        [ReadOnly] public NativeArray<float> BlastRadiusByType;
         public int Tick;
         public NativeArray<byte> Airborne;
 
         public void Execute(int i)
         {
+            int type = Type[i];
+            if (type >= BlastRadiusByType.Length || BlastRadiusByType[type] <= 0f) { Airborne[i] = 0; return; }
             int id = IdOf[i], index = NetIdAllocator.IndexOf(id);
             Airborne[i] = (byte)((uint)index < (uint)Combat.Length && Combat[index].AirborneAt(id, Tick) ? 1 : 0);
         }
@@ -555,9 +564,6 @@ namespace WAR2D.Sim
     [BurstCompile]
     public struct AttackJob : IJobParallelFor
     {
-        /// <summary>Tiles a second under which a Sniper counts as standing still (its crowd's push aside).</summary>
-        public const float StillSpeed = 0.5f;
-
         [ReadOnly] public NativeArray<float> Health;
         [ReadOnly] public NativeArray<byte> Type;
         [ReadOnly] public NativeArray<int> OwnerId;
@@ -575,6 +581,8 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<float> DamageTable;
         [ReadOnly] public NativeArray<byte> OwnerSlot;
         public float MinHit, ShellSpeed, LeadCapTiles;
+        /// <summary><c>Sniper/StillSpeed</c>: tiles a second under which a Sniper counts as standing still.</summary>
+        public float StillSpeed;
         public byte LeadAim;
         /// <summary>Each unit writes only its own id index's record.</summary>
         [NativeDisableParallelForRestriction] public NativeArray<UnitCombat> Combat;
@@ -784,7 +792,7 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<float> UnitHealth, BuildingHealth, Radius, RangeSqByType;
         [ReadOnly] public NativeArray<byte> TargetKind, Tiles, Used;
         [ReadOnly] public NativeArray<int> IdOf, Target;
-        public float LeapReach, ArmyTiles;
+        public float LeapReach, ArmyTiles, ContactTiles;
         public int LeapTicks, Tick;
 
         public void Execute()
@@ -941,7 +949,7 @@ namespace WAR2D.Sim
         {
             int target = Target[i];
             if (target < 0) return false;
-            float reach = Radius[i] + 0.8f; // the pre-v0.20 contact distance: its range then
+            float reach = Radius[i] + ContactTiles; // Bomber/ContactTiles: the pre-v0.20 contact distance (its range then)
             float2 p = Positions[i];
             switch (TargetKind[i])
             {
@@ -1097,43 +1105,58 @@ namespace WAR2D.Sim
     }
 
     /// <summary>
-    /// v0.20 fire (spec §7.3): every burning unit and building takes <c>Burn/Dps</c> times its class's rate each second, once a tick,
-    /// through the hit queue, credited to whoever lit it last; its fire burns down with time. A unit in the air takes none.
+    /// v0.20 fire (spec §7.3): every burning unit and building (from <see cref="SimData.BurningUnits"/> and
+    /// <see cref="SimData.BurningBuildings"/>, not a pass over everything) takes <c>Burn/Dps</c> times its class's rate each second, once
+    /// a tick, through the hit queue, credited to whoever lit it last; its fire burns down with time, and it leaves the list when out
+    /// or gone. A unit in the air takes none.
     /// </summary>
     [BurstCompile]
     public struct BurnJob : IJob
     {
         public int Count, BuildingCount;
-        [ReadOnly] public NativeArray<int> IdOf, BuildingIds;
+        [ReadOnly] public NativeArray<int> IdOf, BuildingIds, IndexOfId, BuildingSlotOfIndex;
         [ReadOnly] public NativeArray<float> Health, BuildingHealth;
         [ReadOnly] public NativeArray<byte> Type, ArmourByType, Airborne;
         public NativeArray<UnitCombat> Combat;
         public NativeArray<BuildingFire> BuildingFires;
+        public NativeList<int> BurningUnits, BurningBuildings;
         public float Dps, Light, Heavy, Building, Dt;
         public NativeQueue<DamageHit> Hits;
 
         public void Execute()
         {
-            for (int i = 0; i < Count; i++)
+            for (int k = BurningUnits.Length - 1; k >= 0; k--)
             {
-                int id = IdOf[i], index = NetIdAllocator.IndexOf(id);
+                int id = BurningUnits[k], index = NetIdAllocator.IndexOf(id);
+                int i = (uint)index < (uint)IndexOfId.Length ? IndexOfId[index] : -1;
+                bool live = (uint)i < (uint)Count && IdOf[i] == id && Health[i] > 0f;
                 UnitCombat c = Combat[index];
-                if (c.Id != id || c.BurnLeft <= 0f) continue;
-                c.BurnLeft = Health[i] > 0f ? math.max(0f, c.BurnLeft - Dt) : 0f;
+                if (!live || c.Id != id || c.BurnLeft <= 0f)
+                {
+                    if (c.Id == id) { c.BurnLeft = 0f; Combat[index] = c; }
+                    BurningUnits.RemoveAtSwapBack(k);
+                    continue;
+                }
+                c.BurnLeft = math.max(0f, c.BurnLeft - Dt);
                 Combat[index] = c;
-                if (Health[i] <= 0f || Airborne[i] != 0) continue;
+                if (Airborne[i] != 0) continue;
                 float rate = (TargetClass)ArmourByType[Type[i]] == TargetClass.HeavyUnit ? Heavy : Light;
                 Hits.Enqueue(new DamageHit { Kind = TargetKinds.Unit, Slot = i, Amount = Dps * rate * Dt, AttackerOwner = c.BurnBy, HitKind = HitKinds.Fire });
             }
-            for (int b = 0; b < BuildingCount; b++)
+            for (int k = BurningBuildings.Length - 1; k >= 0; k--)
             {
-                int id = BuildingIds[b], index = NetIdAllocator.IndexOf(id);
-                if ((uint)index >= (uint)BuildingFires.Length) continue;
-                BuildingFire f = BuildingFires[index];
-                if (f.Id != id || f.Left <= 0f) continue;
-                f.Left = BuildingHealth[b] > 0f ? math.max(0f, f.Left - Dt) : 0f;
+                int id = BurningBuildings[k], index = NetIdAllocator.IndexOf(id);
+                int b = (uint)index < (uint)BuildingSlotOfIndex.Length ? BuildingSlotOfIndex[index] : -1;
+                bool live = (uint)b < (uint)BuildingCount && BuildingIds[b] == id && BuildingHealth[b] > 0f;
+                BuildingFire f = (uint)index < (uint)BuildingFires.Length ? BuildingFires[index] : default;
+                if (!live || f.Id != id || f.Left <= 0f)
+                {
+                    if (f.Id == id) { f.Left = 0f; BuildingFires[index] = f; }
+                    BurningBuildings.RemoveAtSwapBack(k);
+                    continue;
+                }
+                f.Left = math.max(0f, f.Left - Dt);
                 BuildingFires[index] = f;
-                if (BuildingHealth[b] <= 0f) continue;
                 Hits.Enqueue(new DamageHit { Kind = TargetKinds.Building, Slot = b, Amount = Dps * Building * Dt, AttackerOwner = f.By, HitKind = HitKinds.Fire });
             }
         }
@@ -1149,6 +1172,8 @@ namespace WAR2D.Sim
     public struct LastGaspJob : IJob
     {
         public ApplyDamageJob Apply;
+        /// <summary>v0.20: this tick's leaps, so a Bomber shot down on the tick it leapt takes its leap back (it never left the ground).</summary>
+        public NativeList<LeapEvent> Leaps;
         public NativeQueue<BombBlast> Blasts;
         public NativeArray<byte> Spent;
         public BlastWorld World;
@@ -1170,12 +1195,23 @@ namespace WAR2D.Sim
                     if (health[i] > MaxHealth[i] * Threshold) continue;
                     Spent[i] = 1;
                     any = true;
+                    CancelLeap(i);
                     World.Detonate(i, type, Positions[i], Positions, health, Apply.BuildingHealth, Apply.Hits, Blasts);
                 }
                 if (!any) return;
                 for (int i = 0; i < World.UnitCount; i++) if (Spent[i] != 0) health[i] = 0f;
                 Apply.Execute();
             }
+        }
+
+        private void CancelLeap(int i)
+        {
+            int id = Apply.IdOf[i], index = NetIdAllocator.IndexOf(id);
+            UnitCombat c = Apply.Combat[index];
+            if (c.Id != id || c.LeapEnd <= 0) return;
+            c.LeapEnd = 0;
+            Apply.Combat[index] = c;
+            for (int k = Leaps.Length - 1; k >= 0; k--) if (Leaps[k].Id == id) Leaps.RemoveAtSwapBack(k);
         }
     }
 
@@ -1206,6 +1242,7 @@ namespace WAR2D.Sim
         public NativeArray<UnitCombat> Combat;
         public NativeArray<BuildingFire> BuildingFires;
         public NativeArray<byte> LastHitKind;
+        public NativeList<int> BurningUnits, BurningBuildings;
         public float BurnSeconds;
 
         public void Execute()
@@ -1226,6 +1263,7 @@ namespace WAR2D.Sim
                     if (hit.Ignite != 0)
                     {
                         UnitCombat c = UnitCombat.For(Combat[index], id);
+                        if (c.BurnLeft <= 0f) BurningUnits.Add(id); // newly lit: the fire pass visits it from now
                         c.BurnLeft = BurnSeconds;
                         c.BurnBy = hit.AttackerOwner;
                         Combat[index] = c;
@@ -1241,7 +1279,12 @@ namespace WAR2D.Sim
                     if (hit.Ignite != 0 && BuildingHealth[hit.Slot] > 0f)
                     {
                         int id = BuildingIds[hit.Slot], index = NetIdAllocator.IndexOf(id);
-                        if ((uint)index < (uint)BuildingFires.Length) BuildingFires[index] = new BuildingFire { Id = id, Left = BurnSeconds, By = hit.AttackerOwner };
+                        if ((uint)index < (uint)BuildingFires.Length)
+                        {
+                            BuildingFire was = BuildingFires[index];
+                            if (was.Id != id || was.Left <= 0f) BurningBuildings.Add(id);
+                            BuildingFires[index] = new BuildingFire { Id = id, Left = BurnSeconds, By = hit.AttackerOwner };
+                        }
                     }
                 }
             }

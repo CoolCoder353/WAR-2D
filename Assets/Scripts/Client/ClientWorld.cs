@@ -455,7 +455,8 @@ namespace WAR2D.Client
                 hideBar[index] = 0;
                 if (combatVisuals.Airborne(index, out float2 raised, out float2 ground, out _))
                 {
-                    p = raised;
+                    // Drawn raised on its arc; its tracks, facing and fires follow the ground track below.
+                    p = ground;
                     positions[i] = raised;
                     hideBar[index] = 1;
                 }
@@ -598,7 +599,10 @@ namespace WAR2D.Client
             worldEffects.UnitDied(position, large);
             // v0.20 (spec §8.1): the death by its cause and size; a Bomber's own blast is its death.
             byte cause = store.LastDeathReason == LeaveReason.DiedBlast ? (byte)1 : store.LastDeathReason == LeaveReason.DiedFire ? (byte)2 : (byte)0;
-            if (type != (byte)UnitType.Bomber) Effects.UnitDeath(position, large, cause);
+            // Only on or near the screen, as the server's death explosions are (an off-screen battle would churn the pools).
+            Camera cam = ViewCamera != null ? ViewCamera : Camera.main;
+            bool shown = cam == null || WorldEffects.ViewOf(cam, 2f).Contains(position);
+            if (type != (byte)UnitType.Bomber && shown) Effects.UnitDeath(position, large, cause);
             if (unitAtlas == null || type == (byte)UnitType.Bomber || (uint)index >= (uint)rotation.Length) return;
             string id = ((UnitType)type).ToString();
             int directions = unitAtlas.Directions(id);

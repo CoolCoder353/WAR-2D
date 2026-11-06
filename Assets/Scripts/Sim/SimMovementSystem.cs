@@ -92,6 +92,8 @@ namespace WAR2D.Sim
             state.Dependency = new IntegrateJob
             {
                 IdOf = data.IdOf,
+                Type = data.Type,
+                BlastRadiusByType = data.BlastRadiusByType,
                 Combat = data.Combat,
                 Airborne = data.Airborne,
                 Tick = clock.Tick,
@@ -186,8 +188,9 @@ namespace WAR2D.Sim
         public void Execute(int i)
         {
             Arrived[i] = 0;
-            UnitCombat leap = Combat[NetIdAllocator.IndexOf(IdOf[i])];
-            if (leap.AirborneAt(IdOf[i], Tick))
+            bool bomber = Type[i] < BlastRadiusByType.Length && BlastRadiusByType[Type[i]] > 0f; // only Bombers leap: no other record is read
+            UnitCombat leap = bomber ? Combat[NetIdAllocator.IndexOf(IdOf[i])] : default;
+            if (bomber && leap.AirborneAt(IdOf[i], Tick))
             {
                 // v0.20: a leaping Bomber flies its line (IntegrateJob places it, from the tick it leapt); nothing steers or pushes it.
                 Velocity[i] = (leap.LeapTo - leap.LeapFrom) / (math.max(1, leap.LeapEnd - leap.LeapStart) * Dt);
@@ -438,6 +441,8 @@ namespace WAR2D.Sim
     public struct IntegrateJob : IJobParallelFor
     {
         [ReadOnly] public NativeArray<int> IdOf;
+        [ReadOnly] public NativeArray<byte> Type;
+        [ReadOnly] public NativeArray<float> BlastRadiusByType;
         [ReadOnly] public NativeArray<UnitCombat> Combat;
         [ReadOnly] public NativeArray<byte> Airborne;
         public int Tick;
@@ -455,8 +460,9 @@ namespace WAR2D.Sim
         public void Execute(int i)
         {
             if (Health[i] <= 0f) return;
-            UnitCombat leap = Combat[NetIdAllocator.IndexOf(IdOf[i])];
-            if (leap.AirborneAt(IdOf[i], Tick))
+            bool bomber = Type[i] < BlastRadiusByType.Length && BlastRadiusByType[Type[i]] > 0f;
+            UnitCombat leap = bomber ? Combat[NetIdAllocator.IndexOf(IdOf[i])] : default;
+            if (bomber && leap.AirborneAt(IdOf[i], Tick))
             {
                 // v0.20: along the leap's line, over units (a leap's line is clear of walls, rock and buildings), reaching its end
                 // on the leap's last tick so it lands there.

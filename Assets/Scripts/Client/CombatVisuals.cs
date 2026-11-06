@@ -214,6 +214,7 @@ namespace WAR2D.Client
                 Marker(p + new Vector2(size.x * 0.5f, size.y * 0.5f + 0.2f));
             }
             fires.Sort((a, b) => a.distance.CompareTo(b.distance));
+            if (lastSoot.Count > 4 * math.max(64, fires.Count)) lastSoot.Clear(); // bounded over a long match: a fire only loses one puff
             int maxFires = math.max(0, config.Effects.MaxFires);
             if (fires.Count > 0 && now - lastBurnLoop >= BurnLoopSeconds)
             {

@@ -19,11 +19,11 @@ public class ConfigParserTests
   <AttackOrder><RepathTiles>2</RepathTiles><RepathSeconds>0.5</RepathSeconds></AttackOrder>
   <RangeRings><Max>64</Max><MergeOverlap>0.8</MergeOverlap></RangeRings>
   <Summary><SampleSeconds>10</SampleSeconds><MaxPoints>360</MaxPoints><FightCellTiles>32</FightCellTiles><FightWindowSeconds>20</FightWindowSeconds><FightMinWorth>600</FightMinWorth><MaxFights>30</MaxFights></Summary>
-  <Bomber><LastGaspHealth>0.1</LastGaspHealth><ChainPasses>4</ChainPasses><FriendlyDamage>0.1</FriendlyDamage><LeapReach>6</LeapReach><LeapSeconds>0.6</LeapSeconds><ArmyTiles>5</ArmyTiles></Bomber>
+  <Bomber><LastGaspHealth>0.1</LastGaspHealth><ChainPasses>4</ChainPasses><FriendlyDamage>0.1</FriendlyDamage><LeapReach>6</LeapReach><LeapSeconds>0.6</LeapSeconds><ArmyTiles>5</ArmyTiles><ContactTiles>0.8</ContactTiles></Bomber>
   <Combat><MinHit>1</MinHit></Combat>
   <Burn><Dps>6</Dps><Seconds>4</Seconds><LightUnit>1</LightUnit><HeavyUnit>0.5</HeavyUnit><Building>1</Building></Burn>
   <Artillery><ShellSpeed>14</ShellSpeed><LeadAim>1</LeadAim><LeadCapTiles>4</LeadCapTiles><FriendlyDamage>0.25</FriendlyDamage><IncomingSeconds>0.6</IncomingSeconds></Artillery>
-  <Sniper><AimSeconds>2</AimSeconds></Sniper>
+  <Sniper><AimSeconds>2</AimSeconds><StillSpeed>0.5</StillSpeed></Sniper>
   <Effects><MaxFires>512</MaxFires><SmoulderSeconds>8</SmoulderSeconds></Effects>
   <MinimapCombat><CellTiles>16</CellTiles><PulseSeconds>1.5</PulseSeconds><QuietSeconds>3</QuietSeconds><Max>32</Max></MinimapCombat>
   <PlacementMinimap><MarkerPixels>8</MarkerPixels></PlacementMinimap>

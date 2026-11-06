@@ -98,7 +98,7 @@ namespace WAR2D.Client
                     Effects.BuildingCollapse(centre, size.x);
                     Decals.Rubble(centre, size.x);
                 }
-                else Effects.Explosion(p);
+                else Effects.DeathExplosion(p); // v0.20: one burst with the unit's own death effect (Effects.UnitDeath)
             }
         }
 

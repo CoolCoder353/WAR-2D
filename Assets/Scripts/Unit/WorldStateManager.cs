@@ -476,10 +476,28 @@ public partial class WorldStateManager : NetworkBehaviour
         SimTiming.LastMatchSettledMs = settledWatch.Elapsed.TotalMilliseconds;
     }
 
+    /// <summary>
+    /// v0.20: the buildings burning at this boundary, copied from <see cref="SimData.BuildingFires"/> while the world is settled, so
+    /// <see cref="FillBuildingViews"/> (also reached from the debug API between ticks) never reads a sim array a job may be writing.
+    /// </summary>
+    private readonly HashSet<int> burningBuildings = new HashSet<int>();
+
+    private void CacheBurning(SimData data)
+    {
+        burningBuildings.Clear();
+        int count = math.min(data.BuildingCount[0], data.BuildingCapacity);
+        for (int b = 0; b < count; b++)
+        {
+            int id = data.BuildingIds[b], index = NetIdAllocator.IndexOf(id);
+            if ((uint)index < (uint)data.BuildingFires.Length && data.BuildingFires[index].Id == id && data.BuildingFires[index].Left > 0f) burningBuildings.Add(id);
+        }
+    }
+
     [ServerCallback]
     private void OnSettledParts(SimData data, int tick, int count)
     {
         settledTick = tick;
+        CacheBurning(data);
         PlayedSeconds = MatchLength.Seconds(tick, data.Dt);
         Recorder?.OnTick(tick);
         if (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing)
@@ -677,9 +695,6 @@ public partial class WorldStateManager : NetworkBehaviour
     [Server]
     private void FillBuildingViews(List<BuildingView> views)
     {
-        // v0.20: a building's fire, from the settled sim (by its id's index; stale when the id differs).
-        bool hasFires = Sim != null && Sim.Data.BuildingFires.IsCreated;
-        NativeArray<BuildingFire> fires = hasFires ? Sim.Data.BuildingFires : default;
         foreach (Entity entity in Buildings.Values)
         {
             if (!EntityManager.Exists(entity)) continue;
@@ -687,8 +702,7 @@ public partial class WorldStateManager : NetworkBehaviour
             LocalTransform transform = EntityManager.GetComponentData<LocalTransform>(entity);
             HealthComponent health = EntityManager.GetComponentData<HealthComponent>(entity);
             if (health.currentHealth <= 0f) continue;
-            int fireIndex = NetIdAllocator.IndexOf(building.id);
-            bool burning = hasFires && (uint)fireIndex < (uint)fires.Length && fires[fireIndex].Id == building.id && fires[fireIndex].Left > 0f;
+            bool burning = burningBuildings.Contains(building.id);
             float2 p = transform.Position.xy;
             views.Add(new BuildingView
             {

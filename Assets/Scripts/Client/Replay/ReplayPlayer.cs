@@ -352,7 +352,7 @@ namespace WAR2D.Client.Replay
                     break;
                 case ReplayChannel.Buildings: BuildingCodec.Apply(ClientBuildings.Current, payload); break;
                 case ReplayChannel.Terrain: TerrainCodec.Apply(ClientTerrain.Current, payload); break;
-                case ReplayChannel.Combat: ClientCombat.Current.Apply(payload); break;
+                case ReplayChannel.Combat: ClientCombat.Current.Apply(payload, quiet); break;
                 case ReplayChannel.TeamFog:
                     if (playerView != null) { playerView.Fog(payload, ClientBuildings.Current); fogDirty = true; }
                     break;

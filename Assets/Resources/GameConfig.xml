@@ -193,6 +193,7 @@
     <LeapReach>6</LeapReach>             <!-- v0.20: farthest a leap goes, tiles (it lands at the army's centre or this far along the line to it) -->
     <LeapSeconds>0.6</LeapSeconds>       <!-- v0.20: a leap takes this long whatever its length; it can't be hit in the air -->
     <ArmyTiles>5</ArmyTiles>             <!-- v0.20: enemy units it sees within this of the nearest one are the army it leaps at -->
+    <ContactTiles>0.8</ContactTiles>     <!-- v0.20: touching its target this close (beyond both bodies) it goes off without leaping (the old Range) -->
   </Bomber>
 
   <!-- v0.20 Onslaught (spec 2026-11-06-v0.20-onslaught-design.md section 11): starting values, to tune with balance-sheet and ai-bench -->
@@ -218,6 +219,7 @@
 
   <Sniper>
     <AimSeconds>2.0</AimSeconds>         <!-- v0.20: a Sniper stands still and aims this long before each shot -->
+    <StillSpeed>0.5</StillSpeed>         <!-- v0.20: moving slower than this (tiles/s, a crowd's push) still counts as standing still -->
   </Sniper>
 
   <Effects>

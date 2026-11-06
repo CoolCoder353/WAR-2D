@@ -207,6 +207,8 @@ namespace WAR2D.Sim
         public NativeArray<UnitCombat> Combat;
         /// <summary>Per id index: the <see cref="HitKinds"/> of the last hit each unit took, its death's cause on the wire (reset when the index is reused).</summary>
         public NativeArray<byte> LastHitKind;
+        /// <summary>v0.20: ids of the units and buildings that may be burning (added when lit, dropped by <see cref="BurnJob"/> when out), so the fire and status passes visit only those.</summary>
+        public NativeList<int> BurningUnits, BurningBuildings;
         /// <summary>Per id index: each building's fire (<see cref="BuildingFire"/>).</summary>
         public NativeArray<BuildingFire> BuildingFires;
         /// <summary>Per unit slot, this tick: 1 while it is in the air (filled at the start of combat; read by movement and upkeep).</summary>
@@ -230,7 +232,7 @@ namespace WAR2D.Sim
         public NativeArray<byte> RockTile;
         /// <summary><c>Combat/MinHit</c>; <c>Burn</c>; the leap; the shells.</summary>
         public float MinHit, BurnDps, BurnSeconds, BurnLight, BurnHeavy, BurnBuilding;
-        public float LeapReach, ArmyTiles;
+        public float LeapReach, ArmyTiles, ContactTiles, StillSpeed;
         public int LeapTicks;
         public float ShellSpeed, LeadCapTiles, ShellFriendlyDamage;
         public byte LeadAim;
@@ -532,6 +534,8 @@ namespace WAR2D.Sim
                 BurnBuilding = config.Burn.Building,
                 LeapReach = config.Bomber.LeapReach,
                 ArmyTiles = config.Bomber.ArmyTiles,
+                ContactTiles = config.Bomber.ContactTiles,
+                StillSpeed = config.Sniper.StillSpeed,
                 LeapTicks = math.max(1, (int)math.round(config.Bomber.LeapSeconds / math.max(1e-4f, sim.TickSeconds))),
                 ShellSpeed = config.Artillery.ShellSpeed,
                 LeadCapTiles = config.Artillery.LeadCapTiles,
@@ -540,6 +544,8 @@ namespace WAR2D.Sim
                 Combat = new NativeArray<UnitCombat>(sim.MaxEntities, allocator),
                 BuildingFires = new NativeArray<BuildingFire>(sim.MaxEntities, allocator),
                 LastHitKind = new NativeArray<byte>(sim.MaxEntities, allocator),
+                BurningUnits = new NativeList<int>(256, allocator),
+                BurningBuildings = new NativeList<int>(64, allocator),
                 Airborne = new NativeArray<byte>(capacity, allocator),
                 Shells = new NativeList<Shell>(64, allocator),
                 ShellSerial = new NativeArray<int>(1, allocator),
@@ -755,7 +761,7 @@ namespace WAR2D.Sim
         {
             SpeedByType.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose(); CooldownByType.Dispose();
             RunningCostByType.Dispose(); CostByType.Dispose(); BuildingCostByKind.Dispose();
-            Combat.Dispose(); BuildingFires.Dispose(); LastHitKind.Dispose(); Airborne.Dispose(); Shells.Dispose(); ShellSerial.Dispose(); ShellsLaunched.Dispose(); Leaps.Dispose(); AimEvents.Dispose();
+            Combat.Dispose(); BuildingFires.Dispose(); LastHitKind.Dispose(); BurningUnits.Dispose(); BurningBuildings.Dispose(); Airborne.Dispose(); Shells.Dispose(); ShellSerial.Dispose(); ShellsLaunched.Dispose(); Leaps.Dispose(); AimEvents.Dispose();
             BlastResistByType.Dispose(); FlatArmourByType.Dispose(); ShellRadiusByType.Dispose(); AimByType.Dispose(); IgnitesByType.Dispose(); BuildRateByKind.Dispose(); RockTile.Dispose(); HqLastHitBy.Dispose(); OrderTarget.Dispose(); OrderTargetKind.Dispose(); DamageTable.Dispose();
             Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Type.Dispose();
             SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose(); LastHitBy.Dispose();

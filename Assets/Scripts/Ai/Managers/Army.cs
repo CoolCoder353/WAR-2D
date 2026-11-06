@@ -613,7 +613,9 @@ namespace WAR2D.Ai
             UpdateSiege(ai, view, state);
             if (!Sieging)
             {
-                // Units that arrived (or lost their order) go on to the target.
+                // Units that arrived (or lost their order) go on to the target. Spotters that left the group (or died) rejoin the orders.
+                for (int k = spotters.Count - 1; k >= 0; k--) if (!group.Contains(spotters[k])) spotters.RemoveAt(k);
+                if (!ai.Difficulty.KeepsBacklineBack || ai.Difficulty.Spotters <= 0) spotters.Clear();
                 ids.Clear();
                 foreach (int i in state.Combat)
                 {
