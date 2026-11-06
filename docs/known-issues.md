@@ -6,6 +6,17 @@ Bugs, mismatches and hygiene problems. The first three roadmaps (v0.2 to v0.9, v
 
 The recorder's units go through `DeferredLane` (encoded during the next tick to keep the boundary inside the perf budget), so a recording's unit records are one tick later than its buildings and terrain. Harmless for playback; don't "fix" it by moving the recorder back onto the boundary (`docs/perf/v0.10/README.md`).
 
+## v0.20 Onslaught: built on `release/v0.20` (2026-11-07), not yet signed off
+
+The rules, wire, client drawing, art, sound, AI, manual and docs are in. Left open:
+
+- **Not run yet:** the perf gate with fire, shells, leaps and aims in the load (`docs/perf/v0.20/`), `ai-bench --brief`, the PlayMode match of each rework through the control API, and a full match on Linux. The 4096×4096 Effects atlas (it was 4096×2048) is part of what the client-frame measurement must cover.
+- **Owner approvals still wanted:** the Field manual's v0.20 words went in from `tools/manual-text.v0.20-draft.json` (Figma B3 was approved from them) without a fresh mock review; the Strong/Weak lists on the reworked units' pages are the model's new ones. The asset review's last two items (snapping the larger shell's soft edges and one armour-spark shade to the effect palette, and replacing the staged clips with clips from a real match) are not done.
+- **Not built from the approved set:** the burning marker on the selection panel's per-type button (B1; the world health-bar marker is in), a thrown turret head beside a shot unit's wreck (the wreck is flung by a blast and burnt black by fire, but no separate head), and the building sprite darkening and sinking as it collapses (the staged explosions, dust cloud and HQ finale are in).
+- **Model choices:** the fight model's heavy class uses the Heavy's armour and resistance for every heavy unit (Artillery has neither armour nor the Heavy's resistance); its Bomber still counts as `BomberFightSeconds` of blast.
+- **A Bomber shot down on the tick it leaps** explodes where it stood (the leap had already been reported to clients that tick, so they may draw the leap's start before the blast).
+- **Fire on own units:** none, as flame splash never hits allies (D11).
+
 ## Owner playtest fixes (2026-11-06, on `fix/pr30-review-round3`)
 
 | Item | State |
