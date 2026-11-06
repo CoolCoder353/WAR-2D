@@ -118,6 +118,12 @@ namespace WAR2D.Client
         internal NativeArray<int> OwnerArray => owner;
         /// <summary>Health percent by index (for packing jobs).</summary>
         internal NativeArray<byte> HealthArray => health;
+
+        /// <summary>Unit types by index (the draw job).</summary>
+        internal NativeArray<byte> TypeArray => type;
+
+        /// <summary>Prediction states by index; <c>Id</c> is the id known there (the draw job).</summary>
+        internal NativeArray<PredictState> StateArray => states;
         /// <summary>Id capacity (indices are below this).</summary>
         public int Capacity => states.Length;
 

@@ -52,18 +52,28 @@ namespace WAR2D.Client
         private NativeArray<uint> frame;
         private NativeArray<float> lastAction; // server time of the unit's last attack, by index
         // Turrets (TurretAim), by index: whose it is (an index is reused with a new id), its angle and when it last turned, and what it
-        // aims at until when. Only ever touched on the main thread, for units on screen or firing.
-        private int[] turretOf;
-        private float[] turretAngle, turretTurnedAt, aimUntil;
-        private float2[] aimAt;
+        // aims at until when. Only ever touched on the main thread (and the draw job it runs), for units on screen or firing.
+        private NativeArray<int> turretOf;
+        private NativeArray<float> turretAngle, turretTurnedAt, aimUntil;
+        private NativeArray<float2> aimAt;
         private NativeList<UnitInstance> turrets;
         private NativeList<UnitInstance> barrelShadows;
         private Effects.FlameLine flameLine;
         private UnitFrames.Table frames;
+        private NativeArray<UnitFrames.TypeCells> cells; // frames as the draw job reads them (empty until the atlas loads)
         private NativeArray<uint> color;
         private NativeArray<float> health01;
         private NativeArray<float> drawScale;
-        private float[] scaleByType;
+        private NativeArray<float> scaleByType;
+        // The draw job's inputs and outputs: owner colours, units a replay's view hides, and this frame's hits and track marks.
+        private NativeHashMap<int, uint> ownerColours;
+        private NativeList<int> missingOwners;
+        private NativeArray<byte> hidden;
+        private NativeList<UnitHit> hits;
+        private NativeList<float3> tracks;
+
+        /// <summary>The colour of an owner whose colour isn't known yet (a player still arriving); never cached.</summary>
+        private static readonly uint UnknownColour = InstancedUnitRenderer.Pack(new Color32(160, 160, 160, 255));
         private ArtAtlas unitAtlas;
         private NativeArray<byte> selected;
         // Hit feedback (HitFeedback), by index: whose health is tracked (an index is reused with a new id), its health last frame,
@@ -175,11 +185,17 @@ namespace WAR2D.Client
             hitAt = new NativeArray<float>(capacity, Allocator.Persistent);
             trail = new NativeArray<float>(capacity, Allocator.Persistent);
             flash = new NativeArray<byte>(capacity, Allocator.Persistent);
-            turretOf = new int[capacity];
-            turretAngle = new float[capacity];
-            turretTurnedAt = new float[capacity];
-            aimUntil = new float[capacity];
-            aimAt = new float2[capacity];
+            turretOf = new NativeArray<int>(capacity, Allocator.Persistent);
+            turretAngle = new NativeArray<float>(capacity, Allocator.Persistent);
+            turretTurnedAt = new NativeArray<float>(capacity, Allocator.Persistent);
+            aimUntil = new NativeArray<float>(capacity, Allocator.Persistent);
+            aimAt = new NativeArray<float2>(capacity, Allocator.Persistent);
+            cells = new NativeArray<UnitFrames.TypeCells>(0, Allocator.Persistent);
+            ownerColours = new NativeHashMap<int, uint>(16, Allocator.Persistent);
+            missingOwners = new NativeList<int>(16, Allocator.Persistent);
+            hidden = new NativeArray<byte>(capacity, Allocator.Persistent);
+            hits = new NativeList<UnitHit>(256, Allocator.Persistent);
+            tracks = new NativeList<float3>(256, Allocator.Persistent);
             turrets = new NativeList<UnitInstance>(1024, Allocator.Persistent);
             barrelShadows = new NativeList<UnitInstance>(64, Allocator.Persistent);
             flameLine = TryFlameLine;
@@ -189,14 +205,20 @@ namespace WAR2D.Client
             rings = new NativeList<UnitInstance>(1024, Allocator.Persistent);
             ringCount = new NativeArray<int>(1, Allocator.Persistent);
             ReplicationClient.Received += OnBatch;
-            Palettes.Changed += colorOfOwner.Clear;
+            Palettes.Changed += ClearColours;
             FogView.Ensure();
+        }
+
+        private void ClearColours()
+        {
+            colorOfOwner.Clear();
+            if (ownerColours.IsCreated) ownerColours.Clear();
         }
 
         private void OnDestroy()
         {
             ReplicationClient.Received -= OnBatch;
-            Palettes.Changed -= colorOfOwner.Clear;
+            Palettes.Changed -= ClearColours;
             worldEffects?.Dispose();
             ClientFog.Clear(); // the match is over; the next one starts with a fresh snapshot
             ClientBuildings.Clear();
@@ -206,6 +228,12 @@ namespace WAR2D.Client
             buildingRenderer?.Dispose();
             store?.Dispose();
             if (turrets.IsCreated) { turrets.Dispose(); barrelShadows.Dispose(); }
+            if (turretOf.IsCreated)
+            {
+                turretOf.Dispose(); turretAngle.Dispose(); turretTurnedAt.Dispose(); aimUntil.Dispose(); aimAt.Dispose();
+                cells.Dispose(); ownerColours.Dispose(); missingOwners.Dispose(); hidden.Dispose(); hits.Dispose(); tracks.Dispose();
+            }
+            if (scaleByType.IsCreated) scaleByType.Dispose();
             if (lastPosition.IsCreated)
             {
                 lastPosition.Dispose(); rotation.Dispose(); frame.Dispose(); lastAction.Dispose(); color.Dispose(); health01.Dispose(); drawScale.Dispose(); selected.Dispose();
@@ -397,7 +425,12 @@ namespace WAR2D.Client
             {
                 ArtAtlas atlas = ArtAtlas.Load(ArtAtlas.Units);
                 if (atlas == null) WarLog.Error(LogCategory.Art, $"Resources/{ArtAtlas.Folder}/{ArtAtlas.Units} is missing: run WAR-2D/Art/Build all.");
-                else frames = new UnitFrames.Table(atlas);
+                else
+                {
+                    frames = new UnitFrames.Table(atlas);
+                    cells.Dispose();
+                    cells = frames.ToNative(Allocator.Persistent);
+                }
                 unitAtlas = atlas;
                 unitRenderer = new InstancedUnitRenderer(atlas);
             }
@@ -425,7 +458,6 @@ namespace WAR2D.Client
             NativeArray<int> known = store.Known;
             NativeArray<float2> positions = store.Drawn; // smoothed: corrections glide instead of stepping
             NativeArray<int> owners = store.OwnerArray;
-            NativeArray<byte> healthBytes = store.HealthArray;
             float now = Time.time, frameSeconds = lastDrawAt > 0f ? math.max(0f, now - lastDrawAt) : 0f;
             lastDrawAt = now;
             Rect view = WorldEffects.ViewOf(ViewCamera != null ? ViewCamera : Camera.main);
@@ -434,24 +466,69 @@ namespace WAR2D.Client
             Rect turretView = viewCamera != null ? WorldEffects.ViewOf(viewCamera, TurretViewMargin) : new Rect(-1e6f, -1e6f, 2e6f, 2e6f);
             turrets.Clear();
             barrelShadows.Clear();
-            for (int i = 0; i < count; i++)
+            hits.Clear();
+            tracks.Clear();
+            CacheOwnerColours(known, owners);
+            if (UnitShown != null) // a replay's per-player view: the delegate can't run in the job
+                for (int i = 0; i < count; i++) hidden[known[i]] = (byte)(UnitShown(owners[known[i]], positions[i]) ? 0 : 1);
+            // Per unit: facing, frame, colour, hit feedback, track marks, size and turret (Burst; 2026-11-06, 4.5 of 8 ms a frame
+            // at 10,000 units as a managed loop).
+            new PrepareUnitsJob
             {
-                int index = known[i];
-                float2 p = positions[i];
-                float2 delta = p - lastPosition[index];
-                bool moving = math.lengthsq(delta) > 1e-6f && math.lengthsq(delta) < 4f;
-                if (moving) rotation[index] = math.atan2(delta.y, delta.x);
-                lastPosition[index] = p;
-                if (frames != null)
-                    frame[index] = frames.BodyCell(store.TypeOf(index), rotation[index], moving, serverTime, serverTime - lastAction[index], index);
-                color[index] = ColorOf(owners[index]);
-                health01[index] = healthBytes[index] / 100f;
-                TrackHit(index, healthBytes[index], p, owners[index], now, frameSeconds);
-                if (moving) worldEffects.Moved(index, store.IdOf(index), store.TypeOf(index), p, view);
-                drawScale[index] = UnitShown != null && !UnitShown(owners[index], p) ? -1f : ScaleOf(store.TypeOf(index));
-                if (frames != null && frames.TurretFirst[store.TypeOf(index)] >= 0 && drawScale[index] > 0f && turretView.Contains((Vector2)p))
-                    PackTurret(index, store.TypeOf(index), p, now);
+                Known = known,
+                Positions = positions,
+                Owners = owners,
+                Types = store.TypeArray,
+                Health = store.HealthArray,
+                States = store.StateArray,
+                LastAction = lastAction,
+                Selected = selected,
+                ScaleByType = ScaleTable(),
+                Hidden = hidden,
+                UseHidden = UnitShown != null,
+                Colours = ownerColours,
+                UnknownColour = UnknownColour,
+                Cells = cells,
+                HasFrames = frames != null,
+                ServerTime = serverTime,
+                Now = now,
+                FrameSeconds = frameSeconds,
+                LocalOwner = WorldEffects.LocalOwner,
+                View = new float4(view.xMin, view.yMin, view.xMax, view.yMax),
+                TurretView = new float4(turretView.xMin, turretView.yMin, turretView.xMax, turretView.yMax),
+                BarrelShadowFrame = unitRenderer.BarrelShadowFrame,
+                LastPosition = lastPosition,
+                Rotation = rotation,
+                Frame = frame,
+                Color = color,
+                Health01 = health01,
+                DrawScale = drawScale,
+                TrackedId = trackedId,
+                LastHealth = lastHealth,
+                HitAt = hitAt,
+                Trail = trail,
+                Flash = flash,
+                TrackIds = worldEffects.TrackIds,
+                LastTracks = worldEffects.LastTracks,
+                TurretOf = turretOf,
+                TurretAngle = turretAngle,
+                TurretTurnedAt = turretTurnedAt,
+                AimUntil = aimUntil,
+                AimAt = aimAt,
+                Turrets = turrets,
+                BarrelShadows = barrelShadows,
+                Hits = hits,
+                Tracks = tracks,
+            }.Run();
+            // The job's main-thread effects, in unit order: hits on the minimap, then track marks.
+            MinimapCombat combat = MinimapCombat.Current;
+            for (int i = 0; i < hits.Length && combat != null; i++)
+            {
+                UnitHit hit = hits[i];
+                // v0.16: fights on the minimap, but not an own unit's upkeep decay (code review 2026-11-03).
+                if (!(hit.Own && combat.IsOwnDecay(hit.Drop, hit.SinceLastHit))) combat.Hit(hit.Position, hit.Own, now);
             }
+            for (int i = 0; i < tracks.Length; i++) Decals.Track(tracks[i].xy, tracks[i].z);
             Effects.FollowFlames(flameLine);
 
             instances.ResizeUninitialized(count);
@@ -490,74 +567,196 @@ namespace WAR2D.Client
         /// <summary>Tiles past the screen's edge a unit's turret is still drawn: the longest barrel and its shadow reach this far.</summary>
         private const float TurretViewMargin = 2.5f;
 
-        /// <summary>
-        /// Turns a unit's turret toward what it fired at while it holds its aim, else toward the way it faces, and packs it (and a raised
-        /// barrel's shadow) to be drawn. Turns by the time since it last did, so a unit that was off screen catches up at once.
-        /// </summary>
-        private void PackTurret(int index, byte type, float2 p, float now)
-        {
-            UnitType unit = (UnitType)type;
-            ResetTurretIfNew(index);
-            bool aiming = now < aimUntil[index];
-            float hull = rotation[index];
-            float goal = TurretAim.Goal(hull, aiming ? math.atan2(aimAt[index].y - p.y, aimAt[index].x - p.x) : 0f, aiming);
-            turretAngle[index] = TurretAim.Step(turretAngle[index], goal, TurretAim.TurnRate(unit) * (now - turretTurnedAt[index]));
-            turretTurnedAt[index] = now;
-            int facing = TurretAim.Facing(turretAngle[index]);
-            int cell = TurretAim.TurretFrame(frames.TurretFrames[type], aiming, TurretAim.Recoiling(serverTime - lastAction[index]));
-            Vector2 pivot = TurretAim.PivotPixels(unit, TurretAim.HullAngle(hull)) / ArtStyle.PixelsPerUnit;
-            float2 at = p + new float2(pivot.x, pivot.y);
-            turrets.Add(new UnitInstance
-            {
-                position = at,
-                frame = frames.TurretCell(type, facing, cell),
-                color = color[index],
-                scale = frames.TurretTiles[type],
-                pad = (uint)(selected[index] & 1) | (uint)flash[index] << 1,
-            });
-            if (unit == UnitType.Artillery && aiming)
-                barrelShadows.Add(new UnitInstance { position = at, frame = unitRenderer.BarrelShadowFrame + (uint)facing, color = 0xFFFFFFFFu, scale = BarrelShadowTiles });
-        }
-
         /// <summary>Tiles across the raised barrel's shadow sprite is drawn.</summary>
         private const float BarrelShadowTiles = 3f;
 
         /// <summary>A new unit on this index starts with its turret straight ahead and no aim.</summary>
-        private void ResetTurretIfNew(int index)
+        private void ResetTurretIfNew(int index) =>
+            ResetTurretIfNew(index, store.IdOf(index), rotation[index], Time.time, turretOf, turretAngle, turretTurnedAt, aimUntil);
+
+        private static void ResetTurretIfNew(int index, int id, float hull, float now, NativeArray<int> turretOf, NativeArray<float> turretAngle,
+            NativeArray<float> turretTurnedAt, NativeArray<float> aimUntil)
         {
-            int id = store.IdOf(index);
             if (turretOf[index] == id) return;
             turretOf[index] = id;
-            turretAngle[index] = rotation[index];
-            turretTurnedAt[index] = Time.time;
+            turretAngle[index] = hull;
+            turretTurnedAt[index] = now;
             aimUntil[index] = float.NegativeInfinity;
         }
 
-        /// <summary>
-        /// A unit whose health dropped since last frame was hit: it flashes and its bar keeps a draining trail (<see cref="HitFeedback"/>).
-        /// A unit new to this index (a new id) starts from its health, with no flash.
-        /// </summary>
-        private void TrackHit(int index, byte health, float2 position, int owner, float now, float frameSeconds)
+        /// <summary>A known unit's health drop this frame, for the minimap's fights (applied on the main thread after the draw job).</summary>
+        private struct UnitHit
         {
-            int id = store.IdOf(index);
-            if (trackedId[index] != id)
+            public float2 Position;
+            public int Drop;
+            public float SinceLastHit;
+            public bool Own;
+        }
+
+        /// <summary>
+        /// Puts the colour of every owner among the known units into the cache the draw job reads, before it runs, so a new owner's
+        /// units draw in its colour from the first frame. An owner with no colour yet (a player still arriving) stays out: the job
+        /// draws it grey, as <see cref="ColorOf"/> does.
+        /// </summary>
+        private void CacheOwnerColours(NativeArray<int> known, NativeArray<int> owners)
+        {
+            missingOwners.Clear();
+            new MissingOwnersJob { Known = known, Owners = owners, Cached = ownerColours, Missing = missingOwners }.Run();
+            for (int i = 0; i < missingOwners.Length; i++)
             {
-                trackedId[index] = id;
-                lastHealth[index] = health;
-                hitAt[index] = float.NegativeInfinity;
-                trail[index] = health / 100f;
+                int owner = missingOwners[i];
+                uint c = ColorOf(owner);
+                if (colorOfOwner.ContainsKey(owner)) ownerColours[owner] = c;
             }
-            else if (health < lastHealth[index])
+        }
+
+        /// <summary>Owners of known units that have no cached colour.</summary>
+        [BurstCompile]
+        private struct MissingOwnersJob : IJob
+        {
+            [ReadOnly] public NativeArray<int> Known, Owners;
+            [ReadOnly] public NativeHashMap<int, uint> Cached;
+            public NativeList<int> Missing;
+
+            public void Execute()
             {
-                // v0.16: fights on the minimap, but not an own unit's upkeep decay (code review 2026-11-03).
-                bool own = owner == WorldEffects.LocalOwner;
-                MinimapCombat combat = MinimapCombat.Current;
-                if (combat != null && !(own && combat.IsOwnDecay(lastHealth[index] - health, now - hitAt[index]))) combat.Hit(position, own, now);
-                hitAt[index] = now;
+                int last = int.MinValue;
+                for (int i = 0; i < Known.Length; i++)
+                {
+                    int owner = Owners[Known[i]];
+                    if (owner == last) continue;
+                    last = owner;
+                    if (!Cached.ContainsKey(owner) && !Missing.Contains(owner)) Missing.Add(owner);
+                }
             }
-            lastHealth[index] = health;
-            trail[index] = HitFeedback.Trail(trail[index], health / 100f, now - hitAt[index], frameSeconds);
-            flash[index] = (byte)(HitFeedback.Flashing(hitAt[index], now) ? 1 : 0);
+        }
+
+        /// <summary>
+        /// Per known unit, what the draw needs, as the main thread did it until 2026-11-06: its facing from how it moved, its body's atlas
+        /// cell, colour, health, hit feedback (<see cref="HitFeedback"/>: a unit whose health dropped flashes and its bar keeps a
+        /// draining trail; one new to its index starts afresh), track marks (<see cref="WorldEffects.TrackMark"/>), its drawn size, and
+        /// its turret: turned toward what it fired at while it holds its aim, else the way it faces, by the time since it last turned (so
+        /// one that was off screen catches up at once), packed with a raised Artillery barrel's shadow. The hits and marks go to lists the
+        /// main thread applies after.
+        /// </summary>
+        [BurstCompile]
+        private struct PrepareUnitsJob : IJob
+        {
+            [ReadOnly] public NativeArray<int> Known;
+            [ReadOnly] public NativeArray<float2> Positions; // parallel to Known
+            [ReadOnly] public NativeArray<int> Owners;
+            [ReadOnly] public NativeArray<byte> Types, Health;
+            [ReadOnly] public NativeArray<PredictState> States;
+            [ReadOnly] public NativeArray<float> LastAction;
+            [ReadOnly] public NativeArray<byte> Selected;
+            [ReadOnly] public NativeArray<float> ScaleByType;
+            [ReadOnly] public NativeArray<byte> Hidden;
+            public bool UseHidden;
+            [ReadOnly] public NativeHashMap<int, uint> Colours;
+            public uint UnknownColour;
+            [ReadOnly] public NativeArray<UnitFrames.TypeCells> Cells;
+            public bool HasFrames;
+            public float ServerTime, Now, FrameSeconds;
+            public int LocalOwner;
+            public float4 View, TurretView; // xMin, yMin, xMax, yMax
+            public uint BarrelShadowFrame;
+
+            // By index.
+            public NativeArray<float2> LastPosition;
+            public NativeArray<float> Rotation;
+            public NativeArray<uint> Frame, Color;
+            public NativeArray<float> Health01, DrawScale;
+            public NativeArray<int> TrackedId;
+            public NativeArray<byte> LastHealth, Flash;
+            public NativeArray<float> HitAt, Trail;
+            public NativeArray<int> TrackIds;
+            public NativeArray<float2> LastTracks;
+            public NativeArray<int> TurretOf;
+            public NativeArray<float> TurretAngle, TurretTurnedAt, AimUntil;
+            [ReadOnly] public NativeArray<float2> AimAt;
+
+            public NativeList<UnitInstance> Turrets, BarrelShadows;
+            public NativeList<UnitHit> Hits;
+            public NativeList<float3> Tracks; // position, heading
+
+            public void Execute()
+            {
+                for (int i = 0; i < Known.Length; i++)
+                {
+                    int index = Known[i];
+                    float2 p = Positions[i];
+                    float2 delta = p - LastPosition[index];
+                    bool moving = math.lengthsq(delta) > 1e-6f && math.lengthsq(delta) < 4f;
+                    if (moving) Rotation[index] = math.atan2(delta.y, delta.x);
+                    LastPosition[index] = p;
+                    byte type = Types[index];
+                    int owner = Owners[index], id = States[index].Id;
+                    if (HasFrames)
+                        Frame[index] = Cells[type < Cells.Length ? type : 0].BodyCell(Rotation[index], moving, ServerTime, ServerTime - LastAction[index], index);
+                    Color[index] = Colours.TryGetValue(owner, out uint c) ? c : UnknownColour;
+                    byte health = Health[index];
+                    Health01[index] = health / 100f;
+                    TrackHit(index, id, health, p, owner);
+                    if (moving)
+                    {
+                        int tracked = TrackIds[index];
+                        float2 last = LastTracks[index];
+                        bool lay = WorldEffects.TrackMark(ref tracked, ref last, id, type, p, View, out float2 mid, out float heading);
+                        TrackIds[index] = tracked;
+                        LastTracks[index] = last;
+                        if (lay) Tracks.Add(new float3(mid, heading));
+                    }
+                    DrawScale[index] = UseHidden && Hidden[index] != 0 ? -1f : type < ScaleByType.Length ? ScaleByType[type] : 1f;
+                    if (HasFrames && Cells[type].TurretFirst >= 0 && DrawScale[index] > 0f && Inside(TurretView, p)) PackTurret(index, id, type, p);
+                }
+            }
+
+            private static bool Inside(float4 r, float2 p) => p.x >= r.x && p.x < r.z && p.y >= r.y && p.y < r.w; // Rect.Contains
+
+            private void TrackHit(int index, int id, byte health, float2 position, int owner)
+            {
+                if (TrackedId[index] != id)
+                {
+                    TrackedId[index] = id;
+                    LastHealth[index] = health;
+                    HitAt[index] = float.NegativeInfinity;
+                    Trail[index] = health / 100f;
+                }
+                else if (health < LastHealth[index])
+                {
+                    Hits.Add(new UnitHit { Position = position, Own = owner == LocalOwner, Drop = LastHealth[index] - health, SinceLastHit = Now - HitAt[index] });
+                    HitAt[index] = Now;
+                }
+                LastHealth[index] = health;
+                Trail[index] = HitFeedback.Trail(Trail[index], health / 100f, Now - HitAt[index], FrameSeconds);
+                Flash[index] = (byte)(HitFeedback.Flashing(HitAt[index], Now) ? 1 : 0);
+            }
+
+            private void PackTurret(int index, int id, byte type, float2 p)
+            {
+                UnitType unit = (UnitType)type;
+                ResetTurretIfNew(index, id, Rotation[index], Now, TurretOf, TurretAngle, TurretTurnedAt, AimUntil);
+                bool aiming = Now < AimUntil[index];
+                float hull = Rotation[index];
+                float goal = TurretAim.Goal(hull, aiming ? math.atan2(AimAt[index].y - p.y, AimAt[index].x - p.x) : 0f, aiming);
+                TurretAngle[index] = TurretAim.Step(TurretAngle[index], goal, TurretAim.TurnRate(unit) * (Now - TurretTurnedAt[index]));
+                TurretTurnedAt[index] = Now;
+                int facing = TurretAim.Facing(TurretAngle[index]);
+                UnitFrames.TypeCells cell = Cells[type];
+                int frameIndex = TurretAim.TurretFrame(cell.TurretFrames, aiming, TurretAim.Recoiling(ServerTime - LastAction[index]));
+                Vector2 pivot = TurretAim.PivotPixels(unit, TurretAim.HullAngle(hull)) / ArtStyle.PixelsPerUnit;
+                float2 at = p + new float2(pivot.x, pivot.y);
+                Turrets.Add(new UnitInstance
+                {
+                    position = at,
+                    frame = cell.TurretCell(facing, frameIndex),
+                    color = Color[index],
+                    scale = cell.TurretTiles,
+                    pad = (uint)(Selected[index] & 1) | (uint)Flash[index] << 1,
+                });
+                if (unit == UnitType.Artillery && aiming)
+                    BarrelShadows.Add(new UnitInstance { position = at, frame = BarrelShadowFrame + (uint)facing, color = 0xFFFFFFFFu, scale = BarrelShadowTiles });
+            }
         }
 
         /// <summary>How many tiles across a unit type is drawn (2 for the large units), from the art manifest.</summary>
@@ -576,13 +775,20 @@ namespace WAR2D.Client
 
         private float ScaleOf(byte type)
         {
-            if (scaleByType == null)
+            NativeArray<float> scales = ScaleTable();
+            return type < scales.Length ? scales[type] : 1f;
+        }
+
+        /// <summary>Tiles across each unit type is drawn, by type (made on first use).</summary>
+        private NativeArray<float> ScaleTable()
+        {
+            if (!scaleByType.IsCreated)
             {
-                scaleByType = new float[System.Enum.GetValues(typeof(UnitType)).Length];
+                scaleByType = new NativeArray<float>(System.Enum.GetValues(typeof(UnitType)).Length, Allocator.Persistent);
                 for (int t = 0; t < scaleByType.Length; t++)
                     scaleByType[t] = ArtManifest.TryGet(((UnitType)t).ToString(), out ArtEntry entry) && entry.Kind == ArtKind.Unit ? entry.WidthTiles : 1f;
             }
-            return type < scaleByType.Length ? scaleByType[type] : 1f;
+            return scaleByType;
         }
 
         /// <summary>Buildings drawn last frame (tests).</summary>
