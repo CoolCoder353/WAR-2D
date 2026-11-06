@@ -13,7 +13,7 @@ public class RangeRulesTests
     public void AUnitsRingsComeFromItsType()
     {
         RingSet arty = RangeRules.OfUnit(Config_.GetUnit(UnitType.Artillery), new float2(1, 1), 7);
-        Assert.AreEqual((18f, 4f, 18f), (arty.Range, arty.Min, arty.Sight));
+        Assert.AreEqual((36f, 6f, 18f), (arty.Range, arty.Min, arty.Sight)); // v0.20: it fires past its sight
         RingSet builder = RangeRules.OfUnit(Config_.GetUnit(UnitType.Builder), float2.zero, 7);
         Assert.AreEqual(0f, builder.Range, "a Builder can't attack");
         RingSet bomber = RangeRules.OfUnit(Config_.GetUnit(UnitType.Bomber), float2.zero, 7);

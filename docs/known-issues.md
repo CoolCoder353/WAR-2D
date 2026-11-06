@@ -15,6 +15,7 @@ The rules, wire, client drawing, art, sound, AI, manual and docs are in. Left op
 - **Not built from the approved set:** the burning marker on the selection panel's per-type button (B1; the world health-bar marker is in), a thrown turret head beside a shot unit's wreck (the wreck is flung by a blast and burnt black by fire, but no separate head), and the building sprite darkening and sinking as it collapses (the staged explosions, dust cloud and HQ finale are in).
 - **Model choices:** the fight model's heavy class uses the Heavy's armour and resistance for every heavy unit (Artillery has neither armour nor the Heavy's resistance); its Bomber still counts as `BomberFightSeconds` of blast.
 - **A Bomber shot down on the tick it leaps** explodes where it stood (the leap had already been reported to clients that tick, so they may draw the leap's start before the blast).
+- **Spec contradiction:** §6.1 calls the Scout's sight 16 "the longest of any unit", but §4.1 keeps the Artillery's at 18. Both numbers are as the spec gives them; the owner should pick one.
 - **Fire on own units:** none, as flame splash never hits allies (D11).
 
 ## Owner playtest fixes (2026-11-06, on `fix/pr30-review-round3`)

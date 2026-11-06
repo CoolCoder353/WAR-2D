@@ -494,8 +494,10 @@ public class ConfigParserTests
         GameConfigData c = ConfigLoader.LoadConfig();
         Assert.IsTrue(ConfigLoader.IsValid);
         BuildingConfig turret = c.GetBuilding(BuildingType.GunTurret);
-        Assert.AreEqual((500, 1, 1, 150f, 4f, 10f), (turret.Health, turret.Width, turret.Height, turret.UpfrontCost, turret.RunningCost, turret.Sight));
-        Assert.AreEqual((12, 9f, 0.4f), (turret.Damage, turret.Range, turret.AttackInterval));
+        // v0.20 (spec §6.3): the 2×2 turret.
+        Assert.AreEqual((1000, 2, 2, 400f, 8f, 10f), (turret.Health, turret.Width, turret.Height, turret.UpfrontCost, turret.RunningCost, turret.Sight));
+        Assert.AreEqual((6, 9f, 0.1f), (turret.Damage, turret.Range, turret.AttackInterval));
+        Assert.AreEqual(90f, turret.BuildSeconds);
         BuildingConfig jammer = c.GetBuilding(BuildingType.Jammer);
         Assert.AreEqual((200, 2, 2, 200f, 6f, 6f), (jammer.Health, jammer.Width, jammer.Height, jammer.UpfrontCost, jammer.RunningCost, jammer.Sight));
         Assert.IsFalse(jammer.IsAttacker);

@@ -69,7 +69,8 @@ public class SimBomberTests
     public void AChainGoesOffInOneTickUpToThePassLimit()
     {
         // A blast only sets off friendly bombers when friends take enough of it (shipped, they take a tenth).
-        using var sim = new SimHarness(SimHarness.OpenMap(96), c => c.Bomber.FriendlyDamage = 1f);
+        // v0.20: Bombers shrug off 99 % of a blast, so chains are rare; this pins the pass limit with no resistance.
+        using var sim = new SimHarness(SimHarness.OpenMap(96), c => { c.Bomber.FriendlyDamage = 1f; c.GetUnit(UnitType.Bomber).BlastResist = 0f; });
         var chain = new List<int[]>(); // each id is filled in when the spawn runs
         for (int i = 0; i < 6; i++) chain.Add(sim.Spawn(SimHarness.OwnerA, new float2(10 + i * 1.5f, 10), UnitType.Bomber));
         int blasts = 0;

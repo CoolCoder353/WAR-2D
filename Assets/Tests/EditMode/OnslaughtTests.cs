@@ -444,10 +444,10 @@ public class SimSniperAimTests
         float max = sim.Config.GetUnit(UnitType.Heavy).Health;
         sim.TickSeconds(sim.Config.Sniper.AimSeconds * 0.75f);
         sim.Move(SimHarness.OwnerA, new int2(10, 30), sniper); // walks away a couple of tiles: no aim on a Move
-        sim.TickSeconds(1.5f);
+        // It arrives in under a second; had it kept the 1.5 s it aimed before, it would fire on arrival.
         sim.TickSeconds(sim.Config.Sniper.AimSeconds * 0.75f);
         Assert.AreEqual(max, Onslaught.Health(sim, heavy[0]), 1e-3f, "its aim began again when it stopped");
-        sim.TickSeconds(sim.Config.Sniper.AimSeconds);
+        sim.TickSeconds(sim.Config.Sniper.AimSeconds * 1.5f);
         Assert.That(Onslaught.Health(sim, heavy[0]), Is.LessThan(max), "and then it fired");
     }
 

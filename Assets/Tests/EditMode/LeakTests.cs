@@ -766,7 +766,7 @@ public class LeakTests
     public void ATurretsAttackReachesOnlyClientsThatMayKnowTheTurret()
     {
         // C's Builder sees 2 tiles: the turret 6 away shoots it from C's fog.
-        using var sim = new SimHarness(Map(), c => { c.Simulation.TargetSearchSliceTicks = 1; c.Units[UnitType.Builder].Sight = 2f; c.GetBuilding(BuildingType.GunTurret).Damage = 8; });
+        using var sim = new SimHarness(Map(), c => { c.Simulation.TargetSearchSliceTicks = 1; c.Units[UnitType.Builder].Sight = 2f; c.GetBuilding(BuildingType.GunTurret).Damage = 8; c.GetBuilding(BuildingType.GunTurret).AttackInterval = 0.4f; });
         using var replication = new ReplicationService(sim.Context, sim.Config);
         replication.CollectBuildings = list => SimBuildings(sim, list);
         var a = new Spy(sim.Context, replication, SimHarness.OwnerA);

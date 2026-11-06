@@ -19,6 +19,7 @@ public class ReplicationTests
         public NativeArray<float2> Positions;
         public NativeArray<float> Health, MaxHealth, Speeds;
         public NativeArray<int> Owner, IdOf, IndexOfId;
+        public NativeArray<byte> LastHitKind;
         public NativeArray<byte> Type;
         /// <summary>One fog grid per client (1 tile per cell).</summary>
         public NativeArray<byte> Visible;
@@ -44,6 +45,7 @@ public class ReplicationTests
             Owner = new NativeArray<int>(capacity, Allocator.Persistent);
             IdOf = new NativeArray<int>(capacity, Allocator.Persistent);
             IndexOfId = new NativeArray<int>(IdCapacity, Allocator.Persistent);
+            LastHitKind = new NativeArray<byte>(IdCapacity, Allocator.Persistent);
             Type = new NativeArray<byte>(capacity, Allocator.Persistent);
             Visible = new NativeArray<byte>(clients * FogSize * FogSize, Allocator.Persistent);
             Speeds = new NativeArray<float>(new[] { 0f, 5f }, Allocator.Persistent);
@@ -72,7 +74,7 @@ public class ReplicationTests
         public ReplicationInput Input => new ReplicationInput
         {
             Count = Count, Positions = Positions, Health = Health, MaxHealth = MaxHealth, OwnerId = Owner,
-            Type = Type, IdOf = IdOf, IndexOfId = IndexOfId, SpeedByType = Speeds,
+            Type = Type, IdOf = IdOf, IndexOfId = IndexOfId, SpeedByType = Speeds, LastHitKind = LastHitKind,
             Visible = Visible, FogCellSize = 1, FogW = FogSize, FogH = FogSize, FogCells = FogSize * FogSize,
         };
 
@@ -106,7 +108,7 @@ public class ReplicationTests
 
         public void Dispose()
         {
-            Positions.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Owner.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
+            Positions.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Owner.Dispose(); IdOf.Dispose(); IndexOfId.Dispose(); LastHitKind.Dispose();
             Type.Dispose(); Visible.Dispose(); Speeds.Dispose(); Attacks.Dispose(); Targets.Dispose(); Routes.Dispose(); Interests.Dispose(); Encoder.Dispose();
             foreach (ClientUnitStore s in ClientStores) s.Dispose();
         }

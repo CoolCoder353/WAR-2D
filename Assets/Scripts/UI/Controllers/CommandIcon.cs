@@ -7,7 +7,7 @@ namespace WAR2D.UI
     /// <summary>The command card's icons (Figma: <c>Icons &amp; cursors – v0.8</c>).</summary>
     public enum IconKind
     {
-        Move, AttackMove, Stop, Hold, Miner, Spawner, Wall, Radar, Dig, Cancel, Bomb, Repair, Demolish,
+        Move, AttackMove, Stop, Hold, Miner, Spawner, Wall, Radar, Dig, Cancel, Mine, Repair, Demolish,
         // v0.12: units (named as UnitType), Detonate and the producers.
         Builder, Tank, Digger, Scout, Heavy, Artillery, Sniper, Flamethrower, Bomber, Detonate, Barracks, HeavyFactory, SiegeWorkshop,
         // v0.13: the defences (named as BuildingType).

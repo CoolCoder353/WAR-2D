@@ -1,3 +1,4 @@
+using Config;
 using NUnit.Framework;
 using Unity.Mathematics;
 using WAR2D.Sim;
@@ -128,7 +129,8 @@ public class SimAutoWorkTests
     [Test]
     public void ABuilderStandsWhereItCanWalkToNotInAHoleBesideTheJob()
     {
-        using var sim = new SimHarness(HoleBesideTheJob());
+        // A 1×1 job built by health, as the turret was before v0.20 (the hole is shaped for a 1×1 footprint).
+        using var sim = new SimHarness(HoleBesideTheJob(), c => { BuildingConfig t = c.GetBuilding(BuildingType.GunTurret); t.Width = 1; t.Height = 1; t.Health = 500; t.BuildSeconds = 0f; });
         int[] builder = sim.Spawn(SimHarness.OwnerA, new float2(30.5f, 30.5f), UnitType.Builder);
         sim.Tick();
         int turret = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.GunTurret, new int2(20, 20));

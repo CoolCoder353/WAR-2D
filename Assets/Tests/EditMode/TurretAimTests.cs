@@ -55,7 +55,7 @@ public class TurretAimTests
     /// <summary>The owner's tuned distances, in art pixels from the unit's centre, with the turret straight ahead: forward and to the left.</summary>
     [TestCase(UnitType.Tank, 0, 34f, 0f)]
     [TestCase(UnitType.Scout, 0, 17f, -3f)]
-    [TestCase(UnitType.Sniper, 0, 33.5f, 0f)]
+    [TestCase(UnitType.Sniper, 0, 56f, 0f)] // v0.20: the 2×2 Sniper's long barrel (pivot -10 + reach 66)
     [TestCase(UnitType.Heavy, 0, 60f, 6f)]
     [TestCase(UnitType.Heavy, 1, 60f, -6f)]
     public void AFlashStandsWhereTheOwnerTunedIt(UnitType type, int barrel, float forward, float left)

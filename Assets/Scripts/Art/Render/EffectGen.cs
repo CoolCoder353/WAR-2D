@@ -269,7 +269,7 @@ namespace WAR2D.Art.Render
         }
 
         /// <summary>The effects drawn with partial alpha, off the palette: the flame's soft glow and the raised barrel's soft shadow. Everything else stays pixel art.</summary>
-        public static bool IsSoft(string id) => id == "FlameStream" || id == "FlameSplash" || id == "BarrelShadow";
+        public static bool IsSoft(string id) => id == "FlameStream" || id == "FlameSplash" || id == "BarrelShadow" || id == "AimLaser"; // v0.20: the laser's glow
 
         private static readonly Color FlameHot = new Color(1f, 0.97f, 0.82f), FlameYellow = new Color(1f, 0.8f, 0.3f), FlameOrange = new Color(1f, 0.45f, 0.1f), FlameEmber = new Color(0.8f, 0.15f, 0.03f);
 
@@ -883,6 +883,26 @@ namespace WAR2D.Art.Render
             return new EffectFrame(px, w, h);
         }
 
+        /// <summary>A frame with every opaque pixel moved to the nearest <see cref="ArtStyle.EffectPalette"/> colour (alpha kept).</summary>
+        private static EffectFrame Snapped(EffectFrame f)
+        {
+            var px = (Color32[])f.Pixels.Clone();
+            Color32[] palette = ArtStyle.EffectPalette;
+            for (int i = 0; i < px.Length; i++)
+            {
+                Color32 c = px[i];
+                if (c.a == 0) continue;
+                int best = 0, bestD = int.MaxValue;
+                for (int k = 0; k < palette.Length; k++)
+                {
+                    int dr = c.r - palette[k].r, dg = c.g - palette[k].g, db = c.b - palette[k].b, d = dr * dr + dg * dg + db * db;
+                    if (d < bestD) { bestD = d; best = k; }
+                }
+                px[i] = new Color32(palette[best].r, palette[best].g, palette[best].b, c.a);
+            }
+            return new EffectFrame(px, f.Width, f.Height);
+        }
+
         /// <summary>The frame for cell <paramref name="cell"/> of an effect id, or null when it has no generator.</summary>
         public static EffectFrame? For(string id, int cell, int frames)
         {
@@ -943,7 +963,7 @@ namespace WAR2D.Art.Render
                 case "AimLaser": return AimLaser(t);
                 case "MuzzleGlint": return Padded(MuzzleGlint(cell), T, T);
                 case "SniperHit": return SniperHit(cell);
-                case "ArmourSparks": return ArmourSparks(cell);
+                case "ArmourSparks": return Snapped(ArmourSparks(cell)); // asset review: its one off-palette shade snapped
                 case "IncomingShell": return IncomingShell(cell);
                 case "LaunchPuff": return LaunchPuff(t, 5);
                 case "ArtilleryBlast": return ShockBlast(8, 3.5f, t, 37, dust: true);

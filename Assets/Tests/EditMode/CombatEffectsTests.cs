@@ -117,8 +117,11 @@ public class CombatEffectsTests
         Effects.GunShot(UnitType.Tank, Vector2.zero, 0f, 0f, new Vector3(5f, 0f, 0f), 0.35f, false, Vector3.zero);
         Assert.AreEqual(3, Effects.ActiveTracers, "the Tracers setting hides the line");
         Assert.AreEqual(2, Effects.ActiveTankBursts, "and leaves the flash");
+        // v0.20: the gun's shot is its flash and launch; the shell itself comes with the combat news, its real flight or only its drop.
         Effects.GunShot(UnitType.Artillery, Vector2.zero, 0f, 0f, new Vector3(9f, 0f, 0f), 0f, false, Vector3.zero);
-        Assert.AreEqual(1, Effects.ActiveShells, "a shell always flies");
+        Assert.AreEqual(0, Effects.ActiveShells, "no shell of its own from the attack event");
+        Effects.ShellFlight(Vector2.zero, new Vector2(9f, 0f), 0.7f);
+        Assert.AreEqual(1, Effects.ActiveShells, "the shell the client was told about flies");
     }
 
     [Test]

@@ -109,7 +109,7 @@ public class PlaytestFix3Tests
         int[] friend = sim.Spawn(SimHarness.OwnerA, new float2(21.5f, 22f), UnitType.Heavy);
         int[] enemy = sim.Spawn(SimHarness.OwnerB, new float2(21.5f, 20.5f), UnitType.Heavy); // a tile off the bomb
         sim.TickSeconds(0.5f);
-        float damage = sim.Config.Siege.BlastDamage;
+        float damage = sim.Config.Siege.BlastDamage * (1f - sim.Config.GetUnit(UnitType.Heavy).BlastResist); // v0.20: a Heavy shrugs off its share
         Assert.AreEqual(400f - damage, sim.UnitById(enemy[0]).Health, 1e-3f, "the bomb went off beside it");
         Assert.AreEqual(400f - damage * sim.Config.Siege.MineFriendlyDamage, sim.UnitById(friend[0]).Health, 1e-3f);
     }
@@ -124,7 +124,7 @@ public class PlaytestFix3Tests
         sim.Tick();
         sim.Order(SimHarness.OwnerA, OrderKind.Detonate, new int2(20, 20), bomber);
         sim.TickSeconds(0.25f);
-        float blast = sim.Config.GetUnit(UnitType.Bomber).BlastDamage;
+        float blast = sim.Config.GetUnit(UnitType.Bomber).BlastDamage * (1f - sim.Config.GetUnit(UnitType.Heavy).BlastResist); // v0.20
         Assert.AreEqual(400f - blast * 0.1f, sim.UnitById(friend[0]).Health, 1e-2f);
         Assert.AreEqual(400f - blast, sim.UnitById(enemy[0]).Health, 1e-2f);
     }
@@ -133,7 +133,7 @@ public class PlaytestFix3Tests
     public void IdleUnitsAnswerFireFromOutOfTheirRange()
     {
         using var sim = Sim();
-        int[] sniper = sim.Spawn(SimHarness.OwnerB, new float2(30, 20), UnitType.Sniper); // sees and reaches 20
+        int[] sniper = sim.Spawn(SimHarness.OwnerB, new float2(24, 20), UnitType.Sniper); // v0.20: sees 12, reaches 28
         int[] shot = sim.Spawn(SimHarness.OwnerA, new float2(14, 20), UnitType.Heavy);    // range 5
         int[] nearby = sim.Spawn(SimHarness.OwnerA, new float2(10, 20), UnitType.Heavy);  // not shot, 4 tiles off the victim
         int[] holding = sim.Spawn(SimHarness.OwnerA, new float2(14, 24), UnitType.Heavy);
@@ -268,13 +268,17 @@ public class PlaytestFix3Tests
         Assert.AreEqual("Infinite · 5 units", WAR2D.UI.SpectatorController.Numbers(ServerPlayer.InfiniteBalance, 5));
     }
 
+    /// <summary>v0.20 (spec §4.1, §5.2): the playtest rule ended; Artillery and Snipers fire further than they see and need spotters, the Scout sees furthest.</summary>
     [Test]
-    public void ArtilleryAndSnipersSeeAsFarAsTheyShoot()
+    public void ArtilleryAndSnipersFireBeyondTheirSightAndScoutsSpotForThem()
     {
         Config.ConfigLoader.ResetForTests();
         var c = Config.ConfigLoader.LoadConfig();
-        Assert.GreaterOrEqual(c.GetUnit(UnitType.Artillery).Sight, c.GetUnit(UnitType.Artillery).Range);
-        Assert.GreaterOrEqual(c.GetUnit(UnitType.Sniper).Sight, c.GetUnit(UnitType.Sniper).Range);
+        Assert.Less(c.GetUnit(UnitType.Artillery).Sight, c.GetUnit(UnitType.Artillery).Range);
+        Assert.Less(c.GetUnit(UnitType.Sniper).Sight, c.GetUnit(UnitType.Sniper).Range);
+        // Not the Artillery: the spec keeps its sight at 18 though it calls the Scout's 16 the longest (known-issues.md).
+        foreach (UnitType t in new[] { UnitType.Tank, UnitType.Heavy, UnitType.Sniper, UnitType.Flamethrower })
+            Assert.Greater(c.GetUnit(UnitType.Scout).Sight, c.GetUnit(t).Sight, $"the Scout out-sees the {t}");
         Assert.GreaterOrEqual(c.GetBuilding(BuildingType.GunTurret).Sight, c.GetBuilding(BuildingType.GunTurret).Range);
     }
 }
