@@ -27,7 +27,7 @@ namespace WAR2D.UI
         private readonly Func<UnitType, string> roleOf;
         private readonly bool switchClearsQueue;
         private readonly VisualElement card, divider, rows, removal, confirm, production, typesRow;
-        private readonly Label title, help, queueLabel, buildLabel, buildHint, digHint, detonateHint, refund, question, cancelKey;
+        private readonly Label title, help, queueLabel, buildLabel, refund, question, cancelKey;
         private readonly Label info, mixedHint, waiting;
         private readonly int unitCap;
         private readonly VisualElement buildArea;
@@ -125,8 +125,6 @@ namespace WAR2D.UI
             rows = root.Q("production-rows");
             divider = root.Q("divider");
             buildLabel = root.Q<Label>("build-label");
-            buildHint = root.Q<Label>("build-hint");
-            digHint = root.Q<Label>("dig-hint");
             removal = root.Q("removal");
             confirm = root.Q("removal-confirm");
             refund = root.Q<Label>("removal-refund");
@@ -139,7 +137,6 @@ namespace WAR2D.UI
             info = root.Q<Label>("production-info");
             mixedHint = root.Q<Label>("production-mixed");
             waiting = root.Q<Label>("production-waiting");
-            detonateHint = root.Q<Label>("detonate-hint");
             detonate = root.Q<Button>("cmd-detonate");
             buildArea = root.Q("builds");
 
@@ -173,7 +170,6 @@ namespace WAR2D.UI
             wall.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); WallClicked?.Invoke(); };
             AttachBuildCard(wall, BuildingType.None);
             root.Q<Label>("build-wall-cost").text = $"{wallCost:0.##}/tile";
-            buildHint.text = $"Wall: press and drag on the map to lay a line ({wallCost:0.##} per tile).";
 
             cancel.clicked += () => { WAR2D.Audio.AudioService.Ui("ui_click"); RequestRemove(); };
             keyLabels[cancelKey] = () => GameInput.Cancel;
@@ -410,13 +406,10 @@ namespace WAR2D.UI
             card.EnableInClassList("command-card--builders", builders);
             if (!building || !Removable) ConfirmOpen = false;
             // Inline display wins over the stylesheet, so every section is set either way.
-            Display(digHint, diggers && !builders);
-            Display(detonateHint, bombers && !builders && !diggers);
             // The build row is the Builders' (v0.7): without them, nothing can build.
             Display(divider, builders);
             Display(buildLabel, builders);
             Display(buildArea, builders);
-            Display(buildHint, builders);
             Display(removal, building && Removable);
             // A blueprint makes nothing yet: production shows once the selected buildings are all finished.
             bool producing = building && SpawnerRules.IsProducer(selection.BuildingType) && selection.BlueprintCount == 0;

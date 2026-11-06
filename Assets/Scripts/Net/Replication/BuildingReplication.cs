@@ -33,6 +33,11 @@ namespace WAR2D.Net.Replication
         public bool Unpaid;
         /// <summary>Where fog is tested (the anchor's world position).</summary>
         public float2 Position;
+        /// <summary>
+        /// Only its owner may know it (2026-11-06: a blueprint placed on explored ground where something the owner can't see
+        /// stands, kept on the server until the owner sees the spot; <c>WorldStateManager</c>'s phantom blueprints).
+        /// </summary>
+        public bool OwnerOnly;
     }
 
     /// <summary>The kinds of building record.</summary>
@@ -72,6 +77,7 @@ namespace WAR2D.Net.Replication
             public bool Unpaid;
             public float2 Position;
             public int OwnerId;
+            public BuildingType Type;
         }
 
         /// <summary>Percent points a building's progress must climb before another Progress record is sent.</summary>
@@ -90,6 +96,7 @@ namespace WAR2D.Net.Replication
         /// </summary>
         public static bool MayKnow(in BuildingView v, int ownerId, Func<float2, bool> sees, Func<int, bool> mayKnowHidden)
         {
+            if (v.OwnerOnly) return v.OwnerId == ownerId;
             bool allowed = v.OwnerId == ownerId || sees(v.Position);
             if (v.Hidden) allowed = allowed && (v.OwnerId == ownerId || (mayKnowHidden != null && mayKnowHidden(v.OwnerId)));
             return allowed;
@@ -154,7 +161,7 @@ namespace WAR2D.Net.Replication
                         records++;
                         unpaid = v.Unpaid;
                     }
-                    known[v.Id] = new Known { Live = true, Health = v.Health, Progress = progress, Hidden = v.Hidden, Unpaid = unpaid, Position = v.Position, OwnerId = v.OwnerId };
+                    known[v.Id] = new Known { Live = true, Health = v.Health, Progress = progress, Hidden = v.Hidden, Unpaid = unpaid, Position = v.Position, OwnerId = v.OwnerId, Type = v.Type };
                     if (sink.Full) return records;
                 }
                 else if (wasKnown && k.Hidden)
@@ -199,6 +206,23 @@ namespace WAR2D.Net.Replication
                 }
             }
             return records;
+        }
+
+        /// <summary>
+        /// True when a building this player knows of, live or a last-seen ghost (bombs aside: they don't take ground), covers
+        /// <paramref name="tile"/>: what the player sees there in the fog (placement on explored ground, 2026-11-06).
+        /// </summary>
+        public bool KnownCovers(int2 tile, Func<BuildingType, int2> sizeOf)
+        {
+            foreach (KeyValuePair<int, Known> pair in known)
+            {
+                Known k = pair.Value;
+                if (k.Hidden) continue;
+                int2 size = sizeOf(k.Type);
+                int2 start = Footprint.Start((int2)math.round(k.Position), size);
+                if (math.all(tile >= start) && math.all(tile < start + size)) return true;
+            }
+            return false;
         }
 
         /// <summary>The network form: records written with <see cref="BuildingCodec"/>, full past a byte limit.</summary>

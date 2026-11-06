@@ -24,6 +24,21 @@ public class SimFormationTests
     }
 
     [Test]
+    public void OnAnAttackMoveEachUnitGoesAtItsOwnSpeed()
+    {
+        // Owner playtest 2026-11-06: a Move travels as a group, an Attack-move doesn't hold anyone back.
+        using var sim = new SimHarness(SimHarness.OpenMap(96));
+        int[] scout = sim.Spawn(SimHarness.OwnerA, new float2(10.5f, 10.5f), UnitType.Scout);
+        int[] heavy = sim.Spawn(SimHarness.OwnerA, new float2(12.5f, 10.5f), UnitType.Heavy);
+        sim.Tick();
+        sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.AttackMove, OwnerId = SimHarness.OwnerA, Tile = new int2(11, 80), Ids = new[] { scout[0], heavy[0] }, Formation = true });
+        sim.TickSeconds(3f);
+        float gap = sim.UnitById(scout[0]).Position.y - sim.UnitById(heavy[0]).Position.y;
+        Assert.Greater(gap, 3f, "the Scout runs ahead of the Heavy");
+        Assert.Greater(sim.UnitById(scout[0]).FormationSpeed, 0f, "still heading for its slot");
+    }
+
+    [Test]
     public void AGroupTooBigForTheSlotRadiusStillArrives()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(128));

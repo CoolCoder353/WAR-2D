@@ -487,7 +487,7 @@ public partial class WorldStateManager : NetworkBehaviour
         double t = PerfSplits.Now;
         FlushBlasts(data, count);
         PerfSplits.Mark(1, ref t);
-        if ((tick - 1) % data.VisionInterval == 0) { WatchRadars(data, count); SnapshotExplored(data); }
+        if ((tick - 1) % data.VisionInterval == 0) { WatchRadars(data, count); SnapshotExplored(data); ResolvePhantoms(); }
         PerfSplits.Mark(0, ref t);
         FlushDeathEvents(data);
         PerfSplits.Mark(2, ref t);
@@ -699,6 +699,7 @@ public partial class WorldStateManager : NetworkBehaviour
                 Position = p,
             });
         }
+        AddPhantomViews(views);
     }
 
 
@@ -773,7 +774,11 @@ public partial class WorldStateManager : NetworkBehaviour
             Ids?.Free(id);
             if (buildingFootprints.Remove(id, out List<int2> footprint))
             {
-                foreach (int2 tile in footprint) Map?.QueueUsed(tile, false);
+                foreach (int2 tile in footprint)
+                {
+                    Map?.QueueUsed(tile, false);
+                    if (footprintOwners.TryGetValue(tile, out int was) && was == building.ownerId) footprintOwners.Remove(tile);
+                }
             }
         }
     }
@@ -786,6 +791,7 @@ public partial class WorldStateManager : NetworkBehaviour
     public void KillAllEntitiesOwnedBy(int ownerId)
     {
         foreach (Entity e in Buildings.Values) Kill(e, ownerId);
+        ForgetPhantoms(ownerId);
         Sim?.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.KillOwner, OwnerId = ownerId });
         Squads.Forget(ownerId);
         ForgetOrderTokens(ownerId);
@@ -826,6 +832,8 @@ public partial class WorldStateManager : NetworkBehaviour
         }
         Buildings.Clear();
         buildingFootprints.Clear();
+        footprintOwners.Clear();
+        ClearPhantoms();
     }
 
     /// <summary>Records the entity's death position (when it has one), then destroys it.</summary>
@@ -917,8 +925,19 @@ public partial class WorldStateManager : NetworkBehaviour
 
     /// <summary>Server-side placement check for an owner, human or AI (commands, <see cref="PlayerActions"/> and tests).</summary>
     [Server]
-    public PlacementResult CheckPlacement(BuildingType type, int2 anchor, float rotation, int owner)
+    public PlacementResult CheckPlacement(BuildingType type, int2 anchor, float rotation, int owner) => CheckPlacement(type, anchor, rotation, owner, out _);
+
+    /// <summary>
+    /// As above. A human player's footprint tiles that their side has explored but doesn't see now are judged by what that
+    /// player was told (terrain, buildings and last-seen ghosts), never by what stands there now, so neither the preview
+    /// nor the placement says what is in the fog (owner playtest 2026-11-06). <paramref name="phantom"/> is true when the
+    /// player may place it but the real ground is taken: the blueprint then waits on the server until the spot is seen
+    /// (<see cref="AddPhantom"/>).
+    /// </summary>
+    [Server]
+    public PlacementResult CheckPlacement(BuildingType type, int2 anchor, float rotation, int owner, out bool phantom)
     {
+        phantom = false;
         if (type == BuildingType.None || !System.Enum.IsDefined(typeof(BuildingType), type)) return PlacementResult.InvalidType;
 
         ServerPlayer acting = GameCore.Instance?.GetServerPlayerById(owner);
@@ -931,12 +950,32 @@ public partial class WorldStateManager : NetworkBehaviour
             foreach (int2 tile in Footprint.Tiles(anchor, GetBuildingSize(type)))
                 if (!HasExplored(owner, tile)) return PlacementResult.Unexplored;
 
-        return PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
-            GameCore.Instance.HasPlacedHq(owner), Map.Grid.TileAt, tile => Map.IsUsed(tile) || KnownBombAt(tile, owner), tile => false, // units are pushed out of new footprints
-            OwnStartOptions(owner));
+        PlacementResult truth = TruePlacement(type, anchor, rotation, owner);
+        if (type == BuildingType.Base || ReplicationService.Instance == null || !ReplicationService.Instance.TryKnowledgeOf(owner, out BuildingInterest knownBuildings, out TerrainInterest knownTerrain))
+            return truth;
+        bool anyHidden = false;
+        foreach (int2 tile in Footprint.Tiles(anchor, GetBuildingSize(type))) anyHidden |= !SeesNow(owner, tile);
+        if (!anyHidden) return truth;
+        byte[] initial = Map.InitialTiles;
+        PlacementResult known = PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
+            GameCore.Instance.HasPlacedHq(owner),
+            tile => SeesNow(owner, tile) || !Map.Grid.Contains(tile) ? Map.Grid.TileAt(tile) : (TileType)knownTerrain.KnownType(Map.Grid.Index(tile), initial),
+            tile => SeesNow(owner, tile) ? Map.IsUsed(tile) || KnownBombAt(tile, owner)
+                : knownBuildings.KnownCovers(tile, GetBuildingSize) || OwnFootprintAt(tile, owner) || OwnPhantomAt(tile, owner) || KnownBombAt(tile, owner),
+            tile => false, OwnStartOptions(owner));
+        if (known != PlacementResult.Ok) return known;
+        phantom = truth != PlacementResult.Ok;
+        return PlacementResult.Ok;
     }
 
-    private byte[] explored;
+    /// <summary>The placement rules on the real map (what an AI, a seen spot, or a waiting blueprint is judged by).</summary>
+    [Server]
+    private PlacementResult TruePlacement(BuildingType type, int2 anchor, float rotation, int owner) =>
+        PlacementRules.Check(type, anchor, rotation, GetBuildingSize(type), GameCore.Instance.CurrentState,
+            GameCore.Instance.HasPlacedHq(owner), Map.Grid.TileAt, tile => Map.IsUsed(tile) || KnownBombAt(tile, owner), tile => false, // units are pushed out of new footprints
+            OwnStartOptions(owner));
+
+    private byte[] explored, visibleNow;
     private int exploredFogW, exploredFogH, exploredCellSize, exploredCells;
 
     /// <summary>
@@ -948,6 +987,8 @@ public partial class WorldStateManager : NetworkBehaviour
     {
         if (explored == null || explored.Length != data.Explored.Length) explored = new byte[data.Explored.Length];
         data.Explored.CopyTo(explored);
+        if (visibleNow == null || visibleNow.Length != data.Visible.Length) visibleNow = new byte[data.Visible.Length];
+        data.Visible.CopyTo(visibleNow);
         exploredFogW = data.FogW;
         exploredFogH = data.FogH;
         exploredCellSize = data.FogCellSize;
@@ -962,6 +1003,16 @@ public partial class WorldStateManager : NetworkBehaviour
         int2 cell = math.clamp(tile / exploredCellSize, 0, new int2(exploredFogW - 1, exploredFogH - 1));
         int index = grid * exploredCells + cell.y * exploredFogW + cell.x;
         return (uint)index < (uint)explored.Length && explored[index] != 0;
+    }
+
+    /// <summary>True when the owner's side sees <paramref name="tile"/> now (as of the last vision pass).</summary>
+    [Server]
+    internal bool SeesNow(int ownerId, int2 tile)
+    {
+        if (visibleNow == null || Sim == null || exploredCellSize <= 0 || !Sim.TrySlotOf(ownerId, out int grid)) return false;
+        int2 cell = math.clamp(tile / exploredCellSize, 0, new int2(exploredFogW - 1, exploredFogH - 1));
+        int index = grid * exploredCells + cell.y * exploredFogW + cell.x;
+        return (uint)index < (uint)visibleNow.Length && visibleNow[index] != 0;
     }
 
     /// <summary>The test for "inside one of this player's start options", or null when they have none (dev bots and tilemap maps).</summary>
@@ -1018,7 +1069,7 @@ public partial class WorldStateManager : NetworkBehaviour
     [Server]
     internal bool PlaceBuilding(int placer, int2 positon, BuildingType type, float rotation)
     {
-        if (CheckPlacement(type, positon, rotation, placer) != PlacementResult.Ok)
+        if (CheckPlacement(type, positon, rotation, placer, out bool phantom) != PlacementResult.Ok)
         {
             return false;
         }
@@ -1039,6 +1090,20 @@ public partial class WorldStateManager : NetworkBehaviour
             owner.Refund(buildingConfig.UpfrontCost); // out of ids: the player keeps the money
             return false;
         }
+        if (phantom)
+        {
+            // Paid and shown to its owner like any blueprint, but kept off the map until the owner sees the spot.
+            AddPhantom(buildingId, placer, type, positon, rotation, buildingConfig.UpfrontCost);
+            return true;
+        }
+        QueueBlueprint(placer, positon, type, rotation, buildingId, buildingConfig);
+        return true;
+    }
+
+    /// <summary>Queues a paid-for building with its id: the HQ's bookkeeping, unknown bombs set off, and the footprint taken.</summary>
+    [Server]
+    private void QueueBlueprint(int placer, int2 positon, BuildingType type, float rotation, int buildingId, BuildingConfig buildingConfig)
+    {
         BuildingData buildingData = new BuildingData
         {
             position = new float2(positon.x, positon.y),
@@ -1073,12 +1138,11 @@ public partial class WorldStateManager : NetworkBehaviour
         {
             // A bomb's tile is not marked used: units walk over it.
             bombTiles.Add(positon, buildingData.id, buildingData.ownerId);
-            return true;
+            return;
         }
         //Set the tiles the building will cover to be used
         foreach (int2 tile in tiles) Map.QueueUsed(tile, true);
-        buildingFootprints[buildingData.id] = tiles;
-        return true;
+        AddFootprint(buildingData.id, placer, tiles);
     }
 
     /// <summary>
@@ -1217,7 +1281,7 @@ public partial class WorldStateManager : NetworkBehaviour
         var data = new BuildingData { position = anchor, id = Ids.Allocate(), buildingType = type, ownerId = ownerId, rotation = rotation };
         Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.CreateBuilding, OwnerId = ownerId, Building = new BuildingSpec { Data = data, Rotation = rotation, Config = buildingConfig, Complete = true } });
         foreach (int2 tile in tiles) Map.QueueUsed(tile, true);
-        buildingFootprints[data.id] = tiles;
+        AddFootprint(data.id, ownerId, tiles);
         return true;
     }
 

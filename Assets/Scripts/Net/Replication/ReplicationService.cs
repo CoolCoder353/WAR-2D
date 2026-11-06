@@ -397,6 +397,25 @@ namespace WAR2D.Net.Replication
         public Func<int, int> SpectatorGrid;
 
         /// <summary>A client's grid: everything for the recorder, else as <see cref="GridOf"/>.</summary>
+        /// <summary>
+        /// What the owner's own (network) client was told: its buildings, ghosts included, and its terrain. False for an owner
+        /// with no such client (an AI, or nobody connected), whose placements are judged on the real map.
+        /// </summary>
+        public bool TryKnowledgeOf(int ownerId, out BuildingInterest buildings, out TerrainInterest terrain)
+        {
+            for (int c = 0; c < MaxClients; c++)
+            {
+                Client client = clients[c];
+                if (!active[c] || client == null || client.SeesAll || client.VirtualSink != null || client.OwnerId != ownerId) continue;
+                buildings = client.Buildings;
+                terrain = client.Terrain;
+                return true;
+            }
+            buildings = null;
+            terrain = null;
+            return false;
+        }
+
         private int GridFor(Client client) => client.SeesAll ? SimData.SeesAll : GridOf(client.OwnerId);
 
         /// <summary>The fog grid an owner's client is replicated against.</summary>

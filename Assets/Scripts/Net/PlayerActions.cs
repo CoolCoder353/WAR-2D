@@ -47,6 +47,8 @@ public static class PlayerActions
         bool any = false;
         foreach (int id in buildingIds)
         {
+            // A blueprint still waiting for its spot to be seen goes the same way, with the same full refund.
+            if (world.CancelPhantom(id, owner, player)) { any = true; continue; }
             if (!world.TryGetBuilding(id, out Entity entity)) continue;
             BuildingData building = em.GetComponentData<BuildingData>(entity);
             if (building.ownerId != owner || building.buildingType == BuildingType.Base) continue;
@@ -222,6 +224,13 @@ public static class PlayerActions
         WorldStateManager world = World;
         if (unitIds == null || unitIds.Count == 0 || unitIds.Count > ConfigLoader.LoadConfig().Simulation.MaxUnitsPerPlayer) return false;
         if (!MayAct(owner) || !world.IsOrderValid((byte)kind, goal)) return false;
+        // Building a blueprint that waits for its spot to be seen: the Builders walk there, as they would to any blueprint,
+        // rather than refuse the order and give away that something stands there (2026-11-06).
+        if ((kind == OrderKind.Build || kind == OrderKind.Repair) && world.PhantomAt(goal, owner, out int2 anchor))
+        {
+            kind = OrderKind.Move;
+            goal = anchor;
+        }
         world.Sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = kind, Queue = queue, OwnerId = owner, TargetId = targetId, Tile = goal, Ids = ToArray(unitIds), Formation = FormsUp(kind, formation) });
         return true;
     }

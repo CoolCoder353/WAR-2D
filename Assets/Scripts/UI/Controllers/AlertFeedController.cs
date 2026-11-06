@@ -149,7 +149,7 @@ namespace WAR2D.UI
         public static string KindClass(AlertKind kind) => kind switch
         {
             AlertKind.UnderAttack or AlertKind.EnemySpotted => "alert--danger",
-            AlertKind.UpkeepUnpaid or AlertKind.UnitCapReached or AlertKind.BombTriggered or AlertKind.RepairsStopped or AlertKind.ResourcesLow or AlertKind.PlayerDisconnected => "alert--warning",
+            AlertKind.UpkeepUnpaid or AlertKind.UnitCapReached or AlertKind.BlueprintBlocked or AlertKind.BombTriggered or AlertKind.RepairsStopped or AlertKind.ResourcesLow or AlertKind.PlayerDisconnected => "alert--warning",
             AlertKind.GiftReceived or AlertKind.ConstructionFinished or AlertKind.PlayerReturned => "alert--success",
             _ => "alert--accent",
         };

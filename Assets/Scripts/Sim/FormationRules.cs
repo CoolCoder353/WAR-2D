@@ -18,6 +18,12 @@ namespace WAR2D.Sim
         /// </summary>
         public static readonly float2 NoSeat = new float2(float.MaxValue, float.MaxValue);
 
+        /// <summary>
+        /// The group speed of an Attack-move formation: no cap, so each unit goes at its own speed to its slot (0 would mean
+        /// no formation at all).
+        /// </summary>
+        public const float OwnSpeed = float.MaxValue;
+
         /// <summary>True for a real slot, false for <see cref="NoSeat"/>.</summary>
         public static bool HasSeat(float2 offset) => offset.x < float.MaxValue;
 

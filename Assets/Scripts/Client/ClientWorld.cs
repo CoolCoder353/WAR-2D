@@ -429,7 +429,9 @@ namespace WAR2D.Client
             float now = Time.time, frameSeconds = lastDrawAt > 0f ? math.max(0f, now - lastDrawAt) : 0f;
             lastDrawAt = now;
             Rect view = WorldEffects.ViewOf(ViewCamera != null ? ViewCamera : Camera.main);
-            Rect turretView = WorldEffects.ViewOf(ViewCamera != null ? ViewCamera : Camera.main, TurretViewMargin);
+            Camera viewCamera = ViewCamera != null ? ViewCamera : Camera.main;
+            // With no camera to cull by, every turret draws: culling against an empty view hid every unit's head (replay, 2026-11-06).
+            Rect turretView = viewCamera != null ? WorldEffects.ViewOf(viewCamera, TurretViewMargin) : new Rect(-1e6f, -1e6f, 2e6f, 2e6f);
             turrets.Clear();
             barrelShadows.Clear();
             for (int i = 0; i < count; i++)

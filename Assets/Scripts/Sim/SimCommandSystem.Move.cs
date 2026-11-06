@@ -153,7 +153,7 @@ namespace WAR2D.Sim
             return context.Map.IsWalkable((int2)math.floor(centre + offset));
         }
 
-        /// <summary>Gives each formation mover's pending order its slot and the group speed.</summary>
+        /// <summary>Gives each formation mover's pending order its slot and the group speed (a Move's only).</summary>
         private void ApplyFormationPending(SimData data)
         {
             int lead = -1; // one handle keeps the whole formation's leader distance (each size class has its own handle)
@@ -164,7 +164,9 @@ namespace WAR2D.Sim
                 int id = data.IdOf[formationSlots[k]];
                 if (!data.PendingOrders.TryGetValue(id, out PendingOrder order) || order.Slot < 0) continue;
                 order.Offset = formationOffsets[k];
-                order.GroupSpeed = formationSpeed;
+                // A Move keeps the group together at its slowest member's speed; on an Attack-move each unit goes at its own
+                // (owner playtest 2026-11-06), still to its slot in the block.
+                order.GroupSpeed = order.Stance == Stances.AttackMove ? FormationRules.OwnSpeed : formationSpeed;
                 order.LeadSlot = lead;
                 data.PendingOrders[id] = order;
             }

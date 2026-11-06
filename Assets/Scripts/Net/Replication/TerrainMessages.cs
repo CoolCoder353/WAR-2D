@@ -115,6 +115,9 @@ namespace WAR2D.Net.Replication
         /// <summary>The tiles still waiting to be checked: changed, and not yet sent or found unchanged.</summary>
         public int PendingCount => pending.Count;
 
+        /// <summary>A tile's kind as this player was last told it: a sent change, else the seeded map (<paramref name="initial"/>).</summary>
+        public byte KnownType(int index, byte[] initial) => sent.TryGetValue(index, out TerrainCell cell) ? cell.Type : initial[index];
+
         /// <summary>Forgets everything (the client left or rejoined).</summary>
         public void Reset()
         {

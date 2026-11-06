@@ -147,6 +147,39 @@ public class HudTests
     }
 
     [UnityTest, Timeout(90000)]
+    public IEnumerator SeveralProducersShowTheirTotalQueue()
+    {
+        // Owner playtest 2026-11-06: with three Barracks selected, + queued one on each but the count went up by 1.
+        BuildingData first = default;
+        yield return WithSpawner(config, s => first = s);
+        ServerPlayer server = GameCore.Instance.GetServerPlayerById(PlayModeMatch.LocalOwner);
+        bool Broke() { server.TrySpend(server.Resources); return true; }
+        WorldStateManager wsm = WorldStateManager.Instance;
+        ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+        for (int i = 0; i < 2; i++)
+        {
+            Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Barracks, 0f, local, out int2 anchor), Is.True);
+            Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.Barracks, anchor), Is.True);
+            yield return null;
+            yield return PlayModeMatch.WaitUntil(() => !wsm.TryFindBuildableAnchor(BuildingType.Barracks, 0f, local, out int2 next) || !next.Equals(anchor), 5f);
+        }
+        var ids = new List<int>();
+        yield return PlayModeMatch.WaitUntil(() =>
+        {
+            ids.Clear();
+            foreach (KeyValuePair<int, ClientBuildings.Entry> e in ClientBuildings.Current.Entries)
+                if (e.Value.Data.buildingType == BuildingType.Barracks && e.Value.Data.ownerId == PlayModeMatch.LocalOwner && !e.Value.Ghost) ids.Add(e.Key);
+            return ids.Count == 3;
+        }, 10f, () => $"{ids.Count} Barracks known");
+
+        VisualElement root = HudRoot();
+        UnitCommander.Instance.Selection.SelectBuildings(ids, false);
+        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q<Label>("command-title").text.Contains("3"), 5f, () => root.Q<Label>("command-title").text);
+        Click(root.Q<Button>("production-plus"));
+        yield return PlayModeMatch.WaitUntil(() => Broke() && root.Q<Label>("production-count").text == "3", 5f, () => "count " + root.Q<Label>("production-count").text);
+    }
+
+    [UnityTest, Timeout(90000)]
     public IEnumerator ProductionPlusMinusChangesQueue()
     {
         BuildingData spawner = default;

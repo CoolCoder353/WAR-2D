@@ -6,6 +6,21 @@ Bugs, mismatches and hygiene problems. The first two roadmaps (v0.2 to v0.9, and
 
 The recorder's units go through `DeferredLane` (encoded during the next tick to keep the boundary inside the perf budget), so a recording's unit records are one tick later than its buildings and terrain. Harmless for playback; don't "fix" it by moving the recorder back onto the boundary (`docs/perf/v0.10/README.md`).
 
+## Owner playtest fixes (2026-11-06, on `fix/pr30-review-round3`)
+
+| Item | State |
+| --- | --- |
+| No quick setup in the lobby | **Removed.** The Quick setup row and `LobbyTeamSetup` are gone (`Cmd_SetTeams` stays: it is general). |
+| The lobby's map preview looked squished | **Fixed.** The square map was stretched into the 450 x 330 box; the preview now fits it (`-unity-background-scale-mode: scale-to-fit`). |
+| Dragging a card went under or over other UI; only the handle dragged | **Fixed.** The whole card drags (not its buttons), after 4 px so a click stays a click. While dragging it lifts out of the scrolling board onto the lobby's top layer, so nothing draws over it or clips it; the board is rebuilt when it drops. |
+| Info texts | **Removed.** The lobby board's "Move a player…" line, "Drag a card here…" in empty rows (now "Empty"), and the command card's Dig, Detonate and Wall hint lines. The rally help line on the production card stays. |
+| Attack-move held fast units back | **Changed.** An Attack-move formation still lays slots, but each unit goes at its own speed (`FormationRules.OwnSpeed`); a Move keeps the group at its slowest member's speed (`SimFormationTests.OnAnAttackMoveEachUnitGoesAtItsOwnSpeed`). |
+| Blueprints on explored ground; a hidden blocker was given away | **Fixed.** Placement judges tiles the player's side doesn't see now by what the player was told (`TerrainInterest.KnownType`, `BuildingInterest.KnownCovers` with last-seen ghosts, own footprints and waiting blueprints). A placement that passes on that but not on the real map becomes a waiting blueprint (`Net/PhantomBlueprints.cs`): paid, sent only to its owner (`BuildingView.OwnerOnly`), Build orders on it become a walk there. Each vision pass places it for real once the ground is free, or cancels and refunds it once the owner's side sees the spot taken (`AlertKind.BlueprintBlocked`). AIs are judged on the real map, as before. Idle Builders don't go to a waiting blueprint on their own (they would only find it blocked). `PhantomBlueprintPlayModeTests`. Wall lines still check the real map. |
+| Replay: units lost their heads | **Fixed.** A seek back rebuilt the view with `Camera.main`, which the replay scene doesn't have, and turrets are culled to the camera's view: none drew. The rebuild uses the replay's camera, and with no camera nothing is culled. Seen in the editor on a recording, before and after. |
+| Queue count with several producers showed 1 for 3 | **Not reproduced.** The count adds every selected producer's queue of the chosen type; `HudTests.SeveralProducersShowTheirTotalQueue` (3 Barracks, + once) reads 3. Needs the steps that show it. |
+| Moving units jump back and forth | **Not reproduced on the server:** `MoveJitterTests` measures direction reversals of 40 Tanks, in formation or not, alone or crossing another group: under 2 %. The likeliest cause is on the client: route waypoints lost their half tile on the wire (fixed in round 3), so the drawn unit sat up to 0.7 tiles off the server's copy and snapped when a route or correction came. Not checked in a live match. |
+| Builders stood idle instead of building | **Not reproduced.** `BuilderCrowdTests` sends 16 Builders onto one Heavy Factory blueprint: they all get to work. Suspected loop, not seen: a Builder that stops out of reach drops the job, and auto-work gives it the same goal again. |
+
 ## Review fixes, round 3 (2026-11-06, on `unstable/pr30-routes-testing`)
 
 From the eighth scan in [bug-review.md](bug-review.md) and a review of the branch. EditMode 1482/1482; PlayMode 97/98, the miss being `PerformanceTests.MinimapRedrawAtTenThousandOwnUnitsIsUnderOneMillisecond` at 1.0065 ms (it passed alone). Protocol 21, replay format 4: older recordings no longer open.

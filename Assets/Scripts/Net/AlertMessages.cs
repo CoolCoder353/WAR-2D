@@ -36,6 +36,11 @@ public enum AlertKind : byte
     Ping,
     /// <summary>The receiver's producers are waiting: a spawn was refused at the unit cap (playtest 2026-11-05). Once, again only after a spawn succeeds.</summary>
     UnitCapReached,
+    /// <summary>
+    /// A blueprint the receiver placed on explored ground was cancelled and refunded once their side saw something stands
+    /// there (Tile is the blueprint). 2026-11-06.
+    /// </summary>
+    BlueprintBlocked,
 }
 
 /// <summary>
