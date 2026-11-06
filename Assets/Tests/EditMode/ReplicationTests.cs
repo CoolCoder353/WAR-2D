@@ -322,6 +322,45 @@ public class ReplicationTests
     }
 
     [Test]
+    public void MoveOrderMessagesStayInsideTheBytesAndWaypointsTheDecoderAllows()
+    {
+        // 1,500 units on one long route: each copies its whole way from the one before, about 12 bytes for 200 waypoints, so the
+        // waypoint cap, not the 12 KB chunk, ends a message (code review 2026-11-07).
+        const int unitCount = 1500, length = 200;
+        var tiles = new NativeArray<int2>(unitCount * length, Allocator.Temp);
+        var units = new NativeArray<RouteUnit>(unitCount, Allocator.Temp);
+        for (int u = 0; u < unitCount; u++)
+        {
+            units[u] = new RouteUnit { Index = u, First = u * length, Count = length };
+            tiles[u * length] = new int2(u % 50, 0); // its own start
+            for (int k = 1; k < length; k++) tiles[u * length + k] = new int2(100 + k, 100 + k % 2);
+        }
+        var copies = new Messages.RouteCopies(Allocator.Temp);
+        int decodedUnits = 0, messages = 0;
+        for (int start = 0; start < unitCount; messages++)
+        {
+            int end = Messages.MoveOrderChunkEnd(tiles, units, start, ref copies);
+            Assert.Greater(end, start, "at least one route a message");
+            var bytes = new NativeList<byte>(WireLimits.ReliableChunk, Allocator.Temp);
+            var sink = new NativeSink(bytes);
+            Messages.EncodeMoveOrder(ref sink, 3, tiles, units.GetSubArray(start, end - start));
+            Assert.LessOrEqual(bytes.Length, WireLimits.ReliableChunk);
+            var decoded = new List<RouteUnit>();
+            var waypoints = new List<int2>();
+            Messages.DecodeMoveOrder(Reader(bytes), decoded, waypoints);
+            Assert.LessOrEqual(waypoints.Count, Messages.MaxMessageWaypoints);
+            for (int i = 0; i < decoded.Count; i++)
+                Assert.AreEqual(tiles[(start + i) * length + length - 1], waypoints[decoded[i].First + length - 1]);
+            decodedUnits += decoded.Count;
+            bytes.Dispose();
+            start = end;
+        }
+        Assert.AreEqual(unitCount, decodedUnits);
+        Assert.Greater(messages, 2, "the waypoint cap split them");
+        copies.Dispose(); tiles.Dispose(); units.Dispose();
+    }
+
+    [Test]
     public void CopyStepsThatReachOutsideTheirMessageAreRefused()
     {
         // A MoveOrder of two routes: (10,10) (12,10) (14,10), then four waypoints from (8,10) whose last three copy (back, start, run).
@@ -352,6 +391,15 @@ public class ReplicationTests
         Assert.Throws<System.IO.InvalidDataException>(() => Messages.DecodeMoveOrder(Reader(Order(1, 1, 3)), new List<RouteUnit>(), new List<int2>()), "past the source's end");
         Assert.Throws<System.IO.InvalidDataException>(() => Messages.DecodeMoveOrder(Reader(Order(1, 0, 4)), new List<RouteUnit>(), new List<int2>()), "past this route's count");
         Assert.Throws<System.IO.InvalidDataException>(() => Messages.DecodeMoveOrder(Reader(Order(1, 0, 0)), new List<RouteUnit>(), new List<int2>()), "an empty copy");
+
+        // Only routes of the copy's own message count: decoded after another message into the same lists, a lone route can't copy.
+        var lone = new NativeList<byte>(32, Allocator.Temp);
+        var l = new NativeSink(lone);
+        l.WriteByte((byte)MessageType.MoveOrder);
+        VarInt.Write(ref l, 9); VarInt.Write(ref l, 1); VarInt.Write(ref l, 5); VarInt.Write(ref l, 4);
+        l.WriteUShort(8); l.WriteUShort(10);
+        l.WriteByte(Messages.CopyMarker); VarInt.Write(ref l, 1); VarInt.Write(ref l, 0); VarInt.Write(ref l, 3);
+        Assert.Throws<System.IO.InvalidDataException>(() => Messages.DecodeMoveOrder(Reader(lone), units, waypoints), "a copy into the message before");
 
         // An Enter's route has no earlier routes to copy.
         var enter = new NativeList<byte>(16, Allocator.Temp);

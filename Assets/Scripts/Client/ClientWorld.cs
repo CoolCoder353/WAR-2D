@@ -691,8 +691,9 @@ namespace WAR2D.Client
                     LastPosition[index] = p;
                     byte type = Types[index];
                     int owner = Owners[index], id = States[index].Id;
+                    int row = type < Cells.Length ? type : 0; // no bounds checks in a player's Burst code (DecodeEnter refuses bad types too)
                     if (HasFrames)
-                        Frame[index] = Cells[type < Cells.Length ? type : 0].BodyCell(Rotation[index], moving, ServerTime, ServerTime - LastAction[index], index);
+                        Frame[index] = Cells[row].BodyCell(Rotation[index], moving, ServerTime, ServerTime - LastAction[index], index);
                     Color[index] = Colours.TryGetValue(owner, out uint c) ? c : UnknownColour;
                     byte health = Health[index];
                     Health01[index] = health / 100f;
@@ -707,7 +708,7 @@ namespace WAR2D.Client
                         if (lay) Tracks.Add(new float3(mid, heading));
                     }
                     DrawScale[index] = UseHidden && Hidden[index] != 0 ? -1f : type < ScaleByType.Length ? ScaleByType[type] : 1f;
-                    if (HasFrames && Cells[type].TurretFirst >= 0 && DrawScale[index] > 0f && Inside(TurretView, p)) PackTurret(index, id, type, p);
+                    if (HasFrames && Cells[row].TurretFirst >= 0 && DrawScale[index] > 0f && Inside(TurretView, p)) PackTurret(index, id, type, Cells[row], p);
                 }
             }
 
@@ -732,7 +733,7 @@ namespace WAR2D.Client
                 Flash[index] = (byte)(HitFeedback.Flashing(HitAt[index], Now) ? 1 : 0);
             }
 
-            private void PackTurret(int index, int id, byte type, float2 p)
+            private void PackTurret(int index, int id, byte type, UnitFrames.TypeCells cell, float2 p)
             {
                 UnitType unit = (UnitType)type;
                 ResetTurretIfNew(index, id, Rotation[index], Now, TurretOf, TurretAngle, TurretTurnedAt, AimUntil);
@@ -742,7 +743,6 @@ namespace WAR2D.Client
                 TurretAngle[index] = TurretAim.Step(TurretAngle[index], goal, TurretAim.TurnRate(unit) * (Now - TurretTurnedAt[index]));
                 TurretTurnedAt[index] = Now;
                 int facing = TurretAim.Facing(TurretAngle[index]);
-                UnitFrames.TypeCells cell = Cells[type];
                 int frameIndex = TurretAim.TurretFrame(cell.TurretFrames, aiming, TurretAim.Recoiling(ServerTime - LastAction[index]));
                 Vector2 pivot = TurretAim.PivotPixels(unit, TurretAim.HullAngle(hull)) / ArtStyle.PixelsPerUnit;
                 float2 at = p + new float2(pivot.x, pivot.y);

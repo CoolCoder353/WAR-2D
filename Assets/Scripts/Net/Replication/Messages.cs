@@ -165,6 +165,30 @@ namespace WAR2D.Net.Replication
             return size;
         }
 
+        /// <summary>
+        /// Where the MoveOrder message that starts at <paramref name="start"/> ends: as many routes as fit <see cref="WireLimits.ReliableChunk"/>
+        /// bytes, each sized as written (its copy steps depend on the routes before it), and <see cref="MaxMessageWaypoints"/> waypoints,
+        /// which the decoder holds a message to. Always at least one route.
+        /// </summary>
+        public static int MoveOrderChunkEnd(NativeArray<int2> tiles, NativeArray<RouteUnit> units, int start, ref RouteCopies copies)
+        {
+            copies.Clear();
+            int index = start, size = 8, previous = 0, waypoints = 0;
+            while (index < units.Length)
+            {
+                RouteUnit u = units[index];
+                var counted = new CountingSink();
+                copies.Write(ref counted, tiles, u.First, u.Count);
+                int cost = VarInt.Size((uint)(u.Index - previous)) + counted.Position;
+                if (index > start && (size + cost > WireLimits.ReliableChunk || waypoints + u.Count > MaxMessageWaypoints)) break;
+                size += cost;
+                waypoints += u.Count;
+                previous = u.Index;
+                index++;
+            }
+            return index;
+        }
+
         /// <summary>True when a waypoint's delta from the last one fits a two-byte step.</summary>
         private static bool IsStep(int2 d) => d.x >= -126 && d.x <= 127 && d.y >= -127 && d.y <= 127;
 
@@ -503,10 +527,15 @@ namespace WAR2D.Net.Replication
                     Health = reader.ReadByte(),
                     First = waypoints.Count,
                 };
+                // Types index per-type tables on the client, some in Burst jobs without bounds checks.
+                if (u.Type >= UnitTypeCount) throw new InvalidDataException($"unit type {u.Type}");
                 u.Count = ReadRoute(reader, waypoints);
                 units.Add(u);
             }
         }
+
+        /// <summary>How many <see cref="UnitType"/> values there are: an Enter's type is below it.</summary>
+        private static readonly int UnitTypeCount = System.Enum.GetValues(typeof(UnitType)).Length;
 
         /// <summary>Decodes a MoveOrder message and returns its tick.</summary>
         public static int DecodeMoveOrder(NetworkReader reader, List<RouteUnit> units, List<int2> waypoints)

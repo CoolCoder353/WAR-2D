@@ -373,6 +373,10 @@ namespace WAR2D.Client
 
         private void SetRoute(int index, int first, int count)
         {
+            // Copy steps make long routes cheap on the wire: hold the live total to what a real server can send (every id at its longest
+            // route), so a hostile host or recording can't make the client allocate more.
+            if (liveWaypoints + count - routeCount[index] > (long)knownSlot.Length * RouteMaintenance.MaxWaypoints)
+                throw new InvalidDataException("the routes are longer than any server sends");
             liveWaypoints += count - routeCount[index];
             routeStart[index] = arena.Length;
             routeCount[index] = count;
