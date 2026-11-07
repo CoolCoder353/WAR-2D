@@ -33,7 +33,6 @@ namespace WAR2D.Client.Render
         /// <summary>Per building: its progress last frame and when it was finished (polish J's pulse).</summary>
         private readonly Dictionary<int, (byte progress, float finishedAt)> finish = new Dictionary<int, (byte, float)>();
         private readonly Func<int, bool> finishing;
-        private readonly HashSet<int> seen = new HashSet<int>();
         private readonly List<int> gone = new List<int>();
         private float now, dt;
         private readonly Func<int, bool> flashing;
@@ -126,7 +125,8 @@ namespace WAR2D.Client.Render
         /// Packs and draws the buildings. <paramref name="colorOf"/> gives an owner's packed team colour; <paramref name="barMode"/>
         /// (a <see cref="HealthBarMode"/>) and <paramref name="selected"/> pick which health bars show.
         /// </summary>
-        public void Draw(ClientBuildings known, float time, Func<int, uint> colorOf, int barMode = (int)HealthBarMode.DamagedOnly, Func<int, bool> selected = null)
+        public void Draw(ClientBuildings known, float time, Func<int, uint> colorOf, int barMode = (int)HealthBarMode.DamagedOnly, Func<int, bool> selected = null,
+            Rect? view = null)
         {
             dt = now > 0f ? math.max(0f, time - now) : 0f;
             now = time;
@@ -136,7 +136,7 @@ namespace WAR2D.Client.Render
                 headsOf = known;
                 headOf = known.HeadOf;
             }
-            BuildingPacking.Pack(known.Entries.Values, frames, colorOf, WorldStateManager.GetBuildingSize, time, flashing, lists, headOf, barMode, selected, trailOf, finishing);
+            BuildingPacking.Pack(known.Entries.Values, frames, colorOf, WorldStateManager.GetBuildingSize, time, flashing, lists, headOf, barMode, selected, trailOf, finishing, view);
             Submit(lists.Buildings, ref buildings, ref buildingCapacity, buildingMaterial);
             Submit(lists.Overlays, ref overlays, ref overlayCapacity, overlayMaterial);
             Submit(lists.Bars, ref bars, ref barCapacity, barMaterial);
@@ -149,11 +149,9 @@ namespace WAR2D.Client.Render
         /// </summary>
         private void TrackHits(ClientBuildings known)
         {
-            seen.Clear();
             foreach (ClientBuildings.Entry e in known.Entries.Values)
             {
                 int id = e.Data.id;
-                seen.Add(id);
                 float health = e.Health.maxHealth > 0f ? e.Health.currentHealth / e.Health.maxHealth : 1f;
                 if (hits.TryGetValue(id, out var h))
                 {
@@ -164,17 +162,18 @@ namespace WAR2D.Client.Render
                             e.Data.ownerId == WorldEffects.LocalOwner, now);
                     float hitAt = hit ? now : h.hitAt;
                     float trail = e.Ghost || h.ghost ? health : HitFeedback.Trail(h.trail, health, now - hitAt, dt);
-                    hits[id] = (health, hitAt, trail, e.Ghost);
+                    // Written only when it changes: a write for every building every frame cost more than the rest (thousands at 100,000 units).
+                    if (health != h.health || hitAt != h.hitAt || trail != h.trail || e.Ghost != h.ghost) hits[id] = (health, hitAt, trail, e.Ghost);
                 }
                 else hits[id] = (health, float.NegativeInfinity, health, e.Ghost);
                 // A blueprint seen rising that reaches 100 % was just finished; one first seen finished never pulses.
                 bool tracked = finish.TryGetValue(id, out var f);
                 bool done = tracked && f.progress < 100 && e.Progress >= 100 && !e.Ghost;
-                finish[id] = (e.Progress, done ? now : tracked ? f.finishedAt : float.NegativeInfinity);
+                if (!tracked || done || f.progress != e.Progress) finish[id] = (e.Progress, done ? now : tracked ? f.finishedAt : float.NegativeInfinity);
             }
-            if (hits.Count == seen.Count) return;
+            if (hits.Count == known.Entries.Count) return; // every known building is in hits: none has gone
             gone.Clear();
-            foreach (int id in hits.Keys) if (!seen.Contains(id)) gone.Add(id);
+            foreach (int id in hits.Keys) if (!known.Entries.ContainsKey(id)) gone.Add(id);
             foreach (int id in gone)
             {
                 hits.Remove(id);

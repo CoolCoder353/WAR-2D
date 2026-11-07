@@ -101,7 +101,7 @@ namespace WAR2D.Client
         private WorldEffects worldEffects;
         private float firstBatchAt = -1f; // Time.time the first batch arrived (the produced sound stays quiet just after)
         private NativeList<UnitInstance> instances, bars, rings;
-        private NativeArray<int> barCount, ringCount;
+        private NativeArray<int> barCount, ringCount, shownCount;
         private InstancedUnitRenderer unitRenderer;
         private InstancedBuildingRenderer buildingRenderer;
         private System.Func<int, uint> buildingColour;
@@ -231,6 +231,7 @@ namespace WAR2D.Client
             instances = new NativeList<UnitInstance>(4096, Allocator.Persistent);
             bars = new NativeList<UnitInstance>(1024, Allocator.Persistent);
             barCount = new NativeArray<int>(1, Allocator.Persistent);
+            shownCount = new NativeArray<int>(1, Allocator.Persistent);
             rings = new NativeList<UnitInstance>(1024, Allocator.Persistent);
             ringCount = new NativeArray<int>(1, Allocator.Persistent);
             ReplicationClient.Received += OnBatch;
@@ -273,7 +274,7 @@ namespace WAR2D.Client
             {
                 lastPosition.Dispose(); lastSteer.Dispose(); rotation.Dispose(); frame.Dispose(); lastAction.Dispose(); color.Dispose(); health01.Dispose(); drawScale.Dispose(); selected.Dispose();
                 trackedId.Dispose(); lastHealth.Dispose(); hitAt.Dispose(); trail.Dispose(); flash.Dispose();
-                instances.Dispose(); bars.Dispose(); barCount.Dispose(); rings.Dispose(); ringCount.Dispose();
+                instances.Dispose(); bars.Dispose(); barCount.Dispose(); rings.Dispose(); ringCount.Dispose(); shownCount.Dispose();
             }
         }
 
@@ -650,7 +651,8 @@ namespace WAR2D.Client
             Effects.FollowFlames(flameLine);
             ownSelected.Clear();
             foreach (int index in selectedIndices)
-                if ((selected[index] & 1) != 0 && store.IsKnown(index) && store.OwnerOf(index) == WorldEffects.LocalOwner) ownSelected.Add(index);
+                if ((selected[index] & 1) != 0 && store.IsKnown(index) && store.OwnerOf(index) == WorldEffects.LocalOwner
+                    && ((UnitType)store.TypeOf(index) == UnitType.Artillery || (UnitType)store.TypeOf(index) == UnitType.Sniper)) ownSelected.Add(index); // the reload bars: a selected army of 12,500 cost a call each
             using (CombatMarker.Auto()) combatVisuals.Draw(now, serverTime, view, UnitAt, ownSelected, BuildingsShown ?? ClientBuildings.Current);
             EffectsMarker.End();
             PackMarker.Begin();
@@ -677,6 +679,7 @@ namespace WAR2D.Client
                 HideBar = hideBar,
                 Trail = trail,
                 UnitHalfSize = 0.4f,
+                View = new float4(turretView.xMin, turretView.yMin, turretView.xMax, turretView.yMax),
                 RingFrame = unitRenderer.RingFrame,
                 RoamRingFrame = unitRenderer.RoamRingFrame,
                 Instances = instances.AsArray(),
@@ -686,14 +689,14 @@ namespace WAR2D.Client
             }.Schedule(count, DrawBatch).Complete();
             new GatherPackedJob
             {
-                Emits = packEmits.AsArray(), BarSlots = barSlots.AsArray(), RingSlots = ringSlots.AsArray(),
+                Emits = packEmits.AsArray(), BarSlots = barSlots.AsArray(), RingSlots = ringSlots.AsArray(), Instances = instances.AsArray(), ShownCount = shownCount,
                 Bars = bars.AsArray(), BarCount = barCount, Rings = rings.AsArray(), RingCount = ringCount,
             }.Run();
             for (int i = 0; i < barrelShadows.Length; i++) rings[ringCount[0] + i] = barrelShadows[i];
             PackMarker.End();
             using var submitting = SubmitMarker.Auto();
             unitRenderer.DrawRings(rings.AsArray(), ringCount[0] + barrelShadows.Length);
-            unitRenderer.Draw(instances.AsArray(), count);
+            unitRenderer.Draw(instances.AsArray(), shownCount[0]);
             unitRenderer.DrawTurrets(turrets.AsArray(), turrets.Length);
             unitRenderer.DrawHealthBars(bars.AsArray(), barCount[0]);
         }
@@ -1061,9 +1064,10 @@ namespace WAR2D.Client
                 buildingColour = ColorOf;
             }
             buildingSelected ??= IsSelectedBuilding;
-            buildingRenderer.Draw(known, Time.time, buildingColour, SettingsStore.Current.HealthBars, buildingSelected);
+            Camera viewCamera = ViewCamera != null ? ViewCamera : Camera.main;
+            buildingRenderer.Draw(known, Time.time, buildingColour, SettingsStore.Current.HealthBars, buildingSelected, viewCamera != null ? WorldEffects.ViewOf(viewCamera) : null);
             PulseJammers(known);
-            worldEffects.Buildings(known, WorldEffects.ViewOf(ViewCamera != null ? ViewCamera : Camera.main), Time.time);
+            worldEffects.Buildings(known, WorldEffects.ViewOf(viewCamera), Time.time);
         }
 
         /// <summary>

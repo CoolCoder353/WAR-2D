@@ -88,7 +88,7 @@ namespace WAR2D.Client
                 return;
             }
             fogCopy.CopyFrom(fog);
-            new FillJob { Fog = fogCopy, Visible = terrainVisible, Explored = terrainExplored, Pixels = pixels, Reveal = revealTerrain }.Run();
+            new FillJob { Fog = fogCopy, Visible = terrainVisible, Explored = terrainExplored, Pixels = pixels, Reveal = revealTerrain }.Schedule(pixels.Length, 16384).Complete();
         }
 
         /// <summary>Plots a square of cells around a world position whatever the fog (an HQ start option), <paramref name="radius"/> cells out.</summary>
@@ -100,24 +100,20 @@ namespace WAR2D.Client
                 if ((uint)x < (uint)Width && (uint)y < (uint)Height) pixels[y * Width + x] = colour;
         }
 
-        /// <summary>Terrain under fog for every cell (Burst: the default map has 262,144 cells).</summary>
+        /// <summary>Terrain under fog for every cell (Burst, over the job threads: the default map has 262,144 cells).</summary>
         [BurstCompile]
-        private struct FillJob : IJob
+        private struct FillJob : IJobParallelFor
         {
             [ReadOnly] public NativeArray<byte> Fog;
             [ReadOnly] public NativeArray<Color32> Visible, Explored;
             public NativeArray<Color32> Pixels;
             public bool Reveal;
 
-            public void Execute()
+            public void Execute(int i)
             {
-                var black = new Color32(0, 0, 0, 255);
-                for (int i = 0; i < Pixels.Length; i++)
-                {
-                    byte f = Fog[i];
-                    // v0.16 (Figma P): while placing the HQ the public map shows at full brightness.
-                    Pixels[i] = f == (byte)FogState.Visible || Reveal ? Visible[i] : f == (byte)FogState.Explored ? Explored[i] : black;
-                }
+                byte f = Fog[i];
+                // v0.16 (Figma P): while placing the HQ the public map shows at full brightness.
+                Pixels[i] = f == (byte)FogState.Visible || Reveal ? Visible[i] : f == (byte)FogState.Explored ? Explored[i] : new Color32(0, 0, 0, 255);
             }
         }
 

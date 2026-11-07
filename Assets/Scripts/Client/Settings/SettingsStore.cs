@@ -259,6 +259,9 @@ public static class SettingsStore
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void ApplyOnStart()
     {
+        // The incremental GC (on in the player settings) in 1 ms steps, not Unity's 3: each step lands in one frame, and at 100,000
+        // units the 3 ms steps were among the slowest 1 % of frames (profiled 2026-11-07). Hosts too: a step lands in a tick.
+        if (!Application.isEditor) UnityEngine.Scripting.GarbageCollector.incrementalTimeSliceNanoseconds = 1_000_000;
         if (Application.isBatchMode || Application.isEditor) return;
         Apply(Current);
     }

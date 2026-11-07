@@ -155,7 +155,8 @@ namespace WAR2D.Client
 
         /// <summary>
         /// Draws this frame's combat visuals. <paramref name="positionOf"/> gives a known unit's drawn position (false when it isn't known),
-        /// <paramref name="typeOf"/> its type, <paramref name="ownSelected"/> the local player's selected unit indices.
+        /// <paramref name="typeOf"/> its type, <paramref name="ownSelected"/> the local player's selected unit indices (only the Artillery and
+        /// Snipers among them draw anything: their reload bars).
         /// </summary>
         public void Draw(float now, float serverNow, Rect view, System.Func<int, (bool known, float2 at, byte type, float scale)> unitOf,
             IEnumerable<int> ownSelected, ClientBuildings buildings)
@@ -193,7 +194,8 @@ namespace WAR2D.Client
             foreach (var (key, leap) in leapUpdates) leaps[key] = leap;
             leapUpdates.Clear();
 
-            // Fire: burning units and seen buildings, nearest the view's centre first, capped.
+            // Fire: burning units and seen buildings in view, nearest the view's centre first, capped (only those in view are sorted: at
+            // 100,000 units every burning unit on the map was, and an off-screen one took a slot of the cap).
             fires.Clear();
             burningNow.Clear();
             // Markers only near the view (they were placed for every burning unit on the map: thousands of sprites in a big battle).
@@ -206,7 +208,7 @@ namespace WAR2D.Client
                 burningNow.Add(pair.Key);
                 if (!burningBefore.Contains(pair.Key)) Audio.AudioService.Sfx("flame_ignite", new Vector2(at.x, at.y));
                 var p = new Vector2(at.x, at.y);
-                fires.Add(((p - centre).sqrMagnitude, p, scale > 1.5f ? 2 : 1, pair.Key));
+                if (view.Contains(p)) fires.Add(((p - centre).sqrMagnitude, p, scale > 1.5f ? 2 : 1, pair.Key));
                 if (markerView.Contains(p)) Marker(p + new Vector2(0.32f, 0.4f * scale + 0.175f));
             }
             burningBefore.Clear();
@@ -218,7 +220,7 @@ namespace WAR2D.Client
                 int2 size = WorldStateManager.GetBuildingSize(e.Data.buildingType);
                 float2 c = Footprint.VisualCenter((int2)math.round(e.Data.position), size);
                 var p = new Vector2(c.x, c.y);
-                fires.Add(((p - centre).sqrMagnitude, p, math.clamp(math.max(size.x, size.y), 1, 3), ~pair.Key));
+                if (view.Contains(p)) fires.Add(((p - centre).sqrMagnitude, p, math.clamp(math.max(size.x, size.y), 1, 3), ~pair.Key));
                 if (markerView.Contains(p)) Marker(p + new Vector2(size.x * 0.5f, size.y * 0.5f + 0.2f));
             }
             fires.Sort((a, b) => a.distance.CompareTo(b.distance));

@@ -248,14 +248,15 @@ namespace WAR2D.Client.Render
 
     /// <summary>
     /// Packs predicted units into instances, over the job threads (2026-11-07: 0.8 ms of the main thread at 100,000 units on one
-    /// core). Each unit writes its own instance and its own bar and ring slots; <see cref="GatherPackedJob"/> then appends the damaged
-    /// ones' health bars and the selected ones' rings to their lists in unit order, as the one-thread job did.
+    /// core). Each unit in <see cref="View"/> writes its own instance and its own bar and ring slots; <see cref="GatherPackedJob"/>
+    /// then keeps those instances and appends the damaged ones' health bars and the selected ones' rings to their lists in unit order,
+    /// as the one-thread job did.
     /// </summary>
     [BurstCompile]
     public struct PackUnitsJob : IJobParallelFor
     {
         /// <summary>Bits of <see cref="Emits"/>: which of a unit's slots hold a result this frame.</summary>
-        public const byte EmitBar = 1, EmitRing = 2, EmitRoamRing = 4;
+        public const byte EmitBar = 1, EmitRing = 2, EmitRoamRing = 4, EmitShown = 8;
 
         [ReadOnly] public NativeArray<int> Known;
         [ReadOnly] public NativeArray<float2> Positions;
@@ -270,6 +271,11 @@ namespace WAR2D.Client.Render
         [ReadOnly] public NativeArray<byte> HideBar;
         [ReadOnly] public NativeArray<float> Trail;      // by index: the health bar's recent-damage level
         public float UnitHalfSize;
+        /// <summary>
+        /// The view with a margin (xMin, yMin, xMax, yMax): a unit outside it packs nothing (2026-11-07: every known unit was uploaded and
+        /// drawn each frame, 100,000 instances at the 100k benchmark's zoom for about 13,000 on screen).
+        /// </summary>
+        public float4 View;
         public uint RingFrame, LargeRingFrame, RoamRingFrame;
         /// <summary>The Gameplay setting's <see cref="HealthBarMode"/>: which units get a bar.</summary>
         public int BarMode;
@@ -282,13 +288,14 @@ namespace WAR2D.Client.Render
         public void Execute(int i)
         {
             int index = Known[i];
-            byte emit = 0;
-            if (Scale[index] < 0f) // not shown (a replay's per-player view): nothing, not even a bar
+            float2 at = Positions[i];
+            // Not shown (off screen, or hidden by a replay's per-player view): nothing, not even a bar.
+            if (Scale[index] < 0f || at.x < View.x || at.y < View.y || at.x > View.z || at.y > View.w)
             {
-                Instances[i] = new UnitInstance { position = Positions[i], scale = 0f };
                 Emits[i] = 0;
                 return;
             }
+            byte emit = EmitShown;
             float health = Health01[index];
             float scale = Scale[index] > 0f ? Scale[index] : 1f;
             bool selected = (Selected[index] & 1) != 0;
@@ -330,12 +337,17 @@ namespace WAR2D.Client.Render
         }
     }
 
-    /// <summary>Appends <see cref="PackUnitsJob"/>'s bars and rings to their lists in unit order (rings: selected, then roaming).</summary>
+    /// <summary>
+    /// Moves <see cref="PackUnitsJob"/>'s shown instances to the front of <see cref="Instances"/> (in place, in unit order) and appends
+    /// its bars and rings to their lists in unit order (rings: selected, then roaming).
+    /// </summary>
     [BurstCompile]
     public struct GatherPackedJob : IJob
     {
         [ReadOnly] public NativeArray<byte> Emits;
         [ReadOnly] public NativeArray<UnitInstance> BarSlots, RingSlots;
+        public NativeArray<UnitInstance> Instances;
+        public NativeArray<int> ShownCount;
         public NativeArray<UnitInstance> Bars;
         public NativeArray<int> BarCount;
         public NativeArray<UnitInstance> Rings;
@@ -343,15 +355,17 @@ namespace WAR2D.Client.Render
 
         public void Execute()
         {
-            int bars = 0, rings = 0;
+            int shown = 0, bars = 0, rings = 0;
             for (int i = 0; i < Emits.Length; i++)
             {
                 byte emit = Emits[i];
                 if (emit == 0) continue;
+                Instances[shown++] = Instances[i]; // shown <= i: in place
                 if ((emit & PackUnitsJob.EmitRing) != 0) Rings[rings++] = RingSlots[2 * i];
                 if ((emit & PackUnitsJob.EmitRoamRing) != 0) Rings[rings++] = RingSlots[2 * i + 1];
                 if ((emit & PackUnitsJob.EmitBar) != 0) Bars[bars++] = BarSlots[i];
             }
+            ShownCount[0] = shown;
             BarCount[0] = bars;
             RingCount[0] = rings;
         }
