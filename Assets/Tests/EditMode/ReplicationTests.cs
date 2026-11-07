@@ -878,6 +878,25 @@ public class ReplicationTests
             first = routes.First(2);
             Assert.AreEqual(2, routes.CountOf(2), "its tile and the goal");
             Assert.AreEqual(new float2(63f, 16f), routes.Waypoints[first + 1], "straight at the goal");
+
+            // A unit that stood still (no order) and is given one whose field isn't built yet waits without a stub: the client already
+            // draws it standing (2026-11-08: the stubs doubled the routes of the 100k benchmark's order waves).
+            idOf[0] = 3 + (1 << 20); // a new unit on index 3
+            orderSlot[0] = -1;
+            positions[0] = new float2(5f, 16f);
+            Run(6);
+            int still = routes.GenerationOf(3);
+            orderSlot[0] = 0;
+            orderReady[0] = 0;
+            Run(7);
+            Assert.AreEqual(still, routes.GenerationOf(3), "no stub for a unit that stood still");
+            Run(8);
+            Assert.AreEqual(still, routes.GenerationOf(3), "nor while it waits");
+            blockOf[0] = 0;
+            orderReady[0] = 1;
+            Run(9);
+            Assert.AreNotEqual(still, routes.GenerationOf(3), "its route as soon as the field reaches it");
+            Assert.Greater(routes.CountOf(3), 2, "the whole route");
         }
         finally
         {

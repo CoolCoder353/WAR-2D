@@ -138,6 +138,12 @@ namespace WAR2D.Net.Replication
         /// keep its place (the stub was resent on every push, 2.7 of 3.7 million routes in the 100k benchmark, 2026-11-07).
         /// </summary>
         Pending = 6,
+        /// <summary>
+        /// Waiting, as <see cref="Waiting"/>, for a unit that stood still (its last order had ended): nothing follows, as the client
+        /// already draws it standing where it is; only the wait is committed (2026-11-08: these stubs doubled the routes of the 100k
+        /// benchmark's order waves).
+        /// </summary>
+        WaitingStill = 7,
     }
 
     /// <summary>
@@ -203,6 +209,7 @@ namespace WAR2D.Net.Replication
             }
             else if (order >= 0 && !Covers(order, Positions[i]))
             {
+                if (!fresh && TracedOrder[index] == -1) { Out.Write(RouteResult.WaitingStill); return; }
                 Out.Write(RouteResult.Waiting);
                 Out.Write(route.Length);
                 for (int k = 0; k < route.Length; k++) Out.Write(route[k]);
@@ -346,7 +353,8 @@ namespace WAR2D.Net.Replication
                 int index = NetIdAllocator.IndexOf(id);
                 RouteResult result = In.Read<RouteResult>();
                 if (result == RouteResult.Pending) { In.EndForEachIndex(); continue; }
-                if (result == RouteResult.Arrived) TracedOrder[index] = OrderSlot[i];
+                if (result == RouteResult.WaitingStill) TracedOrder[index] = RouteMaintenance.WaitingOn(OrderSlot[i]);
+                else if (result == RouteResult.Arrived) TracedOrder[index] = OrderSlot[i];
                 else if (result == RouteResult.Same) { TracedId[index] = id; TracedOrder[index] = OrderSlot[i]; }
                 else
                 {
