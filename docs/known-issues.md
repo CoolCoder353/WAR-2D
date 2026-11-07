@@ -2,6 +2,21 @@
 
 Bugs, mismatches and hygiene problems. The first three roadmaps (v0.2 to v0.9, v0.10 to v0.14 with v0.15 and v0.15.1, and v0.16 to v0.18) are complete; open items are backlog, and the sections after "Open" are the log of what past reviews and playtests found and fixed. Code-review findings that were triaged but not fixed are in [bug-review.md](bug-review.md). See the archived roadmaps ([v0.2 to v0.9](archive/roadmap-v0.2-v0.9.md), [v0.10 to v0.14](archive/roadmap-v0.10-v0.14.md), [v0.16 to v0.18](archive/roadmap-v0.16-v0.18.md)) for what each version delivered; the current plan is [roadmap.md](roadmap.md).
 
+### 100,000 units (2026-11-07, on `perf/100k-units`)
+
+[perf/100k](perf/100k/README.md) has the benchmark (`tools/perf-100k.sh`: 8 × 12,500 units, one rendered player) and results.
+
+- **The client's 1 % low is under its 140 fps goal** on this machine (83 fps at the median of three runs; the mean, 182, passes). The slowest frames are
+  batch frames (Enter and Leave are still decoded in managed code), waits for job threads while the headless host on the same
+  machine runs its tick (the benchmark runs both on one PC), the minimap's unit plot (every 0.2 s) and first-call JIT stalls
+  under Mono. IL2CPP was not tried: only the Mono build support is installed here.
+- **The server's order waves.** The battle script re-orders a quarter of every army every 2 s; that tick's orders take up to 20 ms
+  (p99) and its routes 10 to 15 ms to encode, so a wave tick can pass the 50 ms tick period. `tick.main` p95 meets its 28 ms budget
+  (25.7 ms in the 100k benchmark, `main` 18.7; in the gate 12.5, `main` 12.9), and p99 fell (48 against 73 ms; gate 32 against 68).
+- **Bandwidth fails its budget in the 100k benchmark** (755 KB/s mean against 256; `main` 410): every owner shares vision, so the
+  player is sent all 100,000 units. In the gate's normal load it passes (246 KB/s; `main` 219).
+- **The benchmark is noisy here:** the same build measured 127 to 173 fps mean in back-to-back runs. Compare builds interleaved.
+
 ### 10,000 units at 120 fps (2026-11-07, on `perf/10k-units-120fps`)
 
 [perf/v0.20](perf/v0.20/README.md) has the benchmark and results. Fixed on the way: the client's per-unit draw loop and its route apply ran as managed loops (now Burst jobs), and a client's routes went out whole (now copy steps, protocol 22, replay format 5; older recordings are refused). Found, not fixed:
