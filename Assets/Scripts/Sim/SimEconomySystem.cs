@@ -53,6 +53,8 @@ namespace WAR2D.Sim
                 DecayPerTick = data.DecayPercentPerSecond * 0.01f * data.Dt,
                 Airborne = data.Airborne,
                 BlastRadiusByType = data.BlastRadiusByType,
+                IdOf = data.IdOf,
+                LastHitKind = data.LastHitKind,
             }.Schedule(state.Dependency);
 
             state.Dependency = new WriteBackEconomyJob
@@ -83,6 +85,9 @@ namespace WAR2D.Sim
         /// <summary>v0.20: a unit in the air doesn't decay, and decay never quite kills a Bomber (it must explode: the next tick's last gasp sets it off).</summary>
         [ReadOnly] public NativeArray<byte> Airborne;
         [ReadOnly] public NativeArray<float> BlastRadiusByType;
+        /// <summary>A unit decay kills dies of no fire or blast: its death's cause (by id index) is reset to a plain death.</summary>
+        [ReadOnly] public NativeArray<int> IdOf;
+        public NativeArray<byte> LastHitKind;
         public NativeArray<byte> Charged;
         public float DecayPerTick;
 
@@ -146,6 +151,12 @@ namespace WAR2D.Sim
             float taken = math.min(pool[owner], left);
             Health[unit] = taken >= left ? 0f : Health[unit] - taken * MaxHealth[unit];
             if (Health[unit] <= 0f && Type[unit] < BlastRadiusByType.Length && BlastRadiusByType[Type[unit]] > 0f) Health[unit] = 1e-3f;
+            if (Health[unit] <= 0f)
+            {
+                // Decay killed it: not whatever hurt it last (a unit lit once and dead of upkeep later was drawn burning to death).
+                int index = NetIdAllocator.IndexOf(IdOf[unit]);
+                if ((uint)index < (uint)LastHitKind.Length) LastHitKind[index] = HitKinds.Shot;
+            }
             pool[owner] -= taken;
         }
     }

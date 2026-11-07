@@ -103,6 +103,9 @@ namespace WAR2D.Sim
                 {
                     int u = Sorted[k];
                     if (UnitHealth[u] <= 0f || math.distancesq(Positions[u], centre) > rSq) continue;
+                    // A Bomber in the air touches nothing: it flies over a Mine as over units (its blast would miss it anyway).
+                    int id = IdOf[u];
+                    if (UnitCombat.For(Combat[NetIdAllocator.IndexOf(id)], id).AirborneAt(id, Tick)) continue;
                     if (BombRules.Triggers(AttackMask, BuildingOwnerSlot[b], OwnerSlot[u])) return true;
                 }
             }

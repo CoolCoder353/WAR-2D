@@ -93,22 +93,28 @@ namespace WAR2D.Client
             foreach (LeapEntry l in news.Leaps)
             {
                 leaps[l.Index] = new Leap { From = l.From, To = l.To, Start = l.Start * dt, End = l.End * dt, LastSpark = float.NegativeInfinity };
-                Effects.Leap(new Vector2(l.From.x, l.From.y));
+                if (unitOfLast == null || unitOfLast(l.Index).known) Effects.Leap(new Vector2(l.From.x, l.From.y)); // not for a unit a replay's view hides
             }
             foreach (AimEntry a in news.Aims)
             {
-                aims[a.Index] = new Aim { Target = a.TargetId, Start = Time.time };
+                aims[a.Index] = new Aim { Target = a.TargetId, Start = news.Tick * dt }; // on the match clock (the tick it began), as leaps are: a pause or a replay's speed moves it with the server
             }
             foreach (ShellEntry s in news.Shells)
             {
                 float land = s.Land * dt;
-                if (s.Full) Effects.ShellFlight(new Vector2(s.From.x, s.From.y), new Vector2(s.To.x, s.To.y), math.max(0.05f, land - math.max(now, s.Launch * dt)));
-                else Effects.IncomingShell(new Vector2(s.To.x, s.To.y), math.max(0.05f, land - now));
+                // A replay's per-player view gets every shell: as the server would have, the whole flight only where that player saw
+                // the gun, else the fall onto a landing they saw, else nothing.
+                bool fromShown = s.Full && (Shown == null || Shown(s.From)), toShown = Shown == null || Shown(s.To);
+                if (fromShown) Effects.ShellFlight(new Vector2(s.From.x, s.From.y), new Vector2(s.To.x, s.To.y), math.max(0.05f, land - math.max(now, s.Launch * dt)));
+                else if (toShown) Effects.IncomingShell(new Vector2(s.To.x, s.To.y), math.max(0.05f, land - now));
             }
         }
 
+        /// <summary>True where a point is shown (a replay's per-player view: what that player saw); null shows everything.</summary>
+        public System.Func<float2, bool> Shown;
+
         /// <summary>An own unit fired (its reload bar restarts).</summary>
-        public void Fired(int index) => lastShot[index] = Time.time;
+        public void Fired(int index) => lastShot[index] = serverTime;
 
         /// <summary>True while a Sniper aims at a target this client knows: where that target is drawn.</summary>
         public bool AimTarget(int index, out float2 at)
@@ -170,7 +176,7 @@ namespace WAR2D.Client
             foreach (KeyValuePair<int, Leap> pair in leaps)
             {
                 if (serverNow > pair.Value.End + 0.5f) { scratch.Add(pair.Key); continue; }
-                if (!Airborne(pair.Key, out float2 drawn, out float2 ground, out float h)) continue;
+                if (!Airborne(pair.Key, out float2 drawn, out float2 ground, out float h) || !unitOf(pair.Key).known) continue; // a unit not shown: no shadow or sparks
                 LeapsDrawn++;
                 SpriteRenderer shadow = Next(shadowSprites, ref shadowsUsed, "LeapShadow", SortingOrders.Decals + 2);
                 shadow.sprite = atlas.Sprite("LeapShadow", math.clamp((int)(h * 3.99f), 0, atlas.FrameCount("LeapShadow") - 1));
@@ -259,7 +265,7 @@ namespace WAR2D.Client
                     if (changed) aimUpdates.Add((pair.Key, aim));
                     continue; // the target isn't known here: no line
                 }
-                float charge = math.saturate((now - aim.Start) / aimSeconds);
+                float charge = math.saturate((serverNow - aim.Start) / aimSeconds);
                 float2 d = to - from;
                 float length = math.length(d);
                 if (length < 0.1f) { if (changed) aimUpdates.Add((pair.Key, aim)); continue; }
@@ -292,8 +298,8 @@ namespace WAR2D.Client
                     if (!known || (type != (byte)UnitType.Artillery && type != (byte)UnitType.Sniper)) continue;
                     UnitConfig u = config.GetUnit((UnitType)type);
                     bool aiming = (combat.StatusOf(index) & UnitStatusBits.Aiming) != 0 && aims.ContainsKey(index);
-                    float fill = aiming ? math.saturate((now - aims[index].Start) / aimSeconds)
-                        : lastShot.TryGetValue(index, out float shot) ? math.saturate((now - shot) / math.max(0.05f, u.AttackInterval)) : 1f;
+                    float fill = aiming ? math.saturate((serverNow - aims[index].Start) / aimSeconds)
+                        : lastShot.TryGetValue(index, out float shot) ? math.saturate((serverNow - shot) / math.max(0.05f, u.AttackInterval)) : 1f;
                     Bar(new Vector2(at.x, at.y + 0.4f * scale + 0.175f - BarGap), fill, aiming ? new Color(0.95f, 0.25f, 0.2f) : new Color(0.55f, 0.75f, 0.95f));
                 }
 

@@ -40,6 +40,42 @@ The rules, wire, client drawing, art, sound, AI, manual and docs are in, with PR
 - **Reviews (2026-11-07):** code review (10 findings, all fixed), security review (no finding above the bar: the combat news follows the leak rule; spec-accepted: a leap's landing point and a whole shell flight go to whoever knew the Bomber or gun), performance review (the hot paths by reading, then the gate above).
 - **Fire on own units:** none, as flame splash never hits allies (D11).
 
+## Code review of v0.19 and v0.20, second pass (2026-11-07, on `fix/v0.20-review`)
+
+The tenth scan in [bug-review.md](bug-review.md). `ReviewV020Tests` covers the Mine and the Demolish count, and `PhantomBlueprintPlayModeTests` the waiting blueprint (it fails without the fix); the rest are fixed by reading and not checked in a running game.
+
+| Item | State |
+| --- | --- |
+| A waiting blueprint cancelled itself (refunded, "something is in the way") at the next vision pass: its own view counted as what blocked it | **Fixed.** |
+| The HQ's centre was 2 tiles off in the camera's first look at a new HQ, the minimap's HQ flags and the AI's check of a remembered HQ | **Fixed.** |
+| A rematch kept the spectator bar and the unpaid and unit-cap flags | **Fixed.** |
+| A box of buildings with the HQ first had no Demolish, and the confirm counted the HQ | **Fixed.** |
+| The Sniper's laser and the reload bars ran on wall-clock time (full in a pause) | **Fixed.** |
+| A Bomber leaping over a Mine set it off | **Fixed.** |
+| A replay watched as one player showed shots, deaths, wrecks, arrivals and shell flights that player never saw | **Fixed.** |
+| A Digger leaving a finished dig area lost a queued Attack's target | **Fixed.** |
+| A correction could arrive before its unit's new route | **Fixed** (not sent on that tick). |
+| Test-only: a building of an owner with no player decays (unpaid upkeep, no units) at the config's 100 % a second | Not a game case (every owner in a match has a player); the PlayMode test takes its blocker's upkeep away. |
+
+## Code review of v0.19 and v0.20 (2026-11-07, on `release/v0.20`)
+
+The ninth scan in [bug-review.md](bug-review.md), with the eighth scan's open items that were still in the code. `ReviewV020Tests` covers the damage queue, the eliminated owner's building and the rebind conflict; the rest are fixed by reading and not checked in a running game.
+
+| Item | State |
+| --- | --- |
+| Kill credit, death cause and the HQ's last hitter went to whichever queued hit came last (a thread race), and a flame lit a corpse | **Fixed.** `ApplyDamageJob` skips hits on what is already at 0. |
+| A replay's per-player view drew fire, lasers and leaps for units that player didn't see | **Fixed.** `ClientWorld.UnitAt` treats a hidden unit as unknown; leap shadows, sparks and the leap sound check it. |
+| A unit dead of upkeep decay, or removed with its owner, kept its last hit's cause (drawn burning to death) | **Fixed.** `UpkeepJob` and `KillUnits` set a plain death. |
+| A building queued at its owner's elimination was created afterwards and stood with a dead owner | **Fixed.** The `KillOwner` sim command drops the owner's buildings too. |
+| A queued Attack behind a worker's job lost its target and stood in Attack stance | **Fixed.** `ClearFinishedWork` starts its chase, as `AdvanceWaypoints` does. |
+| Orders and pushes set at a paused boundary were cleared before any gather read them | **Fixed.** They are cleared only after a running tick. |
+| A unit could stop in a corner, taking a diagonal field cell past two blocked straight ones, without a route miss | **Fixed.** `NearestFieldCell` skips such a cell. |
+| `UnitCommander.Awake` threw when the scene loaded before the local player spawned (rejoin) | **Fixed.** The player is found lazily. |
+| A dig box left the Diggers roaming; a box, wall or dig drag lived on through a dialog (after F1 the release placed and paid for walls) | **Fixed.** |
+| A rebind to Left Ctrl reported no conflict with a Ctrl default | **Fixed.** `Rebinding.SameControl`. |
+| A wall line over the limit was previewed cut, but the server traced its own line to the cut end | **Fixed.** The preview traces it again. |
+| `ai-bench` styles ignored `seed0` (every run replayed the same style pairs) | **Fixed.** Seeded on the match seed; older baselines don't compare. |
+
 ## Owner playtest fixes (2026-11-06, on `fix/pr30-review-round3`)
 
 | Item | State |

@@ -80,8 +80,20 @@ namespace WAR2D.UI
         public float RefundFor(Func<BuildingType, float> costOf, float demolishShare)
         {
             float back = 0f;
-            foreach ((BuildingType type, bool blueprint) in removalRows) back += ConstructionRules.Refund(blueprint, costOf(type), demolishShare);
+            foreach ((BuildingType type, bool blueprint) in removalRows)
+                if (type != BuildingType.Base) back += ConstructionRules.Refund(blueprint, costOf(type), demolishShare); // the server never removes the HQ
             return back;
+        }
+
+        /// <summary>How many of the selected own buildings a Cancel or Demolish removes: all but the HQ, which the server never removes.</summary>
+        public int RemovableCount
+        {
+            get
+            {
+                int n = 0;
+                foreach ((BuildingType type, bool _) in removalRows) if (type != BuildingType.Base) n++;
+                return n;
+            }
         }
 
         /// <summary>How many own wall tiles (blueprints included) are selected.</summary>

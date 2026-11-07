@@ -1001,7 +1001,8 @@ public partial class WorldStateManager : NetworkBehaviour
             GameCore.Instance.HasPlacedHq(owner),
             tile => SeesNow(owner, tile) || !Map.Grid.Contains(tile) ? Map.Grid.TileAt(tile) : (TileType)knownTerrain.KnownType(Map.Grid.Index(tile), initial),
             tile => SeesNow(owner, tile) ? Map.IsUsed(tile) || KnownBombAt(tile, owner)
-                : knownBuildings.KnownCovers(tile, GetBuildingSize) || OwnFootprintAt(tile, owner) || PhantomAt(tile, owner, out _, skipPhantom) || KnownBombAt(tile, owner),
+                // The waiting blueprint being judged is in what its owner was told (it is shown to them): it doesn't block itself.
+                : knownBuildings.KnownCovers(tile, GetBuildingSize, skipPhantom) || OwnFootprintAt(tile, owner) || PhantomAt(tile, owner, out _, skipPhantom) || KnownBombAt(tile, owner),
             tile => false, OwnStartOptions(owner));
         return true;
     }
