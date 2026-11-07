@@ -50,7 +50,8 @@ sessions, Discord). Unity 6000.4.1f1, Mono, Windows release player (`-buildWindo
 
 The client is CPU-bound (GPU 0.5 ms a frame), so the reference machine's slower CPU matters more than its GPU. The client's
 main thread is now 2.3 ms a frame and its slowest 1 % 4.7 ms on average: about 3.5 times headroom against 8.3 ms here. Re-run
-`tools/perf-10k.sh 3` on the reference machine (Linux build) before relying on 120 fps there.
+`tools/perf-10k.sh 3` on the reference machine (Linux build) before relying on 120 fps there. Until then,
+[the simulated reference machine](#simulated-reference-machine-limited-cpu-and-gpu) below estimates it.
 
 ## Results
 
@@ -115,6 +116,44 @@ flat, slope 0.0 MB a minute over the second half); its managed heap moves betwee
 connections; the command queue, sampled each tick, was empty at p95 and peaked at 761, as in the one-minute runs (the battle
 script's order batches), so it doesn't grow. The client
 held 413 fps and 169 in its slowest 1 % over the ten minutes; bandwidth 45 KB/s mean, 103 KB/s peak.
+
+### Simulated reference machine (limited CPU and GPU)
+
+An estimate, not the reference machine: the after build on this laptop with the game held to fewer, slower cores. The
+275HX's E-cores (Skymont, up to 4.6 GHz) are close to a Zen 3 core of the 5600GT (4.6 GHz) per thread; six E-cores without
+SMT have fewer hardware threads than its 6 cores and 12 threads, eight about its throughput. Unity counts all 24 cores
+whatever the affinity, so it starts 23 job threads in each process; `-job-worker-count 11` gives the 11 it starts on 12
+threads. The Intel iGPU (`-force-device-index 1`) is much slower than an RX 6600; the RTX at 0.5 ms a frame is faster (an
+RX 6600 has about half its graphics throughput, so about 1 ms). How it was run, from `cmd` (the processes inherit the
+affinity mask):
+
+```
+start "" /affinity FC /wait /b bash -c "WAR_PERF_CLIENT_ARGS='-job-worker-count 11' WAR_PERF_HOST_ARGS='-job-worker-count 11' tools/perf-10k.sh 3 Builds/opt/WAR-2D.exe"
+```
+
+`FC` is E-cores 2 to 7 and `3FC` E-cores 2 to 9 (`GetLogicalProcessorInformationEx`); `WAR_PERF_CLIENT_ARGS` is new in
+`perf-run.sh`. "Alone" ran the server on E-cores 14 to 21 (affinity set on each process after it started), as for a player
+who joins rather than hosts. Three runs each:
+
+| Setup (server on the same cores unless "alone") | Client fps | Client 1 % low | Main thread (ms) | GPU (ms) | Tick p95 (ms) |
+|---|---|---|---|---|---|
+| 6 E-cores, iGPU, 23 job threads | 215.7 / 220.4 / 210.0 | 126.6 / 110.8 / 111.4 | 4.6 / 4.5 / 4.8 | 4.3 / 4.2 / 4.4 | 11.1 / 10.7 / 11.2 |
+| 6 E-cores, RTX, 23 job threads | 269.4 / 260.1 / 273.4 | 101.4 / 94.3 / 96.4 | 3.7 / 3.8 / 3.7 | 0.5 | 12.3 / 13.3 / 13.3 |
+| 6 E-cores, RTX, 11 job threads | 306.6 / 319.2 / 318.5 | 141.8 / 136.2 / 109.3 | 3.3 / 3.1 / 3.1 | 0.5 | 11.4 / 10.6 / 10.3 |
+| Client alone on 6 E-cores, RTX, 11 | 206.5 / 206.4 / 210.6 | 119.2 / 122.3 / 130.2 | 4.8 / 4.8 / 4.7 | 4.0 | 9.3 / 10.4 / 9.3 |
+| 8 E-cores, RTX, 11 job threads | 316.3 / 331.6 / 336.4 | 117.7 / 127.4 / 131.2 | 3.2 / 3.0 / 3.0 | 0.5 | 9.1 / 9.0 / 9.7 |
+
+Every run: the server's budgets pass (no errors, no dropped connections, growth 32 to 56 MB), bandwidth 60 to 77 KB/s mean.
+In the "alone" runs the RTX took 4.0 ms a frame: the laptop shares one power budget between the CPU and the GPU, and with
+14 cores busy it gave the GPU less.
+
+**Result.** The mean frame rate holds 1.7 to 2.8 times the 120 fps budget on every setup. The 1 % low doesn't hold
+reliably: the medians pass on the three setups with Unity's thread count for the target (122 to 136), but single runs fall to
+109 to 119. A Development build profiled on 6 E-cores (`-perfProfile`) shows no single cause in its 31 frames over 7 ms of 2,000:
+the swap chain waits (4 to 9 ms), the unit draw's main-thread work stretches from 1.0 ms to 2 to 5 ms when the main thread
+loses its core, and one collection (6.4 ms). The largest main-thread item is the unit draw (1.0 ms a frame):
+`PrepareUnitsJob` and the ring job run on the main thread (`.Run()`). On the reference machine the 1 % low is likely near
+the budget; confirm it there, and spreading the draw job over the job threads is the next step if it falls short.
 
 ## What was slow (profiler evidence)
 

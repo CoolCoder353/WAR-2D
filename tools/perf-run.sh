@@ -41,6 +41,8 @@ for run in $(seq 1 "$runs"); do
     # WAR_PERF_VIEW=1: the first client renders and measures its frames (PerfClient -perfView; tools/perf-10k.sh).
     clientArgs=(-batchmode -nographics)
     if [[ "${WAR_PERF_VIEW:-0}" == "1" && "$c" == "1" ]]; then clientArgs=(-perfView -screen-width 1920 -screen-height 1080 -screen-fullscreen 1); fi
+    # WAR_PERF_CLIENT_ARGS: extra arguments for every client (e.g. "-force-device-index 1" to render on another GPU).
+    if [[ -n "${WAR_PERF_CLIENT_ARGS:-}" ]]; then read -r -a extraClient <<< "$WAR_PERF_CLIENT_ARGS"; clientArgs+=("${extraClient[@]}"); fi
     "$player" "${clientArgs[@]}" -perf -perfClient 127.0.0.1 -perfOut "$dir/client$c" -logFile "$dir/client$c.log" &
   done
   gpu=""
