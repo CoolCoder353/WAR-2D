@@ -40,6 +40,23 @@ The rules, wire, client drawing, art, sound, AI, manual and docs are in, with PR
 - **Reviews (2026-11-07):** code review (10 findings, all fixed), security review (no finding above the bar: the combat news follows the leak rule; spec-accepted: a leap's landing point and a whole shell flight go to whoever knew the Bomber or gun), performance review (the hot paths by reading, then the gate above).
 - **Fire on own units:** none, as flame splash never hits allies (D11).
 
+## Code review of v0.19 and v0.20, second pass (2026-11-07, on `fix/v0.20-review`)
+
+The tenth scan in [bug-review.md](bug-review.md). `ReviewV020Tests` covers the Mine and the Demolish count, and `PhantomBlueprintPlayModeTests` the waiting blueprint (it fails without the fix); the rest are fixed by reading and not checked in a running game.
+
+| Item | State |
+| --- | --- |
+| A waiting blueprint cancelled itself (refunded, "something is in the way") at the next vision pass: its own view counted as what blocked it | **Fixed.** |
+| The HQ's centre was 2 tiles off in the camera's first look at a new HQ, the minimap's HQ flags and the AI's check of a remembered HQ | **Fixed.** |
+| A rematch kept the spectator bar and the unpaid and unit-cap flags | **Fixed.** |
+| A box of buildings with the HQ first had no Demolish, and the confirm counted the HQ | **Fixed.** |
+| The Sniper's laser and the reload bars ran on wall-clock time (full in a pause) | **Fixed.** |
+| A Bomber leaping over a Mine set it off | **Fixed.** |
+| A replay watched as one player showed shots, deaths, wrecks, arrivals and shell flights that player never saw | **Fixed.** |
+| A Digger leaving a finished dig area lost a queued Attack's target | **Fixed.** |
+| A correction could arrive before its unit's new route | **Fixed** (not sent on that tick). |
+| Test-only: a building of an owner with no player decays (unpaid upkeep, no units) at the config's 100 % a second | Not a game case (every owner in a match has a player); the PlayMode test takes its blocker's upkeep away. |
+
 ## Code review of v0.19 and v0.20 (2026-11-07, on `release/v0.20`)
 
 The ninth scan in [bug-review.md](bug-review.md), with the eighth scan's open items that were still in the code. `ReviewV020Tests` covers the damage queue, the eliminated owner's building and the rebind conflict; the rest are fixed by reading and not checked in a running game.

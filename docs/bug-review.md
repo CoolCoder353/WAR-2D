@@ -51,7 +51,29 @@ A review of everything since v0.18 (`88a467e0..release/v0.20`, 184 script files)
 
 Checked and not changed: the combat wire's codec bounds, the status delta and its fallback, shell bookkeeping, the lane client's held combat news, the route copy steps, waiting blueprints, the ping and spectator commands (gated and validated), the Demolish refund text (already fixed).
 
-Still open from that pass: the eighth scan's correction item (Medium) and the reused order handle (Low); a Mine is set off by a Bomber leaping over it (the spec doesn't say; left as is); a client that meets a Sniper mid-aim or a Bomber mid-leap sees no laser or arc until the next one (the aim and leap news go out once).
+Still open from that pass: the eighth scan's correction item (Medium) and the reused order handle (Low); a client that meets a Sniper mid-aim or a Bomber mid-leap sees no laser or arc until the next one (the aim and leap news go out once). The Mine set off by a leaping Bomber was fixed in the tenth scan.
+
+## Tenth scan (2026-11-07): v0.19 and v0.20, second pass
+
+The files the ninth scan didn't reach (the waiting blueprints' judging, the HUD, minimap and AI, the replay viewer's per-player view, the sim's dig and Mine paths, the encoder). All fixed on `fix/v0.20-review`; see [known-issues.md](known-issues.md).
+
+| Severity | Where | Finding | Fix |
+| --- | --- | --- | --- |
+| High | `WorldStateManager.KnownPlacement`, `BuildingInterest.KnownCovers` | A waiting blueprint is shown to its owner, so it is in what they were told; judging whether they can see it blocked, its own footprint counted as the blocker, and it was cancelled and refunded at the next vision pass, whatever stood there. The PlayMode test passed only because it expected a cancel anyway (and its blocker, of an owner with no player, decayed away in a second). | `KnownCovers` skips the blueprint being judged. The PlayMode test now checks it waits, with a blocker that stands. |
+| Low | `HudController.ShowOwnHqOnce`, `MinimapController` HQ flags | The HQ's centre was taken as its anchor plus 2.5, but the anchor is the footprint's middle tile: the camera check and the minimap flags were 2 tiles off. | `Footprint.VisualCenter`. |
+| Low | `Blackboard.ForgetHqs` | The same 2.5 put the AI's "standing by the remembered HQ" check on its corner. | The same. |
+| Low | `ClientPlayer.ResetForNewMatch` | A rematch kept the spectator bar's numbers and the unpaid and unit-cap flags. | Cleared. |
+| Low | `CommandCardController`, `SelectionModel` | A box of buildings with the HQ first had no Demolish; with the HQ elsewhere the confirm counted it. | `RemovableCount` (all but the HQ) drives the button, the count and the refund. |
+| Low | `CombatVisuals` | The Sniper's laser charge and the reload and aim bars ran on wall-clock time: full during a pause, behind in a fast replay. | The match clock (the aim's tick, the drawn server time). |
+| Low | `SimBombSystem.SteppedOn` | A Bomber leaping over a Mine set it off (and its blast then skipped the Bomber). | A unit in the air doesn't trigger it (`ReviewV020Tests`). |
+| Low | `ClientWorld` | A replay's per-player view still drew tracers, flames, deaths, wrecks and arrival puffs of units that player didn't see. | `Shown` gates them. |
+| Low | `CombatVisuals.OnNews` | The same view drew every shell's whole flight. | A whole flight only from a gun shown, else the fall onto a landing shown. |
+| Low | `SimCommandSystem.RetryWaitingDiggers` | A Digger whose wait ended popped its next order by hand: a queued Attack lost its target and a refused walk kept its queue. | The path a finished job takes (`GoOnToNext`). |
+| Medium | `ReplicationEncoder` | (eighth scan) A correction on a unit's new-route tick could arrive before the route. | Not sent on that tick. |
+
+Checked and not changed: the dig areas' waiting, roaming groups, the AutoWork and alarm searches, the economy and upkeep changes, rejoin and host-leaving, the fog parts, the map generator's rich fields, the config's new bounds, the lobby board.
+
+
 
 ---
 
@@ -64,7 +86,7 @@ Three read-only passes over `fix/routes-chokes-builders`, by tracing the code. T
 | Severity | Where | Finding | Smallest fix |
 | --- | --- | --- | --- |
 | ~~Medium~~ Fixed | `ReplicationEncoder.AppendRoute` | Fixed 2026-11-06: half tiles on the wire (`RouteWire`), routes snapped on the server. See known-issues.md, "Review fixes, round 3". | |
-| Medium | `ReplicationEncoder` corrections | A correction is sent unreliably and applied to the server's copy at once. If it is lost, the server thinks the client knows, and the client shows the unit at its route's end until the next order. A correction can also pass the same tick's MoveOrder. | Skip the correction on a new MoveOrder's tick; send a reliable position when a unit stops. |
+| Medium (half fixed) | `ReplicationEncoder` corrections | Fixed 2026-11-07 (tenth scan): no correction goes out on a unit's new-route tick. Still open: a lost correction isn't resent until the next one. Was: a correction is sent unreliably and applied to the server's copy at once. If it is lost, the server thinks the client knows, and the client shows the unit at its route's end until the next order. A correction can also pass the same tick's MoveOrder. | Skip the correction on a new MoveOrder's tick; send a reliable position when a unit stops. |
 | Low | `RouteStore`, `SectorFieldCache` | A reused order handle hides a new route for up to 2 s: a lone unit's next queued leg can take the same handle in the same boundary. | Treat `Arrived[i] != 0` as no order in the trace and commit jobs. |
 | ~~Low~~ Fixed | `SimCommandSystem.ClearFinishedWork` | Fixed 2026-11-07 (v0.19/v0.20 review): a queued Attack behind a job starts its chase as `AdvanceWaypoints` does. Was: a busy worker's queued Attack loses its target and stays in Attack stance, never firing. The UI doesn't send Attack to workers, so only a modified client can do this. | Handle the Attack stance as `AdvanceWaypoints` does. |
 | ~~Low~~ Fixed | `SimCommandSystem.OnUpdate` | Fixed 2026-11-07: cleared only after a running tick's gather read them. Was: `PendingMoves` and `PendingOrders` set at a paused boundary are cleared at the next one, with no gather between. Only the dev flow of pause, place or order, then step can do this. | Clear them only after a boundary whose gather ran. |

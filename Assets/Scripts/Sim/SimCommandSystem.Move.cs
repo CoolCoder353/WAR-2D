@@ -455,19 +455,26 @@ namespace WAR2D.Sim
                 if (slot < 0 || data.Health[slot] <= 0f) { context.Waypoints.Forget(id); continue; }
                 AddPending(data, One(slot), new PendingOrder { Slot = -1, Stance = Stances.Idle, WorkKind = WorkKinds.None });
                 if (StartAreaDig(data, context, slot)) continue;
-                if (!TryNextWalk(data, context, id, slot, tick, out int2 goal, out byte stance, out int target)) continue;
-                // A queued Attack behind the job goes as AdvanceWaypoints sends one (bug review 2026-11-05: it lost its target and
-                // stood in Attack stance, never firing).
-                byte kind = TargetKinds.Unit;
-                if (stance == Stances.Attack)
-                {
-                    if (TryStartChase(data, data.OwnerId[slot], target, unitCount, tick, out Chase chase)) { goal = chase.Goal; kind = chase.Kind; }
-                    else { stance = Stances.AttackMove; target = 0; }
-                }
-                else target = 0;
-                if (!Issue(data, context, One(slot), data.SizeClass[slot], goal, stance, tick, data.OwnerId[slot], target, kind))
-                    context.Waypoints.Forget(id);
+                GoOnToNext(data, context, id, slot, unitCount, tick);
             }
+        }
+
+        /// <summary>
+        /// A worker whose job is done goes on to its next queued order. A queued Attack goes as <see cref="AdvanceWaypoints"/> sends one
+        /// (bug review 2026-11-05: it lost its target and stood in Attack stance, never firing); a refused walk forgets the rest.
+        /// </summary>
+        private void GoOnToNext(SimData data, SimContext context, int id, int slot, int unitCount, int tick)
+        {
+            if (!TryNextWalk(data, context, id, slot, tick, out int2 goal, out byte stance, out int target)) return;
+            byte kind = TargetKinds.Unit;
+            if (stance == Stances.Attack)
+            {
+                if (TryStartChase(data, data.OwnerId[slot], target, unitCount, tick, out Chase chase)) { goal = chase.Goal; kind = chase.Kind; }
+                else { stance = Stances.AttackMove; target = 0; }
+            }
+            else target = 0;
+            if (!Issue(data, context, One(slot), data.SizeClass[slot], goal, stance, tick, data.OwnerId[slot], target, kind))
+                context.Waypoints.Forget(id);
         }
 
         /// <summary>
@@ -536,10 +543,10 @@ namespace WAR2D.Sim
             {
                 int slot = data.SlotOf(id, unitCount);
                 if (slot < 0 || data.Health[slot] <= 0f) { context.DigAreas.Leave(id); continue; }
-                if (StartAreaDig(data, context, slot) || !context.Waypoints.TryPop(id, out int2 goal, out byte stance, out byte work)) continue;
-                // The area is done or the wait ran out: on to the next queued order, as when a job finishes.
-                if (work != WorkKinds.None) StartQueuedWork(data, context, slot, goal, work, tick);
-                else Issue(data, context, One(slot), data.SizeClass[slot], goal, stance, tick, data.OwnerId[slot]);
+                if (StartAreaDig(data, context, slot)) continue;
+                // The area is done or the wait ran out: on to the next queued order, as when a job finishes (a queued Attack keeps
+                // its target, and a queued job that can't start no longer drops the orders after it).
+                GoOnToNext(data, context, id, slot, unitCount, tick);
             }
         }
 

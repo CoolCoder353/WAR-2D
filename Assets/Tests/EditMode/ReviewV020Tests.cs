@@ -84,4 +84,41 @@ public class ReviewV020Tests
         Assert.IsFalse(Rebinding.SameControl("<Keyboard>/leftCtrl", "<Keyboard>/alt"));
         Assert.IsFalse(Rebinding.SameControl("<Keyboard>/s", "<Keyboard>/shift"));
     }
+    /// <summary>A Bomber in the air touches nothing: leaping over an enemy Mine doesn't set it off (second pass).</summary>
+    [Test]
+    public void ABomberLeapingOverAMineDoesNotSetItOff()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(64), c => c.Bomber.LeapSeconds = 5f);
+        int mine = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Mine, new int2(20, 20), complete: true);
+        int[] bomber = sim.Spawn(SimHarness.OwnerB, new float2(30.5f, 20.5f), UnitType.Bomber); // out of the Mine's reach for now
+        sim.Tick();
+        sim.Teleport(bomber[0], new float2(20.5f, 20.5f));
+        // Put it in the air over the Mine, as a leap would (from and to the same point, for long enough).
+        sim.Em.CompleteAllTrackedJobs();
+        SimData data = sim.Context.Data;
+        int tick;
+        using (EntityQuery clock = sim.Em.CreateEntityQuery(typeof(SimClock))) tick = clock.GetSingleton<SimClock>().Tick;
+        data.Combat[NetIdAllocator.IndexOf(bomber[0])] = new UnitCombat
+        {
+            Id = bomber[0], LeapStart = tick, LeapEnd = tick + 1000, LeapFrom = new float2(20.5f, 20.5f), LeapTo = new float2(20.5f, 20.5f),
+        };
+        for (int i = 0; i < 10; i++) sim.Tick();
+        Entity e = sim.BuildingEntity(mine);
+        Assert.IsTrue(e != Entity.Null && sim.Em.GetComponentData<HealthComponent>(e).currentHealth > 0f, "the Mine waits for something on the ground");
+    }
+
+    /// <summary>The HQ in a box of buildings is never removed, so it isn't counted or refunded, and needn't come last.</summary>
+    [Test]
+    public void AnHqInABoxOfBuildingsIsLeftOutOfTheDemolish()
+    {
+        var model = new WAR2D.UI.SelectionModel();
+        model.SetBuildingRows(new[]
+        {
+            new WAR2D.UI.SelectionModel.BuildingRow { Type = BuildingType.Base, Health01 = 1f },
+            new WAR2D.UI.SelectionModel.BuildingRow { Type = BuildingType.Barracks, Health01 = 1f },
+            new WAR2D.UI.SelectionModel.BuildingRow { Type = BuildingType.Barracks, Health01 = 1f, Blueprint = true },
+        }, 0f, 0f);
+        Assert.AreEqual(2, model.RemovableCount);
+        Assert.AreEqual(100f * 0.5f + 100f, model.RefundFor(t => 100f, 0.5f), 1e-4f, "the HQ's cost is no part of the refund");
+    }
 }
