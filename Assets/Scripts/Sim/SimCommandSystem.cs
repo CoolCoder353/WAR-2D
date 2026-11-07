@@ -21,6 +21,7 @@ namespace WAR2D.Sim
     {
         private EntityArchetype unitArchetype;
         private EntityQuery unitQuery;
+        private EntityQuery buildingQuery;
         private readonly List<SimCommand> deferred = new List<SimCommand>();
         /// <summary>Buildings created in this drain: not in the building arrays until the next gather.</summary>
         private readonly HashSet<int> createdNow = new HashSet<int>();
@@ -30,6 +31,7 @@ namespace WAR2D.Sim
             RequireForUpdate<SimData>();
             unitArchetype = EntityManager.CreateArchetype(typeof(Unit));
             unitQuery = GetEntityQuery(ComponentType.ReadWrite<Unit>());
+            buildingQuery = GetEntityQuery(ComponentType.ReadOnly<BuildingData>(), ComponentType.ReadWrite<HealthComponent>());
         }
 
         /// <summary>Drops per-match state when a match's simulation is disposed.</summary>
@@ -39,7 +41,11 @@ namespace WAR2D.Sim
             legs.Clear();
             chases.Clear();
             attackEnded.Clear();
+            pendingRead = true;
         }
+
+        /// <summary>True when the last boundary's pending orders and moves were read by its gather (it runs only while the clock does).</summary>
+        private bool pendingRead = true;
 
         protected override void OnUpdate()
         {
@@ -57,9 +63,14 @@ namespace WAR2D.Sim
             SimClock clock = SystemAPI.GetSingleton<SimClock>();
 
             double split = PerfSplits.Now, ordersMs = 0;
-            // Cleared first: a wall rising below applies tiles that push units off them (PushUnitsOffTiles).
-            data.PendingOrders.Clear();
-            data.PendingMoves.Clear();
+            // Cleared first: a wall rising below applies tiles that push units off them (PushUnitsOffTiles). Only once a gather has
+            // read them: one set at a paused boundary waits for the first running tick (bug review 2026-11-05: pause, order, step lost it).
+            if (pendingRead)
+            {
+                data.PendingOrders.Clear();
+                data.PendingMoves.Clear();
+            }
+            pendingRead = clock.Running; // the gather of this tick reads them only while the clock runs
             WriteBackBuildingDamage(data);
             WriteBackBuildingWeapons(data);
             bool wallsChanged = ApplyWallWork(data, context) | ApplyDigDone(data, context);
@@ -118,6 +129,7 @@ namespace WAR2D.Sim
                         break;
                     case SimCommandKind.KillOwner:
                         KillUnits(data, context, command.OwnerId, all: false);
+                        KillBuildings(command.OwnerId);
                         terrainChanged |= RemoveOwnerWalls(data, context, command.OwnerId, clock.UnitCount);
                         break;
                     case SimCommandKind.DestroyAll:
@@ -500,6 +512,9 @@ namespace WAR2D.Sim
             {
                 if (!wanted.Contains(units[i].Id)) continue;
                 doomed.Add(entities[i]);
+                // Removed, not killed by a hit: its Leave says a plain death, not what last hurt it.
+                int idIndex = NetIdAllocator.IndexOf(units[i].Id);
+                if ((uint)idIndex < (uint)data.LastHitKind.Length) data.LastHitKind[idIndex] = HitKinds.Shot;
                 context.Ids.Free(units[i].Id);
                 if (units[i].OwnerSlot < data.UnitsBySlot.Length) data.UnitsBySlot[units[i].OwnerSlot]--;
                 context.RaiseUnitDied(units[i].Id, units[i].Position);
@@ -509,6 +524,24 @@ namespace WAR2D.Sim
         }
 
         /// <summary>Destroys every unit of the owner (or every unit), recording each death for its explosion.</summary>
+        /// <summary>
+        /// Drops every building of the owner to 0 health (DestructionSystem removes it). The owner's kill sets the ones it knew of, but a
+        /// placement still queued then is created earlier in this same drain, and would stand for good with a dead owner (bug review
+        /// 2026-11-05).
+        /// </summary>
+        private void KillBuildings(int ownerId)
+        {
+            using NativeArray<Entity> entities = buildingQuery.ToEntityArray(Allocator.Temp);
+            foreach (Entity e in entities)
+            {
+                if (EntityManager.GetComponentData<BuildingData>(e).ownerId != ownerId) continue;
+                HealthComponent hp = EntityManager.GetComponentData<HealthComponent>(e);
+                if (hp.currentHealth <= 0f) continue;
+                hp.currentHealth = 0f;
+                EntityManager.SetComponentData(e, hp);
+            }
+        }
+
         private void KillUnits(SimData data, SimContext context, int ownerId, bool all)
         {
             using NativeArray<Entity> entities = unitQuery.ToEntityArray(Allocator.Temp);

@@ -46,11 +46,42 @@ public static class Rebinding
         {
             if (other == action || NotRebindable.Contains(other.name)) continue;
             foreach (InputBinding binding in other.bindings)
-                if (!binding.isComposite && !binding.isPartOfComposite && string.Equals(binding.effectivePath, bindingPath, StringComparison.OrdinalIgnoreCase))
+                if (!binding.isComposite && !binding.isPartOfComposite && SameControl(binding.effectivePath, bindingPath))
                     return other;
         }
         return null;
     }
+
+    /// <summary>
+    /// True when two binding paths name the same key. A modifier's plain path (<c>&lt;Keyboard&gt;/ctrl</c>, the defaults) covers its
+    /// left and right keys, which is what a rebind records (bug review 2026-11-05: Stop rebound to Left Ctrl reported no conflict
+    /// with a Ctrl default). Left and right are still different keys.
+    /// </summary>
+    public static bool SameControl(string a, string b)
+    {
+        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;
+        return string.Equals(Plain(a), b, StringComparison.OrdinalIgnoreCase) || string.Equals(a, Plain(b), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>A left or right modifier's path as its plain one (<c>/leftCtrl</c> to <c>/ctrl</c>); any other path as it is.</summary>
+    private static string Plain(string path)
+    {
+        int slash = path.LastIndexOf('/');
+        if (slash < 0) return path;
+        string control = path.Substring(slash + 1);
+        foreach (string side in Sides)
+            if (control.StartsWith(side, StringComparison.OrdinalIgnoreCase) && control.Length > side.Length)
+            {
+                string rest = control.Substring(side.Length);
+                foreach (string modifier in Modifiers)
+                    if (string.Equals(rest, modifier, StringComparison.OrdinalIgnoreCase)) return path.Substring(0, slash + 1) + modifier;
+            }
+        return path;
+    }
+
+    private static readonly string[] Sides = { "left", "right" };
+    private static readonly string[] Modifiers = { "ctrl", "shift", "alt", "meta" };
 
     /// <summary>Swaps the first bindings of two actions (the conflict's "Swap bindings").</summary>
     public static void Swap(InputAction a, InputAction b)

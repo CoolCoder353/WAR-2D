@@ -355,7 +355,8 @@ namespace WAR2D.Net.Replication
                         Healths.Add(new HealthUnit { Index = index, Health = health });
                         state.LastHealth = health;
                     }
-                    if (RouteGeneration[index] != state.RouteGeneration)
+                    bool routed = RouteGeneration[index] != state.RouteGeneration;
+                    if (routed)
                     {
                         MoveOrders.Add(new RouteUnit { Index = index, First = MoveTiles.Length, Count = AppendRoute(index, Input.Positions[slot], MoveTiles) });
                         state.RouteGeneration = RouteGeneration[index];
@@ -363,7 +364,9 @@ namespace WAR2D.Net.Replication
                     }
                     bool inView = InView(view, Input.Positions[slot]);
                     int every = inView ? Config.CorrectionInterval : Config.OffscreenInterval;
-                    if ((Tick + index) % every == 0) CheckCorrection(slot, index, ref state, now, inView);
+                    // Not on a new route's tick: the correction goes unreliably and the route reliably, so it could arrive first and be
+                    // applied to the old route (bug review 2026-11-05). The new route starts where the unit is; the next check corrects it.
+                    if (!routed && (Tick + index) % every == 0) CheckCorrection(slot, index, ref state, now, inView);
                     States[index] = state;
                 }
             }

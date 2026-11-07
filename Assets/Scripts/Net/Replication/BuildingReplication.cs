@@ -228,12 +228,12 @@ namespace WAR2D.Net.Replication
         /// True when a building this player knows of, live or a last-seen ghost (bombs aside: they don't take ground), covers
         /// <paramref name="tile"/>: what the player sees there in the fog (placement on explored ground, 2026-11-06).
         /// </summary>
-        public bool KnownCovers(int2 tile, Func<BuildingType, int2> sizeOf)
+        public bool KnownCovers(int2 tile, Func<BuildingType, int2> sizeOf, int skip = 0)
         {
             foreach (KeyValuePair<int, Known> pair in known)
             {
                 Known k = pair.Value;
-                if (k.Hidden) continue;
+                if (k.Hidden || (skip != 0 && pair.Key == skip)) continue;
                 int2 size = sizeOf(k.Type);
                 int2 start = Footprint.Start((int2)math.round(k.Position), size);
                 if (math.all(tile >= start) && math.all(tile < start + size)) return true;

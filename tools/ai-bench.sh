@@ -164,9 +164,11 @@ import random, sys
 seeds, sizes, pairings, styles, seed0 = int(sys.argv[1]), sys.argv[2].split(), sys.argv[3].split(), sys.argv[4].split(), int(sys.argv[5])
 for k in range(seeds):
     for size in sizes:
-        rng = random.Random(f"{size}-{k}")
-        sa, sb = rng.choice(styles), rng.choice(styles)
         seed = seed0 + k
+        # Seeded on the match seed, not its place in the run (bug review 2026-11-05): with k, every run replayed the same style
+        # pairs whatever its seed0, so the tuner's confirm seeds drew its screen seeds' styles.
+        rng = random.Random(f"{size}-{seed}")
+        sa, sb = rng.choice(styles), rng.choice(styles)
         for p in pairings:
             a, b = p.split("-")
             if k % 2: a, b = b, a  # alternate the seat order

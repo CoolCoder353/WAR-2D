@@ -30,7 +30,21 @@ public class UnitCommander : NetworkBehaviour
 
     public GameObject selectionBox;
 
-    private ClientPlayer localPlayer;
+    private ClientPlayer localPlayerCache;
+
+    /// <summary>
+    /// The local player, found lazily: on a rejoin the scene can load before the player object spawns, so <c>Awake</c>
+    /// can't assume it (bug review 2026-11-05: it threw there, and <c>Update</c> threw every frame after).
+    /// </summary>
+    private ClientPlayer localPlayer
+    {
+        get
+        {
+            if (localPlayerCache == null && NetworkClient.connection != null && NetworkClient.connection.identity != null)
+                localPlayerCache = NetworkClient.connection.identity.GetComponent<ClientPlayer>();
+            return localPlayerCache;
+        }
+    }
 
     /// <summary>The local player's selection and squads.</summary>
     public WAR2D.Client.Selection Selection { get; } = new WAR2D.Client.Selection();
@@ -73,7 +87,6 @@ public class UnitCommander : NetworkBehaviour
             selectionBox.SetActive(false);
             if (GetComponent<WAR2D.Client.ClientWorld>() == null) gameObject.AddComponent<WAR2D.Client.ClientWorld>();
 
-            localPlayer = NetworkClient.connection.identity.GetComponent<ClientPlayer>();
             SubscribeBuildings();
             Feedback = gameObject.AddComponent<OrderFeedback>();
             Feedback.Init(Config.ConfigLoader.LoadConfig().Orders.MaxQueued, IsDiggableHere, PositionOf, id => WAR2D.Client.ClientWorld.Instance != null && WAR2D.Client.ClientWorld.Instance.IsMoving(id));
@@ -391,6 +404,19 @@ public class UnitCommander : NetworkBehaviour
             WorldStateManager.Instance.CmdDigAreaChunk(token, chunks[i], i == chunks.Count - 1, keep, digFrom, tile);
         Feedback?.AddDigMarks(lo, hi, diggers, keep);
         Feedback?.Queue.Sent(diggers, ((float2)lo + hi + 1f) * 0.5f, keep, isWork: true);
+        Roaming.Stop(diggers); // a dig box is an order: roaming Diggers would soon leave the job (bug review 2026-11-05)
+    }
+
+    /// <summary>Drops a box, wall or dig drag in progress (a dialog opened over it).</summary>
+    private void EndDragsForDialog()
+    {
+        if (selecting)
+        {
+            selecting = false;
+            selectionBox.SetActive(false);
+        }
+        CancelWallDrag();
+        CancelDigDrag();
     }
 
     /// <summary>
@@ -704,7 +730,7 @@ public class UnitCommander : NetworkBehaviour
         ShowBuildingSelection();
 
         //This stops the client from disconnecting if the worldstatemanager has not loaded yet or the client is not connected, i.e the client is loading in or out
-        if (!NetworkClient.isConnected || WorldStateManager.Instance == null)
+        if (!NetworkClient.isConnected || WorldStateManager.Instance == null || localPlayer == null)
         {
             return;
         }
@@ -721,7 +747,13 @@ public class UnitCommander : NetworkBehaviour
         Roaming.Update(Time.unscaledTime, WorldStateManager.Instance.MapBounds.Item1, WorldStateManager.Instance.MapBounds.Item2,
             (ids, goal) => Selection.OrderIds(OrderKind.Move, ids, goal));
         // v0.18: the keyboard is the manual's (its search box), and clicks stop at it; so for the menu, Settings and the gift dialog.
-        if (WAR2D.UI.HudController.DialogOpen || WAR2D.UI.ManualController.AnyOpen) { SendCameraView(); return; }
+        if (WAR2D.UI.HudController.DialogOpen || WAR2D.UI.ManualController.AnyOpen)
+        {
+            // A drag doesn't live on through a dialog: after F1 in a wall drag, the release would place and pay for walls (bug review 2026-11-05).
+            EndDragsForDialog();
+            SendCameraView();
+            return;
+        }
         if (GameInput.AttackMove.WasPressedThisFrame())
         {
             // With producers selected, Rally all armed, or nothing selected (then Rally all or Ctrl + click), A arms the red flag.

@@ -295,7 +295,8 @@ namespace WAR2D.UI
             ownHqSeen = true;
             Camera cam = Camera.main;
             if (cam == null) return;
-            Unity.Mathematics.float2 centre = hq.Data.position + new Unity.Mathematics.float2(2.5f, 2.5f);
+            // The anchor is the footprint's middle tile, not its corner.
+            Unity.Mathematics.float2 centre = Footprint.VisualCenter((Unity.Mathematics.int2)Unity.Mathematics.math.round(hq.Data.position), WorldStateManager.GetBuildingSize(BuildingType.Base));
             Vector3 at = cam.transform.position;
             if (!CameraZoom.InView(new Unity.Mathematics.float2(at.x, at.y), cam.orthographicSize, cam.aspect, centre)) CentreCamera(new Vector2(centre.x, centre.y));
         }

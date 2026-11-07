@@ -68,6 +68,14 @@ public class PhantomBlueprintPlayModeTests
         Assert.That(wsm.DevPlaceBuilding(Bot, BuildingType.Barracks, anchor, 1e6f), Is.True);
         yield return PlayModeMatch.WaitUntil(() => wsm.Map.IsUsed(anchor), 5f);
         yield return null;
+        // Its owner has no player to pay upkeep, and an unpaid building of an owner with no units decays (at 100 % a second
+        // in the shipped config): without its upkeep it stands for the rest of the test, as a real blocker would.
+        Unity.Entities.EntityManager em = Unity.Entities.World.DefaultGameObjectInjectionWorld.EntityManager;
+        yield return PlayModeMatch.WaitUntil(() => OwnedBy(em, Bot) > 0, 5f, () => "the blocker is created");
+        using (var query = em.CreateEntityQuery(typeof(BuildingData), typeof(UpkeepComponent)))
+        using (var entities = query.ToEntityArray(Unity.Collections.Allocator.Temp))
+            foreach (Unity.Entities.Entity e in entities)
+                if (em.GetComponentData<BuildingData>(e).ownerId == Bot) em.RemoveComponent<UpkeepComponent>(e);
         Assert.That(ClientBuildings.Current.Entries.Values.Any(e => e.Data.ownerId == Bot), Is.False, "the client isn't told");
 
         // The preview and the placement say nothing of it.
@@ -81,6 +89,13 @@ public class PhantomBlueprintPlayModeTests
         Assert.That(wsm.PhantomCount, Is.EqualTo(1));
         yield return PlayModeMatch.WaitUntil(() => ClientBuildings.Current.Entries.Values.Any(e => e.Data.ownerId == me && e.Data.buildingType == BuildingType.Barracks && e.Progress == 0),
             5f, () => "the owner sees a blueprint");
+        // It waits while the spot stays unseen: its own view (sent to its owner) must not count as what blocks it (review 2026-11-07).
+        float waitUntil = UnityEngine.Time.realtimeSinceStartup + 2f;
+        while (UnityEngine.Time.realtimeSinceStartup < waitUntil)
+        {
+            Assert.That(wsm.PhantomCount, Is.EqualTo(1), "the waiting blueprint waits while its spot is unseen");
+            yield return null;
+        }
 
         // Seeing the spot again cancels it and refunds it in full.
         float paid = player.Resources;
@@ -90,5 +105,14 @@ public class PhantomBlueprintPlayModeTests
         yield return PlayModeMatch.WaitUntil(() => !ClientBuildings.Current.Entries.Values.Any(e => e.Data.ownerId == me && e.Data.buildingType == BuildingType.Barracks),
             5f, () => "the blueprint is gone on the client");
         Assert.That(wsm.Map.IsUsed(anchor), Is.True, "the other building still stands");
+    }
+
+    private static int OwnedBy(Unity.Entities.EntityManager em, int owner)
+    {
+        using var query = em.CreateEntityQuery(typeof(BuildingData));
+        using var entities = query.ToEntityArray(Unity.Collections.Allocator.Temp);
+        int n = 0;
+        foreach (Unity.Entities.Entity e in entities) if (em.GetComponentData<BuildingData>(e).ownerId == owner) n++;
+        return n;
     }
 }

@@ -390,7 +390,8 @@ namespace WAR2D.UI
         }
 
         /// <summary>True when the selected own buildings may be cancelled or demolished (never the HQ).</summary>
-        private bool Removable => WallsOnly || (selection.BuildingId != 0 && selection.BuildingType != BuildingType.Base);
+        /// A box of buildings (Ctrl + drag) with the HQ in it removes the rest: the HQ coming first no longer hides the button.
+        private bool Removable => WallsOnly || (selection.BuildingId != 0 && selection.RemovableCount > 0);
 
         /// <summary>True when own walls or wall blueprints are selected and nothing else.</summary>
         private bool WallsOnly => selection.WallCount > 0 && selection.BuildingId == 0 && selection.Count == 0;
@@ -475,7 +476,9 @@ namespace WAR2D.UI
             refund.text = blueprints ? $"Cancel: refunds {back:0} (the full cost) while it is a blueprint."
                 : $"Demolish: refunds {back:0} ({(demolishShare == 0.5f ? "half its cost" : $"{demolishShare:P0} of its cost")}).";
             confirm.EnableInClassList("removal__confirm--open", ConfirmOpen);
-            question.text = count > 1 ? $"Demolish {count} {(selection.MixedKinds ? "buildings" : Plural(name))}? You get {back:0} back." : $"Demolish {name}? You get {back:0} back.";
+            int removed = selection.RemovableCount; // the HQ stays, so it isn't counted
+            question.text = removed == 1 && !selection.MixedKinds ? $"Demolish {name}? You get {back:0} back."
+                : $"Demolish {removed} {(selection.MixedKinds ? (removed == 1 ? "building" : "buildings") : Plural(name))}? You get {back:0} back.";
         }
 
         /// <summary>

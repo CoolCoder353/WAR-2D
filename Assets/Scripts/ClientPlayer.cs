@@ -244,6 +244,12 @@ public class ClientPlayer : NetworkBehaviour
         spawnerRallies.Clear();
         attackRallies.Clear();
         OwnStartOptions = System.Array.Empty<int>();
+        // Last match's spectator bar and economy flags: a former spectator kept the bar's numbers, a capped player "Waiting: unit cap".
+        SpectatorOwners = null;
+        SpectatorResources = null;
+        SpectatorUnits = null;
+        upkeepUnpaid = false;
+        atUnitCap = false;
     }
 
     /// <summary>The rally tile of one of the local player's spawners, as last told by the server.</summary>

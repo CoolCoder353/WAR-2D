@@ -186,11 +186,11 @@ namespace WAR2D.Client
             };
             store.Died += OnUnitDied;
             // v0.20: the combat news's drawing, and what it forgets when a unit leaves.
-            combatVisuals = new CombatVisuals(dt, config);
+            combatVisuals = new CombatVisuals(dt, config) { Shown = p => UnitShown == null || UnitShown(0, p) };
             hideBar = new NativeArray<byte>(capacity, Allocator.Persistent);
             store.Forgotten += index => { ClientCombat.Current.Forget(index); combatVisuals.Forget(index); };
             Effects.LandingShown = p => UnitShown == null ? ClientFog.Current.State == null || ClientFog.Current.Sees(p.x, p.y) : UnitShown(0, new float2(p.x, p.y));
-            store.Appeared += (index, at) => worldEffects.UnitAppeared(new Vector2(at.x, at.y), store.OwnerOf(index), Time.time - firstBatchAt);
+            store.Appeared += (index, at) => { if (Shown(index, at)) worldEffects.UnitAppeared(new Vector2(at.x, at.y), store.OwnerOf(index), Time.time - firstBatchAt); };
             lastPosition = new NativeArray<float2>(capacity, Allocator.Persistent);
             lastSteer = new NativeArray<float2>(capacity, Allocator.Persistent);
             rotation = new NativeArray<float>(capacity, Allocator.Persistent);
@@ -545,7 +545,8 @@ namespace WAR2D.Client
                 for (int i = 0; i < count; i++) hidden[known[i]] = (byte)(UnitShown(owners[known[i]], positions[i]) ? 0 : 1);
             // v0.20 (spec §8.3): a Sniper's head turns to what it aims at and holds there while it aims (the job turns it).
             foreach (KeyValuePair<int, byte> status in ClientCombat.Current.Statuses)
-                if ((status.Value & WAR2D.Sim.UnitStatusBits.Aiming) != 0 && combatVisuals.AimTarget(status.Key, out float2 aimed))
+                if ((uint)status.Key < (uint)aimAt.Length && (status.Value & WAR2D.Sim.UnitStatusBits.Aiming) != 0 // the index is the server's: bound it
+                    && combatVisuals.AimTarget(status.Key, out float2 aimed))
                 {
                     aimAt[status.Key] = aimed;
                     aimUntil[status.Key] = now + TurretAim.HoldSeconds;
@@ -970,6 +971,7 @@ namespace WAR2D.Client
         /// <summary>A known unit died: its scorch, and its wreck at its last facing (not a Bomber, which blew itself up).</summary>
         private void OnUnitDied(int index, float2 at)
         {
+            if (!Shown(index, at)) return; // a replay's per-player view: a death that player didn't see leaves nothing
             byte type = store.TypeOf(index);
             var position = new Vector2(at.x, at.y);
             bool large = ScaleOf(type) > 1.5f;
@@ -1000,10 +1002,18 @@ namespace WAR2D.Client
             }
         }
 
+        /// <summary>
+        /// True unless a replay's per-player view (<see cref="UnitShown"/>) hides the unit at <paramref name="at"/>: its shots, death,
+        /// wreck and arrival are drawn only when that player saw it (live play: always, the server sends only what the player sees).
+        /// </summary>
+        private bool Shown(int index, float2 at) => UnitShown == null || UnitShown(store.OwnerOf(index), at);
+
         /// <summary>v0.20: a known unit's drawn position, type and size by id index, for <see cref="CombatVisuals"/>.</summary>
         private (bool known, float2 at, byte type, float scale) UnitAt(int index)
         {
             if (!store.IsKnown(index) || (uint)index >= (uint)lastPosition.Length) return (false, default, 0, 0f);
+            // A replay's per-player view hides what that player didn't see: its fire, laser and leap go with it.
+            if (UnitShown != null && hidden[index] != 0) return (false, default, 0, 0f);
             byte type = store.TypeOf(index);
             return (true, lastPosition[index], type, ScaleOf(type));
         }
@@ -1168,6 +1178,7 @@ namespace WAR2D.Client
                 var (attacker, target) = attacks[i];
                 if (!store.IsKnown(attacker)) continue; // an unseen attacker would predict from the origin
                 float2 from = store.PredictOne(attacker, serverTime);
+                if (!Shown(attacker, from)) continue; // a replay's per-player view: no shots from units that player can't see
                 Vector3 viewport = cam.WorldToViewportPoint(new Vector3(from.x, from.y, 0));
                 if (viewport.x < 0 || viewport.x > 1 || viewport.y < 0 || viewport.y > 1) continue;
                 if (!TryTargetPosition(target, out Vector3 to)) continue;

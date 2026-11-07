@@ -312,6 +312,13 @@ namespace WAR2D.Sim
         /// The centre of the nearest of the eight neighbouring field cells that has a direction, when the
         /// unit's own cell has none. False when none does (the unit really is off the route).
         /// </summary>
+        /// <summary>True when the field cell at <paramref name="c"/> is on the route's field (a step, a stop or the goal).</summary>
+        private bool OnField(int handle, float2 c)
+        {
+            byte direction = Direction(handle, c);
+            return direction == FlowDirections.AtGoal || direction == FlowDirections.Stop || FlowDirections.IsStep(direction);
+        }
+
         private bool NearestFieldCell(int handle, float2 position, out float2 centre)
         {
             centre = default;
@@ -322,8 +329,12 @@ namespace WAR2D.Sim
             {
                 if (dx == 0 && dy == 0) continue;
                 float2 c = ((float2)(cell + new int2(dx, dy)) + 0.5f) * FieldCellSize;
-                byte direction = Direction(handle, c);
-                if (direction != FlowDirections.AtGoal && direction != FlowDirections.Stop && !FlowDirections.IsStep(direction)) continue;
+                if (!OnField(handle, c)) continue;
+                // A diagonal cell past two blocked straight ones is a corner the unit can't cut: it would stop there without a
+                // route miss (bug review 2026-11-05).
+                if (dx != 0 && dy != 0 &&
+                    !OnField(handle, ((float2)(cell + new int2(dx, 0)) + 0.5f) * FieldCellSize) &&
+                    !OnField(handle, ((float2)(cell + new int2(0, dy)) + 0.5f) * FieldCellSize)) continue;
                 float d = math.distancesq(c, position);
                 if (d >= best) continue;
                 best = d;

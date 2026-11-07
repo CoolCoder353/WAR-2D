@@ -437,7 +437,7 @@ namespace WAR2D.UI
             // Flags over every HQ the player has found (their own included), on top of the units.
             foreach (ClientBuildings.Entry entry in ClientBuildings.Current.Entries.Values)
                 if (entry.Data.buildingType == BuildingType.Base)
-                    texture.PlotFlag(entry.Data.position + new float2(2.5f, 2.5f), ColourOf(entry.Data.ownerId), entry.Ghost);
+                    texture.PlotFlag(Footprint.VisualCenter((int2)math.round(entry.Data.position), WorldStateManager.GetBuildingSize(BuildingType.Base)), ColourOf(entry.Data.ownerId), entry.Ghost);
             using (UploadMarker.Auto()) texture.End();
         }
 

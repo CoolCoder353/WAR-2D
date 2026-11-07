@@ -398,7 +398,7 @@ namespace WAR2D.Ai
             foreach (KeyValuePair<int, int2> hq in KnownHqs)
             {
                 if (!view.IsEnemy(hq.Key)) { forget.Add(hq.Key); continue; }
-                float2 centre = (float2)hq.Value + 2.5f;
+                float2 centre = Footprint.VisualCenter(hq.Value, Config.ConfigLoader.LoadConfig().GetBuilding(BuildingType.Base).Size); // the anchor is the HQ's middle tile, not its corner
                 bool near = false;
                 foreach (AiUnit u in view.OwnUnits) if (math.distancesq(u.Position, centre) < 9f) { near = true; break; }
                 if (!near) continue;

@@ -1263,7 +1263,9 @@ namespace WAR2D.Sim
                 }
                 else if (hit.Kind == TargetKinds.Unit)
                 {
-                    if (Airborne[hit.Slot] != 0) continue;
+                    // A unit killed earlier in this queue takes nothing more: the queue's order is the worker threads', so a later hit
+                    // would hand the kill, the death's cause and (with a flame) a fire to whichever shot happened to come last.
+                    if (Airborne[hit.Slot] != 0 || Health[hit.Slot] <= 0f) continue;
                     Health[hit.Slot] = math.max(0f, Health[hit.Slot] - hit.Amount);
                     LastHitBy[hit.Slot] = hit.AttackerOwner;
                     int id = IdOf[hit.Slot], index = NetIdAllocator.IndexOf(id);
@@ -1280,6 +1282,7 @@ namespace WAR2D.Sim
                 }
                 else
                 {
+                    if (BuildingHealth[hit.Slot] <= 0f) continue; // already destroyed in this queue: as for units, the first killing hit counts
                     if (hit.From.x != 0f || hit.From.y != 0f) DefendAlarms.Raise(Alarms, AlarmCount, AlarmCellTiles, BuildingOwnerSlot[hit.Slot], BuildingPositions[hit.Slot], hit.From);
                     BuildingHealth[hit.Slot] = math.max(0f, BuildingHealth[hit.Slot] - hit.Amount);
                     BuildingDamage[hit.Slot] += hit.Amount;
