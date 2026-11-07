@@ -978,6 +978,12 @@ namespace WAR2D.Client
         }
 
         /// <summary>How many tiles across a unit type is drawn (2 for the large units), from the art manifest.</summary>
+        /// <summary>Each unit type's atlas id and its turret head's, by type byte, made on first use (each death made both strings).</summary>
+        private static readonly string[] AtlasIds = new string[256], HeadIds = new string[256];
+        private int deathViewFrame = -1;
+        private bool deathViewAll;
+        private Rect deathView;
+
         /// <summary>A known unit died: its scorch, and its wreck at its last facing (not a Bomber, which blew itself up).</summary>
         private void OnUnitDied(int index, float2 at)
         {
@@ -988,12 +994,19 @@ namespace WAR2D.Client
             worldEffects.UnitDied(position, large);
             // v0.20 (spec §8.1): the death by its cause and size; a Bomber's own blast is its death.
             byte cause = store.LastDeathReason == LeaveReason.DiedBlast ? (byte)1 : store.LastDeathReason == LeaveReason.DiedFire ? (byte)2 : (byte)0;
-            // Only on or near the screen, as the server's death explosions are (an off-screen battle would churn the pools).
-            Camera cam = ViewCamera != null ? ViewCamera : Camera.main;
-            bool shown = cam == null || WorldEffects.ViewOf(cam, 2f).Contains(position);
+            // Only on or near the screen, as the server's death explosions are (an off-screen battle would churn the pools). The view
+            // is read once a frame: one batch can hold hundreds of deaths at 100,000 units.
+            if (deathViewFrame != Time.frameCount)
+            {
+                deathViewFrame = Time.frameCount;
+                Camera cam = ViewCamera != null ? ViewCamera : Camera.main;
+                deathViewAll = cam == null;
+                if (!deathViewAll) deathView = WorldEffects.ViewOf(cam, 2f);
+            }
+            bool shown = deathViewAll || deathView.Contains(position);
             if (type != (byte)UnitType.Bomber && shown) Effects.UnitDeath(position, large, cause);
             if (unitAtlas == null || type == (byte)UnitType.Bomber || (uint)index >= (uint)rotation.Length) return;
-            string id = ((UnitType)type).ToString();
+            string id = AtlasIds[type] ??= ((UnitType)type).ToString();
             int directions = unitAtlas.Directions(id);
             if (directions <= 0) return;
             Sprite wreck = unitAtlas.Sprite(id, UnitFrames.Direction(rotation[index], directions) * unitAtlas.Frames(id));
@@ -1002,7 +1015,7 @@ namespace WAR2D.Client
             if (cause == 2) Decals.BurntWreck(position, wreck);
             else Decals.Wreck(position, wreck);
             // v0.20 (spec §8.1): shot dead, a turreted unit's head is thrown off to land beside its wreck, at the facing it last had.
-            string head = id + ArtManifest.TurretSuffix;
+            string head = HeadIds[type] ??= id + ArtManifest.TurretSuffix;
             int headDirections = cause == 0 && TurretAim.Has((UnitType)type) ? unitAtlas.Directions(head) : 0;
             if (headDirections > 0 && turretAngle.IsCreated && (uint)index < (uint)turretAngle.Length)
             {

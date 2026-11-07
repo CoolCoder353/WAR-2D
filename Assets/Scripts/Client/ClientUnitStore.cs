@@ -242,7 +242,10 @@ namespace WAR2D.Client
 
         // Profiler markers (nearly free in a release player): where a batch's time goes.
         private static readonly Unity.Profiling.ProfilerMarker DecodeMarker = new Unity.Profiling.ProfilerMarker("ClientUnitStore.DecodeMoveOrder"),
-            RoutesMarker = new Unity.Profiling.ProfilerMarker("ClientUnitStore.ApplyRoutes"), OtherMarker = new Unity.Profiling.ProfilerMarker("ClientUnitStore.ApplyOther");
+            RoutesMarker = new Unity.Profiling.ProfilerMarker("ClientUnitStore.ApplyRoutes"), OtherMarker = new Unity.Profiling.ProfilerMarker("ClientUnitStore.ApplyOther"),
+            EnterMarker = new Unity.Profiling.ProfilerMarker("ClientUnitStore.Enter"), LeaveMarker = new Unity.Profiling.ProfilerMarker("ClientUnitStore.Leave"),
+            CorrectionMarker = new Unity.Profiling.ProfilerMarker("ClientUnitStore.Correction"), HealthMarker = new Unity.Profiling.ProfilerMarker("ClientUnitStore.Health"),
+            AttackMarker = new Unity.Profiling.ProfilerMarker("ClientUnitStore.Attack");
 
         private void ApplyOne(NetworkReader reader, int batchTick)
         {
@@ -256,15 +259,21 @@ namespace WAR2D.Client
             switch (Messages.PeekType(reader))
             {
                 case MessageType.Enter:
+                {
+                    using var marker = EnterMarker.Auto();
                     enters.Clear(); waypoints.Clear();
                     Messages.DecodeEnter(reader, enters, waypoints);
                     foreach (EnterUnit u in enters) Enter(u, batchTick);
                     break;
+                }
                 case MessageType.Leave:
+                {
+                    using var marker = LeaveMarker.Auto();
                     leaves.Clear();
                     Messages.DecodeLeave(reader, leaves);
                     foreach (LeaveUnit u in leaves) Leave(u, batchTick);
                     break;
+                }
                 case MessageType.MoveOrder:
                 {
                     int tick;
@@ -275,12 +284,14 @@ namespace WAR2D.Client
                 }
                 case MessageType.Correction:
                 {
+                    using var marker = CorrectionMarker.Auto();
                     int tick = DecodeCorrection(reader, out byte scale);
                     ApplyCorrections(tick, scale);
                     break;
                 }
                 case MessageType.Health:
                 {
+                    using var marker = HealthMarker.Auto();
                     // Decoded and applied in a Burst job, as the corrections are.
                     CopyPayload();
                     new ApplyHealthJob { Bytes = payloadBytes.AsArray(), Start = reader.Position, Units = healthUnits, KnownSlot = knownSlot, Health = health, Result = decoded }.Run();
@@ -289,6 +300,8 @@ namespace WAR2D.Client
                     break;
                 }
                 case MessageType.Attack:
+                {
+                    using var marker = AttackMarker.Auto();
                     attacks.Clear();
                     Messages.DecodeAttack(reader, attacks);
                     foreach (AttackEvent a in attacks)
@@ -298,6 +311,7 @@ namespace WAR2D.Client
                         else if (IsKnown(a.AttackerIndex)) Attack?.Invoke(a.AttackerIndex, a.TargetId);
                     }
                     break;
+                }
                 default:
                     throw new InvalidDataException("unknown replication message");
             }

@@ -11,9 +11,12 @@ namespace WAR2D.Net.Replication
         /// <summary>Batches received so far (diagnostics and tests).</summary>
         public static long BatchesReceived;
 
+        private static readonly Unity.Profiling.ProfilerMarker ReceiveMarker = new Unity.Profiling.ProfilerMarker("Receive.Units");
+
         public static void Receive(ReplicationBatch batch)
         {
             BatchesReceived++;
+            using var marker = ReceiveMarker.Auto();
             Received?.Invoke(batch);
         }
     }

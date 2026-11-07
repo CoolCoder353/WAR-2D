@@ -439,8 +439,11 @@ namespace WAR2D.Net.Replication
         public event Action<int> Removed;
 
         /// <summary>Applies a received batch to <see cref="Current"/>.</summary>
+        private static readonly Unity.Profiling.ProfilerMarker ReceiveMarker = new Unity.Profiling.ProfilerMarker("Receive.Buildings");
+
         public static void Receive(BuildingBatch batch)
         {
+            using var marker = ReceiveMarker.Auto();
             if (!BuildingCodec.Apply(Current, batch.Payload)) WarLog.Warn(LogCategory.Replication, "dropped a malformed building batch");
         }
 

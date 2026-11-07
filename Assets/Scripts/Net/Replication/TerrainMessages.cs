@@ -262,8 +262,11 @@ namespace WAR2D.Net.Replication
         internal void RaiseChanged(IReadOnlyList<int2> tiles) => Changed?.Invoke(tiles);
 
         /// <summary>Applies a received batch to <see cref="Current"/>.</summary>
+        private static readonly Unity.Profiling.ProfilerMarker ReceiveMarker = new Unity.Profiling.ProfilerMarker("Receive.Terrain");
+
         public static void Receive(TerrainBatch batch)
         {
+            using var marker = ReceiveMarker.Auto();
             if (!TerrainCodec.Apply(Current, batch.Payload)) WarLog.Warn(LogCategory.Replication, "dropped a malformed terrain batch");
         }
 
