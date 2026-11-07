@@ -145,15 +145,20 @@ namespace WAR2D.Sim
             // Slots that can be walked to stay (they are distinct by construction). The rest are pulled in towards the goal,
             // to a place that is open and no other member's slot, or get no slot (code review 2026-11-03: every blocked slot
             // fell back to the goal itself, so several units shared it and never arrived).
+            // In Burst jobs (2026-11-07: the managed line checks of an order wave's eight 3,000-unit groups, blocked slots' retries most,
+            // took 35 to 50 ms of a tick); queued footprint changes (rare right after the boundary) take the managed checks, which count them.
+            if (!context.Map.HasPendingUsed)
+            {
+                SeatInBurst(context, centre, data.FormationSpacing);
+                return;
+            }
             blockedSlots.Clear();
             formationSeats.Reset(data.FormationSpacing);
-            NativeArray<byte> open = OpenSlots(context, centre);
             for (int k = 0; k < formationOffsets.Count; k++)
             {
-                if (open[k] != 0) formationSeats.Add(formationOffsets[k]);
+                if (OpenFrom(context, centre, formationOffsets[k])) formationSeats.Add(formationOffsets[k]);
                 else { blockedSlots.Add((k, formationOffsets[k])); formationOffsets[k] = FormationRules.NoSeat; }
             }
-            open.Dispose();
             foreach ((int k, float2 original) in blockedSlots)
             {
                 float2 offset = original;
@@ -166,26 +171,35 @@ namespace WAR2D.Sim
         }
 
         /// <summary>
-        /// <see cref="OpenFrom"/> for every formation slot, in one Burst job over the job threads (2026-11-07: 3,000 managed line checks of
-        /// up to 100 tiles each took 50 ms of an order wave at 100,000 units). Queued footprint changes (rare right after the boundary)
-        /// take the managed check, which counts them.
+        /// The seating above in two Burst jobs: every slot's line check over the job threads, then, in order, the open slots seated and
+        /// each blocked one pulled in towards the goal to the first place that is open and no other member's slot.
         /// </summary>
-        private NativeArray<byte> OpenSlots(SimContext context, float2 centre)
+        private void SeatInBurst(SimContext context, float2 centre, float spacing)
         {
-            var open = new NativeArray<byte>(formationOffsets.Count, Allocator.TempJob);
-            if (context.Map.HasPendingUsed)
-            {
-                for (int k = 0; k < open.Length; k++) open[k] = (byte)(OpenFrom(context, centre, formationOffsets[k]) ? 1 : 0);
-                return open;
-            }
             var offsets = new NativeArray<float2>(formationOffsets.Count, Allocator.TempJob);
             for (int k = 0; k < offsets.Length; k++) offsets[k] = formationOffsets[k];
+            var open = new NativeArray<byte>(offsets.Length, Allocator.TempJob);
             WAR2D.World.MapGrid grid = context.Map.Grid;
-            new OpenSlotsJob { Offsets = offsets, Tiles = grid.Tiles, Used = grid.Used, Width = grid.Width, Height = grid.Height, Centre = centre, Open = open }
-                .Schedule(offsets.Length, 64).Complete();
+            JobHandle checkedSlots = new OpenSlotsJob { Offsets = offsets, Tiles = grid.Tiles, Used = grid.Used, Width = grid.Width, Height = grid.Height, Centre = centre, Open = open }
+                .Schedule(offsets.Length, 64);
+            new SeatSlotsJob { Offsets = offsets, Open = open, Tiles = grid.Tiles, Used = grid.Used, Width = grid.Width, Height = grid.Height, Centre = centre, Spacing = spacing }
+                .Schedule(checkedSlots).Complete();
+            for (int k = 0; k < offsets.Length; k++) formationOffsets[k] = offsets[k];
             offsets.Dispose();
-            return open;
+            open.Dispose();
         }
+
+        /// <summary><see cref="OpenFrom"/> on the grid's arrays, Burst-safe.</summary>
+        private static bool OpenOnGrid(NativeArray<byte> tiles, NativeArray<byte> used, int width, int height, float2 centre, float2 offset)
+        {
+            int steps = (int)math.ceil(math.length(offset) * 2f);
+            for (int s = 1; s <= steps; s++)
+                if (!Walkable(tiles, used, width, height, (int2)math.floor(centre + offset * (s / (float)steps)))) return false;
+            return Walkable(tiles, used, width, height, (int2)math.floor(centre + offset));
+        }
+
+        private static bool Walkable(NativeArray<byte> tiles, NativeArray<byte> used, int width, int height, int2 t) =>
+            (uint)t.x < (uint)width && (uint)t.y < (uint)height && TileRules.IsFloor(tiles[t.y * width + t.x]) && used[t.y * width + t.x] == 0;
 
         [BurstCompile]
         private struct OpenSlotsJob : IJobParallelFor
@@ -196,19 +210,71 @@ namespace WAR2D.Sim
             public float2 Centre;
             public NativeArray<byte> Open;
 
-            public void Execute(int k)
+            public void Execute(int k) => Open[k] = (byte)(OpenOnGrid(Tiles, Used, Width, Height, Centre, Offsets[k]) ? 1 : 0);
+        }
+
+        /// <summary>The seats of <see cref="FormationRules.SeatGrid"/>, in order: open slots stay, blocked ones are pulled in (up to five tries).</summary>
+        [BurstCompile]
+        private struct SeatSlotsJob : IJob
+        {
+            public NativeArray<float2> Offsets;
+            [ReadOnly] public NativeArray<byte> Open, Tiles, Used;
+            public int Width, Height;
+            public float2 Centre;
+            public float Spacing;
+
+            public void Execute()
             {
-                float2 offset = Offsets[k];
-                int steps = (int)math.ceil(math.length(offset) * 2f);
-                byte result = 1;
-                for (int s = 1; s <= steps && result != 0; s++)
-                    if (!Walkable((int2)math.floor(Centre + offset * (s / (float)steps)))) result = 0;
-                if (result != 0 && !Walkable((int2)math.floor(Centre + offset))) result = 0;
-                Open[k] = result;
+                float cell = math.max(Spacing * 0.51f, 1e-3f), minSq = Spacing * Spacing * 0.25f;
+                var head = new NativeHashMap<int2, int>(Offsets.Length, Allocator.Temp);
+                var at = new NativeList<float2>(Offsets.Length, Allocator.Temp);
+                var next = new NativeList<int>(Offsets.Length, Allocator.Temp);
+                var blocked = new NativeList<int>(Allocator.Temp);
+                var original = new NativeList<float2>(Allocator.Temp);
+                for (int k = 0; k < Offsets.Length; k++)
+                {
+                    if (Open[k] != 0) Add(Offsets[k], cell, head, at, next);
+                    else
+                    {
+                        blocked.Add(k);
+                        original.Add(Offsets[k]);
+                        Offsets[k] = new float2(float.MaxValue, float.MaxValue); // FormationRules.NoSeat
+                    }
+                }
+                for (int b = 0; b < blocked.Length; b++)
+                {
+                    float2 offset = original[b];
+                    for (int tries = 0; tries < 5; tries++)
+                    {
+                        offset = tries < 4 ? offset * 0.5f : float2.zero;
+                        if (OpenOnGrid(Tiles, Used, Width, Height, Centre, offset) && !Taken(offset, cell, minSq, head, at, next))
+                        {
+                            Offsets[blocked[b]] = offset;
+                            Add(offset, cell, head, at, next);
+                            break;
+                        }
+                    }
+                }
             }
 
-            private bool Walkable(int2 t) =>
-                (uint)t.x < (uint)Width && (uint)t.y < (uint)Height && TileRules.IsFloor(Tiles[t.y * Width + t.x]) && Used[t.y * Width + t.x] == 0;
+            private static void Add(float2 offset, float cell, NativeHashMap<int2, int> head, NativeList<float2> at, NativeList<int> next)
+            {
+                int2 c = (int2)math.floor(offset / cell);
+                at.Add(offset);
+                next.Add(head.TryGetValue(c, out int first) ? first : -1);
+                head[c] = at.Length - 1;
+            }
+
+            private static bool Taken(float2 offset, float cell, float minSq, NativeHashMap<int2, int> head, NativeList<float2> at, NativeList<int> next)
+            {
+                int2 c = (int2)math.floor(offset / cell);
+                for (int y = -1; y <= 1; y++)
+                for (int x = -1; x <= 1; x++)
+                    if (head.TryGetValue(c + new int2(x, y), out int i))
+                        for (; i >= 0; i = next[i])
+                            if (math.distancesq(at[i], offset) < minSq) return true;
+                return false;
+            }
         }
 
         /// <summary>True when the slot and the straight line to it from the goal are open floor (a unit at the goal can walk to it).</summary>
