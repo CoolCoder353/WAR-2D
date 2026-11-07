@@ -56,7 +56,8 @@ public sealed class PerfClient : MonoBehaviour
         {
             // After SettingsStore.ApplyOnStart: the defaults (1920×1080 fullscreen), whatever this machine saved, uncapped. Fullscreen
             // matters: a window behind another one stalls in DXGI.WaitOnSwapChain for ~500 ms at a time (profiled 2026-11-06).
-            SettingsStore.Current = new GameSettings { VSync = false, FpsCap = 0, EdgeScroll = false };
+            // -perfFpsCap n: the game's frame cap (its default is 144; the benchmark runs uncapped unless given one).
+            SettingsStore.Current = new GameSettings { VSync = false, FpsCap = int.TryParse(PerfMatch.ArgValue("-perfFpsCap"), out int cap) ? Math.Max(0, cap) : 0, EdgeScroll = false };
             SettingsStore.Apply(SettingsStore.Current);
             // -perfBreakdown: bytes per message type in this player's unit stream (decodes every batch twice: not for timing runs).
             if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0) WAR2D.Net.Replication.ReplicationClient.Received += CountBatch;
