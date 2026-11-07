@@ -152,8 +152,26 @@ reliably: the medians pass on the three setups with Unity's thread count for the
 109 to 119. A Development build profiled on 6 E-cores (`-perfProfile`) shows no single cause in its 31 frames over 7 ms of 2,000:
 the swap chain waits (4 to 9 ms), the unit draw's main-thread work stretches from 1.0 ms to 2 to 5 ms when the main thread
 loses its core, and one collection (6.4 ms). The largest main-thread item is the unit draw (1.0 ms a frame):
-`PrepareUnitsJob` and the ring job run on the main thread (`.Run()`). On the reference machine the 1 % low is likely near
-the budget; confirm it there, and spreading the draw job over the job threads is the next step if it falls short.
+`PrepareUnitsJob` and the ring job ran on the main thread (`.Run()`). On the reference machine the 1 % low is likely near
+the budget; confirm it there.
+
+**The draw job over the job threads (branch `perf/parallel-draw-job`).** `PrepareUnitsJob` is an `IJobParallelFor` now, with
+`GatherUnitsJob` putting its lists in unit order (the same output, `DrawJobTests`). Six interleaved pairs on 6 E-cores with 11
+job threads, server on the same cores (before = this branch's base, after = the parallel job):
+
+| Pair | Before fps | After fps | Before 1 % low | After 1 % low | Before main (ms) | After main (ms) |
+|---|---|---|---|---|---|---|
+| 1 | 201.7 | 256.9 | 16.8 | 47.9 | 4.94 | 3.88 |
+| 2 | 280.1 | 310.6 | 114.2 | 120.3 | 3.56 | 3.21 |
+| 3 | 224.6 | 255.0 | 95.5 | 117.7 | 4.45 | 3.92 |
+| 4 | 282.3 | 267.5 | 130.8 | 114.6 | 3.54 | 3.73 |
+| 5 | 266.9 | 313.0 | 113.4 | 104.5 | 3.74 | 3.19 |
+| 6 | 332.6 | 354.9 | 100.9 | 106.8 | 3.00 | 2.81 |
+
+Pairs 1 to 3 ran a build without the emit bits' per-frame clear (about 10 KB); pair 1 ran while the machine was very busy
+(tick p95 25 ms). The mean frame rate rose in 5 of 6 pairs and the main thread fell 0.2 to 1.1 ms in 5 of 6; the 1 % low
+rose in 4 of 6, within the noise: its slow frames are the cores' contention, which this doesn't remove. The client uses more
+CPU (240 to 262 % of a core against 193 to 230 %). Server: no errors, no dropped connections, bandwidth 58 to 84 KB/s on both.
 
 ## What was slow (profiler evidence)
 
