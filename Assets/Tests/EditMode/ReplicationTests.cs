@@ -808,9 +808,10 @@ public class ReplicationTests
     }
 
     /// <summary>
-    /// A unit whose order's field doesn't reach its cell yet gets a stub to its own cell, isn't sent the same stub again while it
-    /// waits, and gets its whole route on the first tick the field reaches it (2026-11-07: the stub was kept as the order's route until
-    /// the next rotation, up to 2 s, and the client walked the unit back to its tile meanwhile).
+    /// A unit whose order's field doesn't reach its cell yet gets a stub to its own cell, isn't sent a stub again while it waits (not
+    /// even when it is pushed to another tile: corrections keep its place), and gets its whole route on the first tick the field
+    /// reaches it (2026-11-07: the stub was kept as the order's route until the next rotation, up to 2 s, and the client walked the
+    /// unit back to its tile meanwhile; then a pushed unit's stub was resent on every push, most of the 100k benchmark's routes).
     /// </summary>
     [Test]
     public void AUnitWaitingForItsFieldGetsItsRouteAsSoonAsTheFieldReachesIt()
@@ -852,6 +853,10 @@ public class ReplicationTests
             Assert.LessOrEqual(routes.CountOf(1), 2, "no field here yet: a stub to the unit's own cell");
             Run(2);
             Assert.AreEqual(stub, routes.GenerationOf(1), "the same stub isn't sent again while the unit waits");
+            positions[0] = new float2(9f, 18f); // pushed two cells over, in the same unbuilt sector
+            Run(3);
+            Assert.AreEqual(stub, routes.GenerationOf(1), "nor a new stub when it is pushed while it waits");
+            positions[0] = new float2(5f, 16f);
 
             blockOf[0] = 0; // the field is built and reaches the unit (not a rotation tick for index 1)
             orderReady[0] = 1;

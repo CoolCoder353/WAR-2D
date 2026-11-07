@@ -133,7 +133,10 @@ namespace WAR2D.Net.Replication
         /// between corrections (players clicked again; 2026-11-07).
         /// </summary>
         Waiting = 5,
-        /// <summary>Still waiting with the same stub: nothing follows and nothing changes.</summary>
+        /// <summary>
+        /// Still waiting: nothing follows and nothing changes. Not even a new stub when the unit was pushed meanwhile: corrections
+        /// keep its place (the stub was resent on every push, 2.7 of 3.7 million routes in the 100k benchmark, 2026-11-07).
+        /// </summary>
         Pending = 6,
     }
 
@@ -178,6 +181,12 @@ namespace WAR2D.Net.Replication
             bool rotate = order >= 0 && (Tick + index) % RouteMaintenance.RetraceEvery == 0;
             if (!fresh && !changed && !rotate) return;
             if (!fresh && order < 0) { Out.Write(RouteResult.Arrived); return; }
+            // Still waiting for a field that isn't built and doesn't reach it: not traced again (it was, every tick).
+            if (!fresh && order >= 0 && TracedOrder[index] == RouteMaintenance.WaitingOn(order) && OrderReady[order] == 0 && !Covers(order, Positions[i]))
+            {
+                Out.Write(RouteResult.Pending);
+                return;
+            }
 
             var route = new FixedList4096Bytes<float2>();
             Trace(order, Positions[i], ref route);
@@ -194,9 +203,7 @@ namespace WAR2D.Net.Replication
             }
             else if (order >= 0 && !Covers(order, Positions[i]))
             {
-                bool same = !fresh && TracedOrder[index] == RouteMaintenance.WaitingOn(order) && SameStub(index, ref route);
-                Out.Write(same ? RouteResult.Pending : RouteResult.Waiting);
-                if (same) return;
+                Out.Write(RouteResult.Waiting);
                 Out.Write(route.Length);
                 for (int k = 0; k < route.Length; k++) Out.Write(route[k]);
                 return;
@@ -285,14 +292,6 @@ namespace WAR2D.Net.Replication
             if ((uint)handle >= OrderFieldTable.MaxOrders) return false;
             int sx = tile.x / SectorGraph.SectorSize, sy = tile.y / SectorGraph.SectorSize;
             return BlockOf[handle * SectorCount + sy * SectorsX + sx] >= 0;
-        }
-
-        /// <summary>True when the stub is the route the unit already has.</summary>
-        private bool SameStub(int index, ref FixedList4096Bytes<float2> route)
-        {
-            if (RouteCount[index] != route.Length) return false;
-            for (int k = 0; k < route.Length; k++) if (!Arena[Start[index] + k].Equals(route[k])) return false;
-            return true;
         }
 
         private byte DirectionAtCell(int handle, int2 cell)
