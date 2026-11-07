@@ -54,7 +54,7 @@
     <SeparationStrength>1.0</SeparationStrength>         <!-- spike default -->
     <HashCellSize>5</HashCellSize>                       <!-- v0.3 hash row -->
     <MaxFieldRebuildsPerTick>2</MaxFieldRebuildsPerTick> <!-- v0.3 flow row -->
-    <MaxUnitsPerPlayer>10000</MaxUnitsPerPlayer>         <!-- spec 1 -->
+    <MaxUnitsPerPlayer>12500</MaxUnitsPerPlayer>         <!-- spec 1; 12,500 from 2026-11-07: 8 players x 12,500 = 100,000 units -->
     <MaxEntities>131072</MaxEntities>                    <!-- 8 x 10k plus churn and buildings -->
     <FogCellSize>2</FogCellSize>                         <!-- v0.5: fog grid cell size in tiles -->
     <VisionIntervalTicks>4</VisionIntervalTicks>         <!-- v0.5: fog recomputed at 5 Hz -->

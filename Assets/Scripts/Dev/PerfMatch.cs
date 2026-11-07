@@ -12,11 +12,11 @@ using WAR2D.Sim;
 
 /// <summary>
 /// The v0.4 performance gate (spec §4.1). Started with <c>-perf</c> (optionally <c>-perfOut &lt;dir&gt;</c>),
-/// it hosts a match on a generated 1024² map (seed 1) with the host plus seven bots, 10,000 units
+/// it hosts a match on a generated 1024² map (seed 1) with the host plus seven bots, 12,500 units
 /// each, runs the v0.3 battle script (four fronts, a quarter of each army re-ordered every 2 s), warms
 /// up for 100 ticks, samples 1,200 ticks, writes <c>perf.csv</c> and quits. The bots' replication
 /// streams go to virtual clients that count payload plus KCP/UDP overhead. Armies are topped back up to
-/// 10,000 every second (as the v0.3 spike's spawn target did), so the load stays at 80,000 units while
+/// 12,500 every second (as the v0.3 spike's spawn target did), so the load stays at 100,000 units while
 /// the battle kills them. With <c>-perfClients n</c> the first n bots are instead real players (see
 /// <see cref="PerfClient"/>) who measure what they receive over KCP. Does nothing without the flag.
 /// </summary>
@@ -25,11 +25,11 @@ public sealed class PerfMatch : MonoBehaviour
     public const int WarmupTicks = 100, OrderEveryTicks = 40;
 
     /// <summary>
-    /// The gate's 8 owners × 10,000 units and 1,200 sampled ticks, or other scales for the client benchmark
+    /// The gate's 8 owners × 12,500 units and 1,200 sampled ticks, or other scales for the client benchmark
     /// (<c>tools/perf-10k.sh</c>: 2 × 5,000): <c>-perfOwners</c> (an even 2 to 8; front partners are pairs),
-    /// <c>-perfUnitsPerOwner</c> (100 to 10,000) and <c>-perfSampleTicks</c> (a longer soak).
+    /// <c>-perfUnitsPerOwner</c> (100 to 12,500, the unit cap) and <c>-perfSampleTicks</c> (a longer soak).
     /// </summary>
-    public static readonly int Owners = ArgInt("-perfOwners", 8, 2, 8) & ~1, UnitsPerOwner = ArgInt("-perfUnitsPerOwner", 10000, 100, 10000),
+    public static readonly int Owners = ArgInt("-perfOwners", 8, 2, 8) & ~1, UnitsPerOwner = ArgInt("-perfUnitsPerOwner", 12500, 100, 12500),
         SampleTicks = ArgInt("-perfSampleTicks", 1200, 100, 1200000);
 
     private readonly PerfStats stats = new PerfStats();

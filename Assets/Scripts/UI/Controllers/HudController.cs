@@ -411,6 +411,11 @@ namespace WAR2D.UI
             matchMenu.ShowPaused(core != null && core.IsMenuPaused && want);
         }
 
+        // Profiler markers (nearly free in a release player): the HUD's parts that grow with the units known.
+        private static readonly Unity.Profiling.ProfilerMarker MinimapMarker = new Unity.Profiling.ProfilerMarker("Hud.Minimap"),
+            MarkersMarker = new Unity.Profiling.ProfilerMarker("Hud.WorldMarkers"), TagsMarker = new Unity.Profiling.ProfilerMarker("Hud.OrderTags"),
+            SelectionMarker = new Unity.Profiling.ProfilerMarker("Hud.Selection"), QuickMarker = new Unity.Profiling.ProfilerMarker("Hud.Quick");
+
         private void Update()
         {
             CentreOnOwnClearing();
@@ -462,10 +467,10 @@ namespace WAR2D.UI
                 bool owner = NetworkClient.localPlayer != null && NetworkClient.localPlayer.TryGetComponent(out ClientPlayer local) && local.isServerOwner;
                 endScreen.ShowRematch(owner, NetworkServer.active && WorldStateManager.Instance != null && WorldStateManager.Instance.Recorder != null && !WorldStateManager.Instance.Recorder.Finished);
             }
-            minimap.Update(Time.unscaledDeltaTime);
+            using (MinimapMarker.Auto()) minimap.Update(Time.unscaledDeltaTime);
             if (Spectating) spectator.Tick(Time.unscaledDeltaTime);
-            worldMarkers.Update(!Spectating && !endScreen.IsShown && !matchMenu.IsOpen && !settings.IsOpen && !manual.IsOpen);
-            orderTags.Update(UnitCommander.Instance != null ? UnitCommander.Instance.Feedback : null, Camera.main, GameInput.Point.ReadValue<Vector2>());
+            using (MarkersMarker.Auto()) worldMarkers.Update(!Spectating && !endScreen.IsShown && !matchMenu.IsOpen && !settings.IsOpen && !manual.IsOpen);
+            using (TagsMarker.Auto()) orderTags.Update(UnitCommander.Instance != null ? UnitCommander.Instance.Feedback : null, Camera.main, GameInput.Point.ReadValue<Vector2>());
             ShowWallReadout();
             Model.PullDiplomacy();
             SubscribeAlerts();
@@ -474,7 +479,7 @@ namespace WAR2D.UI
             if (selectionTimer <= 0f)
             {
                 selectionTimer = SelectionRefreshSeconds;
-                Selection.Pull();
+                using (SelectionMarker.Auto()) Selection.Pull();
             }
 
             GameCore core = GameCore.Instance;
@@ -484,7 +489,7 @@ namespace WAR2D.UI
                 playerTimer = PlayerRefreshSeconds;
                 Model.PullPlayers();
                 if (core != null && core.CurrentState == GameState.PlacingHQ) CountPlacedHQs();
-                PullQuick();
+                using (QuickMarker.Auto()) PullQuick();
             }
             if (core != null) overlay.Show(core.CurrentState, ShowStartOptions(core), core.CountdownEndTime - NetworkTime.time);
             else startMarkers.Show(markers, null);

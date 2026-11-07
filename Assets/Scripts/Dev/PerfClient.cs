@@ -203,11 +203,9 @@ public sealed class PerfClient : MonoBehaviour
         ClientWorld world = ClientWorld.Instance;
         Camera cam = Camera.main;
         if (world == null || cam == null) return;
-        Unity.Collections.NativeArray<float2> p = world.Positions;
-        known = p.Length;
-        float2 centre = new float2(cam.transform.position.x, cam.transform.position.y);
-        float2 half = new float2(cam.orthographicSize * cam.aspect, cam.orthographicSize);
-        for (int k = 0; k < p.Length; k++) if (math.all(math.abs(p[k] - centre) <= half)) onScreen++;
+        known = world.Positions.Length;
+        onScreen = Scan(world.Positions, new float2(cam.transform.position.x, cam.transform.position.y),
+            new float2(cam.orthographicSize * cam.aspect, cam.orthographicSize), out _, out _);
     }
 
     /// <summary>
@@ -220,12 +218,44 @@ public sealed class PerfClient : MonoBehaviour
         Camera cam = Camera.main;
         var controller = FindFirstObjectByType<Character.Character_Controler>();
         if (world == null || cam == null || controller == null || world.Positions.Length == 0) return;
-        Unity.Collections.NativeArray<float2> p = world.Positions;
-        float2 lo = p[0], hi = p[0];
-        for (int k = 1; k < p.Length; k++) { lo = math.min(lo, p[k]); hi = math.max(hi, p[k]); }
+        Scan(world.Positions, 0f, 0f, out float2 lo, out float2 hi);
         float2 half = (hi - lo) * 0.5f + 2f, centre = (lo + hi) * 0.5f;
         controller.CentreOn(new Vector2(centre.x, centre.y));
         controller.ZoomOutToShow(math.max(half.y, half.x / cam.aspect));
+    }
+
+    /// <summary>The units' bounds and how many are inside the box (a Burst job: the harness's managed loops over 100,000 units took 8 ms).</summary>
+    private static int Scan(Unity.Collections.NativeArray<float2> positions, float2 centre, float2 half, out float2 lo, out float2 hi)
+    {
+        using var result = new Unity.Collections.NativeArray<float2>(3, Unity.Collections.Allocator.TempJob);
+        Unity.Jobs.IJobExtensions.Run(new ScanJob { Positions = positions, Centre = centre, Half = half, Result = result });
+        lo = result[0];
+        hi = result[1];
+        return (int)result[2].x;
+    }
+
+    [Unity.Burst.BurstCompile]
+    private struct ScanJob : Unity.Jobs.IJob
+    {
+        [Unity.Collections.ReadOnly] public Unity.Collections.NativeArray<float2> Positions;
+        public float2 Centre, Half;
+        public Unity.Collections.NativeArray<float2> Result; // lo, hi, (count, 0)
+
+        public void Execute()
+        {
+            float2 lo = float.MaxValue, hi = float.MinValue;
+            int n = 0;
+            for (int k = 0; k < Positions.Length; k++)
+            {
+                float2 p = Positions[k];
+                lo = math.min(lo, p);
+                hi = math.max(hi, p);
+                if (math.all(math.abs(p - Centre) <= Half)) n++;
+            }
+            Result[0] = lo;
+            Result[1] = hi;
+            Result[2] = new float2(n, 0f);
+        }
     }
 
     /// <summary>

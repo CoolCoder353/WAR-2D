@@ -434,9 +434,10 @@ namespace WAR2D.Client
         {
             // A -nographics player (perf clients) has no GPU buffers to draw with.
             if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) return;
-            DrawBuildings();
+            using (BuildingsMarker.Auto()) DrawBuildings();
+            SelectMarker.Begin();
             int count = store.Count;
-            if (count == 0 || store.Drawn.Length != count) return;
+            if (count == 0 || store.Drawn.Length != count) { SelectMarker.End(); return; }
             if (unitRenderer == null)
             {
                 ArtAtlas atlas = ArtAtlas.Load(ArtAtlas.Units);
@@ -494,6 +495,8 @@ namespace WAR2D.Client
                     aimAt[status.Key] = aimed;
                     aimUntil[status.Key] = now + TurretAim.HoldSeconds;
                 }
+            SelectMarker.End();
+            PrepareMarker.Begin();
             // Per unit: facing, frame, colour, hit feedback, track marks, size and turret (Burst; 2026-11-06, 4.5 of 8 ms a frame
             // at 10,000 units as a managed loop).
             new PrepareUnitsJob
@@ -543,6 +546,8 @@ namespace WAR2D.Client
                 Hits = hits,
                 Tracks = tracks,
             }.Run();
+            PrepareMarker.End();
+            EffectsMarker.Begin();
             // The job's main-thread effects, in unit order: hits on the minimap, then track marks.
             MinimapCombat combat = MinimapCombat.Current;
             for (int i = 0; i < hits.Length && combat != null; i++)
@@ -558,6 +563,8 @@ namespace WAR2D.Client
             foreach (int index in selectedIndices)
                 if ((selected[index] & 1) != 0 && store.IsKnown(index) && store.OwnerOf(index) == WorldEffects.LocalOwner) ownSelected.Add(index);
             combatVisuals.Draw(now, serverTime, view, UnitAt, ownSelected, BuildingsShown ?? ClientBuildings.Current);
+            EffectsMarker.End();
+            PackMarker.Begin();
 
             instances.ResizeUninitialized(count);
             bars.ResizeUninitialized(count);
@@ -587,11 +594,19 @@ namespace WAR2D.Client
                 RingCount = ringCount,
             }.Run();
             for (int i = 0; i < barrelShadows.Length; i++) rings[ringCount[0] + i] = barrelShadows[i];
+            PackMarker.End();
+            using var submitting = SubmitMarker.Auto();
             unitRenderer.DrawRings(rings.AsArray(), ringCount[0] + barrelShadows.Length);
             unitRenderer.Draw(instances.AsArray(), count);
             unitRenderer.DrawTurrets(turrets.AsArray(), turrets.Length);
             unitRenderer.DrawHealthBars(bars.AsArray(), barCount[0]);
         }
+
+        // Profiler markers (nearly free in a release player): where a frame's draw time goes.
+        private static readonly Unity.Profiling.ProfilerMarker BuildingsMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Buildings"),
+            SelectMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Select"), PrepareMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Prepare"),
+            EffectsMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Effects"), PackMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Pack"),
+            SubmitMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Submit");
 
         private readonly List<int> barsHidden = new List<int>();
 
