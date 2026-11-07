@@ -64,7 +64,6 @@ namespace WAR2D.Client
 
         // Decode scratch, reused.
         private readonly List<EnterUnit> enters = new List<EnterUnit>();
-        private readonly List<RouteUnit> moves = new List<RouteUnit>();
         private readonly List<CorrectionUnit> corrections = new List<CorrectionUnit>();
         private readonly List<HealthUnit> healths = new List<HealthUnit>();
         private readonly List<LeaveUnit> leaves = new List<LeaveUnit>();
@@ -108,6 +107,9 @@ namespace WAR2D.Client
             correctionUnits = new NativeList<CorrectionUnit>(64, allocator);
             routeTiles = new NativeList<int2>(1024, allocator);
             counts = new NativeArray<int>(2, allocator);
+            routeChanges = new NativeList<int2>(64, allocator);
+            payloadBytes = new NativeList<byte>(4096, allocator);
+            decoded = new NativeArray<int>(4, allocator);
         }
 
         /// <summary>Units known.</summary>
@@ -219,6 +221,8 @@ namespace WAR2D.Client
         public bool Apply(ArraySegment<byte> payload, int tick)
         {
             CompletePrediction();
+            this.payload = payload;
+            payloadCopied = false;
             using var reader = NetworkReaderPool.Get(payload);
             try
             {
@@ -258,9 +262,8 @@ namespace WAR2D.Client
                     break;
                 case MessageType.MoveOrder:
                 {
-                    moves.Clear(); waypoints.Clear();
                     int tick;
-                    using (DecodeMarker.Auto()) tick = Messages.DecodeMoveOrder(reader, moves, waypoints);
+                    using (DecodeMarker.Auto()) tick = DecodeMoveOrder(reader);
                     using var applying = RoutesMarker.Auto();
                     ApplyRoutes(tick);
                     break;
@@ -293,33 +296,75 @@ namespace WAR2D.Client
         }
 
         /// <summary>
-        /// A MoveOrder's routes, in a Burst job (profiled 2026-11-07: the managed loop took 3 to 6 ms of a frame when an order's
-        /// 2,500 routes arrived at 10,000 units). Per known unit, as before: its new route, its prediction restarted on it at the
-        /// message's tick, the jump blended out of the drawn position, and a shown order ended. The live-route cap is checked for the
-        /// whole message first, so a refused one changes nothing.
+        /// Decodes a MoveOrder straight into <see cref="routeUnits"/> and <see cref="routeTiles"/> in a Burst job
+        /// (<see cref="Messages.TryDecodeMoveOrder"/>), moves the reader past it and returns its tick.
+        /// </summary>
+        private int DecodeMoveOrder(NetworkReader reader)
+        {
+            if (!payloadCopied)
+            {
+                payloadBytes.ResizeUninitialized(payload.Count);
+                NativeArray<byte>.Copy(payload.Array, payload.Offset, payloadBytes.AsArray(), 0, payload.Count);
+                payloadCopied = true;
+            }
+            routeUnits.Clear();
+            routeTiles.Clear();
+            new DecodeMoveOrderJob { Bytes = payloadBytes.AsArray(), Start = reader.Position, Units = routeUnits, Tiles = routeTiles, Result = decoded }.Run();
+            if (decoded[0] == 0) throw new InvalidDataException("malformed MoveOrder");
+            reader.Position = decoded[1];
+            return decoded[2];
+        }
+
+        private ArraySegment<byte> payload;
+        private bool payloadCopied;
+        private NativeList<byte> payloadBytes;
+        private NativeArray<int> decoded; // ok, the position after, the tick, 1 when a unit is named twice
+
+        [BurstCompile]
+        private struct DecodeMoveOrderJob : IJob
+        {
+            [ReadOnly] public NativeArray<byte> Bytes;
+            public int Start;
+            public NativeList<RouteUnit> Units;
+            public NativeList<int2> Tiles;
+            public NativeArray<int> Result;
+
+            public void Execute()
+            {
+                int position = Start;
+                bool ok = Messages.TryDecodeMoveOrder(Bytes, ref position, Units, Tiles, out int tick, out bool repeats);
+                Result[0] = ok ? 1 : 0;
+                Result[1] = position;
+                Result[2] = tick;
+                Result[3] = repeats ? 1 : 0;
+            }
+        }
+
+        /// <summary>
+        /// A MoveOrder's routes, over the job threads (profiled 2026-11-07: one thread took 6 to 7 ms of a frame when an order wave's
+        /// 25,000 routes arrived at 100,000 known units). Every waypoint goes to the end of the arena, then per known unit, as before: its
+        /// new route, its prediction restarted on it at the message's tick, the jump blended out of the drawn position, and a shown order
+        /// ended. Each unit's job writes only its own unit; a message that names a unit twice runs in one batch, in order, so its last
+        /// route wins as before. The live-route cap is checked for the whole message first, so a refused one changes nothing.
         /// </summary>
         private void ApplyRoutes(int tick)
         {
-            long adding = 0;
-            foreach (RouteUnit u in moves) adding += u.Count;
-            if (liveWaypoints + adding > (long)knownSlot.Length * RouteMaintenance.MaxWaypoints)
+            int moveCount = routeUnits.Length, tileCount = routeTiles.Length;
+            if (liveWaypoints + (long)tileCount > (long)knownSlot.Length * RouteMaintenance.MaxWaypoints)
                 throw new InvalidDataException("the routes are longer than any server sends");
-            // Copy the decoded lists across (both memcpy).
-            if (routeUnitBuffer.Length < moves.Count) routeUnitBuffer = new RouteUnit[math.ceilpow2(moves.Count)];
-            if (routeTileBuffer.Length < waypoints.Count) routeTileBuffer = new int2[math.ceilpow2(waypoints.Count)];
-            moves.CopyTo(routeUnitBuffer);
-            waypoints.CopyTo(routeTileBuffer);
-            routeUnits.ResizeUninitialized(moves.Count);
-            routeTiles.ResizeUninitialized(waypoints.Count);
-            NativeArray<RouteUnit>.Copy(routeUnitBuffer, routeUnits.AsArray(), moves.Count);
-            NativeArray<int2>.Copy(routeTileBuffer, routeTiles.AsArray(), waypoints.Count);
+            int arenaBase = arena.Length;
+            arena.ResizeUninitialized(arenaBase + tileCount);
+            routeChanges.ResizeUninitialized(moveCount);
+            JobHandle copied = new CopyWaypointsJob { Tiles = routeTiles.AsArray(), Arena = arena.AsArray(), Base = arenaBase }.Schedule(tileCount, 1024);
+            JobHandle applied = new ApplyRoutesJob
+            {
+                Moves = routeUnits.AsArray(), ArenaBase = arenaBase, KnownSlot = knownSlot, States = states, RouteStart = routeStart,
+                RouteCount = routeCount, Arena = arena.AsArray(), Blend = blend, Leads = leads, Changes = routeChanges.AsArray(), Now = Now,
+                StartTime = tick * dt,
+            }.Schedule(moveCount, decoded[3] != 0 ? math.max(1, moveCount) : 64, copied);
             counts[0] = liveWaypoints;
             counts[1] = leadCount;
-            new ApplyRoutesJob
-            {
-                Moves = routeUnits.AsArray(), Waypoints = routeTiles.AsArray(), KnownSlot = knownSlot, States = states, RouteStart = routeStart,
-                RouteCount = routeCount, Arena = arena, Blend = blend, Leads = leads, Counts = counts, Now = Now, StartTime = tick * dt,
-            }.Run();
+            new SumRouteChangesJob { Changes = routeChanges.AsArray(), Counts = counts }.Schedule(applied).Complete();
             liveWaypoints = counts[0];
             leadCount = counts[1];
             if (arena.Length > 2 * liveWaypoints + 65536) Compact();
@@ -394,56 +439,78 @@ namespace WAR2D.Client
 
         private NativeList<RouteUnit> routeUnits;
         private NativeList<int2> routeTiles;
-        private NativeArray<int> counts; // the job's live waypoints and running leads
-        private RouteUnit[] routeUnitBuffer = new RouteUnit[64];
-        private int2[] routeTileBuffer = new int2[1024];
+        private NativeList<int2> routeChanges; // per move: the live waypoints added, and 1 when a shown order ended
+        private NativeArray<int> counts; // the live waypoints and running leads
+
+        [BurstCompile]
+        private struct CopyWaypointsJob : IJobParallelFor
+        {
+            [ReadOnly] public NativeArray<int2> Tiles; // RouteWire half tiles
+            [NativeDisableParallelForRestriction] public NativeArray<float2> Arena;
+            public int Base;
+
+            public void Execute(int k) => Arena[Base + k] = RouteWire.Decode(Tiles[k]);
+        }
 
         [BurstCompile(FloatMode = FloatMode.Deterministic)]
-        private struct ApplyRoutesJob : IJob
+        private struct ApplyRoutesJob : IJobParallelFor
         {
             [ReadOnly] public NativeArray<RouteUnit> Moves;
-            [ReadOnly] public NativeArray<int2> Waypoints; // RouteWire half tiles
+            public int ArenaBase;
             [ReadOnly] public NativeArray<int> KnownSlot;
-            public NativeArray<PredictState> States;
-            public NativeArray<int> RouteStart, RouteCount;
-            public NativeList<float2> Arena;
-            public NativeArray<float2> Blend;
-            public NativeArray<OrderLead> Leads;
-            public NativeArray<int> Counts;
+            [NativeDisableParallelForRestriction] public NativeArray<PredictState> States;
+            [NativeDisableParallelForRestriction] public NativeArray<int> RouteStart, RouteCount;
+            [ReadOnly] public NativeArray<float2> Arena;
+            [NativeDisableParallelForRestriction] public NativeArray<float2> Blend;
+            [NativeDisableParallelForRestriction] public NativeArray<OrderLead> Leads;
+            public NativeArray<int2> Changes;
             public float Now, StartTime;
 
-            public void Execute()
+            public void Execute(int m)
             {
-                for (int m = 0; m < Moves.Length; m++)
+                RouteUnit u = Moves[m];
+                int index = u.Index;
+                Changes[m] = int2.zero;
+                if ((uint)index >= (uint)KnownSlot.Length || KnownSlot[index] < 0) return;
+                float2 before = Predict(index);
+                int added = u.Count - RouteCount[index], ended = 0;
+                RouteStart[index] = ArenaBase + u.First;
+                RouteCount[index] = u.Count;
+                PredictState s = States[index];
+                MovementPrediction.StartRoute(ref s, Arena[RouteStart[index]], StartTime);
+                States[index] = s;
+                if (Now > 0f) Keep(index, Blend[index] + before - Predict(index)); // Blend
+                if (Leads[index].Kind != 0) // EndLead
                 {
-                    RouteUnit u = Moves[m];
-                    int index = u.Index;
-                    if ((uint)index >= (uint)KnownSlot.Length || KnownSlot[index] < 0) continue;
-                    float2 before = Predict(index);
-                    Counts[0] += u.Count - RouteCount[index];
-                    RouteStart[index] = Arena.Length;
-                    RouteCount[index] = u.Count;
-                    for (int i = 0; i < u.Count; i++) Arena.Add(RouteWire.Decode(Waypoints[u.First + i]));
-                    PredictState s = States[index];
-                    MovementPrediction.StartRoute(ref s, Arena[RouteStart[index]], StartTime);
-                    States[index] = s;
-                    if (Now > 0f) Keep(index, Blend[index] + before - Predict(index)); // Blend
-                    if (Leads[index].Kind != 0) // EndLead
-                    {
-                        Keep(index, Leads[index].At - Predict(index));
-                        Counts[1]--;
-                        Leads[index] = default;
-                    }
+                    Keep(index, Leads[index].At - Predict(index));
+                    ended = 1;
+                    Leads[index] = default;
                 }
+                Changes[m] = new int2(added, ended);
             }
 
             private float2 Predict(int index)
             {
                 PredictState s = States[index];
-                return MovementPrediction.Predict(ref s, Arena.AsArray(), RouteStart[index], RouteCount[index], Now);
+                return MovementPrediction.Predict(ref s, Arena, RouteStart[index], RouteCount[index], Now);
             }
 
             private void Keep(int index, float2 offset) => Blend[index] = math.lengthsq(offset) > MaxBlendTiles * MaxBlendTiles ? float2.zero : offset;
+        }
+
+        [BurstCompile]
+        private struct SumRouteChangesJob : IJob
+        {
+            [ReadOnly] public NativeArray<int2> Changes;
+            public NativeArray<int> Counts;
+
+            public void Execute()
+            {
+                int2 sum = 0;
+                for (int m = 0; m < Changes.Length; m++) sum += Changes[m];
+                Counts[0] += sum.x;
+                Counts[1] -= sum.y;
+            }
         }
 
         /// <summary>Adds the jump between where the unit was drawn from (<paramref name="before"/>) and its new prediction to its blend.</summary>
@@ -662,6 +729,7 @@ namespace WAR2D.Client
             states.Dispose(); routeStart.Dispose(); routeCount.Dispose(); owner.Dispose(); type.Dispose(); health.Dispose();
             arena.Dispose(); known.Dispose(); knownSlot.Dispose(); predicted.Dispose(); blend.Dispose(); drawn.Dispose(); steer.Dispose(); leads.Dispose();
             routeUnits.Dispose(); routeTiles.Dispose(); counts.Dispose(); correctionUnits.Dispose();
+            routeChanges.Dispose(); payloadBytes.Dispose(); decoded.Dispose();
         }
 
         /// <summary>An own order drawn before the server answers it.</summary>

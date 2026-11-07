@@ -568,6 +568,94 @@ namespace WAR2D.Net.Replication
             return tick;
         }
 
+        /// <summary>
+        /// <see cref="DecodeMoveOrder(NetworkReader, List{RouteUnit}, List{int2})"/> over a payload's bytes from
+        /// <paramref name="position"/>, for a Burst job (2026-11-07: the managed decode of an order wave's 25,000 routes took 4 ms of a
+        /// frame). The same checks; <paramref name="repeats"/> is set when a unit is named more than once (its last route wins, so those
+        /// routes must be applied in order). Returns false on a malformed message; <paramref name="position"/> then means nothing.
+        /// </summary>
+        public static bool TryDecodeMoveOrder(NativeArray<byte> bytes, ref int position, NativeList<RouteUnit> units, NativeList<int2> waypoints, out int tick, out bool repeats)
+        {
+            var r = new ByteReader { Bytes = bytes, Position = position };
+            tick = 0;
+            repeats = false;
+            if (r.ReadByte() != (byte)MessageType.MoveOrder) return false;
+            tick = (int)r.ReadVarInt();
+            uint count = r.ReadVarInt();
+            if (r.Failed || count > (uint)(r.Remaining / 6)) return false;
+            int previous = 0;
+            for (int i = 0; i < (int)count; i++)
+            {
+                uint delta = r.ReadVarInt();
+                long index = (long)previous + delta;
+                if (r.Failed || index >= NetIdAllocator.MaxCapacity) return false;
+                repeats |= i > 0 && delta == 0;
+                previous = (int)index;
+                var u = new RouteUnit { Index = previous, First = waypoints.Length };
+                int routeCount = (int)math.min(r.ReadVarInt(), int.MaxValue);
+                if (r.Failed || routeCount < 1 || routeCount > MaxRouteWaypoints || 4 > r.Remaining) return false;
+                if (waypoints.Length + routeCount > MaxMessageWaypoints) return false;
+                var tile = new int2(r.ReadUShort(), r.ReadUShort());
+                waypoints.Add(tile);
+                for (int k = 1; k < routeCount;)
+                {
+                    byte marker = r.ReadByte();
+                    if (r.Failed) return false;
+                    if (marker == CopyMarker)
+                    {
+                        uint back = r.ReadVarInt(), start = r.ReadVarInt(), run = r.ReadVarInt();
+                        if (r.Failed || back < 1 || back > (uint)units.Length) return false;
+                        RouteUnit from = units[units.Length - (int)back];
+                        if (run < 1 || run > (uint)(routeCount - k) || start >= (uint)from.Count || run > (uint)from.Count - start) return false;
+                        for (int c = 0; c < (int)run; c++) waypoints.Add(waypoints[from.First + (int)start + c]);
+                        k += (int)run;
+                        tile = waypoints[waypoints.Length - 1];
+                        continue;
+                    }
+                    if (marker == AbsoluteMarker) tile = new int2(r.ReadUShort(), r.ReadUShort());
+                    else tile += new int2((sbyte)marker, (sbyte)r.ReadByte());
+                    if (r.Failed) return false;
+                    waypoints.Add(tile);
+                    k++;
+                }
+                u.Count = routeCount;
+                units.Add(u);
+            }
+            position = r.Position;
+            return true;
+        }
+
+        /// <summary>Mirror's reads (little-endian, unsigned varints) over native bytes; a read past the end sets <see cref="Failed"/>.</summary>
+        private struct ByteReader
+        {
+            public NativeArray<byte> Bytes;
+            public int Position;
+            public bool Failed;
+
+            public int Remaining => Bytes.Length - Position;
+
+            public byte ReadByte()
+            {
+                if (Position >= Bytes.Length) { Failed = true; return 0; }
+                return Bytes[Position++];
+            }
+
+            public ushort ReadUShort() => (ushort)(ReadByte() | ReadByte() << 8);
+
+            public uint ReadVarInt()
+            {
+                uint value = 0;
+                for (int shift = 0; shift <= 28; shift += 7)
+                {
+                    byte b = ReadByte();
+                    value |= (uint)(b & 0x7F) << shift;
+                    if ((b & 0x80) == 0 || Failed) return value;
+                }
+                Failed = true; // longer than five bytes
+                return value;
+            }
+        }
+
         /// <summary>Decodes a Correction message and returns its tick.</summary>
         public static int DecodeCorrection(NetworkReader reader, List<CorrectionUnit> units, out byte deltaScale)
         {

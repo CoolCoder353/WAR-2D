@@ -1,4 +1,7 @@
 using System.Collections.Generic;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
 using Unity.Mathematics;
 
 namespace WAR2D.Sim
@@ -71,55 +74,84 @@ namespace WAR2D.Sim
             _ => 1,
         };
 
-        /// <summary>Fills <paramref name="offsets"/> (one per unit, same order) with each unit's slot relative to the goal.</summary>
+        /// <summary>
+        /// Fills <paramref name="offsets"/> (one per unit, same order) with each unit's slot relative to the goal. The sorts run in a
+        /// Burst job (2026-11-07: with managed comparers, the layouts of an order wave's eight 3,000-unit groups took 30 ms); units level
+        /// with each other keep their list order.
+        /// </summary>
         public static void Layout(IReadOnlyList<UnitType> types, IReadOnlyList<float2> positions, float2 goal, float spacing, List<float2> offsets)
         {
             int n = types.Count;
             offsets.Clear();
-            for (int i = 0; i < n; i++) offsets.Add(float2.zero);
             if (n == 0) return;
             float2 centroid = 0;
             for (int i = 0; i < n; i++) centroid += positions[i];
             centroid /= n;
             float2 facing = math.normalizesafe(goal - centroid, new float2(0, 1));
             float2 across = new float2(facing.y, -facing.x);
-            int cols = math.max(1, (int)math.ceil(math.sqrt(2f * n)));
-
-            var order = new List<int>(n);
-            var role = new int[n];
-            var ahead = new float[n];
-            var sideways = new float[n];
+            var units = new NativeArray<LayoutUnit>(n, Allocator.TempJob);
             for (int i = 0; i < n; i++)
-            {
-                order.Add(i);
-                role[i] = RoleOf(types[i]);
-                ahead[i] = math.dot(positions[i], facing);
-                sideways[i] = math.dot(positions[i], across);
-            }
-            // By role, then (within a role) those already furthest ahead take the front rows, so fewer paths cross.
-            order.Sort((a, b) => role[a] != role[b] ? role[a].CompareTo(role[b])
-                : ahead[b] != ahead[a] ? ahead[b].CompareTo(ahead[a])
-                : a.CompareTo(b));
+                units[i] = new LayoutUnit { Index = i, Role = RoleOf(types[i]), Ahead = math.dot(positions[i], facing), Sideways = math.dot(positions[i], across) };
+            var slots = new NativeArray<float2>(n, Allocator.TempJob);
+            new LayoutJob { Units = units, Facing = facing, Across = across, Spacing = spacing, Cols = math.max(1, (int)math.ceil(math.sqrt(2f * n))), Offsets = slots }.Run();
+            for (int i = 0; i < n; i++) offsets.Add(slots[i]);
+            units.Dispose();
+            slots.Dispose();
+        }
 
-            // Rows front to back: up to cols units each, a new row whenever the role changes.
-            var rowStarts = new List<int>();
-            for (int k = 0; k < n; k++)
-                if (k == 0 || k - rowStarts[rowStarts.Count - 1] == cols || role[order[k]] != role[order[k - 1]]) rowStarts.Add(k);
-            int rows = rowStarts.Count;
+        private struct LayoutUnit
+        {
+            public int Index, Role;
+            public float Ahead, Sideways;
+        }
 
-            var row = new List<int>(cols);
-            for (int r = 0; r < rows; r++)
+        /// <summary>By role (front first), then the units furthest ahead first.</summary>
+        private struct FrontFirst : IComparer<LayoutUnit>
+        {
+            public int Compare(LayoutUnit a, LayoutUnit b) =>
+                a.Role != b.Role ? a.Role.CompareTo(b.Role) : a.Ahead != b.Ahead ? b.Ahead.CompareTo(a.Ahead) : a.Index.CompareTo(b.Index);
+        }
+
+        /// <summary>Left to right across the facing.</summary>
+        private struct LeftFirst : IComparer<LayoutUnit>
+        {
+            public int Compare(LayoutUnit a, LayoutUnit b) => a.Sideways != b.Sideways ? a.Sideways.CompareTo(b.Sideways) : a.Index.CompareTo(b.Index);
+        }
+
+        /// <summary>
+        /// Rows front to back, up to <see cref="Cols"/> units each and a new row whenever the role changes; each row's units left to right
+        /// in its slots, the block centred on the goal.
+        /// </summary>
+        [BurstCompile]
+        private struct LayoutJob : IJob
+        {
+            public NativeArray<LayoutUnit> Units;
+            public float2 Facing, Across;
+            public float Spacing;
+            public int Cols;
+            public NativeArray<float2> Offsets; // by the unit's Index
+
+            public void Execute()
             {
-                row.Clear();
-                int end = r + 1 < rows ? rowStarts[r + 1] : n;
-                for (int k = rowStarts[r]; k < end; k++) row.Add(order[k]);
-                row.Sort((a, b) => sideways[a].CompareTo(sideways[b]));
-                float depth = ((rows - 1) * 0.5f - r) * spacing; // row 0 is the front
-                for (int c = 0; c < row.Count; c++)
+                int n = Units.Length;
+                Units.Sort(new FrontFirst());
+                var rowStarts = new NativeList<int>(n / Cols + 4, Allocator.Temp);
+                for (int k = 0; k < n; k++)
+                    if (k == 0 || k - rowStarts[rowStarts.Length - 1] == Cols || Units[k].Role != Units[k - 1].Role) rowStarts.Add(k);
+                int rows = rowStarts.Length;
+                for (int r = 0; r < rows; r++)
                 {
-                    float side = (c - (row.Count - 1) * 0.5f) * spacing;
-                    offsets[row[c]] = facing * depth + across * side;
+                    int start = rowStarts[r], end = r + 1 < rows ? rowStarts[r + 1] : n;
+                    NativeArray<LayoutUnit> row = Units.GetSubArray(start, end - start);
+                    row.Sort(new LeftFirst());
+                    float depth = ((rows - 1) * 0.5f - r) * Spacing; // row 0 is the front
+                    for (int c = 0; c < row.Length; c++)
+                    {
+                        float side = (c - (row.Length - 1) * 0.5f) * Spacing;
+                        Offsets[row[c].Index] = Facing * depth + Across * side;
+                    }
                 }
+                rowStarts.Dispose();
             }
         }
     }

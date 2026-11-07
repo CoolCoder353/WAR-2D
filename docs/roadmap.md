@@ -69,7 +69,7 @@ On the same reference machine (Ryzen 5 5600GT, 32 GB, Radeon RX 6600, Linux, hos
 
 | Metric               | Target                                                       |
 | -------------------- | ------------------------------------------------------------ |
-| Server simulation    | 20 ticks/s, **≤ 28 ms main-thread tick p95** at 80,000 units |
+| Server simulation    | 20 ticks/s, **≤ 28 ms main-thread tick p95** at 100,000 units (80,000 until 2026-11-07) |
 | Client frame rate    | **≥ 60 fps** with 10,000 own units on screen                 |
 | Bandwidth per client | **≤ 256 KB/s average**, ≤ 768 KB/s peak 1 s                  |
 
