@@ -489,7 +489,8 @@ namespace WAR2D.Client
                 for (int i = 0; i < count; i++) hidden[known[i]] = (byte)(UnitShown(owners[known[i]], positions[i]) ? 0 : 1);
             // v0.20 (spec §8.3): a Sniper's head turns to what it aims at and holds there while it aims (the job turns it).
             foreach (KeyValuePair<int, byte> status in ClientCombat.Current.Statuses)
-                if ((status.Value & WAR2D.Sim.UnitStatusBits.Aiming) != 0 && combatVisuals.AimTarget(status.Key, out float2 aimed))
+                if ((uint)status.Key < (uint)aimAt.Length && (status.Value & WAR2D.Sim.UnitStatusBits.Aiming) != 0 // the index is the server's: bound it
+                    && combatVisuals.AimTarget(status.Key, out float2 aimed))
                 {
                     aimAt[status.Key] = aimed;
                     aimUntil[status.Key] = now + TurretAim.HoldSeconds;
