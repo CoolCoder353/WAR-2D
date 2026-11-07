@@ -656,6 +656,39 @@ namespace WAR2D.Net.Replication
             }
         }
 
+        /// <summary>
+        /// <see cref="DecodeCorrection"/> over a payload's bytes from <paramref name="position"/>, for a Burst job (2026-11-07: the
+        /// managed decode of a batch's 7,000 to 8,000 corrections at 100,000 units ran every batch on the main thread). The same checks.
+        /// Returns false on a malformed message; <paramref name="position"/> then means nothing.
+        /// </summary>
+        public static bool TryDecodeCorrection(NativeArray<byte> bytes, ref int position, NativeList<CorrectionUnit> units, out int tick, out byte deltaScale)
+        {
+            var r = new ByteReader { Bytes = bytes, Position = position };
+            tick = 0;
+            deltaScale = 0;
+            if (r.ReadByte() != (byte)MessageType.Correction) return false;
+            tick = (int)r.ReadVarInt();
+            deltaScale = (byte)(r.ReadByte() & 0x7F);
+            uint count = r.ReadVarInt();
+            if (r.Failed || count > (uint)(r.Remaining / 5)) return false;
+            int previous = 0;
+            for (int i = 0; i < (int)count; i++)
+            {
+                long index = (long)previous + r.ReadVarInt();
+                if (r.Failed || index >= NetIdAllocator.MaxCapacity) return false;
+                previous = (int)index;
+                var u = new CorrectionUnit { Index = previous };
+                u.DX = (short)math.clamp(VarInt.UnZigZag(r.ReadVarInt()), short.MinValue, short.MaxValue);
+                u.DY = (short)math.clamp(VarInt.UnZigZag(r.ReadVarInt()), short.MinValue, short.MaxValue);
+                u.Resume = (int)math.min(r.ReadVarInt(), (uint)MaxRouteWaypoints);
+                u.Speed = r.ReadByte();
+                if (r.Failed) return false;
+                units.Add(u);
+            }
+            position = r.Position;
+            return true;
+        }
+
         /// <summary>Decodes a Correction message and returns its tick.</summary>
         public static int DecodeCorrection(NetworkReader reader, List<CorrectionUnit> units, out byte deltaScale)
         {
@@ -674,6 +707,30 @@ namespace WAR2D.Net.Replication
                 units.Add(u);
             }
             return tick;
+        }
+
+        /// <summary>
+        /// <see cref="DecodeHealth"/> over a payload's bytes from <paramref name="position"/>, for a Burst job (2026-11-07: a big battle's
+        /// thousands of health changes a batch were decoded on the main thread). The same checks. Returns false on a malformed message.
+        /// </summary>
+        public static bool TryDecodeHealth(NativeArray<byte> bytes, ref int position, NativeList<HealthUnit> units)
+        {
+            var r = new ByteReader { Bytes = bytes, Position = position };
+            if (r.ReadByte() != (byte)MessageType.Health) return false;
+            uint count = r.ReadVarInt();
+            if (r.Failed || count > (uint)(r.Remaining / 2)) return false;
+            int previous = 0;
+            for (int i = 0; i < (int)count; i++)
+            {
+                long index = (long)previous + r.ReadVarInt();
+                if (r.Failed || index >= NetIdAllocator.MaxCapacity) return false;
+                previous = (int)index;
+                byte health = r.ReadByte();
+                if (r.Failed) return false;
+                units.Add(new HealthUnit { Index = previous, Health = health });
+            }
+            position = r.Position;
+            return true;
         }
 
         /// <summary>Decodes a Health message.</summary>

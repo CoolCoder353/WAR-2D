@@ -64,8 +64,6 @@ namespace WAR2D.Client
 
         // Decode scratch, reused.
         private readonly List<EnterUnit> enters = new List<EnterUnit>();
-        private readonly List<CorrectionUnit> corrections = new List<CorrectionUnit>();
-        private readonly List<HealthUnit> healths = new List<HealthUnit>();
         private readonly List<LeaveUnit> leaves = new List<LeaveUnit>();
         private readonly List<int2> waypoints = new List<int2>();
         private readonly List<AttackEvent> attacks = new List<AttackEvent>();
@@ -88,6 +86,7 @@ namespace WAR2D.Client
         public ClientUnitStore(int idCapacity, float tickSeconds, Allocator allocator = Allocator.Persistent)
         {
             dt = tickSeconds;
+            this.allocator = allocator;
             states = new NativeArray<PredictState>(idCapacity, allocator);
             routeStart = new NativeArray<int>(idCapacity, allocator);
             routeCount = new NativeArray<int>(idCapacity, allocator);
@@ -105,6 +104,7 @@ namespace WAR2D.Client
             leads = new NativeArray<OrderLead>(idCapacity, allocator);
             routeUnits = new NativeList<RouteUnit>(64, allocator);
             correctionUnits = new NativeList<CorrectionUnit>(64, allocator);
+            healthUnits = new NativeList<HealthUnit>(64, allocator);
             routeTiles = new NativeList<int2>(1024, allocator);
             counts = new NativeArray<int>(2, allocator);
             routeChanges = new NativeList<int2>(64, allocator);
@@ -221,6 +221,7 @@ namespace WAR2D.Client
         public bool Apply(ArraySegment<byte> payload, int tick)
         {
             CompletePrediction();
+            FinishCompaction(wait: true);
             this.payload = payload;
             payloadCopied = false;
             using var reader = NetworkReaderPool.Get(payload);
@@ -232,6 +233,10 @@ namespace WAR2D.Client
             catch (Exception e) when (e is InvalidDataException || e is EndOfStreamException || e is IndexOutOfRangeException || e is ArgumentException)
             {
                 return false;
+            }
+            finally
+            {
+                if (arena.Length > 2 * liveWaypoints + 65536) StartCompaction();
             }
         }
 
@@ -270,16 +275,19 @@ namespace WAR2D.Client
                 }
                 case MessageType.Correction:
                 {
-                    corrections.Clear();
-                    int tick = Messages.DecodeCorrection(reader, corrections, out byte scale);
+                    int tick = DecodeCorrection(reader, out byte scale);
                     ApplyCorrections(tick, scale);
                     break;
                 }
                 case MessageType.Health:
-                    healths.Clear();
-                    Messages.DecodeHealth(reader, healths);
-                    foreach (HealthUnit h in healths) if (IsKnown(h.Index)) health[h.Index] = (byte)math.min((int)h.Health, 100);
+                {
+                    // Decoded and applied in a Burst job, as the corrections are.
+                    CopyPayload();
+                    new ApplyHealthJob { Bytes = payloadBytes.AsArray(), Start = reader.Position, Units = healthUnits, KnownSlot = knownSlot, Health = health, Result = decoded }.Run();
+                    if (decoded[0] == 0) throw new InvalidDataException("malformed Health");
+                    reader.Position = decoded[1];
                     break;
+                }
                 case MessageType.Attack:
                     attacks.Clear();
                     Messages.DecodeAttack(reader, attacks);
@@ -301,12 +309,7 @@ namespace WAR2D.Client
         /// </summary>
         private int DecodeMoveOrder(NetworkReader reader)
         {
-            if (!payloadCopied)
-            {
-                payloadBytes.ResizeUninitialized(payload.Count);
-                NativeArray<byte>.Copy(payload.Array, payload.Offset, payloadBytes.AsArray(), 0, payload.Count);
-                payloadCopied = true;
-            }
+            CopyPayload();
             routeUnits.Clear();
             routeTiles.Clear();
             new DecodeMoveOrderJob { Bytes = payloadBytes.AsArray(), Start = reader.Position, Units = routeUnits, Tiles = routeTiles, Result = decoded }.Run();
@@ -315,10 +318,80 @@ namespace WAR2D.Client
             return decoded[2];
         }
 
+        /// <summary>
+        /// Decodes a Correction straight into <see cref="correctionUnits"/> in a Burst job (<see cref="Messages.TryDecodeCorrection"/>),
+        /// moves the reader past it and returns its tick.
+        /// </summary>
+        private int DecodeCorrection(NetworkReader reader, out byte scale)
+        {
+            CopyPayload();
+            correctionUnits.Clear();
+            new DecodeCorrectionJob { Bytes = payloadBytes.AsArray(), Start = reader.Position, Units = correctionUnits, Result = decoded }.Run();
+            if (decoded[0] == 0) throw new InvalidDataException("malformed Correction");
+            reader.Position = decoded[1];
+            scale = (byte)decoded[3];
+            return decoded[2];
+        }
+
+        /// <summary>The batch's bytes in native memory for the Burst decoders, copied once a batch.</summary>
+        private void CopyPayload()
+        {
+            if (payloadCopied) return;
+            payloadBytes.ResizeUninitialized(payload.Count);
+            NativeArray<byte>.Copy(payload.Array, payload.Offset, payloadBytes.AsArray(), 0, payload.Count);
+            payloadCopied = true;
+        }
+
+        private NativeList<HealthUnit> healthUnits;
+
+        [BurstCompile]
+        private struct ApplyHealthJob : IJob
+        {
+            [ReadOnly] public NativeArray<byte> Bytes;
+            public int Start;
+            public NativeList<HealthUnit> Units;
+            [ReadOnly] public NativeArray<int> KnownSlot;
+            public NativeArray<byte> Health;
+            public NativeArray<int> Result;
+
+            public void Execute()
+            {
+                int position = Start;
+                Units.Clear();
+                Result[0] = Messages.TryDecodeHealth(Bytes, ref position, Units) ? 1 : 0;
+                Result[1] = position;
+                if (Result[0] == 0) return;
+                for (int i = 0; i < Units.Length; i++)
+                {
+                    HealthUnit h = Units[i];
+                    if ((uint)h.Index < (uint)KnownSlot.Length && KnownSlot[h.Index] >= 0) Health[h.Index] = (byte)math.min((int)h.Health, 100);
+                }
+            }
+        }
+
+        [BurstCompile]
+        private struct DecodeCorrectionJob : IJob
+        {
+            [ReadOnly] public NativeArray<byte> Bytes;
+            public int Start;
+            public NativeList<CorrectionUnit> Units;
+            public NativeArray<int> Result;
+
+            public void Execute()
+            {
+                int position = Start;
+                bool ok = Messages.TryDecodeCorrection(Bytes, ref position, Units, out int tick, out byte scale);
+                Result[0] = ok ? 1 : 0;
+                Result[1] = position;
+                Result[2] = tick;
+                Result[3] = scale;
+            }
+        }
+
         private ArraySegment<byte> payload;
         private bool payloadCopied;
         private NativeList<byte> payloadBytes;
-        private NativeArray<int> decoded; // ok, the position after, the tick, 1 when a unit is named twice
+        private NativeArray<int> decoded; // ok, the position after, the tick, then 1 when a unit is named twice (MoveOrder) or the delta scale (Correction)
 
         [BurstCompile]
         private struct DecodeMoveOrderJob : IJob
@@ -367,7 +440,6 @@ namespace WAR2D.Client
             new SumRouteChangesJob { Changes = routeChanges.AsArray(), Counts = counts }.Schedule(applied).Complete();
             liveWaypoints = counts[0];
             leadCount = counts[1];
-            if (arena.Length > 2 * liveWaypoints + 65536) Compact();
         }
 
         /// <summary>
@@ -377,10 +449,6 @@ namespace WAR2D.Client
         /// </summary>
         private void ApplyCorrections(int tick, byte scale)
         {
-            if (correctionBuffer.Length < corrections.Count) correctionBuffer = new CorrectionUnit[math.ceilpow2(corrections.Count)];
-            corrections.CopyTo(correctionBuffer);
-            correctionUnits.ResizeUninitialized(corrections.Count);
-            NativeArray<CorrectionUnit>.Copy(correctionBuffer, correctionUnits.AsArray(), corrections.Count);
             counts[1] = leadCount;
             new ApplyCorrectionsJob
             {
@@ -391,7 +459,6 @@ namespace WAR2D.Client
         }
 
         private NativeList<CorrectionUnit> correctionUnits;
-        private CorrectionUnit[] correctionBuffer = new CorrectionUnit[64];
 
         [BurstCompile(FloatMode = FloatMode.Deterministic)]
         private struct ApplyCorrectionsJob : IJob
@@ -655,37 +722,89 @@ namespace WAR2D.Client
             routeStart[index] = arena.Length;
             routeCount[index] = count;
             for (int i = 0; i < count; i++) arena.Add(RouteWire.Decode(waypoints[first + i]));
-            if (arena.Length > 2 * liveWaypoints + 65536) Compact();
         }
 
-        private void Compact()
+        /// <summary>Waypoints in the route arena, live or not (tests: it shrinks when a compaction is swapped in).</summary>
+        internal int ArenaLength => arena.Length;
+
+        private readonly Allocator allocator;
+        private NativeList<float2> compacted;
+        private NativeArray<int> compactedStart;
+        private JobHandle compacting;
+        private bool compactionRunning;
+
+        /// <summary>
+        /// Starts copying the known units' routes to the front of a new arena over the job threads, once a batch has left the arena more
+        /// than twice its live waypoints (it ran on the main thread: 13 to 17 ms of a frame every few order waves at 100,000 units, the
+        /// slowest frames of the 100k benchmark). The new starts are a prefix sum here (a tenth of a millisecond); the copy runs in small
+        /// pieces, so no thread holds one long job. The prediction keeps reading the old arena meanwhile, as the job does (both only read
+        /// it); <see cref="FinishCompaction"/> swaps the new one in before anything changes a route.
+        /// </summary>
+        private void StartCompaction()
         {
-            var compacted = new NativeList<float2>(liveWaypoints + 1024, Allocator.TempJob);
-            new CompactJob { Known = known.AsArray(), RouteStart = routeStart, RouteCount = routeCount, Arena = arena.AsArray(), Compacted = compacted }.Run();
-            arena.Clear();
-            arena.AddRange(compacted.AsArray());
-            compacted.Dispose();
+            if (compactionRunning) return;
+            compactedStart = new NativeArray<int>(routeStart.Length, allocator, NativeArrayOptions.UninitializedMemory);
+            new CompactStartsJob { Known = known.AsArray(), RouteStart = routeStart, RouteCount = routeCount, NewStart = compactedStart, Total = counts }.Run();
+            int total = counts[0];
+            compacted = new NativeList<float2>(math.max(math.max(arena.Capacity, total), 2 * liveWaypoints + 131072), allocator);
+            compacted.ResizeUninitialized(total);
+            compacting = new CompactJob
+            {
+                Known = known.AsArray(), RouteStart = routeStart, RouteCount = routeCount, NewStart = compactedStart, Arena = arena.AsArray(), Compacted = compacted.AsArray(),
+            }.Schedule(known.Length, 256);
+            JobHandle.ScheduleBatchedJobs();
+            compactionRunning = true;
         }
 
-        /// <summary>Copies the known units' routes to the front of a new arena (Burst: the managed loop took 13 ms at 100,000 units).</summary>
+        /// <summary>
+        /// Swaps in the compacted arena and route starts: waiting for the job before a batch changes routes, else only once it is done.
+        /// The old arena is freed on a job thread (freeing it took a millisecond of the main thread).
+        /// </summary>
+        private void FinishCompaction(bool wait)
+        {
+            if (!compactionRunning || (!wait && !compacting.IsCompleted)) return;
+            compacting.Complete();
+            compactionRunning = false;
+            arena.Dispose(default(JobHandle));
+            arena = compacted;
+            (routeStart, compactedStart) = (compactedStart, routeStart);
+            compactedStart.Dispose();
+        }
+
+        /// <summary>Each known unit's route start in the compacted arena, in known order (others keep theirs), and the total.</summary>
         [BurstCompile]
-        private struct CompactJob : IJob
+        private struct CompactStartsJob : IJob
         {
-            [ReadOnly] public NativeArray<int> Known;
-            public NativeArray<int> RouteStart;
-            [ReadOnly] public NativeArray<int> RouteCount;
-            [ReadOnly] public NativeArray<float2> Arena;
-            public NativeList<float2> Compacted;
+            [ReadOnly] public NativeArray<int> Known, RouteStart, RouteCount;
+            public NativeArray<int> NewStart;
+            public NativeArray<int> Total;
 
             public void Execute()
             {
+                NewStart.CopyFrom(RouteStart);
+                int total = 0;
                 for (int i = 0; i < Known.Length; i++)
                 {
                     int index = Known[i];
-                    int first = Compacted.Length;
-                    Compacted.AddRange(Arena.GetSubArray(RouteStart[index], RouteCount[index]));
-                    RouteStart[index] = first;
+                    NewStart[index] = total;
+                    total += RouteCount[index];
                 }
+                Total[0] = total;
+            }
+        }
+
+        /// <summary>Copies each known unit's route to its new start (Burst, over the job threads: each unit writes only its own range).</summary>
+        [BurstCompile]
+        private struct CompactJob : IJobParallelFor
+        {
+            [ReadOnly] public NativeArray<int> Known, RouteStart, RouteCount, NewStart;
+            [ReadOnly] public NativeArray<float2> Arena;
+            [NativeDisableParallelForRestriction] public NativeArray<float2> Compacted;
+
+            public void Execute(int i)
+            {
+                int index = Known[i];
+                NativeArray<float2>.Copy(Arena, RouteStart[index], Compacted, NewStart[index], RouteCount[index]);
             }
         }
 
@@ -696,6 +815,7 @@ namespace WAR2D.Client
         public void PredictAll(float now)
         {
             CompletePrediction();
+            FinishCompaction(wait: false);
             predicted.ResizeUninitialized(known.Length);
             drawn.ResizeUninitialized(known.Length);
             steer.ResizeUninitialized(known.Length);
@@ -726,9 +846,10 @@ namespace WAR2D.Client
             if (disposed) return;
             disposed = true;
             CompletePrediction();
+            FinishCompaction(wait: true);
             states.Dispose(); routeStart.Dispose(); routeCount.Dispose(); owner.Dispose(); type.Dispose(); health.Dispose();
             arena.Dispose(); known.Dispose(); knownSlot.Dispose(); predicted.Dispose(); blend.Dispose(); drawn.Dispose(); steer.Dispose(); leads.Dispose();
-            routeUnits.Dispose(); routeTiles.Dispose(); counts.Dispose(); correctionUnits.Dispose();
+            routeUnits.Dispose(); routeTiles.Dispose(); counts.Dispose(); correctionUnits.Dispose(); healthUnits.Dispose();
             routeChanges.Dispose(); payloadBytes.Dispose(); decoded.Dispose();
         }
 

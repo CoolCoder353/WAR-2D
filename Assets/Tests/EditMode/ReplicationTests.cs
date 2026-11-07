@@ -151,11 +151,21 @@ public class ReplicationTests
         Assert.AreEqual(55, e[0].Health);
         CollectionAssert.AreEqual(new[] { new int2(5, 5), new int2(7, 5), new int2(400, 9) }, w);
         var c = new List<CorrectionUnit>();
+        int correctionAt = reader.Position;
         Assert.AreEqual(1234, Messages.DecodeCorrection(reader, c, out byte scale));
         Assert.AreEqual(8, scale);
         Assert.AreEqual(300, c[0].DY);
         Assert.AreEqual(-5, c[0].DX);
         Assert.AreEqual(9, c[1].Index);
+        // The Burst decoder the client store uses reads the same, and refuses the message cut short.
+        using var native = new NativeList<CorrectionUnit>(4, Allocator.Temp);
+        int at = correctionAt;
+        Assert.IsTrue(Messages.TryDecodeCorrection(bytes.AsArray(), ref at, native, out int nativeTick, out byte nativeScale));
+        Assert.AreEqual((1234, 8, reader.Position), (nativeTick, (int)nativeScale, at));
+        CollectionAssert.AreEqual(c, native.AsArray().ToArray());
+        native.Clear();
+        at = correctionAt;
+        Assert.IsFalse(Messages.TryDecodeCorrection(bytes.AsArray().GetSubArray(0, reader.Position - 1), ref at, native, out _, out _));
         var l = new List<LeaveUnit>();
         Messages.DecodeLeave(reader, l);
         Assert.AreEqual(LeaveReason.Died, l[0].Reason);
@@ -446,6 +456,64 @@ public class ReplicationTests
         CollectionAssert.AreEqual(start, route, "the old route stays");
         Assert.AreEqual(before, store.PredictOne(1, 0.2f), "and so does the prediction");
         Assert.AreEqual(1, store.Count);
+        store.Dispose();
+    }
+
+    [Test]
+    public void RoutesStayRightWhileTheArenaCompactsOnAJobThread()
+    {
+        // 2026-11-07: once a batch leaves the arena over twice its live waypoints (plus 65,536), it compacts on a job thread; the store
+        // reads the old arena until the job is done, and the next batch waits for it before it changes a route.
+        var store = new ClientUnitStore(300, Dt);
+        float2[] still = { new float2(40.5f, 40.5f), new float2(44.5f, 40.5f) };
+        Assert.IsTrue(store.Apply(new ArraySegment<byte>(EnterOne(2, still)), 1));
+        Assert.IsTrue(store.Apply(new ArraySegment<byte>(EnterOne(1, new float2(10.5f, 10.5f))), 1));
+        float2 before = store.PredictOne(2, 0.3f);
+        var route = new float2[250];
+        int peak = 0;
+        bool shrank = false;
+        for (int order = 0; order < 400; order++)
+        {
+            for (int i = 0; i < route.Length; i++) route[i] = new float2(10.5f + (i + order) % 7, 10.5f + i % 5);
+            Assert.IsTrue(store.Apply(new ArraySegment<byte>(Order(2 + order, (1, route))), 2 + order));
+            store.PredictAll(0.05f * order);
+            shrank |= store.ArenaLength < peak;
+            peak = math.max(peak, store.ArenaLength);
+        }
+        Assert.IsTrue(shrank, "the arena compacted");
+        var copied = new List<float2>();
+        Assert.IsTrue(store.CopyRoute(1, copied));
+        CollectionAssert.AreEqual(route, copied, "the last order's route");
+        Assert.IsTrue(store.CopyRoute(2, copied));
+        CollectionAssert.AreEqual(still, copied, "a unit never ordered keeps its route");
+        Assert.AreEqual(before, store.PredictOne(2, 0.3f), "and its prediction");
+        store.Dispose();
+    }
+
+    private static byte[] Healths(params (int index, byte health)[] units)
+    {
+        var list = new NativeArray<HealthUnit>(units.Length, Allocator.Temp);
+        for (int i = 0; i < units.Length; i++) list[i] = new HealthUnit { Index = units[i].index, Health = units[i].health };
+        var bytes = new NativeList<byte>(64, Allocator.Temp);
+        var sink = new NativeSink(bytes);
+        Messages.EncodeHealth(ref sink, list);
+        byte[] result = bytes.AsArray().ToArray();
+        bytes.Dispose(); list.Dispose();
+        return result;
+    }
+
+    [Test]
+    public void HealthSetsOnlyKnownUnitsAndAMessageCutShortChangesNothing()
+    {
+        // 2026-11-07: decoded and applied in a Burst job; the whole message is checked before any health changes.
+        var store = new ClientUnitStore(16, Dt);
+        Assert.IsTrue(store.Apply(new ArraySegment<byte>(EnterOne(3, new float2(10.5f, 10.5f))), 1));
+        Assert.IsTrue(store.Apply(new ArraySegment<byte>(Healths((3, 40), (5, 10), (9, 250))), 2));
+        Assert.AreEqual(0.4f, store.Health01(3), 1e-6f, "a known unit takes its health");
+        Assert.AreEqual(0f, store.Health01(5), "an unknown one is left alone");
+        byte[] cut = Healths((3, 70), (9, 20));
+        Assert.IsFalse(store.Apply(new ArraySegment<byte>(cut, 0, cut.Length - 1), 3), "cut short: refused");
+        Assert.AreEqual(0.4f, store.Health01(3), 1e-6f, "and nothing changed");
         store.Dispose();
     }
 
