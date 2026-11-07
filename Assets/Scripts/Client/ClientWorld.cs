@@ -851,6 +851,8 @@ namespace WAR2D.Client
         private (bool known, float2 at, byte type, float scale) UnitAt(int index)
         {
             if (!store.IsKnown(index) || (uint)index >= (uint)lastPosition.Length) return (false, default, 0, 0f);
+            // A replay's per-player view hides what that player didn't see: its fire, laser and leap go with it.
+            if (UnitShown != null && hidden[index] != 0) return (false, default, 0, 0f);
             byte type = store.TypeOf(index);
             return (true, lastPosition[index], type, ScaleOf(type));
         }

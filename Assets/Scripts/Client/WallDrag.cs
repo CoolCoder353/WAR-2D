@@ -80,7 +80,15 @@ namespace WAR2D.Client
             if (!Dragging) return;
             line.Clear();
             WallRules.Line(start, tile, line);
-            if (line.Count > maxLine) line.RemoveRange(maxLine, line.Count - maxLine);
+            if (line.Count > maxLine)
+            {
+                // The server traces a fresh line to the end it is sent, which can take other tiles than this one's first maxLine
+                // (bug review 2026-11-05): show and send that line.
+                int2 end = line[maxLine - 1];
+                line.Clear();
+                WallRules.Line(start, end, line);
+                if (line.Count > maxLine) line.RemoveRange(maxLine, line.Count - maxLine);
+            }
             valid.Clear();
             ValidCount = 0;
             foreach (int2 t in line)

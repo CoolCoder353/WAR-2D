@@ -39,6 +39,22 @@ Findings from code reviews and scans, from an outside review (2026-10-14, triage
 
 ---
 
+## Ninth scan (2026-11-07): v0.19 and v0.20
+
+A review of everything since v0.18 (`88a467e0..release/v0.20`, 184 script files), by reading the code; the eighth scan's open items were checked again on the way and the ones still there are fixed above. New findings, all fixed on `release/v0.20` and logged in [known-issues.md](known-issues.md):
+
+| Severity | Where | Finding | Fix |
+| --- | --- | --- | --- |
+| Medium | `ApplyDamageJob` | The hit queue's order is the worker threads'. A hit after the killing one still set `LastHitBy`, the death's cause and the HQ's last hitter, and a flame lit the corpse, so who got a kill or an elimination was a race. | A unit or building already at 0 takes no more hits; the first killing hit counts (`ReviewV020Tests`). |
+| Low | `ClientWorld.UnitAt`, `CombatVisuals` | A replay's per-player view hid units that player didn't see, but still drew their fire, burning marker, laser, leap shadow and sparks. | Hidden units are unknown to the combat drawing. |
+| Low | `UpkeepJob`, `SimCommandSystem.KillUnits` | A unit killed by unpaid upkeep, or removed with its owner, left with the cause of whatever hurt it last: one lit once and dead of decay later was drawn burning to death. | Both set a plain death. |
+
+Checked and not changed: the combat wire's codec bounds, the status delta and its fallback, shell bookkeeping, the lane client's held combat news, the route copy steps, waiting blueprints, the ping and spectator commands (gated and validated), the Demolish refund text (already fixed).
+
+Still open from that pass: the eighth scan's correction item (Medium) and the reused order handle (Low); a Mine is set off by a Bomber leaping over it (the spec doesn't say; left as is); a client that meets a Sniper mid-aim or a Bomber mid-leap sees no laser or arc until the next one (the aim and leap news go out once).
+
+---
+
 ## Eighth scan (2026-11-05): movement, server and client
 
 Three read-only passes over `fix/routes-chokes-builders`, by tracing the code. The movement pass also ran a model of the movement jobs. What they found and this branch fixed is in [known-issues.md](known-issues.md) under "Route and choke fixes", each with a test that fails without the fix, except where it says otherwise. **Everything below is open**, comes from reading the code, and has not been reproduced in a running game.
@@ -50,9 +66,9 @@ Three read-only passes over `fix/routes-chokes-builders`, by tracing the code. T
 | ~~Medium~~ Fixed | `ReplicationEncoder.AppendRoute` | Fixed 2026-11-06: half tiles on the wire (`RouteWire`), routes snapped on the server. See known-issues.md, "Review fixes, round 3". | |
 | Medium | `ReplicationEncoder` corrections | A correction is sent unreliably and applied to the server's copy at once. If it is lost, the server thinks the client knows, and the client shows the unit at its route's end until the next order. A correction can also pass the same tick's MoveOrder. | Skip the correction on a new MoveOrder's tick; send a reliable position when a unit stops. |
 | Low | `RouteStore`, `SectorFieldCache` | A reused order handle hides a new route for up to 2 s: a lone unit's next queued leg can take the same handle in the same boundary. | Treat `Arrived[i] != 0` as no order in the trace and commit jobs. |
-| Low | `SimCommandSystem.ClearFinishedWork` | A busy worker's queued Attack loses its target and stays in Attack stance, never firing. The UI doesn't send Attack to workers, so only a modified client can do this. | Handle the Attack stance as `AdvanceWaypoints` does. |
-| Low | `SimCommandSystem.OnUpdate` | `PendingMoves` and `PendingOrders` set at a paused boundary are cleared at the next one, with no gather between. Only the dev flow of pause, place or order, then step can do this. | Clear them only after a boundary whose gather ran. |
-| Low | `DesiredVelocityJob.NearestFieldCell` | It takes a diagonal neighbour even when both straight tiles beside it are solid, so a unit can stop in the corner without reporting a route miss. | Skip such a neighbour. |
+| ~~Low~~ Fixed | `SimCommandSystem.ClearFinishedWork` | Fixed 2026-11-07 (v0.19/v0.20 review): a queued Attack behind a job starts its chase as `AdvanceWaypoints` does. Was: a busy worker's queued Attack loses its target and stays in Attack stance, never firing. The UI doesn't send Attack to workers, so only a modified client can do this. | Handle the Attack stance as `AdvanceWaypoints` does. |
+| ~~Low~~ Fixed | `SimCommandSystem.OnUpdate` | Fixed 2026-11-07: cleared only after a running tick's gather read them. Was: `PendingMoves` and `PendingOrders` set at a paused boundary are cleared at the next one, with no gather between. Only the dev flow of pause, place or order, then step can do this. | Clear them only after a boundary whose gather ran. |
+| ~~Low~~ Fixed | `DesiredVelocityJob.NearestFieldCell` | Fixed 2026-11-07: a diagonal past two blocked straight cells is skipped. Was: it takes a diagonal neighbour even when both straight tiles beside it are solid, so a unit can stop in the corner without reporting a route miss. | Skip such a neighbour. |
 
 ### Server
 
@@ -62,7 +78,7 @@ Three read-only passes over `fix/routes-chokes-builders`, by tracing the code. T
 | ~~Medium~~ Fixed | `BuildingReplication`, `WriterSink.Full` | Fixed 2026-11-06: stops while a building's records still fit, Gone and Hide included. | |
 | ~~Medium~~ Fixed | `MatchCommands.RpcMatchSummary`, `MaxPoints` 360 | Fixed 2026-11-06: `MaxPoints` 80, tested against the 16 KB cap. | |
 | ~~Low~~ Fixed | `WorldStateManager.KillAllEntitiesOwnedBy` | Fixed 2026-11-06: `KillOwner` removes the owner's walls. | |
-| Low | `WorldStateManager.KillAllEntitiesOwnedBy` | A building still queued at the kill is created afterwards, with a dead owner. | Record killed owners; set such a building's health to 0. |
+| ~~Low~~ Fixed | `WorldStateManager.KillAllEntitiesOwnedBy` | Fixed 2026-11-07: the `KillOwner` sim command also drops the owner's buildings, those created in the same drain included (`ReviewV020Tests`). Was: a building still queued at the kill is created afterwards, with a dead owner. | Record killed owners; set such a building's health to 0. |
 | ~~Low~~ Fixed | `SimGatherSystem` | Fixed 2026-11-06: an unpaid Radar's sight is 0. | |
 
 ### Client
@@ -71,13 +87,13 @@ Three read-only passes over `fix/routes-chokes-builders`, by tracing the code. T
 | --- | --- | --- | --- |
 | ~~Medium~~ Fixed | `ClientPlayer.spawnerQueues`, `spawnerRallies` | Fixed on `unstable/pr30-routes-testing`: `ClientPlayer.ResetForNewMatch` (called on a Rematch from `MatchCommands`) clears them, and the attack rallies. | |
 | ~~Medium~~ Fixed | `ClientPlayer.gameOverDeclared` | Fixed the same way: `ResetForNewMatch` resets it. | |
-| Medium | `UnitCommander.Awake` | It assumes the local player spawned first, which slot reuse can break on a rejoin. It then throws, and `Update` throws every frame. | Null-check, and find the player lazily. |
-| Medium | `tools/ai-bench.sh` | The style generator seeds on size and k, not the seed, so the tuner replays the same pairs. On 512, k 0 to 7 never plays Balanced, and `"style": "Turtle"` throws after a full run. | Seed on `seed0 + k`. Old baselines then don't compare. |
-| Low | `UnitCommander.FinishDigDrag` | A dig box doesn't stop roaming, so roaming Diggers soon leave the job. | `Roaming.Stop(diggers)` after the chunk loop. |
-| Low | `UnitCommander.Update` | A box, wall or dig drag stays live through a dialog. After F1 in a wall drag, the next release places and pays for walls. | End the drag in that early return. |
-| Low | `Rebinding` | The conflict check compares path strings, and defaults are `/ctrl`, `/shift`, `/alt` where a rebind records `/leftCtrl`. Stop on Left Ctrl reports no conflict. | Map left and right to the plain name first. |
-| Low | `CommandCardController` Demolish text | It multiplies the first building's cost by the count, and the server refunds by type and skips the HQ. | Sum per id in `SelectionModel.Pull`. |
-| Low | `WallDrag` | Over the line limit, the preview cuts the line but the server traces a new one to the cut end, which can differ. | Re-run `WallRules.Line` to the cut end. |
+| ~~Medium~~ Fixed | `UnitCommander.Awake` | Fixed 2026-11-07: the local player is found lazily, and `Update` waits for it. Was: it assumes the local player spawned first, which slot reuse can break on a rejoin. It then throws, and `Update` throws every frame. | Null-check, and find the player lazily. |
+| ~~Medium~~ Fixed | `tools/ai-bench.sh` | Fixed 2026-11-07: styles are seeded on the match seed (`seed0 + k`); baselines from before don't compare. The `"style"` objective's throw was already caught by the tuner's dry run. Was: the style generator seeds on size and k, not the seed, so the tuner replays the same pairs. On 512, k 0 to 7 never plays Balanced, and `"style": "Turtle"` throws after a full run. | Seed on `seed0 + k`. Old baselines then don't compare. |
+| ~~Low~~ Fixed | `UnitCommander.FinishDigDrag` | Fixed 2026-11-07: the box stops the Diggers' roaming. Was: a dig box doesn't stop roaming, so roaming Diggers soon leave the job. | `Roaming.Stop(diggers)` after the chunk loop. |
+| ~~Low~~ Fixed | `UnitCommander.Update` | Fixed 2026-11-07: an open dialog ends the drag. Was: a box, wall or dig drag stays live through a dialog. After F1 in a wall drag, the next release places and pays for walls. | End the drag in that early return. |
+| ~~Low~~ Fixed | `Rebinding` | Fixed 2026-11-07: `Rebinding.SameControl` takes a plain modifier path as covering its left and right keys (`ReviewV020Tests`). Was: the conflict check compares path strings, and defaults are `/ctrl`, `/shift`, `/alt` where a rebind records `/leftCtrl`. Stop on Left Ctrl reports no conflict. | Map left and right to the plain name first. |
+| ~~Low~~ Fixed | `CommandCardController` Demolish text | Found fixed in the 2026-11-07 review: `SelectionModel.RefundFor` sums each building at its own type's cost. Was: it multiplies the first building's cost by the count, and the server refunds by type and skips the HQ. | Sum per id in `SelectionModel.Pull`. |
+| ~~Low~~ Fixed | `WallDrag` | Fixed 2026-11-07: a cut line is traced again to its cut end, as the server will. Was: over the line limit, the preview cuts the line but the server traces a new one to the cut end, which can differ. | Re-run `WallRules.Line` to the cut end. |
 | Low | `UnitCommander` Rally all | It stays armed after a HUD click, and Esc opens the menu as well, against the comments. | Add it to the Esc chain; drop it on a press over UI. |
 | Low | Several | The minimap uses `e.shiftKey`, not the rebindable Queue key. `rejoinArmed` stays true after a refused rejoin. A wall drag can send 31 order chunks of a budget of 40. `HudController` doesn't split lists over 64 buildings, and the server refuses those. | Each is a line or two. |
 

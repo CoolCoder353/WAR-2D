@@ -93,7 +93,7 @@ namespace WAR2D.Client
             foreach (LeapEntry l in news.Leaps)
             {
                 leaps[l.Index] = new Leap { From = l.From, To = l.To, Start = l.Start * dt, End = l.End * dt, LastSpark = float.NegativeInfinity };
-                Effects.Leap(new Vector2(l.From.x, l.From.y));
+                if (unitOfLast == null || unitOfLast(l.Index).known) Effects.Leap(new Vector2(l.From.x, l.From.y)); // not for a unit a replay's view hides
             }
             foreach (AimEntry a in news.Aims)
             {
@@ -170,7 +170,7 @@ namespace WAR2D.Client
             foreach (KeyValuePair<int, Leap> pair in leaps)
             {
                 if (serverNow > pair.Value.End + 0.5f) { scratch.Add(pair.Key); continue; }
-                if (!Airborne(pair.Key, out float2 drawn, out float2 ground, out float h)) continue;
+                if (!Airborne(pair.Key, out float2 drawn, out float2 ground, out float h) || !unitOf(pair.Key).known) continue; // a unit not shown: no shadow or sparks
                 LeapsDrawn++;
                 SpriteRenderer shadow = Next(shadowSprites, ref shadowsUsed, "LeapShadow", SortingOrders.Decals + 2);
                 shadow.sprite = atlas.Sprite("LeapShadow", math.clamp((int)(h * 3.99f), 0, atlas.FrameCount("LeapShadow") - 1));

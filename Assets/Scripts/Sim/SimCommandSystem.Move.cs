@@ -455,7 +455,17 @@ namespace WAR2D.Sim
                 if (slot < 0 || data.Health[slot] <= 0f) { context.Waypoints.Forget(id); continue; }
                 AddPending(data, One(slot), new PendingOrder { Slot = -1, Stance = Stances.Idle, WorkKind = WorkKinds.None });
                 if (StartAreaDig(data, context, slot)) continue;
-                if (TryNextWalk(data, context, id, slot, tick, out int2 goal, out byte stance, out _) && !Issue(data, context, One(slot), data.SizeClass[slot], goal, stance, tick, data.OwnerId[slot]))
+                if (!TryNextWalk(data, context, id, slot, tick, out int2 goal, out byte stance, out int target)) continue;
+                // A queued Attack behind the job goes as AdvanceWaypoints sends one (bug review 2026-11-05: it lost its target and
+                // stood in Attack stance, never firing).
+                byte kind = TargetKinds.Unit;
+                if (stance == Stances.Attack)
+                {
+                    if (TryStartChase(data, data.OwnerId[slot], target, unitCount, tick, out Chase chase)) { goal = chase.Goal; kind = chase.Kind; }
+                    else { stance = Stances.AttackMove; target = 0; }
+                }
+                else target = 0;
+                if (!Issue(data, context, One(slot), data.SizeClass[slot], goal, stance, tick, data.OwnerId[slot], target, kind))
                     context.Waypoints.Forget(id);
             }
         }
