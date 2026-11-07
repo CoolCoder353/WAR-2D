@@ -129,6 +129,53 @@ namespace WAR2D.Client
             if (fog != null && cell >= 0 && fog[cell] == (byte)FogState.Visible) pixels[cell] = colour;
         }
 
+        /// <summary>
+        /// Plots every known unit as <see cref="PlotUnit"/> does, in its owner's packed colour (<paramref name="unknown"/> for an owner
+        /// with none). A Burst job: the managed loop took several ms a redraw at 100,000 units, five redraws a second.
+        /// </summary>
+        public void PlotUnits(NativeArray<int> known, NativeArray<float2> positions, NativeArray<int> owners, NativeHashMap<int, uint> colours, uint unknown)
+        {
+            if ((Layers & MinimapLayers.Army) == 0 || fog == null) return;
+            new PlotUnitsJob
+            {
+                Known = known, Positions = positions, Owners = owners, Colours = colours, Unknown = unknown, Fog = fogCopy, Pixels = pixels,
+                Count = math.min(known.Length, positions.Length), Width = Width, Height = Height, CellSize = CellSize,
+            }.Run();
+        }
+
+        [BurstCompile]
+        private struct PlotUnitsJob : IJob
+        {
+            [ReadOnly] public NativeArray<int> Known, Owners;
+            [ReadOnly] public NativeArray<float2> Positions;
+            [ReadOnly] public NativeHashMap<int, uint> Colours;
+            [ReadOnly] public NativeArray<byte> Fog;
+            public NativeArray<Color32> Pixels;
+            public uint Unknown;
+            public int Count, Width, Height, CellSize;
+
+            public void Execute()
+            {
+                int lastOwner = int.MinValue;
+                Color32 colour = default;
+                for (int i = 0; i < Count; i++)
+                {
+                    int owner = Owners[Known[i]];
+                    if (owner != lastOwner)
+                    {
+                        lastOwner = owner;
+                        uint c = Colours.TryGetValue(owner, out uint cached) ? cached : Unknown;
+                        colour = new Color32((byte)c, (byte)(c >> 8), (byte)(c >> 16), (byte)(c >> 24));
+                    }
+                    float2 p = Positions[i];
+                    int x = (int)math.floor(p.x / CellSize), y = (int)math.floor(p.y / CellSize);
+                    if ((uint)x >= (uint)Width || (uint)y >= (uint)Height) continue;
+                    int cell = y * Width + x;
+                    if (Fog[cell] == (byte)FogState.Visible) Pixels[cell] = colour;
+                }
+            }
+        }
+
         /// <summary>Plots a building at a world position on any explored cell; a ghost (last seen) is dimmed.</summary>
         public void PlotBuilding(float2 position, Color32 colour, bool ghost)
         {

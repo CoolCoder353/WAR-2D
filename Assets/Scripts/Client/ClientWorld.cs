@@ -54,11 +54,16 @@ namespace WAR2D.Client
         private NativeArray<uint> frame;
         private NativeArray<float> lastAction; // server time of the unit's last attack, by index
         // Turrets (TurretAim), by index: whose it is (an index is reused with a new id), its angle and when it last turned, and what it
-        // aims at until when. Only ever touched on the main thread (and the draw job it runs), for units on screen or firing.
+        // aims at until when. Only ever touched on the main thread and by the draw job (on the job threads, one unit's index each, and
+        // complete before Draw goes on), for units on screen or firing.
         private NativeArray<int> turretOf;
         private NativeArray<float> turretAngle, turretTurnedAt, aimUntil;
         private NativeArray<float2> aimAt;
         private NativeList<UnitInstance> turrets;
+        private NativeList<int> filtered; // FilterJob's ids
+        // PackUnitsJob's per-unit slots (parallel to the known list), gathered into the bar and ring lists in unit order.
+        private NativeList<byte> packEmits;
+        private NativeList<UnitInstance> barSlots, ringSlots;
         private NativeList<UnitInstance> barrelShadows;
         private Effects.FlameLine flameLine;
         /// <summary>v0.20: fires, lasers, leaps and reload bars (<see cref="CombatVisuals"/>), and the health bars hidden in the air.</summary>
@@ -77,6 +82,11 @@ namespace WAR2D.Client
         private NativeArray<byte> hidden;
         private NativeList<UnitHit> hits;
         private NativeList<float3> tracks;
+        // The draw job's per-unit slots (parallel to the known list), gathered into the four lists above in unit order.
+        private NativeList<byte> drawEmits;
+        private NativeList<UnitHit> hitSlots;
+        private NativeList<float3> trackSlots;
+        private NativeList<UnitInstance> turretSlots, shadowSlots;
 
         /// <summary>The colour of an owner whose colour isn't known yet (a player still arriving); never cached.</summary>
         private static readonly uint UnknownColour = InstancedUnitRenderer.Pack(new Color32(160, 160, 160, 255));
@@ -208,7 +218,16 @@ namespace WAR2D.Client
             hits = new NativeList<UnitHit>(256, Allocator.Persistent);
             tracks = new NativeList<float3>(256, Allocator.Persistent);
             turrets = new NativeList<UnitInstance>(1024, Allocator.Persistent);
+            filtered = new NativeList<int>(1024, Allocator.Persistent);
+            packEmits = new NativeList<byte>(4096, Allocator.Persistent);
+            barSlots = new NativeList<UnitInstance>(4096, Allocator.Persistent);
+            ringSlots = new NativeList<UnitInstance>(8192, Allocator.Persistent);
             barrelShadows = new NativeList<UnitInstance>(64, Allocator.Persistent);
+            drawEmits = new NativeList<byte>(4096, Allocator.Persistent);
+            hitSlots = new NativeList<UnitHit>(4096, Allocator.Persistent);
+            trackSlots = new NativeList<float3>(4096, Allocator.Persistent);
+            turretSlots = new NativeList<UnitInstance>(4096, Allocator.Persistent);
+            shadowSlots = new NativeList<UnitInstance>(4096, Allocator.Persistent);
             flameLine = TryFlameLine;
             instances = new NativeList<UnitInstance>(4096, Allocator.Persistent);
             bars = new NativeList<UnitInstance>(1024, Allocator.Persistent);
@@ -243,6 +262,8 @@ namespace WAR2D.Client
             buildingRenderer?.Dispose();
             store?.Dispose();
             if (turrets.IsCreated) { turrets.Dispose(); barrelShadows.Dispose(); }
+            if (filtered.IsCreated) { filtered.Dispose(); packEmits.Dispose(); barSlots.Dispose(); ringSlots.Dispose(); }
+            if (drawEmits.IsCreated) { drawEmits.Dispose(); hitSlots.Dispose(); trackSlots.Dispose(); turretSlots.Dispose(); shadowSlots.Dispose(); }
             if (turretOf.IsCreated)
             {
                 turretOf.Dispose(); turretAngle.Dispose(); turretTurnedAt.Dispose(); aimUntil.Dispose(); aimAt.Dispose();
@@ -358,69 +379,98 @@ namespace WAR2D.Client
         public bool IsMoving(int id) => id > 0 && store.IdOf(NetIdAllocator.IndexOf(id)) == id && store.IsMoving(NetIdAllocator.IndexOf(id), serverTime);
 
         /// <summary>Adds the ids of every unit the client knows of the owner (all of them, not only those on screen), optionally of one type.</summary>
-        public void CollectOwn(int ownerId, List<int> into, UnitType type = UnitType.None)
-        {
-            NativeArray<int> known = store.Known;
-            for (int i = 0; i < known.Length; i++)
-            {
-                int index = known[i];
-                if (store.OwnerOf(index) != ownerId) continue;
-                if (type != UnitType.None && (UnitType)store.TypeOf(index) != type) continue;
-                into.Add(store.IdOf(index));
-            }
-        }
+        public void CollectOwn(int ownerId, List<int> into, UnitType type = UnitType.None) =>
+            Filter(into, ownerId, false, type, float.MinValue, float.MaxValue, 0f, -1f, false);
 
         /// <summary>Adds the ids of every known unit within <paramref name="radius"/> of a point that is not <paramref name="excludeOwner"/>'s (the enemy brackets of a range ring).</summary>
-        public void CollectInRadius(float2 centre, float radius, int excludeOwner, List<int> into)
+        public void CollectInRadius(float2 centre, float radius, int excludeOwner, List<int> into) =>
+            Filter(into, excludeOwner, true, UnitType.None, float.MinValue, float.MaxValue, centre, radius * radius, true);
+
+        /// <summary>Adds the ids of the owner's units inside the box (inclusive) to <paramref name="into"/>.</summary>
+        public void QueryBox(float2 min, float2 max, int ownerId, List<int> into) =>
+            Filter(into, ownerId, false, UnitType.None, math.min(min, max), math.max(min, max), 0f, -1f, true);
+
+        /// <summary>How many units of each type (indexed by <see cref="UnitType"/>) the client knows of the owner.</summary>
+        public void CountOwn(int ownerId, int[] byType)
         {
-            NativeArray<int> known = store.Known;
-            NativeArray<float2> predicted = store.Predicted;
-            int n = math.min(known.Length, predicted.Length);
-            float r2 = radius * radius;
-            for (int i = 0; i < n; i++)
+            using var counts = new NativeArray<int>(byType.Length, Allocator.TempJob);
+            new CountOwnJob { Known = store.Known, Owners = store.OwnerArray, Types = store.TypeArray, Owner = ownerId, Counts = counts }.Run();
+            counts.CopyTo(byType);
+        }
+
+        [BurstCompile]
+        private struct CountOwnJob : IJob
+        {
+            [ReadOnly] public NativeArray<int> Known, Owners;
+            [ReadOnly] public NativeArray<byte> Types;
+            public int Owner;
+            public NativeArray<int> Counts;
+
+            public void Execute()
             {
-                int index = known[i];
-                if (store.OwnerOf(index) == excludeOwner) continue;
-                if (math.distancesq(predicted[i], centre) <= r2) into.Add(store.IdOf(index));
+                for (int i = 0; i < Known.Length; i++)
+                {
+                    int index = Known[i];
+                    if (Owners[index] == Owner && Types[index] < Counts.Length) Counts[Types[index]]++;
+                }
             }
         }
 
-        /// <summary>Adds the ids of the owner's units inside the box (inclusive) to <paramref name="into"/>.</summary>
-        public void QueryBox(float2 min, float2 max, int ownerId, List<int> into)
+        private void Filter(List<int> into, int owner, bool excludeOwner, UnitType type, float2 lo, float2 hi, float2 centre, float radiusSq, bool usePositions)
         {
-            float2 lo = math.min(min, max), hi = math.max(min, max);
-            NativeArray<int> known = store.Known;
-            NativeArray<float2> predicted = store.Predicted;
-            int n = math.min(known.Length, predicted.Length);
-            for (int i = 0; i < n; i++)
+            filtered.Clear();
+            new FilterJob
             {
-                int index = known[i];
-                if (store.OwnerOf(index) != ownerId) continue;
-                float2 p = predicted[i];
-                if (p.x < lo.x || p.y < lo.y || p.x > hi.x || p.y > hi.y) continue;
-                into.Add(store.IdOf(index));
+                Known = store.Known, Owners = store.OwnerArray, Types = store.TypeArray, States = store.StateArray, Positions = store.Predicted,
+                Owner = owner, ExcludeOwner = excludeOwner, Type = (byte)type, Lo = lo, Hi = hi, Centre = centre, RadiusSq = radiusSq,
+                UsePositions = usePositions, Ids = filtered,
+            }.Run();
+            for (int k = 0; k < filtered.Length; k++) into.Add(filtered[k]);
+        }
+
+        /// <summary>
+        /// The ids of the known units of an owner (or, with <see cref="ExcludeOwner"/>, of every other owner), of one type (0: any),
+        /// inside a box and a circle (<see cref="RadiusSq"/> &lt; 0: none), in known order. A Burst job: the managed loops walked every
+        /// known unit, 4 to 10 ms a call at 100,000 units (the quick-select counts run 4 times a second).
+        /// </summary>
+        [BurstCompile]
+        private struct FilterJob : IJob
+        {
+            [ReadOnly] public NativeArray<int> Known, Owners;
+            [ReadOnly] public NativeArray<byte> Types;
+            [ReadOnly] public NativeArray<PredictState> States;
+            [ReadOnly] public NativeArray<float2> Positions; // parallel to Known
+            public int Owner;
+            public bool ExcludeOwner, UsePositions;
+            public byte Type;
+            public float2 Lo, Hi, Centre;
+            public float RadiusSq;
+            public NativeList<int> Ids;
+
+            public void Execute()
+            {
+                int n = UsePositions ? math.min(Known.Length, Positions.Length) : Known.Length;
+                for (int i = 0; i < n; i++)
+                {
+                    int index = Known[i];
+                    if ((Owners[index] == Owner) == ExcludeOwner) continue;
+                    if (Type != 0 && Types[index] != Type) continue;
+                    if (UsePositions)
+                    {
+                        float2 p = Positions[i];
+                        if (p.x < Lo.x || p.y < Lo.y || p.x > Hi.x || p.y > Hi.y) continue;
+                        if (RadiusSq >= 0f && math.distancesq(p, Centre) > RadiusSq) continue;
+                    }
+                    Ids.Add(States[index].Id);
+                }
             }
         }
 
         /// <summary>Plots every known unit on the minimap in its owner's colour (the minimap drops units on cells not seen now).</summary>
         public void PlotOn(MinimapTexture minimap)
         {
-            NativeArray<int> known = store.Known;
-            NativeArray<float2> predicted = store.Predicted;
-            NativeArray<int> owners = store.OwnerArray;
-            int n = math.min(known.Length, predicted.Length);
-            int lastOwner = int.MinValue;
-            Color32 colour = default;
-            for (int i = 0; i < n; i++)
-            {
-                int owner = owners[known[i]];
-                if (owner != lastOwner)
-                {
-                    lastOwner = owner;
-                    colour = PlayerPalette.OfOwner(owner);
-                }
-                minimap.PlotUnit(predicted[i], colour);
-            }
+            CacheOwnerColours(store.Known, store.OwnerArray);
+            minimap.PlotUnits(store.Known, store.Predicted, store.OwnerArray, ownerColours, UnknownColour);
         }
 
         /// <summary>Predicted positions, parallel to the known list (refreshed every frame).</summary>
@@ -498,8 +548,14 @@ namespace WAR2D.Client
             SelectMarker.End();
             PrepareMarker.Begin();
             // Per unit: facing, frame, colour, hit feedback, track marks, size and turret (Burst; 2026-11-06, 4.5 of 8 ms a frame
-            // at 10,000 units as a managed loop).
-            new PrepareUnitsJob
+            // at 10,000 units as a managed loop), over the job threads, then gathered in unit order.
+            int n = known.Length;
+            drawEmits.Resize(n, NativeArrayOptions.ClearMemory); // cleared: a batch that throws (editor) leaves no stale bits for the gather
+            hitSlots.ResizeUninitialized(n);
+            trackSlots.ResizeUninitialized(n);
+            turretSlots.ResizeUninitialized(n);
+            shadowSlots.ResizeUninitialized(n);
+            JobHandle prepared = new PrepareUnitsJob
             {
                 Known = known,
                 Positions = positions,
@@ -541,11 +597,24 @@ namespace WAR2D.Client
                 TurretTurnedAt = turretTurnedAt,
                 AimUntil = aimUntil,
                 AimAt = aimAt,
-                Turrets = turrets,
-                BarrelShadows = barrelShadows,
+                Emits = drawEmits.AsArray(),
+                HitSlots = hitSlots.AsArray(),
+                TrackSlots = trackSlots.AsArray(),
+                TurretSlots = turretSlots.AsArray(),
+                ShadowSlots = shadowSlots.AsArray(),
+            }.Schedule(n, DrawBatch);
+            new GatherUnitsJob
+            {
+                Emits = drawEmits.AsArray(),
+                HitSlots = hitSlots.AsArray(),
+                TrackSlots = trackSlots.AsArray(),
+                TurretSlots = turretSlots.AsArray(),
+                ShadowSlots = shadowSlots.AsArray(),
                 Hits = hits,
                 Tracks = tracks,
-            }.Run();
+                Turrets = turrets,
+                BarrelShadows = barrelShadows,
+            }.Schedule(prepared).Complete();
             PrepareMarker.End();
             EffectsMarker.Begin();
             // The job's main-thread effects, in unit order: hits on the minimap, then track marks.
@@ -557,7 +626,7 @@ namespace WAR2D.Client
                 if (!(hit.Own && combat.IsOwnDecay(hit.Drop, hit.SinceLastHit))) combat.Hit(hit.Position, hit.Own, now);
             }
             for (int i = 0; i < tracks.Length; i++) Decals.Track(tracks[i].xy, tracks[i].z);
-            RaiseAirborne(known, positions, count);
+            RaiseAirborne(positions);
             Effects.FollowFlames(flameLine);
             ownSelected.Clear();
             foreach (int index in selectedIndices)
@@ -569,6 +638,9 @@ namespace WAR2D.Client
             instances.ResizeUninitialized(count);
             bars.ResizeUninitialized(count);
             rings.ResizeUninitialized(count * 2 + barrelShadows.Length); // a selected roaming unit has both rings
+            packEmits.ResizeUninitialized(count);
+            barSlots.ResizeUninitialized(count);
+            ringSlots.ResizeUninitialized(count * 2);
             new PackUnitsJob
             {
                 Known = known,
@@ -588,10 +660,14 @@ namespace WAR2D.Client
                 RingFrame = unitRenderer.RingFrame,
                 RoamRingFrame = unitRenderer.RoamRingFrame,
                 Instances = instances.AsArray(),
-                Bars = bars.AsArray(),
-                BarCount = barCount,
-                Rings = rings.AsArray(),
-                RingCount = ringCount,
+                BarSlots = barSlots.AsArray(),
+                RingSlots = ringSlots.AsArray(),
+                Emits = packEmits.AsArray(),
+            }.Schedule(count, DrawBatch).Complete();
+            new GatherPackedJob
+            {
+                Emits = packEmits.AsArray(), BarSlots = barSlots.AsArray(), RingSlots = ringSlots.AsArray(),
+                Bars = bars.AsArray(), BarCount = barCount, Rings = rings.AsArray(), RingCount = ringCount,
             }.Run();
             for (int i = 0; i < barrelShadows.Length; i++) rings[ringCount[0] + i] = barrelShadows[i];
             PackMarker.End();
@@ -612,25 +688,26 @@ namespace WAR2D.Client
 
         /// <summary>
         /// v0.20: a Bomber in the air is drawn raised on its leap's arc with no health bar (Figma B1); its tracks, facing and fires stay on
-        /// the ground track below (the draw job has already used that). Walks the units only while a leap is on.
+        /// the ground track below (the draw job has already used that). Walks only the units with the Airborne status (it walked every
+        /// known unit while any leap was on: 100,000 dictionary lookups a frame in a big battle).
         /// </summary>
-        private void RaiseAirborne(NativeArray<int> known, NativeArray<float2> positions, int count)
+        private void RaiseAirborne(NativeArray<float2> positions)
         {
             foreach (int index in barsHidden) hideBar[index] = 0;
             barsHidden.Clear();
-            bool any = false;
             foreach (KeyValuePair<int, byte> status in ClientCombat.Current.Statuses)
-                if ((status.Value & WAR2D.Sim.UnitStatusBits.Airborne) != 0) { any = true; break; }
-            if (!any) return;
-            for (int i = 0; i < count; i++)
             {
-                int index = known[i];
-                if (!combatVisuals.Airborne(index, out float2 raised, out _, out _)) continue;
-                positions[i] = raised;
-                hideBar[index] = 1;
-                barsHidden.Add(index);
+                if ((status.Value & WAR2D.Sim.UnitStatusBits.Airborne) == 0) continue;
+                int slot = store.SlotOf(status.Key);
+                if (slot < 0 || slot >= positions.Length || !combatVisuals.Airborne(status.Key, out float2 raised, out _, out _)) continue;
+                positions[slot] = raised;
+                hideBar[status.Key] = 1;
+                barsHidden.Add(status.Key);
             }
         }
+
+        /// <summary>Units per batch of the draw jobs on the job threads.</summary>
+        private const int DrawBatch = 64;
 
         /// <summary>Tiles past the screen's edge a unit's turret is still drawn: the longest barrel and its shadow reach this far.</summary>
         private const float TurretViewMargin = 2.5f;
@@ -653,7 +730,7 @@ namespace WAR2D.Client
         }
 
         /// <summary>A known unit's health drop this frame, for the minimap's fights (applied on the main thread after the draw job).</summary>
-        private struct UnitHit
+        internal struct UnitHit
         {
             public float2 Position;
             public int Drop;
@@ -706,10 +783,17 @@ namespace WAR2D.Client
         /// its turret: turned toward what it fired at while it holds its aim, else the way it faces, by the time since it last turned (so
         /// one that was off screen catches up at once), packed with a raised Artillery barrel's shadow. The hits and marks go to lists the
         /// main thread applies after.
+        /// Runs over the job threads (2026-11-07: 1.0 ms of the main thread at 10,000 units on one core): each unit writes only its own
+        /// index (the known list holds each index once) and its own slot <c>i</c>; <see cref="GatherUnitsJob"/> then appends the slots to
+        /// the lists in unit order, so the output is the same as one thread's.
+        /// The editor compiles it before its first run (CompileSynchronously), so it never runs once in Mono and once in Burst.
         /// </summary>
-        [BurstCompile]
-        private struct PrepareUnitsJob : IJob
+        [BurstCompile(CompileSynchronously = true)]
+        internal struct PrepareUnitsJob : IJobParallelFor
         {
+            /// <summary>Bits of <see cref="Emits"/>: which of a unit's slots hold a result this frame.</summary>
+            internal const byte EmitHit = 1, EmitTrack = 2, EmitTurret = 4, EmitShadow = 8;
+
             [ReadOnly] public NativeArray<int> Known;
             [ReadOnly] public NativeArray<float2> Positions; // parallel to Known
             [ReadOnly] public NativeArray<int> Owners;
@@ -729,61 +813,73 @@ namespace WAR2D.Client
             public float4 View, TurretView; // xMin, yMin, xMax, yMax
             public uint BarrelShadowFrame;
 
-            // By index.
-            public NativeArray<float2> LastPosition;
-            public NativeArray<float> Rotation;
-            public NativeArray<uint> Frame, Color;
-            public NativeArray<float> Health01, DrawScale;
-            public NativeArray<int> TrackedId;
-            public NativeArray<byte> LastHealth, Flash;
-            public NativeArray<float> HitAt, Trail;
-            public NativeArray<int> TrackIds;
-            public NativeArray<float2> LastTracks;
-            public NativeArray<int> TurretOf;
-            public NativeArray<float> TurretAngle, TurretTurnedAt, AimUntil;
+            // By index (each unit writes only its own).
+            [NativeDisableParallelForRestriction] public NativeArray<float2> LastPosition;
+            [NativeDisableParallelForRestriction] public NativeArray<float> Rotation;
+            [NativeDisableParallelForRestriction] public NativeArray<uint> Frame, Color;
+            [NativeDisableParallelForRestriction] public NativeArray<float> Health01, DrawScale;
+            [NativeDisableParallelForRestriction] public NativeArray<int> TrackedId;
+            [NativeDisableParallelForRestriction] public NativeArray<byte> LastHealth, Flash;
+            [NativeDisableParallelForRestriction] public NativeArray<float> HitAt, Trail;
+            [NativeDisableParallelForRestriction] public NativeArray<int> TrackIds;
+            [NativeDisableParallelForRestriction] public NativeArray<float2> LastTracks;
+            [NativeDisableParallelForRestriction] public NativeArray<int> TurretOf;
+            [NativeDisableParallelForRestriction] public NativeArray<float> TurretAngle, TurretTurnedAt, AimUntil;
             [ReadOnly] public NativeArray<float2> AimAt;
 
-            public NativeList<UnitInstance> Turrets, BarrelShadows;
-            public NativeList<UnitHit> Hits;
-            public NativeList<float3> Tracks; // position, heading
+            // By slot i, parallel to Known: what goes to the lists, read by GatherUnitsJob where Emits says so.
+            public NativeArray<byte> Emits;
+            public NativeArray<UnitHit> HitSlots;
+            public NativeArray<float3> TrackSlots; // position, heading
+            public NativeArray<UnitInstance> TurretSlots, ShadowSlots;
 
-            public void Execute()
+            public void Execute(int i)
             {
-                for (int i = 0; i < Known.Length; i++)
+                int index = Known[i];
+                float2 p = Positions[i];
+                float2 delta = p - LastPosition[index];
+                bool moving = math.lengthsq(delta) > 1e-6f && math.lengthsq(delta) < 4f;
+                if (moving) Rotation[index] = math.atan2(delta.y, delta.x);
+                LastPosition[index] = p;
+                byte type = Types[index];
+                int owner = Owners[index], id = States[index].Id;
+                int row = type < Cells.Length ? type : 0; // no bounds checks in a player's Burst code (DecodeEnter refuses bad types too)
+                if (HasFrames)
+                    Frame[index] = Cells[row].BodyCell(Rotation[index], moving, ServerTime, ServerTime - LastAction[index], index);
+                Color[index] = Colours.TryGetValue(owner, out uint c) ? c : UnknownColour;
+                byte health = Health[index];
+                Health01[index] = health / 100f;
+                byte emit = 0;
+                if (TrackHit(index, id, health, p, owner, out UnitHit hit))
                 {
-                    int index = Known[i];
-                    float2 p = Positions[i];
-                    float2 delta = p - LastPosition[index];
-                    bool moving = math.lengthsq(delta) > 1e-6f && math.lengthsq(delta) < 4f;
-                    if (moving) Rotation[index] = math.atan2(delta.y, delta.x);
-                    LastPosition[index] = p;
-                    byte type = Types[index];
-                    int owner = Owners[index], id = States[index].Id;
-                    int row = type < Cells.Length ? type : 0; // no bounds checks in a player's Burst code (DecodeEnter refuses bad types too)
-                    if (HasFrames)
-                        Frame[index] = Cells[row].BodyCell(Rotation[index], moving, ServerTime, ServerTime - LastAction[index], index);
-                    Color[index] = Colours.TryGetValue(owner, out uint c) ? c : UnknownColour;
-                    byte health = Health[index];
-                    Health01[index] = health / 100f;
-                    TrackHit(index, id, health, p, owner);
-                    if (moving)
-                    {
-                        int tracked = TrackIds[index];
-                        float2 last = LastTracks[index];
-                        bool lay = WorldEffects.TrackMark(ref tracked, ref last, id, type, p, View, out float2 mid, out float heading);
-                        TrackIds[index] = tracked;
-                        LastTracks[index] = last;
-                        if (lay) Tracks.Add(new float3(mid, heading));
-                    }
-                    DrawScale[index] = UseHidden && Hidden[index] != 0 ? -1f : type < ScaleByType.Length ? ScaleByType[type] : 1f;
-                    if (HasFrames && Cells[row].TurretFirst >= 0 && DrawScale[index] > 0f && Inside(TurretView, p)) PackTurret(index, id, type, Cells[row], p);
+                    HitSlots[i] = hit;
+                    emit |= EmitHit;
                 }
+                if (moving)
+                {
+                    int tracked = TrackIds[index];
+                    float2 last = LastTracks[index];
+                    bool lay = WorldEffects.TrackMark(ref tracked, ref last, id, type, p, View, out float2 mid, out float heading);
+                    TrackIds[index] = tracked;
+                    LastTracks[index] = last;
+                    if (lay)
+                    {
+                        TrackSlots[i] = new float3(mid, heading);
+                        emit |= EmitTrack;
+                    }
+                }
+                DrawScale[index] = UseHidden && Hidden[index] != 0 ? -1f : type < ScaleByType.Length ? ScaleByType[type] : 1f;
+                if (HasFrames && Cells[row].TurretFirst >= 0 && DrawScale[index] > 0f && Inside(TurretView, p)) emit |= PackTurret(i, index, id, type, Cells[row], p);
+                Emits[i] = emit;
             }
 
             private static bool Inside(float4 r, float2 p) => p.x >= r.x && p.x < r.z && p.y >= r.y && p.y < r.w; // Rect.Contains
 
-            private void TrackHit(int index, int id, byte health, float2 position, int owner)
+            /// <summary>Hit feedback for one unit; true, with the hit for the minimap, when its health dropped.</summary>
+            private bool TrackHit(int index, int id, byte health, float2 position, int owner, out UnitHit hit)
             {
+                hit = default;
+                bool dropped = false;
                 if (TrackedId[index] != id)
                 {
                     TrackedId[index] = id;
@@ -793,15 +889,18 @@ namespace WAR2D.Client
                 }
                 else if (health < LastHealth[index])
                 {
-                    Hits.Add(new UnitHit { Position = position, Own = owner == LocalOwner, Drop = LastHealth[index] - health, SinceLastHit = Now - HitAt[index] });
+                    hit = new UnitHit { Position = position, Own = owner == LocalOwner, Drop = LastHealth[index] - health, SinceLastHit = Now - HitAt[index] };
+                    dropped = true;
                     HitAt[index] = Now;
                 }
                 LastHealth[index] = health;
                 Trail[index] = HitFeedback.Trail(Trail[index], health / 100f, Now - HitAt[index], FrameSeconds);
                 Flash[index] = (byte)(HitFeedback.Flashing(HitAt[index], Now) ? 1 : 0);
+                return dropped;
             }
 
-            private void PackTurret(int index, int id, byte type, UnitFrames.TypeCells cell, float2 p)
+            /// <summary>The unit's turret into its slot, and a raised Artillery barrel's shadow into its own; returns their <see cref="Emits"/> bits.</summary>
+            private byte PackTurret(int i, int index, int id, byte type, UnitFrames.TypeCells cell, float2 p)
             {
                 UnitType unit = (UnitType)type;
                 ResetTurretIfNew(index, id, Rotation[index], Now, TurretOf, TurretAngle, TurretTurnedAt, AimUntil);
@@ -814,16 +913,43 @@ namespace WAR2D.Client
                 int frameIndex = TurretAim.TurretFrame(cell.TurretFrames, aiming, TurretAim.Recoiling(ServerTime - LastAction[index]));
                 Vector2 pivot = TurretAim.PivotPixels(unit, TurretAim.HullAngle(hull)) / ArtStyle.PixelsPerUnit;
                 float2 at = p + new float2(pivot.x, pivot.y);
-                Turrets.Add(new UnitInstance
+                TurretSlots[i] = new UnitInstance
                 {
                     position = at,
                     frame = cell.TurretCell(facing, frameIndex),
                     color = Color[index],
                     scale = cell.TurretTiles,
                     pad = (uint)(Selected[index] & 1) | (uint)Flash[index] << 1,
-                });
-                if (unit == UnitType.Artillery && aiming)
-                    BarrelShadows.Add(new UnitInstance { position = at, frame = BarrelShadowFrame + (uint)facing, color = 0xFFFFFFFFu, scale = BarrelShadowTiles });
+                };
+                if (!(unit == UnitType.Artillery && aiming)) return EmitTurret;
+                ShadowSlots[i] = new UnitInstance { position = at, frame = BarrelShadowFrame + (uint)facing, color = 0xFFFFFFFFu, scale = BarrelShadowTiles };
+                return EmitTurret | EmitShadow;
+            }
+        }
+
+        /// <summary>Appends <see cref="PrepareUnitsJob"/>'s slots to the hit, track, turret and barrel-shadow lists, in unit order.</summary>
+        [BurstCompile(CompileSynchronously = true)]
+        internal struct GatherUnitsJob : IJob
+        {
+            [ReadOnly] public NativeArray<byte> Emits;
+            [ReadOnly] public NativeArray<UnitHit> HitSlots;
+            [ReadOnly] public NativeArray<float3> TrackSlots;
+            [ReadOnly] public NativeArray<UnitInstance> TurretSlots, ShadowSlots;
+            public NativeList<UnitHit> Hits;
+            public NativeList<float3> Tracks;
+            public NativeList<UnitInstance> Turrets, BarrelShadows;
+
+            public void Execute()
+            {
+                for (int i = 0; i < Emits.Length; i++)
+                {
+                    byte emit = Emits[i];
+                    if (emit == 0) continue;
+                    if ((emit & PrepareUnitsJob.EmitHit) != 0) Hits.Add(HitSlots[i]);
+                    if ((emit & PrepareUnitsJob.EmitTrack) != 0) Tracks.Add(TrackSlots[i]);
+                    if ((emit & PrepareUnitsJob.EmitTurret) != 0) Turrets.Add(TurretSlots[i]);
+                    if ((emit & PrepareUnitsJob.EmitShadow) != 0) BarrelShadows.Add(ShadowSlots[i]);
+                }
             }
         }
 

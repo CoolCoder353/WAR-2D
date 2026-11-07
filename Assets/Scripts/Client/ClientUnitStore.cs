@@ -162,6 +162,8 @@ namespace WAR2D.Client
         private const float MovingLookAhead = 0.25f;
 
         public bool IsKnown(int index) => (uint)index < (uint)knownSlot.Length && knownSlot[index] >= 0;
+        /// <summary>The unit's place in the known list (and so in <see cref="Predicted"/>), or -1 when it isn't known.</summary>
+        public int SlotOf(int index) => IsKnown(index) ? knownSlot[index] : -1;
         public int IdOf(int index) => IsKnown(index) ? states[index].Id : 0;
         public int OwnerOf(int index) => owner[index];
         public byte TypeOf(int index) => type[index];

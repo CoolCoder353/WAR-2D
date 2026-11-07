@@ -89,28 +89,27 @@ namespace WAR2D.Client
             }
         }
 
-        /// <summary>Counts for the quick-select chips.</summary>
+        /// <summary>Counts for the quick-select chips: the army by type (a Burst count), then each Builder for idleness.</summary>
         public QuickCounts CountQuick(int ownerId)
         {
             ClientWorld world = ClientWorld.Instance;
             if (world == null) return default;
             Config.GameConfigData config = Config.ConfigLoader.LoadConfig();
+            world.CountOwn(ownerId, ownByType);
+            int army = 0;
+            for (int t = 0; t < ownByType.Length; t++)
+                if (ownByType[t] > 0 && (UnitType)t != UnitType.Builder && config.Units.TryGetValue((UnitType)t, out Config.UnitConfig unit) && IsArmy((UnitType)t, unit))
+                    army += ownByType[t];
             quickScratch.Clear();
-            world.CollectOwn(ownerId, quickScratch);
+            world.CollectOwn(ownerId, quickScratch, UnitType.Builder);
             CollectWorkSites(ownerId);
-            int idle = 0, builders = 0, army = 0;
+            int idle = 0;
             foreach (int id in quickScratch)
-            {
-                if (!world.TryGet(id, out ClientUnitView view)) continue;
-                if (view.Type == UnitType.Builder)
-                {
-                    builders++;
-                    if (IsIdleBuilder(world, id, view.Position, workSites)) idle++;
-                }
-                else if (IsArmy(view.Type, config.GetUnit(view.Type))) army++;
-            }
-            return new QuickCounts(idle, builders, army);
+                if (world.TryGet(id, out ClientUnitView view) && IsIdleBuilder(world, id, view.Position, workSites)) idle++;
+            return new QuickCounts(idle, quickScratch.Count, army);
         }
+
+        private readonly int[] ownByType = new int[256];
 
         /// <summary>Selects the own Builders with nothing to do, or with <paramref name="all"/> every Builder. Returns how many.</summary>
         public int SelectBuilders(int ownerId, bool all)

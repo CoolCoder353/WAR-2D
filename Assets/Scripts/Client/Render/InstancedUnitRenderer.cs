@@ -246,10 +246,17 @@ namespace WAR2D.Client.Render
         }
     }
 
-    /// <summary>Packs predicted units into instances, the damaged ones' health bars and the selected ones' rings into two more lists.</summary>
+    /// <summary>
+    /// Packs predicted units into instances, over the job threads (2026-11-07: 0.8 ms of the main thread at 100,000 units on one
+    /// core). Each unit writes its own instance and its own bar and ring slots; <see cref="GatherPackedJob"/> then appends the damaged
+    /// ones' health bars and the selected ones' rings to their lists in unit order, as the one-thread job did.
+    /// </summary>
     [BurstCompile]
-    public struct PackUnitsJob : IJob
+    public struct PackUnitsJob : IJobParallelFor
     {
+        /// <summary>Bits of <see cref="Emits"/>: which of a unit's slots hold a result this frame.</summary>
+        public const byte EmitBar = 1, EmitRing = 2, EmitRoamRing = 4;
+
         [ReadOnly] public NativeArray<int> Known;
         [ReadOnly] public NativeArray<float2> Positions;
         [ReadOnly] public NativeArray<float> Rotation;   // by index
@@ -267,43 +274,48 @@ namespace WAR2D.Client.Render
         /// <summary>The Gameplay setting's <see cref="HealthBarMode"/>: which units get a bar.</summary>
         public int BarMode;
         public NativeArray<UnitInstance> Instances;
-        public NativeArray<UnitInstance> Bars;
-        public NativeArray<int> BarCount;
-        public NativeArray<UnitInstance> Rings;
-        public NativeArray<int> RingCount;
+        /// <summary>Parallel to <see cref="Known"/>: the unit's bar, and its two rings (selected, roaming) at 2i and 2i + 1.</summary>
+        public NativeArray<UnitInstance> BarSlots;
+        [NativeDisableParallelForRestriction] public NativeArray<UnitInstance> RingSlots;
+        public NativeArray<byte> Emits;
 
-        public void Execute()
+        public void Execute(int i)
         {
-            int bars = 0, rings = 0;
-            for (int i = 0; i < Known.Length; i++)
+            int index = Known[i];
+            byte emit = 0;
+            if (Scale[index] < 0f) // not shown (a replay's per-player view): nothing, not even a bar
             {
-                int index = Known[i];
-                if (Scale[index] < 0f) // not shown (a replay's per-player view): nothing, not even a bar
-                {
-                    Instances[i] = new UnitInstance { position = Positions[i], scale = 0f };
-                    continue;
-                }
-                float health = Health01[index];
-                float scale = Scale[index] > 0f ? Scale[index] : 1f;
-                bool selected = (Selected[index] & 1) != 0;
-                if (selected)
-                    Rings[rings++] = new UnitInstance { position = Positions[i], frame = scale > 1.5f ? LargeRingFrame : RingFrame, color = 0xFFFFFFFFu, scale = scale > 1.5f ? 2f : 1f };
-                if ((Selected[index] & 2) != 0)
-                    Rings[rings++] = new UnitInstance { position = Positions[i], frame = RoamRingFrame, color = 0xFFFFFFFFu, scale = scale > 1.5f ? 2f : 1f };
-                Instances[i] = new UnitInstance
-                {
-                    position = Positions[i],
-                    rotation = Rotation[index],
-                    frame = Frame[index],
-                    color = Color[index],
-                    health = health,
-                    scale = scale,
-                    pad = (uint)(Selected[index] & 1) | (uint)Flash[index] << 1,
-                };
-                if (!WAR2D.Client.Overlays.OverlayRules.ShowHealthBar(BarMode, health, selected)) continue;
-                if (HideBar.IsCreated && HideBar[index] != 0) continue;
+                Instances[i] = new UnitInstance { position = Positions[i], scale = 0f };
+                Emits[i] = 0;
+                return;
+            }
+            float health = Health01[index];
+            float scale = Scale[index] > 0f ? Scale[index] : 1f;
+            bool selected = (Selected[index] & 1) != 0;
+            if (selected)
+            {
+                RingSlots[2 * i] = new UnitInstance { position = Positions[i], frame = scale > 1.5f ? LargeRingFrame : RingFrame, color = 0xFFFFFFFFu, scale = scale > 1.5f ? 2f : 1f };
+                emit |= EmitRing;
+            }
+            if ((Selected[index] & 2) != 0)
+            {
+                RingSlots[2 * i + 1] = new UnitInstance { position = Positions[i], frame = RoamRingFrame, color = 0xFFFFFFFFu, scale = scale > 1.5f ? 2f : 1f };
+                emit |= EmitRoamRing;
+            }
+            Instances[i] = new UnitInstance
+            {
+                position = Positions[i],
+                rotation = Rotation[index],
+                frame = Frame[index],
+                color = Color[index],
+                health = health,
+                scale = scale,
+                pad = (uint)(Selected[index] & 1) | (uint)Flash[index] << 1,
+            };
+            if (WAR2D.Client.Overlays.OverlayRules.ShowHealthBar(BarMode, health, selected) && !(HideBar.IsCreated && HideBar[index] != 0))
+            {
                 int frame = math.clamp((int)math.round(health * (InstancedUnitRenderer.BarFrames - 1)), 0, InstancedUnitRenderer.BarFrames - 1);
-                Bars[bars++] = new UnitInstance
+                BarSlots[i] = new UnitInstance
                 {
                     position = Positions[i] + new float2(0f, UnitHalfSize * scale + 0.175f),
                     rotation = Trail[index],
@@ -312,6 +324,33 @@ namespace WAR2D.Client.Render
                     health = health,
                     scale = 1f,
                 };
+                emit |= EmitBar;
+            }
+            Emits[i] = emit;
+        }
+    }
+
+    /// <summary>Appends <see cref="PackUnitsJob"/>'s bars and rings to their lists in unit order (rings: selected, then roaming).</summary>
+    [BurstCompile]
+    public struct GatherPackedJob : IJob
+    {
+        [ReadOnly] public NativeArray<byte> Emits;
+        [ReadOnly] public NativeArray<UnitInstance> BarSlots, RingSlots;
+        public NativeArray<UnitInstance> Bars;
+        public NativeArray<int> BarCount;
+        public NativeArray<UnitInstance> Rings;
+        public NativeArray<int> RingCount;
+
+        public void Execute()
+        {
+            int bars = 0, rings = 0;
+            for (int i = 0; i < Emits.Length; i++)
+            {
+                byte emit = Emits[i];
+                if (emit == 0) continue;
+                if ((emit & PackUnitsJob.EmitRing) != 0) Rings[rings++] = RingSlots[2 * i];
+                if ((emit & PackUnitsJob.EmitRoamRing) != 0) Rings[rings++] = RingSlots[2 * i + 1];
+                if ((emit & PackUnitsJob.EmitBar) != 0) Bars[bars++] = BarSlots[i];
             }
             BarCount[0] = bars;
             RingCount[0] = rings;
