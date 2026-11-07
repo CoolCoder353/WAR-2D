@@ -30,10 +30,37 @@ public sealed class PerfClient : MonoBehaviour
         go.AddComponent<PerfClient>();
     }
 
+    /// <summary>
+    /// True with <c>-perfView</c> (the 10,000-unit benchmark, <c>tools/perf-10k.sh</c>): this client renders, at 1920×1080
+    /// fullscreen with the default settings, VSync off and no frame cap, frames every unit it knows, and records its frames
+    /// (fps, 1 % low, CPU main and render thread, GPU), its process CPU and memory, and the units it knows and has on screen.
+    /// </summary>
+    private static readonly bool View = Array.IndexOf(Environment.GetCommandLineArgs(), "-perfView") >= 0;
+
+    /// <summary>The client frame budget: 120 fps on average and in the slowest 1 % of frames.</summary>
+    public const double FpsBudget = 120.0;
+
+    private bool measuring;
+    private float measureStart;
+    private readonly List<double> frameMs = new List<double>();
+    private readonly List<float> frameAt = new List<float>();
+    private readonly List<int> frameGc = new List<int>();
+    private readonly FrameTiming[] timing = new FrameTiming[1];
+    private readonly System.Diagnostics.Process self = System.Diagnostics.Process.GetCurrentProcess();
+
     private IEnumerator Start()
     {
         Application.targetFrameRate = 30; // a headless player needs no more, and leaves the CPU to the host
         yield return new WaitUntil(() => GameManager.Instance != null);
+        if (View)
+        {
+            // After SettingsStore.ApplyOnStart: the defaults (1920×1080 fullscreen), whatever this machine saved, uncapped. Fullscreen
+            // matters: a window behind another one stalls in DXGI.WaitOnSwapChain for ~500 ms at a time (profiled 2026-11-06).
+            SettingsStore.Current = new GameSettings { VSync = false, FpsCap = 0, EdgeScroll = false };
+            SettingsStore.Apply(SettingsStore.Current);
+            // -perfBreakdown: bytes per message type in this player's unit stream (decodes every batch twice: not for timing runs).
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0) WAR2D.Net.Replication.ReplicationClient.Received += CountBatch;
+        }
         UseMeteredTransport();
         GameManager.Instance.ConnectToServer(PerfMatch.ArgValue("-perfClient"));
 
@@ -44,6 +71,10 @@ public sealed class PerfClient : MonoBehaviour
 
         long last = MeteredKcpTransport.ClientBytesReceived;
         float lastTime = Time.realtimeSinceStartup;
+        TimeSpan lastCpu = self.TotalProcessorTime;
+        measuring = View;
+        measureStart = Time.realtimeSinceStartup;
+        if (View) FitAll();
         while (NetworkClient.isConnected && Time.realtimeSinceStartup - started < MaxSeconds)
         {
             yield return new WaitForSecondsRealtime(1f);
@@ -52,20 +83,149 @@ public sealed class PerfClient : MonoBehaviour
             double rate = (now - last) / Math.Max(1e-3, t - lastTime);
             stats.Add("perf.bw.avg", rate);
             stats.Add("perf.bw.peak1s", rate);
+            if (View && measuring)
+            {
+                self.Refresh();
+                TimeSpan cpu = self.TotalProcessorTime;
+                stats.Add("perf.client.cpu", (cpu - lastCpu).TotalMilliseconds / Math.Max(1.0, (t - lastTime) * 1000.0) * 100.0); // % of one core
+                lastCpu = cpu;
+                stats.Add("perf.client.memMB", PerfMatch.UnityMemoryMb());
+                stats.Add("perf.client.gcMB", GC.GetTotalMemory(false) / 1048576.0);
+                stats.Add("perf.client.unityMB", UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong() / 1048576.0);
+                CountUnits(out int known, out int onScreen);
+                stats.Add("perf.client.unitsKnown", known);
+                stats.Add("perf.client.unitsOnScreen", onScreen);
+                FitAll();
+            }
             last = now;
             lastTime = t;
-            FollowArmy();
+            if (!View) FollowArmy();
         }
+        measuring = false;
 
         string dir = PerfMatch.ArgValue("-perfOut") ?? Path.Combine(Application.persistentDataPath, "PerfResults");
         string path = Path.Combine(dir, "perf.csv");
-        stats.WriteCsv(path, new Dictionary<string, (string, double, bool)>
+        var budgets = new Dictionary<string, (string, double, bool)>
         {
             ["perf.bw.avg"] = ("mean", 262144.0, true),
             ["perf.bw.peak1s"] = ("max", 786432.0, true),
-        });
+        };
+        if (View)
+        {
+            // The frame rate is frames over time (the mean of each frame's own rate reads high when frame times vary).
+            double totalMs = 0;
+            foreach (double ms in frameMs) totalMs += ms;
+            if (frameMs.Count > 0) stats.Add("perf.client.fps", frameMs.Count * 1000.0 / Math.Max(1e-3, totalMs));
+            stats.Add("perf.client.low1", OnePercentLow(frameMs));
+            // Every frame (seconds into the measurement, milliseconds, garbage collections so far), to find what the slow ones line up with.
+            var frames = new System.Text.StringBuilder("t,ms,gc\n");
+            for (int i = 0; i < frameMs.Count; i++) frames.Append(frameAt[i].ToString("0.000", System.Globalization.CultureInfo.InvariantCulture)).Append(',').Append(frameMs[i].ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)).Append(',').Append(frameGc[i]).Append('\n');
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "frames.csv"), frames.ToString());
+            budgets["perf.client.fps"] = ("mean", FpsBudget, false);
+            budgets["perf.client.low1"] = ("mean", FpsBudget, false);
+            if (batchBytes > 0)
+            {
+                stats.Add("perf.client.batchKBps", batchBytes / 1024.0 / Math.Max(1.0, frameAt[frameAt.Count - 1]));
+                PerfMatch.WriteBreakdown(Path.Combine(dir, "breakdown.csv"), typeBytes, typeUnits);
+            }
+        }
+        stats.WriteCsv(path, budgets);
         WarLog.Info(LogCategory.Dev, $"wrote {path}");
         Application.Quit();
+    }
+
+    private readonly long[] typeBytes = new long[8], typeUnits = new long[8];
+    private long batchBytes;
+
+    private void CountBatch(WAR2D.Net.Replication.ReplicationBatch batch)
+    {
+        if (!measuring) return;
+        batchBytes += batch.Payload.Count;
+        PerfMatch.CountTypes(batch.Payload, typeBytes, typeUnits);
+    }
+
+    /// <summary>The view's frames, from the warm-up's end until the host ends the match (not the menu that follows).</summary>
+    private void Update()
+    {
+        if (!measuring) return;
+        if (!NetworkClient.isConnected) { measuring = false; return; }
+        double ms = Time.unscaledDeltaTime * 1000.0;
+        frameMs.Add(ms);
+        frameAt.Add(Time.realtimeSinceStartup - measureStart);
+        frameGc.Add(GC.CollectionCount(0));
+        stats.Add("perf.client.frame.ms", ms);
+        FrameTimingManager.CaptureFrameTimings();
+        if (FrameTimingManager.GetLatestTimings(1, timing) < 1) return;
+        stats.Add("perf.client.cpu.main.ms", timing[0].cpuMainThreadFrameTime);
+        stats.Add("perf.client.cpu.render.ms", timing[0].cpuRenderThreadFrameTime);
+        stats.Add("perf.client.cpu.presentWait.ms", timing[0].cpuMainThreadPresentWaitTime);
+        if (timing[0].gpuFrameTime > 0 && timing[0].gpuFrameTime < 1000) stats.Add("perf.client.gpu.ms", timing[0].gpuFrameTime); // drops the odd unset reading
+        if (ProfilePath != null) ProfileFrames();
+    }
+
+    /// <summary><c>-perfProfile &lt;file.raw&gt;</c> (Development builds): the Unity Profiler's data for 2,000 frames, from 20 s into the measurement.</summary>
+    private static readonly string ProfilePath = PerfMatch.ArgValue("-perfProfile");
+    private int profiledFrames = -1;
+
+    private void ProfileFrames()
+    {
+        if (profiledFrames < 0 && frameMs.Count > 0 && Time.realtimeSinceStartup - measureStart >= 20f)
+        {
+            UnityEngine.Profiling.Profiler.logFile = ProfilePath;
+            UnityEngine.Profiling.Profiler.enableBinaryLog = true;
+            UnityEngine.Profiling.Profiler.enabled = true;
+            profiledFrames = 0;
+        }
+        else if (profiledFrames >= 0 && ++profiledFrames == 2000)
+        {
+            UnityEngine.Profiling.Profiler.enabled = false;
+            UnityEngine.Profiling.Profiler.enableBinaryLog = false;
+        }
+    }
+
+    /// <summary>The "1 % low": the frame rate over the slowest 1 % of frames (their mean frame time).</summary>
+    public static double OnePercentLow(List<double> frameMs)
+    {
+        if (frameMs.Count == 0) return double.NaN;
+        var sorted = new List<double>(frameMs);
+        sorted.Sort();
+        int n = Math.Max(1, sorted.Count / 100);
+        double sum = 0;
+        for (int i = sorted.Count - n; i < sorted.Count; i++) sum += sorted[i];
+        return 1000.0 * n / sum;
+    }
+
+    /// <summary>Known units, and those inside the camera's view.</summary>
+    private static void CountUnits(out int known, out int onScreen)
+    {
+        known = onScreen = 0;
+        ClientWorld world = ClientWorld.Instance;
+        Camera cam = Camera.main;
+        if (world == null || cam == null) return;
+        Unity.Collections.NativeArray<float2> p = world.Positions;
+        known = p.Length;
+        float2 centre = new float2(cam.transform.position.x, cam.transform.position.y);
+        float2 half = new float2(cam.orthographicSize * cam.aspect, cam.orthographicSize);
+        for (int k = 0; k < p.Length; k++) if (math.all(math.abs(p[k] - centre) <= half)) onScreen++;
+    }
+
+    /// <summary>
+    /// Centres the player's camera on every unit the client knows and zooms it out in wheel steps until they all show, as a
+    /// player would (never in, at most to a player's limit).
+    /// </summary>
+    private static void FitAll()
+    {
+        ClientWorld world = ClientWorld.Instance;
+        Camera cam = Camera.main;
+        var controller = FindFirstObjectByType<Character.Character_Controler>();
+        if (world == null || cam == null || controller == null || world.Positions.Length == 0) return;
+        Unity.Collections.NativeArray<float2> p = world.Positions;
+        float2 lo = p[0], hi = p[0];
+        for (int k = 1; k < p.Length; k++) { lo = math.min(lo, p[k]); hi = math.max(hi, p[k]); }
+        float2 half = (hi - lo) * 0.5f + 2f, centre = (lo + hi) * 0.5f;
+        controller.CentreOn(new Vector2(centre.x, centre.y));
+        controller.ZoomOutToShow(math.max(half.y, half.x / cam.aspect));
     }
 
     /// <summary>

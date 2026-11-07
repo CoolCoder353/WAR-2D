@@ -8,12 +8,12 @@ using WAR2D.World;
 
 namespace WAR2D.Sim
 {
-    /// <summary>A bomb or a Suicide bomber that went off.</summary>
+    /// <summary>A Mine, a Bomber or (v0.20) an Artillery shell that went off.</summary>
     public struct BombBlast
     {
         public float2 Position;
         public int OwnerId;
-        /// <summary>1 for a Suicide bomber's blast: drawn like a bomb's, but its owner gets no "bomb triggered" alert.</summary>
+        /// <summary>1 for a Bomber's blast, 2 (v0.20) for a shell's: drawn like a Mine's, but its owner gets no "Mine triggered" alert.</summary>
         public byte Bomber;
     }
 
@@ -45,6 +45,8 @@ namespace WAR2D.Sim
         public int Killer;
         /// <summary>v0.18: the dead unit's type, for what it was worth.</summary>
         public byte Type;
+        /// <summary>v0.20: the <see cref="HitKinds"/> of the last hit it took (its death's cause).</summary>
+        public byte Cause;
     }
 
     /// <summary>
@@ -106,9 +108,9 @@ namespace WAR2D.Sim
         public NativeArray<DefendAlarm> Alarms;
         public NativeArray<int> AlarmCount;
         /// <summary>Share of a blast that reaches whoever its owner doesn't attack: a bomber's, a hidden bomb's (playtest 2026-11-04).</summary>
-        public float BomberFriendlyDamage, BombFriendlyDamage;
+        public float BomberFriendlyDamage, MineFriendlyDamage;
         /// <summary>Tiles from a hidden bomb's tile centre at which an enemy sets it off.</summary>
-        public float BombTriggerRadius;
+        public float MineTriggerRadius;
         /// <summary>The largest body radius, so a separation scan reaches every possible neighbour.</summary>
         public float SeparationMargin;
         /// <summary>Percent of max health an unpaid unit loses per second.</summary>
@@ -158,7 +160,7 @@ namespace WAR2D.Sim
         public NativeArray<float> MinRangeSqByType;
         /// <summary>Squared radius a type searches for targets in: its range, or its sight for a bomber (which runs at what it finds).</summary>
         public NativeArray<float> SearchSqByType;
-        /// <summary>Blast radius in tiles and damage per unit type: non-zero only for the Suicide bomber.</summary>
+        /// <summary>Blast radius in tiles and damage per unit type: non-zero only for the Bomber.</summary>
         public NativeArray<float> BlastRadiusByType, BlastDamageByType;
 
         // ---- unit SoA ----
@@ -188,20 +190,52 @@ namespace WAR2D.Sim
         public NativeQueue<BombBlast> BombBlasts;
         /// <summary>Bomb ids to set off this tick regardless of who stands on them (an enemy built over a hidden bomb).</summary>
         public NativeParallelHashSet<int> ForcedBombs;
-        /// <summary>Ids of Suicide bombers ordered to detonate this tick (cleared after the boundary).</summary>
+        /// <summary>Ids of Bombers ordered to detonate this tick (cleared after the boundary).</summary>
         public NativeParallelHashSet<int> ForcedBombers;
         /// <summary>Per unit (v0.18): 1 once a bomber has gone off this tick, so its zero health doesn't set it off again.</summary>
         public NativeArray<byte> BomberSpent;
-        /// <summary>v0.18: each bomber's blast point, by its id's index.</summary>
-        public NativeArray<BlastAim> BlastAims;
         /// <summary>Per owner slot (v0.18): the owner of whatever last hit that player's HQ.</summary>
         public NativeArray<int> HqLastHitBy;
         /// <summary>Per unit (v0.18): its Attack order's target id (0 for none) and kind, gathered from <see cref="Unit"/>.</summary>
         public NativeArray<int> OrderTarget;
         public NativeArray<byte> OrderTargetKind;
-        /// <summary>v0.18: the bomber's aim numbers (<c>Bomber</c> in the config).</summary>
-        public float AimTiles, FriendlyWeight, AimReachTiles, GoodEnough;
+        /// <summary>A Mine's blast radius and damage (<c>Siege</c>).</summary>
         public float BlastRadius, BlastDamage;
+
+        // ---- v0.20 Onslaught combat ----
+        /// <summary>Per id index: each unit's fire, aim, leap and last hit (<see cref="UnitCombat"/>).</summary>
+        public NativeArray<UnitCombat> Combat;
+        /// <summary>Per id index: the <see cref="HitKinds"/> of the last hit each unit took, its death's cause on the wire (reset when the index is reused).</summary>
+        public NativeArray<byte> LastHitKind;
+        /// <summary>v0.20: ids of the units and buildings that may be burning (added when lit, dropped by <see cref="BurnJob"/> when out), so the fire and status passes visit only those.</summary>
+        public NativeList<int> BurningUnits, BurningBuildings;
+        /// <summary>Per id index: each building's fire (<see cref="BuildingFire"/>).</summary>
+        public NativeArray<BuildingFire> BuildingFires;
+        /// <summary>Per unit slot, this tick: 1 while it is in the air (filled at the start of combat; read by movement and upkeep).</summary>
+        public NativeArray<byte> Airborne;
+        /// <summary>Shells in flight, and the next shell's serial (index 0).</summary>
+        public NativeList<Shell> Shells;
+        public NativeArray<int> ShellSerial;
+        /// <summary>Shells launched this tick (for replication; cleared at the boundary).</summary>
+        public NativeList<Shell> ShellsLaunched;
+        /// <summary>Leaps started this tick (cleared at the boundary).</summary>
+        public NativeList<LeapEvent> Leaps;
+        /// <summary>(Sniper id, target id) per aim started this tick (cleared at the boundary).</summary>
+        public NativeList<int2> AimEvents;
+        /// <summary>Per unit type: the share of a blast it shrugs off, its flat armour, its shell blast radius (0: it doesn't fire shells) and its aim seconds (0: it doesn't aim).</summary>
+        public NativeArray<float> BlastResistByType, FlatArmourByType, ShellRadiusByType, AimByType;
+        /// <summary>Per unit type: 1 when its hits set the target burning (the Flamethrower).</summary>
+        public NativeArray<byte> IgnitesByType;
+        /// <summary>Per building type: health one Builder adds a second to its blueprint (<c>BuildSeconds</c>, else <c>Siege/BuildPower</c>).</summary>
+        public NativeArray<float> BuildRateByKind;
+        /// <summary>1 per map tile that blocks a shell's line of fire: rock and the border, not player walls (v0.20: Artillery fires over walls).</summary>
+        public NativeArray<byte> RockTile;
+        /// <summary><c>Combat/MinHit</c>; <c>Burn</c>; the leap; the shells.</summary>
+        public float MinHit, BurnDps, BurnSeconds, BurnLight, BurnHeavy, BurnBuilding;
+        public float LeapReach, ArmyTiles, ContactTiles, StillSpeed;
+        public int LeapTicks;
+        public float ShellSpeed, LeadCapTiles, ShellFriendlyDamage;
+        public byte LeadAim;
         /// <summary>Seconds spent digging, per unit slot.</summary>
         public NativeArray<float> DigProgress;
         /// <summary>The tile index being dug, per unit slot (0 when none).</summary>
@@ -450,7 +484,7 @@ namespace WAR2D.Sim
             float maxRange = 0f, maxRadius = 0.1f;
             foreach (UnitConfig unit in config.Units.Values)
             {
-                maxRange = math.max(maxRange, unit.BlastRadius > 0f ? math.max(unit.Range, unit.Sight) : unit.Range);
+                maxRange = math.max(maxRange, unit.IsBomber ? math.max(unit.Range, unit.Sight) : unit.Range);
                 maxRadius = math.max(maxRadius, unit.Radius);
             }
             foreach (BuildingConfig building in config.Buildings.Values)
@@ -486,16 +520,43 @@ namespace WAR2D.Sim
                 Alarms = new NativeArray<DefendAlarm>(MaxOwners * DefendAlarms.PerOwner, allocator),
                 AlarmCount = new NativeArray<int>(MaxOwners, allocator),
                 BomberFriendlyDamage = config.Bomber.FriendlyDamage,
-                BombFriendlyDamage = config.Siege.BombFriendlyDamage,
-                BombTriggerRadius = config.Siege.BombTriggerRadius,
+                MineFriendlyDamage = config.Siege.MineFriendlyDamage,
+                MineTriggerRadius = config.Siege.MineTriggerRadius,
                 SeparationMargin = maxRadius,
                 DecayPercentPerSecond = config.Resources.DecayPercentPerSecond,
                 LastGaspHealth = config.Bomber.LastGaspHealth,
                 ChainPasses = config.Bomber.ChainPasses,
-                AimTiles = config.Bomber.AimTiles,
-                FriendlyWeight = config.Bomber.FriendlyWeight,
-                AimReachTiles = config.Bomber.AimReachTiles,
-                GoodEnough = config.Bomber.GoodEnough,
+                MinHit = config.Combat.MinHit,
+                BurnDps = config.Burn.Dps,
+                BurnSeconds = config.Burn.Seconds,
+                BurnLight = config.Burn.LightUnit,
+                BurnHeavy = config.Burn.HeavyUnit,
+                BurnBuilding = config.Burn.Building,
+                LeapReach = config.Bomber.LeapReach,
+                ArmyTiles = config.Bomber.ArmyTiles,
+                ContactTiles = config.Bomber.ContactTiles,
+                StillSpeed = config.Sniper.StillSpeed,
+                LeapTicks = math.max(1, (int)math.round(config.Bomber.LeapSeconds / math.max(1e-4f, sim.TickSeconds))),
+                ShellSpeed = config.Artillery.ShellSpeed,
+                LeadCapTiles = config.Artillery.LeadCapTiles,
+                ShellFriendlyDamage = config.Artillery.FriendlyDamage,
+                LeadAim = (byte)(config.Artillery.LeadAim ? 1 : 0),
+                Combat = new NativeArray<UnitCombat>(sim.MaxEntities, allocator),
+                BuildingFires = new NativeArray<BuildingFire>(sim.MaxEntities, allocator),
+                LastHitKind = new NativeArray<byte>(sim.MaxEntities, allocator),
+                BurningUnits = new NativeList<int>(256, allocator),
+                BurningBuildings = new NativeList<int>(64, allocator),
+                Airborne = new NativeArray<byte>(capacity, allocator),
+                Shells = new NativeList<Shell>(64, allocator),
+                ShellSerial = new NativeArray<int>(1, allocator),
+                ShellsLaunched = new NativeList<Shell>(64, allocator),
+                Leaps = new NativeList<LeapEvent>(64, allocator),
+                AimEvents = new NativeList<int2>(64, allocator),
+                BlastResistByType = new NativeArray<float>(typeCount, allocator),
+                FlatArmourByType = new NativeArray<float>(typeCount, allocator),
+                ShellRadiusByType = new NativeArray<float>(typeCount, allocator),
+                AimByType = new NativeArray<float>(typeCount, allocator),
+                IgnitesByType = new NativeArray<byte>(typeCount, allocator),
                 MaxUnitsPerPlayer = sim.MaxUnitsPerPlayer,
                 CellSize = sim.HashCellSize,
                 CellsX = cellsX,
@@ -534,7 +595,6 @@ namespace WAR2D.Sim
                 ForcedBombs = new NativeParallelHashSet<int>(16, allocator),
                 ForcedBombers = new NativeParallelHashSet<int>(16, allocator),
                 BomberSpent = new NativeArray<byte>(capacity, allocator),
-                BlastAims = new NativeArray<BlastAim>(capacity, allocator),
                 HqLastHitBy = new NativeArray<int>(MaxOwners, allocator),
                 OrderTarget = new NativeArray<int>(capacity, allocator),
                 OrderTargetKind = new NativeArray<byte>(capacity, allocator),
@@ -659,6 +719,12 @@ namespace WAR2D.Sim
             data.JamDirty[0] = 1;
             data.JamRadius = config.Siege.JamRadius;
             data.JamSight = config.Siege.JamSight;
+            data.RockTile = new NativeArray<byte>(map.Width * map.Height, allocator);
+            for (int i = 0; i < data.RockTile.Length; i++) data.RockTile[i] = (byte)(BlocksShells((TileType)map.Tiles[i]) ? 1 : 0);
+            data.BuildRateByKind = new NativeArray<float>(buildingTypes + 1, allocator);
+            for (int k = 0; k < data.BuildRateByKind.Length; k++) data.BuildRateByKind[k] = config.Siege.BuildPower;
+            foreach (var pair in config.Buildings)
+                if ((int)pair.Key >= 0 && (int)pair.Key < data.BuildRateByKind.Length) data.BuildRateByKind[(int)pair.Key] = pair.Value.BuildRate(config.Siege.BuildPower);
 
             foreach (var pair in config.Buildings) data.BuildingCostByKind[(int)pair.Key] = pair.Value.UpfrontCost;
             foreach (var pair in config.Units)
@@ -668,13 +734,19 @@ namespace WAR2D.Sim
                 data.SpeedByType[t] = pair.Value.MoveSpeed;
                 data.RangeSqByType[t] = pair.Value.Range * pair.Value.Range;
                 // A bomber's "damage" is its blast, so the stages that skip unarmed units keep it.
-                data.DamageByType[t] = pair.Value.BlastDamage > 0f ? pair.Value.BlastDamage : pair.Value.Damage;
+                data.DamageByType[t] = pair.Value.IsBomber ? pair.Value.BlastDamage : pair.Value.Damage;
                 data.ArmourByType[t] = (byte)pair.Value.Armour;
                 data.SplashByType[t] = pair.Value.Splash;
                 data.MinRangeSqByType[t] = pair.Value.MinRange * pair.Value.MinRange;
-                data.BlastRadiusByType[t] = pair.Value.BlastRadius;
+                // v0.20: BlastRadiusByType is a Bomber's blast only; a unit that fires shells has its blast in ShellRadiusByType.
+                data.BlastRadiusByType[t] = pair.Value.IsBomber ? pair.Value.BlastRadius : 0f;
                 data.BlastDamageByType[t] = pair.Value.BlastDamage;
-                float search = pair.Value.BlastRadius > 0f ? pair.Value.Sight : pair.Value.Range;
+                data.ShellRadiusByType[t] = pair.Value.FiresShells ? pair.Value.BlastRadius : 0f;
+                data.BlastResistByType[t] = pair.Value.BlastResist;
+                data.FlatArmourByType[t] = pair.Value.FlatArmour;
+                data.IgnitesByType[t] = (byte)(pair.Key == UnitType.Flamethrower ? 1 : 0);
+                data.AimByType[t] = pair.Key == UnitType.Sniper ? config.Sniper.AimSeconds : 0f;
+                float search = pair.Value.IsBomber ? pair.Value.Sight : pair.Value.Range;
                 data.SearchSqByType[t] = search * search;
                 data.CooldownByType[t] = pair.Value.AttackInterval;
                 data.RunningCostByType[t] = pair.Value.RunningCost;
@@ -688,7 +760,9 @@ namespace WAR2D.Sim
         public void Dispose()
         {
             SpeedByType.Dispose(); RangeSqByType.Dispose(); DamageByType.Dispose(); CooldownByType.Dispose();
-            RunningCostByType.Dispose(); CostByType.Dispose(); BuildingCostByKind.Dispose(); BlastAims.Dispose(); HqLastHitBy.Dispose(); OrderTarget.Dispose(); OrderTargetKind.Dispose(); DamageTable.Dispose();
+            RunningCostByType.Dispose(); CostByType.Dispose(); BuildingCostByKind.Dispose();
+            Combat.Dispose(); BuildingFires.Dispose(); LastHitKind.Dispose(); BurningUnits.Dispose(); BurningBuildings.Dispose(); Airborne.Dispose(); Shells.Dispose(); ShellSerial.Dispose(); ShellsLaunched.Dispose(); Leaps.Dispose(); AimEvents.Dispose();
+            BlastResistByType.Dispose(); FlatArmourByType.Dispose(); ShellRadiusByType.Dispose(); AimByType.Dispose(); IgnitesByType.Dispose(); BuildRateByKind.Dispose(); RockTile.Dispose(); HqLastHitBy.Dispose(); OrderTarget.Dispose(); OrderTargetKind.Dispose(); DamageTable.Dispose();
             Positions.Dispose(); Velocity.Dispose(); OwnerId.Dispose(); OwnerSlot.Dispose(); Type.Dispose();
             SizeClass.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Radius.Dispose(); Cooldown.Dispose(); LastHitBy.Dispose();
             OrderSlot.Dispose(); Arrived.Dispose(); WorkTile.Dispose(); WorkKind.Dispose(); WorkFinished.Dispose(); BombBlasts.Dispose(); ForcedBombs.Dispose(); ForcedBombers.Dispose(); BomberSpent.Dispose(); ArmourByType.Dispose(); SplashByType.Dispose(); MinRangeSqByType.Dispose(); SearchSqByType.Dispose(); BlastRadiusByType.Dispose(); BlastDamageByType.Dispose(); DigProgress.Dispose(); DigAt.Dispose(); DigDone.Dispose(); DigMoves.Dispose(); WallOwnerSlot.Dispose(); WallState.Dispose(); WallHealth.Dispose(); WallWork.Dispose(); WallDamage.Dispose(); RepairWork.Dispose(); Unpaid.Dispose(); FormationOffset.Dispose(); FormationSpeed.Dispose(); FormationLead.Dispose(); Stance.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
@@ -707,6 +781,9 @@ namespace WAR2D.Sim
             BuildingTarget.Dispose(); BuildingTargetKind.Dispose(); BuildingCooldown.Dispose(); AttackerBuildings.Dispose();
             JamMask.Dispose(); JamSources.Dispose(); JamShare.Dispose(); JamDirty.Dispose();
         }
+
+        /// <summary>v0.20: true for a tile a shell can't fly over: rock and the border (a player wall it flies over).</summary>
+        public static bool BlocksShells(TileType t) => TileRules.BlocksSight(t) && t != TileType.PlayerWall;
 
         /// <summary>1 per fog cell where any of its tiles blocks sight: only the fast path's "no tile test needed" flag.</summary>
         private static NativeArray<byte> BuildOpaque(in MapGrid map, int cellSize, int w, int h, Allocator allocator)
@@ -775,6 +852,7 @@ namespace WAR2D.Sim
                 LargeGrid[t.y * Width + t.x] = value;
             }
             OpaqueTile[tile.y * Width + tile.x] = (byte)(TileRules.BlocksSight((TileType)Tiles[tile.y * Width + tile.x]) ? 1 : 0);
+            RockTile[tile.y * Width + tile.x] = (byte)(BlocksShells((TileType)Tiles[tile.y * Width + tile.x]) ? 1 : 0);
             int2 cell = tile / FogCellSize;
             byte anyBlocks = 0;
             for (int y = cell.y * FogCellSize; y < math.min(Height, (cell.y + 1) * FogCellSize) && anyBlocks == 0; y++)

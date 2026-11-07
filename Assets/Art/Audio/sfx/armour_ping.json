@@ -1,0 +1,12 @@
+{
+  "wave": "Square",
+  "duty": 0.15,
+  "sustain": 0.01,
+  "punch": 0.8,
+  "decay": 0.18,
+  "frequency": 2800,
+  "slide": -0.3,
+  "highPass": 0.15,
+  "volume": 0.35,
+  "seed": 81
+}

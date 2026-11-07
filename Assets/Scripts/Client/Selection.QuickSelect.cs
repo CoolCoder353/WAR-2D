@@ -46,12 +46,12 @@ namespace WAR2D.Client
             }
         }
 
-        /// <summary>True for a unit type the Army chip selects: it attacks, and is neither a Digger nor a Suicide bomber.</summary>
+        /// <summary>True for a unit type the Army chip selects: it attacks, and is neither a Digger nor a Bomber.</summary>
         public static bool IsArmy(UnitType type, Config.UnitConfig config) =>
             config != null && config.Damage > 0 && !IsSiege(type);
 
-        /// <summary>Diggers and Suicide bombers: left out of the Army chip until it is pressed again.</summary>
-        public static bool IsSiege(UnitType type) => type == UnitType.Digger || type == UnitType.SuicideBomber;
+        /// <summary>Diggers and Bombers: left out of the Army chip until it is pressed again.</summary>
+        public static bool IsSiege(UnitType type) => type == UnitType.Digger || type == UnitType.Bomber;
 
         /// <summary>
         /// True when a Builder standing at <paramref name="position"/> has nothing to do as far as the client can tell: it is not
@@ -128,7 +128,7 @@ namespace WAR2D.Client
         }
 
         /// <summary>
-        /// Selects the army (every own unit that attacks, Diggers and Suicide bombers aside); with <paramref name="includeSiege"/>
+        /// Selects the army (every own unit that attacks, Diggers and Bombers aside); with <paramref name="includeSiege"/>
         /// the Diggers and bombers too. Returns how many.
         /// </summary>
         public int SelectArmy(int ownerId, bool includeSiege)

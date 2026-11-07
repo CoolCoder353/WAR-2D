@@ -140,13 +140,15 @@ namespace Config
         public bool FocusFire;
         /// <summary>True when it keeps Artillery and Snipers behind its front line.</summary>
         public bool KeepsBacklineBack;
+        /// <summary>v0.20: Scouts it keeps ahead of its Artillery and Snipers as spotters (0 at low Insight: Easy has none).</summary>
+        public int Spotters;
         /// <summary>True when its Diggers tunnel through enemy walls near its attacking army.</summary>
         public bool DigsPastWalls;
         /// <summary>How it scouts.</summary>
         public AiScouting Scouting;
         /// <summary>Seconds between re-scouting runs (Regular scouting).</summary>
         public float RescoutSeconds;
-        /// <summary>Share (0..1) of its style's Diggers, Suicide bombers, bombs and Jammers it uses.</summary>
+        /// <summary>Share (0..1) of its style's Diggers, Bombers, bombs and Jammers it uses.</summary>
         public float SpecialUse;
         /// <summary>True when it puts defences at chokepoints between its base and known enemies (else beside its buildings).</summary>
         public bool DefendsChokepoints;
@@ -243,9 +245,11 @@ namespace Config
         public float EstimateNoise;
         /// <summary>Extra targets a splash hit is counted against.</summary>
         public float SplashTargets;
+        /// <summary>v0.20: the share of an Artillery's shells that land on a target that keeps moving (the rest it dodges).</summary>
+        public float ShellHitShare;
         /// <summary>Damage bonus for out-ranging the other side, at a full range's lead.</summary>
         public float RangeWeight;
-        /// <summary>Seconds of fight a Suicide bomber's blast is spread over.</summary>
+        /// <summary>Seconds of fight a Bomber's blast is spread over.</summary>
         public float BomberFightSeconds;
         /// <summary>True when it retreats from losing fights.</summary>
         public bool Retreats;
@@ -253,6 +257,8 @@ namespace Config
         public bool FocusFire;
         /// <summary>True when it keeps Artillery and Snipers behind the front.</summary>
         public bool KeepsBacklineBack;
+        /// <summary>v0.20: Scouts kept ahead of its Artillery and Snipers to spot for them, at full Insight (none below <c>AiPolicy.SpotterInsight</c>).</summary>
+        public int Spotters;
         /// <summary>True when its Diggers dig past enemy walls.</summary>
         public bool DigsPastWalls;
 
@@ -373,8 +379,8 @@ namespace Config
         public float DefenceStart;
         /// <summary>Jammers it keeps per defended spot.</summary>
         public int Jammers;
-        /// <summary>Bombs it keeps per defended spot.</summary>
-        public int Bombs;
+        /// <summary>Mines it keeps per defended spot.</summary>
+        public int Mines;
         /// <summary>True when it walls its chokepoints.</summary>
         public bool Walls;
         /// <summary>True when it builds a Radar.</summary>
@@ -472,9 +478,11 @@ namespace Config
         public float LightTurretShare;
         /// <summary>Tiles behind the front its Artillery and Snipers stay (Hard).</summary>
         public float BacklineDistance;
+        /// <summary>v0.20: tiles ahead of the front its spotters go, so its gun line can fire to full range.</summary>
+        public float SpotterLead;
         /// <summary>Visible enemy units within a bomber's blast that make it detonate.</summary>
         public int BomberClump;
-        /// <summary>Suicide bombers it checks for a detonation per think (a bound on its work in a huge fight).</summary>
+        /// <summary>Bombers it checks for a detonation per think (a bound on its work in a huge fight).</summary>
         public int BomberChecks;
         /// <summary>Match seconds before it scouts with any unit when it has no Scout.</summary>
         public float ScoutAfterSeconds;

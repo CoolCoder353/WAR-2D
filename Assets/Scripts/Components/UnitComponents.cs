@@ -20,7 +20,7 @@ public enum UnitType
     /// <summary>Short range with splash.</summary>
     Flamethrower,
     /// <summary>Runs at an enemy and detonates on contact or on a Detonate order; killed first, it does not explode.</summary>
-    SuicideBomber
+    Bomber
 }
 
 public struct HealthComponent : IComponentData

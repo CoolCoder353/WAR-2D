@@ -44,7 +44,8 @@ namespace WAR2D.Sim
                 TargetKind = data.TargetKind,
                 BuildingPositions = data.BuildingPositions,
                 BlastRadiusByType = data.BlastRadiusByType,
-                BlastAims = data.BlastAims,
+                Combat = data.Combat,
+                Airborne = data.Airborne,
                 IdOf = data.IdOf,
                 OrderSlot = data.OrderSlot,
                 Stance = data.Stance,
@@ -90,6 +91,12 @@ namespace WAR2D.Sim
 
             state.Dependency = new IntegrateJob
             {
+                IdOf = data.IdOf,
+                Type = data.Type,
+                BlastRadiusByType = data.BlastRadiusByType,
+                Combat = data.Combat,
+                Airborne = data.Airborne,
+                Tick = clock.Tick,
                 Positions = data.Positions,
                 Velocity = data.Velocity,
                 Health = data.Health,
@@ -140,7 +147,9 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<byte> TargetKind;
         [ReadOnly] public NativeArray<float2> BuildingPositions;
         [ReadOnly] public NativeArray<float> BlastRadiusByType;
-        [ReadOnly] public NativeArray<BlastAim> BlastAims;
+        /// <summary>v0.20: a Bomber's run-in point and leap, by id index, and who is in the air this tick, by slot.</summary>
+        [ReadOnly] public NativeArray<UnitCombat> Combat;
+        [ReadOnly] public NativeArray<byte> Airborne;
         [ReadOnly] public NativeArray<int> IdOf;
         [ReadOnly] public NativeArray<int> OrderSlot;
         [ReadOnly] public NativeArray<byte> Stance;
@@ -179,6 +188,14 @@ namespace WAR2D.Sim
         public void Execute(int i)
         {
             Arrived[i] = 0;
+            bool bomber = Type[i] < BlastRadiusByType.Length && BlastRadiusByType[Type[i]] > 0f; // only Bombers leap: no other record is read
+            UnitCombat leap = bomber ? Combat[NetIdAllocator.IndexOf(IdOf[i])] : default;
+            if (bomber && leap.AirborneAt(IdOf[i], Tick))
+            {
+                // v0.20: a leaping Bomber flies its line (IntegrateJob places it, from the tick it leapt); nothing steers or pushes it.
+                Velocity[i] = (leap.LeapTo - leap.LeapFrom) / (math.max(1, leap.LeapEnd - leap.LeapStart) * Dt);
+                return;
+            }
             if (Health[i] <= 0f || Stance[i] == Stances.Hold)
             {
                 // Holding units stand still: no flow and no separation push of their own.
@@ -270,13 +287,14 @@ namespace WAR2D.Sim
                 }
             }
 
-            // A Suicide bomber with a target runs straight at it (it detonates on contact in combat).
+            // A Bomber with a target runs straight at its run-in point (v0.20: the army's centre, or a building side's middle; it leaps
+            // or detonates in combat).
             int target = Target[i];
             if (target >= 0 && Stance[i] != Stances.Move && Type[i] < BlastRadiusByType.Length && BlastRadiusByType[Type[i]] > 0f)
             {
                 byte kind = TargetKind[i];
-                int aimKey = NetIdAllocator.IndexOf(IdOf[i]);
-                float2 at = BlastAims[aimKey].Id == IdOf[i] ? BlastAims[aimKey].Point : kind == TargetKinds.Unit ? Positions[target] : kind == TargetKinds.Wall ? new float2(target % Width + 0.5f, target / Width + 0.5f) : BuildingPositions[target];
+                UnitCombat run = Combat[NetIdAllocator.IndexOf(IdOf[i])];
+                float2 at = run.Id == IdOf[i] && run.HasRunPoint != 0 ? run.RunPoint : kind == TargetKinds.Unit ? Positions[target] : kind == TargetKinds.Wall ? new float2(target % Width + 0.5f, target / Width + 0.5f) : BuildingPositions[target];
                 velocity = speed * math.normalizesafe(at - position);
             }
 
@@ -402,7 +420,7 @@ namespace WAR2D.Sim
                     int j = Sorted[k];
                     float2 delta = position - Positions[j];
                     float distanceSq = math.lengthsq(delta);
-                    if (distanceSq >= margin * margin || j == i || Health[j] <= 0f) continue; // margin: no body reaches further
+                    if (distanceSq >= margin * margin || j == i || Health[j] <= 0f || Airborne[j] != 0) continue; // margin: no body reaches further
                     float rj = Radius[j];
                     float sum = radius + rj;
                     if (distanceSq >= sum * sum) continue;
@@ -422,6 +440,12 @@ namespace WAR2D.Sim
     [BurstCompile]
     public struct IntegrateJob : IJobParallelFor
     {
+        [ReadOnly] public NativeArray<int> IdOf;
+        [ReadOnly] public NativeArray<byte> Type;
+        [ReadOnly] public NativeArray<float> BlastRadiusByType;
+        [ReadOnly] public NativeArray<UnitCombat> Combat;
+        [ReadOnly] public NativeArray<byte> Airborne;
+        public int Tick;
         public NativeArray<float2> Positions;
         [ReadOnly] public NativeArray<float2> Velocity;
         [ReadOnly] public NativeArray<float> Health;
@@ -436,6 +460,16 @@ namespace WAR2D.Sim
         public void Execute(int i)
         {
             if (Health[i] <= 0f) return;
+            bool bomber = Type[i] < BlastRadiusByType.Length && BlastRadiusByType[Type[i]] > 0f;
+            UnitCombat leap = bomber ? Combat[NetIdAllocator.IndexOf(IdOf[i])] : default;
+            if (bomber && leap.AirborneAt(IdOf[i], Tick))
+            {
+                // v0.20: along the leap's line, over units (a leap's line is clear of walls, rock and buildings), reaching its end
+                // on the leap's last tick so it lands there.
+                float t = math.saturate((Tick + 1 - leap.LeapStart) / (float)math.max(1, leap.LeapEnd - leap.LeapStart));
+                Positions[i] = math.lerp(leap.LeapFrom, leap.LeapTo, t);
+                return;
+            }
             float2 position = Positions[i];
             float2 step = Velocity[i] * Dt;
             float radius = Radius[i];

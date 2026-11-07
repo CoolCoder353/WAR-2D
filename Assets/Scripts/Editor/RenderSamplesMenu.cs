@@ -15,7 +15,7 @@ namespace WAR2D.EditorTools
     /// Charcoal palette) to <c>docs/art/render/</c>: the sprites close up, and an in-game scene on a real
     /// generated map at 1:1 (64 px per tile).
     /// </summary>
-    public static class RenderSamplesMenu
+    public static partial class RenderSamplesMenu
     {
         public const string LitFolder = "docs/art/render", PixelFolder = "docs/art/pixel", PixelHdFolder = "docs/art/pixel-hd";
 
@@ -144,7 +144,7 @@ namespace WAR2D.EditorTools
             var units = new (string name, Func<float, int, LitCanvas> make)[]
             {
                 ("Tank", RenderGen.Tank), ("Builder", RenderGen.Builder), ("Scout", RenderGen.Scout), ("Flamethrower", RenderGen.Flamethrower),
-                ("Sniper", RenderGen.Sniper), ("SuicideBomber", RenderGen.SuicideBomber),
+                ("Sniper", RenderGen.Sniper), ("Bomber", RenderGen.Bomber),
                 ("Heavy", RenderGen.Heavy), ("Artillery", RenderGen.Artillery),
             };
             foreach (var (name, make) in units)
@@ -202,7 +202,7 @@ namespace WAR2D.EditorTools
             // Sounds: the new sets and two old ones to compare against, as WAVs beside the page.
             string sfx = Path.Combine(ArsenalFolder, "sfx");
             Directory.CreateDirectory(sfx);
-            foreach (string id in new[] { "shot_tank", "bomb_blast", "shot_scout", "shot_flamethrower", "shot_sniper", "shot_heavy", "shot_artillery", "shell_impact", "bomber_blast" })
+            foreach (string id in new[] { "shot_tank", "mine_blast", "shot_scout", "shot_flamethrower", "shot_sniper", "shot_heavy", "shot_artillery", "shell_impact", "bomber_blast" })
             {
                 var p = JsonUtility.FromJson<WAR2D.Audio.SfxrParams>(File.ReadAllText($"{AudioBuild.SfxSource}/{id}.json"));
                 File.WriteAllBytes(Path.Combine(sfx, id + ".wav"), WAR2D.Audio.Wav.Encode(WAR2D.Audio.Sfxr.Render(p, p.seed, AudioBuild.SampleRate), AudioBuild.SampleRate));
@@ -447,7 +447,7 @@ namespace WAR2D.EditorTools
             }
             var rng = new System.Random(6);
             var reds = new List<float2>();
-            var mix = new Func<float, int, LitCanvas>[] { RenderGen.Tank, RenderGen.Scout, RenderGen.Flamethrower, RenderGen.Tank, RenderGen.SuicideBomber, RenderGen.Sniper };
+            var mix = new Func<float, int, LitCanvas>[] { RenderGen.Tank, RenderGen.Scout, RenderGen.Flamethrower, RenderGen.Tank, RenderGen.Bomber, RenderGen.Sniper };
             for (int i = 0; i < 3000 && reds.Count < 14; i++)
             {
                 int tx = 17 + rng.Next(SceneW - 17), ty = rng.Next(SceneH);
@@ -524,7 +524,7 @@ namespace WAR2D.EditorTools
             var mix = new (Func<float, int, LitCanvas> make, int weight, bool large)[]
             {
                 (RenderGen.Tank, 8, false), (RenderGen.Builder, 2, false), (RenderGen.Scout, 3, false), (RenderGen.Flamethrower, 2, false), (RenderGen.Sniper, 2, false),
-                (RenderGen.SuicideBomber, 2, false), (RenderGen.Heavy, 2, true), (RenderGen.Artillery, 2, true),
+                (RenderGen.Bomber, 2, false), (RenderGen.Heavy, 2, true), (RenderGen.Artillery, 2, true),
             };
             int total = 0;
             foreach (var m in mix) total += m.weight;

@@ -322,7 +322,7 @@ namespace WAR2D.Art.Render
         }
 
         /// <summary>The Bomb (1×1): a low disc half sunk in the floor with a team ring; frame 1 blinks the lamp.</summary>
-        public static LitCanvas Bomb(int frame)
+        public static LitCanvas Mine(int frame)
         {
             var c = new LitCanvas(TileSize, TileSize);
             float o = TileSize / 2f;

@@ -11,6 +11,8 @@ namespace WAR2D.EditorTools
         [MenuItem("WAR-2D/Build/Windows (Steam)")] public static void Windows() => Build(BuildTarget.StandaloneWindows64, "Builds/Steam/windows/WAR-2D.exe");
 
         [MenuItem("WAR-2D/Build/Linux (Dev)")] public static void LinuxDev() => Build(BuildTarget.StandaloneLinux64, "Builds/Dev/WAR-2D.x86_64", BuildOptions.Development);
+        /// <summary>A Development player for the Unity Profiler (<c>tools/perf-10k.sh</c> with <c>-perfProfile</c>); its timings are not the gate's.</summary>
+        [MenuItem("WAR-2D/Build/Windows (Dev)")] public static void WindowsDev() => Build(BuildTarget.StandaloneWindows64, "Builds/Dev/windows/WAR-2D.exe", BuildOptions.Development);
 
         private static void Build(BuildTarget target, string path, BuildOptions options = BuildOptions.None)
         {

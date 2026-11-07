@@ -55,8 +55,12 @@ namespace WAR2D.Client
         private readonly Dictionary<int, float> progressAt = new Dictionary<int, float>();
         private readonly Dictionary<int, byte> wallHealth = new Dictionary<int, byte>();
         private readonly List<int> stale = new List<int>();
-        private readonly float2[] lastTrack;
-        private readonly int[] trackId;
+        private Unity.Collections.NativeArray<float2> lastTrack;
+        private Unity.Collections.NativeArray<int> trackId;
+
+        /// <summary>Track state by index (the id last seen there, and where its last mark was), for the client's draw job.</summary>
+        internal Unity.Collections.NativeArray<int> TrackIds => trackId;
+        internal Unity.Collections.NativeArray<float2> LastTracks => lastTrack;
         private ClientBuildings buildingsSeen;
         private ClientTerrain terrainSeen;
         private float lastGemSound = float.NegativeInfinity;
@@ -64,8 +68,8 @@ namespace WAR2D.Client
         /// <param name="capacity">The client's unit id capacity (track state is kept by id index).</param>
         public WorldEffects(int capacity)
         {
-            lastTrack = new float2[capacity];
-            trackId = new int[capacity];
+            lastTrack = new Unity.Collections.NativeArray<float2>(capacity, Unity.Collections.Allocator.Persistent);
+            trackId = new Unity.Collections.NativeArray<int>(capacity, Unity.Collections.Allocator.Persistent);
         }
 
         /// <summary>The local player's owner id, or 0 (the menu battle, a spectator before it has a player).</summary>
@@ -91,14 +95,17 @@ namespace WAR2D.Client
             foreach (Vector2 p in positions)
             {
                 if (known.TryTakeDying((int2)math.round((float2)p), now, out ClientBuildings.Entry e)
-                    && e.Progress >= 100 && e.Data.buildingType != BuildingType.Bomb)
+                    && e.Progress >= 100 && e.Data.buildingType != BuildingType.Mine)
                 {
                     int2 size = WorldStateManager.GetBuildingSize(e.Data.buildingType);
                     float2 centre = Footprint.VisualCenter((int2)math.round(e.Data.position), size);
                     Effects.BuildingCollapse(centre, size.x);
+                    // v0.20 (spec §8.1): the building's own sprite darkens and sinks into its rubble as it collapses.
+                    WAR2D.Art.ArtAtlas buildingAtlas = WAR2D.Art.ArtAtlas.Load(WAR2D.Art.ArtAtlas.Buildings);
+                    if (buildingAtlas != null) Effects.Sinking(buildingAtlas.Sprite(e.Data.buildingType.ToString(), 0), new Vector2(centre.x, centre.y));
                     Decals.Rubble(centre, size.x);
                 }
-                else Effects.Explosion(p);
+                else Effects.DeathExplosion(p); // v0.20: one burst with the unit's own death effect (Effects.UnitDeath)
             }
         }
 
@@ -135,20 +142,38 @@ namespace WAR2D.Client
         /// </summary>
         public void Moved(int index, int id, byte type, float2 position, Rect view)
         {
-            if (!LeavesTracks(type) || (uint)index >= (uint)trackId.Length) return;
-            if (trackId[index] != id)
+            if ((uint)index >= (uint)trackId.Length) return;
+            int tracked = trackId[index];
+            float2 last = lastTrack[index];
+            bool lay = TrackMark(ref tracked, ref last, id, type, position, new float4(view.xMin, view.yMin, view.xMax, view.yMax), out float2 mid, out float heading);
+            trackId[index] = tracked;
+            lastTrack[index] = last;
+            if (lay) Decals.Track(mid, heading);
+        }
+
+        /// <summary>
+        /// One step of <see cref="Moved"/> on a unit's track state (<paramref name="trackedId"/>, <paramref name="lastTrack"/>), Burst-safe for
+        /// the client's draw job: true when a mark is laid at <paramref name="mid"/>, facing <paramref name="heading"/>. The view is
+        /// (xMin, yMin, xMax, yMax), its max edges outside as in <c>Rect.Contains</c>.
+        /// </summary>
+        public static bool TrackMark(ref int trackedId, ref float2 lastTrack, int id, byte type, float2 position, float4 view, out float2 mid, out float heading)
+        {
+            mid = default;
+            heading = 0f;
+            if (!LeavesTracks(type)) return false;
+            if (trackedId != id)
             {
-                trackId[index] = id;
-                lastTrack[index] = position;
-                return;
+                trackedId = id;
+                lastTrack = position;
+                return false;
             }
-            float2 d = position - lastTrack[index];
+            float2 d = position - lastTrack;
             float lsq = math.lengthsq(d);
-            if (lsq < TrackSpacing * TrackSpacing) return;
-            float2 mid = (position + lastTrack[index]) * 0.5f;
-            lastTrack[index] = position;
-            if (lsq > 4f || !view.Contains((Vector2)mid)) return;
-            Decals.Track(mid, math.atan2(d.y, d.x));
+            if (lsq < TrackSpacing * TrackSpacing) return false;
+            mid = (position + lastTrack) * 0.5f;
+            lastTrack = position;
+            heading = math.atan2(d.y, d.x);
+            return lsq <= 4f && mid.x >= view.x && mid.x < view.z && mid.y >= view.y && mid.y < view.w;
         }
 
         /// <summary>
@@ -177,7 +202,7 @@ namespace WAR2D.Client
                     if (distance < loopDistance) { loopDistance = distance; loopAt = (Vector2)centre; }
                     continue;
                 }
-                if (type == BuildingType.Bomb) continue;
+                if (type == BuildingType.Mine) continue;
                 float health = e.Health.maxHealth > 0f ? e.Health.currentHealth / e.Health.maxHealth : 1f;
                 if (health < SmokeBelow) Emit(smoke, id, now, SmokeSeconds, centre, size, true);
                 if (health < FireBelow) Emit(fire, id, now, FireSeconds, centre, size, false);
@@ -264,7 +289,7 @@ namespace WAR2D.Client
         {
             progressAt[id] = Time.time;
             if (progress < 100 || buildingsSeen == null || !buildingsSeen.Entries.TryGetValue(id, out ClientBuildings.Entry e) || e.Ghost) return;
-            if (e.Data.buildingType == BuildingType.Bomb) return;
+            if (e.Data.buildingType == BuildingType.Mine) return;
             int2 size = WorldStateManager.GetBuildingSize(e.Data.buildingType);
             Effects.BuildingFinished((Vector2)Footprint.VisualCenter((int2)math.round(e.Data.position), size), size.x);
         }
@@ -306,13 +331,14 @@ namespace WAR2D.Client
             }
         }
 
-        /// <summary>Unsubscribes from the stores (the match ended).</summary>
+        /// <summary>Unsubscribes from the stores and frees the track state (the match ended).</summary>
         public void Dispose()
         {
             if (buildingsSeen != null) buildingsSeen.ProgressChanged -= OnProgress;
             if (terrainSeen != null) terrainSeen.Changed -= OnTerrain;
             buildingsSeen = null;
             terrainSeen = null;
+            if (trackId.IsCreated) { trackId.Dispose(); lastTrack.Dispose(); }
         }
 
         /// <summary>A fixed value in [0, 1) for a building id and a salt (spot positions and stagger; no randomness per frame).</summary>

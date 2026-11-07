@@ -459,6 +459,13 @@ namespace WAR2D.Sim
             // Load-bearing: the economy job recounts UnitsBySlot every tick, but several spawns can drain in one
             // boundary, so each counts itself here or a burst would pass the per-player cap check above.
             data.UnitsBySlot[slot]++;
+            // v0.20: the id index's combat records start fresh (fire, aim, leap and the last hit are the dead unit's otherwise).
+            int idIndex = NetIdAllocator.IndexOf(id);
+            if ((uint)idIndex < (uint)data.Combat.Length)
+            {
+                data.Combat[idIndex] = new UnitCombat { Id = id };
+                data.LastHitKind[idIndex] = HitKinds.Shot;
+            }
             Entity entity = EntityManager.CreateEntity(unitArchetype);
             EntityManager.SetComponentData(entity, new Unit
             {
@@ -633,7 +640,7 @@ namespace WAR2D.Sim
                         unitType = (byte)SpawnerRules.DefaultUnit(buildingData.buildingType),
                     });
                     break;
-                case BuildingType.Bomb:
+                case BuildingType.Mine:
                 case BuildingType.Radar:
                 case BuildingType.GunTurret:
                     break; // no components of their own: their stages read the building's slot flags (the turret's weapon is added below)

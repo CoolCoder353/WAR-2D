@@ -78,7 +78,7 @@ namespace WAR2D.Client.Replay
                 Player player = pair.Value;
                 foreach (ClientBuildings.Entry e in all.Entries.Values)
                 {
-                    if (e.Data.buildingType == BuildingType.Bomb && e.Data.ownerId != pair.Key) continue;
+                    if (e.Data.buildingType == BuildingType.Mine && e.Data.ownerId != pair.Key) continue;
                     if (e.Data.ownerId == pair.Key || player.State[CellOf(PositionOf(e))] == (byte)FogState.Visible) player.Memory[e.Data.id] = e;
                 }
                 gone.Clear();
@@ -95,6 +95,7 @@ namespace WAR2D.Client.Replay
         public void BuildingsFor(int owner, ClientBuildings all, ClientBuildings shown)
         {
             shown.Entries.Clear();
+            shown.Burning.Clear();
             if (!players.TryGetValue(owner, out Player player)) return;
             foreach (KeyValuePair<int, ClientBuildings.Entry> seen in player.Memory)
             {
@@ -105,6 +106,7 @@ namespace WAR2D.Client.Replay
                 {
                     live.Ghost = false;
                     shown.Entries[seen.Key] = live;
+                    if (live.Burning) shown.Burning.Add(seen.Key); // v0.20: fires show where the player sees them
                     continue;
                 }
                 if (own) continue; // gone

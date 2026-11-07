@@ -93,7 +93,7 @@ public class PlaytestFix3Tests
     public void AnUnpaidBombIsADud()
     {
         using var sim = Sim();
-        int bomb = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Bomb, new int2(20, 20), complete: true);
+        int bomb = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Mine, new int2(20, 20), complete: true);
         sim.Tick();
         sim.Em.SetComponentData(sim.BuildingEntity(bomb), new UpkeepComponent { ownerId = SimHarness.OwnerA, runningCostPerSecond = 1f, unpaid = true });
         int[] tank = sim.Spawn(SimHarness.OwnerB, new float2(20.5f, 20.5f));
@@ -105,26 +105,26 @@ public class PlaytestFix3Tests
     public void ABombGoesOffForAnEnemyNearItAndSparesItsOwnSide()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(64), c => c.GetUnit(UnitType.Heavy).Damage = 0); // only the blast hurts here
-        sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Bomb, new int2(20, 20), complete: true);
+        sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Mine, new int2(20, 20), complete: true);
         int[] friend = sim.Spawn(SimHarness.OwnerA, new float2(21.5f, 22f), UnitType.Heavy);
         int[] enemy = sim.Spawn(SimHarness.OwnerB, new float2(21.5f, 20.5f), UnitType.Heavy); // a tile off the bomb
         sim.TickSeconds(0.5f);
-        float damage = sim.Config.Siege.BlastDamage;
+        float damage = sim.Config.Siege.BlastDamage * (1f - sim.Config.GetUnit(UnitType.Heavy).BlastResist); // v0.20: a Heavy shrugs off its share
         Assert.AreEqual(400f - damage, sim.UnitById(enemy[0]).Health, 1e-3f, "the bomb went off beside it");
-        Assert.AreEqual(400f - damage * sim.Config.Siege.BombFriendlyDamage, sim.UnitById(friend[0]).Health, 1e-3f);
+        Assert.AreEqual(400f - damage * sim.Config.Siege.MineFriendlyDamage, sim.UnitById(friend[0]).Health, 1e-3f);
     }
 
     [Test]
     public void ABombersBlastDoesATenthToFriends()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(64), c => { c.Simulation.TargetSearchSliceTicks = 1; c.GetUnit(UnitType.Heavy).Damage = 0; c.Bomber.FriendlyDamage = 0.1f; }); // pinned: the balance may set it to 0
-        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(20, 20), UnitType.SuicideBomber);
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(20, 20), UnitType.Bomber);
         int[] friend = sim.Spawn(SimHarness.OwnerA, new float2(21, 20), UnitType.Heavy);
         int[] enemy = sim.Spawn(SimHarness.OwnerB, new float2(20, 21), UnitType.Heavy);
         sim.Tick();
         sim.Order(SimHarness.OwnerA, OrderKind.Detonate, new int2(20, 20), bomber);
         sim.TickSeconds(0.25f);
-        float blast = sim.Config.GetUnit(UnitType.SuicideBomber).BlastDamage;
+        float blast = sim.Config.GetUnit(UnitType.Bomber).BlastDamage * (1f - sim.Config.GetUnit(UnitType.Heavy).BlastResist); // v0.20
         Assert.AreEqual(400f - blast * 0.1f, sim.UnitById(friend[0]).Health, 1e-2f);
         Assert.AreEqual(400f - blast, sim.UnitById(enemy[0]).Health, 1e-2f);
     }
@@ -133,7 +133,7 @@ public class PlaytestFix3Tests
     public void IdleUnitsAnswerFireFromOutOfTheirRange()
     {
         using var sim = Sim();
-        int[] sniper = sim.Spawn(SimHarness.OwnerB, new float2(30, 20), UnitType.Sniper); // sees and reaches 20
+        int[] sniper = sim.Spawn(SimHarness.OwnerB, new float2(24, 20), UnitType.Sniper); // v0.20: sees 12, reaches 28
         int[] shot = sim.Spawn(SimHarness.OwnerA, new float2(14, 20), UnitType.Heavy);    // range 5
         int[] nearby = sim.Spawn(SimHarness.OwnerA, new float2(10, 20), UnitType.Heavy);  // not shot, 4 tiles off the victim
         int[] holding = sim.Spawn(SimHarness.OwnerA, new float2(14, 24), UnitType.Heavy);
@@ -268,13 +268,16 @@ public class PlaytestFix3Tests
         Assert.AreEqual("Infinite · 5 units", WAR2D.UI.SpectatorController.Numbers(ServerPlayer.InfiniteBalance, 5));
     }
 
+    /// <summary>v0.20 (spec §4.1, §5.2): the playtest rule ended; Artillery and Snipers fire further than they see and need spotters, the Scout sees furthest.</summary>
     [Test]
-    public void ArtilleryAndSnipersSeeAsFarAsTheyShoot()
+    public void ArtilleryAndSnipersFireBeyondTheirSightAndScoutsSpotForThem()
     {
         Config.ConfigLoader.ResetForTests();
         var c = Config.ConfigLoader.LoadConfig();
-        Assert.GreaterOrEqual(c.GetUnit(UnitType.Artillery).Sight, c.GetUnit(UnitType.Artillery).Range);
-        Assert.GreaterOrEqual(c.GetUnit(UnitType.Sniper).Sight, c.GetUnit(UnitType.Sniper).Range);
+        Assert.Less(c.GetUnit(UnitType.Artillery).Sight, c.GetUnit(UnitType.Artillery).Range);
+        Assert.Less(c.GetUnit(UnitType.Sniper).Sight, c.GetUnit(UnitType.Sniper).Range);
+        foreach (UnitType t in new[] { UnitType.Tank, UnitType.Heavy, UnitType.Artillery, UnitType.Sniper, UnitType.Flamethrower })
+            Assert.Greater(c.GetUnit(UnitType.Scout).Sight, c.GetUnit(t).Sight, $"the Scout out-sees the {t}");
         Assert.GreaterOrEqual(c.GetBuilding(BuildingType.GunTurret).Sight, c.GetBuilding(BuildingType.GunTurret).Range);
     }
 }

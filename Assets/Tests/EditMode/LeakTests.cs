@@ -38,6 +38,13 @@ public class LeakTests
         public readonly List<int> UnitAttackTargets = new List<int>();
         /// <summary>Other players' unit ids this client was ever told about.</summary>
         public readonly HashSet<int> OthersKnown = new HashSet<int>();
+        /// <summary>v0.20: combat batches received, and what they carried.</summary>
+        public int CombatPayloads;
+        public readonly List<StatusEntry> Statuses = new List<StatusEntry>();
+        public readonly List<LeapEntry> Leaps = new List<LeapEntry>();
+        public readonly List<AimEntry> Aims = new List<AimEntry>();
+        public readonly List<ShellEntry> Shells = new List<ShellEntry>();
+        private readonly CombatNews news = new CombatNews();
         private readonly SimContext sim;
 
         public Spy(SimContext sim, ReplicationService replication, int owner)
@@ -107,6 +114,30 @@ public class LeakTests
                 return;
                 void Collect(IReadOnlyList<int2> changed) => cells.AddRange(changed);
             }
+            if (channel == ReplicationService.CombatSinkChannel)
+            {
+                // v0.20: status, leaps and aims only for units it knows (its unit batch came first); an aim names only a target it may
+                // know; a shell it is shown only its drop of lands where its grid sees.
+                CombatPayloads++;
+                try { CombatCodec.Read(payload, news); }
+                catch (Exception) { Failures.Add("malformed combat"); return; }
+                foreach (StatusEntry st in news.Statuses) { Statuses.Add(st); if (!Units.IsKnown(st.Index)) Failures.Add($"status for unit index {st.Index} unknown to {Owner}"); }
+                foreach (LeapEntry l in news.Leaps) { Leaps.Add(l); if (!Units.IsKnown(l.Index)) Failures.Add($"leap of unit index {l.Index} unknown to {Owner}"); }
+                foreach (AimEntry a in news.Aims)
+                {
+                    Aims.Add(a);
+                    if (!Units.IsKnown(a.Index)) Failures.Add($"aim of unit index {a.Index} unknown to {Owner}");
+                    if (a.TargetId == 0) continue;
+                    int slot = data.SlotOf(a.TargetId, count);
+                    if (slot >= 0 && data.OwnerId[slot] != Owner && !data.Sees(grid, data.Positions[slot])) Failures.Add($"aim names unit {a.TargetId} unseen by {Owner}");
+                }
+                foreach (ShellEntry sh in news.Shells)
+                {
+                    Shells.Add(sh);
+                    if (!sh.Full && !data.Sees(grid, sh.To)) Failures.Add($"an incoming shell at {sh.To} sent to {Owner}, who doesn't see it");
+                }
+                return;
+            }
             if (channel == ReplicationService.BuildingSinkChannel)
             {
                 BuildingPayloads++;
@@ -147,7 +178,7 @@ public class LeakTests
             {
                 Id = building.id, OwnerId = building.ownerId, Type = building.buildingType, Anchor = (int2)math.round(p),
                 Health = (int)math.ceil(health.currentHealth), MaxHealth = (int)math.ceil(health.maxHealth),
-                Hidden = building.buildingType == BuildingType.Bomb,
+                Hidden = building.buildingType == BuildingType.Mine,
                 Progress = sim.Em.HasComponent<Construction>(e) ? (byte)0 : (byte)100,
                 Position = p,
             });
@@ -415,7 +446,7 @@ public class LeakTests
         using var replication = new ReplicationService(sim.Context, sim.Config);
         var spies = new[] { new Spy(sim.Context, replication, SimHarness.OwnerA), new Spy(sim.Context, replication, OwnerC) };
         var random = new Unity.Mathematics.Random((uint)seed);
-        UnitType[] roster = { UnitType.Tank, UnitType.Scout, UnitType.Heavy, UnitType.Artillery, UnitType.Sniper, UnitType.Flamethrower, UnitType.SuicideBomber };
+        UnitType[] roster = { UnitType.Tank, UnitType.Scout, UnitType.Heavy, UnitType.Artillery, UnitType.Sniper, UnitType.Flamethrower, UnitType.Bomber };
         var aBoxes = new List<int[]>();
         var cBoxes = new List<int[]>();
         for (int u = 0; u < 35; u++)
@@ -505,30 +536,33 @@ public class LeakTests
         Assert.Less(furthest, 60f, "no goal past what the side could see");
     }
 
-    /// <summary>A bomber's route reaches its owner, so a block of Tanks in the fog beside its target must never draw its aim.</summary>
+    /// <summary>
+    /// A bomber's route reaches its owner, so a block of Tanks in the fog beside its target must never pull its run-in point (v0.20:
+    /// the army's centre counts only the units its side sees).
+    /// </summary>
     [Test]
-    public void ABombersAimUsesOnlyWhatItsSideSees()
+    public void ABombersRunInPointUsesOnlyWhatItsSideSees()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(96), c => c.GetUnit(UnitType.Tank).Damage = 0);
         sim.Spawn(SimHarness.OwnerB, new float2(30, 30)); // seen: within the bomber's sight
         for (int y = 0; y < 3; y++)
             for (int x = 0; x < 3; x++)
-                sim.Spawn(SimHarness.OwnerB, new float2(35f + x, 29f + y)); // within AimTiles of the target, past its sight
-        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(26, 30), UnitType.SuicideBomber);
+                sim.Spawn(SimHarness.OwnerB, new float2(34f + x, 29f + y)); // within ArmyTiles of the target, past its sight
+        int[] bomber = sim.Spawn(SimHarness.OwnerA, new float2(25, 30), UnitType.Bomber);
         float farthest = 0f;
         int aims = 0;
         sim.Context.Settled += (data, tick, count) =>
         {
             int id = bomber[0];
             if (id <= 0) return;
-            BlastAim aim = data.BlastAims[NetIdAllocator.IndexOf(id)];
-            if (aim.Id != id) return;
+            UnitCombat c = data.Combat[NetIdAllocator.IndexOf(id)];
+            if (c.Id != id || c.HasRunPoint == 0) return;
             aims++;
-            farthest = math.max(farthest, aim.Point.x);
+            farthest = math.max(farthest, c.RunPoint.x);
         };
         for (int t = 0; t < 8; t++) sim.Tick();
-        Assert.Greater(aims, 0, "it aimed");
-        Assert.Less(farthest, 31f, "the aim stays on what it sees");
+        Assert.Greater(aims, 0, "it ran in");
+        Assert.Less(farthest, 31f, "the run-in point stays on what it sees");
     }
 
     [Test]
@@ -633,7 +667,7 @@ public class LeakTests
         sim.Spawn(SimHarness.OwnerB, new float2(21, 21)); // right next to the bomb: B sees the tile
         sim.Spawn(OwnerC, new float2(22, 19));            // so does C
         sim.Tick();
-        views.Add(new BuildingView { Id = 500, OwnerId = SimHarness.OwnerA, Type = BuildingType.Bomb, Anchor = new int2(21, 20), Health = 40, MaxHealth = 40, Position = new float2(21, 20), Hidden = true, Progress = 100 });
+        views.Add(new BuildingView { Id = 500, OwnerId = SimHarness.OwnerA, Type = BuildingType.Mine, Anchor = new int2(21, 20), Health = 40, MaxHealth = 40, Position = new float2(21, 20), Hidden = true, Progress = 100 });
         for (int i = 0; i < 8; i++) sim.Tick();
         Assert.IsTrue(a.Buildings.Entries.ContainsKey(500), "the owner knows its bomb");
         Assert.IsFalse(b.Buildings.Entries.ContainsKey(500), "B sees the tile but A doesn't share vision with B");
@@ -664,7 +698,7 @@ public class LeakTests
         replication.AddVirtualClient(OwnerC, (p, ch) => { if (ch == ReplicationService.BuildingSinkChannel) BuildingCodec.Apply(spectator, p); });
         sim.Spawn(SimHarness.OwnerA, new float2(20, 20));
         sim.Tick();
-        views.Add(new BuildingView { Id = 500, OwnerId = SimHarness.OwnerA, Type = BuildingType.Bomb, Anchor = new int2(21, 20), Health = 40, MaxHealth = 40, Position = new float2(21, 20), Hidden = true, Progress = 100 });
+        views.Add(new BuildingView { Id = 500, OwnerId = SimHarness.OwnerA, Type = BuildingType.Mine, Anchor = new int2(21, 20), Health = 40, MaxHealth = 40, Position = new float2(21, 20), Hidden = true, Progress = 100 });
         for (int i = 0; i < 8; i++) sim.Tick();
         Assert.IsTrue(recorder.Entries.ContainsKey(500), "the recorder sees every bomb");
         Assert.IsFalse(spectator.Entries.ContainsKey(500), "a spectator sees the map, never another player's bombs");
@@ -732,7 +766,7 @@ public class LeakTests
     public void ATurretsAttackReachesOnlyClientsThatMayKnowTheTurret()
     {
         // C's Builder sees 2 tiles: the turret 6 away shoots it from C's fog.
-        using var sim = new SimHarness(Map(), c => { c.Simulation.TargetSearchSliceTicks = 1; c.Units[UnitType.Builder].Sight = 2f; c.GetBuilding(BuildingType.GunTurret).Damage = 8; });
+        using var sim = new SimHarness(Map(), c => { c.Simulation.TargetSearchSliceTicks = 1; c.Units[UnitType.Builder].Sight = 2f; c.GetBuilding(BuildingType.GunTurret).Damage = 8; c.GetBuilding(BuildingType.GunTurret).AttackInterval = 0.4f; });
         using var replication = new ReplicationService(sim.Context, sim.Config);
         replication.CollectBuildings = list => SimBuildings(sim, list);
         var a = new Spy(sim.Context, replication, SimHarness.OwnerA);
@@ -965,5 +999,105 @@ public class LeakTests
         Assert.IsFalse(spy.Buildings.Entries[jammer].Ghost, "seen again up close: live");
         CollectionAssert.IsEmpty(spy.Failures);
         spy.Dispose();
+    }
+
+    // ---------- v0.20 Onslaught (spec §1, §13): burning, leaps, aims and shells follow the leak rule ----------
+
+    /// <summary>The fuzz above with every v0.20 rework in the armies: no combat news ever names what a client may not know.</summary>
+    [Test]
+    public void NothingHiddenInCombatIsEverSerialised([Values(1, 2)] int seed)
+    {
+        using var sim = new SimHarness(Map());
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        var spies = new[] { new Spy(sim.Context, replication, SimHarness.OwnerA), new Spy(sim.Context, replication, SimHarness.OwnerB), new Spy(sim.Context, replication, OwnerC) };
+        var random = new Unity.Mathematics.Random((uint)seed);
+        int[] owners = { SimHarness.OwnerA, SimHarness.OwnerB, OwnerC };
+        UnitType[] types = { UnitType.Tank, UnitType.Flamethrower, UnitType.Artillery, UnitType.Sniper, UnitType.Bomber, UnitType.Scout, UnitType.Heavy };
+        var ids = new List<int[]>[3] { new List<int[]>(), new List<int[]>(), new List<int[]>() };
+        for (int o = 0; o < 3; o++)
+            for (int u = 0; u < 30; u++)
+                ids[o].Add(sim.Spawn(owners[o], new float2(random.NextFloat(30, 66), random.NextFloat(30, 66)), types[random.NextInt(types.Length)]));
+        for (int t = 0; t < 200; t++)
+        {
+            if (t % 25 == 0)
+                for (int o = 0; o < 3; o++)
+                {
+                    var some = new List<int>();
+                    foreach (int[] id in ids[o]) if (id[0] > 0 && random.NextBool()) some.Add(id[0]);
+                    sim.Order(owners[o], OrderKind.AttackMove, new int2(random.NextInt(30, 66), random.NextInt(30, 66)), some.ToArray());
+                }
+            sim.Tick();
+        }
+        int combat = 0;
+        foreach (Spy spy in spies)
+        {
+            CollectionAssert.IsEmpty(spy.Failures, $"owner {spy.Owner}");
+            combat += spy.CombatPayloads;
+            spy.Dispose();
+        }
+        Assert.Greater(combat, 0, "combat news was sent");
+    }
+
+    /// <summary>Spec §5.3, D8: a Sniper its target's owner can't see aims unseen; only its own side is told.</summary>
+    [Test]
+    public void AHiddenSnipersAimIsNotSentToItsTarget()
+    {
+        using var sim = new SimHarness(Map(), c => { c.GetUnit(UnitType.Heavy).Damage = 0; c.GetUnit(UnitType.Scout).Damage = 0; });
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        var shooter = new Spy(sim.Context, replication, SimHarness.OwnerA);
+        var target = new Spy(sim.Context, replication, OwnerC);
+        sim.Spawn(SimHarness.OwnerA, new float2(10, 48), UnitType.Sniper);
+        sim.Spawn(SimHarness.OwnerA, new float2(22, 48), UnitType.Scout); // spots for it
+        sim.Spawn(OwnerC, new float2(26, 48), UnitType.Heavy);           // sight 7: never sees the Sniper
+        for (int t = 0; t < 60; t++) sim.Tick();
+        CollectionAssert.IsEmpty(shooter.Failures);
+        CollectionAssert.IsEmpty(target.Failures);
+        Assert.Greater(shooter.Aims.Count, 0, "the Sniper's side sees its laser");
+        Assert.AreEqual(0, target.Aims.Count, "the target's owner is told nothing of the aim");
+        shooter.Dispose();
+        target.Dispose();
+    }
+
+    /// <summary>Spec §4.3, D7: a gun's own side gets the whole flight; a player who sees only the landing point, the drop; anyone else nothing.</summary>
+    [Test]
+    public void AShellFromAHiddenGunSendsOnlyItsDrop()
+    {
+        using var sim = new SimHarness(Map(), c => { c.GetUnit(UnitType.Tank).Damage = 0; c.GetUnit(UnitType.Scout).Damage = 0; });
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        var gunSide = new Spy(sim.Context, replication, SimHarness.OwnerA);
+        var targetSide = new Spy(sim.Context, replication, OwnerC);
+        var elsewhere = new Spy(sim.Context, replication, SimHarness.OwnerB);
+        sim.Spawn(SimHarness.OwnerA, new float2(8, 48), UnitType.Artillery);
+        sim.Spawn(SimHarness.OwnerA, new float2(34, 48), UnitType.Scout);
+        sim.Spawn(OwnerC, new float2(40, 48));
+        sim.Spawn(SimHarness.OwnerB, new float2(88, 8));
+        for (int t = 0; t < 120; t++) sim.Tick();
+        foreach (Spy spy in new[] { gunSide, targetSide, elsewhere }) CollectionAssert.IsEmpty(spy.Failures, $"owner {spy.Owner}");
+        Assert.That(gunSide.Shells.Exists(s => s.Full), "the gun's side sees the whole flight");
+        Assert.That(targetSide.Shells.Count, Is.GreaterThan(0), "the target's side sees the shell come down");
+        Assert.That(targetSide.Shells.TrueForAll(s => !s.Full), "but never where it came from");
+        Assert.AreEqual(0, elsewhere.Shells.Count, "a player who sees neither end is told nothing");
+        foreach (Spy spy in new[] { gunSide, targetSide, elsewhere }) spy.Dispose();
+    }
+
+    /// <summary>A burning unit in the fog: nothing about it reaches a player who doesn't see it.</summary>
+    [Test]
+    public void ABurningEnemyInTheFogSendsNothing()
+    {
+        using var sim = new SimHarness(Map(), c => c.GetUnit(UnitType.Tank).Damage = 0);
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        var burner = new Spy(sim.Context, replication, SimHarness.OwnerA);
+        var bystander = new Spy(sim.Context, replication, SimHarness.OwnerB);
+        sim.Spawn(SimHarness.OwnerA, new float2(10, 48), UnitType.Flamethrower);
+        int[] tank = sim.Spawn(OwnerC, new float2(14, 48));
+        sim.Spawn(SimHarness.OwnerB, new float2(88, 88));
+        for (int t = 0; t < 40; t++) sim.Tick();
+        CollectionAssert.IsEmpty(burner.Failures);
+        CollectionAssert.IsEmpty(bystander.Failures);
+        int index = NetIdAllocator.IndexOf(tank[0]);
+        Assert.That(burner.Statuses.Exists(s => s.Index == index && (s.Bits & UnitStatusBits.Burning) != 0), "the side that sees it sees it burn");
+        Assert.That(bystander.Statuses.Exists(s => s.Index == index), Is.False, "the fog hides it");
+        burner.Dispose();
+        bystander.Dispose();
     }
 }

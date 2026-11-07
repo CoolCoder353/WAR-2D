@@ -63,7 +63,7 @@ public enum OrderKind : byte
     Repair = 5,
     /// <summary>Diggers tunnel into the rock, gem or wall at the tile.</summary>
     Dig = 6,
-    /// <summary>Every selected Suicide bomber blows up where it stands.</summary>
+    /// <summary>Every selected Bomber blows up where it stands.</summary>
     Detonate = 7,
     /// <summary>v0.18: go after one enemy the side sees, and ignore everything else until it dies.</summary>
     Attack = 8,

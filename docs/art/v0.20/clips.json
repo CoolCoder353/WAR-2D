@@ -1,0 +1,12 @@
+{
+  "leap": { "w": 640, "h": 256, "frames": 22, "cols": 8, "fps": 10 },
+  "flame": { "w": 768, "h": 384, "frames": 24, "cols": 8, "fps": 10 },
+  "burn-building": { "w": 256, "h": 320, "frames": 12, "cols": 8, "fps": 10 },
+  "sniper": { "w": 704, "h": 192, "frames": 30, "cols": 8, "fps": 10 },
+  "armour": { "w": 448, "h": 128, "frames": 12, "cols": 8, "fps": 10 },
+  "artillery": { "w": 896, "h": 384, "frames": 40, "cols": 8, "fps": 10 },
+  "incoming": { "w": 512, "h": 448, "frames": 20, "cols": 8, "fps": 10 },
+  "turret": { "w": 576, "h": 192, "frames": 12, "cols": 8, "fps": 10 },
+  "deaths": { "w": 1024, "h": 256, "frames": 24, "cols": 8, "fps": 10 },
+  "collapse": { "w": 320, "h": 320, "frames": 22, "cols": 8, "fps": 10 }
+}

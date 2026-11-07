@@ -19,8 +19,8 @@ A networked, top-down 2D real-time strategy game built in Unity, made for armies
 | [docs/debugging.md](docs/debugging.md) | The control API and `tools/war2d` CLI, overlays, `WarLog`, replays, the AI bench |
 | [docs/tuning.md](docs/tuning.md) | How to tune balance and the AI: where the numbers are, the balance sheet, the bench, the unattended tuner |
 | [docs/playtesting.md](docs/playtesting.md) | How to run a playtest: Steam, and Direct play through a router or tunnel |
-| [docs/roadmap.md](docs/roadmap.md) | The current roadmap (v0.10–v0.14: debug tools and replays, new maps, new units, defences, AI opponents; v0.15 quality of life and v0.15.1 followed), with a design spec per update |
-| [docs/archive/](docs/archive/roadmap-v0.2-v0.9.md) | The completed v0.2–v0.9 roadmap, its specs, plans, spike and performance results |
+| [docs/roadmap.md](docs/roadmap.md) | The current roadmap: v0.19 Steady (routes, Builders, controls and combat visuals, merged to `main`) and v0.20 Onslaught (a combat overhaul, planned), with a design spec per update |
+| [docs/archive/](docs/archive/roadmap-v0.16-v0.18.md) | The completed roadmaps: [v0.2–v0.9](docs/archive/roadmap-v0.2-v0.9.md), [v0.10–v0.15.1](docs/archive/roadmap-v0.10-v0.14.md) and [v0.16–v0.18](docs/archive/roadmap-v0.16-v0.18.md), with their specs, plans, spike and performance results |
 | [steam/README.md](steam/README.md) | Uploading builds to Steam with `tools/steam-upload.sh` |
 | [CLAUDE.md](CLAUDE.md) | Guidance for AI coding assistants working in this repo |
 

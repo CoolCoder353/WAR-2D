@@ -1,11 +1,11 @@
 {
-  "_comment": "The words of the v0.18 Field manual, for review on the mock website (spec section 2.4). {Path} is a number from GameConfig.xml or a figure worked out from it, [[Name]] links to that page, **x** highlights. No literal balance numbers here: tools/manual-mock.js fills them. Once approved these words are carried into ManualText.",
+  "_comment": "The words of the v0.20 Field manual, for review on the mock website (spec section 2.4). {Path} is a number from GameConfig.xml or a figure worked out from it, [[Name]] links to that page, **x** highlights. No literal balance numbers here: tools/manual-mock.js fills them. Once approved these words are carried into ManualText.",
   "damageTable": {
     "lead": "How much of its damage each attacker deals to each kind of target. Hover a cell for the damage per shot and per second.",
     "notes": [
       "Every unit is Light or Heavy armoured. With buildings and walls that makes four target classes.",
       "A hit does the attacker's damage times the number in this table. 1 is full damage, 2 is double, 0 is none.",
-      "A [[Suicide bomber]]'s row applies to its blast, which goes off once."
+      "A [[Bomber]]'s row applies to its blast, which goes off once, and the [[Artillery]]'s to its shell's blast."
     ]
   },
   "units": {
@@ -35,67 +35,49 @@
       ]
     },
     "Scout": {
-      "role": "Fast and far-sighted; lightly armed.",
+      "role": "Fast, and sees furthest: the spotter.",
       "body": [
-        "The fastest unit, with the widest sight. It finds enemies for your [[Sniper]]s and [[Artillery]], which can fire further than they can see.",
-        "Its weak gun only does real damage to light units. Use it to look and to hunt [[Sniper]]s and [[Builder]]s, not to fight armour or buildings."
-      ],
-      "claims": {
-        "Sniper": "beats",
-        "Heavy": "loses"
-      }
+        "The fastest unit and the one that sees furthest, {Unit/Scout/Sight} tiles. Ahead of your gun line it lets [[Artillery]] and [[Sniper]]s fire to their full range, and it can look round a wall for them.",
+        "Its weak gun only does real damage to light units, and it bounces off [[Heavy|Heavies]]' armour. Use it to look and to hunt [[Builder]]s, not to fight."
+      ]
     },
     "Flamethrower": {
-      "role": "Short-range splash that burns through groups.",
+      "role": "Sets groups on fire at range.",
       "body": [
-        "Each hit also burns every enemy within {Unit/Flamethrower/Splash} tiles of the target: full damage at the centre, half at the edge. Allies are not hurt.",
-        "It is at its best inside a crowd of light units and weak against [[Heavy|Heavies]]. Its short range means it takes fire on the way in."
-      ],
-      "claims": {
-        "Scout": "beats",
-        "Heavy": "loses"
-      }
+        "Its flame reaches {Unit/Flamethrower/Range} tiles and splashes every enemy within {Unit/Flamethrower/Splash} tiles of the target. Each hit does little on its own, but **everything it hits catches fire** and burns for {Burn/Seconds} s, losing {Burn/Dps} health a second.",
+        "A fire doesn't stack: a new hit only restarts it. [[Heavy|Heavies]] burn at half rate, walls don't burn, and fire doesn't spread from one unit to the next. Allies are never hit or set on fire.",
+        "It wears whole groups down for the rest of your army to finish. On its own it kills one unit slowly."
+      ]
     },
     "Heavy": {
       "role": "Slow, armoured front-line tank.",
       "body": [
-        "Takes the fire so that the rest of your army doesn't. Its large gun hits buildings harder than anything else on the front line, and it shrugs off [[Flamethrower]]s.",
-        "It is slow and large: it needs wider paths, and it passes a narrow chokepoint in single file. For the same money, massed [[Tank]]s out-damage it."
-      ],
-      "claims": {
-        "Flamethrower": "beats",
-        "Tank": "loses"
-      }
+        "Takes the fire so that the rest of your army doesn't. **Armour** takes {Unit/Heavy/FlatArmour} off every shot, so small arms like a [[Scout]]'s do {Combat/MinHit} a hit, and it shrugs off {Derived/HeavyBlastResistPercent} % of any blast. Fire burns it at half rate.",
+        "Its big gun hits buildings hard. It is slow and large, it passes a narrow chokepoint in single file, and a [[Sniper]] is built to kill it."
+      ]
     },
     "Artillery": {
-      "role": "Long-range splash; can't fire up close.",
+      "role": "Shells far past its sight, over walls.",
       "body": [
-        "Shells from {Unit/Artillery/Range} tiles, with a splash of {Unit/Artillery/Splash} tiles, and does double damage to buildings. It out-ranges a [[Gun turret]] easily and wins against slow or short-sighted units it can see coming.",
-        "It sees as far as it shoots unless rock is in the way, and can't fire at anything closer than {Unit/Artillery/MinRange}. It needs something to keep attackers off it."
-      ],
-      "claims": {
-        "GunTurret": "beats"
-      }
+        "Fires from {Unit/Artillery/Range} tiles, twice as far as it sees, so it only fires at what a [[Scout]], a [[Radar]] or an ally shows your side. It can't fire at anything closer than {Unit/Artillery/MinRange}.",
+        "Its shell flies over walls, not rock, and lands where the target will be if it keeps driving straight: a unit that turns or stops can get away. The blast hits everything within {Unit/Artillery/BlastRadius} tiles for up to {Unit/Artillery/Damage}, double to buildings, and **your own and your allies' units take {Derived/ArtilleryFriendlyPercent} % of it**.",
+        "It reloads for {Unit/Artillery/AttackInterval} s after each shot. Keep it behind the line, and keep something between it and anything fast."
+      ]
     },
     "Sniper": {
-      "role": "Very long range, and sees as far as it shoots.",
+      "role": "Stops and aims, then one huge shot. Best against Heavies.",
       "body": [
-        "The longest range in the game. It is the safest way to kill a [[Gun turret]], which can't reach it, and it picks off targets from behind your army.",
-        "It can only fire at what your side can see, rock blocks both, and it can't fire at anything closer than {Unit/Sniper/MinRange} tiles. It does little to buildings and walls.",
-        "It loses a straight fight at equal cost, and a [[Suicide bomber]] that reaches a group of Snipers is very costly. Keep something in front of it."
-      ],
-      "claims": {
-        "GunTurret": "beats",
-        "SuicideBomber": "loses",
-        "Scout": "loses"
-      }
+        "A large unit that fires from {Unit/Sniper/Range} tiles but sees only {Unit/Sniper/Sight}, so it needs a [[Scout]], a [[Radar]] or an ally to spot for it. Each shot does {Unit/Sniper/Damage}, and {Derived/SniperHeavyMultiplier} times that to [[Heavy|Heavies]]: two shots kill one.",
+        "**It stops to aim.** For {Sniper/AimSeconds} s before each shot it stands still with its target in sight, and a red laser shows your side what it aims at. Moving, losing the target or changing target starts the aim again. On a Move order it doesn't aim.",
+        "It does little to light units, buildings and walls, and it can't fire at anything closer than {Unit/Sniper/MinRange} tiles. Keep something in front of it."
+      ]
     },
-    "SuicideBomber": {
-      "role": "Drives in and explodes. Hurts friends too.",
+    "Bomber": {
+      "role": "Leaps into an army and explodes. Hurts friends too.",
       "body": [
-        "On an attack-move, or idle with an enemy in sight, it runs in and explodes. Its blast hits every unit, building and wall within {Unit/SuicideBomber/BlastRadius} tiles, **your own and your allies' included**.",
-        "It aims for the middle of a group, where its blast catches the most value for the least harm to your side. Against a building it goes for the middle of a side. It can only aim at what your side sees.",
-        "**A bomber at {Derived/LastGaspPercent} % health or less explodes**, which in practice means a bomber shot down explodes where it falls. Shoot it down far from what you are protecting. The Detonate order sets off every selected bomber where it stands."
+        "On an attack-move, or idle with an enemy in sight, it runs at the middle of the nearest army. Once an enemy unit is within {Unit/Bomber/Range} tiles it **leaps** over the units in its way, lands in that army's centre, at most {Bomber/LeapReach} tiles away, and explodes: everything within {Unit/Bomber/BlastRadius} tiles is hit, **your own and your allies' included**.",
+        "**In the air it can't be hit**, and nothing stops the leap. Walls, rock and buildings stop it leaping at all: it only leaps when the line to its landing point is clear, and otherwise keeps running. Against a building it leaps onto the middle of a side.",
+        "On the ground **it explodes whenever it dies**, and at {Derived/LastGaspPercent} % health or less. It shrugs off {Derived/BomberBlastResistPercent} % of any blast, so bombers don't set each other off: shoot them down on the way in, a [[Gun turret]] best of all, far from what you are protecting. Detonate ({Key/Detonate}) sets off every selected bomber that is on the ground."
       ]
     }
   },
@@ -129,36 +111,31 @@
       ]
     },
     "SiegeWorkshop": {
-      "role": "Makes Diggers and Suicide bombers.",
+      "role": "Makes Diggers and Bombers.",
       "body": [
-        "Makes the units that change the map or break a line: [[Digger]]s to open a new route or take down walls, [[Suicide bomber]]s to blow a hole in a crowd."
+        "Makes the units that change the map or break a line: [[Digger]]s to open a new route or take down walls, [[Bomber]]s to blow a hole in a crowd."
       ]
     },
-    "Bomb": {
+    "Mine": {
       "role": "A hidden trap, walkable.",
       "body": [
         "Only you and those you share vision with can see it, and Radars can't. A unit of any player you attack sets it off: a blast of {Siege/BlastDamage} within {Siege/BlastRadius} tiles that hits everything, **your own units included**.",
-        "Everyone who can see the tile sees the explosion, and you get an alert. Place them where armies must pass: chokepoints and the entrances to your base."
+        "Everyone who can see the tile sees the explosion, and you get an alert. Place them where armies must pass: chokepoints and the entrances to your base. [[Bomber]]s shrug its blast off."
       ]
     },
     "Radar": {
       "role": "Sees far, through walls and rock.",
       "body": [
         "Sees {Building/Radar/Sight} tiles ignoring walls and rock, and pings you when an enemy comes into range. It pings again only after the area has been clear for {Siege/RadarClearSeconds} s and at least {Siege/RadarAlertCooldownSeconds} s have passed.",
-        "It never sees [[Bomb]]s, and it sees nothing inside an enemy [[Jammer]]'s radius. Its sight lets your [[Artillery]] and [[Sniper]]s fire."
+        "It never sees [[Mine]]s, and it sees nothing inside an enemy [[Jammer]]'s radius. Its sight lets your [[Artillery]] and [[Sniper]]s fire."
       ]
     },
     "GunTurret": {
-      "role": "The only building that shoots.",
+      "role": "Fires ten shots a second. Shoots Bombers first.",
       "body": [
-        "Fights like a unit that can't move: the nearest enemy unit in range it has a clear line to, else the nearest enemy building, else an enemy wall.",
-        "Strong against light units, and a match for [[Heavy|Heavies]] at the same cost. [[Artillery]] and [[Sniper]]s out-range it. It doesn't fire as a blueprint or while its upkeep is unpaid."
-      ],
-      "claims": {
-        "Scout": "beats",
-        "Artillery": "loses",
-        "Sniper": "loses"
-      }
+        "A large, costly turret that takes {Building/GunTurret/BuildSeconds} s for one Builder to build. It fires very fast: at a [[Bomber]] in range first, then the nearest enemy unit it has a clear line to, then buildings, then walls.",
+        "It shreds light units and bombers on the way in, but its small rounds barely scratch [[Heavy|Heavies]]' armour, and [[Artillery]] and [[Sniper]]s out-range it. It doesn't fire as a blueprint or while its upkeep is unpaid."
+      ]
     },
     "Jammer": {
       "role": "Hides an area from your enemies.",
@@ -193,7 +170,7 @@
           "heading": "Upkeep and decay",
           "paras": [
             "Upkeep is charged once a second, per unit and per building. Your resources never go below zero: what you can't pay goes unpaid.",
-            "**Buildings give way first.** Your units are paid before your buildings, and an unpaid building stops working: an unpaid producer doesn't produce, a [[Gun turret]] doesn't fire, a [[Jammer]] doesn't jam, a [[Radar]] doesn't scan, and a [[Bomb]] is a dud. **Then units decay, one whole unit at a time:** each unpaid unit costs you {Resources/DecayPercentPerSecond}% of a unit every second, all of it taken from your weakest unpaid unit until it dies. With no units left, unpaid buildings lose {Resources/DecayPercentPerSecond}% of their maximum health every second."
+            "**Buildings give way first.** Your units are paid before your buildings, and an unpaid building stops working: an unpaid producer doesn't produce, a [[Gun turret]] doesn't fire, a [[Jammer]] doesn't jam, a [[Radar]] doesn't scan, and a [[Mine]] is a dud. **Then units decay, one whole unit at a time:** each unpaid unit costs you {Resources/DecayPercentPerSecond}% of a unit every second, all of it taken from your weakest unpaid unit until it dies. With no units left, unpaid buildings lose {Resources/DecayPercentPerSecond}% of their maximum health every second."
           ]
         },
         {
@@ -293,8 +270,33 @@
           "paras": [
             "A drag box selects every unit inside it. If it catches [[Builder]]s and anything else, it keeps only the others; a box with only Builders selects them. {Key/AssignModifier} + drag selects only your buildings, of every kind, and leaves the units out. {Key/SelectIdleBuilders} selects idle Builders, and {Key/AssignModifier} + {Key/SelectIdleBuilders} every Builder."
           ]
+        },
+        {
+          "heading": "Armour",
+          "paras": [
+            "Some units carry armour. It comes off every shot after the [[Damage table]], and a shot never does less than {Combat/MinHit}. It does nothing against blasts or fire."
+          ]
+        },
+        {
+          "heading": "Blasts",
+          "paras": [
+            "A blast is a [[Bomber]] exploding, an [[Artillery]] shell landing or a [[Mine]] going off. It does full damage at its centre and half at its edge, and hits your own side too (the Artillery's a share of it). Each unit shrugs off its own share of any blast: [[Bomber]]s nearly all of it, [[Heavy|Heavies]] half, [[Artillery]] a quarter, the rest none. Its page says how much."
+          ]
+        },
+        {
+          "heading": "Fire",
+          "paras": [
+            "A [[Flamethrower]]'s hit sets a unit or building burning for {Burn/Seconds} s. Light units and buildings lose {Burn/Dps} health a second, heavy units half that, and walls never burn. A new hit restarts the fire, nothing else puts it out, and it never spreads. Fire ignores armour, and its kills go to whoever lit it."
+          ]
+        },
+        {
+          "heading": "Spotting",
+          "paras": [
+            "A unit fires only at what your side sees now. [[Artillery]] and [[Sniper]]s fire further than they see, so put a [[Scout]] ahead of them: whatever it sees, they can hit. Walls block everyone's sight, but an Artillery shell flies over them, so a Scout looking round a wall lets it shell what is behind."
+          ]
         }
-      ]
+      ],
+      "diagram": "combat"
     },
     {
       "id": "siege",
@@ -317,7 +319,7 @@
         {
           "heading": "Blasts hurt everyone",
           "paras": [
-            "A [[Bomb]] (radius {Siege/BlastRadius}, damage {Siege/BlastDamage}) and a [[Suicide bomber]] (radius {Unit/SuicideBomber/BlastRadius}, damage {Unit/SuicideBomber/BlastDamage}) both hit friends as well as enemies. Splash from [[Flamethrower]]s and [[Artillery]] hits enemies only.",
+            "A [[Mine]] (radius {Siege/BlastRadius}, damage {Siege/BlastDamage}) and a [[Bomber]] (radius {Unit/Bomber/BlastRadius}, damage {Unit/Bomber/BlastDamage}) both hit friends as well as enemies. Splash from [[Flamethrower]]s and [[Artillery]] hits enemies only.",
             "A bomber shot down explodes where it falls, and that blast can set off other bombers near it. Long-range fire keeps them away; a bomber killed inside your army takes your army with it."
           ]
         }
@@ -438,7 +440,7 @@
           "{Key/Dig}"
         ],
         [
-          "Detonate (Suicide bombers)",
+          "Detonate (Bombers)",
           "{Key/Detonate}"
         ],
         [

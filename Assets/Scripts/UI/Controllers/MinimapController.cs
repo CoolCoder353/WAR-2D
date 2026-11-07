@@ -362,7 +362,7 @@ namespace WAR2D.UI
             Vector2 at = MinimapTexture.ToLocal((float2)tile + 0.5f, image.layout.size, WorldSize);
             var ring = new VisualElement { name = "minimap-ping", pickingMode = PickingMode.Ignore };
             ring.AddToClassList("minimap-ping");
-            if (kind == AlertKind.BombTriggered) ring.AddToClassList("minimap-ping--warning");
+            if (kind == AlertKind.MineTriggered) ring.AddToClassList("minimap-ping--warning");
             ring.style.left = at.x;
             ring.style.top = at.y;
             Pings.Add(ring);

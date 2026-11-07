@@ -30,7 +30,7 @@ namespace WAR2D.Ai
     /// never anything it hasn't seen; a turret-guarded target with turrets it out-ranges is sieged. After a threat at its
     /// base an attack leaves a home guard. On its attentive thinks: it retreats from a losing fight (or regroups a strung
     /// out vanguard), its units in range focus fire, Artillery and Snipers stay behind the front, Diggers dig through enemy
-    /// walls, and Suicide bombers detonate on clumps and walls. Each attack's trade (from the kill ledger) moves its
+    /// walls, and Bombers detonate on clumps and walls. Each attack's trade (from the kill ledger) moves its
     /// caution and marks a target that beat it. Scouts and raiders are left alone.
     /// </summary>
     public sealed class ArmyManager : IAiManager
@@ -38,7 +38,7 @@ namespace WAR2D.Ai
         private readonly HashSet<int> group = new HashSet<int>();
         private readonly HashSet<int> alive = new HashSet<int>();
         private readonly HashSet<int> holding = new HashSet<int>();
-        private readonly List<int> ids = new List<int>(256), back = new List<int>(32), stale = new List<int>(32);
+        private readonly List<int> ids = new List<int>(256), back = new List<int>(32), stale = new List<int>(32), spotters = new List<int>(4);
         private readonly List<AiAlert> alerts = new List<AiAlert>(8);
         private readonly Dictionary<int, double> orderedAt = new Dictionary<int, double>();
         private double lastAttackEnd = double.NegativeInfinity, retreatStarted, nextGather = double.NegativeInfinity, stagedAt;
@@ -184,7 +184,7 @@ namespace WAR2D.Ai
         private bool Sweep(AiContext ai, TeamView view, AiState state, int army)
         {
             if (state.PlayingSeconds < FirstAttackAt(ai, state) || army < ai.Style.AttackArmySize) { sweeping = false; return false; }
-            foreach (AiBuilding b in ai.Board.EnemyBuildings.Values) if (b.Type != BuildingType.Bomb) { sweeping = false; return false; }
+            foreach (AiBuilding b in ai.Board.EnemyBuildings.Values) if (b.Type != BuildingType.Mine) { sweeping = false; return false; }
             if (ai.Board.KnownHqs.Count > 0 || ai.Board.Armies.Count > 0) { sweeping = false; return false; }
             float2 centre = GroupCentreOf(view, state);
             if (sweeping && (view.FogAt((float2)sweepSite + 0.5f) == 2 || math.distancesq(centre, (float2)sweepSite) < ai.Config.Play.ArmyRadius * ai.Config.Play.ArmyRadius))
@@ -388,7 +388,7 @@ namespace WAR2D.Ai
             }
             foreach (AiBuilding b in ai.Board.EnemyBuildings.Values)
             {
-                if (b.Type == BuildingType.Bomb) continue;
+                if (b.Type == BuildingType.Mine) continue;
                 Consider(b.Id, b.OwnerId, b.Anchor, WorthOf(ai, ai.View, b));
             }
             // An HQ it saw that its view doesn't show any more (a Jammer hides it): its remembered spot (id -1).
@@ -613,12 +613,14 @@ namespace WAR2D.Ai
             UpdateSiege(ai, view, state);
             if (!Sieging)
             {
-                // Units that arrived (or lost their order) go on to the target.
+                // Units that arrived (or lost their order) go on to the target. Spotters that left the group (or died) rejoin the orders.
+                for (int k = spotters.Count - 1; k >= 0; k--) if (!group.Contains(spotters[k])) spotters.RemoveAt(k);
+                if (!ai.Difficulty.KeepsBacklineBack || ai.Difficulty.Spotters <= 0) spotters.Clear();
                 ids.Clear();
                 foreach (int i in state.Combat)
                 {
                     AiUnit u = view.OwnUnits[i];
-                    if (group.Contains(u.Id) && !u.HasOrder && !(ai.Difficulty.KeepsBacklineBack && IsBackline(u.Type))) ids.Add(u.Id);
+                    if (group.Contains(u.Id) && !u.HasOrder && !(ai.Difficulty.KeepsBacklineBack && IsBackline(u.Type)) && !spotters.Contains(u.Id)) ids.Add(u.Id);
                 }
                 if (ids.Count > 0 && Due(ai, AiKeys.Army)) ai.Propose(AiPriority.Normal, AiAction.OrderUnits(ids, OrderKind.AttackMove, Target), AiKeys.Of(AiKeys.Army));
             }
@@ -793,13 +795,35 @@ namespace WAR2D.Ai
                 AiUnit u = view.OwnUnits[i];
                 if (group.Contains(u.Id) && IsBackline(u.Type)) back.Add(u.Id);
             }
-            if (back.Count == 0) return;
+            if (back.Count == 0) { spotters.Clear(); return; }
             float2 toTarget = math.normalizesafe((float2)Target - front);
             float2 spot = front - toTarget * ai.Config.Play.BacklineDistance;
             if (math.distancesq(front, state.Home) < 1f) spot = math.lerp(state.Home, Target, 0.5f);
             int2 tile = math.clamp((int2)math.floor(spot), 0, new int2(view.Width - 1, view.Height - 1));
             ai.Propose(AiPriority.Normal, AiAction.OrderUnits(back, OrderKind.AttackMove, tile), AiKeys.Of(AiKeys.Backline));
             orderedAt[AiKeys.Backline] = ai.Now;
+            Spot(ai, view, state, front, toTarget);
+        }
+
+        /// <summary>
+        /// v0.20 (spec §10): its Scouts in the group, up to <c>Spotters</c>, go ahead of the front so its Artillery (which fires twice as
+        /// far as it sees) and Snipers fire to their full range on what they see. They walk there (a Move), so they look rather than fight.
+        /// </summary>
+        private void Spot(AiContext ai, TeamView view, AiState state, float2 front, float2 toTarget)
+        {
+            int want = ai.Difficulty.Spotters;
+            spotters.Clear();
+            if (want <= 0) return;
+            foreach (int i in state.Combat)
+            {
+                if (spotters.Count >= want) break;
+                AiUnit u = view.OwnUnits[i];
+                if (u.Type == UnitType.Scout && group.Contains(u.Id)) spotters.Add(u.Id);
+            }
+            if (spotters.Count == 0) return;
+            float2 ahead = front + toTarget * ai.Config.Play.SpotterLead;
+            int2 tile = math.clamp((int2)math.floor(ahead), 0, new int2(view.Width - 1, view.Height - 1));
+            ai.Propose(AiPriority.Normal, AiAction.OrderUnits(spotters, OrderKind.Move, tile), AiKeys.Of(AiKeys.Backline, 1));
         }
 
         private static bool IsBackline(UnitType t) => t == UnitType.Artillery || t == UnitType.Sniper;
@@ -873,18 +897,18 @@ namespace WAR2D.Ai
             orderedAt[AiKeys.Dig] = ai.Now;
         }
 
-        /// <summary>Suicide bombers blow up beside a clump of enemies it sees, or beside an enemy wall.</summary>
+        /// <summary>Bombers blow up beside a clump of enemies it sees, or beside an enemy wall.</summary>
         private void Detonate(AiContext ai, TeamView view, AiState state)
         {
             back.Clear();
             int checks = 0;
-            UnitConfig bomber = state.UnitOf(UnitType.SuicideBomber);
+            UnitConfig bomber = state.UnitOf(UnitType.Bomber);
             if (bomber == null) return;
             float r2 = bomber.BlastRadius * bomber.BlastRadius;
             foreach (int i in state.Combat)
             {
                 AiUnit u = view.OwnUnits[i];
-                if (u.Type != UnitType.SuicideBomber || !group.Contains(u.Id) || checks++ >= ai.Config.Play.BomberChecks) continue;
+                if (u.Type != UnitType.Bomber || !group.Contains(u.Id) || checks++ >= ai.Config.Play.BomberChecks) continue;
                 int near = 0;
                 foreach (AiUnit e in view.OtherUnits)
                     if (view.IsEnemy(e.OwnerId) && math.distancesq(e.Position, u.Position) <= r2 && ++near >= ai.Config.Play.BomberClump) break;

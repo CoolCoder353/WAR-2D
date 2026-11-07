@@ -95,7 +95,7 @@ namespace WAR2D.Ai
             foreach (AiBuilding b in ai.Board.EnemyBuildings.Values)
             {
                 if (b.Type != BuildingType.Miner && !AtExpansion(view, b.Anchor)) continue;
-                if (b.Type == BuildingType.Bomb || ai.Board.IsAvoided(b.Anchor, play.ArmyRadius)) continue;
+                if (b.Type == BuildingType.Mine || ai.Board.IsAvoided(b.Anchor, play.ArmyRadius)) continue;
                 float2 at = (float2)b.Anchor + 0.5f;
                 Force defence = AiForces.KnownTurrets(ai, at, play.ArmyRadius);
                 if (ai.Board.Armies.TryGetValue(b.OwnerId, out ArmySighting seen) && math.distancesq(seen.Centre, at) <= 4f * r2)

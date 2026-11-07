@@ -20,7 +20,7 @@ namespace WAR2D.Net.Replication
         private NativeArray<float2> positions;
         private NativeArray<float> health, maxHealth, speedByType;
         private NativeArray<int> ownerId, idOf, indexOfId;
-        private NativeArray<byte> type, noFog;
+        private NativeArray<byte> type, noFog, lastHitKind;
         private NativeArray<int2> attacks;
         private NativeArray<AttackTarget> targets;
         private NativeArray<BuildingAttack> buildingAttacks;
@@ -59,6 +59,7 @@ namespace WAR2D.Net.Replication
             Copy(data.Type, ref type, count);
             Copy(data.IdOf, ref idOf, count);
             Copy(data.IndexOfId, ref indexOfId, data.IndexOfId.Length);
+            Copy(data.LastHitKind, ref lastHitKind, data.LastHitKind.Length);
             Copy(data.SpeedByType, ref speedByType, data.SpeedByType.Length);
             routes.Arena.ResizeUninitialized(live.Arena.Length);
             NativeArray<float2>.Copy(live.Arena.AsArray(), routes.Arena.AsArray(), live.Arena.Length);
@@ -75,7 +76,7 @@ namespace WAR2D.Net.Replication
             var input = new ReplicationInput
             {
                 Count = count, Positions = positions, Health = health, MaxHealth = maxHealth, OwnerId = ownerId, Type = type,
-                IdOf = idOf, IndexOfId = indexOfId, SpeedByType = speedByType,
+                IdOf = idOf, IndexOfId = indexOfId, SpeedByType = speedByType, LastHitKind = lastHitKind,
                 Visible = noFog, FogCellSize = math.max(1, data.FogCellSize), FogW = 1, FogH = 1, FogCells = 1, MapWidth = data.Width,
             };
             JobHandle built = interests.Schedule(input, default);
@@ -110,6 +111,7 @@ namespace WAR2D.Net.Replication
             if (ownerId.IsCreated) ownerId.Dispose();
             if (idOf.IsCreated) idOf.Dispose();
             if (indexOfId.IsCreated) indexOfId.Dispose();
+            if (lastHitKind.IsCreated) lastHitKind.Dispose();
             if (type.IsCreated) type.Dispose();
             if (attacks.IsCreated) attacks.Dispose();
             if (targets.IsCreated) targets.Dispose();

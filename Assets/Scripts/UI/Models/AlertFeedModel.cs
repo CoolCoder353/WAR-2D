@@ -25,7 +25,7 @@ namespace WAR2D.UI
     /// The alert feed: the newest alerts (at most <see cref="MaxShown"/>), each shown until dismissed (× or a right click) or
     /// until its time is up (<see cref="Expire"/>, which the HUD calls every frame; playtest 2026-10-30: the feed was too busy).
     /// A repeat of a shown alert (same kind and text) joins that row as the newest, counting up, rather than adding another. Clicking one with a place
-    /// (<see cref="HasPlace"/>) asks the camera to go there (<see cref="FocusRequested"/>). UnderAttack, BombTriggered and EnemySpotted alerts also ask for a minimap ping.
+    /// (<see cref="HasPlace"/>) asks the camera to go there (<see cref="FocusRequested"/>). UnderAttack, MineTriggered and EnemySpotted alerts also ask for a minimap ping.
     /// </summary>
     public sealed class AlertFeedModel
     {
@@ -61,7 +61,7 @@ namespace WAR2D.UI
 
         /// <summary>True for the alerts that happened somewhere on the map, so clicking them moves the camera there.</summary>
         public static bool HasPlace(AlertKind kind) =>
-            kind == AlertKind.UnderAttack || kind == AlertKind.BombTriggered || kind == AlertKind.EnemySpotted ||
+            kind == AlertKind.UnderAttack || kind == AlertKind.MineTriggered || kind == AlertKind.EnemySpotted ||
             kind == AlertKind.ConstructionFinished || kind == AlertKind.RepairsStopped || kind == AlertKind.Ping || kind == AlertKind.BlueprintBlocked;
 
         /// <summary>Asks the camera to go to an alert's place (its row was clicked). Does nothing for alerts without one.</summary>
@@ -105,7 +105,7 @@ namespace WAR2D.UI
         }
 
         /// <summary>True for the alerts the minimap pings.</summary>
-        public static bool Pings(AlertKind kind) => kind == AlertKind.UnderAttack || kind == AlertKind.BombTriggered || kind == AlertKind.EnemySpotted;
+        public static bool Pings(AlertKind kind) => kind == AlertKind.UnderAttack || kind == AlertKind.MineTriggered || kind == AlertKind.EnemySpotted;
 
         /// <summary>Adds an alert with its text, shown from <paramref name="now"/>.</summary>
         public void Add(in Alert alert, string text, float now, string subject = null, string subjectTag = null)
@@ -168,7 +168,7 @@ namespace WAR2D.UI
             AlertKind.VisionSharedWithYou => $"{nameOf(alert.OtherOwnerId)} shares vision with you",
             AlertKind.VisionUnshared => $"{nameOf(alert.OtherOwnerId)} stopped sharing vision with you",
             AlertKind.ConstructionFinished => nearBuilding != null ? $"Construction finished: {nearBuilding}" : "Construction finished",
-            AlertKind.BombTriggered => "Bomb triggered",
+            AlertKind.MineTriggered => "Mine triggered",
             AlertKind.EnemySpotted => "Enemy spotted by Radar",
             AlertKind.RepairsStopped => "Out of resources: repairs stopped",
             AlertKind.BlueprintBlocked => "Blueprint cancelled: something is in the way (refunded)",
@@ -191,14 +191,14 @@ namespace WAR2D.UI
             BuildingType.HeavyFactory => "Heavy Factory",
             BuildingType.SiegeWorkshop => "Siege Workshop",
             BuildingType.Miner => "Miner",
-            BuildingType.Bomb => "Bomb",
+            BuildingType.Mine => "Mine",
             BuildingType.Radar => "Radar",
             BuildingType.GunTurret => "Gun turret",
             BuildingType.Jammer => "Jammer",
             _ => null,
         };
 
-        /// <summary>A unit type as players know it: its name with spaces ("Suicide bomber").</summary>
+        /// <summary>A unit type as players know it: its name with spaces ("Bomber").</summary>
         public static string UnitName(UnitType type) => Spaced(type.ToString());
 
         /// <summary>A PascalCase name with spaces, later words in lower case ("SiegeWorkshop" → "Siege workshop").</summary>

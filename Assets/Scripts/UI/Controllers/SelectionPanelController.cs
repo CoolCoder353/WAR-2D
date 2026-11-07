@@ -1,4 +1,5 @@
 using System;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace WAR2D.UI
@@ -127,7 +128,7 @@ namespace WAR2D.UI
         private void ShowTypes()
         {
             var key = new System.Text.StringBuilder();
-            foreach ((UnitType type, int count) in model.ByType) key.Append((int)type).Append(':').Append(count).Append('/').Append(model.MapWide ? 0 : model.TotalOf(type)).Append(';');
+            foreach ((UnitType type, int count) in model.ByType) key.Append((int)type).Append(':').Append(count).Append('/').Append(model.MapWide ? 0 : model.TotalOf(type)).Append(model.AnyBurning(type) ? "f" : "").Append(';');
             if (key.ToString() == shownTypes) return;
             shownTypes = key.ToString();
             types.Clear();
@@ -156,6 +157,8 @@ namespace WAR2D.UI
                 chip.Add(icon);
                 chip.Add(label);
                 chip.Add(number);
+                // v0.20 (Figma B1): a small flame when any of that type burns (its shape, not only a colour, says so).
+                if (model.AnyBurning(type)) chip.Add(BurningMarker());
                 int total = model.TotalOf(type);
                 if (!model.MapWide && total > count)
                 {
@@ -165,6 +168,25 @@ namespace WAR2D.UI
                 }
                 types.Add(chip);
             }
+        }
+
+        private static Sprite flame;
+
+        /// <summary>The burning marker: the approved world flame (the effects atlas's <c>Fire</c>, as on the health bars), 12 px.</summary>
+        private static VisualElement BurningMarker()
+        {
+            if (flame == null)
+            {
+                WAR2D.Art.ArtAtlas atlas = WAR2D.Art.ArtAtlas.Load(WAR2D.Art.ArtAtlas.Effects);
+                flame = atlas != null ? atlas.Sprite("Fire", 1) : null;
+            }
+            var marker = new VisualElement { name = "type-burning", pickingMode = PickingMode.Ignore, tooltip = "Burning" };
+            marker.AddToClassList("selection-type__burning");
+            marker.style.width = 12;
+            marker.style.height = 12;
+            marker.style.marginLeft = 2;
+            if (flame != null) marker.style.backgroundImage = new StyleBackground(flame);
+            return marker;
         }
 
         private static string Plural(string name, int n) => n == 1 || name.EndsWith("s") ? name : name + "s";

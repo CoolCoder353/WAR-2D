@@ -160,7 +160,7 @@ public class AiLeakTests
             {
                 Id = building.id, OwnerId = building.ownerId, Type = building.buildingType, Anchor = (int2)math.round(p),
                 Health = (int)math.ceil(health.currentHealth), MaxHealth = (int)math.ceil(health.maxHealth),
-                Hidden = building.buildingType == BuildingType.Bomb,
+                Hidden = building.buildingType == BuildingType.Mine,
                 Progress = sim.Em.HasComponent<Construction>(e) ? (byte)0 : (byte)100,
                 Position = p,
             });
@@ -235,7 +235,7 @@ public class AiLeakTests
         rig.Sim.Spawn(Ai, new float2(20, 20));
         rig.Sim.Spawn(Enemy, new float2(80, 80));
         rig.Ticks(2);
-        rig.Manual.Add(new BuildingView { Id = 55, OwnerId = Enemy, Type = BuildingType.Bomb, Anchor = new int2(22, 20), Health = 10, MaxHealth = 10, Progress = 100, Hidden = true, Position = new float2(22, 20) });
+        rig.Manual.Add(new BuildingView { Id = 55, OwnerId = Enemy, Type = BuildingType.Mine, Anchor = new int2(22, 20), Health = 10, MaxHealth = 10, Progress = 100, Hidden = true, Position = new float2(22, 20) });
         rig.Ticks(10);
         Assert.That(rig.TryBuilding(55, out _), Is.False, "seen ground, but a hidden bomb");
 
@@ -294,7 +294,7 @@ public class AiLeakTests
         using var rig = new Rig(SimHarness.OpenMap(96));
         int[] scout = rig.Sim.Spawn(Ai, new float2(8.5f, 8.5f), UnitType.Builder); // unarmed: nothing dies but what the test kills
         int[] victim = rig.Sim.Spawn(Enemy, new float2(70.5f, 70.5f), UnitType.Builder);
-        int[] bomber = rig.Sim.Spawn(Enemy, new float2(60.5f, 70.5f), UnitType.SuicideBomber);
+        int[] bomber = rig.Sim.Spawn(Enemy, new float2(60.5f, 70.5f), UnitType.Bomber);
         rig.Ticks(4);
         rig.Sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.KillUnits, OwnerId = Enemy, Ids = new[] { victim[0] } });
         rig.Sim.Order(Enemy, OrderKind.Detonate, int2.zero, bomber[0]);
@@ -305,7 +305,7 @@ public class AiLeakTests
         // The same in sight: both appear.
         rig.Sim.Teleport(scout[0], new float2(30.5f, 30.5f));
         int[] seenVictim = rig.Sim.Spawn(Enemy, new float2(32.5f, 30.5f), UnitType.Builder);
-        int[] seenBomber = rig.Sim.Spawn(Enemy, new float2(30.5f, 33.5f), UnitType.SuicideBomber);
+        int[] seenBomber = rig.Sim.Spawn(Enemy, new float2(30.5f, 33.5f), UnitType.Bomber);
         rig.Ticks(6);
         rig.Sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.KillUnits, OwnerId = Enemy, Ids = new[] { seenVictim[0] } });
         rig.Sim.Order(Enemy, OrderKind.Detonate, int2.zero, seenBomber[0]);

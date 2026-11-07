@@ -323,7 +323,7 @@ public class ClientPlayer : NetworkBehaviour
         DiplomacyChanged?.Invoke();
     }
 
-    /// <summary>Plays bomb and Suicide bomber blasts the server has filtered to tiles this player sees.</summary>
+    /// <summary>Plays bomb and Bomber blasts the server has filtered to tiles this player sees.</summary>
     [TargetRpc]
     public void TargetPlayBlasts(NetworkConnection target, Vector2[] bombs, Vector2[] bombers)
     {

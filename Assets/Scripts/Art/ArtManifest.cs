@@ -79,9 +79,9 @@ namespace WAR2D.Art
             new ArtEntry("Digger", ArtKind.Unit, 1, 1, 4, UnitDirections, true),
             new ArtEntry(nameof(UnitType.Scout), ArtKind.Unit, 1, 1, 4, UnitDirections, true),
             new ArtEntry(nameof(UnitType.Flamethrower), ArtKind.Unit, 1, 1, 4, UnitDirections, true),
-            new ArtEntry(nameof(UnitType.Sniper), ArtKind.Unit, 1, 1, 4, UnitDirections, true),
-            new ArtEntry(nameof(UnitType.SuicideBomber), ArtKind.Unit, 1, 1, 4, UnitDirections, true),
-            // Large units draw on 2×2-tile canvases.
+            new ArtEntry(nameof(UnitType.Bomber), ArtKind.Unit, 1, 1, 4, UnitDirections, true),
+            // Large units draw on 2×2-tile canvases (v0.20: the Sniper is one).
+            new ArtEntry(nameof(UnitType.Sniper), ArtKind.Unit, 2, 2, 4, UnitDirections, true),
             new ArtEntry(nameof(UnitType.Heavy), ArtKind.Unit, 2, 2, 4, UnitDirections, true),
             new ArtEntry(nameof(UnitType.Artillery), ArtKind.Unit, 2, 2, 4, UnitDirections, true),
             // Their layers: a turret's canvas is big enough for its barrel in every facing, centred on its pivot.
@@ -89,8 +89,8 @@ namespace WAR2D.Art
             new ArtEntry(nameof(UnitType.Tank) + TurretSuffix, ArtKind.Unit, 1, 1, 2, TurretDirections, true),
             new ArtEntry(nameof(UnitType.Scout) + HullSuffix, ArtKind.Unit, 1, 1, 2, UnitDirections, true),
             new ArtEntry(nameof(UnitType.Scout) + TurretSuffix, ArtKind.Unit, 1, 1, 2, TurretDirections, true),
-            new ArtEntry(nameof(UnitType.Sniper) + HullSuffix, ArtKind.Unit, 1, 1, 2, UnitDirections, true),
-            new ArtEntry(nameof(UnitType.Sniper) + TurretSuffix, ArtKind.Unit, 2, 2, 2, TurretDirections, true),
+            new ArtEntry(nameof(UnitType.Sniper) + HullSuffix, ArtKind.Unit, 2, 2, 2, UnitDirections, true),
+            new ArtEntry(nameof(UnitType.Sniper) + TurretSuffix, ArtKind.Unit, 3, 3, 2, TurretDirections, true),
             new ArtEntry(nameof(UnitType.Heavy) + HullSuffix, ArtKind.Unit, 2, 2, 2, UnitDirections, true),
             new ArtEntry(nameof(UnitType.Heavy) + TurretSuffix, ArtKind.Unit, 2, 2, 2, TurretDirections, true),
             new ArtEntry(nameof(UnitType.Artillery) + HullSuffix, ArtKind.Unit, 2, 2, 2, UnitDirections, true),
@@ -100,14 +100,14 @@ namespace WAR2D.Art
             new ArtEntry(nameof(BuildingType.Base), ArtKind.Building, 5, 5, 1, 1, true),
             new ArtEntry(nameof(BuildingType.Barracks), ArtKind.Building, 2, 2, 2, 1, true),
             new ArtEntry(nameof(BuildingType.Miner), ArtKind.Building, 1, 1, 4, BuildingDirections, true),
-            new ArtEntry("Bomb", ArtKind.Building, 1, 1, 2, 1, true),
+            new ArtEntry("Mine", ArtKind.Building, 1, 1, 2, 1, true),
             new ArtEntry("Radar", ArtKind.Building, 2, 2, 2, 1, true),
             new ArtEntry(nameof(BuildingType.HeavyFactory), ArtKind.Building, 3, 3, 2, 1, true),
             new ArtEntry(nameof(BuildingType.SiegeWorkshop), ArtKind.Building, 2, 2, 2, 1, true),
-            // v0.13: the Gun turret's base (frame 1 is the damaged plinth, chosen by health, not looped) and its head
-            // (drawn over the base in 8 facings; frame 1 is the recoil on a shot), and the Jammer.
-            new ArtEntry(nameof(BuildingType.GunTurret), ArtKind.Building, 1, 1, 2, 1, true),
-            new ArtEntry(TurretHead, ArtKind.Building, 1, 1, 2, UnitDirections, true),
+            // v0.13: the Gun turret's base (frame 1 is the damaged plinth, chosen by health, not looped) and its head (drawn over the
+            // base in 8 facings). v0.20: both 2×2; the head's frame 1 fires its left barrel, frame 2 its right. And the Jammer.
+            new ArtEntry(nameof(BuildingType.GunTurret), ArtKind.Building, 2, 2, 2, 1, true),
+            new ArtEntry(TurretHead, ArtKind.Building, 2, 2, 3, UnitDirections, true),
             new ArtEntry(nameof(BuildingType.Jammer), ArtKind.Building, 2, 2, 2, 1, true),
 
             // Tiles: frames are variants (random for floor and gems, autotile masks for walls).
@@ -137,13 +137,13 @@ namespace WAR2D.Art
             new ArtEntry("BurstHeavy", ArtKind.Effect, 1, 1, 2, 1, false),
             new ArtEntry("Tracer", ArtKind.Effect, 1, 1, 1, 1, false),
             new ArtEntry("ScoutTracer", ArtKind.Effect, 1, 1, 1, 1, false),
-            new ArtEntry("SniperTracer", ArtKind.Effect, 4, 1, 1, 1, false),
+            new ArtEntry("SniperTracer", ArtKind.Effect, 4, 1, 4, 1, false), // v0.20: the Sniper's hard trail, fading over its frames
             new ArtEntry("ArtilleryShell", ArtKind.Effect, 1, 1, 2, TurretDirections, false),
             new ArtEntry("ShellShadow", ArtKind.Effect, 1, 1, 1, 1, false),
             new ArtEntry("ShellPuff", ArtKind.Effect, 1, 1, 6, 1, false),
             new ArtEntry("Crater", ArtKind.Effect, 2, 2, Render.EffectGen.DecalFrames, Render.EffectGen.CraterVariants, false),
             new ArtEntry("FlameStream", ArtKind.Effect, 2, 1, 6, 1, false),
-            new ArtEntry("FlameSplash", ArtKind.Effect, 3, 3, 4, 1, false),
+            new ArtEntry("FlameSplash", ArtKind.Effect, 6, 6, 2, 1, false), // v0.20: the fire over the 2.5-tile spread
             new ArtEntry("BarrelShadow", ArtKind.Effect, 3, 3, 1, TurretDirections, false),
             new ArtEntry("ShellImpact", ArtKind.Effect, 4, 4, 6, 1, false),
             new ArtEntry("BomberBlast", ArtKind.Effect, 4, 4, 8, 1, false),
@@ -173,6 +173,32 @@ namespace WAR2D.Art
             // Polish A, E and J (2026-11-01): a spark where a bullet lands, dust where a unit is made and around a finished building.
             new ArtEntry("HitSpark", ArtKind.Effect, 1, 1, 3, 1, false),
             new ArtEntry("DustPuff", ArtKind.Effect, 1, 1, 5, 1, false),
+            // v0.20 Onslaught (approved 2026-11-06, docs/art/v0.20-asset-review.md): the leap, the Bomber's landing, fire on units and
+            // buildings (sized 1, 2 and 3 tiles), soot, the flame's ground scorch, the aim laser and glint, the shot's hit, armour
+            // sparks, the shell falling onto a player who can't see the gun, the launch puff, the big blast, the larger crater, the
+            // 2×2 turret's twin flash and tracer stream, and the deaths (small, large, flung debris, dust).
+            new ArtEntry("LeapSparks", ArtKind.Effect, 1, 1, 5, 1, false),
+            new ArtEntry("LeapShadow", ArtKind.Effect, 1, 1, 4, 1, false),
+            new ArtEntry("BomberLanding", ArtKind.Effect, 5, 5, 8, 1, false),
+            new ArtEntry("BurnFlames1", ArtKind.Effect, 1, 2, 4, 1, false),
+            new ArtEntry("BurnFlames2", ArtKind.Effect, 2, 3, 4, 1, false),
+            new ArtEntry("BurnFlames3", ArtKind.Effect, 3, 4, 4, 1, false),
+            new ArtEntry("SootSmoke", ArtKind.Effect, 1, 1, 5, 1, false),
+            new ArtEntry("FlameScorch", ArtKind.Effect, 3, 1, 4, 1, false),
+            new ArtEntry("AimLaser", ArtKind.Effect, 4, 1, 5, 1, false),
+            new ArtEntry("MuzzleGlint", ArtKind.Effect, 1, 1, 3, 1, false),
+            new ArtEntry("SniperHit", ArtKind.Effect, 1, 1, 4, 1, false),
+            new ArtEntry("ArmourSparks", ArtKind.Effect, 1, 1, 4, 1, false),
+            new ArtEntry("IncomingShell", ArtKind.Effect, 1, 2, 2, 1, false),
+            new ArtEntry("LaunchPuff", ArtKind.Effect, 2, 2, 6, 1, false),
+            new ArtEntry("ArtilleryBlast", ArtKind.Effect, 8, 8, 8, 1, false),
+            new ArtEntry("CraterLarge", ArtKind.Effect, 3, 3, Render.EffectGen.DecalFrames, Render.EffectGen.CraterVariants, false),
+            new ArtEntry("TwinMuzzle", ArtKind.Effect, 1, 1, 2, 1, false),
+            new ArtEntry("TracerStream", ArtKind.Effect, 2, 1, 3, 1, false),
+            new ArtEntry("DeathSmall", ArtKind.Effect, 2, 2, 7, 1, false),
+            new ArtEntry("DeathLarge", ArtKind.Effect, 4, 4, 8, 1, false),
+            new ArtEntry("Debris", ArtKind.Effect, 3, 3, 6, 1, false),
+            new ArtEntry("DustCloud", ArtKind.Effect, 3, 3, 6, 1, false),
 
             // Icons: command card (16×16) and cursors.
             new ArtEntry("IconMove", ArtKind.Icon, 1, 1, 1, 1, false),
@@ -190,12 +216,12 @@ namespace WAR2D.Art
             new ArtEntry("IconArtillery", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("IconSniper", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("IconFlamethrower", ArtKind.Icon, 1, 1, 1, 1, false),
-            new ArtEntry("IconSuicideBomber", ArtKind.Icon, 1, 1, 1, 1, false),
+            new ArtEntry("IconBomber", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("IconDetonate", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("IconBarracks", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("IconHeavyFactory", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("IconSiegeWorkshop", ArtKind.Icon, 1, 1, 1, 1, false),
-            new ArtEntry("IconBomb", ArtKind.Icon, 1, 1, 1, 1, false),
+            new ArtEntry("IconMine", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("IconRepair", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("IconRadar", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("IconGunTurret", ArtKind.Icon, 1, 1, 1, 1, false),

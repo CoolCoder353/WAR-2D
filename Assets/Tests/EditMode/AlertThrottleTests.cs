@@ -66,12 +66,12 @@ public class AlertThrottleTests
         var feed = new AlertFeedModel(8f);
         var pinged = new System.Collections.Generic.List<AlertKind>();
         feed.PingRequested += (_, kind) => pinged.Add(kind);
-        foreach (AlertKind kind in new[] { AlertKind.ConstructionFinished, AlertKind.BombTriggered, AlertKind.EnemySpotted, AlertKind.RepairsStopped })
+        foreach (AlertKind kind in new[] { AlertKind.ConstructionFinished, AlertKind.MineTriggered, AlertKind.EnemySpotted, AlertKind.RepairsStopped })
             feed.Add(new Alert { Kind = kind }, "", 0f);
-        CollectionAssert.AreEqual(new[] { AlertKind.BombTriggered, AlertKind.EnemySpotted }, pinged);
+        CollectionAssert.AreEqual(new[] { AlertKind.MineTriggered, AlertKind.EnemySpotted }, pinged);
         System.Func<int, string> none = _ => "x";
         Assert.AreEqual("Construction finished: Spawner", AlertFeedModel.Text(new Alert { Kind = AlertKind.ConstructionFinished }, none, "Spawner"));
-        Assert.AreEqual("Bomb triggered", AlertFeedModel.Text(new Alert { Kind = AlertKind.BombTriggered }, none, null));
+        Assert.AreEqual("Mine triggered", AlertFeedModel.Text(new Alert { Kind = AlertKind.MineTriggered }, none, null));
         Assert.AreEqual("Enemy spotted by Radar", AlertFeedModel.Text(new Alert { Kind = AlertKind.EnemySpotted }, none, null));
         Assert.AreEqual("Out of resources: repairs stopped", AlertFeedModel.Text(new Alert { Kind = AlertKind.RepairsStopped }, none, null));
     }

@@ -15,7 +15,7 @@ public static class AlertSounds
     public static string SoundOf(AlertKind kind, bool jammer = false) => kind switch
     {
         AlertKind.UnderAttack => "alert_under_attack",
-        AlertKind.BombTriggered => "alert_bomb",
+        AlertKind.MineTriggered => "alert_mine",
         AlertKind.EnemySpotted => "radar_ping",
         AlertKind.Ping => "radar_ping",
         AlertKind.ConstructionFinished => jammer ? "jammer_online" : "construction_finished",
@@ -30,7 +30,7 @@ public static class AlertSounds
     {
         AlertKind.UnderAttack => 0,
         AlertKind.UpkeepUnpaid => 1,
-        AlertKind.BombTriggered => 2,
+        AlertKind.MineTriggered => 2,
         AlertKind.ResourcesLow => 3,
         AlertKind.EnemySpotted => 4,
         AlertKind.RepairsStopped => 5,

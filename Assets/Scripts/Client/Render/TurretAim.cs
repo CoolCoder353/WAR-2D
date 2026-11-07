@@ -25,7 +25,7 @@ namespace WAR2D.Client.Render
         /// <summary>The barrel's root on the raised Artillery: forward from the unit's centre, and up the screen.</summary>
         private const float ArtilleryRootForward = 8f, ArtilleryRootUp = 1f;
 
-        /// <summary>True for the types whose turret turns on its own: not the Flamethrower, Builder, Digger or Suicide bomber.</summary>
+        /// <summary>True for the types whose turret turns on its own: not the Flamethrower, Builder, Digger or Bomber.</summary>
         public static bool Has(UnitType type) => type == UnitType.Tank || type == UnitType.Scout || type == UnitType.Sniper || type == UnitType.Heavy || type == UnitType.Artillery;
 
         /// <summary>How fast a turret turns, in radians a second: the bigger the gun, the slower it swings.</summary>
@@ -74,7 +74,7 @@ namespace WAR2D.Client.Render
         public static float MuzzleForward(UnitType type) => type switch
         {
             UnitType.Scout => 17f,
-            UnitType.Sniper => 33.5f,
+            UnitType.Sniper => RenderGen.Sniper2x2Pivot + RenderGen.Sniper2x2MuzzleReach, // v0.20: the 2×2 Sniper's long barrel
             UnitType.Heavy => 60f,
             UnitType.Artillery => ArtilleryBoreForward,
             _ => 34f,

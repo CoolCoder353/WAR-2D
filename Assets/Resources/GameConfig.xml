@@ -4,8 +4,8 @@
   <!-- The release (2026-11-02): shown on the main menu as "v<Version> <Name>". Builds take their version (bundleVersion,
        which Steam joins compare) from <Version>; ReleaseVersionTests fails when the two disagree in the editor. -->
   <Release>
-    <Version>0.18.0</Version>
-    <Name>Briefing</Name>
+    <Version>0.20.0</Version>
+    <Name>Onslaught</Name>
   </Release>
 
   <Resources>
@@ -178,8 +178,8 @@
     <MaxWallLine>64</MaxWallLine>                       <!-- v0.7: segments per drag -->
     <BlastRadius>3.0</BlastRadius>                      <!-- playtest 2026-11-04, was 2.5: tiles -->
     <BlastDamage>250.0</BlastDamage>                    <!-- playtest 2026-11-04, was 200 -->
-    <BombTriggerRadius>1.5</BombTriggerRadius>          <!-- playtest 2026-11-04: an enemy this close sets a bomb off (it used to have to stand on the very tile) -->
-    <BombFriendlyDamage>0.1</BombFriendlyDamage>        <!-- playtest 2026-11-04: share of a bomb's blast its own side takes -->
+    <MineTriggerRadius>1.5</MineTriggerRadius>          <!-- playtest 2026-11-04: an enemy this close sets a bomb off (it used to have to stand on the very tile) -->
+    <MineFriendlyDamage>0.1</MineFriendlyDamage>        <!-- playtest 2026-11-04: share of a bomb's blast its own side takes -->
     <RadarClearSeconds>5.0</RadarClearSeconds>          <!-- v0.7: radius clear this long before it may ping again -->
     <RadarAlertCooldownSeconds>30.0</RadarAlertCooldownSeconds> <!-- v0.7: least time between two pings from one Radar -->
     <JamRadius>12.0</JamRadius>                         <!-- v0.13 starting value: tiles a complete, paid Jammer jams for players its owner doesn't share vision with -->
@@ -189,12 +189,43 @@
   <Bomber>
     <LastGaspHealth>0.1</LastGaspHealth> <!-- v0.18: a bomber at or below this share of its health explodes; a hit that kills it counts -->
     <ChainPasses>4</ChainPasses>         <!-- v0.18: blasts setting off bombers in one tick; the rest go next tick -->
-    <AimTiles>6</AimTiles>               <!-- v0.18: enemies within this of its target are candidates for the blast point -->
-    <FriendlyWeight>0</FriendlyWeight> <!-- v0.18: own and allied worth in the blast, against the enemy's; follows FriendlyDamage -->
     <FriendlyDamage>0</FriendlyDamage> <!-- playtest 2026-11-04: share of the blast that reaches its own side and allies -->
-    <AimReachTiles>0.5</AimReachTiles>   <!-- v0.18: detonates this close to the blast point -->
-    <GoodEnough>0.8</GoodEnough>         <!-- v0.18: or touching an enemy, when the blast here is worth this share of the point's -->
+    <LeapReach>6</LeapReach>             <!-- v0.20: farthest a leap goes, tiles (it lands at the army's centre or this far along the line to it) -->
+    <LeapSeconds>0.6</LeapSeconds>       <!-- v0.20: a leap takes this long whatever its length; it can't be hit in the air -->
+    <ArmyTiles>5</ArmyTiles>             <!-- v0.20: enemy units it sees within this of the nearest one are the army it leaps at -->
+    <ContactTiles>0.8</ContactTiles>     <!-- v0.20: touching its target this close (beyond both bodies) it goes off without leaping (the old Range) -->
   </Bomber>
+
+  <!-- v0.20 Onslaught (spec 2026-11-06-v0.20-onslaught-design.md section 11): starting values, to tune with balance-sheet and ai-bench -->
+  <Combat>
+    <MinHit>1</MinHit>                   <!-- v0.20: the least a direct hit does after flat armour -->
+  </Combat>
+
+  <Burn>
+    <Dps>6</Dps>                         <!-- v0.20: fire damage a second at the full rate; fire ignores armour and blast resistance -->
+    <Seconds>4</Seconds>                 <!-- v0.20: a fire burns this long after its last flame hit (one fire per target, refreshed) -->
+    <LightUnit>1.0</LightUnit>
+    <HeavyUnit>0.5</HeavyUnit>           <!-- Heavies (and Artillery) burn at half rate -->
+    <Building>1.0</Building>             <!-- walls never burn -->
+  </Burn>
+
+  <Artillery>
+    <ShellSpeed>14</ShellSpeed>          <!-- v0.20: tiles a second; about 2.6 s at full range -->
+    <LeadAim>1</LeadAim>                 <!-- v0.20: aims where a driving target will be when the shell lands (1 or 0) -->
+    <LeadCapTiles>4</LeadCapTiles>       <!-- v0.20: a led shot may land at most this far past its range -->
+    <FriendlyDamage>0.25</FriendlyDamage> <!-- v0.20: share of a shell's blast its own side and allies take -->
+    <IncomingSeconds>0.6</IncomingSeconds> <!-- v0.20: a player who sees only the landing point is shown this much of the shell -->
+  </Artillery>
+
+  <Sniper>
+    <AimSeconds>2.0</AimSeconds>         <!-- v0.20: a Sniper stands still and aims this long before each shot -->
+    <StillSpeed>0.5</StillSpeed>         <!-- v0.20: moving slower than this (tiles/s, a crowd's push) still counts as standing still -->
+  </Sniper>
+
+  <Effects>
+    <MaxFires>512</MaxFires>             <!-- v0.20: most fires drawn at once, nearest the view's centre first -->
+    <SmoulderSeconds>8</SmoulderSeconds> <!-- v0.20: a burnt wreck smokes this long -->
+  </Effects>
 
   <Audio>
     <BattleDeathsPerSecond>3</BattleDeathsPerSecond>  <!-- v0.8: visible deaths in one second that start the battle music -->
@@ -255,7 +286,7 @@
     <Style name="Rusher">  <!-- early Barracks, Scouts and Tanks, attacks early and often, expands late -->
       <BuildOrder>Miner Miner Barracks Builder Scout Tank Tank Miner Barracks Tank Tank Tank Flamethrower</BuildOrder>  <!-- two Barracks -->
       <BuildOrder>Miner Barracks Miner Scout Scout Tank Builder Tank Miner Tank Flamethrower Tank</BuildOrder>          <!-- Scouts first, one Barracks longer -->
-      <ArmyMix>Scout:2 Tank:6 Flamethrower:2 SuicideBomber:1 Heavy:1</ArmyMix>
+      <ArmyMix>Scout:2 Tank:6 Flamethrower:2 Bomber:1 Heavy:1</ArmyMix>
       <Producers>Barracks:3 HeavyFactory:1 SiegeWorkshop:1</Producers>
       <Miners>4</Miners>
       <MinersPerExpansion>3</MinersPerExpansion>
@@ -269,15 +300,15 @@
       <HomeTurrets>0</HomeTurrets>
       <DefenceStart>1.0</DefenceStart>
       <Jammers>0</Jammers>
-      <Bombs>0</Bombs>
+      <Mines>0</Mines>
       <Walls>0</Walls>
       <Radar>0</Radar>
       <HoldsChokes>0</HoldsChokes>
       <Raids>1</Raids>
     </Style>
     <Style name="Turtle">  <!-- walls, turrets, Jammers and bombs at its chokepoints; a big Heavy and Artillery army later -->
-      <BuildOrder>Miner Miner Builder Miner Barracks GunTurret GunTurret Miner Builder HeavyFactory Radar Jammer</BuildOrder>  <!-- turrets first -->
-      <BuildOrder>Miner Miner Builder Miner Miner HeavyFactory GunTurret Builder Heavy Heavy GunTurret Radar</BuildOrder>         <!-- Heavies first -->
+      <BuildOrder>Miner Miner Builder Miner Barracks GunTurret Miner Builder HeavyFactory Radar Jammer</BuildOrder>  <!-- a turret first (v0.20: one, at 400) -->
+      <BuildOrder>Miner Miner Builder Miner Miner HeavyFactory GunTurret Builder Heavy Heavy Radar</BuildOrder>         <!-- Heavies first -->
       <ArmyMix>Tank:2 Heavy:4 Artillery:4 Sniper:2 Flamethrower:1 Digger:1</ArmyMix>
       <Producers>Barracks:1 HeavyFactory:2 SiegeWorkshop:1</Producers>
       <Miners>6</Miners>
@@ -288,11 +319,11 @@
       <AttackArmySize>14</AttackArmySize>
       <AttackRatioScale>1.5</AttackRatioScale>
       <AttackIntervalSeconds>180</AttackIntervalSeconds>
-      <Turrets>6</Turrets>
-      <HomeTurrets>4</HomeTurrets>  <!-- playtest 2026-10-30: turrets ringed round its HQ -->
+      <Turrets>3</Turrets>          <!-- v0.20: fewer, as each 2×2 turret costs 400 (were 6 and 4) -->
+      <HomeTurrets>2</HomeTurrets>  <!-- playtest 2026-10-30: turrets ringed round its HQ -->
       <DefenceStart>0.4</DefenceStart>  <!-- factor on Play DefenceAfterSeconds: Turtle defends from ~1:36 -->
       <Jammers>2</Jammers>
-      <Bombs>8</Bombs>
+      <Mines>8</Mines>
       <Walls>1</Walls>
       <Radar>1</Radar>
       <HoldsChokes>1</HoldsChokes>
@@ -311,11 +342,11 @@
       <AttackArmySize>15</AttackArmySize>
       <AttackRatioScale>1.2</AttackRatioScale>
       <AttackIntervalSeconds>120</AttackIntervalSeconds>
-      <Turrets>2</Turrets>
+      <Turrets>1</Turrets>          <!-- v0.20: was 2 -->
       <HomeTurrets>1</HomeTurrets>
       <DefenceStart>1.0</DefenceStart>
       <Jammers>0</Jammers>
-      <Bombs>2</Bombs>
+      <Mines>2</Mines>
       <Walls>0</Walls>
       <Radar>1</Radar>
       <HoldsChokes>0</HoldsChokes>
@@ -325,7 +356,7 @@
       <BuildOrder>Miner Miner Builder Barracks Miner Scout Tank Tank Miner HeavyFactory Tank Heavy</BuildOrder>  <!-- fast Heavy Factory -->
       <BuildOrder>Miner Miner Builder Barracks Miner Scout Tank Barracks Tank Miner Tank Flamethrower</BuildOrder>  <!-- two Barracks -->
       <BuildOrder>Miner Miner Builder Miner Miner Barracks Builder Miner Scout Tank Tank Tank</BuildOrder>          <!-- greedy -->
-      <ArmyMix>Scout:1 Tank:4 Flamethrower:2 Heavy:2 Artillery:1 Sniper:1 Digger:1 SuicideBomber:1</ArmyMix>
+      <ArmyMix>Scout:1 Tank:4 Flamethrower:2 Heavy:2 Artillery:1 Sniper:1 Digger:1 Bomber:1</ArmyMix>
       <Producers>Barracks:2 HeavyFactory:1 SiegeWorkshop:1</Producers>
       <Miners>5</Miners>
       <MinersPerExpansion>4</MinersPerExpansion>
@@ -335,11 +366,11 @@
       <AttackArmySize>12</AttackArmySize>
       <AttackRatioScale>1.0</AttackRatioScale>
       <AttackIntervalSeconds>120</AttackIntervalSeconds>
-      <Turrets>3</Turrets>
+      <Turrets>2</Turrets>          <!-- v0.20: was 3 -->
       <HomeTurrets>1</HomeTurrets>
       <DefenceStart>1.0</DefenceStart>
       <Jammers>1</Jammers>
-      <Bombs>4</Bombs>
+      <Mines>4</Mines>
       <Walls>0</Walls>
       <Radar>1</Radar>
       <HoldsChokes>0</HoldsChokes>
@@ -405,6 +436,7 @@
       <BuildingCounterWeight>0.5</BuildingCounterWeight> <!-- Hard: building counters against unit counters -->
       <LightTurretShare>0.6</LightTurretShare>         <!-- massed light enemies above this share add a turret per defended spot -->
       <BacklineDistance>6</BacklineDistance>           <!-- Hard: Artillery and Snipers stay this far behind the front -->
+      <SpotterLead>4</SpotterLead>                     <!-- v0.20: its spotting Scouts go this far ahead of the front, so the gun line fires to full range -->
       <BomberClump>3</BomberClump>                     <!-- visible enemies in a bomber's blast that make it detonate -->
       <BomberChecks>16</BomberChecks>                  <!-- bombers checked for a detonation per think -->
       <ScoutAfterSeconds>20</ScoutAfterSeconds>        <!-- with no Scout by then, any unit scouts -->
@@ -442,7 +474,7 @@
       <BuildingUpkeepShare>0.6</BuildingUpkeepShare> <!-- buildings costing upkeep may take this share of its projected income together -->
       <BankHigh>1500</BankHigh>                      <!-- a balance above this ... -->
       <BankSeconds>30</BankSeconds>                  <!-- ... this long: it adds production (fills queues, extra producers, expands) -->
-      <EarlyTurrets>3</EarlyTurrets>
+      <EarlyTurrets>1</EarlyTurrets>                 <!-- v0.20: one, as the 2×2 turret costs 400 and takes 90 s with one Builder (was 3) -->
       <DefendsChokepoints>1</DefendsChokepoints>
       <Scouts>3</Scouts>                             <!-- at full Insight (at least 1) -->
       <RescoutSeconds>60</RescoutSeconds>            <!-- at full Insight; divided by the Insight -->
@@ -451,11 +483,13 @@
       <CounterAttackAdvantage>4</CounterAttackAdvantage> <!-- defending with this advantage, the rest of the army counter-attacks -->
       <EstimateNoise>0.4</EstimateNoise>             <!-- at zero Insight an estimate is off by up to this share -->
       <SplashTargets>1.5</SplashTargets>             <!-- extra targets a splash hit counts against -->
+      <ShellHitShare>0.7</ShellHitShare>             <!-- v0.20: share of Artillery shells that land on a moving target (the rest are dodged) -->
       <RangeWeight>0.3</RangeWeight>                 <!-- damage bonus for a full range's lead -->
       <BomberFightSeconds>10</BomberFightSeconds>    <!-- a bomber's blast spread over this much fight -->
       <Retreats>1</Retreats>
       <FocusFire>1</FocusFire>                       <!-- units in range attack-move onto the weakest enemy -->
       <KeepsBacklineBack>1</KeepsBacklineBack>
+      <Spotters>1</Spotters>                         <!-- v0.20: Scouts kept ahead of its Artillery and Snipers (Normal, Hard; Easy none) -->
       <DigsPastWalls>1</DigsPastWalls>
       <TargetDistanceScale>150</TargetDistanceScale> <!-- tiles of distance that halve a target's score -->
       <HqValue>1500</HqValue>                        <!-- an enemy HQ's worth as a target -->
@@ -492,18 +526,18 @@
       <GatherAngle>30</GatherAngle>                  <!-- degrees its gathering point may turn off the line to the enemy -->
     </Policy>
     <Counters>  <!-- spec 5.5: units weighted against each enemy unit seen (Normal, Hard) and what each enemy building makes (Hard) -->
-      <Counter seen="Heavy">Sniper:2 Artillery:2 Heavy:1</Counter>
-      <Counter seen="Artillery">Scout:1 Tank:2 SuicideBomber:1</Counter>
+      <Counter seen="Heavy">Sniper:3 Artillery:1 Heavy:1</Counter>  <!-- v0.20: the Sniper is the heavy-killer -->
+      <Counter seen="Artillery">Scout:1 Tank:2 Bomber:1</Counter>
       <Counter seen="Sniper">Scout:2 Tank:2</Counter>
-      <Counter seen="Tank">Flamethrower:3 Heavy:1</Counter>
+      <Counter seen="Tank">Flamethrower:3 Heavy:1 Artillery:1</Counter>
       <Counter seen="Scout">Flamethrower:2 Tank:1</Counter>
-      <Counter seen="Flamethrower">Artillery:1 Sniper:2 Heavy:1</Counter>
-      <Counter seen="SuicideBomber">Tank:2 Sniper:1</Counter>
+      <Counter seen="Flamethrower">Artillery:2 Heavy:1</Counter>  <!-- v0.20: a Sniper does little to light units now -->
+      <Counter seen="Bomber">Tank:2 Flamethrower:2</Counter>  <!-- v0.20: gunfire before the leap; blasts barely touch Bombers -->
       <Counter seen="Digger">Tank:2</Counter>
       <Counter building="Barracks">Flamethrower:2 Tank:1</Counter>
       <Counter building="HeavyFactory">Sniper:2 Artillery:2</Counter>
       <Counter building="SiegeWorkshop">Tank:2 Sniper:1</Counter>
-      <Counter building="GunTurret">Artillery:3 Heavy:1</Counter>
+      <Counter building="GunTurret">Artillery:3 Heavy:2</Counter>  <!-- v0.20: Heavies' armour shrugs off its small rounds -->
     </Counters>
   </Ai>
 
@@ -537,14 +571,14 @@
     <Entry attacker="Artillery" target="HeavyUnit">1</Entry>
     <Entry attacker="Artillery" target="Building">2</Entry>
     <Entry attacker="Artillery" target="Wall">1</Entry>
-    <Entry attacker="Sniper" target="LightUnit">1</Entry>
-    <Entry attacker="Sniper" target="HeavyUnit">0.7</Entry>
+    <Entry attacker="Sniper" target="LightUnit">0.5</Entry>  <!-- v0.20 -->
+    <Entry attacker="Sniper" target="HeavyUnit">2.0</Entry>
     <Entry attacker="Sniper" target="Building">0.25</Entry>
     <Entry attacker="Sniper" target="Wall">0.05</Entry>
-    <Entry attacker="SuicideBomber" target="LightUnit">1</Entry>
-    <Entry attacker="SuicideBomber" target="HeavyUnit">1</Entry>
-    <Entry attacker="SuicideBomber" target="Building">2</Entry>
-    <Entry attacker="SuicideBomber" target="Wall">2</Entry>
+    <Entry attacker="Bomber" target="LightUnit">1</Entry>
+    <Entry attacker="Bomber" target="HeavyUnit">1</Entry>
+    <Entry attacker="Bomber" target="Building">2</Entry>
+    <Entry attacker="Bomber" target="Wall">2</Entry>
     <!-- v0.13 building attackers, starting values (spec section 2.1) -->
     <Entry attacker="GunTurret" target="LightUnit">1.5</Entry>
     <Entry attacker="GunTurret" target="HeavyUnit">0.5</Entry>
@@ -580,45 +614,49 @@
       <Armour>Light</Armour><BuildSeconds>1.0</BuildSeconds>
     </Unit>
     <!-- v0.12 Arsenal: starting numbers from the spec (section 3), to tune in play -->
-    <Unit type="Scout">
+    <Unit type="Scout">  <!-- v0.20: the spotter, with the longest sight -->
       <Health>40</Health><Damage>4</Damage><Range>4.0</Range><AttackInterval>0.5</AttackInterval>
       <MoveSpeed>9.0</MoveSpeed><UpfrontCost>30.0</UpfrontCost><RunningCost>0.25</RunningCost>
-      <Radius>0.3</Radius><SizeClass>0</SizeClass><Sight>12.0</Sight>
+      <Radius>0.3</Radius><SizeClass>0</SizeClass><Sight>21.0</Sight>  <!-- owner, 2026-11-07: 21, past the Artillery's 18 -->
       <Armour>Light</Armour><BuildSeconds>0.7</BuildSeconds>
     </Unit>
     <Unit type="Flamethrower">
-      <Health>90</Health><Damage>6</Damage><Range>2.5</Range><AttackInterval>0.5</AttackInterval>
+      <Health>90</Health><Damage>2</Damage><Range>5.5</Range><AttackInterval>0.5</AttackInterval>
       <MoveSpeed>4.5</MoveSpeed><UpfrontCost>70.0</UpfrontCost><RunningCost>0.5</RunningCost>
       <Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>6.0</Sight>
       <Armour>Light</Armour><BuildSeconds>1.5</BuildSeconds>
-      <Splash>1.5</Splash>
+      <Splash>2.5</Splash>  <!-- v0.20: every hit, direct or splash, sets the target burning (<Burn>) -->
     </Unit>
     <Unit type="Heavy">
       <Health>400</Health><Damage>30</Damage><Range>5.0</Range><AttackInterval>1.5</AttackInterval>
       <MoveSpeed>2.5</MoveSpeed><UpfrontCost>200.0</UpfrontCost><RunningCost>2.5</RunningCost>
       <Radius>0.7</Radius><SizeClass>1</SizeClass><Sight>7.0</Sight>
       <Armour>Heavy</Armour><BuildSeconds>5.0</BuildSeconds>
+      <FlatArmour>4</FlatArmour><BlastResist>0.5</BlastResist>  <!-- v0.20 -->
     </Unit>
     <Unit type="Artillery">
-      <Health>120</Health><Damage>70</Damage><Range>18.0</Range><AttackInterval>5.0</AttackInterval>
+      <Health>120</Health><Damage>160</Damage><Range>36.0</Range><AttackInterval>15.0</AttackInterval>
       <MoveSpeed>2.0</MoveSpeed><UpfrontCost>220.0</UpfrontCost><RunningCost>2.5</RunningCost>
       <Radius>0.7</Radius><SizeClass>1</SizeClass><Sight>18.0</Sight>
       <Armour>Heavy</Armour><BuildSeconds>6.0</BuildSeconds>
-      <Splash>2.0</Splash><MinRange>4.0</MinRange>
+      <!-- v0.20: shells fly over walls (not rock) and land in a blast of <Damage> over <BlastRadius>; it fires beyond its sight on spotters -->
+      <BlastRadius>3.5</BlastRadius><MinRange>6.0</MinRange><BlastResist>0.25</BlastResist>
     </Unit>
     <Unit type="Sniper">
-      <Health>70</Health><Damage>60</Damage><Range>20.0</Range><AttackInterval>3.0</AttackInterval>
-      <MoveSpeed>4.0</MoveSpeed><UpfrontCost>150.0</UpfrontCost><RunningCost>1.0</RunningCost>
-      <Radius>0.35</Radius><SizeClass>0</SizeClass><Sight>20.0</Sight>
-      <Armour>Light</Armour><BuildSeconds>4.0</BuildSeconds>
-      <MinRange>3.0</MinRange>
+      <!-- v0.20: a 2×2 heavy-killer that stops and aims (<Sniper><AimSeconds>) before each shot -->
+      <Health>140</Health><Damage>160</Damage><Range>28.0</Range><AttackInterval>5.0</AttackInterval>
+      <MoveSpeed>3.0</MoveSpeed><UpfrontCost>220.0</UpfrontCost><RunningCost>1.0</RunningCost>
+      <Radius>0.7</Radius><SizeClass>1</SizeClass><Sight>12.0</Sight>
+      <Armour>Light</Armour><BuildSeconds>5.0</BuildSeconds>
+      <MinRange>5.0</MinRange>
     </Unit>
-    <Unit type="SuicideBomber">
-      <Health>30</Health><Damage>0</Damage><Range>0.8</Range><AttackInterval>1.0</AttackInterval>
+    <Unit type="Bomber">
+      <!-- v0.20: <Range> is the leap trigger; it shrugs off 99 % of any blast -->
+      <Health>30</Health><Damage>0</Damage><Range>4.0</Range><AttackInterval>1.0</AttackInterval>
       <MoveSpeed>8.0</MoveSpeed><UpfrontCost>60.0</UpfrontCost><RunningCost>0.25</RunningCost>
       <Radius>0.3</Radius><SizeClass>0</SizeClass><Sight>6.0</Sight>
       <Armour>Light</Armour><BuildSeconds>1.0</BuildSeconds>
-      <BlastRadius>2.0</BlastRadius><BlastDamage>150.0</BlastDamage>
+      <BlastRadius>2.0</BlastRadius><BlastDamage>150.0</BlastDamage><BlastResist>0.99</BlastResist>
     </Unit>
   </Units>
 
@@ -653,16 +691,17 @@
     <Building type="SiegeWorkshop"> <!-- v0.12 proposal -->
       <Health>300</Health><Width>2</Width><Height>2</Height><UpfrontCost>250.0</UpfrontCost><RunningCost>20.0</RunningCost><Sight>6.0</Sight>
     </Building>
-    <Building type="Bomb">
+    <Building type="Mine"> <!-- v0.20: renamed from the Bomb -->
       <Health>40</Health><Width>1</Width><Height>1</Height><UpfrontCost>75.0</UpfrontCost><RunningCost>1.0</RunningCost><Sight>0.0</Sight>   <!-- v0.7 -->
     </Building>
     <Building type="Radar">
       <Health>200</Health><Width>2</Width><Height>2</Height><UpfrontCost>250.0</UpfrontCost><RunningCost>5.0</RunningCost><Sight>20.0</Sight>  <!-- v0.7 -->
     </Building>
     <!-- v0.13 Bastion: starting values from the spec (section 5), to tune in play -->
-    <Building type="GunTurret"> <!-- attacks like a unit that can't move: units, then buildings, then walls -->
-      <Health>500</Health><Width>1</Width><Height>1</Height><UpfrontCost>150.0</UpfrontCost><RunningCost>4.0</RunningCost>
-      <Sight>10.0</Sight><Damage>12</Damage><Range>9.0</Range><AttackInterval>0.4</AttackInterval>
+    <Building type="GunTurret"> <!-- attacks like a unit that can't move: Bombers first (v0.20), then units, buildings, walls -->
+      <!-- v0.20: a 2×2 that fires ten shots a second, costs much more and builds very slowly (<BuildSeconds> with one Builder) -->
+      <Health>1000</Health><Width>2</Width><Height>2</Height><UpfrontCost>400.0</UpfrontCost><RunningCost>8.0</RunningCost>
+      <Sight>10.0</Sight><Damage>6</Damage><Range>9.0</Range><AttackInterval>0.1</AttackInterval><BuildSeconds>90</BuildSeconds>
     </Building>
     <Building type="Jammer"> <!-- jams Siege/JamRadius for players its owner doesn't share vision with -->
       <Health>200</Health><Width>2</Width><Height>2</Height><UpfrontCost>200.0</UpfrontCost><RunningCost>6.0</RunningCost>

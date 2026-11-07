@@ -17,8 +17,10 @@ The bench and the tuner need a Linux build (`Builds/Linux/WAR-2D.x86_64`, any bu
 | `<Resources>` | Starting resources, passive and Miner income, decay while upkeep is unpaid |
 | `<Units>` | Per unit: `Health`, `Damage`, `Range`, `AttackInterval`, `MoveSpeed`, `UpfrontCost`, `RunningCost` (upkeep per second), `Radius`, `SizeClass`, `Sight`, `Armour`, `BuildSeconds`, and `Splash`, `MinRange`, `BlastRadius`/`BlastDamage` where they apply |
 | `<DamageTable>` | A multiplier per attacker and target class (`LightUnit`, `HeavyUnit`, `Building`, `Wall`; `Unit` means both unit classes; 1.0 when missing) |
-| `<Buildings>` | Per building: health, footprint, price, upkeep, sight; the Gun turret's `Damage`, `Range` and `AttackInterval` |
-| `<Siege>` | Walls, bombs, Builders' build power, repair, digging, gem payout, Radar, Jammer |
+| `<Buildings>` | Per building: health, footprint, price, upkeep, sight, optional `BuildSeconds` (v0.20); the Gun turret's `Damage`, `Range` and `AttackInterval` |
+| `<Siege>` | Walls, Mines (v0.20: renamed from bombs; `MineTriggerRadius`, `MineFriendlyDamage`), Builders' build power, repair, digging, gem payout, Radar, Jammer |
+| `<Combat>`, `<Burn>`, `<Artillery>`, `<Sniper>`, `<Bomber>` | v0.20: the least hit after armour (`MinHit`); fire (`Dps`, `Seconds`, rate per class); shells (`ShellSpeed`, `LeadAim`, `LeadCapTiles`, `FriendlyDamage`, `IncomingSeconds`); the Sniper's `AimSeconds`; the Bomber's last gasp, chain and leap (`LeapReach`, `LeapSeconds`, `ArmyTiles`). Per unit `FlatArmour` and `BlastResist`, per building `BuildSeconds` |
+| `<Effects>` | v0.20 client presentation (not balance): most fires drawn, smoulder seconds |
 | `<Match><Map>` | Map generation: start sites, expansions, lanes, chokepoints, gems |
 | `<Lobby>` | What the host may pick (map sizes, starting resources, start options, pick time) |
 | `<Formation>` | v0.16 formations: slot `Spacing`, `LooseTiles` (no speed cap this near the slot), `SlotTiles` (steer to the slot this near the goal), `LostTiles` (catch up this far behind the leader) |
@@ -184,9 +186,13 @@ Claude can't run the game in a cloud session, so give it summaries, not raw outp
 
 | Number | Where | Default | What it does |
 | --- | --- | --- | --- |
-| `RichGemMultiplier` | `<Resources>` | 2.5 | A Miner facing a rich gem earns `MiningRate` × this (25/s). |
+| `RichGemMultiplier` | `<Resources>` | 15 | A Miner facing a rich gem earns `MiningRate` × this (375/s). |
 | `RichGemPayout` | `<Siege>` | 375 | Digging a rich gem pays this once (the tile is gone). |
-| `CentralRichGemTiles` | `<Match><Map>` | 8 16 24 32 | Rich gem tiles per chosen central area, per `LayoutSizes` row. |
+| `CentralRichGemTiles` | `<Match><Map>` | 16 24 32 64 | Rich gem tiles per chosen central area, per `LayoutSizes` row. |
 | `RichMinStartDistance` | `<Match><Map>` | 0.15 | No rich field within this lane distance (share of map size) of a start site. |
 | `ExpansionDistanceScale` | `<Ai><Play>` | 120 | Tiles from home that halve an expansion candidate's score (its gem worth); lower makes the AI stay nearer home, higher sends it to the rich middle sooner. |
 
+
+## v0.20 Onslaught numbers
+
+The spec's §11 starting values are in. `balance-sheet.js` (and `manual-mock.js` and `ManualRules`, which share its fight) now work a shot out with flat armour and `Combat/MinHit`, a Flamethrower's fire between shots, a Sniper's aim added to its reload, and a shell as a blast less the target's resistance times `Ai/Policy/ShellHitShare` (0.7). Against the v0.19 sheet its new flags are all "splash decides it" (the wider flame and the 3.5-tile shell, by design); "one Heavy kills a Gun turret without a loss" was already there (the turret's 0.5 against heavy units is cut to the least hit by armour, spec D18). `ai-bench` hasn't been run on these numbers yet.

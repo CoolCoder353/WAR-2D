@@ -240,6 +240,7 @@ public class PolishEffectsTests
         fx.Moved(3, 78, (byte)UnitType.Tank, new float2(80f, 0), view);
         fx.Moved(3, 78, (byte)UnitType.Tank, new float2(80.6f, 0), view);
         Assert.AreEqual(1, Decals.ActiveTracks, "off screen lays nothing");
+        fx.Dispose(); // its track state is native memory now
     }
 
     [Test]

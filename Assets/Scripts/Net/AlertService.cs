@@ -15,6 +15,7 @@ public sealed class AlertService
     private readonly Dictionary<int, List<Alert>> pending = new Dictionary<int, List<Alert>>();
     private readonly List<(int owner, int2 tile)> damaged = new List<(int, int2)>();
     private readonly HashSet<int> seenTargets = new HashSet<int>();
+    private readonly HashSet<int> blastVictims = new HashSet<int>();
     private readonly Action<int, Alert> add;
     private readonly Action<int, Alert[]> send;
 
@@ -57,7 +58,7 @@ public sealed class AlertService
     }
 
     /// <summary>
-    /// Bombs and Suicide bombers hurt everything around them and leave no attack event, so <see cref="CollectDamage"/> never hears
+    /// Bombs and Bombers hurt everything around them and leave no attack event, so <see cref="CollectDamage"/> never hears
     /// of it: every other owner's unit (alive or just killed) and building inside a blast (<paramref name="blasts"/>) gets the same
     /// throttled UnderAttack alert, at its own tile. A player's own blast is theirs, and tells them nothing new. Runs only on a
     /// tick with a blast; the box cuts the units it has to measure.
@@ -66,37 +67,54 @@ public sealed class AlertService
     {
         if (blasts.Count == 0) return;
         damaged.Clear();
-        float2 lo = new float2(float.MaxValue), hi = new float2(float.MinValue);
-        foreach ((float2 at, int _, float radius) in blasts)
+        // Each blast looks only at the spatial hash's cells it reaches (v0.20: Bombers and shells put blasts all over the map, and a
+        // pass over every unit for their bounding box cost 35 ms a tick in the perf gate). The hash is this tick's; units moved at
+        // most a tick's step since, which the one-cell margin covers. A unit the blast killed is still here, at 0 health.
+        blastVictims.Clear();
+        int cellsX = data.CellsX, cellsY = data.CellsY, cellSize = data.CellSize;
+        foreach ((float2 at, int by, float radius) in blasts)
         {
-            lo = math.min(lo, at - radius);
-            hi = math.max(hi, at + radius);
+            float rSq = radius * radius;
+            int2 lo = math.clamp((int2)math.floor((at - radius) / cellSize) - 1, 0, new int2(cellsX - 1, cellsY - 1));
+            int2 hi = math.clamp((int2)math.floor((at + radius) / cellSize) + 1, 0, new int2(cellsX - 1, cellsY - 1));
+            for (int cy = lo.y; cy <= hi.y; cy++)
+            for (int cx = lo.x; cx <= hi.x; cx++)
+            {
+                int cell = cy * cellsX + cx;
+                for (int k = data.CellStart[cell]; k < data.CellStart[cell + 1]; k++)
+                {
+                    int slot = data.Sorted[k];
+                    if (slot >= unitCount || data.OwnerId[slot] == by) continue;
+                    float2 p = data.Positions[slot];
+                    if (math.distancesq(p, at) > rSq || !blastVictims.Add(slot)) continue; // this blast reaches it, and no other already did
+                    damaged.Add((data.OwnerId[slot], (int2)math.floor(p)));
+                }
+            }
         }
-        for (int slot = 0; slot < unitCount; slot++)
+        blastVictims.Clear();
+        int buildingCount = data.BuildingCount[0];
+        foreach ((float2 at, int by, float radius) in blasts)
         {
-            float2 p = data.Positions[slot];
-            if (math.all(p >= lo & p <= hi) && Hit(blasts, p, p, data.OwnerId[slot])) // a unit the blast killed is still here, at 0 health
-                damaged.Add((data.OwnerId[slot], (int2)math.floor(p)));
-        }
-        int buildings = data.BuildingCount[0];
-        for (int b = 0; b < buildings; b++)
-        {
-            if ((data.BuildingFlag[b] & BuildingFlags.Hidden) != 0) continue; // a hidden bomb is the blast's cause, not its victim
-            float2 start = Footprint.Start(data.BuildingAnchor[b], data.BuildingSize[b]);
-            if (Hit(blasts, start, start + data.BuildingSize[b], data.BuildingOwnerId[b])) damaged.Add((data.BuildingOwnerId[b], data.BuildingAnchor[b]));
+            float rSq = radius * radius;
+            // Buildings are hashed by centre: a footprint reaches up to half its size (an HQ's 2.5 tiles) further.
+            int2 lo = math.clamp((int2)math.floor((at - radius - 3f) / cellSize), 0, new int2(cellsX - 1, cellsY - 1));
+            int2 hi = math.clamp((int2)math.floor((at + radius + 3f) / cellSize), 0, new int2(cellsX - 1, cellsY - 1));
+            for (int cy = lo.y; cy <= hi.y; cy++)
+            for (int cx = lo.x; cx <= hi.x; cx++)
+            {
+                int cell = cy * cellsX + cx;
+                for (int k = data.BuildingCellStart[cell]; k < data.BuildingCellStart[cell + 1]; k++)
+                {
+                    int b = data.BuildingSorted[k];
+                    if (b >= buildingCount) continue; // removed since the hash, as units past the count above
+                    if (data.BuildingOwnerId[b] == by || (data.BuildingFlag[b] & BuildingFlags.Hidden) != 0) continue; // a hidden Mine is the blast's cause, not its victim
+                    float2 start = Footprint.Start(data.BuildingAnchor[b], data.BuildingSize[b]), end = start + data.BuildingSize[b];
+                    if (math.lengthsq(math.max(math.max(start - at, at - end), 0f)) > rSq || !blastVictims.Add(b)) continue;
+                    damaged.Add((data.BuildingOwnerId[b], data.BuildingAnchor[b]));
+                }
+            }
         }
         AlertRules.UnderAttack(damaged, throttle, now, add);
-    }
-
-    /// <summary>True when a blast by another owner reaches the box from <paramref name="min"/> to <paramref name="max"/>.</summary>
-    private static bool Hit(IReadOnlyList<(float2 at, int owner, float radius)> blasts, float2 min, float2 max, int owner)
-    {
-        for (int i = 0; i < blasts.Count; i++)
-        {
-            (float2 at, int by, float radius) = blasts[i];
-            if (by != owner && math.lengthsq(math.max(math.max(min - at, at - max), 0f)) <= radius * radius) return true;
-        }
-        return false;
     }
 
     /// <summary>Adds a hit target's own owner and tile, once per target.</summary>

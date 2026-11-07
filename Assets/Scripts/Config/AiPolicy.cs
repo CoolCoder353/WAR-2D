@@ -47,6 +47,7 @@ namespace Config
                 Retreats = p.Retreats,
                 FocusFire = p.FocusFire,
                 KeepsBacklineBack = p.KeepsBacklineBack,
+                Spotters = insight >= SpotterInsight ? p.Spotters : 0,
                 DigsPastWalls = p.DigsPastWalls,
                 AttackAdvantage = p.AttackAdvantage,
                 RetreatAdvantage = p.RetreatAdvantage,
@@ -64,6 +65,9 @@ namespace Config
             config.Difficulties.Clear();
             foreach (var h in config.Handicaps) config.Difficulties[h.Key] = Resolve(config.Policy, h.Value);
         }
+
+        /// <summary>v0.20 (spec §10, D16): the Insight from which it keeps spotters (Normal and Hard; Easy doesn't).</summary>
+        public const float SpotterInsight = 0.5f;
 
         private static float Clamp01(float v) => v < 0f ? 0f : v > 1f ? 1f : v;
     }

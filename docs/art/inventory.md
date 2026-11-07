@@ -1,5 +1,7 @@
 # Art and audio inventory (v0.8)
 
+> v0.20 Onslaught adds a 2×2 Sniper and Gun turret (hull and head), effects for leaps, fire, aim, shells and deaths, and new sounds. They are approved and generated but not yet registered here or built into the atlases; see [v0.20-asset-review.md](v0.20-asset-review.md). Until then this inventory describes what ships.
+
 Every placeholder the game uses today and every asset v0.7 Siege will need. `Assets/Scripts/Art/ArtManifest.cs` is the code version of the art tables: tests fail when a `UnitType`, `BuildingType` or `TileType` value has no entry. Sizes are in tiles (one tile is one world unit). A sprite has `frames × directions` cells in its atlas.
 
 The [style guide](style-guide.md) sets the values: 64 px per tile (PPU 64), 8 unit facings, 10 fps. `WAR-2D/Art/Build all` (`Editor/ArtBuild.cs`) renders every unit, building and tile entry into `Assets/Resources/Art/{Units,Buildings,Tiles}` (`.png`, `_mask.png` for the team colour, `.json` frame table, loaded with `ArtAtlas`). Entries with no generator yet (the v0.7 kit: Builder, Digger, Bomb, PlayerWall, WallBlueprint) get a placeholder block. Effects, icons and UI get their atlases with plan Tasks 11 and 12.
@@ -11,7 +13,7 @@ The [style guide](style-guide.md) sets the values: 64 px per tile (PPU 64), 8 un
 | `Tank` | 1×1 | 4 (move 2, fire 2) | 8 | yes | `Resources/tank.png` (32 px, one image, rotated quad) |
 | `Builder` | 1×1 | 4 (move 2, build 2) | 8 | yes | none (v0.7) |
 | `Digger` | 1×1 | 4 (move 2, dig 2) | 8 | yes | none (v0.7) |
-| `Scout`, `Flamethrower`, `Sniper`, `SuicideBomber` | 1×1 | 4 (move 2, fire 2) | 8 | yes | `RenderGen.Arsenal.cs` (v0.12) |
+| `Scout`, `Flamethrower`, `Bomber` | 1×1 | 4 (move 2, fire 2) | 8 | yes | `RenderGen.Arsenal.cs` (v0.12) |
 | `Heavy`, `Artillery` | 2×2 (drawn at twice the size; large selection ring) | 4 (move 2, fire 2) | 8 | yes | `RenderGen.Arsenal.cs` (v0.12, 128 px canvases) |
 | `TankHull`, `ScoutHull`, `SniperHull`, `HeavyHull`, `ArtilleryHull` | as the unit | 2 (move) | 8 | yes | `RenderGen.HullLayer`: what a match draws under the turret. The plain ids above stay whole for thumbnails and wrecks |
 | `TankTurret`, `ScoutTurret` / `SniperTurret`, `HeavyTurret` / `ArtilleryTurret` | 1×1 / 2×2 / 3×3 (centred on the pivot, room for the barrel in every facing) | 2 (rest, recoil); the Artillery 3 (level, raised, raised in recoil) | 16 | yes | `RenderGen.TurretLayer`, drawn over the hull at the facing `TurretAim` gives |
@@ -66,7 +68,7 @@ Unused today: `Spawner.asset`, `Test.asset` and the `Pallets` tile palette (remo
 | `Crater` | 2×2 canvas, about a tile wide | 4 (fade) × 3 variants | `Effects` atlas, pooled in `Decals` (96): where a shell landed, under the units; hold 10 s, fade 20 s, then or when the pool is full it goes (2026-11-06) |
 | `FlameStream` / `FlameSplash` | 2×1 / 3×3 | 6 / 4 | `Effects` atlas, pooled (128 each), looping while the unit burns: stretched from the nozzle to the target, and scaled to the real splash radius there. Soft, on purpose (`EffectGen.IsSoft`; 2026-11-06) |
 | `BarrelShadow` | 3×3 | 1 × 16 facings | `Effects` atlas: a raised Artillery barrel's soft shadow, drawn under the hull with the selection rings (`EffectGen.IsSoft`; 2026-11-06) |
-| `BomberBlast` | 4×4 | 8 | `Effects` atlas (v0.12): Suicide bomber blasts, and the main blast of a destroyed building 4 tiles or wider (polish: smaller buildings use `BombBlast`, 1-tile ones `Explosion`, each followed by a ripple of explosions and debris across the footprint) |
+| `BomberBlast` | 4×4 | 8 | `Effects` atlas (v0.12): (v0.20: replaced by `BomberLanding`) Bomber blasts, and the main blast of a destroyed building 4 tiles or wider (polish: smaller buildings use `BombBlast`, 1-tile ones `Explosion`, each followed by a ripple of explosions and debris across the footprint) |
 | `TurretMuzzle` | 1×1 | 3 | `Effects` atlas, pooled (64): at the turret's muzzle (`RenderGen.TurretMuzzleReach`/`Height`), turned to the head's facing, with a tracer to the target (v0.13) |
 | `JamPulse` | 3×3 | 6 | `Effects` atlas, pooled (32): every 2.5 s over each finished Jammer the client sees (its own only while paid) (v0.13) |
 | `Scorch` / `ScorchLarge` | 1×1 / 2×2 | 4 (fade) | `Effects` atlas, pooled in `Decals` (256 / 64): where a unit the client knew died (the large one under a 2-tile unit); holds 15 s, then dithers out over 10 s (polish, 2026-10-30) |
@@ -111,3 +113,9 @@ None exists today (`Main.mixer` has Master, Music and SFX groups wired to the se
 **Sound effects** (plan Task 13, sfxr-style, one JSON parameter set each): `ShotTank`, `ShotBuilder`, `ShotDigger` (stubs until v0.7), `ExplosionSmall`, `ExplosionLarge`, `BuildingPlaced`, `BuildingDestroyed`, `UnitProduced`, `GemMined`, `UiClick`, `UiHover`, `UiError`, `Alert`, `VictoryStinger`, `DefeatStinger`; v0.7 kit: `ConstructLoop`, `Dig`, `BombBlast`, `WallHit`.
 
 **Music** (plan Task 14, code-generated chiptune): `Menu`, `MatchCalm`, `MatchBattle`, `Victory`, `Defeat`.
+
+## v0.20 Onslaught (approved 2026-11-06, registered 2026-11-07)
+
+- **Units and buildings:** `Sniper` is 2×2 (`Sniper2x2`, its head `SniperTurret` 3×3); `GunTurret` and `GunTurretHead` are 2×2 (`GunTurret2x2Base`, `GunTurret2x2Head`; the head's frames 1 and 2 fire the left and right barrels); `Bomber` and `Mine` are the renamed Suicide bomber and Bomb, same art.
+- **Effects** (`EffectGen.Onslaught`): `LeapSparks`, `LeapShadow`, `BomberLanding` (5×5), `BurnFlames1`/`2`/`3`, `SootSmoke`, `FlameScorch`, `AimLaser`, `MuzzleGlint`, `SniperHit`, `ArmourSparks`, `IncomingShell`, `LaunchPuff`, `ArtilleryBlast` (8×8, also the HQ's finale), `CraterLarge`, `TwinMuzzle`, `TracerStream`, `DeathSmall`, `DeathLarge`, `Debris`, `DustCloud`. `ArtilleryShell` now draws `HeavyShell`, `SniperTracer` `SniperTrail`, `FlameSplash` the 2.5-tile spread. The Effects atlas grew to 4096×4096.
+- **Sounds** (`Assets/Art/Audio/sfx/`): `bomber_leap`, `bomber_blast` (bigger), `flame_ignite`, `burn_loop`, `burn_death`, `sniper_aim`, `sniper_shot`, `artillery_launch`, `shell_incoming`, `shell_impact_large`, `armour_ping`, `turret_fire_loop`, `death_small`, `death_large`, `building_collapse`, and `mine_blast`, `alert_mine` (renamed).

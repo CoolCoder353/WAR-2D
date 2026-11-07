@@ -19,6 +19,7 @@ public class ReplicationTests
         public NativeArray<float2> Positions;
         public NativeArray<float> Health, MaxHealth, Speeds;
         public NativeArray<int> Owner, IdOf, IndexOfId;
+        public NativeArray<byte> LastHitKind;
         public NativeArray<byte> Type;
         /// <summary>One fog grid per client (1 tile per cell).</summary>
         public NativeArray<byte> Visible;
@@ -44,6 +45,7 @@ public class ReplicationTests
             Owner = new NativeArray<int>(capacity, Allocator.Persistent);
             IdOf = new NativeArray<int>(capacity, Allocator.Persistent);
             IndexOfId = new NativeArray<int>(IdCapacity, Allocator.Persistent);
+            LastHitKind = new NativeArray<byte>(IdCapacity, Allocator.Persistent);
             Type = new NativeArray<byte>(capacity, Allocator.Persistent);
             Visible = new NativeArray<byte>(clients * FogSize * FogSize, Allocator.Persistent);
             Speeds = new NativeArray<float>(new[] { 0f, 5f }, Allocator.Persistent);
@@ -72,7 +74,7 @@ public class ReplicationTests
         public ReplicationInput Input => new ReplicationInput
         {
             Count = Count, Positions = Positions, Health = Health, MaxHealth = MaxHealth, OwnerId = Owner,
-            Type = Type, IdOf = IdOf, IndexOfId = IndexOfId, SpeedByType = Speeds,
+            Type = Type, IdOf = IdOf, IndexOfId = IndexOfId, SpeedByType = Speeds, LastHitKind = LastHitKind,
             Visible = Visible, FogCellSize = 1, FogW = FogSize, FogH = FogSize, FogCells = FogSize * FogSize,
         };
 
@@ -106,7 +108,7 @@ public class ReplicationTests
 
         public void Dispose()
         {
-            Positions.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Owner.Dispose(); IdOf.Dispose(); IndexOfId.Dispose();
+            Positions.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Owner.Dispose(); IdOf.Dispose(); IndexOfId.Dispose(); LastHitKind.Dispose();
             Type.Dispose(); Visible.Dispose(); Speeds.Dispose(); Attacks.Dispose(); Targets.Dispose(); Routes.Dispose(); Interests.Dispose(); Encoder.Dispose();
             foreach (ClientUnitStore s in ClientStores) s.Dispose();
         }
@@ -264,6 +266,237 @@ public class ReplicationTests
         Assert.AreEqual(new float2(511.5f, 0.5f), RouteWire.Snap(new float2(511.5f, 0.5f)));
         Assert.AreEqual(new int2(2047, 1), RouteWire.Encode(new float2(1023.5f, 0.5f)));
         Assert.AreEqual(new float2(3f, 7.5f), RouteWire.Snap(new float2(3.1f, 7.4f)));
+    }
+
+    [Test]
+    public void MoveOrderRoutesCopyTheRunsTheyShareAndDecodeExactly()
+    {
+        // Protocol 22: units of one order walk one corridor, so later routes copy runs of earlier ones in the same message.
+        int2[][] routes =
+        {
+            new[] { new int2(10, 10), new int2(20, 10), new int2(20, 30), new int2(40, 30), new int2(40, 50), new int2(60, 50) },
+            new[] { new int2(12, 14), new int2(20, 14), new int2(20, 30), new int2(40, 30), new int2(40, 50), new int2(62, 50) },
+            new[] { new int2(9, 6), new int2(20, 10), new int2(20, 30), new int2(40, 30), new int2(40, 50), new int2(60, 50) },
+            new[] { new int2(300, 300), new int2(173, 300), new int2(200, 10) }, // shares nothing; an x step of -127 goes absolute
+        };
+        var tileList = new List<int2>();
+        var unitList = new List<RouteUnit>();
+        for (int r = 0; r < routes.Length; r++)
+        {
+            unitList.Add(new RouteUnit { Index = 3 + r * 4, First = tileList.Count, Count = routes[r].Length });
+            tileList.AddRange(routes[r]);
+        }
+        var tiles = new NativeArray<int2>(tileList.ToArray(), Allocator.Temp);
+        var units = new NativeArray<RouteUnit>(unitList.ToArray(), Allocator.Temp);
+        var bytes = new NativeList<byte>(256, Allocator.Temp);
+        var sink = new NativeSink(bytes);
+        Messages.EncodeMoveOrder(ref sink, 5, tiles, units);
+
+        int plain = 1 + VarInt.Size(5) + VarInt.Size((uint)units.Length), previous = 0;
+        foreach (RouteUnit u in units) { plain += VarInt.Size((uint)(u.Index - previous)) + Messages.RouteSize(tiles, u.First, u.Count); previous = u.Index; }
+        // Route 1 copies a run of 3 (6 bytes of steps for 4), route 2 a run of 5 (10 for 4): 8 bytes saved.
+        Assert.AreEqual(plain - 8, bytes.Length, "the shared runs went as copy steps");
+
+        var decoded = new List<RouteUnit>();
+        var waypoints = new List<int2>();
+        Assert.AreEqual(5, Messages.DecodeMoveOrder(Reader(bytes), decoded, waypoints));
+        Assert.AreEqual(units.Length, decoded.Count);
+        for (int r = 0; r < routes.Length; r++)
+        {
+            Assert.AreEqual(unitList[r].Index, decoded[r].Index);
+            CollectionAssert.AreEqual(routes[r], waypoints.GetRange(decoded[r].First, decoded[r].Count), $"route {r}");
+        }
+
+        // The encoder packs messages by counted size: counting must give exactly the bytes written.
+        var counting = new Messages.RouteCopies(Allocator.Temp);
+        var writing = new Messages.RouteCopies(Allocator.Temp);
+        var written = new NativeList<byte>(256, Allocator.Temp);
+        var into = new NativeSink(written);
+        foreach (RouteUnit u in units)
+        {
+            var counted = new CountingSink();
+            int before = into.Position;
+            counting.Write(ref counted, tiles, u.First, u.Count);
+            writing.Write(ref into, tiles, u.First, u.Count);
+            Assert.AreEqual(into.Position - before, counted.Position);
+        }
+        counting.Dispose(); writing.Dispose(); written.Dispose(); bytes.Dispose(); tiles.Dispose(); units.Dispose();
+    }
+
+    [Test]
+    public void MoveOrderMessagesStayInsideTheBytesAndWaypointsTheDecoderAllows()
+    {
+        // 1,500 units on one long route: each copies its whole way from the one before, about 12 bytes for 200 waypoints, so the
+        // waypoint cap, not the 12 KB chunk, ends a message (code review 2026-11-07).
+        const int unitCount = 1500, length = 200;
+        var tiles = new NativeArray<int2>(unitCount * length, Allocator.Temp);
+        var units = new NativeArray<RouteUnit>(unitCount, Allocator.Temp);
+        for (int u = 0; u < unitCount; u++)
+        {
+            units[u] = new RouteUnit { Index = u, First = u * length, Count = length };
+            tiles[u * length] = new int2(u % 50, 0); // its own start
+            for (int k = 1; k < length; k++) tiles[u * length + k] = new int2(100 + k, 100 + k % 2);
+        }
+        var copies = new Messages.RouteCopies(Allocator.Temp);
+        int decodedUnits = 0, messages = 0;
+        for (int start = 0; start < unitCount; messages++)
+        {
+            int end = Messages.MoveOrderChunkEnd(tiles, units, start, ref copies);
+            Assert.Greater(end, start, "at least one route a message");
+            var bytes = new NativeList<byte>(WireLimits.ReliableChunk, Allocator.Temp);
+            var sink = new NativeSink(bytes);
+            Messages.EncodeMoveOrder(ref sink, 3, tiles, units.GetSubArray(start, end - start));
+            Assert.LessOrEqual(bytes.Length, WireLimits.ReliableChunk);
+            var decoded = new List<RouteUnit>();
+            var waypoints = new List<int2>();
+            Messages.DecodeMoveOrder(Reader(bytes), decoded, waypoints);
+            Assert.LessOrEqual(waypoints.Count, Messages.MaxMessageWaypoints);
+            for (int i = 0; i < decoded.Count; i++)
+                Assert.AreEqual(tiles[(start + i) * length + length - 1], waypoints[decoded[i].First + length - 1]);
+            decodedUnits += decoded.Count;
+            bytes.Dispose();
+            start = end;
+        }
+        Assert.AreEqual(unitCount, decodedUnits);
+        Assert.Greater(messages, 2, "the waypoint cap split them");
+        copies.Dispose(); tiles.Dispose(); units.Dispose();
+    }
+
+    [Test]
+    public void RoutesLongerThanAnyServerSendsAreRefusedBeforeTheUnitIsKnown()
+    {
+        // Four ids hold at most 4 x RouteMaintenance.MaxWaypoints (1,024) live waypoints: an Enter with 1,100 is a hostile host's.
+        var store = new ClientUnitStore(4, Dt);
+        var tiles = new NativeArray<int2>(1100, Allocator.Temp);
+        for (int i = 0; i < tiles.Length; i++) tiles[i] = new int2(10 + i % 2, 10 + i % 3);
+        var enter = new NativeArray<EnterUnit>(new[]
+        {
+            new EnterUnit { Id = (1 << NetIdAllocator.IndexBits) | 1, Type = (byte)UnitType.Tank, OwnerId = 1, X = 100, Y = 100, Health = 100, First = 0, Count = tiles.Length },
+        }, Allocator.Temp);
+        var bytes = new NativeList<byte>(4096, Allocator.Temp);
+        var sink = new NativeSink(bytes);
+        Messages.EncodeEnter(ref sink, tiles, enter);
+        Assert.IsFalse(store.Apply(new ArraySegment<byte>(bytes.AsArray().ToArray()), 1), "refused, not thrown");
+        Assert.AreEqual(0, store.Count, "and the unit isn't half known");
+        store.Dispose(); bytes.Dispose(); enter.Dispose(); tiles.Dispose();
+    }
+
+    private static byte[] EnterOne(int index, params float2[] route)
+    {
+        var tiles = new NativeArray<int2>(route.Length, Allocator.Temp);
+        for (int i = 0; i < route.Length; i++) tiles[i] = RouteWire.Encode(route[i]);
+        var enter = new NativeArray<EnterUnit>(new[]
+        {
+            new EnterUnit { Id = (1 << NetIdAllocator.IndexBits) | index, Type = (byte)UnitType.Tank, OwnerId = 1, X = Quantise.Encode(route[0].x), Y = Quantise.Encode(route[0].y), Health = 100, First = 0, Count = route.Length },
+        }, Allocator.Temp);
+        var bytes = new NativeList<byte>(256, Allocator.Temp);
+        var sink = new NativeSink(bytes);
+        Messages.EncodeEnter(ref sink, tiles, enter);
+        byte[] result = bytes.AsArray().ToArray();
+        bytes.Dispose(); enter.Dispose(); tiles.Dispose();
+        return result;
+    }
+
+    private static byte[] Order(int tick, params (int index, float2[] route)[] units)
+    {
+        var tileList = new List<int2>();
+        var unitList = new List<RouteUnit>();
+        foreach (var (index, route) in units)
+        {
+            unitList.Add(new RouteUnit { Index = index, First = tileList.Count, Count = route.Length });
+            foreach (float2 p in route) tileList.Add(RouteWire.Encode(p));
+        }
+        var tiles = new NativeArray<int2>(tileList.ToArray(), Allocator.Temp);
+        var list = new NativeArray<RouteUnit>(unitList.ToArray(), Allocator.Temp);
+        var bytes = new NativeList<byte>(4096, Allocator.Temp);
+        var sink = new NativeSink(bytes);
+        Messages.EncodeMoveOrder(ref sink, tick, tiles, list);
+        byte[] result = bytes.AsArray().ToArray();
+        bytes.Dispose(); list.Dispose(); tiles.Dispose();
+        return result;
+    }
+
+    [Test]
+    public void AUnitOrderedTwiceInOneMessageEndsOnTheSecondRoute()
+    {
+        // ApplyRoutesJob applies a message's routes in order, as the managed loop did (code review 2026-11-07).
+        var store = new ClientUnitStore(16, Dt);
+        Assert.IsTrue(store.Apply(new ArraySegment<byte>(EnterOne(3, new float2(10.5f, 10.5f))), 1));
+        float2[] first = { new float2(10.5f, 10.5f), new float2(20.5f, 10.5f) }, second = { new float2(10.5f, 10.5f), new float2(10.5f, 30.5f) };
+        Assert.IsTrue(store.Apply(new ArraySegment<byte>(Order(2, (3, first), (3, second))), 2));
+        var route = new List<float2>();
+        Assert.IsTrue(store.CopyRoute(3, route));
+        CollectionAssert.AreEqual(second, route);
+        store.Dispose();
+    }
+
+    [Test]
+    public void AMoveOrderPastTheRouteCapChangesNothing()
+    {
+        // Four ids hold at most 1,024 live waypoints: a MoveOrder with a 1,100-waypoint route is refused before any route changes.
+        var store = new ClientUnitStore(4, Dt);
+        float2[] start = { new float2(10.5f, 10.5f), new float2(12.5f, 10.5f) };
+        Assert.IsTrue(store.Apply(new ArraySegment<byte>(EnterOne(1, start)), 1));
+        float2 before = store.PredictOne(1, 0.2f);
+        var longRoute = new float2[1100];
+        for (int i = 0; i < longRoute.Length; i++) longRoute[i] = new float2(10.5f + i % 2, 10.5f + i % 3);
+        Assert.IsFalse(store.Apply(new ArraySegment<byte>(Order(2, (1, longRoute))), 2), "refused, not thrown");
+        var route = new List<float2>();
+        Assert.IsTrue(store.CopyRoute(1, route));
+        CollectionAssert.AreEqual(start, route, "the old route stays");
+        Assert.AreEqual(before, store.PredictOne(1, 0.2f), "and so does the prediction");
+        Assert.AreEqual(1, store.Count);
+        store.Dispose();
+    }
+
+    [Test]
+    public void CopyStepsThatReachOutsideTheirMessageAreRefused()
+    {
+        // A MoveOrder of two routes: (10,10) (12,10) (14,10), then four waypoints from (8,10) whose last three copy (back, start, run).
+        NativeList<byte> Order(uint back, uint start, uint run)
+        {
+            var bytes = new NativeList<byte>(64, Allocator.Temp);
+            var sink = new NativeSink(bytes);
+            sink.WriteByte((byte)MessageType.MoveOrder);
+            VarInt.Write(ref sink, 9);
+            VarInt.Write(ref sink, 2);
+            VarInt.Write(ref sink, 1);
+            VarInt.Write(ref sink, 3);
+            sink.WriteUShort(10); sink.WriteUShort(10);
+            sink.WriteByte(2); sink.WriteByte(0);
+            sink.WriteByte(2); sink.WriteByte(0);
+            VarInt.Write(ref sink, 1);
+            VarInt.Write(ref sink, 4);
+            sink.WriteUShort(8); sink.WriteUShort(10);
+            sink.WriteByte(Messages.CopyMarker);
+            VarInt.Write(ref sink, back); VarInt.Write(ref sink, start); VarInt.Write(ref sink, run);
+            return bytes;
+        }
+        var units = new List<RouteUnit>();
+        var waypoints = new List<int2>();
+        Messages.DecodeMoveOrder(Reader(Order(1, 0, 3)), units, waypoints);
+        CollectionAssert.AreEqual(new[] { new int2(8, 10), new int2(10, 10), new int2(12, 10), new int2(14, 10) }, waypoints.GetRange(units[1].First, 4));
+        Assert.Throws<System.IO.InvalidDataException>(() => Messages.DecodeMoveOrder(Reader(Order(2, 0, 3)), new List<RouteUnit>(), new List<int2>()), "no route two back");
+        Assert.Throws<System.IO.InvalidDataException>(() => Messages.DecodeMoveOrder(Reader(Order(1, 1, 3)), new List<RouteUnit>(), new List<int2>()), "past the source's end");
+        Assert.Throws<System.IO.InvalidDataException>(() => Messages.DecodeMoveOrder(Reader(Order(1, 0, 4)), new List<RouteUnit>(), new List<int2>()), "past this route's count");
+        Assert.Throws<System.IO.InvalidDataException>(() => Messages.DecodeMoveOrder(Reader(Order(1, 0, 0)), new List<RouteUnit>(), new List<int2>()), "an empty copy");
+
+        // Only routes of the copy's own message count: decoded after another message into the same lists, a lone route can't copy.
+        var lone = new NativeList<byte>(32, Allocator.Temp);
+        var l = new NativeSink(lone);
+        l.WriteByte((byte)MessageType.MoveOrder);
+        VarInt.Write(ref l, 9); VarInt.Write(ref l, 1); VarInt.Write(ref l, 5); VarInt.Write(ref l, 4);
+        l.WriteUShort(8); l.WriteUShort(10);
+        l.WriteByte(Messages.CopyMarker); VarInt.Write(ref l, 1); VarInt.Write(ref l, 0); VarInt.Write(ref l, 3);
+        Assert.Throws<System.IO.InvalidDataException>(() => Messages.DecodeMoveOrder(Reader(lone), units, waypoints), "a copy into the message before");
+
+        // An Enter's route has no earlier routes to copy.
+        var enter = new NativeList<byte>(16, Allocator.Temp);
+        var e = new NativeSink(enter);
+        VarInt.Write(ref e, 2);
+        e.WriteUShort(1); e.WriteUShort(1);
+        e.WriteByte(Messages.CopyMarker); e.WriteByte(1); e.WriteByte(0); e.WriteByte(1);
+        Assert.Throws<System.IO.InvalidDataException>(() => Messages.ReadRoute(Reader(enter), new List<int2>()));
     }
 
     [Test]

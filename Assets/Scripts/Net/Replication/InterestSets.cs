@@ -32,6 +32,8 @@ namespace WAR2D.Net.Replication
         public int FogCellSize, FogW, FogH, FogCells;
         /// <summary>The map's width in tiles (v0.16: a wall target's tile index to a position).</summary>
         public int MapWidth;
+        /// <summary>v0.20: per id index, the kind of the last hit each unit took (a death's cause on the wire).</summary>
+        [ReadOnly] public NativeArray<byte> LastHitKind;
 
         /// <summary>The settled simulation's units and fog, as replication (and the AI's team view) read them.</summary>
         public static ReplicationInput From(WAR2D.Sim.SimData data, int count) => new ReplicationInput
@@ -40,6 +42,7 @@ namespace WAR2D.Net.Replication
             OwnerId = data.OwnerId, Type = data.Type, IdOf = data.IdOf, IndexOfId = data.IndexOfId, SpeedByType = data.SpeedByType,
             Visible = data.Visible, FogCellSize = data.FogCellSize, FogW = data.FogW, FogH = data.FogH, FogCells = data.FogCells,
             MapWidth = data.Width,
+            LastHitKind = data.LastHitKind,
         };
 
         /// <summary>True when fog grid <paramref name="grid"/> sees <paramref name="p"/>.</summary>

@@ -106,7 +106,7 @@ namespace Config
                     string typeName = node.Attributes?["type"]?.Value;
                     if (!Enum.TryParse(typeName, false, out UnitType type) || type == UnitType.None)
                     {
-                        errors.Add($"Units: unknown unit type \"{typeName}\".");
+                        errors.Add(Renamed(typeName, out string now) ? $"Units: \"{typeName}\" was renamed in v0.20: use \"{now}\"." : $"Units: unknown unit type \"{typeName}\".");
                         continue;
                     }
                     string ctx = $"Unit {type}";
@@ -128,6 +128,8 @@ namespace Config
                         MinRange = OptionalFloat(node, "MinRange", ctx, errors, 0, 32),
                         BlastRadius = OptionalFloat(node, "BlastRadius", ctx, errors, 0, 8),
                         BlastDamage = OptionalFloat(node, "BlastDamage", ctx, errors, 0, 100000),
+                        BlastResist = OptionalFloat(node, "BlastResist", ctx, errors, 0, 0.99f),
+                        FlatArmour = OptionalFloat(node, "FlatArmour", ctx, errors, 0, 1000),
                     };
                 }
             }
@@ -203,13 +205,53 @@ namespace Config
             XmlNode bomber = Require(root, "Bomber", errors);
             if (bomber != null)
             {
+                foreach (string retired in new[] { "AimTiles", "FriendlyWeight", "AimReachTiles", "GoodEnough" })
+                    if (bomber.SelectSingleNode(retired) != null) errors.Add($"Bomber: <{retired}> was retired in v0.20 (Bombers leap at the nearest army's centre).");
                 config.Bomber.LastGaspHealth = Float(bomber, "LastGaspHealth", "Bomber", errors, min: 0f, max: 1f);
                 config.Bomber.ChainPasses = Int(bomber, "ChainPasses", "Bomber", errors, min: 1, max: 16);
-                config.Bomber.AimTiles = Float(bomber, "AimTiles", "Bomber", errors, min: 0f, max: 64f);
-                config.Bomber.FriendlyWeight = Float(bomber, "FriendlyWeight", "Bomber", errors, min: 0f, max: 10f);
                 config.Bomber.FriendlyDamage = Float(bomber, "FriendlyDamage", "Bomber", errors, min: 0f, max: 1f);
-                config.Bomber.AimReachTiles = Float(bomber, "AimReachTiles", "Bomber", errors, min: 0.1f, max: 8f);
-                config.Bomber.GoodEnough = Float(bomber, "GoodEnough", "Bomber", errors, min: 0f, max: 1f);
+                config.Bomber.LeapReach = Float(bomber, "LeapReach", "Bomber", errors, min: 0.5f, max: 32f);
+                config.Bomber.LeapSeconds = Float(bomber, "LeapSeconds", "Bomber", errors, min: 0.05f, max: 5f);
+                config.Bomber.ArmyTiles = Float(bomber, "ArmyTiles", "Bomber", errors, min: 0f, max: 32f);
+                config.Bomber.ContactTiles = Float(bomber, "ContactTiles", "Bomber", errors, min: 0f, max: 8f);
+            }
+
+            XmlNode combat = Require(root, "Combat", errors);
+            if (combat != null) config.Combat.MinHit = Float(combat, "MinHit", "Combat", errors, min: 0f, max: 1000f);
+
+            XmlNode burn = Require(root, "Burn", errors);
+            if (burn != null)
+            {
+                config.Burn.Dps = Float(burn, "Dps", "Burn", errors, min: 0f, max: 10000f);
+                config.Burn.Seconds = Float(burn, "Seconds", "Burn", errors, min: 0.05f, max: 120f);
+                config.Burn.LightUnit = Float(burn, "LightUnit", "Burn", errors, min: 0f, max: 10f);
+                config.Burn.HeavyUnit = Float(burn, "HeavyUnit", "Burn", errors, min: 0f, max: 10f);
+                config.Burn.Building = Float(burn, "Building", "Burn", errors, min: 0f, max: 10f);
+            }
+
+            XmlNode artillery = Require(root, "Artillery", errors);
+            if (artillery != null)
+            {
+                const string a = "Artillery";
+                config.Artillery.ShellSpeed = Float(artillery, "ShellSpeed", a, errors, min: 1f, max: 200f);
+                config.Artillery.LeadAim = Int(artillery, "LeadAim", a, errors, min: 0, max: 1) != 0;
+                config.Artillery.LeadCapTiles = Float(artillery, "LeadCapTiles", a, errors, min: 0f, max: 32f);
+                config.Artillery.FriendlyDamage = Float(artillery, "FriendlyDamage", a, errors, min: 0f, max: 1f);
+                config.Artillery.IncomingSeconds = Float(artillery, "IncomingSeconds", a, errors, min: 0.05f, max: 10f);
+            }
+
+            XmlNode sniper = Require(root, "Sniper", errors);
+            if (sniper != null)
+            {
+                config.Sniper.AimSeconds = Float(sniper, "AimSeconds", "Sniper", errors, min: 0f, max: 30f);
+                config.Sniper.StillSpeed = Float(sniper, "StillSpeed", "Sniper", errors, min: 0f, max: 10f);
+            }
+
+            XmlNode effects = Require(root, "Effects", errors);
+            if (effects != null)
+            {
+                config.Effects.MaxFires = Int(effects, "MaxFires", "Effects", errors, min: 0, max: 8192);
+                config.Effects.SmoulderSeconds = Float(effects, "SmoulderSeconds", "Effects", errors, min: 0f, max: 120f);
             }
 
             XmlNode pulses = Require(root, "MinimapCombat", errors);
@@ -316,8 +358,10 @@ namespace Config
                 config.Siege.WallHealth = Int(siege, "WallHealth", s, errors, min: 1, max: 100000);
                 config.Siege.MaxWallLine = Int(siege, "MaxWallLine", s, errors, min: 1, max: 256);
                 config.Siege.BlastRadius = Float(siege, "BlastRadius", s, errors, min: 0.5f, max: 16);
-                config.Siege.BombTriggerRadius = Float(siege, "BombTriggerRadius", s, errors, min: 0.5f, max: 8);
-                config.Siege.BombFriendlyDamage = Float(siege, "BombFriendlyDamage", s, errors, min: 0f, max: 1f);
+                foreach (string retired in new[] { "BombTriggerRadius", "BombFriendlyDamage" })
+                    if (siege.SelectSingleNode(retired) != null) errors.Add($"Siege: <{retired}> was renamed in v0.20: use <{retired.Replace("Bomb", "Mine")}>.");
+                config.Siege.MineTriggerRadius = Float(siege, "MineTriggerRadius", s, errors, min: 0.5f, max: 8);
+                config.Siege.MineFriendlyDamage = Float(siege, "MineFriendlyDamage", s, errors, min: 0f, max: 1f);
                 config.Siege.BlastDamage = Float(siege, "BlastDamage", s, errors, min: 0, max: 100000);
                 config.Siege.RadarClearSeconds = Float(siege, "RadarClearSeconds", s, errors, min: 0, max: 600);
                 config.Siege.RadarAlertCooldownSeconds = Float(siege, "RadarAlertCooldownSeconds", s, errors, min: 0, max: 600);
@@ -388,7 +432,7 @@ namespace Config
                     string typeName = node.Attributes?["type"]?.Value;
                     if (!Enum.TryParse(typeName, false, out BuildingType type) || type == BuildingType.None)
                     {
-                        errors.Add($"Buildings: unknown building type \"{typeName}\".");
+                        errors.Add(Renamed(typeName, out string now) ? $"Buildings: \"{typeName}\" was renamed in v0.20: use \"{now}\"." : $"Buildings: unknown building type \"{typeName}\".");
                         continue;
                     }
                     string ctx = $"Building {type}";
@@ -400,6 +444,7 @@ namespace Config
                         UpfrontCost = Float(node, "UpfrontCost", ctx, errors, min: 0),
                         RunningCost = Float(node, "RunningCost", ctx, errors, min: 0),
                         Sight = Float(node, "Sight", ctx, errors, min: 0, max: 32),
+                        BuildSeconds = OptionalFloat(node, "BuildSeconds", ctx, errors, 0, 3600),
                     };
                     Weapon(node, ctx, errors, building);
                     config.Buildings[type] = building;
@@ -509,7 +554,7 @@ namespace Config
                     HomeTurrets = Int(node, "HomeTurrets", c, errors, min: 0, max: 16),
                     DefenceStart = Float(node, "DefenceStart", c, errors, min: 0, max: 4),
                     Jammers = Int(node, "Jammers", c, errors, min: 0, max: 16),
-                    Bombs = Int(node, "Bombs", c, errors, min: 0, max: 64),
+                    Mines = Int(node, "Mines", c, errors, min: 0, max: 64),
                     Walls = Flag(node, "Walls", c, errors),
                     Radar = Flag(node, "Radar", c, errors),
                     HoldsChokes = Flag(node, "HoldsChokes", c, errors),
@@ -596,6 +641,7 @@ namespace Config
                 p.BuildingCounterWeight = Float(play, "BuildingCounterWeight", c, errors, min: 0, max: 100);
                 p.LightTurretShare = Float(play, "LightTurretShare", c, errors, min: 0, max: 1);
                 p.BacklineDistance = Float(play, "BacklineDistance", c, errors, min: 0, max: 64);
+                p.SpotterLead = Float(play, "SpotterLead", c, errors, min: 0, max: 64);
                 p.BomberClump = Int(play, "BomberClump", c, errors, min: 1, max: 1000);
                 p.BomberChecks = Int(play, "BomberChecks", c, errors, min: 1, max: 10000);
                 p.ScoutAfterSeconds = Float(play, "ScoutAfterSeconds", c, errors, min: 0, max: 3600);
@@ -663,11 +709,13 @@ namespace Config
             p.CounterAttackAdvantage = Float(node, "CounterAttackAdvantage", c, errors, min: 1, max: 1000);
             p.EstimateNoise = Float(node, "EstimateNoise", c, errors, min: 0, max: 0.95f);
             p.SplashTargets = Float(node, "SplashTargets", c, errors, min: 0, max: 20);
+            p.ShellHitShare = Float(node, "ShellHitShare", c, errors, min: 0, max: 1);
             p.RangeWeight = Float(node, "RangeWeight", c, errors, min: 0, max: 10);
             p.BomberFightSeconds = Float(node, "BomberFightSeconds", c, errors, min: 1, max: 600);
             p.Retreats = Flag(node, "Retreats", c, errors);
             p.FocusFire = Flag(node, "FocusFire", c, errors);
             p.KeepsBacklineBack = Flag(node, "KeepsBacklineBack", c, errors);
+            p.Spotters = Int(node, "Spotters", c, errors, min: 0, max: 16);
             p.DigsPastWalls = Flag(node, "DigsPastWalls", c, errors);
             p.TargetDistanceScale = Float(node, "TargetDistanceScale", c, errors, min: 1, max: 100000);
             p.HqValue = Float(node, "HqValue", c, errors, min: 0, max: 1e7f);
@@ -877,6 +925,13 @@ namespace Config
             if (text == "Heavy") return TargetClass.HeavyUnit;
             errors.Add($"{ctx}: <Armour> must be Light or Heavy (got \"{text}\").");
             return TargetClass.LightUnit;
+        }
+
+        /// <summary>v0.20: a unit or building type name from before the renames, and its new name.</summary>
+        private static bool Renamed(string old, out string now)
+        {
+            now = old switch { "SuicideBomber" => "Bomber", "Bomb" => "Mine", _ => null };
+            return now != null;
         }
 
         /// <summary>An optional number (0 when the element is missing) in [min, max].</summary>

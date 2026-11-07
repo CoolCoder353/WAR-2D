@@ -67,10 +67,10 @@
                         <war:CommandIcon icon="Wall" />
                         <ui:Label name="build-wall-cost" text=" " class="command-button__key command-button__cost" />
                     </ui:Button>
-                    <ui:Button name="build-bomb" class="command-button">
-                        <ui:Label name="build-bomb-key" text="X" class="command-button__hotkey" />
-                        <war:CommandIcon icon="Bomb" />
-                        <ui:Label name="build-bomb-cost" text=" " class="command-button__key command-button__cost" />
+                    <ui:Button name="build-mine" class="command-button">
+                        <ui:Label name="build-mine-key" text="X" class="command-button__hotkey" />
+                        <war:CommandIcon icon="Mine" />
+                        <ui:Label name="build-mine-cost" text=" " class="command-button__key command-button__cost" />
                     </ui:Button>
                     <ui:Button name="build-radar" class="command-button">
                         <ui:Label name="build-radar-key" text="C" class="command-button__hotkey" />

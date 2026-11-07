@@ -2,9 +2,43 @@
 
 Bugs, mismatches and hygiene problems. The first three roadmaps (v0.2 to v0.9, v0.10 to v0.14 with v0.15 and v0.15.1, and v0.16 to v0.18) are complete; open items are backlog, and the sections after "Open" are the log of what past reviews and playtests found and fixed. Code-review findings that were triaged but not fixed are in [bug-review.md](bug-review.md). See the archived roadmaps ([v0.2 to v0.9](archive/roadmap-v0.2-v0.9.md), [v0.10 to v0.14](archive/roadmap-v0.10-v0.14.md), [v0.16 to v0.18](archive/roadmap-v0.16-v0.18.md)) for what each version delivered; the current plan is [roadmap.md](roadmap.md).
 
+### 10,000 units at 120 fps (2026-11-07, on `perf/10k-units-120fps`)
+
+[perf/v0.20](perf/v0.20/README.md) has the benchmark and results. Fixed on the way: the client's per-unit draw loop and its route apply ran as managed loops (now Burst jobs), and a client's routes went out whole (now copy steps, protocol 22, replay format 5; older recordings are refused). Found, not fixed:
+
+- `PerformanceTests.MinimapRedrawAtTenThousandOwnUnitsIsUnderOneMillisecond` sometimes times out in its 30 s wait for 9,000 known units, on `release/v0.20` too.
+- A windowed player behind another window can stall about 500 ms in `DXGI.WaitOnSwapChain` (seen on an Optimus laptop); fullscreen doesn't.
+- `tools/war2d` finds instances only under Linux's `~/.config/unity3d`; on Windows they are in `%USERPROFILE%/AppData/LocalLow/CoolCoder64/WAR-2D/debugapi`.
+- Encoding the route copies costs the server about 0.9 ms of tick at p95 at 10,000 units (each route is matched twice, to size and to write).
+- Incremental GC is off: at 10,000 units a collection takes 8 to 12 ms every 12 to 15 s on the client.
+- Frame Timing Stats is now on in the player settings, for every build: `FrameTimingManager` needs it for the GPU time. Unity documents a small cost (GPU timestamp queries); not measured apart.
+- From the UI check of the branch's Development build (code the branch didn't touch, so on `release/v0.20` too): F1 opens the Field manual and also turns on the Flow debug overlay, whose `DebugOverlays.DrawLines` throws (`Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default")` is null in a build) and leaves the Development Console open; the selection panel covers the squad slots 1 to 9; a range ring's label near the top edge goes under the top bar.
+
 ### v0.10: replays are a tick behind on units
 
 The recorder's units go through `DeferredLane` (encoded during the next tick to keep the boundary inside the perf budget), so a recording's unit records are one tick later than its buildings and terrain. Harmless for playback; don't "fix" it by moving the recorder back onto the boundary (`docs/perf/v0.10/README.md`).
+
+## v0.20 Onslaught: built on `release/v0.20` (2026-11-07), not yet signed off
+
+The rules, wire, client drawing, art, sound, AI, manual and docs are in, with PR 45 (10,000 units at 120 fps) merged in. Left open:
+
+- **The perf gate fails: tick.main p95 32.6 ms against 28** (v0.19 26.4 ms on the same machine, the same day). Errors, drops and
+  bandwidth pass. Blast alerts (35 ms a tick), the status news (3 ms, then 2.7 ms) and GC stalls were found and fixed on the way;
+  what is left is about 2.4 ms more main-thread work a tick on average and the bots' order waves at the tail. Details, numbers and
+  the options in [perf/v0.20](perf/v0.20/README.md#v020-onslaught-the-41-gate-with-fire-shells-leaps-and-aims-2026-11-07).
+- **The 10k client benchmark's 1 % low is 99 fps on this machine** (budget 120; PR 45 measured 201 to 219 on its own machine). Not
+  compared with the tree before v0.20 here.
+- **Incremental GC is now on** (perf gate: collections stalled ticks by 20 to 60 ms with it off). It adds write barriers to
+  managed code; the 10k client was no slower with it.
+- **`ai-bench` misses its exit criteria** (2026-11-07, 90 matches): Hard beats Normal 83 % and Normal beats Easy 94 % (better than
+  the 2026-11-03 bench's 71 % and 83 %), but Hard-Normal on 512 is 4/6 and 19 matches reached the 40-minute cap.
+- **`PerformanceTests.MinimapRedrawAtTenThousandOwnUnitsIsUnderOneMillisecond`** also fails on timing (2.0 ms median) when the
+  machine is busy (the full PlayMode suite ran beside `ai-bench`); it passed run alone.
+- **Not run yet:** a full match on Linux played by a person.
+- **Owner approvals still wanted:** the Field manual's v0.20 words went in from `tools/manual-text.v0.20-draft.json` (Figma B3 was approved from them) without a fresh mock review; the Strong/Weak lists on the reworked units' pages are the model's new ones. The asset review's last two items (snapping the larger shell's soft edges and one armour-spark shade to the effect palette, and replacing the staged clips with clips from a real match) are not done.
+- **Model choices:** the fight model's heavy class uses the Heavy's armour and resistance for every heavy unit (Artillery has neither armour nor the Heavy's resistance); its Bomber still counts as `BomberFightSeconds` of blast.
+- **Reviews (2026-11-07):** code review (10 findings, all fixed), security review (no finding above the bar: the combat news follows the leak rule; spec-accepted: a leap's landing point and a whole shell flight go to whoever knew the Bomber or gun), performance review (the hot paths by reading, then the gate above).
+- **Fire on own units:** none, as flame splash never hits allies (D11).
 
 ## Owner playtest fixes (2026-11-06, on `fix/pr30-review-round3`)
 
@@ -229,7 +263,7 @@ The owner closed the v0.10 to v0.15.1 verification and tuning items: the playtes
 | ---- | ------ |
 | The `Tiles` atlas outgrew Unity's default 2048 import size | **Fixed.** The rich gem frames took it to 4096×2048 and the importer's default cap halved it, so every frame past the old edge sampled the wrong art (rich gems drew as plain rock). `ArtImporter` now imports every atlas at up to `MaxSize` (8192), and `ArtImportTests.ImporterSettingsApplyToEveryArtTexture` checks it. The Tiles atlas and its mask cost about twice the GPU memory they did (4096×2048, uncompressed). |
 | Rich fields' fairness band (spec D5) | **Decided** (owner, 2026-11-03): no upper band. As written, every start within the expansions' 0.6 × size of a rich field rejected most plans at every size; what holds is that no start is beside a rich field and every start can reach one. |
-| The rich gem colour and HUD lines (Figma H1) | **Built** (approved 2026-11-03, colour A: the palette's gold `Warn` #F2C14E). An own finished Miner's hover card says "Mining rich gem: 25/s" or "Mining: 10/s"; a Miner being placed has a label under its ghost ("Rich gem: 25/s", "Gem: 10/s"); the minimap draws rich gems gold and its Gems swatch shows both colours. Checked in a hosted match through the control API (the hover line's text, and 201 mined in about 8 s); the hover card and placement label were not seen on screen (they follow the real pointer). |
+| The rich gem colour and HUD lines (Figma H1) | **Built** (approved 2026-11-03, colour A: the palette's gold `Warn` #F2C14E). An own finished Miner's hover card says "Mining rich gem: 375/s" or "Mining: 25/s"; a Miner being placed has a label under its ghost ("Rich gem: 375/s", "Gem: 25/s"); the minimap draws rich gems gold and its Gems swatch shows both colours. Checked in a hosted match through the control API (the hover line's text, and 201 mined in about 8 s); the hover card and placement label were not seen on screen (they follow the real pointer). |
 | The AI difficulty ladder on v0.16 (measured 2026-11-03 as v0.17's baseline) | Open. `tools/ai-bench.sh --brief 16` on v0.16: Hard beats Normal 81 % on 256, 69 % on 512 and 31 % on 1024 (9 of 16 capped); Normal beats Easy 81 to 100 %. Before any v0.17 change, so it is v0.16's (formations, auto-work) or earlier. Results: `PerfResults/ai-bench-v016-baseline`. |
 | The v0.17 perf gate (2026-11-03) | **Passes** on a quiet machine: 22.6 ms p95 (v0.16 19.7 ms in the same conditions; every part within 0.2 ms, the gap inside the runs' spread). A first run on a busy machine (Firefox, the file indexer) read 26.6 ms, with v0.16 at 24.9 ms. [perf/v0.17](perf/v0.17/README.md). |
 | `HudTests.DiplomacyToggleStopsMyUnitsAttacking` failed once in a full PlayMode run (2026-11-03, v0.17) | Test flakiness. It passed alone twice on the same code; it follows load or test order, like the other timing-sensitive PlayMode tests. |
@@ -277,7 +311,7 @@ One 1v1 in the editor (Game view 916×529) against a Normal AI (Balanced) on a 2
 
 | Finding | Detail |
 | --- | --- |
-| The Normal AI's economy outruns any human | At 2.5 min it had 61 Miners, about 130 units and 634/s income, against 5 Miners and 45/s. End screen: mined 260,371 against 8,159, peak army 380. A Miner (50, 10/s, no upkeep) pays for itself in 5 s, so income grows as fast as Miners can be placed, and the AI places them far faster than a person. `tools/ai-bench.sh` only plays AI against AI, so it can't see this. |
+| The Normal AI's economy outruns any human | At 2.5 min it had 61 Miners, about 130 units and 634/s income, against 5 Miners and 45/s. End screen: mined 260,371 against 8,159, peak army 380. A Miner (50, then 10/s, no upkeep) paid for itself in 5 s (25/s since the 2026-11-05 balance), so income grows as fast as Miners can be placed, and the AI places them far faster than a person. `tools/ai-bench.sh` only plays AI against AI, so it can't see this. |
 | An early raid on Normal | At about 4 min, Scouts and Suicide bombers killed all 5 Builders and 5 Miners (`aistate`: `raids` 1, `killed` 550). Bombers then waited 10–17 tiles from the HQ and destroyed a Barracks blueprint before work on it started. |
 
 **Bugs**
@@ -295,7 +329,7 @@ One 1v1 in the editor (Game view 916×529) against a Normal AI (Balanced) on a 2
 | Finding | Status |
 | --- | --- |
 | The all-Builders chip shows a count but doesn't select | **Open, owner's choice.** A plain click moves the camera to the next Builder; selecting them all needs Ctrl + click (playtest 2026-10-30 choice). Box-selecting was the only obvious way. |
-| A match opens with no units | **Open, design.** The first Builders put you at −5/s at once, and "Resources will run out in 0:57" fires within the first minute. |
+| A match opens with no units | **Open, design; re-measure.** The first Builders put you at −5/s at once (measured before the 2026-11-05 balance raised passive income to 20/s and cut unit upkeep), and "Resources will run out in 0:57" fires within the first minute. |
 | The HQ pick opens very zoomed in | **Fixed.** The pick opens zoomed out in wheel steps until the 12-tile start ring fits with 2 tiles to spare (`Character_Controler.ZoomOutToShow`); it never zooms in on a big screen. |
 | Miner rotation goes back to 0° on each placement | **Fixed.** The next Miner keeps the last facing (`BuildingPlacement.Rotation`). |
 | The command-card keys depend on the selection | **Open, design.** Q queues a Builder with the HQ selected and starts a Miner with Builders selected. With the HQ still selected, Q queued a Builder by mistake. |
@@ -350,7 +384,7 @@ All fixed on the same branch, with `PlaytestFix2Tests` and `PlaytestFix2PlayMode
 | Start badges overlap at the screen edge | Seen at 1080p: badge 2 is covered by badge 4, and badge 1 by the prompt panel. |
 | Left alone after the only opponent leaves the pick | You must still place an HQ and sit through the countdown for "Victory · 0:00". The prompt still says "Pick your start", and no alert says they left. |
 | Random picks can start very close | One 3-player match on 256 put two HQs 34 tiles apart. One observation, not measured. |
-| One gem can feed several Miners | Three Miners on one gem tile each earned the full 10/s (income 125 from 12 Miners). gameplay.md doesn't say whether this is intended. |
+| One gem can feed several Miners | Three Miners on one gem tile each earned the full rate (10/s then, 25/s now; income 125 from 12 Miners). gameplay.md doesn't say whether this is intended. |
 | The Surrender dialog says "Your team keeps playing" in a Free-for-all | Seen in a 1v1. |
 
 **Control API (`tools/war2d`)**

@@ -316,6 +316,7 @@ public class GameManager : NetworkManager
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.FogBatch>(WAR2D.Net.Replication.ClientFog.Receive, false);
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.TerrainBatch>(WAR2D.Net.Replication.ClientTerrain.Receive, false);
         NetworkClient.RegisterHandler<WAR2D.Net.Replication.BuildingBatch>(WAR2D.Net.Replication.ClientBuildings.Receive, false);
+        NetworkClient.RegisterHandler<WAR2D.Net.Replication.CombatBatch>(WAR2D.Net.Replication.ClientCombat.Receive, false);
         NetworkClient.RegisterHandler<WAR2D.Net.Rejoin.RejoinRefused>(OnRejoinRefused, false);
         NetworkClient.RegisterHandler<WAR2D.Net.Rejoin.HostLeaving>(OnHostLeaving, false);
         // Playtest 2026-11-02: the host kicked or banned us; the server closes the connection a moment later.

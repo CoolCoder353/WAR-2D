@@ -78,6 +78,10 @@ namespace WAR2D.Client
         public event Action<int, int> BuildingAttack;
         /// <summary>Raised for each unit that left because it died: (index, last predicted position).</summary>
         public event Action<int, float2> Died;
+        /// <summary>v0.20: why the unit <see cref="Died"/> is reporting died (its cause), valid during that event.</summary>
+        public LeaveReason LastDeathReason { get; private set; }
+        /// <summary>v0.20: a unit left the client's knowledge for any reason (its id index).</summary>
+        public event Action<int> Forgotten;
         /// <summary>Raised when a unit the client didn't know becomes known: (index, where it is). Own units are always known, so for them it means a new unit.</summary>
         public event Action<int, float2> Appeared;
 
@@ -98,6 +102,9 @@ namespace WAR2D.Client
             blend = new NativeArray<float2>(idCapacity, allocator);
             drawn = new NativeList<float2>(1024, allocator);
             leads = new NativeArray<OrderLead>(idCapacity, allocator);
+            routeUnits = new NativeList<RouteUnit>(64, allocator);
+            routeTiles = new NativeList<int2>(1024, allocator);
+            counts = new NativeArray<int>(2, allocator);
         }
 
         /// <summary>Units known.</summary>
@@ -118,6 +125,12 @@ namespace WAR2D.Client
         internal NativeArray<int> OwnerArray => owner;
         /// <summary>Health percent by index (for packing jobs).</summary>
         internal NativeArray<byte> HealthArray => health;
+
+        /// <summary>Unit types by index (the draw job).</summary>
+        internal NativeArray<byte> TypeArray => type;
+
+        /// <summary>Prediction states by index; <c>Id</c> is the id known there (the draw job).</summary>
+        internal NativeArray<PredictState> StateArray => states;
         /// <summary>Id capacity (indices are below this).</summary>
         public int Capacity => states.Length;
 
@@ -181,7 +194,18 @@ namespace WAR2D.Client
             }
         }
 
+        // Profiler markers (nearly free in a release player): where a batch's time goes.
+        private static readonly Unity.Profiling.ProfilerMarker DecodeMarker = new Unity.Profiling.ProfilerMarker("ClientUnitStore.DecodeMoveOrder"),
+            RoutesMarker = new Unity.Profiling.ProfilerMarker("ClientUnitStore.ApplyRoutes"), OtherMarker = new Unity.Profiling.ProfilerMarker("ClientUnitStore.ApplyOther");
+
         private void ApplyOne(NetworkReader reader, int batchTick)
+        {
+            MessageType kind = Messages.PeekType(reader);
+            if (kind == MessageType.MoveOrder) { ApplyMessage(reader, batchTick); return; }
+            using (OtherMarker.Auto()) ApplyMessage(reader, batchTick);
+        }
+
+        private void ApplyMessage(NetworkReader reader, int batchTick)
         {
             switch (Messages.PeekType(reader))
             {
@@ -198,18 +222,10 @@ namespace WAR2D.Client
                 case MessageType.MoveOrder:
                 {
                     moves.Clear(); waypoints.Clear();
-                    int tick = Messages.DecodeMoveOrder(reader, moves, waypoints);
-                    foreach (RouteUnit u in moves)
-                    {
-                        if (!IsKnown(u.Index)) continue;
-                        float2 before = PredictOne(u.Index, Now);
-                        SetRoute(u.Index, u.First, u.Count);
-                        PredictState s = states[u.Index];
-                        MovementPrediction.StartRoute(ref s, arena[routeStart[u.Index]], tick * dt);
-                        states[u.Index] = s;
-                        Blend(u.Index, before);
-                        EndLead(u.Index, Now);
-                    }
+                    int tick;
+                    using (DecodeMarker.Auto()) tick = Messages.DecodeMoveOrder(reader, moves, waypoints);
+                    using var applying = RoutesMarker.Auto();
+                    ApplyRoutes(tick);
                     break;
                 }
                 case MessageType.Correction:
@@ -248,6 +264,93 @@ namespace WAR2D.Client
             }
         }
 
+        /// <summary>
+        /// A MoveOrder's routes, in a Burst job (profiled 2026-11-07: the managed loop took 3 to 6 ms of a frame when an order's
+        /// 2,500 routes arrived at 10,000 units). Per known unit, as before: its new route, its prediction restarted on it at the
+        /// message's tick, the jump blended out of the drawn position, and a shown order ended. The live-route cap is checked for the
+        /// whole message first, so a refused one changes nothing.
+        /// </summary>
+        private void ApplyRoutes(int tick)
+        {
+            long adding = 0;
+            foreach (RouteUnit u in moves) adding += u.Count;
+            if (liveWaypoints + adding > (long)knownSlot.Length * RouteMaintenance.MaxWaypoints)
+                throw new InvalidDataException("the routes are longer than any server sends");
+            // Copy the decoded lists across (both memcpy).
+            if (routeUnitBuffer.Length < moves.Count) routeUnitBuffer = new RouteUnit[math.ceilpow2(moves.Count)];
+            if (routeTileBuffer.Length < waypoints.Count) routeTileBuffer = new int2[math.ceilpow2(waypoints.Count)];
+            moves.CopyTo(routeUnitBuffer);
+            waypoints.CopyTo(routeTileBuffer);
+            routeUnits.ResizeUninitialized(moves.Count);
+            routeTiles.ResizeUninitialized(waypoints.Count);
+            NativeArray<RouteUnit>.Copy(routeUnitBuffer, routeUnits.AsArray(), moves.Count);
+            NativeArray<int2>.Copy(routeTileBuffer, routeTiles.AsArray(), waypoints.Count);
+            counts[0] = liveWaypoints;
+            counts[1] = leadCount;
+            new ApplyRoutesJob
+            {
+                Moves = routeUnits.AsArray(), Waypoints = routeTiles.AsArray(), KnownSlot = knownSlot, States = states, RouteStart = routeStart,
+                RouteCount = routeCount, Arena = arena, Blend = blend, Leads = leads, Counts = counts, Now = Now, StartTime = tick * dt,
+            }.Run();
+            liveWaypoints = counts[0];
+            leadCount = counts[1];
+            if (arena.Length > 2 * liveWaypoints + 65536) Compact();
+        }
+
+        private NativeList<RouteUnit> routeUnits;
+        private NativeList<int2> routeTiles;
+        private NativeArray<int> counts; // the job's live waypoints and running leads
+        private RouteUnit[] routeUnitBuffer = new RouteUnit[64];
+        private int2[] routeTileBuffer = new int2[1024];
+
+        [BurstCompile(FloatMode = FloatMode.Deterministic)]
+        private struct ApplyRoutesJob : IJob
+        {
+            [ReadOnly] public NativeArray<RouteUnit> Moves;
+            [ReadOnly] public NativeArray<int2> Waypoints; // RouteWire half tiles
+            [ReadOnly] public NativeArray<int> KnownSlot;
+            public NativeArray<PredictState> States;
+            public NativeArray<int> RouteStart, RouteCount;
+            public NativeList<float2> Arena;
+            public NativeArray<float2> Blend;
+            public NativeArray<OrderLead> Leads;
+            public NativeArray<int> Counts;
+            public float Now, StartTime;
+
+            public void Execute()
+            {
+                for (int m = 0; m < Moves.Length; m++)
+                {
+                    RouteUnit u = Moves[m];
+                    int index = u.Index;
+                    if ((uint)index >= (uint)KnownSlot.Length || KnownSlot[index] < 0) continue;
+                    float2 before = Predict(index);
+                    Counts[0] += u.Count - RouteCount[index];
+                    RouteStart[index] = Arena.Length;
+                    RouteCount[index] = u.Count;
+                    for (int i = 0; i < u.Count; i++) Arena.Add(RouteWire.Decode(Waypoints[u.First + i]));
+                    PredictState s = States[index];
+                    MovementPrediction.StartRoute(ref s, Arena[RouteStart[index]], StartTime);
+                    States[index] = s;
+                    if (Now > 0f) Keep(index, Blend[index] + before - Predict(index)); // Blend
+                    if (Leads[index].Kind != 0) // EndLead
+                    {
+                        Keep(index, Leads[index].At - Predict(index));
+                        Counts[1]--;
+                        Leads[index] = default;
+                    }
+                }
+            }
+
+            private float2 Predict(int index)
+            {
+                PredictState s = States[index];
+                return MovementPrediction.Predict(ref s, Arena.AsArray(), RouteStart[index], RouteCount[index], Now);
+            }
+
+            private void Keep(int index, float2 offset) => Blend[index] = math.lengthsq(offset) > MaxBlendTiles * MaxBlendTiles ? float2.zero : offset;
+        }
+
         /// <summary>Adds the jump between where the unit was drawn from (<paramref name="before"/>) and its new prediction to its blend.</summary>
         private void Blend(int index, float2 before)
         {
@@ -260,6 +363,7 @@ namespace WAR2D.Client
         {
             int index = NetIdAllocator.IndexOf(u.Id);
             if (index >= states.Length) throw new InvalidDataException("unit index beyond the client's capacity");
+            CheckRouteRoom(index, u.Count); // before anything changes: a refused Enter leaves no half-known unit
             blend[index] = float2.zero;
             ClearLead(index);
             bool appeared = !IsKnown(index);
@@ -293,7 +397,12 @@ namespace WAR2D.Client
         private void Leave(in LeaveUnit u, int tick)
         {
             if (!IsKnown(u.Index)) return;
-            if (u.Reason == LeaveReason.Died) Died?.Invoke(u.Index, PredictOne(u.Index, tick * dt));
+            if (LeaveReasons.IsDeath(u.Reason))
+            {
+                LastDeathReason = u.Reason;
+                Died?.Invoke(u.Index, PredictOne(u.Index, tick * dt));
+            }
+            Forgotten?.Invoke(u.Index);
             int slot = knownSlot[u.Index];
             int last = known[known.Length - 1];
             known[slot] = last;
@@ -365,8 +474,19 @@ namespace WAR2D.Client
             }
         }
 
+        /// <summary>
+        /// Copy steps make long routes cheap on the wire: the live total stays at most what a real server can send (every id at its
+        /// longest route), so a hostile host or recording can't make the client allocate more. Throws before anything changes.
+        /// </summary>
+        private void CheckRouteRoom(int index, int count)
+        {
+            if (liveWaypoints + count - routeCount[index] > (long)knownSlot.Length * RouteMaintenance.MaxWaypoints)
+                throw new InvalidDataException("the routes are longer than any server sends");
+        }
+
         private void SetRoute(int index, int first, int count)
         {
+            CheckRouteRoom(index, count);
             liveWaypoints += count - routeCount[index];
             routeStart[index] = arena.Length;
             routeCount[index] = count;
@@ -420,6 +540,7 @@ namespace WAR2D.Client
             disposed = true;
             states.Dispose(); routeStart.Dispose(); routeCount.Dispose(); owner.Dispose(); type.Dispose(); health.Dispose();
             arena.Dispose(); known.Dispose(); knownSlot.Dispose(); predicted.Dispose(); blend.Dispose(); drawn.Dispose(); leads.Dispose();
+            routeUnits.Dispose(); routeTiles.Dispose(); counts.Dispose();
         }
 
         /// <summary>An own order drawn before the server answers it.</summary>

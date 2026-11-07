@@ -108,6 +108,32 @@ namespace WAR2D.Client.Render
 
             /// <summary>The cell of a turret at a rendered facing and frame.</summary>
             public uint TurretCell(int type, int facing, int frame) => (uint)(TurretFirst[type] + facing * TurretFrames[type] + frame);
+
+            /// <summary>The hull and turret columns, one <see cref="TypeCells"/> per type, for Burst jobs (the caller disposes it).</summary>
+            public Unity.Collections.NativeArray<TypeCells> ToNative(Unity.Collections.Allocator allocator)
+            {
+                var cells = new Unity.Collections.NativeArray<TypeCells>(First.Length, allocator);
+                for (int t = 0; t < cells.Length; t++)
+                    cells[t] = new TypeCells
+                    {
+                        HullFirst = HullFirst[t], HullFrames = HullFrames[t], Directions = Directions[t],
+                        TurretFirst = TurretFirst[t], TurretFrames = TurretFrames[t], TurretTiles = TurretTiles[t],
+                    };
+                return cells;
+            }
+        }
+
+        /// <summary>One type's row of <see cref="Table"/> (hull, directions and turret), readable in Burst.</summary>
+        public struct TypeCells
+        {
+            public int HullFirst, HullFrames, Directions, TurretFirst, TurretFrames, TurretTiles;
+
+            /// <summary>As <see cref="Table.BodyCell"/>.</summary>
+            public uint BodyCell(float rotationRad, bool moving, float time, float sinceAction, int phase) =>
+                Cell(HullFirst, HullFrames, Directions, rotationRad, moving, time, sinceAction, phase);
+
+            /// <summary>As <see cref="Table.TurretCell"/>.</summary>
+            public uint TurretCell(int facing, int frame) => (uint)(TurretFirst + facing * TurretFrames + frame);
         }
     }
 }

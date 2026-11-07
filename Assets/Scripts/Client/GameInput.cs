@@ -36,7 +36,7 @@ public static class GameInput
     public static InputAction Hold => Map["Hold"];
     /// <summary>Sends the selected units roaming: each scouts random ground not seen lately until given another order (J).</summary>
     public static InputAction Roam => Map["Roam"];
-    /// <summary>Sets off the selected Suicide bombers (B).</summary>
+    /// <summary>Sets off the selected Bombers (B).</summary>
     public static InputAction Detonate => Map["Detonate"];
     /// <summary>Arms Repair for Builders: the next click repairs the building or wall there (F).</summary>
     public static InputAction Repair => Map["Repair"];
@@ -53,7 +53,7 @@ public static class GameInput
 
     /// <summary>Selects the idle Builders (.); with the assign modifier held, every Builder.</summary>
     public static InputAction SelectIdleBuilders => Map["SelectIdleBuilders"];
-    /// <summary>Selects the army: every own unit that can attack (,). Pressed again it adds Diggers and Suicide bombers.</summary>
+    /// <summary>Selects the army: every own unit that can attack (,). Pressed again it adds Diggers and Bombers.</summary>
     public static InputAction SelectArmy => Map["SelectArmy"];
     /// <summary>Centres the camera on your HQ; twice quickly it also selects it (Backspace).</summary>
     public static InputAction JumpToHq => Map["JumpToHq"];

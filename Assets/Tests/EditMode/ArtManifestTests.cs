@@ -27,7 +27,7 @@ public class ArtManifestTests
             Assert.IsTrue(ArtManifest.TryGet(t.ToString(), out ArtEntry e) && e.Kind == ArtKind.Tile, t.ToString());
     }
 
-    [TestCase("Builder"), TestCase("Digger"), TestCase("Bomb"), TestCase("WallBlueprint"), TestCase("PlayerWall")]
+    [TestCase("Builder"), TestCase("Digger"), TestCase("Mine"), TestCase("WallBlueprint"), TestCase("PlayerWall")]
     public void V07KitIsPresent(string id) => Assert.IsTrue(ArtManifest.TryGet(id, out _), id);
 
     [Test]

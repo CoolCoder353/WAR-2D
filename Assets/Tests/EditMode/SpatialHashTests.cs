@@ -61,6 +61,8 @@ public class SpatialHashTests
         }
 
         private NativeArray<byte> Opaque = new NativeArray<byte>(1, Allocator.Persistent);
+        /// <summary>v0.20: nobody is in the air (every container must be valid).</summary>
+        private NativeArray<byte> Airborne;
         private NativeArray<uint> CellOwners;
 
         /// <summary>Hash cells any type may reach (the longest range); defaults to <see cref="Range"/>'s.</summary>
@@ -75,6 +77,7 @@ public class SpatialHashTests
             h = new CellIndexJob { Positions = BuildingPositions, Cell = BCell, InvCellSize = inv, CellsX = CellsAcross, CellsY = CellsAcross }.Schedule(BuildingPositions.Length, 64, h);
             h = new CountingSortJob { Cell = BCell, CellStart = BCellStart, Sorted = BSorted }.Schedule(h);
             h = new CellOwnersJob { Cell = Cell, OwnerSlot = Owner, CellOwners = CellOwners }.Schedule(h);
+            if (!Airborne.IsCreated) Airborne = new NativeArray<byte>(Positions.Length, Allocator.Persistent);
             h = new NearestEnemyJob
             {
                 Search = new SearchInput
@@ -88,7 +91,9 @@ public class SpatialHashTests
                     BuildingCellStart = BCellStart, BuildingSorted = BSorted, BuildingAnchor = BAnchor, BuildingSize = BSize,
                     InvCellSize = inv, CellsX = CellsAcross, CellsY = CellsAcross, SearchCells = SearchCells,
                     OpaqueTile = Opaque, WallState = WallState, WallOwnerSlot = WallState, BuildingFlag = BuildingFlag, Width = 1, Height = 1, // open ground: one clear tile
+                    Airborne = Airborne, RockTile = Opaque,
                 },
+                ShellRadiusByType = MinRangeSqByType, // no type fires shells here (all 0 unless a test sets a minimum range)
                 Type = Type, RangeSqByType = RangeSqByType, DamageByType = DamageByType,
                 Stance = Stance, OrderSlot = OrderSlot, OrderLive = OrderLive,
                 MinRangeSqByType = MinRangeSqByType,
@@ -100,6 +105,7 @@ public class SpatialHashTests
         public void Dispose()
         {
             Opaque.Dispose();
+            if (Airborne.IsCreated) Airborne.Dispose();
             CellOwners.Dispose();
             Positions.Dispose(); Owner.Dispose(); AttackMask.Dispose(); Health.Dispose(); Type.Dispose(); Stance.Dispose(); OrderSlot.Dispose(); OrderLive.Dispose(); Cell.Dispose(); CellStart.Dispose();
             Sorted.Dispose(); Target.Dispose(); TargetKind.Dispose(); BuildingPositions.Dispose(); BuildingOwner.Dispose();

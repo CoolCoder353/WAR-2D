@@ -66,7 +66,7 @@ namespace WAR2D.Sim
         /// <summary>0 front, 1 middle, 2 back.</summary>
         public static int RoleOf(UnitType type) => type switch
         {
-            UnitType.Heavy or UnitType.Tank or UnitType.Flamethrower or UnitType.SuicideBomber => 0,
+            UnitType.Heavy or UnitType.Tank or UnitType.Flamethrower or UnitType.Bomber => 0,
             UnitType.Sniper or UnitType.Artillery => 2,
             _ => 1,
         };

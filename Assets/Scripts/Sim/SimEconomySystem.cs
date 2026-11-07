@@ -51,6 +51,8 @@ namespace WAR2D.Sim
                 UnitsBySlot = data.UnitsBySlot,
                 Charged = data.ChargedThisTick,
                 DecayPerTick = data.DecayPercentPerSecond * 0.01f * data.Dt,
+                Airborne = data.Airborne,
+                BlastRadiusByType = data.BlastRadiusByType,
             }.Schedule(state.Dependency);
 
             state.Dependency = new WriteBackEconomyJob
@@ -78,6 +80,9 @@ namespace WAR2D.Sim
         public NativeArray<float> Spent;
         public NativeArray<float> Owed;
         public NativeArray<int> UnitsBySlot;
+        /// <summary>v0.20: a unit in the air doesn't decay, and decay never quite kills a Bomber (it must explode: the next tick's last gasp sets it off).</summary>
+        [ReadOnly] public NativeArray<byte> Airborne;
+        [ReadOnly] public NativeArray<float> BlastRadiusByType;
         public NativeArray<byte> Charged;
         public float DecayPerTick;
 
@@ -136,9 +141,11 @@ namespace WAR2D.Sim
         /// <summary>Takes one unit's share of its owner's decay: up to its remaining health, in shares of its max health.</summary>
         private void Drain(int unit, int owner, NativeArray<float> pool)
         {
+            if (Airborne[unit] != 0) return;
             float left = Health[unit] / MaxHealth[unit];
             float taken = math.min(pool[owner], left);
             Health[unit] = taken >= left ? 0f : Health[unit] - taken * MaxHealth[unit];
+            if (Health[unit] <= 0f && Type[unit] < BlastRadiusByType.Length && BlastRadiusByType[Type[unit]] > 0f) Health[unit] = 1e-3f;
             pool[owner] -= taken;
         }
     }

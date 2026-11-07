@@ -59,6 +59,7 @@ namespace WAR2D.Sim
                 WallState = data.WallState, WallHealth = data.WallHealth, WallMaxHealth = data.WallMaxHealth, Walls = data.WallWork,
                 Height = data.Height, CellSize = data.CellSize, CellsX = data.CellsX, CellsY = data.CellsY, CellStart = data.CellStart, Sorted = data.Sorted,
                 Finished = data.WorkFinished,
+                BuildingKind = data.BuildingKind, BuildRateByKind = data.BuildRateByKind,
             }.Schedule(state.Dependency);
         }
     }
@@ -86,6 +87,9 @@ namespace WAR2D.Sim
         public NativeQueue<TileWork> Walls;
         [ReadOnly] public NativeArray<int> CellStart, Sorted;
         public NativeQueue<int> Finished;
+        /// <summary>v0.20: health one Builder adds a second to each building type's blueprint (a type's <c>BuildSeconds</c>, else <see cref="Power"/>).</summary>
+        [ReadOnly] public NativeArray<byte> BuildingKind;
+        [ReadOnly] public NativeArray<float> BuildRateByKind;
 
         public void Execute()
         {
@@ -110,7 +114,7 @@ namespace WAR2D.Sim
                     GiveUpIfStopped(i);
                     continue;
                 }
-                if (blueprint) BuildingWork[b] += Power * Dt;
+                if (blueprint) BuildingWork[b] += (BuildingKind[b] < BuildRateByKind.Length ? BuildRateByKind[BuildingKind[b]] : Power) * Dt;
                 else Repairs.Enqueue(new RepairWork { Slot = b, Payer = OwnerId[i], Work = Power * Dt });
             }
         }

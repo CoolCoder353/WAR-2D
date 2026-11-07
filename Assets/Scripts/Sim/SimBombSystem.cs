@@ -8,9 +8,9 @@ namespace WAR2D.Sim
 {
     /// <summary>
     /// Hidden bombs. A finished, paid bomb goes off when a living unit of an owner it attacks comes within
-    /// <see cref="SimData.BombTriggerRadius"/> tiles of the bomb's tile centre (or when it is in <see cref="SimData.ForcedBombs"/>;
+    /// <see cref="SimData.MineTriggerRadius"/> tiles of the bomb's tile centre (or when it is in <see cref="SimData.ForcedBombs"/>;
     /// playtest 2026-11-04: it used to need the unit's centre on the very tile). The blast hurts every unit, building and wall tile
-    /// within <see cref="SimData.BlastRadius"/>, those its owner doesn't attack at <see cref="SimData.BombFriendlyDamage"/>, and destroys the
+    /// within <see cref="SimData.BlastRadius"/>, those its owner doesn't attack at <see cref="SimData.MineFriendlyDamage"/> (less each unit's v0.20 blast resistance; a Bomber in the air is untouched), and destroys the
     /// bomb. Unit damage lands in the SoA (combat's write-back stores it); building and wall damage wait for
     /// the next boundary.
     /// </summary>
@@ -39,7 +39,7 @@ namespace WAR2D.Sim
                 BuildingCount = math.min(data.BuildingCount[0], data.BuildingCapacity),
                 Width = data.Width, Height = data.Height,
                 CellSize = data.CellSize, CellsX = data.CellsX, CellsY = data.CellsY,
-                Radius = data.BlastRadius, Damage = data.BlastDamage, TriggerRadius = data.BombTriggerRadius, FriendlyDamage = data.BombFriendlyDamage,
+                Radius = data.BlastRadius, Damage = data.BlastDamage, TriggerRadius = data.MineTriggerRadius, FriendlyDamage = data.MineFriendlyDamage,
                 Positions = data.Positions, UnitHealth = data.Health, OwnerSlot = data.OwnerSlot, OwnerId = data.OwnerId, LastHitBy = data.LastHitBy,
                 CellStart = data.CellStart, Sorted = data.Sorted, AttackMask = data.AttackMask,
                 BuildingPositions = data.BuildingPositions, BuildingAnchor = data.BuildingAnchor, BuildingSize = data.BuildingSize,
@@ -47,6 +47,7 @@ namespace WAR2D.Sim
                 BuildingOwnerSlot = data.BuildingOwnerSlot, BuildingOwnerId = data.BuildingOwnerId, BuildingIds = data.BuildingIds,
                 WallState = data.WallState, WallOwnerSlot = data.WallOwnerSlot, WallDamage = data.WallDamage,
                 Blasts = data.BombBlasts, Forced = data.ForcedBombs,
+                Type = data.Type, IdOf = data.IdOf, BlastResistByType = data.BlastResistByType, Combat = data.Combat, LastHitKind = data.LastHitKind, Tick = clock.Tick,
             }.Schedule(state.Dependency);
         }
     }
@@ -67,6 +68,13 @@ namespace WAR2D.Sim
         public NativeQueue<TileWork> WallDamage;
         public NativeQueue<BombBlast> Blasts;
         [ReadOnly] public NativeParallelHashSet<int> Forced;
+        /// <summary>v0.20: blast resistance, and who is in the air (untouched) and what last hurt each unit (a Mine's blast).</summary>
+        [ReadOnly] public NativeArray<byte> Type;
+        [ReadOnly] public NativeArray<int> IdOf;
+        [ReadOnly] public NativeArray<float> BlastResistByType;
+        [ReadOnly] public NativeArray<UnitCombat> Combat;
+        public NativeArray<byte> LastHitKind;
+        public int Tick;
 
         public void Execute()
         {
@@ -117,8 +125,12 @@ namespace WAR2D.Sim
                 {
                     int u = Sorted[k];
                     if (UnitHealth[u] <= 0f || math.distancesq(Positions[u], centre) > rSq) continue;
-                    UnitHealth[u] = math.max(0f, UnitHealth[u] - Damage * Share(slot, OwnerSlot[u]));
+                    int id = IdOf[u], index = NetIdAllocator.IndexOf(id);
+                    UnitCombat state = UnitCombat.For(Combat[index], id);
+                    if (state.AirborneAt(id, Tick)) continue;
+                    UnitHealth[u] = math.max(0f, UnitHealth[u] - CombatRules.Resisted(Damage * Share(slot, OwnerSlot[u]), BlastResistByType[Type[u]]));
                     LastHitBy[u] = owner;
+                    LastHitKind[index] = HitKinds.Blast;
                 }
             }
 

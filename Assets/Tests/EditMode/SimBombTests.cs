@@ -8,7 +8,7 @@ public class SimBombTests
 {
     private static int ArmedBomb(SimHarness sim, int owner, int2 tile)
     {
-        int id = sim.PlaceBuilding(owner, BuildingType.Bomb, tile);
+        int id = sim.PlaceBuilding(owner, BuildingType.Mine, tile);
         sim.Tick();
         sim.Tick();
         sim.AddWork(id, 1000f); // complete it
@@ -56,7 +56,7 @@ public class SimBombTests
     public void ABlueprintBombDoesNothing()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(32));
-        sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Bomb, new int2(15, 15));
+        sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Mine, new int2(15, 15));
         sim.Spawn(SimHarness.OwnerB, new float2(15.5f, 15.5f));
         sim.TickSeconds(2f);
         sim.Em.CompleteAllTrackedJobs();

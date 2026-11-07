@@ -74,6 +74,10 @@ namespace WAR2D.Sim
             SimTiming.CommandsEndMs = mark; // until the command stage moves it
             data.AttackEvents.Clear();
             data.BuildingAttackEvents.Clear();
+            // v0.20: this tick's aims, leaps and launches were reported at Settled above.
+            data.AimEvents.Clear();
+            data.Leaps.Clear();
+            data.ShellsLaunched.Clear();
             data.BombBlasts.Clear();
             data.ForcedBombs.Clear();
             data.ForcedBombers.Clear();

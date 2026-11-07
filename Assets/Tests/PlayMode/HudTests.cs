@@ -600,10 +600,10 @@ public class HudTests
         VisualElement root = HudRoot();
         UnitCommander.Instance.Selection.SelectIds(new List<int> { builder });
         yield return PlayModeMatch.WaitUntil(() => Shown(root.Q<Button>("build-radar")), 5f);
-        foreach (string name in new[] { "build-miner", "build-barracks", "build-wall", "build-bomb", "build-radar", "cmd-repair" })
+        foreach (string name in new[] { "build-miner", "build-barracks", "build-wall", "build-mine", "build-radar", "cmd-repair" })
             Assert.That(Shown(root.Q<Button>(name)), Is.True, name);
         Assert.That(Shown(root.Q<Button>("cmd-dig")), Is.False, "no Diggers selected");
-        Assert.That(root.Q<Label>("build-bomb-cost").text, Is.EqualTo(config.GetBuilding(BuildingType.Bomb).UpfrontCost.ToString("0.##")));
+        Assert.That(root.Q<Label>("build-mine-cost").text, Is.EqualTo(config.GetBuilding(BuildingType.Mine).UpfrontCost.ToString("0.##")));
     }
 
     [UnityTest, Timeout(120000)]

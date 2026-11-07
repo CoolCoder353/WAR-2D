@@ -259,6 +259,8 @@ namespace WAR2D.Client.Render
         [ReadOnly] public NativeArray<float> Scale;      // by index: tiles across (2 for large units)
         [ReadOnly] public NativeArray<byte> Selected;    // by index: bit 1 selected, bit 2 roaming
         [ReadOnly] public NativeArray<byte> Flash;       // by index: 1 while the unit flashes from a hit
+        /// <summary>v0.20 (Figma B1): by index, 1 hides the health bar (an airborne Bomber's).</summary>
+        [ReadOnly] public NativeArray<byte> HideBar;
         [ReadOnly] public NativeArray<float> Trail;      // by index: the health bar's recent-damage level
         public float UnitHalfSize;
         public uint RingFrame, LargeRingFrame, RoamRingFrame;
@@ -299,6 +301,7 @@ namespace WAR2D.Client.Render
                     pad = (uint)(Selected[index] & 1) | (uint)Flash[index] << 1,
                 };
                 if (!WAR2D.Client.Overlays.OverlayRules.ShowHealthBar(BarMode, health, selected)) continue;
+                if (HideBar.IsCreated && HideBar[index] != 0) continue;
                 int frame = math.clamp((int)math.round(health * (InstancedUnitRenderer.BarFrames - 1)), 0, InstancedUnitRenderer.BarFrames - 1);
                 Bars[bars++] = new UnitInstance
                 {
