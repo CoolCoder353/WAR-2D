@@ -44,7 +44,7 @@ public partial class WorldStateManager
         if (!TryActingOwner(sender, out int owner) || !IsOrderValid(kind, goal)) return;
         List<int> ids = Accumulate(owner, token, OrderChunkKind, idChunk, final);
         if (ids == null) return;
-        PlayerActions.Order(owner, ids, (OrderKind)kind, queue, goal, formation, targetId);
+        PlayerActions.Order(owner, ids, (OrderKind)kind, queue, goal, formation, targetId, urgent: true);
     }
 
     /// <summary>
@@ -81,7 +81,7 @@ public partial class WorldStateManager
     {
         if (!CommandGate.Allow(sender, nameof(CmdOrderSquad))) return;
         if (!CommandValidator.IsSquadIndexValid(squad) || !TryActingOwner(sender, out int owner) || !IsOrderValid(kind, goal)) return;
-        PlayerActions.OrderSquad(owner, squad, (OrderKind)kind, queue, goal, formation, targetId);
+        PlayerActions.OrderSquad(owner, squad, (OrderKind)kind, queue, goal, formation, targetId, urgent: true);
     }
 
     private const int SquadCountTicks = 40; // 2 s at 20 Hz

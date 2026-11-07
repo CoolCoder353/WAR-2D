@@ -35,12 +35,12 @@ namespace WAR2D.Sim
         /// </summary>
         private void ApplyOrder(SimData data, SimContext context, in SimCommand command, int unitCount)
         {
-            IssuingCommand = true; // a click's (or an AI's) order: its fields are built on the next tick, whatever the budget
+            IssuingCommand = command.Urgent; // a player's click: its fields are built on the next tick, whatever the budget
             try { ApplyCommandOrder(data, context, command, unitCount); }
             finally { IssuingCommand = false; }
         }
 
-        /// <summary>True while a command's order is being applied (see <see cref="SectorFieldCache.RebuildDirty"/>).</summary>
+        /// <summary>True while a player's click (<see cref="SimCommand.Urgent"/>) is being applied (see <see cref="SectorFieldCache.RebuildDirty"/>).</summary>
         private static bool IssuingCommand;
 
         private void ApplyCommandOrder(SimData data, SimContext context, in SimCommand command, int unitCount)

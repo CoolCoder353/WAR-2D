@@ -342,7 +342,7 @@ namespace WAR2D.Pathing
         }
 
         /// <summary>
-        /// Schedules every never-built urgent order (a command's), then up to <paramref name="maxPerTick"/> others, never-built
+        /// Schedules every never-built urgent order (a player's click), then up to <paramref name="maxPerTick"/> others, never-built
         /// first. One order's
         /// rebuild is its whole route: the abstract search runs here, then one sector field job per covered sector is scheduled in
         /// parallel. A command's new order isn't capped (2026-11-07): its units stand still until the field is built, and two a tick
