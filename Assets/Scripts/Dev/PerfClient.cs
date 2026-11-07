@@ -127,7 +127,7 @@ public sealed class PerfClient : MonoBehaviour
             budgets["perf.client.fps"] = ("mean", FpsBudget, false);
             budgets["perf.client.low1"] = ("mean", FpsBudget, false);
         }
-        if (batchBytes > 0) PerfMatch.WriteBreakdown(Path.Combine(dir, "breakdown.csv"), typeBytes, typeUnits);
+        if (batchBytes > 0) { Directory.CreateDirectory(dir); PerfMatch.WriteBreakdown(Path.Combine(dir, "breakdown.csv"), typeBytes, typeUnits); }
         stats.WriteCsv(path, budgets);
         WarLog.Info(LogCategory.Dev, $"wrote {path}");
         Application.Quit();
