@@ -59,9 +59,9 @@ public sealed class PerfClient : MonoBehaviour
             // -perfFpsCap n: the game's frame cap (its default is 144; the benchmark runs uncapped unless given one).
             SettingsStore.Current = new GameSettings { VSync = false, FpsCap = int.TryParse(PerfMatch.ArgValue("-perfFpsCap"), out int cap) ? Math.Max(0, cap) : 0, EdgeScroll = false };
             SettingsStore.Apply(SettingsStore.Current);
-            // -perfBreakdown: bytes per message type in this player's unit stream (decodes every batch twice: not for timing runs).
-            if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0) WAR2D.Net.Replication.ReplicationClient.Received += CountBatch;
         }
+        // -perfBreakdown: bytes per message type in this player's unit stream (decodes every batch twice: not for timing runs).
+        if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0) WAR2D.Net.Replication.ReplicationClient.Received += CountBatch;
         UseMeteredTransport();
         GameManager.Instance.ConnectToServer(PerfMatch.ArgValue("-perfClient"));
 
@@ -74,6 +74,7 @@ public sealed class PerfClient : MonoBehaviour
         float lastTime = Time.realtimeSinceStartup;
         TimeSpan lastCpu = self.TotalProcessorTime;
         measuring = View;
+        counting = true;
         measureStart = Time.realtimeSinceStartup;
         if (View) FitAll();
         while (NetworkClient.isConnected && Time.realtimeSinceStartup - started < MaxSeconds)
@@ -125,12 +126,8 @@ public sealed class PerfClient : MonoBehaviour
             File.WriteAllText(Path.Combine(dir, "frames.csv"), frames.ToString());
             budgets["perf.client.fps"] = ("mean", FpsBudget, false);
             budgets["perf.client.low1"] = ("mean", FpsBudget, false);
-            if (batchBytes > 0)
-            {
-                stats.Add("perf.client.batchKBps", batchBytes / 1024.0 / Math.Max(1.0, frameAt[frameAt.Count - 1]));
-                PerfMatch.WriteBreakdown(Path.Combine(dir, "breakdown.csv"), typeBytes, typeUnits);
-            }
         }
+        if (batchBytes > 0) PerfMatch.WriteBreakdown(Path.Combine(dir, "breakdown.csv"), typeBytes, typeUnits);
         stats.WriteCsv(path, budgets);
         WarLog.Info(LogCategory.Dev, $"wrote {path}");
         Application.Quit();
@@ -138,10 +135,11 @@ public sealed class PerfClient : MonoBehaviour
 
     private readonly long[] typeBytes = new long[8], typeUnits = new long[8];
     private long batchBytes;
+    private bool counting; // from the warm-up's end, for every client (the breakdown), not only the measured view
 
     private void CountBatch(WAR2D.Net.Replication.ReplicationBatch batch)
     {
-        if (!measuring) return;
+        if (!counting) return;
         batchBytes += batch.Payload.Count;
         PerfMatch.CountTypes(batch.Payload, typeBytes, typeUnits);
     }
