@@ -861,17 +861,25 @@ namespace WAR2D.Client
                 LastPosition[index] = p;
                 byte type = Types[index];
                 int row = type < Cells.Length ? type : 0; // no bounds checks in a player's Burst code (DecodeEnter refuses bad types too)
-                if (HasFrames)
-                    Frame[index] = Cells[row].BodyCell(Rotation[index], moving, ServerTime, ServerTime - LastAction[index], index);
-                Color[index] = Colours.TryGetValue(owner, out uint c) ? c : UnknownColour;
                 byte health = Health[index];
-                Health01[index] = health / 100f;
                 byte emit = 0;
                 if (TrackHit(index, id, health, p, owner, out UnitHit hit))
                 {
                     HitSlots[i] = hit;
                     emit |= EmitHit;
                 }
+                DrawScale[index] = UseHidden && Hidden[index] != 0 ? -1f : type < ScaleByType.Length ? ScaleByType[type] : 1f;
+                if (!Inside(TurretView, p))
+                {
+                    // Off screen: PackUnitsJob packs nothing outside this view, so its frame, colour and bar wait until it is in it
+                    // (2026-11-07: a frame pick and a colour lookup for each of 100,000 known units a frame, for about 13,000 drawn).
+                    Emits[i] = emit;
+                    return;
+                }
+                if (HasFrames)
+                    Frame[index] = Cells[row].BodyCell(Rotation[index], moving, ServerTime, ServerTime - LastAction[index], index);
+                Color[index] = Colours.TryGetValue(owner, out uint c) ? c : UnknownColour;
+                Health01[index] = health / 100f;
                 if (moving)
                 {
                     int tracked = TrackIds[index];
@@ -885,8 +893,7 @@ namespace WAR2D.Client
                         emit |= EmitTrack;
                     }
                 }
-                DrawScale[index] = UseHidden && Hidden[index] != 0 ? -1f : type < ScaleByType.Length ? ScaleByType[type] : 1f;
-                if (HasFrames && Cells[row].TurretFirst >= 0 && DrawScale[index] > 0f && Inside(TurretView, p)) emit |= PackTurret(i, index, id, type, Cells[row], p);
+                if (HasFrames && Cells[row].TurretFirst >= 0 && DrawScale[index] > 0f) emit |= PackTurret(i, index, id, type, Cells[row], p);
                 Emits[i] = emit;
             }
 
