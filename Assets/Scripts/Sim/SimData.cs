@@ -373,6 +373,8 @@ namespace WAR2D.Sim
         public NativeArray<byte> OrderLive;
         public NativeArray<byte> OrderReady;
         public NativeArray<int> OrderFollowers;
+        /// <summary>Per order slot: its most followers since it was issued (<see cref="OrderBook.PeakFollowers"/>), for the group's stop radius.</summary>
+        public NativeArray<int> OrderPeakFollowers;
         /// <summary>Per order handle (v0.16): the distance to the goal of the formation follower nearest it, last tick (its leader), keyed by <see cref="FormationLead"/>.</summary>
         public NativeArray<float> OrderLead;
         /// <summary>(handle, sector) pairs where a unit of a ready order found no direction.</summary>

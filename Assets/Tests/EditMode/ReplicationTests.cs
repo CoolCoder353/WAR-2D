@@ -701,6 +701,9 @@ public class ReplicationTests
         var health = new NativeArray<float>(1, Allocator.TempJob);
         var idOf = new NativeArray<int>(1, Allocator.TempJob);
         var orderSlot = new NativeArray<int>(1, Allocator.TempJob);
+        var orderReady = new NativeArray<byte>(1, Allocator.TempJob);
+        var orderGoal = new NativeArray<float2>(1, Allocator.TempJob);
+        orderReady[0] = 1;
         health[0] = 1f; idOf[0] = 1; orderSlot[0] = 0;
         var routes = new RouteStore(8, Allocator.TempJob);
         try
@@ -709,7 +712,7 @@ public class ReplicationTests
             {
                 Count = 1, Tick = tick, RetraceBudget = 100, Tolerance = 1f,
                 Positions = positions, Health = health, IdOf = idOf, OrderSlot = orderSlot,
-                BlockOf = blockOf, Blocks = blocks,
+                BlockOf = blockOf, Blocks = blocks, OrderReady = orderReady, OrderGoal = orderGoal,
                 SectorsX = 2, SectorsY = 1, SectorCount = 2, CellsPerSector = cells, CellSize = 2, Width = width, Height = height,
                 Arena = routes.Arena, Start = routes.Start, RouteCount = routes.Count, Generation = routes.Generation,
                 TracedOrder = routes.TracedOrder, TracedId = routes.TracedId, Counters = routes.Counters,
@@ -732,7 +735,81 @@ public class ReplicationTests
         finally
         {
             routes.Dispose();
-            blockOf.Dispose(); blocks.Dispose(); positions.Dispose(); health.Dispose(); idOf.Dispose(); orderSlot.Dispose();
+            blockOf.Dispose(); blocks.Dispose(); positions.Dispose(); health.Dispose(); idOf.Dispose(); orderSlot.Dispose(); orderReady.Dispose(); orderGoal.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// A unit whose order's field doesn't reach its cell yet gets a stub to its own cell, isn't sent the same stub again while it
+    /// waits, and gets its whole route on the first tick the field reaches it (2026-11-07: the stub was kept as the order's route until
+    /// the next rotation, up to 2 s, and the client walked the unit back to its tile meanwhile).
+    /// </summary>
+    [Test]
+    public void AUnitWaitingForItsFieldGetsItsRouteAsSoonAsTheFieldReachesIt()
+    {
+        const int cells = 16, width = 64, height = 32;
+        var blockOf = new NativeArray<int>(2, Allocator.TempJob);
+        var blocks = new NativeArray<byte>(2 * cells * cells, Allocator.TempJob);
+        blockOf[0] = -1; blockOf[1] = 1; // the unit's sector (0) isn't built yet
+        for (int b = 0; b < 2; b++)
+        for (int y = 0; y < cells; y++)
+        for (int x = 0; x < cells; x++)
+            blocks[b * cells * cells + y * cells + x] = b == 1 && x == cells - 1 ? WAR2D.Pathing.FlowDirections.AtGoal : (byte)0; // east to the far column
+        var positions = new NativeArray<float2>(1, Allocator.TempJob);
+        var health = new NativeArray<float>(1, Allocator.TempJob);
+        var idOf = new NativeArray<int>(1, Allocator.TempJob);
+        var orderSlot = new NativeArray<int>(1, Allocator.TempJob);
+        var orderReady = new NativeArray<byte>(1, Allocator.TempJob);
+        var orderGoal = new NativeArray<float2>(1, Allocator.TempJob);
+        orderReady[0] = 1;
+        health[0] = 1f; idOf[0] = 1; orderSlot[0] = 0;
+        orderReady[0] = 0; // the field isn't built yet
+        orderGoal[0] = new float2(63f, 16f);
+        positions[0] = new float2(5f, 16f);
+        var routes = new RouteStore(8, Allocator.TempJob);
+        try
+        {
+            void Run(int tick) => new RouteMaintenance
+            {
+                Count = 1, Tick = tick, RetraceBudget = 100, Tolerance = 1f,
+                Positions = positions, Health = health, IdOf = idOf, OrderSlot = orderSlot,
+                BlockOf = blockOf, Blocks = blocks, OrderReady = orderReady, OrderGoal = orderGoal,
+                SectorsX = 2, SectorsY = 1, SectorCount = 2, CellsPerSector = cells, CellSize = 2, Width = width, Height = height,
+                Arena = routes.Arena, Start = routes.Start, RouteCount = routes.Count, Generation = routes.Generation,
+                TracedOrder = routes.TracedOrder, TracedId = routes.TracedId, Counters = routes.Counters,
+            }.Run();
+
+            Run(1);
+            int stub = routes.GenerationOf(1);
+            Assert.LessOrEqual(routes.CountOf(1), 2, "no field here yet: a stub to the unit's own cell");
+            Run(2);
+            Assert.AreEqual(stub, routes.GenerationOf(1), "the same stub isn't sent again while the unit waits");
+
+            blockOf[0] = 0; // the field is built and reaches the unit (not a rotation tick for index 1)
+            orderReady[0] = 1;
+            Run(3);
+            Assert.AreNotEqual(stub, routes.GenerationOf(1), "the whole route is sent on the next tick");
+            int first = routes.First(1), count = routes.CountOf(1);
+            Assert.Greater(count, 2, "the route reaches past the unit's cell");
+            Assert.AreEqual(cells - 1, (int)(routes.Waypoints[first + count - 1].x / 2) - cells, "it ends at the goal column");
+
+            int generation = routes.GenerationOf(1);
+            Run(4);
+            Assert.AreEqual(generation, routes.GenerationOf(1), "once it has its route it is left alone until a rotation");
+
+            // A built field that doesn't reach the unit's sector: the unit walks straight at the goal meanwhile (SimMovementSystem), so
+            // that is the route it is sent.
+            blockOf[0] = -1;
+            idOf[0] = 2 + (1 << 20); // a new unit on index 2
+            Run(5);
+            first = routes.First(2);
+            Assert.AreEqual(2, routes.CountOf(2), "its tile and the goal");
+            Assert.AreEqual(new float2(63f, 16f), routes.Waypoints[first + 1], "straight at the goal");
+        }
+        finally
+        {
+            routes.Dispose();
+            blockOf.Dispose(); blocks.Dispose(); positions.Dispose(); health.Dispose(); idOf.Dispose(); orderSlot.Dispose(); orderReady.Dispose(); orderGoal.Dispose();
         }
     }
 
@@ -756,6 +833,9 @@ public class ReplicationTests
         var health = new NativeArray<float>(1, Allocator.TempJob);
         var idOf = new NativeArray<int>(1, Allocator.TempJob);
         var orderSlot = new NativeArray<int>(1, Allocator.TempJob);
+        var orderReady = new NativeArray<byte>(1, Allocator.TempJob);
+        var orderGoal = new NativeArray<float2>(1, Allocator.TempJob);
+        orderReady[0] = 1;
         health[0] = 1f; idOf[0] = 1; orderSlot[0] = 0; positions[0] = new float2(1f, 1f);
         var routes = new RouteStore(8, Allocator.TempJob);
         try
@@ -764,7 +844,7 @@ public class ReplicationTests
             {
                 Count = 1, Tick = 1, RetraceBudget = 100, Tolerance = 1f,
                 Positions = positions, Health = health, IdOf = idOf, OrderSlot = orderSlot,
-                BlockOf = blockOf, Blocks = blocks,
+                BlockOf = blockOf, Blocks = blocks, OrderReady = orderReady, OrderGoal = orderGoal,
                 SectorsX = 2, SectorsY = 2, SectorCount = 4, CellsPerSector = cells, CellSize = 2, Width = size, Height = size,
                 Arena = routes.Arena, Start = routes.Start, RouteCount = routes.Count, Generation = routes.Generation,
                 TracedOrder = routes.TracedOrder, TracedId = routes.TracedId, Counters = routes.Counters,
@@ -781,7 +861,7 @@ public class ReplicationTests
         finally
         {
             routes.Dispose();
-            blockOf.Dispose(); blocks.Dispose(); positions.Dispose(); health.Dispose(); idOf.Dispose(); orderSlot.Dispose();
+            blockOf.Dispose(); blocks.Dispose(); positions.Dispose(); health.Dispose(); idOf.Dispose(); orderSlot.Dispose(); orderReady.Dispose(); orderGoal.Dispose();
         }
     }
 }

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Jobs;
 using Unity.Mathematics;
 
 namespace WAR2D.Sim
@@ -9,6 +11,9 @@ namespace WAR2D.Sim
     public partial class SimCommandSystem
     {
         private readonly List<int>[] moversByClass = NewMoverBuckets();
+
+        /// <summary>This tick's time laying formations and issuing orders (the <c>cmd.formation</c> and <c>cmd.issue</c> splits).</summary>
+        private double FormationMs, IssueMs;
 
         private static List<int>[] NewMoverBuckets()
         {
@@ -29,6 +34,16 @@ namespace WAR2D.Sim
         /// must run right after the boundary.
         /// </summary>
         private void ApplyOrder(SimData data, SimContext context, in SimCommand command, int unitCount)
+        {
+            IssuingCommand = true; // a click's (or an AI's) order: its fields are built on the next tick, whatever the budget
+            try { ApplyCommandOrder(data, context, command, unitCount); }
+            finally { IssuingCommand = false; }
+        }
+
+        /// <summary>True while a command's order is being applied (see <see cref="SectorFieldCache.RebuildDirty"/>).</summary>
+        private static bool IssuingCommand;
+
+        private void ApplyCommandOrder(SimData data, SimContext context, in SimCommand command, int unitCount)
         {
             if (command.Order == OrderKind.Build || command.Order == OrderKind.Repair || command.Order == OrderKind.Dig)
             {
@@ -89,10 +104,14 @@ namespace WAR2D.Sim
                 IssueAttack(data, context, chase, attackTick); // never forms up: the group is going after one target
                 return;
             }
+            double split = PerfSplits.Now;
             if (command.Formation) AssignFormation(data, context, command.Tile);
+            FormationMs += PerfSplits.Now - split;
+            split = PerfSplits.Now;
             int tick = SystemAPI.GetSingleton<SimClock>().Tick;
             for (int sizeClass = 0; sizeClass < moversByClass.Length; sizeClass++)
                 Issue(data, context, moversByClass[sizeClass], sizeClass, command.Tile, stance, tick, command.OwnerId);
+            IssueMs += PerfSplits.Now - split;
             if (command.Formation) ApplyFormationPending(data);
         }
 
@@ -128,11 +147,13 @@ namespace WAR2D.Sim
             // fell back to the goal itself, so several units shared it and never arrived).
             blockedSlots.Clear();
             formationSeats.Reset(data.FormationSpacing);
+            NativeArray<byte> open = OpenSlots(context, centre);
             for (int k = 0; k < formationOffsets.Count; k++)
             {
-                if (OpenFrom(context, centre, formationOffsets[k])) formationSeats.Add(formationOffsets[k]);
+                if (open[k] != 0) formationSeats.Add(formationOffsets[k]);
                 else { blockedSlots.Add((k, formationOffsets[k])); formationOffsets[k] = FormationRules.NoSeat; }
             }
+            open.Dispose();
             foreach ((int k, float2 original) in blockedSlots)
             {
                 float2 offset = original;
@@ -142,6 +163,52 @@ namespace WAR2D.Sim
                     if (OpenFrom(context, centre, offset) && !formationSeats.Taken(offset)) { formationOffsets[k] = offset; formationSeats.Add(offset); break; }
                 }
             }
+        }
+
+        /// <summary>
+        /// <see cref="OpenFrom"/> for every formation slot, in one Burst job over the job threads (2026-11-07: 3,000 managed line checks of
+        /// up to 100 tiles each took 50 ms of an order wave at 100,000 units). Queued footprint changes (rare right after the boundary)
+        /// take the managed check, which counts them.
+        /// </summary>
+        private NativeArray<byte> OpenSlots(SimContext context, float2 centre)
+        {
+            var open = new NativeArray<byte>(formationOffsets.Count, Allocator.TempJob);
+            if (context.Map.HasPendingUsed)
+            {
+                for (int k = 0; k < open.Length; k++) open[k] = (byte)(OpenFrom(context, centre, formationOffsets[k]) ? 1 : 0);
+                return open;
+            }
+            var offsets = new NativeArray<float2>(formationOffsets.Count, Allocator.TempJob);
+            for (int k = 0; k < offsets.Length; k++) offsets[k] = formationOffsets[k];
+            WAR2D.World.MapGrid grid = context.Map.Grid;
+            new OpenSlotsJob { Offsets = offsets, Tiles = grid.Tiles, Used = grid.Used, Width = grid.Width, Height = grid.Height, Centre = centre, Open = open }
+                .Schedule(offsets.Length, 64).Complete();
+            offsets.Dispose();
+            return open;
+        }
+
+        [BurstCompile]
+        private struct OpenSlotsJob : IJobParallelFor
+        {
+            [ReadOnly] public NativeArray<float2> Offsets;
+            [ReadOnly] public NativeArray<byte> Tiles, Used;
+            public int Width, Height;
+            public float2 Centre;
+            public NativeArray<byte> Open;
+
+            public void Execute(int k)
+            {
+                float2 offset = Offsets[k];
+                int steps = (int)math.ceil(math.length(offset) * 2f);
+                byte result = 1;
+                for (int s = 1; s <= steps && result != 0; s++)
+                    if (!Walkable((int2)math.floor(Centre + offset * (s / (float)steps)))) result = 0;
+                if (result != 0 && !Walkable((int2)math.floor(Centre + offset))) result = 0;
+                Open[k] = result;
+            }
+
+            private bool Walkable(int2 t) =>
+                (uint)t.x < (uint)Width && (uint)t.y < (uint)Height && TileRules.IsFloor(Tiles[t.y * Width + t.x]) && Used[t.y * Width + t.x] == 0;
         }
 
         /// <summary>True when the slot and the straight line to it from the goal are open floor (a unit at the goal can walk to it).</summary>
@@ -288,7 +355,7 @@ namespace WAR2D.Sim
                 int2 tile = math.clamp((int2)math.floor(data.Positions[slots[i]]), 0, new int2(data.Width - 1, data.Height - 1));
                 starts[i] = tile.y * data.Width + tile.x;
             }
-            int handle = context.Orders.Issue(goal, sizeClass, starts, tick, owner, background);
+            int handle = context.Orders.Issue(goal, sizeClass, starts, tick, owner, background, IssuingCommand && !background);
             starts.Dispose();
             if (handle < 0) return false;
             AddPending(data, slots, new PendingOrder { Slot = handle, Stance = stance, OrderTarget = target, OrderTargetKind = targetKind });
@@ -436,7 +503,7 @@ namespace WAR2D.Sim
                 int2 tile = math.clamp((int2)math.floor(data.Positions[slots[i]]), 0, new int2(data.Width - 1, data.Height - 1));
                 starts[i] = tile.y * data.Width + tile.x;
             }
-            int handle = context.Orders.Issue(goal, sizeClass, starts, tick, owner, background);
+            int handle = context.Orders.Issue(goal, sizeClass, starts, tick, owner, background, IssuingCommand && !background);
             starts.Dispose();
             if (handle < 0) return false;
             AddPending(data, slots, new PendingOrder { Slot = handle, Stance = Stances.Move, WorkTile = tileIndex, WorkKind = kind });

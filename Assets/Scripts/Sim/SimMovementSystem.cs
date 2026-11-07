@@ -59,7 +59,7 @@ namespace WAR2D.Sim
                 OrderGoal = data.OrderGoal,
                 OrderLive = data.OrderLive,
                 OrderReady = data.OrderReady,
-                OrderFollowers = data.OrderFollowers,
+                OrderFollowers = data.OrderPeakFollowers, // the group's size: its stop radius doesn't shrink as it arrives
                 FormationOffset = data.FormationOffset,
                 FormationSpeed = data.FormationSpeed,
                 OrderLead = data.OrderLead,
@@ -121,6 +121,7 @@ namespace WAR2D.Sim
                 FormationLead = data.FormationLead,
                 Count = count,
                 Followers = data.OrderFollowers,
+                Peak = data.OrderPeakFollowers,
                 Lead = data.OrderLead,
             }.Schedule(state.Dependency);
 
@@ -161,7 +162,7 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<float2> OrderGoal;
         [ReadOnly] public NativeArray<byte> OrderLive;
         [ReadOnly] public NativeArray<byte> OrderReady;
-        /// <summary>Last tick's follower count per order: a bigger group stops farther from the goal.</summary>
+        /// <summary>Each order's most followers so far (its group's size): a bigger group stops farther from the goal.</summary>
         [ReadOnly] public NativeArray<int> OrderFollowers;
         /// <summary>v0.16 formations: each unit's slot and group speed, each order's leader distance, and the radii.</summary>
         [ReadOnly] public NativeArray<float2> FormationOffset;
@@ -533,6 +534,8 @@ namespace WAR2D.Sim
         [ReadOnly] public NativeArray<int> FormationLead;
         public int Count;
         public NativeArray<int> Followers;
+        /// <summary>Each order's most followers so far (<see cref="OrderBook.PeakFollowers"/>), raised here.</summary>
+        public NativeArray<int> Peak;
         /// <summary>v0.16: each formation's leading follower's distance to the goal, under its lead handle (<see cref="float.MaxValue"/> when none).</summary>
         public NativeArray<float> Lead;
 
@@ -547,6 +550,7 @@ namespace WAR2D.Sim
                 int lead = FormationLead[i];
                 if (FormationSpeed[i] > 0f && (uint)lead < (uint)Lead.Length) Lead[lead] = math.min(Lead[lead], math.distance(Positions[i], OrderGoal[slot]));
             }
+            for (int h = 0; h < Followers.Length; h++) Peak[h] = math.max(Peak[h], Followers[h]);
         }
     }
 

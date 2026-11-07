@@ -98,6 +98,24 @@ public class SimMovementTests
         return MapStore.FromAscii(rows);
     }
 
+    /// <summary>
+    /// A group sent to one goal on open ground all finish their order (2026-11-07: the stop radius was that of the units still
+    /// walking, so it shrank as the group arrived and the last units pressed on the parked crowd, holding their order for good).
+    /// </summary>
+    [Test]
+    public void AGroupOnOpenGroundAllFinishTheirOrder()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(64));
+        var ids = new System.Collections.Generic.List<int>();
+        for (int k = 0; k < 48; k++) ids.Add(sim.Spawn(SimHarness.OwnerA, new float2(6.5f + k % 8, 6.5f + k / 8))[0]);
+        sim.Tick();
+        sim.Move(SimHarness.OwnerA, new int2(44, 44), ids.ToArray());
+        for (int t = 0; t < 20 * 40; t++) sim.Tick();
+        int onOrder = 0;
+        foreach (WAR2D.Sim.Unit u in sim.Units()) if (ids.Contains(u.Id) && u.OrderSlot >= 0) onOrder++;
+        Assert.AreEqual(0, onOrder, "every unit of the group finished its order");
+    }
+
     [Test]
     public void CrowdCrossesAStaircaseWallThroughAOneTileGap()
     {

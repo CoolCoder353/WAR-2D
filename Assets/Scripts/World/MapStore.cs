@@ -215,6 +215,9 @@ namespace WAR2D.World
             if (_grid.Contains(tile)) pendingUsed[_grid.Index(tile)] = used ? (byte)1 : (byte)0;
         }
 
+        /// <summary>True while footprint changes wait for the boundary (<see cref="IsUsed"/> counts them; the grid doesn't yet).</summary>
+        public bool HasPendingUsed => pendingUsed.Count > 0;
+
         /// <summary>True when the tile is under a building footprint, counting queued changes.</summary>
         public bool IsUsed(int2 tile)
         {

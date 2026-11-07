@@ -271,6 +271,8 @@ namespace WAR2D.Net.Replication
                 OrderSlot = data.OrderSlot,
                 BlockOf = data.Orders.BlockOf,
                 Blocks = data.Orders.Blocks.AsArray(),
+                OrderReady = data.OrderReady,
+                OrderGoal = data.OrderGoal,
                 SectorsX = data.Orders.SectorsX,
                 SectorsY = data.Orders.SectorsY,
                 SectorCount = data.Orders.SectorCount,

@@ -150,6 +150,9 @@ namespace WAR2D.Sim
             if (deferred.Count > 0) context.Commands.Requeue(deferred);
             PerfSplits.Mark(PerfSplits.CmdOther, ref split);
             PerfSplits.Ms[PerfSplits.CmdOrders] = ordersMs;
+            PerfSplits.Ms[PerfSplits.CmdFormation] = FormationMs;
+            PerfSplits.Ms[PerfSplits.CmdIssue] = IssueMs;
+            FormationMs = IssueMs = 0;
             PerfSplits.Ms[PerfSplits.CmdOther] -= ordersMs;
             if (clock.Running) AutoWork(data, context, clock.UnitCount, clock.Tick); // v0.16: after the players' orders, which win
             PerfSplits.Mark(PerfSplits.CmdAutoWork, ref split);
