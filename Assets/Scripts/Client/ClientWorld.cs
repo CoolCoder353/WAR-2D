@@ -49,7 +49,7 @@ namespace WAR2D.Client
         private const float ClockDrift = 0.1f;
         /// <summary>Further off than this (seconds) the clock is simply wrong, and closes the gap quickly.</summary>
         private const float ClockFarSeconds = 0.25f;
-        private NativeArray<float2> lastPosition;
+        private NativeArray<float2> lastPosition, lastSteer;
         private NativeArray<float> rotation;
         private NativeArray<uint> frame;
         private NativeArray<float> lastAction; // server time of the unit's last attack, by index
@@ -78,7 +78,6 @@ namespace WAR2D.Client
         private NativeArray<float> scaleByType;
         // The draw job's inputs and outputs: owner colours, units a replay's view hides, and this frame's hits and track marks.
         private NativeHashMap<int, uint> ownerColours;
-        private NativeList<int> missingOwners;
         private NativeArray<byte> hidden;
         private NativeList<UnitHit> hits;
         private NativeList<float3> tracks;
@@ -193,6 +192,7 @@ namespace WAR2D.Client
             Effects.LandingShown = p => UnitShown == null ? ClientFog.Current.State == null || ClientFog.Current.Sees(p.x, p.y) : UnitShown(0, new float2(p.x, p.y));
             store.Appeared += (index, at) => worldEffects.UnitAppeared(new Vector2(at.x, at.y), store.OwnerOf(index), Time.time - firstBatchAt);
             lastPosition = new NativeArray<float2>(capacity, Allocator.Persistent);
+            lastSteer = new NativeArray<float2>(capacity, Allocator.Persistent);
             rotation = new NativeArray<float>(capacity, Allocator.Persistent);
             frame = new NativeArray<uint>(capacity, Allocator.Persistent);
             lastAction = new NativeArray<float>(capacity, Allocator.Persistent);
@@ -213,7 +213,6 @@ namespace WAR2D.Client
             aimAt = new NativeArray<float2>(capacity, Allocator.Persistent);
             cells = new NativeArray<UnitFrames.TypeCells>(0, Allocator.Persistent);
             ownerColours = new NativeHashMap<int, uint>(16, Allocator.Persistent);
-            missingOwners = new NativeList<int>(16, Allocator.Persistent);
             hidden = new NativeArray<byte>(capacity, Allocator.Persistent);
             hits = new NativeList<UnitHit>(256, Allocator.Persistent);
             tracks = new NativeList<float3>(256, Allocator.Persistent);
@@ -267,12 +266,12 @@ namespace WAR2D.Client
             if (turretOf.IsCreated)
             {
                 turretOf.Dispose(); turretAngle.Dispose(); turretTurnedAt.Dispose(); aimUntil.Dispose(); aimAt.Dispose();
-                cells.Dispose(); ownerColours.Dispose(); missingOwners.Dispose(); hidden.Dispose(); hits.Dispose(); tracks.Dispose();
+                cells.Dispose(); ownerColours.Dispose(); hidden.Dispose(); hits.Dispose(); tracks.Dispose();
             }
             if (scaleByType.IsCreated) scaleByType.Dispose();
             if (lastPosition.IsCreated)
             {
-                lastPosition.Dispose(); rotation.Dispose(); frame.Dispose(); lastAction.Dispose(); color.Dispose(); health01.Dispose(); drawScale.Dispose(); selected.Dispose();
+                lastPosition.Dispose(); lastSteer.Dispose(); rotation.Dispose(); frame.Dispose(); lastAction.Dispose(); color.Dispose(); health01.Dispose(); drawScale.Dispose(); selected.Dispose();
                 trackedId.Dispose(); lastHealth.Dispose(); hitAt.Dispose(); trail.Dispose(); flash.Dispose();
                 instances.Dispose(); bars.Dispose(); barCount.Dispose(); rings.Dispose(); ringCount.Dispose();
             }
@@ -469,7 +468,7 @@ namespace WAR2D.Client
         /// <summary>Plots every known unit on the minimap in its owner's colour (the minimap drops units on cells not seen now).</summary>
         public void PlotOn(MinimapTexture minimap)
         {
-            CacheOwnerColours(store.Known, store.OwnerArray);
+            CacheOwnerColours();
             minimap.PlotUnits(store.Known, store.Predicted, store.OwnerArray, ownerColours, UnknownColour);
         }
 
@@ -484,10 +483,14 @@ namespace WAR2D.Client
         {
             // A -nographics player (perf clients) has no GPU buffers to draw with.
             if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) return;
-            using (BuildingsMarker.Auto()) DrawBuildings();
             SelectMarker.Begin();
             int count = store.Count;
-            if (count == 0 || store.Drawn.Length != count) { SelectMarker.End(); return; }
+            if (count == 0 || store.DrawnAfterPrediction.Length != count)
+            {
+                SelectMarker.End();
+                using (BuildingsMarker.Auto()) DrawBuildings();
+                return;
+            }
             if (unitRenderer == null)
             {
                 ArtAtlas atlas = ArtAtlas.Load(ArtAtlas.Units);
@@ -523,7 +526,8 @@ namespace WAR2D.Client
                 }
 
             NativeArray<int> known = store.Known;
-            NativeArray<float2> positions = store.Drawn; // smoothed: corrections glide instead of stepping
+            // Smoothed (corrections glide instead of stepping); the prediction job may still be filling them: the draw job waits for it.
+            NativeArray<float2> positions = store.DrawnAfterPrediction;
             NativeArray<int> owners = store.OwnerArray;
             float now = Time.time, frameSeconds = lastDrawAt > 0f ? math.max(0f, now - lastDrawAt) : 0f;
             lastDrawAt = now;
@@ -535,7 +539,8 @@ namespace WAR2D.Client
             barrelShadows.Clear();
             hits.Clear();
             tracks.Clear();
-            CacheOwnerColours(known, owners);
+            using (ColoursMarker.Auto()) CacheOwnerColours();
+            if (UnitShown != null) store.CompletePrediction(); // a replay's per-player view reads the positions here
             if (UnitShown != null) // a replay's per-player view: the delegate can't run in the job
                 for (int i = 0; i < count; i++) hidden[known[i]] = (byte)(UnitShown(owners[known[i]], positions[i]) ? 0 : 1);
             // v0.20 (spec §8.3): a Sniper's head turns to what it aims at and holds there while it aims (the job turns it).
@@ -559,6 +564,8 @@ namespace WAR2D.Client
             {
                 Known = known,
                 Positions = positions,
+                Steer = store.SteerAfterPrediction,
+                MaxTurn = UnitTurnRate * frameSeconds,
                 Owners = owners,
                 Types = store.TypeArray,
                 Health = store.HealthArray,
@@ -580,6 +587,7 @@ namespace WAR2D.Client
                 TurretView = new float4(turretView.xMin, turretView.yMin, turretView.xMax, turretView.yMax),
                 BarrelShadowFrame = unitRenderer.BarrelShadowFrame,
                 LastPosition = lastPosition,
+                LastSteer = lastSteer,
                 Rotation = rotation,
                 Frame = frame,
                 Color = color,
@@ -602,8 +610,9 @@ namespace WAR2D.Client
                 TrackSlots = trackSlots.AsArray(),
                 TurretSlots = turretSlots.AsArray(),
                 ShadowSlots = shadowSlots.AsArray(),
-            }.Schedule(n, DrawBatch);
-            new GatherUnitsJob
+            }.Schedule(n, DrawBatch, store.Prediction);
+            // The gather is chained too, then the buildings draw on the main thread while the jobs run.
+            JobHandle gathered = new GatherUnitsJob
             {
                 Emits = drawEmits.AsArray(),
                 HitSlots = hitSlots.AsArray(),
@@ -614,10 +623,18 @@ namespace WAR2D.Client
                 Tracks = tracks,
                 Turrets = turrets,
                 BarrelShadows = barrelShadows,
-            }.Schedule(prepared).Complete();
+            }.Schedule(prepared);
+            JobHandle.ScheduleBatchedJobs();
             PrepareMarker.End();
+            using (BuildingsMarker.Auto()) DrawBuildings();
+            using (PrepareMarker.Auto())
+            {
+                gathered.Complete();
+                store.CompletePrediction();
+            }
             EffectsMarker.Begin();
             // The job's main-thread effects, in unit order: hits on the minimap, then track marks.
+            HitsMarker.Begin();
             MinimapCombat combat = MinimapCombat.Current;
             for (int i = 0; i < hits.Length && combat != null; i++)
             {
@@ -625,13 +642,15 @@ namespace WAR2D.Client
                 // v0.16: fights on the minimap, but not an own unit's upkeep decay (code review 2026-11-03).
                 if (!(hit.Own && combat.IsOwnDecay(hit.Drop, hit.SinceLastHit))) combat.Hit(hit.Position, hit.Own, now);
             }
-            for (int i = 0; i < tracks.Length; i++) Decals.Track(tracks[i].xy, tracks[i].z);
+            HitsMarker.End();
+            using (TracksMarker.Auto())
+                for (int i = 0; i < tracks.Length; i++) Decals.Track(tracks[i].xy, tracks[i].z);
             RaiseAirborne(positions);
             Effects.FollowFlames(flameLine);
             ownSelected.Clear();
             foreach (int index in selectedIndices)
                 if ((selected[index] & 1) != 0 && store.IsKnown(index) && store.OwnerOf(index) == WorldEffects.LocalOwner) ownSelected.Add(index);
-            combatVisuals.Draw(now, serverTime, view, UnitAt, ownSelected, BuildingsShown ?? ClientBuildings.Current);
+            using (CombatMarker.Auto()) combatVisuals.Draw(now, serverTime, view, UnitAt, ownSelected, BuildingsShown ?? ClientBuildings.Current);
             EffectsMarker.End();
             PackMarker.Begin();
 
@@ -682,7 +701,9 @@ namespace WAR2D.Client
         private static readonly Unity.Profiling.ProfilerMarker BuildingsMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Buildings"),
             SelectMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Select"), PrepareMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Prepare"),
             EffectsMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Effects"), PackMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Pack"),
-            SubmitMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Submit");
+            SubmitMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Submit"), HitsMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Hits"),
+            TracksMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Tracks"), CombatMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Combat"),
+            ColoursMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Colours");
 
         private readonly List<int> barsHidden = new List<int>();
 
@@ -705,6 +726,9 @@ namespace WAR2D.Client
                 barsHidden.Add(status.Key);
             }
         }
+
+        /// <summary>How fast a unit's drawn facing turns (radians a second): half a turn in a quarter second.</summary>
+        private const float UnitTurnRate = 4f * math.PI;
 
         /// <summary>Units per batch of the draw jobs on the job threads.</summary>
         private const int DrawBatch = 64;
@@ -739,40 +763,17 @@ namespace WAR2D.Client
         }
 
         /// <summary>
-        /// Puts the colour of every owner among the known units into the cache the draw job reads, before it runs, so a new owner's
-        /// units draw in its colour from the first frame. An owner with no colour yet (a player still arriving) stays out: the job
-        /// draws it grey, as <see cref="ColorOf"/> does.
+        /// Puts the colour of every owner the client has seen units of into the cache the draw job reads, before it runs, so a new
+        /// owner's units draw in its colour from the first frame. An owner with no colour yet (a player still arriving) stays out: the
+        /// job draws it grey, as <see cref="ColorOf"/> does. Walks the store's few owners, not its units (0.5 ms a frame at 100,000).
         /// </summary>
-        private void CacheOwnerColours(NativeArray<int> known, NativeArray<int> owners)
+        private void CacheOwnerColours()
         {
-            missingOwners.Clear();
-            new MissingOwnersJob { Known = known, Owners = owners, Cached = ownerColours, Missing = missingOwners }.Run();
-            for (int i = 0; i < missingOwners.Length; i++)
+            foreach (int owner in store.Owners)
             {
-                int owner = missingOwners[i];
+                if (ownerColours.ContainsKey(owner)) continue;
                 uint c = ColorOf(owner);
                 if (colorOfOwner.ContainsKey(owner)) ownerColours[owner] = c;
-            }
-        }
-
-        /// <summary>Owners of known units that have no cached colour.</summary>
-        [BurstCompile]
-        private struct MissingOwnersJob : IJob
-        {
-            [ReadOnly] public NativeArray<int> Known, Owners;
-            [ReadOnly] public NativeHashMap<int, uint> Cached;
-            public NativeList<int> Missing;
-
-            public void Execute()
-            {
-                int last = int.MinValue;
-                for (int i = 0; i < Known.Length; i++)
-                {
-                    int owner = Owners[Known[i]];
-                    if (owner == last) continue;
-                    last = owner;
-                    if (!Cached.ContainsKey(owner) && !Missing.Contains(owner)) Missing.Add(owner);
-                }
             }
         }
 
@@ -796,6 +797,8 @@ namespace WAR2D.Client
 
             [ReadOnly] public NativeArray<int> Known;
             [ReadOnly] public NativeArray<float2> Positions; // parallel to Known
+            /// <summary>Parallel to Known: where each unit is going without the correction glide (its facing follows this).</summary>
+            [ReadOnly] public NativeArray<float2> Steer;
             [ReadOnly] public NativeArray<int> Owners;
             [ReadOnly] public NativeArray<byte> Types, Health;
             [ReadOnly] public NativeArray<PredictState> States;
@@ -809,12 +812,14 @@ namespace WAR2D.Client
             [ReadOnly] public NativeArray<UnitFrames.TypeCells> Cells;
             public bool HasFrames;
             public float ServerTime, Now, FrameSeconds;
+            /// <summary>The most a unit's facing turns this frame (radians).</summary>
+            public float MaxTurn;
             public int LocalOwner;
             public float4 View, TurretView; // xMin, yMin, xMax, yMax
             public uint BarrelShadowFrame;
 
             // By index (each unit writes only its own).
-            [NativeDisableParallelForRestriction] public NativeArray<float2> LastPosition;
+            [NativeDisableParallelForRestriction] public NativeArray<float2> LastPosition, LastSteer;
             [NativeDisableParallelForRestriction] public NativeArray<float> Rotation;
             [NativeDisableParallelForRestriction] public NativeArray<uint> Frame, Color;
             [NativeDisableParallelForRestriction] public NativeArray<float> Health01, DrawScale;
@@ -837,12 +842,20 @@ namespace WAR2D.Client
             {
                 int index = Known[i];
                 float2 p = Positions[i];
-                float2 delta = p - LastPosition[index];
+                int owner = Owners[index], id = States[index].Id;
+                // Facing follows the way the unit goes (its route, or its shown order), not the drawn glide that takes a correction's
+                // jump out, and turns at most MaxTurn a frame: a glide back, or a one-frame jump, flipped units round (2026-11-07).
+                float2 delta = Steer[i] - LastSteer[index];
                 bool moving = math.lengthsq(delta) > 1e-6f && math.lengthsq(delta) < 4f;
-                if (moving) Rotation[index] = math.atan2(delta.y, delta.x);
+                if (moving)
+                {
+                    float heading = math.atan2(delta.y, delta.x);
+                    float turned = TrackedId[index] != id ? heading : TurretAim.Step(Rotation[index], heading, MaxTurn); // a new unit faces its way at once
+                    Rotation[index] = math.atan2(math.sin(turned), math.cos(turned));
+                }
+                LastSteer[index] = Steer[i];
                 LastPosition[index] = p;
                 byte type = Types[index];
-                int owner = Owners[index], id = States[index].Id;
                 int row = type < Cells.Length ? type : 0; // no bounds checks in a player's Burst code (DecodeEnter refuses bad types too)
                 if (HasFrames)
                     Frame[index] = Cells[row].BodyCell(Rotation[index], moving, ServerTime, ServerTime - LastAction[index], index);

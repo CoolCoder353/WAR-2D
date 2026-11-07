@@ -31,6 +31,7 @@ namespace WAR2D.Client
         // Drawing only: the jump each correction or new route made, faded out over BlendSeconds.
         private NativeArray<float2> blend;
         private NativeList<float2> drawn;
+        private NativeList<float2> steer; // parallel to known: the route position, or the shown order's (no blend)
         // Drawing only: own orders shown before the server answers them, by index.
         private NativeArray<OrderLead> leads;
         private int leadCount;
@@ -101,25 +102,58 @@ namespace WAR2D.Client
             predicted = new NativeList<float2>(1024, allocator);
             blend = new NativeArray<float2>(idCapacity, allocator);
             drawn = new NativeList<float2>(1024, allocator);
+            steer = new NativeList<float2>(1024, allocator);
             leads = new NativeArray<OrderLead>(idCapacity, allocator);
             routeUnits = new NativeList<RouteUnit>(64, allocator);
+            correctionUnits = new NativeList<CorrectionUnit>(64, allocator);
             routeTiles = new NativeList<int2>(1024, allocator);
             counts = new NativeArray<int>(2, allocator);
         }
 
         /// <summary>Units known.</summary>
         public int Count => known.Length;
+
+        /// <summary>Every owner the store has had units of (a handful), in the order first seen.</summary>
+        public IReadOnlyList<int> Owners => owners;
+        private readonly List<int> owners = new List<int>();
+        private readonly HashSet<int> ownersSeen = new HashSet<int>();
         /// <summary>The id index of the i-th known unit.</summary>
         public int IndexAt(int i) => known[i];
         /// <summary>Known indices, densely packed (parallel to <see cref="Predicted"/>).</summary>
         public NativeArray<int> Known => known.AsArray();
         /// <summary>Positions from the last <see cref="PredictAll"/>, parallel to <see cref="Known"/>.</summary>
-        public NativeArray<float2> Predicted => predicted.AsArray();
+        public NativeArray<float2> Predicted { get { CompletePrediction(); return predicted.AsArray(); } }
         /// <summary>
         /// Where to draw each unit, parallel to <see cref="Known"/>: <see cref="Predicted"/> plus the fading
         /// remainder of its last correction, so units glide instead of stepping. Never use it for gameplay.
         /// </summary>
-        public NativeArray<float2> Drawn => drawn.AsArray();
+        public NativeArray<float2> Drawn { get { CompletePrediction(); return drawn.AsArray(); } }
+
+        /// <summary>
+        /// The drawn positions while <see cref="PredictAll"/>'s job may still be running: only for a job scheduled after
+        /// <see cref="Prediction"/>. Their length is already the known count.
+        /// </summary>
+        internal NativeArray<float2> DrawnAfterPrediction => drawn.AsArray();
+
+        /// <summary>
+        /// Parallel to the known list, like <see cref="DrawnAfterPrediction"/>: where each unit is going without the correction glide (its
+        /// route position, or the shown order's while one is), so its facing follows its way and not a glide back.
+        /// </summary>
+        internal NativeArray<float2> SteerAfterPrediction => steer.AsArray();
+
+        /// <summary>The prediction job <see cref="PredictAll"/> scheduled (default once complete).</summary>
+        internal JobHandle Prediction => predicting;
+        private JobHandle predicting;
+
+        /// <summary>
+        /// Waits for <see cref="PredictAll"/>'s job. Every read of the predicted or drawn positions does, and so does every change to the
+        /// store, so the job overlaps only the frame's other work (2026-11-07: the main thread spent 0.6 ms a frame on it at 100,000 units).
+        /// </summary>
+        public void CompletePrediction()
+        {
+            predicting.Complete();
+            predicting = default;
+        }
 
         /// <summary>Owner id by index (for packing jobs).</summary>
         internal NativeArray<int> OwnerArray => owner;
@@ -184,6 +218,7 @@ namespace WAR2D.Client
         /// </summary>
         public bool Apply(ArraySegment<byte> payload, int tick)
         {
+            CompletePrediction();
             using var reader = NetworkReaderPool.Get(payload);
             try
             {
@@ -234,16 +269,7 @@ namespace WAR2D.Client
                 {
                     corrections.Clear();
                     int tick = Messages.DecodeCorrection(reader, corrections, out byte scale);
-                    foreach (CorrectionUnit c in corrections)
-                    {
-                        if (!IsKnown(c.Index)) continue;
-                        float2 before = PredictOne(c.Index, Now);
-                        PredictState s = states[c.Index];
-                        MovementPrediction.ApplyCorrection(ref s, arena.AsArray(), routeStart[c.Index], routeCount[c.Index], tick * dt, c, scale);
-                        states[c.Index] = s;
-                        Blend(c.Index, before);
-                        if (c.Speed == 0 && leads[c.Index].Kind == OrderLead.Halted) EndLead(c.Index, Now);
-                    }
+                    ApplyCorrections(tick, scale);
                     break;
                 }
                 case MessageType.Health:
@@ -297,6 +323,73 @@ namespace WAR2D.Client
             liveWaypoints = counts[0];
             leadCount = counts[1];
             if (arena.Length > 2 * liveWaypoints + 65536) Compact();
+        }
+
+        /// <summary>
+        /// A Correction's units, in a Burst job (profiled 2026-11-07: the managed loop, two predictions per unit, took 1.5 to 3 ms of a
+        /// frame at 100,000 known units). Per known unit, as before: its prediction corrected at the message's tick, the jump blended
+        /// out of the drawn position, and a shown halt ended once the server has it stopped.
+        /// </summary>
+        private void ApplyCorrections(int tick, byte scale)
+        {
+            if (correctionBuffer.Length < corrections.Count) correctionBuffer = new CorrectionUnit[math.ceilpow2(corrections.Count)];
+            corrections.CopyTo(correctionBuffer);
+            correctionUnits.ResizeUninitialized(corrections.Count);
+            NativeArray<CorrectionUnit>.Copy(correctionBuffer, correctionUnits.AsArray(), corrections.Count);
+            counts[1] = leadCount;
+            new ApplyCorrectionsJob
+            {
+                Corrections = correctionUnits.AsArray(), KnownSlot = knownSlot, States = states, RouteStart = routeStart, RouteCount = routeCount,
+                Arena = arena.AsArray(), Blend = blend, Leads = leads, Counts = counts, Now = Now, At = tick * dt, Scale = scale,
+            }.Run();
+            leadCount = counts[1];
+        }
+
+        private NativeList<CorrectionUnit> correctionUnits;
+        private CorrectionUnit[] correctionBuffer = new CorrectionUnit[64];
+
+        [BurstCompile(FloatMode = FloatMode.Deterministic)]
+        private struct ApplyCorrectionsJob : IJob
+        {
+            [ReadOnly] public NativeArray<CorrectionUnit> Corrections;
+            [ReadOnly] public NativeArray<int> KnownSlot;
+            public NativeArray<PredictState> States;
+            [ReadOnly] public NativeArray<int> RouteStart, RouteCount;
+            [ReadOnly] public NativeArray<float2> Arena;
+            public NativeArray<float2> Blend;
+            public NativeArray<OrderLead> Leads;
+            public NativeArray<int> Counts;
+            public float Now, At;
+            public byte Scale;
+
+            public void Execute()
+            {
+                for (int k = 0; k < Corrections.Length; k++)
+                {
+                    CorrectionUnit c = Corrections[k];
+                    int index = c.Index;
+                    if ((uint)index >= (uint)KnownSlot.Length || KnownSlot[index] < 0) continue;
+                    float2 before = Predict(index);
+                    PredictState s = States[index];
+                    MovementPrediction.ApplyCorrection(ref s, Arena, RouteStart[index], RouteCount[index], At, c, Scale);
+                    States[index] = s;
+                    if (Now > 0f) Keep(index, Blend[index] + before - Predict(index)); // Blend
+                    if (c.Speed == 0 && Leads[index].Kind == OrderLead.Halted) // EndLead
+                    {
+                        Keep(index, Leads[index].At - Predict(index));
+                        Counts[1]--;
+                        Leads[index] = default;
+                    }
+                }
+            }
+
+            private float2 Predict(int index)
+            {
+                PredictState s = States[index];
+                return MovementPrediction.Predict(ref s, Arena, RouteStart[index], RouteCount[index], Now);
+            }
+
+            private void Keep(int index, float2 offset) => Blend[index] = math.lengthsq(offset) > MaxBlendTiles * MaxBlendTiles ? float2.zero : offset;
         }
 
         private NativeList<RouteUnit> routeUnits;
@@ -375,6 +468,7 @@ namespace WAR2D.Client
                 known.Add(index);
             }
             owner[index] = u.OwnerId;
+            if (ownersSeen.Add(u.OwnerId)) owners.Add(u.OwnerId);
             type[index] = u.Type;
             health[index] = (byte)math.min((int)u.Health, 100);
             SetRoute(index, u.First, u.Count);
@@ -430,6 +524,7 @@ namespace WAR2D.Client
 
         private void StartLead(int index, byte kind, float2 goal, float stopTiles)
         {
+            CompletePrediction();
             if (!IsKnown(index)) return;
             float now = math.max(0f, lastPredictTime);
             bool running = leads[index].Kind != 0;
@@ -498,28 +593,49 @@ namespace WAR2D.Client
 
         private void Compact()
         {
-            var compacted = new NativeList<float2>(liveWaypoints + 1024, Allocator.Temp);
-            for (int i = 0; i < known.Length; i++)
-            {
-                int index = known[i];
-                int first = compacted.Length;
-                for (int k = 0; k < routeCount[index]; k++) compacted.Add(arena[routeStart[index] + k]);
-                routeStart[index] = first;
-            }
+            var compacted = new NativeList<float2>(liveWaypoints + 1024, Allocator.TempJob);
+            new CompactJob { Known = known.AsArray(), RouteStart = routeStart, RouteCount = routeCount, Arena = arena.AsArray(), Compacted = compacted }.Run();
             arena.Clear();
             arena.AddRange(compacted.AsArray());
             compacted.Dispose();
         }
 
-        /// <summary>Predicts every known unit at <paramref name="now"/> in a Burst job (stored states unchanged).</summary>
+        /// <summary>Copies the known units' routes to the front of a new arena (Burst: the managed loop took 13 ms at 100,000 units).</summary>
+        [BurstCompile]
+        private struct CompactJob : IJob
+        {
+            [ReadOnly] public NativeArray<int> Known;
+            public NativeArray<int> RouteStart;
+            [ReadOnly] public NativeArray<int> RouteCount;
+            [ReadOnly] public NativeArray<float2> Arena;
+            public NativeList<float2> Compacted;
+
+            public void Execute()
+            {
+                for (int i = 0; i < Known.Length; i++)
+                {
+                    int index = Known[i];
+                    int first = Compacted.Length;
+                    Compacted.AddRange(Arena.GetSubArray(RouteStart[index], RouteCount[index]));
+                    RouteStart[index] = first;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Predicts every known unit at <paramref name="now"/> in a Burst job over the job threads (stored states unchanged), left running:
+        /// see <see cref="CompletePrediction"/>.
+        /// </summary>
         public void PredictAll(float now)
         {
+            CompletePrediction();
             predicted.ResizeUninitialized(known.Length);
             drawn.ResizeUninitialized(known.Length);
+            steer.ResizeUninitialized(known.Length);
             float elapsed = lastPredictTime < 0f ? 0f : math.max(0f, now - lastPredictTime);
             lastPredictTime = now;
             AdvanceLeads(now, elapsed);
-            new PredictJob
+            predicting = new PredictJob
             {
                 Known = known.AsArray(),
                 States = states,
@@ -533,16 +649,19 @@ namespace WAR2D.Client
                 Elapsed = elapsed,
                 Leads = leads,
                 Drawn = drawn.AsArray(),
-            }.Schedule(known.Length, 256).Complete();
+                Steer = steer.AsArray(),
+            }.Schedule(known.Length, 256);
+            JobHandle.ScheduleBatchedJobs();
         }
 
         public void Dispose()
         {
             if (disposed) return;
             disposed = true;
+            CompletePrediction();
             states.Dispose(); routeStart.Dispose(); routeCount.Dispose(); owner.Dispose(); type.Dispose(); health.Dispose();
-            arena.Dispose(); known.Dispose(); knownSlot.Dispose(); predicted.Dispose(); blend.Dispose(); drawn.Dispose(); leads.Dispose();
-            routeUnits.Dispose(); routeTiles.Dispose(); counts.Dispose();
+            arena.Dispose(); known.Dispose(); knownSlot.Dispose(); predicted.Dispose(); blend.Dispose(); drawn.Dispose(); steer.Dispose(); leads.Dispose();
+            routeUnits.Dispose(); routeTiles.Dispose(); counts.Dispose(); correctionUnits.Dispose();
         }
 
         /// <summary>An own order drawn before the server answers it.</summary>
@@ -569,6 +688,7 @@ namespace WAR2D.Client
             public float BlendKeep, Elapsed;
             [ReadOnly] public NativeArray<OrderLead> Leads;
             public NativeArray<float2> Drawn;
+            public NativeArray<float2> Steer;
 
             public void Execute(int i)
             {
@@ -586,6 +706,7 @@ namespace WAR2D.Client
                 Blend[index] = b;
                 Positions[i] = p;
                 Drawn[i] = Leads[index].Kind != 0 ? Leads[index].At : p + b;
+                Steer[i] = Leads[index].Kind != 0 ? Leads[index].At : p;
             }
         }
     }

@@ -62,7 +62,7 @@ public class DrawJobTests
         /// <summary>Every by-index output, read back as a managed array.</summary>
         public readonly List<Func<Array>> ByIndex = new List<Func<Array>>();
         private NativeArray<int> known, owners, trackedId, trackIds, turretOf;
-        private NativeArray<float2> positions, lastPosition, lastTracks, aimAt;
+        private NativeArray<float2> positions, lastPosition, lastSteer, lastTracks, aimAt;
         private NativeArray<byte> types, health, selected, hidden, lastHealth, flash, emits;
         private NativeArray<PredictState> states;
         private NativeArray<float> lastAction, scaleByType, rotation, health01, drawScale, hitAt, trail, turretAngle, turretTurnedAt, aimUntil;
@@ -92,7 +92,7 @@ public class DrawJobTests
             owners = Make<int>(Capacity, false); types = Make<byte>(Capacity, false); health = Make<byte>(Capacity, false);
             states = Make<PredictState>(Capacity, false); lastAction = Make<float>(Capacity, false); selected = Make<byte>(Capacity, false);
             hidden = Make<byte>(Capacity, false); aimAt = Make<float2>(Capacity, false);
-            lastPosition = Make<float2>(Capacity, true); rotation = Make<float>(Capacity, true); frame = Make<uint>(Capacity, true);
+            lastPosition = Make<float2>(Capacity, true); lastSteer = Make<float2>(Capacity, true); rotation = Make<float>(Capacity, true); frame = Make<uint>(Capacity, true);
             color = Make<uint>(Capacity, true); health01 = Make<float>(Capacity, true); drawScale = Make<float>(Capacity, true);
             trackedId = Make<int>(Capacity, true); lastHealth = Make<byte>(Capacity, true); flash = Make<byte>(Capacity, true);
             hitAt = Make<float>(Capacity, true); trail = Make<float>(Capacity, true); trackIds = Make<int>(Capacity, true);
@@ -134,6 +134,7 @@ public class DrawJobTests
                 // A third still, most moving a step, a few jumping too far to count as moving.
                 float2 step = new float2((float)r.NextDouble() - 0.5f, (float)r.NextDouble() - 0.5f);
                 lastPosition[index] = i % 3 == 0 ? p : i % 17 == 0 ? p - new float2(3f, 0f) : p - step;
+                lastSteer[index] = lastPosition[index]; // facing follows the steer position (here the drawn one)
                 owners[index] = 1 + r.Next(3);
                 types[index] = (byte)r.Next(typeCount);
                 states[index] = new PredictState { Id = id };
@@ -166,12 +167,12 @@ public class DrawJobTests
 
         public ClientWorld.PrepareUnitsJob Job() => new ClientWorld.PrepareUnitsJob
         {
-            Known = known, Positions = positions, Owners = owners, Types = types, Health = health, States = states,
+            Known = known, Positions = positions, Steer = positions, MaxTurn = 0.2f, Owners = owners, Types = types, Health = health, States = states,
             LastAction = lastAction, Selected = selected, ScaleByType = scaleByType, Hidden = hidden, UseHidden = true,
             Colours = colours, UnknownColour = 0x808080FFu, Cells = cells, HasFrames = true,
             ServerTime = ServerTime, Now = Now, FrameSeconds = 1f / 60f, LocalOwner = 1,
             View = new float4(0f, 0f, 200f, 200f), TurretView = new float4(0f, 0f, 150f, 200f), BarrelShadowFrame = 5000u,
-            LastPosition = lastPosition, Rotation = rotation, Frame = frame, Color = color, Health01 = health01, DrawScale = drawScale,
+            LastPosition = lastPosition, LastSteer = lastSteer, Rotation = rotation, Frame = frame, Color = color, Health01 = health01, DrawScale = drawScale,
             TrackedId = trackedId, LastHealth = lastHealth, HitAt = hitAt, Trail = trail, Flash = flash,
             TrackIds = trackIds, LastTracks = lastTracks, TurretOf = turretOf, TurretAngle = turretAngle,
             TurretTurnedAt = turretTurnedAt, AimUntil = aimUntil, AimAt = aimAt,

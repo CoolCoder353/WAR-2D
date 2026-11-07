@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -427,18 +428,30 @@ namespace WAR2D.UI
         /// <summary>Redraws the texture now: terrain under fog, buildings and ghosts, then units, then flags over the known HQs.</summary>
         public void Redraw(ClientFog fog)
         {
-            texture.Begin(fog.State, starts != null);
-            foreach (ClientBuildings.Entry entry in ClientBuildings.Current.Entries.Values)
-            {
-                texture.PlotBuilding(entry.Data.position, PlayerPalette.OfOwner(entry.Data.ownerId), entry.Ghost);
-            }
-            ClientWorld.Instance?.PlotOn(texture);
+            using (BeginMarker.Auto()) texture.Begin(fog.State, starts != null);
+            ownerColours.Clear(); // one lookup per owner, not per building (each a component lookup: 1 to 2 ms a redraw with thousands of walls)
+            using (BuildingsMarker.Auto())
+                foreach (ClientBuildings.Entry entry in ClientBuildings.Current.Entries.Values)
+                    texture.PlotBuilding(entry.Data.position, ColourOf(entry.Data.ownerId), entry.Ghost);
+            using (UnitsMarker.Auto()) ClientWorld.Instance?.PlotOn(texture);
             // Flags over every HQ the player has found (their own included), on top of the units.
             foreach (ClientBuildings.Entry entry in ClientBuildings.Current.Entries.Values)
                 if (entry.Data.buildingType == BuildingType.Base)
-                    texture.PlotFlag(entry.Data.position + new float2(2.5f, 2.5f), PlayerPalette.OfOwner(entry.Data.ownerId), entry.Ghost);
-            texture.End();
+                    texture.PlotFlag(entry.Data.position + new float2(2.5f, 2.5f), ColourOf(entry.Data.ownerId), entry.Ghost);
+            using (UploadMarker.Auto()) texture.End();
         }
+
+        private readonly Dictionary<int, Color32> ownerColours = new Dictionary<int, Color32>();
+
+        private Color32 ColourOf(int owner)
+        {
+            if (!ownerColours.TryGetValue(owner, out Color32 colour)) ownerColours[owner] = colour = PlayerPalette.OfOwner(owner);
+            return colour;
+        }
+
+        private static readonly Unity.Profiling.ProfilerMarker BeginMarker = new Unity.Profiling.ProfilerMarker("Minimap.Begin"),
+            BuildingsMarker = new Unity.Profiling.ProfilerMarker("Minimap.Buildings"), UnitsMarker = new Unity.Profiling.ProfilerMarker("Minimap.Units"),
+            UploadMarker = new Unity.Profiling.ProfilerMarker("Minimap.Upload");
 
         private void ShowCamera()
         {
