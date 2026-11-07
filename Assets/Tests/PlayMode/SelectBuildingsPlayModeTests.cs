@@ -12,7 +12,7 @@ using WAR2D.Client;
 using WAR2D.Dev.DebugApi;
 using WAR2D.Net.Replication;
 
-/// <summary>A drag box takes units; with the assign key held it takes only buildings. Driven with real input in a hosted match.</summary>
+/// <summary>A drag box takes units; with the assign key held it takes only buildings, of one type. Driven with real input in a hosted match.</summary>
 public class SelectBuildingsPlayModeTests
 {
     private GameConfigData config;
@@ -48,7 +48,7 @@ public class SelectBuildingsPlayModeTests
         Call("mouse", $"{{\"x\":{from.x},\"y\":{from.y},\"space\":\"tile\",\"action\":\"drag\",\"to\":[{to.x},{to.y}],\"duration\":0.1}}");
 
     [UnityTest, Timeout(120000)]
-    public IEnumerator TheAssignKeyMakesADragTakeOnlyBuildingsOfEveryKind()
+    public IEnumerator TheAssignKeyMakesADragTakeOnlyBuildingsOfOneType()
     {
         yield return PlayModeMatch.StartMatchAsHost(config);
         int2 hq = default;
@@ -79,12 +79,24 @@ public class SelectBuildingsPlayModeTests
         Assert.That(selection.Selected, Does.Contain(units[0]), "a plain drag takes the units");
         Assert.AreEqual(0, selection.SelectedBuildings.Count, "and no building");
 
-        yield return Call("key", "{\"keys\":\"ctrl\",\"action\":\"down\"}");
-        yield return Drag(hi, lo);
-        yield return Call("key", "{\"keys\":\"ctrl\",\"action\":\"up\"}");
+        // Begun on the Radar and dragged past the HQ: only Radars. Begun past the HQ and dragged back over the Radar: only the HQ.
+        int2 away = math.select(new int2(-1), new int2(1), hq >= radarAt), far = hq + away * 8;
+        camera.transform.position = new Vector3((radarAt.x + far.x) * 0.5f, (radarAt.y + far.y) * 0.5f, camera.transform.position.z);
+        yield return null;
+        yield return CtrlDrag(radarAt, far);
         Assert.AreEqual(0, selection.Selected.Count, "no unit with the assign key held");
-        List<BuildingType> kinds = selection.SelectedBuildings.Select(id => ClientBuildings.Current.Entries[id].Data.buildingType).ToList();
-        Assert.That(kinds, Does.Contain(BuildingType.Base), "a spawner");
-        Assert.That(kinds, Does.Contain(BuildingType.Radar), "and a building that makes nothing");
+        CollectionAssert.AreEqual(new[] { BuildingType.Radar }, KindsOf(selection), "the type the box reached first");
+        yield return CtrlDrag(far, radarAt);
+        CollectionAssert.AreEqual(new[] { BuildingType.Base }, KindsOf(selection), "from the other end, the other type");
     }
+
+    private static IEnumerator CtrlDrag(int2 from, int2 to)
+    {
+        yield return Call("key", "{\"keys\":\"ctrl\",\"action\":\"down\"}");
+        yield return Drag(from, to);
+        yield return Call("key", "{\"keys\":\"ctrl\",\"action\":\"up\"}");
+    }
+
+    private static List<BuildingType> KindsOf(Selection selection) =>
+        selection.SelectedBuildings.Select(id => ClientBuildings.Current.Entries[id].Data.buildingType).Distinct().ToList();
 }

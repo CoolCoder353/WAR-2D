@@ -273,7 +273,7 @@ namespace WAR2D.UI
         {
           ""heading"": ""Selecting"",
           ""paras"": [
-            ""A drag box selects every unit inside it. If it catches [[Builder]]s and anything else, it keeps only the others; a box with only Builders selects them. {Key/AssignModifier} + drag selects only your buildings, of every kind, and leaves the units out. {Key/SelectIdleBuilders} selects idle Builders, and {Key/AssignModifier} + {Key/SelectIdleBuilders} every Builder.""
+            ""A drag box selects every unit inside it. If it catches [[Builder]]s and anything else, it keeps only the others; a box with only Builders selects them. {Key/AssignModifier} + drag selects only your buildings, of one type (the first the box reaches from where you began), and leaves the units out. {Key/SelectIdleBuilders} selects idle Builders, and {Key/AssignModifier} + {Key/SelectIdleBuilders} every Builder.""
           ]
         },
         {

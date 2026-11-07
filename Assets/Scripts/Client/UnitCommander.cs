@@ -618,6 +618,19 @@ public class UnitCommander : NetworkBehaviour
         return ids;
     }
 
+    /// <summary>Our buildings (seen now) in the box, of one type (<see cref="SelectionRules.OneBuildingType"/>).</summary>
+    private List<int> OwnBuildingsOfOneType(float2 lo, float2 hi, int ownerId, float2 dragStart, BuildingType keep)
+    {
+        var candidates = new List<(int, BuildingType, float2, float2)>();
+        foreach (int id in OwnBuildingsIn(lo, hi, ownerId, false))
+        {
+            BuildingData data = Known.Entries[id].Data;
+            int2 size = WorldStateManager.GetBuildingSize(data.buildingType), start = Footprint.Start((int2)math.round(data.position), size);
+            candidates.Add((id, data.buildingType, start, start + size));
+        }
+        return SelectionRules.OneBuildingType(candidates, dragStart, keep);
+    }
+
     private const float DoubleTapSeconds = 0.35f;
     private float lastClickTime = -1f, lastSquadTapTime = -1f;
     private float2 lastClickAt;
@@ -857,9 +870,12 @@ public class UnitCommander : NetworkBehaviour
             }
             else if (!click && GameInput.AssignModifier.IsPressed())
             {
-                // Ctrl + drag: only buildings, of every kind, however many units the box catches.
+                // Ctrl + drag: only buildings, however many units the box catches, of one type: the first the box reached from
+                // where the drag began (Shift: the type already selected, added to it).
                 Selection.ClearWalls();
-                Selection.SelectBuildings(OwnBuildingsIn(lo, hi, me, false), GameInput.AppendModifier.IsPressed());
+                bool append = GameInput.AppendModifier.IsPressed();
+                BuildingType keep = append && Known.Entries.TryGetValue(Selection.SelectedBuilding, out ClientBuildings.Entry first) ? first.Data.buildingType : BuildingType.None;
+                Selection.SelectBuildings(OwnBuildingsOfOneType(lo, hi, me, a, keep), append);
             }
             else
             {

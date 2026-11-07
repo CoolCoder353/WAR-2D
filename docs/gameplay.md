@@ -39,7 +39,7 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | `Esc` | In-match menu (closes the settings, gift or diplomacy panel first) |
 | Hold `Shift` | Pan 2.5× faster |
 | Left-click + drag | Select **every** one of your units inside the box (no limit), except that a box catching Builders and anything else keeps only the others (v0.18; Diggers and bombers count as army). A plain click selects what is under the cursor. |
-| `Ctrl` + drag | Select **only your buildings** inside the box, of every kind, however many units it catches (`Shift` as well: add them to the buildings selected). `Ctrl` + a number then keeps them as a group. A plain drag still takes units first. |
+| `Ctrl` + drag | Select **only your buildings** inside the box, however many units it catches, of **one type**: that of the building nearest where the drag began, the first the box reaches (2026-11-07: a box over two Heavy Factories and then a Barracks takes only the Heavy Factories). `Shift` as well: add the buildings of the type already selected. `Ctrl` + a number then keeps them as a group. A plain drag still takes units first. |
 | Hold `Alt` (v0.18, rebindable) | **Range and sight rings** of the selection and of whatever is under the pointer: attack range solid, minimum range dashed, sight dotted, in the owner's colour. Close units of a type share a ring (`RangeRings/MergeOverlap`), at most `RangeRings/Max` (64) sets. A Gun turret, Radar or Jammer always shows its reach while you place it. |
 | `Shift` + left-click while placing | Place the building and keep placing the same type (not the HQ) |
 | `Shift` + drag | Add the units in the box to the selection |
