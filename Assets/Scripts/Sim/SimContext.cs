@@ -143,6 +143,7 @@ namespace WAR2D.Sim
             Map = map;
             Config = config;
             Ids = new NetIdAllocator(config.Simulation.MaxEntities);
+            UnitCap = config.Simulation.MaxUnits;
             SimData data = SimData.Create(map.Grid, config, Allocator.Persistent);
             Orders = new OrderBook(map.Grid);
             Waypoints = new WaypointBook(config.Orders.MaxQueued);
@@ -168,6 +169,12 @@ namespace WAR2D.Sim
             Current = new SimContext(world, map, config);
             return Current;
         }
+
+        /// <summary>
+        /// Most units one owner may have: the match's <c>Simulation/MaxUnits</c> split between its players, set when the match starts
+        /// (<c>SimulationConfig.UnitCapFor</c>); all of it until then (tests, the menu battle).
+        /// </summary>
+        public int UnitCap { get; set; }
 
         /// <summary>The owner's slot, assigning the next free one on first use. -1 when every slot is taken.</summary>
         public int SlotOf(int ownerId)

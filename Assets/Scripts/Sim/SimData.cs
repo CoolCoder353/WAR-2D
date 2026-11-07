@@ -118,8 +118,6 @@ namespace WAR2D.Sim
         /// <summary>v0.18: share of its health at or under which a bomber explodes, and most rounds of blasts a tick.</summary>
         public float LastGaspHealth;
         public int ChainPasses;
-        /// <summary>Most units one owner may have.</summary>
-        public int MaxUnitsPerPlayer;
 
         // ---- spatial hash ----
         /// <summary>Cell size in tiles, and the grid's dimensions.</summary>
@@ -559,7 +557,6 @@ namespace WAR2D.Sim
                 ShellRadiusByType = new NativeArray<float>(typeCount, allocator),
                 AimByType = new NativeArray<float>(typeCount, allocator),
                 IgnitesByType = new NativeArray<byte>(typeCount, allocator),
-                MaxUnitsPerPlayer = sim.MaxUnitsPerPlayer,
                 CellSize = sim.HashCellSize,
                 CellsX = cellsX,
                 CellsY = cellsY,

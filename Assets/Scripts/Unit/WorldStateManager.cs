@@ -135,6 +135,8 @@ public partial class WorldStateManager : NetworkBehaviour
         WarLog.Info(LogCategory.Sim, $"{Map.Grid.Width}x{Map.Grid.Height} map ready in {timer.ElapsedMilliseconds} ms (seed {MapSeed})");
 
         Sim = SimContext.Create(World.DefaultGameObjectInjectionWorld, Map, ConfigLoader.LoadConfig());
+        // The match's units split between the players it started with (humans and AIs).
+        Sim.UnitCap = ConfigLoader.LoadConfig().Simulation.UnitCapFor(GameCore.Instance != null ? GameCore.Instance.MatchStartPlayerCount : 1);
         // The last settled tick, not the clock: WarLog runs on any thread and must never touch the EntityManager.
         WAR2D.Dev.Logging.WarLog.TickSource = () => settledTick;
         Sim.BuildingCreated += OnBuildingCreated;

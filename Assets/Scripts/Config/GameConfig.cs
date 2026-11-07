@@ -183,8 +183,14 @@ namespace Config
         public int HashCellSize;
         /// <summary>Flow-field sector rebuilds scheduled per tick.</summary>
         public int MaxFieldRebuildsPerTick;
-        /// <summary>Most units one player may own.</summary>
-        public int MaxUnitsPerPlayer;
+        /// <summary>Most units a whole match may hold; each player's cap is an even share (<see cref="UnitCapFor"/>).</summary>
+        public int MaxUnits;
+
+        /// <summary>
+        /// One player's unit cap in a match of <paramref name="players"/> players (humans and AIs at the start): <see cref="MaxUnits"/>
+        /// split evenly (owner, 2026-11-07: two players get half each, three a third, eight 12,500 of 100,000).
+        /// </summary>
+        public int UnitCapFor(int players) => MaxUnits / System.Math.Max(1, players);
         /// <summary>Capacity of the network id index (units and buildings).</summary>
         public int MaxEntities;
         /// <summary>Fog of war grid cell size in tiles.</summary>

@@ -446,7 +446,7 @@ namespace WAR2D.Sim
                 command.OnSpawned?.Invoke(-1);
                 return;
             }
-            if (data.UnitsBySlot[slot] >= data.MaxUnitsPerPlayer || context.Ids.Capacity <= 0)
+            if (data.UnitsBySlot[slot] >= context.UnitCap || context.Ids.Capacity <= 0)
             {
                 command.OnSpawned?.Invoke(SimCommand.SpawnRefusedAtCap); // the producer says why (playtest 2026-11-05)
                 return;
