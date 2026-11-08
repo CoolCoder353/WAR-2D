@@ -146,6 +146,11 @@ namespace Config
                 config.Simulation.MaxFieldRebuildsPerTick = Int(sim, "MaxFieldRebuildsPerTick", c, errors, min: 1, max: 16);
                 config.Simulation.MaxUnits = Int(sim, "MaxUnits", c, errors, min: 1, max: 1048576);
                 config.Simulation.MaxEntities = Int(sim, "MaxEntities", c, errors, min: 1024, max: 1048576);
+                // The cap is a match's units and every one needs an id (buildings need some too), so it must fit in the id space.
+                if (config.Simulation.MaxUnits > config.Simulation.MaxEntities)
+                    errors.Add($"{c}: <MaxUnits> ({config.Simulation.MaxUnits}) is more than <MaxEntities> ({config.Simulation.MaxEntities}); every unit needs an id.");
+                if (sim.SelectSingleNode("MaxUnitsPerPlayer") != null)
+                    errors.Add($"{c}: <MaxUnitsPerPlayer> was replaced by <MaxUnits>, the match's total, split evenly between its players at the start.");
                 config.Simulation.FogCellSize = Int(sim, "FogCellSize", c, errors, min: 1, max: 8);
                 config.Simulation.VisionIntervalTicks = Int(sim, "VisionIntervalTicks", c, errors, min: 1, max: 20);
             }

@@ -75,6 +75,22 @@ public class ConfigParserTests
 </GameConfig>";
 
     [Test]
+    public void MoreUnitsThanIdsIsRefused()
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(ValidXml.Replace("<MaxUnits>100000</MaxUnits>", "<MaxUnits>200000</MaxUnits>"), errors);
+        Assert.IsTrue(errors.Exists(e => e.Contains("MaxUnits") && e.Contains("MaxEntities")), string.Join("; ", errors));
+    }
+
+    [Test]
+    public void TheOldPerPlayerCapKeyIsNamedInTheError()
+    {
+        var errors = new List<string>();
+        ConfigParser.Parse(ValidXml.Replace("<MaxUnits>100000</MaxUnits>", "<MaxUnits>100000</MaxUnits><MaxUnitsPerPlayer>10000</MaxUnitsPerPlayer>"), errors);
+        Assert.IsTrue(errors.Exists(e => e.Contains("MaxUnitsPerPlayer")), string.Join("; ", errors));
+    }
+
+    [Test]
     public void ValidXml_ParsesWithoutErrors()
     {
         var errors = new List<string>();

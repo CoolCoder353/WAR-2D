@@ -762,7 +762,9 @@ namespace WAR2D.Client
         /// <summary>
         /// v0.20: a Bomber in the air is drawn raised on its leap's arc with no health bar (Figma B1); its tracks, facing and fires stay on
         /// the ground track below (the draw job has already used that). Walks only the units with the Airborne status (it walked every
-        /// known unit while any leap was on: 100,000 dictionary lookups a frame in a big battle).
+        /// known unit while any leap was on: 100,000 dictionary lookups a frame in a big battle). The raise is <see cref="CombatVisuals.LeapHeight"/>
+        /// (1.25 tiles) up, far less than <see cref="OffViewMargin"/>, so a raised unit in view was already in view on the ground track
+        /// the prepare job tested: its frame and colour are never stale. Keep LeapHeight under the margin.
         /// </summary>
         private void RaiseAirborne(NativeArray<float2> positions)
         {

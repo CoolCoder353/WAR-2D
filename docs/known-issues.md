@@ -32,7 +32,13 @@ on the owner's pinned layout (client and host each on 3 cores), simulated here.
   `HudTests.GiftToEnemyMovesResources`, `BastionClientTests.ATurretShootingOurUnitTurnsItsHeadAndFiresATracer`,
   `PerformanceTests.MinimapRedrawAtTenThousandOwnUnitsIsUnderOneMillisecond` (its 30 s wait for 10,000 units) and
   `AiPlayModeTests.APrivateOneVsOneAgainstEasyBuildsProducesAndAttacksTheHuman`. Each passes run alone (2026-11-07/08). Not
-  investigated further.
+  investigated further. `HudTests.DiplomacyToggleStopsMyUnitsAttacking` joined them on Linux (2026-11-09): it timed out after 15 s in
+  one full PlayMode run and passes alone and with its fixture.
+- **A unit well off the view is predicted and drawn up to 0.5 s late** (2026-11-09 review): `ClientUnitStore.PredictAll` refreshes
+  units past the turrets' margin and 6 tiles in turns, so their `Positions` are that stale for the minimap plot, range-ring
+  brackets and box queries. Orders and server state don't read them. A leaping Bomber's raise (1.25 tiles) is well inside that margin.
+- **`<MaxUnitsPerPlayer>` is now `<MaxUnits>`** (the match's total, split evenly between its players): an old config with the former
+  key fails validation, and `MaxUnits` over `MaxEntities` is refused (2026-11-09).
 - **Batch-mode test runs after a code change: pass `--burst-force-sync-compilation`.** In the editor Burst compiles in the background, so right after a change the first tests run their jobs as slow managed code. `AiPlayModeTests.AnEasyAndANormalAiPlaceMineBuildProduceAndAttack` (the first PlayMode test) then timed out waiting for an attack in 3 of 22 full runs (2026-11-06/07) and passed alone. With the flag the jobs are compiled before they run, as in a built player.
 
 ### 10,000 units at 120 fps (2026-11-07, on `perf/10k-units-120fps`)
