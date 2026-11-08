@@ -35,6 +35,21 @@ namespace WAR2D.Client.Render
         private readonly Func<int, bool> finishing;
         private readonly List<int> gone = new List<int>();
         private float now, dt;
+        // The last packing: what it was made from, and when.
+        private float packedAt = float.NegativeInfinity;
+        private ClientBuildings packedFrom;
+        private int packedCount;
+        private Rect? packedView;
+
+        /// <summary>
+        /// While the view stays inside the last packing's and the building count holds, the buildings are packed and uploaded at most this
+        /// often and the last packing is drawn again in between (2026-11-08: packing every known building every frame cost a 100,000-unit
+        /// client on three cores 0.5 ms a frame; a building's flash or bar changes far slower).
+        /// </summary>
+        public const float RepackSeconds = 1f / 30f;
+
+        /// <summary>The share of the view's size a packing reaches past each edge, so a camera that moves a little needs no repack.</summary>
+        private const float PackMargin = 0.25f;
         private readonly Func<int, bool> flashing;
         private readonly Func<int, float> trailOf;
         private Func<int, ClientBuildings.TurretHead> headOf;
@@ -128,18 +143,32 @@ namespace WAR2D.Client.Render
         public void Draw(ClientBuildings known, float time, Func<int, uint> colorOf, int barMode = (int)HealthBarMode.DamagedOnly, Func<int, bool> selected = null,
             Rect? view = null)
         {
-            dt = now > 0f ? math.max(0f, time - now) : 0f;
-            now = time;
-            TrackHits(known);
-            if (headsOf != known)
+            bool inside = view.HasValue == packedView.HasValue && (!view.HasValue || (packedView.Value.Contains(view.Value.min) && packedView.Value.Contains(view.Value.max)));
+            bool repack = time - packedAt >= RepackSeconds || time < packedAt || known != packedFrom || known.Entries.Count != packedCount || !inside;
+            if (repack)
             {
-                headsOf = known;
-                headOf = known.HeadOf;
+                packedAt = time;
+                packedFrom = known;
+                packedCount = known.Entries.Count;
+                if (view.HasValue)
+                {
+                    Rect v = view.Value;
+                    view = new Rect(v.xMin - v.width * PackMargin, v.yMin - v.height * PackMargin, v.width * (1f + 2f * PackMargin), v.height * (1f + 2f * PackMargin));
+                }
+                packedView = view;
+                dt = now > 0f ? math.max(0f, time - now) : 0f;
+                now = time;
+                TrackHits(known);
+                if (headsOf != known)
+                {
+                    headsOf = known;
+                    headOf = known.HeadOf;
+                }
+                BuildingPacking.Pack(known.Entries.Values, frames, colorOf, WorldStateManager.GetBuildingSize, time, flashing, lists, headOf, barMode, selected, trailOf, finishing, view);
             }
-            BuildingPacking.Pack(known.Entries.Values, frames, colorOf, WorldStateManager.GetBuildingSize, time, flashing, lists, headOf, barMode, selected, trailOf, finishing, view);
-            Submit(lists.Buildings, ref buildings, ref buildingCapacity, buildingMaterial);
-            Submit(lists.Overlays, ref overlays, ref overlayCapacity, overlayMaterial);
-            Submit(lists.Bars, ref bars, ref barCapacity, barMaterial);
+            Submit(lists.Buildings, ref buildings, ref buildingCapacity, buildingMaterial, repack);
+            Submit(lists.Overlays, ref overlays, ref overlayCapacity, overlayMaterial, repack);
+            Submit(lists.Bars, ref bars, ref barCapacity, barMaterial, repack);
         }
 
         /// <summary>
@@ -181,10 +210,15 @@ namespace WAR2D.Client.Render
             }
         }
 
-        private void Submit(List<UnitInstance> list, ref GraphicsBuffer buffer, ref int capacity, Material material)
+        private void Submit(List<UnitInstance> list, ref GraphicsBuffer buffer, ref int capacity, Material material, bool upload)
         {
             int count = list.Count;
             if (count == 0) return;
+            if (!upload && buffer != null && capacity >= count)
+            {
+                Graphics.RenderPrimitives(new RenderParams(material) { worldBounds = new Bounds(Vector3.zero, Vector3.one * 100000f) }, MeshTopology.Triangles, QuadVertices, count);
+                return;
+            }
             if (buffer == null || capacity < count)
             {
                 buffer?.Dispose();

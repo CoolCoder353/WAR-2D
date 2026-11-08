@@ -32,6 +32,17 @@ namespace WAR2D.Client
         private NativeArray<float2> blend;
         private NativeList<float2> drawn;
         private NativeList<float2> steer; // parallel to known: the route position, or the shown order's (no blend)
+        // Parallel to known: the index a slot's positions belong to (-1: none yet), when they were predicted, and 1 when this frame's job did.
+        private NativeList<int> slotIndex;
+        private NativeList<float> slotAt;
+        private NativeList<byte> refreshed;
+        private int refreshCursor;
+        // Units added to the known list's end or moved into a gap since it was last in index order.
+        private int unsorted;
+        // Parallel to known: the drawn position before an airborne raise (the last refresh's), and how fast it moves.
+        private NativeList<float2> slotDrawn, velocity;
+        // Drawing only, by index: how far along its route leg the last prediction found the unit (PredictJob.Draw).
+        private NativeArray<RouteCursor> cursors;
         // Drawing only: own orders shown before the server answers them, by index.
         private NativeArray<OrderLead> leads;
         private int leadCount;
@@ -101,7 +112,13 @@ namespace WAR2D.Client
             blend = new NativeArray<float2>(idCapacity, allocator);
             drawn = new NativeList<float2>(1024, allocator);
             steer = new NativeList<float2>(1024, allocator);
+            slotIndex = new NativeList<int>(1024, allocator);
+            slotAt = new NativeList<float>(1024, allocator);
+            refreshed = new NativeList<byte>(1024, allocator);
+            slotDrawn = new NativeList<float2>(1024, allocator);
+            velocity = new NativeList<float2>(1024, allocator);
             leads = new NativeArray<OrderLead>(idCapacity, allocator);
+            cursors = new NativeArray<RouteCursor>(idCapacity, allocator);
             routeUnits = new NativeList<RouteUnit>(64, allocator);
             correctionUnits = new NativeList<CorrectionUnit>(64, allocator);
             healthUnits = new NativeList<HealthUnit>(64, allocator);
@@ -142,6 +159,18 @@ namespace WAR2D.Client
         /// route position, or the shown order's while one is), so its facing follows its way and not a glide back.
         /// </summary>
         internal NativeArray<float2> SteerAfterPrediction => steer.AsArray();
+
+        /// <summary>
+        /// Parallel to the known list, like <see cref="DrawnAfterPrediction"/>: 1 where the last <see cref="PredictAll"/> refreshed the
+        /// slot, 0 where it kept the slot's earlier positions (a unit away from the view between its turns).
+        /// </summary>
+        internal NativeArray<byte> RefreshedAfterPrediction => refreshed.AsArray();
+
+        /// <summary>
+        /// Parallel to the known list, like <see cref="DrawnAfterPrediction"/>: how fast each drawn position moved since the slot's last
+        /// refresh (tiles a second; zero for a jump or a new slot), so a draw can carry it on between refreshes.
+        /// </summary>
+        internal NativeArray<float2> VelocityAfterPrediction => velocity.AsArray();
 
         /// <summary>The prediction job <see cref="PredictAll"/> scheduled (default once complete).</summary>
         internal JobHandle Prediction => predicting;
@@ -614,7 +643,9 @@ namespace WAR2D.Client
             {
                 knownSlot[index] = known.Length;
                 known.Add(index);
+                unsorted++;
             }
+            if (knownSlot[index] < slotIndex.Length) slotIndex[knownSlot[index]] = -1; // predicted afresh, wherever it was drawn
             owner[index] = u.OwnerId;
             if (ownersSeen.Add(u.OwnerId)) owners.Add(u.OwnerId);
             type[index] = u.Type;
@@ -649,6 +680,7 @@ namespace WAR2D.Client
             Forgotten?.Invoke(u.Index);
             int slot = knownSlot[u.Index];
             int last = known[known.Length - 1];
+            unsorted++;
             known[slot] = last;
             knownSlot[last] = slot;
             known.RemoveAt(known.Length - 1);
@@ -662,8 +694,8 @@ namespace WAR2D.Client
 
         /// <summary>
         /// Draws a known unit setting off for <paramref name="goal"/> at once, until it is within <paramref name="stopTiles"/> of it, instead of
-        /// after the order's round trip to the server. Drawing only: <see cref="Predicted"/> stays bit-identical to the server's copy, the
-        /// server's route ends this, and the unit glides onto it.
+        /// after the order's round trip to the server. Drawing only: <see cref="Predicted"/> stays on the server's route, the server's route
+        /// ends this, and the unit glides onto it.
         /// </summary>
         public void ShowMove(int index, float2 goal, float stopTiles) => StartLead(index, OrderLead.Going, goal, stopTiles);
 
@@ -822,20 +854,100 @@ namespace WAR2D.Client
             }
         }
 
+        /// <summary>Known units from which the list is kept in index order.</summary>
+        private const int SortFrom = 4096;
+
+        /// <summary>
+        /// Puts the known list back in index order, its slots' positions with it (2026-11-08: the draw jobs read a dozen arrays by index for
+        /// each unit, and in the order units arrived and left those reads were all cache misses; in index order they run forward).
+        /// </summary>
+        private void SortKnown()
+        {
+            int n = known.Length;
+            var order = new NativeArray<int>(n, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+            var pairs = new NativeArray<float2>(n, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+            var ints = new NativeArray<int>(n, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+            var floats = new NativeArray<float>(n, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+            var bytes = new NativeArray<byte>(n, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+            new SortKnownJob
+            {
+                Known = known.AsArray(), KnownSlot = knownSlot, Order = order,
+                Predicted = predicted.AsArray(), Drawn = drawn.AsArray(), Steer = steer.AsArray(), SlotDrawn = slotDrawn.AsArray(), Velocity = velocity.AsArray(),
+                SlotIndex = slotIndex.AsArray(), SlotAt = slotAt.AsArray(), Refreshed = refreshed.AsArray(),
+                Pairs = pairs, Ints = ints, Floats = floats, Bytes = bytes,
+            }.Run();
+            order.Dispose(); pairs.Dispose(); ints.Dispose(); floats.Dispose(); bytes.Dispose();
+            unsorted = 0;
+        }
+
+        [BurstCompile]
+        private struct SortKnownJob : IJob
+        {
+            public NativeArray<int> Known, KnownSlot, Order;
+            public NativeArray<float2> Predicted, Drawn, Steer, SlotDrawn, Velocity;
+            public NativeArray<int> SlotIndex;
+            public NativeArray<float> SlotAt;
+            public NativeArray<byte> Refreshed;
+            // Scratch, one per element type.
+            public NativeArray<float2> Pairs;
+            public NativeArray<int> Ints;
+            public NativeArray<float> Floats;
+            public NativeArray<byte> Bytes;
+
+            public void Execute()
+            {
+                Known.Sort();
+                for (int j = 0; j < Known.Length; j++) Order[j] = KnownSlot[Known[j]]; // the slot each unit had
+                Move(Predicted, Pairs); Move(Drawn, Pairs); Move(Steer, Pairs); Move(SlotDrawn, Pairs); Move(Velocity, Pairs);
+                Move(SlotIndex, Ints); Move(SlotAt, Floats); Move(Refreshed, Bytes);
+                for (int j = 0; j < Known.Length; j++) KnownSlot[Known[j]] = j;
+            }
+
+            private void Move<T>(NativeArray<T> slots, NativeArray<T> scratch) where T : unmanaged
+            {
+                for (int j = 0; j < Order.Length; j++) scratch[j] = slots[Order[j]];
+                NativeArray<T>.Copy(scratch, slots, Order.Length);
+            }
+        }
+
         /// <summary>
         /// Predicts every known unit at <paramref name="now"/> in a Burst job over the job threads (stored states unchanged), left running:
         /// see <see cref="CompletePrediction"/>.
         /// </summary>
-        public void PredictAll(float now)
+        public void PredictAll(float now) => PredictAll(now, new float4(float.MinValue, float.MinValue, float.MaxValue, float.MaxValue), 0f, 0f);
+
+        /// <summary>
+        /// Like <see cref="PredictAll(float)"/>, but a unit last drawn outside <paramref name="cull"/> (xMin, yMin, xMax, yMax: the view
+        /// with a margin) keeps its slot's positions until its turn: a share of the known list each frame, so each unit is refreshed at
+        /// least every <paramref name="refreshSeconds"/>. 2026-11-08: at 100,000 known units about 14,000 are on screen, and predicting
+        /// the rest every frame cost a client on three cores more than any other work. A unit drawn inside <paramref name="cull"/> also gets
+        /// the velocity that takes its drawn position to where it will be <paramref name="aheadSeconds"/> on (<see cref="VelocityAfterPrediction"/>).
+        /// </summary>
+        public void PredictAll(float now, float4 cull, float refreshSeconds, float aheadSeconds)
         {
             CompletePrediction();
             FinishCompaction(wait: false);
-            predicted.ResizeUninitialized(known.Length);
-            drawn.ResizeUninitialized(known.Length);
-            steer.ResizeUninitialized(known.Length);
+            int n = known.Length, had = slotIndex.Length;
+            predicted.ResizeUninitialized(n);
+            drawn.ResizeUninitialized(n);
+            steer.ResizeUninitialized(n);
+            slotIndex.ResizeUninitialized(n);
+            slotAt.ResizeUninitialized(n);
+            refreshed.ResizeUninitialized(n);
+            slotDrawn.ResizeUninitialized(n);
+            velocity.ResizeUninitialized(n);
+            for (int i = had; i < n; i++) slotIndex[i] = -1;
+            if (unsorted > n / 8 && n >= SortFrom)
+            {
+                FinishCompaction(wait: true); // the compaction job reads the known list
+                SortKnown();
+            }
             float elapsed = lastPredictTime < 0f ? 0f : math.max(0f, now - lastPredictTime);
             lastPredictTime = now;
             AdvanceLeads(now, elapsed);
+            int turn = refreshSeconds > 0f ? math.min(n, (int)math.ceil(n * elapsed / refreshSeconds)) : n;
+            int first = n > 0 ? refreshCursor % n : 0;
+            refreshCursor = n > 0 ? (first + turn) % n : 0;
             predicting = new PredictJob
             {
                 Known = known.AsArray(),
@@ -849,9 +961,20 @@ namespace WAR2D.Client
                 BlendKeep = math.exp(-elapsed / BlendSeconds),
                 Elapsed = elapsed,
                 Leads = leads,
+                AnyLeads = leadCount > 0,
                 Drawn = drawn.AsArray(),
                 Steer = steer.AsArray(),
-            }.Schedule(known.Length, 256);
+                Cull = cull,
+                TurnFirst = first,
+                TurnCount = turn,
+                SlotIndex = slotIndex.AsArray(),
+                SlotAt = slotAt.AsArray(),
+                Refreshed = refreshed.AsArray(),
+                SlotDrawn = slotDrawn.AsArray(),
+                Velocity = velocity.AsArray(),
+                Ahead = aheadSeconds,
+                Cursors = cursors,
+            }.Schedule(n, 256);
             JobHandle.ScheduleBatchedJobs();
         }
 
@@ -863,8 +986,16 @@ namespace WAR2D.Client
             FinishCompaction(wait: true);
             states.Dispose(); routeStart.Dispose(); routeCount.Dispose(); owner.Dispose(); type.Dispose(); health.Dispose();
             arena.Dispose(); known.Dispose(); knownSlot.Dispose(); predicted.Dispose(); blend.Dispose(); drawn.Dispose(); steer.Dispose(); leads.Dispose();
+            slotIndex.Dispose(); slotAt.Dispose(); refreshed.Dispose(); slotDrawn.Dispose(); velocity.Dispose(); cursors.Dispose();
             routeUnits.Dispose(); routeTiles.Dispose(); counts.Dispose(); correctionUnits.Dispose(); healthUnits.Dispose();
             routeChanges.Dispose(); payloadBytes.Dispose(); decoded.Dispose();
+        }
+
+        /// <summary>A unit's place on its route leg at its last draw prediction: the waypoint it had passed and the distance to it.</summary>
+        private struct RouteCursor
+        {
+            public float StartTime, Before;
+            public int First, Count, Leg, Waypoint;
         }
 
         /// <summary>An own order drawn before the server answers it.</summary>
@@ -892,24 +1023,112 @@ namespace WAR2D.Client
             [ReadOnly] public NativeArray<OrderLead> Leads;
             public NativeArray<float2> Drawn;
             public NativeArray<float2> Steer;
+            public float4 Cull;
+            /// <summary>The slots refreshed this frame wherever they are: <see cref="TurnCount"/> from <see cref="TurnFirst"/>, wrapping.</summary>
+            public int TurnFirst, TurnCount;
+            public NativeArray<int> SlotIndex;
+            public NativeArray<float> SlotAt;
+            public bool AnyLeads;
+            public NativeArray<byte> Refreshed;
+            public NativeArray<float2> SlotDrawn, Velocity;
+            /// <summary>Seconds to the next refresh the velocity aims at (0: no velocity but a shown order's).</summary>
+            public float Ahead;
+            [NativeDisableParallelForRestriction] public NativeArray<RouteCursor> Cursors; // by index; each index is in one slot
 
             public void Execute(int i)
             {
+                // The wait test reads only arrays in slot order: a unit's state is a cache miss, and most units wait (2026-11-08).
                 int index = Known[i];
+                bool same = SlotIndex[i] == index;
+                if (same && (i - TurnFirst + Known.Length) % Known.Length >= TurnCount && !(AnyLeads && Leads[index].Kind != 0))
+                {
+                    float2 last = Drawn[i];
+                    if (last.x < Cull.x || last.y < Cull.y || last.x >= Cull.z || last.y >= Cull.w)
+                    {
+                        Refreshed[i] = 0;
+                        return;
+                    }
+                }
+                // A slot left waiting fades its glide by the time since its last turn.
+                float elapsed = same ? math.max(0f, Now - SlotAt[i]) : Elapsed;
+                float keep = elapsed == Elapsed ? BlendKeep : math.exp(-elapsed / BlendSeconds);
                 PredictState s = States[index];
-                float2 p = MovementPrediction.Predict(ref s, Waypoints, RouteStart[index], RouteCount[index], Now);
+                SlotIndex[i] = index;
+                SlotAt[i] = Now;
+                Refreshed[i] = 1;
+                float2 p = Draw(index, s, Now, true);
                 float2 b = Blend[index];
                 float length = math.length(b);
                 if (length > 0f)
                 {
-                    float fade = length * (1f - BlendKeep), walk = math.max(s.FullSpeed * CatchUpShare, length / CatchUpSeconds) * Elapsed;
+                    float fade = length * (1f - keep), walk = math.max(s.FullSpeed * CatchUpShare, length / CatchUpSeconds) * elapsed;
                     b *= (length - math.min(fade, walk)) / length;
                     if (math.lengthsq(b) < 1e-8f) b = float2.zero;
                 }
                 Blend[index] = b;
                 Positions[i] = p;
-                Drawn[i] = Leads[index].Kind != 0 ? Leads[index].At : p + b;
-                Steer[i] = Leads[index].Kind != 0 ? Leads[index].At : p;
+                bool lead = Leads[index].Kind != 0;
+                float2 drawn = lead ? Leads[index].At : p + b;
+                Drawn[i] = drawn;
+                Steer[i] = lead ? Leads[index].At : p;
+                float2 velocity = float2.zero;
+                if (lead)
+                {
+                    // A shown order moves frame by frame: its speed since the slot's last refresh (more than a tile is a jump).
+                    float2 moved = drawn - SlotDrawn[i];
+                    if (same && elapsed > 0f && math.lengthsq(moved) <= 1f) velocity = moved / elapsed;
+                }
+                else if (Ahead > 0f && drawn.x >= Cull.x && drawn.y >= Cull.y && drawn.x < Cull.z && drawn.y < Cull.w)
+                {
+                    // Toward where the unit will be drawn at the next refresh, so the draws between refreshes follow its route.
+                    float2 later = Draw(index, s, Now + Ahead, false);
+                    if (length > 0f) later += b * math.exp(-Ahead / BlendSeconds);
+                    velocity = (later - drawn) / Ahead;
+                }
+                Velocity[i] = velocity;
+                SlotDrawn[i] = drawn;
+            }
+
+            /// <summary>
+            /// <see cref="MovementPrediction.Predict"/> for drawing: the same route position, but walked on from the waypoint the unit's last
+            /// draw passed instead of from its leg's start (2026-11-08: a unit long on its way walked every waypoint behind it each frame).
+            /// The sums differ from the server's in the last bits, which no draw shows. <paramref name="keep"/> stores the place reached.
+            /// </summary>
+            private float2 Draw(int index, PredictState s, float now, bool keep)
+            {
+                int first = RouteStart[index], count = RouteCount[index];
+                if (count <= 0) return s.Anchor;
+                if (s.Anchored != 0)
+                {
+                    // The straight leg out of a corrected point, as Predict has it.
+                    int target = s.Index + 1;
+                    if (target >= count) return s.Anchor;
+                    float2 to = Waypoints[first + target], segment = to - s.Anchor;
+                    float length = math.length(segment), remaining = math.max(0f, s.Speed * (now - s.AnchorTime));
+                    if (length <= 0f || remaining <= length || s.Speed <= 0f)
+                        return length > 0f ? s.Anchor + segment * (math.min(remaining, length) / length) : s.Anchor;
+                    s.Index = target;
+                    s.StartTime = s.AnchorTime + length / s.Speed;
+                }
+                int leg = math.clamp(s.Index, 0, count - 1);
+                float travelled = math.max(0f, s.Speed * (now - s.StartTime));
+                RouteCursor c = Cursors[index];
+                bool resume = c.StartTime == s.StartTime && c.First == first && c.Count == count && c.Leg == leg && c.Waypoint >= leg && c.Waypoint < count
+                    && c.Before <= travelled;
+                int k = resume ? c.Waypoint : leg;
+                float before = resume ? c.Before : 0f;
+                float2 from = Waypoints[first + k];
+                float span = 0f;
+                for (; k + 1 < count; k++)
+                {
+                    span = math.length(Waypoints[first + k + 1] - from);
+                    if (travelled - before <= span) break;
+                    before += span;
+                    from = Waypoints[first + k + 1];
+                }
+                if (keep) Cursors[index] = new RouteCursor { StartTime = s.StartTime, Before = before, First = first, Count = count, Leg = leg, Waypoint = k };
+                if (k + 1 >= count) return from;
+                return span > 0f ? from + (Waypoints[first + k + 1] - from) * ((travelled - before) / span) : from;
             }
         }
     }

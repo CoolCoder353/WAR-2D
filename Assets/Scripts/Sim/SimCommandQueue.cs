@@ -69,8 +69,6 @@ namespace WAR2D.Sim
         public bool Queue;
         /// <summary>Move or AttackMove in formation (v0.16): two or more movers take slots at the goal and the slowest one's speed.</summary>
         public bool Formation;
-        /// <summary>A player's click (an order sent over the network): its flow fields are built on the next tick, whatever the budget. AI, rally and scripted orders wait their turn.</summary>
-        public bool Urgent;
         /// <summary>Goal tile of a move.</summary>
         public int2 Tile;
         /// <summary>Spawn position.</summary>

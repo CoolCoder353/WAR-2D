@@ -153,7 +153,6 @@ namespace WAR2D.Sim
             data.OrderLive = Orders.Live;
             data.OrderReady = Orders.Ready;
             data.OrderFollowers = Orders.Followers;
-            data.OrderPeakFollowers = Orders.PeakFollowers;
             data.OrderLead = Orders.Lead;
             data.RouteMisses = Orders.RouteMisses;
             singleton = world.EntityManager.CreateEntity(typeof(SimData), typeof(SimClock));

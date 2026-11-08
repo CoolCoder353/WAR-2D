@@ -71,9 +71,6 @@ namespace WAR2D.Net.Replication
         public const int MaxWaypoints = 256;
         public const int RetraceEvery = 40;
 
-        /// <summary>What <c>TracedOrder</c> holds while a unit waits for its order's field to reach it (never a live order's slot).</summary>
-        public static int WaitingOn(int order) => -2 - order;
-
         public int Count, Tick, RetraceBudget;
         /// <summary>Tiles the sent route may cut across the traced cells (see <see cref="RouteTraceJob"/>).</summary>
         public float Tolerance;
@@ -83,9 +80,6 @@ namespace WAR2D.Net.Replication
         public NativeArray<int> OrderSlot;
         public NativeArray<int> BlockOf;
         public NativeArray<byte> Blocks;
-        /// <summary>Per order slot: 1 once its field is built (<see cref="WAR2D.Sim.SimData.OrderReady"/>), and its goal.</summary>
-        public NativeArray<byte> OrderReady;
-        public NativeArray<float2> OrderGoal;
         public int SectorsX, SectorsY, SectorCount, CellsPerSector, CellSize, Width, Height;
 
         public NativeList<float2> Arena;
@@ -98,7 +92,7 @@ namespace WAR2D.Net.Replication
             JobHandle traced = new RouteTraceJob
             {
                 Tick = Tick, Tolerance = Tolerance, Positions = Positions, Health = Health, IdOf = IdOf, OrderSlot = OrderSlot,
-                BlockOf = BlockOf, Blocks = Blocks, OrderReady = OrderReady, OrderGoal = OrderGoal, SectorsX = SectorsX, SectorCount = SectorCount, CellsPerSector = CellsPerSector,
+                BlockOf = BlockOf, Blocks = Blocks, SectorsX = SectorsX, SectorCount = SectorCount, CellsPerSector = CellsPerSector,
                 CellSize = CellSize, Width = Width, Height = Height,
                 Arena = Arena.AsDeferredJobArray(), Start = Start, RouteCount = RouteCount, TracedOrder = TracedOrder, TracedId = TracedId,
                 Out = stream.AsWriter(),
@@ -126,24 +120,6 @@ namespace WAR2D.Net.Replication
         Rotated = 3,
         /// <summary>The order ended: keep the route it walked.</summary>
         Arrived = 4,
-        /// <summary>
-        /// The order's field isn't built yet (the unit stands and waits for it, SimMovementSystem): the stub route to its cell
-        /// follows, always written, and the unit is traced again every tick until the field is built. Committed as the order only
-        /// then: a stub kept as the order's route waited up to 2 s for the rotation, the unit gliding back to its tile on the client
-        /// between corrections (players clicked again; 2026-11-07).
-        /// </summary>
-        Waiting = 5,
-        /// <summary>
-        /// Still waiting: nothing follows and nothing changes. Not even a new stub when the unit was pushed meanwhile: corrections
-        /// keep its place (the stub was resent on every push, 2.7 of 3.7 million routes in the 100k benchmark, 2026-11-07).
-        /// </summary>
-        Pending = 6,
-        /// <summary>
-        /// Waiting, as <see cref="Waiting"/>, for a unit that stood still (its last order had ended): nothing follows, as the client
-        /// already draws it standing where it is; only the wait is committed (2026-11-08: these stubs doubled the routes of the 100k
-        /// benchmark's order waves).
-        /// </summary>
-        WaitingStill = 7,
     }
 
     /// <summary>
@@ -161,8 +137,6 @@ namespace WAR2D.Net.Replication
         [ReadOnly] public NativeArray<int> OrderSlot;
         [ReadOnly] public NativeArray<int> BlockOf;
         [ReadOnly] public NativeArray<byte> Blocks;
-        [ReadOnly] public NativeArray<byte> OrderReady;
-        [ReadOnly] public NativeArray<float2> OrderGoal;
         public int SectorsX, SectorCount, CellsPerSector, CellSize, Width, Height;
         [ReadOnly] public NativeArray<float2> Arena;
         [ReadOnly] public NativeArray<int> Start, RouteCount, TracedOrder, TracedId;
@@ -183,38 +157,16 @@ namespace WAR2D.Net.Replication
             if (index >= Start.Length) return;
             int order = OrderSlot[i];
             bool fresh = TracedId[index] != id;
-            bool changed = TracedOrder[index] != order; // also while waiting for the field (see RouteResult.Waiting)
+            bool changed = TracedOrder[index] != order;
             bool rotate = order >= 0 && (Tick + index) % RouteMaintenance.RetraceEvery == 0;
             if (!fresh && !changed && !rotate) return;
             if (!fresh && order < 0) { Out.Write(RouteResult.Arrived); return; }
-            // Still waiting for a field that isn't built and doesn't reach it: not traced again (it was, every tick).
-            if (!fresh && order >= 0 && TracedOrder[index] == RouteMaintenance.WaitingOn(order) && OrderReady[order] == 0 && !Covers(order, Positions[i]))
-            {
-                Out.Write(RouteResult.Pending);
-                return;
-            }
 
             var route = new FixedList4096Bytes<float2>();
             Trace(order, Positions[i], ref route);
             // On the wire grid (half tiles) before anything compares or keeps it: the server's copy of the client's prediction
             // must follow the same points the client gets, or corrections can't see the difference (bug review 2026-11-05).
             for (int k = 0; k < route.Length; k++) route[k] = RouteWire.Snap(route[k]);
-            if (order >= 0 && !Covers(order, Positions[i]) && OrderReady[order] != 0)
-            {
-                // Built, but not out to here yet: the unit walks straight at the goal (SimMovementSystem) while the field grows to
-                // cover it, so that is its route until a rotation finds the field.
-                route.Clear();
-                route.Add(RouteWire.Snap(math.clamp(math.round(Positions[i]), 0f, new float2(Width - 1, Height - 1))));
-                route.Add(RouteWire.Snap(OrderGoal[order]));
-            }
-            else if (order >= 0 && !Covers(order, Positions[i]))
-            {
-                if (!fresh && TracedOrder[index] == -1) { Out.Write(RouteResult.WaitingStill); return; }
-                Out.Write(RouteResult.Waiting);
-                Out.Write(route.Length);
-                for (int k = 0; k < route.Length; k++) Out.Write(route[k]);
-                return;
-            }
             if (!fresh && SameRoute(index, ref route)) { Out.Write(RouteResult.Same); return; }
             Out.Write(fresh || changed ? RouteResult.Fresh : RouteResult.Rotated);
             Out.Write(route.Length);
@@ -292,15 +244,6 @@ namespace WAR2D.Net.Replication
 
         private float2 Centre(int2 cell) => (float2)(cell * CellSize) + CellSize * 0.5f;
 
-        /// <summary>True when the order's field has a block for the sector the position is in.</summary>
-        private bool Covers(int handle, float2 position)
-        {
-            int2 tile = math.clamp((int2)math.floor(position), 0, new int2(Width - 1, Height - 1));
-            if ((uint)handle >= OrderFieldTable.MaxOrders) return false;
-            int sx = tile.x / SectorGraph.SectorSize, sy = tile.y / SectorGraph.SectorSize;
-            return BlockOf[handle * SectorCount + sy * SectorsX + sx] >= 0;
-        }
-
         private byte DirectionAtCell(int handle, int2 cell)
         {
             int2 tile = cell * CellSize;
@@ -352,9 +295,7 @@ namespace WAR2D.Net.Replication
                 int id = IdOf[i];
                 int index = NetIdAllocator.IndexOf(id);
                 RouteResult result = In.Read<RouteResult>();
-                if (result == RouteResult.Pending) { In.EndForEachIndex(); continue; }
-                if (result == RouteResult.WaitingStill) TracedOrder[index] = RouteMaintenance.WaitingOn(OrderSlot[i]);
-                else if (result == RouteResult.Arrived) TracedOrder[index] = OrderSlot[i];
+                if (result == RouteResult.Arrived) TracedOrder[index] = OrderSlot[i];
                 else if (result == RouteResult.Same) { TracedId[index] = id; TracedOrder[index] = OrderSlot[i]; }
                 else
                 {
@@ -373,7 +314,7 @@ namespace WAR2D.Net.Replication
                         Counters[0]++;
                         Generation[index] = Counters[0];
                         TracedId[index] = id;
-                        TracedOrder[index] = result == RouteResult.Waiting ? RouteMaintenance.WaitingOn(OrderSlot[i]) : OrderSlot[i];
+                        TracedOrder[index] = OrderSlot[i];
                         retraced++;
                     }
                 }

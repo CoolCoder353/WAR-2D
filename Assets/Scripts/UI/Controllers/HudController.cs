@@ -417,11 +417,12 @@ namespace WAR2D.UI
             MarkersMarker = new Unity.Profiling.ProfilerMarker("Hud.WorldMarkers"), TagsMarker = new Unity.Profiling.ProfilerMarker("Hud.OrderTags"),
             SelectionMarker = new Unity.Profiling.ProfilerMarker("Hud.Selection"), QuickMarker = new Unity.Profiling.ProfilerMarker("Hud.Quick");
 
+        /// <summary>The longest the HUD's shown state waits for a refresh (input is read every frame).</summary>
+        private const float DisplaySeconds = 1f / 30f;
+        private float displaySince = DisplaySeconds;
+
         private void Update()
         {
-            CentreOnOwnClearing();
-            ShowOwnHqOnce();
-            Model.PullResources();
             if (GameInput.FieldManual.WasPressedThisFrame() && !endScreen.IsShown && !settings.IsOpen)
             {
                 if (manual.IsOpen) manual.Close();
@@ -457,6 +458,17 @@ namespace WAR2D.UI
                     OnNotice(why);
                 }
             }
+            using (MarkersMarker.Auto()) worldMarkers.Update(!Spectating && !endScreen.IsShown && !matchMenu.IsOpen && !settings.IsOpen && !manual.IsOpen);
+            using (TagsMarker.Auto()) orderTags.Update(UnitCommander.Instance != null ? UnitCommander.Instance.Feedback : null, Camera.main, GameInput.Point.ReadValue<Vector2>());
+            // The rest only shows state: refreshed at most every DisplaySeconds (2026-11-08: the HUD's
+            // refresh every frame cost a 100,000-unit client on three cores 0.6 ms a frame, and the panel repaints it caused 0.4 ms more).
+            displaySince += Time.unscaledDeltaTime;
+            if (displaySince < DisplaySeconds) return;
+            float elapsed = displaySince;
+            displaySince = 0f;
+            CentreOnOwnClearing();
+            ShowOwnHqOnce(); // with no own HQ (a spectator, or after it fell) this walks every known building
+            Model.PullResources();
             SubscribeNotices();
             ShowCursorNotice();
             matchMenu.SetCanSurrender(root, GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing && !endScreen.IsShown);
@@ -468,15 +480,13 @@ namespace WAR2D.UI
                 bool owner = NetworkClient.localPlayer != null && NetworkClient.localPlayer.TryGetComponent(out ClientPlayer local) && local.isServerOwner;
                 endScreen.ShowRematch(owner, NetworkServer.active && WorldStateManager.Instance != null && WorldStateManager.Instance.Recorder != null && !WorldStateManager.Instance.Recorder.Finished);
             }
-            using (MinimapMarker.Auto()) minimap.Update(Time.unscaledDeltaTime);
-            if (Spectating) spectator.Tick(Time.unscaledDeltaTime);
-            using (MarkersMarker.Auto()) worldMarkers.Update(!Spectating && !endScreen.IsShown && !matchMenu.IsOpen && !settings.IsOpen && !manual.IsOpen);
-            using (TagsMarker.Auto()) orderTags.Update(UnitCommander.Instance != null ? UnitCommander.Instance.Feedback : null, Camera.main, GameInput.Point.ReadValue<Vector2>());
+            using (MinimapMarker.Auto()) minimap.Update(elapsed);
+            if (Spectating) spectator.Tick(elapsed);
             ShowWallReadout();
             Model.PullDiplomacy();
             SubscribeAlerts();
 
-            selectionTimer -= Time.unscaledDeltaTime;
+            selectionTimer -= elapsed;
             if (selectionTimer <= 0f)
             {
                 selectionTimer = SelectionRefreshSeconds;
@@ -484,7 +494,7 @@ namespace WAR2D.UI
             }
 
             GameCore core = GameCore.Instance;
-            playerTimer -= Time.unscaledDeltaTime;
+            playerTimer -= elapsed;
             if (playerTimer <= 0f)
             {
                 playerTimer = PlayerRefreshSeconds;

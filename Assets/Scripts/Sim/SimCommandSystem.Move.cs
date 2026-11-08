@@ -35,16 +35,6 @@ namespace WAR2D.Sim
         /// </summary>
         private void ApplyOrder(SimData data, SimContext context, in SimCommand command, int unitCount)
         {
-            IssuingCommand = command.Urgent; // a player's click: its fields are built on the next tick, whatever the budget
-            try { ApplyCommandOrder(data, context, command, unitCount); }
-            finally { IssuingCommand = false; }
-        }
-
-        /// <summary>True while a player's click (<see cref="SimCommand.Urgent"/>) is being applied (see <see cref="SectorFieldCache.RebuildDirty"/>).</summary>
-        private static bool IssuingCommand;
-
-        private void ApplyCommandOrder(SimData data, SimContext context, in SimCommand command, int unitCount)
-        {
             if (command.Order == OrderKind.Build || command.Order == OrderKind.Repair || command.Order == OrderKind.Dig)
             {
                 ApplyWorkOrder(data, context, command, unitCount);
@@ -421,7 +411,7 @@ namespace WAR2D.Sim
                 int2 tile = math.clamp((int2)math.floor(data.Positions[slots[i]]), 0, new int2(data.Width - 1, data.Height - 1));
                 starts[i] = tile.y * data.Width + tile.x;
             }
-            int handle = context.Orders.Issue(goal, sizeClass, starts, tick, owner, background, IssuingCommand && !background);
+            int handle = context.Orders.Issue(goal, sizeClass, starts, tick, owner, background);
             starts.Dispose();
             if (handle < 0) return false;
             AddPending(data, slots, new PendingOrder { Slot = handle, Stance = stance, OrderTarget = target, OrderTargetKind = targetKind });
@@ -569,7 +559,7 @@ namespace WAR2D.Sim
                 int2 tile = math.clamp((int2)math.floor(data.Positions[slots[i]]), 0, new int2(data.Width - 1, data.Height - 1));
                 starts[i] = tile.y * data.Width + tile.x;
             }
-            int handle = context.Orders.Issue(goal, sizeClass, starts, tick, owner, background, IssuingCommand && !background);
+            int handle = context.Orders.Issue(goal, sizeClass, starts, tick, owner, background);
             starts.Dispose();
             if (handle < 0) return false;
             AddPending(data, slots, new PendingOrder { Slot = handle, Stance = Stances.Move, WorkTile = tileIndex, WorkKind = kind });

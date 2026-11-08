@@ -152,9 +152,10 @@ namespace WAR2D.Sim
         protected override void OnUpdate()
         {
             SimContext context = SimContext.Current;
-            if (context != null) context.Orders.ScheduleRebuilds(context.Config.Simulation.MaxFieldRebuildsPerTick, context.Config.Simulation.MaxUrgentFieldRebuildsPerTick);
+            if (context != null) context.Orders.ScheduleRebuilds(context.Config.Simulation.MaxFieldRebuildsPerTick);
             SimTiming.LastMainThreadMs = SimBoundarySystem.TickWatch.Elapsed.TotalMilliseconds;
             SimTiming.LastStagesMs = SimTiming.LastMainThreadMs - SimTiming.CommandsEndMs;
+            SimTiming.RaiseTickEnded();
         }
     }
 }

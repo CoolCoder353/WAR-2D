@@ -45,13 +45,6 @@ namespace WAR2D.Sim
         public NativeArray<byte> Ready;
         /// <summary>Per order handle: units following it, counted by the movement stage each tick.</summary>
         public NativeArray<int> Followers;
-
-        /// <summary>
-        /// Per order handle: the most followers it has had since it was issued, so the group's stop radius keeps its size as its units
-        /// arrive (2026-11-07: with the radius of those still walking, it shrank under the last ones, who pressed on the parked crowd
-        /// and held their order for good).
-        /// </summary>
-        public NativeArray<int> PeakFollowers;
         /// <summary>Per order handle (v0.16): its leading follower's distance to the goal, written by the movement stage.</summary>
         public NativeArray<float> Lead;
         /// <summary>(handle, tile index) pairs where a unit of a ready order found no direction.</summary>
@@ -66,7 +59,6 @@ namespace WAR2D.Sim
             Live = new NativeArray<byte>(OrderFieldTable.MaxOrders, Allocator.Persistent);
             Ready = new NativeArray<byte>(OrderFieldTable.MaxOrders, Allocator.Persistent);
             Followers = new NativeArray<int>(OrderFieldTable.MaxOrders, Allocator.Persistent);
-            PeakFollowers = new NativeArray<int>(OrderFieldTable.MaxOrders, Allocator.Persistent);
             Lead = new NativeArray<float>(OrderFieldTable.MaxOrders, Allocator.Persistent);
             RouteMisses = new NativeQueue<int2>(Allocator.Persistent);
         }
@@ -87,12 +79,12 @@ namespace WAR2D.Sim
         /// <see cref="MaxOrdersPerOwner"/> other orders is refused with -1, or
         /// <see cref="MaxBackgroundOrdersPerOwner"/> for an order the player didn't give.
         /// </summary>
-        public int Issue(int2 goal, int sizeClass, NativeArray<int> startTiles, int tick, int owner, bool background = false, bool urgent = false)
+        public int Issue(int2 goal, int sizeClass, NativeArray<int> startTiles, int tick, int owner, bool background = false)
         {
             goal = math.clamp(goal, 0, new int2(cache.Width - 1, cache.Height - 1));
             int2 from = startTiles.Length > 0 ? new int2(startTiles[0] % cache.Width, startTiles[0] / cache.Width) : goal;
             if (!SnapGoal(map, goal, from, GoalSnapRadius, out goal)) return -1;
-            int handle = cache.Acquire(goal, sizeClass, 1, startTiles, urgent);
+            int handle = cache.Acquire(goal, sizeClass, 1, startTiles);
             if (handle >= OrderFieldTable.MaxOrders)
             {
                 cache.Release(handle, 1);
@@ -177,7 +169,6 @@ namespace WAR2D.Sim
                 cache.Unpublish(ref table, handle);
                 Live[handle] = 0;
                 Ready[handle] = 0;
-                PeakFollowers[handle] = 0;
             }
 
             missSeen.Clear();
@@ -199,7 +190,7 @@ namespace WAR2D.Sim
         }
 
         /// <summary>Schedules up to <paramref name="maxPerTick"/> rebuilds; the next boundary completes them.</summary>
-        public void ScheduleRebuilds(int maxPerTick, int maxUrgent = int.MaxValue) => rebuilds = cache.ScheduleRebuilds(maxPerTick, maxUrgent);
+        public void ScheduleRebuilds(int maxPerTick) => rebuilds = cache.ScheduleRebuilds(maxPerTick);
 
         /// <summary>Forgets every order (a new match).</summary>
         public void Clear()
@@ -213,7 +204,6 @@ namespace WAR2D.Sim
                 cache.Unpublish(ref table, handle);
                 Live[handle] = 0;
                 Ready[handle] = 0;
-                PeakFollowers[handle] = 0;
             }
             issuedTick.Clear();
             while (RouteMisses.TryDequeue(out _)) { }
@@ -230,7 +220,6 @@ namespace WAR2D.Sim
             Live.Dispose();
             Ready.Dispose();
             Followers.Dispose();
-            PeakFollowers.Dispose();
             Lead.Dispose();
             RouteMisses.Dispose();
         }

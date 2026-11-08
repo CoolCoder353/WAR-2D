@@ -2,25 +2,31 @@
 
 Bugs, mismatches and hygiene problems. The first three roadmaps (v0.2 to v0.9, v0.10 to v0.14 with v0.15 and v0.15.1, and v0.16 to v0.18) are complete; open items are backlog, and the sections after "Open" are the log of what past reviews and playtests found and fixed. Code-review findings that were triaged but not fixed are in [bug-review.md](bug-review.md). See the archived roadmaps ([v0.2 to v0.9](archive/roadmap-v0.2-v0.9.md), [v0.10 to v0.14](archive/roadmap-v0.10-v0.14.md), [v0.16 to v0.18](archive/roadmap-v0.16-v0.18.md)) for what each version delivered; the current plan is [roadmap.md](roadmap.md).
 
-### 100,000 units (2026-11-07, updated 2026-11-08, on `perf/100k-units`)
+### 100,000 units (2026-11-07, updated 2026-11-08 after the owner's runs, on `perf/100k-units`)
 
 [perf/100k](perf/100k/README.md) has the benchmark (`tools/perf-100k.sh`: 8 × 12,500 units, one rendered player) and the results
-on a simulated owner's machine (8 E-cores, 11 job threads).
+on the owner's pinned layout (client and host each on 3 cores), simulated here.
 
-- **The client's 1 % low is under its 140 fps goal**: 102 fps for a remote player and 78 for the hoster (medians of three runs;
-  the means, 164 and 183, pass; `main` 33 and 28). The slowest 1 % of frames are network-batch frames: the network loop takes
-  4.5 ms in them (units leaving 1.0, the wait for the previous batch's route job 0.45, terrain 0.4, Mirror's own receive about
-  1.5), then the draw and a present wait. Next step: spread a batch's apply (Leave, corrections) over several frames. IL2CPP was
-  not tried: only the Mono build support is installed here.
-- **The server tick's p50 and p95 at 100,000 units are higher than `main`'s**, while p99 and max are lower. Remote player: p50
-  12.5 → 14.3 ms, p95 19.7 → 23.1 (budget 28). Hoster (server and client on the same 8 cores): p50 16.9 → 27.3, p95 31.4 → 49.8.
-  Causes: each unit gets its real route as soon as its field exists (1.6 million route messages a run against 0.9 million;
-  `main` corrects the position later), and the hoster's client, at 3.4 times the frame rate, takes 4.1 of the 8 cores (`main`
-  1.6). A frame cap gives some back (p95 42 ms at 144 fps, 36 at 60). The gate (server alone) is level or better everywhere.
-- **Bandwidth at 100,000 units is 9 to 18 % over `main`'s** (509 KB/s against 433 for a remote player): the same prompt routes.
-  Every owner shares vision in that benchmark, so the player is sent all 100,000 units; in the gate's normal load it is level
-  (222 against 220 KB/s, budget 256).
-- **The benchmark is noisy here:** the same build measured 127 to 173 fps mean in back-to-back runs. Compare builds interleaved.
+- **The client is under its 140 fps goal on three cores**: 116 fps mean and 74 fps 1 % low here (`main` 58 and 30); on the
+  owner's machine, which reads about two thirds of this laptop, near 75 to 80 and 40 to 45. The draw predicts and prepares every
+  known unit each frame (100,000, of which about 13,000 are on screen): 12 ms of CPU a frame on three cores. Next step: per-frame
+  work for the units near the view, the others a slice at a time. The slowest 1 % of frames are network-batch frames (Leave,
+  corrections and Mirror's receive); spreading a batch's apply over several frames is the step there. IL2CPP was not tried: only
+  the Mono build support is installed here.
+- **The server tick misses its 28 ms p95 at 100,000 units on three cores**: about 40 ms on both builds in the 100k benchmark,
+  mostly replication to seven clients that each know every unit (`-perfShareVision`). `main`'s host also falls behind there
+  (about five ticks a frame); this branch's keeps up since shared vision grids share one stamp.
+- **Bandwidth at 100,000 units is 8 % over `main`'s on three cores** (448 → 483 KB/s), where `main`'s host, behind, sends less.
+  The gate's mean is level (219 → 220 KB/s).
+- **Removed: the instant order response** (2026-11-08, at the owner's request). It built every click's fields on the next tick
+  with no limit (a client could force any number of builds a tick) and sent routes while fields grew (67 % more bandwidth at
+  100,000 units on three cores). Orders keep `main`'s per-tick field budget, and with it `main`'s known behaviours: a click waits
+  behind the game's own orders, a group's stop radius shrinks as its units arrive, and 32 orders a player.
+- **Fixed: the benchmark's load depended on the host's speed.** A host behind its clock runs several ticks a frame, and the
+  harness gave orders and top-ups only on the last, so slow hosts got a lighter battle (the owner's runs settled at 91,000 or
+  100,000 units). They now run on every tick (`SimTiming.TickEnded`), and `perf.tick.perFrame` shows how far a host fell behind.
+- **Unpinned runs are noisy here:** the same build measured 127 to 173 fps mean in back-to-back runs. Pinned to three cores, as in
+  the owner's harness, runs repeat within about 3 %. Compare builds interleaved.
 - **A full PlayMode run fails one or two timing-dependent tests**, a different set each run, on this branch, on the
   select-buildings branch and so on `main`'s code: `ArsenalMatchTests.ArtilleryShellsATargetOnAScoutsSight`,
   `HudTests.GiftToEnemyMovesResources`, `BastionClientTests.ATurretShootingOurUnitTurnsItsHeadAndFiresATracer`,

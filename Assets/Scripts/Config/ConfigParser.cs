@@ -144,7 +144,6 @@ namespace Config
                 config.Simulation.SeparationStrength = Float(sim, "SeparationStrength", c, errors, min: 0, max: 4);
                 config.Simulation.HashCellSize = Int(sim, "HashCellSize", c, errors, min: 2, max: 16);
                 config.Simulation.MaxFieldRebuildsPerTick = Int(sim, "MaxFieldRebuildsPerTick", c, errors, min: 1, max: 16);
-                config.Simulation.MaxUrgentFieldRebuildsPerTick = Int(sim, "MaxUrgentFieldRebuildsPerTick", c, errors, min: 1, max: 64);
                 config.Simulation.MaxUnits = Int(sim, "MaxUnits", c, errors, min: 1, max: 1048576);
                 config.Simulation.MaxEntities = Int(sim, "MaxEntities", c, errors, min: 1024, max: 1048576);
                 config.Simulation.FogCellSize = Int(sim, "FogCellSize", c, errors, min: 1, max: 8);

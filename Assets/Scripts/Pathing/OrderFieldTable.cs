@@ -12,11 +12,8 @@ namespace WAR2D.Pathing
     /// </summary>
     public struct OrderFieldTable : IDisposable
     {
-        /// <summary>
-        /// Order handles the table addresses; the cache refuses orders past this. 512 from 2026-11-07 (was 256): with 12,500 units a
-        /// player's groups, chases, alarms and Builders filled the 32 orders each player had, and a click past them was refused unseen.
-        /// </summary>
-        public const int MaxOrders = 512;
+        /// <summary>Order handles the table addresses; the cache refuses orders past this.</summary>
+        public const int MaxOrders = 256;
 
         public int SectorsX, SectorsY, CellSize, CellsPerSector; // 16 cells per side at cell size 2
         /// <summary>Sectors in the map.</summary>
