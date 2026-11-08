@@ -1,4 +1,4 @@
-# 100,000 units: benchmark and results (2026-11-07, updated 2026-11-08 after the owner's runs)
+# 100,000 units: benchmark and results (2026-11-07, updated 2026-11-08 after the owner's runs and 2026-11-09 for 500 fps)
 
 Goal: server gameplay at the largest scale, 100,000 units (8 players × 12,500, the unit cap) fighting on the 1024 map, with the
 client at 140 fps or more on average and in the slowest 1 % of frames, a smooth server, orders that answer at once and big groups
@@ -30,6 +30,67 @@ gate's full scale:
 Intel Core Ultra 9 275HX (24 cores), NVIDIA GeForce RTX 5070 Ti Laptop GPU (Direct3D 12), 32 GB, Windows 11, on AC power, with
 other programs running. Unity 6000.4.1f1, **Mono**, Windows release player (`WAR-2D/Build/Windows (Steam)`). The client is
 CPU-bound: GPU 0.5 to 1.5 ms a frame.
+
+## 500 fps on the owner's pinned layout (2026-11-09)
+
+Goal: a mean of 500 fps or more for the 100k benchmark's client on the owner's pinned layout as simulated here (client on 3 E-cores,
+host on 3 others, 5 job threads each; see below), all tests passing. Release builds, single runs; medians in bold. **Before** is this
+branch at `331d380c` (the "after" column of the next section, 2026-11-08); **after** is this branch now.
+
+| Metric | Before | After (5 runs) | After |
+|---|---|---|---|
+| Client fps (frames ÷ time) | **116.1** | 602.9 / 644.8 / 627.6 / 631.4 / 604.9 | **627.6** |
+| Client 1 % low fps | **73.8** | 96.1 / 112.6 / 122.1 / 135.1 / 108.5 | **112.6** |
+| Frame time p50 (ms) | **8.48** | 1.17 / 1.14 / 1.23 / 1.26 / 1.33 | **1.23** |
+| Frame time p95 (ms) | **10.95** | 5.33 / 4.83 / 4.98 / 4.85 / 4.93 | **4.93** |
+| Frame time p99 (ms) | **12.41** | 8.72 / 7.20 / 6.28 / 6.07 / 7.01 | **7.01** |
+| Frame time max (ms) | **18.4** | 22.5 / 22.8 / 37.8 / 32.7 / 25.4 | **25.4** |
+| CPU main thread, mean (ms) | **8.61** | 1.65 / 1.55 / 1.59 / 1.58 / 1.65 | **1.59** |
+| GPU frame, mean (ms) | **0.74** | 0.46 / 0.47 / 0.49 / 0.49 / 0.49 | **0.49** |
+| Client process CPU (% of a core) | **231** | 168 / 164 / 155 / 153 / 157 | **157** |
+| Units the client knows | **100,227** | 99,890 / 99,824 / 99,973 / 99,990 / 99,901 | **99,901** |
+| Units on screen (mean) | **13,827** | 14,203 / 13,289 / 14,341 / 13,368 / 13,000 | **13,368** |
+| Bandwidth mean (KB/s) | **483** | 475 / 478 / 500 / 475 / 494 | **478** |
+| Server tick p50 (ms) | **23.6** | 24.6 / 23.9 / 24.0 / 22.8 / 24.7 | **24.0** |
+| Server tick p95 (ms) | **40.1** | 45.7 / 44.1 / 39.7 / 41.7 / 43.2 | **43.2** |
+| Server tick p99 (ms) | **50.2** | 65.2 / 67.1 / 52.9 / 52.2 / 66.0 | **65.2** |
+| Host ticks a frame, mean (1 = keeping up) | **1.11** | 2.95 / 2.45 / 2.23 / 1.13 / 3.90 | **2.45** |
+| Server logged errors, dropped connections | **0, 0** | 0, 0 every run | **0, 0** |
+
+`main` with the harness read 56.3 and 58.8 fps before and after these runs, against 58.2 in the next section's: the gain is not a
+better machine state. On the owner's machine, at about two thirds of these numbers, the client should land near 400 fps. The GPU is
+not the limit: 0.5 ms a frame here, about 1 ms on an RX 6600. The host's code did not change, yet it read a little slower (tick p95
+40.1 → 43.2 ms, and it fell behind its clock in some runs): a laptop shares one power budget between the CPU and a GPU now drawing
+600 frames a second, and this one's speed swung by up to a third between runs of the same build during the session. No server code
+changed in this round, so the gate below (no rendering) still holds.
+
+What changed, in the order the profiles called for it (Development-build profiles of 2,000 frames on the same layout):
+
+- **Units away from the view wait for their turn.** `ClientUnitStore.PredictAll(now, cull, refresh, ahead)` predicts every unit
+  drawn inside the view (with the turrets' margin and 6 tiles more), and the others a share at a time, each at least every 0.5 s
+  (`OffViewRefreshSeconds`), less than the fastest unit or leap needs to cross that margin. The draw jobs skip a waiting unit. At
+  100,000 known units about 14,000 are on screen. The wait test reads only arrays in slot order.
+- **The units are packed at 60 Hz and carried on between packs.** Prediction, facing, frame, colour, hit feedback, turrets and the
+  instance upload run at most every 1/60 s (`UnitPackSeconds`), or when the known count changes. Each instance now carries a velocity
+  (`UnitInstance` is 40 bytes) toward where the next pack will draw it, and the frames between only draw the last pack again with
+  the time since it (`_UnitDrawAhead`), so units, turrets, rings and bars still move every frame. Facing, animation frames, the hit
+  flash, selection rings and the combat sprites (fires, lasers, leaps, reload bars) change at 60 Hz.
+- **Drawing walks a route from where it last was.** A per-unit cursor (`RouteCursor`) resumes the route walk at the waypoint the last
+  draw passed, and the known list goes back to index order whenever an eighth of it has moved, so the draw jobs read their per-index
+  arrays forward (`SortKnown`). The server's copy of the prediction is untouched: corrections still apply exactly.
+- **Ground marks are two meshes.** The 2,900 pooled marks (tread marks, scorch, rubble, craters and wrecks) were a sprite renderer
+  each: hiding them alone took this client from about 450 to 600 fps. `Decals` now writes each mark as a quad in one mesh for the
+  `Effects` atlas and one for the wrecks (`Units` atlas) over it, same pools, holds, fades and sorting orders, uploading only the
+  changed range once a frame.
+- **Less work every frame elsewhere.** The fog texture is alpha only and uploaded at most 30 times a second (a battle kept cells
+  fading, and the whole grid went up every frame: 1.5 ms of the render thread). The HUD's shown state refreshes at 30 Hz (input is
+  still read every frame; with no own HQ it walked every known building each frame). Buildings are packed at 30 Hz with a quarter of
+  the view as margin and drawn again in between, and their smoke, fire and jammer timers are checked then. Effects step at most
+  144 times a second and mark fades 20 times.
+
+Tried and dropped: Direct3D 11 (`-force-d3d11`: no faster), starting the next pack's prediction at the end of the frame before (on
+three cores it slowed the render thread: 419 → 346 fps in a Development build), and a third queued frame
+(`QualitySettings.maxQueuedFrames = 3`: 7 to 13 % faster, but a frame more input lag; not taken).
 
 ## Results on the owner's pinned layout (2026-11-08)
 
@@ -119,35 +180,18 @@ measured 58 → 164 fps mean and 33 → 102 fps 1 % low, a hoster 54 → 183 and
 client far more CPU than half of a 5600GT, and in its hoster runs this branch's host fell behind (280 of 1,200 ticks sampled), so
 the every-tick bug made that load lighter. Those numbers are replaced by the tables above.
 
-## What is left (2026-11-08)
+## What is left (2026-11-09)
 
-Unity Profiler data (`-perfProfile`, Development build, 2,000 frames, the client on 3 E-cores as above, before the last client
-change): 10.1 ms a frame. The draw's per-unit passes run over every known unit each frame, about 100,000 here, though about
-13,000 are on screen:
+A Development-build profile on the owner's layout before the ground marks became meshes (419 fps, 2.14 ms a frame) split the frames
+in two. The frames between unit packs took 1.6 ms: Unity's rendering 0.62 ms of the main thread, the wait for the last frame's present
+0.32 ms, the HUD's per-frame input 0.06 ms and many small scripts. The pack frames, 60 a second, took 5.5 ms: the main thread's part of
+the prediction and draw jobs and its wait for the rest 2.0 ms (about 3 ms of CPU each for the prediction and the draw job, over the
+14,000 units in view and the turn of the others), the combat sprites 0.45 ms and the new tread marks 0.33 ms. The marks' 2,900 sprite
+renderers were most of the rendering; as meshes they are gone from it.
 
-| Per frame, client on 3 cores | ms |
-|---|---|
-| `PrepareUnitsJob` (facing, hit feedback, frame and colour for those in view), CPU on all threads | 8.0 |
-| `PredictJob` (each unit's position along its route), CPU on all threads | 4.4 |
-| Main thread in `Draw.Prepare`: running its share of those jobs and waiting for the rest | 3.4 |
-| Main thread, rendering (`FinishFrameRendering`) | 1.4 |
-| Main thread, effects (combat, tracks) | 0.9 |
-| Main thread, HUD | 0.6 |
-| Main thread, buildings | 0.5 |
-| Main thread, network loop | 0.3 |
-
-Since this profile an off-screen unit faces its way at once instead of turning a step a frame (one trigonometric call instead of
-three for each unit outside the view). The rest of the main thread, about 6 ms, alone limits a three-core client on the owner's
-machine to roughly 110 fps, so 140 there needs the per-frame work to follow the units in view rather than the units known:
-predict and prepare the units near the view each frame and the others a slice at a time (the minimap and selection read their
-positions, so those need a fresh pass when used). That is a larger change to the client, not made here.
-
-The slowest 1 % of frames (an 8 E-core profile, 2026-11-08) are network-batch frames: the network loop takes 4.5 ms in them
-(units leaving 1.0 ms, the wait for the previous batch's route job 0.45, terrain 0.4, Mirror's own receive and dispatch about 1.5).
-Spreading a batch's apply (Leave, corrections) over several frames is the next step there.
-
-On the server: at 100,000 units with shared vision, `tick.main` p95 is about 40 ms on three cores against the 28 ms budget, most of
-it replication to seven clients that each know every unit.
+The slowest 1 % of frames (112 fps) are still pack frames that meet a network batch (units leaving and corrections) or a known-list sort.
+Spreading a batch's apply over several frames is the next step there. On the server: at 100,000 units with shared vision, `tick.main`
+p95 is about 40 ms on three cores against the 28 ms budget, most of it replication to seven clients that each know every unit.
 
 ## What was slow (profiler evidence, 2026-11-07)
 
@@ -181,8 +225,8 @@ branch's head:
 
 | Suite | Branch |
 |---|---|
-| EditMode | 1,534: 1,531 pass, 0 fail, 3 skipped (as on `main`); five tests of the removed instant response went with it |
-| PlayMode | 103: 101 pass in the last full run (2026-11-08); the 2 that failed (`ArsenalMatchTests.ArtilleryShellsATargetOnAScoutsSight`, `HudTests.GiftToEnemyMovesResources`) pass when their fixtures run again (25 of 25). The run before the instant response's removal passed all 103 |
+| EditMode | 1,536: 1,533 pass, 0 fail, 3 skipped (the hand-run map seeds, as on `main`) (2026-11-09) |
+| PlayMode | 103: 103 pass (2026-11-09) |
 
 A full PlayMode run here has failed one or two timing-dependent tests, a different set each run, and each passes run alone:
 `ArsenalMatchTests.ArtilleryShellsATargetOnAScoutsSight`, `HudTests.GiftToEnemyMovesResources`, `BastionClientTests.ATurretShootingOurUnitTurnsItsHeadAndFiresATracer` and
@@ -199,3 +243,8 @@ and the Burst correction decoder checked against the managed one (and refusing a
 After the owner's runs: `SimVisionTests.PlayersWhoShareBothWaysSeeTheSameAndBothGridsReportChanges` and
 `SimBastionTests.PlayersWhoShareBothWaysAreJammedAlikeAndSeeTheSame` (a shared stamp gives both grids the same cells, fog changes
 and jam).
+For 500 fps: `ClientSmoothingTests.AUnitAwayFromTheViewWaitsForItsTurnAndOneInItIsAimedAtItsNextPosition` (a unit in the view is
+refreshed and aimed at its next position; away from it, units wait for their turn and keep their positions) and
+`TheKnownListGoesBackToIndexOrderAndEachUnitKeepsItsDrawnPosition` (9,000 units, a third leave, the list is sorted again and each
+slot keeps its unit's position). `DrawJobTests` feeds the draw job slots left for a later turn, and
+`PolishEffectsTests.ATrackMarkTurnsToTheExactHeading` reads the tread mark's quad in the marks' mesh.
