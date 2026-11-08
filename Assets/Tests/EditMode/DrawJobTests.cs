@@ -62,8 +62,8 @@ public class DrawJobTests
         /// <summary>Every by-index output, read back as a managed array.</summary>
         public readonly List<Func<Array>> ByIndex = new List<Func<Array>>();
         private NativeArray<int> known, owners, trackedId, trackIds, turretOf;
-        private NativeArray<float2> positions, lastPosition, lastSteer, lastTracks, aimAt;
-        private NativeArray<byte> types, health, selected, hidden, lastHealth, flash, emits;
+        private NativeArray<float2> positions, velocity, lastPosition, lastSteer, lastTracks, aimAt;
+        private NativeArray<byte> refreshed, types, health, selected, hidden, lastHealth, flash, emits;
         private NativeArray<PredictState> states;
         private NativeArray<float> lastAction, scaleByType, rotation, health01, drawScale, hitAt, trail, turretAngle, turretTurnedAt, aimUntil;
         private NativeArray<uint> frame, color;
@@ -89,6 +89,8 @@ public class DrawJobTests
             int typeCount = Enum.GetValues(typeof(UnitType)).Length;
             known = Make<int>(Count, false);
             positions = Make<float2>(Count, false);
+            velocity = Make<float2>(Count, false);
+            refreshed = Make<byte>(Count, false);
             owners = Make<int>(Capacity, false); types = Make<byte>(Capacity, false); health = Make<byte>(Capacity, false);
             states = Make<PredictState>(Capacity, false); lastAction = Make<float>(Capacity, false); selected = Make<byte>(Capacity, false);
             hidden = Make<byte>(Capacity, false); aimAt = Make<float2>(Capacity, false);
@@ -131,6 +133,8 @@ public class DrawJobTests
                 known[i] = index;
                 float2 p = new float2((float)r.NextDouble() * 200f, (float)r.NextDouble() * 200f);
                 positions[i] = p;
+                refreshed[i] = (byte)(i % 13 == 0 ? 0 : 1); // a few left for a later turn: no output, no state change
+                velocity[i] = new float2(i % 5, -(i % 7)) * 0.25f;
                 // A third still, most moving a step, a few jumping too far to count as moving.
                 float2 step = new float2((float)r.NextDouble() - 0.5f, (float)r.NextDouble() - 0.5f);
                 lastPosition[index] = i % 3 == 0 ? p : i % 17 == 0 ? p - new float2(3f, 0f) : p - step;
@@ -167,7 +171,7 @@ public class DrawJobTests
 
         public ClientWorld.PrepareUnitsJob Job() => new ClientWorld.PrepareUnitsJob
         {
-            Known = known, Positions = positions, Steer = positions, MaxTurn = 0.2f, Owners = owners, Types = types, Health = health, States = states,
+            Known = known, Positions = positions, Refreshed = refreshed, Velocity = velocity, Steer = positions, MaxTurn = 0.2f, Owners = owners, Types = types, Health = health, States = states,
             LastAction = lastAction, Selected = selected, ScaleByType = scaleByType, Hidden = hidden, UseHidden = true,
             Colours = colours, UnknownColour = 0x808080FFu, Cells = cells, HasFrames = true,
             ServerTime = ServerTime, Now = Now, FrameSeconds = 1f / 60f, LocalOwner = 1,

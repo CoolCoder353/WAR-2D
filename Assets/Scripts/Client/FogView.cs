@@ -26,6 +26,13 @@ public class FogView : MonoBehaviour
     private readonly List<int> _changed = new List<int>();
     private readonly List<int> _fading = new List<int>(); // cells still easing toward their level
     private bool[] _isFading = System.Array.Empty<bool>();
+    private float _sinceUpload;
+
+    /// <summary>
+    /// The texture is rewritten and uploaded at most this often (2026-11-08: a battle keeps cells fading all the time, and uploading the
+    /// grid every frame cost a 100,000-unit client 1.5 ms of its render thread a frame; the fade is a quarter second).
+    /// </summary>
+    public const float UploadSeconds = 1f / 30f;
 
     /// <summary>Seconds a cell takes to ease all the way between unexplored and seen (a smaller change takes less).</summary>
     public const float FadeSeconds = 0.25f;
@@ -55,6 +62,10 @@ public class FogView : MonoBehaviour
         ClientFog fog = ClientFog.Current;
         if (!_dirty && _fading.Count == 0) return;
         if (fog.State == null) return;
+        _sinceUpload += Time.unscaledDeltaTime;
+        if (_texture != null && _sinceUpload < UploadSeconds) return;
+        float dt = _sinceUpload;
+        _sinceUpload = 0f;
         if (_dirty)
         {
             _dirty = false;
@@ -68,8 +79,8 @@ public class FogView : MonoBehaviour
             if (all)
             {
                 // A new grid (the match's first snapshot, a rejoin) is drawn at once: nothing to ease from.
-                var every = _texture.GetPixelData<Color32>(0);
-                for (int i = 0; i < fog.State.Length; i++) every[i] = Palette[fog.State[i]];
+                var every = _texture.GetPixelData<byte>(0);
+                for (int i = 0; i < fog.State.Length; i++) every[i] = Palette[fog.State[i]].a;
                 foreach (int i in _fading) _isFading[i] = false;
                 _fading.Clear();
             }
@@ -80,14 +91,13 @@ public class FogView : MonoBehaviour
             }
         }
         if (_texture == null) return;
-        var pixels = _texture.GetPixelData<Color32>(0);
-        float dt = Time.unscaledDeltaTime;
+        var pixels = _texture.GetPixelData<byte>(0);
         for (int k = _fading.Count - 1; k >= 0; k--)
         {
             int i = _fading[k];
             byte target = Palette[fog.State[i]].a;
-            byte next = Toward(pixels[i].a, target, dt);
-            pixels[i] = new Color32(0, 0, 0, next);
+            byte next = Toward(pixels[i], target, dt);
+            pixels[i] = next;
             if (next != target) continue;
             _isFading[i] = false;
             _fading[k] = _fading[_fading.Count - 1];
@@ -101,7 +111,8 @@ public class FogView : MonoBehaviour
         if (_texture != null) Destroy(_texture);
         _isFading = new bool[fog.Width * fog.Height];
         _fading.Clear();
-        _texture = new Texture2D(fog.Width, fog.Height, TextureFormat.RGBA32, mipChain: false)
+        // Alpha only (the shader reads alpha): a quarter of the bytes an RGBA upload took.
+        _texture = new Texture2D(fog.Width, fog.Height, TextureFormat.Alpha8, mipChain: false)
         {
             filterMode = FilterMode.Bilinear,
             wrapMode = TextureWrapMode.Clamp,

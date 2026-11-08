@@ -322,10 +322,37 @@ namespace WAR2D.Client
         {
             // A paused match sends no ticks: the prediction clock waits with it, so units don't run ahead along their routes.
             AdvanceClock(ClockDriven || (GameCore.Instance != null && GameCore.Instance.IsPaused) ? 0f : Time.unscaledDeltaTime);
-            store.PredictAll(serverTime);
+            // Units away from the view (past the turrets' margin and OffViewMargin more) are predicted in turns, each at least every
+            // OffViewRefreshSeconds, too seldom to cross that margin unseen; a replay's per-player view tests every unit's position each
+            // frame, so it predicts them all.
+            // The units are predicted and packed at most every UnitPackSeconds, or when the known count changed; the frames between draw
+            // the last packing carried along each instance's velocity, toward where the next packing will have it (2026-11-08: a
+            // 100,000-unit client on three cores spent more on its per-frame unit work than on anything else).
             FireTracers();
             FireTurrets();
+            float real = Time.time;
+            unitsDue = real - unitsPackedAt >= UnitPackSeconds || real < unitsPackedAt || store.Count != unitsPackedCount || !unitsPacked;
+            if (unitsDue) Predict(real);
         }
+
+        /// <summary>Starts the units' prediction job for the next packing (<see cref="Draw"/>).</summary>
+        private void Predict(float real)
+        {
+            unitsPackedAt = real;
+            unitsPackedCount = store.Count;
+            Camera viewCamera = ViewCamera != null ? ViewCamera : Camera.main;
+            if (viewCamera == null || UnitShown != null) store.PredictAll(serverTime);
+            else
+            {
+                Rect cull = WorldEffects.ViewOf(viewCamera, TurretViewMargin + OffViewMargin);
+                store.PredictAll(serverTime, new float4(cull.xMin, cull.yMin, cull.xMax, cull.yMax), OffViewRefreshSeconds, UnitPackSeconds);
+            }
+        }
+
+        // Whether this frame's Update predicted the units (Draw packs them then), when and how many, and whether a packing was drawn.
+        private bool unitsDue, unitsPacked;
+        private float unitsPackedAt = float.NegativeInfinity;
+        private int unitsPackedCount = -1;
 
         /// <summary>
         /// Shows an own order on screen at once, as a racing game moves your kart before the server hears of it. Drawing only: the order
@@ -484,10 +511,21 @@ namespace WAR2D.Client
         {
             // A -nographics player (perf clients) has no GPU buffers to draw with.
             if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) return;
+            // Between packs (see Update): the last packing again, carried along each instance's velocity.
+            if (!unitsDue && unitsPacked && unitRenderer != null)
+            {
+                Shader.SetGlobalFloat(InstancedUnitRenderer.DrawAheadProperty, math.clamp(Time.time - unitsPackedAt, 0f, 2f * UnitPackSeconds));
+                using (BuildingsMarker.Auto()) DrawBuildings();
+                using (SubmitMarker.Auto()) unitRenderer.Redraw();
+                return;
+            }
+            unitsDue = false;
+            Shader.SetGlobalFloat(InstancedUnitRenderer.DrawAheadProperty, 0f);
             SelectMarker.Begin();
             int count = store.Count;
             if (count == 0 || store.DrawnAfterPrediction.Length != count)
             {
+                unitsPacked = false;
                 SelectMarker.End();
                 using (BuildingsMarker.Auto()) DrawBuildings();
                 return;
@@ -566,6 +604,8 @@ namespace WAR2D.Client
             {
                 Known = known,
                 Positions = positions,
+                Refreshed = store.RefreshedAfterPrediction,
+                Velocity = store.VelocityAfterPrediction,
                 Steer = store.SteerAfterPrediction,
                 MaxTurn = UnitTurnRate * frameSeconds,
                 Owners = owners,
@@ -649,14 +689,19 @@ namespace WAR2D.Client
                 for (int i = 0; i < tracks.Length; i++) Decals.Track(tracks[i].xy, tracks[i].z);
             RaiseAirborne(positions);
             Effects.FollowFlames(flameLine);
-            ownSelected.Clear();
-            foreach (int index in selectedIndices)
-                if ((selected[index] & 1) != 0 && store.IsKnown(index) && store.OwnerOf(index) == WorldEffects.LocalOwner
-                    && ((UnitType)store.TypeOf(index) == UnitType.Artillery || (UnitType)store.TypeOf(index) == UnitType.Sniper)) ownSelected.Add(index); // the reload bars: a selected army of 12,500 cost a call each
-            using (CombatMarker.Auto()) combatVisuals.Draw(now, serverTime, view, UnitAt, ownSelected, BuildingsShown ?? ClientBuildings.Current);
+            // Fires, lasers, leaps and reload bars are sprites that hold between steps: placed with the units, at most every Effects.StepSeconds (2026-11-08:
+            // walking every unit status each frame cost a 100,000-unit client on three cores 0.5 ms a frame).
+            if (now - combatDrawnAt >= Effects.StepSeconds || now < combatDrawnAt)
+            {
+                combatDrawnAt = now;
+                ownSelected.Clear();
+                foreach (int index in selectedIndices)
+                    if ((selected[index] & 1) != 0 && store.IsKnown(index) && store.OwnerOf(index) == WorldEffects.LocalOwner
+                        && ((UnitType)store.TypeOf(index) == UnitType.Artillery || (UnitType)store.TypeOf(index) == UnitType.Sniper)) ownSelected.Add(index); // the reload bars: a selected army of 12,500 cost a call each
+                using (CombatMarker.Auto()) combatVisuals.Draw(now, serverTime, view, UnitAt, ownSelected, BuildingsShown ?? ClientBuildings.Current);
+            }
             EffectsMarker.End();
             PackMarker.Begin();
-
             instances.ResizeUninitialized(count);
             bars.ResizeUninitialized(count);
             rings.ResizeUninitialized(count * 2 + barrelShadows.Length); // a selected roaming unit has both rings
@@ -667,6 +712,8 @@ namespace WAR2D.Client
             {
                 Known = known,
                 Positions = positions,
+                Refreshed = store.RefreshedAfterPrediction,
+                Velocity = store.VelocityAfterPrediction,
                 Rotation = rotation,
                 Frame = frame,
                 Color = color,
@@ -699,6 +746,7 @@ namespace WAR2D.Client
             unitRenderer.Draw(instances.AsArray(), shownCount[0]);
             unitRenderer.DrawTurrets(turrets.AsArray(), turrets.Length);
             unitRenderer.DrawHealthBars(bars.AsArray(), barCount[0]);
+            unitsPacked = true;
         }
 
         // Profiler markers (nearly free in a release player): where a frame's draw time goes.
@@ -733,6 +781,17 @@ namespace WAR2D.Client
 
         /// <summary>How fast a unit's drawn facing turns (radians a second): half a turn in a quarter second.</summary>
         private const float UnitTurnRate = 4f * math.PI;
+
+        /// <summary>The longest a unit away from the view waits for its prediction and draw state to be refreshed.</summary>
+        private const float OffViewRefreshSeconds = 0.5f;
+
+        /// <summary>Tiles past the turrets' margin a unit still counts as in view: more than the fastest unit or leap goes in <see cref="OffViewRefreshSeconds"/>.</summary>
+        private const float OffViewMargin = 6f;
+
+        /// <summary>The longest the drawn units wait for a fresh prediction, facing, frame and colour (the frames between carry them on).</summary>
+        private const float UnitPackSeconds = 1f / 60f;
+
+        private float combatDrawnAt = float.NegativeInfinity;
 
         /// <summary>Units per batch of the draw jobs on the job threads.</summary>
         private const int DrawBatch = 64;
@@ -801,6 +860,10 @@ namespace WAR2D.Client
 
             [ReadOnly] public NativeArray<int> Known;
             [ReadOnly] public NativeArray<float2> Positions; // parallel to Known
+            /// <summary>Parallel to Known: 0 for a unit away from the view that the prediction left for a later turn (it keeps its state).</summary>
+            [ReadOnly] public NativeArray<byte> Refreshed;
+            /// <summary>Parallel to Known: how fast the unit's drawn position moves (its turret and barrel shadow move with it between packs).</summary>
+            [ReadOnly] public NativeArray<float2> Velocity;
             /// <summary>Parallel to Known: where each unit is going without the correction glide (its facing follows this).</summary>
             [ReadOnly] public NativeArray<float2> Steer;
             [ReadOnly] public NativeArray<int> Owners;
@@ -844,6 +907,11 @@ namespace WAR2D.Client
 
             public void Execute(int i)
             {
+                if (Refreshed[i] == 0)
+                {
+                    Emits[i] = 0;
+                    return;
+                }
                 int index = Known[i];
                 float2 p = Positions[i];
                 int owner = Owners[index], id = States[index].Id;
@@ -951,9 +1019,10 @@ namespace WAR2D.Client
                     color = Color[index],
                     scale = cell.TurretTiles,
                     pad = (uint)(Selected[index] & 1) | (uint)Flash[index] << 1,
+                    velocity = Velocity[i],
                 };
                 if (!(unit == UnitType.Artillery && aiming)) return EmitTurret;
-                ShadowSlots[i] = new UnitInstance { position = at, frame = BarrelShadowFrame + (uint)facing, color = 0xFFFFFFFFu, scale = BarrelShadowTiles };
+                ShadowSlots[i] = new UnitInstance { position = at, frame = BarrelShadowFrame + (uint)facing, color = 0xFFFFFFFFu, scale = BarrelShadowTiles, velocity = Velocity[i] };
                 return EmitTurret | EmitShadow;
             }
         }
@@ -1093,9 +1162,14 @@ namespace WAR2D.Client
             buildingSelected ??= IsSelectedBuilding;
             Camera viewCamera = ViewCamera != null ? ViewCamera : Camera.main;
             buildingRenderer.Draw(known, Time.time, buildingColour, SettingsStore.Current.HealthBars, buildingSelected, viewCamera != null ? WorldEffects.ViewOf(viewCamera) : null);
+            // Smoke, fire, glints and jammer pulses go off on their own timers: checked with the buildings' repack, not every frame.
+            if (Time.time - buildingEffectsAt < InstancedBuildingRenderer.RepackSeconds && Time.time >= buildingEffectsAt) return;
+            buildingEffectsAt = Time.time;
             PulseJammers(known);
             worldEffects.Buildings(known, WorldEffects.ViewOf(viewCamera), Time.time);
         }
+
+        private float buildingEffectsAt = float.NegativeInfinity;
 
         /// <summary>
         /// The <c>JamPulse</c> on every finished Jammer the client sees now (not ghosts, not blueprints; the local

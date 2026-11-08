@@ -66,6 +66,88 @@ public class ClientSmoothingTests
     });
 
     [Test]
+    public void AUnitAwayFromTheViewWaitsForItsTurnAndOneInItIsAimedAtItsNextPosition()
+    {
+        int id2 = (1 << NetIdAllocator.IndexBits) | 8;
+        Send(2, (ref NativeSink sink) =>
+        {
+            var tiles = new NativeArray<int2>(new[] { RouteWire.Encode(new float2(20, 20)) }, Allocator.Temp);
+            var units = new NativeArray<EnterUnit>(new[]
+            {
+                new EnterUnit { Id = id2, Type = (byte)UnitType.Tank, OwnerId = 9, X = Quantise.Encode(20f), Y = Quantise.Encode(20f), Health = 100, First = 0, Count = 1 },
+            }, Allocator.Temp);
+            Messages.EncodeEnter(ref sink, tiles, units);
+        });
+        SendRoute(3, new int2(10, 10), new int2(40, 10)); // sets off east at 5 tiles a second at 0.15 s
+        store.PredictAll(0.25f, new float4(0f, 0f, 100f, 100f), 1f, 0.05f);
+        store.CompletePrediction();
+        int slot = store.SlotOf(Index);
+        Assert.AreEqual(1, store.RefreshedAfterPrediction[slot], "in the view: refreshed");
+        Assert.AreEqual(10.5f, store.Drawn[slot].x, 1e-4f);
+        Assert.AreEqual(5f, store.VelocityAfterPrediction[slot].x, 0.01f, "aimed at where it will be drawn 0.05 s on");
+
+        float2 before0 = store.Drawn[0], before1 = store.Drawn[1];
+        var away = new float4(500f, 500f, 600f, 600f);
+        store.PredictAll(0.35f, away, 1f, 0.05f); // a tenth of a second of a one-second turn over two units: one slot
+        store.CompletePrediction();
+        Assert.AreEqual(1, store.RefreshedAfterPrediction[0] + store.RefreshedAfterPrediction[1]);
+        int kept = store.RefreshedAfterPrediction[0] == 0 ? 0 : 1;
+        Assert.AreEqual(kept == 0 ? before0 : before1, store.Drawn[kept], "a unit waiting for its turn keeps its position");
+        Assert.AreEqual(float2.zero, store.VelocityAfterPrediction[1 - kept], "no velocity away from the view");
+        store.PredictAll(0.45f, away, 1f, 0.05f);
+        store.CompletePrediction();
+        Assert.AreEqual(1, store.RefreshedAfterPrediction[kept], "its turn came");
+    }
+
+    [Test]
+    public void TheKnownListGoesBackToIndexOrderAndEachUnitKeepsItsDrawnPosition()
+    {
+        const int count = 9000; // two thirds of it still above the size the list is kept sorted from
+        using var big = new ClientUnitStore(16384, Dt);
+        float2 At(int index) => new float2(index % 100, index / 100);
+        void SendBig(int tick, Encode encode)
+        {
+            var bytes = new NativeList<byte>(64, Allocator.Temp);
+            var sink = new NativeSink(bytes);
+            encode(ref sink);
+            Assert.IsTrue(big.Apply(new ArraySegment<byte>(bytes.AsArray().ToArray()), tick));
+            bytes.Dispose();
+        }
+        SendBig(1, (ref NativeSink sink) =>
+        {
+            var tiles = new NativeArray<int2>(count, Allocator.Temp);
+            var units = new NativeArray<EnterUnit>(count, Allocator.Temp);
+            for (int i = 0; i < count; i++)
+            {
+                int index = i + 1;
+                tiles[i] = RouteWire.Encode(At(index));
+                units[i] = new EnterUnit { Id = (1 << NetIdAllocator.IndexBits) | index, Type = (byte)UnitType.Tank, OwnerId = 9,
+                    X = Quantise.Encode(At(index).x), Y = Quantise.Encode(At(index).y), Health = 100, First = i, Count = 1 };
+            }
+            Messages.EncodeEnter(ref sink, tiles, units);
+        });
+        big.PredictAll(Dt);
+        // Every third unit leaves: each gap takes the list's last unit, so the list is out of index order.
+        SendBig(2, (ref NativeSink sink) =>
+        {
+            var leaves = new NativeArray<LeaveUnit>(count / 3, Allocator.Temp);
+            for (int k = 0; k < leaves.Length; k++) leaves[k] = new LeaveUnit { Index = 1 + 3 * k, Reason = LeaveReason.LeftView };
+            Messages.EncodeLeave(ref sink, leaves);
+        });
+        // Nothing in view and a long turn: the slots keep the positions they had, moved with their units.
+        big.PredictAll(2f * Dt, new float4(-1e6f, -1e6f, -1e6f + 1f, -1e6f + 1f), 1000f, 0f);
+        big.CompletePrediction();
+        Assert.AreEqual(count - count / 3, big.Count);
+        for (int i = 0; i < big.Count; i++)
+        {
+            int index = big.IndexAt(i);
+            if (i > 0) Assert.Less(big.IndexAt(i - 1), index, "in index order");
+            Assert.AreEqual(i, big.SlotOf(index));
+            Assert.AreEqual(At(index), big.Drawn[i], $"unit {index}'s position stays in its slot");
+        }
+    }
+
+    [Test]
     public void AnOrderMovesTheDrawnUnitAtOnceAndLeavesThePredictionAlone()
     {
         store.ShowMove(Index, new float2(20f, 10f), 0.5f);
