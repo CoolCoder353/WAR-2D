@@ -38,7 +38,7 @@ public sealed class PerfClient : MonoBehaviour
     private static readonly bool View = Array.IndexOf(Environment.GetCommandLineArgs(), "-perfView") >= 0;
 
     /// <summary>The client frame budget: 120 fps on average and in the slowest 1 % of frames.</summary>
-    public const double FpsBudget = 120.0;
+    public static readonly double FpsBudget = double.TryParse(PerfMatch.ArgValue("-perfFpsBudget"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double b) ? b : 120.0; // -perfFpsBudget n: 140 for the 100,000-unit benchmark
 
     private bool measuring;
     private float measureStart;
@@ -48,10 +48,22 @@ public sealed class PerfClient : MonoBehaviour
     private readonly FrameTiming[] timing = new FrameTiming[1];
     private readonly System.Diagnostics.Process self = System.Diagnostics.Process.GetCurrentProcess();
 
+    /// <summary>
+    /// <c>-perfInteractive</c> (<c>tools/perf-play.sh</c>): joins the benchmark's host as a normal player: the player's own settings, camera
+    /// and input, nothing measured, no view fitted, no time limit. The host leaves this player's army unscripted.
+    /// </summary>
+    private static readonly bool Interactive = Array.IndexOf(Environment.GetCommandLineArgs(), "-perfInteractive") >= 0;
+
     private IEnumerator Start()
     {
-        Application.targetFrameRate = 30; // a headless player needs no more, and leaves the CPU to the host
+        if (!Interactive) Application.targetFrameRate = 30; // a headless player needs no more, and leaves the CPU to the host
         yield return new WaitUntil(() => GameManager.Instance != null);
+        if (Interactive)
+        {
+            UseMeteredTransport();
+            GameManager.Instance.ConnectToServer(PerfMatch.ArgValue("-perfClient"));
+            yield break;
+        }
         if (View)
         {
             // After SettingsStore.ApplyOnStart: the defaults (1920×1080 fullscreen), whatever this machine saved, uncapped. Fullscreen
@@ -69,6 +81,12 @@ public sealed class PerfClient : MonoBehaviour
         yield return new WaitUntil(() => (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing)
                                          || Time.realtimeSinceStartup - started > 300f);
         yield return new WaitForSecondsRealtime(WarmupSeconds);
+        // -perfExpectUnits n: measure only once the match is full, as the host does (90 % of n known), not while the armies still spawn in.
+        if (int.TryParse(PerfMatch.ArgValue("-perfExpectUnits"), out int expect) && expect > 0)
+        {
+            float waitStart = Time.realtimeSinceStartup;
+            yield return new WaitUntil(() => { CountUnits(out int k, out _); return k >= expect * 9 / 10 || Time.realtimeSinceStartup - waitStart > 180f; });
+        }
 
         long last = MeteredKcpTransport.ClientBytesReceived;
         float lastTime = Time.realtimeSinceStartup;

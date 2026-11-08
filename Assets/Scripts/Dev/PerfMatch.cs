@@ -42,6 +42,12 @@ public sealed class PerfMatch : MonoBehaviour
     private WAR2D.Net.Replay.MatchRecorder perfRecorder;
     private long lastRecordBytes;
     private int[] owners;
+    /// <summary>
+    /// <c>-perfInteractive</c> (<c>tools/perf-play.sh</c>): the real players' armies, builders and diggers get no scripted orders, so a
+    /// person can play them against the same 100,000-unit battle. Everything else is as in the benchmark.
+    /// </summary>
+    private static readonly bool Interactive = Array.IndexOf(Environment.GetCommandLineArgs(), "-perfInteractive") >= 0;
+    private bool PlayerOwned(int i) => Interactive && i >= 1 && i < firstBot;
     /// <summary>Owners before this index are real players (the host and -perfClients); from it on, bots.</summary>
     private int firstBot = 1;
     private int2[] armyStart;
@@ -288,6 +294,7 @@ public sealed class PerfMatch : MonoBehaviour
         int quarter = tick / OrderEveryTicks % 4;
         for (int i = 0; i < Owners; i++)
         {
+            if (PlayerOwned(i)) continue;
             HashSet<int> ids = armyIds[i];
             if (ids == null || ids.Count == 0) continue;
             var picked = new List<int>(ids.Count / 4 + 1);
@@ -389,6 +396,7 @@ public sealed class PerfMatch : MonoBehaviour
         int round = tick / OrderEveryTicks;
         for (int i = 0; i < Owners; i++)
         {
+            if (PlayerOwned(i)) continue;
             Batches(sim, builderIds[i], wallTiles[i], OrderKind.Build, owners[i], round);
             Batches(sim, diggerIds[i], rockTiles[i], OrderKind.Dig, owners[i], round);
         }
