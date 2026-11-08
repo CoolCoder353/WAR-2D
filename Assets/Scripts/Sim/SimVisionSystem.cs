@@ -113,6 +113,12 @@ namespace WAR2D.Sim
                 FogH = data.FogH,
                 FogCells = data.FogCells,
             }.Schedule(data.RadarSources, 4, state.Dependency);
+            state.Dependency = new CopySharedVisionJob
+            {
+                ShareVisionMask = data.ShareVisionMask,
+                Visible = data.Visible,
+                FogCells = data.FogCells,
+            }.Schedule(SimData.MaxOwners * CopySharedVisionJob.ChunksOf(data.FogCells), 1, state.Dependency);
             state.Dependency = new DiffVisionJob
             {
                 Visible = data.Visible,
@@ -137,8 +143,36 @@ namespace WAR2D.Sim
     }
 
     /// <summary>
-    /// Merges units and buildings into one sight source per (grid, fog cell). Each source goes on its
-    /// owner's grid and on the grid of every slot its owner shares vision with.
+    /// Grids that look through the same eyes see the same cells. A grid's sources are its own slot's and those of every slot that
+    /// shares vision with it, and its jam mask follows the same set (a Jammer jams every grid whose set lacks its owner), so two
+    /// grids with the same set have the same vision. Only the lowest grid of each set is stamped; the others copy it
+    /// (<see cref="CopySharedVisionJob"/>). In a team game that is one grid a team instead of one a player, and with every owner
+    /// sharing (the 100,000-unit benchmark) one instead of eight (2026-11-08: eight stamps took 53 ms of a tick on three cores).
+    /// </summary>
+    public static class SharedVision
+    {
+        /// <summary>The slots whose sources reach grid <paramref name="grid"/>, as a mask: itself and every slot sharing vision with it.</summary>
+        public static int SourcesInto(NativeArray<ushort> share, int grid)
+        {
+            int set = 1 << grid;
+            for (int slot = 0; slot < SimData.MaxOwners; slot++)
+                if ((share[slot] >> grid & 1) != 0) set |= 1 << slot;
+            return set;
+        }
+
+        /// <summary>The grid stamped for <paramref name="grid"/>: the lowest one whose sources come from the same slots.</summary>
+        public static int StampedFor(NativeArray<ushort> share, int grid)
+        {
+            int set = SourcesInto(share, grid);
+            for (int other = 0; other < grid; other++)
+                if (SourcesInto(share, other) == set) return other;
+            return grid;
+        }
+    }
+
+    /// <summary>
+    /// Merges units and buildings into one sight source per (grid, fog cell). Each source goes on the stamped grid
+    /// (<see cref="SharedVision"/>) of its owner's grid and of every grid its owner shares vision with.
     /// </summary>
     [BurstCompile]
     public struct CollectSourcesJob : IJob
@@ -152,11 +186,26 @@ namespace WAR2D.Sim
         public NativeList<int> Sources;
         public int FogCellSize, FogW, FogH, FogCells;
         public int UnitCount, BuildingCount;
+        /// <summary>Per owner slot, the stamped grids its sources go on (a mask).</summary>
+        private FixedList64Bytes<ushort> stampedGrids;
 
         public void Execute()
         {
             Sources.Clear();
             RadarSources.Clear();
+            var stampedFor = new FixedList32Bytes<byte>();
+            for (int g = 0; g < SimData.MaxOwners; g++) stampedFor.Add((byte)SharedVision.StampedFor(ShareVisionMask, g));
+            stampedGrids = new FixedList64Bytes<ushort>();
+            for (int slot = 0; slot < SimData.MaxOwners; slot++)
+            {
+                int grids = 0, targets = 1 << slot | ShareVisionMask[slot];
+                while (targets != 0)
+                {
+                    grids |= 1 << stampedFor[math.tzcnt(targets)];
+                    targets &= targets - 1;
+                }
+                stampedGrids.Add((ushort)grids);
+            }
             float inv = 1f / FogCellSize;
             for (int i = 0; i < UnitCount; i++)
             {
@@ -173,33 +222,29 @@ namespace WAR2D.Sim
             }
         }
 
-        /// <summary>Adds a Radar's source (no line-of-sight test) to its owner slot's grid and every grid the owner shares with.</summary>
+        /// <summary>Adds a Radar's source (no line-of-sight test) to the stamped grids of its owner slot's grid and every grid the owner shares with.</summary>
         private void AddRadar(int slot, float2 position, float radiusCells)
         {
             if ((uint)slot >= SimData.MaxOwners) return;
             int2 c = math.clamp((int2)math.floor(position / FogCellSize), 0, new int2(FogW - 1, FogH - 1));
             byte radius = (byte)math.clamp((int)math.ceil(radiusCells), 1, 255);
-            RadarSources.Add(new int3(slot, c.y * FogW + c.x, radius));
-            int shared = ShareVisionMask[slot];
-            while (shared != 0)
+            int grids = stampedGrids[slot];
+            while (grids != 0)
             {
-                int r = math.tzcnt(shared);
-                shared &= shared - 1;
-                RadarSources.Add(new int3(r, c.y * FogW + c.x, radius));
+                RadarSources.Add(new int3(math.tzcnt(grids), c.y * FogW + c.x, radius));
+                grids &= grids - 1;
             }
         }
 
-        /// <summary>Adds the source to its owner slot's grid and to every grid the owner shares with.</summary>
+        /// <summary>Adds the source to the stamped grids of its owner slot's grid and of every grid the owner shares with.</summary>
         private void AddShared(int slot, float2 position, float radiusCells)
         {
             if ((uint)slot >= SimData.MaxOwners) return;
-            Add(slot, position, radiusCells);
-            int shared = ShareVisionMask[slot];
-            while (shared != 0)
+            int grids = stampedGrids[slot];
+            while (grids != 0)
             {
-                int r = math.tzcnt(shared);
-                shared &= shared - 1;
-                Add(r, position, radiusCells);
+                Add(math.tzcnt(grids), position, radiusCells);
+                grids &= grids - 1;
             }
         }
 
@@ -412,6 +457,27 @@ namespace WAR2D.Sim
                 int2 d = new int2(x, y) - c;
                 if (d.x * d.x + d.y * d.y <= limit && JamMask[baseIndex + y * FogW + x] == 0) Visible[baseIndex + y * FogW + x] = 1;
             }
+        }
+    }
+
+    /// <summary>Gives each grid that wasn't stamped the vision of the grid stamped for it (<see cref="SharedVision"/>), a chunk at a time.</summary>
+    [BurstCompile]
+    public struct CopySharedVisionJob : IJobParallelFor
+    {
+        public const int Chunk = 16384;
+
+        [ReadOnly] public NativeArray<ushort> ShareVisionMask;
+        [NativeDisableParallelForRestriction] public NativeArray<byte> Visible;
+        public int FogCells;
+
+        public static int ChunksOf(int fogCells) => (fogCells + Chunk - 1) / Chunk;
+
+        public void Execute(int k)
+        {
+            int chunks = ChunksOf(FogCells), grid = k / chunks, start = (k - grid * chunks) * Chunk;
+            int stamped = SharedVision.StampedFor(ShareVisionMask, grid);
+            if (stamped == grid) return;
+            NativeArray<byte>.Copy(Visible, stamped * FogCells + start, Visible, grid * FogCells + start, math.min(Chunk, FogCells - start));
         }
     }
 

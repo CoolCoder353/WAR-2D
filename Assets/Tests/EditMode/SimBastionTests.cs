@@ -530,6 +530,27 @@ public class SimBastionTests
     }
 
     [Test]
+    public void PlayersWhoShareBothWaysAreJammedAlikeAndSeeTheSame()
+    {
+        // A and B look through the same eyes: one grid is stamped and the other copies it (SharedVision), the jam included.
+        using var sim = new SimHarness(SimHarness.OpenMap(96));
+        sim.Spawn(SimHarness.OwnerA, new float2(32, 40)); // inside C's jam, 8 tiles from its centre
+        sim.Spawn(SimHarness.OwnerB, new float2(10, 80));
+        sim.Spawn(OwnerC, new float2(80, 80));
+        sim.PlaceBuilding(OwnerC, BuildingType.Jammer, JammerAt, complete: true);
+        sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.SetShareVision, OwnerId = SimHarness.OwnerA, TargetOwnerId = SimHarness.OwnerB, Flag = true });
+        sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.SetShareVision, OwnerId = SimHarness.OwnerB, TargetOwnerId = SimHarness.OwnerA, Flag = true });
+        Pass(sim);
+        Assert.IsTrue(Jammed(sim, SimHarness.OwnerA, JammerCentre) && Jammed(sim, SimHarness.OwnerB, JammerCentre), "C's Jammer jams both");
+        Assert.IsTrue(Sees(sim, SimHarness.OwnerB, new float2(32, 40)), "B sees A's own cell");
+        Assert.IsFalse(Sees(sim, SimHarness.OwnerB, new float2(38, 40)), "but, as A, not past the jam's sight");
+        SimData data = sim.Context.Data;
+        int a = sim.Context.VisionOf(SimHarness.OwnerA), b = sim.Context.VisionOf(SimHarness.OwnerB);
+        for (int cell = 0; cell < data.FogCells; cell++)
+            Assert.AreEqual(data.Visible[a * data.FogCells + cell], data.Visible[b * data.FogCells + cell], $"cell {cell}");
+    }
+
+    [Test]
     public void ADefeatedSpectatorsGridIsNeverJammed()
     {
         using var sim = new SimHarness(SimHarness.OpenMap(96));
