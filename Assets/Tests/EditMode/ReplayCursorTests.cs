@@ -28,6 +28,7 @@ public class ReplayCursorTests
         cursor.Restart(); seen.Clear();
         cursor.AdvanceTo(2.0f, (t, c, p) => seen.Add(t));
         CollectionAssert.AreEqual(new[] { 0, 20, 40 }, seen);
+        cursor.Dispose(); // Windows refuses to delete a file that is still open
         File.Delete(path);
     }
 
@@ -48,6 +49,7 @@ public class ReplayCursorTests
         Assert.IsTrue(cursor.AtEnd);
         cursor.Restart();
         Assert.IsFalse(cursor.AtEnd);
+        cursor.Dispose(); // Windows refuses to delete a file that is still open
         File.Delete(path);
     }
 }

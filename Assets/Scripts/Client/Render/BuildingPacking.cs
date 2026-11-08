@@ -102,10 +102,12 @@ namespace WAR2D.Client.Render
         /// <param name="selected">True for a selected building (SelectedOnly); null when none is.</param>
         /// <param name="trailOf">A building's recent-damage trail for its health bar (<see cref="HitFeedback"/>); null draws none.</param>
         /// <param name="finishing">True for a building that was just finished (it pulses bright); null pulses none.</param>
+        /// <param name="view">The world rect on screen: a building outside it (with a tile for its bar and head) packs nothing (2026-11-07: every
+        /// building on the map was packed and sorted each frame); null packs them all.</param>
         public static void Pack(IEnumerable<ClientBuildings.Entry> entries, BuildingFrames frames, Func<int, uint> colorOf, Func<BuildingType, int2> sizeOf,
             float time, Func<int, bool> flashing, Lists into, Func<int, ClientBuildings.TurretHead> headOf = null,
             int barMode = (int)HealthBarMode.DamagedOnly, Func<int, bool> selected = null, Func<int, float> trailOf = null,
-            Func<int, bool> finishing = null)
+            Func<int, bool> finishing = null, Rect? view = null)
         {
             into.Clear();
             foreach (ClientBuildings.Entry e in entries)
@@ -113,6 +115,7 @@ namespace WAR2D.Client.Render
                 BuildingData d = e.Data;
                 int2 size = sizeOf(d.buildingType);
                 float2 centre = Footprint.VisualCenter((int2)math.round(d.position), size);
+                if (view.HasValue && !view.Value.Overlaps(new Rect(centre.x - size.x * 0.5f - 1f, centre.y - size.y * 0.5f - 1f, size.x + 2f, size.y + 2f))) continue;
                 (int first, int count, int directions) = frames.Of(d.buildingType);
                 int facing = directions <= 1 ? 0 : ((int)math.round(d.rotation / 90f) % directions + directions) % directions;
                 float health = e.Health.maxHealth > 0f ? e.Health.currentHealth / e.Health.maxHealth : 1f;

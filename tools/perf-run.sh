@@ -20,6 +20,22 @@ if [[ -n "${WAR_PERF_AI:-}" ]]; then
   aiArgs=(-perfAi "$WAR_PERF_AI" -perfAiWarmupMinutes "${WAR_PERF_AI_WARMUP:-12}")
 fi
 [[ -x "$player" ]] || { echo "No player at $player - make a Linux release build first."; exit 1; }
+# WAR_PERF_PIN=1 (perf-100k.sh sets it): the host and the clients each get half of the machine's cores (both hardware threads of a core
+# stay together), so they don't fight for CPU and the run reads the same twice. WAR_PERF_HOST_CPUS / WAR_PERF_CLIENT_CPUS ("0-5") override
+# the split. The job worker count follows the cores a process has. Unpinned runs on one machine swung 2x in bandwidth and 30 to 65 fps.
+hostPin=(); clientPin=(); hostJobs=(); clientJobs=()
+if [[ "${WAR_PERF_PIN:-0}" == "1" ]] && command -v taskset >/dev/null 2>&1; then
+  hostCpus="${WAR_PERF_HOST_CPUS:-}"; clientCpus="${WAR_PERF_CLIENT_CPUS:-}"
+  if [[ -z "$hostCpus" || -z "$clientCpus" ]]; then
+    mapfile -t cores < <(lscpu -p=CORE,CPU | grep -v '^#' | awk -F, '{a[$1]=($1 in a)?a[$1]","$2:$2} END{for(c in a) print c" "a[c]}' | sort -n | cut -d' ' -f2)
+    half=$(( ${#cores[@]} / 2 ))
+    hostCpus="$(IFS=,; echo "${cores[*]:0:$half}")"; clientCpus="$(IFS=,; echo "${cores[*]:$half}")"
+  fi
+  hostPin=(taskset -c "$hostCpus"); clientPin=(taskset -c "$clientCpus")
+  hostJobs=(-job-worker-count "$(( $(echo "$hostCpus" | tr ',' '\n' | wc -l) - 1 ))")
+  clientJobs=(-job-worker-count "$(( $(echo "$clientCpus" | tr ',' '\n' | wc -l) - 1 ))")
+  echo "Pinned: host on CPUs $hostCpus, clients on $clientCpus"
+fi
 stamp="$(date +%Y%m%d-%H%M%S)"
 out="PerfResults/$stamp"
 mkdir -p "$out"
@@ -34,14 +50,16 @@ for run in $(seq 1 "$runs"); do
   if [[ "${WAR_PERF_HEADLESS_HOST:-0}" == "1" ]]; then hostArgs=(-batchmode -nographics); fi
   # WAR_PERF_HOST_ARGS: extra host arguments for experiments (e.g. "-configFile /path/GameConfig.xml", dev only).
   if [[ -n "${WAR_PERF_HOST_ARGS:-}" ]]; then read -r -a extraHost <<< "$WAR_PERF_HOST_ARGS"; hostArgs+=("${extraHost[@]}"); fi
-  "$player" -perf -perfRecord -perfClients "$clients" "${aiArgs[@]}" -perfOut "$dir" "${hostArgs[@]}" -logFile "$dir/player.log" &
+  "${hostPin[@]}" "$player" "${hostJobs[@]}" -perf -perfRecord -perfClients "$clients" "${aiArgs[@]}" -perfOut "$dir" "${hostArgs[@]}" -logFile "$dir/player.log" &
   host=$!
   sleep 5
   for c in $(seq 1 "$clients"); do
     # WAR_PERF_VIEW=1: the first client renders and measures its frames (PerfClient -perfView; tools/perf-10k.sh).
     clientArgs=(-batchmode -nographics)
     if [[ "${WAR_PERF_VIEW:-0}" == "1" && "$c" == "1" ]]; then clientArgs=(-perfView -screen-width 1920 -screen-height 1080 -screen-fullscreen 1); fi
-    "$player" "${clientArgs[@]}" -perf -perfClient 127.0.0.1 -perfOut "$dir/client$c" -logFile "$dir/client$c.log" &
+    # WAR_PERF_CLIENT_ARGS: extra arguments for every client (e.g. "-job-worker-count 11" for a simulated 12-thread machine).
+    if [[ -n "${WAR_PERF_CLIENT_ARGS:-}" ]]; then read -r -a extraClient <<< "$WAR_PERF_CLIENT_ARGS"; clientArgs+=("${extraClient[@]}"); fi
+    "${clientPin[@]}" "$player" "${clientJobs[@]}" "${clientArgs[@]}" -perf -perfClient 127.0.0.1 -perfOut "$dir/client$c" -logFile "$dir/client$c.log" &
   done
   gpu=""
   if [[ "${WAR_PERF_VIEW:-0}" == "1" ]] && command -v nvidia-smi >/dev/null 2>&1; then
@@ -80,7 +98,7 @@ for r in range(1, runs + 1):
         table[metric] = merged
     tables.append(table)
 stat_col = {"mean": "mean", "p95": "p95", "max": "max"}
-print(f"{'metric':22} {'stat':5} {'median':>12} {'budget':>12}  result")
+print(f"{'metric':22} {'stat':5} {'median':>12} {'budget':>12}  result   (min .. max over {runs} runs)")
 failed = False
 for metric, row in tables[0].items():
     stat = row["budget_stat"] or "p95"
@@ -94,6 +112,6 @@ for metric, row in tables[0].items():
         ok = median <= float(budget) if upper else median >= float(budget)
         result = "PASS" if ok else "FAIL"
         failed |= not ok
-    print(f"{metric:22} {stat:5} {median:12.3f} {budget:>12}  {result}")
+    print(f"{metric:22} {stat:5} {median:12.3f} {budget:>12}  {result:6}   ({values[0]:.3f} .. {values[-1]:.3f})")
 sys.exit(1 if failed else 0)
 PY

@@ -81,6 +81,7 @@ public IEnumerator ScreenshotWritesAPng()
     d.Handle($"{{\"id\":1,\"token\":\"t\",\"cmd\":\"screenshot\",\"args\":{{\"path\":\"{path.Replace("\\", "/")}\"}}}}", s => reply = JObject.Parse(s));
     float until = Time.realtimeSinceStartup + 5f;
     while (reply == null && Time.realtimeSinceStartup < until) { d.Pump(Time.unscaledDeltaTime); yield return null; }
+    Assert.IsNotNull(reply, "screenshot: no reply");
     Assert.IsTrue((bool)reply["ok"], (string)reply["error"]);
     Assert.IsTrue(System.IO.File.Exists(path));
     DebugApi.AllowForTests = false;

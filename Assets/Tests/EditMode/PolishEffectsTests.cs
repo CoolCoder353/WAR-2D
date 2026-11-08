@@ -107,8 +107,7 @@ public class PolishEffectsTests
     public void ATrackMarkTurnsToTheExactHeading()
     {
         Decals.Track(new Vector2(3, 3), math.radians(20f));
-        var mark = GameObject.Find("Decals").transform.GetChild(0);
-        Assert.AreEqual(20f, mark.eulerAngles.z, 0.01f, "no snapping to 45° steps");
+        Assert.AreEqual(20f, Decals.DrawnTrackDegrees(0), 0.01f, "no snapping to 45° steps");
     }
 
     [Test]

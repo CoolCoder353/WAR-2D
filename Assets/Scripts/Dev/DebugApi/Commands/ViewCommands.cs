@@ -91,14 +91,39 @@ namespace WAR2D.Dev.DebugApi
             return shotRunner = go.AddComponent<ShotBehaviour>();
         }
 
+        /// <summary>The batch mode picture: the screen's cameras, drawn on request. UI Toolkit panels only draw to a real screen, so they are missing. Null with no graphics device.</summary>
+        private static Texture2D DrawCameras()
+        {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) return null;
+            int w = Screen.width, h = Screen.height;
+            RenderTexture rt = RenderTexture.GetTemporary(w, h, 24), previous = RenderTexture.active;
+            Camera[] cameras = Camera.allCameras;
+            System.Array.Sort(cameras, (a, b) => a.depth.CompareTo(b.depth));
+            foreach (Camera cam in cameras)
+            {
+                if (cam.targetTexture != null) continue; // draws to its own texture, not the screen
+                cam.targetTexture = rt;
+                cam.Render();
+                cam.targetTexture = null;
+            }
+            RenderTexture.active = rt;
+            var shot = new Texture2D(w, h, TextureFormat.RGB24, false);
+            shot.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+            shot.Apply();
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(rt);
+            return shot;
+        }
+
         private static System.Collections.IEnumerator CaptureRoutine(string path, float scale, RectInt? crop, System.Action<object> done, System.Action<string> fail)
         {
-            yield return new WaitForEndOfFrame(); // after every camera and UI Toolkit panel has drawn
+            // After every camera and UI Toolkit panel has drawn. Batch mode draws nothing by itself and never reaches the end of a frame.
+            if (!Application.isBatchMode) yield return new WaitForEndOfFrame();
             Texture2D shot = null, cut = null;
             RenderTexture rt = null;
             try
             {
-                shot = ScreenCapture.CaptureScreenshotAsTexture();
+                shot = Application.isBatchMode ? DrawCameras() : ScreenCapture.CaptureScreenshotAsTexture();
                 if (shot == null) { fail("the screen could not be captured (is the player running with -nographics?)"); yield break; }
                 int w = shot.width, h = shot.height;
                 RectInt c = crop ?? new RectInt(0, 0, w, h);

@@ -155,7 +155,8 @@ namespace WAR2D.Client
 
         /// <summary>
         /// Draws this frame's combat visuals. <paramref name="positionOf"/> gives a known unit's drawn position (false when it isn't known),
-        /// <paramref name="typeOf"/> its type, <paramref name="ownSelected"/> the local player's selected unit indices.
+        /// <paramref name="typeOf"/> its type, <paramref name="ownSelected"/> the local player's selected unit indices (only the Artillery and
+        /// Snipers among them draw anything: their reload bars).
         /// </summary>
         public void Draw(float now, float serverNow, Rect view, System.Func<int, (bool known, float2 at, byte type, float scale)> unitOf,
             IEnumerable<int> ownSelected, ClientBuildings buildings)
@@ -193,9 +194,12 @@ namespace WAR2D.Client
             foreach (var (key, leap) in leapUpdates) leaps[key] = leap;
             leapUpdates.Clear();
 
-            // Fire: burning units and seen buildings, nearest the view's centre first, capped.
+            // Fire: burning units and seen buildings in view, nearest the view's centre first, capped (only those in view are sorted: at
+            // 100,000 units every burning unit on the map was, and an off-screen one took a slot of the cap).
             fires.Clear();
             burningNow.Clear();
+            // Markers only near the view (they were placed for every burning unit on the map: thousands of sprites in a big battle).
+            Rect markerView = new Rect(view.xMin - MarkerMargin, view.yMin - MarkerMargin, view.width + 2f * MarkerMargin, view.height + 2f * MarkerMargin);
             foreach (KeyValuePair<int, byte> pair in combat.Statuses)
             {
                 if ((pair.Value & UnitStatusBits.Burning) == 0) continue;
@@ -204,8 +208,8 @@ namespace WAR2D.Client
                 burningNow.Add(pair.Key);
                 if (!burningBefore.Contains(pair.Key)) Audio.AudioService.Sfx("flame_ignite", new Vector2(at.x, at.y));
                 var p = new Vector2(at.x, at.y);
-                fires.Add(((p - centre).sqrMagnitude, p, scale > 1.5f ? 2 : 1, pair.Key));
-                Marker(p + new Vector2(0.32f, 0.4f * scale + 0.175f));
+                if (view.Contains(p)) fires.Add(((p - centre).sqrMagnitude, p, scale > 1.5f ? 2 : 1, pair.Key));
+                if (markerView.Contains(p)) Marker(p + new Vector2(0.32f, 0.4f * scale + 0.175f));
             }
             burningBefore.Clear();
             foreach (int k in burningNow) burningBefore.Add(k);
@@ -216,8 +220,8 @@ namespace WAR2D.Client
                 int2 size = WorldStateManager.GetBuildingSize(e.Data.buildingType);
                 float2 c = Footprint.VisualCenter((int2)math.round(e.Data.position), size);
                 var p = new Vector2(c.x, c.y);
-                fires.Add(((p - centre).sqrMagnitude, p, math.clamp(math.max(size.x, size.y), 1, 3), ~pair.Key));
-                Marker(p + new Vector2(size.x * 0.5f, size.y * 0.5f + 0.2f));
+                if (view.Contains(p)) fires.Add(((p - centre).sqrMagnitude, p, math.clamp(math.max(size.x, size.y), 1, 3), ~pair.Key));
+                if (markerView.Contains(p)) Marker(p + new Vector2(size.x * 0.5f, size.y * 0.5f + 0.2f));
             }
             fires.Sort((a, b) => a.distance.CompareTo(b.distance));
             if (lastSoot.Count > 4 * math.max(64, fires.Count)) lastSoot.Clear(); // bounded over a long match: a fire only loses one puff
@@ -324,6 +328,9 @@ namespace WAR2D.Client
         }
 
         /// <summary>A small flame beside a health bar (Figma B1: the shape, not only the colour, says it burns).</summary>
+        /// <summary>Tiles past the view's edge a burning marker is still placed (it sits up to about 2 tiles off its unit or building).</summary>
+        private const float MarkerMargin = 3f;
+
         private void Marker(Vector2 at)
         {
             SpriteRenderer m = Next(markerSprites, ref markersUsed, "Fire", SortingOrders.Effects + 2);

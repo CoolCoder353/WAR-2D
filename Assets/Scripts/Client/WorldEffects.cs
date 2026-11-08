@@ -120,18 +120,35 @@ namespace WAR2D.Client
         {
             int local = LocalOwner;
             if (local == 0 || ownerId != local || sinceFirstBatch < ProducedQuietSeconds) return;
-            foreach (ClientBuildings.Entry e in ClientBuildings.Current.Entries.Values)
+            ClientBuildings known = ClientBuildings.Current;
+            if (producersFrame != Time.frameCount || producersOf != known || producersCount != known.Entries.Count)
             {
-                if (e.Data.ownerId != local || e.Ghost || e.Progress < 100 || !SpawnerRules.IsProducer(e.Data.buildingType)) continue;
-                int2 size = WorldStateManager.GetBuildingSize(e.Data.buildingType);
-                float2 centre = Footprint.VisualCenter((int2)math.round(e.Data.position), size);
-                float2 d = math.abs((float2)position - centre) - (float2)size * 0.5f;
+                // The player's finished producers, once a frame: each unit that appeared walked every known building (a top-up of
+                // hundreds of units against thousands of buildings at 100,000 units).
+                producersFrame = Time.frameCount;
+                producersOf = known;
+                producersCount = known.Entries.Count;
+                producers.Clear();
+                foreach (ClientBuildings.Entry e in known.Entries.Values)
+                {
+                    if (e.Data.ownerId != local || e.Ghost || e.Progress < 100 || !SpawnerRules.IsProducer(e.Data.buildingType)) continue;
+                    int2 size = WorldStateManager.GetBuildingSize(e.Data.buildingType);
+                    producers.Add((Footprint.VisualCenter((int2)math.round(e.Data.position), size), (float2)size * 0.5f));
+                }
+            }
+            foreach ((float2 centre, float2 half) in producers)
+            {
+                float2 d = math.abs((float2)position - centre) - half;
                 if (math.cmax(d) > ProducedReach) continue;
                 Effects.DustPuff(position);
                 AudioService.Sfx("unit_produced", position);
                 return;
             }
         }
+
+        private readonly List<(float2 centre, float2 half)> producers = new List<(float2, float2)>();
+        private ClientBuildings producersOf;
+        private int producersFrame = -1, producersCount;
 
         /// <summary>True for the unit types that leave tread marks.</summary>
         public static bool LeavesTracks(byte type) => type == (byte)UnitType.Tank || type == (byte)UnitType.Heavy || type == (byte)UnitType.Artillery;

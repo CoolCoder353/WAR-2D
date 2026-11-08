@@ -11,11 +11,12 @@ using WAR2D.Art.Style;
 namespace WAR2D.Client.Render
 {
     /// <summary>
-    /// One unit's draw data, the 32 bytes the shader's <c>StructuredBuffer&lt;UnitInstance&gt;</c> declares:
-    /// <c>float2 position; float rotation; uint frame; uint color; float health; float scale; float pad</c>.
+    /// One unit's draw data, the 40 bytes the shader's <c>StructuredBuffer&lt;UnitInstance&gt;</c> declares:
+    /// <c>float2 position; float rotation; uint frame; uint color; float health; float scale; float pad; float2 velocity</c>.
     /// <c>frame</c> is the atlas cell (<see cref="UnitFrames"/>: the facing picks a rendered direction, the
     /// shader doesn't rotate the quad), <c>color</c> the owner's colour for the team mask, and <c>pad</c> flags (bit 1
-    /// selected, bit 2 hit flash). A health bar's <c>rotation</c> is its recent-damage trail (<see cref="HitFeedback"/>).
+    /// selected, bit 2 hit flash). A health bar's <c>rotation</c> is its recent-damage trail (<see cref="HitFeedback"/>). <c>velocity</c>
+    /// (tiles a second) carries the instance on from <c>position</c> by the time since it was packed (<see cref="InstancedUnitRenderer.DrawAheadProperty"/>).
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public struct UnitInstance
@@ -27,6 +28,7 @@ namespace WAR2D.Client.Render
         public float health;
         public float scale;
         public float pad;
+        public float2 velocity;
     }
 
     /// <summary>
@@ -37,7 +39,15 @@ namespace WAR2D.Client.Render
     public sealed class InstancedUnitRenderer : IDisposable
     {
         public const string ShaderPath = "Shaders/InstancedUnit";
-        public const int InstanceStride = 32;
+        public const int InstanceStride = 40;
+
+        /// <summary>
+        /// The global shader float of seconds since the units were last packed: each instance is drawn that far along its velocity, so
+        /// units move smoothly on the frames between packs (<see cref="Redraw"/>).
+        /// </summary>
+        public static readonly int DrawAheadProperty = Shader.PropertyToID("_UnitDrawAhead");
+
+        private int unitCount, turretCount, ringCount, barCount;
         public const int BarFrames = 16;
 
         /// <summary>Health bar size in art pixels: drawn 1:1 at <see cref="ArtStyle.PixelsPerUnit"/>.</summary>
@@ -191,9 +201,24 @@ namespace WAR2D.Client.Render
             material.SetBuffer("_Instances", buffer);
         }
 
+        /// <summary>Draws the last uploaded rings, units, turrets and bars again (a frame between packs).</summary>
+        public void Redraw()
+        {
+            Render(ringMaterial, ringCount);
+            Render(unitMaterial, unitCount);
+            Render(turretMaterial, turretCount);
+            Render(barMaterial, barCount);
+        }
+
+        private static void Render(Material material, int count)
+        {
+            if (count > 0) Graphics.RenderPrimitives(new RenderParams(material) { worldBounds = WorldBounds }, MeshTopology.Triangles, QuadVertices, count);
+        }
+
         /// <summary>Uploads and draws <paramref name="count"/> unit instances.</summary>
         public void Draw(NativeArray<UnitInstance> data, int count)
         {
+            unitCount = count;
             if (count <= 0) return;
             EnsureCapacity(ref instances, ref capacity, count, unitMaterial);
             instances.SetData(data, 0, 0, count);
@@ -203,6 +228,7 @@ namespace WAR2D.Client.Render
         /// <summary>Uploads and draws the turrets of the units on screen (after the hulls, which they stand on).</summary>
         public void DrawTurrets(NativeArray<UnitInstance> turrets, int count)
         {
+            turretCount = count;
             if (count <= 0) return;
             EnsureCapacity(ref turretInstances, ref turretCapacity, count, turretMaterial);
             turretInstances.SetData(turrets, 0, 0, count);
@@ -212,6 +238,7 @@ namespace WAR2D.Client.Render
         /// <summary>Uploads and draws the selected units' rings (before the units, which draw over them).</summary>
         public void DrawRings(NativeArray<UnitInstance> rings, int count)
         {
+            ringCount = count;
             if (count <= 0) return;
             EnsureCapacity(ref ringInstances, ref ringCapacity, count, ringMaterial);
             ringInstances.SetData(rings, 0, 0, count);
@@ -221,6 +248,7 @@ namespace WAR2D.Client.Render
         /// <summary>Uploads and draws the damaged units' health bars.</summary>
         public void DrawHealthBars(NativeArray<UnitInstance> bars, int count)
         {
+            barCount = count;
             if (count <= 0) return;
             EnsureCapacity(ref barInstances, ref barCapacity, count, barMaterial);
             barInstances.SetData(bars, 0, 0, count);
@@ -246,12 +274,24 @@ namespace WAR2D.Client.Render
         }
     }
 
-    /// <summary>Packs predicted units into instances, the damaged ones' health bars and the selected ones' rings into two more lists.</summary>
+    /// <summary>
+    /// Packs predicted units into instances, over the job threads (2026-11-07: 0.8 ms of the main thread at 100,000 units on one
+    /// core). Each unit in <see cref="View"/> writes its own instance and its own bar and ring slots; <see cref="GatherPackedJob"/>
+    /// then keeps those instances and appends the damaged ones' health bars and the selected ones' rings to their lists in unit order,
+    /// as the one-thread job did.
+    /// </summary>
     [BurstCompile]
-    public struct PackUnitsJob : IJob
+    public struct PackUnitsJob : IJobParallelFor
     {
+        /// <summary>Bits of <see cref="Emits"/>: which of a unit's slots hold a result this frame.</summary>
+        public const byte EmitBar = 1, EmitRing = 2, EmitRoamRing = 4, EmitShown = 8;
+
         [ReadOnly] public NativeArray<int> Known;
         [ReadOnly] public NativeArray<float2> Positions;
+        /// <summary>Parallel to <see cref="Known"/>: 0 for a unit away from the view whose prediction waits for a later turn (not drawn).</summary>
+        [ReadOnly] public NativeArray<byte> Refreshed;
+        /// <summary>Parallel to <see cref="Known"/>: how fast the drawn position moves (tiles a second), for the frames between packs.</summary>
+        [ReadOnly] public NativeArray<float2> Velocity;
         [ReadOnly] public NativeArray<float> Rotation;   // by index
         [ReadOnly] public NativeArray<uint> Frame;       // by index: the atlas cell
         [ReadOnly] public NativeArray<uint> Color;       // by index
@@ -263,47 +303,60 @@ namespace WAR2D.Client.Render
         [ReadOnly] public NativeArray<byte> HideBar;
         [ReadOnly] public NativeArray<float> Trail;      // by index: the health bar's recent-damage level
         public float UnitHalfSize;
+        /// <summary>
+        /// The view with a margin (xMin, yMin, xMax, yMax): a unit outside it packs nothing (2026-11-07: every known unit was uploaded and
+        /// drawn each frame, 100,000 instances at the 100k benchmark's zoom for about 13,000 on screen).
+        /// </summary>
+        public float4 View;
         public uint RingFrame, LargeRingFrame, RoamRingFrame;
         /// <summary>The Gameplay setting's <see cref="HealthBarMode"/>: which units get a bar.</summary>
         public int BarMode;
         public NativeArray<UnitInstance> Instances;
-        public NativeArray<UnitInstance> Bars;
-        public NativeArray<int> BarCount;
-        public NativeArray<UnitInstance> Rings;
-        public NativeArray<int> RingCount;
+        /// <summary>Parallel to <see cref="Known"/>: the unit's bar, and its two rings (selected, roaming) at 2i and 2i + 1.</summary>
+        public NativeArray<UnitInstance> BarSlots;
+        [NativeDisableParallelForRestriction] public NativeArray<UnitInstance> RingSlots;
+        public NativeArray<byte> Emits;
 
-        public void Execute()
+        public void Execute(int i)
         {
-            int bars = 0, rings = 0;
-            for (int i = 0; i < Known.Length; i++)
+            float2 at = Positions[i];
+            // Not shown (off screen, or hidden by a replay's per-player view): nothing, not even a bar.
+            if (Refreshed[i] == 0 || at.x < View.x || at.y < View.y || at.x > View.z || at.y > View.w || Scale[Known[i]] < 0f)
             {
-                int index = Known[i];
-                if (Scale[index] < 0f) // not shown (a replay's per-player view): nothing, not even a bar
-                {
-                    Instances[i] = new UnitInstance { position = Positions[i], scale = 0f };
-                    continue;
-                }
-                float health = Health01[index];
-                float scale = Scale[index] > 0f ? Scale[index] : 1f;
-                bool selected = (Selected[index] & 1) != 0;
-                if (selected)
-                    Rings[rings++] = new UnitInstance { position = Positions[i], frame = scale > 1.5f ? LargeRingFrame : RingFrame, color = 0xFFFFFFFFu, scale = scale > 1.5f ? 2f : 1f };
-                if ((Selected[index] & 2) != 0)
-                    Rings[rings++] = new UnitInstance { position = Positions[i], frame = RoamRingFrame, color = 0xFFFFFFFFu, scale = scale > 1.5f ? 2f : 1f };
-                Instances[i] = new UnitInstance
-                {
-                    position = Positions[i],
-                    rotation = Rotation[index],
-                    frame = Frame[index],
-                    color = Color[index],
-                    health = health,
-                    scale = scale,
-                    pad = (uint)(Selected[index] & 1) | (uint)Flash[index] << 1,
-                };
-                if (!WAR2D.Client.Overlays.OverlayRules.ShowHealthBar(BarMode, health, selected)) continue;
-                if (HideBar.IsCreated && HideBar[index] != 0) continue;
+                Emits[i] = 0;
+                return;
+            }
+            int index = Known[i];
+            byte emit = EmitShown;
+            float health = Health01[index];
+            float scale = Scale[index] > 0f ? Scale[index] : 1f;
+            bool selected = (Selected[index] & 1) != 0;
+            float2 velocity = Velocity[i];
+            if (selected)
+            {
+                RingSlots[2 * i] = new UnitInstance { position = Positions[i], frame = scale > 1.5f ? LargeRingFrame : RingFrame, color = 0xFFFFFFFFu, scale = scale > 1.5f ? 2f : 1f, velocity = velocity };
+                emit |= EmitRing;
+            }
+            if ((Selected[index] & 2) != 0)
+            {
+                RingSlots[2 * i + 1] = new UnitInstance { position = Positions[i], frame = RoamRingFrame, color = 0xFFFFFFFFu, scale = scale > 1.5f ? 2f : 1f, velocity = velocity };
+                emit |= EmitRoamRing;
+            }
+            Instances[i] = new UnitInstance
+            {
+                position = Positions[i],
+                rotation = Rotation[index],
+                frame = Frame[index],
+                color = Color[index],
+                health = health,
+                scale = scale,
+                pad = (uint)(Selected[index] & 1) | (uint)Flash[index] << 1,
+                velocity = velocity,
+            };
+            if (WAR2D.Client.Overlays.OverlayRules.ShowHealthBar(BarMode, health, selected) && !(HideBar.IsCreated && HideBar[index] != 0))
+            {
                 int frame = math.clamp((int)math.round(health * (InstancedUnitRenderer.BarFrames - 1)), 0, InstancedUnitRenderer.BarFrames - 1);
-                Bars[bars++] = new UnitInstance
+                BarSlots[i] = new UnitInstance
                 {
                     position = Positions[i] + new float2(0f, UnitHalfSize * scale + 0.175f),
                     rotation = Trail[index],
@@ -311,8 +364,43 @@ namespace WAR2D.Client.Render
                     color = InstancedUnitRenderer.BarColor(health),
                     health = health,
                     scale = 1f,
+                    velocity = velocity,
                 };
+                emit |= EmitBar;
             }
+            Emits[i] = emit;
+        }
+    }
+
+    /// <summary>
+    /// Moves <see cref="PackUnitsJob"/>'s shown instances to the front of <see cref="Instances"/> (in place, in unit order) and appends
+    /// its bars and rings to their lists in unit order (rings: selected, then roaming).
+    /// </summary>
+    [BurstCompile]
+    public struct GatherPackedJob : IJob
+    {
+        [ReadOnly] public NativeArray<byte> Emits;
+        [ReadOnly] public NativeArray<UnitInstance> BarSlots, RingSlots;
+        public NativeArray<UnitInstance> Instances;
+        public NativeArray<int> ShownCount;
+        public NativeArray<UnitInstance> Bars;
+        public NativeArray<int> BarCount;
+        public NativeArray<UnitInstance> Rings;
+        public NativeArray<int> RingCount;
+
+        public void Execute()
+        {
+            int shown = 0, bars = 0, rings = 0;
+            for (int i = 0; i < Emits.Length; i++)
+            {
+                byte emit = Emits[i];
+                if (emit == 0) continue;
+                Instances[shown++] = Instances[i]; // shown <= i: in place
+                if ((emit & PackUnitsJob.EmitRing) != 0) Rings[rings++] = RingSlots[2 * i];
+                if ((emit & PackUnitsJob.EmitRoamRing) != 0) Rings[rings++] = RingSlots[2 * i + 1];
+                if ((emit & PackUnitsJob.EmitBar) != 0) Bars[bars++] = BarSlots[i];
+            }
+            ShownCount[0] = shown;
             BarCount[0] = bars;
             RingCount[0] = rings;
         }

@@ -243,8 +243,11 @@ namespace WAR2D.Net.Replication
         }
 
         /// <summary>The network handler.</summary>
+        private static readonly Unity.Profiling.ProfilerMarker ReceiveMarker = new Unity.Profiling.ProfilerMarker("Receive.Combat");
+
         public static void Receive(CombatBatch batch)
         {
+            using var marker = ReceiveMarker.Auto();
             if (!Current.Apply(batch.Payload)) WarLog.Warn(LogCategory.Replication, "dropped a malformed combat batch");
         }
 

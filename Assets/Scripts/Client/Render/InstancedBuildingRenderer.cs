@@ -33,9 +33,23 @@ namespace WAR2D.Client.Render
         /// <summary>Per building: its progress last frame and when it was finished (polish J's pulse).</summary>
         private readonly Dictionary<int, (byte progress, float finishedAt)> finish = new Dictionary<int, (byte, float)>();
         private readonly Func<int, bool> finishing;
-        private readonly HashSet<int> seen = new HashSet<int>();
         private readonly List<int> gone = new List<int>();
         private float now, dt;
+        // The last packing: what it was made from, and when.
+        private float packedAt = float.NegativeInfinity;
+        private ClientBuildings packedFrom;
+        private int packedCount;
+        private Rect? packedView;
+
+        /// <summary>
+        /// While the view stays inside the last packing's and the building count holds, the buildings are packed and uploaded at most this
+        /// often and the last packing is drawn again in between (2026-11-08: packing every known building every frame cost a 100,000-unit
+        /// client on three cores 0.5 ms a frame; a building's flash or bar changes far slower).
+        /// </summary>
+        public const float RepackSeconds = 1f / 30f;
+
+        /// <summary>The share of the view's size a packing reaches past each edge, so a camera that moves a little needs no repack.</summary>
+        private const float PackMargin = 0.25f;
         private readonly Func<int, bool> flashing;
         private readonly Func<int, float> trailOf;
         private Func<int, ClientBuildings.TurretHead> headOf;
@@ -126,20 +140,35 @@ namespace WAR2D.Client.Render
         /// Packs and draws the buildings. <paramref name="colorOf"/> gives an owner's packed team colour; <paramref name="barMode"/>
         /// (a <see cref="HealthBarMode"/>) and <paramref name="selected"/> pick which health bars show.
         /// </summary>
-        public void Draw(ClientBuildings known, float time, Func<int, uint> colorOf, int barMode = (int)HealthBarMode.DamagedOnly, Func<int, bool> selected = null)
+        public void Draw(ClientBuildings known, float time, Func<int, uint> colorOf, int barMode = (int)HealthBarMode.DamagedOnly, Func<int, bool> selected = null,
+            Rect? view = null)
         {
-            dt = now > 0f ? math.max(0f, time - now) : 0f;
-            now = time;
-            TrackHits(known);
-            if (headsOf != known)
+            bool inside = view.HasValue == packedView.HasValue && (!view.HasValue || (packedView.Value.Contains(view.Value.min) && packedView.Value.Contains(view.Value.max)));
+            bool repack = time - packedAt >= RepackSeconds || time < packedAt || known != packedFrom || known.Entries.Count != packedCount || !inside;
+            if (repack)
             {
-                headsOf = known;
-                headOf = known.HeadOf;
+                packedAt = time;
+                packedFrom = known;
+                packedCount = known.Entries.Count;
+                if (view.HasValue)
+                {
+                    Rect v = view.Value;
+                    view = new Rect(v.xMin - v.width * PackMargin, v.yMin - v.height * PackMargin, v.width * (1f + 2f * PackMargin), v.height * (1f + 2f * PackMargin));
+                }
+                packedView = view;
+                dt = now > 0f ? math.max(0f, time - now) : 0f;
+                now = time;
+                TrackHits(known);
+                if (headsOf != known)
+                {
+                    headsOf = known;
+                    headOf = known.HeadOf;
+                }
+                BuildingPacking.Pack(known.Entries.Values, frames, colorOf, WorldStateManager.GetBuildingSize, time, flashing, lists, headOf, barMode, selected, trailOf, finishing, view);
             }
-            BuildingPacking.Pack(known.Entries.Values, frames, colorOf, WorldStateManager.GetBuildingSize, time, flashing, lists, headOf, barMode, selected, trailOf, finishing);
-            Submit(lists.Buildings, ref buildings, ref buildingCapacity, buildingMaterial);
-            Submit(lists.Overlays, ref overlays, ref overlayCapacity, overlayMaterial);
-            Submit(lists.Bars, ref bars, ref barCapacity, barMaterial);
+            Submit(lists.Buildings, ref buildings, ref buildingCapacity, buildingMaterial, repack);
+            Submit(lists.Overlays, ref overlays, ref overlayCapacity, overlayMaterial, repack);
+            Submit(lists.Bars, ref bars, ref barCapacity, barMaterial, repack);
         }
 
         /// <summary>
@@ -149,11 +178,9 @@ namespace WAR2D.Client.Render
         /// </summary>
         private void TrackHits(ClientBuildings known)
         {
-            seen.Clear();
             foreach (ClientBuildings.Entry e in known.Entries.Values)
             {
                 int id = e.Data.id;
-                seen.Add(id);
                 float health = e.Health.maxHealth > 0f ? e.Health.currentHealth / e.Health.maxHealth : 1f;
                 if (hits.TryGetValue(id, out var h))
                 {
@@ -164,17 +191,18 @@ namespace WAR2D.Client.Render
                             e.Data.ownerId == WorldEffects.LocalOwner, now);
                     float hitAt = hit ? now : h.hitAt;
                     float trail = e.Ghost || h.ghost ? health : HitFeedback.Trail(h.trail, health, now - hitAt, dt);
-                    hits[id] = (health, hitAt, trail, e.Ghost);
+                    // Written only when it changes: a write for every building every frame cost more than the rest (thousands at 100,000 units).
+                    if (health != h.health || hitAt != h.hitAt || trail != h.trail || e.Ghost != h.ghost) hits[id] = (health, hitAt, trail, e.Ghost);
                 }
                 else hits[id] = (health, float.NegativeInfinity, health, e.Ghost);
                 // A blueprint seen rising that reaches 100 % was just finished; one first seen finished never pulses.
                 bool tracked = finish.TryGetValue(id, out var f);
                 bool done = tracked && f.progress < 100 && e.Progress >= 100 && !e.Ghost;
-                finish[id] = (e.Progress, done ? now : tracked ? f.finishedAt : float.NegativeInfinity);
+                if (!tracked || done || f.progress != e.Progress) finish[id] = (e.Progress, done ? now : tracked ? f.finishedAt : float.NegativeInfinity);
             }
-            if (hits.Count == seen.Count) return;
+            if (hits.Count == known.Entries.Count) return; // every known building is in hits: none has gone
             gone.Clear();
-            foreach (int id in hits.Keys) if (!seen.Contains(id)) gone.Add(id);
+            foreach (int id in hits.Keys) if (!known.Entries.ContainsKey(id)) gone.Add(id);
             foreach (int id in gone)
             {
                 hits.Remove(id);
@@ -182,10 +210,15 @@ namespace WAR2D.Client.Render
             }
         }
 
-        private void Submit(List<UnitInstance> list, ref GraphicsBuffer buffer, ref int capacity, Material material)
+        private void Submit(List<UnitInstance> list, ref GraphicsBuffer buffer, ref int capacity, Material material, bool upload)
         {
             int count = list.Count;
             if (count == 0) return;
+            if (!upload && buffer != null && capacity >= count)
+            {
+                Graphics.RenderPrimitives(new RenderParams(material) { worldBounds = new Bounds(Vector3.zero, Vector3.one * 100000f) }, MeshTopology.Triangles, QuadVertices, count);
+                return;
+            }
             if (buffer == null || capacity < count)
             {
                 buffer?.Dispose();

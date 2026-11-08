@@ -139,5 +139,13 @@ namespace WAR2D.Sim
 
         /// <summary>Frame on which the last boundary completed, so main-thread readers know the SoA is settled.</summary>
         public static int LastBoundaryFrame = -1;
+
+        /// <summary>
+        /// Raised on the main thread when a tick's last stage returns, with this class's timings final for that tick. Perf harness: a
+        /// frame that catches up runs several ticks, and a <c>MonoBehaviour.Update</c> sees only the last of them.
+        /// </summary>
+        public static event System.Action TickEnded;
+
+        internal static void RaiseTickEnded() => TickEnded?.Invoke();
     }
 }

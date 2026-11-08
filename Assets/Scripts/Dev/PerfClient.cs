@@ -38,7 +38,7 @@ public sealed class PerfClient : MonoBehaviour
     private static readonly bool View = Array.IndexOf(Environment.GetCommandLineArgs(), "-perfView") >= 0;
 
     /// <summary>The client frame budget: 120 fps on average and in the slowest 1 % of frames.</summary>
-    public const double FpsBudget = 120.0;
+    public static readonly double FpsBudget = double.TryParse(PerfMatch.ArgValue("-perfFpsBudget"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double b) ? b : 120.0; // -perfFpsBudget n: 140 for the 100,000-unit benchmark
 
     private bool measuring;
     private float measureStart;
@@ -48,19 +48,32 @@ public sealed class PerfClient : MonoBehaviour
     private readonly FrameTiming[] timing = new FrameTiming[1];
     private readonly System.Diagnostics.Process self = System.Diagnostics.Process.GetCurrentProcess();
 
+    /// <summary>
+    /// <c>-perfInteractive</c> (<c>tools/perf-play.sh</c>): joins the benchmark's host as a normal player: the player's own settings, camera
+    /// and input, nothing measured, no view fitted, no time limit. The host leaves this player's army unscripted.
+    /// </summary>
+    private static readonly bool Interactive = Array.IndexOf(Environment.GetCommandLineArgs(), "-perfInteractive") >= 0;
+
     private IEnumerator Start()
     {
-        Application.targetFrameRate = 30; // a headless player needs no more, and leaves the CPU to the host
+        if (!Interactive) Application.targetFrameRate = 30; // a headless player needs no more, and leaves the CPU to the host
         yield return new WaitUntil(() => GameManager.Instance != null);
+        if (Interactive)
+        {
+            UseMeteredTransport();
+            GameManager.Instance.ConnectToServer(PerfMatch.ArgValue("-perfClient"));
+            yield break;
+        }
         if (View)
         {
             // After SettingsStore.ApplyOnStart: the defaults (1920×1080 fullscreen), whatever this machine saved, uncapped. Fullscreen
             // matters: a window behind another one stalls in DXGI.WaitOnSwapChain for ~500 ms at a time (profiled 2026-11-06).
-            SettingsStore.Current = new GameSettings { VSync = false, FpsCap = 0, EdgeScroll = false };
+            // -perfFpsCap n: the game's frame cap (its default is 144; the benchmark runs uncapped unless given one).
+            SettingsStore.Current = new GameSettings { VSync = false, FpsCap = int.TryParse(PerfMatch.ArgValue("-perfFpsCap"), out int cap) ? Math.Max(0, cap) : 0, EdgeScroll = false };
             SettingsStore.Apply(SettingsStore.Current);
-            // -perfBreakdown: bytes per message type in this player's unit stream (decodes every batch twice: not for timing runs).
-            if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0) WAR2D.Net.Replication.ReplicationClient.Received += CountBatch;
         }
+        // -perfBreakdown: bytes per message type in this player's unit stream (decodes every batch twice: not for timing runs).
+        if (Array.IndexOf(Environment.GetCommandLineArgs(), "-perfBreakdown") >= 0) WAR2D.Net.Replication.ReplicationClient.Received += CountBatch;
         UseMeteredTransport();
         GameManager.Instance.ConnectToServer(PerfMatch.ArgValue("-perfClient"));
 
@@ -68,11 +81,18 @@ public sealed class PerfClient : MonoBehaviour
         yield return new WaitUntil(() => (GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing)
                                          || Time.realtimeSinceStartup - started > 300f);
         yield return new WaitForSecondsRealtime(WarmupSeconds);
+        // -perfExpectUnits n: measure only once the match is full, as the host does (90 % of n known), not while the armies still spawn in.
+        if (int.TryParse(PerfMatch.ArgValue("-perfExpectUnits"), out int expect) && expect > 0)
+        {
+            float waitStart = Time.realtimeSinceStartup;
+            yield return new WaitUntil(() => { CountUnits(out int k, out _); return k >= expect * 9 / 10 || Time.realtimeSinceStartup - waitStart > 180f; });
+        }
 
         long last = MeteredKcpTransport.ClientBytesReceived;
         float lastTime = Time.realtimeSinceStartup;
         TimeSpan lastCpu = self.TotalProcessorTime;
         measuring = View;
+        counting = true;
         measureStart = Time.realtimeSinceStartup;
         if (View) FitAll();
         while (NetworkClient.isConnected && Time.realtimeSinceStartup - started < MaxSeconds)
@@ -124,12 +144,8 @@ public sealed class PerfClient : MonoBehaviour
             File.WriteAllText(Path.Combine(dir, "frames.csv"), frames.ToString());
             budgets["perf.client.fps"] = ("mean", FpsBudget, false);
             budgets["perf.client.low1"] = ("mean", FpsBudget, false);
-            if (batchBytes > 0)
-            {
-                stats.Add("perf.client.batchKBps", batchBytes / 1024.0 / Math.Max(1.0, frameAt[frameAt.Count - 1]));
-                PerfMatch.WriteBreakdown(Path.Combine(dir, "breakdown.csv"), typeBytes, typeUnits);
-            }
         }
+        if (batchBytes > 0) { Directory.CreateDirectory(dir); PerfMatch.WriteBreakdown(Path.Combine(dir, "breakdown.csv"), typeBytes, typeUnits); }
         stats.WriteCsv(path, budgets);
         WarLog.Info(LogCategory.Dev, $"wrote {path}");
         Application.Quit();
@@ -137,10 +153,11 @@ public sealed class PerfClient : MonoBehaviour
 
     private readonly long[] typeBytes = new long[8], typeUnits = new long[8];
     private long batchBytes;
+    private bool counting; // from the warm-up's end, for every client (the breakdown), not only the measured view
 
     private void CountBatch(WAR2D.Net.Replication.ReplicationBatch batch)
     {
-        if (!measuring) return;
+        if (!counting) return;
         batchBytes += batch.Payload.Count;
         PerfMatch.CountTypes(batch.Payload, typeBytes, typeUnits);
     }
@@ -203,11 +220,9 @@ public sealed class PerfClient : MonoBehaviour
         ClientWorld world = ClientWorld.Instance;
         Camera cam = Camera.main;
         if (world == null || cam == null) return;
-        Unity.Collections.NativeArray<float2> p = world.Positions;
-        known = p.Length;
-        float2 centre = new float2(cam.transform.position.x, cam.transform.position.y);
-        float2 half = new float2(cam.orthographicSize * cam.aspect, cam.orthographicSize);
-        for (int k = 0; k < p.Length; k++) if (math.all(math.abs(p[k] - centre) <= half)) onScreen++;
+        known = world.Positions.Length;
+        onScreen = Scan(world.Positions, new float2(cam.transform.position.x, cam.transform.position.y),
+            new float2(cam.orthographicSize * cam.aspect, cam.orthographicSize), out _, out _);
     }
 
     /// <summary>
@@ -220,12 +235,44 @@ public sealed class PerfClient : MonoBehaviour
         Camera cam = Camera.main;
         var controller = FindFirstObjectByType<Character.Character_Controler>();
         if (world == null || cam == null || controller == null || world.Positions.Length == 0) return;
-        Unity.Collections.NativeArray<float2> p = world.Positions;
-        float2 lo = p[0], hi = p[0];
-        for (int k = 1; k < p.Length; k++) { lo = math.min(lo, p[k]); hi = math.max(hi, p[k]); }
+        Scan(world.Positions, 0f, 0f, out float2 lo, out float2 hi);
         float2 half = (hi - lo) * 0.5f + 2f, centre = (lo + hi) * 0.5f;
         controller.CentreOn(new Vector2(centre.x, centre.y));
         controller.ZoomOutToShow(math.max(half.y, half.x / cam.aspect));
+    }
+
+    /// <summary>The units' bounds and how many are inside the box (a Burst job: the harness's managed loops over 100,000 units took 8 ms).</summary>
+    private static int Scan(Unity.Collections.NativeArray<float2> positions, float2 centre, float2 half, out float2 lo, out float2 hi)
+    {
+        using var result = new Unity.Collections.NativeArray<float2>(3, Unity.Collections.Allocator.TempJob);
+        Unity.Jobs.IJobExtensions.Run(new ScanJob { Positions = positions, Centre = centre, Half = half, Result = result });
+        lo = result[0];
+        hi = result[1];
+        return (int)result[2].x;
+    }
+
+    [Unity.Burst.BurstCompile]
+    private struct ScanJob : Unity.Jobs.IJob
+    {
+        [Unity.Collections.ReadOnly] public Unity.Collections.NativeArray<float2> Positions;
+        public float2 Centre, Half;
+        public Unity.Collections.NativeArray<float2> Result; // lo, hi, (count, 0)
+
+        public void Execute()
+        {
+            float2 lo = float.MaxValue, hi = float.MinValue;
+            int n = 0;
+            for (int k = 0; k < Positions.Length; k++)
+            {
+                float2 p = Positions[k];
+                lo = math.min(lo, p);
+                hi = math.max(hi, p);
+                if (math.all(math.abs(p - Centre) <= Half)) n++;
+            }
+            Result[0] = lo;
+            Result[1] = hi;
+            Result[2] = new float2(n, 0f);
+        }
     }
 
     /// <summary>

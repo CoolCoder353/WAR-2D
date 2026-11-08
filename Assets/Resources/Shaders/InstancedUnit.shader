@@ -15,7 +15,7 @@ Shader "WAR2D/InstancedUnit"
             #pragma target 4.5
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
-            struct UnitInstance { float2 position; float rotation; uint frame; uint color; float health; float scale; float pad; };
+            struct UnitInstance { float2 position; float rotation; uint frame; uint color; float health; float scale; float pad; float2 velocity; };
             StructuredBuffer<UnitInstance> _Instances;
             StructuredBuffer<float4> _FrameRects; // xy = uv min, zw = uv size
             TEXTURE2D(_MainTex);
@@ -40,6 +40,7 @@ Shader "WAR2D/InstancedUnit"
             float _TeamGain;
             float _PixelsPerUnit;
             float _Trail;
+            float _UnitDrawAhead; // global: seconds since the instances were packed, carried along their velocity (0 for a fresh pack)
 
             // highlight: x selected, y hit flash. bar: x the bar's local u, y its local v, z filled art pixels, w trail art pixels.
             struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; half4 color : COLOR; half2 highlight : TEXCOORD1; float4 bar : TEXCOORD2; };
@@ -60,7 +61,8 @@ Shader "WAR2D/InstancedUnit"
                 // Quads don't rotate: the facing picks a rendered direction frame (style guide).
                 float2 local = float2(c.x, c.y * _Aspect) * _UnitSize * u.scale;
                 // Snap the origin to the art's pixel grid so frames don't swim between pixels.
-                float2 origin = _PixelsPerUnit > 0 ? round(u.position * _PixelsPerUnit) / _PixelsPerUnit : u.position;
+                float2 at = u.position + u.velocity * _UnitDrawAhead;
+                float2 origin = _PixelsPerUnit > 0 ? round(at * _PixelsPerUnit) / _PixelsPerUnit : at;
                 v2f o;
                 o.pos = TransformWorldToHClip(float3(origin + local, 0));
                 float4 r = _FrameRects[u.frame];

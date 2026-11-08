@@ -90,6 +90,8 @@ public static class Effects
         public float Until;
         /// <summary>A flame: the ids of the unit burning and of what it burns.</summary>
         public int Attacker, Target;
+        /// <summary>The atlas cell shown now: the sprite is set again only when it changes (frames step 10 times a second, the game draws 150).</summary>
+        public int Cell;
     }
 
     private sealed class Pool
@@ -935,18 +937,37 @@ public static class Effects
         s.Seconds = TracerSeconds;
         s.Until = 0f;
         s.Attacker = 0;
-        s.Sprite.sprite = atlas.Sprite(pool.Id, 0);
+        Show(s, pool.Id, 0, force: true);
         s.Go.SetActive(true);
         return s;
     }
 
+    /// <summary>Shows one atlas cell of the slot's effect, unless it already does (setting a sprite costs even when it is the same one).</summary>
+    private static void Show(Slot s, string id, int cell, bool force = false)
+    {
+        if (!force && cell == s.Cell) return;
+        s.Cell = cell;
+        s.Sprite.sprite = atlas.Sprite(id, cell);
+    }
+
+    /// <summary>
+    /// Effects (and <see cref="WAR2D.Client.CombatVisuals"/>' sprites) step at most this often, faster than a screen shows them
+    /// (2026-11-08: walking the 3,000 pooled effects every frame cost a 100,000-unit client on three cores 0.3 ms a frame).
+    /// </summary>
+    public const float StepSeconds = 1f / 144f;
+
     /// <summary>Advances every playing effect; hides the finished ones.</summary>
     private sealed class Runner : MonoBehaviour
     {
+        private float lastStep = float.NegativeInfinity;
+
         private void Update()
         {
             if (atlas == null) return;
             float now = Time.time;
+            if (now - lastStep < StepSeconds && now >= lastStep) return;
+            step = float.IsNegativeInfinity(lastStep) ? Time.deltaTime : now - lastStep;
+            lastStep = now;
             Animate(Explosions, now, false);
             Animate(Flashes, now, false);
             Animate(Tracers, now, true);
@@ -997,6 +1018,9 @@ public static class Effects
             }
         }
 
+        /// <summary>Seconds since the last step (a drifting effect moves by it).</summary>
+        private static float step;
+
         private static void Animate(Pool pool, float now, bool tracer)
         {
             int frames = atlas.FrameCount(pool.Id);
@@ -1022,7 +1046,7 @@ public static class Effects
                     {
                         // Falling steeply onto its point: straight down, the two frames flickering.
                         s.Go.transform.position = Vector3.Lerp(s.From, s.To, t * t);
-                        s.Sprite.sprite = atlas.Sprite(pool.Id, (int)(age * ArtStyle.FramesPerSecond) % atlas.FrameCount(pool.Id));
+                        Show(s, pool.Id, (int)(age * ArtStyle.FramesPerSecond) % atlas.FrameCount(pool.Id));
                     }
                     else if (s.ImpactOnLanding) Fly(s, t, age);
                     else
@@ -1039,8 +1063,8 @@ public static class Effects
                     frame %= frames;
                 }
                 else if (frame >= frames) { Stop(s); continue; }
-                s.Sprite.sprite = atlas.Sprite(pool.Id, frame);
-                if (s.Drift != Vector3.zero) s.Go.transform.position += s.Drift * Time.deltaTime;
+                Show(s, pool.Id, frame);
+                if (s.Drift != Vector3.zero) s.Go.transform.position += s.Drift * step;
             }
         }
 
@@ -1050,7 +1074,7 @@ public static class Effects
             Vector3 at = ShellPoint(s.From, s.To, t), ahead = ShellPoint(s.From, s.To, t + 0.02f) - at;
             s.Go.transform.position = at;
             int frames = atlas.Frames(Shells.Id), facing = WAR2D.Client.Render.TurretAim.Facing(Mathf.Atan2(ahead.y, ahead.x));
-            s.Sprite.sprite = atlas.Sprite(Shells.Id, facing * frames + (int)(age * ArtStyle.FramesPerSecond) % frames);
+            Show(s, Shells.Id, facing * frames + (int)(age * ArtStyle.FramesPerSecond) % frames);
             if (s.Partner != null) s.Partner.Go.transform.position = Vector3.Lerp(s.From, s.To, t);
             if ((at - s.LastPuff).sqrMagnitude < ShellPuffSpacing * ShellPuffSpacing) return;
             s.LastPuff = at;

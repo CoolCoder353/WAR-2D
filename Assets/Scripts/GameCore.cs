@@ -40,6 +40,13 @@ public partial class GameCore : NetworkBehaviour
     /// <summary>Every player's server record: humans, then AIs.</summary>
     public IEnumerable<ServerPlayer> serverPlayers => ServerPlayers.Values.Concat(AiPlayers.Values.Select(seat => seat.Player));
 
+    /// <summary>
+    /// One player's unit cap this match (<c>Simulation/MaxUnits</c> split between the players it began with), set by the server and
+    /// synced so the HUD shows what the server enforces, not a count of who is still here.
+    /// </summary>
+    [SyncVar]
+    public int UnitCapPerPlayer;
+
     /// <summary>Players present when Playing began (used for the win rule).</summary>
     public int MatchStartPlayerCount { get; private set; }
 
@@ -96,6 +103,7 @@ public partial class GameCore : NetworkBehaviour
         serverOwner = null;
         CurrentState = GameState.Lobby;
         MatchStartPlayerCount = 0;
+        UnitCapPerPlayer = 0;
         MatchStartTeamCount = 0;
         Teams.Clear();
         ForgetDiplomacyCooldowns();
@@ -668,6 +676,7 @@ public partial class GameCore : NetworkBehaviour
         CountdownEndTime = 0;
         HqPlacementEndTime = 0;
         MatchStartPlayerCount = 0;
+        UnitCapPerPlayer = 0;
         MatchStartTeamCount = 0;
         Teams.Clear();
         ForgetDiplomacyCooldowns();

@@ -37,6 +37,9 @@ namespace WAR2D.Client
             set => SettingsStore.Current.MenuBattle = value;
         }
 
+        /// <summary>Lets a test run the battle under <c>-batchmode</c>, which otherwise has nobody to watch it.</summary>
+        internal static bool AllowInBatchModeForTests;
+
         private Unity.Entities.World world;
         private SimTickGroup group;
         private SimContext sim;
@@ -74,7 +77,7 @@ namespace WAR2D.Client
         private void Update()
         {
             bool online = NetworkClient.active || NetworkServer.active;
-            bool wanted = Enabled && !online && !Application.isBatchMode && !DevApi.PerfFlag && WAR2D.Client.Replay.ReplayPlayer.Instance == null;
+            bool wanted = Enabled && !online && (!Application.isBatchMode || AllowInBatchModeForTests) && !DevApi.PerfFlag && WAR2D.Client.Replay.ReplayPlayer.Instance == null;
             if (!wanted)
             {
                 TearDown();

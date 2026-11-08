@@ -20,7 +20,7 @@ Shader "WAR2D/InstancedBuilding"
             #pragma target 4.5
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
-            struct UnitInstance { float2 position; float rotation; uint frame; uint color; float health; float scale; float pad; };
+            struct UnitInstance { float2 position; float rotation; uint frame; uint color; float health; float scale; float pad; float2 velocity; };
             StructuredBuffer<UnitInstance> _Instances;
             StructuredBuffer<float4> _FrameRects; // xy = uv min, zw = uv size
             StructuredBuffer<float4> _FrameGeom;  // xy = size in world units, zw = pivot from the bottom-left in world units

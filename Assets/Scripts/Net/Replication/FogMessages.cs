@@ -178,8 +178,11 @@ namespace WAR2D.Net.Replication
         public static event Action Updated;
 
         /// <summary>Applies a received payload to <see cref="Current"/>.</summary>
+        private static readonly Unity.Profiling.ProfilerMarker ReceiveMarker = new Unity.Profiling.ProfilerMarker("Receive.Fog");
+
         public static void Receive(FogBatch batch)
         {
+            using var marker = ReceiveMarker.Auto();
             if (!FogCodec.Apply(Current, batch.Payload))
             {
                 WarLog.Warn(LogCategory.Replication, "dropped a malformed fog batch");

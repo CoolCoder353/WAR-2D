@@ -29,7 +29,7 @@ namespace WAR2D.UI
         private readonly VisualElement card, divider, rows, removal, confirm, production, typesRow;
         private readonly Label title, help, queueLabel, buildLabel, refund, question, cancelKey;
         private readonly Label info, mixedHint, waiting;
-        private readonly int unitCap;
+        private readonly Func<int> unitCap;
         private readonly VisualElement buildArea;
         private readonly Func<BuildingType, HoverCardContent> buildCard;
         private readonly Func<UnitType, HoverCardContent> unitCard;
@@ -102,7 +102,7 @@ namespace WAR2D.UI
         public CommandCardController(VisualElement root, SelectionModel selection, HudModel hud, IReadOnlyDictionary<BuildingType, float> buildCosts,
             IReadOnlyDictionary<UnitType, float> unitCosts, float wallCost, float demolishShare, Func<UnitType, BuildingType, float> buildSeconds,
             Func<UnitType, string> roleOf, bool switchClearsQueue, Func<BuildingType, HoverCardContent> buildCard = null,
-            Func<UnitType, HoverCardContent> unitCard = null, WAR2D.UI.HoverCard hover = null, float repairCostPerHealth = 0f, int unitCap = 0)
+            Func<UnitType, HoverCardContent> unitCard = null, WAR2D.UI.HoverCard hover = null, float repairCostPerHealth = 0f, Func<int> unitCap = null)
         {
             this.unitCap = unitCap;
             this.buildCard = buildCard;
@@ -497,7 +497,7 @@ namespace WAR2D.UI
             bool capped = !mixed && hud.AtUnitCap && selection.SpawnerQueue > 0;
             if (waiting != null)
             {
-                waiting.text = capped ? $"Waiting: unit cap ({unitCap:N0} units)" : "";
+                waiting.text = capped ? $"Waiting: unit cap ({(unitCap != null ? unitCap() : 0):N0} units)" : "";
                 waiting.EnableInClassList("hidden", !capped);
             }
             if (mixed) return;

@@ -215,14 +215,14 @@ public static class PlayerActions
     /// <summary>
     /// Orders units (any <see cref="OrderKind"/>; the goal is used, and must be on the map, for orders that name a
     /// tile; <paramref name="queue"/> queues it after each unit's current orders). Ids the owner doesn't own are
-    /// ignored by the simulation at the boundary. More ids than <c>Simulation/MaxUnitsPerPlayer</c> are refused.
+    /// ignored by the simulation at the boundary. More ids than <see cref="MaxIds"/> are refused.
     /// <paramref name="formation"/> (v0.16, the sender's Formations setting) forms a Move or Attack-move up; other kinds ignore it.
     /// True when the order was queued.
     /// </summary>
     public static bool Order(int owner, IReadOnlyList<int> unitIds, OrderKind kind, bool queue, int2 goal, bool formation = false, int targetId = 0)
     {
         WorldStateManager world = World;
-        if (unitIds == null || unitIds.Count == 0 || unitIds.Count > ConfigLoader.LoadConfig().Simulation.MaxUnitsPerPlayer) return false;
+        if (unitIds == null || unitIds.Count == 0 || unitIds.Count > MaxIds()) return false;
         if (!MayAct(owner) || !world.IsOrderValid((byte)kind, goal)) return false;
         // Building a blueprint that waits for its spot to be seen: the Builders walk there, as they would to any blueprint,
         // rather than refuse the order and give away that something stands there (2026-11-06).
@@ -248,7 +248,7 @@ public static class PlayerActions
     public static bool DigArea(int owner, IReadOnlyList<int> unitIds, bool queue, int2 from, int2 to)
     {
         WorldStateManager world = World;
-        if (unitIds == null || unitIds.Count == 0 || unitIds.Count > ConfigLoader.LoadConfig().Simulation.MaxUnitsPerPlayer) return false;
+        if (unitIds == null || unitIds.Count == 0 || unitIds.Count > MaxIds()) return false;
         if (!MayAct(owner) || world.Map == null) return false;
         (int2 min, int2 max) = world.MapBounds;
         if (!CommandValidator.TryDigArea(from, to, min, max, ConfigLoader.LoadConfig().Orders.MaxDigArea, out int2 lo, out int2 hi)) return false;
@@ -256,10 +256,16 @@ public static class PlayerActions
         return true;
     }
 
+    /// <summary>
+    /// Most unit ids an order, a dig or a squad may carry: the player's share of the match's units (<see cref="WAR2D.Sim.SimContext.UnitCap"/>,
+    /// set at match start), as no player owns more; the whole match's before a match.
+    /// </summary>
+    public static int MaxIds() => World != null && World.Sim != null ? World.Sim.UnitCap : ConfigLoader.LoadConfig().Simulation.MaxUnits;
+
     /// <summary>Replaces one of the owner's squads (0–9) with the listed units (an empty list empties it).</summary>
     public static bool AssignSquad(int owner, int squad, IReadOnlyList<int> unitIds)
     {
-        if (!CommandValidator.IsSquadIndexValid(squad) || unitIds == null || unitIds.Count > ConfigLoader.LoadConfig().Simulation.MaxUnitsPerPlayer || !MayAct(owner)) return false;
+        if (!CommandValidator.IsSquadIndexValid(squad) || unitIds == null || unitIds.Count > MaxIds() || !MayAct(owner)) return false;
         World.Squads.Assign(owner, squad, unitIds);
         World.MarkSquadCountsDirty();
         return true;

@@ -14,6 +14,7 @@ namespace WAR2D.Sim
             "match.radars", "match.blasts", "match.deaths", "match.squads", "match.unpaid", "match.damageAlerts", "match.alertFlush",
             "repl.routes", "repl.fog", "repl.terrain", "repl.buildings", "repl.interest", "repl.attackTargets", "repl.encode", "repl.send",
             "cmd.work", "cmd.waypoints", "cmd.orders", "cmd.other", "cmd.autoWork", "cmd.alarms", "repl.combat", "repl.combatStatus",
+            "cmd.formation", "cmd.issue",
         };
 
         /// <summary>Indices of the command stage's splits (<c>cmd.*</c>).</summary>
@@ -21,6 +22,9 @@ namespace WAR2D.Sim
 
         /// <summary>Index of the combat news split (<c>repl.combat</c>), timed apart from <c>repl.send</c>, and of its status list and change pass (<c>repl.combatStatus</c>).</summary>
         public const int ReplCombat = 21, ReplCombatStatus = 22;
+
+        /// <summary>Indices of two parts of <c>cmd.orders</c>: laying formations, and issuing the orders (their routes' fields).</summary>
+        public const int CmdFormation = 23, CmdIssue = 24;
 
         /// <summary>Milliseconds of the last run of each split, by index into <see cref="Names"/>.</summary>
         public static readonly double[] Ms = new double[Names.Length];

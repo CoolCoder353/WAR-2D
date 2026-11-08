@@ -119,6 +119,34 @@ public class SimVisionTests
     }
 
     [Test]
+    public void PlayersWhoShareBothWaysSeeTheSameAndBothGridsReportChanges()
+    {
+        // A and B look through the same eyes: one grid is stamped and the other copies it (SharedVision). C stays apart.
+        using var sim = ThreeOwners();
+        Share(sim, SimHarness.OwnerA, SimHarness.OwnerB, true);
+        Share(sim, SimHarness.OwnerB, SimHarness.OwnerA, true);
+        int[] scout = sim.Spawn(SimHarness.OwnerA, new float2(10, 30));
+        Pass(sim);
+        SimData data = sim.Context.Data;
+        int a = sim.Context.VisionOf(SimHarness.OwnerA), b = sim.Context.VisionOf(SimHarness.OwnerB), c = sim.Context.VisionOf(OwnerC);
+        Assert.IsTrue(data.Sees(a, new float2(40, 40)) && data.Sees(b, new float2(10, 10)), "each sees around the other");
+        Assert.IsFalse(data.Sees(a, new float2(40, 10)) || data.Sees(b, new float2(40, 10)), "neither sees C's surroundings");
+        Assert.IsFalse(data.Sees(c, new float2(10, 10)) || data.Sees(c, new float2(40, 40)), "C sees neither's");
+        for (int cell = 0; cell < data.FogCells; cell++)
+            Assert.AreEqual(data.Visible[a * data.FogCells + cell], data.Visible[b * data.FogCells + cell], $"cell {cell}");
+
+        sim.Teleport(scout[0], new float2(10, 50));
+        var changed = new System.Collections.Generic.HashSet<int>();
+        for (int i = 0; i < 4 && changed.Count == 0; i++)
+        {
+            sim.Tick();
+            sim.Em.CompleteAllTrackedJobs();
+            while (data.FogChanges.TryDequeue(out int index)) changed.Add(index / data.FogCells);
+        }
+        CollectionAssert.AreEquivalent(new[] { a, b }, changed, "the copied grid's changes reach replication too");
+    }
+
+    [Test]
     public void UnshareStopsUpdatesButKeepsExplored()
     {
         using var sim = ThreeOwners();

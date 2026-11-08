@@ -88,7 +88,7 @@ namespace WAR2D.Client
                 return;
             }
             fogCopy.CopyFrom(fog);
-            new FillJob { Fog = fogCopy, Visible = terrainVisible, Explored = terrainExplored, Pixels = pixels, Reveal = revealTerrain }.Run();
+            new FillJob { Fog = fogCopy, Visible = terrainVisible, Explored = terrainExplored, Pixels = pixels, Reveal = revealTerrain }.Schedule(pixels.Length, 16384).Complete();
         }
 
         /// <summary>Plots a square of cells around a world position whatever the fog (an HQ start option), <paramref name="radius"/> cells out.</summary>
@@ -100,24 +100,20 @@ namespace WAR2D.Client
                 if ((uint)x < (uint)Width && (uint)y < (uint)Height) pixels[y * Width + x] = colour;
         }
 
-        /// <summary>Terrain under fog for every cell (Burst: the default map has 262,144 cells).</summary>
+        /// <summary>Terrain under fog for every cell (Burst, over the job threads: the default map has 262,144 cells).</summary>
         [BurstCompile]
-        private struct FillJob : IJob
+        private struct FillJob : IJobParallelFor
         {
             [ReadOnly] public NativeArray<byte> Fog;
             [ReadOnly] public NativeArray<Color32> Visible, Explored;
             public NativeArray<Color32> Pixels;
             public bool Reveal;
 
-            public void Execute()
+            public void Execute(int i)
             {
-                var black = new Color32(0, 0, 0, 255);
-                for (int i = 0; i < Pixels.Length; i++)
-                {
-                    byte f = Fog[i];
-                    // v0.16 (Figma P): while placing the HQ the public map shows at full brightness.
-                    Pixels[i] = f == (byte)FogState.Visible || Reveal ? Visible[i] : f == (byte)FogState.Explored ? Explored[i] : black;
-                }
+                byte f = Fog[i];
+                // v0.16 (Figma P): while placing the HQ the public map shows at full brightness.
+                Pixels[i] = f == (byte)FogState.Visible || Reveal ? Visible[i] : f == (byte)FogState.Explored ? Explored[i] : new Color32(0, 0, 0, 255);
             }
         }
 
@@ -127,6 +123,53 @@ namespace WAR2D.Client
             if ((Layers & MinimapLayers.Army) == 0) return;
             int cell = CellOf(position);
             if (fog != null && cell >= 0 && fog[cell] == (byte)FogState.Visible) pixels[cell] = colour;
+        }
+
+        /// <summary>
+        /// Plots every known unit as <see cref="PlotUnit"/> does, in its owner's packed colour (<paramref name="unknown"/> for an owner
+        /// with none). A Burst job: the managed loop took several ms a redraw at 100,000 units, five redraws a second.
+        /// </summary>
+        public void PlotUnits(NativeArray<int> known, NativeArray<float2> positions, NativeArray<int> owners, NativeHashMap<int, uint> colours, uint unknown)
+        {
+            if ((Layers & MinimapLayers.Army) == 0 || fog == null) return;
+            new PlotUnitsJob
+            {
+                Known = known, Positions = positions, Owners = owners, Colours = colours, Unknown = unknown, Fog = fogCopy, Pixels = pixels,
+                Count = math.min(known.Length, positions.Length), Width = Width, Height = Height, CellSize = CellSize,
+            }.Run();
+        }
+
+        [BurstCompile]
+        private struct PlotUnitsJob : IJob
+        {
+            [ReadOnly] public NativeArray<int> Known, Owners;
+            [ReadOnly] public NativeArray<float2> Positions;
+            [ReadOnly] public NativeHashMap<int, uint> Colours;
+            [ReadOnly] public NativeArray<byte> Fog;
+            public NativeArray<Color32> Pixels;
+            public uint Unknown;
+            public int Count, Width, Height, CellSize;
+
+            public void Execute()
+            {
+                int lastOwner = int.MinValue;
+                Color32 colour = default;
+                for (int i = 0; i < Count; i++)
+                {
+                    int owner = Owners[Known[i]];
+                    if (owner != lastOwner)
+                    {
+                        lastOwner = owner;
+                        uint c = Colours.TryGetValue(owner, out uint cached) ? cached : Unknown;
+                        colour = new Color32((byte)c, (byte)(c >> 8), (byte)(c >> 16), (byte)(c >> 24));
+                    }
+                    float2 p = Positions[i];
+                    int x = (int)math.floor(p.x / CellSize), y = (int)math.floor(p.y / CellSize);
+                    if ((uint)x >= (uint)Width || (uint)y >= (uint)Height) continue;
+                    int cell = y * Width + x;
+                    if (Fog[cell] == (byte)FogState.Visible) Pixels[cell] = colour;
+                }
+            }
         }
 
         /// <summary>Plots a building at a world position on any explored cell; a ghost (last seen) is dimmed.</summary>

@@ -54,8 +54,8 @@
     <SeparationStrength>1.0</SeparationStrength>         <!-- spike default -->
     <HashCellSize>5</HashCellSize>                       <!-- v0.3 hash row -->
     <MaxFieldRebuildsPerTick>2</MaxFieldRebuildsPerTick> <!-- v0.3 flow row -->
-    <MaxUnitsPerPlayer>10000</MaxUnitsPerPlayer>         <!-- spec 1 -->
-    <MaxEntities>131072</MaxEntities>                    <!-- 8 x 10k plus churn and buildings -->
+    <MaxUnits>100000</MaxUnits>                          <!-- the match's units, split evenly between its players at the start (owner 2026-11-07: 2 players 50,000 each, 8 players 12,500) -->
+    <MaxEntities>131072</MaxEntities>                    <!-- live units (100,000) plus buildings; ids are reused as units die, so churn adds nothing -->
     <FogCellSize>2</FogCellSize>                         <!-- v0.5: fog grid cell size in tiles -->
     <VisionIntervalTicks>4</VisionIntervalTicks>         <!-- v0.5: fog recomputed at 5 Hz -->
   </Simulation>

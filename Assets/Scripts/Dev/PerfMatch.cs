@@ -12,11 +12,11 @@ using WAR2D.Sim;
 
 /// <summary>
 /// The v0.4 performance gate (spec §4.1). Started with <c>-perf</c> (optionally <c>-perfOut &lt;dir&gt;</c>),
-/// it hosts a match on a generated 1024² map (seed 1) with the host plus seven bots, 10,000 units
+/// it hosts a match on a generated 1024² map (seed 1) with the host plus seven bots, 12,500 units
 /// each, runs the v0.3 battle script (four fronts, a quarter of each army re-ordered every 2 s), warms
 /// up for 100 ticks, samples 1,200 ticks, writes <c>perf.csv</c> and quits. The bots' replication
 /// streams go to virtual clients that count payload plus KCP/UDP overhead. Armies are topped back up to
-/// 10,000 every second (as the v0.3 spike's spawn target did), so the load stays at 80,000 units while
+/// 12,500 every second (as the v0.3 spike's spawn target did), so the load stays at 100,000 units while
 /// the battle kills them. With <c>-perfClients n</c> the first n bots are instead real players (see
 /// <see cref="PerfClient"/>) who measure what they receive over KCP. Does nothing without the flag.
 /// </summary>
@@ -25,11 +25,11 @@ public sealed class PerfMatch : MonoBehaviour
     public const int WarmupTicks = 100, OrderEveryTicks = 40;
 
     /// <summary>
-    /// The gate's 8 owners × 10,000 units and 1,200 sampled ticks, or other scales for the client benchmark
+    /// The gate's 8 owners × 12,500 units and 1,200 sampled ticks, or other scales for the client benchmark
     /// (<c>tools/perf-10k.sh</c>: 2 × 5,000): <c>-perfOwners</c> (an even 2 to 8; front partners are pairs),
-    /// <c>-perfUnitsPerOwner</c> (100 to 10,000) and <c>-perfSampleTicks</c> (a longer soak).
+    /// <c>-perfUnitsPerOwner</c> (100 to 12,500, the unit cap) and <c>-perfSampleTicks</c> (a longer soak).
     /// </summary>
-    public static readonly int Owners = ArgInt("-perfOwners", 8, 2, 8) & ~1, UnitsPerOwner = ArgInt("-perfUnitsPerOwner", 10000, 100, 10000),
+    public static readonly int Owners = ArgInt("-perfOwners", 8, 2, 8) & ~1, UnitsPerOwner = ArgInt("-perfUnitsPerOwner", 12500, 100, 12500),
         SampleTicks = ArgInt("-perfSampleTicks", 1200, 100, 1200000);
 
     private readonly PerfStats stats = new PerfStats();
@@ -42,6 +42,12 @@ public sealed class PerfMatch : MonoBehaviour
     private WAR2D.Net.Replay.MatchRecorder perfRecorder;
     private long lastRecordBytes;
     private int[] owners;
+    /// <summary>
+    /// <c>-perfInteractive</c> (<c>tools/perf-play.sh</c>): the real players' armies, builders and diggers get no scripted orders, so a
+    /// person can play them against the same 100,000-unit battle. Everything else is as in the benchmark.
+    /// </summary>
+    private static readonly bool Interactive = Array.IndexOf(Environment.GetCommandLineArgs(), "-perfInteractive") >= 0;
+    private bool PlayerOwned(int i) => Interactive && i >= 1 && i < firstBot;
     /// <summary>Owners before this index are real players (the host and -perfClients); from it on, bots.</summary>
     private int firstBot = 1;
     private int2[] armyStart;
@@ -188,14 +194,16 @@ public sealed class PerfMatch : MonoBehaviour
             cam.orthographicSize = 34f;
         }
         WarLog.Info(LogCategory.Dev, "match ready; sampling");
+        SimTiming.TickEnded += OnTick;
     }
+
+    private void OnDestroy() => SimTiming.TickEnded -= OnTick;
 
     private void Update()
     {
         if (AiRun) { UpdateAiRun(); return; }
         SimContext sim = SimContext.Current;
         if (owners == null || armyStart == null || sim == null) return;
-        int tick = sim.Clock.Tick;
 
         if (startTick >= 0)
         {
@@ -218,11 +226,28 @@ public sealed class PerfMatch : MonoBehaviour
                 SampleServer(secondTimer);
                 secondTimer = 0f;
             }
+            // Ticks this frame ran: more than one means the host fell behind the 20 Hz clock and caught up.
+            if (ticksThisFrame > 0) stats.Add("perf.tick.perFrame", ticksThisFrame);
         }
+        ticksThisFrame = 0;
+        if (!siegeSetUp && lastTick >= SiegeSetupTick) SetUpSiege(sim);
+    }
 
-        if (tick == lastTick) return;
+    private int ticksThisFrame;
+
+    /// <summary>
+    /// Every tick (<see cref="SimTiming.TickEnded"/>): the battle's orders, the top-up and the tick's samples. A host that falls
+    /// behind runs several ticks in one frame to catch up, and a frame's Update saw only the last of them, so the slower the host,
+    /// the fewer orders and top-ups a run issued and the fewer ticks it sampled (2026-11-08).
+    /// </summary>
+    private void OnTick()
+    {
+        SimContext sim = SimContext.Current;
+        if (sim == null) return;
+        int tick = sim.Clock.Tick;
+        if (tick == lastTick) return; // the group also runs while the clock is stopped
         lastTick = tick;
-        if (!siegeSetUp && tick >= SiegeSetupTick) SetUpSiege(sim);
+        ticksThisFrame++;
         if (tick % OrderEveryTicks == 0) { IssueOrders(sim, tick); IssueSiegeOrders(sim, tick); }
         if (tick % TopUpEveryTicks == 0) TopUp();
 
@@ -288,6 +313,7 @@ public sealed class PerfMatch : MonoBehaviour
         int quarter = tick / OrderEveryTicks % 4;
         for (int i = 0; i < Owners; i++)
         {
+            if (PlayerOwned(i)) continue;
             HashSet<int> ids = armyIds[i];
             if (ids == null || ids.Count == 0) continue;
             var picked = new List<int>(ids.Count / 4 + 1);
@@ -389,6 +415,7 @@ public sealed class PerfMatch : MonoBehaviour
         int round = tick / OrderEveryTicks;
         for (int i = 0; i < Owners; i++)
         {
+            if (PlayerOwned(i)) continue;
             Batches(sim, builderIds[i], wallTiles[i], OrderKind.Build, owners[i], round);
             Batches(sim, diggerIds[i], rockTiles[i], OrderKind.Dig, owners[i], round);
         }

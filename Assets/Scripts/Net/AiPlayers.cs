@@ -283,6 +283,7 @@ public partial class GameCore
         AiPlayers[ownerId] = seat;
         PlayerOrder.Add(ownerId);
         MatchStartPlayerCount++;
+        if (WorldStateManager.Instance != null) WorldStateManager.Instance.ApplyUnitCap(); // the match is shared by one more
         int team = 0;
         foreach (int t in Teams.Values) team = Mathf.Max(team, t + 1);
         Teams[ownerId] = team; // Scripted seats are free-for-all
