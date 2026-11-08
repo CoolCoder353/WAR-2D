@@ -162,7 +162,7 @@ public partial class WorldStateManager
             pending = new PendingOrder { Started = now };
             pendingOrders[key] = pending;
         }
-        int cap = ConfigLoader.LoadConfig().Simulation.MaxUnits; // no player owns more
+        int cap = OwnerUnitCap; // no player owns more
         int room = cap - pending.Ids.Count;
         bool empty = chunk != null && chunk.Length == 0;
         if (chunk == null || (!empty && (room <= 0 || !OrderIdCodec.TryDecode(chunk, System.Math.Min(OrderIdCodec.MaxIdsPerChunk, room), pending.Ids))))

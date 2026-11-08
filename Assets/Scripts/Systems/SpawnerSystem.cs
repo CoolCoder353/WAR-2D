@@ -47,7 +47,7 @@ public partial struct SpawnerSystem : ISystem
             int ownerId = spawner.ValueRO.ownerId;
             float cost = unitConfig.UpfrontCost;
             ServerPlayer owner = GameCore.Instance.GetServerPlayerById(ownerId);
-            int cap = WorldStateManager.Instance.Sim != null ? WorldStateManager.Instance.Sim.UnitCap : config.Simulation.MaxUnits;
+            int cap = WorldStateManager.Instance.OwnerUnitCap;
             if (owner == null || owner.Away || !owner.TrySpend(cost)) continue; // an away player's producers wait
 
             spawner.ValueRW.count--;

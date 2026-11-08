@@ -140,7 +140,7 @@ namespace WAR2D.UI
             selectionPanel = new SelectionPanelController(root, Selection, hover);
             commandCard = new CommandCardController(root, Selection, Model, costs, unitCosts, config.Siege.WallCost, config.Siege.DemolishRefund,
                 BuildSeconds, RoleOf, switchClearsQueue: true, BuildCard, unit => HoverText.Unit(unit, config.GetUnit(unit), Model.Resources, config),
-                hover, config.Siege.RepairCostPerHealth, () => config.Simulation.UnitCapFor(GameCore.Instance != null ? GameCore.Instance.PlayerOrder.Count : 1));
+                hover, config.Siege.RepairCostPerHealth, () => GameCore.Instance != null && GameCore.Instance.UnitCapPerPlayer > 0 ? GameCore.Instance.UnitCapPerPlayer : config.Simulation.MaxUnits);
             squadBar = new SquadBarController(root, Selection, hover);
             overlay = new HudOverlayController(root);
             startMarkers = new StartMarkersController(root);

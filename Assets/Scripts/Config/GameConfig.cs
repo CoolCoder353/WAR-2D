@@ -183,6 +183,8 @@ namespace Config
         public int HashCellSize;
         /// <summary>Flow-field sector rebuilds scheduled per tick.</summary>
         public int MaxFieldRebuildsPerTick;
+        /// <summary>Flow-field builds per tick for the first order of a player's click, on top of <see cref="MaxFieldRebuildsPerTick"/>; the rest wait a tick.</summary>
+        public int MaxUrgentFieldRebuildsPerTick;
         /// <summary>Most units a whole match may hold; each player's cap is an even share (<see cref="UnitCapFor"/>).</summary>
         public int MaxUnits;
 

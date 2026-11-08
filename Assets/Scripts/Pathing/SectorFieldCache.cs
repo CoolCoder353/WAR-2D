@@ -342,14 +342,14 @@ namespace WAR2D.Pathing
         }
 
         /// <summary>
-        /// Schedules every never-built urgent order (a player's click), then up to <paramref name="maxPerTick"/> others, never-built
+        /// Schedules the never-built urgent orders (a player's click) up to <paramref name="maxUrgent"/>, then up to <paramref name="maxPerTick"/> others, never-built
         /// first. One order's
         /// rebuild is its whole route: the abstract search runs here, then one sector field job per covered sector is scheduled in
         /// parallel. A command's new order isn't capped (2026-11-07): its units stand still until the field is built, and two a tick
         /// across every player kept a click waiting several ticks behind the game's own orders (alarms, chases' repaths, work), which
         /// keep the budget: built at once, they cost the 100,000-unit gate's host 20 ms a tick.
         /// </summary>
-        public JobHandle RebuildDirty(int maxPerTick)
+        public JobHandle RebuildDirty(int maxPerTick, int maxUrgent = int.MaxValue)
         {
             ThrowIfDisposed();
             if (maxPerTick <= 0) return pending;
@@ -366,6 +366,7 @@ namespace WAR2D.Pathing
             }
 
             int scheduled = 0; // all but the urgent new orders
+            int urgentScheduled = 0;
             var handles = new List<JobHandle>(maxPerTick * 4);
             int first = rebuildCursor;
             for (int pass = 0; pass < 2; pass++)
@@ -379,9 +380,9 @@ namespace WAR2D.Pathing
                     if (order == null || !Live(order) || !order.Dirty || order.InFlight) continue;
                     if (newOnly != !order.EverBuilt) continue;
                     bool urgent = newOnly && order.Urgent;
-                    if (!urgent && scheduled >= maxPerTick) continue;
+                    if (urgent ? urgentScheduled >= maxUrgent : scheduled >= maxPerTick) continue; // the rest wait for the next tick
                     handles.AddRange(Rebuild(i, order));
-                    if (!urgent) scheduled++;
+                    if (urgent) urgentScheduled++; else scheduled++;
                     rebuildCursor = i + 1;
                 }
             }
@@ -483,7 +484,7 @@ namespace WAR2D.Pathing
         /// Schedules up to <paramref name="maxPerTick"/> stale orders' rebuilds and returns their handle
         /// without completing it (the tick completes it at the next boundary).
         /// </summary>
-        public JobHandle ScheduleRebuilds(int maxPerTick) => RebuildDirty(maxPerTick);
+        public JobHandle ScheduleRebuilds(int maxPerTick, int maxUrgent = int.MaxValue) => RebuildDirty(maxPerTick, maxUrgent);
 
         /// <summary>
         /// Completes the scheduled rebuilds, then publishes every sector they produced into

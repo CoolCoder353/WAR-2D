@@ -110,6 +110,19 @@ public partial class WorldStateManager : NetworkBehaviour
         }
     }
 
+    /// <summary>Most units one player may own: their share of the match's cap (all of it before a match has players).</summary>
+    public int OwnerUnitCap => Sim != null ? Sim.UnitCap : ConfigLoader.LoadConfig().Simulation.MaxUnits;
+
+    /// <summary>Sets the per-player cap from the players the match started with, in the simulation and for the clients' HUD.</summary>
+    [Server]
+    internal void ApplyUnitCap()
+    {
+        if (Sim == null) return;
+        GameCore core = GameCore.Instance;
+        Sim.UnitCap = ConfigLoader.LoadConfig().Simulation.UnitCapFor(core != null ? core.MatchStartPlayerCount : 1);
+        if (core != null) core.UnitCapPerPlayer = Sim.UnitCap;
+    }
+
     [Server]
     public override void OnStartServer()
     {
@@ -136,7 +149,7 @@ public partial class WorldStateManager : NetworkBehaviour
 
         Sim = SimContext.Create(World.DefaultGameObjectInjectionWorld, Map, ConfigLoader.LoadConfig());
         // The match's units split between the players it started with (humans and AIs).
-        Sim.UnitCap = ConfigLoader.LoadConfig().Simulation.UnitCapFor(GameCore.Instance != null ? GameCore.Instance.MatchStartPlayerCount : 1);
+        ApplyUnitCap();
         // The last settled tick, not the clock: WarLog runs on any thread and must never touch the EntityManager.
         WAR2D.Dev.Logging.WarLog.TickSource = () => settledTick;
         Sim.BuildingCreated += OnBuildingCreated;

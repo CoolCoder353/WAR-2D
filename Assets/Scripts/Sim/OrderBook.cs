@@ -199,7 +199,7 @@ namespace WAR2D.Sim
         }
 
         /// <summary>Schedules up to <paramref name="maxPerTick"/> rebuilds; the next boundary completes them.</summary>
-        public void ScheduleRebuilds(int maxPerTick) => rebuilds = cache.ScheduleRebuilds(maxPerTick);
+        public void ScheduleRebuilds(int maxPerTick, int maxUrgent = int.MaxValue) => rebuilds = cache.ScheduleRebuilds(maxPerTick, maxUrgent);
 
         /// <summary>Forgets every order (a new match).</summary>
         public void Clear()

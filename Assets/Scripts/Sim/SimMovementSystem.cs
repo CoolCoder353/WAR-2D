@@ -561,7 +561,7 @@ namespace WAR2D.Sim
                 int lead = FormationLead[i];
                 if (FormationSpeed[i] > 0f && (uint)lead < (uint)Lead.Length) Lead[lead] = math.min(Lead[lead], math.distance(Positions[i], OrderGoal[slot]));
             }
-            for (int h = 0; h < Followers.Length; h++) Peak[h] = math.max(Peak[h], Followers[h]);
+            for (int h = 0; h < Followers.Length; h++) Peak[h] = Followers[h] == 0 ? 0 : math.max(Peak[h], Followers[h]); // an order nobody follows starts its next group afresh
         }
     }
 
