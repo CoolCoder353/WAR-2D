@@ -44,7 +44,7 @@ public partial class WorldStateManager
         if (!TryActingOwner(sender, out int owner) || !IsOrderValid(kind, goal)) return;
         List<int> ids = Accumulate(owner, token, OrderChunkKind, idChunk, final);
         if (ids == null) return;
-        PlayerActions.Order(owner, ids, (OrderKind)kind, queue, goal, formation, targetId, urgent: true);
+        PlayerActions.Order(owner, ids, (OrderKind)kind, queue, goal, formation, targetId);
     }
 
     /// <summary>
@@ -81,7 +81,7 @@ public partial class WorldStateManager
     {
         if (!CommandGate.Allow(sender, nameof(CmdOrderSquad))) return;
         if (!CommandValidator.IsSquadIndexValid(squad) || !TryActingOwner(sender, out int owner) || !IsOrderValid(kind, goal)) return;
-        PlayerActions.OrderSquad(owner, squad, (OrderKind)kind, queue, goal, formation, targetId, urgent: true);
+        PlayerActions.OrderSquad(owner, squad, (OrderKind)kind, queue, goal, formation, targetId);
     }
 
     private const int SquadCountTicks = 40; // 2 s at 20 Hz
@@ -162,7 +162,7 @@ public partial class WorldStateManager
             pending = new PendingOrder { Started = now };
             pendingOrders[key] = pending;
         }
-        int cap = ConfigLoader.LoadConfig().Simulation.MaxUnits; // no player owns more
+        int cap = PlayerActions.MaxIds(); // no player owns more
         int room = cap - pending.Ids.Count;
         bool empty = chunk != null && chunk.Length == 0;
         if (chunk == null || (!empty && (room <= 0 || !OrderIdCodec.TryDecode(chunk, System.Math.Min(OrderIdCodec.MaxIdsPerChunk, room), pending.Ids))))

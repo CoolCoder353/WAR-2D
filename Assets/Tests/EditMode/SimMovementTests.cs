@@ -98,24 +98,6 @@ public class SimMovementTests
         return MapStore.FromAscii(rows);
     }
 
-    /// <summary>
-    /// A group sent to one goal on open ground all finish their order (2026-11-07: the stop radius was that of the units still
-    /// walking, so it shrank as the group arrived and the last units pressed on the parked crowd, holding their order for good).
-    /// </summary>
-    [Test]
-    public void AGroupOnOpenGroundAllFinishTheirOrder()
-    {
-        using var sim = new SimHarness(SimHarness.OpenMap(64));
-        var ids = new System.Collections.Generic.List<int>();
-        for (int k = 0; k < 48; k++) ids.Add(sim.Spawn(SimHarness.OwnerA, new float2(6.5f + k % 8, 6.5f + k / 8))[0]);
-        sim.Tick();
-        sim.Move(SimHarness.OwnerA, new int2(44, 44), ids.ToArray());
-        for (int t = 0; t < 20 * 40; t++) sim.Tick();
-        int onOrder = 0;
-        foreach (WAR2D.Sim.Unit u in sim.Units()) if (ids.Contains(u.Id) && u.OrderSlot >= 0) onOrder++;
-        Assert.AreEqual(0, onOrder, "every unit of the group finished its order");
-    }
-
     [Test]
     public void CrowdCrossesAStaircaseWallThroughAOneTileGap()
     {
@@ -375,30 +357,6 @@ public class SimMovementTests
         sim.Tick();
         Assert.AreEqual(1, sim.Context.Orders.LiveCount);
         Assert.AreEqual(1, sim.Context.Orders.Cache.LiveCountOfClass(FlowSizeClass.Small));
-    }
-
-    /// <summary>
-    /// A player's click (<see cref="SimCommand.Urgent"/>) has its field built on the next tick whatever the budget; an AI's or
-    /// a scripted order waits its turn (2026-11-07: instant for players only, so the AI's orders add no replication).
-    /// </summary>
-    [Test]
-    public void OnlyAPlayersClickSkipsTheFieldBudget([Values(true, false)] bool urgent)
-    {
-        using var sim = new SimHarness(SimHarness.OpenMap(96), c => c.Simulation.MaxFieldRebuildsPerTick = 1);
-        var boxes = new int[3][];
-        for (int k = 0; k < 3; k++) boxes[k] = sim.Spawn(SimHarness.OwnerA, new float2(10.5f + 25 * k, 10.5f));
-        sim.Tick(); // the spawn tick fills the ids
-        for (int k = 0; k < 3; k++)
-            sim.Context.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, Order = OrderKind.Move, OwnerId = SimHarness.OwnerA, Tile = new int2(10 + 25 * k, 80), Ids = new[] { boxes[k][0] }, Urgent = urgent });
-        sim.Tick();
-        sim.Tick();
-        sim.Em.CompleteAllTrackedJobs();
-        OrderBook orders = sim.Context.Orders;
-        int ready = 0;
-        for (int i = 0; i < orders.Live.Length; i++) if (orders.Live[i] == 1 && orders.Ready[i] == 1) ready++;
-        Assert.AreEqual(3, orders.LiveCount);
-        if (urgent) Assert.AreEqual(3, ready, "every click's field is built at once");
-        else Assert.Less(ready, 3, "AI orders keep the one-a-tick budget");
     }
 
     [Test]

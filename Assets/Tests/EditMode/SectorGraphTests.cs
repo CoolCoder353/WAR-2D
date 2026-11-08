@@ -634,40 +634,6 @@ public class SectorGraphTests
         return map;
     }
 
-    /// <summary>
-    /// Every new urgent order (a command's) is built on its first rebuild call, however small the per-tick budget (2026-11-07: two a
-    /// tick across every player left a click's units standing while the game's own orders waited ahead of it); the game's own new
-    /// orders still take turns within the budget.
-    /// </summary>
-    [Test]
-    public void EveryNewCommandOrderIsBuiltOnItsFirstTick()
-    {
-        PathMap map = PathTestMaps.Generate(256, 5);
-        using var cache = new SectorFieldCache(map, Allocator.Persistent);
-        try
-        {
-            int2[] sites = MapGenerator.Sites(256, 5);
-            var starts = new NativeArray<int>(1, Allocator.TempJob);
-            starts[0] = sites[0].y * map.Width + sites[0].x;
-            var background = new int[2];
-            for (int k = 0; k < background.Length; k++) background[k] = cache.Acquire(sites[6 + k], FlowSizeClass.Small, 1, starts);
-            var handles = new int[5];
-            for (int k = 0; k < handles.Length; k++) handles[k] = cache.Acquire(sites[1 + k], FlowSizeClass.Small, 1, starts, urgent: true);
-            int other = cache.Acquire(sites[0] + new int2(3, 0), FlowSizeClass.Small, 1, starts);
-            starts.Dispose();
-
-            cache.RebuildDirty(2).Complete();
-            cache.CompleteRebuilds();
-            foreach (int handle in handles) Assert.IsTrue(cache.IsReady(handle), "built on the first tick, not two a tick");
-            int built = (cache.IsReady(background[0]) ? 1 : 0) + (cache.IsReady(background[1]) ? 1 : 0) + (cache.IsReady(other) ? 1 : 0);
-            Assert.AreEqual(2, built, "the game's own new orders take two a tick, as before");
-        }
-        finally
-        {
-            map.Dispose();
-        }
-    }
-
     [Test]
     public void TerrainChangesAwayFromARouteKeepItReady()
     {
