@@ -1,4 +1,4 @@
-# 100,000 units: benchmark and results (2026-11-07)
+# 100,000 units: benchmark and results (2026-11-07, updated 2026-11-08)
 
 Goal: server gameplay at the largest scale, 100,000 units (8 players × 12,500, the unit cap) fighting on the 1024 map, with the
 client at 140 fps or more on average and in the slowest 1 % of frames, a smooth server, orders that answer at once and big groups
@@ -25,129 +25,158 @@ Intel Core Ultra 9 275HX (24 cores), NVIDIA GeForce RTX 5070 Ti Laptop GPU (Dire
 other programs running. Unity 6000.4.1f1, **Mono**, Windows release player (`WAR-2D/Build/Windows (Steam)`). The client is
 CPU-bound: GPU 0.5 to 0.7 ms a frame.
 
-## Results
+## Results on a simulated owner's machine (2026-11-08)
 
-Interleaved single runs (before, after, before, ...) so both builds see the same machine load. **Before** is `main` (`1f1fe53c`,
-v0.20) plus the benchmark harness and the 12,500 cap (commit `7eb5d07e`); **after** is the branch before the waiting-stub fix (`5ef68b47`), so its bandwidth is that
-fix's "before" (755 KB/s; level with `main` after it, see the simulated machine below). Medians in bold.
+The owner's machine (Ryzen 5 5600GT, 6 cores and 12 threads, Radeon RX 6600) is estimated here, not measured. Every game process
+is held to 8 of the laptop's E-cores (CPUs 2 to 9, `cmd /c start "" /affinity 3FC`): a Skymont E-core at up to 4.6 GHz is close to
+a Zen 3 core per thread, and 8 of them (no SMT) are close to the 5600GT's throughput (Cinebench R23: about 1,450 single and 11,600
+multi for the 5600G family). Unity starts 23 job threads whatever the affinity, so every process gets `-job-worker-count 11`, as on
+12 hardware threads (`WAR_PERF_HOST_ARGS`, `WAR_PERF_CLIENT_ARGS`). The GPU is the laptop's RTX at about 0.5 ms a frame; an RX 6600
+has about half its throughput (Time Spy graphics about 8,060), so about 1 ms: not the limit at these frame rates. The game window
+is kept in front during a run (on this laptop a window behind another one is slowed down).
 
-| Metric | Before (3 runs) | Before | After (3 runs) | After |
-|---|---|---|---|---|
-| Client fps (frames ÷ time) | 75.1 / 75.4 / 76.0 | **75.4** | 180.3 / 181.6 / 185.7 | **181.6** |
-| Client 1 % low fps | 37.2 / 36.1 / 26.6 | **36.1** | 80.4 / 83.2 / 90.1 | **83.2** |
-| Frame time p50 (ms) | 12.52 / 12.45 / 12.32 | **12.45** | 5.20 / 5.18 / 5.10 | **5.18** |
-| Frame time p95 (ms) | 20.23 / 20.03 / 19.73 | **20.03** | 8.34 / 8.32 / 8.05 | **8.32** |
-| Frame time p99 (ms) | 24.71 / 24.39 / 23.53 | **24.39** | 10.77 / 10.43 / 9.91 | **10.43** |
-| Frame time max (ms) | 33.2 / 42.8 / 508.6 | **42.8** | 20.5 / 39.0 / 15.1 | **20.5** |
-| CPU main thread, mean (ms) | 13.31 / 13.25 / 13.16 | **13.25** | 5.54 / 5.50 / 5.38 | **5.50** |
-| GPU frame, mean (ms) | 1.36 / 1.22 / 1.42 | **1.36** | 0.51 / 0.50 / 0.50 | **0.50** |
-| Client process CPU (% of a core) | 199 / 215 / 197 | **199** | 656 / 675 / 702 | **675** |
-| Client Unity memory (MB) | 471 / 479 / 496 | **479** | 477 / 478 / 488 | **478** |
-| Units the client knows | 99,355 / 99,560 / 99,434 | **99,434** | 99,716 / 99,805 / 99,747 | **99,747** |
-| Units on screen (mean) | 12,989 / 13,043 / 13,353 | **13,043** | 13,185 / 11,854 / 11,924 | **11,924** |
-| Bandwidth mean (KB/s) | 399 / 410 / 417 | **410** | 810 / 755 / 708 | **755** |
-| Server tick p50 (ms) | 12.1 / 12.0 / 12.2 | **12.1** | 16.4 / 16.1 / 15.7 | **16.1** |
-| Server tick p95 (ms) | 18.7 / 18.3 / 19.0 | **18.7** | 25.7 / 26.1 / 25.2 | **25.7** |
-| Server tick p99 (ms) | 72.8 / 73.8 / 72.6 | **72.8** | 48.1 / 52.2 / 45.1 | **48.1** |
-| Server tick max (ms) | 95.5 / 84.6 / 81.7 | **84.6** | 66.4 / 62.9 / 60.9 | **62.9** |
-| Server logged errors | 0 / 0 / 0 | **0** | 0 / 0 / 0 | **0** |
-| Dropped connections | 0 / 0 / 0 | **0** | 0 / 0 / 0 | **0** |
+**Before** is `main` (`471bd0f1`) with the benchmark harness and the 12,500 cap cherry-picked onto it; **after** is this branch.
+Single runs, interleaved (before, after, before, ...) so both builds see the same machine load; medians in bold.
 
-**Against the goal.** The client's mean frame rate is 2.4 times `main`'s (75 → 182 fps) and passes 140. Its 1 % low is 2.3
-times `main`'s (36 → 83 fps) but **misses 140**: frame time p50 5.2 ms, p99 10.4 ms. What is left is in "What was slow" below
-and in `known-issues.md`.
+### A remote player (the host on other cores)
 
-**The server.** No errors or dropped connections. `tick.main` p99 fell from 73 to 48 ms and its max from 85 to 63 ms (the order
-waves: formations in Burst). Its p50 rose from 12.1 to 16.1 ms and its p95 from 18.7 to 25.7 ms, inside the 28 ms budget: this
-branch builds an order's fields at once and sends its routes as soon as the field exists (they waited for spare time), and the
-client, now at 180 fps instead of 75, draws more work from the shared machine; the two were not measured apart.
-
-**Bandwidth** rose from 410 to 755 KB/s in this load, where every owner shares vision, so the player is sent all 100,000 units
-(its budget, 256 KB/s, is for the gate's normal interest). In the gate's own load (the `tools/perf-run.sh` form: headless host, 7 headless clients with normal interest, no shared vision; one run each, `gate-before-host.csv`, `gate-after-host.csv`): bandwidth 219 → 246 KB/s mean (budget 256) and 311 → 410 KB/s peak 1 s (budget 768); `tick.main` p95 12.9 → 12.5 ms and p99 68 → 32 ms; no errors.
-
-Run-to-run noise on this machine is large: in an earlier interleaved set, one build of this branch (before its last two commits)
-measured 127 to 173 fps mean (GPU time 0.55 or 0.73 ms a frame from run to run, the same build). Compare runs taken side by
-side only.
-
-## Simulated owner's machine (8 E-cores, 11 job threads)
-
-An estimate of the reference machine (Ryzen 5 5600GT, 6 cores and 12 threads, Radeon RX 6600), not the machine itself. Every
-process (host and clients, as when the owner hosts and plays) is held to 8 of the laptop's E-cores (`cmd /c start "" /affinity 3FC`,
-CPUs 2 to 9): a Skymont E-core at up to 4.6 GHz is close to a Zen 3 core per thread, and 8 of them (no SMT) are close to the 5600GT's
-throughput (Cinebench R23: about 1,450 single and 11,600 multi for the 5600G family). Unity starts 23 job threads whatever the
-affinity, so host and clients get `-job-worker-count 11`, as on 12 hardware threads (`WAR_PERF_HOST_ARGS`, `WAR_PERF_CLIENT_ARGS`).
-The GPU is the laptop's RTX at 0.5 ms a frame; an RX 6600 has about half its throughput (Time Spy graphics about 8,060), so about
-1 ms: not the limit at these frame rates. Before is `main` with the harness (`Builds/base`), after this branch; interleaved.
-
-### 100k benchmark, uncapped (the benchmark's own setting)
+The measured client alone on the 8 E-cores and the headless host on the laptop's other cores, as when the player joins a game
+someone else hosts.
 
 | Metric | Before (3 runs) | Before | After (3 runs) | After |
 |---|---|---|---|---|
-| Client fps (frames ÷ time) | 55.4 / 59.6 / 60.5 | **59.6** | 192.4 / 175.2 / 177.6 | **177.6** |
-| Client 1 % low fps | 24.1 / 31.9 / 32.7 | **31.9** | 87.2 / 78.5 / 78.1 | **78.5** |
-| Frame time p50 (ms) | 17.00 / 15.90 / 15.70 | **15.90** | 4.97 / 5.55 / 5.42 | **5.42** |
-| Frame time p95 (ms) | 25.79 / 24.15 / 23.95 | **24.15** | 6.78 / 7.56 / 7.40 | **7.40** |
-| Frame time p99 (ms) | 33.30 / 28.27 / 27.78 | **28.27** | 9.45 / 10.81 / 10.86 | **10.81** |
-| Frame time max (ms) | 75.1 / 41.8 / 37.6 | **41.8** | 23.4 / 18.8 / 38.8 | **23.4** |
-| CPU main thread, mean (ms) | 18.05 / 16.76 / 16.52 | **16.76** | 5.19 / 5.70 / 5.62 | **5.62** |
-| GPU frame, mean (ms) | 1.60 / 1.55 / 1.53 | **1.55** | 0.48 / 0.49 / 0.50 | **0.49** |
-| Client process CPU (% of a core) | 153 / 164 / 159 | **159** | 417 / 404 / 411 | **411** |
-| Client Unity memory (MB) | 477 / 486 / 482 | **482** | 488 / 485 / 488 | **488** |
-| Units the client knows | 99,405 / 99,439 / 99,486 | **99,439** | 88,278 / 99,003 / 98,815 | **98,815** |
-| Units on screen (mean) | 13,350 / 13,769 / 13,242 | **13,350** | 11,771 / 14,031 / 13,358 | **13,358** |
-| Bandwidth mean (KB/s) | 484 / 525 / 546 | **525** | 434 / 533 / 576 | **533** |
-| Server tick p50 (ms) | 16.1 / 15.9 / 16.1 | **16.1** | 21.7 / 27.1 / 25.5 | **25.5** |
-| Server tick p95 (ms) | 30.3 / 31.9 / 30.4 | **30.4** | 42.6 / 45.8 / 47.9 | **45.8** |
-| Server tick p99 (ms) | 79.2 / 78.5 / 77.9 | **78.5** | 70.1 / 61.6 / 56.1 | **61.6** |
-| Server tick max (ms) | 118.6 / 92.2 / 90.1 | **92.2** | 83.9 / 78.7 / 70.3 | **78.7** |
+| Client fps (frames ÷ time) | 58.3 / 60.7 / 56.5 | **58.3** | 164.1 / 162.2 / 174.8 | **164.1** |
+| Client 1 % low fps | 33.7 / 33.3 / 32.1 | **33.3** | 101.5 / 100.6 / 106.1 | **101.5** |
+| Frame time p50 (ms) | 16.47 / 15.68 / 16.92 | **16.47** | 5.96 / 6.06 / 5.60 | **5.96** |
+| Frame time p95 (ms) | 24.44 / 23.41 / 25.32 | **24.44** | 7.93 / 7.99 / 7.38 | **7.93** |
+| Frame time p99 (ms) | 27.62 / 27.23 / 28.86 | **27.62** | 8.96 / 9.03 / 8.48 | **8.96** |
+| Frame time max (ms) | 38.2 / 35.2 / 36.2 | **36.2** | 17.1 / 17.6 / 16.5 | **17.1** |
+| CPU main thread, mean (ms) | 17.15 / 16.47 / 17.69 | **17.15** | 6.08 / 6.16 / 5.72 | **6.08** |
+| GPU frame, mean (ms) | 1.55 / 1.50 / 1.56 | **1.55** | 0.54 / 0.54 / 0.51 | **0.54** |
+| Client process CPU (% of a core) | 160 / 166 / 160 | **160** | 447 / 439 / 441 | **441** |
+| Client Unity memory (MB) | 458 / 474 / 486 | **474** | 508 / 481 / 498 | **498** |
+| Units the client knows | 99,570 / 99,734 / 99,592 | **99,592** | 99,970 / 100,347 / 100,339 | **100,339** |
+| Units on screen (mean) | 13,117 / 11,189 / 13,591 | **13,117** | 13,684 / 14,884 / 13,464 | **13,684** |
+| Bandwidth mean (KB/s) | 435 / 396 / 433 | **433** | 477 / 542 / 509 | **509** |
+| Server tick p50 (ms) | 12.5 / 12.4 / 12.6 | **12.5** | 14.4 / 14.3 / 14.2 | **14.3** |
+| Server tick p95 (ms) | 20.2 / 19.7 / 19.3 | **19.7** | 23.1 / 23.4 / 22.6 | **23.1** |
+| Server tick p99 (ms) | 68.7 / 69.1 / 72.1 | **69.1** | 32.2 / 33.4 / 30.7 | **32.2** |
+| Server tick max (ms) | 79.2 / 78.7 / 84.5 | **79.2** | 56.8 / 44.3 / 37.4 | **44.3** |
 | Server logged errors | 0 / 0 / 0 | **0** | 0 / 0 / 0 | **0** |
 | Dropped connections | 0 / 0 / 0 | **0** | 0 / 0 / 0 | **0** |
 
-### 100k benchmark at the game's default frame cap (144 fps, `-perfFpsCap 144`)
+### The hoster (host and client on the same 8 cores)
+
+Host and client share the 8 E-cores, as when the owner hosts and plays on one PC.
+
+| Metric | Before (3 runs) | Before | After (3 runs) | After |
+|---|---|---|---|---|
+| Client fps (frames ÷ time) | 55.2 / 53.9 / 54.3 | **54.3** | 186.7 / 172.9 / 183.2 | **183.2** |
+| Client 1 % low fps | 20.0 / 31.1 / 27.7 | **27.7** | 84.8 / 76.0 / 78.0 | **78.0** |
+| Frame time p50 (ms) | 16.74 / 17.66 / 17.42 | **17.42** | 5.18 / 5.59 / 5.26 | **5.26** |
+| Frame time p95 (ms) | 26.88 / 26.42 / 26.24 | **26.42** | 6.84 / 7.53 / 7.01 | **7.01** |
+| Frame time p99 (ms) | 40.23 / 29.97 / 31.51 | **31.51** | 9.86 / 10.80 / 10.37 | **10.37** |
+| Frame time max (ms) | 73.2 / 37.2 / 52.5 | **52.5** | 19.4 / 24.4 / 21.7 | **21.7** |
+| CPU main thread, mean (ms) | 18.12 / 18.54 / 18.41 | **18.41** | 5.35 / 5.78 / 5.45 | **5.45** |
+| GPU frame, mean (ms) | 1.47 / 1.62 / 1.57 | **1.57** | 0.51 / 0.53 / 0.50 | **0.51** |
+| Client process CPU (% of a core) | 154 / 157 / 161 | **157** | 416 / 414 / 403 | **414** |
+| Client Unity memory (MB) | 465 / 459 / 460 | **460** | 502 / 482 / 489 | **489** |
+| Units the client knows | 99,607 / 99,624 / 99,661 | **99,624** | 99,107 / 98,978 / 99,075 | **99,075** |
+| Units on screen (mean) | 13,501 / 13,279 / 13,626 | **13,501** | 14,230 / 14,258 / 14,479 | **14,258** |
+| Bandwidth mean (KB/s) | 484 / 527 / 495 | **495** | 513 / 541 / 557 | **541** |
+| Server tick p50 (ms) | 16.4 / 16.9 / 16.9 | **16.9** | 25.0 / 27.7 / 27.3 | **27.3** |
+| Server tick p95 (ms) | 31.1 / 31.6 / 31.4 | **31.4** | 45.6 / 51.2 / 49.8 | **49.8** |
+| Server tick p99 (ms) | 79.6 / 82.2 / 80.0 | **80.0** | 57.0 / 60.4 / 54.8 | **57.0** |
+| Server tick max (ms) | 116.2 / 128.2 / 122.1 | **122.1** | 94.4 / 76.1 / 71.1 | **76.1** |
+| Server logged errors | 0 / 0 / 0 | **0** | 0 / 0 / 0 | **0** |
+| Dropped connections | 0 / 0 / 0 | **0** | 0 / 0 / 0 | **0** |
+
+### The hoster at the game's default frame cap (144 fps, `-perfFpsCap 144`)
 
 `main` stays under 60 fps here, so the cap only touches the branch.
 
-| Metric | Before (3 runs) | Before | After (3 runs) | After |
+| Metric | Before (2 runs) | Before | After (2 runs) | After |
 |---|---|---|---|---|
-| Client fps (frames ÷ time) | 55.9 / 54.8 / 55.9 | **55.9** | 137.6 / 139.7 / 139.5 | **139.5** |
-| Client 1 % low fps | 30.2 / 30.9 / 30.8 | **30.8** | 55.8 / 77.3 / 72.7 | **72.7** |
-| Frame time p50 (ms) | 17.02 / 17.43 / 17.10 | **17.10** | 6.95 / 6.95 / 6.95 | **6.95** |
-| Frame time p95 (ms) | 25.79 / 26.09 / 25.80 | **25.80** | 8.66 / 8.12 / 8.06 | **8.12** |
-| Frame time p99 (ms) | 30.57 / 29.90 / 29.44 | **29.90** | 13.70 / 11.23 / 11.65 | **11.65** |
-| Frame time max (ms) | 42.0 / 38.8 / 43.0 | **42.0** | 33.1 / 19.1 / 18.9 | **19.1** |
-| CPU main thread, mean (ms) | 17.89 / 18.25 / 17.87 | **17.89** | 6.30 / 6.18 / 6.31 | **6.30** |
-| GPU frame, mean (ms) | 1.49 / 1.50 / 1.51 | **1.50** | 0.56 / 0.55 / 0.56 | **0.56** |
-| Client process CPU (% of a core) | 162 / 155 / 161 | **161** | 354 / 346 / 351 | **351** |
-| Client Unity memory (MB) | 485 / 489 / 485 | **485** | 481 / 483 / 488 | **483** |
-| Units the client knows | 99,503 / 99,446 / 99,399 | **99,446** | 93,952 / 91,972 / 99,091 | **93,952** |
-| Units on screen (mean) | 12,945 / 15,070 / 13,977 | **13,977** | 11,059 / 10,223 / 12,787 | **11,059** |
-| Bandwidth mean (KB/s) | 523 / 515 / 477 | **515** | 486 / 579 / 549 | **549** |
-| Server tick p50 (ms) | 16.4 / 16.7 / 16.1 | **16.4** | 22.2 / 22.6 / 24.2 | **22.6** |
-| Server tick p95 (ms) | 30.2 / 31.2 / 29.8 | **30.2** | 42.7 / 44.7 / 43.6 | **43.6** |
-| Server tick p99 (ms) | 79.8 / 81.3 / 80.3 | **80.3** | 91.2 / 67.0 / 73.9 | **73.9** |
-| Server tick max (ms) | 124.4 / 103.5 / 121.1 | **121.1** | 108.6 / 115.2 / 86.0 | **108.6** |
-| Server logged errors | 0 / 0 / 0 | **0** | 0 / 0 / 0 | **0** |
-| Dropped connections | 0 / 0 / 0 | **0** | 0 / 0 / 0 | **0** |
+| Client fps (frames ÷ time) | 57.4 / 57.6 | **57.5** | 141.6 / 141.0 | **141.3** |
+| Client 1 % low fps | 32.8 / 32.5 | **32.7** | 83.4 / 76.3 | **79.8** |
+| Frame time p50 (ms) | 16.60 / 16.64 | **16.62** | 6.95 / 6.95 | **6.95** |
+| Frame time p95 (ms) | 25.17 / 25.06 | **25.12** | 7.48 / 7.66 | **7.57** |
+| Frame time p99 (ms) | 28.12 / 27.75 | **27.93** | 10.25 / 10.75 | **10.50** |
+| Frame time max (ms) | 37.2 / 39.3 | **38.2** | 21.4 / 25.6 | **23.5** |
+| CPU main thread, mean (ms) | 17.41 / 17.35 | **17.38** | 5.73 / 5.82 | **5.77** |
+| GPU frame, mean (ms) | 1.46 / 1.43 | **1.44** | 0.55 / 0.54 | **0.55** |
+| Client process CPU (% of a core) | 162 / 166 | **164** | 332 / 326 | **329** |
+| Client Unity memory (MB) | 481 / 481 | **481** | 485 / 494 | **490** |
+| Units the client knows | 99,517 / 99,583 | **99,550** | 98,890 / 98,369 | **98,629** |
+| Units on screen (mean) | 13,992 / 13,963 | **13,978** | 15,586 / 14,881 | **15,234** |
+| Bandwidth mean (KB/s) | 506 / 502 | **504** | 543 / 703 | **623** |
+| Server tick p50 (ms) | 16.4 / 16.6 | **16.5** | 22.6 / 23.1 | **22.8** |
+| Server tick p95 (ms) | 30.5 / 30.7 | **30.6** | 40.6 / 43.2 | **41.9** |
+| Server tick p99 (ms) | 79.9 / 80.0 | **79.9** | 55.3 / 54.0 | **54.7** |
+| Server tick max (ms) | 115.4 / 115.5 | **115.5** | 80.7 / 75.0 | **77.8** |
+| Server logged errors | 0 / 0 | **0** | 0 / 0 | **0** |
+| Dropped connections | 0 / 0 | **0** | 0 / 0 | **0** |
 
-### The gate (headless host, 7 headless clients, no rendering)
+### The gate (headless host and 7 headless clients on the 8 cores, no rendering)
+
+The `tools/perf-run.sh` form: normal interest, no shared vision.
 
 | Metric | Before | After |
 |---|---|---|
-| Tick p50 (ms) | 10.6 / 10.5 (**10.6**) | 10.1 / 10.2 (**10.1**) |
-| Tick p95 (ms) | 18.4 / 16.3 (**17.4**) | 15.5 / 15.6 (**15.6**) |
-| Tick p99 (ms) | 72.0 / 71.1 (**71.6**) | 45.6 / 43.9 (**44.8**) |
-| Tick max (ms) | 91.7 / 80.4 (**86.0**) | 60.4 / 60.4 (**60.4**) |
-| Bandwidth mean (KB/s) | 225.2 / 223.7 (**224.4**) | 244.0 / 243.1 (**243.5**) |
-| Bandwidth peak 1 s (KB/s) | 326.2 / 346.6 (**336.4**) | 351.5 / 338.0 (**344.7**) |
+| Tick p50 (ms) | 10.0 / 10.5 (**10.2**) | 10.4 / 10.1 (**10.2**) |
+| Tick p95 (ms) | 16.1 / 19.2 (**17.6**) | 16.2 / 16.5 (**16.4**) |
+| Tick p99 (ms) | 71.0 / 71.8 (**71.4**) | 28.0 / 27.1 (**27.6**) |
+| Tick max (ms) | 78.0 / 90.5 (**84.3**) | 43.4 / 41.7 (**42.5**) |
+| Bandwidth mean (KB/s) | 218.5 / 220.6 (**219.5**) | 225.6 / 218.3 (**222.0**) |
+| Bandwidth peak 1 s (KB/s) | 343.5 / 329.2 (**336.4**) | 389.8 / 317.2 (**353.5**) |
 | Errors | 0.0 / 0.0 (**0.0**) | 0.0 / 0.0 (**0.0**) |
 
-**Reading it.** The server alone (the gate) is faster at every percentile. In the 100k benchmark its tick p50 and p95 rise: the
-client, now at 2.5 to 3 times the frame rate, uses 3.5 to 4 of the 8 cores (`main`'s 1.6), and the separate server process gets
-less of them; its p99 and max still fall. Bandwidth is level with `main` in the 100k benchmark (525 → 533 KB/s uncapped) and one
-normal-interest client (72 → 71 KB/s), and 9 % higher in the gate (224 → 244 KB/s, budget 256): the branch accepts 64 orders a
-player instead of 32 (clicks past 32 were refused silently), so more orders run.
+### Reading it
 
-## What was slow (profiler evidence)
+- **The client.** The remote player's frame rate is 2.8 times `main`'s (58 → 164 fps) and the hoster's 3.4 times (54 → 183):
+  both pass 140. The 1 % low is about 3 times `main`'s (33 → 102 for the remote player, 28 → 78 for the hoster) but **under 140**
+  (see "What is left" below). At the game's default 144 fps cap the hoster holds 141 fps, 1 % low 80.
+- **The server alone (the gate)** is as fast or faster at every percentile: p50 10.2 ms on both, p95 17.6 → 16.4, p99 71 → 28,
+  max 84 → 42 (the order waves: formations in Burst). Bandwidth is level (220 → 222 KB/s mean; peak 1 s 336 → 354, budget 768).
+- **The server in the 100k benchmark.** p99 and max fall in every case (remote player 69 → 32 ms, hoster 80 → 57). **p50 and p95
+  rise**: for the remote player 12.5 → 14.3 and 19.7 → 23.1 ms, inside the 28 ms budget; for the hoster 16.9 → 27.3 and
+  31.4 → 49.8 ms (`main` misses the budget there too). Two causes: the branch sends each unit its real route as
+  soon as its field exists (1.6 million route messages in a run against `main`'s 0.9 million; `main` corrects the unit's position
+  later instead), which the remote player's case shows alone; and on the hoster's shared cores the client, at 3.4 times the frame
+  rate, uses 4.1 of the 8 cores (`main`'s 1.6), so the server gets less of them. A frame cap gives some back: p95 42 ms at 144 fps,
+  36 ms at 60 fps (a build before the last two commits). The order table's size is not the cause: with room for 256 orders a player
+  the tick was the same.
+- **Bandwidth in the 100k benchmark** rises 9 to 18 % (remote player 433 → 509 KB/s, hoster 495 → 541): the same prompt routes.
+  Every owner shares vision there, so the player is sent all 100,000 units; in the gate's normal interest it is level.
+- **Orders.** A player's click (`SimCommand.Urgent`) has its fields built on the next tick; AI, rally and scripted orders keep
+  `main`'s per-tick budget, which is why the gate's bandwidth matches `main`.
+
+On the full laptop (24 cores, no limits) an earlier build of this branch measured 75 → 182 fps mean and 36 → 83 fps 1 % low against
+`main` (2026-11-07). The CSV files here are from the runs above: `100k-*` the remote player (`*-host.csv` the server, `*-client.csv`
+the measured client) and `gate-*` the gate's first round. The client files' budget column is the 10k benchmark's 120 fps
+(`PerfClient.FpsBudget`); this benchmark's goal is 140.
+
+## What is left: the slowest 1 % of frames (2026-11-08)
+
+Unity Profiler data (`-perfProfile`, Development build of this branch before its last two commits, 2,000 frames, the hoster on
+the 8 E-cores): mean 6.6 ms a frame, p99 13.2 ms, the slowest 1 % 15.7 ms on average. Those frames are network-batch frames: the
+network loop takes 4.5 ms in them (0.16 ms over all frames):
+
+| In the slowest 1 % of frames | ms |
+|---|---|
+| Network loop (`NetworkLoop`), all of it | 4.5 |
+| Unit messages (`Receive.Units`) | 2.3 |
+| of which units leaving (`ClientUnitStore.Leave`: death effects, selection, events) | 1.0 |
+| of which the wait for the previous batch's route job (`ApplyRoutes`, `JobHandle.Complete`) | 0.45 |
+| Terrain changes (`Receive.Terrain`) | 0.4 |
+| Mirror's own receive and dispatch (the rest, not edited: vendored code) | about 1.5 |
+
+The rest of a slow frame is the draw and a present wait. A frame at 140 fps has 7.1 ms, so a batch frame would need about half of
+its network work gone: spreading a batch's apply over several frames (Leave and corrections) is the next step, perhaps 10 to 20 fps
+on the 1 % low. Since this profile, a death reads the camera view once a frame and makes no new strings (`e8ae3e75`), and a unit
+that stood still is no longer sent a stub route while its new order's field is built (12 % fewer route messages, `ab03a2c0`).
+
+## What was slow (profiler evidence, 2026-11-07)
 
 Unity Profiler data (`-perfProfile`, Development build, 2,000 frames) of the branch merged with `main`, before its last two
 commits. Mean 8.2 ms a frame (Development build), p99 15.9 ms; the slowest 1 % averaged 18.6 ms against 7.8 ms for the middle half.
@@ -174,15 +203,26 @@ producers, once a frame).
 
 ## Tests
 
-EditMode and PlayMode through the editor in batch mode (`Unity -runTests`) on Windows:
+EditMode and PlayMode through the editor in batch mode (`Unity -runTests --burst-force-sync-compilation`) on Windows, at this
+branch's head:
 
-| Suite | Branch (`--burst-force-sync-compilation`, after the waiting-stub fix and the split cap) |
+| Suite | Branch |
 |---|---|
-| EditMode | 1,535: 1,532 pass, 0 fail, 3 skipped (as on `main`) |
-| PlayMode | 103: 101 pass in the full run; the 2 that timed out (`BastionClientTests.ATurretShootingOurUnitTurnsItsHeadAndFiresATracer`, `PerformanceTests.MinimapRedrawAtTenThousandOwnUnitsIsUnderOneMillisecond`) pass run alone |
+| EditMode | 1,537: 1,534 pass, 0 fail, 3 skipped (as on `main`) |
+| PlayMode | 103: 101 pass in the last full run; the 2 that failed (`ArsenalMatchTests.ArtilleryShellsATargetOnAScoutsSight`, `HudTests.GiftToEnemyMovesResources`) pass when their fixtures run again |
 
-`main` on Windows fails 7 (the six this branch fixes, commit `6364ef38`, and the minimap test, which times out waiting for its 10,000 units: `main`'s client takes over 30 s to know them). `AiPlayModeTests.AnEasyAndANormalAiPlaceMineBuildProduceAndAttack`, which failed in full runs without synchronous Burst (`known-issues.md`), passes in full runs with it.
+A full PlayMode run here fails one or two timing-dependent tests, a different set each run, and each passes run alone: the two
+above, `BastionClientTests.ATurretShootingOurUnitTurnsItsHeadAndFiresATracer` and
+`PerformanceTests.MinimapRedrawAtTenThousandOwnUnitsIsUnderOneMillisecond` (it waits 30 s for its 10,000 units). The
+select-buildings branch (`main` with only the selection change and the same six test fixes) fails the same way in full runs (the artillery test, the
+minimap test, `AiPlayModeTests.APrivateOneVsOneAgainstEasyBuildsProducesAndAttacksTheHuman`), so these come from `main`
+(`known-issues.md`). `main` on Windows also fails six tests every run; this branch fixes them (commit `6364ef38`).
 
-New tests: `SimLifecycleTests.TheUnitCapIsTheMatchsUnitsSplitBetweenItsPlayers`, `ASplitCapRefusesTheSpawnPastItsShare`, the pushed waiting unit in `ReplicationTests.AUnitWaitingForItsFieldGetsItsRouteAsSoonAsTheFieldReachesIt`, `ReplicationTests.RoutesStayRightWhileTheArenaCompactsOnAJobThread` (400 orders through one store: the arena compacts
-on the job threads while an untouched unit keeps its route and prediction), `HealthSetsOnlyKnownUnitsAndAMessageCutShortChangesNothing`,
+New tests: `SimLifecycleTests.TheUnitCapIsTheMatchsUnitsSplitBetweenItsPlayers`, `ASplitCapRefusesTheSpawnPastItsShare`, an AI
+seat counted in the cap at match start (`AiSeatPlayModeTests.AnAiCountsInOrderTeamsIncomeUpkeepStatsHudAndWinLoss`),
+`SimMovementTests.OnlyAPlayersClickSkipsTheFieldBudget` (a click's fields are built on the next tick; an AI or scripted order
+waits for the budget), the pushed and the still waiting units in
+`ReplicationTests.AUnitWaitingForItsFieldGetsItsRouteAsSoonAsTheFieldReachesIt`,
+`ReplicationTests.RoutesStayRightWhileTheArenaCompactsOnAJobThread` (400 orders through one store: the arena compacts on the job
+threads while an untouched unit keeps its route and prediction), `HealthSetsOnlyKnownUnitsAndAMessageCutShortChangesNothing`,
 and the Burst correction decoder checked against the managed one (and refusing a message cut short) in the message round trip.

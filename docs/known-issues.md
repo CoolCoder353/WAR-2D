@@ -2,20 +2,32 @@
 
 Bugs, mismatches and hygiene problems. The first three roadmaps (v0.2 to v0.9, v0.10 to v0.14 with v0.15 and v0.15.1, and v0.16 to v0.18) are complete; open items are backlog, and the sections after "Open" are the log of what past reviews and playtests found and fixed. Code-review findings that were triaged but not fixed are in [bug-review.md](bug-review.md). See the archived roadmaps ([v0.2 to v0.9](archive/roadmap-v0.2-v0.9.md), [v0.10 to v0.14](archive/roadmap-v0.10-v0.14.md), [v0.16 to v0.18](archive/roadmap-v0.16-v0.18.md)) for what each version delivered; the current plan is [roadmap.md](roadmap.md).
 
-### 100,000 units (2026-11-07, on `perf/100k-units`)
+### 100,000 units (2026-11-07, updated 2026-11-08, on `perf/100k-units`)
 
-[perf/100k](perf/100k/README.md) has the benchmark (`tools/perf-100k.sh`: 8 × 12,500 units, one rendered player) and results.
+[perf/100k](perf/100k/README.md) has the benchmark (`tools/perf-100k.sh`: 8 × 12,500 units, one rendered player) and the results
+on a simulated owner's machine (8 E-cores, 11 job threads).
 
-- **The client's 1 % low is under its 140 fps goal** on this machine (83 fps at the median of three runs; the mean, 182, passes). The slowest frames are
-  batch frames (Enter and Leave are still decoded in managed code), waits for job threads while the headless host on the same
-  machine runs its tick (the benchmark runs both on one PC), the minimap's unit plot (every 0.2 s) and first-call JIT stalls
-  under Mono. IL2CPP was not tried: only the Mono build support is installed here.
-- **The server's order waves.** The battle script re-orders a quarter of every army every 2 s; that tick's orders take up to 20 ms
-  (p99) and its routes 10 to 15 ms to encode, so a wave tick can pass the 50 ms tick period. `tick.main` p95 meets its 28 ms budget
-  (25.7 ms in the 100k benchmark, `main` 18.7; in the gate 12.5, `main` 12.9), and p99 fell (48 against 73 ms; gate 32 against 68).
-- **Bandwidth fails its budget in the 100k benchmark** (755 KB/s mean against 256; `main` 410): every owner shares vision, so the
-  player is sent all 100,000 units. In the gate's normal load it passes (246 KB/s; `main` 219).
+- **The client's 1 % low is under its 140 fps goal**: 102 fps for a remote player and 78 for the hoster (medians of three runs;
+  the means, 164 and 183, pass; `main` 33 and 28). The slowest 1 % of frames are network-batch frames: the network loop takes
+  4.5 ms in them (units leaving 1.0, the wait for the previous batch's route job 0.45, terrain 0.4, Mirror's own receive about
+  1.5), then the draw and a present wait. Next step: spread a batch's apply (Leave, corrections) over several frames. IL2CPP was
+  not tried: only the Mono build support is installed here.
+- **The server tick's p50 and p95 at 100,000 units are higher than `main`'s**, while p99 and max are lower. Remote player: p50
+  12.5 → 14.3 ms, p95 19.7 → 23.1 (budget 28). Hoster (server and client on the same 8 cores): p50 16.9 → 27.3, p95 31.4 → 49.8.
+  Causes: each unit gets its real route as soon as its field exists (1.6 million route messages a run against 0.9 million;
+  `main` corrects the position later), and the hoster's client, at 3.4 times the frame rate, takes 4.1 of the 8 cores (`main`
+  1.6). A frame cap gives some back (p95 42 ms at 144 fps, 36 at 60). The gate (server alone) is level or better everywhere.
+- **Bandwidth at 100,000 units is 9 to 18 % over `main`'s** (509 KB/s against 433 for a remote player): the same prompt routes.
+  Every owner shares vision in that benchmark, so the player is sent all 100,000 units; in the gate's normal load it is level
+  (222 against 220 KB/s, budget 256).
 - **The benchmark is noisy here:** the same build measured 127 to 173 fps mean in back-to-back runs. Compare builds interleaved.
+- **A full PlayMode run fails one or two timing-dependent tests**, a different set each run, on this branch, on the
+  select-buildings branch and so on `main`'s code: `ArsenalMatchTests.ArtilleryShellsATargetOnAScoutsSight`,
+  `HudTests.GiftToEnemyMovesResources`, `BastionClientTests.ATurretShootingOurUnitTurnsItsHeadAndFiresATracer`,
+  `PerformanceTests.MinimapRedrawAtTenThousandOwnUnitsIsUnderOneMillisecond` (its 30 s wait for 10,000 units) and
+  `AiPlayModeTests.APrivateOneVsOneAgainstEasyBuildsProducesAndAttacksTheHuman`. Each passes run alone (2026-11-07/08). Not
+  investigated further.
+- **Batch-mode test runs after a code change: pass `--burst-force-sync-compilation`.** In the editor Burst compiles in the background, so right after a change the first tests run their jobs as slow managed code. `AiPlayModeTests.AnEasyAndANormalAiPlaceMineBuildProduceAndAttack` (the first PlayMode test) then timed out waiting for an attack in 3 of 22 full runs (2026-11-06/07) and passed alone. With the flag the jobs are compiled before they run, as in a built player.
 
 ### 10,000 units at 120 fps (2026-11-07, on `perf/10k-units-120fps`)
 
@@ -188,7 +200,6 @@ The code, the atlases (`WAR-2D/Art/Build all`, the Barracks now keyed `Barracks`
 - **The perf gate fails on tick time again (2026-11-06).** With PRs 30 to 41 combined (`unstable/pr30-routes-testing`), `perf.tick.main` p95 was 31.2 ms (editor closed, headless host, 7 clients). Behaviour-preserving fixes brought it to **27.7 ms** (runs 28.2 / 27.7 / 25.7), still over 25. What they did: reach regions kept across terrain changes that join or split nothing (`SectorGraph.CheckSuspects`) and indexed by pocket and sector; alarm reach remembered per pocket; auto-work checks the nearest job first; the opaque sum, the unit overlap scan for new walls and the idle-Builder filter in Burst; order invalidation once per changed sector; interest built alongside route upkeep; each client sent as soon as it is encoded; building damage written through lookups. `perf.split.cmd.*` now splits the command stage. What is left at p95: replication about 16.7 ms (send 9.3 including the wait for the encoders, route upkeep 4.4), commands 6.2 (alarms 3.3, the orders idle units are given), stages 3.5. The v0.12 gate passed at 23.8 ms ([perf/v0.12](perf/v0.12/README.md)).
 - **A 1-wide gap for small units.** `SimLargeClassTests` refuses a Heavy at a 1-wide gap; a Tank sent through the same 1-wide gap in a synthetic map stalled at the wall, so tests only cover 3-wide chokes for small and large units (`RegionMapGenerator` never makes chokes under 3).
 - **PlayMode tests in batch mode.** Under `Unity -batchmode -runTests` nothing draws by itself and no frame reaches its end (measured 2026-11-06: 15,482 frames in 3 s, no `WaitForEndOfFrame` resumed, no camera drew). `screenshot` waited for ever there, so `DebugApiPlayModeTests.ScreenshotWritesAPng` read a null reply; it now draws the cameras on request, a picture without UI Toolkit panels, and `ScreenCapture` itself only runs with a Game view (the live editor, or `-runTests` without `-batchmode`). `MenuBattle` stays off in a batch-mode player, so `LobbyTests.MenuBattleRunsAndIsGoneOnceHostIsPressed` turns it on with `AllowInBatchModeForTests`. Both tests pass in both modes.
-- **Batch-mode test runs after a code change: pass `--burst-force-sync-compilation`.** In the editor Burst compiles in the background, so right after a change the first tests run their jobs as slow managed code. `AiPlayModeTests.AnEasyAndANormalAiPlaceMineBuildProduceAndAttack` (the first PlayMode test) then timed out waiting for an attack in 3 of 22 full runs (2026-11-06/07) and passed alone. With the flag the jobs are compiled before they run, as in a built player.
 - **`PlayerActionsTests.EachActionRefusesWhatItsCommandRefused` can fail at random.** It failed once at `MayAct(Ai)` in two full PlayMode runs (2026-11-06) and passed 3 of 3 alone. Likely cause, not proved: `WinLossSystem` checks once a second, and a Scripted seat added mid-match has no HQ until the next tick, so a check in that gap eliminates it.
 
 ## v0.13 Bastion: built, reviewed, perf gate passes (headless host)
