@@ -92,6 +92,7 @@ public class SimLifecycleTests
         Assert.AreEqual(100000, config.UnitCapFor(1));
         Assert.AreEqual(50000, config.UnitCapFor(2), "two players: half each");
         Assert.AreEqual(33333, config.UnitCapFor(3), "three: a third each");
+        Assert.AreEqual(25000, config.UnitCapFor(4), "two humans and two AIs: a quarter each");
         Assert.AreEqual(12500, config.UnitCapFor(8));
         Assert.AreEqual(100000, config.UnitCapFor(0), "no players counted (tests, the menu battle): all of it");
     }

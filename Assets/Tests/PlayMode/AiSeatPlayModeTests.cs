@@ -94,6 +94,7 @@ public class AiSeatPlayModeTests
         Assert.That(core.Teams.ContainsKey(ai.OwnerId), Is.True);
         Assert.That(core.TeamOf(ai.OwnerId), Is.Not.EqualTo(core.TeamOf(me)), "Free-for-all: a team of its own");
         Assert.That(core.MatchStartPlayerCount, Is.EqualTo(2), "counted in the match's player count");
+        Assert.That(WorldStateManager.Instance.Sim.UnitCap, Is.EqualTo(config.Simulation.MaxUnits / 2), "and in the unit cap: the match's units split between the human and the AI");
         Assert.That(ai.Player.state, Is.EqualTo(PlayerState.Playing));
         Assert.That(ai.ResolvedStyle, Is.Not.EqualTo(AiStyle.Random), "Random resolves on the server at match start");
         Assert.That(ai.Client.aiStyle, Is.EqualTo(AiStyle.Random), "and never reaches the clients");
