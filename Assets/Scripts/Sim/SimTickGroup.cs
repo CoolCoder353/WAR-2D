@@ -155,6 +155,7 @@ namespace WAR2D.Sim
             if (context != null) context.Orders.ScheduleRebuilds(context.Config.Simulation.MaxFieldRebuildsPerTick);
             SimTiming.LastMainThreadMs = SimBoundarySystem.TickWatch.Elapsed.TotalMilliseconds;
             SimTiming.LastStagesMs = SimTiming.LastMainThreadMs - SimTiming.CommandsEndMs;
+            SimTiming.RaiseTickEnded();
         }
     }
 }

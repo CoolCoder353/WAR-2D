@@ -188,14 +188,16 @@ public sealed class PerfMatch : MonoBehaviour
             cam.orthographicSize = 34f;
         }
         WarLog.Info(LogCategory.Dev, "match ready; sampling");
+        SimTiming.TickEnded += OnTick;
     }
+
+    private void OnDestroy() => SimTiming.TickEnded -= OnTick;
 
     private void Update()
     {
         if (AiRun) { UpdateAiRun(); return; }
         SimContext sim = SimContext.Current;
         if (owners == null || armyStart == null || sim == null) return;
-        int tick = sim.Clock.Tick;
 
         if (startTick >= 0)
         {
@@ -218,11 +220,28 @@ public sealed class PerfMatch : MonoBehaviour
                 SampleServer(secondTimer);
                 secondTimer = 0f;
             }
+            // Ticks this frame ran: more than one means the host fell behind the 20 Hz clock and caught up.
+            if (ticksThisFrame > 0) stats.Add("perf.tick.perFrame", ticksThisFrame);
         }
+        ticksThisFrame = 0;
+        if (!siegeSetUp && lastTick >= SiegeSetupTick) SetUpSiege(sim);
+    }
 
-        if (tick == lastTick) return;
+    private int ticksThisFrame;
+
+    /// <summary>
+    /// Every tick (<see cref="SimTiming.TickEnded"/>): the battle's orders, the top-up and the tick's samples. A host that falls
+    /// behind runs several ticks in one frame to catch up, and a frame's Update saw only the last of them, so the slower the host,
+    /// the fewer orders and top-ups a run issued and the fewer ticks it sampled (2026-11-08).
+    /// </summary>
+    private void OnTick()
+    {
+        SimContext sim = SimContext.Current;
+        if (sim == null) return;
+        int tick = sim.Clock.Tick;
+        if (tick == lastTick) return; // the group also runs while the clock is stopped
         lastTick = tick;
-        if (!siegeSetUp && tick >= SiegeSetupTick) SetUpSiege(sim);
+        ticksThisFrame++;
         if (tick % OrderEveryTicks == 0) { IssueOrders(sim, tick); IssueSiegeOrders(sim, tick); }
         if (tick % TopUpEveryTicks == 0) TopUp();
 
