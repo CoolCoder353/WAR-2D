@@ -851,11 +851,18 @@ namespace WAR2D.Client
                 // jump out, and turns at most MaxTurn a frame: a glide back, or a one-frame jump, flipped units round (2026-11-07).
                 float2 delta = Steer[i] - LastSteer[index];
                 bool moving = math.lengthsq(delta) > 1e-6f && math.lengthsq(delta) < 4f;
+                bool inView = Inside(TurretView, p);
                 if (moving)
                 {
                     float heading = math.atan2(delta.y, delta.x);
-                    float turned = TrackedId[index] != id ? heading : TurretAim.Step(Rotation[index], heading, MaxTurn); // a new unit faces its way at once
-                    Rotation[index] = math.atan2(math.sin(turned), math.cos(turned));
+                    // Off screen (outside the view and its margin) a unit just faces its way: nobody sees it turn, and two of the three
+                    // trigonometric calls a frame for each of the 100,000 units go (2026-11-08, a client on three cores).
+                    if (!inView) Rotation[index] = heading;
+                    else
+                    {
+                        float turned = TrackedId[index] != id ? heading : TurretAim.Step(Rotation[index], heading, MaxTurn); // a new unit faces its way at once
+                        Rotation[index] = math.atan2(math.sin(turned), math.cos(turned));
+                    }
                 }
                 LastSteer[index] = Steer[i];
                 LastPosition[index] = p;
@@ -869,7 +876,7 @@ namespace WAR2D.Client
                     emit |= EmitHit;
                 }
                 DrawScale[index] = UseHidden && Hidden[index] != 0 ? -1f : type < ScaleByType.Length ? ScaleByType[type] : 1f;
-                if (!Inside(TurretView, p))
+                if (!inView)
                 {
                     // Off screen: PackUnitsJob packs nothing outside this view, so its frame, colour and bar wait until it is in it
                     // (2026-11-07: a frame pick and a colour lookup for each of 100,000 known units a frame, for about 13,000 drawn).
