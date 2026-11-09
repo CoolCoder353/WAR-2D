@@ -68,14 +68,14 @@ public class ManualTests
     }
 
     /// <summary>The lists <c>tools/manual-mock.js</c> prints for the shipped config (v0.20: with armour, fire, aim time and shells).</summary>
-    [TestCase("Tank", "Sniper,Heavy,Scout", "Artillery,Flamethrower,GunTurret")]
+    [TestCase("Tank", "Sniper,Scout", "Artillery,Flamethrower,GunTurret")]
     [TestCase("Digger", "Sniper", "Flamethrower,Artillery,Tank")]
     [TestCase("Scout", "Sniper,Bomber,Artillery", "Flamethrower,GunTurret,Heavy")]
-    [TestCase("Flamethrower", "Scout,Sniper,Tank", "Artillery,GunTurret")]
-    [TestCase("Heavy", "Bomber,GunTurret,Artillery", "Sniper,Tank")]
+    [TestCase("Flamethrower", "Scout,Tank,Sniper", "Artillery,Bomber,GunTurret")]
+    [TestCase("Heavy", "Bomber,GunTurret,Scout", "Sniper")]
     [TestCase("Artillery", "Tank,Flamethrower,GunTurret", "Bomber,Heavy,Scout")]
-    [TestCase("Sniper", "GunTurret,Heavy", "Scout,Tank,Bomber")]
-    [TestCase("Bomber", "Artillery,Sniper", "Scout,Heavy,GunTurret")]
+    [TestCase("Sniper", "GunTurret,Heavy", "Scout,Tank,Flamethrower")]
+    [TestCase("Bomber", "Artillery,Flamethrower", "Scout,Heavy,GunTurret")]
     [TestCase("GunTurret", "Scout,Bomber,Flamethrower", "Artillery,Sniper,Heavy")]
     public void TheCountersMatchTheMock(string type, string strong, string weak)
     {

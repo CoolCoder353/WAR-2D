@@ -21,7 +21,7 @@ public class SimArsenalTests
         ConfigLoader.ResetForTests();
         GameConfigData c = ConfigLoader.LoadConfig();
         UnitConfig heavy = c.GetUnit(UnitType.Heavy);
-        Assert.AreEqual((400, 30, 5f, 1.5f), (heavy.Health, heavy.Damage, heavy.Range, heavy.AttackInterval));
+        Assert.AreEqual((450, 30, 5f, 1.5f), (heavy.Health, heavy.Damage, heavy.Range, heavy.AttackInterval));
         Assert.AreEqual((TargetClass.HeavyUnit, 1, 5f), (heavy.Armour, heavy.SizeClass, heavy.BuildSeconds));
         UnitConfig artillery = c.GetUnit(UnitType.Artillery);
         // v0.20 (spec §11): the Artillery's shell blast, the 2×2 Sniper, the wider flame, the spotting Scout.
@@ -76,7 +76,7 @@ public class SimArsenalTests
         int[] scout = sim.Spawn(SimHarness.OwnerA, new float2(10, 10), UnitType.Scout);
         int[] heavy = sim.Spawn(SimHarness.OwnerB, new float2(13, 10), UnitType.Heavy);
         for (int i = 0; i < 3; i++) sim.Tick(); // one Scout shot (the interval is 10 ticks)
-        Assert.AreEqual(400f - 4f * 0.25f, sim.UnitById(heavy[0]).Health, 1e-3f);
+        Assert.AreEqual(sim.Config.GetUnit(UnitType.Heavy).Health - 4f * 0.25f, sim.UnitById(heavy[0]).Health, 1e-3f);
     }
 
     [Test]

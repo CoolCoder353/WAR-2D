@@ -110,8 +110,8 @@ public class PlaytestFix3Tests
         int[] enemy = sim.Spawn(SimHarness.OwnerB, new float2(21.5f, 20.5f), UnitType.Heavy); // a tile off the bomb
         sim.TickSeconds(0.5f);
         float damage = sim.Config.Siege.BlastDamage * (1f - sim.Config.GetUnit(UnitType.Heavy).BlastResist); // v0.20: a Heavy shrugs off its share
-        Assert.AreEqual(400f - damage, sim.UnitById(enemy[0]).Health, 1e-3f, "the bomb went off beside it");
-        Assert.AreEqual(400f - damage * sim.Config.Siege.MineFriendlyDamage, sim.UnitById(friend[0]).Health, 1e-3f);
+        Assert.AreEqual(sim.Config.GetUnit(UnitType.Heavy).Health - damage, sim.UnitById(enemy[0]).Health, 1e-3f, "the bomb went off beside it");
+        Assert.AreEqual(sim.Config.GetUnit(UnitType.Heavy).Health - damage * sim.Config.Siege.MineFriendlyDamage, sim.UnitById(friend[0]).Health, 1e-3f);
     }
 
     [Test]
@@ -125,8 +125,8 @@ public class PlaytestFix3Tests
         sim.Order(SimHarness.OwnerA, OrderKind.Detonate, new int2(20, 20), bomber);
         sim.TickSeconds(0.25f);
         float blast = sim.Config.GetUnit(UnitType.Bomber).BlastDamage * (1f - sim.Config.GetUnit(UnitType.Heavy).BlastResist); // v0.20
-        Assert.AreEqual(400f - blast * 0.1f, sim.UnitById(friend[0]).Health, 1e-2f);
-        Assert.AreEqual(400f - blast, sim.UnitById(enemy[0]).Health, 1e-2f);
+        Assert.AreEqual(sim.Config.GetUnit(UnitType.Heavy).Health - blast * 0.1f, sim.UnitById(friend[0]).Health, 1e-2f);
+        Assert.AreEqual(sim.Config.GetUnit(UnitType.Heavy).Health - blast, sim.UnitById(enemy[0]).Health, 1e-2f);
     }
 
     [Test]

@@ -519,7 +519,7 @@ public class ConfigParserTests
         Assert.IsFalse(jammer.IsAttacker);
         Assert.AreEqual((12f, 3f), (c.Siege.JamRadius, c.Siege.JamSight));
         Assert.AreEqual(1.5f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.LightUnit));
-        Assert.AreEqual(0.5f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.HeavyUnit));
+        Assert.AreEqual(1.25f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.HeavyUnit));
         Assert.AreEqual(0.5f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.Building));
         Assert.AreEqual(0.25f, c.Damage.Multiplier(BuildingType.GunTurret, TargetClass.Wall));
     }
