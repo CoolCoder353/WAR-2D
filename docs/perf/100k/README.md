@@ -1,4 +1,4 @@
-# 100,000 units: benchmark and results (2026-11-07, updated 2026-11-08 after the owner's runs and 2026-11-09 for 500 fps)
+# 100,000 units: benchmark and results (2026-11-07, updated 2026-11-08 after the owner's runs and 2026-11-09 for 500 fps with the same picture at any frame rate)
 
 Goal: server gameplay at the largest scale, 100,000 units (8 players × 12,500, the unit cap) fighting on the 1024 map, with the
 client at 140 fps or more on average and in the slowest 1 % of frames, a smooth server, orders that answer at once and big groups
@@ -29,13 +29,16 @@ gate's full scale:
 
 Intel Core Ultra 9 275HX (24 cores), NVIDIA GeForce RTX 5070 Ti Laptop GPU (Direct3D 12), 32 GB, Windows 11, on AC power, with
 other programs running. Unity 6000.4.1f1, **Mono**, Windows release player (`WAR-2D/Build/Windows (Steam)`). The client is
-CPU-bound: GPU 0.5 to 1.5 ms a frame.
+CPU-bound: GPU 0.5 to 1.5 ms a frame. Its 240 Hz panel is driven by the Intel GPU, so with the screen on a fullscreen window shows
+at most about two frames per refresh: the frames come in pairs of about 1.2 and 3 ms, none under 1 ms, and no build reads much above
+360 fps. A run's `frames.csv` shows which case it was (about 40 % of frames under 1 ms when nothing caps it, 0 % when the screen
+does). A desktop whose GPU drives its monitor has no such cap.
 
 ## 500 fps on the owner's pinned layout (2026-11-09)
 
 Goal: a mean of 500 fps or more for the 100k benchmark's client on the owner's pinned layout as simulated here (client on 3 E-cores,
 host on 3 others, 5 job threads each; see below), all tests passing. Release builds, single runs; medians in bold. **Before** is this
-branch at `331d380c` (the "after" column of the next section, 2026-11-08); **after** is this branch now.
+branch at `331d380c` (the "after" column of the next section, 2026-11-08); **after** is this branch at `2e12d63d`.
 
 | Metric | Before | After (5 runs) | After |
 |---|---|---|---|
@@ -57,7 +60,8 @@ branch at `331d380c` (the "after" column of the next section, 2026-11-08); **aft
 | Host ticks a frame, mean (1 = keeping up) | **1.11** | 2.95 / 2.45 / 2.23 / 1.13 / 3.90 | **2.45** |
 | Server logged errors, dropped connections | **0, 0** | 0, 0 every run | **0, 0** |
 
-`main` with the harness read 56.3 and 58.8 fps before and after these runs, against 58.2 in the next section's: the gain is not a
+These runs (02:03 to 02:10) had the laptop's screen off and nobody at it; from 02:36 on, with the screen on, the same build read
+327 to 361 fps (see Machine). `main` with the harness read 56.3 and 58.8 fps before and after these runs, against 58.2 in the next section's: the gain is not a
 better machine state. On the owner's machine, at about two thirds of these numbers, the client should land near 400 fps. The GPU is
 not the limit: 0.5 ms a frame here, about 1 ms on an RX 6600. The host's code did not change, yet it read a little slower (tick p95
 40.1 → 43.2 ms, and it fell behind its clock in some runs): a laptop shares one power budget between the CPU and a GPU now drawing
@@ -73,8 +77,8 @@ What changed, in the order the profiles called for it (Development-build profile
 - **The units are packed at 60 Hz and carried on between packs.** Prediction, facing, frame, colour, hit feedback, turrets and the
   instance upload run at most every 1/60 s (`UnitPackSeconds`), or when the known count changes. Each instance now carries a velocity
   (`UnitInstance` is 40 bytes) toward where the next pack will draw it, and the frames between only draw the last pack again with
-  the time since it (`_UnitDrawAhead`), so units, turrets, rings and bars still move every frame. Facing, animation frames, the hit
-  flash, selection rings and the combat sprites (fires, lasers, leaps, reload bars) change at 60 Hz.
+  the time since it (`_UnitDrawAhead`), so units, turrets, rings and bars still move every frame. Facing and animation frames change
+  at 60 Hz (hit flashes, bars and the combat sprites every frame: see the next section).
 - **Drawing walks a route from where it last was.** A per-unit cursor (`RouteCursor`) resumes the route walk at the waypoint the last
   draw passed, and the known list goes back to index order whenever an eighth of it has moved, so the draw jobs read their per-index
   arrays forward (`SortKnown`). The server's copy of the prediction is untouched: corrections still apply exactly.
@@ -82,15 +86,54 @@ What changed, in the order the profiles called for it (Development-build profile
   each: hiding them alone took this client from about 450 to 600 fps. `Decals` now writes each mark as a quad in one mesh for the
   `Effects` atlas and one for the wrecks (`Units` atlas) over it, same pools, holds, fades and sorting orders, uploading only the
   changed range once a frame.
-- **Less work every frame elsewhere.** The fog texture is alpha only and uploaded at most 30 times a second (a battle kept cells
-  fading, and the whole grid went up every frame: 1.5 ms of the render thread). The HUD's shown state refreshes at 30 Hz (input is
-  still read every frame; with no own HQ it walked every known building each frame). Buildings are packed at 30 Hz with a quarter of
-  the view as margin and drawn again in between, and their smoke, fire and jammer timers are checked then. Effects step at most
-  144 times a second and mark fades 20 times.
+- **Less work every frame elsewhere.** The fog, the HUD, the buildings, the effects and the mark fades first got rate caps here; the
+  next section makes each exact again at a similar cost.
 
 Tried and dropped: Direct3D 11 (`-force-d3d11`: no faster), starting the next pack's prediction at the end of the frame before (on
 three cores it slowed the render thread: 419 → 346 fps in a Development build), and a third queued frame
 (`QualitySettings.maxQueuedFrames = 3`: 7 to 13 % faster, but a frame more input lag; not taken).
+
+### The same picture at any frame rate (2026-11-09)
+
+The rule for this round: the game must look and play the same at any frame rate. Some savings above changed how often something
+changed on screen (the fog, the HUD and the buildings at 30 Hz, effects at 144 Hz, mark fades at 20 Hz, hit flashes and combat
+sprites at 60 Hz). Each now changes every frame, as on `main`, from cheaper work:
+
+- **Hit flashes and health bars in the shader.** A unit's instance carries the time it was last hit, and its bar the damage trail as
+  it stood then; the shader flashes it and drains the trail at the frame's time (`HitFeedback.TrailNow`, the closed form of the
+  per-frame drain). Units away from the view still record a hit the frame it lands (`OffViewHitsJob`), for the minimap.
+- **Combat sprites every frame.** Fires, lasers, leaps, shadows, reload bars and markers are placed each frame where the units are
+  drawn (where the shader carries them); lasers off the screen are skipped. A Sniper's aim reads where its target was drawn last frame,
+  before the frame's prediction starts, as on `main`.
+- **Buildings: a layout on a change, an animation every frame.** The layout (`BuildingPacking.Layout`, with its hits and finishes) is
+  made again only when the buildings (`ClientBuildings.Version`), the bar setting, the selection, an owner's colour or the view
+  change; each frame steps the idle loops, recoil, flashes, finish pulses and overlays (`BuildingPacking.Animate`) and uploads them.
+  Smoke, fire and jammer timers run every frame over the buildings that can show them, a list made again on a change.
+- **Mark fades step on time.** Each mark's next fade step falls due from a heap, so a frame touches only the marks due then, with the
+  same steps as before; the changed quads go up once a frame.
+- **Fog easing on the GPU.** The levels the cells ease toward go up only when the fog changes; each frame's step (`FogView.Toward`'s
+  whole steps, for every cell) runs in a small shader (`FogFade`) into the texture the overlay draws.
+- **The HUD every frame**, as on `main`; only the search for the own HQ waits for a change, and the surrender button is looked up
+  once.
+
+Still at 60 Hz, because each needs the per-unit pass of a pack: a unit's facing, its walk and fire frames, its turret's turn and new
+track marks. Each changes at most 1/60 s after `main` would change it.
+
+With the screen on (the only state this laptop gave after 02:36) the screen caps both builds, so they ran side by side and each run's
+uncapped rate is predicted from its own frames: per second, the 60 slowest frames are the packs and keep their time, and every other
+frame takes the median of the frames that waited for nothing (the short frame of each pair). On the screen-off runs above this reads
+13 % high (712 fps predicted against 623 measured), for either build, so the ratio is what counts:
+
+| Runs side by side (release, owner layout, screen on) | Committed `2e12d63d` | Same picture | Ratio predicted |
+|---|---|---|---|
+| 03:52 to 03:59 | 347 / 361 fps, predicted 627 / 647 | 315 / 331 fps, predicted 573 / 608 | 0.93 |
+| 04:03 to 04:07 | 337 / 327 fps, predicted 611 / 598 | 322 fps, predicted 607 | 1.00 |
+| 13:28 to 13:35 | 309 fps, predicted 526 | 291 fps, predicted 537 | 1.02 |
+
+The same picture costs 0 to 7 % of the frame rate, about 2 % on average: from the committed build's 628 fps median with the screen
+off it should read about 615 fps (585 to 640), above the 500 goal. That is a prediction, not a measurement: no screen-off run of
+this version could be made here (the screen stayed on, or the laptop was in use, or a local model server held the GPU near 300 MHz).
+The first two rows ran the build before the Sniper aim moved into `ClientWorld.Update` (one loop, no measurable cost).
 
 ## Results on the owner's pinned layout (2026-11-08)
 
@@ -190,7 +233,8 @@ the prediction and draw jobs and its wait for the rest 2.0 ms (about 3 ms of CPU
 renderers were most of the rendering; as meshes they are gone from it.
 
 The slowest 1 % of frames (112 fps) are still pack frames that meet a network batch (units leaving and corrections) or a known-list sort.
-Spreading a batch's apply over several frames is the next step there. On the server: at 100,000 units with shared vision, `tick.main`
+Spreading a batch's apply over several frames is the next step there. A screen-off run of the same-picture version (or one on a
+desktop whose GPU drives its monitor) is still to do. On the server: at 100,000 units with shared vision, `tick.main`
 p95 is about 40 ms on three cores against the 28 ms budget, most of it replication to seven clients that each know every unit.
 
 ## What was slow (profiler evidence, 2026-11-07)
