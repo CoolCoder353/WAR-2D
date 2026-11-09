@@ -85,6 +85,18 @@ namespace WAR2D.UI
         }
 
         /// <summary>Whether Surrender is offered (only while the local player is still in the match).</summary>
-        public void SetCanSurrender(VisualElement root, bool can) => root.Q<Button>("surrender-button").SetEnabled(can);
+        public void SetCanSurrender(VisualElement root, bool can)
+        {
+            // Found once per root (2026-11-09: the query walked the HUD's tree every frame, 0.4 ms of a frame on three cores).
+            if (surrenderRoot != root)
+            {
+                surrenderRoot = root;
+                surrender = root.Q<Button>("surrender-button");
+            }
+            surrender.SetEnabled(can);
+        }
+
+        private VisualElement surrenderRoot;
+        private Button surrender;
     }
 }

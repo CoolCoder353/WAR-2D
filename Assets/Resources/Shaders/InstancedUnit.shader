@@ -41,6 +41,17 @@ Shader "WAR2D/InstancedUnit"
             float _PixelsPerUnit;
             float _Trail;
             float _UnitDrawAhead; // global: seconds since the instances were packed, carried along their velocity (0 for a fresh pack)
+            float _UnitTime;      // global: Time.time this frame, the clock hits are stamped on
+            float4 _HitFeedback;  // global: HitFeedback's flash seconds, trail hold seconds, trail drain per second
+
+            // HitFeedback.Flashing and the trail a hit leaves, on this frame's clock: the same each frame as the per-frame steps were.
+            bool Flashing(float hitAt) { return _UnitTime >= hitAt && _UnitTime - hitAt < _HitFeedback.x; }
+            float TrailNow(float trailAt, float hitAt, float health)
+            {
+                if (health >= trailAt) return health;
+                float since = _UnitTime - hitAt;
+                return since < _HitFeedback.y ? trailAt : max(health, trailAt - _HitFeedback.z * (since - _HitFeedback.y));
+            }
 
             // highlight: x selected, y hit flash. bar: x the bar's local u, y its local v, z filled art pixels, w trail art pixels.
             struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; half4 color : COLOR; half2 highlight : TEXCOORD1; float4 bar : TEXCOORD2; };
@@ -69,12 +80,13 @@ Shader "WAR2D/InstancedUnit"
                 o.uv = r.xy + (c + 0.5) * r.zw;
                 o.color = half4((u.color & 255) / 255.0, ((u.color >> 8) & 255) / 255.0,
                                 ((u.color >> 16) & 255) / 255.0, ((u.color >> 24) & 255) / 255.0);
-                // pad bit 1: selected; bit 2: hit flash (units). Bars and rings leave it 0.
-                uint pad = (uint)(u.pad + 0.5);
-                o.highlight = half2((pad & 1u) != 0 ? 1 : 0, (pad & 2u) != 0 ? 1 : 0);
-                // A bar's frame is how full it is; its rotation carries the recent-damage level (quads never rotate).
+                // Units and turrets: pad bit 1 selected, rotation the time of the last hit (quads never rotate; -inf for none). Health
+                // bars: rotation the trail's level at the last hit, pad the hit's time, health the health.
+                uint pad = _Trail > 0.5 ? 0u : (uint)(u.pad + 0.5);
+                o.highlight = half2((pad & 1u) != 0 ? 1 : 0, _Trail <= 0.5 && Flashing(u.rotation) ? 1 : 0);
                 float inner = BarWidth - 2;
-                o.bar = float4(c + 0.5, round(u.frame / (BarFrames - 1) * inner), round(saturate(u.rotation) * inner));
+                float trail = _Trail > 0.5 ? TrailNow(u.rotation, u.pad, u.health) : 0;
+                o.bar = float4(c + 0.5, round(u.frame / (BarFrames - 1) * inner), round(saturate(trail) * inner));
                 return o;
             }
 

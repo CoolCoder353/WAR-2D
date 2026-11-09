@@ -1,6 +1,7 @@
 using WAR2D.Dev.Logging;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 using WAR2D.Net.Replication;
 
 /// <summary>
@@ -8,6 +9,9 @@ using WAR2D.Net.Replication;
 /// hidden, clear where seen. One texel per fog cell, filtered and then dithered on the art-pixel grid by the
 /// <c>Fog</c> shader, so its edges read as pixel art; only changed texels are rewritten. A changed cell eases to
 /// its new level over <see cref="FadeSeconds"/> (polish item H), which the shader's dither turns into a dissolve.
+/// The levels the cells ease toward are a texture rewritten only when the fog changes; each frame's easing step (<see cref="Toward"/>
+/// for every cell) runs on the GPU into the texture the overlay draws (2026-11-08: a battle keeps cells easing all the time, and
+/// uploading the grid every frame cost a 100,000-unit client 1.5 ms of its render thread a frame).
 /// </summary>
 public class FogView : MonoBehaviour
 {
@@ -19,33 +23,31 @@ public class FogView : MonoBehaviour
         new Color32(0, 0, 0, 0),   // visible
     };
 
-    private Texture2D _texture;
-    private Material _material;
+    private Texture2D _target; // each cell's level, as a byte
+    private readonly RenderTexture[] _current = new RenderTexture[2]; // the eased levels, drawn from and stepped into in turn
+    private int _front;
+    private Material _material, _fade;
+    private MaterialPropertyBlock _fadeProperties;
+    private CommandBuffer _commands;
     private Mesh _mesh;
     private bool _dirty;
     private readonly List<int> _changed = new List<int>();
-    private readonly List<int> _fading = new List<int>(); // cells still easing toward their level
-    private bool[] _isFading = System.Array.Empty<bool>();
-    private float _sinceUpload;
-
-    /// <summary>
-    /// The texture is rewritten and uploaded at most this often (2026-11-08: a battle keeps cells fading all the time, and uploading the
-    /// grid every frame cost a 100,000-unit client 1.5 ms of its render thread a frame; the fade is a quarter second).
-    /// </summary>
-    public const float UploadSeconds = 1f / 30f;
+    // Steps and seconds of easing since the last change: past either bound every cell is on its level.
+    private int _easedFrames = int.MaxValue;
+    private float _easedSeconds = float.MaxValue;
 
     /// <summary>Seconds a cell takes to ease all the way between unexplored and seen (a smaller change takes less).</summary>
     public const float FadeSeconds = 0.25f;
 
-    /// <summary>Cells easing now (tests and the perf notes).</summary>
-    public static int Fading => _instance != null ? _instance._fading.Count : 0;
-
     /// <summary>An alpha moved from <paramref name="current"/> toward <paramref name="target"/> by <paramref name="dt"/> seconds of the fade.</summary>
     public static byte Toward(byte current, byte target, float dt)
     {
-        int step = Mathf.Max(1, Mathf.CeilToInt(255f * dt / FadeSeconds));
+        int step = StepOf(dt);
         return current < target ? (byte)Mathf.Min(target, current + step) : (byte)Mathf.Max(target, current - step);
     }
+
+    /// <summary>How many levels of 255 a cell eases in a frame of <paramref name="dt"/> seconds: at least one.</summary>
+    private static int StepOf(float dt) => Mathf.Max(1, Mathf.CeilToInt(255f * dt / FadeSeconds));
 
     /// <summary>Creates the overlay if there is none.</summary>
     public static void Ensure()
@@ -60,64 +62,83 @@ public class FogView : MonoBehaviour
     private void LateUpdate()
     {
         ClientFog fog = ClientFog.Current;
-        if (!_dirty && _fading.Count == 0) return;
         if (fog.State == null) return;
-        _sinceUpload += Time.unscaledDeltaTime;
-        if (_texture != null && _sinceUpload < UploadSeconds) return;
-        float dt = _sinceUpload;
-        _sinceUpload = 0f;
+        bool snap = false;
         if (_dirty)
         {
             _dirty = false;
             _changed.Clear();
             bool all = fog.TakeChanges(_changed);
-            if (_texture == null || _texture.width != fog.Width || _texture.height != fog.Height)
+            if (_target == null || _target.width != fog.Width || _target.height != fog.Height)
             {
                 Build(fog);
                 all = true;
             }
+            var levels = _target.GetPixelData<byte>(0);
             if (all)
             {
                 // A new grid (the match's first snapshot, a rejoin) is drawn at once: nothing to ease from.
-                var every = _texture.GetPixelData<byte>(0);
-                for (int i = 0; i < fog.State.Length; i++) every[i] = Palette[fog.State[i]].a;
-                foreach (int i in _fading) _isFading[i] = false;
-                _fading.Clear();
+                for (int i = 0; i < fog.State.Length; i++) levels[i] = Palette[fog.State[i]].a;
+                snap = true;
             }
-            else
-            {
-                foreach (int i in _changed)
-                    if (!_isFading[i]) { _isFading[i] = true; _fading.Add(i); }
-            }
+            else foreach (int i in _changed) levels[i] = Palette[fog.State[i]].a;
+            _target.Apply(false);
+            _easedFrames = 0;
+            _easedSeconds = 0f;
         }
-        if (_texture == null) return;
-        var pixels = _texture.GetPixelData<byte>(0);
-        for (int k = _fading.Count - 1; k >= 0; k--)
-        {
-            int i = _fading[k];
-            byte target = Palette[fog.State[i]].a;
-            byte next = Toward(pixels[i], target, dt);
-            pixels[i] = next;
-            if (next != target) continue;
-            _isFading[i] = false;
-            _fading[k] = _fading[_fading.Count - 1];
-            _fading.RemoveAt(_fading.Count - 1);
-        }
-        _texture.Apply(false);
+        if (_target == null) return;
+        if (!_current[_front].IsCreated()) snap = true; // lost with the device: start from the levels
+        float dt = Time.unscaledDeltaTime;
+        if (!snap && (_easedFrames > 255 || _easedSeconds > FadeSeconds)) return; // every cell is on its level
+        _easedFrames++;
+        _easedSeconds += dt;
+        Ease(snap ? 255 : StepOf(dt));
+    }
+
+    /// <summary>Moves every cell <paramref name="step"/> levels toward its target on the GPU, into the texture the overlay draws.</summary>
+    private void Ease(int step)
+    {
+        RenderTexture from = _current[_front], to = _current[1 - _front];
+        if (!to.IsCreated()) to.Create();
+        _fadeProperties.SetTexture("_Current", from);
+        _fadeProperties.SetTexture("_Target", _target);
+        _fadeProperties.SetFloat("_Step", step);
+        _commands.Clear();
+        _commands.SetRenderTarget(to);
+        _commands.DrawProcedural(Matrix4x4.identity, _fade, 0, MeshTopology.Triangles, 3, 1, _fadeProperties);
+        Graphics.ExecuteCommandBuffer(_commands);
+        _front = 1 - _front;
+        _material.mainTexture = to;
     }
 
     private void Build(ClientFog fog)
     {
-        if (_texture != null) Destroy(_texture);
-        _isFading = new bool[fog.Width * fog.Height];
-        _fading.Clear();
-        // Alpha only (the shader reads alpha): a quarter of the bytes an RGBA upload took.
-        _texture = new Texture2D(fog.Width, fog.Height, TextureFormat.Alpha8, mipChain: false)
+        Release();
+        _target = new Texture2D(fog.Width, fog.Height, TextureFormat.R8, mipChain: false, linear: true)
         {
-            filterMode = FilterMode.Bilinear,
+            filterMode = FilterMode.Point,
             wrapMode = TextureWrapMode.Clamp,
-            name = "FogView",
+            name = "FogView levels",
         };
+        for (int k = 0; k < 2; k++)
+        {
+            _current[k] = new RenderTexture(fog.Width, fog.Height, 0, RenderTextureFormat.R8, RenderTextureReadWrite.Linear)
+            {
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                name = "FogView",
+            };
+            _current[k].Create();
+        }
+        _front = 0;
+        if (_fade == null)
+        {
+            Shader fade = Resources.Load<Shader>("Shaders/FogFade");
+            if (fade == null) WarLog.Error(LogCategory.Art, "Resources/Shaders/FogFade.shader is missing");
+            _fade = new Material(fade);
+            _fadeProperties = new MaterialPropertyBlock();
+            _commands = new CommandBuffer { name = "FogView ease" };
+        }
         if (_material == null)
         {
             Shader shader = Resources.Load<Shader>("Shaders/Fog");
@@ -126,7 +147,7 @@ public class FogView : MonoBehaviour
             _material.SetFloat("_PixelsPerUnit", WAR2D.Art.ArtStyle.PixelsPerUnit);
             _material.SetFloat("_Explored", Palette[1].a / 255f);
         }
-        _material.mainTexture = _texture;
+        _material.mainTexture = _current[_front];
         _material.SetVector("_WorldSize", new Vector4(fog.Width * fog.CellSize, fog.Height * fog.CellSize, 0, 0));
 
         if (_mesh != null) Destroy(_mesh);
@@ -145,10 +166,24 @@ public class FogView : MonoBehaviour
         transform.position = new Vector3(0, 0, -1);
     }
 
+    private void Release()
+    {
+        if (_target != null) Destroy(_target);
+        for (int k = 0; k < 2; k++)
+            if (_current[k] != null)
+            {
+                _current[k].Release();
+                Destroy(_current[k]);
+                _current[k] = null;
+            }
+    }
+
     private void OnDestroy()
     {
-        if (_texture != null) Destroy(_texture);
+        Release();
         if (_material != null) Destroy(_material);
+        if (_fade != null) Destroy(_fade);
+        _commands?.Release();
         if (_mesh != null) Destroy(_mesh);
         if (_instance == this) _instance = null;
     }

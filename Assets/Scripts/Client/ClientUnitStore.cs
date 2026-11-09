@@ -122,6 +122,7 @@ namespace WAR2D.Client
             routeUnits = new NativeList<RouteUnit>(64, allocator);
             correctionUnits = new NativeList<CorrectionUnit>(64, allocator);
             healthUnits = new NativeList<HealthUnit>(64, allocator);
+            healthTouched = new NativeList<int>(64, allocator);
             routeTiles = new NativeList<int2>(1024, allocator);
             counts = new NativeArray<int>(2, allocator);
             routeChanges = new NativeList<int2>(64, allocator);
@@ -131,6 +132,22 @@ namespace WAR2D.Client
 
         /// <summary>Units known.</summary>
         public int Count => known.Length;
+
+        /// <summary>Counts the payloads applied: a draw packed before the last change shows an older store.</summary>
+        public int Version { get; private set; }
+
+        /// <summary>
+        /// The indices whose health a payload set since the draw last took them (<see cref="ClientWorld"/> clears it): hits on units the
+        /// draw left for a later turn are found the frame they land.
+        /// </summary>
+        internal NativeList<int> HealthTouched => healthTouched;
+        private NativeList<int> healthTouched;
+
+        /// <summary>The known slot by index (-1 when unknown), the route arena and each index's route (an off-view unit's place, exactly).</summary>
+        internal NativeArray<int> KnownSlotArray => knownSlot;
+        internal NativeArray<float2> Waypoints => arena.AsArray();
+        internal NativeArray<int> RouteStartArray => routeStart;
+        internal NativeArray<int> RouteCountArray => routeCount;
 
         /// <summary>Every owner the store has had units of (a handful), in the order first seen.</summary>
         public IReadOnlyList<int> Owners => owners;
@@ -249,6 +266,7 @@ namespace WAR2D.Client
         /// </summary>
         public bool Apply(ArraySegment<byte> payload, int tick)
         {
+            Version++;
             CompletePrediction();
             FinishCompaction(wait: true);
             this.payload = payload;
@@ -323,7 +341,7 @@ namespace WAR2D.Client
                     using var marker = HealthMarker.Auto();
                     // Decoded and applied in a Burst job, as the corrections are.
                     CopyPayload();
-                    new ApplyHealthJob { Bytes = payloadBytes.AsArray(), Start = reader.Position, Units = healthUnits, KnownSlot = knownSlot, Health = health, Result = decoded }.Run();
+                    new ApplyHealthJob { Bytes = payloadBytes.AsArray(), Start = reader.Position, Units = healthUnits, KnownSlot = knownSlot, Health = health, Result = decoded, Touched = healthTouched }.Run();
                     if (decoded[0] == 0) throw new InvalidDataException("malformed Health");
                     reader.Position = decoded[1];
                     break;
@@ -396,6 +414,7 @@ namespace WAR2D.Client
             [ReadOnly] public NativeArray<int> KnownSlot;
             public NativeArray<byte> Health;
             public NativeArray<int> Result;
+            public NativeList<int> Touched;
 
             public void Execute()
             {
@@ -407,7 +426,9 @@ namespace WAR2D.Client
                 for (int i = 0; i < Units.Length; i++)
                 {
                     HealthUnit h = Units[i];
-                    if ((uint)h.Index < (uint)KnownSlot.Length && KnownSlot[h.Index] >= 0) Health[h.Index] = (byte)math.min((int)h.Health, 100);
+                    if ((uint)h.Index >= (uint)KnownSlot.Length || KnownSlot[h.Index] < 0) continue;
+                    Health[h.Index] = (byte)math.min((int)h.Health, 100);
+                    Touched.Add(h.Index);
                 }
             }
         }
@@ -987,7 +1008,7 @@ namespace WAR2D.Client
             states.Dispose(); routeStart.Dispose(); routeCount.Dispose(); owner.Dispose(); type.Dispose(); health.Dispose();
             arena.Dispose(); known.Dispose(); knownSlot.Dispose(); predicted.Dispose(); blend.Dispose(); drawn.Dispose(); steer.Dispose(); leads.Dispose();
             slotIndex.Dispose(); slotAt.Dispose(); refreshed.Dispose(); slotDrawn.Dispose(); velocity.Dispose(); cursors.Dispose();
-            routeUnits.Dispose(); routeTiles.Dispose(); counts.Dispose(); correctionUnits.Dispose(); healthUnits.Dispose();
+            routeUnits.Dispose(); routeTiles.Dispose(); counts.Dispose(); correctionUnits.Dispose(); healthUnits.Dispose(); healthTouched.Dispose();
             routeChanges.Dispose(); payloadBytes.Dispose(); decoded.Dispose();
         }
 

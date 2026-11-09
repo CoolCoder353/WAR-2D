@@ -92,11 +92,10 @@ namespace WAR2D.Client
         private ArtAtlas unitAtlas;
         private NativeArray<byte> selected;
         // Hit feedback (HitFeedback), by index: whose health is tracked (an index is reused with a new id), its health last frame,
-        // when it was last hit, its bar's trail, and whether it flashes now.
+        // when it was last hit and its bar's trail then (the shader flashes the unit and drains the trail from those).
         private NativeArray<int> trackedId;
         private NativeArray<byte> lastHealth;
         private NativeArray<float> hitAt, trail;
-        private NativeArray<byte> flash;
         private float lastDrawAt;
         private WorldEffects worldEffects;
         private float firstBatchAt = -1f; // Time.time the first batch arrived (the produced sound stays quiet just after)
@@ -205,7 +204,6 @@ namespace WAR2D.Client
             lastHealth = new NativeArray<byte>(capacity, Allocator.Persistent);
             hitAt = new NativeArray<float>(capacity, Allocator.Persistent);
             trail = new NativeArray<float>(capacity, Allocator.Persistent);
-            flash = new NativeArray<byte>(capacity, Allocator.Persistent);
             turretOf = new NativeArray<int>(capacity, Allocator.Persistent);
             turretAngle = new NativeArray<float>(capacity, Allocator.Persistent);
             turretTurnedAt = new NativeArray<float>(capacity, Allocator.Persistent);
@@ -273,7 +271,7 @@ namespace WAR2D.Client
             if (lastPosition.IsCreated)
             {
                 lastPosition.Dispose(); lastSteer.Dispose(); rotation.Dispose(); frame.Dispose(); lastAction.Dispose(); color.Dispose(); health01.Dispose(); drawScale.Dispose(); selected.Dispose();
-                trackedId.Dispose(); lastHealth.Dispose(); hitAt.Dispose(); trail.Dispose(); flash.Dispose();
+                trackedId.Dispose(); lastHealth.Dispose(); hitAt.Dispose(); trail.Dispose();
                 instances.Dispose(); bars.Dispose(); barCount.Dispose(); rings.Dispose(); ringCount.Dispose(); shownCount.Dispose();
             }
         }
@@ -331,8 +329,25 @@ namespace WAR2D.Client
             FireTracers();
             FireTurrets();
             float real = Time.time;
-            unitsDue = real - unitsPackedAt >= UnitPackSeconds || real < unitsPackedAt || store.Count != unitsPackedCount || !unitsPacked;
+            unitsDue = real - unitsPackedAt >= UnitPackSeconds || real < unitsPackedAt || store.Count != unitsPackedCount || store.Version != packedVersion || !unitsPacked;
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) store.HealthTouched.Clear(); // no draw takes them
+            else AimTurrets(real);
             if (unitsDue) Predict(real);
+        }
+
+        /// <summary>
+        /// v0.20 (spec §8.3): a Sniper's head turns to what it aims at and holds there while it aims (the draw job turns it). Every frame,
+        /// before the frame's prediction starts, so the target is where it was drawn last frame.
+        /// </summary>
+        private void AimTurrets(float now)
+        {
+            foreach (KeyValuePair<int, byte> status in ClientCombat.Current.Statuses)
+                if ((uint)status.Key < (uint)aimAt.Length && (status.Value & WAR2D.Sim.UnitStatusBits.Aiming) != 0 // the index is the server's: bound it
+                    && combatVisuals.AimTarget(status.Key, out float2 aimed))
+                {
+                    aimAt[status.Key] = aimed;
+                    aimUntil[status.Key] = now + TurretAim.HoldSeconds;
+                }
         }
 
         /// <summary>Starts the units' prediction job for the next packing (<see cref="Draw"/>).</summary>
@@ -507,20 +522,43 @@ namespace WAR2D.Client
         /// Draws the known buildings (instanced), then packs every known unit and draws it (and the health bars).
         /// Selected ids draw highlighted; roaming ids (Roam, J) get the dashed roaming ring.
         /// </summary>
-        public void Draw(IReadOnlyCollection<int> selectedIds, IEnumerable<int> roamingIds = null)
+        /// <param name="selectionVersion">Changes whenever the selection or the roaming set does (negative: unknown, so every frame packs).</param>
+        public void Draw(IReadOnlyCollection<int> selectedIds, IEnumerable<int> roamingIds = null, int selectionVersion = -1)
         {
             // A -nographics player (perf clients) has no GPU buffers to draw with.
             if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) return;
-            // Between packs (see Update): the last packing again, carried along each instance's velocity.
-            if (!unitsDue && unitsPacked && unitRenderer != null)
+            float now = Time.time;
+            drawSelection = selectionVersion;
+            Shader.SetGlobalFloat(InstancedUnitRenderer.TimeProperty, now);
+            Camera viewCamera = ViewCamera != null ? ViewCamera : Camera.main;
+            Rect view = WorldEffects.ViewOf(viewCamera);
+            // With no camera to cull by, every turret draws: culling against an empty view hid every unit's head (replay, 2026-11-06).
+            Rect turretView = viewCamera != null ? WorldEffects.ViewOf(viewCamera, TurretViewMargin) : new Rect(-1e6f, -1e6f, 2e6f, 2e6f);
+            // A pack covers PackMargin tiles more than that, so a camera moving a little stays inside it.
+            Rect packView = viewCamera != null ? WorldEffects.ViewOf(viewCamera, TurretViewMargin + PackMargin) : turretView;
+            // A pack is due on its clock (Update) and as soon as anything it shows changes: a payload, the selection or roaming, the health
+            // bar setting, an owner's colour, or a view that left the packed one (a pan or a zoom). A replay's per-player view packs every frame.
+            bool due = unitsDue || !unitsPacked || unitRenderer == null || UnitShown != null || selectionVersion < 0 || selectionVersion != packedSelection
+                || store.Version != packedVersion || SettingsStore.Current.HealthBars != packedBarMode || ownerColours.Count != packedColours
+                || turretView.xMin < packedView.xMin || turretView.yMin < packedView.yMin || turretView.xMax > packedView.xMax || turretView.yMax > packedView.yMax;
+            if (!due)
             {
-                Shader.SetGlobalFloat(InstancedUnitRenderer.DrawAheadProperty, math.clamp(Time.time - unitsPackedAt, 0f, 2f * UnitPackSeconds));
+                // Between packs: the last packing again, carried along each instance's velocity; the combat sprites follow the same.
+                drawAhead = math.clamp(now - unitsPackedAt, 0f, 2f * UnitPackSeconds);
+                Shader.SetGlobalFloat(InstancedUnitRenderer.DrawAheadProperty, drawAhead);
                 using (BuildingsMarker.Auto()) DrawBuildings();
                 using (SubmitMarker.Auto()) unitRenderer.Redraw();
+                using (EffectsMarker.Auto()) DrawCombat(now, view);
                 return;
             }
+            if (!unitsDue) Predict(now); // a change Update didn't see: the draw job waits for this prediction
             unitsDue = false;
+            drawAhead = 0f;
             Shader.SetGlobalFloat(InstancedUnitRenderer.DrawAheadProperty, 0f);
+            packedSelection = selectionVersion;
+            packedVersion = store.Version;
+            packedBarMode = SettingsStore.Current.HealthBars;
+            packedView = packView;
             SelectMarker.Begin();
             int count = store.Count;
             if (count == 0 || store.DrawnAfterPrediction.Length != count)
@@ -568,28 +606,17 @@ namespace WAR2D.Client
             // Smoothed (corrections glide instead of stepping); the prediction job may still be filling them: the draw job waits for it.
             NativeArray<float2> positions = store.DrawnAfterPrediction;
             NativeArray<int> owners = store.OwnerArray;
-            float now = Time.time, frameSeconds = lastDrawAt > 0f ? math.max(0f, now - lastDrawAt) : 0f;
+            float frameSeconds = lastDrawAt > 0f ? math.max(0f, now - lastDrawAt) : 0f;
             lastDrawAt = now;
-            Rect view = WorldEffects.ViewOf(ViewCamera != null ? ViewCamera : Camera.main);
-            Camera viewCamera = ViewCamera != null ? ViewCamera : Camera.main;
-            // With no camera to cull by, every turret draws: culling against an empty view hid every unit's head (replay, 2026-11-06).
-            Rect turretView = viewCamera != null ? WorldEffects.ViewOf(viewCamera, TurretViewMargin) : new Rect(-1e6f, -1e6f, 2e6f, 2e6f);
             turrets.Clear();
             barrelShadows.Clear();
             hits.Clear();
             tracks.Clear();
             using (ColoursMarker.Auto()) CacheOwnerColours();
+            packedColours = ownerColours.Count;
             if (UnitShown != null) store.CompletePrediction(); // a replay's per-player view reads the positions here
             if (UnitShown != null) // a replay's per-player view: the delegate can't run in the job
                 for (int i = 0; i < count; i++) hidden[known[i]] = (byte)(UnitShown(owners[known[i]], positions[i]) ? 0 : 1);
-            // v0.20 (spec §8.3): a Sniper's head turns to what it aims at and holds there while it aims (the job turns it).
-            foreach (KeyValuePair<int, byte> status in ClientCombat.Current.Statuses)
-                if ((uint)status.Key < (uint)aimAt.Length && (status.Value & WAR2D.Sim.UnitStatusBits.Aiming) != 0 // the index is the server's: bound it
-                    && combatVisuals.AimTarget(status.Key, out float2 aimed))
-                {
-                    aimAt[status.Key] = aimed;
-                    aimUntil[status.Key] = now + TurretAim.HoldSeconds;
-                }
             SelectMarker.End();
             PrepareMarker.Begin();
             // Per unit: facing, frame, colour, hit feedback, track marks, size and turret (Burst; 2026-11-06, 4.5 of 8 ms a frame
@@ -623,10 +650,9 @@ namespace WAR2D.Client
                 HasFrames = frames != null,
                 ServerTime = serverTime,
                 Now = now,
-                FrameSeconds = frameSeconds,
                 LocalOwner = WorldEffects.LocalOwner,
                 View = new float4(view.xMin, view.yMin, view.xMax, view.yMax),
-                TurretView = new float4(turretView.xMin, turretView.yMin, turretView.xMax, turretView.yMax),
+                TurretView = new float4(packView.xMin, packView.yMin, packView.xMax, packView.yMax),
                 BarrelShadowFrame = unitRenderer.BarrelShadowFrame,
                 LastPosition = lastPosition,
                 LastSteer = lastSteer,
@@ -639,7 +665,6 @@ namespace WAR2D.Client
                 LastHealth = lastHealth,
                 HitAt = hitAt,
                 Trail = trail,
-                Flash = flash,
                 TrackIds = worldEffects.TrackIds,
                 LastTracks = worldEffects.LastTracks,
                 TurretOf = turretOf,
@@ -674,6 +699,15 @@ namespace WAR2D.Client
                 gathered.Complete();
                 store.CompletePrediction();
             }
+            // Units the draw left for a later turn still take their hits the frame the payload lands (the minimap's fights, the trail).
+            new OffViewHitsJob
+            {
+                Touched = store.HealthTouched.AsArray(), KnownSlot = store.KnownSlotArray, Refreshed = store.RefreshedAfterPrediction, Health = store.HealthArray,
+                Owners = owners, States = store.StateArray, Waypoints = store.Waypoints, RouteStart = store.RouteStartArray, RouteCount = store.RouteCountArray,
+                ServerTime = serverTime, Now = now, LocalOwner = WorldEffects.LocalOwner,
+                TrackedId = trackedId, LastHealth = lastHealth, HitAt = hitAt, Trail = trail, Hits = hits,
+            }.Run();
+            store.HealthTouched.Clear();
             EffectsMarker.Begin();
             // The job's main-thread effects, in unit order: hits on the minimap, then track marks.
             HitsMarker.Begin();
@@ -688,18 +722,10 @@ namespace WAR2D.Client
             using (TracksMarker.Auto())
                 for (int i = 0; i < tracks.Length; i++) Decals.Track(tracks[i].xy, tracks[i].z);
             RaiseAirborne(positions);
-            Effects.FollowFlames(flameLine);
-            // Fires, lasers, leaps and reload bars are sprites that hold between steps: placed with the units, at most every Effects.StepSeconds (2026-11-08:
-            // walking every unit status each frame cost a 100,000-unit client on three cores 0.5 ms a frame).
-            if (now - combatDrawnAt >= Effects.StepSeconds || now < combatDrawnAt)
-            {
-                combatDrawnAt = now;
-                ownSelected.Clear();
-                foreach (int index in selectedIndices)
-                    if ((selected[index] & 1) != 0 && store.IsKnown(index) && store.OwnerOf(index) == WorldEffects.LocalOwner
-                        && ((UnitType)store.TypeOf(index) == UnitType.Artillery || (UnitType)store.TypeOf(index) == UnitType.Sniper)) ownSelected.Add(index); // the reload bars: a selected army of 12,500 cost a call each
-                using (CombatMarker.Auto()) combatVisuals.Draw(now, serverTime, view, UnitAt, ownSelected, BuildingsShown ?? ClientBuildings.Current);
-            }
+            ownSelected.Clear();
+            foreach (int index in selectedIndices)
+                if ((selected[index] & 1) != 0 && store.IsKnown(index) && store.OwnerOf(index) == WorldEffects.LocalOwner
+                    && ((UnitType)store.TypeOf(index) == UnitType.Artillery || (UnitType)store.TypeOf(index) == UnitType.Sniper)) ownSelected.Add(index); // the reload bars: a selected army of 12,500 cost a call each
             EffectsMarker.End();
             PackMarker.Begin();
             instances.ResizeUninitialized(count);
@@ -714,7 +740,7 @@ namespace WAR2D.Client
                 Positions = positions,
                 Refreshed = store.RefreshedAfterPrediction,
                 Velocity = store.VelocityAfterPrediction,
-                Rotation = rotation,
+                HitAt = hitAt,
                 Frame = frame,
                 Color = color,
                 Health01 = health01,
@@ -722,11 +748,10 @@ namespace WAR2D.Client
                 LargeRingFrame = unitRenderer.LargeRingFrame,
                 BarMode = SettingsStore.Current.HealthBars,
                 Selected = selected,
-                Flash = flash,
                 HideBar = hideBar,
                 Trail = trail,
                 UnitHalfSize = 0.4f,
-                View = new float4(turretView.xMin, turretView.yMin, turretView.xMax, turretView.yMax),
+                View = new float4(packView.xMin, packView.yMin, packView.xMax, packView.yMax),
                 RingFrame = unitRenderer.RingFrame,
                 RoamRingFrame = unitRenderer.RoamRingFrame,
                 Instances = instances.AsArray(),
@@ -747,7 +772,39 @@ namespace WAR2D.Client
             unitRenderer.DrawTurrets(turrets.AsArray(), turrets.Length);
             unitRenderer.DrawHealthBars(bars.AsArray(), barCount[0]);
             unitsPacked = true;
+            using (EffectsMarker.Auto()) DrawCombat(now, view);
         }
+
+        /// <summary>The flame streams and the combat sprites (fires, lasers, leaps, reload bars), every frame, where the units are drawn now.</summary>
+        private void DrawCombat(float now, Rect view)
+        {
+            Effects.FollowFlames(flameLine);
+            using (CombatMarker.Auto()) combatVisuals.Draw(now, serverTime, view, UnitAt, ownSelected, BuildingsShown ?? ClientBuildings.Current);
+        }
+
+        /// <summary>
+        /// Where a known unit is drawn this frame: a unit packed this time at its packed place carried along its velocity, as the shader
+        /// draws it; one away from the view at its slot's last place (it is past the view and its margin either way).
+        /// </summary>
+        private float2 DrawnAt(int index)
+        {
+            int slot = store.SlotOf(index);
+            NativeArray<byte> refreshed = store.RefreshedAfterPrediction;
+            if (slot < 0 || slot >= refreshed.Length) return lastPosition[index];
+            if (refreshed[slot] == 0) return store.DrawnAfterPrediction[slot];
+            return lastPosition[index] + (airborneVelocity.TryGetValue(index, out float2 v) ? v : store.VelocityAfterPrediction[slot]) * drawAhead;
+        }
+
+        // What the last pack drew from: the store's payload count, the selection's, the bar setting, the owners with a colour and the view.
+        private int packedVersion = -1, packedSelection = int.MinValue, packedBarMode = -1, packedColours = -1;
+        private Rect packedView;
+        /// <summary>This frame's selection count (<see cref="Draw"/>), for the buildings' bars, and whether an owner's colour was missing.</summary>
+        private int drawSelection = -1;
+        private bool greyOwner;
+        /// <summary>Seconds since the last pack (the shader's <c>_UnitDrawAhead</c>).</summary>
+        private float drawAhead;
+        /// <summary>A leaping unit's velocity along the ground (its instance carries the leap's arc instead).</summary>
+        private readonly Dictionary<int, float2> airborneVelocity = new Dictionary<int, float2>();
 
         // Profiler markers (nearly free in a release player): where a frame's draw time goes.
         private static readonly Unity.Profiling.ProfilerMarker BuildingsMarker = new Unity.Profiling.ProfilerMarker("ClientWorld.Draw.Buildings"),
@@ -768,12 +825,17 @@ namespace WAR2D.Client
         {
             foreach (int index in barsHidden) hideBar[index] = 0;
             barsHidden.Clear();
+            airborneVelocity.Clear();
+            NativeArray<float2> velocity = store.VelocityAfterPrediction;
             foreach (KeyValuePair<int, byte> status in ClientCombat.Current.Statuses)
             {
                 if ((status.Value & WAR2D.Sim.UnitStatusBits.Airborne) == 0) continue;
                 int slot = store.SlotOf(status.Key);
                 if (slot < 0 || slot >= positions.Length || !combatVisuals.Airborne(status.Key, out float2 raised, out _, out _)) continue;
                 positions[slot] = raised;
+                // Between packs the instance goes on along the leap's arc toward where the next pack will raise it.
+                airborneVelocity[status.Key] = velocity[slot];
+                if (combatVisuals.AirborneAt(status.Key, serverTime + UnitPackSeconds, out float2 next)) velocity[slot] = (next - raised) / UnitPackSeconds;
                 hideBar[status.Key] = 1;
                 barsHidden.Add(status.Key);
             }
@@ -785,13 +847,15 @@ namespace WAR2D.Client
         /// <summary>The longest a unit away from the view waits for its prediction and draw state to be refreshed.</summary>
         private const float OffViewRefreshSeconds = 0.5f;
 
+        /// <summary>Tiles past the turrets' margin a pack covers, so the camera can move that far before the next one must cover more.</summary>
+        private const float PackMargin = 2f;
+
         /// <summary>Tiles past the turrets' margin a unit still counts as in view: more than the fastest unit or leap goes in <see cref="OffViewRefreshSeconds"/>.</summary>
         private const float OffViewMargin = 6f;
 
         /// <summary>The longest the drawn units wait for a fresh prediction, facing, frame and colour (the frames between carry them on).</summary>
         private const float UnitPackSeconds = 1f / 60f;
 
-        private float combatDrawnAt = float.NegativeInfinity;
 
         /// <summary>Units per batch of the draw jobs on the job threads.</summary>
         private const int DrawBatch = 64;
@@ -814,6 +878,35 @@ namespace WAR2D.Client
             turretAngle[index] = hull;
             turretTurnedAt[index] = now;
             aimUntil[index] = float.NegativeInfinity;
+        }
+
+        /// <summary>
+        /// Hit feedback for one unit at <paramref name="now"/>: a new unit on the index starts afresh, and a health drop is a hit (true,
+        /// with the hit for the minimap) that stamps its time and keeps the trail's level then; <see cref="HitFeedback.TrailNow"/> drains it
+        /// from there, so a unit seen again after a while has the trail it would have had.
+        /// </summary>
+        internal static bool TrackHit(int index, int id, byte health, float2 position, bool own, float now,
+            NativeArray<int> trackedId, NativeArray<byte> lastHealth, NativeArray<float> hitAt, NativeArray<float> trail, out UnitHit hit)
+        {
+            hit = default;
+            bool dropped = false;
+            if (trackedId[index] != id)
+            {
+                trackedId[index] = id;
+                lastHealth[index] = health;
+                hitAt[index] = float.NegativeInfinity;
+                trail[index] = health / 100f;
+            }
+            else if (health < lastHealth[index])
+            {
+                float before = HitFeedback.TrailNow(trail[index], lastHealth[index] / 100f, now - hitAt[index]); // where the last hit's trail had got to
+                hit = new UnitHit { Position = position, Own = own, Drop = lastHealth[index] - health, SinceLastHit = now - hitAt[index] };
+                dropped = true;
+                hitAt[index] = now;
+                trail[index] = math.max(before, health / 100f);
+            }
+            lastHealth[index] = health;
+            return dropped;
         }
 
         /// <summary>A known unit's health drop this frame, for the minimap's fights (applied on the main thread after the draw job).</summary>
@@ -878,7 +971,7 @@ namespace WAR2D.Client
             public uint UnknownColour;
             [ReadOnly] public NativeArray<UnitFrames.TypeCells> Cells;
             public bool HasFrames;
-            public float ServerTime, Now, FrameSeconds;
+            public float ServerTime, Now;
             /// <summary>The most a unit's facing turns this frame (radians).</summary>
             public float MaxTurn;
             public int LocalOwner;
@@ -891,7 +984,7 @@ namespace WAR2D.Client
             [NativeDisableParallelForRestriction] public NativeArray<uint> Frame, Color;
             [NativeDisableParallelForRestriction] public NativeArray<float> Health01, DrawScale;
             [NativeDisableParallelForRestriction] public NativeArray<int> TrackedId;
-            [NativeDisableParallelForRestriction] public NativeArray<byte> LastHealth, Flash;
+            [NativeDisableParallelForRestriction] public NativeArray<byte> LastHealth;
             [NativeDisableParallelForRestriction] public NativeArray<float> HitAt, Trail;
             [NativeDisableParallelForRestriction] public NativeArray<int> TrackIds;
             [NativeDisableParallelForRestriction] public NativeArray<float2> LastTracks;
@@ -938,7 +1031,7 @@ namespace WAR2D.Client
                 int row = type < Cells.Length ? type : 0; // no bounds checks in a player's Burst code (DecodeEnter refuses bad types too)
                 byte health = Health[index];
                 byte emit = 0;
-                if (TrackHit(index, id, health, p, owner, out UnitHit hit))
+                if (TrackHit(index, id, health, p, owner == LocalOwner, Now, TrackedId, LastHealth, HitAt, Trail, out UnitHit hit))
                 {
                     HitSlots[i] = hit;
                     emit |= EmitHit;
@@ -974,29 +1067,6 @@ namespace WAR2D.Client
 
             private static bool Inside(float4 r, float2 p) => p.x >= r.x && p.x < r.z && p.y >= r.y && p.y < r.w; // Rect.Contains
 
-            /// <summary>Hit feedback for one unit; true, with the hit for the minimap, when its health dropped.</summary>
-            private bool TrackHit(int index, int id, byte health, float2 position, int owner, out UnitHit hit)
-            {
-                hit = default;
-                bool dropped = false;
-                if (TrackedId[index] != id)
-                {
-                    TrackedId[index] = id;
-                    LastHealth[index] = health;
-                    HitAt[index] = float.NegativeInfinity;
-                    Trail[index] = health / 100f;
-                }
-                else if (health < LastHealth[index])
-                {
-                    hit = new UnitHit { Position = position, Own = owner == LocalOwner, Drop = LastHealth[index] - health, SinceLastHit = Now - HitAt[index] };
-                    dropped = true;
-                    HitAt[index] = Now;
-                }
-                LastHealth[index] = health;
-                Trail[index] = HitFeedback.Trail(Trail[index], health / 100f, Now - HitAt[index], FrameSeconds);
-                Flash[index] = (byte)(HitFeedback.Flashing(HitAt[index], Now) ? 1 : 0);
-                return dropped;
-            }
 
             /// <summary>The unit's turret into its slot, and a raised Artillery barrel's shadow into its own; returns their <see cref="Emits"/> bits.</summary>
             private byte PackTurret(int i, int index, int id, byte type, UnitFrames.TypeCells cell, float2 p)
@@ -1018,12 +1088,45 @@ namespace WAR2D.Client
                     frame = cell.TurretCell(facing, frameIndex),
                     color = Color[index],
                     scale = cell.TurretTiles,
-                    pad = (uint)(Selected[index] & 1) | (uint)Flash[index] << 1,
+                    pad = (uint)(Selected[index] & 1),
+                    rotation = HitAt[index], // the shader flashes the turret with its hull
                     velocity = Velocity[i],
                 };
                 if (!(unit == UnitType.Artillery && aiming)) return EmitTurret;
-                ShadowSlots[i] = new UnitInstance { position = at, frame = BarrelShadowFrame + (uint)facing, color = 0xFFFFFFFFu, scale = BarrelShadowTiles, velocity = Velocity[i] };
+                ShadowSlots[i] = new UnitInstance { position = at, rotation = float.NegativeInfinity, frame = BarrelShadowFrame + (uint)facing, color = 0xFFFFFFFFu, scale = BarrelShadowTiles, velocity = Velocity[i] };
                 return EmitTurret | EmitShadow;
+            }
+        }
+
+        /// <summary>
+        /// <see cref="TrackHit"/> for the units whose health a payload set since the last pack and that the draw job left for a later turn
+        /// (away from the view): their hits reach the minimap the frame they land, at the unit's predicted place.
+        /// </summary>
+        [BurstCompile]
+        internal struct OffViewHitsJob : IJob
+        {
+            [ReadOnly] public NativeArray<int> Touched, KnownSlot, Owners, RouteStart, RouteCount;
+            [ReadOnly] public NativeArray<byte> Refreshed, Health;
+            [ReadOnly] public NativeArray<PredictState> States;
+            [ReadOnly] public NativeArray<float2> Waypoints;
+            public float ServerTime, Now;
+            public int LocalOwner;
+            public NativeArray<int> TrackedId;
+            public NativeArray<byte> LastHealth;
+            public NativeArray<float> HitAt, Trail;
+            public NativeList<UnitHit> Hits;
+
+            public void Execute()
+            {
+                for (int k = 0; k < Touched.Length; k++)
+                {
+                    int index = Touched[k];
+                    int slot = KnownSlot[index];
+                    if (slot < 0 || slot >= Refreshed.Length || Refreshed[slot] != 0) continue; // gone, or the draw job tracked it
+                    PredictState s = States[index];
+                    float2 at = MovementPrediction.Predict(ref s, Waypoints, RouteStart[index], RouteCount[index], ServerTime);
+                    if (TrackHit(index, s.Id, Health[index], at, Owners[index] == LocalOwner, Now, TrackedId, LastHealth, HitAt, Trail, out UnitHit hit)) Hits.Add(hit);
+                }
             }
         }
 
@@ -1114,7 +1217,7 @@ namespace WAR2D.Client
             // A replay's per-player view hides what that player didn't see: its fire, laser and leap go with it.
             if (UnitShown != null && hidden[index] != 0) return (false, default, 0, 0f);
             byte type = store.TypeOf(index);
-            return (true, lastPosition[index], type, ScaleOf(type));
+            return (true, DrawnAt(index), type, ScaleOf(type));
         }
 
         private float ScaleOf(byte type)
@@ -1161,15 +1264,14 @@ namespace WAR2D.Client
             }
             buildingSelected ??= IsSelectedBuilding;
             Camera viewCamera = ViewCamera != null ? ViewCamera : Camera.main;
-            buildingRenderer.Draw(known, Time.time, buildingColour, SettingsStore.Current.HealthBars, buildingSelected, viewCamera != null ? WorldEffects.ViewOf(viewCamera) : null);
-            // Smoke, fire, glints and jammer pulses go off on their own timers: checked with the buildings' repack, not every frame.
-            if (Time.time - buildingEffectsAt < InstancedBuildingRenderer.RepackSeconds && Time.time >= buildingEffectsAt) return;
-            buildingEffectsAt = Time.time;
+            // A building drawn grey because its owner's colour wasn't known yet is laid out again each frame until it is.
+            bool grey = greyOwner;
+            greyOwner = false;
+            buildingRenderer.Draw(known, Time.time, buildingColour, SettingsStore.Current.HealthBars, buildingSelected, viewCamera != null ? WorldEffects.ViewOf(viewCamera) : null,
+                drawSelection, colorOfOwner.Count, grey || BuildingsShown != null);
             PulseJammers(known);
-            worldEffects.Buildings(known, WorldEffects.ViewOf(viewCamera), Time.time);
+            worldEffects.Buildings(known, WorldEffects.ViewOf(viewCamera), Time.time, BuildingsShown != null);
         }
-
-        private float buildingEffectsAt = float.NegativeInfinity;
 
         /// <summary>
         /// The <c>JamPulse</c> on every finished Jammer the client sees now (not ghosts, not blueprints; the local
@@ -1265,7 +1367,11 @@ namespace WAR2D.Client
         {
             if (colorOfOwner.TryGetValue(ownerId, out uint c)) return c;
             int colour = ColourIndexOf(ownerId);
-            if (colour < 0) return InstancedUnitRenderer.Pack(new Color32(160, 160, 160, 255)); // not cached: the player may still arrive
+            if (colour < 0)
+            {
+                greyOwner = true;
+                return InstancedUnitRenderer.Pack(new Color32(160, 160, 160, 255)); // not cached: the player may still arrive
+            }
             c = InstancedUnitRenderer.Pack(PlayerPalette.Of(colour));
             colorOfOwner[ownerId] = c;
             return c;
@@ -1369,7 +1475,7 @@ namespace WAR2D.Client
             nozzle = end = default;
             int index = NetIdAllocator.IndexOf(attacker);
             if (store.IdOf(index) != attacker || !TryTargetPosition(target, out Vector3 to)) return false;
-            float2 p = lastPosition[index];
+            float2 p = DrawnAt(index);
             rotation[index] = math.atan2(to.y - p.y, to.x - p.x);
             float facing = TurretAim.HullAngle(rotation[index]);
             nozzle = new Vector3(p.x + math.cos(facing) * Effects.BarrelReach, p.y + math.sin(facing) * Effects.BarrelReach, 0f);

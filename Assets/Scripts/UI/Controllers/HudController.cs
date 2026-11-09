@@ -233,6 +233,8 @@ namespace WAR2D.UI
             noticeSource = null;
             hover?.Hide();
             topBar?.Dispose();
+            if (hqWatched != null) hqWatched.Entered -= OnBuildingEntered;
+            hqWatched = null;
             selectionPanel?.Dispose();
             commandCard?.Dispose();
             squadBar?.Dispose();
@@ -283,6 +285,12 @@ namespace WAR2D.UI
         }
 
         private bool ownHqSeen;
+        // The own HQ can only appear with a building's Enter: the search waits for one (or a new building list, or the owner id).
+        private bool hqSearchDue = true;
+        private WAR2D.Net.Replication.ClientBuildings hqWatched;
+        private int hqOwner;
+
+        private void OnBuildingEntered(BuildingData data, HealthComponent health) => hqSearchDue = true;
 
         /// <summary>
         /// When the own HQ first appears, brings it into view. A Random or timed-out pick places it at any of the player's options,
@@ -291,7 +299,24 @@ namespace WAR2D.UI
         private void ShowOwnHqOnce()
         {
             if (ownHqSeen || Model.LocalOwnerId == 0) return;
-            if (!WAR2D.Net.Replication.ClientBuildings.Current.TryFindOwn(Model.LocalOwnerId, BuildingType.Base, out WAR2D.Net.Replication.ClientBuildings.Entry hq)) return;
+            WAR2D.Net.Replication.ClientBuildings known = WAR2D.Net.Replication.ClientBuildings.Current;
+            if (known != hqWatched)
+            {
+                if (hqWatched != null) hqWatched.Entered -= OnBuildingEntered;
+                hqWatched = known;
+                if (known != null) known.Entered += OnBuildingEntered;
+                hqSearchDue = true;
+            }
+            if (hqOwner != Model.LocalOwnerId)
+            {
+                hqOwner = Model.LocalOwnerId;
+                hqSearchDue = true;
+            }
+            // Searched since anything entered: it isn't there (2026-11-09: a spectator, or a player whose HQ fell, walked every known
+            // building every frame).
+            if (!hqSearchDue || known == null) return;
+            hqSearchDue = false;
+            if (!known.TryFindOwn(Model.LocalOwnerId, BuildingType.Base, out WAR2D.Net.Replication.ClientBuildings.Entry hq)) return;
             ownHqSeen = true;
             Camera cam = Camera.main;
             if (cam == null) return;
@@ -417,12 +442,11 @@ namespace WAR2D.UI
             MarkersMarker = new Unity.Profiling.ProfilerMarker("Hud.WorldMarkers"), TagsMarker = new Unity.Profiling.ProfilerMarker("Hud.OrderTags"),
             SelectionMarker = new Unity.Profiling.ProfilerMarker("Hud.Selection"), QuickMarker = new Unity.Profiling.ProfilerMarker("Hud.Quick");
 
-        /// <summary>The longest the HUD's shown state waits for a refresh (input is read every frame).</summary>
-        private const float DisplaySeconds = 1f / 30f;
-        private float displaySince = DisplaySeconds;
-
         private void Update()
         {
+            CentreOnOwnClearing();
+            ShowOwnHqOnce();
+            Model.PullResources();
             if (GameInput.FieldManual.WasPressedThisFrame() && !endScreen.IsShown && !settings.IsOpen)
             {
                 if (manual.IsOpen) manual.Close();
@@ -458,17 +482,6 @@ namespace WAR2D.UI
                     OnNotice(why);
                 }
             }
-            using (MarkersMarker.Auto()) worldMarkers.Update(!Spectating && !endScreen.IsShown && !matchMenu.IsOpen && !settings.IsOpen && !manual.IsOpen);
-            using (TagsMarker.Auto()) orderTags.Update(UnitCommander.Instance != null ? UnitCommander.Instance.Feedback : null, Camera.main, GameInput.Point.ReadValue<Vector2>());
-            // The rest only shows state: refreshed at most every DisplaySeconds (2026-11-08: the HUD's
-            // refresh every frame cost a 100,000-unit client on three cores 0.6 ms a frame, and the panel repaints it caused 0.4 ms more).
-            displaySince += Time.unscaledDeltaTime;
-            if (displaySince < DisplaySeconds) return;
-            float elapsed = displaySince;
-            displaySince = 0f;
-            CentreOnOwnClearing();
-            ShowOwnHqOnce(); // with no own HQ (a spectator, or after it fell) this walks every known building
-            Model.PullResources();
             SubscribeNotices();
             ShowCursorNotice();
             matchMenu.SetCanSurrender(root, GameCore.Instance != null && GameCore.Instance.CurrentState == GameState.Playing && !endScreen.IsShown);
@@ -480,13 +493,15 @@ namespace WAR2D.UI
                 bool owner = NetworkClient.localPlayer != null && NetworkClient.localPlayer.TryGetComponent(out ClientPlayer local) && local.isServerOwner;
                 endScreen.ShowRematch(owner, NetworkServer.active && WorldStateManager.Instance != null && WorldStateManager.Instance.Recorder != null && !WorldStateManager.Instance.Recorder.Finished);
             }
-            using (MinimapMarker.Auto()) minimap.Update(elapsed);
-            if (Spectating) spectator.Tick(elapsed);
+            using (MinimapMarker.Auto()) minimap.Update(Time.unscaledDeltaTime);
+            if (Spectating) spectator.Tick(Time.unscaledDeltaTime);
+            using (MarkersMarker.Auto()) worldMarkers.Update(!Spectating && !endScreen.IsShown && !matchMenu.IsOpen && !settings.IsOpen && !manual.IsOpen);
+            using (TagsMarker.Auto()) orderTags.Update(UnitCommander.Instance != null ? UnitCommander.Instance.Feedback : null, Camera.main, GameInput.Point.ReadValue<Vector2>());
             ShowWallReadout();
             Model.PullDiplomacy();
             SubscribeAlerts();
 
-            selectionTimer -= elapsed;
+            selectionTimer -= Time.unscaledDeltaTime;
             if (selectionTimer <= 0f)
             {
                 selectionTimer = SelectionRefreshSeconds;
@@ -494,7 +509,7 @@ namespace WAR2D.UI
             }
 
             GameCore core = GameCore.Instance;
-            playerTimer -= elapsed;
+            playerTimer -= Time.unscaledDeltaTime;
             if (playerTimer <= 0f)
             {
                 playerTimer = PlayerRefreshSeconds;

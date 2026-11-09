@@ -197,15 +197,30 @@ namespace WAR2D.Client
         /// Once a frame, after the buildings are drawn: smoke and fire on damaged buildings and Miner glints on screen, the
         /// construction loop, and the wall-hit sounds.
         /// </summary>
-        public void Buildings(ClientBuildings known, Rect view, float now)
+        /// <param name="rebuild">For buildings changed other than through <see cref="ClientBuildings"/> (a replay's per-player view).</param>
+        public void Buildings(ClientBuildings known, Rect view, float now, bool rebuild = false)
         {
             Follow(known);
+            // Only blueprints, damaged buildings and Miners show anything here: those are listed again when the buildings change, and each
+            // frame visits them alone (2026-11-09: every known building each frame cost a 100,000-unit client on three cores 0.13 ms).
+            bool changed = rebuild || known != candidatesOf || known.Version != candidatesVersion;
+            if (changed)
+            {
+                candidatesOf = known;
+                candidatesVersion = known.Version;
+                candidates.Clear();
+                foreach (ClientBuildings.Entry e in known.Entries.Values)
+                {
+                    if (e.Ghost) continue;
+                    float health = e.Health.maxHealth > 0f ? e.Health.currentHealth / e.Health.maxHealth : 1f;
+                    if (e.Progress < 100 || (e.Data.buildingType != BuildingType.Mine && (health < SmokeBelow || e.Data.buildingType == BuildingType.Miner))) candidates.Add(e);
+                }
+            }
             int local = LocalOwner;
             Vector2? loopAt = null;
             float loopDistance = float.MaxValue;
-            foreach (ClientBuildings.Entry e in known.Entries.Values)
+            foreach (ClientBuildings.Entry e in candidates)
             {
-                if (e.Ghost) continue;
                 int id = e.Data.id;
                 BuildingType type = e.Data.buildingType;
                 int2 size = WorldStateManager.GetBuildingSize(type);
@@ -226,8 +241,12 @@ namespace WAR2D.Client
                 if (type == BuildingType.Miner) Glint(e, id, now);
             }
             AudioService.Loop("construct_loop", loopAt);
-            Forget(known);
+            if (changed) Forget(known); // a building leaves only with a change
         }
+
+        private readonly List<ClientBuildings.Entry> candidates = new List<ClientBuildings.Entry>();
+        private ClientBuildings candidatesOf;
+        private int candidatesVersion = -1;
 
         /// <summary>A smoke puff or flame on one of the building's spots when it is due (spots alternate across the roof).</summary>
         private static void Emit(Dictionary<int, (float next, int count)> timers, int id, float now, float interval, float2 centre, int2 size, bool isSmoke)

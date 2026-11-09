@@ -54,6 +54,8 @@ public static class Decals
         public float Heading;
         public Sprite Sprite;
         public Color Tint = Color.white;
+        /// <summary>Counts the slot's reuses and hides: a queued fade step for an older stamp is stale.</summary>
+        public int Stamp;
     }
 
     private sealed class Pool
@@ -66,6 +68,8 @@ public static class Decals
         /// <summary>The mesh the pool's marks are in, and its first quad there (slot i is quad First + i).</summary>
         public Layer Layer;
         public int First;
+        /// <summary>The pool's place in <see cref="All"/> (the fade queue names pools by it).</summary>
+        public int Number;
 
         public Pool(string id, int size, float hold, float fade) { Id = id; Size = size; Hold = hold; Fade = fade; }
     }
@@ -111,8 +115,18 @@ public static class Decals
     private static Runner runner;
     private static ArtAtlas atlas;
 
+    /// <summary>
+    /// The next fade step of every mark, soonest first (a binary heap): each frame takes only the steps that are due, the same frame a
+    /// walk over every mark would have found them (2026-11-08: that walk cost a 100,000-unit client on three cores 0.35 ms a frame).
+    /// </summary>
+    private static readonly List<(float at, int pool, int slot, int stamp)> due = new List<(float, int, int, int)>();
+
+    /// <summary>Wrecks past their hold, fading by alpha every frame: (slot, stamp).</summary>
+    private static readonly List<(int slot, int stamp)> fadingWrecks = new List<(int, int)>();
+
     static Decals()
     {
+        for (int k = 0; k < All.Length; k++) All[k].Number = k;
         foreach (Pool p in All)
         {
             p.Layer = p == Wrecks ? WreckLayer : Marks;
@@ -244,6 +258,8 @@ public static class Decals
             p.Slots.Clear();
             p.Next = 0;
         }
+        due.Clear();
+        fadingWrecks.Clear();
         foreach (Layer layer in new[] { Marks, WreckLayer })
         {
             if (layer.Mesh != null) Destroy(layer.Mesh);
@@ -300,14 +316,104 @@ public static class Decals
         s.Heading = heading;
         s.Tint = tint ?? Color.white;
         s.Sprite = own != null ? own : atlas.Sprite(pool.Id, direction * atlas.Frames(pool.Id));
+        s.Stamp++;
         Draw(pool, i);
+        Schedule(pool, i, pool == Wrecks ? s.Start + WreckHold : NextStep(pool, s, atlas.Frames(pool.Id)));
         return s;
+    }
+
+    /// <summary>When the mark's fade frame next changes (<see cref="FrameAt"/>), or infinity for one that never fades.</summary>
+    private static float NextStep(Pool pool, Slot s, int frames)
+    {
+        if (float.IsPositiveInfinity(pool.Hold)) return float.PositiveInfinity;
+        return s.Frame == 0 ? s.Start + pool.Hold : s.Start + pool.Hold + pool.Fade * s.Frame / Mathf.Max(1, frames - 1);
+    }
+
+    private static void Schedule(Pool pool, int slot, float at)
+    {
+        if (float.IsPositiveInfinity(at)) return;
+        due.Add((at, pool.Number, slot, pool.Slots[slot].Stamp));
+        for (int c = due.Count - 1; c > 0;)
+        {
+            int parent = (c - 1) / 2;
+            if (due[parent].at <= due[c].at) break;
+            (due[parent], due[c]) = (due[c], due[parent]);
+            c = parent;
+        }
+    }
+
+    private static (float at, int pool, int slot, int stamp) PopDue()
+    {
+        var top = due[0];
+        int last = due.Count - 1;
+        due[0] = due[last];
+        due.RemoveAt(last);
+        for (int c = 0; ;)
+        {
+            int l = 2 * c + 1, r = l + 1, m = c;
+            if (l < due.Count && due[l].at < due[m].at) m = l;
+            if (r < due.Count && due[r].at < due[m].at) m = r;
+            if (m == c) break;
+            (due[m], due[c]) = (due[c], due[m]);
+            c = m;
+        }
+        return top;
+    }
+
+    /// <summary>Applies the fade steps due by <paramref name="now"/> and steps the fading wrecks' alpha.</summary>
+    private static void Step(float now)
+    {
+        while (due.Count > 0 && due[0].at <= now)
+        {
+            var (_, number, i, stamp) = PopDue();
+            Pool pool = All[number];
+            Slot s = pool.Slots[i];
+            if (!s.Active || s.Stamp != stamp) continue;
+            if (pool == Wrecks)
+            {
+                fadingWrecks.Add((i, stamp));
+                continue;
+            }
+            if (atlas == null) continue;
+            int frames = atlas.Frames(pool.Id);
+            int frame = FrameAt(now - s.Start, pool.Hold, pool.Fade, frames);
+            if (frame < 0)
+            {
+                Hide(pool, i);
+                continue;
+            }
+            if (frame != s.Frame)
+            {
+                s.Frame = frame;
+                s.Sprite = atlas.Sprite(pool.Id, s.Direction * frames + frame);
+                Draw(pool, i);
+            }
+            float next = NextStep(pool, s, frames);
+            Schedule(pool, i, next > now ? next : now + 1e-6f); // a step found a hair early is looked at again next frame
+        }
+        for (int k = fadingWrecks.Count - 1; k >= 0; k--)
+        {
+            var (i, stamp) = fadingWrecks[k];
+            Slot s = Wrecks.Slots[i];
+            float alpha = WreckAlpha(now - s.Start);
+            if (!s.Active || s.Stamp != stamp || alpha <= 0f)
+            {
+                if (s.Active && s.Stamp == stamp) Hide(Wrecks, i);
+                fadingWrecks[k] = fadingWrecks[fadingWrecks.Count - 1];
+                fadingWrecks.RemoveAt(fadingWrecks.Count - 1);
+                continue;
+            }
+            if (alpha >= 1f) continue;
+            s.Tint.a = alpha;
+            Draw(Wrecks, i);
+        }
     }
 
     /// <summary>Hides a mark: its quad shrinks to nothing.</summary>
     private static void Hide(Pool pool, int i)
     {
         pool.Slots[i].Active = false;
+        pool.Slots[i].Stamp++;
         Write(pool, i, default, default, default, default, default, default);
     }
 
@@ -393,17 +499,10 @@ public static class Decals
         layer.DirtyTo = -1;
     }
 
-    /// <summary>
-    /// Steps every mark through its fade at most this often (2026-11-08: walking the 2,700 pooled marks every frame cost a 100,000-unit
-    /// client 0.35 ms of its main thread a frame; a fade frame lasts far longer).
-    /// </summary>
-    private const float StepSeconds = 0.05f;
-
-    /// <summary>Steps every mark through its fade; hides the ones that are gone; uploads what changed.</summary>
+    /// <summary>Steps the marks through their fades; uploads what changed just before the frame renders.</summary>
     private sealed class Runner : MonoBehaviour
     {
         private ClientBuildings watched;
-        private float lastStep = float.NegativeInfinity;
 
         private void OnEntered(BuildingData data, HealthComponent health)
         {
@@ -411,6 +510,16 @@ public static class Decals
             int2 size = WorldStateManager.GetBuildingSize(data.buildingType);
             float2 centre = Footprint.VisualCenter((int2)math.round(data.position), size);
             ClearRubbleUnder(new Vector2(centre.x, centre.y), size);
+        }
+
+        private void OnEnable() => RenderPipelineManager.beginContextRendering += Upload;
+        private void OnDisable() => RenderPipelineManager.beginContextRendering -= Upload;
+
+        // After every script has placed its marks for the frame.
+        private static void Upload(ScriptableRenderContext context, List<Camera> cameras)
+        {
+            Decals.Upload(Marks);
+            Decals.Upload(WreckLayer);
         }
 
         private void Update()
@@ -421,51 +530,7 @@ public static class Decals
                 watched = ClientBuildings.Current;
                 if (watched != null) watched.Entered += OnEntered;
             }
-            float now = Time.time;
-            if (now - lastStep < StepSeconds) return;
-            lastStep = now;
-            for (int i = 0; i < Wrecks.Slots.Count; i++)
-            {
-                Slot s = Wrecks.Slots[i];
-                if (!s.Active) continue;
-                float alpha = WreckAlpha(now - s.Start);
-                if (alpha <= 0f)
-                {
-                    Hide(Wrecks, i);
-                    continue;
-                }
-                if (alpha >= 1f) continue;
-                s.Tint.a = alpha;
-                Draw(Wrecks, i);
-            }
-            if (atlas == null) return;
-            foreach (Pool pool in All)
-            {
-                if (pool == Wrecks) continue;
-                int frames = atlas.Frames(pool.Id);
-                for (int i = 0; i < pool.Slots.Count; i++)
-                {
-                    Slot s = pool.Slots[i];
-                    if (!s.Active) continue;
-                    int frame = FrameAt(now - s.Start, pool.Hold, pool.Fade, frames);
-                    if (frame < 0)
-                    {
-                        Hide(pool, i);
-                        continue;
-                    }
-                    if (frame == s.Frame) continue;
-                    s.Frame = frame;
-                    s.Sprite = atlas.Sprite(pool.Id, s.Direction * frames + frame);
-                    Draw(pool, i);
-                }
-            }
-        }
-
-        // Marks placed after this (a later script's LateUpdate) go up with the next frame's.
-        private void LateUpdate()
-        {
-            Upload(Marks);
-            Upload(WreckLayer);
+            Step(Time.time);
         }
 
         private void OnDestroy()

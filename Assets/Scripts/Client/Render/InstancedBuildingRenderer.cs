@@ -28,32 +28,21 @@ namespace WAR2D.Client.Render
         private NativeArray<UnitInstance> scratch;
         private readonly BuildingFrames frames;
         private readonly BuildingPacking.Lists lists = new BuildingPacking.Lists();
-        /// <summary>Per building: its health fraction last frame, when it was last hit, its bar's recent-damage trail, and whether it was a ghost.</summary>
+        /// <summary>Per building: its health fraction at the last layout, when it was last hit, its bar's trail then, and whether it was a ghost.</summary>
         private readonly Dictionary<int, (float health, float hitAt, float trail, bool ghost)> hits = new Dictionary<int, (float, float, float, bool)>();
-        /// <summary>Per building: its progress last frame and when it was finished (polish J's pulse).</summary>
+        /// <summary>Per building: its progress at the last layout and when it was finished (polish J's pulse).</summary>
         private readonly Dictionary<int, (byte progress, float finishedAt)> finish = new Dictionary<int, (byte, float)>();
-        private readonly Func<int, bool> finishing;
         private readonly List<int> gone = new List<int>();
-        private float now, dt;
-        // The last packing: what it was made from, and when.
-        private float packedAt = float.NegativeInfinity;
-        private ClientBuildings packedFrom;
-        private int packedCount;
-        private Rect? packedView;
-
-        /// <summary>
-        /// While the view stays inside the last packing's and the building count holds, the buildings are packed and uploaded at most this
-        /// often and the last packing is drawn again in between (2026-11-08: packing every known building every frame cost a 100,000-unit
-        /// client on three cores 0.5 ms a frame; a building's flash or bar changes far slower).
-        /// </summary>
-        public const float RepackSeconds = 1f / 30f;
-
-        /// <summary>The share of the view's size a packing reaches past each edge, so a camera that moves a little needs no repack.</summary>
-        private const float PackMargin = 0.25f;
-        private readonly Func<int, bool> flashing;
-        private readonly Func<int, float> trailOf;
+        private readonly Func<int, float> hitAtOf, trailAtOf, finishedAtOf;
         private Func<int, ClientBuildings.TurretHead> headOf;
         private ClientBuildings headsOf;
+        // What the last layout was made from: the buildings and their change count, the setting, the selection, the colours and the view.
+        private ClientBuildings laidFrom;
+        private int laidVersion = -1, laidBarMode = -1, laidSelection = int.MinValue, laidColours = -1;
+        private Rect? laidView;
+
+        /// <summary>The share of the view's size a layout reaches past each edge, so a camera that moves a little needs no new one.</summary>
+        private const float LayoutMargin = 0.25f;
 
         /// <param name="atlas">The <c>Buildings</c> atlas; without one, every building draws as a white square.</param>
         public InstancedBuildingRenderer(ArtAtlas atlas, ArtAtlas effects)
@@ -62,9 +51,9 @@ namespace WAR2D.Client.Render
             Shader quads = Resources.Load<Shader>(InstancedUnitRenderer.ShaderPath);
             if (shader == null || quads == null) throw new InvalidOperationException($"Resources/{ShaderPath}.shader or {InstancedUnitRenderer.ShaderPath} is missing");
             frames = new BuildingFrames(atlas, effects);
-            flashing = id => hits.TryGetValue(id, out var h) && HitFeedback.Flashing(h.hitAt, now);
-            trailOf = id => hits.TryGetValue(id, out var h) ? h.trail : 0f;
-            finishing = id => finish.TryGetValue(id, out var f) && HitFeedback.Finishing(f.finishedAt, now);
+            hitAtOf = id => hits.TryGetValue(id, out var h) ? h.hitAt : float.NegativeInfinity;
+            trailAtOf = id => hits.TryGetValue(id, out var h) ? h.trail : 0f;
+            finishedAtOf = id => finish.TryGetValue(id, out var f) ? f.finishedAt : float.NegativeInfinity;
 
             buildingMaterial = new Material(shader) { name = "Building instances", renderQueue = 2996 };
             buildingMaterial.SetTexture("_MainTex", atlas != null ? atlas.Texture : Texture2D.whiteTexture);
@@ -140,35 +129,45 @@ namespace WAR2D.Client.Render
         /// Packs and draws the buildings. <paramref name="colorOf"/> gives an owner's packed team colour; <paramref name="barMode"/>
         /// (a <see cref="HealthBarMode"/>) and <paramref name="selected"/> pick which health bars show.
         /// </summary>
+        /// <param name="selection">Changes whenever the selection does (negative: unknown, so every frame lays out); <paramref name="colours"/>
+        /// whenever an owner's colour does; <paramref name="everyFrame"/> for buildings changed other than through <see cref="ClientBuildings"/>
+        /// (a replay's per-player view).</param>
+        /// <remarks>
+        /// The layout (<see cref="BuildingPacking.Layout"/>, with the hits and finishes it shows) is made again only when the buildings, the
+        /// setting, the selection, the colours or the view change; each frame then steps it to <paramref name="time"/> and draws it (2026-11-09:
+        /// laying out every known building every frame cost a 100,000-unit client on three cores 0.8 ms of its frame).
+        /// </remarks>
         public void Draw(ClientBuildings known, float time, Func<int, uint> colorOf, int barMode = (int)HealthBarMode.DamagedOnly, Func<int, bool> selected = null,
-            Rect? view = null)
+            Rect? view = null, int selection = -1, int colours = 0, bool everyFrame = false)
         {
-            bool inside = view.HasValue == packedView.HasValue && (!view.HasValue || (packedView.Value.Contains(view.Value.min) && packedView.Value.Contains(view.Value.max)));
-            bool repack = time - packedAt >= RepackSeconds || time < packedAt || known != packedFrom || known.Entries.Count != packedCount || !inside;
-            if (repack)
+            bool inside = view.HasValue == laidView.HasValue && (!view.HasValue || (laidView.Value.Contains(view.Value.min) && laidView.Value.Contains(view.Value.max)));
+            if (everyFrame || selection < 0 || !inside || known != laidFrom || known.Version != laidVersion || barMode != laidBarMode || selection != laidSelection
+                || colours != laidColours)
             {
-                packedAt = time;
-                packedFrom = known;
-                packedCount = known.Entries.Count;
+                laidFrom = known;
+                laidVersion = known.Version;
+                laidBarMode = barMode;
+                laidSelection = selection;
+                laidColours = colours;
                 if (view.HasValue)
                 {
                     Rect v = view.Value;
-                    view = new Rect(v.xMin - v.width * PackMargin, v.yMin - v.height * PackMargin, v.width * (1f + 2f * PackMargin), v.height * (1f + 2f * PackMargin));
+                    view = new Rect(v.xMin - v.width * LayoutMargin, v.yMin - v.height * LayoutMargin, v.width * (1f + 2f * LayoutMargin), v.height * (1f + 2f * LayoutMargin));
                 }
-                packedView = view;
-                dt = now > 0f ? math.max(0f, time - now) : 0f;
-                now = time;
-                TrackHits(known);
+                laidView = view;
+                TrackHits(known, time);
                 if (headsOf != known)
                 {
                     headsOf = known;
                     headOf = known.HeadOf;
                 }
-                BuildingPacking.Pack(known.Entries.Values, frames, colorOf, WorldStateManager.GetBuildingSize, time, flashing, lists, headOf, barMode, selected, trailOf, finishing, view);
+                BuildingPacking.Layout(known.Entries.Values, frames, colorOf, WorldStateManager.GetBuildingSize, hitAtOf, lists, headOf, barMode, selected, trailAtOf, finishedAtOf, view);
+                Submit(lists.Bars, ref bars, ref barCapacity, barMaterial, true); // a bar's trail drains in the shader
             }
-            Submit(lists.Buildings, ref buildings, ref buildingCapacity, buildingMaterial, repack);
-            Submit(lists.Overlays, ref overlays, ref overlayCapacity, overlayMaterial, repack);
-            Submit(lists.Bars, ref bars, ref barCapacity, barMaterial, repack);
+            else Submit(lists.Bars, ref bars, ref barCapacity, barMaterial, false);
+            BuildingPacking.Animate(lists, frames, time);
+            Submit(lists.Buildings, ref buildings, ref buildingCapacity, buildingMaterial, true);
+            Submit(lists.Overlays, ref overlays, ref overlayCapacity, overlayMaterial, true);
         }
 
         /// <summary>
@@ -176,7 +175,7 @@ namespace WAR2D.Client.Render
         /// draining trail (<see cref="HitFeedback"/>). A ghost that comes back into sight with less health than last seen took that
         /// damage out of sight: no flash and no trail.
         /// </summary>
-        private void TrackHits(ClientBuildings known)
+        private void TrackHits(ClientBuildings known, float now)
         {
             foreach (ClientBuildings.Entry e in known.Entries.Values)
             {
@@ -190,7 +189,8 @@ namespace WAR2D.Client.Render
                         MinimapCombat.Current.Hit(Footprint.VisualCenter((int2)math.round(e.Data.position), WorldStateManager.GetBuildingSize(e.Data.buildingType)),
                             e.Data.ownerId == WorldEffects.LocalOwner, now);
                     float hitAt = hit ? now : h.hitAt;
-                    float trail = e.Ghost || h.ghost ? health : HitFeedback.Trail(h.trail, health, now - hitAt, dt);
+                    // The trail at a hit: where the last one's had drained to, at least the health (HitFeedback.TrailNow drains it after).
+                    float trail = e.Ghost || h.ghost ? health : hit ? math.max(HitFeedback.TrailNow(h.trail, h.health, now - h.hitAt), health) : h.trail;
                     // Written only when it changes: a write for every building every frame cost more than the rest (thousands at 100,000 units).
                     if (health != h.health || hitAt != h.hitAt || trail != h.trail || e.Ghost != h.ghost) hits[id] = (health, hitAt, trail, e.Ghost);
                 }

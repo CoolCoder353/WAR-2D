@@ -35,7 +35,7 @@ public class BuildingPackingTests
     private static BuildingPacking.Lists Pack(float time, params ClientBuildings.Entry[] entries)
     {
         var lists = new BuildingPacking.Lists();
-        BuildingPacking.Pack(entries, Frames(), _ => 0xFF0000FFu, Size, time, _ => false, lists);
+        BuildingPacking.Pack(entries, Frames(), _ => 0xFF0000FFu, Size, time, _ => float.NegativeInfinity, lists);
         return lists;
     }
 
@@ -119,7 +119,7 @@ public class BuildingPackingTests
     private static BuildingPacking.Lists PackTurret(float time, ClientBuildings.TurretHead head, params ClientBuildings.Entry[] entries)
     {
         var lists = new BuildingPacking.Lists();
-        BuildingPacking.Pack(entries, TurretFrames(), _ => 0xFF0000FFu, Size, time, _ => false, lists, _ => head);
+        BuildingPacking.Pack(entries, TurretFrames(), _ => 0xFF0000FFu, Size, time, _ => float.NegativeInfinity, lists, _ => head);
         return lists;
     }
 

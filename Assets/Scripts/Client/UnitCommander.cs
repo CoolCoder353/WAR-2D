@@ -118,7 +118,7 @@ public class UnitCommander : NetworkBehaviour
     private void LateUpdate()
     {
         Selection.Prune();
-        WAR2D.Client.ClientWorld.Instance?.Draw(Selection.Selected, Roaming.Count > 0 ? Roaming.Ids : null);
+        WAR2D.Client.ClientWorld.Instance?.Draw(Selection.Selected, Roaming.Count > 0 ? Roaming.Ids : null, unchecked(Selection.Version * 65599 + Roaming.Version));
     }
 
     /// <summary>

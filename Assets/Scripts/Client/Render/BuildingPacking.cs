@@ -71,9 +71,26 @@ namespace WAR2D.Client.Render
         /// <summary><see cref="UnitInstance.rotation"/> of a turret head: the building shader ignores it, the sort draws the head after its base.</summary>
         private const float HeadLayer = 1f;
 
+        /// <summary>What a packed building or head needs to step each frame: its frames and the times its recoil, flash and pulse count from.</summary>
+        public struct Anim
+        {
+            /// <summary>The frame with no step added, how many it loops through (1: it holds), its hold and phase (an idle loop).</summary>
+            public uint First;
+            public int Frames, Hold;
+            public float Phase;
+            /// <summary>A Gun turret's head, and its last shot (<c>Time.time</c>).</summary>
+            public bool Head;
+            public float FiredAt;
+            /// <summary>Its last hit and its finish (<c>Time.time</c>; -infinity for none), and whether it is a ghost (neither shows).</summary>
+            public float HitAt, FinishedAt;
+            public bool Ghost;
+        }
+
         public sealed class Lists
         {
             public readonly List<UnitInstance> Buildings = new List<UnitInstance>();
+            /// <summary>Parallel to <see cref="Buildings"/>: how each steps (<see cref="Animate"/>).</summary>
+            public readonly List<Anim> Anims = new List<Anim>();
             public readonly List<UnitInstance> Overlays = new List<UnitInstance>();
             /// <summary>Health and progress bars (the bar art: frame = how full).</summary>
             public readonly List<UnitInstance> Bars = new List<UnitInstance>();
@@ -81,6 +98,7 @@ namespace WAR2D.Client.Render
             public void Clear()
             {
                 Buildings.Clear();
+                Anims.Clear();
                 Overlays.Clear();
                 Bars.Clear();
             }
@@ -95,19 +113,31 @@ namespace WAR2D.Client.Render
             return byX != 0 ? byX : a.rotation.CompareTo(b.rotation);
         };
 
+        /// <summary>Lays the buildings out (<see cref="Layout"/>) and steps them to <paramref name="time"/> (<see cref="Animate"/>).</summary>
+        public static void Pack(IEnumerable<ClientBuildings.Entry> entries, BuildingFrames frames, Func<int, uint> colorOf, Func<BuildingType, int2> sizeOf,
+            float time, Func<int, float> hitAtOf, Lists into, Func<int, ClientBuildings.TurretHead> headOf = null,
+            int barMode = (int)HealthBarMode.DamagedOnly, Func<int, bool> selected = null, Func<int, float> trailAtOf = null,
+            Func<int, float> finishedAtOf = null, Rect? view = null)
+        {
+            Layout(entries, frames, colorOf, sizeOf, hitAtOf, into, headOf, barMode, selected, trailAtOf, finishedAtOf, view);
+            Animate(into, frames, time);
+        }
+
         /// <param name="colorOf">An owner's packed team colour.</param>
-        /// <param name="flashing">True for a building that was just hit (it flashes red).</param>
-        /// <param name="headOf">A Gun turret's head (facing and last shot, on the <paramref name="time"/> clock); null faces every head east.</param>
+        /// <param name="hitAtOf">When a building was last hit (<c>Time.time</c>; -infinity for never): it flashes red, and its bar's trail drains from then.</param>
+        /// <param name="headOf">A Gun turret's head (facing and last shot, on the <c>Time.time</c> clock); null faces every head east.</param>
         /// <param name="barMode">The Gameplay setting's <see cref="HealthBarMode"/>: which finished buildings get a health bar.</param>
         /// <param name="selected">True for a selected building (SelectedOnly); null when none is.</param>
-        /// <param name="trailOf">A building's recent-damage trail for its health bar (<see cref="HitFeedback"/>); null draws none.</param>
-        /// <param name="finishing">True for a building that was just finished (it pulses bright); null pulses none.</param>
+        /// <param name="trailAtOf">A building's recent-damage trail at its last hit (<see cref="HitFeedback"/>: the bar's shader drains it); null draws none.</param>
+        /// <param name="finishedAtOf">When a building was just finished (it pulses bright; -infinity for none); null pulses none.</param>
         /// <param name="view">The world rect on screen: a building outside it (with a tile for its bar and head) packs nothing (2026-11-07: every
         /// building on the map was packed and sorted each frame); null packs them all.</param>
-        public static void Pack(IEnumerable<ClientBuildings.Entry> entries, BuildingFrames frames, Func<int, uint> colorOf, Func<BuildingType, int2> sizeOf,
-            float time, Func<int, bool> flashing, Lists into, Func<int, ClientBuildings.TurretHead> headOf = null,
-            int barMode = (int)HealthBarMode.DamagedOnly, Func<int, bool> selected = null, Func<int, float> trailOf = null,
-            Func<int, bool> finishing = null, Rect? view = null)
+        /// <remarks>Everything a building shows over time (its idle loop, a head's recoil, a flash, a finish pulse, a bar's trail) is left to
+        /// <see cref="Animate"/> and the shaders, so a layout holds until the buildings, the setting, the selection or the view change.</remarks>
+        public static void Layout(IEnumerable<ClientBuildings.Entry> entries, BuildingFrames frames, Func<int, uint> colorOf, Func<BuildingType, int2> sizeOf,
+            Func<int, float> hitAtOf, Lists into, Func<int, ClientBuildings.TurretHead> headOf = null,
+            int barMode = (int)HealthBarMode.DamagedOnly, Func<int, bool> selected = null, Func<int, float> trailAtOf = null,
+            Func<int, float> finishedAtOf = null, Rect? view = null)
         {
             into.Clear();
             foreach (ClientBuildings.Entry e in entries)
@@ -119,29 +149,35 @@ namespace WAR2D.Client.Render
                 (int first, int count, int directions) = frames.Of(d.buildingType);
                 int facing = directions <= 1 ? 0 : ((int)math.round(d.rotation / 90f) % directions + directions) % directions;
                 float health = e.Health.maxHealth > 0f ? e.Health.currentHealth / e.Health.maxHealth : 1f;
-                int frame = d.buildingType == BuildingType.GunTurret ? (count > 1 && health < TurretDamagedBelow ? 1 : 0)
-                    : e.Ghost || count <= 1 ? 0 : AnimationFrame(d.buildingType, centre, time, count);
+                bool turret = d.buildingType == BuildingType.GunTurret;
+                // A Gun turret's base holds its damaged frame; a ghost holds frame 0; the rest loop their idle frames.
+                int held = turret ? (count > 1 && health < TurretDamagedBelow ? 1 : 0) : 0;
+                bool loops = !turret && !e.Ghost && count > 1;
                 bool rising = e.Progress < 100;
                 float progress = e.Progress / 100f;
                 uint color = colorOf(d.ownerId) & 0x00FFFFFFu;
                 float alpha = rising ? math.lerp(StartAlpha, RisingAlpha, progress) : 1f;
                 color |= (uint)math.round(alpha * 255f) << 24;
-                int flags = (e.Ghost ? GhostFlag : 0) | (!e.Ghost && flashing(d.id) ? FlashFlag : 0)
-                    | (!e.Ghost && finishing != null && finishing(d.id) ? FinishFlag : 0);
-                into.Buildings.Add(new UnitInstance { position = centre, frame = (uint)(first + facing * count + frame), color = color, scale = 1f, pad = flags, health = 1f });
-                if (d.buildingType == BuildingType.GunTurret && frames.Head.frames > 0)
+                float hitAt = e.Ghost ? float.NegativeInfinity : hitAtOf(d.id);
+                float finishedAt = e.Ghost || finishedAtOf == null ? float.NegativeInfinity : finishedAtOf(d.id);
+                var anim = new Anim
+                {
+                    First = (uint)(first + facing * count + held), Frames = loops ? count : 1, Hold = Hold(d.buildingType), Phase = Phase(centre),
+                    HitAt = hitAt, FinishedAt = finishedAt, Ghost = e.Ghost, FiredAt = float.NegativeInfinity,
+                };
+                into.Buildings.Add(new UnitInstance { position = centre, frame = anim.First, color = color, scale = 1f, health = 1f });
+                into.Anims.Add(anim);
+                if (turret && frames.Head.frames > 0)
                 {
                     ClientBuildings.TurretHead head = headOf != null ? headOf(d.id) : new ClientBuildings.TurretHead { FiredAt = float.NegativeInfinity };
                     var (headFirst, headFrames, headDirections) = frames.Head;
                     int headFacing = head.Facing % headDirections;
-                    // v0.20: the 2×2 head's frames 1 and 2 fire its left and right barrels; ten shots a second alternate them.
-                    int recoil = !e.Ghost && headFrames > 1 && time - head.FiredAt < RecoilSeconds && time >= head.FiredAt
-                        ? 1 + ((int)(time * 20f) & 1) % (headFrames - 1) : 0;
-                    into.Buildings.Add(new UnitInstance
-                    {
-                        position = centre, rotation = HeadLayer, frame = (uint)(headFirst + headFacing * headFrames + recoil),
-                        color = color, scale = 1f, pad = flags, health = 1f,
-                    });
+                    anim.First = (uint)(headFirst + headFacing * headFrames);
+                    anim.Frames = headFrames;
+                    anim.Head = true;
+                    anim.FiredAt = head.FiredAt;
+                    into.Buildings.Add(new UnitInstance { position = centre, rotation = HeadLayer, frame = anim.First, color = color, scale = 1f, health = 1f });
+                    into.Anims.Add(anim);
                 }
 
                 if (rising && !e.Ghost)
@@ -150,35 +186,95 @@ namespace WAR2D.Client.Render
                         into.Overlays.Add(new UnitInstance
                         {
                             position = centre,
-                            frame = (uint)(frames.OverlayFirst + (int)(time * 4f) % frames.OverlayFrames),
+                            rotation = float.NegativeInfinity, // the unit shader's hit time: an overlay never flashes
+                            frame = (uint)frames.OverlayFirst,
                             color = 0xFFFFFFFFu,
                             scale = size.x,
                         });
                     into.Bars.Add(Bar(centre - new float2(0f, size.y * 0.5f + BarGap), size, progress, ProgressColor));
                     continue;
                 }
-                if (!e.Ghost && WAR2D.Client.Overlays.OverlayRules.ShowHealthBar(barMode, health, selected != null && selected(d.id))) into.Bars.Add(Bar(centre + new float2(0f, size.y * 0.5f + BarGap), size, health, InstancedUnitRenderer.BarColor(health), trailOf != null ? trailOf(d.id) : health));
+                if (!e.Ghost && WAR2D.Client.Overlays.OverlayRules.ShowHealthBar(barMode, health, selected != null && selected(d.id)))
+                    into.Bars.Add(Bar(centre + new float2(0f, size.y * 0.5f + BarGap), size, health, InstancedUnitRenderer.BarColor(health), trailAtOf != null ? trailAtOf(d.id) : health, hitAt));
             }
-            into.Buildings.Sort(FartherFirst);
+            SortFartherFirst(into);
         }
 
-        /// <summary>A bar <paramref name="full"/> full; <paramref name="trail"/> (as full or more) is the recent-damage level the shader draws pale.</summary>
-        private static UnitInstance Bar(float2 at, int2 size, float full, uint color, float trail = 0f) => new UnitInstance
+        /// <summary>
+        /// Steps the laid-out buildings to <paramref name="time"/>: each idle loop's frame, a head's recoil, the hit flash and the finish
+        /// pulse, and the construction overlay's frame; the same as a layout made at that time.
+        /// </summary>
+        public static void Animate(Lists into, BuildingFrames frames, float time)
+        {
+            for (int i = 0; i < into.Buildings.Count; i++)
+            {
+                Anim a = into.Anims[i];
+                UnitInstance u = into.Buildings[i];
+                int step;
+                // v0.20: the 2×2 head's frames 1 and 2 fire its left and right barrels; ten shots a second alternate them.
+                if (a.Head) step = !a.Ghost && a.Frames > 1 && time - a.FiredAt < RecoilSeconds && time >= a.FiredAt ? 1 + ((int)(time * 20f) & 1) % (a.Frames - 1) : 0;
+                else step = a.Frames > 1 ? (int)((time + a.Phase) * ArtStyle.FramesPerSecond) / a.Hold % a.Frames : 0;
+                u.frame = a.First + (uint)step;
+                u.pad = (a.Ghost ? GhostFlag : 0) | (!a.Ghost && HitFeedback.Flashing(a.HitAt, time) ? FlashFlag : 0)
+                    | (!a.Ghost && HitFeedback.Finishing(a.FinishedAt, time) ? FinishFlag : 0);
+                into.Buildings[i] = u;
+            }
+            if (frames.OverlayFrames <= 0) return;
+            uint overlay = (uint)(frames.OverlayFirst + (int)(time * 4f) % frames.OverlayFrames);
+            for (int i = 0; i < into.Overlays.Count; i++)
+            {
+                UnitInstance u = into.Overlays[i];
+                u.frame = overlay;
+                into.Overlays[i] = u;
+            }
+        }
+
+        private static readonly List<int> order = new List<int>();
+        private static readonly List<UnitInstance> sortedBuildings = new List<UnitInstance>();
+        private static readonly List<Anim> sortedAnims = new List<Anim>();
+
+        /// <summary>Sorts the buildings farther first (the 3/4 view), their steps with them.</summary>
+        private static void SortFartherFirst(Lists into)
+        {
+            order.Clear();
+            for (int i = 0; i < into.Buildings.Count; i++) order.Add(i);
+            List<UnitInstance> buildings = into.Buildings;
+            order.Sort((a, b) => FartherFirst(buildings[a], buildings[b]));
+            sortedBuildings.Clear();
+            sortedAnims.Clear();
+            foreach (int i in order)
+            {
+                sortedBuildings.Add(buildings[i]);
+                sortedAnims.Add(into.Anims[i]);
+            }
+            buildings.Clear();
+            buildings.AddRange(sortedBuildings);
+            into.Anims.Clear();
+            into.Anims.AddRange(sortedAnims);
+        }
+
+        /// <summary>
+        /// A bar <paramref name="full"/> full; <paramref name="trail"/> (as full or more) is the recent-damage level at the hit at
+        /// <paramref name="hitAt"/>, which the unit shader draws pale and drains (<see cref="HitFeedback.TrailNow"/>).
+        /// </summary>
+        private static UnitInstance Bar(float2 at, int2 size, float full, uint color, float trail = 0f, float hitAt = float.PositiveInfinity) => new UnitInstance
         {
             position = at,
             rotation = trail,
+            pad = hitAt,
             frame = (uint)math.clamp((int)math.round(math.saturate(full) * (InstancedUnitRenderer.BarFrames - 1)), 0, InstancedUnitRenderer.BarFrames - 1),
             color = color,
             health = full,
             scale = size.x,
         };
 
-        /// <summary>The idle frame at <paramref name="time"/>: the Spawner's lamp and the Jammer's aerial lamps blink once a second, the rest turn every tick; neighbours are staggered.</summary>
-        private static int AnimationFrame(BuildingType type, float2 centre, float time, int frames)
-        {
-            int hold = type == BuildingType.Barracks || type == BuildingType.Jammer ? math.max(1, ArtStyle.FramesPerSecond / 2) : 1;
-            float phase = (centre.x * 0.37f + centre.y * 0.61f) % 1f;
-            return (int)((time + phase) * ArtStyle.FramesPerSecond) / hold % frames;
-        }
+        /// <summary>
+        /// Frames an idle frame holds: the Spawner's lamp and the Jammer's aerial lamps blink once a second, the rest turn every tick
+        /// (<see cref="Animate"/>: <c>(int)((time + phase) * FramesPerSecond) / hold % frames</c>).
+        /// </summary>
+        private static int Hold(BuildingType type) => type == BuildingType.Barracks || type == BuildingType.Jammer ? math.max(1, ArtStyle.FramesPerSecond / 2) : 1;
+
+        /// <summary>A building's place in its idle loop, so neighbours are staggered.</summary>
+        private static float Phase(float2 centre) => (centre.x * 0.37f + centre.y * 0.61f) % 1f;
     }
 }

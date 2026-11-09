@@ -32,6 +32,16 @@ namespace WAR2D.Client.Render
         }
 
         /// <summary>
+        /// The trail at <paramref name="sinceHit"/> seconds after the last hit, from its level <paramref name="trailAt"/> at that hit: what
+        /// <see cref="Trail"/> stepped frame by frame reaches, worked out at once (the unit shader does the same).
+        /// </summary>
+        public static float TrailNow(float trailAt, float health, float sinceHit)
+        {
+            if (health >= trailAt) return health;
+            return sinceHit < HoldSeconds ? trailAt : math.max(health, trailAt - DrainPerSecond * (sinceHit - HoldSeconds));
+        }
+
+        /// <summary>
         /// The trail's next level, a health fraction never below <paramref name="health"/>: it follows healing at once, holds after a
         /// hit, then drains toward the health.
         /// </summary>

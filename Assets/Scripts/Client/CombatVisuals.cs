@@ -141,12 +141,17 @@ namespace WAR2D.Client
         /// True while the unit at <paramref name="index"/> is drawn in the air: <paramref name="drawn"/> is its sprite's position (raised by
         /// the arc) and <paramref name="ground"/> where its shadow goes.
         /// </summary>
-        public bool Airborne(int index, out float2 drawn, out float2 ground, out float height01)
+        public bool Airborne(int index, out float2 drawn, out float2 ground, out float height01) => AirborneAt(index, serverTime, out drawn, out ground, out height01);
+
+        /// <summary>Where an airborne unit is drawn at server time <paramref name="time"/> (<see cref="Airborne"/> is now).</summary>
+        public bool AirborneAt(int index, float time, out float2 drawn) => AirborneAt(index, time, out drawn, out _, out _);
+
+        private bool AirborneAt(int index, float time, out float2 drawn, out float2 ground, out float height01)
         {
             drawn = ground = default;
             height01 = 0f;
             if ((ClientCombat.Current.StatusOf(index) & UnitStatusBits.Airborne) == 0 || !leaps.TryGetValue(index, out Leap leap)) return false;
-            float t = math.saturate((serverTime - leap.Start) / math.max(0.01f, leap.End - leap.Start));
+            float t = math.saturate((time - leap.Start) / math.max(0.01f, leap.End - leap.Start));
             ground = math.lerp(leap.From, leap.To, t);
             height01 = 4f * t * (1f - t);
             drawn = ground + new float2(0f, LeapHeight * height01);
@@ -277,6 +282,18 @@ namespace WAR2D.Client
                 float2 muzzle = from + dir * 0.9f;
                 float2 span = to - muzzle;
                 float spanLength = math.length(span);
+                // A line wholly off the screen draws nothing (2026-11-09: every Sniper on the map placed its sprite each frame).
+                float2 low = math.min(muzzle, to) - LaserMargin, high = math.max(muzzle, to) + LaserMargin;
+                if (high.x < view.xMin || low.x > view.xMax || high.y < view.yMin || low.y > view.yMax)
+                {
+                    if (charge >= 0.9f && !aim.Glinted)
+                    {
+                        Effects.MuzzleGlint(new Vector2(muzzle.x, muzzle.y));
+                        aim.Glinted = changed = true;
+                    }
+                    if (changed) aimUpdates.Add((pair.Key, aim));
+                    continue;
+                }
                 SpriteRenderer laser = Next(laserSprites, ref lasersUsed, "AimLaser", SortingOrders.Effects);
                 laser.sprite = atlas.Sprite("AimLaser", math.clamp((int)(charge * 4.99f), 0, 4));
                 float2 mid = muzzle + span * 0.5f;
@@ -307,11 +324,11 @@ namespace WAR2D.Client
                     Bar(new Vector2(at.x, at.y + 0.4f * scale + 0.175f - BarGap), fill, aiming ? new Color(0.95f, 0.25f, 0.2f) : new Color(0.55f, 0.75f, 0.95f));
                 }
 
-            Hide(flameSprites, flamesUsed);
-            Hide(laserSprites, lasersUsed);
-            Hide(shadowSprites, shadowsUsed);
-            Hide(barSprites, barsUsed);
-            Hide(markerSprites, markersUsed);
+            Hide(flameSprites, flamesUsed, ref flamesShown);
+            Hide(laserSprites, lasersUsed, ref lasersShown);
+            Hide(shadowSprites, shadowsUsed, ref shadowsShown);
+            Hide(barSprites, barsUsed, ref barsShown);
+            Hide(markerSprites, markersUsed, ref markersShown);
         }
 
         private bool TryTarget(int id, int index, System.Func<int, (bool known, float2 at, byte type, float scale)> unitOf, ClientBuildings buildings, out float2 at)
@@ -330,6 +347,9 @@ namespace WAR2D.Client
         /// <summary>A small flame beside a health bar (Figma B1: the shape, not only the colour, says it burns).</summary>
         /// <summary>Tiles past the view's edge a burning marker is still placed (it sits up to about 2 tiles off its unit or building).</summary>
         private const float MarkerMargin = 3f;
+
+        /// <summary>Tiles round a laser's ends that its sprite may reach (its width and the art's padding).</summary>
+        private const float LaserMargin = 1f;
 
         private void Marker(Vector2 at)
         {
@@ -382,10 +402,15 @@ namespace WAR2D.Client
             return s;
         }
 
-        private static void Hide(List<SpriteRenderer> pool, int used)
+        /// <summary>Hides the sprites past <paramref name="used"/> that were shown last time (the rest already are hidden).</summary>
+        private static void Hide(List<SpriteRenderer> pool, int used, ref int shown)
         {
-            for (int i = used; i < pool.Count; i++)
+            for (int i = used; i < shown && i < pool.Count; i++)
                 if (pool[i].gameObject.activeSelf) pool[i].gameObject.SetActive(false);
+            shown = used;
         }
+
+        // How many of each pool's sprites the last draw left shown (the first ones: Next hands them out in order).
+        private int flamesShown, lasersShown, shadowsShown, barsShown, markersShown;
     }
 }

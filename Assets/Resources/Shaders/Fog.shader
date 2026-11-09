@@ -48,7 +48,7 @@ Shader "WAR2D/Fog"
                 float2 cell = floor(i.world * _PixelsPerUnit / _Block);
                 float2 world = (cell + 0.5) * _Block / _PixelsPerUnit;
                 float2 uv = world / _WorldSize.xy; // the quad spans (0, 0) to _WorldSize
-                float a = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, uv).a;
+                float a = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, uv).r; // FogView's eased levels, one channel
                 uint2 c = (uint2)(int2)cell & 3;
                 float t = (Bayer[c.y * 4 + c.x] + 0.5) / 16.0;
                 // Between seen and explored, or between explored and unexplored.

@@ -14,8 +14,9 @@ namespace WAR2D.Client.Render
     /// One unit's draw data, the 40 bytes the shader's <c>StructuredBuffer&lt;UnitInstance&gt;</c> declares:
     /// <c>float2 position; float rotation; uint frame; uint color; float health; float scale; float pad; float2 velocity</c>.
     /// <c>frame</c> is the atlas cell (<see cref="UnitFrames"/>: the facing picks a rendered direction, the
-    /// shader doesn't rotate the quad), <c>color</c> the owner's colour for the team mask, and <c>pad</c> flags (bit 1
-    /// selected, bit 2 hit flash). A health bar's <c>rotation</c> is its recent-damage trail (<see cref="HitFeedback"/>). <c>velocity</c>
+    /// shader doesn't rotate the quad), <c>color</c> the owner's colour for the team mask, <c>pad</c> bit 1 selected and <c>rotation</c>
+    /// the time of the unit's last hit (the shader flashes it). A health bar's <c>rotation</c> is its recent-damage trail at the last hit
+    /// and its <c>pad</c> that hit's time (<see cref="HitFeedback"/>: the shader drains the trail). <c>velocity</c>
     /// (tiles a second) carries the instance on from <c>position</c> by the time since it was packed (<see cref="InstancedUnitRenderer.DrawAheadProperty"/>).
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -46,6 +47,9 @@ namespace WAR2D.Client.Render
         /// units move smoothly on the frames between packs (<see cref="Redraw"/>).
         /// </summary>
         public static readonly int DrawAheadProperty = Shader.PropertyToID("_UnitDrawAhead");
+
+        /// <summary>The global shader float of this frame's <c>Time.time</c>, the clock hits are stamped on (flash and trail).</summary>
+        public static readonly int TimeProperty = Shader.PropertyToID("_UnitTime");
 
         private int unitCount, turretCount, ringCount, barCount;
         public const int BarFrames = 16;
@@ -88,6 +92,7 @@ namespace WAR2D.Client.Render
         {
             Shader shader = Resources.Load<Shader>(ShaderPath);
             if (shader == null) throw new InvalidOperationException($"Resources/{ShaderPath}.shader is missing");
+            Shader.SetGlobalVector("_HitFeedback", new Vector4(HitFeedback.FlashSeconds, HitFeedback.HoldSeconds, HitFeedback.DrainPerSecond, 0f));
             barAtlas = BuildBarAtlas();
             unitMaterial = new Material(shader) { name = "Unit instances", renderQueue = 3000 };
             // Unit frames are one tile square (64 px at PPU 64).
@@ -292,16 +297,16 @@ namespace WAR2D.Client.Render
         [ReadOnly] public NativeArray<byte> Refreshed;
         /// <summary>Parallel to <see cref="Known"/>: how fast the drawn position moves (tiles a second), for the frames between packs.</summary>
         [ReadOnly] public NativeArray<float2> Velocity;
-        [ReadOnly] public NativeArray<float> Rotation;   // by index
+        /// <summary>By index: when the unit was last hit (Time.time; -infinity for never). The shader flashes it and drains its bar's trail.</summary>
+        [ReadOnly] public NativeArray<float> HitAt;
         [ReadOnly] public NativeArray<uint> Frame;       // by index: the atlas cell
         [ReadOnly] public NativeArray<uint> Color;       // by index
         [ReadOnly] public NativeArray<float> Health01;   // by index
         [ReadOnly] public NativeArray<float> Scale;      // by index: tiles across (2 for large units)
         [ReadOnly] public NativeArray<byte> Selected;    // by index: bit 1 selected, bit 2 roaming
-        [ReadOnly] public NativeArray<byte> Flash;       // by index: 1 while the unit flashes from a hit
         /// <summary>v0.20 (Figma B1): by index, 1 hides the health bar (an airborne Bomber's).</summary>
         [ReadOnly] public NativeArray<byte> HideBar;
-        [ReadOnly] public NativeArray<float> Trail;      // by index: the health bar's recent-damage level
+        [ReadOnly] public NativeArray<float> Trail;      // by index: the health bar's recent-damage level at the last hit
         public float UnitHalfSize;
         /// <summary>
         /// The view with a margin (xMin, yMin, xMax, yMax): a unit outside it packs nothing (2026-11-07: every known unit was uploaded and
@@ -334,23 +339,23 @@ namespace WAR2D.Client.Render
             float2 velocity = Velocity[i];
             if (selected)
             {
-                RingSlots[2 * i] = new UnitInstance { position = Positions[i], frame = scale > 1.5f ? LargeRingFrame : RingFrame, color = 0xFFFFFFFFu, scale = scale > 1.5f ? 2f : 1f, velocity = velocity };
+                RingSlots[2 * i] = new UnitInstance { position = Positions[i], rotation = float.NegativeInfinity, frame = scale > 1.5f ? LargeRingFrame : RingFrame, color = 0xFFFFFFFFu, scale = scale > 1.5f ? 2f : 1f, velocity = velocity };
                 emit |= EmitRing;
             }
             if ((Selected[index] & 2) != 0)
             {
-                RingSlots[2 * i + 1] = new UnitInstance { position = Positions[i], frame = RoamRingFrame, color = 0xFFFFFFFFu, scale = scale > 1.5f ? 2f : 1f, velocity = velocity };
+                RingSlots[2 * i + 1] = new UnitInstance { position = Positions[i], rotation = float.NegativeInfinity, frame = RoamRingFrame, color = 0xFFFFFFFFu, scale = scale > 1.5f ? 2f : 1f, velocity = velocity };
                 emit |= EmitRoamRing;
             }
             Instances[i] = new UnitInstance
             {
                 position = Positions[i],
-                rotation = Rotation[index],
+                rotation = HitAt[index],
                 frame = Frame[index],
                 color = Color[index],
                 health = health,
                 scale = scale,
-                pad = (uint)(Selected[index] & 1) | (uint)Flash[index] << 1,
+                pad = (uint)(Selected[index] & 1),
                 velocity = velocity,
             };
             if (WAR2D.Client.Overlays.OverlayRules.ShowHealthBar(BarMode, health, selected) && !(HideBar.IsCreated && HideBar[index] != 0))
@@ -364,6 +369,7 @@ namespace WAR2D.Client.Render
                     color = InstancedUnitRenderer.BarColor(health),
                     health = health,
                     scale = 1f,
+                    pad = HitAt[index],
                     velocity = velocity,
                 };
                 emit |= EmitBar;

@@ -63,7 +63,7 @@ public class DrawJobTests
         public readonly List<Func<Array>> ByIndex = new List<Func<Array>>();
         private NativeArray<int> known, owners, trackedId, trackIds, turretOf;
         private NativeArray<float2> positions, velocity, lastPosition, lastSteer, lastTracks, aimAt;
-        private NativeArray<byte> refreshed, types, health, selected, hidden, lastHealth, flash, emits;
+        private NativeArray<byte> refreshed, types, health, selected, hidden, lastHealth, emits;
         private NativeArray<PredictState> states;
         private NativeArray<float> lastAction, scaleByType, rotation, health01, drawScale, hitAt, trail, turretAngle, turretTurnedAt, aimUntil;
         private NativeArray<uint> frame, color;
@@ -96,7 +96,7 @@ public class DrawJobTests
             hidden = Make<byte>(Capacity, false); aimAt = Make<float2>(Capacity, false);
             lastPosition = Make<float2>(Capacity, true); lastSteer = Make<float2>(Capacity, true); rotation = Make<float>(Capacity, true); frame = Make<uint>(Capacity, true);
             color = Make<uint>(Capacity, true); health01 = Make<float>(Capacity, true); drawScale = Make<float>(Capacity, true);
-            trackedId = Make<int>(Capacity, true); lastHealth = Make<byte>(Capacity, true); flash = Make<byte>(Capacity, true);
+            trackedId = Make<int>(Capacity, true); lastHealth = Make<byte>(Capacity, true);
             hitAt = Make<float>(Capacity, true); trail = Make<float>(Capacity, true); trackIds = Make<int>(Capacity, true);
             lastTracks = Make<float2>(Capacity, true); turretOf = Make<int>(Capacity, true); turretAngle = Make<float>(Capacity, true);
             turretTurnedAt = Make<float>(Capacity, true); aimUntil = Make<float>(Capacity, true);
@@ -174,10 +174,10 @@ public class DrawJobTests
             Known = known, Positions = positions, Refreshed = refreshed, Velocity = velocity, Steer = positions, MaxTurn = 0.2f, Owners = owners, Types = types, Health = health, States = states,
             LastAction = lastAction, Selected = selected, ScaleByType = scaleByType, Hidden = hidden, UseHidden = true,
             Colours = colours, UnknownColour = 0x808080FFu, Cells = cells, HasFrames = true,
-            ServerTime = ServerTime, Now = Now, FrameSeconds = 1f / 60f, LocalOwner = 1,
+            ServerTime = ServerTime, Now = Now, LocalOwner = 1,
             View = new float4(0f, 0f, 200f, 200f), TurretView = new float4(0f, 0f, 150f, 200f), BarrelShadowFrame = 5000u,
             LastPosition = lastPosition, LastSteer = lastSteer, Rotation = rotation, Frame = frame, Color = color, Health01 = health01, DrawScale = drawScale,
-            TrackedId = trackedId, LastHealth = lastHealth, HitAt = hitAt, Trail = trail, Flash = flash,
+            TrackedId = trackedId, LastHealth = lastHealth, HitAt = hitAt, Trail = trail,
             TrackIds = trackIds, LastTracks = lastTracks, TurretOf = turretOf, TurretAngle = turretAngle,
             TurretTurnedAt = turretTurnedAt, AimUntil = aimUntil, AimAt = aimAt,
             Emits = emits, HitSlots = hitSlots, TrackSlots = trackSlots, TurretSlots = turretSlots, ShadowSlots = shadowSlots,

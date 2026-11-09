@@ -391,6 +391,9 @@ namespace WAR2D.Net.Replication
 
         public readonly Dictionary<int, Entry> Entries = new Dictionary<int, Entry>();
 
+        /// <summary>Counts the changes made through this class (a draw packed before the last one shows older buildings).</summary>
+        public int Version { get; private set; }
+
         /// <summary>A Gun turret's head as this client last saw it (v0.13): its facing and when it last fired.</summary>
         public struct TurretHead
         {
@@ -420,6 +423,7 @@ namespace WAR2D.Net.Replication
         public void Fired(int id, byte? facing, float time)
         {
             if (!Entries.ContainsKey(id)) return;
+            Version++;
             Heads.TryGetValue(id, out TurretHead head);
             if (facing.HasValue) head.Facing = facing.Value;
             head.FiredAt = time;
@@ -456,6 +460,7 @@ namespace WAR2D.Net.Replication
         internal void SetProgress(int id, byte progress)
         {
             if (!Entries.TryGetValue(id, out Entry e)) return;
+            Version++;
             e.Progress = progress;
             Entries[id] = e;
             ProgressChanged?.Invoke(id, progress);
@@ -463,6 +468,7 @@ namespace WAR2D.Net.Replication
 
         internal void Enter(BuildingData data, HealthComponent health, byte progress = 100)
         {
+            Version++;
             Burning.Remove(data.id); // an Enter starts clear (a Burning record follows)
             Entries[data.id] = new Entry { Data = data, Health = health, Progress = progress };
             Entered?.Invoke(data, health);
@@ -474,6 +480,7 @@ namespace WAR2D.Net.Replication
         internal void SetBurning(int id, bool burning)
         {
             if (!Entries.TryGetValue(id, out Entry e) || e.Ghost) return;
+            Version++;
             e.Burning = burning;
             Entries[id] = e;
             if (burning) Burning.Add(id); else Burning.Remove(id);
@@ -482,6 +489,7 @@ namespace WAR2D.Net.Replication
         internal void SetUnpaid(int id, bool unpaid)
         {
             if (!Entries.TryGetValue(id, out Entry e)) return;
+            Version++;
             e.Unpaid = unpaid;
             Entries[id] = e;
         }
@@ -489,6 +497,7 @@ namespace WAR2D.Net.Replication
         internal void SetHealth(int id, int health)
         {
             if (!Entries.TryGetValue(id, out Entry e)) return;
+            Version++;
             // A stale or forged record can't take a building past its range.
             e.Health.currentHealth = e.Health.maxHealth > 0f ? Math.Clamp(health, 0, (int)e.Health.maxHealth) : Math.Max(0, health);
             Entries[id] = e;
@@ -498,6 +507,7 @@ namespace WAR2D.Net.Replication
         internal void Hide(int id)
         {
             if (!Entries.TryGetValue(id, out Entry e)) return;
+            Version++;
             e.Ghost = true;
             e.Burning = false;
             Burning.Remove(id);
@@ -508,6 +518,7 @@ namespace WAR2D.Net.Replication
 
         internal void Remove(int id)
         {
+            Version++;
             Heads.Remove(id);
             Burning.Remove(id);
             if (Entries.TryGetValue(id, out Entry e) && !e.Ghost)

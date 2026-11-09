@@ -59,6 +59,9 @@ namespace WAR2D.Client
         /// <summary>The roaming units' ids (drawn with the roaming ring).</summary>
         public IEnumerable<int> Ids => roamers.Keys;
 
+        /// <summary>Counts the changes to who roams: the unit draw repacks when it moves on.</summary>
+        public int Version { get; private set; }
+
         /// <summary>True when unit <paramref name="id"/> is roaming.</summary>
         public bool IsRoaming(int id) => roamers.ContainsKey(id);
 
@@ -66,17 +69,22 @@ namespace WAR2D.Client
         public void Start(IEnumerable<int> ids)
         {
             foreach (int id in ids) roamers[id] = new Roamer();
+            Version++;
             nextCheck = 0f;
         }
 
         /// <summary>Ends roaming for the given units (they were given another order).</summary>
         public void Stop(IEnumerable<int> ids)
         {
-            foreach (int id in ids) roamers.Remove(id);
+            foreach (int id in ids) if (roamers.Remove(id)) Version++;
         }
 
         /// <summary>Ends all roaming (a new match).</summary>
-        public void Clear() => roamers.Clear();
+        public void Clear()
+        {
+            roamers.Clear();
+            Version++;
+        }
 
         /// <summary>
         /// Gives each roaming unit that arrived or stalled a new goal; forgets units the client no longer knows.
@@ -134,7 +142,7 @@ namespace WAR2D.Client
                 g.Ids.Add(id);
                 g.Sum += position;
             }
-            foreach (int id in gone) roamers.Remove(id);
+            foreach (int id in gone) if (roamers.Remove(id)) Version++;
             if (groupKeys.Count == 0) return;
             groupKeys.Sort(); // a steady order, so the round robin reaches every cell
             int sent = 0, start = cursor % groupKeys.Count;

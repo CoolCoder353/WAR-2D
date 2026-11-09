@@ -21,6 +21,9 @@ namespace WAR2D.Client
         /// <summary>Selected unit ids.</summary>
         public IReadOnlyCollection<int> Selected => selected;
 
+        /// <summary>Counts the changes to the selected units and buildings: the draw packs them again when it moves on.</summary>
+        public int Version { get; private set; }
+
         private readonly List<int> buildings = new List<int>();
 
         /// <summary>The selected own buildings (several from a box or a group; a Shift-click combines only spawners). Selecting units clears them, and the reverse.</summary>
@@ -30,7 +33,7 @@ namespace WAR2D.Client
         public int SelectedBuilding
         {
             get => buildings.Count > 0 ? buildings[0] : 0;
-            private set { buildings.Clear(); if (value != 0) buildings.Add(value); }
+            private set { buildings.Clear(); if (value != 0) buildings.Add(value); Version++; }
         }
 
         /// <summary>The selected squad when the selection is exactly that squad, else -1.</summary>
@@ -43,18 +46,22 @@ namespace WAR2D.Client
         public void SelectBuilding(int buildingId, bool append = false)
         {
             selected.Clear();
+            Version++;
             selectedSquad = -1;
             if (!append) { SelectedBuilding = buildingId; return; }
             if (!buildings.Remove(buildingId)) buildings.Add(buildingId);
+            Version++;
         }
 
         /// <summary>Selects these own buildings (a box), dropping the unit selection; <paramref name="append"/> keeps the current ones.</summary>
         public void SelectBuildings(IEnumerable<int> ids, bool append)
         {
             selected.Clear();
+            Version++;
             selectedSquad = -1;
             if (!append) buildings.Clear();
             foreach (int id in ids) if (!buildings.Contains(id)) buildings.Add(id);
+            Version++;
         }
 
         private readonly List<int2> walls = new List<int2>();
@@ -66,6 +73,7 @@ namespace WAR2D.Client
         public void SelectWalls(IEnumerable<int2> tiles, bool append)
         {
             selected.Clear();
+            Version++;
             selectedSquad = -1;
             buildings.Clear();
             if (!append) walls.Clear();
@@ -79,21 +87,29 @@ namespace WAR2D.Client
         public void RemoveWall(int2 tile) => walls.Remove(tile);
 
         /// <summary>Clears the building selection.</summary>
-        public void ClearBuilding() => buildings.Clear();
+        public void ClearBuilding()
+        {
+            buildings.Clear();
+            Version++;
+        }
 
         /// <summary>Drops one building from the selection (it is gone).</summary>
-        public void RemoveBuilding(int buildingId) => buildings.Remove(buildingId);
+        public void RemoveBuilding(int buildingId)
+        {
+            if (buildings.Remove(buildingId)) Version++;
+        }
 
         /// <summary>Selects the own units inside the box; <paramref name="append"/> keeps the current selection.</summary>
         public void SelectBox(float2 a, float2 b, int ownerId, bool append)
         {
             if (!append) selected.Clear();
+            Version++;
             selectedSquad = -1;
             SelectedBuilding = 0;
             scratch.Clear();
             ClientWorld.Instance?.QueryBox(a, b, ownerId, scratch);
             SelectionRules.PreferArmy(scratch, TypeOfKnown); // v0.18: applies to what the box adds, not to what was selected
-            foreach (int id in scratch) selected.Add(id);
+            foreach (int id in scratch) if (selected.Add(id)) Version++;
         }
 
         private static UnitType TypeOfKnown(int id) =>
@@ -127,10 +143,11 @@ namespace WAR2D.Client
             scratch.Clear();
             world.QueryBox(viewMin, viewMax, ownerId, scratch);
             selected.Clear();
+            Version++;
             selectedSquad = -1;
             SelectedBuilding = 0;
             foreach (int id in scratch)
-                if (world.TryGet(id, out ClientUnitView view) && view.Type == clicked.Type) selected.Add(id);
+                if (world.TryGet(id, out ClientUnitView view) && view.Type == clicked.Type && selected.Add(id)) Version++;
         }
 
         /// <summary>The centre of the selected units the client knows; false when none.</summary>
@@ -151,9 +168,10 @@ namespace WAR2D.Client
         public void SelectIds(IEnumerable<int> ids)
         {
             selected.Clear();
+            Version++;
             selectedSquad = -1;
             SelectedBuilding = 0;
-            foreach (int id in ids) selected.Add(id);
+            foreach (int id in ids) if (selected.Add(id)) Version++;
         }
 
         /// <summary>Keeps only the selected units of one type (the selection panel's type buttons).</summary>
@@ -161,7 +179,7 @@ namespace WAR2D.Client
         {
             ClientWorld world = ClientWorld.Instance;
             if (world == null) return;
-            selected.RemoveWhere(id => !world.TryGet(id, out ClientUnitView view) || view.Type != type);
+            if (selected.RemoveWhere(id => !world.TryGet(id, out ClientUnitView view) || view.Type != type) > 0) Version++;
             selectedSquad = -1;
         }
 
@@ -184,8 +202,9 @@ namespace WAR2D.Client
         {
             if ((uint)squad >= squads.Length || squads[squad] == null) return;
             selected.Clear();
+            Version++;
             SelectedBuilding = 0;
-            foreach (int id in squads[squad]) selected.Add(id);
+            foreach (int id in squads[squad]) if (selected.Add(id)) Version++;
             selectedSquad = squad;
         }
 
@@ -318,7 +337,7 @@ namespace WAR2D.Client
         {
             ClientWorld world = ClientWorld.Instance;
             if (world == null) return;
-            selected.RemoveWhere(id => !world.IsKnownId(id));
+            if (selected.RemoveWhere(id => !world.IsKnownId(id)) > 0) Version++;
             if (attackTargets.Count > 0)
             {
                 goneGoals.Clear();

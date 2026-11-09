@@ -950,24 +950,13 @@ public static class Effects
         s.Sprite.sprite = atlas.Sprite(id, cell);
     }
 
-    /// <summary>
-    /// Effects (and <see cref="WAR2D.Client.CombatVisuals"/>' sprites) step at most this often, faster than a screen shows them
-    /// (2026-11-08: walking the 3,000 pooled effects every frame cost a 100,000-unit client on three cores 0.3 ms a frame).
-    /// </summary>
-    public const float StepSeconds = 1f / 144f;
-
     /// <summary>Advances every playing effect; hides the finished ones.</summary>
     private sealed class Runner : MonoBehaviour
     {
-        private float lastStep = float.NegativeInfinity;
-
         private void Update()
         {
             if (atlas == null) return;
             float now = Time.time;
-            if (now - lastStep < StepSeconds && now >= lastStep) return;
-            step = float.IsNegativeInfinity(lastStep) ? Time.deltaTime : now - lastStep;
-            lastStep = now;
             Animate(Explosions, now, false);
             Animate(Flashes, now, false);
             Animate(Tracers, now, true);
@@ -1018,9 +1007,6 @@ public static class Effects
             }
         }
 
-        /// <summary>Seconds since the last step (a drifting effect moves by it).</summary>
-        private static float step;
-
         private static void Animate(Pool pool, float now, bool tracer)
         {
             int frames = atlas.FrameCount(pool.Id);
@@ -1064,7 +1050,7 @@ public static class Effects
                 }
                 else if (frame >= frames) { Stop(s); continue; }
                 Show(s, pool.Id, frame);
-                if (s.Drift != Vector3.zero) s.Go.transform.position += s.Drift * step;
+                if (s.Drift != Vector3.zero) s.Go.transform.position += s.Drift * Time.deltaTime;
             }
         }
 
