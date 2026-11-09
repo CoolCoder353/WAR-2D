@@ -100,5 +100,6 @@ mono_crash.*
 
 # Performance gate output (tools/perf-run.sh)
 /PerfResults/
+/TestResults/
 steam/steam.env
 steam/output/

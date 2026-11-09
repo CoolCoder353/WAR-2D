@@ -61,11 +61,11 @@ public class ArsenalMatchTests
             }
             foreach (UnitType type in expected)
             {
-                float end = UnityEngine.Time.realtimeSinceStartup + 20f;
+                var deadline = new PlayModeMatch.Deadline(20f);
                 while (CountUnits(PlayModeMatch.LocalOwner, type) < 1)
                 {
-                    if (UnityEngine.Time.realtimeSinceStartup > end)
-                        Assert.Fail($"no {type} after 20 s");
+                    if (deadline.Passed)
+                        Assert.Fail($"no {type} after 20 s of game time ({deadline.Describe()})");
                     yield return null;
                 }
             }

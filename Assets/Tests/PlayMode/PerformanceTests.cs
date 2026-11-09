@@ -112,7 +112,8 @@ public class PerformanceTests
             world.DevSpawnUnit(PlayModeMatch.LocalOwner, (float2)tile + 0.5f, null);
             placed++;
         }
-        yield return PlayModeMatch.WaitUntil(() => WAR2D.Client.ClientWorld.Instance != null && WAR2D.Client.ClientWorld.Instance.KnownCount >= units * 9 / 10, 30f);
+        yield return PlayModeMatch.WaitUntil(() => WAR2D.Client.ClientWorld.Instance != null && WAR2D.Client.ClientWorld.Instance.KnownCount >= units * 9 / 10, 30f,
+            () => $"{(WAR2D.Client.ClientWorld.Instance != null ? WAR2D.Client.ClientWorld.Instance.KnownCount : 0)} of {units} units known");
         WAR2D.UI.MinimapController minimap = UnityEngine.Object.FindAnyObjectByType<WAR2D.UI.HudController>().Minimap;
         yield return PlayModeMatch.WaitUntil(() => minimap.Texture != null, 10f);
 

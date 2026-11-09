@@ -111,10 +111,10 @@ public class SiegeMatchTests
 
     private static IEnumerator Wait(string what, System.Func<bool> condition, float seconds)
     {
-        float end = UnityEngine.Time.realtimeSinceStartup + seconds;
+        var deadline = new PlayModeMatch.Deadline(seconds);
         while (!condition())
         {
-            if (UnityEngine.Time.realtimeSinceStartup > end) Assert.Fail("Timed out waiting for " + what);
+            if (deadline.Passed) Assert.Fail("Timed out waiting for " + what + " (" + deadline.Describe() + ")");
             yield return null;
         }
     }

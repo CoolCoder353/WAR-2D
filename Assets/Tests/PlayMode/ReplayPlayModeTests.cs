@@ -77,8 +77,8 @@ public class ReplayPlayModeTests
         Assert.That(player, Is.Not.Null, openError);
         player.Speed = 2f;
         bool sawUnits = false;
-        float until = Time.realtimeSinceStartup + 30f;
-        while (player.Playing && Time.realtimeSinceStartup < until)
+        var deadline = new PlayModeMatch.Deadline(30f);
+        while (player.Playing && !deadline.Passed)
         {
             sawUnits |= ClientWorld.Instance != null && ClientWorld.Instance.KnownCount > 0;
             yield return null;

@@ -37,6 +37,13 @@ except Exception:
 ' 2>/dev/null || true
 }
 
+# Without an open editor the polls below would wait six minutes for nothing: say so at once.
+source tools/lib/unity-batch.sh
+if ! editor_open; then
+  echo "Compile check failed: no Unity editor has this project open. Open it, or run tools/check.sh (batch mode, editor closed)."
+  exit 1
+fi
+
 uc recompile >/dev/null 2>&1 || true
 sleep 3
 settled=""

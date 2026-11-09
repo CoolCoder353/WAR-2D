@@ -94,14 +94,44 @@ public static class PlayModeMatch
     /// <summary>The local player's owner id.</summary>
     public static int LocalOwner => BuildingData.UIntToInt(NetworkClient.localPlayer.netId);
 
+    /// <summary>
+    /// Waits until <paramref name="condition"/> holds, failing after <paramref name="timeoutSeconds"/> of game time (see <see cref="Deadline"/>).
+    /// </summary>
     public static IEnumerator WaitUntil(Func<bool> condition, float timeoutSeconds, Func<string> describe = null)
     {
-        float end = Time.realtimeSinceStartup + timeoutSeconds;
+        var deadline = new Deadline(timeoutSeconds);
         while (!condition())
         {
-            if (Time.realtimeSinceStartup > end) Assert.Fail($"Timed out after {timeoutSeconds}s" + (describe != null ? ": " + describe() : ""));
+            if (deadline.Passed) Assert.Fail($"Timed out after {timeoutSeconds}s of game time ({deadline.Describe()})" + (describe != null ? ": " + describe() : ""));
             yield return null;
         }
+    }
+
+    /// <summary>
+    /// A test timeout counted in game time (<c>Time.time</c>), which the sim's 20 Hz tick follows, not the wall clock. A frame
+    /// adds at most <c>Time.maximumDeltaTime</c> of game time, so a stall (a background Burst compile, a GC, a busy machine)
+    /// no longer eats the budget: a wall-clock timeout failed one or two different tests in each full PlayMode run while the
+    /// sim had simply run fewer ticks (2026-11-09). A wall-clock cap (four times the budget, at least 30 s more) still ends a
+    /// wait that would otherwise hang, for example while the game time stands still.
+    /// </summary>
+    public readonly struct Deadline
+    {
+        private readonly float gameStart, gameEnd, wallStart, wallEnd;
+
+        /// <summary>A deadline <paramref name="gameSeconds"/> of game time from now.</summary>
+        public Deadline(float gameSeconds)
+        {
+            gameStart = Time.time;
+            gameEnd = gameStart + gameSeconds;
+            wallStart = Time.realtimeSinceStartup;
+            wallEnd = wallStart + Mathf.Max(4f * gameSeconds, gameSeconds + 30f);
+        }
+
+        /// <summary>True once the game time (or, as a backstop, the wall-clock cap) has run out.</summary>
+        public bool Passed => Time.time > gameEnd || Time.realtimeSinceStartup > wallEnd;
+
+        /// <summary>How much game and wall time has gone, for a failure message.</summary>
+        public string Describe() => $"{Time.time - gameStart:0.0} s game time, {Time.realtimeSinceStartup - wallStart:0.0} s wall time";
     }
 
     /// <summary>Places a finished building for the local player (a normal placement is a blueprint until Builders finish it).</summary>

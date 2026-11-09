@@ -129,7 +129,8 @@ public class AiPlayModeTests
         SpeedUp();
         yield return PlayModeMatch.WaitUntil(() => Producing(easy), 100f, () => Describe(easy));
         ArmyManager army = ((AiBrain)easy.Brain).Manager<ArmyManager>();
-        yield return PlayModeMatch.WaitUntil(() => army.Attacks > 0 || core.CurrentState == GameState.GameOver, 100f, () => Describe(easy));
+        // Game time, fast-forwarded: an Easy Rusher was still gathering at 104 s (2026-11-09), so give it the first test's 300 s.
+        yield return PlayModeMatch.WaitUntil(() => army.Attacks > 0 || core.CurrentState == GameState.GameOver, 300f, () => Describe(easy));
         Assert.That(army.Attacks, Is.GreaterThan(0), "Easy attacks");
         Assert.That(army.TargetOwner, Is.EqualTo(me), "the human, its only enemy");
     }
@@ -170,7 +171,7 @@ public class AiPlayModeTests
             if (allyArmy.Mode == ArmyMode.Attack && allyArmy.TargetOwner == me) allyTargetedHuman = true;
             if (enemyArmy.Mode == ArmyMode.Attack && enemyArmy.TargetOwner != me && enemyArmy.TargetOwner != ally.OwnerId) enemyTargetedOutsider = true;
             return enemyArmy.Attacks + allyArmy.Attacks > 0 || core.CurrentState == GameState.GameOver;
-        }, 100f, () => Describe(ally) + " | " + Describe(enemy));
+        }, 300f, () => Describe(ally) + " | " + Describe(enemy));
         // The match is a real, unscripted one: whichever AI strikes first (or ends it) is not fixed, so one attack by either
         // side is the signal, or a side eliminated (an army defending an expansion beside the enemy can end it from Defend).
         bool fought = enemyArmy.Attacks + allyArmy.Attacks > 0 || ally.Player.state == PlayerState.Eliminated || enemy.Player.state == PlayerState.Eliminated;

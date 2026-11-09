@@ -209,6 +209,7 @@ public class MapGeneratorTests
         }
     }
 
+    [Category("Slow")] // over a second (2026-11-09 timings): left out of tools/check.sh --fast
     [Test]
     public void EveryStartSiteHasTwoWaysOut([Values(128, 256, 512, 1024)] int size)
     {
@@ -222,6 +223,7 @@ public class MapGeneratorTests
         }
     }
 
+    [Category("Slow")] // over a second (2026-11-09 timings): left out of tools/check.sh --fast
     [Test]
     public void FairLayoutsOnManySeeds([Values(128, 256, 512, 1024)] int size)
     {
@@ -338,6 +340,7 @@ public class MapGeneratorTests
         Assert.Greater(total, 0);
     }
 
+    [Category("Slow")] // over a second (2026-11-09 timings): left out of tools/check.sh --fast
     [Test]
     public void RichAreasAreFarFromEveryStartUnlessNoneIs([Values(256, 512, 1024)] int size)
     {
@@ -354,6 +357,7 @@ public class MapGeneratorTests
         }
     }
 
+    [Category("Slow")] // over a second (2026-11-09 timings): left out of tools/check.sh --fast
     [Test]
     public void EveryStartCanReachARichField([Values(256, 512, 1024)] int size)
     {

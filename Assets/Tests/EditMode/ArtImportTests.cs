@@ -70,6 +70,7 @@ public class ArtImportTests
         CollectionAssert.AreEqual(new[] { floor, ArtStyle.TeamGrey[0], source[2], ArtStyle.TeamGrey[4], ArtStyle.TeamGrey[2] }, colour);
     }
 
+    [Category("Slow")] // over a second (2026-11-09 timings): left out of tools/check.sh --fast
     [Test]
     public void AtlasPixelsArePaletteTeamGreyOrShadow()
     {

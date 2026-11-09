@@ -61,6 +61,11 @@ on the owner's pinned layout (client and host each on 3 cores), simulated here.
   `AiPlayModeTests.APrivateOneVsOneAgainstEasyBuildsProducesAndAttacksTheHuman`. Each passes run alone (2026-11-07/08). Not
   investigated further. `HudTests.DiplomacyToggleStopsMyUnitsAttacking` joined them on Linux (2026-11-09): it timed out after 15 s in
   one full PlayMode run and passes alone and with its fixture.
+  **Likely cause addressed (2026-11-09, `tests/gate-flakes-fuzz`):** every one of these timed out on the wall clock while the
+  sim had run fewer ticks (a background Burst compile, a GC, a busy machine). PlayMode timeouts now count game time
+  (`PlayModeMatch.Deadline`; a frame adds at most `Time.maximumDeltaTime`), with a wall-clock cap as a backstop. Confirm with
+  `tools/flake-hunt.sh 5 PlayMode` before taking these off the list. The first gate run after (102/103) failed only
+  `HudTests.GiftToEnemyMovesResources` (5 s wait), with game and wall time equal: no stall there, so its cause is something else.
 - **A unit well off the view is predicted and drawn up to 0.5 s late** (2026-11-09 review): `ClientUnitStore.PredictAll` refreshes
   units past the turrets' margin and 6 tiles in turns, so their `Positions` are that stale for the minimap plot, range-ring
   brackets and box queries. Orders and server state don't read them. A leaping Bomber's raise (1.25 tiles) is well inside that margin.

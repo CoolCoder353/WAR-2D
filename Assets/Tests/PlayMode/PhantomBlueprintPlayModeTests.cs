@@ -90,8 +90,8 @@ public class PhantomBlueprintPlayModeTests
         yield return PlayModeMatch.WaitUntil(() => ClientBuildings.Current.Entries.Values.Any(e => e.Data.ownerId == me && e.Data.buildingType == BuildingType.Barracks && e.Progress == 0),
             5f, () => "the owner sees a blueprint");
         // It waits while the spot stays unseen: its own view (sent to its owner) must not count as what blocks it (review 2026-11-07).
-        float waitUntil = UnityEngine.Time.realtimeSinceStartup + 2f;
-        while (UnityEngine.Time.realtimeSinceStartup < waitUntil)
+        var window = new PlayModeMatch.Deadline(2f);
+        while (!window.Passed)
         {
             Assert.That(wsm.PhantomCount, Is.EqualTo(1), "the waiting blueprint waits while its spot is unseen");
             yield return null;

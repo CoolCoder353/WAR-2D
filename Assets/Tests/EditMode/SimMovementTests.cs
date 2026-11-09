@@ -118,6 +118,7 @@ public class SimMovementTests
         Assert.AreEqual(0, stuck, $"stuck at{where}");
     }
 
+    [Category("Slow")] // over a second (2026-11-09 timings): left out of tools/check.sh --fast
     [Test]
     public void CrowdCrossesAGeneratedCaveMap([Values(1u, 7u, 42u)] uint seed)
     {
