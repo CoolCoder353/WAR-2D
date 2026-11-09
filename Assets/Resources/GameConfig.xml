@@ -333,10 +333,10 @@
       <BuildOrder>Miner Miner Builder Miner Miner Builder Barracks Miner Tank Tank Scout</BuildOrder>  <!-- Miners, then a Barracks -->
       <BuildOrder>Miner Miner Barracks Builder Miner Tank Miner Builder Miner Tank Scout</BuildOrder>   <!-- an early Barracks for safety -->
       <ArmyMix>Scout:1 Tank:5 Flamethrower:2 Heavy:2 Artillery:1 Sniper:1</ArmyMix>
-      <Producers>Barracks:2 HeavyFactory:1 SiegeWorkshop:0</Producers>
+      <Producers>Barracks:2 HeavyFactory:1 SiegeWorkshop:1</Producers>
       <Miners>6</Miners>
       <MinersPerExpansion>6</MinersPerExpansion>
-      <Expansions>3</Expansions>
+      <Expansions>2</Expansions>
       <ExpandTiming>0.5</ExpandTiming>
       <FirstAttackSeconds>400</FirstAttackSeconds>
       <AttackArmySize>15</AttackArmySize>
