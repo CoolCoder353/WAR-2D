@@ -2,7 +2,7 @@
 
 The lobby items from the 2026-11-02 playtest that are new UI, drawn before anything is built (the HUD/menu rule). Same look as v0.16 M2 ([v0.16-figma.md](v0.16-figma.md)): Jersey 10, square corners, the `Theme` and `Scale` variables, the `Button` component.
 
-- **File:** [WAR-2D v0.6 UX](https://www.figma.com/design/JrMColnJiQbFfODqyPjBYf), page **Playtest fixes (2026-11-02)** (node 180:368).
+- **File:** [WAR-2D v0.6 UX](https://www.figma.com/design/JrMColnJiQbFfODqyPjBYf), the sections starting **Playtest fixes 2026-11-02** on the page **Menus & lobby** (the page **Playtest fixes (2026-11-02)**, node 180:368, until the file was consolidated by area on 2026-11-09).
 - **Status:** drawn 2026-11-02, **approved by the owner on 2026-11-02**, built the same day. Not built: hiding the server from a banned player's join list (see known-issues).
 
 ## Frames

@@ -289,7 +289,7 @@ The code, the atlases (`WAR-2D/Art/Build all`, the Barracks now keyed `Barracks`
 
 ## Reconnect review fixes (2026-10-28, v0.15.1)
 
-Found in the 2026-10-28 code review of the v0.15 reconnect; the UI states are on the Figma page `v0.15.1 Hotkeys and polish` (R1).
+Found in the 2026-10-28 code review of the v0.15 reconnect; the UI states are on the Figma section **v0.15.1 Hotkeys and polish** on the page **Menus & lobby** (R1).
 
 | Report | Status |
 | ------ | ------ |

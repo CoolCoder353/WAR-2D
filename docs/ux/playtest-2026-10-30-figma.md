@@ -2,7 +2,7 @@
 
 The HUD side of the 2026-10-30 playtest fixes (known-issues.md, "Owner playtest fixes (2026-10-30, polish branch)"), plus UI proposals found while drawing them. Same look as v0.6 to v0.15.1 (Jersey 10, square corners, the `Theme` and `Scale` variables, the `Command button (pixel, 56)`, `Key chip`, `Callout` and `Icon/px/*` components).
 
-- **File:** [WAR-2D v0.6 UX](https://www.figma.com/design/JrMColnJiQbFfODqyPjBYf), page **Playtest fixes (2026-10-30)** (node 152:1477)
+- **File:** [WAR-2D v0.6 UX](https://www.figma.com/design/JrMColnJiQbFfODqyPjBYf), the sections starting **Playtest fixes 2026-10-30** on the pages **HUD (in match)** and **Components & icons** (the page **Playtest fixes (2026-10-30)**, node 152:1477, until the file was consolidated by area on 2026-11-09)
 - **Status:** drawn 2026-10-30. Items 1, 2, 4 and 5 were built first (the owner asked for them in the playtest notes). The owner **approved item 3's button and proposals 6–11 on 2026-10-30** ("Build all 3, 6–11"); all are built on `polish/presentation`.
 - **New local component:** `Icon/px/Roam` (152:1610), 16×16 in the `PixelIcons.cs` format (white body, 1 px dark outline): a winding trail ending in an arrowhead.
 

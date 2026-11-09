@@ -2,7 +2,7 @@
 
 The items from the 2026-11-04 playtest that are new UI, drawn before anything is built (the HUD/menu rule). Same look as the earlier playtest pages: Jersey 10, square corners, the `Theme` and `Scale` variables.
 
-- **File:** [WAR-2D v0.6 UX](https://www.figma.com/design/JrMColnJiQbFfODqyPjBYf), page **Playtest fixes (2026-11-04)** (node 202:2).
+- **File:** [WAR-2D v0.6 UX](https://www.figma.com/design/JrMColnJiQbFfODqyPjBYf), the sections starting **Playtest fixes 2026-11-04** on the page **HUD (in match)** (the page **Playtest fixes (2026-11-04)**, node 202:2, until the file was consolidated by area on 2026-11-09).
 - **Status:** drawn 2026-11-04, **approved by the owner on 2026-11-04**, K1 and K3 built. K2 superseded the same day (below).
 
 ## Frames

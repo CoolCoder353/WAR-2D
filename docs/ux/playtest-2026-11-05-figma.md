@@ -2,7 +2,7 @@
 
 The UI items from the 2026-11-05 playtest, drawn before anything is built (the HUD/menu rule). Same look as the earlier playtest pages: Jersey 10, square corners, the `Theme` and `Scale` variables.
 
-- **File:** [WAR-2D v0.6 UX](https://www.figma.com/design/JrMColnJiQbFfODqyPjBYf), page **Playtest fixes (2026-11-05)** (node 212:2).
+- **File:** [WAR-2D v0.6 UX](https://www.figma.com/design/JrMColnJiQbFfODqyPjBYf), the sections starting **Playtest fixes 2026-11-05** on the pages **Menus & lobby**, **HUD (in match)** and **Components & icons** (the page **Playtest fixes (2026-11-05)**, node 212:2, until the file was consolidated by area on 2026-11-09).
 - **Status:** drawn 2026-11-05 and revised the same day after the owner's notes (team rows horizontal, not columns; pick a team by drag or dropdown, no scrolling; a smaller players area in Free-for-all). **Approved 2026-11-05**, except L4's army chip count / cap, which the owner dropped (removed from the frame).
 
 ## The problem
@@ -18,7 +18,7 @@ The UI items from the 2026-11-05 playtest, drawn before anything is built (the H
 | L3 · Lobby – free-for-all (host) | 223:307 | Free-for-all: no rows and no team dropdowns. The players area shrinks to what it needs (two cards per row, eight at most, plus one **+ Add AI**), and the space goes to a larger map (520 px) beside the settings. Switching back to Teams keeps the teams last set (new players start Solo). |
 | L4 · Unit cap reached | 216:892 | A producer at the 10,000-unit cap refunds and keeps its queue silently today. New: an **alert row** "Unit cap reached (10,000): producers wait" (warning, once, again only after dropping below the cap); the producer's production line reads **"Waiting: unit cap (10,000 units)"**. (A count / cap on the top bar's army chip was drawn and dropped by the owner.) |
 
-Components on the page (shelf below the frames): `Lobby / Button` (Kind = default, primary, ghost, disabled), `Lobby / Dropdown` (State = default, open, disabled; Value), `Lobby / Player card` (Name, Detail, Ready, Show remove, and Show team chips, which shows its Team dropdown). (The first draft's team chips were replaced by the dropdown.)
+Components (the section **Playtest fixes 2026-11-05** on the page **Components & icons**): `Lobby / Button` (Kind = default, primary, ghost, disabled), `Lobby / Dropdown` (State = default, open, disabled; Value), `Lobby / Player card` (Name, Detail, Ready, Show remove, and Show team chips, which shows its Team dropdown). (The first draft's team chips were replaced by the dropdown.)
 
 ## Open decisions (defaults drawn)
 

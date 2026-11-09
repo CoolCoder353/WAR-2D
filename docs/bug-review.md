@@ -142,7 +142,7 @@ Every `[Command]` gates, takes the owner from the sender and validates; gifts re
 
 ## Sixth scan (2026-10-28): v0.15 reconnect and QoL
 
-All fixed in v0.15.1 (see [known-issues.md](known-issues.md), "Reconnect review fixes"); UI states on the Figma page `v0.15.1 Hotkeys and polish`.
+All fixed in v0.15.1 (see [known-issues.md](known-issues.md), "Reconnect review fixes"); UI states on the Figma section **v0.15.1 Hotkeys and polish** on the page **Menus & lobby**.
 
 | Finding | Fix |
 | ------- | --- |
