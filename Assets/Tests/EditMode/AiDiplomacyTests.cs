@@ -325,6 +325,7 @@ public class AiDiplomacyTests
         Assert.That(world.Surrendered, Is.True, "alone, it concedes");
     }
 
+    [Category("Slow")] // over a second (2026-11-09 timings): left out of tools/check.sh --fast
     [Test]
     public void ItDoesntConcedeWhileItCanRebuildOrIsStrongEnough()
     {

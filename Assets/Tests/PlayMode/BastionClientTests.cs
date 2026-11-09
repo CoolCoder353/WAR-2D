@@ -73,11 +73,11 @@ public class BastionClientTests
         Assert.That(wsm.DevSpawnUnit(PlayModeMatch.LocalOwner, (float2)unitAt + 0.5f, id => heavy = id, UnitType.Heavy), Is.True);
 
         // The client sees the turret, is told of its shots at the Heavy (units first), turns the head east and draws them.
-        float end = Time.realtimeSinceStartup + 30f;
+        var deadline = new PlayModeMatch.Deadline(30f);
         while (!(ClientBuildings.Current.Entries.ContainsKey(turretId) &&
                  !float.IsNegativeInfinity(ClientBuildings.Current.HeadOf(turretId).FiredAt) && ClientBuildings.Current.HeadOf(turretId).Facing == 0))
         {
-            if (Time.realtimeSinceStartup > end)
+            if (deadline.Passed)
                 Assert.Fail($"turret {turretId} at {turret}, unit at {unitAt}: known {ClientBuildings.Current.Entries.ContainsKey(turretId)}, " +
                             $"fired at {ClientBuildings.Current.HeadOf(turretId).FiredAt}, facing {ClientBuildings.Current.HeadOf(turretId).Facing}, shots {Effects.TurretShots - shots}, " +
                             $"server target {Weapon(turretId).TargetId} kind {Weapon(turretId).TargetKind}, units known {ClientWorld.Instance.KnownCount}, heavy {heavy} at {(ClientWorld.Instance.TryGet(heavy, out ClientUnitView v) ? v.Position.ToString() : "?")}, hq {hq}");

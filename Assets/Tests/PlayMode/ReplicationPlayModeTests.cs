@@ -116,12 +116,13 @@ public class ReplicationPlayModeTests
                 if (grid.IsWalkable(tile + d)) { goal = tile + d; break; }
         SimCommandQueue.Instance.Enqueue(new SimCommand { Kind = SimCommandKind.OrderUnits, OwnerId = PlayModeMatch.LocalOwner, Tile = goal, Ids = new[] { id } });
 
-        float end = UnityEngine.Time.realtimeSinceStartup + 3f, nextCheck = 0f;
-        for (int frame = 0; UnityEngine.Time.realtimeSinceStartup < end; frame++)
+        var window = new PlayModeMatch.Deadline(3f);
+        float nextCheck = 0f;
+        for (int frame = 0; !window.Passed; frame++)
         {
             yield return null;
-            if (UnityEngine.Time.realtimeSinceStartup < nextCheck) continue;
-            nextCheck = UnityEngine.Time.realtimeSinceStartup + 0.2f;
+            if (UnityEngine.Time.time < nextCheck) continue;
+            nextCheck = UnityEngine.Time.time + 0.2f;
             Assert.IsTrue(ClientWorld.Instance.TryGet(id, out ClientUnitView view));
             float2 server = ServerPosition(id);
             Assert.That(math.distance(view.Position, server), Is.LessThan(1f), $"frame {frame}: client {view.Position}, server {server}");
@@ -163,9 +164,9 @@ public class ReplicationPlayModeTests
         UnitCommander.Instance.Selection.OrderMove(goal); // the selection is exactly squad 3: a squad order
 
         var goalCentre = (float2)goal + 0.5f;
-        float end = UnityEngine.Time.realtimeSinceStartup + 15f;
+        var deadline = new PlayModeMatch.Deadline(15f);
         int nearCount = 0;
-        while (UnityEngine.Time.realtimeSinceStartup < end)
+        while (!deadline.Passed)
         {
             nearCount = 0;
             // v0.16: the order goes out with Formations on (the default), so the 30 stop in a block (8 × 4 slots 1.2 tiles
@@ -206,8 +207,8 @@ public class ReplicationPlayModeTests
         int enemy = -1;
         Spawn(424242, (float2)far + 0.5f, v => enemy = v);
         yield return PlayModeMatch.WaitUntil(() => enemy > 0, 5f);
-        float end = UnityEngine.Time.realtimeSinceStartup + 2f;
-        while (UnityEngine.Time.realtimeSinceStartup < end)
+        var window = new PlayModeMatch.Deadline(2f);
+        while (!window.Passed)
         {
             Assert.IsFalse(store.IsKnown(NetIdAllocator.IndexOf(enemy)), "an enemy outside the view reached the client");
             yield return null;

@@ -19,6 +19,7 @@ public class RenderGenTests
         CollectionAssert.AreEqual(Finished(RenderGen.Rock(1, 6)), Finished(RenderGen.Rock(1, 6)));
     }
 
+    [Category("Slow")] // over a second (2026-11-09 timings): left out of tools/check.sh --fast
     [Test]
     public void BuildingCanvasesFitTheirFootprintsWithHeadroomAbove()
     {

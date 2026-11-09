@@ -109,6 +109,7 @@ public class AiManagerTests
         Assert.That(OpeningManager.Score(brain.Context, world.View, site), Is.GreaterThan(before), "gems near an option raise its score");
     }
 
+    [Category("Slow")] // over a second (2026-11-09 timings): left out of tools/check.sh --fast
     [TestCase(AiDifficulty.Normal, AiStyle.Expander, 5u)]
     [TestCase(AiDifficulty.Hard, AiStyle.Turtle, 9u)]
     [TestCase(AiDifficulty.Easy, AiStyle.Rusher, 13u)]
@@ -163,6 +164,7 @@ public class AiManagerTests
         Assert.That(placement.Search(ref none, ref budget, out _, out _), Is.EqualTo(SearchResult.NotFound));
     }
 
+    [Category("Slow")] // over a second (2026-11-09 timings): left out of tools/check.sh --fast
     [TestCase(AiStyle.Balanced, 5u)]
     [TestCase(AiStyle.Rusher, 9u)]
     [TestCase(AiStyle.Expander, 13u)]
@@ -233,6 +235,7 @@ public class AiManagerTests
         return world;
     }
 
+    [Category("Slow")] // over a second (2026-11-09 timings): left out of tools/check.sh --fast
     [Test]
     public void AnAttackTargetsOnlyBuildingsItKnows()
     {
@@ -273,6 +276,7 @@ public class AiManagerTests
                 Is.True, $"every attack-move goes at what it knows ({a.Tile})");
     }
 
+    [Category("Slow")] // over a second (2026-11-09 timings): left out of tools/check.sh --fast
     [TestCase(AiDifficulty.Normal, 2.0)]
     [TestCase(AiDifficulty.Hard, 2.0)]
     [TestCase(AiDifficulty.Easy, 20.0)]

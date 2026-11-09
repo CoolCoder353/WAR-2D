@@ -204,8 +204,8 @@ public class HudTests
         // Random and foreign ids are refused without changing anything.
         var rng = new System.Random(5);
         for (int i = 0; i < 20; i++) WorldStateManager.Instance.CmdChangeQueues(new[] { rng.Next(int.MinValue, int.MaxValue) }, -1);
-        float until = Time.realtimeSinceStartup + 0.5f;
-        while (Time.realtimeSinceStartup < until) { Broke(); yield return null; }
+        var window = new PlayModeMatch.Deadline(0.5f);
+        while (!window.Passed) { Broke(); yield return null; }
         Broke();
         Assert.That(SpawnerCount(spawner.id), Is.EqualTo(2), "the server's queue matches the HUD");
         Assert.That(root.Q<Label>("production-count").text, Is.EqualTo("2"));
@@ -233,13 +233,13 @@ public class HudTests
         // and creep onto the server's (known-issues: "Client positions creep after Stop"). Wait until the centre has
         // settled (moved under 0.05 tiles over half a second), then require it to stay put.
         float2 mark = Centre(selection);
-        float markAt = Time.realtimeSinceStartup;
+        float markAt = Time.time; // game time: the units move with the sim, not the wall clock
         yield return PlayModeMatch.WaitUntil(() =>
         {
-            if (Time.realtimeSinceStartup - markAt < 0.5f) return false;
+            if (Time.time - markAt < 0.5f) return false;
             bool still = math.distance(Centre(selection), mark) < 0.05f;
             mark = Centre(selection);
-            markAt = Time.realtimeSinceStartup;
+            markAt = Time.time;
             return still;
         }, 10f, () => "the selection never stopped moving after Stop");
         float2 stopped = Centre(selection);
@@ -795,10 +795,10 @@ public class HudTests
 
     private static IEnumerator Wait(string what, System.Func<bool> condition, float seconds)
     {
-        float end = Time.realtimeSinceStartup + seconds;
+        var deadline = new PlayModeMatch.Deadline(seconds);
         while (!condition())
         {
-            if (Time.realtimeSinceStartup > end) Assert.Fail("Timed out waiting for " + what);
+            if (deadline.Passed) Assert.Fail("Timed out waiting for " + what + " (" + deadline.Describe() + ")");
             yield return null;
         }
     }
