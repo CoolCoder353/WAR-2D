@@ -203,8 +203,8 @@ public class SimBastionTests
         Assert.GreaterOrEqual(drops.Count, 4);
         int interval = (int)math.round(sim.Config.GetBuilding(BuildingType.GunTurret).AttackInterval * sim.Config.Simulation.TickRate);
         for (int i = 1; i < drops.Count; i++) Assert.AreEqual(interval, drops[i].tick - drops[i - 1].tick, "one shot per AttackInterval");
-        float raw = sim.Config.GetBuilding(BuildingType.GunTurret).Damage * 0.5f;
-        Assert.AreEqual(math.max(sim.Config.Combat.MinHit, raw - sim.Config.GetUnit(UnitType.Heavy).FlatArmour), drops[0].amount, 1e-3f, "x0.5 against Heavy armour, less its flat armour (v0.20)");
+        float raw = sim.Config.GetBuilding(BuildingType.GunTurret).Damage * 1.25f; // GunTurret vs HeavyUnit (balance 2026-11-09)
+        Assert.AreEqual(math.max(sim.Config.Combat.MinHit, raw - sim.Config.GetUnit(UnitType.Heavy).FlatArmour), drops[0].amount, 1e-3f, "x1.25 against Heavy armour, less its flat armour (v0.20)");
     }
 
     [Test]

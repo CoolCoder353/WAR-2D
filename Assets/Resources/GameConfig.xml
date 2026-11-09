@@ -205,7 +205,7 @@
     <Dps>6</Dps>                         <!-- v0.20: fire damage a second at the full rate; fire ignores armour and blast resistance -->
     <Seconds>4</Seconds>                 <!-- v0.20: a fire burns this long after its last flame hit (one fire per target, refreshed) -->
     <LightUnit>1.0</LightUnit>
-    <HeavyUnit>0.5</HeavyUnit>           <!-- Heavies (and Artillery) burn at half rate -->
+    <HeavyUnit>0.35</HeavyUnit>          <!-- Heavies (and Artillery) burn at about a third (balance 2026-11-09: 0.5 let Flamethrowers beat Heavies) -->
     <Building>1.0</Building>             <!-- walls never burn -->
   </Burn>
 
@@ -333,10 +333,10 @@
       <BuildOrder>Miner Miner Builder Miner Miner Builder Barracks Miner Tank Tank Scout</BuildOrder>  <!-- Miners, then a Barracks -->
       <BuildOrder>Miner Miner Barracks Builder Miner Tank Miner Builder Miner Tank Scout</BuildOrder>   <!-- an early Barracks for safety -->
       <ArmyMix>Scout:1 Tank:5 Flamethrower:2 Heavy:2 Artillery:1 Sniper:1</ArmyMix>
-      <Producers>Barracks:2 HeavyFactory:1 SiegeWorkshop:0</Producers>
+      <Producers>Barracks:2 HeavyFactory:1 SiegeWorkshop:1</Producers>
       <Miners>6</Miners>
       <MinersPerExpansion>6</MinersPerExpansion>
-      <Expansions>3</Expansions>
+      <Expansions>2</Expansions>
       <ExpandTiming>0.5</ExpandTiming>
       <FirstAttackSeconds>400</FirstAttackSeconds>
       <AttackArmySize>15</AttackArmySize>
@@ -581,7 +581,7 @@
     <Entry attacker="Bomber" target="Wall">2</Entry>
     <!-- v0.13 building attackers, starting values (spec section 2.1) -->
     <Entry attacker="GunTurret" target="LightUnit">1.5</Entry>
-    <Entry attacker="GunTurret" target="HeavyUnit">0.5</Entry>
+    <Entry attacker="GunTurret" target="HeavyUnit">1.25</Entry>  <!-- balance 2026-11-09: 0.5, then less a Heavy's armour, let one Heavy kill a turret unharmed -->
     <Entry attacker="GunTurret" target="Building">0.5</Entry>
     <Entry attacker="GunTurret" target="Wall">0.25</Entry>
   </DamageTable>
@@ -628,11 +628,11 @@
       <Splash>2.5</Splash>  <!-- v0.20: every hit, direct or splash, sets the target burning (<Burn>) -->
     </Unit>
     <Unit type="Heavy">
-      <Health>400</Health><Damage>30</Damage><Range>5.0</Range><AttackInterval>1.5</AttackInterval>
-      <MoveSpeed>2.5</MoveSpeed><UpfrontCost>200.0</UpfrontCost><RunningCost>2.5</RunningCost>
+      <Health>450</Health><Damage>30</Damage><Range>5.0</Range><AttackInterval>1.5</AttackInterval>
+      <MoveSpeed>2.5</MoveSpeed><UpfrontCost>200.0</UpfrontCost><RunningCost>2.0</RunningCost>
       <Radius>0.7</Radius><SizeClass>1</SizeClass><Sight>7.0</Sight>
       <Armour>Heavy</Armour><BuildSeconds>5.0</BuildSeconds>
-      <FlatArmour>4</FlatArmour><BlastResist>0.5</BlastResist>  <!-- v0.20 -->
+      <FlatArmour>5</FlatArmour><BlastResist>0.5</BlastResist>  <!-- v0.20 -->
     </Unit>
     <Unit type="Artillery">
       <Health>120</Health><Damage>160</Damage><Range>36.0</Range><AttackInterval>15.0</AttackInterval>
@@ -644,8 +644,8 @@
     </Unit>
     <Unit type="Sniper">
       <!-- v0.20: a 2×2 heavy-killer that stops and aims (<Sniper><AimSeconds>) before each shot -->
-      <Health>140</Health><Damage>160</Damage><Range>28.0</Range><AttackInterval>5.0</AttackInterval>
-      <MoveSpeed>3.0</MoveSpeed><UpfrontCost>220.0</UpfrontCost><RunningCost>1.0</RunningCost>
+      <Health>160</Health><Damage>160</Damage><Range>28.0</Range><AttackInterval>5.0</AttackInterval>
+      <MoveSpeed>3.0</MoveSpeed><UpfrontCost>180.0</UpfrontCost><RunningCost>1.0</RunningCost>
       <Radius>0.7</Radius><SizeClass>1</SizeClass><Sight>12.0</Sight>
       <Armour>Light</Armour><BuildSeconds>5.0</BuildSeconds>
       <MinRange>5.0</MinRange>
