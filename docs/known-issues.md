@@ -2,6 +2,33 @@
 
 Bugs, mismatches and hygiene problems. The first three roadmaps (v0.2 to v0.9, v0.10 to v0.14 with v0.15 and v0.15.1, and v0.16 to v0.18) are complete; open items are backlog, and the sections after "Open" are the log of what past reviews and playtests found and fixed. Code-review findings that were triaged but not fixed are in [bug-review.md](bug-review.md). See the archived roadmaps ([v0.2 to v0.9](archive/roadmap-v0.2-v0.9.md), [v0.10 to v0.14](archive/roadmap-v0.10-v0.14.md), [v0.16 to v0.18](archive/roadmap-v0.16-v0.18.md)) for what each version delivered; the current plan is [roadmap.md](roadmap.md).
 
+## Full-coverage scan (2026-11-09), not fixed
+
+Five read-only review agents, one per area (Sim; Net and the server; Client and Audio; UI; AI, Config, Rules and Systems). Items marked *checked* were confirmed in the code after the scan; the rest are as traced by the agents. Not covered: Pathing (skimmed), the replication encoder and decoder, Steam, `ServerPlayer`, `GameManager`, AiView, UnitCommander and Selection, and about half the AI managers (Builder, Raid, Production, Strategy, Diplomacy, Opening, Economy, Scouting).
+
+**Medium**
+- **The queue row's + and − ignore the shown unit type** (*checked*): `HudController.OnQueue` drops its `unit` argument and calls `CmdChangeQueues(ids, delta)`, so the server adds to whatever each producer makes. Two Barracks selected, one on Scouts and one on Tanks: the card shows Scouts, +10 queues 10 of each and pays for the Tanks.
+- **HQ placement can probe enemy HQs** (*checked* that `CanBuildBuildingCommand` returns the real answer, `WorldStateManager.cs:1205`): for `Base`, `CheckPlacement` skips the explored and `KnownPlacement` checks, and `OwnStartOptions` returns null (no restriction) for a seat with no dealt `StartOptions` (added during `PlacingHQ`) or a map with no `HqSites`. Such a client can ask about every tile and map each HQ already placed, and can place its own HQ anywhere. Fix: refuse Base placement without start options unless `DevApi.Allowed`.
+- **ConfigParser accepts undefined or repeated unit and building types** (*checked*, `ConfigParser.cs:106`, `:438`): `Enum.TryParse` takes `"42"` or `"Base, Barracks"`, and there is no `Enum.IsDefined` check (the damage table has one) or duplicate check. `<Building type="42">` is valid and then throws in `SimData.cs:726` (`BuildingCostByKind[(int)pair.Key]`, unbounded); a repeated block silently overwrites the first.
+- **Kill credit depends on thread order**: `ApplyDamageJob` (`SimCombatSystem.cs:1262`) applies hits in the order the parallel attack, splash and turret jobs filled the queue, so with two killing-range hits in one tick `LastHitBy`, the death's cause, `BurnBy`, `HqLastHitBy` and the elimination credit change between runs. Fix: sort hits by attacker slot.
+- **Gifts fail silently**: `GiftDialogController` (91-104) closes and clears as if sent; `TryGift` refuses during the cooldown, to an away player (their rows stay enabled) or outside Playing, and tells the client nothing.
+
+**Low**
+- **Freed ids depend on thread order**: `RecordDeathsJob` is a parallel job and `RemoveDead` frees ids in queue order onto a LIFO stack, so a new unit's index and generation, and the chunk order `UpkeepJob` charges in, vary between same-seed runs (replays, `ai-bench` reproducibility). Fix: sort deaths by id.
+- **Each unit death explosion scans every known building**: `BuildingReplication.TryTakeDying` (544-549) falls back to a linear walk of `Entries`, called per death from `WorldEffects.cs:97`; O(deaths × buildings) per batch in big matches.
+- **A Mine that kills an HQ doesn't set `HqLastHitBy`** (*checked*, `SimBombSystem.cs:140-152`, which damages buildings directly): the elimination goes to whoever last shot the HQ, or nobody.
+- **`MinRange` isn't checked against `Range`**: a unit with `MinRange` ≥ `Range` validates and never fires.
+- **Away players' economy figures**: building upkeep counts as paid though `TryPayBuildingUpkeep` takes nothing (`ResourceSystem.cs:77-79`), and passive income is credited to the match summary though `AddIncome` gives nothing (`ResourceSystem.cs:33-34`; the Miner loop gets it right).
+- **Unbounded per-type reads**: `DamageByType[Type[i]]` in `TargetSearch.cs:320`, `SimCombatSystem.cs:398,400` and `DefendAlarms.cs:70` has no bounds check, unlike the neighbouring per-type tables.
+- **A wall on tile 0 can't be kept as a target**: `TargetSearch.Keep` returns early for `id <= 0`, but a wall's id is its tile index.
+- **A reused index can show the old unit's attack or recoil pose**: `ClientWorld` `lastAction[index]` is never reset on Leave or Enter (hit tracking checks the id; this doesn't).
+- **`ClientUnitStore.Enter` doesn't compare generations**: an Enter for a new id on a still-known index skips `Forgotten`/`Appeared`, keeping the old unit's combat state. Not reproduced; depends on the encoder's Leave/Enter order.
+- **Arrow-key pan isn't gated on text focus or dialogs** (`Character_Controler.cs:117`): moving the caret in the gift dialog or manual search scrolls the camera.
+- **Rebound Manual or Menu keys fire while typing** in the manual's search (`HudController.cs:427-431`, `MenuController.cs:246`): bound to a letter, it closes the manual.
+- **Delete isn't gated on the end screen or spectating** (`HudController.cs:448`): it still sends `CmdCancelBuildings` and clears the selection.
+- **`ClientPlayer.hasPlacedHQ` is a public SyncVar**: every client learns when each opponent commits its HQ. May be intended for the waiting UI.
+- **`DestructionSystem` has no `GameState` gate**: it runs `OnEntityDestroyed` in any state; no harm found.
+
 ### 100,000 units (2026-11-07, updated 2026-11-08 after the owner's runs, on `perf/100k-units`)
 
 [perf/100k](perf/100k/README.md) has the benchmark (`tools/perf-100k.sh`: 8 × 12,500 units, one rendered player) and the results
