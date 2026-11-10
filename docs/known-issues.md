@@ -22,6 +22,8 @@ Bugs, mismatches and hygiene problems. The first three roadmaps (v0.2 to v0.9, v
 | Text chat (Networking 6), a minimap in the replay viewer (UI 20), the Teams lobby layout at 1080p (UI 16), a separate alert volume (UI 52) | **Not done:** new UI, which goes through Figma first. |
 | AI difficulty and style balance (Balance 3–5, 7, 8, 11–13), the AI spending its bank (Balance 2) | **Not changed** (owner, 2026-11-10). |
 | A turret outranged by Artillery and Snipers, Digger and Sniper losing most equal-cost fights (Balance 9, 10) | **By design:** they are the turret's counters and specialists (gameplay.md). |
+| The replay list's length is a few seconds longer than the end screen's (UI 17) | **By design:** the recording runs on into game over, and the viewer plays that tail; the end screen gives the match's length. |
+| The 1024 map's start-site outcrop | Only on maps of 512 and up: on a small map it changed a seed the AI PlayMode test plays and crowded a base. |
 | Serialization depth warning at startup (Other 9) | **Not fixed:** it comes from the vendored console's `CmdFormula`. |
 
 ## Full-coverage scan (2026-11-09), not fixed

@@ -80,7 +80,7 @@ public class MapGeneratorTests
     /// </summary>
     [TestCase(256, 3837137724347158538UL)]
     [TestCase(512, 661219065714699307UL)]
-    [TestCase(1024, 7999288267031227692UL)]
+    [TestCase(1024, 17377793465042047408UL)] // 2026-11-10: start sites with no vein near the HQ get an outcrop
     public void RecordedHashPerSize(int size, ulong expected)
     {
         using MapLayout l = Make(size, 12345u);

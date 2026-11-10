@@ -32,9 +32,6 @@ namespace WAR2D.Net.Replay
         private readonly BlockingCollection<(int tick, ReplayChannel channel, byte[] bytes)> queue = new BlockingCollection<(int, ReplayChannel, byte[])>(QueueLimit);
         private readonly Thread thread;
         private int currentTick, firstTick = -1;
-
-        /// <summary>The match's length as the end screen gives it (set at game over), or -1.</summary>
-        private float matchSeconds = -1f;
         private readonly float tickSeconds;
         private long queuedBytes;
         private NativeArray<byte> fogLast;
@@ -115,8 +112,6 @@ namespace WAR2D.Net.Replay
         /// <summary>The end screen's graphs and timeline (v0.18), written once at game over so the viewer has them from the start of playback.</summary>
         public void Summary(SummaryData summary)
         {
-            // Playtest 2026-11-10: the list showed 1:35 for a match the end screen called 1:32 (the file runs on into game over).
-            if (WorldStateManager.Instance != null) matchSeconds = WorldStateManager.Instance.PlayedSeconds;
             bool wasStopped = stopped;
             stopped = false; // goes in even when the size cap stopped the rest
             Enqueue(ReplayChannel.Summary, System.Text.Encoding.UTF8.GetBytes(Newtonsoft.Json.JsonConvert.SerializeObject(summary)));
@@ -159,7 +154,7 @@ namespace WAR2D.Net.Replay
             if (File.Exists(finalPath)) File.Delete(finalPath);
             File.Move(partPath, finalPath);
             Finished = true;
-            ReplayLibrary.WriteInfo(finalPath, matchSeconds >= 0f ? matchSeconds : Math.Max(0, tick - Math.Max(0, firstTick)) * tickSeconds);
+            ReplayLibrary.WriteInfo(finalPath, Math.Max(0, tick - Math.Max(0, firstTick)) * tickSeconds);
             WarLog.Info(LogCategory.Replay, $"recording saved: {finalPath} ({new FileInfo(finalPath).Length / 1024} KB{(wasStopped ? ", stopped early at the size cap" : "")})");
         }
 

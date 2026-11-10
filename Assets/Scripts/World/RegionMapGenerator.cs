@@ -432,6 +432,13 @@ namespace WAR2D.World
                 foreach (int c in RichAreas(plan.Regions.ToArray(), LanesOf(plan), size, cfg))
                     AddRichField(tiles, size, plan.Regions[c], richTiles, starts, clear, ref richRng);
             }
+            // Playtest 2026-11-10 (1024, seed 7): a start site whose vein grew on a wide region's far rim, with no gem patch near it
+            // either, had nothing to mine near its HQ. Checked once every gem is placed; only on maps of OpenVeinMinSize and up
+            // (a small map's start sites are tight, and its maps stay as they were).
+            if (size >= OpenVeinMinSize)
+                for (int i = 0; i < plan.Regions.Count; i++)
+                    if (plan.Regions[i].Kind == RegionKind.Start && !GemWithin(tiles, size, plan.Regions[i].Centre, StartRadius + VeinFallbackSlack))
+                        AddOpenVein(tiles, size, plan.Regions[i].Centre, AwayFromLanes(plan, i));
             WriteBorder(tiles, size, cfg.EdgeTiles);
 
             return new MapLayout(tiles, plan.Regions.ToArray(), LanesOf(plan), starts.ToArray(), expansions.ToArray(), plan.Score == 0, attempt);
@@ -857,6 +864,14 @@ namespace WAR2D.World
         private static void AddVein(NativeArray<byte> tiles, int size, Plan plan, int regionIndex, ref Random rng)
         {
             MapRegion region = plan.Regions[regionIndex];
+            int2 away = AwayFromLanes(plan, regionIndex);
+            GrowGems(tiles, size, region.Centre, region.Radius + 3, 6 + rng.NextInt(0, 5), away, true, ref rng);
+        }
+
+        /// <summary>The point a start site's vein keeps away from: the mean of the neighbouring regions' centres (its lanes' way).</summary>
+        private static int2 AwayFromLanes(Plan plan, int regionIndex)
+        {
+            MapRegion region = plan.Regions[regionIndex];
             // The point to stay away from: the mean of the neighbouring regions' centres, so the vein sits opposite the lanes.
             long sx = 0, sy = 0; int neighbours = 0;
             foreach (LanePlan l in plan.Lanes)
@@ -865,13 +880,14 @@ namespace WAR2D.World
                 if (other < 0) continue;
                 sx += plan.Regions[other].Centre.x; sy += plan.Regions[other].Centre.y; neighbours++;
             }
-            int2 away = neighbours == 0 ? region.Centre : new int2((int)(sx / neighbours), (int)(sy / neighbours));
-            GrowGems(tiles, size, region.Centre, region.Radius + 3, 6 + rng.NextInt(0, 5), away, true, ref rng);
-            if (!GemWithin(tiles, size, region.Centre, StartRadius + VeinFallbackSlack)) AddOpenVein(tiles, size, region.Centre, away);
+            return neighbours == 0 ? region.Centre : new int2((int)(sx / neighbours), (int)(sy / neighbours));
         }
 
         /// <summary>How far past <see cref="StartRadius"/> a start site's vein may sit before <see cref="AddOpenVein"/> adds one.</summary>
         private const int VeinFallbackSlack = 10;
+
+        /// <summary>The smallest map size that gets <see cref="AddOpenVein"/>'s fallback outcrop.</summary>
+        private const int OpenVeinMinSize = 512;
 
         /// <summary>True when a gem tile lies within <paramref name="reach"/> of <paramref name="centre"/>.</summary>
         private static bool GemWithin(NativeArray<byte> tiles, int size, int2 centre, int reach)
