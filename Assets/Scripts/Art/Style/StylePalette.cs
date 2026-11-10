@@ -71,8 +71,8 @@ namespace WAR2D.Art.Style
     {
         //                                 Outline   Body0     Body1     Body2     Body3     Lamp      Floor0    Floor1    Floor2    Rock0     Rock1     Rock2     Rock3     Gem0      Gem1      Gem2      Gem3      Warn
         public static readonly StylePalette Charcoal = new StylePalette("Charcoal",
-            "The current placeholders, cleaned up: neutral charcoal machines and stone, red gems.",
-            0x121314, 0x2A2C2E, 0x3A3D40, 0x4D5155, 0x6A6F74, 0xE8ECEF, 0x26282A, 0x2D2F31, 0x383A3D, 0x161718, 0x3A3D40, 0x44474B, 0x4C5054, 0x7A1414, 0xC62828, 0xF0524A, 0xFFC2B8, 0xF2C14E);
+            "The current placeholders, cleaned up: neutral charcoal machines and stone, pale ice gems (red until the 2026-11-10 playtest: the red player's hue).",
+            0x121314, 0x2A2C2E, 0x3A3D40, 0x4D5155, 0x6A6F74, 0xE8ECEF, 0x26282A, 0x2D2F31, 0x383A3D, 0x161718, 0x3A3D40, 0x44474B, 0x4C5054, 0x4A6478, 0x9CC4DE, 0xD8EEFA, 0xFFFFFF, 0xF2C14E);
 
         public static readonly StylePalette Gunmetal = new StylePalette("Gunmetal",
             "Cooler blue-grey metal and slate, cyan gems: matches the v0.6 UI's steel panels.",

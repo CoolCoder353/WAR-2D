@@ -38,6 +38,7 @@ namespace WAR2D.UI
             players.AddToClassList("panel");
             players.AddToClassList("row");
             players.AddToClassList("replay-viewer__bar");
+            players.AddToClassList("replay-viewer__top"); // wraps with 8 players (playtest 2026-11-10)
             panel.Add(players);
 
             viewList = new VisualElement { name = "spectating-view-list" };
@@ -99,7 +100,8 @@ namespace WAR2D.UI
                 swatch.AddToClassList("player-" + (row.ColourIndex % 8 + 1));
                 chip.Add(swatch);
                 chip.Add(PlayerNameLabel.Build(string.IsNullOrEmpty(row.Nickname) ? "Player" : row.Nickname, aiTagOf(row.OwnerId), "text"));
-                var numbers = new Label(Numbers(resources, units));
+                // Playtest 2026-11-10: an eliminated player (yourself, spectating) read "0 res · 0 units" while the server still held a balance.
+                var numbers = new Label(row.Eliminated ? "eliminated" : Numbers(resources, units));
                 numbers.AddToClassList("replay-row__meta");
                 chip.Add(numbers);
                 players.Add(chip);
@@ -120,7 +122,26 @@ namespace WAR2D.UI
             ClientPlayer me = NetworkClient.localPlayer != null ? NetworkClient.localPlayer.GetComponent<ClientPlayer>() : null;
             foreach (PlayerRow row in rows())
                 if (me != null && me.SpectatorOwners != null && Array.IndexOf(me.SpectatorOwners, row.OwnerId) >= 0)
-                    viewList.Add(ViewEntry(row.OwnerId, string.IsNullOrEmpty(row.Nickname) ? "Player" : row.Nickname));
+                {
+                    // Playtest 2026-11-10: bare names; each entry now has its player's colour.
+                    string name = string.IsNullOrEmpty(row.Nickname) ? "Player" : row.Nickname;
+                    Button entry = ViewEntry(row.OwnerId, name);
+                    entry.text = ""; // a TextElement draws its text under its children: the name goes in a Label after the swatch
+                    var swatch = new VisualElement { pickingMode = PickingMode.Ignore };
+                    swatch.AddToClassList("lobby-row__swatch");
+                    swatch.AddToClassList("player-" + (row.ColourIndex % 8 + 1));
+                    swatch.style.marginRight = 6;
+                    entry.style.flexDirection = FlexDirection.Row;
+                    entry.style.alignItems = Align.Center;
+                    entry.Add(swatch);
+                    var text = new Label(name) { pickingMode = PickingMode.Ignore };
+                    text.style.paddingLeft = text.style.paddingRight = 0;
+                    entry.Add(text);
+                    viewList.Add(entry);
+                }
+            // Playtest 2026-11-10: the list opened centred on the screen; it opens above its View button.
+            if (!float.IsNaN(viewButton.worldBound.x) && !float.IsNaN(panel.worldBound.x))
+                viewList.style.left = viewButton.worldBound.x - panel.worldBound.x;
         }
 
         private Button ViewEntry(int owner, string label) => Widgets.Option("spectating-view-" + owner, label, viewed == owner, true, () =>

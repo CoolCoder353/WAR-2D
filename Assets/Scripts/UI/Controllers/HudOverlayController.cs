@@ -90,7 +90,7 @@ namespace WAR2D.UI
             string end = hasTeammates ? "Your teammates' options are ringed in their colour."
                 : pickSeconds == StartPickRules.Unlimited ? "The match waits until everyone has placed."
                 : "When time runs out, your HQ goes to a random option.";
-            return $"Place your HQ (5×5) inside {count}.{camera} R rotates. {end}";
+            return $"Place your HQ (5×5) inside {count}.{camera} {end}"; // no "R rotates": the HQ has one facing (playtest 2026-11-10)
         }
 
         /// <summary>"2 of 4 players placed" (or "Waiting for 2 players" when Unlimited), then any teammates' picks.</summary>

@@ -228,7 +228,7 @@ namespace WAR2D.UI
             if (rejoining && !NetworkClient.active)
             {
                 rejoining = false;
-                if (available) play.ShowRejoinFailed("Couldn't get back into the match. Try again while the timer runs.");
+                if (available) play.ShowRejoinFailed("The host didn't answer: the match may have ended, or the host's connection is down. You can try again while the timer runs.");
             }
             // v0.15.1: the server refused the ticket and said why; Rejoin is no longer offered.
             if (!available && WAR2D.Net.Rejoin.RejoinTicket.Refusal is WAR2D.Net.Rejoin.RejoinRefusal refusal)

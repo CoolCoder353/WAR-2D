@@ -143,7 +143,10 @@ namespace WAR2D.UI
                 label.style.top = YOf(v) - 8f;
                 labels.Add(label);
             }
-            float minutes = Duration / 60f, step = minutes <= 10f ? 60f : minutes <= 40f ? 300f : 600f;
+            // Playtest 2026-11-10: a short match had only two time labels; the step is the smallest that gives at most six.
+            float step = 1800f;
+            foreach (float s in new[] { 15f, 30f, 60f, 120f, 300f, 600f, 900f, 1800f })
+                if (Duration / s <= 6f) { step = s; break; }
             for (float t = 0f; t <= Duration; t += step)
             {
                 var label = new Label(SummaryModel.Time(t));

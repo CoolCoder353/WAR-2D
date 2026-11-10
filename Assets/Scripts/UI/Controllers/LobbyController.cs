@@ -25,6 +25,7 @@ namespace WAR2D.UI
         /// <summary>The card being dragged by its handle, or null; redraws wait until it is dropped.</summary>
         private VisualElement dragging;
         private bool redrawPending;
+        private readonly VisualElement visibilityGroup;
         private readonly VisualElement modeOptions, sizeOptions, resourceOptions, diplomacySlot, startOptions, pickTimes;
         private readonly VisualElement visibilityOptions, addAiRow;
         private readonly Label visibilityHint, addAiHint;
@@ -74,7 +75,6 @@ namespace WAR2D.UI
         private readonly TextField serverNameField;
         private readonly Label banTitle, banText;
         private readonly WAR2D.UI.HoverCard hover;
-        private int banTarget;
 
         /// <summary>The host renamed the server ("" restores the default).</summary>
         public event Action<string> ServerNameChanged;
@@ -114,6 +114,7 @@ namespace WAR2D.UI
             subtitle = root.Q<Label>("lobby-subtitle");
             visibilityOptions = root.Q("visibility-row");
             visibilityHint = root.Q<Label>("visibility-hint");
+            visibilityGroup = root.Q("visibility-group");
             addAiRow = root.Q("add-ai-row");
             addAiHint = root.Q<Label>("add-ai-hint");
             addAi = root.Q<Button>("add-ai-button");
@@ -129,10 +130,13 @@ namespace WAR2D.UI
             banTitle = root.Q<Label>("lobby-ban-title");
             banText = root.Q<Label>("lobby-ban-text");
             root.Q<Button>("lobby-ban-cancel").clicked += () => banConfirm.RemoveFromClassList("overlay-screen--visible");
-            root.Q<Button>("lobby-ban-confirm-button").clicked += () =>
+            banButton = root.Q<Button>("lobby-ban-confirm-button");
+            banButton.clicked += () =>
             {
                 banConfirm.RemoveFromClassList("overlay-screen--visible");
-                RemoveClicked?.Invoke(banTarget, true);
+                Action act = confirmed;
+                confirmed = null;
+                act?.Invoke();
             };
             serverNameField.RegisterCallback<FocusOutEvent>(_ => SubmitServerName());
             serverNameField.RegisterCallback<KeyDownEvent>(e =>
@@ -153,7 +157,8 @@ namespace WAR2D.UI
             ready.clicked += () => ReadyClicked?.Invoke(!model.Local.Ready);
             seed.RegisterCallback<FocusOutEvent>(_ => SubmitSeed());
             resetButton = root.Q<Button>("lobby-reset");
-            if (resetButton != null) resetButton.clicked += () => GameCore.Instance?.Cmd_ResetLobby();
+            if (resetButton != null) resetButton.clicked += () => Ask("Reset the match settings?",
+                "Map, start, mode and rules go back to their defaults. The players and AIs stay.", "Reset", () => GameCore.Instance?.Cmd_ResetLobby());
             seed.RegisterCallback<KeyDownEvent>(e =>
             {
                 if (e.keyCode == UnityEngine.KeyCode.Return || e.keyCode == UnityEngine.KeyCode.KeypadEnter) SubmitSeed();
@@ -197,7 +202,10 @@ namespace WAR2D.UI
             ShowSettings(s, host);
 
             if (seed.focusController?.focusedElement != seed) seed.SetValueWithoutNotify(s.Seed.ToString());
-            mapCaption.text = $"{s.MapSize} × {s.MapSize} · seed {s.Seed}"; // v0.16 (Figma M2)
+            // v0.16 (Figma M2); playtest 2026-11-10: with a legend for the gem specks and the gold rich-gem patches.
+            uint previous = GameCore.Instance != null ? GameCore.Instance.PreviousSeed : 0u;
+            mapCaption.text = $"{s.MapSize} × {s.MapSize} · seed {s.Seed}" + (previous != 0 && previous != s.Seed ? $" (last match: {previous})" : "")
+                + " · pale specks: gems · gold: rich gems";
             seed.SetEnabled(host);
             reroll.SetEnabled(host);
 
@@ -279,7 +287,7 @@ namespace WAR2D.UI
         /// <summary>
         /// A player's card (Figma <c>Lobby / Player card</c>): colour strip; the drag handle (when this viewer may move them: the whole card drags),
         /// name, ready and the remove ×; a second line (AI: difficulty ▾ and style ▾; you: colour ▾; another human, for the
-        /// host: ⋯); and, in Teams mode, the team dropdown, live for whoever may move them (the host: anyone; a joined
+        /// host: ⋯; you: a swatch per colour); and, in Teams mode, the team dropdown, live for whoever may move them (the host: anyone; a joined
         /// player: themselves). Named <c>lobby-row-&lt;owner&gt;</c>.
         /// </summary>
         private VisualElement PlayerCard(LobbyPlayer p, bool host, bool teams)
@@ -348,7 +356,7 @@ namespace WAR2D.UI
             else
             {
                 sub.Add(SubText(you ? (p.IsHost ? "You · host" : "You") : p.IsHost ? "Host" : "Joined"));
-                if (you) sub.Add(ColourPill());
+                if (you) sub.Add(ColourSwatches());
                 else if (host && !p.IsHost) sub.Add(PlayerMenu(p));
             }
 
@@ -386,23 +394,30 @@ namespace WAR2D.UI
             else HostTeamClicked?.Invoke(p.OwnerId, team);
         }
 
-        /// <summary>Your colour ▾ on your own card: every palette colour, the ones other humans hold disabled (an AI gives its colour up).</summary>
-        private Button ColourPill()
+        /// <summary>
+        /// Your colour on your own card: a swatch button per palette colour, yours outlined, the ones other humans hold disabled (an
+        /// AI gives its colour up). Playtest 2026-11-10: the "colour ▾" dropdown listed "Colour 1" to "Colour 8" with no colours,
+        /// so players couldn't see what they were picking.
+        /// </summary>
+        private VisualElement ColourSwatches()
         {
-            var pill = Pill("own-colour", "colour ▾");
-            pill.clicked += () =>
+            var row = new VisualElement { name = "own-colour" };
+            row.AddToClassList("lobby-card__colours");
+            for (int c = 0; c < LobbyRules.Colours; c++)
             {
-                var menu = new GenericDropdownMenu();
-                for (int c = 0; c < LobbyRules.Colours; c++)
-                {
-                    int colour = c;
-                    string label = $"Colour {c + 1}" + (model.Local.ColourIndex == c ? " (yours)" : "");
-                    if (model.IsColourTakenByHuman(c) && model.Local.ColourIndex != c) menu.AddDisabledItem(label + " (taken)", false);
-                    else menu.AddItem(label, model.Local.ColourIndex == c, () => { if (colour != model.Local.ColourIndex) ColourClicked?.Invoke(colour); });
-                }
-                menu.DropDown(pill.worldBound, pill, false);
-            };
-            return pill;
+                int colour = c;
+                bool mine = model.Local.ColourIndex == c;
+                bool taken = !mine && model.IsColourTakenByHuman(c);
+                var swatch = new Button(() => { if (colour != model.Local.ColourIndex) ColourClicked?.Invoke(colour); })
+                    { name = "own-colour-" + c, tooltip = mine ? "Your colour" : taken ? "Taken by another player" : "Pick this colour" };
+                swatch.AddToClassList("lobby-card__swatch");
+                swatch.AddToClassList("player-" + (c + 1));
+                swatch.EnableInClassList("lobby-card__swatch--selected", mine);
+                swatch.EnableInClassList("lobby-card__swatch--taken", taken);
+                swatch.SetEnabled(!taken);
+                row.Add(swatch);
+            }
+            return row;
         }
 
         /// <summary>Pixels the pointer moves before a press on a card becomes a drag (a shorter move is still a click).</summary>
@@ -538,10 +553,11 @@ namespace WAR2D.UI
             button.AddToClassList("lobby-card__menu");
             button.clicked += () =>
             {
+                CloseOpenMenus(button);
                 var menu = new GenericDropdownMenu();
                 if (p.Ready) menu.AddDisabledItem("Force ready (already ready)", false);
                 else menu.AddItem("Force ready", false, () => ForceReadyClicked?.Invoke(owner));
-                menu.AddItem("Kick", false, () => RemoveClicked?.Invoke(owner, false));
+                menu.AddItem("Kick…", false, () => Ask($"Kick {name}?", $"{name} leaves the lobby. They can join again.", "Kick", () => RemoveClicked?.Invoke(owner, false)));
                 menu.AddItem("Ban…", false, () => AskBan(owner, name));
                 menu.DropDown(button.worldBound, button, false);
             };
@@ -549,11 +565,23 @@ namespace WAR2D.UI
         }
 
         /// <summary>Opens the Ban confirmation for a player.</summary>
-        private void AskBan(int owner, string name)
+        private void AskBan(int owner, string name) =>
+            Ask($"Ban {name}?", $"{name} leaves the lobby and can't rejoin {WAR2D.Net.ServerNames.Display(model.ServerName, HostName())} while it is open. Kick instead lets them come back.",
+                "Ban", () => RemoveClicked?.Invoke(owner, true));
+
+        private Action confirmed;
+        private readonly Button banButton;
+
+        /// <summary>
+        /// The lobby's confirmation (Figma K2, the Ban dialog): a title, a line and a danger button that runs <paramref name="act"/>.
+        /// Playtest 2026-11-10: Kick and Reset settings acted at once; they ask here too.
+        /// </summary>
+        private void Ask(string title, string text, string button, Action act)
         {
-            banTarget = owner;
-            banTitle.text = $"Ban {name}?";
-            banText.text = $"{name} leaves the lobby and can't rejoin {WAR2D.Net.ServerNames.Display(model.ServerName, HostName())} while it is open. Kick instead lets them come back.";
+            confirmed = act;
+            banTitle.text = title;
+            banText.text = text;
+            banButton.text = button;
             banConfirm.AddToClassList("overlay-screen--visible");
         }
 
@@ -599,6 +627,7 @@ namespace WAR2D.UI
         /// <summary>The dropdown under an AI row's pill: one item per value, the current one checked.</summary>
         private static void Menu<T>(VisualElement anchor, T[] values, T current, Func<T, string> label, Action<T> picked)
         {
+            CloseOpenMenus(anchor);
             var menu = new GenericDropdownMenu();
             foreach (T value in values)
             {
@@ -608,11 +637,20 @@ namespace WAR2D.UI
             menu.DropDown(anchor.worldBound, anchor, false);
         }
 
+        /// <summary>
+        /// Closes any lobby dropdown still open (playtest 2026-11-10: a second card's Team ▾ opened beside the first), so only
+        /// one shows at a time.
+        /// </summary>
+        private static void CloseOpenMenus(VisualElement anchor) =>
+            anchor.panel?.visualTree.Query(className: GenericDropdownMenu.ussClassName).ForEach(e => e.RemoveFromHierarchy());
+
         /// <summary>Add AI and its hint: the host's, while a seat is free (decision 4).</summary>
         private void ShowAddAi(bool host, bool isPrivate, bool teams)
         {
             addAiRow.EnableInClassList("hidden", !host || !model.HasFreeSeat || teams); // Teams mode: + Add AI on each row instead
             addAiHint.text = isPrivate ? "Add AIs to play against; you need two teams to start." : "AIs are always ready. Shown while a seat is free (8 at most).";
+            if (host && GameCore.RestoredAis > 0)
+                addAiHint.text += $" {GameCore.RestoredAis} {(GameCore.RestoredAis == 1 ? "AI" : "AIs")} came back from your last match (new callsigns): remove any with ×.";
         }
 
         private void ShowSettings(MatchSettings s, bool host)
@@ -630,13 +668,13 @@ namespace WAR2D.UI
                 sizeOptions.Add(Widgets.Option("size-" + size, size.ToString(), s.MapSize == size, host, () => Change(s, x => x.MapSize = value)));
             }
             resourceOptions.Clear();
-            if (host || !s.InfiniteResources)
-                foreach (float amount in lobby.StartingResources)
+            // Playtest 2026-11-10: a joined player sees the same row as the host (Infinite included), only read-only.
+            foreach (float amount in lobby.StartingResources)
                 {
                     float value = amount;
                     resourceOptions.Add(Widgets.Option("resources-" + amount, amount.ToString("0"), !s.InfiniteResources && s.StartingResources.Equals(amount), host, () => Change(s, x => { x.StartingResources = value; x.InfiniteResources = false; })));
                 }
-            if (host || s.InfiniteResources) resourceOptions.Add(Widgets.Option("resources-infinite", "Infinite", s.InfiniteResources, host, () => Change(s, x => x.InfiniteResources = true)));
+            resourceOptions.Add(Widgets.Option("resources-infinite", "Infinite", s.InfiniteResources, host, () => Change(s, x => x.InfiniteResources = true)));
             resourcesHint?.EnableInClassList("hidden", !s.InfiniteResources);
             ShowStartSettings(s, host);
         }
@@ -648,6 +686,8 @@ namespace WAR2D.UI
         /// </summary>
         private void ShowVisibility(MatchSettings s, bool host)
         {
+            // Playtest 2026-11-10: a joined player can't change who may join, so they don't see it.
+            visibilityGroup?.EnableInClassList("hidden", !host);
             if (privateRefused && (model.Players.Count != refusedAtPlayers || s.Visibility != refusedAtVisibility)) privateRefused = false;
             visibilityOptions.Clear();
             foreach (LobbyVisibility v in new[] { LobbyVisibility.Public, LobbyVisibility.Friends, LobbyVisibility.Private })
@@ -692,6 +732,15 @@ namespace WAR2D.UI
                 startOptions.Add(Widgets.Option("start-options-" + n, n.ToString(), s.StartOptions == n, host && fits, () => Change(s, x => x.Value.StartOptions = value)));
             }
             if (!Fits(s.StartOptions)) unfit = s.StartOptions;
+            // Playtest 2026-11-10: an option count that no longer fits (more players, a smaller map) stayed selected. The host
+            // drops to the largest that fits.
+            if (host && !Fits(s.StartOptions))
+            {
+                int best = 0;
+                for (int n = lobby.StartOptionsMin; n <= lobby.StartOptionsMax; n++) if (Fits(n)) best = n;
+                if (best > 0 && best != clampedOptionsTo) { clampedOptionsTo = best; Change(s, x => x.Value.StartOptions = best); }
+            }
+            else clampedOptionsTo = 0;
             int players = Math.Max(1, model.Players.Count);
             startOptionsHint.text = unfit == 0 ? "" :
                 $"{unfit} options need {players * unfit + lobby.SpareStartSites} start sites for {players} {(players == 1 ? "player" : "players")}; a {s.MapSize} map has {Sites(s.MapSize)}.";
@@ -706,6 +755,8 @@ namespace WAR2D.UI
             pickTimes.Add(Widgets.Option("pick-time-unlimited", "Unlimited", s.StartPickSeconds == StartPickRules.Unlimited, host,
                 () => Change(s, x => x.Value.StartPickSeconds = StartPickRules.Unlimited)));
         }
+
+        private int clampedOptionsTo;
 
         /// <summary>True when the lobby's players can each be dealt <paramref name="options"/> on the chosen map (the server checks the same at Start).</summary>
         private bool Fits(int options)

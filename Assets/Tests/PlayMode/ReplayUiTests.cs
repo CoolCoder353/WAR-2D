@@ -49,7 +49,7 @@ public class ReplayUiTests
         yield return null;
         Assert.IsTrue(root.Q("replays").ClassListContains("menu-screen--visible"), "the Replays screen shows");
         VisualElement row = null;
-        foreach (VisualElement r in root.Query("replay-row").ToList()) if (r.Q<Label>("replay-length").text == "0:10 · 0.0 MB") row = r;
+        foreach (VisualElement r in root.Query("replay-row").ToList()) if (r.Q<Label>("replay-length").text.StartsWith("0:10 · ") && r.Q<Label>("replay-length").text.EndsWith(" KB")) row = r;
         Assert.IsNotNull(row, "the test's replay is listed");
         Assert.IsFalse(root.Q("replays-empty").ClassListContains("play-panel__notice--visible"));
 
@@ -82,7 +82,7 @@ public class ReplayUiTests
         HudTests.Click(root.Q<Button>("replays-button"));
         yield return null;
         VisualElement row = null;
-        foreach (VisualElement r in root.Query("replay-row").ToList()) if (r.Q<Label>("replay-length").text == "0:10 · 0.0 MB") row = r;
+        foreach (VisualElement r in root.Query("replay-row").ToList()) if (r.Q<Label>("replay-length").text.StartsWith("0:10 · ") && r.Q<Label>("replay-length").text.EndsWith(" KB")) row = r;
         Assert.IsNotNull(row);
         HudTests.Click(row.Q<Button>("replay-delete"));
         Assert.IsTrue(File.Exists(path), "the first click only asks");

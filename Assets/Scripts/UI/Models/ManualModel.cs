@@ -356,6 +356,12 @@ namespace WAR2D.UI
                 turret.Cells[c] = new ManualGridCell { Multiplier = m, Detail = $"Gun turret against {Classes[c].name.ToLowerInvariant()}: {Number(t.Damage * m)} per shot, {Number(t.Damage / t.AttackInterval * m)} per second" };
             }
             page.Grid.Add(turret);
+            // Playtest 2026-11-10: the Mine had no row. Its blast hurts everything it reaches the same, whatever the class.
+            float blast = config.Siege.BlastDamage;
+            var mine = new ManualGridRow { Name = "Mine", PageId = PageOf(BuildingType.Mine), Cells = new ManualGridCell[Classes.Length] };
+            for (int c = 0; c < Classes.Length; c++)
+                mine.Cells[c] = new ManualGridCell { Multiplier = 1f, Detail = $"Mine against {Classes[c].name.ToLowerInvariant()}: a blast of {Number(blast)}" };
+            page.Grid.Add(mine);
             return page;
         }
 

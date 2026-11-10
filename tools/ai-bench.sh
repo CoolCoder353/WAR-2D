@@ -3,7 +3,7 @@
 # player process (Dev/AiBench.cs: -perf -aiBench, the host sits out, the match fast-forwarded), several at once, and
 # writes the report (winners, lengths, failures, styles) to docs/perf/v0.14/ai-bench.md.
 #
-# Usage: tools/ai-bench.sh [--brief] [seeds=6] [jobs=4] [player=Builds/Linux/WAR-2D.x86_64]
+# Usage: tools/ai-bench.sh [--brief] [seeds] [jobs] [player]   (default 6 4 Builds/Linux/WAR-2D.x86_64; also as seeds=… jobs=… player=…)
 #        tools/ai-bench.sh report <results-dir>...   (rewrite the report from finished runs, merged)
 #        tools/ai-bench.sh brief <results-dir>...    (the short summary of finished runs, merged)
 # --brief prints one line to start and about eight at the end (tools/ai-bench-brief.js, needs node: win rates with a
@@ -141,9 +141,17 @@ if [[ "${1:-}" == "--brief" ]]; then
   command -v node >/dev/null || { echo "--brief needs node (tools/ai-bench-brief.js)."; exit 1; }
 fi
 
-seeds="${1:-6}"
-jobs="${2:-4}"
-player="${3:-Builds/Linux/WAR-2D.x86_64}"
+# Positional (seeds jobs player) or named (seeds=6 jobs=4 player=...), in any mix (playtest 2026-11-10: the usage line gave
+# the named form, which the script didn't take).
+seeds=6; jobs=4; player=Builds/Linux/WAR-2D.x86_64; pos=0
+for arg in "$@"; do
+  case "$arg" in
+    seeds=*) seeds="${arg#seeds=}" ;;
+    jobs=*) jobs="${arg#jobs=}" ;;
+    player=*) player="${arg#player=}" ;;
+    *) case $pos in 0) seeds="$arg" ;; 1) jobs="$arg" ;; 2) player="$arg" ;; esac; pos=$((pos + 1)) ;;
+  esac
+done
 [[ -x "$player" ]] || { echo "No player at $player - make a Linux build first."; exit 1; }
 player="$(realpath "$player")"
 sizes="${AI_BENCH_SIZES:-256 512 1024}"

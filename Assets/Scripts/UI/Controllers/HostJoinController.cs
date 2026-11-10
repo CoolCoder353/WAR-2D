@@ -40,6 +40,7 @@ namespace WAR2D.UI
             gameList = root.Q("game-list");
             friendsEmpty = root.Q("friends-empty");
             steamOff = root.Q<Label>("steam-off");
+            hostBlurb = root.Q<Label>("host-blurb");
             friendsNotice = root.Q<Label>("friends-notice");
             removedNotice = root.Q("removed-notice");
             removedText = root.Q<Label>("removed-text");
@@ -54,7 +55,12 @@ namespace WAR2D.UI
             nickname.value = MenuModel.Nickname;
             address.value = MenuModel.Address;
             nickname.RegisterValueChangedCallback(e => MenuModel.Nickname = e.newValue);
-            address.RegisterValueChangedCallback(_ => addressInput.RemoveFromClassList("input--error"));
+            address.RegisterValueChangedCallback(e =>
+            {
+                addressInput.RemoveFromClassList("input--error");
+                // Playtest 2026-11-10: the Direct address wasn't remembered between joins; a valid one is kept as it is typed.
+                if (MenuModel.IsAddressValid(e.newValue?.Trim())) MenuModel.Address = e.newValue.Trim();
+            });
             root.Q<Button>("host-button").clicked += () => HostClicked?.Invoke();
             root.Q<Button>("back-button").clicked += () => BackClicked?.Invoke();
             root.Q<Button>("cancel-button").clicked += () => CancelClicked?.Invoke();
@@ -163,6 +169,7 @@ namespace WAR2D.UI
         public void ShowGames(IReadOnlyList<LobbyInfo> games)
         {
             steamOff.RemoveFromClassList("play-panel__notice--visible");
+            hostBlurb?.RemoveFromClassList("hidden");
             gameList.Clear();
             foreach (LobbyInfo game in games)
             {
@@ -194,7 +201,11 @@ namespace WAR2D.UI
             gameList.Clear();
             friendsEmpty.RemoveFromClassList("play-panel__notice--visible");
             steamOff.AddToClassList("play-panel__notice--visible");
+            // Playtest 2026-11-10: "Friends see your game…" sat beside "Steam isn't running".
+            hostBlurb?.AddToClassList("hidden");
         }
+
+        private Label hostBlurb;
 
         /// <summary>Shows a failure notice under the friends' list; null clears it.</summary>
         private readonly VisualElement removedNotice;

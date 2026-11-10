@@ -21,6 +21,8 @@
                     <ui:VisualElement class="settings-row"><ui:Label text="Master" class="text settings-row__label" /><ui:VisualElement name="master-slider" /></ui:VisualElement>
                     <ui:VisualElement class="settings-row"><ui:Label text="Music" class="text settings-row__label" /><ui:VisualElement name="music-slider" /></ui:VisualElement>
                     <ui:VisualElement class="settings-row"><ui:Label text="Sound effects" class="text settings-row__label" /><ui:VisualElement name="sfx-slider" /></ui:VisualElement>
+                    <ui:VisualElement class="settings-row"><ui:Label text="Mute" class="text settings-row__label" /><ui:VisualElement name="mute-slot" /></ui:VisualElement>
+                    <ui:VisualElement class="settings-row"><ui:Label text="Mute when the game is in the background" class="text settings-row__label" /><ui:VisualElement name="mute-background-slot" /></ui:VisualElement>
                 </ui:VisualElement>
                 <ui:VisualElement name="settings-controls" class="settings__page">
                     <ui:VisualElement name="binding-rows" />

@@ -111,7 +111,7 @@ public class ManualTests
     public void TheDamageGridHasEveryCell()
     {
         ManualPage page = Model().Pages["damage"];
-        Assert.AreEqual(10, page.Grid.Count, "nine units and the Gun turret");
+        Assert.AreEqual(11, page.Grid.Count, "nine units, the Gun turret and the Mine");
         foreach (ManualGridRow row in page.Grid) Assert.AreEqual(4, row.Cells.Length);
     }
 

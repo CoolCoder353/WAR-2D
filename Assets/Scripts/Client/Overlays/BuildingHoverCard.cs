@@ -7,7 +7,7 @@ namespace WAR2D.Client.Overlays
 {
     /// <summary>
     /// The building hover card (Figma <c>v0.15 QoL – redesign</c>, item 12, frame 128:1542): resting the pointer on a
-    /// building opens a card above the pointer, after the Gameplay setting's tooltip delay (Fast 0.25 s, Normal 0.6 s,
+    /// building opens a card beside it (above the pointer until the 2026-11-10 playtest), after the Gameplay setting's tooltip delay (Fast 0.25 s, Normal 0.6 s,
     /// Off never). A visible enemy shows its name, owner and health; a ghost the same as last seen, an "Out of sight"
     /// tag and "Last seen 2:14 ago"; an own building its health and upkeep ("Unpaid" and "decaying" when unpaid).
     /// Gems, rock and walls show no card. It reads only <see cref="BuildingHover.TryDescribe"/> (the client's own
@@ -17,6 +17,9 @@ namespace WAR2D.Client.Overlays
     public sealed class BuildingHoverCard : IDisposable
     {
         private const float AbovePointer = 14f;
+
+        /// <summary>Gap between the building's right edge and the card, in panel pixels.</summary>
+        private const float BesideBuilding = 12f;
         private VisualElement card, swatch, fill;
         private Label title, tag, owner, healthText, footer;
         private VisualElement layer;
@@ -48,8 +51,25 @@ namespace WAR2D.Client.Overlays
             }
             Fill(info);
             Vector2 p = RuntimePanelUtils.ScreenToPanel(layer.panel, new Vector2(f.PointerScreen.x, Screen.height - f.PointerScreen.y));
-            card.style.left = p.x;
-            card.style.top = p.y - AbovePointer;
+            // Playtest 2026-11-10: centred above the pointer, the card hid the building it describes. It opens beside the
+            // building's right edge, at the pointer's height (above the pointer when the building isn't known here).
+            Camera cam = Camera.main;
+            if (cam != null && f.Commander.KnownBuildings.Entries.TryGetValue(id, out WAR2D.Net.Replication.ClientBuildings.Entry known))
+            {
+                int2 size = WorldStateManager.GetBuildingSize(info.Type);
+                float2 centre = Footprint.VisualCenter((int2)math.round(known.Data.position), size);
+                Vector3 edge = cam.WorldToScreenPoint(new Vector3(centre.x + size.x * 0.5f, centre.y, 0f));
+                Vector2 side = RuntimePanelUtils.ScreenToPanel(layer.panel, new Vector2(edge.x, Screen.height - edge.y));
+                card.style.translate = new Translate(0, Length.Percent(-50));
+                card.style.left = side.x + BesideBuilding;
+                card.style.top = p.y;
+            }
+            else
+            {
+                card.style.translate = StyleKeyword.Null;
+                card.style.left = p.x;
+                card.style.top = p.y - AbovePointer;
+            }
             card.style.display = DisplayStyle.Flex;
             OpenId = id;
         }
@@ -80,7 +100,10 @@ namespace WAR2D.Client.Overlays
 
             float h = math.saturate(info.Health01);
             fill.style.width = Length.Percent(100f * h);
+            // Playtest 2026-11-10: a blueprint's bar read red (as if badly damaged); while it is built it is the accent blue.
+            bool building = info.Progress < 100 && !info.Ghost;
             fill.style.backgroundColor = info.Ghost ? new Color(0xAE / 255f, 0xBB / 255f, 0xCB / 255f) // a ghost's health is old news: grey
+                : building ? new Color(0x3F / 255f, 0xC1 / 255f, 0xF0 / 255f)
                 : (Color)(info.Unpaid ? Palettes.Warning(Palettes.Current) : h < 0.35f ? OverlayColours.Danger(Palettes.Current) : OverlayColours.Success(Palettes.Current));
             healthText.text = $"{key.Item2} / {key.Item3}";
 

@@ -117,7 +117,7 @@ namespace WAR2D.Client
 
         private void LateUpdate()
         {
-            if (Running) view.Draw(null);
+            if (Running && view != null) view.Draw(null);
         }
 
         /// <summary>Creates the map, the simulation, its replication to the view, and both armies.</summary>
@@ -146,6 +146,8 @@ namespace WAR2D.Client
             replication.AddVirtualClient(OwnerA, Receive);
             // B shares its sight with A, so the watcher sees both sides of the fight.
             sim.Commands.Enqueue(new SimCommand { Kind = SimCommandKind.SetShareVision, OwnerId = OwnerB, TargetOwnerId = OwnerA, Flag = true });
+
+            ClientWorld.TakeOverNext = true;
 
             view = new GameObject("MenuBattleView").AddComponent<ClientWorld>();
             view.ColourIndexOf = owner => owner - 1; // army A in player colour 1, B in colour 2

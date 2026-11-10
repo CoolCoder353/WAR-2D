@@ -47,7 +47,7 @@ namespace WAR2D.Dev.DebugApi
                 var (min, max) = DebugArgs.Box(a, "box");
                 return AsciiTiles(grid, min, max);
             });
-            r.Add("fog", DebugRole.Server, "fog owner box: an owner's fog grid (# visible, + explored, space unknown)", a =>
+            r.Add("fog", DebugRole.Server, "fog owner box: an owner's fog grid, one character per fog cell (# visible, + explored, space unknown)", a =>
             {
                 SimContext sim = SimContext.Current ?? throw new DebugError("no match");
                 var (min, max) = DebugArgs.Box(a, "box");
@@ -123,7 +123,10 @@ namespace WAR2D.Dev.DebugApi
             ClientWorld world = ClientWorld.Instance ?? throw new DebugError("no client world");
             int limit = DebugArgs.Int(a, "limit", 200);
             var ids = new List<int>();
-            var (min, max) = DebugArgs.Has(a, "box") ? DebugArgs.Box(a, "box") : (new int2(-100000), new int2(100000));
+            // Playtest 2026-11-10: the default box (±100,000 tiles) found nothing on a joined client; it is the map's own.
+            var map = WorldStateManager.Instance?.Map;
+            int2 mapMax = map != null ? new int2(map.Grid.Width - 1, map.Grid.Height - 1) : new int2(4095);
+            var (min, max) = DebugArgs.Has(a, "box") ? DebugArgs.Box(a, "box") : (int2.zero, mapMax);
             world.QueryBox((float2)min, (float2)(max + 1), DebugArgs.Int(a, "owner", 0), ids);
             return new { count = ids.Count, truncated = ids.Count > limit, units = ids.Take(limit).Select(id => world.TryGet(id, out ClientUnitView v) ? (object)new { id, owner = v.OwnerId, type = v.Type.ToString(), pos = new[] { v.Position.x, v.Position.y }, health = v.Health01 } : null) };
         }
@@ -136,11 +139,16 @@ namespace WAR2D.Dev.DebugApi
             {
                 ClientPlayer cp = p.Key != null ? p.Key.GetComponent<ClientPlayer>() : null;
                 int owner = BuildingData.UIntToInt(p.Key.netId);
-                list.Add(new { owner, nickname = cp?.nickname, colour = cp?.colourIndex, team = core.TeamOf(owner), state = p.Value.state.ToString(), resources = p.Value.Resources, bot = false });
+                list.Add(new { owner, nickname = cp?.nickname, colour = cp?.colourIndex, team = core.TeamOf(owner), state = StateOf(core, p.Value), resources = ResourcesOf(core, p.Value), bot = false });
             }
-            foreach (var b in core.AiPlayers) list.Add(new { owner = b.Key, nickname = b.Value.Callsign, colour = (int?)b.Value.Colour, team = core.TeamOf(b.Key), state = b.Value.Player.state.ToString(), resources = b.Value.Player.Resources, bot = true, difficulty = b.Value.Difficulty.ToString() });
+            foreach (var b in core.AiPlayers) list.Add(new { owner = b.Key, nickname = b.Value.Callsign, colour = (int?)b.Value.Colour, team = core.TeamOf(b.Key), state = StateOf(core, b.Value.Player), resources = ResourcesOf(core, b.Value.Player), bot = true, difficulty = b.Value.Difficulty.ToString() });
             return list;
         }
+
+        // Playtest 2026-11-10: in the lobby every seat read "Playing" with 1,000 resources while the lobby was set to 2,500.
+        private static string StateOf(GameCore core, ServerPlayer p) => core.CurrentState == GameState.Lobby ? "Lobby" : p.state.ToString();
+        private static float ResourcesOf(GameCore core, ServerPlayer p) =>
+            core.CurrentState == GameState.Lobby ? (core.Settings.InfiniteResources ? ServerPlayer.InfiniteBalance : core.Settings.StartingResources) : p.Resources;
 
         private static object Buildings(JObject a)
         {
@@ -190,6 +198,8 @@ namespace WAR2D.Dev.DebugApi
             if (grid < 0) throw new DebugError("that owner has no vision grid");
             var sb = new StringBuilder();
             int cell = data.FogCellSize;
+            // Playtest 2026-11-10: a row per fog cell (not per tile) with no labels, so the grid couldn't be lined up with tiles.
+            sb.Append($"one character per fog cell of {cell}x{cell} tiles; top row y={max.y}, left column x={min.x}, each row and column steps {cell} tiles\n");
             for (int y = max.y; y >= min.y; y -= cell)
             {
                 for (int x = min.x; x <= max.x; x += cell)

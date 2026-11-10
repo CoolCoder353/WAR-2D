@@ -50,6 +50,7 @@ public class GameManager : NetworkManager
 
         // Ensure this GameManager persists across scene loads
         DontDestroyOnLoad(this);
+        Application.wantsToQuit += TellClientsBeforeQuit;
 
         // There is no dedicated server: a batch-mode player is a perf client (or a test) that starts its own
         // networking. Mirror's default auto-start would make every one of them host on the same port.
@@ -106,6 +107,7 @@ public class GameManager : NetworkManager
         // The Main_Menu scene holds a copy of this object: coming back to it mid-session (v0.18 Rematch) destroys the copy,
         // which must not take the running server with it.
         if (singleton != this) return;
+        Application.wantsToQuit -= TellClientsBeforeQuit;
         //Make sure we disconnect
         if (NetworkServer.active)
         {
@@ -146,6 +148,29 @@ public class GameManager : NetworkManager
         WAR2D.Net.HostReachability.Stop(false);
         WAR2D.Net.Steam.SteamHostLobby.Close();
         base.OnStopServer();
+    }
+
+    private bool quitTold;
+
+    /// <summary>
+    /// Playtest 2026-11-10: a host that quit the application mid-match (window closed, Quit) told nobody, so its clients took
+    /// it for a drop and were offered a Rejoin with nobody to rejoin. The quit waits <see cref="HostLeaveFlushSeconds"/> for
+    /// <see cref="WAR2D.Net.Rejoin.HostLeaving"/> to go out first, as the menu's Leave does.
+    /// </summary>
+    private bool TellClientsBeforeQuit()
+    {
+        if (quitTold || !NetworkServer.active || NetworkServer.connections.Count <= 1 || GameCore.Instance == null
+            || GameCore.Instance.CurrentState == GameState.Lobby) return true;
+        quitTold = true;
+        NetworkServer.SendToAll(new WAR2D.Net.Rejoin.HostLeaving(), sendToReadyOnly: false);
+        StartCoroutine(QuitAfterTelling());
+        return false;
+    }
+
+    private System.Collections.IEnumerator QuitAfterTelling()
+    {
+        yield return new WaitForSecondsRealtime(HostLeaveFlushSeconds);
+        Application.Quit();
     }
 
     /// <summary>Stops networking, then waits briefly for the router to drop the port mapping.</summary>

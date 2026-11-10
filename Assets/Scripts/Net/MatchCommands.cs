@@ -142,10 +142,14 @@ public partial class GameCore
         ResetMatchState();
         foreach (ClientPlayer player in LobbyClientPlayers()) player.ready = false;
         MatchSettings settings = Settings;
+        PreviousSeed = settings.Seed; // playtest 2026-11-10: the lobby names it, so the host can type it back for the same map
         settings.Seed = NewRematchSeed();
         Settings = settings;
         if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != LobbyScene) GameManager.Instance.ServerChangeScene(LobbyScene);
     }
+
+    /// <summary>The seed of the match a Rematch came from (0 for none): the lobby's map caption names it.</summary>
+    [SyncVar] public uint PreviousSeed;
 
     private static uint NewRematchSeed() => (uint)UnityEngine.Random.Range(1, int.MaxValue);
 

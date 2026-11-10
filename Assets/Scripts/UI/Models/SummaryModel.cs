@@ -35,7 +35,8 @@ namespace WAR2D.UI
             foreach (SummaryPlayer player in data.Players)
                 for (int i = 0; i < data.Times.Length; i++) peak = math.max(peak, Value(player, metric, i));
             float unit = math.pow(10f, math.floor(math.log10(peak)));
-            foreach (float step in new[] { 1f, 2f, 2.5f, 5f, 10f })
+            // Playtest 2026-11-10: an 11k peak drew on a 20k axis; finer steps keep the lines up the chart.
+            foreach (float step in new[] { 1f, 1.2f, 1.5f, 2f, 2.5f, 3f, 4f, 5f, 6f, 8f, 10f })
                 if (step * unit >= peak) return step * unit;
             return 10f * unit;
         }
@@ -131,7 +132,8 @@ namespace WAR2D.UI
             var parts = new List<string>();
             foreach ((int owner, float worth) in losses)
                 parts.Add($"{Who(owner, nameOf, local)} lost {worth:N0}");
-            return $"Big fight {Place(f.CentreX, f.CentreY, data, nameOf, local)}, {SummaryModel.Time(f.End - f.Start)}: {string.Join(", ", parts)}";
+            // Playtest 2026-11-10: the fight's length read like a second timestamp ("0:20 · Big fight …, 0:22: …").
+            return $"Big fight {Place(f.CentreX, f.CentreY, data, nameOf, local)}, lasting {SummaryModel.Time(f.End - f.Start)}: {string.Join(", ", parts)}";
         }
 
         /// <summary>Where on the map: near a player's base, else the middle or a compass point. Never coordinates.</summary>

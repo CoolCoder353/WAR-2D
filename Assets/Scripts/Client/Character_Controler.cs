@@ -28,6 +28,9 @@ namespace Character
             pixelPerfect.assetsPPU = ArtStyle.PixelsPerUnit;
             pixelPerfect.gridSnapping = PixelPerfectCamera.GridSnapping.PixelSnapping;
             pixelPerfect.cropFrame = PixelPerfectCamera.CropFrame.None;
+            // Playtest 2026-11-10: past the map's border ring the camera showed Unity's default blue; it shows the border's colour.
+            playerCamera.clearFlags = CameraClearFlags.SolidColor;
+            playerCamera.backgroundColor = MapView.TileColor(TileType.Border);
             SetSize(CameraZoom.Default(ArtStyle.PixelsPerUnit, Screen.height, settings.zoomScale.x, settings.zoomScale.y));
         }
 
@@ -51,6 +54,13 @@ namespace Character
                 pixelPerfect.enabled = snap;
             }
             playerCamera.orthographicSize = size;
+        }
+
+        /// <summary>Back to the match's starting zoom, 1:1 art pixels (playtest 2026-11-10: the match kept the HQ pick's zoom).</summary>
+        public void ResetZoom()
+        {
+            if (playerCamera == null || settings == null) return;
+            SetSize(CameraZoom.Default(ArtStyle.PixelsPerUnit, Screen.height, settings.zoomScale.x, settings.zoomScale.y));
         }
 
         /// <summary>Zooms out in wheel steps until at least <paramref name="halfHeight"/> tiles show above and below the centre; never zooms in.</summary>

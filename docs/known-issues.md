@@ -2,6 +2,28 @@
 
 Bugs, mismatches and hygiene problems. The first three roadmaps (v0.2 to v0.9, v0.10 to v0.14 with v0.15 and v0.15.1, and v0.16 to v0.18) are complete; open items are backlog, and the sections after "Open" are the log of what past reviews and playtests found and fixed. Code-review findings that were triaged but not fixed are in [bug-review.md](bug-review.md). See the archived roadmaps ([v0.2 to v0.9](archive/roadmap-v0.2-v0.9.md), [v0.10 to v0.14](archive/roadmap-v0.10-v0.14.md), [v0.16 to v0.18](archive/roadmap-v0.16-v0.18.md)) for what each version delivered; the current plan is [roadmap.md](roadmap.md).
 
+## Playtest 2026-11-10 (on `fix/playtest-2026-11-10`)
+
+[playtest-2026-11-10.md](playtest-2026-11-10.md) lists the 101 findings. What this branch did with them:
+
+| Item | State |
+| --- | --- |
+| An empty bank killed units though income covered upkeep (14 of 30 Tanks in 2 s) | **Fixed.** Decay is one unit's worth a second per owner however many are unpaid, and an unpaid unit is paid on the first tick the bank covers it (`SimEconomySystem`). |
+| AI armies re-targeted buildings they had given up on | **Fixed.** A target not reached in `MarchSeconds` is excluded for `AvoidSeconds`, ×4 per further give-up (`Blackboard.GiveUpOn`). |
+| A start site with no gem vein (1024, seed 7) | **Fixed.** A start site with no gem within `StartRadius` + 10 gets an 8-tile outcrop on open floor, away from its lanes. |
+| An AI whose base can't fit a Miner never expanded | **Fixed.** With its base full and no expansion held, it expands at once. |
+| Rich gems: 375/s a Miner | **Changed.** `RichGemMultiplier` 15 → 4 (100/s). AI difficulty and style balance were left alone (owner, 2026-11-10). |
+| Idle Builders walked across the map (`AutoWork/Radius` 900) | **Changed** to 40. |
+| NullReferenceException every frame after leaving a match | **Fixed.** The menu battle's (and replay viewer's) `ClientWorld` takes over a lingering one instead of destroying itself. |
+| A host quitting the application gave clients a Rejoin card | **Fixed.** The quit waits for `HostLeaving` to go out. |
+| Leave match (client) had no confirmation | **Fixed** (the Surrender dialog, reworded). |
+| Squad bar under the selection panel at 1080p, opaque in-match Settings, 8-player spectator bar, client lobby Diplomacy switch, button hover contrast, Esc, gems in the red player's hue, and the rest of the UI list | **Fixed**, apart from the items below. |
+| Lobby colour: a "Colour 1–8" text dropdown | **Fixed:** swatch buttons on your card. |
+| Text chat (Networking 6), a minimap in the replay viewer (UI 20), the Teams lobby layout at 1080p (UI 16), a separate alert volume (UI 52) | **Not done:** new UI, which goes through Figma first. |
+| AI difficulty and style balance (Balance 3–5, 7, 8, 11–13), the AI spending its bank (Balance 2) | **Not changed** (owner, 2026-11-10). |
+| A turret outranged by Artillery and Snipers, Digger and Sniper losing most equal-cost fights (Balance 9, 10) | **By design:** they are the turret's counters and specialists (gameplay.md). |
+| Serialization depth warning at startup (Other 9) | **Not fixed:** it comes from the vendored console's `CmdFormula`. |
+
 ## Full-coverage scan (2026-11-09), not fixed
 
 Five read-only review agents, one per area (Sim; Net and the server; Client and Audio; UI; AI, Config, Rules and Systems). Items marked *checked* were confirmed in the code after the scan; the rest are as traced by the agents. Not covered: Pathing (skimmed), the replication encoder and decoder, Steam, `ServerPlayer`, `GameManager`, AiView, UnitCommander and Selection, and about half the AI managers (Builder, Raid, Production, Strategy, Diplomacy, Opening, Economy, Scouting).

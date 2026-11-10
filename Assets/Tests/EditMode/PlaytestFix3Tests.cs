@@ -71,9 +71,27 @@ public class PlaytestFix3Tests
         Unit[] alive = sim.Units().Where(u => tanks.Contains(u.Id)).ToArray();
         Assert.LessOrEqual(alive.Count(u => u.Health < 100f), 1, "only one unit decays at a time");
 
-        sim.TickSeconds(6f); // 4 unpaid units at 5 % each: a unit every 5 s, then a little slower
+        sim.TickSeconds(20f); // one unit's 5 % a second for the owner, however many are unpaid: a unit every 20 s
         Assert.Less(sim.Units().Count(u => tanks.Contains(u.Id) && u.Health > 0f), 4, "a whole unit is gone");
         Assert.LessOrEqual(sim.Units().Count(u => tanks.Contains(u.Id) && u.Health > 0f && u.Health < 100f), 1);
+        Assert.AreEqual(3, sim.Units().Count(u => tanks.Contains(u.Id) && u.Health > 0f), "one unit's worth a second, not one per unpaid unit");
+    }
+
+    [Test]
+    public void IncomeAfterAnEmptyChargePaysTheUnitsBeforeTheyDie()
+    {
+        using var sim = Sim();
+        float bank = 0f;
+        sim.Context.BudgetOf = _ => bank;
+        sim.Context.Spend = (_, amount) => bank -= amount;
+        var tanks = new System.Collections.Generic.List<int>();
+        for (int i = 0; i < 10; i++) tanks.Add(sim.Spawn(SimHarness.OwnerA, new float2(10 + 2 * i, 10))[0]);
+        sim.TickSeconds(1.2f); // charged at 0: every Tank unpaid
+        bank = 1000f; // income arrives mid-second
+        sim.TickSeconds(0.2f);
+        sim.TickSeconds(3f);
+        Assert.AreEqual(10, sim.Units().Count(u => tanks.Contains(u.Id) && u.Health > 0f));
+        Assert.IsTrue(sim.Units().Where(u => tanks.Contains(u.Id)).All(u => u.Unpaid == 0), "paid as soon as the bank had it");
     }
 
     [Test]

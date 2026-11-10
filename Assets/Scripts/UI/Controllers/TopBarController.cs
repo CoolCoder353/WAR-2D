@@ -122,9 +122,22 @@ namespace WAR2D.UI
             bool infinite = Infinite;
             resources.text = infinite ? "Infinite" : model.Resources.ToString("N0");
             resources.EnableInClassList("top-bar__resources-value--infinite", infinite);
-            income.text = $"+{model.IncomePerSecond:N0} income";
-            upkeep.text = infinite ? $"−{model.UpkeepPerSecond:N0} upkeep (free)" : $"−{model.UpkeepPerSecond:N0} upkeep";
+            ShowBreakdown(infinite);
         }
+
+        /// <summary>Income and upkeep over the net readout's window, so the three agree; a zero reads "0", never "−0".</summary>
+        private void ShowBreakdown(bool infinite)
+        {
+            EconomyReadout economy = model.Economy;
+            float inc = economy != null ? economy.IncomePerSecond : model.IncomePerSecond;
+            float upk = economy != null ? economy.UpkeepPerSecond : model.UpkeepPerSecond;
+            income.text = $"+{inc:N0} income";
+            string paid = SignedCost(upk);
+            upkeep.text = infinite ? $"{paid} upkeep (free)" : $"{paid} upkeep";
+        }
+
+        /// <summary>A cost per second as "−12", or "0" when it rounds to nothing (playtest 2026-11-10: "−0 upkeep").</summary>
+        public static string SignedCost(float perSecond) => System.Math.Round(perSecond) == 0 ? "0" : $"−{perSecond:N0}";
 
         /// <summary>
         /// The net readout in its state colour (healthy green, negative amber with ▼, running low and decaying red with the
@@ -133,6 +146,7 @@ namespace WAR2D.UI
         public void ShowNet()
         {
             net.style.display = Infinite ? DisplayStyle.None : DisplayStyle.Flex; // Figma K1: nothing to run out
+            ShowBreakdown(Infinite);
             if (Infinite) return;
             EconomyReadout economy = model.Economy;
             EconomyState state = economy.State;
@@ -198,8 +212,9 @@ namespace WAR2D.UI
                 swatch.AddToClassList("swatch");
                 swatch.AddToClassList(row.Eliminated ? "swatch--eliminated" : "player-" + (row.ColourIndex % 8 + 1));
                 bool isAway = !row.Eliminated && away.TryGetValue(row.OwnerId, out string timer) && timer != null;
-                // The AI tag follows an AI's callsign; "(eliminated)" goes last, greyed like a human (Figma 95:563).
-                VisualElement label = PlayerNameLabel.Build(row.Nickname, row.AiTag, "top-bar__name", row.Eliminated ? "(eliminated)" : null, row.Eliminated);
+                // The AI tag follows an AI's callsign. An eliminated player's name is greyed with the crossed-out swatch; playtest
+                // 2026-11-10: the "(eliminated)" suffix made every name truncate (the hover card still says Eliminated).
+                VisualElement label = PlayerNameLabel.Build(row.Nickname, row.AiTag, "top-bar__name", null, row.Eliminated);
                 if (row.Eliminated || isAway) label.Q<Label>("player-name-text").AddToClassList("top-bar__name--eliminated");
                 chip.Add(swatch);
                 chip.Add(label);

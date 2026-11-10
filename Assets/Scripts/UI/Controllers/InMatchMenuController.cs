@@ -20,6 +20,21 @@ namespace WAR2D.UI
 
         public event Action SettingsClicked, ManualClicked, SurrenderConfirmed, LeaveClicked;
 
+        /// <summary>True when Leave match asks first (playtest 2026-11-10: a running match; leaving gives the seat up for good). Null: never.</summary>
+        public Func<bool> LeaveNeedsConfirm;
+
+        /// <summary>True in a Teams match, where a surrendering player's team plays on (the dialog says so only then). Null: no team.</summary>
+        public Func<bool> InTeam;
+
+        public const string SurrenderTitle = "Surrender?", LeaveTitle = "Leave the match?";
+        public const string SurrenderText = "Your HQ, units and buildings are destroyed and you're out of the match.";
+        public const string SurrenderTeamText = SurrenderText + " Your team keeps playing.";
+        public const string LeaveText = "You give up your seat for good: your units and buildings are removed and you can't rejoin.";
+
+        private readonly Label confirmTitle, confirmText;
+        private readonly Button confirmButton;
+        private bool confirmingLeave;
+
         public InMatchMenuController(VisualElement root)
         {
             screen = root.Q("in-match-menu");
@@ -33,19 +48,41 @@ namespace WAR2D.UI
                 // Settings → Gameplay can skip the confirm, except where a misclick would give up for a side (SettingsController.SurrenderAlwaysConfirms).
                 bool locked = SettingsController.SurrenderAlwaysConfirms != null && SettingsController.SurrenderAlwaysConfirms();
                 if (!SettingsStore.Current.ConfirmSurrender && !locked) { Close(); SurrenderConfirmed?.Invoke(); return; }
-                screen.AddToClassList("in-match-menu--confirm");
+                ShowConfirm(false);
             };
+            confirmTitle = root.Q<Label>("surrender-title");
+            confirmText = root.Q<Label>("surrender-text");
+            confirmButton = root.Q<Button>("surrender-confirm");
             root.Q<Button>("surrender-cancel").clicked += () => screen.RemoveFromClassList("in-match-menu--confirm");
-            root.Q<Button>("surrender-confirm").clicked += () => { Close(); SurrenderConfirmed?.Invoke(); };
             Button leave = root.Q<Button>("leave-match-button");
-            leave.clicked += () =>
+            void DoLeave()
             {
                 // v0.15.1 (Figma R1): a joined player waits up to a second for the server to let go of the seat, so the menu stays
                 // open with every button greyed out and Leave reading "Leaving…" (a host with players tells them first; a finished match leaves at once).
                 screen.Query<Button>().ForEach(b => b.SetEnabled(false));
                 leave.text = "Leaving…";
                 LeaveClicked?.Invoke();
+            }
+            confirmButton.clicked += () =>
+            {
+                if (confirmingLeave) { screen.RemoveFromClassList("in-match-menu--confirm"); DoLeave(); }
+                else { Close(); SurrenderConfirmed?.Invoke(); }
             };
+            leave.clicked += () =>
+            {
+                if (LeaveNeedsConfirm != null && LeaveNeedsConfirm()) ShowConfirm(true);
+                else DoLeave();
+            };
+        }
+
+        /// <summary>Opens the confirmation for Surrender or for Leave match.</summary>
+        private void ShowConfirm(bool forLeave)
+        {
+            confirmingLeave = forLeave;
+            if (confirmTitle != null) confirmTitle.text = forLeave ? LeaveTitle : SurrenderTitle;
+            if (confirmText != null) confirmText.text = forLeave ? LeaveText : InTeam != null && InTeam() ? SurrenderTeamText : SurrenderText;
+            if (confirmButton != null) confirmButton.text = forLeave ? "Leave match" : "Surrender";
+            screen.AddToClassList("in-match-menu--confirm");
         }
 
         public bool IsOpen => screen.ClassListContains("overlay-screen--visible");

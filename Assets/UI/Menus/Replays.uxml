@@ -16,8 +16,11 @@
                 <ui:Label name="replays-empty" text="No replays yet. Finish a match and it appears here." class="text play-panel__notice" />
                 <ui:Label name="replays-error" text="" class="text play-panel__notice play-panel__notice--danger" />
                 <ui:VisualElement class="divider" />
-                <ui:Label text="Replays folder" class="text play-panel__heading" />
-                <ui:Label text="A replay shows the whole map, every player and their bombs. Delete asks first." class="text--secondary replays__blurb" />
+                <ui:VisualElement class="row play-panel__header">
+                    <ui:Label text="Replays folder" class="text play-panel__heading play-panel__grow" />
+                    <ui:Button name="replays-folder" text="Open folder" class="button" />
+                </ui:VisualElement>
+                <ui:Label text="A replay shows the whole map, every player and their mines. Delete asks first." class="text--secondary replays__blurb" />
                 <ui:VisualElement class="row">
                     <ui:Button name="replays-back" text="Back" class="button" />
                 </ui:VisualElement>

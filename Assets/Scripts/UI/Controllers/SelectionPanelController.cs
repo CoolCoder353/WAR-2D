@@ -76,7 +76,9 @@ namespace WAR2D.UI
             title.text = model.BuildingKinds.Count == 1 && count == 1 ? $"Selection: {NameOf(model.BuildingKinds[0].type)}" : $"Selection: {count} buildings";
             ShowBuildingTypes();
             ShowHealth(model.BuildingHealth01);
-            upkeep.text = model.BuildingUnpaid ? $"−{model.BuildingUpkeep:0.#}/s unpaid" : $"−{model.BuildingUpkeep:0.#}/s";
+            // Playtest 2026-11-10: the HQ read "Upkeep −0/s"; no upkeep reads "None".
+            string cost = model.BuildingUpkeep < 0.05f ? "None" : $"−{model.BuildingUpkeep:0.#}/s";
+            upkeep.text = model.BuildingUnpaid ? $"{cost} unpaid" : cost;
             upkeep.EnableInClassList("selection-upkeep--unpaid", model.BuildingUnpaid);
             status.text = model.BuildingStatus;
             status.EnableInClassList("selection-status--danger", model.BuildingStatusTone == SelectionModel.StatusTone.Danger);

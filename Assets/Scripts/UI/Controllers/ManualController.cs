@@ -316,7 +316,7 @@ namespace WAR2D.UI
 
         private void FillGrid(ManualPage page)
         {
-            var readout = new Label("Hover a cell for its damage.") { name = "manual-grid-readout" };
+            var readout = new Label("—") { name = "manual-grid-readout" }; // the page's lead already says to hover (playtest 2026-11-10)
             readout.AddToClassList("manual__readout");
             var grid = new VisualElement { name = "manual-grid" };
             grid.AddToClassList("manual__grid");

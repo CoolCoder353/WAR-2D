@@ -581,6 +581,9 @@ public partial class GameCore : NetworkBehaviour
     private void NoteElimination(int playerId, EliminationCause cause)
     {
         if (!summaryEliminated.Add(playerId)) return;
+        // Playtest 2026-11-10: nothing in the host log said who was eliminated, how, or by whom.
+        int by = cause == EliminationCause.HqDestroyed ? HqLastHitBy(playerId) : 0;
+        WarLog.Info(LogCategory.Match, $"Player {playerId} eliminated ({cause}{(by != 0 ? $", HQ last hit by {by}" : "")}) at {(WorldStateManager.Instance != null ? WorldStateManager.Instance.PlayedSeconds : 0f):F0} s");
         Summary.Eliminated(WorldStateManager.Instance != null ? WorldStateManager.Instance.PlayedSeconds : 0f, playerId, cause, cause == EliminationCause.HqDestroyed ? HqLastHitBy(playerId) : 0);
     }
 

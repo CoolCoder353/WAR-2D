@@ -86,7 +86,7 @@ Shader "WAR2D/InstancedUnit"
                 // Team pixels are a grey ramp: multiplying keeps their shading in the owner's colour.
                 c.rgb = lerp(c.rgb, saturate(c.rgb * i.color.rgb * _TeamGain), mask);
                 c.a *= i.color.a;
-                c.rgb = lerp(c.rgb, half3(1, 1, 1), i.highlight.x * 0.45h); // selected units read brighter
+                c.rgb = lerp(c.rgb, half3(1, 1, 1), i.highlight.x * 0.18h); // selected units read brighter (0.45 until the 2026-11-10 playtest washed out type and owner colour)
                 c.rgb = lerp(c.rgb, half3(1, 0.25, 0.25), i.highlight.y * 0.6h); // a unit that was just hit flashes red, as buildings do
                 if (_Trail > 0.5)
                 {

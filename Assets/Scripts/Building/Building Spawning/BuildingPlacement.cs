@@ -279,7 +279,8 @@ public class BuildingPlacement : MonoBehaviour
             localPlayer.CanBuildResponseType != PlacingType || localPlayer.CanBuildResponseRotation != currentRotation) return;
 
         PreviewValid = result;
-        SetPreviewTint(result ? Color.green : Color.red, true);
+        // Grey when valid, as gameplay.md says (playtest 2026-11-10: green, which is also a player colour).
+        SetPreviewTint(result ? new Color(0.82f, 0.85f, 0.88f) : Color.red, true);
     }
 
     /// <summary>Shows the preview (and its status outline) in the facing of the current rotation.</summary>

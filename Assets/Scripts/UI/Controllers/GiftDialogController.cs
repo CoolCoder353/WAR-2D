@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace WAR2D.UI
@@ -15,6 +16,8 @@ namespace WAR2D.UI
         private readonly Label amountLabel, amountError, note;
         private readonly TextField amount;
         private int selected;
+        private readonly Button send;
+        private readonly Label targetError;
 
         /// <summary>Raised with a valid (target owner, amount).</summary>
         public event Action<int, float> GiftRequested;
@@ -30,9 +33,28 @@ namespace WAR2D.UI
             note = root.Q<Label>("gift-note");
             amount = root.Q<TextField>("gift-amount");
             note.text = $"One gift every {cooldownSeconds:0.#} s. Only you and the recipient are told.";
-            amount.RegisterValueChangedCallback(_ => amountInput.RemoveFromClassList("input--error"));
+            amount.RegisterValueChangedCallback(_ => { amountInput.RemoveFromClassList("input--error"); ShowSend(); });
             root.Q<Button>("gift-cancel").clicked += Close;
-            root.Q<Button>("gift-send").clicked += Send;
+            send = root.Q<Button>("gift-send");
+            send.clicked += Send;
+            // Playtest 2026-11-10: "Pick who to gift to" outlined the Amount field; the recipient list has its own message.
+            targetError = new Label { name = "gift-target-error" };
+            targetError.AddToClassList("text--danger");
+            targetError.AddToClassList("hidden");
+            targets.parent.Insert(targets.parent.IndexOf(targets) + 1, targetError);
+            // Playtest 2026-11-10: quick amounts, so a gift isn't typed digit by digit.
+            var quick = new VisualElement { name = "gift-quick" };
+            quick.AddToClassList("row");
+            quick.AddToClassList("gift-dialog__quick");
+            foreach ((string label, Func<float> value) in new (string, Func<float>)[]
+                     { ("100", () => 100f), ("500", () => 500f), ("1,000", () => 1000f), ("Half", () => Mathf.Floor(model.Resources * 0.5f)), ("All", () => Mathf.Floor(model.Resources)) })
+            {
+                var b = new Button(() => amount.value = Mathf.Max(0f, Mathf.Min(value(), Mathf.Floor(model.Resources))).ToString("0", CultureInfo.InvariantCulture))
+                    { name = "gift-quick-" + label.Replace(",", "").ToLowerInvariant(), text = label };
+                b.AddToClassList("button");
+                quick.Add(b);
+            }
+            amountInput.parent.Insert(amountInput.parent.IndexOf(amountInput) + 1, quick);
             model.PlayersChanged += Show;
             model.DiplomacyChanged += Show;
             model.ResourcesChanged += ShowBalance;
@@ -50,6 +72,7 @@ namespace WAR2D.UI
         {
             dialog.AddToClassList("gift-dialog--open");
             amountInput.RemoveFromClassList("input--error");
+            targetError.AddToClassList("hidden");
             Show();
         }
 
@@ -67,7 +90,7 @@ namespace WAR2D.UI
                 if (player.OwnerId == model.LocalOwnerId) continue;
                 int owner = player.OwnerId;
                 bool enemy = (model.AttackMask & (1 << player.OrderIndex)) != 0;
-                var row = new Button(() => { selected = owner; Show(); }) { name = "gift-target-" + owner };
+                var row = new Button(() => { selected = owner; targetError.AddToClassList("hidden"); Show(); }) { name = "gift-target-" + owner };
                 row.AddToClassList("list-row");
                 row.EnableInClassList("list-row--selected", owner == selected && !player.Eliminated);
                 var swatch = new VisualElement();
@@ -85,13 +108,18 @@ namespace WAR2D.UI
                 selectedLive |= owner == selected && !player.Eliminated;
             }
             if (!selectedLive) selected = 0;
+            ShowSend();
         }
+
+        /// <summary>Send is live once a recipient is picked and an amount typed (playtest 2026-11-10: it stayed live with nothing filled in).</summary>
+        private void ShowSend() => send?.SetEnabled(selected != 0 && !string.IsNullOrWhiteSpace(amount.value));
 
         private void Send()
         {
             if (selected == 0)
             {
-                Error("Pick who to gift to");
+                targetError.text = "Pick who to gift to";
+                targetError.RemoveFromClassList("hidden");
                 return;
             }
             if (!float.TryParse(amount.value?.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out float value) || !GiftRules.IsValid(value, model.Resources))

@@ -48,7 +48,7 @@ namespace WAR2D.UI
             ("Card top 3 · Heavy Factory / 3rd unit type", "CardTop3", null),
             ("Card top 4 · Siege Workshop", "CardTop4", null),
             ("Card bottom 1 · Wall", "CardBottom1", null),
-            ("Card bottom 2 · Bomb", "CardBottom2", null),
+            ("Card bottom 2 · Mine", "CardBottom2", null),
             ("Card bottom 3 · Radar", "CardBottom3", null),
             ("Card bottom 4 · Gun turret", "CardBottom4", null),
             ("Card bottom 5 · Jammer", "CardBottom5", null),
@@ -112,7 +112,8 @@ namespace WAR2D.UI
             conflictText = root.Q<Label>("conflict-text");
             conflictHelp = root.Q<Label>("conflict-help");
             root.Q<Button>("settings-back").clicked += Close;
-            root.Q<Button>("settings-reset").clicked += ResetToDefaults;
+            resetButton = root.Q<Button>("settings-reset");
+            resetButton.clicked += ResetToDefaults;
             root.Q<Button>("conflict-cancel").clicked += CancelConflict;
             root.Q<Button>("conflict-swap").clicked += SwapConflict;
             root.Q<Button>("edge-link").clicked += () => { page = Page.Gameplay; Show(); };
@@ -132,6 +133,7 @@ namespace WAR2D.UI
         public void Open()
         {
             page = Page.Graphics;
+            resetArmed = false;
             screen.AddToClassList("overlay-screen--visible");
             MenuMotion.ApplySetting(motionRoot);
             MenuMotion.Enter(screen, "overlay-screen--enter");
@@ -155,22 +157,55 @@ namespace WAR2D.UI
             Show();
         }
 
+        private readonly Button resetButton;
+        private bool resetArmed;
+
+        /// <summary>The Reset button's text for the open tab, and while it waits for the second click.</summary>
+        private string ResetText => resetArmed ? $"Click again to reset {page}" : $"Reset {page} to defaults";
+
+        /// <summary>
+        /// Resets the open tab only, on a second click (playtest 2026-11-10: one click reset every tab, resolution, palette and
+        /// key bindings included, even from Gameplay).
+        /// </summary>
         private void ResetToDefaults()
         {
+            if (!resetArmed) { resetArmed = true; resetButton.text = ResetText; return; }
+            resetArmed = false;
             CancelRebind();
             CancelConflict();
-            GameInput.Map.RemoveAllBindingOverrides();
-            SettingsStore.Current = new GameSettings();
+            GameSettings s = S, d = new GameSettings();
+            switch (page)
+            {
+                case Page.Graphics:
+                    s.Width = d.Width; s.Height = d.Height; s.Fullscreen = d.Fullscreen; s.VSync = d.VSync; s.FpsCap = d.FpsCap;
+                    s.MenuBattle = d.MenuBattle; s.ReduceMotion = d.ReduceMotion; s.Palette = d.Palette;
+                    break;
+                case Page.Audio:
+                    s.Master = d.Master; s.Music = d.Music; s.Sfx = d.Sfx; s.Mute = d.Mute; s.MuteInBackground = d.MuteInBackground;
+                    break;
+                case Page.Controls:
+                    GameInput.Map.RemoveAllBindingOverrides();
+                    break;
+                default:
+                    var keep = (s.Width, s.Height, s.Fullscreen, s.VSync, s.FpsCap, s.MenuBattle, s.ReduceMotion, s.Palette, s.Master, s.Music, s.Sfx);
+                    d.Mute = s.Mute; d.MuteInBackground = s.MuteInBackground;
+                    d.Width = keep.Width; d.Height = keep.Height; d.Fullscreen = keep.Fullscreen; d.VSync = keep.VSync; d.FpsCap = keep.FpsCap;
+                    d.MenuBattle = keep.MenuBattle; d.ReduceMotion = keep.ReduceMotion; d.Palette = keep.Palette;
+                    d.Master = keep.Master; d.Music = keep.Music; d.Sfx = keep.Sfx;
+                    SettingsStore.Current = d;
+                    break;
+            }
             Changed();
         }
 
         private void Show()
         {
+            if (resetButton != null) resetButton.text = ResetText;
             tabs.Clear();
-            tabs.Add(Widgets.Option("tab-graphics", "Graphics", page == Page.Graphics, true, () => { page = Page.Graphics; Show(); }));
-            tabs.Add(Widgets.Option("tab-audio", "Audio", page == Page.Audio, true, () => { page = Page.Audio; Show(); }));
-            tabs.Add(Widgets.Option("tab-controls", "Controls", page == Page.Controls, true, () => { page = Page.Controls; Show(); }));
-            tabs.Add(Widgets.Option("tab-gameplay", "Gameplay", page == Page.Gameplay, true, () => { page = Page.Gameplay; Show(); }));
+            tabs.Add(Widgets.Option("tab-graphics", "Graphics", page == Page.Graphics, true, () => { page = Page.Graphics; resetArmed = false; Show(); }));
+            tabs.Add(Widgets.Option("tab-audio", "Audio", page == Page.Audio, true, () => { page = Page.Audio; resetArmed = false; Show(); }));
+            tabs.Add(Widgets.Option("tab-controls", "Controls", page == Page.Controls, true, () => { page = Page.Controls; resetArmed = false; Show(); }));
+            tabs.Add(Widgets.Option("tab-gameplay", "Gameplay", page == Page.Gameplay, true, () => { page = Page.Gameplay; resetArmed = false; Show(); }));
             graphics.EnableInClassList("settings__page--visible", page == Page.Graphics);
             audio.EnableInClassList("settings__page--visible", page == Page.Audio);
             controls.EnableInClassList("settings__page--visible", page == Page.Controls);
@@ -189,7 +224,7 @@ namespace WAR2D.UI
             foreach (Vector2Int r in GameSettings.ResolutionChoices(new Vector2Int(S.Width, S.Height)))
             {
                 Vector2Int res = r;
-                resolutions.Add(Widgets.Option($"resolution-{r.x}", $"{r.x}×{r.y}", S.Width == r.x && S.Height == r.y, true, () => { S.Width = res.x; S.Height = res.y; Changed(); }));
+                resolutions.Add(Widgets.Option($"resolution-{r.x}x{r.y}", $"{r.x}×{r.y}", S.Width == r.x && S.Height == r.y, true, () => { S.Width = res.x; S.Height = res.y; Changed(); }));
             }
             Slot(graphics, "fullscreen-slot", Widgets.Switch("fullscreen", S.Fullscreen, true, () => { S.Fullscreen = !S.Fullscreen; Changed(); }));
             Slot(graphics, "vsync-slot", Widgets.Switch("vsync", S.VSync, true, () => { S.VSync = !S.VSync; Changed(); }));
@@ -240,6 +275,8 @@ namespace WAR2D.UI
             Slot(audio, "master-slider", Slider("master", S.Master, v => { S.Master = v; Changed(); }));
             Slot(audio, "music-slider", Slider("music", S.Music, v => { S.Music = v; Changed(); }));
             Slot(audio, "sfx-slider", Slider("sfx", S.Sfx, v => { S.Sfx = v; Changed(); }));
+            Slot(audio, "mute-slot", Widgets.Switch("mute", S.Mute, true, () => { S.Mute = !S.Mute; Changed(); }));
+            Slot(audio, "mute-background-slot", Widgets.Switch("mute-background", S.MuteInBackground, true, () => { S.MuteInBackground = !S.MuteInBackground; Changed(); }));
         }
 
         /// <summary>The Slider component for a 0–1 volume, shown in percent.</summary>
@@ -311,18 +348,26 @@ namespace WAR2D.UI
                 text.AddToClassList("settings-row__label");
                 row.Add(text);
                 InputAction action = actionName != null ? GameInput.Map[actionName] : null;
-                string shown = fixedText ?? (actionName == "AssignModifier" ? Rebinding.Display(action) + " + 1–0" : Rebinding.Display(action));
+                string shown = fixedText ?? (actionName == "AssignModifier" ? Rebinding.Display(action) + " + 1–0" : Spelled(Rebinding.Display(action)));
                 var binding = new Button(() => StartRebind(actionName)) { name = "binding-" + (actionName ?? "pan"), text = listening == actionName && actionName != null ? "Press a key…" : shown };
                 binding.AddToClassList("binding");
                 binding.EnableInClassList("binding--listening", listening != null && listening == actionName);
                 bool conflicted = pendingConflict.HasValue && (pendingConflict.Value.action.name == actionName || pendingConflict.Value.other.name == actionName);
                 binding.EnableInClassList("binding--conflict", conflicted);
-                if (actionName == null) binding.pickingMode = PickingMode.Ignore;
+                if (actionName == null)
+                {
+                    binding.pickingMode = PickingMode.Ignore;
+                    binding.AddToClassList("binding--fixed"); // playtest 2026-11-10: looked like a rebindable button
+                    binding.tooltip = "Fixed";
+                }
                 row.Add(binding);
                 bindingRows.Add(row);
             }
             hint.text = listening != null ? $"Press a key for {LabelOf(listening)}. Esc cancels." : "";
         }
+
+        /// <summary>Playtest 2026-11-10: "." and "," drew as a near-invisible dot in the binding buttons; they are spelled out.</summary>
+        internal static string Spelled(string display) => display == "." ? "Period ( . )" : display == "," ? "Comma ( , )" : display;
 
         private void ShowGameplay()
         {

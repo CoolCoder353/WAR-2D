@@ -58,12 +58,33 @@ namespace WAR2D.Client
         /// moving and no work site (<paramref name="sites"/>, from <see cref="CollectWorkSites"/>) is within
         /// <see cref="WorkNear"/> tiles.
         /// </summary>
-        private static bool IsIdleBuilder(ClientWorld world, int id, float2 position, List<float2> sites)
+        private static bool IsIdleBuilder(ClientWorld world, int id, float2 position, List<float2> sites, int ownerId = 0)
         {
             if (world.IsMoving(id)) return false;
             foreach (float2 site in sites)
                 if (math.distance(position, site) <= WorkNear) return false;
-            return true;
+            return !NearOwnWallBlueprint(position, ownerId);
+        }
+
+        /// <summary>
+        /// True when one of the owner's wall blueprints lies within <see cref="WorkNear"/> tiles (playtest 2026-11-10: Builders
+        /// building a wall line counted as idle, since walls aren't buildings).
+        /// </summary>
+        private static bool NearOwnWallBlueprint(float2 position, int ownerId)
+        {
+            WorldStateManager wsm = WorldStateManager.Instance;
+            if (ownerId == 0 || wsm == null || wsm.Map == null) return false;
+            var grid = wsm.Map.Grid;
+            int r = (int)math.ceil(WorkNear);
+            int2 c = (int2)math.floor(position);
+            for (int y = c.y - r; y <= c.y + r; y++)
+            for (int x = c.x - r; x <= c.x + r; x++)
+            {
+                int2 t = new int2(x, y);
+                if (!grid.Contains(t) || grid.TileAt(t) != TileType.WallBlueprint) continue;
+                if (math.distance(position, (float2)t + 0.5f) <= WorkNear && ClientTerrain.Current.WallOwner(grid.Index(t)) == ownerId) return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -105,7 +126,7 @@ namespace WAR2D.Client
             CollectWorkSites(ownerId);
             int idle = 0;
             foreach (int id in quickScratch)
-                if (world.TryGet(id, out ClientUnitView view) && IsIdleBuilder(world, id, view.Position, workSites)) idle++;
+                if (world.TryGet(id, out ClientUnitView view) && IsIdleBuilder(world, id, view.Position, workSites, ownerId)) idle++;
             return new QuickCounts(idle, quickScratch.Count, army);
         }
 
@@ -121,7 +142,7 @@ namespace WAR2D.Client
             if (!all) CollectWorkSites(ownerId);
             var picked = new List<int>();
             foreach (int id in quickScratch)
-                if (all || (world.TryGet(id, out ClientUnitView view) && IsIdleBuilder(world, id, view.Position, workSites))) picked.Add(id);
+                if (all || (world.TryGet(id, out ClientUnitView view) && IsIdleBuilder(world, id, view.Position, workSites, ownerId))) picked.Add(id);
             if (picked.Count > 0) SelectIds(picked);
             return picked.Count;
         }

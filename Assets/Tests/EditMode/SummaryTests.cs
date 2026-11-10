@@ -141,7 +141,7 @@ public class SummaryModelTests
     public void TheTimelineIsInTimeOrderAndSaysYou()
     {
         var entries = WAR2D.UI.TimelineText.Entries(Data(), Name, 1);
-        Assert.AreEqual("Big fight in the middle, 1:40: IronFox lost 2,010, you lost 1,240", entries[0].Text);
+        Assert.AreEqual("Big fight in the middle, lasting 1:40: IronFox lost 2,010, you lost 1,240", entries[0].Text);
         Assert.IsTrue(entries[0].Fight);
         Assert.AreEqual("IronFox is out: HQ destroyed by you", entries[1].Text);
     }

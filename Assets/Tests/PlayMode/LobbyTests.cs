@@ -142,7 +142,7 @@ public class LobbyTests
     {
         yield return HostFromMenu();
         VisualElement root = Root();
-        Assert.That(root.Q<Button>("own-colour"), Is.Not.Null, "your card has the colour dropdown");
+        Assert.That(root.Q("own-colour").Query<Button>().ToList().Count, Is.EqualTo(LobbyRules.Colours), "your card has a swatch per colour");
         GameCore.Instance.Cmd_SetColour(3); // what its menu item sends
         yield return PlayModeMatch.WaitUntil(() => Local.colourIndex == 3, 5f);
 

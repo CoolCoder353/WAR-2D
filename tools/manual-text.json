@@ -170,7 +170,7 @@
           "heading": "Upkeep and decay",
           "paras": [
             "Upkeep is charged once a second, per unit and per building. Your resources never go below zero: what you can't pay goes unpaid.",
-            "**Buildings give way first.** Your units are paid before your buildings, and an unpaid building stops working: an unpaid producer doesn't produce, a [[Gun turret]] doesn't fire, a [[Jammer]] doesn't jam, a [[Radar]] doesn't scan, and a [[Mine]] is a dud. **Then units decay, one whole unit at a time:** each unpaid unit costs you {Resources/DecayPercentPerSecond}% of a unit every second, all of it taken from your weakest unpaid unit until it dies. With no units left, unpaid buildings lose {Resources/DecayPercentPerSecond}% of their maximum health every second."
+            "**Buildings give way first.** Your units are paid before your buildings, and an unpaid building stops working: an unpaid producer doesn't produce, a [[Gun turret]] doesn't fire, a [[Jammer]] doesn't jam, a [[Radar]] doesn't scan, and a [[Mine]] is a dud. **Then units decay, one whole unit at a time:** while any unit is unpaid you lose {Resources/DecayPercentPerSecond}% of a unit every second, however many are unpaid, all of it taken from your weakest unpaid unit until it dies; a unit is paid again as soon as your bank covers it. With no units left, unpaid buildings lose {Resources/DecayPercentPerSecond}% of their maximum health every second."
           ]
         },
         {

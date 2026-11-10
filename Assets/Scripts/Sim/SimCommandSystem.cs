@@ -555,6 +555,8 @@ namespace WAR2D.Sim
                 // The economy recounts this next tick; until then, a spawn later in this same drain sees the room.
                 if (units[i].OwnerSlot < data.UnitsBySlot.Length) data.UnitsBySlot[units[i].OwnerSlot]--;
                 context.RaiseUnitDied(units[i].Id, units[i].Position);
+                // Playtest 2026-11-10: units a surrender or elimination removed weren't counted as Lost on the end screen.
+                if (!all) context.RaiseUnitKilled(units[i].OwnerId, 0);
             }
             EntityManager.DestroyEntity(doomed.AsArray());
             doomed.Dispose();

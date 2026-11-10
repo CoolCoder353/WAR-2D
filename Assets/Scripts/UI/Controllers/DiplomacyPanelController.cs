@@ -25,6 +25,8 @@ namespace WAR2D.UI
             this.model = model;
             panel = root.Q("diplomacy-panel");
             rows = root.Q("diplomacy-rows");
+            Button close = root.Q<Button>("diplomacy-close"); // playtest 2026-11-10: the panel had no close button
+            if (close != null) close.clicked += () => SetOpen(false);
             model.PlayersChanged += Show;
             model.DiplomacyChanged += Show;
             Show();
