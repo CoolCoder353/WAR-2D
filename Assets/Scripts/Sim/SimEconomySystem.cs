@@ -9,8 +9,8 @@ namespace WAR2D.Sim
     /// <summary>
     /// Unit upkeep and decay. Once a second each owner's units, in slot order, are charged their
     /// running cost from the owner's budget until it runs out; the rest are marked unpaid. Each unpaid unit
-    /// costs its owner <c>DecayPercentPerSecond</c> of a unit per second until a later charge pays, taken from
-    /// one unit at a time (<see cref="UpkeepJob"/>). Buildings give way first (<see cref="ServerPlayer.TryPayBuildingUpkeep"/>). The boundary
+    /// keeps its owner losing <c>DecayPercentPerSecond</c> of a unit per second (however many are unpaid) until
+    /// income pays them (checked every tick), taken from one unit at a time (<see cref="UpkeepJob"/>). Buildings give way first (<see cref="ServerPlayer.TryPayBuildingUpkeep"/>). The boundary
     /// takes the spent totals from the owners (<see cref="SimContext.Spend"/>). Also counts live units per
     /// owner for the unit cap.
     /// </summary>
@@ -117,20 +117,33 @@ namespace WAR2D.Sim
                         Unpaid[i] = 1;
                     }
                 }
+                else if (Unpaid[i] != 0)
+                {
+                    // Playtest 2026-11-10: a unit left unpaid by an empty bank is paid as soon as income covers it, not a
+                    // second later, so spending down to 0 just before the charge doesn't cost units when income covers upkeep.
+                    float cost = Type[i] < RunningCostByType.Length ? RunningCostByType[Type[i]] : 0f;
+                    if (Budget[owner] >= cost)
+                    {
+                        Budget[owner] -= cost;
+                        Spent[owner] += cost;
+                        Unpaid[i] = 0;
+                    }
+                }
                 if (Unpaid[i] == 0) continue;
                 unpaid[owner]++;
                 int w = weakest[owner];
                 if (w < 0 || Health[i] / MaxHealth[i] <= Health[w] / MaxHealth[w]) weakest[owner] = i;
             }
 
-            // A whole unit at a time (playtest 2026-11-04): what every unpaid unit would have lost goes to the weakest of
-            // them until it dies, then to the next, so a short balance costs a few units and not the whole army's health.
+            // A whole unit at a time (playtest 2026-11-04): the owner's decay goes to the weakest unpaid unit until it dies,
+            // then to the next. Playtest 2026-11-10: one unit's worth a second per owner however many are unpaid (it was one
+            // per unpaid unit, so an empty bank for a second cost 14 of 30 Tanks).
             var pool = new NativeArray<float>(UnitsBySlot.Length, Allocator.Temp);
             bool spills = false;
             for (int s = 0; s < pool.Length; s++)
             {
                 if (unpaid[s] == 0) continue;
-                pool[s] = unpaid[s] * DecayPerTick;
+                pool[s] = DecayPerTick;
                 Drain(weakest[s], s, pool);
                 spills |= pool[s] > 0f;
             }

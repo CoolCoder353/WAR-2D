@@ -429,6 +429,7 @@ namespace WAR2D.Ai
         internal static float ScoreTarget(AiContext ai, in Force ours, float2 from, int owner, int2 at, float worth, float need, float noise)
         {
             if (worth <= 0f) return 0f;
+            if (ai.Board.IsUnreached(at)) return 0f; // an army gave up reaching it: not again until the wait is over
             // A finishing blow (AI overhaul): far stronger than the army it remembers of that enemy, its HQ is worth that much more.
             if (worth >= ai.Policy.HqValue && FightModel.Advantage(ours, AiForces.EnemyArmy(ai, owner), ai.Policy.RangeWeight) * noise >= ai.Policy.FinishAdvantage)
                 worth *= ai.Policy.FinishAdvantage;
@@ -468,6 +469,7 @@ namespace WAR2D.Ai
             {
                 Note(ai, $"gave up on {Target.x},{Target.y}: not reached in {play.MarchSeconds:F0} s");
                 ai.Board.Avoid(Target, ai.Now + ai.Policy.AvoidSeconds);
+                ai.Board.GiveUpOn(Target, ai.Policy.AvoidSeconds);
                 int2 given = Target;
                 if (!ChooseTarget(ai, centre, TargetOwner, Maxed(ai, state) ? 0f : 1f, out int nid, out int nowner, out int2 ntarget) || ntarget.Equals(given))
                 {

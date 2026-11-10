@@ -102,7 +102,8 @@ def shortcut(cmd, rest):
     if cmd == "type" and rest:
         return "text", {"text": " ".join(rest)}
     if cmd == "shot":
-        return "screenshot", {"path": rest[0]} if rest and "=" not in rest[0] else parse_args(rest)
+        # A path first, then key=value args (box=…, scale=…): playtest 2026-11-10, everything after the path was dropped.
+        return "screenshot", {"path": rest[0], **parse_args(rest[1:])} if rest and "=" not in rest[0] else parse_args(rest)
     if cmd == "ui" and rest and "=" not in rest[0]:
         return "ui", {"filter": rest[0], **parse_args(rest[1:])}
     return None
@@ -110,6 +111,7 @@ def shortcut(cmd, rest):
 def selftest():
     assert shortcut("click", ["10", "20", "right"]) == ("mouse", {"x": 10, "y": 20, "space": "screen", "button": "right"})
     assert shortcut("key", ["ctrl+a"]) == ("key", {"keys": "ctrl+a"})
+    assert shortcut("shot", ["a.png", "scale=0.5"]) == ("screenshot", {"path": "a.png", "scale": 0.5})
     assert parse_args(["tile=[1,2]", "type=Tank", "on=true", "n=3"]) == {"tile": [1, 2], "type": "Tank", "on": True, "n": 3}
     print("ok")
     return 0

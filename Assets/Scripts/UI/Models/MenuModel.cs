@@ -23,7 +23,7 @@ namespace WAR2D.UI
         public static string Address
         {
             get => PlayerPrefs.GetString(AddressKey, "");
-            set => PlayerPrefs.SetString(AddressKey, value ?? "");
+            set { PlayerPrefs.SetString(AddressKey, value ?? ""); PlayerPrefs.Save(); }
         }
 
         /// <summary>True for an IPv4/IPv6 address or a DNS host name, optionally with a port (<c>host:port</c>, <c>[ipv6]:port</c>).</summary>

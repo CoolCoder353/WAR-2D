@@ -63,6 +63,10 @@ namespace WAR2D.Dev.Overlays
                     if (KeyFor(l.Hotkey) is Key key && k[key].wasPressedThisFrame)
                         try { Set(l.Name, !on.Contains(l), null); } catch (DebugError e) { Logging.WarLog.Warn(Logging.LogCategory.Dev, e.Message); }
 
+            // Playtest 2026-11-10: a layer switched on in a match stayed on in the main menu, over the menu battle. Leaving the
+            // match (no networking left) switches every layer off.
+            if (on.Count > 0 && !NetworkClient.active && !NetworkServer.active)
+                foreach (OverlayLayer l in on.ToList()) Set(l.Name, false, null);
             if (on.Count == 0) { Detach(); return; }
             if (SimContext.Current != attached) { Detach(); attached = SimContext.Current; if (attached != null) attached.Settled += Capture; }
         }

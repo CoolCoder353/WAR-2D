@@ -29,9 +29,16 @@ namespace WAR2D.UI
 
         private readonly struct Sample
         {
-            public readonly float Time, Net;
-            public Sample(float time, float net) { Time = time; Net = net; }
+            public readonly float Time, Income, Upkeep;
+            public Sample(float time, float income, float upkeep) { Time = time; Income = income; Upkeep = upkeep; }
         }
+
+        /// <summary>
+        /// Income and upkeep per second over the same window as <see cref="NetPerSecond"/> (playtest 2026-11-10: the top bar showed
+        /// "+15/s net" beside "+20 income −0 upkeep", the net averaged and its parts not).
+        /// </summary>
+        public float IncomePerSecond { get; private set; }
+        public float UpkeepPerSecond { get; private set; }
 
         private readonly Queue<Sample> samples = new Queue<Sample>();
         private bool lowWarned;
@@ -51,11 +58,13 @@ namespace WAR2D.UI
         /// <summary>Records this moment's balance, income and upkeep owed, and whether the server says some of it went unpaid.</summary>
         public void Feed(float resources, float incomePerSecond, float upkeepPerSecond, float now, bool unpaid = false)
         {
-            samples.Enqueue(new Sample(now, incomePerSecond - upkeepPerSecond));
+            samples.Enqueue(new Sample(now, incomePerSecond, upkeepPerSecond));
             while (samples.Count > 1 && now - samples.Peek().Time > WindowSeconds) samples.Dequeue();
-            float sum = 0f;
-            foreach (Sample s in samples) sum += s.Net;
-            NetPerSecond = sum / samples.Count;
+            float income = 0f, upkeep = 0f;
+            foreach (Sample s in samples) { income += s.Income; upkeep += s.Upkeep; }
+            IncomePerSecond = income / samples.Count;
+            UpkeepPerSecond = upkeep / samples.Count;
+            NetPerSecond = IncomePerSecond - UpkeepPerSecond;
             SecondsUntilEmpty = NetPerSecond < 0f ? resources / -NetPerSecond : -1f;
 
             EconomyState state;

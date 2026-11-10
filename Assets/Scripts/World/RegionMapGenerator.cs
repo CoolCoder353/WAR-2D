@@ -432,6 +432,13 @@ namespace WAR2D.World
                 foreach (int c in RichAreas(plan.Regions.ToArray(), LanesOf(plan), size, cfg))
                     AddRichField(tiles, size, plan.Regions[c], richTiles, starts, clear, ref richRng);
             }
+            // Playtest 2026-11-10 (1024, seed 7): a start site whose vein grew on a wide region's far rim, with no gem patch near it
+            // either, had nothing to mine near its HQ. Checked once every gem is placed; only on maps of OpenVeinMinSize and up
+            // (a small map's start sites are tight, and its maps stay as they were).
+            if (size >= OpenVeinMinSize)
+                for (int i = 0; i < plan.Regions.Count; i++)
+                    if (plan.Regions[i].Kind == RegionKind.Start && !GemWithin(tiles, size, plan.Regions[i].Centre, StartRadius + VeinFallbackSlack))
+                        AddOpenVein(tiles, size, plan.Regions[i].Centre, AwayFromLanes(plan, i));
             WriteBorder(tiles, size, cfg.EdgeTiles);
 
             return new MapLayout(tiles, plan.Regions.ToArray(), LanesOf(plan), starts.ToArray(), expansions.ToArray(), plan.Score == 0, attempt);
@@ -857,6 +864,14 @@ namespace WAR2D.World
         private static void AddVein(NativeArray<byte> tiles, int size, Plan plan, int regionIndex, ref Random rng)
         {
             MapRegion region = plan.Regions[regionIndex];
+            int2 away = AwayFromLanes(plan, regionIndex);
+            GrowGems(tiles, size, region.Centre, region.Radius + 3, 6 + rng.NextInt(0, 5), away, true, ref rng);
+        }
+
+        /// <summary>The point a start site's vein keeps away from: the mean of the neighbouring regions' centres (its lanes' way).</summary>
+        private static int2 AwayFromLanes(Plan plan, int regionIndex)
+        {
+            MapRegion region = plan.Regions[regionIndex];
             // The point to stay away from: the mean of the neighbouring regions' centres, so the vein sits opposite the lanes.
             long sx = 0, sy = 0; int neighbours = 0;
             foreach (LanePlan l in plan.Lanes)
@@ -865,8 +880,58 @@ namespace WAR2D.World
                 if (other < 0) continue;
                 sx += plan.Regions[other].Centre.x; sy += plan.Regions[other].Centre.y; neighbours++;
             }
-            int2 away = neighbours == 0 ? region.Centre : new int2((int)(sx / neighbours), (int)(sy / neighbours));
-            GrowGems(tiles, size, region.Centre, region.Radius + 3, 6 + rng.NextInt(0, 5), away, true, ref rng);
+            return neighbours == 0 ? region.Centre : new int2((int)(sx / neighbours), (int)(sy / neighbours));
+        }
+
+        /// <summary>How far past <see cref="StartRadius"/> a start site's vein may sit before <see cref="AddOpenVein"/> adds one.</summary>
+        private const int VeinFallbackSlack = 10;
+
+        /// <summary>The smallest map size that gets <see cref="AddOpenVein"/>'s fallback outcrop.</summary>
+        private const int OpenVeinMinSize = 512;
+
+        /// <summary>True when a gem tile lies within <paramref name="reach"/> of <paramref name="centre"/>.</summary>
+        private static bool GemWithin(NativeArray<byte> tiles, int size, int2 centre, int reach)
+        {
+            for (int y = math.max(0, centre.y - reach); y <= math.min(size - 1, centre.y + reach); y++)
+            for (int x = math.max(0, centre.x - reach); x <= math.min(size - 1, centre.x + reach); x++)
+            {
+                int dx = x - centre.x, dy = y - centre.y;
+                if (dx * dx + dy * dy <= reach * reach && tiles[y * size + x] == Gem) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Playtest 2026-11-10 (1024, seed 7): a start site in a wide open region has no rock face near its centre, so its
+        /// vein grew on the region's rim 47–60 tiles out. This raises an 8-tile gem outcrop on open floor just outside the
+        /// start disc, on the side away from the lanes. Draws nothing from the generator's stream.
+        /// </summary>
+        private static void AddOpenVein(NativeArray<byte> tiles, int size, int2 centre, int2 away)
+        {
+            float2 dir = math.normalizesafe((float2)(centre - away), new float2(1f, 0f));
+            if (away.Equals(centre)) dir = new float2(1f, 0f);
+            for (int ring = StartRadius + 3; ring <= StartRadius + VeinFallbackSlack; ring++)
+            {
+                int2 at = centre + (int2)math.round(dir * ring);
+                if (at.x < 4 || at.y < 4 || at.x >= size - 4 || at.y >= size - 4 || tiles[at.y * size + at.x] != Floor) continue;
+                var queue = new Queue<int2>();
+                var seen = new HashSet<int2> { at };
+                queue.Enqueue(at);
+                int placed = 0;
+                while (queue.Count > 0 && placed < 8)
+                {
+                    int2 t = queue.Dequeue();
+                    tiles[t.y * size + t.x] = Gem;
+                    placed++;
+                    foreach (int2 d in Around)
+                    {
+                        int2 n = t + d;
+                        if (n.x < 4 || n.y < 4 || n.x >= size - 4 || n.y >= size - 4 || !seen.Add(n)) continue;
+                        if (tiles[n.y * size + n.x] == Floor && math.distancesq(n, centre) > (StartRadius + 2) * (StartRadius + 2)) queue.Enqueue(n);
+                    }
+                }
+                return;
+            }
         }
 
         /// <summary>

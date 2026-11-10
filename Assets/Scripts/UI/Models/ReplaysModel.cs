@@ -36,7 +36,7 @@ namespace WAR2D.UI
         {
             ReplayHeader h = s.Header ?? new ReplayHeader();
             var players = (h.Players ?? new List<ReplayPlayerInfo>()).Select(p => (string.IsNullOrEmpty(p.Nickname) ? "Player" : p.Nickname, p.Colour)).ToArray();
-            string mode = h.Settings.Mode == MatchMode.Teams ? "Teams" : "Free for all";
+            string mode = h.Settings.Mode == MatchMode.Teams ? "Teams" : "Free-for-all"; // as the lobby writes it
             return new ReplayRow
             {
                 Path = s.Path,
@@ -56,7 +56,9 @@ namespace WAR2D.UI
             return total >= 3600 ? $"{total / 3600}:{total / 60 % 60:00}:{total % 60:00}" : $"{total / 60}:{total % 60:00}";
         }
 
-        /// <summary><c>x.y MB</c>.</summary>
-        public static string Size(long bytes) => (bytes / 1048576.0).ToString("0.0", CultureInfo.InvariantCulture) + " MB";
+        /// <summary><c>x.y MB</c>, or <c>n KB</c> under a megabyte (playtest 2026-11-10: a 7 KB replay read "0.0 MB").</summary>
+        public static string Size(long bytes) => bytes < 1048576
+            ? Math.Max(1, (int)Math.Round(bytes / 1024.0)).ToString(CultureInfo.InvariantCulture) + " KB"
+            : (bytes / 1048576.0).ToString("0.0", CultureInfo.InvariantCulture) + " MB";
     }
 }

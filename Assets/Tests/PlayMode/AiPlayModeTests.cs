@@ -83,9 +83,13 @@ public class AiPlayModeTests
         PlayModeMatch.FastForward(8);
         ArmyManager easyArmy = ((AiBrain)easy.Brain).Manager<ArmyManager>(), normalArmy = ((AiBrain)normal.Brain).Manager<ArmyManager>();
         // Both build up, unless one attacks first (a Normal Rusher can overrun Easy before Easy's army is three strong).
-        yield return PlayModeMatch.WaitUntil(() => (Producing(easy) && Producing(normal)) || easyArmy.Attacks + normalArmy.Attacks > 0, 150f, () => Describe(easy) + " | " + Describe(normal));
-        yield return PlayModeMatch.WaitUntil(() => easyArmy.Attacks + normalArmy.Attacks > 0 || core.CurrentState == GameState.GameOver, 200f, () => Describe(easy) + " | " + Describe(normal));
-        Assert.That(easyArmy.Attacks + normalArmy.Attacks, Is.GreaterThan(0), "and eventually one of them attacks");
+        yield return PlayModeMatch.WaitUntil(() => (Producing(easy) && Producing(normal)) || easyArmy.Attacks + normalArmy.Attacks > 0
+            || easy.Player.state == PlayerState.Eliminated || normal.Player.state == PlayerState.Eliminated, 150f, () => Describe(easy) + " | " + Describe(normal));
+        // One eliminating the other counts too (2026-11-10: with upkeep no longer wiping armies on a short bank, Normal's army can
+        // overrun Easy's base from where it gathers, before it ever starts an attack; the host sits out, so no game over follows).
+        bool OneOut() => easy.Player.state == PlayerState.Eliminated || normal.Player.state == PlayerState.Eliminated;
+        yield return PlayModeMatch.WaitUntil(() => easyArmy.Attacks + normalArmy.Attacks > 0 || OneOut() || core.CurrentState == GameState.GameOver, 200f, () => Describe(easy) + " | " + Describe(normal));
+        Assert.That(easyArmy.Attacks + normalArmy.Attacks > 0 || OneOut(), Is.True, "and eventually one of them attacks");
     }
 
     /// <summary>Starts the lobby's match (a test lobby skips the ready check) and waits for the match scene.</summary>

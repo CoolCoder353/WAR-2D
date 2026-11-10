@@ -16,9 +16,9 @@
             </ui:VisualElement>
         </ui:VisualElement>
         <ui:VisualElement name="surrender-panel" class="panel surrender">
-            <ui:Label text="Surrender?" class="panel__title" />
+            <ui:Label name="surrender-title" text="Surrender?" class="panel__title" />
             <ui:VisualElement class="surrender__content">
-                <ui:Label text="Your HQ, units and buildings are destroyed and you're out of the match. Your team keeps playing." class="text surrender__text" />
+                <ui:Label name="surrender-text" text="Your HQ, units and buildings are destroyed and you're out of the match." class="text surrender__text" />
                 <ui:VisualElement class="row">
                     <ui:Button name="surrender-cancel" text="Cancel" class="button" />
                     <ui:Button name="surrender-confirm" text="Surrender" class="button button--danger" />

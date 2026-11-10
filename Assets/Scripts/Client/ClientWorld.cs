@@ -145,9 +145,18 @@ namespace WAR2D.Client
         /// <summary>The underlying store (tests).</summary>
         internal ClientUnitStore Store => store;
 
+        /// <summary>
+        /// Set by a view made on purpose (the menu battle, the replay viewer) just before it adds its ClientWorld: that one
+        /// becomes <see cref="Instance"/> even while an older one lingers (playtest 2026-11-10: after leaving a match the
+        /// menu battle's view found a stale Instance, destroyed itself, and was drawn every frame with no store).
+        /// </summary>
+        internal static bool TakeOverNext;
+
         private void Awake()
         {
-            if (Instance != null && Instance != this) { Destroy(this); return; }
+            bool takeOver = TakeOverNext;
+            TakeOverNext = false;
+            if (Instance != null && Instance != this && !takeOver) { Destroy(this); return; }
             Initialise();
         }
 
@@ -160,7 +169,7 @@ namespace WAR2D.Client
 
         internal void Initialise()
         {
-            if (store != null) return;
+            if (store != null) { Instance = this; return; }
             Instance = this;
             GameConfigData config = ConfigLoader.LoadConfig();
             dt = config.Simulation.TickSeconds;
@@ -511,6 +520,7 @@ namespace WAR2D.Client
         {
             // A -nographics player (perf clients) has no GPU buffers to draw with.
             if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) return;
+            if (store == null) return; // a duplicate that destroyed itself in Awake
             // Between packs (see Update): the last packing again, carried along each instance's velocity.
             if (!unitsDue && unitsPacked && unitRenderer != null)
             {

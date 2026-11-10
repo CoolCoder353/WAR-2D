@@ -183,11 +183,15 @@ namespace WAR2D.UI
 
             matchMenu = new InMatchMenuController(root);
             settings = new SettingsController(root);
+            root.Q("settings")?.AddToClassList("settings-screen--over-match");
             settings.Closed += matchMenu.Open;
             settings.Closed += commandCard.ShowKeys; // a rebind shows on the command buttons at once
             matchMenu.SettingsClicked += () => { matchMenu.Close(); settings.Open(); SettingsRequested?.Invoke(); };
             matchMenu.SurrenderConfirmed += () => GameCore.Instance?.Cmd_Surrender();
             matchMenu.LeaveClicked += () => { HostLeftNotice.LeavingOnPurpose = true; GameManager.Instance?.LeaveLobby(); };
+            matchMenu.LeaveNeedsConfirm = () => GameCore.Instance != null && GameCore.Instance.CurrentState != GameState.GameOver
+                && GameCore.Instance.CurrentState != GameState.Lobby && Mirror.NetworkClient.isConnected;
+            matchMenu.InTeam = () => GameCore.Instance != null && GameCore.Instance.Settings.Mode == MatchMode.Teams;
             topBar.MenuClicked += matchMenu.Toggle;
             manual = new ManualController(root);
             manual.SettingsRequested += () => { manualFromMenu = false; settings.Open(); SettingsRequested?.Invoke(); };
@@ -276,11 +280,19 @@ namespace WAR2D.UI
             int index = me.OwnStartOptions[0];
             if (sites == null || index < 0 || index >= sites.Length) return;
             Unity.Mathematics.int2 site = sites[index];
-            CentreCamera(new Vector2(site.x + 0.5f, site.y + 0.5f));
+            // Playtest 2026-11-10: the "Pick your start" panel covered the top of the ring; the view sits a little higher, so the
+            // ring shows below the panel.
+            CentreCamera(new Vector2(site.x + 0.5f, site.y + 0.5f + (core.CurrentState == GameState.PlacingHQ ? HqPickLift : 0f)));
             // The pick needs the whole ring in view (playtest 2026-11-04: 1:1 on a small window was all HQ).
             if (core.CurrentState == GameState.PlacingHQ && Camera.main != null && Camera.main.TryGetComponent(out Character.Character_Controler controller))
+            {
                 controller.ZoomOutToShow(WAR2D.World.MapGenerator.HqClearRadius + HqPickMargin);
+                zoomedForPick = true;
+            }
         }
+
+        /// <summary>True while the camera still has the HQ pick's zoom: the match starts back at 1:1 (gameplay.md).</summary>
+        private bool zoomedForPick;
 
         private bool ownHqSeen;
 
@@ -295,6 +307,8 @@ namespace WAR2D.UI
             ownHqSeen = true;
             Camera cam = Camera.main;
             if (cam == null) return;
+            if (zoomedForPick && cam.TryGetComponent(out Character.Character_Controler zoom)) zoom.ResetZoom();
+            zoomedForPick = false;
             // The anchor is the footprint's middle tile, not its corner.
             Unity.Mathematics.float2 centre = Footprint.VisualCenter((Unity.Mathematics.int2)Unity.Mathematics.math.round(hq.Data.position), WorldStateManager.GetBuildingSize(BuildingType.Base));
             Vector3 at = cam.transform.position;
@@ -302,7 +316,10 @@ namespace WAR2D.UI
         }
 
         /// <summary>Tiles shown past the start ring when the HQ pick opens.</summary>
-        private const float HqPickMargin = 2f;
+        private const float HqPickMargin = 8f;
+
+        /// <summary>Tiles the camera sits above the option it opens on during the pick (the prompt panel covers the top of the screen).</summary>
+        private const float HqPickLift = 5f;
 
         private static void CentreCamera(Vector2 point)
         {
@@ -368,14 +385,23 @@ namespace WAR2D.UI
             {
                 string name = NameOf(teammate.Key);
                 Color32 colour = PlayerPalette.Of(ClientPlayer.TryFind(teammate.Key, out ClientPlayer other) ? other.colourIndex : -1);
+                // Playtest 2026-11-10: every option read "Name ▲", unnumbered, crowding the top edge. Options are numbered, and once
+                // the teammate has picked only their start shows.
+                bool hasPick = teammate.Value.pick >= 0;
+                int number = 0;
                 foreach (int site in teammate.Value.options)
                 {
+                    number++;
                     if (site < 0 || site >= sites.Length) continue;
                     bool picked = site == teammate.Value.pick;
+                    if (hasPick && !picked) continue;
                     markers.Add(new StartMarker { Centre = new Vector2(sites[site].x + 0.5f, sites[site].y + 0.5f), Radius = radius, Colour = colour,
-                        OnScreen = picked ? $"{name}'s start" : $"{name} · option", OffScreen = name });
+                        OnScreen = picked ? $"{name}'s start" : $"{name} · {number}", OffScreen = picked ? name : $"{name} {number}" });
                 }
             }
+            VisualElement promptPanel = root.Q("hq-prompt");
+            startMarkers.TopInset = promptPanel != null && promptPanel.resolvedStyle.display != DisplayStyle.None && !float.IsNaN(promptPanel.worldBound.yMax)
+                ? Mathf.Max(0f, promptPanel.Q(className: "hq-prompt")?.worldBound.yMax ?? 0f) : 0f;
             startMarkers.Show(markers, cam);
             starts.Clear();
             for (int i = 0; i < markers.Count; i++)
@@ -423,6 +449,7 @@ namespace WAR2D.UI
 
         private void Update()
         {
+            KeepSquadBarAbovePanel();
             if (GameInput.FieldManual.WasPressedThisFrame() && !endScreen.IsShown && !settings.IsOpen)
             {
                 if (manual.IsOpen) manual.Close();
@@ -439,6 +466,8 @@ namespace WAR2D.UI
                 else if (settings.IsOpen) settings.Close();
                 else if (gift.IsOpen) gift.Close();
                 else if (diplomacy.IsOpen) diplomacy.SetOpen(false);
+                else if (matchMenu.IsOpen) matchMenu.Close();
+                else if (!Spectating && UnitCommander.Instance != null && UnitCommander.Instance.EscapeStep()) { }
                 else matchMenu.Toggle();
             }
             DialogOpen = manual.IsOpen || matchMenu.IsOpen || settings.IsOpen || gift.IsOpen;
@@ -542,7 +571,9 @@ namespace WAR2D.UI
         /// <summary>The low-funds warning (state C): one alert row per drop, re-armed once net is positive again.</summary>
         private void OnLowFunds()
         {
-            string text = $"Resources will run out in {EconomyReadout.Clock(Model.Economy.SecondsUntilEmpty)}";
+            // Playtest 2026-11-10: the alert's own countdown froze when raised and disagreed with the top bar's live one; the top
+            // bar keeps the time.
+            string text = "Resources are running out";
             Alerts.Add(new Alert { Kind = AlertKind.ResourcesLow }, text, Time.unscaledTime);
             if (SettingsStore.Current.SoundsAlert(AlertKind.ResourcesLow)) WAR2D.Audio.AudioService.Ui("alert");
         }
@@ -566,14 +597,25 @@ namespace WAR2D.UI
         /// Keeps the squad bar and its hint above the selection panel when the panel grows past them (playtest 2026-11-02: a
         /// tall selection, many types or the upkeep line, covered the squad bar).
         /// </summary>
-        private void FollowSelectionPanel(GeometryChangedEvent e)
+        private void FollowSelectionPanel(GeometryChangedEvent e) => KeepSquadBarAbovePanel();
+
+        /// <summary>
+        /// Places the squad bar above the selection panel from where the panel really is on screen (its world bound, so whatever
+        /// template or scale holds it). Playtest 2026-11-10: with the HQ selected at 1920×1080 the panel still covered squads
+        /// 1–9, so this also runs every frame, not only when the panel's geometry changes.
+        /// </summary>
+        private void KeepSquadBarAbovePanel()
         {
-            if (!(e.target is VisualElement panel)) return;
-            float top = panel.resolvedStyle.display == DisplayStyle.None || float.IsNaN(panel.layout.height) ? 0f
-                : panel.resolvedStyle.bottom + panel.layout.height + SquadBarGap;
+            VisualElement panel = root?.Q("selection-panel");
+            VisualElement bar = root?.Q("squad-bar"), hint = root?.Q("squad-hint");
+            if (panel == null || bar == null) return;
+            float top = 0f;
+            if (panel.resolvedStyle.display != DisplayStyle.None && !float.IsNaN(panel.worldBound.yMin) && panel.worldBound.height > 0f
+                && bar.parent != null && !float.IsNaN(bar.parent.worldBound.yMax))
+                top = bar.parent.worldBound.yMax - panel.worldBound.yMin + SquadBarGap;
             float bottom = Mathf.Max(SquadBarBottom, top);
-            VisualElement bar = root.Q("squad-bar"), hint = root.Q("squad-hint");
-            if (bar != null) bar.style.bottom = bottom;
+            if (Mathf.Abs(bar.resolvedStyle.bottom - bottom) < 0.5f) return;
+            bar.style.bottom = bottom;
             if (hint != null) hint.style.bottom = bottom + SquadHintAbove;
         }
 

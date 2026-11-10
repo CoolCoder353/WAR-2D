@@ -12,7 +12,7 @@
     <PassiveGenerationRate>20.0</PassiveGenerationRate>
     <StartingResources>1000.0</StartingResources>
     <MiningRate>25.0</MiningRate>
-    <RichGemMultiplier>15</RichGemMultiplier>      <!-- v0.17: a Miner facing a rich gem earns MiningRate × this -->
+    <RichGemMultiplier>4</RichGemMultiplier>       <!-- v0.17: a Miner facing a rich gem earns MiningRate × this (playtest 2026-11-10: 15 made 375/s a Miner, and money meant nothing after 6 min) -->
     <!-- Percent of max health lost per second while an entity's upkeep is unpaid. -->
     <DecayPercentPerSecond>100.0</DecayPercentPerSecond>
   </Resources>
@@ -118,7 +118,7 @@
   </Formation>
 
   <AutoWork>
-    <Radius>900</Radius>               <!-- v0.16: tiles an idle Builder looks for blueprints and repairs -->
+    <Radius>40</Radius>                <!-- v0.16: tiles an idle Builder looks for blueprints and repairs (playtest 2026-11-10: 900 sent idle Builders across the map, through enemy ground) -->
     <RepairBelow>0.9</RepairBelow>   <!-- v0.16: repairs own buildings and walls under this share of health -->
     <SliceTicks>10</SliceTicks>      <!-- v0.16: each idle Builder looks once every this many ticks -->
   </AutoWork>

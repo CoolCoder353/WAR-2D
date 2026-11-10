@@ -207,6 +207,23 @@ namespace WAR2D.Ai
             return false;
         }
 
+        /// <summary>
+        /// Targets an army failed to reach in <c>MarchSeconds</c> (walled off, across rock), by tile: how often, and until when
+        /// it doesn't pick them at all (playtest 2026-11-10: it gave up on one and picked it again four minutes later, for
+        /// the whole match). Each give-up multiplies the wait by four.
+        /// </summary>
+        public readonly Dictionary<int2, (int Strikes, double Until)> Unreached = new Dictionary<int2, (int, double)>();
+
+        /// <summary>Marks <paramref name="at"/> unreached for <paramref name="seconds"/> times four per earlier give-up there.</summary>
+        public void GiveUpOn(int2 at, double seconds)
+        {
+            int strikes = Unreached.TryGetValue(at, out var was) ? was.Strikes + 1 : 1;
+            Unreached[at] = (strikes, Now + seconds * System.Math.Pow(4, strikes - 1));
+        }
+
+        /// <summary>True when an army gave up reaching <paramref name="at"/> and the wait isn't over.</summary>
+        public bool IsUnreached(int2 at) => Unreached.TryGetValue(at, out var u) && Now < u.Until;
+
         /// <summary>Avoids a target until <paramref name="until"/>.</summary>
         public void Avoid(int2 at, double until)
         {

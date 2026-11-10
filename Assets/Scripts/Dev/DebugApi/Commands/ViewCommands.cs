@@ -74,8 +74,8 @@ namespace WAR2D.Dev.DebugApi
                 ShotRunner().StartCoroutine(CaptureRoutine(full, scale, crop, r2 => result = r2, e => error = e));
                 return SessionCommands.Wait(() => error != null ? throw new DebugError(error) : result, 10);
             });
-            r.Add("ui", DebugRole.Any, "ui [filter] [all=true] [max=300] [compact=true]: list the visible UI Toolkit elements, open dropdown menus included (buttons, fields, labels; all=true adds every named element and those scrolled out of view) with name, text and screen rect/centre in screenshot pixels; covered=true means something else is on top; compact=true gives one 'name \"text\" x,y' line each", a =>
-                ListUi(DebugArgs.Str(a, "filter", ""), DebugArgs.Bool(a, "all", false), DebugArgs.Int(a, "max", 300), DebugArgs.Bool(a, "compact", false)));
+            r.Add("ui", DebugRole.Any, "ui [filter] [all=true] [max=800] [compact=true]: list the visible UI Toolkit elements, open dropdown menus included (buttons, fields, labels; all=true adds every named element and those scrolled out of view) with name, text and screen rect/centre in screenshot pixels; covered=true means something else is on top; compact=true gives one 'name \"text\" x,y' line each", a =>
+                ListUi(DebugArgs.Str(a, "filter", ""), DebugArgs.Bool(a, "all", false), DebugArgs.Int(a, "max", 800), DebugArgs.Bool(a, "compact", false)));
             r.Add("overlay", DebugRole.Any, "overlay layer on [args]: toggle a debug overlay (Flow, Routes, Targets, Fog, Sectors, Hash, Footprints, Interest, Terrain)", a =>
                 OverlayHook?.Invoke(DebugArgs.Str(a, "layer"), DebugArgs.Bool(a, "on"), a) ?? throw new DebugError("overlays not available in this build"));
         }
@@ -204,7 +204,8 @@ namespace WAR2D.Dev.DebugApi
             }
             // Open dropdown menus sit on the panel's own tree, beside the documents.
             foreach (var panel in panels) Visit(panel.Key.visualTree, "popup", panel.Value.sx, panel.Value.sy, filter, all, max, compact, items, roots);
-            return new { screenWidth = Screen.width, screenHeight = Screen.height, count = items.Count, elements = items };
+            // Playtest 2026-11-10: a list cut at max looked complete, so elements past it (a gift dialog's) seemed missing.
+            return new { screenWidth = Screen.width, screenHeight = Screen.height, count = items.Count, truncated = items.Count >= max, elements = items };
         }
 
         private static void Visit(VisualElement e, string doc, float sx, float sy, string filter, bool all, int max, bool compact, System.Collections.Generic.List<object> items, System.Collections.Generic.HashSet<VisualElement> skip)

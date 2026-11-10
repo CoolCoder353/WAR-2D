@@ -800,6 +800,8 @@ public partial class WorldStateManager : NetworkBehaviour
             {
                 if (cancelled) GameCore.Instance.Stats.BlueprintCancelled(building.ownerId);
                 else GameCore.Instance.Stats.BuildingLost(building.ownerId);
+                if (!cancelled && building.buildingType == BuildingType.Base)
+                    WarLog.Info(LogCategory.Match, $"HQ {id} of player {building.ownerId} destroyed at {building.position} (last hit by {GameCore.Instance.HqLastHitBy(building.ownerId)})");
             }
             Buildings.Remove(id);
             if (building.buildingType == BuildingType.Mine)
@@ -1168,7 +1170,7 @@ public partial class WorldStateManager : NetworkBehaviour
         };
 
 
-        WarLog.Info(LogCategory.Sim, $"Placing building of type {type} at position {positon} with rotation {rotation}, owned by player {buildingData.ownerId}");
+        WarLog.Debug(LogCategory.Sim, $"Placing building of type {type} at position {positon} with rotation {rotation}, owned by player {buildingData.ownerId}");
 
         // Set at once so a second HQ in the same tick fails the placement check.
         if (type == BuildingType.Base)

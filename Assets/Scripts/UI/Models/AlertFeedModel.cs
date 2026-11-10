@@ -172,7 +172,7 @@ namespace WAR2D.UI
             AlertKind.EnemySpotted => "Enemy spotted by Radar",
             AlertKind.RepairsStopped => "Out of resources: repairs stopped",
             AlertKind.BlueprintBlocked => "Blueprint cancelled: something is in the way (refunded)",
-            AlertKind.ResourcesLow => "Resources will run out in 1:00",
+            AlertKind.ResourcesLow => "Resources are running out",
             AlertKind.PlayerDisconnected => $"{nameOf(alert.OtherOwnerId)} disconnected",
             AlertKind.PlayerReturned => $"{nameOf(alert.OtherOwnerId)} returned",
             _ => "",

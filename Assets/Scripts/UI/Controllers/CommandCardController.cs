@@ -10,7 +10,7 @@ namespace WAR2D.UI
     /// <c>Command card – v0.12</c>): the order buttons (Move, Attack-move, Stop, Hold, and Repair with Builders,
     /// Dig with Diggers or Detonate with Bombers selected; the armed order shows as active), the build row
     /// with Builders selected (v0.13, Figma <c>Command card – v0.13</c> layout B: Make — Miner and the producers —
-    /// over Defend — Wall, Bomb, Radar, Gun turret, Jammer — with their costs, disabled while the player can't afford
+    /// over Defend — Wall, Mine, Radar, Gun turret, Jammer — with their costs, disabled while the player can't afford
     /// them, and one hover card for every build button: name and cost, role, footprint and upkeep), and, with own producers selected, the type selector (one button per type the building
     /// makes, the selected one active, a hover card with its cost, build time and role) above one queue row for
     /// that type; then Cancel (blueprints, full refund) or Demolish (finished, a share back, after an inline
@@ -363,7 +363,12 @@ namespace WAR2D.UI
         /// </summary>
         public void RequestRemove()
         {
-            if (!Removable) return;
+            if (!Removable)
+            {
+                // Playtest 2026-11-10: Delete with the HQ selected did nothing and said nothing.
+                if (selection.BuildingId != 0 && selection.BuildingType == BuildingType.Base) UnitCommander.Instance?.ShowNotice("The HQ can't be demolished");
+                return;
+            }
             if ((WallsOnly ? selection.WallBlueprints == selection.WallCount : selection.AllBlueprints) || ConfirmOpen || !SettingsStore.Current.ConfirmDemolish) Remove();
             else
             {

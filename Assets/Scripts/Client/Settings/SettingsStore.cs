@@ -35,6 +35,8 @@ public sealed class GameSettings
     /// <summary>Volumes, 0–1. Music starts at half (playtest 2026-10-30: it sat over the effects).</summary>
     public float Master = 1f, Music = 0.5f, Sfx = 1f;
     public bool MenuBattle = true;
+    /// <summary>Playtest 2026-11-10: all sound off (Master kept), and sound off while the window isn't focused.</summary>
+    public bool Mute, MuteInBackground;
     public string Palette = Palettes.Standard;
     public bool EdgeScroll = true;
 
@@ -78,7 +80,7 @@ public sealed class GameSettings
     };
 
     /// <summary>
-    /// The resolutions to list: the common ones, plus the monitor's own and the one in use when they are not among them,
+    /// The resolutions to list: the common ones that fit the monitor, plus the monitor's own and the one in use when they are not among them,
     /// smallest first.
     /// </summary>
     public static List<Vector2Int> ResolutionChoices(Vector2Int current)
@@ -88,6 +90,8 @@ public sealed class GameSettings
         if (!Application.isBatchMode)
         {
             Resolution desktop = Screen.currentResolution;
+            // Playtest 2026-11-10: sizes larger than the monitor were offered and saved while the window stayed the monitor's size.
+            if (desktop.width > 0 && desktop.height > 0) choices.RemoveAll(r => r.x > desktop.width || r.y > desktop.height);
             Include(new Vector2Int(desktop.width, desktop.height));
         }
         Include(current);
@@ -238,7 +242,7 @@ public static class SettingsStore
         UnityEngine.Audio.AudioMixer mixer = Mixer;
         if (mixer != null)
         {
-            mixer.SetFloat("MasterVolume", Decibels(s.Master));
+            mixer.SetFloat("MasterVolume", Decibels(EffectiveMaster(s)));
             mixer.SetFloat("MusicVolume", Decibels(s.Music));
             mixer.SetFloat("SFXVolume", Decibels(s.Sfx));
         }
@@ -248,6 +252,29 @@ public static class SettingsStore
     }
 
     private static UnityEngine.Audio.AudioMixer mixer;
+
+    /// <summary>The master volume after Mute and Mute in background (unfocused).</summary>
+    public static float EffectiveMaster(GameSettings s) =>
+        s.Mute || (s.MuteInBackground && !Application.isFocused && !Application.isBatchMode) ? 0f : s.Master;
+
+    /// <summary>Re-applies the master volume when the window gains or loses focus (Mute in background).</summary>
+    private sealed class FocusWatcher : MonoBehaviour
+    {
+        private void OnApplicationFocus(bool _)
+        {
+            UnityEngine.Audio.AudioMixer m = Mixer;
+            if (m != null && Current != null) m.SetFloat("MasterVolume", Decibels(EffectiveMaster(Current)));
+        }
+    }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void WatchFocus()
+    {
+        var go = new GameObject("AudioFocusWatcher");
+        UnityEngine.Object.DontDestroyOnLoad(go);
+        go.hideFlags = HideFlags.HideInHierarchy;
+        go.AddComponent<FocusWatcher>();
+    }
 
     /// <summary>The game's mixer (<c>Assets/Resources/Main.mixer</c>: Master, Music and SFX groups); route new audio sources to its groups.</summary>
     public static UnityEngine.Audio.AudioMixer Mixer => mixer != null ? mixer : mixer = Resources.Load<UnityEngine.Audio.AudioMixer>("Main");

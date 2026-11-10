@@ -122,6 +122,16 @@ namespace WAR2D.Dev.Logging
             }
             Application.quitting -= Close;
             Application.quitting += Close;
+            if (!Application.isEditor)
+            {
+                // Playtest 2026-11-10: a Development build wrote a full managed stack trace under every Info line (1.2 MB of
+                // Player.log in 8 minutes). Errors keep theirs.
+                Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
+                Application.SetStackTraceLogType(LogType.Warning, StackTraceLogType.None);
+                // ...and the on-screen Development Console opened on the first logged exception and stayed over the bottom-left
+                // of every screen (the lobby's Leave, Ready and Start). Errors are in the log file and the control API.
+                UnityEngine.Debug.developerConsoleEnabled = false;
+            }
         }
 
         private static void Close() { file?.Dispose(); file = null; }

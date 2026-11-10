@@ -91,8 +91,12 @@ namespace WAR2D.Ai
             // Saturating: its base and every expansion it holds full of Miners, it takes the next one (up to its difficulty's most).
             bool full = ai.Difficulty.SaturatesMiners && baseFull && AllHeldFull(state);
             if (full) wanted = ai.Difficulty.MaxExpansions;
-            if (claimed.Count >= wanted || !(onTime || squeezed || full)) return held;
-            if (state.BuildingCount[(int)BuildingType.Miner] < ai.Style.Miners || state.Free < 2f * state.CostOf(BuildingType.Miner)) return held;
+            // Playtest 2026-11-10: a base where no Miner fits (no gem in reach) never reached its style's Miner count, so it never
+            // expanded either, and sat with idle Builders for the whole match. With its base full and nothing held, it expands now.
+            bool starved = baseFull && held == 0;
+            if (starved) wanted = math.max(wanted, 1);
+            if (claimed.Count >= wanted || !(onTime || squeezed || full || starved)) return held;
+            if ((state.BuildingCount[(int)BuildingType.Miner] < ai.Style.Miners && !baseFull) || state.Free < 2f * state.CostOf(BuildingType.Miner)) return held;
             // v0.17: the best by gem worth over distance (rich central areas too), not simply the nearest.
             int best = -1;
             float bestScore = 0f;

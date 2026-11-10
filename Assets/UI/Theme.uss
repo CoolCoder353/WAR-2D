@@ -122,11 +122,11 @@
 /* Top bar (Figma: HUD / Default, Top bar) */
 .top-bar { position: absolute; left: 0; top: 0; right: 0; height: 44px; flex-direction: row; align-items: center; padding-left: var(--space-4); padding-right: var(--space-4); background-color: var(--color-surface-panel); border-bottom-width: 1px; border-color: var(--color-border); }
 .top-bar__players { flex-grow: 1; flex-basis: 0; flex-direction: row; align-items: center; overflow: hidden; min-width: 0; }
-.top-bar__player { flex-direction: row; align-items: center; margin-right: var(--space-4); flex-shrink: 1; min-width: 24px; overflow: hidden; }
+.top-bar__player { flex-direction: row; align-items: center; margin-right: var(--space-3); flex-shrink: 1; min-width: 24px; overflow: hidden; }
 .top-bar__player .player-name { flex-shrink: 1; min-width: 0; overflow: hidden; }
 .top-bar__player .player-name__text { flex-shrink: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .top-bar__player .ai-tag__label { display: none; }
-.top-bar__player .swatch { margin-right: 6px; }
+.top-bar__player .swatch { margin-right: 4px; }
 .top-bar__name { color: var(--color-text-primary); font-size: var(--font-size-12); }
 .top-bar__name--eliminated { color: var(--color-text-disabled); }
 .top-bar__resources { flex-direction: row; align-items: center; }
@@ -320,6 +320,10 @@
 .switch:disabled .switch__track { background-color: var(--color-surface-raised); }
 .switch:disabled .switch__knob { background-color: var(--color-text-disabled); }
 .switch:disabled .switch__label { color: var(--color-text-disabled); }
+/* Playtest 2026-11-10: a read-only switch that is on (a joined player's lobby) still reads as on: dimmed accent, knob right. */
+.switch--on:disabled .switch__track { background-color: var(--color-accent); opacity: 0.6; }
+.switch--on:disabled .switch__knob { background-color: var(--color-on-accent); }
+.switch--on:disabled .switch__label { color: var(--color-text-secondary); }
 .top-bar__actions > .top-bar__hidden { display: none; }
 .switch { width: auto; min-width: 63px; overflow: visible; }
 .switch:hover, .switch:active, .switch:disabled { background-color: rgba(0, 0, 0, 0); border-width: 0; }
@@ -337,6 +341,12 @@
 .button { -unity-text-align: middle-center; }
 .button--primary:hover { background-color: var(--color-accent); color: var(--color-on-accent); }
 .button--primary:disabled { background-color: var(--color-surface-raised); color: var(--color-text-disabled); }
+/* Playtest 2026-11-10: a hovered button showed a light-grey fill under white text (the default theme's hover won), so its label
+   was nearly unreadable. These carry a type selector so they win over the theme's own button rules. */
+Button.button:hover { background-color: var(--color-surface-raised); color: var(--color-text-primary); }
+Button.button--primary:hover { background-color: var(--color-accent); color: var(--color-on-accent); }
+Button.button--danger:hover { background-color: var(--color-danger); color: var(--color-on-accent); }
+Button.button:disabled:hover { background-color: var(--color-surface-panel); color: var(--color-text-disabled); }
 
 /* Inputs (Figma: Components, Input) */
 .input { width: 220px; }
@@ -350,6 +360,8 @@
 .input--error .input__message { display: flex; }
 
 /* Main menu */
+/* Playtest 2026-11-10: the title and buttons sat straight on the menu battle, and explosions behind Play and Quit hurt legibility. */
+.main-menu { background-color: rgba(10, 14, 18, 0.35); }
 .main-menu__title { position: absolute; top: 300px; left: 0; right: 0; align-items: center; }
 .main-menu__name { font-size: 72px; -unity-font-style: normal; color: var(--color-text-primary); padding: 0; }
 .main-menu__buttons { position: absolute; top: 500px; left: 0; right: 0; align-items: center; }
@@ -503,7 +515,12 @@ Button.lobby-card__strip:hover { border-width: 0 2px 0 0; border-color: var(--co
 .gift-dialog__label { padding: 0; }
 .list-row { flex-direction: row; align-items: center; width: 280px; height: 36px; padding: 0 var(--space-3); margin: 0 0 10px 0; background-color: var(--color-surface-panel); border-width: 1px; border-color: rgba(0, 0, 0, 0); border-radius: var(--radius-sm); }
 .list-row:hover { background-color: var(--color-surface-raised); }
-.list-row--selected { background-color: var(--color-surface-raised); border-color: var(--color-accent); }
+.list-row--selected { background-color: var(--color-surface-raised); border-color: var(--color-accent); border-width: 2px; }
+.gift-dialog__quick > .button { margin-right: 4px; padding: 2px 8px; }
+.diplomacy-panel__header { align-items: center; justify-content: space-between; }
+.diplomacy-panel__title { flex-grow: 1; }
+.diplomacy-panel__close { width: 28px; height: 28px; padding: 0; margin: 0 4px 0 0; font-size: var(--font-size-20); background-color: rgba(0, 0, 0, 0); border-width: 0; color: var(--color-text-secondary); }
+.diplomacy-panel__close:hover { color: var(--color-text-primary); background-color: var(--color-surface-raised); }
 .list-row:disabled { background-color: var(--color-surface-panel); }
 .list-row__swatch { width: 12px; height: 12px; border-radius: 0; margin-right: var(--space-2); }
 .list-row__label { flex-grow: 1; font-size: var(--font-size-14); color: var(--color-text-primary); padding: 0; -unity-text-align: middle-left; }
@@ -560,10 +577,14 @@ Button.lobby-card__strip:hover { border-width: 0 2px 0 0; border-color: var(--co
 /* ---------- Settings (Figma: Settings page) ---------- */
 .settings-screen { background-color: var(--color-surface-base); }
 /* Pinned from the top, not centred: the pages differ in height, and a centred panel moved its title and tabs whenever the tab changed (owner request, 2026-10-10). 14% keeps the tallest state (a binding conflict) on screen. */
-.settings { width: 760px; position: absolute; top: 6%; left: 50%; translate: -50% 0; }
-.settings__content { padding: 20px 24px; }
+.settings { width: 760px; position: absolute; top: 6%; left: 50%; translate: -50% 0; max-height: 88%; }
+.settings__content { padding: 20px 24px; flex-shrink: 1; min-height: 0; }
 .settings__divider { margin: var(--space-2) 0; }
-.settings__scroll { max-height: 540px; }
+/* Playtest 2026-11-10: one height for every tab (Back and Reset jumped as the tab changed), and it gives way (the panel's
+   max-height) at UI scale 150 %, where the panel ran off the bottom of a 1080p screen. */
+.settings__scroll { height: 540px; flex-shrink: 1; min-height: 120px; }
+/* Playtest 2026-11-10: opened from the in-match menu the match keeps running (with other humans), so it shows through. */
+.settings-screen--over-match { background-color: rgba(0, 0, 0, 0.45); }
 .settings__scroll .unity-scroll-view__content-container { padding-right: 14px; }
 .settings__scroll .unity-scroller--vertical { width: 6px; margin-left: 10px; border-width: 0; }
 .settings__scroll .unity-scroller--vertical .unity-base-slider__tracker { background-color: var(--color-surface-panel); border-width: 0; }
@@ -595,7 +616,7 @@ Button.lobby-card__strip:hover { border-width: 0 2px 0 0; border-color: var(--co
 .binding:hover { border-color: var(--color-text-primary); background-color: var(--color-surface-base); }
 .binding--listening { background-color: var(--color-surface-raised); border-color: var(--color-accent); border-width: 2px; color: var(--color-accent); }
 .binding--conflict { border-color: var(--color-danger); border-width: 2px; color: var(--color-danger); }
-.binding--fixed { color: var(--color-readout); }
+.binding--fixed, .binding--fixed:hover { color: var(--color-text-secondary); background-color: rgba(0, 0, 0, 0); border-color: rgba(0, 0, 0, 0); }
 .settings__hint { padding: 0; margin: 4px 0; color: var(--color-accent); }
 .settings__conflict { display: none; padding: 12px 13px; margin: var(--space-2) 0; background-color: var(--color-surface-raised); border-width: 1px; border-color: var(--color-danger); border-radius: var(--radius-md); }
 .settings__conflict--visible { display: flex; }
@@ -605,7 +626,8 @@ Button.lobby-card__strip:hover { border-width: 0 2px 0 0; border-color: var(--co
 /* v0.10 replays (Figma: v0.10 Insight) */
 .replays__blurb { white-space: normal; }
 .replays__scroll { max-height: 400px; }
-.replay-row__info { flex-grow: 1; }
+.replay-row__info { flex-grow: 1; flex-shrink: 1; min-width: 0; overflow: hidden; }
+.replay-row__info > .replay-row__meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .replay-row__meta { color: var(--color-text-secondary); }
 .replay-row__size { margin-right: var(--space-3); }
 .replay-viewer { justify-content: space-between; align-items: center; padding: 16px; }
@@ -613,6 +635,9 @@ Button.lobby-card__strip:hover { border-width: 0 2px 0 0; border-color: var(--co
 .replay-viewer__bar > * { margin-right: 16px; }
 .replay-viewer__player { flex-direction: row; align-items: center; }
 .replay-viewer__player > * { margin-right: 8px; }
+/* Playtest 2026-11-10: with 8 players the spectator and replay top bar was wider than the screen and clipped at both ends; it wraps. */
+.replay-viewer__top { flex-wrap: wrap; max-width: 96%; justify-content: center; }
+.replay-viewer__top > * { margin-top: 2px; margin-bottom: 2px; }
 .replay-viewer__speed > * { margin-right: 4px; }
 .replay-viewer__seek { width: 560px; height: 8px; background-color: var(--color-surface-raised); }
 .replay-viewer__marks { position: absolute; left: 0; right: 0; top: 0; bottom: 0; }
@@ -688,6 +713,8 @@ Button.lobby-card__strip:hover { border-width: 0 2px 0 0; border-color: var(--co
 .unity-base-dropdown__container-outer { min-width: 120px; background-color: var(--color-surface-raised); border-width: 1px; border-color: var(--color-border); border-radius: var(--radius-sm); }
 .unity-base-dropdown__container-inner { background-color: var(--color-surface-raised); border-width: 0; }
 .unity-base-dropdown .unity-scroller--horizontal { display: none; }
+/* Playtest 2026-11-10: the lobby dropdowns (5 and 3 entries) drew a scrollbar though every entry fit; none of them is long. */
+.unity-base-dropdown .unity-scroller--vertical { display: none; }
 .unity-base-dropdown__item { height: 24px; padding: 0 8px 0 4px; }
 .unity-base-dropdown__item:hover { background-color: var(--color-surface-panel); }
 .unity-base-dropdown__label { font-size: var(--font-size-12); color: var(--color-text-primary); }
@@ -894,6 +921,12 @@ Button.lobby-card__strip:hover { border-width: 0 2px 0 0; border-color: var(--co
 .lobby-card__sub { flex-wrap: wrap; }
 .lobby-card__sub .lobby-row__pill { margin: 0 4px 0 0; }
 .lobby-card__sub .lobby-card__menu { margin: 0 0 0 4px; height: 21px; }
+/* Playtest 2026-11-10: your colour as swatch buttons on your card (was a "colour ▾" text dropdown). */
+.lobby-card__colours { flex-direction: row; align-items: center; margin: 2px 0 0 0; }
+.lobby-card__swatch { width: 18px; height: 18px; min-width: 18px; padding: 0; margin: 0 4px 0 0; border-width: 2px; border-color: var(--color-surface-base); border-radius: 2px; }
+.lobby-card__swatch:hover { border-color: var(--color-text-secondary); }
+.lobby-card__swatch--selected, .lobby-card__swatch--selected:hover { border-color: var(--color-text-primary); }
+.lobby-card__swatch--taken { opacity: 0.25; }
 .lobby-card__team { height: 24px; width: 120px; margin: 6px 0 0 0; padding: 0 8px; border-width: 1px; border-color: var(--color-border); border-radius: 0; background-color: var(--color-surface-panel); font-size: var(--font-size-12); color: var(--color-text-primary); -unity-text-align: middle-left; }
 .lobby-card__team:hover { border-color: var(--color-accent); background-color: var(--color-surface-panel); }
 .lobby-card__team:disabled { opacity: 0.6; }

@@ -139,6 +139,9 @@ namespace WAR2D.UI
             if (fraction.HasValue) replayFill.style.width = Length.Percent(UnityEngine.Mathf.Clamp01(fraction.Value) * 100f);
         }
 
+        /// <summary>Seconds one sweep of the saving bar takes.</summary>
+        private const float ReplaySweepSeconds = 1.2f;
+
         /// <summary>The replay line's text and bar for the current state (only the host records, so a joined player has none).</summary>
         public static (string text, float? fraction) ReplayState(bool host, WAR2D.Net.Replay.MatchRecorder recorder)
         {
@@ -146,7 +149,10 @@ namespace WAR2D.UI
             if (host)
             {
                 if (recorder == null) return (null, null);
-                return recorder.Finished ? (saved, null) : ("Saving replay…", null);
+                // Playtest 2026-11-10: "Saving replay…" with Rematch greyed and nothing moving looked stuck; the bar sweeps while it
+                // writes, and the line says why Rematch waits.
+                return recorder.Finished ? (saved, null)
+                    : ("Saving replay… Rematch waits for it", UnityEngine.Time.unscaledTime % ReplaySweepSeconds / ReplaySweepSeconds);
             }
             return (null, null);
         }

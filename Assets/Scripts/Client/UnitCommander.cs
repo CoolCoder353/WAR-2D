@@ -222,6 +222,31 @@ public class UnitCommander : NetworkBehaviour
     public bool NothingSelected => Selection.Selected.Count == 0 && Selection.SelectedBuildings.Count == 0;
 
     /// <summary>Arms Rally all (the production card's Rally point row). Does nothing when there is no producer to set.</summary>
+    private int rallyDroppedFrame = -1;
+
+    /// <summary>
+    /// Esc's steps before the in-match menu (playtest 2026-11-10: Esc opened the menu at once, with a building to place, an order
+    /// armed or units selected): cancels a building placement, else an armed order or rally, else clears the selection. True
+    /// when it did one of them (the menu then stays shut). An HQ placement (the start pick) is never cancelled here.
+    /// </summary>
+    [Client]
+    public bool EscapeStep()
+    {
+        BuildingPlacement placement = BuildingPlacement.Instance;
+        if (placement != null && placement.IsPlacing && placement.PlacingType != BuildingType.Base) { placement.Cancel(); return true; }
+        if (rallyDroppedFrame == Time.frameCount) return true; // the rally this frame's Esc already dropped
+        if (RallyAllArmed || AttackRallyArmed) { RallyAllArmed = AttackRallyArmed = false; return true; }
+        if (ArmedOrder != null) { ArmedOrder = null; return true; }
+        if (Selection.Selected.Count > 0 || Selection.SelectedBuildings.Count > 0 || Selection.SelectedWalls.Count > 0 || Selection.SelectedBuilding != 0)
+        {
+            Selection.SelectIds(System.Array.Empty<int>());
+            Selection.ClearBuilding();
+            Selection.ClearWalls();
+            return true;
+        }
+        return false;
+    }
+
     public void ArmRallyAll()
     {
         if (OwnProducerIds().Count == 0) return;
@@ -780,7 +805,7 @@ public class UnitCommander : NetworkBehaviour
         if (AttackRallyArmed && !OnlySpawnersSelected && !RallyAllArmed && !NothingSelected) AttackRallyArmed = false;
         if (RallyAllArmed || AttackRallyArmed)
         {
-            if (GameInput.Menu.WasPressedThisFrame()) RallyAllArmed = AttackRallyArmed = false;
+            if (GameInput.Menu.WasPressedThisFrame()) { RallyAllArmed = AttackRallyArmed = false; rallyDroppedFrame = Time.frameCount; }
             else if (!clickUsed && !GameInput.PointerOverUI && (GameInput.Select.WasPressedThisFrame() || GameInput.Command.WasPressedThisFrame()))
             {
                 Vector3 target = GetMouseWorldPosition();

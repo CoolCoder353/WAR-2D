@@ -34,11 +34,19 @@ namespace WAR2D.UI
 
         public StartMarkersController(VisualElement root) => layer = root.Q("start-markers");
 
+        /// <summary>
+        /// The bottom of whatever covers the top of the screen (the "Pick your start" panel), in panel space: badges stay below it
+        /// (playtest 2026-11-10: teammates' badges crowded the top edge over the prompt). 0 for none.
+        /// </summary>
+        public float TopInset;
+
         /// <summary>Places a badge per marker for <paramref name="camera"/>'s view; an empty list hides them all.</summary>
         public void Show(IReadOnlyList<StartMarker> markers, Camera camera)
         {
             Rect area = new Rect(Vector2.zero, layer.layout.size); // the layer's own space (it starts below the top bar)
             Vector2 origin = layer.worldBound.position;
+            float inset = TopInset - origin.y;
+            if (inset > 0f && inset < area.height * 0.6f) { area.yMin += inset; }
             bool ready = camera != null && layer.panel != null && !float.IsNaN(area.width) && area.width > 0f;
             int count = ready ? markers.Count : 0;
             while (badges.Count < count) badges.Add(new Badge(layer, this));

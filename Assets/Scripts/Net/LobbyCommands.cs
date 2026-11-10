@@ -36,18 +36,27 @@ public partial class GameCore
     {
         // A perf or bench host (-perf) plays its own scripted match: the player's remembered AI seats would take its bots' places
         // (2026-11-07: the gate refused two of its seven clients), so it neither reads nor (below) overwrites the player's lobby.
+        RestoredAis = 0;
         if (DevApi.PerfFlag) return;
         RememberedLobby lobby = LobbyMemory.Load();
         if (lobby == null) return;
         Settings = LobbyMemory.Apply(Settings, lobby, ConfigLoader.LoadConfig().Lobby);
         if (!string.IsNullOrEmpty(lobby.ServerName)) ServerName = lobby.ServerName;
         if (lobby.Ais == null) return;
+        int restored = 0;
         foreach (RememberedAi ai in lobby.Ais)
         {
             if (SeatCount >= LobbyRules.MaxPlayers) break;
-            if (System.Enum.IsDefined(typeof(AiDifficulty), ai.Difficulty) && System.Enum.IsDefined(typeof(AiStyle), ai.Style)) AddAi(ai.Difficulty, ai.Style, -1, ai.Team);
+            if (System.Enum.IsDefined(typeof(AiDifficulty), ai.Difficulty) && System.Enum.IsDefined(typeof(AiStyle), ai.Style)) { AddAi(ai.Difficulty, ai.Style, -1, ai.Team); restored++; }
         }
+        RestoredAis = restored;
     }
+
+    /// <summary>
+    /// How many AI seats the host's lobby restored from the last match it started (host only; 0 for none). Playtest 2026-11-10:
+    /// they came back silently, under new callsigns; the lobby's Add AI hint now says so.
+    /// </summary>
+    public static int RestoredAis;
 
     /// <summary>What the host just started with, saved on their machine.</summary>
     [Server]
@@ -70,11 +79,11 @@ public partial class GameCore
     {
         if (!CommandGate.Allow(sender, nameof(Cmd_ResetLobby))) return;
         if (!IsServerOwner(sender) || CurrentState != GameState.Lobby) return;
-        ClearAiPlayers();
+        // Playtest 2026-11-10: "Reset settings" resets the settings only; the AI seats and the server name stay.
         InitSettings();
-        ServerName = "";
         LobbyMemory.Forget();
-        foreach (ClientPlayer player in LobbyClientPlayers()) player.ready = false;
+        foreach (ClientPlayer player in LobbyClientPlayers()) { player.ready = false; player.lobbyTeam = TeamRules.NoTeam; }
+        SetAiTeams(TeamRules.NoTeam); // the default mode is Free-for-all
     }
 
     private static uint NewSeed() => (uint)UnityEngine.Random.Range(1, int.MaxValue);
@@ -253,6 +262,16 @@ public partial class GameCore
         if (colour < 0) // LobbyRules.MayJoin keeps the lobby within the palette, so this means that rule broke
             WAR2D.Dev.Logging.WarLog.Error(WAR2D.Dev.Logging.LogCategory.Lobby, $"no free colour for netId {joining.netId}; sharing colour 0");
         joining.colourIndex = colour < 0 ? 0 : colour;
+        // Playtest 2026-11-10: with remembered AIs holding the first colours, two humans got blue and teal, hard to tell apart.
+        // A human takes the lowest colour no other human holds (the palette's order is its most distinct), and an AI on it moves.
+        for (int c = 0; c < joining.colourIndex; c++)
+        {
+            bool human = false;
+            foreach (ClientPlayer player in LobbyClientPlayers()) if (player != joining && player.colourIndex == c) { human = true; break; }
+            if (human) continue;
+            if (TakeColourFromAi(c, joining)) joining.colourIndex = c;
+            break;
+        }
     }
 
     /// <summary>The humans' player objects (AIs are always ready and keep their own seats).</summary>

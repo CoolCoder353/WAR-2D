@@ -1,6 +1,9 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
     <ui:VisualElement name="diplomacy-panel" class="panel diplomacy-panel">
-        <ui:Label text="Diplomacy" class="panel__title" />
+        <ui:VisualElement class="row diplomacy-panel__header">
+            <ui:Label text="Diplomacy" class="panel__title diplomacy-panel__title" />
+            <ui:Button name="diplomacy-close" text="×" tooltip="Close" class="diplomacy-panel__close" />
+        </ui:VisualElement>
         <ui:VisualElement class="diplomacy-panel__content">
             <ui:VisualElement class="diplomacy-row diplomacy-row--header">
                 <ui:VisualElement class="diplomacy-row__spacer" />

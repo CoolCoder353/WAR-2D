@@ -235,6 +235,7 @@ namespace WAR2D.Client.Replay
             ClientTerrain.Current.Init(map.Grid);
             ClientTerrain.Current.Changed += OnClientTerrainChanged;
             ReplayHeader header = cursor.Header;
+            ClientWorld.TakeOverNext = true;
             view = new GameObject("ReplayView").AddComponent<ClientWorld>();
             view.ClockDriven = true;
             view.ColourIndexOf = owner =>
@@ -417,6 +418,7 @@ namespace WAR2D.Client.Replay
             ClientTerrain.Current.Init(map.Grid);
             ClientTerrain.Current.Changed += OnClientTerrainChanged;
             ReplayHeader header = cursor.Header;
+            ClientWorld.TakeOverNext = true;
             view = new GameObject("ReplayView").AddComponent<ClientWorld>();
             view.ClockDriven = true;
             view.ColourIndexOf = owner => { int i = header.Players.FindIndex(p => p.OwnerId == owner); return i >= 0 ? header.Players[i].Colour : 0; };

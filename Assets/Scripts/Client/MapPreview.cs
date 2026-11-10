@@ -22,7 +22,7 @@ namespace WAR2D.Client
         // a clear red (the minimap's gem red), solid where a texel is mostly gem and half strength where it holds any.
         private static readonly Color32 FloorColour = new Color32(0x58, 0x68, 0x78, 255);
         private static readonly Color32 RockColour = new Color32(0x1C, 0x23, 0x2B, 255);
-        private static readonly Color32 GemColour = new Color32(0xE0, 0x3C, 0x3C, 255);
+        private static Color32 GemColour => MapView.TileColor(TileType.Gem); // the in-game colour (red until the 2026-11-10 playtest)
         /// <summary>Rich gems: the in-game minimap's colour, drawn over everything in their block so a small field still shows.</summary>
         private static Color32 RichColour => MapView.TileColor(TileType.RichGem);
 

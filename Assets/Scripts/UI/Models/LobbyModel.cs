@@ -104,7 +104,12 @@ namespace WAR2D.UI
         {
             get
             {
-                if (!LocalIsHost) return "Waiting for the host to start";
+                if (!LocalIsHost)
+                {
+                    // Playtest 2026-11-10: a joined player who isn't ready was told the host would start.
+                    foreach (LobbyPlayer p in players) if (p.OwnerId == LocalOwnerId && !p.Ready) return "Press Ready when you are";
+                    return "Waiting for the host to start";
+                }
                 var waiting = new List<string>();
                 foreach (LobbyPlayer p in players) if (!p.Ready) waiting.Add(p.OwnerId == LocalOwnerId ? "you" : p.Nickname);
                 if (waiting.Count > 0) return $"Waiting for {Join(waiting)} to be ready";

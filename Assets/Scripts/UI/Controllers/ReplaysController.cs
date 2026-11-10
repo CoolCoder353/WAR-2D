@@ -27,6 +27,14 @@ namespace WAR2D.UI
             error = root.Q<Label>("replays-error");
             root.Q<Button>("replays-refresh").clicked += model.Refresh;
             root.Q<Button>("replays-back").clicked += () => BackClicked?.Invoke();
+            // Playtest 2026-11-10: the "Replays folder" heading had nothing under it to open the folder.
+            Button folder = root.Q<Button>("replays-folder");
+            if (folder != null) folder.clicked += () =>
+            {
+                string path = WAR2D.Net.Replay.ReplayLibrary.Folder;
+                System.IO.Directory.CreateDirectory(path);
+                UnityEngine.Application.OpenURL("file://" + path);
+            };
             model.Changed += Render;
         }
 
@@ -49,10 +57,7 @@ namespace WAR2D.UI
             var row = new VisualElement { name = "replay-row" };
             row.AddToClassList("row");
             row.AddToClassList("game-row");
-            var swatch = new VisualElement();
-            swatch.AddToClassList("lobby-row__swatch");
-            if (r.Players.Length > 0) swatch.AddToClassList("player-" + (r.Players[0].Colour % 8 + 1));
-            row.Add(swatch);
+            // Playtest 2026-11-10: the first player's colour square on every row explained nothing; it's gone.
             var info = new VisualElement();
             info.AddToClassList("replay-row__info");
             info.Add(new Label(r.DateText) { name = "replay-date" });

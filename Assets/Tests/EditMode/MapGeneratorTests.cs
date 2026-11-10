@@ -80,7 +80,7 @@ public class MapGeneratorTests
     /// </summary>
     [TestCase(256, 3837137724347158538UL)]
     [TestCase(512, 661219065714699307UL)]
-    [TestCase(1024, 7999288267031227692UL)]
+    [TestCase(1024, 17377793465042047408UL)] // 2026-11-10: start sites with no vein near the HQ get an outcrop
     public void RecordedHashPerSize(int size, ulong expected)
     {
         using MapLayout l = Make(size, 12345u);
@@ -187,6 +187,22 @@ public class MapGeneratorTests
         {
             if (r.Kind == RegionKind.Start) Assert.That(Count(r.Centre, r.Radius + 4), Is.GreaterThanOrEqualTo(6), $"vein at {r.Centre}");
             if (r.Kind == RegionKind.Expansion) Assert.That(Count(r.Centre, r.Radius + 4), Is.GreaterThanOrEqualTo(Cfg.ExpansionGemTiles * 3 / 4), $"rich field at {r.Centre}");
+        }
+    }
+
+    /// <summary>Playtest 2026-11-10: on 1024 a start site's vein sat 47–60 tiles from its HQ, on a wide region's rim.</summary>
+    [Test, Category("Slow")]
+    public void EveryStartSiteHasGemsNearItsHq([Values(512, 1024)] int size, [Values(5u, 7u, 11u)] uint seed)
+    {
+        using MapLayout l = Make(size, seed, 0f);
+        int reach = RegionMapGenerator.StartRadius + 10;
+        foreach (int2 site in l.StartSites)
+        {
+            bool found = false;
+            for (int dy = -reach; dy <= reach && !found; dy++)
+            for (int dx = -reach; dx <= reach && !found; dx++)
+                found = math.lengthsq(new int2(dx, dy)) <= reach * reach && At(l, size, site + new int2(dx, dy)) == (byte)TileType.Gem;
+            Assert.IsTrue(found, $"no gem within {reach} tiles of the start site at {site}");
         }
     }
 
