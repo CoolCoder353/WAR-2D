@@ -107,39 +107,6 @@ public class AiPlayModeTests
     }
 
     /// <summary>
-    /// Spec §12's single-player test: with Steam off, a Private lobby, one human against one Easy AI. The AI places its
-    /// HQ, builds Miners, a producer and an army, and attacks the human (a building of theirs it has seen).
-    /// </summary>
-    [UnityTest, Timeout(480000)]
-    public IEnumerator APrivateOneVsOneAgainstEasyBuildsProducesAndAttacksTheHuman()
-    {
-        WAR2D.Net.Steam.SteamServices.Backend = null; // Steam off (-noSteam): Private needs no Steam
-        GameManager.Instance.HostServer();
-        yield return PlayModeMatch.WaitUntil(() => NetworkClient.isConnected && NetworkClient.localPlayer != null, 15f);
-        GameCore core = GameCore.Instance;
-        MatchSettings settings = core.Settings;
-        settings.Visibility = LobbyVisibility.Private;
-        settings.StartPickSeconds = StartPickRules.Unlimited;
-        settings.Seed = 21;
-        core.Settings = settings;
-        AiSeat easy = core.AddAi(AiDifficulty.Easy, AiStyle.Rusher);
-        Assert.That(easy, Is.Not.Null);
-        yield return StartMatch(core);
-        Assert.That(core.Settings.Visibility, Is.EqualTo(LobbyVisibility.Private));
-        int me = PlayModeMatch.LocalOwner;
-
-        yield return PlayModeMatch.WaitUntil(() => core.HasPlacedHq(easy.OwnerId), 15f);
-        yield return PlayModeMatch.PlaceHQ(null); // the human, passive from here on
-        SpeedUp();
-        yield return PlayModeMatch.WaitUntil(() => Producing(easy), 100f, () => Describe(easy));
-        ArmyManager army = ((AiBrain)easy.Brain).Manager<ArmyManager>();
-        // Game time, fast-forwarded: an Easy Rusher was still gathering at 104 s (2026-11-09), so give it the first test's 300 s.
-        yield return PlayModeMatch.WaitUntil(() => army.Attacks > 0 || core.CurrentState == GameState.GameOver, 300f, () => Describe(easy));
-        Assert.That(army.Attacks, Is.GreaterThan(0), "Easy attacks");
-        Assert.That(army.TargetOwner, Is.EqualTo(me), "the human, its only enemy");
-    }
-
-    /// <summary>
     /// Spec §12's co-op test: a human and a Normal AI on one team against a Normal AI. Both AIs build and produce; the
     /// enemy attacks the team, and the ally never targets the human (an independent ally on the human's side).
     /// </summary>

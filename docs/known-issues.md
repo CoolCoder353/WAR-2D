@@ -2,6 +2,14 @@
 
 Bugs, mismatches and hygiene problems. The first three roadmaps (v0.2 to v0.9, v0.10 to v0.14 with v0.15 and v0.15.1, and v0.16 to v0.18) are complete; open items are backlog, and the sections after "Open" are the log of what past reviews and playtests found and fixed. Code-review findings that were triaged but not fixed are in [bug-review.md](bug-review.md). See the archived roadmaps ([v0.2 to v0.9](archive/roadmap-v0.2-v0.9.md), [v0.10 to v0.14](archive/roadmap-v0.10-v0.14.md), [v0.16 to v0.18](archive/roadmap-v0.16-v0.18.md)) for what each version delivered; the current plan is [roadmap.md](roadmap.md).
 
+## Owner report, 2026-11-11: red gems, roaming units that stood still, Builders that did nothing
+
+| Item | State |
+| --- | --- |
+| Gems drawn pale ice (the 2026-11-10 playtest change, `StylePalettes.Charcoal` Gem0–Gem3) | **Reverted** to the red `0x7A1414 / 0xC62828 / 0xF0524A / 0xFFC2B8`. The five art files (`Assets/Art/palette.png` and the four atlases) are the ones from before that change; `WAR-2D/Art/Build all` rebuilds them byte for byte. The playtest's worry (gems read as red-player dots on the minimap) is back; the other playtest changes (rich gem 4×, Builder radius 40, the lighter selection tint) were not touched. |
+| Roaming units that did not move | **Fixed.** Cause: the server lets a player hold 32 live orders (one per goal and size class, `OrderBook.MaxOrdersPerOwner`) and refuses the rest silently. `Roam` gave every group of roamers its own random goal, so 180 roamers in 60 clusters held 28 to 31 of the 32 and 64 to 126 of them had no order (measured in three runs of a Dev build through the control API). `Roam` now follows at most `Roam.MaxGoals` (6) goals at once: a group that needs one past that joins the nearest goal already held (at least `MinReach` away, never the one it is stuck on), which costs the server no slot (`RoamTests`). |
+| Builders that did nothing | **Probably the same cause; not reproduced as a refused Builder order.** The same 32 slots serve a player's own orders (Build, Repair, Move) and, up to 24, the game's (idle Builders' auto-work), so a large roaming army that holds them leaves Builders' orders refused with no message (`IssueWork` just returns). In the one try, with 28 of the 32 held, a Move to the Builders still went through, so this is the reading of the code and the numbers, not a failure seen in play. Roam no longer holds them. **Not changed:** a refused order is still silent (a player past 32 live orders, from any source, still gets no message), and the Builder auto-work radius stays at the playtest's 40 tiles, so an idle Builder further than that from a blueprint ignores it until selected. |
+
 ## Playtest 2026-11-10 (on `fix/playtest-2026-11-10`)
 
 [playtest-2026-11-10.md](playtest-2026-11-10.md) lists the 101 findings. What this branch did with them:
@@ -17,7 +25,7 @@ Bugs, mismatches and hygiene problems. The first three roadmaps (v0.2 to v0.9, v
 | NullReferenceException every frame after leaving a match | **Fixed.** The menu battle's (and replay viewer's) `ClientWorld` takes over a lingering one instead of destroying itself. |
 | A host quitting the application gave clients a Rejoin card | **Fixed.** The quit waits for `HostLeaving` to go out. |
 | Leave match (client) had no confirmation | **Fixed** (the Surrender dialog, reworded). |
-| Squad bar under the selection panel at 1080p, opaque in-match Settings, 8-player spectator bar, client lobby Diplomacy switch, button hover contrast, Esc, gems in the red player's hue, and the rest of the UI list | **Fixed**, apart from the items below. |
+| Squad bar under the selection panel at 1080p, opaque in-match Settings, 8-player spectator bar, client lobby Diplomacy switch, button hover contrast, Esc, gems in the red player's hue, and the rest of the UI list | **Fixed**, apart from the items below. The pale-ice gems were put back to red on 2026-11-11 (owner's call; see the section above). |
 | Lobby colour: a "Colour 1–8" text dropdown | **Fixed:** swatch buttons on your card. |
 | Text chat (Networking 6), a minimap in the replay viewer (UI 20), the Teams lobby layout at 1080p (UI 16), a separate alert volume (UI 52) | **Not done:** new UI, which goes through Figma first. |
 | AI difficulty and style balance (Balance 3–5, 7, 8, 11–13), the AI spending its bank (Balance 2) | **Not changed** (owner, 2026-11-10). |
