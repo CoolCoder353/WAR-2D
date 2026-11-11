@@ -326,39 +326,49 @@ namespace WAR2D.Net.Replication
             for (int c = 0; c < MaxClients; c++) if (encodeNow[c]) { encoded[c].Complete(); break; }
             PerfSplits.Mark(13, ref t);
 
-            for (int c = 0; c < MaxClients; c++)
+            try
             {
-                if (!active[c]) continue;
-                encoded[c].Complete(); // before anything that could reset this client's buffers (OnClientLeft)
-                Client client = clients[c];
-                if (client.Connection != null && (client.Connection.identity == null || !NetworkServer.connections.ContainsKey(client.Connection.connectionId)))
+                for (int c = 0; c < MaxClients; c++)
                 {
-                    OnClientLeft(client.Connection);
-                    continue;
-                }
-                if (client.Lane != null)
-                {
-                    // Last tick's units (encoded during this tick), then this tick's copied for the next.
-                    if (client.Lane.PendingTick >= 0)
+                    if (!active[c]) continue;
+                    encoded[c].Complete(); // before anything that could reset this client's buffers (OnClientLeft)
+                    Client client = clients[c];
+                    if (client.Connection != null && (client.Connection.identity == null || !NetworkServer.connections.ContainsKey(client.Connection.connectionId)))
                     {
-                        var (r, rs, u, us) = client.Lane.Collect();
-                        SinkTick = client.Lane.PendingTick;
-                        SendSplit(client, SinkTick, r, rs, Channels.Reliable, BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4));
-                        SendSplit(client, SinkTick, u, us, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
-                        FlushPendingCombat(client);
-                        SinkTick = tick;
+                        OnClientLeft(client.Connection);
+                        continue;
                     }
-                    client.Lane.Schedule(data, tick, count, routes, attacks, targets, buildingAttacks);
-                    continue;
+                    if (client.Lane != null)
+                    {
+                        // Last tick's units (encoded during this tick), then this tick's copied for the next.
+                        if (client.Lane.PendingTick >= 0)
+                        {
+                            var (r, rs, u, us) = client.Lane.Collect();
+                            SinkTick = client.Lane.PendingTick;
+                            SendSplit(client, SinkTick, r, rs, Channels.Reliable, BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4));
+                            SendSplit(client, SinkTick, u, us, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
+                            FlushPendingCombat(client);
+                            SinkTick = tick;
+                        }
+                        client.Lane.Schedule(data, tick, count, routes, attacks, targets, buildingAttacks);
+                        continue;
+                    }
+                    client.EntersSent += interests.Entered(c).Length;
+                    var (reliable, reliableSizes, unreliable, unreliableSizes) = encoder.Output(c);
+                    SendSplit(client, tick, reliable, reliableSizes, Channels.Reliable, BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4));
+                    SendSplit(client, tick, unreliable, unreliableSizes, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
                 }
-                client.EntersSent += interests.Entered(c).Length;
-                var (reliable, reliableSizes, unreliable, unreliableSizes) = encoder.Output(c);
-                SendSplit(client, tick, reliable, reliableSizes, Channels.Reliable, BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4));
-                SendSplit(client, tick, unreliable, unreliableSizes, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
+                for (int c = 0; c < MaxClients; c++) encoded[c].Complete(); // a client that left mid-loop: its job still has to finish
+                PerfSplits.Mark(14, ref t);
+                SendCombat(data, tick, input, statuses, statusHandle);
             }
-            for (int c = 0; c < MaxClients; c++) encoded[c].Complete(); // a client that left mid-loop: its job still has to finish
-            PerfSplits.Mark(14, ref t);
-            SendCombat(data, tick, input, statuses, statusHandle);
+            finally
+            {
+                // A recorder lane copied the settled arrays on a worker alongside the sends above: the copy must end before
+                // the tick writes them again, also when a send throws. A wait for it here reads as repl.combat in the perf
+                // splits.
+                for (int c = 0; c < MaxClients; c++) clients[c]?.Lane?.FinishCopy();
+            }
             PerfSplits.Mark(PerfSplits.ReplCombat, ref t);
             LastMilliseconds = watch.Elapsed.TotalMilliseconds;
         }

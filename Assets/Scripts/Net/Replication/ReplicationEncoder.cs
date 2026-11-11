@@ -54,6 +54,12 @@ namespace WAR2D.Net.Replication
         private readonly InterestSets interests;
         private readonly RouteStore routes;
         private readonly ClientBuffers[] buffers;
+        // The shared pass (EncodeMaskJob): each unit's health byte and route generation at the last pass, and its masks.
+        private NativeArray<byte> lastHealth;
+        private NativeArray<int> lastGeneration;
+        private NativeArray<ulong> changed, turn;
+        private int pass;
+        private JobHandle lastEncode;
         private bool disposed;
 
         public ReplicationEncoder(in EncoderConfig config, InterestSets interests, RouteStore routes, int idCapacity, Allocator allocator)
@@ -63,6 +69,10 @@ namespace WAR2D.Net.Replication
             this.routes = routes;
             buffers = new ClientBuffers[interests.Clients];
             for (int c = 0; c < buffers.Length; c++) buffers[c] = new ClientBuffers(idCapacity, allocator);
+            lastHealth = new NativeArray<byte>(idCapacity, allocator);
+            lastGeneration = new NativeArray<int>(idCapacity, allocator);
+            changed = new NativeArray<ulong>(BitSet.Words(idCapacity), allocator);
+            turn = new NativeArray<ulong>(BitSet.Words(idCapacity), allocator);
         }
 
         /// <summary>Sets a client's camera box (inclusive tiles) for the view tier and attack filter.</summary>
@@ -76,6 +86,7 @@ namespace WAR2D.Net.Replication
         {
             NativeArray<PredictState> states = buffers[client].States;
             for (int i = 0; i < states.Length; i++) states[i] = default;
+            buffers[client].Pass = -1;
         }
 
         /// <summary>Schedules every client's encode after <paramref name="dependency"/> (the interest build).</summary>
@@ -102,15 +113,27 @@ namespace WAR2D.Net.Replication
 
         /// <summary>
         /// As above, with each client's own handle in <paramref name="handles"/> (one per client; an inactive client's is
-        /// <paramref name="dependency"/>), so a caller can send a client's bytes as soon as that client is encoded.
+        /// the shared pass's), so a caller can send a client's bytes as soon as that client is encoded.
+        /// One shared pass runs first (<see cref="EncodeMaskJob"/>); a client that was not encoded on the call before
+        /// this one walks every unit it may know instead, because the masks only cover one call's changes.
         /// </summary>
         public void ScheduleEach(int tick, in ReplicationInput input, NativeArray<int2> attacks, NativeArray<AttackTarget> targets, NativeArray<BuildingAttack> buildingAttacks, bool[] active, JobHandle dependency, NativeArray<JobHandle> handles)
         {
+            JobHandle masks = new EncodeMaskJob
+            {
+                Config = config, Tick = tick, Input = input, RouteGeneration = routes.Generation,
+                LastHealth = lastHealth, LastGeneration = lastGeneration, Changed = changed, Turn = turn,
+            }.Schedule(changed.Length, 64, JobHandle.CombineDependencies(dependency, lastEncode));
             for (int c = 0; c < buffers.Length; c++)
             {
-                if (active != null && !active[c]) { handles[c] = dependency; continue; }
-                handles[c] = Job(c, tick, input, attacks, targets, buildingAttacks).Schedule(dependency);
+                if (active != null && !active[c]) { handles[c] = masks; continue; }
+                EncodeClientJob job = Job(c, tick, input, attacks, targets, buildingAttacks);
+                job.Masked = buffers[c].Pass == pass;
+                buffers[c].Pass = pass + 1;
+                handles[c] = job.Schedule(masks);
             }
+            pass++;
+            lastEncode = JobHandle.CombineDependencies(masks, JobHandle.CombineDependencies(handles));
             JobHandle.ScheduleBatchedJobs();
         }
 
@@ -161,6 +184,8 @@ namespace WAR2D.Net.Replication
                 Owner = interests.OwnerOf(client),
                 Grid = interests.GridOf(client),
                 View = b.View,
+                Changed = changed,
+                Turn = turn,
                 States = b.States,
                 Reliable = b.Reliable,
                 ReliableSizes = b.ReliableSizes,
@@ -183,6 +208,7 @@ namespace WAR2D.Net.Replication
             if (disposed) return;
             disposed = true;
             foreach (ClientBuffers b in buffers) b.Dispose();
+            lastHealth.Dispose(); lastGeneration.Dispose(); changed.Dispose(); turn.Dispose();
         }
 
         private sealed class ClientBuffers : IDisposable
@@ -190,6 +216,8 @@ namespace WAR2D.Net.Replication
             /// <summary>Per-unit state the client is known to predict.</summary>
             public NativeArray<PredictState> States;
             public NativeArray<int4> View;
+            /// <summary>The encoder's call count after this client's last encode, or -1: equal to the count now when it was encoded on the call before.</summary>
+            public int Pass = -1;
             /// <summary>Encoded bytes for the reliable and unreliable channels.</summary>
             public NativeList<byte> Reliable, Unreliable;
             /// <summary>Sizes of the whole messages in each channel, in order.</summary>
@@ -243,6 +271,61 @@ namespace WAR2D.Net.Replication
         }
     }
 
+    /// <summary>
+    /// One pass per encode call, shared by every client: which units have a new health byte or route generation since the
+    /// call before (<see cref="Changed"/>), and which may be due a correction check this tick (<see cref="Turn"/>: either
+    /// interval's turn; the client's view picks the interval). A client encoded on both calls already holds every other
+    /// unit's health and route, so it visits only these units instead of every unit it may know (at 100k units most of the
+    /// encode's worker time went on units with nothing to send). Deterministic float mode: the health byte must be the one
+    /// <see cref="EncodeClientJob"/> computes.
+    /// </summary>
+    [BurstCompile(FloatMode = FloatMode.Deterministic)]
+    public struct EncodeMaskJob : IJobParallelFor
+    {
+        /// <summary>Encoder tuning (the two correction intervals).</summary>
+        public EncoderConfig Config;
+        /// <summary>The tick being encoded.</summary>
+        public int Tick;
+        /// <summary>The settled world.</summary>
+        public ReplicationInput Input;
+        [ReadOnly] public NativeArray<int> RouteGeneration;
+        /// <summary>Each unit's health byte and route generation at the last call, by id index (a word of indices per batch item).</summary>
+        [NativeDisableParallelForRestriction] public NativeArray<byte> LastHealth;
+        [NativeDisableParallelForRestriction] public NativeArray<int> LastGeneration;
+        /// <summary>Output bitsets over id indices, one word per batch item.</summary>
+        public NativeArray<ulong> Changed, Turn;
+
+        /// <summary>Fills one word of both masks.</summary>
+        public void Execute(int word)
+        {
+            int first = word * 64;
+            ulong due = Every(first, Config.CorrectionInterval) | Every(first, Config.OffscreenInterval), differs = 0;
+            for (int bit = 0; bit < 64; bit++)
+            {
+                int index = first + bit;
+                int slot = Input.SlotOfIndex(index);
+                if (slot < 0) continue;
+                byte health = EncodeClientJob.HealthByte(Input.Health[slot], Input.MaxHealth[slot]);
+                int generation = RouteGeneration[index];
+                if (health == LastHealth[index] && generation == LastGeneration[index]) continue;
+                LastHealth[index] = health;
+                LastGeneration[index] = generation;
+                differs |= 1UL << bit;
+            }
+            Changed[word] = differs;
+            Turn[word] = due;
+        }
+
+        /// <summary>The bits of the word starting at id index <paramref name="first"/> whose <c>(Tick + index) % interval</c> is 0.</summary>
+        private ulong Every(int first, int interval)
+        {
+            int offset = (Tick + first) % interval; // negative for a negative tick: the next multiple is then -offset bits on
+            ulong bits = 0;
+            for (int bit = offset > 0 ? interval - offset : -offset; bit < 64; bit += interval) bits |= 1UL << bit;
+            return bits;
+        }
+    }
+
     /// <summary>One client's encode for one tick. Deterministic float mode, matching the client's prediction job.</summary>
     [BurstCompile(FloatMode = FloatMode.Deterministic)]
     public struct EncodeClientJob : IJob
@@ -265,6 +348,10 @@ namespace WAR2D.Net.Replication
         /// <summary>The client's owner id and fog grid (as its interest set uses them).</summary>
         public int Owner, Grid;
         [ReadOnly] public NativeArray<int4> View;
+        /// <summary>This call's masks from <see cref="EncodeMaskJob"/>.</summary>
+        [ReadOnly] public NativeArray<ulong> Changed, Turn;
+        /// <summary>True when the client was encoded on the call before, so <see cref="Changed"/> covers everything new to it.</summary>
+        public bool Masked;
         public NativeArray<PredictState> States;
         /// <summary>Encoded bytes for the reliable and unreliable channels.</summary>
         public NativeList<byte> Reliable, Unreliable;
@@ -335,10 +422,12 @@ namespace WAR2D.Net.Replication
                 States[index] = state;
             }
 
-            // Everything the client may know: health, new routes and corrections.
+            // Everything the client may know: health, new routes and corrections. Only the units the shared pass marked
+            // are visited: the client holds every other unit's health and route from the call before.
             for (int w = 0; w < Allowed.Length; w++)
             {
-                ulong bits = Allowed[w];
+                ulong differs = Masked ? Changed[w] : ulong.MaxValue;
+                ulong bits = Allowed[w] & (differs | Turn[w]);
                 while (bits != 0)
                 {
                     int bit = math.tzcnt(bits);
@@ -346,28 +435,38 @@ namespace WAR2D.Net.Replication
                     int index = w * 64 + bit;
                     int slot = Input.SlotOfIndex(index);
                     if (slot < 0) continue;
+                    bool inView = InView(view, Input.Positions[slot]);
+                    bool due = (Tick + index) % (inView ? Config.CorrectionInterval : Config.OffscreenInterval) == 0;
+                    if (!due && (differs & (1UL << bit)) == 0) continue; // the other interval's turn, and nothing new
                     PredictState state = States[index];
                     if (state.Id != Input.IdOf[slot] || state.Fresh != 0) continue;
 
+                    // The state is written back only when this tick changed it: most units change nothing on most ticks, and
+                    // a write to every unit's state dirtied the whole array for every client each tick.
+                    bool dirty = false;
                     byte health = HealthByte(slot);
                     if (health != state.LastHealth)
                     {
                         Healths.Add(new HealthUnit { Index = index, Health = health });
                         state.LastHealth = health;
+                        dirty = true;
                     }
                     bool routed = RouteGeneration[index] != state.RouteGeneration;
                     if (routed)
                     {
+                        dirty = true;
                         MoveOrders.Add(new RouteUnit { Index = index, First = MoveTiles.Length, Count = AppendRoute(index, Input.Positions[slot], MoveTiles) });
                         state.RouteGeneration = RouteGeneration[index];
                         MovementPrediction.StartRoute(ref state, Waypoints.Length > 0 && RouteCount[index] > 0 ? Waypoints[RouteStart[index]] : Input.Positions[slot], now);
                     }
-                    bool inView = InView(view, Input.Positions[slot]);
-                    int every = inView ? Config.CorrectionInterval : Config.OffscreenInterval;
                     // Not on a new route's tick: the correction goes unreliably and the route reliably, so it could arrive first and be
                     // applied to the old route (bug review 2026-11-05). The new route starts where the unit is; the next check corrects it.
-                    if (!routed && (Tick + index) % every == 0) CheckCorrection(slot, index, ref state, now, inView);
-                    States[index] = state;
+                    if (!routed && due)
+                    {
+                        CheckCorrection(slot, index, ref state, now, inView);
+                        dirty = true;
+                    }
+                    if (dirty) States[index] = state;
                 }
             }
 
@@ -457,9 +556,12 @@ namespace WAR2D.Net.Replication
             return count;
         }
 
-        private byte HealthByte(int slot)
+        private byte HealthByte(int slot) => HealthByte(Input.Health[slot], Input.MaxHealth[slot]);
+
+        /// <summary>A unit's health as the wire carries it: a percentage, never 0 while it lives.</summary>
+        public static byte HealthByte(float health, float maxHealth)
         {
-            float fraction = math.saturate(Input.Health[slot] / math.max(1f, Input.MaxHealth[slot]));
+            float fraction = math.saturate(health / math.max(1f, maxHealth));
             byte percent = (byte)math.round(fraction * 100f);
             return percent == 0 && fraction > 0f ? (byte)1 : percent; // 0 is reserved for dead, never a living sliver
         }

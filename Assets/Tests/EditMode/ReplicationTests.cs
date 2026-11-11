@@ -852,4 +852,66 @@ public class ReplicationTests
             blockOf.Dispose(); blocks.Dispose(); positions.Dispose(); health.Dispose(); idOf.Dispose(); orderSlot.Dispose();
         }
     }
+
+    /// <summary>
+    /// The encode visits only the units the shared pass marks (perf 2026-11-11). A second encoder is made to walk every unit
+    /// each tick (a call without the client before each encode, so its client always missed a call), and both must send the
+    /// same bytes while units move, take damage, get routes, die, come back under a new id and cross the fog and the view.
+    /// On some ticks neither client is encoded: the masked one must then walk every unit once too.
+    /// </summary>
+    [Test]
+    public void TheMaskedEncodeSendsTheSameBytesAsAWalkOfEveryUnit()
+    {
+        const int units = 400;
+        using var rig = new Rig(units);
+        EncoderConfig config = rig.Config;
+        config.CorrectionInterval = 4;
+        using var masked = new ReplicationEncoder(config, rig.Interests, rig.Routes, IdCapacity, Allocator.Persistent);
+        using var walked = new ReplicationEncoder(config, rig.Interests, rig.Routes, IdCapacity, Allocator.Persistent);
+        var rng = new Unity.Mathematics.Random(7);
+        // Own units are always known; the enemy's only inside the fog box. The view is a quarter of that box.
+        for (int i = 0; i < units; i++) rig.Add(i + 1, i % 3 == 0 ? 2 : 1, rng.NextFloat2(0f, 120f));
+        rig.Watch(0, 1, new int2(0, 0), new int2(80, 80));
+        masked.SetView(0, new int2(0, 0), new int2(40, 40));
+        walked.SetView(0, new int2(0, 0), new int2(40, 40));
+        var none = new[] { false };
+        int sent = 0, generation = 1;
+
+        for (int tick = 1; tick <= 300; tick++)
+        {
+            for (int change = 0; change < 40; change++)
+            {
+                int slot = rng.NextInt(units);
+                int index = NetIdAllocator.IndexOf(rig.IdOf[slot]);
+                switch (rng.NextInt(8))
+                {
+                    case 0: rig.Health[slot] = math.max(0f, rig.Health[slot] - rng.NextFloat(0f, 40f)); break; // damage, sometimes death
+                    case 1: rig.Routes.Set(index, rig.Positions[slot], rng.NextFloat2(0f, 120f)); break;
+                    case 2:
+                        if (rig.Health[slot] > 0f) break;
+                        rig.IdOf[slot] = Rig.Id(index, ++generation); // a new unit takes the dead one's index
+                        rig.Health[slot] = 100f;
+                        break;
+                    default: rig.Positions[slot] = math.clamp(rig.Positions[slot] + rng.NextFloat2(-3f, 3f), 0f, 120f); break;
+                }
+            }
+
+            ReplicationInput input = rig.Input;
+            rig.Interests.Build(input);
+            walked.Schedule(tick, input, rig.Attacks.AsArray(), default, default, none, default).Complete();
+            if (tick % 17 == 0)
+            {
+                masked.Schedule(tick, input, rig.Attacks.AsArray(), default, default, none, default).Complete();
+                continue;
+            }
+            masked.EncodeAll(tick, input, rig.Attacks.AsArray());
+            walked.EncodeAll(tick, input, rig.Attacks.AsArray());
+            var (reliable, _, unreliable, _) = masked.Output(0);
+            var (reliableWalked, _, unreliableWalked, _) = walked.Output(0);
+            CollectionAssert.AreEqual(reliableWalked.AsArray().ToArray(), reliable.AsArray().ToArray(), $"tick {tick}: reliable bytes");
+            CollectionAssert.AreEqual(unreliableWalked.AsArray().ToArray(), unreliable.AsArray().ToArray(), $"tick {tick}: unreliable bytes");
+            sent += reliable.Length + unreliable.Length;
+        }
+        Assert.Greater(sent, 10000, "the run sent health, routes and corrections");
+    }
 }

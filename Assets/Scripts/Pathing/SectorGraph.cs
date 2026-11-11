@@ -68,7 +68,6 @@ namespace WAR2D.Pathing
         // Edge indices, and (W, E, S, N) the direction byte a unit steps in to cross each edge.
         private const int West = 0, East = 1, South = 2, North = 3;
         private static readonly byte[] Crossing = { 4, 0, 6, 2 };
-        private static readonly int[] Opposite = { East, West, North, South };
 
         /// <summary>A maximal run of traversable cells along one of a sector's edges.</summary>
         public struct Portal
@@ -88,10 +87,7 @@ namespace WAR2D.Pathing
             public Portal[] Portals;
             public int[] PortalCells;    // flat: portal p's cells are at PortalOffsets[p] ..
             public int[] PortalOffsets;
-            public ushort[] Costs;       // Portals.Length^2, Infinite when the sector cannot connect them
-            public bool CostsReady;
             public NativeArray<byte> Crop;
-            public int[] Matching;       // portal -> matching portal across the edge; -2 not looked up yet
             public short[] PocketOf;     // cell -> its pocket of connected floor; -1 on rock
             public short[] PortalPocket; // portal -> the pocket its cells are in
             public int ExitPockets;      // pockets with a portal: the only ones a route can leave
@@ -101,9 +97,17 @@ namespace WAR2D.Pathing
         {
             public NativeArray<byte> Grid;
             public SectorState[] Sectors;
-            public ushort[] Distance;    // node = sector * MaxPortals + portal
-            public bool[] Settled;
-            public List<int> Heap;       // one entry per relaxation, so it can repeat a node
+            public NativeArray<ushort> Distance; // node = sector * MaxPortals + portal
+            public NativeArray<bool> Settled;
+            public NativeList<int> Heap;         // one entry per relaxation, so it can repeat a node
+            // What the search job reads (ExpandJob): a copy of each built sector's portals, and the rest of a sector's state.
+            public NativeArray<int> PortalCount;          // sector -> its portals, -1 until the sector is built
+            public NativeArray<Portal> Portals;           // node
+            public NativeArray<short> PortalPocket;       // node -> the pocket its cells are in
+            public NativeArray<int> Matching;             // node -> matching portal across the edge; -2 not looked up yet
+            public NativeArray<UnsafeList<ushort>> Costs; // sector -> portals^2 costs, Infinite when the sector cannot connect them; taken from its job when a search asks
+            public UnsafeList<ushort>[] CostsToCome;      // sector -> the table its job fills (ScheduleCosts), until a search takes it
+            public JobHandle[] CostJobs;                  // sector -> that job
             public readonly List<HashSet<int>> Regions = new List<HashSet<int>>(); // regions walked by RegionOf; dropped by a terrain change
             public readonly Dictionary<int, HashSet<int>> RegionByPocket = new Dictionary<int, HashSet<int>>(); // each walked pocket's region, so a lookup needn't scan them all
             public readonly Dictionary<int, List<HashSet<int>>> RegionsBySector = new Dictionary<int, List<HashSet<int>>>(); // the regions with a pocket in each sector
@@ -118,6 +122,8 @@ namespace WAR2D.Pathing
         private readonly NativeArray<byte> largeCells; // the large class's cell grid, owned
         private readonly NativeArray<byte> clearance;
         private readonly Layer[] layers = new Layer[FlowSizeClass.Count];
+        private NativeHashSet<int> searchWaiting; // the search job's copy of the pockets it runs for
+        private NativeArray<int> searchState;     // ExpandJob.State
 
         private bool disposed;
 
@@ -146,25 +152,30 @@ namespace WAR2D.Pathing
             smallCells = new NativeArray<byte>(cellWidth * cellHeight, allocator);
             largeCells = new NativeArray<byte>(cellWidth * cellHeight, allocator);
             new ClearanceJob { Width = width, Height = height, Tiles = tiles, Clearance = clearance }.Run();
-            FillCells(smallCells, tiles, 1, false, int2.zero, new int2(cellWidth - 1, cellHeight - 1));
+            FillCells(smallCells, tiles, 1, false, int2.zero, new int2(cellWidth - 1, cellHeight - 1), out _, out _);
             FillCells(largeCells, tiles, FlowSizeClass.MinClearance(FlowSizeClass.Large), true,
-                int2.zero, new int2(cellWidth - 1, cellHeight - 1));
+                int2.zero, new int2(cellWidth - 1, cellHeight - 1), out _, out _);
 
             layers[FlowSizeClass.Small] = NewLayer(smallCells);
             layers[FlowSizeClass.Large] = NewLayer(largeCells);
+            searchWaiting = new NativeHashSet<int>(64, allocator);
+            searchState = new NativeArray<int>(3, allocator);
         }
 
         /// <summary>
         /// Writes the cell grid over a cell-coordinate rect: a cell is blocked when any tile it covers
         /// blocks for the class (or falls outside the map), which is the conservative half-resolution
-        /// rule. With one tile per cell this is the tile grid itself.
+        /// rule. With one tile per cell this is the tile grid itself. Reports the bounds of the cells whose value
+        /// changed (<paramref name="changedFrom"/> above <paramref name="changedTo"/> when none did).
         /// </summary>
         private void FillCells(
             NativeArray<byte> into, NativeArray<byte> tileGrid, byte minClearance, bool large,
-            int2 from, int2 to)
+            int2 from, int2 to, out int2 changedFrom, out int2 changedTo)
         {
             int x0 = math.max(0, from.x), y0 = math.max(0, from.y);
             int x1 = math.min(cellWidth - 1, to.x), y1 = math.min(cellHeight - 1, to.y);
+            changedFrom = new int2(int.MaxValue);
+            changedTo = new int2(int.MinValue);
             for (int cy = y0; cy <= y1; cy++)
             for (int cx = x0; cx <= x1; cx++)
             {
@@ -178,7 +189,10 @@ namespace WAR2D.Pathing
                     if (tileGrid[tile] != PathMap.Floor) { value = PathMap.Rock; break; }
                     if (large && clearance[tile] < minClearance) { value = PathMap.Rock; break; }
                 }
+                if (into[cy * cellWidth + cx] == value) continue;
                 into[cy * cellWidth + cx] = value;
+                changedFrom = math.min(changedFrom, new int2(cx, cy));
+                changedTo = math.max(changedTo, new int2(cx, cy));
             }
         }
 
@@ -339,8 +353,7 @@ namespace WAR2D.Pathing
         {
             Layer layer = layers[sizeClass];
             EnsureCosts(layer, sector);
-            SectorState state = layer.Sectors[sector];
-            return state.Costs[from * state.Portals.Length + to];
+            return layer.Costs[sector][from * layer.PortalCount[sector] + to];
         }
 
         /// <summary>
@@ -461,9 +474,11 @@ namespace WAR2D.Pathing
         }
 
         /// <summary>
-        /// Drops the portals, crops and cost tables of the tile's sector and its eight neighbours, and
-        /// refreshes the clearance and large-class grid around the tile. Everything else in the graph is
-        /// left alone: a terrain change touches nine sectors, not the map.
+        /// Refreshes the clearance and the class grids around the tile, and drops the portals, crops and cost
+        /// tables of the sectors a changed cell can alter: per class, a sector reads its own cells and the one
+        /// row of cells across each edge (its portals), so only the sectors within one cell of a changed cell go
+        /// (most often one, never more than the tile's sector and its eight neighbours). Everything else in the
+        /// graph is left alone.
         /// </summary>
         public void Invalidate(int2 changedTile)
         {
@@ -480,18 +495,21 @@ namespace WAR2D.Pathing
             // cells plus one on each side of them.
             int2 cellFrom = new int2(origin.x / cellSize - 1, origin.y / cellSize - 1);
             int2 cellTo = new int2((origin.x + size.x - 1) / cellSize + 1, (origin.y + size.y - 1) / cellSize + 1);
-            FillCells(smallCells, tiles, 1, false, cellFrom, cellTo);
-            FillCells(largeCells, tiles, FlowSizeClass.MinClearance(FlowSizeClass.Large), true, cellFrom, cellTo);
+            FillCells(smallCells, tiles, 1, false, cellFrom, cellTo, out int2 from, out int2 to);
+            DropSectorsNear(layers[FlowSizeClass.Small], from, to);
+            FillCells(largeCells, tiles, FlowSizeClass.MinClearance(FlowSizeClass.Large), true, cellFrom, cellTo, out from, out to);
+            DropSectorsNear(layers[FlowSizeClass.Large], from, to);
+        }
 
-            int sx = changedTile.x / SectorSize, sy = changedTile.y / SectorSize;
-            for (int dy = -1; dy <= 1; dy++)
-            for (int dx = -1; dx <= 1; dx++)
-            {
-                int x = sx + dx, y = sy + dy;
-                if ((uint)x >= (uint)sectorsX || (uint)y >= (uint)sectorsY) continue;
-                DropSector(layers[FlowSizeClass.Small], y * sectorsX + x);
-                DropSector(layers[FlowSizeClass.Large], y * sectorsX + x);
-            }
+        /// <summary>Drops the layer's sectors that hold a cell within one cell of the changed cells' bounds (none when no cell changed).</summary>
+        private void DropSectorsNear(Layer layer, int2 changedFrom, int2 changedTo)
+        {
+            if (changedFrom.x > changedTo.x) return;
+            int2 low = math.max(changedFrom - 1, int2.zero) / sectorCells;
+            int2 high = math.min(changedTo + 1, new int2(cellWidth - 1, cellHeight - 1)) / sectorCells;
+            for (int y = low.y; y <= high.y; y++)
+            for (int x = low.x; x <= high.x; x++)
+                DropSector(layer, y * sectorsX + x);
         }
 
         /// <summary>Frees every sector crop.</summary>
@@ -502,9 +520,22 @@ namespace WAR2D.Pathing
             foreach (Layer layer in layers)
             {
                 if (layer == null) continue;
+                for (int sector = 0; sector < sectorCount; sector++) DropCostsToCome(layer, sector);
                 foreach (SectorState state in layer.Sectors)
                     if (state != null && state.Crop.IsCreated) state.Crop.Dispose();
+                for (int sector = 0; sector < sectorCount; sector++)
+                    if (layer.Costs[sector].IsCreated) layer.Costs[sector].Dispose();
+                layer.Distance.Dispose();
+                layer.Settled.Dispose();
+                layer.Heap.Dispose();
+                layer.PortalCount.Dispose();
+                layer.Portals.Dispose();
+                layer.PortalPocket.Dispose();
+                layer.Matching.Dispose();
+                layer.Costs.Dispose();
             }
+            searchWaiting.Dispose();
+            searchState.Dispose();
             clearance.Dispose();
             smallCells.Dispose();
             largeCells.Dispose();
@@ -512,14 +543,27 @@ namespace WAR2D.Pathing
 
         // ---- sector state --------------------------------------------------------------------
 
-        private Layer NewLayer(NativeArray<byte> grid) => new Layer
+        private Layer NewLayer(NativeArray<byte> grid)
         {
-            Grid = grid,
-            Sectors = new SectorState[sectorCount],
-            Distance = new ushort[sectorCount * MaxPortals],
-            Settled = new bool[sectorCount * MaxPortals],
-            Heap = new List<int>(sectorCount),
-        };
+            int nodes = sectorCount * MaxPortals;
+            var layer = new Layer
+            {
+                Grid = grid,
+                Sectors = new SectorState[sectorCount],
+                Distance = new NativeArray<ushort>(nodes, allocator),
+                Settled = new NativeArray<bool>(nodes, allocator),
+                Heap = new NativeList<int>(sectorCount, allocator),
+                PortalCount = new NativeArray<int>(sectorCount, allocator),
+                Portals = new NativeArray<Portal>(nodes, allocator),
+                PortalPocket = new NativeArray<short>(nodes, allocator),
+                Matching = new NativeArray<int>(nodes, allocator),
+                Costs = new NativeArray<UnsafeList<ushort>>(sectorCount, allocator),
+                CostsToCome = new UnsafeList<ushort>[sectorCount],
+                CostJobs = new JobHandle[sectorCount],
+            };
+            for (int sector = 0; sector < sectorCount; sector++) layer.PortalCount[sector] = -1;
+            return layer;
+        }
 
         /// <summary>Counts terrain changes, so a caller keeping pocket numbers (<see cref="PocketOf"/>) knows when they went stale.</summary>
         public int TerrainVersion { get; private set; }
@@ -541,14 +585,16 @@ namespace WAR2D.Pathing
             {
                 int neighbour = NeighbourSector(sector, edge);
                 if (neighbour < 0) continue;
-                SectorState other = layer.Sectors[neighbour];
-                if (other == null) continue;
-                for (int i = 0; i < other.Matching.Length; i++) other.Matching[i] = NotLookedUp;
+                for (int i = 0; i < layer.PortalCount[neighbour]; i++) layer.Matching[neighbour * MaxPortals + i] = NotLookedUp;
             }
 
             SectorState state = layer.Sectors[sector];
             if (state == null) return;
+            DropCostsToCome(layer, sector);
             if (state.Crop.IsCreated) state.Crop.Dispose();
+            if (layer.Costs[sector].IsCreated) layer.Costs[sector].Dispose();
+            layer.Costs[sector] = default;
+            layer.PortalCount[sector] = -1;
             layer.Sectors[sector] = null;
         }
 
@@ -663,22 +709,28 @@ namespace WAR2D.Pathing
             if (y0 > 0) AddRuns(layer.Grid, portals, cells, offsets, South, y0, y0 - 1, x0, x1, alongY: false, x0, y0);
             if (y1 + 1 < cellHeight) AddRuns(layer.Grid, portals, cells, offsets, North, y1, y1 + 1, x0, x1, alongY: false, x0, y0);
 
-            var matching = new int[portals.Count];
-            for (int i = 0; i < matching.Length; i++) matching[i] = NotLookedUp;
             short[] pocketOf = LabelPockets(crop);
             var portalPocket = new short[portals.Count];
-            for (int p = 0; p < portalPocket.Length; p++) portalPocket[p] = pocketOf[cells[offsets[p]]];
+            for (int p = 0; p < portalPocket.Length; p++)
+            {
+                portalPocket[p] = pocketOf[cells[offsets[p]]];
+                int node = sector * MaxPortals + p;
+                layer.Portals[node] = portals[p];
+                layer.PortalPocket[node] = portalPocket[p];
+                layer.Matching[node] = NotLookedUp;
+            }
+            layer.PortalCount[sector] = portals.Count;
             layer.Sectors[sector] = new SectorState
             {
                 Crop = crop,
                 Portals = portals.ToArray(),
                 PortalCells = cells.ToArray(),
                 PortalOffsets = offsets.ToArray(),
-                Matching = matching,
                 PocketOf = pocketOf,
                 PortalPocket = portalPocket,
                 ExitPockets = new HashSet<short>(portalPocket).Count,
             };
+            ScheduleCosts(layer, sector);
         }
 
         /// <summary>
@@ -873,58 +925,47 @@ namespace WAR2D.Pathing
             return cells.Count;
         }
 
+        /// <summary>
+        /// Starts a newly built sector's cost table on a worker thread. A search needs the table of every sector it crosses,
+        /// and terrain changes drop a few sectors each tick: built when the search asked, their tables cost its tick about
+        /// 3 ms of main thread (100,000-unit benchmark, 2026-11-11). A sector is most often built ticks before a search
+        /// crosses it (by a pocket lookup), so the table is ready by then.
+        /// </summary>
+        private void ScheduleCosts(Layer layer, int sector)
+        {
+            SectorState state = layer.Sectors[sector];
+            int n = state.Portals.Length;
+            var costs = new UnsafeList<ushort>(math.max(1, n * n), allocator);
+            costs.Resize(math.max(1, n * n));
+            costs[0] = Infinite;
+            if (n == 0)
+            {
+                layer.Costs[sector] = costs;
+                return;
+            }
+            var centres = new NativeArray<int>(n, Allocator.Persistent); // the job frees it
+            for (int p = 0; p < n; p++) centres[p] = CentreCell(state, p);
+            layer.CostsToCome[sector] = costs;
+            layer.CostJobs[sector] = new PortalCostsJob { Side = sectorCells, Crop = state.Crop, Centres = centres, Costs = costs }.Schedule();
+        }
+
+        /// <summary>Builds the sector if it is not, and takes its cost table from its job (a wait only when the job has not finished).</summary>
         private void EnsureCosts(Layer layer, int sector)
         {
             Materialize(layer, sector);
-            SectorState state = layer.Sectors[sector];
-            if (state.CostsReady) return;
-
-
-            int n = state.Portals.Length;
-            state.Costs = new ushort[math.max(1, n * n)];
-            for (int i = 0; i < state.Costs.Length; i++) state.Costs[i] = Infinite;
-
-            if (n > 0)
-            {
-                var fields = new NativeArray<ushort>[n];
-                var goals = new NativeArray<int>[n];
-                var handles = new NativeArray<JobHandle>(n, Allocator.Temp);
-                for (int p = 0; p < n; p++)
-                {
-                    fields[p] = new NativeArray<ushort>(SectorCells, Allocator.TempJob);
-                    goals[p] = GoalsOf(state, p);
-                    handles[p] = new BuildIntegrationFieldJob
-                    {
-                        Width = sectorCells, Height = sectorCells, Tiles = state.Crop,
-                        Goals = goals[p], Cost = fields[p],
-                    }.Schedule();
-                }
-                JobHandle.CombineDependencies(handles).Complete();
-                handles.Dispose();
-                foreach (NativeArray<int> goal in goals) goal.Dispose();
-                for (int p = 0; p < n; p++)
-                for (int q = 0; q < n; q++)
-                {
-                    // Centre to centre: a true distance between two points, so the costs obey the triangle
-                    // inequality. Measured between the nearest cells of two portals instead, a wide portal acted
-                    // as a teleporter (west → south → east across an open sector cost 2 through the corner cells
-                    // they share), the search's distances came out far too low, and the route walk looped round
-                    // a sector corner while units bounced between two sectors' fields. At least 1 between
-                    // distinct portals keeps the distances strictly ordered.
-                    ushort cost = fields[p][CentreCell(state, q)];
-                    state.Costs[p * n + q] = p != q && cost < Infinite ? (ushort)math.max(1, (int)cost) : cost;
-                }
-                foreach (NativeArray<ushort> field in fields) field.Dispose();
-            }
-            state.CostsReady = true;
+            if (layer.Costs[sector].IsCreated) return;
+            layer.CostJobs[sector].Complete();
+            layer.Costs[sector] = layer.CostsToCome[sector];
+            layer.CostsToCome[sector] = default;
         }
 
-        /// <summary>A portal's single goal for its cost-table field: its centre cell.</summary>
-        private static NativeArray<int> GoalsOf(SectorState state, int portal)
+        /// <summary>Waits for a sector's cost table job when no search took its table, and frees the table. The job reads the sector's crop.</summary>
+        private static void DropCostsToCome(Layer layer, int sector)
         {
-            var goals = new NativeArray<int>(1, Allocator.TempJob);
-            goals[0] = CentreCell(state, portal);
-            return goals;
+            if (!layer.CostsToCome[sector].IsCreated) return;
+            layer.CostJobs[sector].Complete();
+            layer.CostsToCome[sector].Dispose();
+            layer.CostsToCome[sector] = default;
         }
 
         /// <summary>
@@ -962,8 +1003,8 @@ namespace WAR2D.Pathing
 
         private void ResetSearch(Layer layer)
         {
-            Array.Fill(layer.Distance, Infinite);
-            Array.Fill(layer.Settled, false);
+            layer.Distance.AsSpan().Fill(Infinite);
+            layer.Settled.AsSpan().Clear();
             layer.Heap.Clear();
         }
 
@@ -973,7 +1014,7 @@ namespace WAR2D.Pathing
             int node = sector * MaxPortals + portal;
             if (cost >= layer.Distance[node]) return;
             layer.Distance[node] = cost;
-            HeapPush(layer, node);
+            HeapPush(layer.Heap, layer.Distance, node);
         }
 
         /// <summary>The distinct pockets the order's start cells stand in, in the cells' order.</summary>
@@ -998,42 +1039,25 @@ namespace WAR2D.Pathing
         /// </summary>
         private void ExpandUntilSettled(Layer layer, HashSet<int> waiting)
         {
-            for (int expanded = 0; expanded < MaxSearchNodes && layer.Heap.Count > 0 && waiting.Count > 0; expanded++)
+            if (waiting.Count == 0) return;
+            searchWaiting.Clear();
+            foreach (int pocket in waiting) searchWaiting.Add(pocket);
+            searchState[0] = MaxSearchNodes;
+            var search = new ExpandJob
             {
-                int node = HeapPop(layer);
-                if (layer.Settled[node]) continue;
-                int sector = node / MaxPortals, portal = node % MaxPortals;
-                layer.Settled[node] = true;
-
-                EnsureCosts(layer, sector);
-                SectorState state = layer.Sectors[sector];
-                waiting.Remove(sector * SectorCells + state.PortalPocket[portal]);
-                int n = state.Portals.Length;
-                ushort distance = layer.Distance[node];
-                for (int q = 0; q < n; q++)
-                {
-                    if (q == portal) continue;
-                    ushort viaSector = state.Costs[portal * n + q];
-                    if (viaSector >= Infinite) continue;
-                    Relax(layer, sector, q, distance + viaSector);
-                }
-                int matching = Matching(layer, sector, portal);
-                if (matching >= 0)
-                {
-                    int neighbour = NeighbourSector(sector, state.Portals[portal].Edge);
-                    if (neighbour >= 0) Relax(layer, neighbour, matching, distance + CrossingCost);
-                }
+                SectorsX = sectorsX, SectorsY = sectorsY, PocketsPerSector = SectorCells,
+                PortalCount = layer.PortalCount, Portals = layer.Portals, PortalPocket = layer.PortalPocket, Costs = layer.Costs,
+                Matching = layer.Matching, Distance = layer.Distance, Settled = layer.Settled, Heap = layer.Heap,
+                Waiting = searchWaiting, State = searchState,
+            };
+            // The job stops at a sector that lacks what it reads; with that built it goes on from where it stopped.
+            for (search.Run(); searchState[1] >= 0; search.Run())
+            {
+                if (searchState[2] == 1) EnsureCosts(layer, searchState[1]);
+                else Materialize(layer, searchState[1]);
             }
-        }
-
-        private void Relax(Layer layer, int sector, int portal, int cost)
-        {
-            if (cost >= Infinite) return;
-            Materialize(layer, sector);
-            int node = sector * MaxPortals + portal;
-            if (layer.Settled[node] || cost >= layer.Distance[node]) return;
-            layer.Distance[node] = (ushort)cost;
-            HeapPush(layer, node);
+            waiting.Clear();
+            foreach (int pocket in searchWaiting) waiting.Add(pocket);
         }
 
         /// <summary>
@@ -1047,11 +1071,12 @@ namespace WAR2D.Pathing
             SectorState state = layer.Sectors[sector];
             int n = state.Portals.Length;
             if (entry >= n) return -1;
+            UnsafeList<ushort> costs = layer.Costs[sector];
             int best = -1, bestCost = int.MaxValue;
             for (int q = 0; q < n; q++)
             {
                 if (q == entry) continue;
-                int inside = state.Costs[entry * n + q], onward = CrossingCostOf(layer, sector, q);
+                int inside = costs[entry * n + q], onward = CrossingCostOf(layer, sector, q);
                 if (inside >= Infinite || onward >= Infinite) continue;
                 if (inside + onward < bestCost) { bestCost = inside + onward; best = q; }
             }
@@ -1092,34 +1117,38 @@ namespace WAR2D.Pathing
         /// <summary>The matching portal on the other side of a portal's edge, or -1.</summary>
         private int Matching(Layer layer, int sector, int portal)
         {
-            SectorState state = layer.Sectors[sector];
-            if (state.Matching[portal] != NotLookedUp)
-            {
-                int cachedNeighbour = NeighbourSector(sector, state.Portals[portal].Edge);
-                SectorState cachedOther = cachedNeighbour >= 0 ? layer.Sectors[cachedNeighbour] : null;
-                if (cachedOther != null && state.Matching[portal] < cachedOther.Portals.Length)
-                    return state.Matching[portal];
-            }
+            int neighbour = NeighbourSector(sector, layer.Sectors[sector].Portals[portal].Edge);
+            if (neighbour >= 0) Materialize(layer, neighbour);
+            return Match(layer.Matching, layer.Portals, layer.PortalCount, sector * MaxPortals + portal, neighbour);
+        }
 
-            int edge = state.Portals[portal].Edge;
-            int neighbour = NeighbourSector(sector, edge);
-            if (neighbour < 0) { state.Matching[portal] = -1; return -1; }
-            Materialize(layer, neighbour);
-            SectorState other = layer.Sectors[neighbour];
-            int opposite = Opposite[edge];
-            int from = state.Portals[portal].Start, to = from + state.Portals[portal].Length;
+        /// <summary>
+        /// <see cref="Matching"/> for a node whose <paramref name="neighbour"/> sector across its edge (-1 for none) is built:
+        /// the kept answer, or the neighbour's portal on the facing edge whose run overlaps this one.
+        /// </summary>
+        private static int Match(NativeArray<int> matching, NativeArray<Portal> portals, NativeArray<int> portalCount, int node, int neighbour)
+        {
+            if (neighbour < 0) { matching[node] = -1; return -1; }
+            int count = portalCount[neighbour];
+            if (matching[node] != NotLookedUp && matching[node] < count) return matching[node];
+
+            Portal portal = portals[node];
+            int opposite = portal.Edge ^ 1; // West and East are 0 and 1, South and North 2 and 3
+            int from = portal.Start, to = from + portal.Length;
             int result = -1;
-            for (int q = 0; q < other.Portals.Length; q++)
+            for (int q = 0; q < count; q++)
             {
-                if (other.Portals[q].Edge != opposite) continue;
-                int qFrom = other.Portals[q].Start, qTo = qFrom + other.Portals[q].Length;
-                if (qFrom < to && from < qTo) { result = q; break; } // the runs overlap along the edge
+                Portal other = portals[neighbour * MaxPortals + q];
+                if (other.Edge != opposite) continue;
+                if (other.Start < to && from < other.Start + other.Length) { result = q; break; } // the runs overlap along the edge
             }
-            state.Matching[portal] = result;
+            matching[node] = result;
             return result;
         }
 
-        private int NeighbourSector(int sector, int edge)
+        private int NeighbourSector(int sector, int edge) => NeighbourSector(sector, edge, sectorsX, sectorsY);
+
+        private static int NeighbourSector(int sector, int edge, int sectorsX, int sectorsY)
         {
             int sx = sector % sectorsX, sy = sector / sectorsX;
             switch (edge)
@@ -1131,38 +1160,158 @@ namespace WAR2D.Pathing
             }
         }
 
-        private void HeapPush(Layer layer, int node)
+        private static void HeapPush(NativeList<int> heap, NativeArray<ushort> distance, int node)
         {
-            List<int> heap = layer.Heap;
             heap.Add(node);
-            int i = heap.Count - 1;
+            int i = heap.Length - 1;
             while (i > 0)
             {
                 int parent = (i - 1) / 2;
-                if (layer.Distance[heap[parent]] <= layer.Distance[heap[i]]) break;
-                (heap[parent], heap[i]) = (heap[i], heap[parent]);
+                if (distance[heap[parent]] <= distance[heap[i]]) break;
+                int swap = heap[parent];
+                heap[parent] = heap[i];
+                heap[i] = swap;
                 i = parent;
             }
         }
 
-        private int HeapPop(Layer layer)
+        private static int HeapPop(NativeList<int> heap, NativeArray<ushort> distance)
         {
-            List<int> heap = layer.Heap;
             int top = heap[0];
-            int last = heap.Count - 1;
+            int last = heap.Length - 1;
             heap[0] = heap[last];
-            heap.RemoveAt(last);
+            heap.Length = last;
             int i = 0;
             while (true)
             {
                 int left = 2 * i + 1, right = left + 1, smallest = i;
-                if (left < heap.Count && layer.Distance[heap[left]] < layer.Distance[heap[smallest]]) smallest = left;
-                if (right < heap.Count && layer.Distance[heap[right]] < layer.Distance[heap[smallest]]) smallest = right;
+                if (left < last && distance[heap[left]] < distance[heap[smallest]]) smallest = left;
+                if (right < last && distance[heap[right]] < distance[heap[smallest]]) smallest = right;
                 if (smallest == i) break;
-                (heap[smallest], heap[i]) = (heap[i], heap[smallest]);
+                int swap = heap[smallest];
+                heap[smallest] = heap[i];
+                heap[i] = swap;
                 i = smallest;
             }
             return top;
+        }
+
+        /// <summary>
+        /// The route search: Dijkstra over the portals, from the seeded nodes until a portal of every waiting pocket is
+        /// settled (it settles the cheapest portal of a pocket first, and only a crossing can reach it, so the pocket's way
+        /// out is known then). It reads only what the graph has built: at a sector that lacks its cost table, or whose
+        /// neighbour across the portal lacks its portals, it stops and says which, and the next run goes on from there.
+        /// In C# this loop was most of a route's cost on the main thread (perf 2026-11-11).
+        /// </summary>
+        [BurstCompile]
+        private struct ExpandJob : IJob
+        {
+            public int SectorsX, SectorsY, PocketsPerSector;
+            [ReadOnly] public NativeArray<int> PortalCount;
+            [ReadOnly] public NativeArray<Portal> Portals;
+            [ReadOnly] public NativeArray<short> PortalPocket;
+            [ReadOnly] public NativeArray<UnsafeList<ushort>> Costs;
+            public NativeArray<int> Matching;
+            public NativeArray<ushort> Distance;
+            public NativeArray<bool> Settled;
+            public NativeList<int> Heap;
+            public NativeHashSet<int> Waiting;
+
+            /// <summary>
+            /// [0] the nodes the search may still take off the heap; [1] the sector it stopped for, or -1 when it ended;
+            /// [2] 1 when that sector needs its cost table, 0 when it needs its portals.
+            /// </summary>
+            public NativeArray<int> State;
+
+            public void Execute()
+            {
+                int left = State[0];
+                State[1] = -1;
+                while (left > 0 && Heap.Length > 0 && Waiting.Count > 0)
+                {
+                    int node = Heap[0];
+                    if (Settled[node])
+                    {
+                        HeapPop(Heap, Distance);
+                        left--;
+                        continue;
+                    }
+                    int sector = node / MaxPortals, portal = node % MaxPortals;
+                    int neighbour = NeighbourSector(sector, Portals[node].Edge, SectorsX, SectorsY);
+                    bool noCosts = !Costs[sector].IsCreated;
+                    if (noCosts || (neighbour >= 0 && PortalCount[neighbour] < 0))
+                    {
+                        State[0] = left;
+                        State[1] = noCosts ? sector : neighbour;
+                        State[2] = noCosts ? 1 : 0;
+                        return;
+                    }
+
+                    HeapPop(Heap, Distance);
+                    left--;
+                    Settled[node] = true;
+                    Waiting.Remove(sector * PocketsPerSector + PortalPocket[node]);
+                    int n = PortalCount[sector];
+                    UnsafeList<ushort> costs = Costs[sector];
+                    int distance = Distance[node];
+                    for (int q = 0; q < n; q++)
+                    {
+                        if (q == portal) continue;
+                        ushort viaSector = costs[portal * n + q];
+                        if (viaSector < Infinite) Relax(sector * MaxPortals + q, distance + viaSector);
+                    }
+                    int matching = Match(Matching, Portals, PortalCount, node, neighbour);
+                    if (matching >= 0) Relax(neighbour * MaxPortals + matching, distance + CrossingCost);
+                }
+                State[0] = left;
+            }
+
+            private void Relax(int node, int cost)
+            {
+                if (cost >= Infinite || Settled[node] || cost >= Distance[node]) return;
+                Distance[node] = (ushort)cost;
+                HeapPush(Heap, Distance, node);
+            }
+        }
+
+        /// <summary>
+        /// A sector's cost table: the walk inside the sector between every two of its portals, from one integration field
+        /// per portal. One job for the table (it was a job and two arrays per portal), scheduled by <see cref="ScheduleCosts"/>.
+        /// </summary>
+        [BurstCompile]
+        private struct PortalCostsJob : IJob
+        {
+            public int Side;
+            [ReadOnly] public NativeArray<byte> Crop;
+
+            /// <summary>Each portal's centre cell (<see cref="CentreCell"/>).</summary>
+            [ReadOnly, DeallocateOnJobCompletion] public NativeArray<int> Centres;
+
+            /// <summary>The table, <c>from * portals + to</c>.</summary>
+            public UnsafeList<ushort> Costs;
+
+            public void Execute()
+            {
+                int n = Centres.Length;
+                var goal = new NativeArray<int>(1, Allocator.Temp);
+                var field = new NativeArray<ushort>(Crop.Length, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+                for (int p = 0; p < n; p++)
+                {
+                    goal[0] = Centres[p];
+                    new BuildIntegrationFieldJob { Width = Side, Height = Side, Tiles = Crop, Goals = goal, Cost = field }.Execute();
+                    for (int q = 0; q < n; q++)
+                    {
+                        // Centre to centre: a true distance between two points, so the costs obey the triangle
+                        // inequality. Measured between the nearest cells of two portals instead, a wide portal acted
+                        // as a teleporter (west → south → east across an open sector cost 2 through the corner cells
+                        // they share), the search's distances came out far too low, and the route walk looped round
+                        // a sector corner while units bounced between two sectors' fields. At least 1 between
+                        // distinct portals keeps the distances strictly ordered.
+                        ushort cost = field[Centres[q]];
+                        Costs[p * n + q] = p != q && cost < Infinite ? (ushort)math.max(1, (int)cost) : cost;
+                    }
+                }
+            }
         }
 
         // ---- specs ---------------------------------------------------------------------------

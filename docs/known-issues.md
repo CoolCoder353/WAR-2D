@@ -74,7 +74,9 @@ on the owner's pinned layout (client and host each on 3 cores), simulated here.
   the Mono build support is installed here.
 - **The server tick misses its 28 ms p95 at 100,000 units on three cores**: about 40 ms on both builds in the 100k benchmark,
   mostly replication to seven clients that each know every unit (`-perfShareVision`). `main`'s host also falls behind there
-  (about five ticks a frame); this branch's keeps up since shared vision grids share one stamp.
+  (about five ticks a frame); this branch's keeps up since shared vision grids share one stamp. **On the laptop's simulated layout
+  it passes since 2026-11-11** (`perf/tick-under-25ms`): p95 about 23 ms, mean 16 ms ([perf/100k](perf/100k/README.md)). **On the
+  owner's machine it should still miss**: the estimate there is about 34 ms at p95 in that benchmark.
 - **Bandwidth at 100,000 units is 8 % over `main`'s on three cores** (448 → 483 KB/s), where `main`'s host, behind, sends less.
   The gate's mean is level (219 → 220 KB/s).
 - **Removed: the instant order response** (2026-11-08, at the owner's request). It built every click's fields on the next tick

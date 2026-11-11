@@ -901,4 +901,67 @@ public class SectorGraphTests
             direction.Dispose();
         }
     }
+
+    /// <summary>
+    /// A terrain change drops only the sectors within one cell of a cell that changed (perf 2026-11-11), so the kept graph must
+    /// answer as a graph built from the changed map does: the same routes and the same reach for both classes, with half the
+    /// changes on or beside a sector edge, where a neighbour's portals depend on them.
+    /// </summary>
+    [Test]
+    public void AGraphKeptAcrossTerrainChangesAnswersAsAFreshOne()
+    {
+        PathMap map = PathTestMaps.Generate(256, 5);
+        var goal = new NativeArray<int>(1, Allocator.TempJob);
+        var starts = new NativeArray<int>(6, Allocator.TempJob);
+        try
+        {
+            using var kept = new SectorGraph(map, Allocator.Persistent);
+            var rng = new Unity.Mathematics.Random(11);
+            for (int round = 0; round < 160; round++)
+            {
+                int2 tile = rng.NextInt2(int2.zero, new int2(map.Width, map.Height));
+                if (round % 2 == 0) tile.x = rng.NextInt(1, 8) * SectorGraph.SectorSize + rng.NextInt(-2, 2);
+                if (round % 4 == 0) tile.y = rng.NextInt(1, 8) * SectorGraph.SectorSize + rng.NextInt(-2, 2);
+                map.Tiles[Index(map, tile)] = map.Tiles[Index(map, tile)] == Floor ? Rock : Floor;
+                kept.Invalidate(tile);
+
+                using var fresh = new SectorGraph(map, Allocator.Persistent);
+                goal[0] = RandomFloorCell(map, ref rng);
+                for (int i = 0; i < starts.Length; i++) starts[i] = RandomFloorCell(map, ref rng);
+                for (int sizeClass = FlowSizeClass.Small; sizeClass <= FlowSizeClass.Large; sizeClass++)
+                {
+                    string expected = Describe(fresh.BuildRoute(sizeClass, goal, starts, out int coveredFresh));
+                    string actual = Describe(kept.BuildRoute(sizeClass, goal, starts, out int coveredKept));
+                    Assert.AreEqual(expected, actual, $"round {round}, class {sizeClass}, change at {tile}: the route");
+                    Assert.AreEqual(coveredFresh, coveredKept, $"round {round}, class {sizeClass}: covered sectors");
+                    foreach (int start in starts)
+                        Assert.AreEqual(
+                            fresh.Reaches(sizeClass, TileOf(map, start), TileOf(map, goal[0])),
+                            kept.Reaches(sizeClass, TileOf(map, start), TileOf(map, goal[0])),
+                            $"round {round}, class {sizeClass}, change at {tile}: reach from {TileOf(map, start)}");
+                }
+            }
+        }
+        finally
+        {
+            goal.Dispose();
+            starts.Dispose();
+            map.Dispose();
+        }
+    }
+
+    /// <summary>A route's specs as text, so two routes compare field by field with a readable difference.</summary>
+    private static string Describe(SectorFieldSpec[] specs)
+    {
+        var text = new System.Text.StringBuilder();
+        foreach (SectorFieldSpec spec in specs)
+        {
+            text.Append("sector ").Append(spec.Sector).Append(" exit ").Append(spec.ExitDirection).Append(" goals");
+            for (int i = 0; i < spec.GoalCells.Length; i++) text.Append(' ').Append(spec.GoalCells[i]).Append(':').Append(spec.GoalCosts[i]);
+            text.Append(" exits");
+            for (int i = 0; i < spec.ExitCells.Length; i++) text.Append(' ').Append(spec.ExitCells[i]).Append(':').Append(spec.ExitDirections[i]);
+            text.Append('\n');
+        }
+        return text.ToString();
+    }
 }
