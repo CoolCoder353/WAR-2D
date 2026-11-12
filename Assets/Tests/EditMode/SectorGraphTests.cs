@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using Unity.Jobs;
 using Unity.Collections;
@@ -900,5 +901,276 @@ public class SectorGraphTests
             cost.Dispose();
             direction.Dispose();
         }
+    }
+
+    /// <summary>
+    /// A terrain change drops only the sectors within one cell of a cell that changed (perf 2026-11-11), so the kept graph must
+    /// answer as a graph built from the changed map does: the same routes and the same reach for both classes, with half the
+    /// changes on or beside a sector edge, where a neighbour's portals depend on them.
+    /// </summary>
+    [Test]
+    public void AGraphKeptAcrossTerrainChangesAnswersAsAFreshOne()
+    {
+        PathMap map = PathTestMaps.Generate(256, 5);
+        var goal = new NativeArray<int>(1, Allocator.TempJob);
+        var starts = new NativeArray<int>(6, Allocator.TempJob);
+        try
+        {
+            using var kept = new SectorGraph(map, Allocator.Persistent);
+            var rng = new Unity.Mathematics.Random(11);
+            for (int round = 0; round < 160; round++)
+            {
+                int2 tile = rng.NextInt2(int2.zero, new int2(map.Width, map.Height));
+                if (round % 2 == 0) tile.x = rng.NextInt(1, 8) * SectorGraph.SectorSize + rng.NextInt(-2, 2);
+                if (round % 4 == 0) tile.y = rng.NextInt(1, 8) * SectorGraph.SectorSize + rng.NextInt(-2, 2);
+                map.Tiles[Index(map, tile)] = map.Tiles[Index(map, tile)] == Floor ? Rock : Floor;
+                kept.Invalidate(tile);
+
+                using var fresh = new SectorGraph(map, Allocator.Persistent);
+                goal[0] = RandomFloorCell(map, ref rng);
+                for (int i = 0; i < starts.Length; i++) starts[i] = RandomFloorCell(map, ref rng);
+                for (int sizeClass = FlowSizeClass.Small; sizeClass <= FlowSizeClass.Large; sizeClass++)
+                {
+                    string expected = Describe(fresh.BuildRoute(sizeClass, goal, starts, out int coveredFresh));
+                    string actual = Describe(kept.BuildRoute(sizeClass, goal, starts, out int coveredKept));
+                    Assert.AreEqual(expected, actual, $"round {round}, class {sizeClass}, change at {tile}: the route");
+                    Assert.AreEqual(coveredFresh, coveredKept, $"round {round}, class {sizeClass}: covered sectors");
+                    foreach (int start in starts)
+                        Assert.AreEqual(
+                            fresh.Reaches(sizeClass, TileOf(map, start), TileOf(map, goal[0])),
+                            kept.Reaches(sizeClass, TileOf(map, start), TileOf(map, goal[0])),
+                            $"round {round}, class {sizeClass}, change at {tile}: reach from {TileOf(map, start)}");
+                }
+            }
+        }
+        finally
+        {
+            goal.Dispose();
+            starts.Dispose();
+            map.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// The route search is a Burst job that stops where the graph lacks a sector's portals or cost table and goes on from
+    /// there once the graph builds it (perf 2026-11-11). On a fresh graph no table is taken before the search, so it stops at
+    /// every sector it expands; on a graph with every sector and table built first it runs to the end in one go. Both must
+    /// give the same route. A plain Dijkstra over the same portals must give each exit's cost to the goal; it is held to the
+    /// costs only, since equal-cost ways can make the chosen exit differ. Three cave maps and both classes, a goal walled
+    /// off from the start, and a start on the goal.
+    /// </summary>
+    [Test]
+    public void AResumedRouteSearchGivesTheRouteOfAnUnbrokenOneAndThePlainSearchCosts()
+    {
+        var goal = new NativeArray<int>(1, Allocator.TempJob);
+        var starts = new NativeArray<int>(4, Allocator.TempJob);
+        int costsChecked = 0;
+        try
+        {
+            foreach (uint seed in new uint[] { 5, 9, 23 })
+            {
+                PathMap map = PathTestMaps.Generate(256, seed);
+                try
+                {
+                    using var built = BuiltGraph(map);
+                    var rng = new Unity.Mathematics.Random(seed);
+                    for (int round = 0; round < 6; round++)
+                    {
+                        goal[0] = RandomFloorCell(map, ref rng);
+                        for (int i = 0; i < starts.Length; i++) starts[i] = RandomFloorCell(map, ref rng);
+                        for (int sizeClass = FlowSizeClass.Small; sizeClass <= FlowSizeClass.Large; sizeClass++)
+                            costsChecked += CompareSearches(map, built, sizeClass, goal, starts, $"map {seed}, round {round}, class {sizeClass}");
+                    }
+
+                    // A start on the goal: nothing to search, the same goal field from both.
+                    starts[0] = starts[1] = starts[2] = starts[3] = goal[0];
+                    for (int sizeClass = FlowSizeClass.Small; sizeClass <= FlowSizeClass.Large; sizeClass++)
+                        CompareSearches(map, built, sizeClass, goal, starts, $"map {seed}, start on the goal, class {sizeClass}");
+                }
+                finally
+                {
+                    map.Dispose();
+                }
+            }
+            Assert.Greater(costsChecked, 50, "the plain search checked the exit costs of many routes");
+
+            // A goal walled off from the start: the search runs out without settling the start, in both graphs alike.
+            PathMap sealedMap = WallMap(gapTiles: 0, Allocator.Persistent);
+            try
+            {
+                using var built = BuiltGraph(sealedMap);
+                goal[0] = Index(sealedMap, new int2(50, 50));
+                for (int i = 0; i < starts.Length; i++) starts[i] = Index(sealedMap, new int2(10 + i, 10));
+                for (int sizeClass = FlowSizeClass.Small; sizeClass <= FlowSizeClass.Large; sizeClass++)
+                {
+                    CompareSearches(sealedMap, built, sizeClass, goal, starts, $"walled-off goal, class {sizeClass}");
+                    Assert.Greater(built.UnreachableStartSectors, 0, "the start cannot reach the goal");
+                    Dictionary<int, int> plain = PlainSearch(built, sizeClass, goal[0]);
+                    int startSector = built.SectorOf(new int2(10, 10));
+                    for (int p = 0; p < built.PortalsOf(sizeClass, startSector).Length; p++)
+                        Assert.IsFalse(plain.ContainsKey(startSector * SectorGraph.MaxPortals + p), "the plain search reaches no portal of the start's sector either");
+                }
+            }
+            finally
+            {
+                sealedMap.Dispose();
+            }
+        }
+        finally
+        {
+            goal.Dispose();
+            starts.Dispose();
+        }
+    }
+
+    /// <summary>A graph with every sector's portals and cost table built for both classes, so a search never stops.</summary>
+    private static SectorGraph BuiltGraph(in PathMap map)
+    {
+        var graph = new SectorGraph(map, Allocator.Persistent);
+        for (int sizeClass = FlowSizeClass.Small; sizeClass <= FlowSizeClass.Large; sizeClass++)
+        for (int sector = 0; sector < graph.SectorsX * graph.SectorsY; sector++)
+        {
+            graph.PortalsOf(sizeClass, sector);
+            graph.PortalCost(sizeClass, sector, 0, 0);
+        }
+        return graph;
+    }
+
+    /// <summary>
+    /// Routes one order on a fresh graph and on <paramref name="built"/>, asserts the two are the same, and, when every start
+    /// reached the goal, that each exit's cost is the plain search's. Returns the exits whose cost it checked.
+    /// </summary>
+    private static int CompareSearches(in PathMap map, SectorGraph built, int sizeClass, NativeArray<int> goal, NativeArray<int> starts, string what)
+    {
+        string resumed;
+        int resumedUnreachable;
+        using (var fresh = new SectorGraph(map, Allocator.Persistent))
+        {
+            resumed = Describe(fresh.BuildRoute(sizeClass, goal, starts, out _));
+            resumedUnreachable = fresh.UnreachableStartSectors;
+        }
+        SectorFieldSpec[] specs = built.BuildRoute(sizeClass, goal, starts, out _);
+        Assert.AreEqual(Describe(specs), resumed, $"{what}: the route");
+        Assert.AreEqual(built.UnreachableStartSectors, resumedUnreachable, $"{what}: starts that cannot reach the goal");
+        if (built.UnreachableStartSectors > 0) return 0; // the route then also leads to stops the plain search knows nothing of
+
+        Dictionary<int, int> plain = PlainSearch(built, sizeClass, goal[0]);
+        byte[] crossing = { 4, 0, 6, 2 }; // the step a unit takes across a West, East, South or North edge
+        int checkedExits = 0;
+        foreach (SectorFieldSpec spec in specs)
+        {
+            SectorGraph.Portal[] portals = built.PortalsOf(sizeClass, spec.Sector);
+            int offset = spec.GoalCells.Length - spec.ExitCells.Length; // the exits follow the goal cells
+            for (int i = 0; i < spec.ExitCells.Length; i++)
+            {
+                int portal = -1;
+                for (int p = 0; p < portals.Length && portal < 0; p++)
+                    if (crossing[portals[p].Edge] == spec.ExitDirections[i] && System.Array.IndexOf(built.PortalCellsOf(sizeClass, spec.Sector, p), spec.ExitCells[i]) >= 0)
+                        portal = p;
+                Assert.GreaterOrEqual(portal, 0, $"{what}: exit cell {spec.ExitCells[i]} of sector {spec.Sector} lies on a portal");
+                int beyond = Across(built, sizeClass, spec.Sector, portal, out int matching);
+                Assert.IsTrue(plain.TryGetValue(beyond * SectorGraph.MaxPortals + matching, out int cost), $"{what}: the plain search reaches the portal across exit {i} of sector {spec.Sector}");
+                Assert.AreEqual(math.min(BuildIntegrationFieldJob.Unreachable - 1, cost + 10), spec.GoalCosts[offset + i], $"{what}: cost of exit {i} of sector {spec.Sector}");
+                checkedExits++;
+            }
+        }
+        return checkedExits;
+    }
+
+    /// <summary>
+    /// Dijkstra over every portal of a built graph to the end, from the goal's own sector: each of its portals starts at the
+    /// in-sector walk from its centre cell to the goal; a step inside a sector costs the graph's portal-to-portal cost, a
+    /// crossing to the matching portal 10. The cost of each node reached, by <c>sector * MaxPortals + portal</c>.
+    /// </summary>
+    private static Dictionary<int, int> PlainSearch(SectorGraph graph, int sizeClass, int goalTile)
+    {
+        int side = graph.SectorCellsSide;
+        int2 tile = new int2(goalTile % graph.Width, goalTile / graph.Width);
+        int goalSector = graph.SectorOf(tile);
+        int2 corner = new int2(goalSector % graph.SectorsX, goalSector / graph.SectorsX) * side;
+        var goals = new NativeArray<int>(1, Allocator.TempJob);
+        var field = new NativeArray<ushort>(side * side, Allocator.TempJob);
+        goals[0] = (tile.y - corner.y) * side + tile.x - corner.x;
+        new BuildIntegrationFieldJob { Width = side, Height = side, Tiles = graph.CropOf(sizeClass, goalSector), Goals = goals, Cost = field }.Run();
+
+        var cost = new Dictionary<int, int>();
+        var open = new SortedSet<(int cost, int node)>();
+        SectorGraph.Portal[] goalPortals = graph.PortalsOf(sizeClass, goalSector);
+        for (int p = 0; p < goalPortals.Length; p++)
+        {
+            int[] cells = graph.PortalCellsOf(sizeClass, goalSector, p);
+            ushort seed = field[cells[cells.Length / 2]];
+            if (seed >= BuildIntegrationFieldJob.Unreachable) continue;
+            cost[goalSector * SectorGraph.MaxPortals + p] = seed;
+            open.Add((seed, goalSector * SectorGraph.MaxPortals + p));
+        }
+        goals.Dispose();
+        field.Dispose();
+
+        var done = new HashSet<int>();
+        while (open.Count > 0)
+        {
+            var (distance, node) = open.Min;
+            open.Remove(open.Min);
+            if (!done.Add(node)) continue;
+            int sector = node / SectorGraph.MaxPortals, portal = node % SectorGraph.MaxPortals;
+            int n = graph.PortalsOf(sizeClass, sector).Length;
+            for (int q = 0; q < n; q++)
+            {
+                ushort inside = q == portal ? BuildIntegrationFieldJob.Unreachable : graph.PortalCost(sizeClass, sector, portal, q);
+                if (inside < BuildIntegrationFieldJob.Unreachable) Relax(sector * SectorGraph.MaxPortals + q, distance + inside);
+            }
+            int beyond = Across(graph, sizeClass, sector, portal, out int matching);
+            if (beyond >= 0 && matching >= 0) Relax(beyond * SectorGraph.MaxPortals + matching, distance + 10);
+        }
+        return cost;
+
+        void Relax(int node, int value)
+        {
+            if (value >= BuildIntegrationFieldJob.Unreachable || done.Contains(node)) return;
+            if (cost.TryGetValue(node, out int was))
+            {
+                if (value >= was) return;
+                open.Remove((was, node));
+            }
+            cost[node] = value;
+            open.Add((value, node));
+        }
+    }
+
+    /// <summary>The sector across a portal's edge (-1 at the map's edge) and its first portal on the facing edge whose run overlaps this one (-1 for none).</summary>
+    private static int Across(SectorGraph graph, int sizeClass, int sector, int portal, out int matching)
+    {
+        matching = -1;
+        SectorGraph.Portal from = graph.PortalsOf(sizeClass, sector)[portal];
+        int sx = sector % graph.SectorsX, sy = sector / graph.SectorsX;
+        int beyond = from.Edge switch
+        {
+            0 => sx > 0 ? sector - 1 : -1,
+            1 => sx + 1 < graph.SectorsX ? sector + 1 : -1,
+            2 => sy > 0 ? sector - graph.SectorsX : -1,
+            _ => sy + 1 < graph.SectorsY ? sector + graph.SectorsX : -1,
+        };
+        if (beyond < 0) return -1;
+        SectorGraph.Portal[] there = graph.PortalsOf(sizeClass, beyond);
+        for (int q = 0; q < there.Length && matching < 0; q++)
+            if (there[q].Edge == (from.Edge ^ 1) && there[q].Start < from.Start + from.Length && from.Start < there[q].Start + there[q].Length)
+                matching = q;
+        return beyond;
+    }
+
+    /// <summary>A route's specs as text, so two routes compare field by field with a readable difference.</summary>
+    private static string Describe(SectorFieldSpec[] specs)
+    {
+        var text = new System.Text.StringBuilder();
+        foreach (SectorFieldSpec spec in specs)
+        {
+            text.Append("sector ").Append(spec.Sector).Append(" exit ").Append(spec.ExitDirection).Append(" goals");
+            for (int i = 0; i < spec.GoalCells.Length; i++) text.Append(' ').Append(spec.GoalCells[i]).Append(':').Append(spec.GoalCosts[i]);
+            text.Append(" exits");
+            for (int i = 0; i < spec.ExitCells.Length; i++) text.Append(' ').Append(spec.ExitCells[i]).Append(':').Append(spec.ExitDirections[i]);
+            text.Append('\n');
+        }
+        return text.ToString();
     }
 }

@@ -70,6 +70,8 @@ namespace WAR2D.Net.Replication
     {
         public const int MaxWaypoints = 256;
         public const int RetraceEvery = 40;
+        /// <summary>Units per trace batch, and per entry of the stream the traces write.</summary>
+        internal const int Batch = 256;
 
         public int Count, Tick, RetraceBudget;
         /// <summary>Tiles the sent route may cut across the traced cells (see <see cref="RouteTraceJob"/>).</summary>
@@ -88,18 +90,21 @@ namespace WAR2D.Net.Replication
         /// <summary>Schedules the parallel traces and the commit after <paramref name="dependsOn"/>.</summary>
         public JobHandle Schedule(JobHandle dependsOn)
         {
-            var stream = new NativeStream(math.max(1, Count), Allocator.TempJob);
+            // One stream entry per batch, not per unit: most units have no result, and an entry each cost the trace and
+            // the commit a pass over 100,000 empty entries a tick.
+            int batches = (Count + Batch - 1) / Batch;
+            var stream = new NativeStream(math.max(1, batches), Allocator.TempJob);
             JobHandle traced = new RouteTraceJob
             {
-                Tick = Tick, Tolerance = Tolerance, Positions = Positions, Health = Health, IdOf = IdOf, OrderSlot = OrderSlot,
+                Count = Count, Tick = Tick, Tolerance = Tolerance, Positions = Positions, Health = Health, IdOf = IdOf, OrderSlot = OrderSlot,
                 BlockOf = BlockOf, Blocks = Blocks, SectorsX = SectorsX, SectorCount = SectorCount, CellsPerSector = CellsPerSector,
                 CellSize = CellSize, Width = Width, Height = Height,
                 Arena = Arena.AsDeferredJobArray(), Start = Start, RouteCount = RouteCount, TracedOrder = TracedOrder, TracedId = TracedId,
                 Out = stream.AsWriter(),
-            }.Schedule(Count, 256, dependsOn);
+            }.Schedule(batches, 1, dependsOn);
             JobHandle committed = new RouteCommitJob
             {
-                Count = Count, RetraceBudget = RetraceBudget, IdOf = IdOf, OrderSlot = OrderSlot, In = stream.AsReader(),
+                RetraceBudget = RetraceBudget, IdOf = IdOf, OrderSlot = OrderSlot, In = stream.AsReader(),
                 Arena = Arena, Start = Start, RouteCount = RouteCount, Generation = Generation, TracedOrder = TracedOrder, TracedId = TracedId, Counters = Counters,
             }.Schedule(traced);
             return stream.Dispose(committed);
@@ -109,7 +114,7 @@ namespace WAR2D.Net.Replication
         public void Run() => Schedule(default).Complete();
     }
 
-    /// <summary>What the trace found for one unit, the first item of its stream entry.</summary>
+    /// <summary>What the trace found for one unit: it follows the unit's slot in the batch's stream entry.</summary>
     internal enum RouteResult
     {
         /// <summary>Traced, and still the route it has.</summary>
@@ -123,13 +128,13 @@ namespace WAR2D.Net.Replication
     }
 
     /// <summary>
-    /// Traces each unit that needs it (see <see cref="RouteMaintenance"/>) and writes the result to its own
-    /// stream entry. It only reads the routes; <see cref="RouteCommitJob"/> writes them.
+    /// Traces each unit of one batch that needs it (see <see cref="RouteMaintenance"/>) and writes its slot and result
+    /// to the batch's stream entry, in unit order. It only reads the routes; <see cref="RouteCommitJob"/> writes them.
     /// </summary>
     [BurstCompile]
     internal struct RouteTraceJob : IJobParallelFor
     {
-        public int Tick;
+        public int Count, Tick;
         public float Tolerance;
         [ReadOnly] public NativeArray<float2> Positions;
         [ReadOnly] public NativeArray<float> Health;
@@ -142,14 +147,17 @@ namespace WAR2D.Net.Replication
         [ReadOnly] public NativeArray<int> Start, RouteCount, TracedOrder, TracedId;
         public NativeStream.Writer Out;
 
-        public void Execute(int i)
+        public void Execute(int batch)
         {
-            Out.BeginForEachIndex(i);
-            Classify(i);
+            Out.BeginForEachIndex(batch);
+            // One list a batch, emptied for each trace, so its 4 KB is cleared once a batch and not once a traced unit.
+            var route = new FixedList4096Bytes<float2>();
+            int end = math.min(Count, (batch + 1) * RouteMaintenance.Batch);
+            for (int i = batch * RouteMaintenance.Batch; i < end; i++) Classify(i, ref route);
             Out.EndForEachIndex();
         }
 
-        private void Classify(int i)
+        private void Classify(int i, ref FixedList4096Bytes<float2> route)
         {
             if (Health[i] <= 0f) return;
             int id = IdOf[i];
@@ -160,9 +168,10 @@ namespace WAR2D.Net.Replication
             bool changed = TracedOrder[index] != order;
             bool rotate = order >= 0 && (Tick + index) % RouteMaintenance.RetraceEvery == 0;
             if (!fresh && !changed && !rotate) return;
+            Out.Write(i);
             if (!fresh && order < 0) { Out.Write(RouteResult.Arrived); return; }
 
-            var route = new FixedList4096Bytes<float2>();
+            route.Length = 0;
             Trace(order, Positions[i], ref route);
             // On the wire grid (half tiles) before anything compares or keeps it: the server's copy of the client's prediction
             // must follow the same points the client gets, or corrections can't see the difference (bug review 2026-11-05).
@@ -179,13 +188,16 @@ namespace WAR2D.Net.Replication
             into.Add(tile);
             if (order < 0) return;
             int2 cell = (int2)math.floor(position / CellSize);
-            byte walking = DirectionAtCell(order, cell);
+            // The sector the walk is in, and where its block starts: most steps stay in one sector, which is then looked up once.
+            int2 origin = int.MinValue / 2;
+            int block = -1;
+            byte walking = DirectionAtCell(order, cell, ref origin, ref block);
             int steps = 4 * math.max(Width, Height) / CellSize;
             bool first = true;
             while (into.Length < RouteMaintenance.MaxWaypoints && steps-- > 0 && FlowDirections.IsStep(walking))
             {
                 int2 next = cell + FlowDirections.Step(walking);
-                byte direction = DirectionAtCell(order, next);
+                byte direction = DirectionAtCell(order, next, ref origin, ref block);
                 if (direction == FlowDirections.None) break;
                 cell = next;
                 // The unit steers for the next cell's centre first (see SimMovementSystem), so the route
@@ -244,14 +256,25 @@ namespace WAR2D.Net.Replication
 
         private float2 Centre(int2 cell) => (float2)(cell * CellSize) + CellSize * 0.5f;
 
-        private byte DirectionAtCell(int handle, int2 cell)
+        /// <summary>
+        /// The order's flow direction at a cell. <paramref name="origin"/> and <paramref name="block"/> carry the sector of
+        /// the cell asked before (its first cell, and where its block starts in <see cref="Blocks"/>, -1 without one), so a
+        /// cell of the same sector needs no lookup and no division.
+        /// </summary>
+        private byte DirectionAtCell(int handle, int2 cell, ref int2 origin, ref int block)
         {
             int2 tile = cell * CellSize;
             if ((uint)handle >= OrderFieldTable.MaxOrders || tile.x < 0 || tile.y < 0 || tile.x >= Width || tile.y >= Height) return FlowDirections.None;
-            int sx = tile.x / SectorGraph.SectorSize, sy = tile.y / SectorGraph.SectorSize;
-            int block = BlockOf[handle * SectorCount + sy * SectorsX + sx];
-            if (block < 0) return FlowDirections.None;
-            return Blocks[block * CellsPerSector * CellsPerSector + cell.y % CellsPerSector * CellsPerSector + cell.x % CellsPerSector];
+            int2 local = cell - origin;
+            if ((uint)local.x >= (uint)CellsPerSector || (uint)local.y >= (uint)CellsPerSector)
+            {
+                int sx = tile.x / SectorGraph.SectorSize, sy = tile.y / SectorGraph.SectorSize;
+                int found = BlockOf[handle * SectorCount + sy * SectorsX + sx];
+                block = found < 0 ? -1 : found * CellsPerSector * CellsPerSector;
+                local = new int2(cell.x % CellsPerSector, cell.y % CellsPerSector);
+                origin = cell - local;
+            }
+            return block < 0 ? FlowDirections.None : Blocks[block + local.y * CellsPerSector + local.x];
         }
 
         /// <summary>
@@ -279,7 +302,7 @@ namespace WAR2D.Net.Replication
     [BurstCompile]
     internal struct RouteCommitJob : IJob
     {
-        public int Count, RetraceBudget;
+        public int RetraceBudget;
         [ReadOnly] public NativeArray<int> IdOf;
         [ReadOnly] public NativeArray<int> OrderSlot;
         public NativeStream.Reader In;
@@ -289,38 +312,44 @@ namespace WAR2D.Net.Replication
         public void Execute()
         {
             int retraced = 0;
-            for (int i = 0; i < Count; i++)
+            for (int batch = 0; batch < In.ForEachCount; batch++)
             {
-                if (In.BeginForEachIndex(i) == 0) { In.EndForEachIndex(); continue; }
-                int id = IdOf[i];
-                int index = NetIdAllocator.IndexOf(id);
-                RouteResult result = In.Read<RouteResult>();
-                if (result == RouteResult.Arrived) TracedOrder[index] = OrderSlot[i];
-                else if (result == RouteResult.Same) { TracedId[index] = id; TracedOrder[index] = OrderSlot[i]; }
-                else
-                {
-                    int length = In.Read<int>();
-                    if (result == RouteResult.Rotated && retraced >= RetraceBudget)
-                    {
-                        for (int k = 0; k < length; k++) In.Read<float2>(); // over budget: the next rotation tries again
-                    }
-                    else
-                    {
-                        int first = Arena.Length;
-                        for (int k = 0; k < length; k++) Arena.Add(In.Read<float2>());
-                        Counters[1] += length - RouteCount[index];
-                        Start[index] = first;
-                        RouteCount[index] = length;
-                        Counters[0]++;
-                        Generation[index] = Counters[0];
-                        TracedId[index] = id;
-                        TracedOrder[index] = OrderSlot[i];
-                        retraced++;
-                    }
-                }
+                In.BeginForEachIndex(batch);
+                while (In.RemainingItemCount > 0) Commit(In.Read<int>(), ref retraced);
                 In.EndForEachIndex();
             }
             if (Arena.Length > 2 * Counters[1] + 65536) Compact();
+        }
+
+        /// <summary>Applies the next result in the stream, the one of the unit in slot <paramref name="i"/>.</summary>
+        private void Commit(int i, ref int retraced)
+        {
+            int id = IdOf[i];
+            int index = NetIdAllocator.IndexOf(id);
+            RouteResult result = In.Read<RouteResult>();
+            if (result == RouteResult.Arrived) TracedOrder[index] = OrderSlot[i];
+            else if (result == RouteResult.Same) { TracedId[index] = id; TracedOrder[index] = OrderSlot[i]; }
+            else
+            {
+                int length = In.Read<int>();
+                if (result == RouteResult.Rotated && retraced >= RetraceBudget)
+                {
+                    for (int k = 0; k < length; k++) In.Read<float2>(); // over budget: the next rotation tries again
+                }
+                else
+                {
+                    int first = Arena.Length;
+                    for (int k = 0; k < length; k++) Arena.Add(In.Read<float2>());
+                    Counters[1] += length - RouteCount[index];
+                    Start[index] = first;
+                    RouteCount[index] = length;
+                    Counters[0]++;
+                    Generation[index] = Counters[0];
+                    TracedId[index] = id;
+                    TracedOrder[index] = OrderSlot[i];
+                    retraced++;
+                }
+            }
         }
 
         private void Compact()

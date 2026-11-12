@@ -286,81 +286,103 @@ namespace WAR2D.Net.Replication
                 TracedId = routes.TracedId,
                 Counters = routes.Counters,
             }.Schedule(default);
-            if (!any)
-            {
-                handle.Complete();
-                LastMilliseconds = watch.Elapsed.TotalMilliseconds;
-                return;
-            }
-            for (int c = 0; c < MaxClients; c++)
-            {
-                encodeNow[c] = active[c] && clients[c].Lane == null;
-                if (encodeNow[c]) interests.SetClient(c, clients[c].OwnerId, GridFor(clients[c]));
-            }
-            // Interest reads only the settled sim arrays (read-only, as the route jobs do) and writes its own sets, so it runs
-            // alongside the route upkeep and the sends below instead of after them (perf gate 2026-11-06). Same sets, same order.
-            JobHandle interestHandle = interests.Schedule(input, default);
-            // The combat news's status list reads only the settled unit arrays too: its pass over every unit runs on a worker
-            // alongside the sends (perf gate 2026-11-07: 2.7 ms on the main thread at 80,000 units).
-            using var statuses = new NativeList<int2>(256, Allocator.TempJob);
-            JobHandle statusHandle = ScheduleStatuses(data, tick, input.Count, statuses);
+            // Everything below runs in one try: whatever throws, the finally waits for every job this method scheduled before
+            // it frees what they read (the status list, the attack arrays) and before the tick writes the settled arrays again.
+            JobHandle interestHandle = default, statusHandle = default;
+            NativeList<int2> statuses = default;
+            NativeArray<int2> attacks = default;
+            NativeArray<AttackTarget> targets = default;
+            NativeArray<BuildingAttack> buildingAttacks = default;
+            var encoded = new NativeArray<JobHandle>(MaxClients, Allocator.Temp);
             double t = PerfSplits.Now;
-            SendFog(data);
-            PerfSplits.Mark(8, ref t);
-            SendTerrain(data, tick);
-            PerfSplits.Mark(9, ref t);
-            SendBuildings(data);
-            PerfSplits.Mark(10, ref t);
-            handle.Complete(); // timed alone: the route upkeep ran alongside the sends above
-            PerfSplits.Mark(7, ref t);
-            interestHandle.Complete(); // the encoder reads the route arena by value, so it must not move under it
-            PerfSplits.Mark(11, ref t);
-            using var attacks = new NativeArray<int2>(data.AttackEvents.AsArray(), Allocator.TempJob);
-            using NativeArray<AttackTarget> targets = AttackTargets(data, attacks);
-            using NativeArray<BuildingAttack> buildingAttacks = BuildingAttacks(data);
-            PerfSplits.Mark(12, ref t);
-            // Each client's bytes go out as soon as that client is encoded, while the workers encode the rest (perf gate
-            // 2026-11-06): the same bytes in the same order; repl.encode is now the wait for the first client only.
-            using var encoded = new NativeArray<JobHandle>(MaxClients, Allocator.Temp);
-            encoder.ScheduleEach(tick, input, attacks, targets, buildingAttacks, encodeNow, default, encoded);
-            for (int c = 0; c < MaxClients; c++) if (encodeNow[c]) { encoded[c].Complete(); break; }
-            PerfSplits.Mark(13, ref t);
-
-            for (int c = 0; c < MaxClients; c++)
+            try
             {
-                if (!active[c]) continue;
-                encoded[c].Complete(); // before anything that could reset this client's buffers (OnClientLeft)
-                Client client = clients[c];
-                if (client.Connection != null && (client.Connection.identity == null || !NetworkServer.connections.ContainsKey(client.Connection.connectionId)))
+                if (!any) return;
+                for (int c = 0; c < MaxClients; c++)
                 {
-                    OnClientLeft(client.Connection);
-                    continue;
+                    encodeNow[c] = active[c] && clients[c].Lane == null;
+                    if (encodeNow[c]) interests.SetClient(c, clients[c].OwnerId, GridFor(clients[c]));
                 }
-                if (client.Lane != null)
+                // Interest reads only the settled sim arrays (read-only, as the route jobs do) and writes its own sets, so it runs
+                // alongside the route upkeep and the sends below instead of after them (perf gate 2026-11-06). Same sets, same order.
+                interestHandle = interests.Schedule(input, default);
+                // The combat news's status list reads only the settled unit arrays too: its pass over every unit runs on a worker
+                // alongside the sends (perf gate 2026-11-07: 2.7 ms on the main thread at 80,000 units).
+                statuses = new NativeList<int2>(256, Allocator.TempJob);
+                statusHandle = ScheduleStatuses(data, tick, input.Count, statuses);
+                t = PerfSplits.Now;
+                SendFog(data);
+                PerfSplits.Mark(8, ref t);
+                SendTerrain(data, tick);
+                PerfSplits.Mark(9, ref t);
+                SendBuildings(data);
+                PerfSplits.Mark(10, ref t);
+                handle.Complete(); // timed alone: the route upkeep ran alongside the sends above
+                PerfSplits.Mark(7, ref t);
+                interestHandle.Complete(); // the encoder reads the route arena by value, so it must not move under it
+                PerfSplits.Mark(11, ref t);
+                attacks = new NativeArray<int2>(data.AttackEvents.AsArray(), Allocator.TempJob);
+                targets = AttackTargets(data, attacks);
+                buildingAttacks = BuildingAttacks(data);
+                PerfSplits.Mark(12, ref t);
+                // Each client's bytes go out as soon as that client is encoded, while the workers encode the rest (perf gate
+                // 2026-11-06): the same bytes in the same order; repl.encode is now the wait for the first client only.
+                encoder.ScheduleEach(tick, input, attacks, targets, buildingAttacks, encodeNow, default, encoded);
+                for (int c = 0; c < MaxClients; c++) if (encodeNow[c]) { encoded[c].Complete(); break; }
+                PerfSplits.Mark(13, ref t);
+
+                for (int c = 0; c < MaxClients; c++)
                 {
-                    // Last tick's units (encoded during this tick), then this tick's copied for the next.
-                    if (client.Lane.PendingTick >= 0)
+                    if (!active[c]) continue;
+                    encoded[c].Complete(); // before anything that could reset this client's buffers (OnClientLeft)
+                    Client client = clients[c];
+                    if (client.Connection != null && (client.Connection.identity == null || !NetworkServer.connections.ContainsKey(client.Connection.connectionId)))
                     {
-                        var (r, rs, u, us) = client.Lane.Collect();
-                        SinkTick = client.Lane.PendingTick;
-                        SendSplit(client, SinkTick, r, rs, Channels.Reliable, BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4));
-                        SendSplit(client, SinkTick, u, us, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
-                        FlushPendingCombat(client);
-                        SinkTick = tick;
+                        OnClientLeft(client.Connection);
+                        continue;
                     }
-                    client.Lane.Schedule(data, tick, count, routes, attacks, targets, buildingAttacks);
-                    continue;
+                    if (client.Lane != null)
+                    {
+                        // Last tick's units (encoded during this tick), then this tick's copied for the next.
+                        if (client.Lane.PendingTick >= 0)
+                        {
+                            var (r, rs, u, us) = client.Lane.Collect();
+                            SinkTick = client.Lane.PendingTick;
+                            SendSplit(client, SinkTick, r, rs, Channels.Reliable, BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4));
+                            SendSplit(client, SinkTick, u, us, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
+                            FlushPendingCombat(client);
+                            SinkTick = tick;
+                        }
+                        client.Lane.Schedule(data, tick, count, routes, attacks, targets, buildingAttacks);
+                        continue;
+                    }
+                    client.EntersSent += interests.Entered(c).Length;
+                    var (reliable, reliableSizes, unreliable, unreliableSizes) = encoder.Output(c);
+                    SendSplit(client, tick, reliable, reliableSizes, Channels.Reliable, BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4));
+                    SendSplit(client, tick, unreliable, unreliableSizes, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
                 }
-                client.EntersSent += interests.Entered(c).Length;
-                var (reliable, reliableSizes, unreliable, unreliableSizes) = encoder.Output(c);
-                SendSplit(client, tick, reliable, reliableSizes, Channels.Reliable, BatchLimit(Channels.Reliable, WireLimits.ReliableChunk * 4));
-                SendSplit(client, tick, unreliable, unreliableSizes, Channels.Unreliable, BatchLimit(Channels.Unreliable, WireLimits.CorrectionMessageLimit));
+                for (int c = 0; c < MaxClients; c++) encoded[c].Complete(); // a client that left mid-loop: its job still has to finish
+                PerfSplits.Mark(14, ref t);
+                SendCombat(data, tick, input, statuses, statusHandle);
             }
-            for (int c = 0; c < MaxClients; c++) encoded[c].Complete(); // a client that left mid-loop: its job still has to finish
-            PerfSplits.Mark(14, ref t);
-            SendCombat(data, tick, input, statuses, statusHandle);
-            PerfSplits.Mark(PerfSplits.ReplCombat, ref t);
-            LastMilliseconds = watch.Elapsed.TotalMilliseconds;
+            finally
+            {
+                // A recorder lane copied the settled arrays on a worker alongside the sends above: the copy must end before
+                // the tick writes them again, also when a send throws. A wait for it here reads as repl.combat in the perf
+                // splits. On the normal path every other job is already complete; after a throw they may still run.
+                handle.Complete();
+                interestHandle.Complete();
+                for (int c = 0; c < MaxClients; c++) clients[c]?.Lane?.FinishCopy();
+                for (int c = 0; c < MaxClients; c++) encoded[c].Complete();
+                statusHandle.Complete();
+                if (statuses.IsCreated) statuses.Dispose();
+                if (attacks.IsCreated) attacks.Dispose();
+                if (targets.IsCreated) targets.Dispose();
+                if (buildingAttacks.IsCreated) buildingAttacks.Dispose();
+                encoded.Dispose();
+                if (any) PerfSplits.Mark(PerfSplits.ReplCombat, ref t);
+                LastMilliseconds = watch.Elapsed.TotalMilliseconds;
+            }
         }
 
         /// <summary>The building each attack hit (parallel to <paramref name="attacks"/>), from the tick's building arrays; Id 0 for other targets.</summary>

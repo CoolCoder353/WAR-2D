@@ -852,4 +852,281 @@ public class ReplicationTests
             blockOf.Dispose(); blocks.Dispose(); positions.Dispose(); health.Dispose(); idOf.Dispose(); orderSlot.Dispose();
         }
     }
+
+    /// <summary>
+    /// The encode visits only the units the shared pass marks (perf 2026-11-11). A second encoder is made to walk every unit
+    /// each tick (a call without the client before each encode, so its client always missed a call), and both must send the
+    /// same bytes while units move, take damage, get routes, die, come back under a new id and cross the fog and the view.
+    /// On some ticks neither client is encoded: the masked one must then walk every unit once too.
+    /// </summary>
+    [Test]
+    public void TheMaskedEncodeSendsTheSameBytesAsAWalkOfEveryUnit()
+    {
+        const int units = 400;
+        using var rig = new Rig(units);
+        EncoderConfig config = rig.Config;
+        config.CorrectionInterval = 4;
+        using var masked = new ReplicationEncoder(config, rig.Interests, rig.Routes, IdCapacity, Allocator.Persistent);
+        using var walked = new ReplicationEncoder(config, rig.Interests, rig.Routes, IdCapacity, Allocator.Persistent);
+        var rng = new Unity.Mathematics.Random(7);
+        // Own units are always known; the enemy's only inside the fog box. The view is a quarter of that box.
+        for (int i = 0; i < units; i++) rig.Add(i + 1, i % 3 == 0 ? 2 : 1, rng.NextFloat2(0f, 120f));
+        rig.Watch(0, 1, new int2(0, 0), new int2(80, 80));
+        masked.SetView(0, new int2(0, 0), new int2(40, 40));
+        walked.SetView(0, new int2(0, 0), new int2(40, 40));
+        var none = new[] { false };
+        int sent = 0, generation = 1;
+
+        for (int tick = 1; tick <= 300; tick++)
+        {
+            for (int change = 0; change < 40; change++)
+            {
+                int slot = rng.NextInt(units);
+                int index = NetIdAllocator.IndexOf(rig.IdOf[slot]);
+                switch (rng.NextInt(8))
+                {
+                    case 0: rig.Health[slot] = math.max(0f, rig.Health[slot] - rng.NextFloat(0f, 40f)); break; // damage, sometimes death
+                    case 1: rig.Routes.Set(index, rig.Positions[slot], rng.NextFloat2(0f, 120f)); break;
+                    case 2:
+                        if (rig.Health[slot] > 0f) break;
+                        rig.IdOf[slot] = Rig.Id(index, ++generation); // a new unit takes the dead one's index
+                        rig.Health[slot] = 100f;
+                        break;
+                    default: rig.Positions[slot] = math.clamp(rig.Positions[slot] + rng.NextFloat2(-3f, 3f), 0f, 120f); break;
+                }
+            }
+
+            ReplicationInput input = rig.Input;
+            rig.Interests.Build(input);
+            walked.Schedule(tick, input, rig.Attacks.AsArray(), default, default, none, default).Complete();
+            if (tick % 17 == 0)
+            {
+                masked.Schedule(tick, input, rig.Attacks.AsArray(), default, default, none, default).Complete();
+                continue;
+            }
+            masked.EncodeAll(tick, input, rig.Attacks.AsArray());
+            walked.EncodeAll(tick, input, rig.Attacks.AsArray());
+            var (reliable, _, unreliable, _) = masked.Output(0);
+            var (reliableWalked, _, unreliableWalked, _) = walked.Output(0);
+            CollectionAssert.AreEqual(reliableWalked.AsArray().ToArray(), reliable.AsArray().ToArray(), $"tick {tick}: reliable bytes");
+            CollectionAssert.AreEqual(unreliableWalked.AsArray().ToArray(), unreliable.AsArray().ToArray(), $"tick {tick}: unreliable bytes");
+            sent += reliable.Length + unreliable.Length;
+        }
+        Assert.Greater(sent, 10000, "the run sent health, routes and corrections");
+    }
+
+    /// <summary>
+    /// The route traces run 256 units to a batch, with one stream entry and one waypoint list a batch and the sector of the
+    /// last flow lookup kept (perf 2026-11-11). Every unit must get the route, generation and traced order it gets when it is
+    /// traced alone (a batch of one), over ticks that bring new units, new orders, deaths, ended orders and rotation
+    /// retraces. The counts are one unit, one full batch, one past it, and some way into a third batch.
+    /// </summary>
+    [Test]
+    public void BatchedRouteTracesGiveEachUnitTheRouteItGetsAlone()
+    {
+        const int cells = 16, sectorsX = 4, sectorCount = sectorsX * sectorsX, size = cells * sectorsX * 2, orders = 3;
+        var blockOf = new NativeArray<int>(orders * sectorCount, Allocator.Persistent);
+        var blocks = new NativeArray<byte>(orders * sectorCount * cells * cells, Allocator.Persistent);
+        var rng = new Unity.Mathematics.Random(3);
+        // Each order flows at its goal cell by sign steps (diagonal, then straight: a turn on most routes), with a few dead
+        // cells; one sector of each order has no field, where its routes end.
+        for (int order = 0; order < orders; order++)
+        {
+            int2 goal = rng.NextInt2(int2.zero, new int2(cells * sectorsX));
+            int missing = rng.NextInt(sectorCount);
+            for (int sector = 0; sector < sectorCount; sector++)
+            {
+                int block = order * sectorCount + sector;
+                blockOf[block] = sector == missing ? -1 : block;
+                int2 corner = new int2(sector % sectorsX, sector / sectorsX) * cells;
+                for (int y = 0; y < cells; y++)
+                for (int x = 0; x < cells; x++)
+                {
+                    int2 step = (int2)math.sign(goal - (corner + new int2(x, y)));
+                    byte direction = step.Equals(int2.zero) ? WAR2D.Pathing.FlowDirections.AtGoal
+                        : rng.NextInt(40) == 0 ? WAR2D.Pathing.FlowDirections.None
+                        : (byte)System.Array.IndexOf(new[] { new int2(1, 0), new int2(1, 1), new int2(0, 1), new int2(-1, 1), new int2(-1, 0), new int2(-1, -1), new int2(0, -1), new int2(1, -1) }, step);
+                    blocks[block * cells * cells + y * cells + x] = direction;
+                }
+            }
+        }
+        try
+        {
+            foreach (int count in new[] { 1, RouteMaintenance.Batch, RouteMaintenance.Batch + 1, 2 * RouteMaintenance.Batch + 188 })
+            {
+                var positions = new NativeArray<float2>(count, Allocator.Persistent);
+                var health = new NativeArray<float>(count, Allocator.Persistent);
+                var idOf = new NativeArray<int>(count, Allocator.Persistent);
+                var orderSlot = new NativeArray<int>(count, Allocator.Persistent);
+                var onePosition = new NativeArray<float2>(1, Allocator.Persistent);
+                var oneHealth = new NativeArray<float>(1, Allocator.Persistent);
+                var oneId = new NativeArray<int>(1, Allocator.Persistent);
+                var oneOrder = new NativeArray<int>(1, Allocator.Persistent);
+                var batched = new RouteStore(IdCapacity, Allocator.Persistent);
+                var alone = new RouteStore(IdCapacity, Allocator.Persistent);
+                try
+                {
+                    for (int i = 0; i < count; i++)
+                    {
+                        positions[i] = rng.NextFloat2(0f, size);
+                        health[i] = 100f;
+                        idOf[i] = Rig.Id(i + 1);
+                        orderSlot[i] = rng.NextInt(-1, orders);
+                    }
+                    foreach (int tick in new[] { 1, 2, 3, 19, 38, 39 })
+                    {
+                        if (tick > 1)
+                            for (int i = 0; i < count; i++)
+                            {
+                                positions[i] = math.clamp(positions[i] + rng.NextFloat2(-1.5f, 1.5f), 0f, size - 0.01f);
+                                switch (rng.NextInt(12))
+                                {
+                                    case 0: orderSlot[i] = rng.NextInt(-1, orders); break; // a new order, or the order ended
+                                    case 1: health[i] = health[i] > 0f ? 0f : 100f; break; // died, or a new unit in the slot
+                                    case 2: idOf[i] = Rig.Id(i + 1, 2 + tick); break; // a new unit under the index
+                                }
+                            }
+                        Trace(count, tick, positions, health, idOf, orderSlot, batched);
+                        for (int i = 0; i < count; i++)
+                        {
+                            onePosition[0] = positions[i]; oneHealth[0] = health[i]; oneId[0] = idOf[i]; oneOrder[0] = orderSlot[i];
+                            Trace(1, tick, onePosition, oneHealth, oneId, oneOrder, alone);
+                        }
+                        for (int i = 0; i < count; i++)
+                        {
+                            int index = i + 1;
+                            string what = $"{count} units, tick {tick}, unit {i}";
+                            Assert.AreEqual(alone.CountOf(index), batched.CountOf(index), $"{what}: waypoints");
+                            for (int k = 0; k < alone.CountOf(index); k++)
+                                Assert.AreEqual(alone.Waypoints[alone.First(index) + k], batched.Waypoints[batched.First(index) + k], $"{what}: waypoint {k}");
+                            Assert.AreEqual(alone.GenerationOf(index), batched.GenerationOf(index), $"{what}: generation");
+                            Assert.AreEqual(alone.TracedId[index], batched.TracedId[index], $"{what}: traced id");
+                            Assert.AreEqual(alone.TracedOrder[index], batched.TracedOrder[index], $"{what}: traced order");
+                        }
+                    }
+                    Assert.GreaterOrEqual(batched.Counters[0], count, "every unit got a route on its first tick");
+                }
+                finally
+                {
+                    batched.Dispose(); alone.Dispose();
+                    positions.Dispose(); health.Dispose(); idOf.Dispose(); orderSlot.Dispose();
+                    onePosition.Dispose(); oneHealth.Dispose(); oneId.Dispose(); oneOrder.Dispose();
+                }
+            }
+        }
+        finally
+        {
+            blockOf.Dispose(); blocks.Dispose();
+        }
+
+        void Trace(int count, int tick, NativeArray<float2> positions, NativeArray<float> health, NativeArray<int> idOf, NativeArray<int> orderSlot, RouteStore routes) => new RouteMaintenance
+        {
+            Count = count, Tick = tick, RetraceBudget = int.MaxValue, Tolerance = 1f,
+            Positions = positions, Health = health, IdOf = idOf, OrderSlot = orderSlot,
+            BlockOf = blockOf, Blocks = blocks,
+            SectorsX = sectorsX, SectorsY = sectorsX, SectorCount = sectorCount, CellsPerSector = cells, CellSize = 2, Width = size, Height = size,
+            Arena = routes.Arena, Start = routes.Start, RouteCount = routes.Count, Generation = routes.Generation,
+            TracedOrder = routes.TracedOrder, TracedId = routes.TracedId, Counters = routes.Counters,
+        }.Run();
+    }
+
+    /// <summary>
+    /// The recorder's lane copies the settled unit arrays and the live routes in a job that runs alongside the sends, and
+    /// the boundary waits for it with <c>FinishCopy</c> (perf 2026-11-11). After that wait the lane must hold what a direct
+    /// copy of the same source holds: the first Count entries of each unit array, the id-indexed arrays and the routes
+    /// whole. Checked on an empty lane, then on two ticks whose units, values and routes differ.
+    /// </summary>
+    [Test]
+    public void TheRecorderLaneCopiesWhatADirectCopyHolds()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(64));
+        sim.Em.CompleteAllTrackedJobs();
+        WAR2D.Sim.SimData data = sim.Context.Data;
+        int capacity = sim.Config.Simulation.MaxEntities;
+        using var live = new RouteStore(capacity, Allocator.Persistent);
+        using var lane = new DeferredLane(-5, EncoderConfig.From(sim.Config), capacity, 1024);
+        using var attacks = new NativeArray<int2>(0, Allocator.Persistent);
+        using var targets = new NativeArray<AttackTarget>(0, Allocator.Persistent);
+        var rng = new Unity.Mathematics.Random(17);
+
+        Copy(1, 0); // an empty lane: no units, no routes
+        for (int tick = 2; tick <= 3; tick++)
+        {
+            int count = tick == 2 ? 300 : 500;
+            for (int i = 0; i < count; i++)
+            {
+                data.Positions[i] = rng.NextFloat2(0f, 64f);
+                data.Health[i] = rng.NextFloat(0f, 100f);
+                data.MaxHealth[i] = 100f;
+                data.OwnerId[i] = rng.NextInt(1, 5);
+                data.Type[i] = (byte)rng.NextInt(4);
+                data.IdOf[i] = Rig.Id(i + 1, tick);
+                data.IndexOfId[i + 1] = i;
+                data.LastHitKind[i + 1] = (byte)rng.NextInt(3);
+                live.Set(i + 1, data.Positions[i], rng.NextFloat2(0f, 64f), rng.NextFloat2(0f, 64f));
+            }
+            for (int t = 0; t < data.SpeedByType.Length; t++) data.SpeedByType[t] = rng.NextFloat(1f, 6f);
+            Copy(tick, count);
+        }
+
+        void Copy(int tick, int count)
+        {
+            lane.Schedule(data, tick, count, live, attacks, targets);
+            lane.FinishCopy();
+            Same(data.Positions, Copied<float2>(lane, "positions"), count, "positions");
+            Same(data.Health, Copied<float>(lane, "health"), count, "health");
+            Same(data.MaxHealth, Copied<float>(lane, "maxHealth"), count, "max health");
+            Same(data.OwnerId, Copied<int>(lane, "ownerId"), count, "owners");
+            Same(data.Type, Copied<byte>(lane, "type"), count, "types");
+            Same(data.IdOf, Copied<int>(lane, "idOf"), count, "ids");
+            Same(data.IndexOfId, Copied<int>(lane, "indexOfId"), data.IndexOfId.Length, "slots by id");
+            Same(data.LastHitKind, Copied<byte>(lane, "lastHitKind"), data.LastHitKind.Length, "last hit kinds");
+            Same(data.SpeedByType, Copied<float>(lane, "speedByType"), data.SpeedByType.Length, "speeds");
+            var routes = (RouteStore)typeof(DeferredLane).GetField("routes", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(lane);
+            Assert.AreEqual(live.Arena.Length, routes.Arena.Length, $"tick {tick}: waypoints");
+            Same(live.Arena.AsArray(), routes.Arena.AsArray(), live.Arena.Length, "waypoints");
+            Same(live.Start, routes.Start, live.Start.Length, "route starts");
+            Same(live.Count, routes.Count, live.Count.Length, "route lengths");
+            Same(live.Generation, routes.Generation, live.Generation.Length, "route generations");
+            lane.Collect();
+
+            void Same<T>(NativeArray<T> source, NativeArray<T> copy, int length, string what) where T : struct
+            {
+                T[] expected = source.GetSubArray(0, length).ToArray(); // the direct copy
+                T[] actual = copy.GetSubArray(0, length).ToArray();
+                for (int i = 0; i < length; i++)
+                    if (!EqualityComparer<T>.Default.Equals(expected[i], actual[i]))
+                        Assert.Fail($"tick {tick}, {count} units: {what} differ first at {i}: {expected[i]} copied as {actual[i]}");
+            }
+        }
+    }
+
+    private static NativeArray<T> Copied<T>(DeferredLane lane, string field) where T : struct =>
+        (NativeArray<T>)typeof(DeferredLane).GetField(field, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(lane);
+
+    private sealed class SinkFailed : Exception { }
+
+    /// <summary>
+    /// A send that throws leaves the boundary through its <c>finally</c>. The other clients' encodes and the status list
+    /// read arrays the boundary frees on its way out, so the boundary must wait for them there: otherwise the free fails
+    /// while a job still holds the array (and, without the safety checks, frees memory a worker still reads).
+    /// </summary>
+    [Test]
+    public void ASendThatThrowsLeavesNoReplicationJobRunning()
+    {
+        using var sim = new SimHarness(SimHarness.OpenMap(96));
+        using var replication = new ReplicationService(sim.Context, sim.Config);
+        replication.AddVirtualClient(SimHarness.OwnerA, (p, ch) => { });
+        replication.AddVirtualClient(SimHarness.OwnerB, (p, ch) => { });
+        for (int i = 0; i < 400; i++) sim.Spawn(i % 2 == 0 ? SimHarness.OwnerA : SimHarness.OwnerB, new float2(5.5f + i % 80, 5.5f + i / 80));
+        for (int t = 0; t < 5; t++) sim.Tick();
+
+        // A new client takes the first slot, so its units enter and its unit bytes go out (and throw) while the second
+        // slot's encode has not been waited for yet.
+        replication.RemoveVirtualClient(SimHarness.OwnerA);
+        replication.AddVirtualClient(SimHarness.OwnerA, (p, ch) => { if (ch >= 0) throw new SinkFailed(); });
+        sim.Em.CompleteAllTrackedJobs();
+        WAR2D.Sim.SimClock clock = sim.Context.Clock;
+        Assert.Throws<SinkFailed>(() => sim.Context.RaiseSettled(sim.Context.Data, clock.Tick + 1, clock.UnitCount));
+    }
 }

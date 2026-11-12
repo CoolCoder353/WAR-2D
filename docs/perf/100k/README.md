@@ -1,4 +1,4 @@
-# 100,000 units: benchmark and results (2026-11-07, updated 2026-11-08 after the owner's runs and 2026-11-09 for 500 fps)
+# 100,000 units: benchmark and results (2026-11-07, updated 2026-11-08 after the owner's runs, 2026-11-09 for 500 fps and 2026-11-11 for the server tick)
 
 Goal: server gameplay at the largest scale, 100,000 units (8 players × 12,500, the unit cap) fighting on the 1024 map, with the
 client at 140 fps or more on average and in the slowest 1 % of frames, a smooth server, orders that answer at once and big groups
@@ -30,6 +30,74 @@ gate's full scale:
 Intel Core Ultra 9 275HX (24 cores), NVIDIA GeForce RTX 5070 Ti Laptop GPU (Direct3D 12), 32 GB, Windows 11, on AC power, with
 other programs running. Unity 6000.4.1f1, **Mono**, Windows release player (`WAR-2D/Build/Windows (Steam)`). The client is
 CPU-bound: GPU 0.5 to 1.5 ms a frame.
+
+## Server tick under 25 ms (2026-11-11)
+
+Goal: `tick.main` p95 under 25 ms in the 100k benchmark on the owner's pinned layout as simulated here (host on 3 E-cores, client on
+3 others, 5 job threads each; see below), with the same bytes on the wire and the same routes. Branch `perf/tick-under-25ms`, on
+`main` (`3dc41eb6`). Release builds of both, single runs taken in turn on the same day, medians in bold. Host and client are both
+headless here and the client is capped at 60 fps: only the server is measured, and no window opens.
+
+| Metric | `main` (3 runs) | `main` | Branch (3 runs) | Branch |
+|---|---|---|---|---|
+| Server tick mean (ms) | 23.4 / 22.7 / 22.5 | **22.7** | 16.2 / 15.7 / 15.5 | **15.7** |
+| Server tick p50 (ms) | 21.1 / 21.0 / 20.7 | **21.0** | 15.1 / 14.6 / 14.6 | **14.6** |
+| Server tick p95 (ms) | 41.6 / 37.9 / 38.7 | **38.7** | 23.6 / 22.7 / 22.3 | **22.7** |
+| Server tick p99 (ms) | 54.4 / 45.0 / 51.8 | **51.8** | 35.9 / 32.2 / 31.8 | **32.2** |
+| Boundary (`part.settled`) mean (ms) | 17.6 / 17.4 / 17.3 | **17.4** | 12.7 / 12.3 / 12.2 | **12.3** |
+| Stage systems (`part.stages`) p95 (ms) | 20.0 / 17.6 / 16.3 | **17.6** | 1.8 / 1.7 / 1.4 | **1.7** |
+| Boundary wait for the last tick's jobs, mean (ms) | 7.1 / 1.3 / 4.1 | **4.1** | 0.7 / 0.6 / 0.7 | **0.7** |
+| Host frame rate, cap 60 (fps) | 42.2 / 46.4 / 44.4 | **44.4** | 55.5 / 56.2 / 55.6 | **55.6** |
+| Host frame time p95 (ms) | 59.9 / 44.5 / 54.7 | **54.7** | 31.6 / 31.4 / 31.5 | **31.5** |
+| Host process CPU (% of a core) | 252 / 231 / 245 | **245** | 215 / 208 / 215 | **215** |
+| Bandwidth mean (KB/s) | 402 / 422 / 416 | **416** | 426 / 421 / 422 | **422** |
+| Units | 99,570 / 99,538 / 99,531 | **99,538** | 99,531 / 99,538 / 99,540 | **99,538** |
+| Server logged errors, dropped connections | 0, 0 | **0, 0** | 0, 0 | **0, 0** |
+
+The gate (`tools/perf-run.sh` form: normal interest, 7 headless clients), one run each: tick mean 15.9 → 13.4 ms, p50 14.8 → 12.8,
+p95 22.9 → 18.4, p99 36.6 → 29.0; bandwidth 220 → 218 KB/s; no errors or drops. The 10,000-unit benchmark's server is level (three
+runs each: tick mean 5.0 / 5.1 / 5.1 → 4.7 / 4.6 / 5.1 ms, p95 10.1 / 10.9 / 8.9 → 9.4 / 9.6 / 9.8).
+
+**On the owner's machine** (its numbers are about two thirds of this laptop's, see the next section but one) the same build should
+land near a 24 ms mean and a 34 ms p95 in this benchmark (`main` about 34 and 58): an estimate, not a measurement. The joining
+client's code is not changed.
+
+### What changed
+
+A Development-build profile on this layout showed two costs. Every tick: the boundary's replication (the encode of each client
+walked every unit it knows, the route traces, the recorder's copy). Four ticks in every forty: the route searches of the battle's
+army orders at the end of the tick, 10 to 13 ms of main thread each time, which is where p95 sat.
+
+- **Encode: one shared pass, then only the units with news** (`EncodeMaskJob`). A pass shared by all clients marks the units
+  whose health byte or route generation changed since the last encode and the units whose correction turn it is. A client that
+  was encoded on the call before visits only those; any other client still walks every unit it may know. The per-unit state is
+  written back only when it changed. The bytes are the same (`ReplicationTests.TheMaskedEncodeSendsTheSameBytesAsAWalkOfEveryUnit`).
+  `repl.encode` 3.8 → 1.8 ms mean, `repl.send` (which holds the waits for the other clients' encodes) 5.1 → 3.0.
+- **Route traces.** One stream entry and one scratch list per batch of units instead of per unit, and the trace looks a sector's
+  block up once per sector instead of once per step. `repl.routes` 5.5 → 4.1 ms.
+- **Route search in Burst** (`SectorGraph.ExpandJob`). The search over the portals was C# on the main thread. It is now a Burst
+  job run in place: it reads only what the graph has built, stops at a sector that lacks its portals or its cost table, and goes on
+  when the main thread has built that. An army order across the map takes about 3,300 portals off the heap.
+- **Cost tables as jobs.** A sector's portal-to-portal cost table is one job (it was a job and two arrays per portal),
+  scheduled when the sector is built; the search takes the finished table. Terrain changes drop a few sectors every tick, and their
+  tables cost the next search's tick about 3 ms.
+- **A terrain change drops fewer sectors.** Only the sectors within one cell of a cell whose value changed (most often one)
+  instead of the tile's sector and its eight neighbours; a graph kept across changes answers as a fresh one
+  (`SectorGraphTests.AGraphKeptAcrossTerrainChangesAnswersAsAFreshOne`).
+- **The recorder's copy as a job.** The match recorder's lane copies the settled unit arrays and routes (about 9 MB a tick) for
+  its own encode. That copy is now a job that runs while the main thread sends, and the boundary waits for it at its end (a wait
+  there reads as `repl.combat`). Without a recorder this benchmark's tick p95 is about 21 ms. In the gate the main thread still
+  waits for most of the copy (`repl.send` 3.9 → 1.4 ms, `repl.combat` 0.7 → 3.2).
+
+Build by build on this layout (each against `main` in turn, tick p95 of the branch's runs): with the encode, the batched traces
+and the smaller terrain drops, mean 22 → 18 ms and p95 37 → 31; with the Burst search, the cost-table jobs and the trace's sector
+lookup added, p95 between 24.2 and 24.7 ms; with the recorder's copy added, between 22.3 and 23.6 (the table above).
+
+### What is left on the server
+
+The slowest ticks are now the ones that issue the battle's orders (`part.commands` 16 ms at p99, one tick in forty) and the ticks
+after them, when the new routes are traced and sent. The boundary is still most of a tick (12 of 16 ms): route upkeep 4.1 ms,
+the encodes and sends 4.8 ms, buildings 1.0 ms, combat news 1.3 ms.
 
 ## 500 fps on the owner's pinned layout (2026-11-09)
 
@@ -191,7 +259,8 @@ renderers were most of the rendering; as meshes they are gone from it.
 
 The slowest 1 % of frames (112 fps) are still pack frames that meet a network batch (units leaving and corrections) or a known-list sort.
 Spreading a batch's apply over several frames is the next step there. On the server: at 100,000 units with shared vision, `tick.main`
-p95 is about 40 ms on three cores against the 28 ms budget, most of it replication to seven clients that each know every unit.
+p95 was about 40 ms on three cores against the 28 ms budget, most of it replication to seven clients that each know every unit; it
+is about 23 ms since 2026-11-11 (the section at the top).
 
 ## What was slow (profiler evidence, 2026-11-07)
 
@@ -227,6 +296,8 @@ branch's head:
 |---|---|
 | EditMode | 1,536: 1,533 pass, 0 fail, 3 skipped (the hand-run map seeds, as on `main`) (2026-11-09) |
 | PlayMode | 103: 103 pass (2026-11-09) |
+| EditMode, `perf/tick-under-25ms` | 1,561: 1,558 pass, 0 fail, 3 skipped (2026-11-12) |
+| PlayMode, `perf/tick-under-25ms` | 102: 102 pass (2026-11-12) |
 
 A full PlayMode run here has failed one or two timing-dependent tests, a different set each run, and each passes run alone:
 `ArsenalMatchTests.ArtilleryShellsATargetOnAScoutsSight`, `HudTests.GiftToEnemyMovesResources`, `BastionClientTests.ATurretShootingOurUnitTurnsItsHeadAndFiresATracer` and
@@ -243,6 +314,18 @@ and the Burst correction decoder checked against the managed one (and refusing a
 After the owner's runs: `SimVisionTests.PlayersWhoShareBothWaysSeeTheSameAndBothGridsReportChanges` and
 `SimBastionTests.PlayersWhoShareBothWaysAreJammedAlikeAndSeeTheSame` (a shared stamp gives both grids the same cells, fog changes
 and jam).
+For the server tick (2026-11-11): `ReplicationTests.TheMaskedEncodeSendsTheSameBytesAsAWalkOfEveryUnit` and
+`SectorGraphTests.AGraphKeptAcrossTerrainChangesAnswersAsAFreshOne`.
+After the review (2026-11-12), three equivalence tests and one fix test:
+`SectorGraphTests.AResumedRouteSearchGivesTheRouteOfAnUnbrokenOneAndThePlainSearchCosts` (a search that stops at unbuilt
+sectors and goes on gives the route of one on a fully built graph, and its exit costs match a plain Dijkstra over the graph's portal cost
+tables; three generated maps, a walled-off goal, start on the goal),
+`ReplicationTests.BatchedRouteTracesGiveEachUnitTheRouteItGetsAlone` (1, 256, 257 and 700 units over six ticks with moves,
+order changes and deaths), `TheRecorderLaneCopiesWhatADirectCopyHolds` (an empty tick, then 300 and 500 units with new values
+and routes) and `ASendThatThrowsLeavesNoReplicationJobRunning`. Each was seen to fail with the code broken on purpose.
+Two fixes came with them. `ReplicationEncoder.Dispose` waits for its last encode before it frees its buffers. When a send in
+the boundary throws, the boundary now waits for the encodes and the status job before it frees the arrays they read. One case
+stays open (`known-issues.md`).
 For 500 fps: `ClientSmoothingTests.AUnitAwayFromTheViewWaitsForItsTurnAndOneInItIsAimedAtItsNextPosition` (a unit in the view is
 refreshed and aimed at its next position; away from it, units wait for their turn and keep their positions) and
 `TheKnownListGoesBackToIndexOrderAndEachUnitKeepsItsDrawnPosition` (9,000 units, a third leave, the list is sorted again and each

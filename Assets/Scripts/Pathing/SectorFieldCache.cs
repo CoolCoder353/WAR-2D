@@ -260,8 +260,8 @@ namespace WAR2D.Pathing
 
         /// <summary>
         /// Marks every live order stale after a terrain change. The graph drops the portals, crops and
-        /// cost tables of the tile's sector and its eight neighbours; the orders' routes are re-searched
-        /// when they are rebuilt.
+        /// cost tables of the sectors the change can alter (<see cref="SectorGraph.Invalidate"/>); the
+        /// orders' routes are re-searched when they are rebuilt.
         /// </summary>
         public void Invalidate(int2 changedTile)
         {
