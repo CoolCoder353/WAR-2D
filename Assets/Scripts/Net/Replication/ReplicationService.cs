@@ -366,8 +366,11 @@ namespace WAR2D.Net.Replication
             {
                 // A recorder lane copied the settled arrays on a worker alongside the sends above: the copy must end before
                 // the tick writes them again, also when a send throws. A wait for it here reads as repl.combat in the perf
-                // splits.
+                // splits. The encodes and the status list read the arrays this method frees on its way out: when a send threw,
+                // they may still run, so wait for them too (on the normal path they are already complete).
                 for (int c = 0; c < MaxClients; c++) clients[c]?.Lane?.FinishCopy();
+                for (int c = 0; c < MaxClients; c++) encoded[c].Complete();
+                statusHandle.Complete();
             }
             PerfSplits.Mark(PerfSplits.ReplCombat, ref t);
             LastMilliseconds = watch.Elapsed.TotalMilliseconds;

@@ -78,13 +78,13 @@ army orders at the end of the tick, 10 to 13 ms of main thread each time, which 
 - **Route search in Burst** (`SectorGraph.ExpandJob`). The search over the portals was C# on the main thread. It is now a Burst
   job run in place: it reads only what the graph has built, stops at a sector that lacks its portals or its cost table, and goes on
   when the main thread has built that. An army order across the map takes about 3,300 portals off the heap.
-- **Cost tables on worker threads.** A sector's portal-to-portal cost table is one job (it was a job and two arrays per portal),
-  started when the sector is built; the search takes the finished table. Terrain changes drop a few sectors every tick, and their
+- **Cost tables as jobs.** A sector's portal-to-portal cost table is one job (it was a job and two arrays per portal),
+  scheduled when the sector is built; the search takes the finished table. Terrain changes drop a few sectors every tick, and their
   tables cost the next search's tick about 3 ms.
 - **A terrain change drops fewer sectors.** Only the sectors within one cell of a cell whose value changed (most often one)
   instead of the tile's sector and its eight neighbours; a graph kept across changes answers as a fresh one
   (`SectorGraphTests.AGraphKeptAcrossTerrainChangesAnswersAsAFreshOne`).
-- **The recorder's copy on a worker.** The match recorder's lane copies the settled unit arrays and routes (about 9 MB a tick) for
+- **The recorder's copy as a job.** The match recorder's lane copies the settled unit arrays and routes (about 9 MB a tick) for
   its own encode. That copy is now a job that runs while the main thread sends, and the boundary waits for it at its end (a wait
   there reads as `repl.combat`). Without a recorder this benchmark's tick p95 is about 21 ms. In the gate the main thread still
   waits for most of the copy (`repl.send` 3.9 → 1.4 ms, `repl.combat` 0.7 → 3.2).
@@ -296,8 +296,8 @@ branch's head:
 |---|---|
 | EditMode | 1,536: 1,533 pass, 0 fail, 3 skipped (the hand-run map seeds, as on `main`) (2026-11-09) |
 | PlayMode | 103: 103 pass (2026-11-09) |
-| EditMode, `perf/tick-under-25ms` | 1,557: 1,554 pass, 0 fail, 3 skipped (2026-11-11) |
-| PlayMode, `perf/tick-under-25ms` | 102: 101 pass, 1 fail in the full run, `PerformanceTests.MinimapRedrawAtTenThousandOwnUnitsIsUnderOneMillisecond` (timing, see below; it passes run alone) (2026-11-11) |
+| EditMode, `perf/tick-under-25ms` | 1,561: 1,558 pass, 0 fail, 3 skipped (2026-11-12) |
+| PlayMode, `perf/tick-under-25ms` | 102: 102 pass (2026-11-12) |
 
 A full PlayMode run here has failed one or two timing-dependent tests, a different set each run, and each passes run alone:
 `ArsenalMatchTests.ArtilleryShellsATargetOnAScoutsSight`, `HudTests.GiftToEnemyMovesResources`, `BastionClientTests.ATurretShootingOurUnitTurnsItsHeadAndFiresATracer` and
@@ -316,6 +316,16 @@ After the owner's runs: `SimVisionTests.PlayersWhoShareBothWaysSeeTheSameAndBoth
 and jam).
 For the server tick (2026-11-11): `ReplicationTests.TheMaskedEncodeSendsTheSameBytesAsAWalkOfEveryUnit` and
 `SectorGraphTests.AGraphKeptAcrossTerrainChangesAnswersAsAFreshOne`.
+After the review (2026-11-12), three equivalence tests and one fix test:
+`SectorGraphTests.AResumedRouteSearchGivesTheRouteOfAnUnbrokenOneAndThePlainSearchCosts` (a search that stops at unbuilt
+sectors and goes on gives the route of one on a fully built graph, and its exit costs match a plain Dijkstra over the graph's portal cost
+tables; three generated maps, a walled-off goal, start on the goal),
+`ReplicationTests.BatchedRouteTracesGiveEachUnitTheRouteItGetsAlone` (1, 256, 257 and 700 units over six ticks with moves,
+order changes and deaths), `TheRecorderLaneCopiesWhatADirectCopyHolds` (an empty tick, then 300 and 500 units with new values
+and routes) and `ASendThatThrowsLeavesNoReplicationJobRunning`. Each was seen to fail with the code broken on purpose.
+Two fixes came with them. `ReplicationEncoder.Dispose` waits for its last encode before it frees its buffers. When a send in
+the boundary throws, the boundary now waits for the encodes and the status job before it frees the arrays they read. One case
+stays open (`known-issues.md`).
 For 500 fps: `ClientSmoothingTests.AUnitAwayFromTheViewWaitsForItsTurnAndOneInItIsAimedAtItsNextPosition` (a unit in the view is
 refreshed and aimed at its next position; away from it, units wait for their turn and keep their positions) and
 `TheKnownListGoesBackToIndexOrderAndEachUnitKeepsItsDrawnPosition` (9,000 units, a third leave, the list is sorted again and each

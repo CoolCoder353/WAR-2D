@@ -399,7 +399,7 @@ Anchors: `Footprint` treats the anchor as the tile at `size/2` from the footprin
 - **Job-readable table.** `OrderFieldTable` maps (handle, sector) to a block of cell directions. Rebuilds are scheduled at the end of a tick and completed and published at the next boundary, so jobs never see a half-built field; only blocks whose directions changed are rewritten.
 - **Off the route.** A unit whose route isn't built yet waits for it (2026-11-02). A unit in a sector its route doesn't cover steers straight for the goal and reports the sector; the boundary adds it as a start sector and the route is rebuilt.
 - **Terrain changes** (`MapStore.ChangedTiles`, e.g. a new footprint) invalidate the sectors within one cell of a cell whose value changed (most often one sector); only orders whose route runs within one sector of the change are rebuilt.
-- **The route search is a Burst job run in place** (`SectorGraph.ExpandJob`, 2026-11-11). It reads only what the graph has built, stops at a sector that lacks its portals or its cost table and goes on once the main thread has built that. A sector's cost table is filled by a job on a worker thread from the moment the sector is built; the search takes the finished table.
+- **The route search is a Burst job run in place** (`SectorGraph.ExpandJob`, 2026-11-11). It reads only what the graph has built, stops at a sector that lacks its portals or its cost table and goes on once the main thread has built that. A sector's cost table is filled by a job scheduled when the sector is built; the search takes the finished table.
 
 ## Art and audio
 

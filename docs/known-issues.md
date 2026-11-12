@@ -86,6 +86,15 @@ on the owner's pinned layout (client and host each on 3 cores), simulated here.
 - **Fixed: the benchmark's load depended on the host's speed.** A host behind its clock runs several ticks a frame, and the
   harness gave orders and top-ups only on the last, so slow hosts got a lighter battle (the owner's runs settled at 91,000 or
   100,000 units). They now run on every tick (`SimTiming.TickEnded`), and `perf.tick.perFrame` shows how far a host fell behind.
+- **Fixed: a replication encode could still run while its buffers were freed** (2026-11-12, `perf/tick-under-25ms`).
+  `ReplicationEncoder.Dispose` freed its buffers without waiting for the last scheduled encode; it now waits first. When a
+  send in the boundary threw (`ReplicationService.AfterBoundary`), the encodes and the status job could still run while the
+  method freed the arrays they read; its `finally` now waits for them
+  (`ReplicationTests.ASendThatThrowsLeavesNoReplicationJobRunning`). The normal path is unchanged: those jobs are already done.
+- **Open: a throw before the client sends still leaves jobs running** (2026-11-12). If `SendFog`, `SendTerrain` or
+  `SendBuildings` in `ReplicationService.AfterBoundary` throws, the route upkeep, the interest build and the status job are not
+  waited for, and the status list is freed while the status job may still read it. `main` has the same gap (its boundary has
+  no `try` at all).
 - **Unpinned runs are noisy here:** the same build measured 127 to 173 fps mean in back-to-back runs. Pinned to three cores, as in
   the owner's harness, runs repeat within about 3 %. Compare builds interleaved.
 - **A full PlayMode run fails one or two timing-dependent tests**, a different set each run, on this branch, on the

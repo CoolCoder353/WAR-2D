@@ -202,11 +202,12 @@ namespace WAR2D.Net.Replication
             };
         }
 
-        /// <summary>Frees the native buffers.</summary>
+        /// <summary>Waits for the last scheduled encode, then frees the native buffers.</summary>
         public void Dispose()
         {
             if (disposed) return;
             disposed = true;
+            lastEncode.Complete();
             foreach (ClientBuffers b in buffers) b.Dispose();
             lastHealth.Dispose(); lastGeneration.Dispose(); changed.Dispose(); turn.Dispose();
         }

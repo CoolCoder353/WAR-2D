@@ -926,7 +926,7 @@ namespace WAR2D.Pathing
         }
 
         /// <summary>
-        /// Starts a newly built sector's cost table on a worker thread. A search needs the table of every sector it crosses,
+        /// Schedules a newly built sector's cost table as a job. A search needs the table of every sector it crosses,
         /// and terrain changes drop a few sectors each tick: built when the search asked, their tables cost its tick about
         /// 3 ms of main thread (100,000-unit benchmark, 2026-11-11). A sector is most often built ticks before a search
         /// crosses it (by a pocket lookup), so the table is ready by then.
