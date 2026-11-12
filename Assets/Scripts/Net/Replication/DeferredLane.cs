@@ -147,6 +147,7 @@ namespace WAR2D.Net.Replication
         {
             if (disposed) return;
             disposed = true;
+            copied.Complete(); // on its own: Schedule can throw after starting the copy and before handle depends on it
             handle.Complete();
             encoder.Dispose();
             interests.Dispose();

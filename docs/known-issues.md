@@ -76,7 +76,8 @@ on the owner's pinned layout (client and host each on 3 cores), simulated here.
   mostly replication to seven clients that each know every unit (`-perfShareVision`). `main`'s host also falls behind there
   (about five ticks a frame); this branch's keeps up since shared vision grids share one stamp. **On the laptop's simulated layout
   it passes since 2026-11-11** (`perf/tick-under-25ms`): p95 about 23 ms, mean 16 ms ([perf/100k](perf/100k/README.md)). **On the
-  owner's machine it should still miss**: the estimate there is about 34 ms at p95 in that benchmark.
+  owner's machine it still misses**: measured 2026-11-13 (release builds, three interleaved runs each), p95 36.9 ms against
+  `main`'s 42.8, with the host still about six ticks a frame behind on both.
 - **Bandwidth at 100,000 units is 8 % over `main`'s on three cores** (448 → 483 KB/s), where `main`'s host, behind, sends less.
   The gate's mean is level (219 → 220 KB/s).
 - **Removed: the instant order response** (2026-11-08, at the owner's request). It built every click's fields on the next tick
@@ -91,10 +92,12 @@ on the owner's pinned layout (client and host each on 3 cores), simulated here.
   send in the boundary threw (`ReplicationService.AfterBoundary`), the encodes and the status job could still run while the
   method freed the arrays they read; its `finally` now waits for them
   (`ReplicationTests.ASendThatThrowsLeavesNoReplicationJobRunning`). The normal path is unchanged: those jobs are already done.
-- **Open: a throw before the client sends still leaves jobs running** (2026-11-12). If `SendFog`, `SendTerrain` or
-  `SendBuildings` in `ReplicationService.AfterBoundary` throws, the route upkeep, the interest build and the status job are not
-  waited for, and the status list is freed while the status job may still read it. `main` has the same gap (its boundary has
-  no `try` at all).
+- **Fixed: a throw before the client sends left jobs running** (2026-11-13). If `SendFog`, `SendTerrain` or `SendBuildings`
+  in `ReplicationService.AfterBoundary` threw, the route upkeep, the interest build and the status job were not waited for,
+  and the status list was freed while the status job could still read it. The method's `try` now starts once the route
+  upkeep is scheduled, and its `finally` waits for every job before it frees the status list and the attack arrays.
+  `DeferredLane.Dispose` also waits for the lane's copy on its own, and the route search (`SectorGraph.ExpandUntilSettled`)
+  stops after two stops per sector with an error logged, rather than spinning if a stop ever builds nothing.
 - **Unpinned runs are noisy here:** the same build measured 127 to 173 fps mean in back-to-back runs. Pinned to three cores, as in
   the owner's harness, runs repeat within about 3 %. Compare builds interleaved.
 - **A full PlayMode run fails one or two timing-dependent tests**, a different set each run, on this branch, on the

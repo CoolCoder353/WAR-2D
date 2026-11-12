@@ -5,6 +5,7 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
+using WAR2D.Dev.Logging;
 
 namespace WAR2D.Pathing
 {
@@ -1050,9 +1051,17 @@ namespace WAR2D.Pathing
                 Matching = layer.Matching, Distance = layer.Distance, Settled = layer.Settled, Heap = layer.Heap,
                 Waiting = searchWaiting, State = searchState,
             };
-            // The job stops at a sector that lacks what it reads; with that built it goes on from where it stopped.
+            // The job stops at a sector that lacks what it reads; with that built it goes on from where it stopped. Each stop
+            // builds a sector or takes its cost table, so a search stops at most twice per sector: past that, a stop built
+            // nothing (a broken invariant), and the search ends as on its node budget instead of spinning the main thread.
+            int stopsLeft = 2 * sectorCount + 1;
             for (search.Run(); searchState[1] >= 0; search.Run())
             {
+                if (--stopsLeft < 0)
+                {
+                    WarLog.Error(LogCategory.Sim, $"SectorGraph: the route search kept stopping for sector {searchState[1]} (needs {(searchState[2] == 1 ? "cost table" : "portals")}); ended it early");
+                    break;
+                }
                 if (searchState[2] == 1) EnsureCosts(layer, searchState[1]);
                 else Materialize(layer, searchState[1]);
             }
