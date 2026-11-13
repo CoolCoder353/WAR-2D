@@ -9,6 +9,9 @@ namespace WAR2D.Client
     /// Each roaming unit is sent, with an ordinary Move order, to a random floor tile the player has not seen lately (unexplored
     /// first, then explored but out of sight), and to a new one when it arrives or stops making progress. It sends only what the
     /// player could send by hand, so the server needs nothing new. Any other order to a unit ends its roaming.
+    /// A unit that can attack roams by Attack-move (2026-11-14), so it stops to fight what comes in range instead of driving
+    /// through enemy fire; the rest (Diggers aside, Bombers and anything unarmed) keep the plain Move (<see cref="OrderOf"/>).
+    /// A roamer in a fight is left to it: standing to shoot is neither arriving nor being stuck.
     /// </summary>
     public sealed class Roam
     {
@@ -57,6 +60,20 @@ namespace WAR2D.Client
         /// classes at most make this 12 of the 32.
         /// </summary>
         public const int MaxGoals = 6;
+
+        /// <summary>
+        /// The order a roaming unit of this kind is sent with: Attack-move when it can attack (its <c>Damage</c> is above 0),
+        /// else Move. A Bomber's <c>Damage</c> is 0 (its blast is not a weapon it fires), so it keeps the Move and doesn't
+        /// spend itself on the first enemy it passes.
+        /// </summary>
+        public static OrderKind OrderOf(Config.UnitConfig unit) => unit != null && unit.Damage > 0 ? OrderKind.AttackMove : OrderKind.Move;
+
+        /// <summary>
+        /// Seconds after a unit's last shot during which it still counts as fighting: its time between shots
+        /// (<paramref name="aimSeconds"/> more for one that aims first) and a second's grace, so a slow gun between two shots
+        /// is not taken for a unit standing idle.
+        /// </summary>
+        public static float FightSeconds(Config.UnitConfig unit, float aimSeconds) => (unit != null ? unit.AttackInterval : 0f) + aimSeconds + 1f;
 
         /// <summary>A unit's drawn position, or false when the client no longer knows it.</summary>
         public delegate bool PositionOf(int id, out float2 position);
@@ -128,7 +145,7 @@ namespace WAR2D.Client
         /// Gives each roaming unit that arrived or stalled a new goal; forgets units the client no longer knows.
         /// <paramref name="send"/> sends a Move order for the listed ids to a tile.
         /// </summary>
-        public void Update(float now, int2 mapMin, int2 mapMax, System.Action<List<int>, int2> send)
+        public void Update(float now, int2 mapMin, int2 mapMax, System.Action<List<int>, int2> send, System.Predicate<int> fighting = null)
         {
             ClientWorld world = ClientWorld.Instance;
             if (world == null) return;
@@ -137,7 +154,7 @@ namespace WAR2D.Client
                 bool known = world.TryGet(id, out ClientUnitView view);
                 position = view.Position;
                 return known;
-            });
+            }, fighting);
         }
 
         /// <summary>
@@ -147,7 +164,11 @@ namespace WAR2D.Client
         /// unit, 8 a second, left most of 3,000 roamers waiting minutes for a goal, so they looked stuck). At most
         /// <see cref="MaxOrdersPerCheck"/> orders go out per check, starting at the group after the last one served.
         /// </summary>
-        public void Update(float now, int2 mapMin, int2 mapMax, System.Action<List<int>, int2> send, PositionOf positionOf)
+        /// <remarks>
+        /// <paramref name="fighting"/> says a unit is in a fight (it fired lately): it is not counted as stopped or stuck
+        /// while it stands to shoot, so it keeps its goal and walks on when the fight is over.
+        /// </remarks>
+        public void Update(float now, int2 mapMin, int2 mapMax, System.Action<List<int>, int2> send, PositionOf positionOf, System.Predicate<int> fighting = null)
         {
             if (roamers.Count == 0 || now < nextCheck) return;
             nextCheck = now + CheckSeconds;
@@ -164,11 +185,11 @@ namespace WAR2D.Client
                 if (r.HasGoal != (pass == 1)) continue;
                 if (!positionOf(id, out float2 position)) { gone.Add(id); continue; } // each unit is seen in one pass only
                 float distance = r.HasGoal ? math.distance(position, (float2)r.Goal + 0.5f) : 0f;
-                if (!r.Seen || math.distance(position, r.LastAt) > IdleTiles)
-                {
-                    if (r.Seen) r.Moved = true;
-                    r.MovedAt = now;
-                }
+                bool inFight = fighting != null && fighting(id);
+                bool moved = r.Seen && math.distance(position, r.LastAt) > IdleTiles;
+                if (moved) r.Moved = true;
+                if (!r.Seen || moved || inFight) r.MovedAt = now;
+                if (inFight) r.BestAt = now; // standing to shoot is not being stuck either
                 r.LastAt = position;
                 r.Seen = true;
                 // It set off and now stands: the server ended its order short of the goal (a group's stop radius, a wall, a moved goal).
