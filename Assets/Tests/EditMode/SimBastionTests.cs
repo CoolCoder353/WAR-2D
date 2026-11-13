@@ -17,6 +17,13 @@ public class SimBastionTests
     /// <summary>The turret's anchor in every turret test: its centre, where it fires from, is (20.5, 20.5).</summary>
     private static readonly int2 TurretAt = new int2(20, 20);
 
+    /// <summary>The jam scenarios place things by tile for a 12-tile jam seen through from 3 tiles: pinned, whatever the config says today.</summary>
+    private static void PinJam(Config.GameConfigData c)
+    {
+        c.Siege.JamRadius = 12f;
+        c.Siege.JamSight = 3f;
+    }
+
     private static SimHarness Sim(System.Action<Config.GameConfigData> configure = null) =>
         new SimHarness(SimHarness.OpenMap(64), c => { c.Simulation.TargetSearchSliceTicks = 1; configure?.Invoke(c); });
 
@@ -185,6 +192,10 @@ public class SimBastionTests
         Assert.AreEqual(TargetKinds.Unit, Weapon(sim, turret).TargetKind);
     }
 
+    /// <summary>Ticks between a turret's shots: its AttackInterval, rounded up to whole ticks (a cooldown ends on a tick).</summary>
+    private static int ShotTicks(SimHarness sim) =>
+        math.max(1, (int)math.ceil(sim.Config.GetBuilding(BuildingType.GunTurret).AttackInterval * sim.Config.Simulation.TickRate - 1e-3f));
+
     [Test]
     public void TheCooldownIsTheAttackIntervalAndTheTableScalesTheDamage()
     {
@@ -201,10 +212,10 @@ public class SimBastionTests
             last = now;
         }
         Assert.GreaterOrEqual(drops.Count, 4);
-        int interval = (int)math.round(sim.Config.GetBuilding(BuildingType.GunTurret).AttackInterval * sim.Config.Simulation.TickRate);
+        int interval = ShotTicks(sim);
         for (int i = 1; i < drops.Count; i++) Assert.AreEqual(interval, drops[i].tick - drops[i - 1].tick, "one shot per AttackInterval");
-        float raw = sim.Config.GetBuilding(BuildingType.GunTurret).Damage * 1.25f; // GunTurret vs HeavyUnit (balance 2026-11-09)
-        Assert.AreEqual(math.max(sim.Config.Combat.MinHit, raw - sim.Config.GetUnit(UnitType.Heavy).FlatArmour), drops[0].amount, 1e-3f, "x1.25 against Heavy armour, less its flat armour (v0.20)");
+        float raw = sim.Config.GetBuilding(BuildingType.GunTurret).Damage * sim.Config.Damage.Multiplier(BuildingType.GunTurret, TargetClass.HeavyUnit);
+        Assert.AreEqual(math.max(sim.Config.Combat.MinHit, raw - sim.Config.GetUnit(UnitType.Heavy).FlatArmour), drops[0].amount, 1e-3f, "the table's number against Heavy armour, less its flat armour (v0.20)");
     }
 
     [Test]
@@ -216,7 +227,7 @@ public class SimBastionTests
         float start = sim.Config.GetUnit(UnitType.Scout).Health;
         sim.Tick(); // the spawn applies
         for (int i = 0; i < 40 && Health(sim, scout[0]) == start; i++) sim.Tick();
-        Assert.AreEqual(start - sim.Config.GetBuilding(BuildingType.GunTurret).Damage * 1.5f, Health(sim, scout[0]), 1e-3f, "its damage x1.5 against Light armour");
+        Assert.AreEqual(start - sim.Config.GetBuilding(BuildingType.GunTurret).Damage * sim.Config.Damage.Multiplier(BuildingType.GunTurret, TargetClass.LightUnit), Health(sim, scout[0]), 1e-3f, "its damage times the table's number against Light armour");
     }
 
     [Test]
@@ -425,15 +436,14 @@ public class SimBastionTests
             Assert.AreEqual(heavy[0], Weapon(sim, turret).TargetId, $"tick {i}: the same target across search and non-search ticks");
         }
         Assert.IsTrue(sim.Em.Exists(sim.BuildingEntity(created)));
-        int interval = (int)math.round(sim.Config.GetBuilding(BuildingType.GunTurret).AttackInterval * sim.Config.Simulation.TickRate);
-        Assert.GreaterOrEqual(shots.Count - firedBefore, 60 / interval - 1, "and it kept firing");
+        Assert.GreaterOrEqual(shots.Count - firedBefore, 60 / ShotTicks(sim) - 1, "and it kept firing");
         CollectionAssert.AreEqual(Enumerable.Repeat(heavy[0], shots.Count), shots, "every shot at that one id");
     }
 
     [Test]
     public void ATurretInsideAnEnemyJamSeesAndShootsOnlyWithinJamSight()
     {
-        using var sim = new SimHarness(SimHarness.OpenMap(96), c => c.Simulation.TargetSearchSliceTicks = 1);
+        using var sim = new SimHarness(SimHarness.OpenMap(96), c => { c.Simulation.TargetSearchSliceTicks = 1; PinJam(c); });
         sim.PlaceBuilding(SimHarness.OwnerB, BuildingType.Jammer, new int2(40, 40), complete: true);
         int turret = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.GunTurret, new int2(36, 44), complete: true); // centre (36.5, 44.5)
         int[] far = sim.Spawn(SimHarness.OwnerB, new float2(42.5f, 44.5f), UnitType.Heavy); // 6 away: in range 7, beyond JamSight 3
@@ -474,7 +484,7 @@ public class SimBastionTests
     [Test]
     public void TheJamIsBuiltWhenAJammerCompletesAndClearedWhenItDies()
     {
-        using var sim = new SimHarness(SimHarness.OpenMap(96));
+        using var sim = new SimHarness(SimHarness.OpenMap(96), PinJam);
         sim.Spawn(SimHarness.OwnerA, new float2(10, 10));
         int jammer = sim.PlaceBuilding(SimHarness.OwnerB, BuildingType.Jammer, JammerAt);
         Pass(sim);
@@ -494,7 +504,7 @@ public class SimBastionTests
     [Test]
     public void AnUnpaidJammerStopsJammingUntilPaid()
     {
-        using var sim = new SimHarness(SimHarness.OpenMap(96));
+        using var sim = new SimHarness(SimHarness.OpenMap(96), PinJam);
         sim.Spawn(SimHarness.OwnerA, new float2(10, 10));
         int jammer = sim.PlaceBuilding(SimHarness.OwnerB, BuildingType.Jammer, JammerAt, complete: true);
         Pass(sim);
@@ -510,7 +520,7 @@ public class SimBastionTests
     [Test]
     public void TheJamSparesWhomItsOwnerSharesVisionWithAndFollowsChanges()
     {
-        using var sim = new SimHarness(SimHarness.OpenMap(96));
+        using var sim = new SimHarness(SimHarness.OpenMap(96), PinJam);
         sim.Spawn(SimHarness.OwnerA, new float2(10, 10));
         sim.Spawn(OwnerC, new float2(10, 80));
         sim.PlaceBuilding(SimHarness.OwnerB, BuildingType.Jammer, JammerAt, complete: true);
@@ -533,7 +543,7 @@ public class SimBastionTests
     public void PlayersWhoShareBothWaysAreJammedAlikeAndSeeTheSame()
     {
         // A and B look through the same eyes: one grid is stamped and the other copies it (SharedVision), the jam included.
-        using var sim = new SimHarness(SimHarness.OpenMap(96));
+        using var sim = new SimHarness(SimHarness.OpenMap(96), PinJam);
         sim.Spawn(SimHarness.OwnerA, new float2(32, 40)); // inside C's jam, 8 tiles from its centre
         sim.Spawn(SimHarness.OwnerB, new float2(10, 80));
         sim.Spawn(OwnerC, new float2(80, 80));
@@ -553,7 +563,7 @@ public class SimBastionTests
     [Test]
     public void ADefeatedSpectatorsGridIsNeverJammed()
     {
-        using var sim = new SimHarness(SimHarness.OpenMap(96));
+        using var sim = new SimHarness(SimHarness.OpenMap(96), PinJam);
         sim.Spawn(SimHarness.OwnerA, new float2(10, 10));
         sim.PlaceBuilding(SimHarness.OwnerB, BuildingType.Jammer, JammerAt, complete: true);
         Pass(sim);
@@ -567,7 +577,7 @@ public class SimBastionTests
     public void ASpectatorsGridShowsDeathsAndBlastsInTheFog()
     {
         // WorldStateManager.ViewerGrid gives a defeated spectator SeesAll for explosions and blasts, as replication does for units.
-        using var sim = new SimHarness(SimHarness.OpenMap(96));
+        using var sim = new SimHarness(SimHarness.OpenMap(96), PinJam);
         sim.Spawn(SimHarness.OwnerA, new float2(10, 10));
         Pass(sim);
         sim.Em.CompleteAllTrackedJobs();
@@ -584,7 +594,7 @@ public class SimBastionTests
     [Test]
     public void InsideTheJamAUnitSeesOnlyWithinJamSight()
     {
-        using var sim = new SimHarness(SimHarness.OpenMap(96));
+        using var sim = new SimHarness(SimHarness.OpenMap(96), PinJam);
         int[] tank = sim.Spawn(SimHarness.OwnerA, new float2(31f, 41f)); // 9 from the Jammer, sight 8
         Pass(sim);
         float2 far = new float2(37f, 41f), near = new float2(33f, 41f); // 6 and 2 tiles from the Tank
@@ -608,7 +618,7 @@ public class SimBastionTests
     public void JamSightIsMeasuredBetweenTheCellsClosestTilesNotTheirCentres()
     {
         // Fog cells are 2 tiles. The Tank stands in cell x = 15 (tiles 30..31), the targets in cells two away.
-        using var sim = new SimHarness(SimHarness.OpenMap(96));
+        using var sim = new SimHarness(SimHarness.OpenMap(96), PinJam);
         sim.Spawn(SimHarness.OwnerA, new float2(31.9f, 41f));
         sim.PlaceBuilding(SimHarness.OwnerB, BuildingType.Jammer, JammerAt, complete: true);
         Pass(sim);
@@ -625,7 +635,7 @@ public class SimBastionTests
     [Test]
     public void ARadarIsBlindInAJamAndNeverPingsForAJammedContact()
     {
-        using var sim = new SimHarness(SimHarness.OpenMap(96));
+        using var sim = new SimHarness(SimHarness.OpenMap(96), PinJam);
         int radar = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Radar, new int2(20, 40), complete: true);
         sim.Spawn(SimHarness.OwnerB, new float2(36f, 40f)); // 15 from the Radar (sight 20), 4 from the Jammer
         Pass(sim);

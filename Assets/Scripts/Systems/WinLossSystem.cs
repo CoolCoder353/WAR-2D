@@ -31,7 +31,12 @@ public partial struct WinLossSystem : ISystem
             statuses.Add(new PlayerStatus(id, hqOwners.Contains(id), entry.Value.state == PlayerState.Eliminated, GameCore.Instance.TeamOf(id)));
         }
         foreach (KeyValuePair<int, AiSeat> seat in GameCore.Instance.AiPlayers)
-            statuses.Add(new PlayerStatus(seat.Key, hqOwners.Contains(seat.Key), seat.Value.Player.state == PlayerState.Eliminated, GameCore.Instance.TeamOf(seat.Key)));
+        {
+            // A dev seat added mid-match holds its place until its first HQ exists (it is created at a tick boundary).
+            bool hasHq = hqOwners.Contains(seat.Key);
+            if (hasHq) seat.Value.AwaitsFirstHq = false;
+            statuses.Add(new PlayerStatus(seat.Key, hasHq || seat.Value.AwaitsFirstHq, seat.Value.Player.state == PlayerState.Eliminated, GameCore.Instance.TeamOf(seat.Key)));
+        }
         hqOwners.Dispose();
 
         GameCore core = GameCore.Instance;

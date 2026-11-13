@@ -52,7 +52,8 @@ public class SimLifecycleTests
         sim.Context.BudgetOf = _ => 0f;
         int[] a = sim.Spawn(SimHarness.OwnerA, new float2(10, 10));
         for (int i = 0; i < 39; i++) sim.Tick(); // unpaid from tick 20, decaying for 20 ticks = 1 s
-        Assert.AreEqual(95f, sim.UnitById(a[0]).Health, 0.5f);
+        float full = sim.Config.GetUnit(UnitType.Tank).Health;
+        Assert.AreEqual(full * 0.95f, sim.UnitById(a[0]).Health, full * 0.005f);
     }
 
     [Test]

@@ -394,9 +394,15 @@ public class SimMovementTests
             covered = sim.Context.Orders.Cache.CoversSector(handle, sector);
         }
         Assert.IsTrue(covered, "the route should grow to cover the unit's sector");
+        // It then makes real headway towards the goal (a tile, not a hair: its first steps may be around a neighbour's flow).
         float before = math.distance(sim.UnitById(a[0]).Position, new float2(20.5f, 20.5f));
-        for (int i = 0; i < 20; i++) sim.Tick();
-        Assert.Less(math.distance(sim.UnitById(a[0]).Position, new float2(20.5f, 20.5f)), before);
+        float now = before;
+        for (int i = 0; i < 100 && now > before - 1f; i++)
+        {
+            sim.Tick();
+            now = math.distance(sim.UnitById(a[0]).Position, new float2(20.5f, 20.5f));
+        }
+        Assert.Less(now, before - 1f, "it walks towards its goal again");
     }
 
     [Test]

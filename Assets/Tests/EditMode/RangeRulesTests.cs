@@ -13,19 +13,32 @@ public class RangeRulesTests
     public void AUnitsRingsComeFromItsType()
     {
         RingSet arty = RangeRules.OfUnit(Config_.GetUnit(UnitType.Artillery), new float2(1, 1), 7);
-        Assert.AreEqual((36f, 6f, 18f), (arty.Range, arty.Min, arty.Sight)); // v0.20: it fires past its sight
+        Config.UnitConfig artillery = Config_.GetUnit(UnitType.Artillery);
+        Assert.AreEqual((artillery.Range, artillery.MinRange, artillery.Sight), (arty.Range, arty.Min, arty.Sight));
+        Assert.Greater(arty.Range, arty.Sight, "v0.20: it fires past its sight");
         RingSet builder = RangeRules.OfUnit(Config_.GetUnit(UnitType.Builder), float2.zero, 7);
         Assert.AreEqual(0f, builder.Range, "a Builder can't attack");
         RingSet bomber = RangeRules.OfUnit(Config_.GetUnit(UnitType.Bomber), float2.zero, 7);
         Assert.AreEqual(Config_.GetUnit(UnitType.Bomber).BlastRadius, bomber.Range, "a bomber's reach is its blast");
     }
 
-    [TestCase(BuildingType.GunTurret, 9f)]
-    [TestCase(BuildingType.Radar, 20f)]
-    [TestCase(BuildingType.Jammer, 12f)]
-    [TestCase(BuildingType.Barracks, 0f)]
-    public void PlacementShowsTheBuildingsReach(BuildingType type, float reach) =>
+    /// <summary>Each defence's ring is its own reach in the config: the turret's range, the Radar's sight, the Jammer's jam radius.</summary>
+    [TestCase(BuildingType.GunTurret)]
+    [TestCase(BuildingType.Radar)]
+    [TestCase(BuildingType.Jammer)]
+    [TestCase(BuildingType.Barracks)]
+    public void PlacementShowsTheBuildingsReach(BuildingType type)
+    {
+        float reach = type switch
+        {
+            BuildingType.GunTurret => Config_.GetBuilding(type).Range,
+            BuildingType.Radar => Config_.GetBuilding(type).Sight,
+            BuildingType.Jammer => Config_.Siege.JamRadius,
+            _ => 0f,
+        };
+        if (type != BuildingType.Barracks) Assert.Greater(reach, 0f, "a defence has a reach");
         Assert.AreEqual(reach, WAR2D.Client.DefenceView.RingRadius(type));
+    }
 
     private static RingSet Tank(float x, float y = 0f, int owner = 1) => new RingSet { At = new float2(x, y), Range = 5f, Sight = 8f, Group = 3, Owner = owner };
 

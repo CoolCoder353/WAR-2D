@@ -338,7 +338,8 @@ public class SimShellTests
         for (int i = 0; i < 160 && blasts.Count == 0; i++) sim.Tick();
         sim.Tick();
         UnitConfig h = sim.Config.GetUnit(UnitType.Heavy);
-        float most = h.Health - sim.Config.GetUnit(UnitType.Artillery).Damage * sim.Config.Artillery.FriendlyDamage * (1f - h.BlastResist);
+        float most = h.Health - sim.Config.GetUnit(UnitType.Artillery).Damage * sim.Config.Damage.Multiplier(UnitType.Artillery, TargetClass.HeavyUnit)
+            * sim.Config.Artillery.FriendlyDamage * (1f - h.BlastResist);
         Assert.That(Onslaught.Health(sim, friend[0]), Is.GreaterThanOrEqualTo(most - 1e-3f), "at most the friendly share");
         Assert.That(Onslaught.Health(sim, friend[0]), Is.LessThan(h.Health), "but some");
     }

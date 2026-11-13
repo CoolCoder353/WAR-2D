@@ -232,8 +232,10 @@ public class AiDiplomacyTests
 
         AiSandbox poor = World(AiDifficulty.Hard, new DiplomacyManager());
         poor.AddPlayer(Mate, 0);
-        poor.Resources = 1000f;
-        poor.Run(150.0);
+        // Under the surplus for the whole run: no passive income to carry it over, whatever the config's rates are.
+        poor.Game.Resources.PassiveGenerationRate = 0f;
+        poor.Resources = poor.Game.Ai.Diplomacy.GiftSurplus * 0.5f;
+        poor.Run(poor.Game.Ai.Diplomacy.GiftSurplusSeconds * 2.5);
         Assert.That(poor.Gifts, Is.Empty, "no surplus, no gift");
     }
 

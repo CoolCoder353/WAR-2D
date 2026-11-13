@@ -48,6 +48,11 @@ public class ReplicationTests
             LastHitKind = new NativeArray<byte>(IdCapacity, Allocator.Persistent);
             Type = new NativeArray<byte>(capacity, Allocator.Persistent);
             Visible = new NativeArray<byte>(clients * FogSize * FogSize, Allocator.Persistent);
+            // Server and client both move type 1 at 5 tiles a second, pinned: the client reads its speeds from the config, and
+            // the bit-for-bit tests below hold for 5 but differ in the last bit for a speed like 5.5 (see bug-review.md).
+            global::Config.ConfigLoader.ResetForTests();
+            global::Config.ConfigLoader.OverrideForTests(c => c.GetUnit(UnitType.Tank).MoveSpeed = 5f);
+            UnitSpeeds.Reset();
             Speeds = new NativeArray<float>(new[] { 0f, 5f }, Allocator.Persistent);
             Interests = new InterestSets(clients, IdCapacity, Allocator.Persistent);
             Encoder = new ReplicationEncoder(Config, Interests, Routes, IdCapacity, Allocator.Persistent);
@@ -109,6 +114,8 @@ public class ReplicationTests
         public void Dispose()
         {
             Positions.Dispose(); Health.Dispose(); MaxHealth.Dispose(); Owner.Dispose(); IdOf.Dispose(); IndexOfId.Dispose(); LastHitKind.Dispose();
+            global::Config.ConfigLoader.ResetForTests();
+            UnitSpeeds.Reset();
             Type.Dispose(); Visible.Dispose(); Speeds.Dispose(); Attacks.Dispose(); Targets.Dispose(); Routes.Dispose(); Interests.Dispose(); Encoder.Dispose();
             foreach (ClientUnitStore s in ClientStores) s.Dispose();
         }

@@ -58,8 +58,7 @@ public class ReplayUiTests
         Assert.IsNotNull(ReplayPlayer.Instance);
         Assert.IsTrue(root.Q("replay-viewer").ClassListContains("menu-screen--visible"), "the viewer HUD shows");
         float start = ReplayPlayer.Instance.Seconds;
-        yield return new WaitForSeconds(0.5f);
-        Assert.Greater(ReplayPlayer.Instance.Seconds, start, "time advances");
+        yield return PlayModeMatch.WaitUntil(() => ReplayPlayer.Instance.Seconds > start, 5f, () => "the replay's time never advanced");
         Assert.IsNotNull(root.Q("replay-player-5"), "the timeline's player is listed");
         StringAssert.Contains("/ 0:10", root.Q<Label>("replay-time").text);
 

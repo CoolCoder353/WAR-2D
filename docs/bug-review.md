@@ -39,6 +39,14 @@ Findings from code reviews and scans, from an outside review (2026-10-14, triage
 
 ---
 
+## Test pass (2026-11-13): tests against a changed config
+
+The EditMode suite was run against copies of `GameConfig.xml` with the unit, building and damage-table numbers scaled, and again with the rule sections (Siege, Bomber, Combat, Burn, Artillery, Sniper, AutoWork, Orders, Formation, Gifting, Defend) scaled. Tests that failed only because they repeated today's numbers now read them from the config or pin what their scenario needs. One finding in the game's code came out of it.
+
+### Open
+
+- **Client prediction is bit-for-bit only for some unit speeds.** With the Tank at 5.5 tiles a second instead of 5, `ReplicationTests.ClientPredictionMatchesTheServerBitForBit` and `RouteWaypointsKeepTheirHalfTiles` differ in the last bit (11.93438 against 11.93437 at tick 15) between `ReplicationEncoder.PredictedPosition` and `ClientUnitStore.PredictOne`. Every shipped speed is a multiple of 0.5, which is exact in binary, so the game is unaffected today; a speed such as 5.5 or 4.4 would make the two differ by a rounding step until the next correction. Not traced to the line. The two tests pin the speed to 5 and say so.
+
 ## Ninth scan (2026-11-07): v0.19 and v0.20
 
 A review of everything since v0.18 (`88a467e0..release/v0.20`, 184 script files), by reading the code; the eighth scan's open items were checked again on the way and the ones still there are fixed above. New findings, all fixed on `release/v0.20` and logged in [known-issues.md](known-issues.md):

@@ -161,12 +161,11 @@ public class MatchPausePlayModeTests
         hud.MatchMenu.Close();
         yield return PlayModeMatch.WaitUntil(() => !core.IsPaused, 5f);
         Assert.That(root.Q<Label>("match-menu-title").text, Is.EqualTo(InMatchMenuController.Title));
-        yield return new WaitForSecondsRealtime(2f);
-        Snapshot after = Snapshot.Take(ai, hq);
-        Assert.That(after.Tick, Is.GreaterThan(during.Tick), "the tick runs again");
-        Assert.That(after.Thinks, Is.GreaterThan(during.Thinks), "the AI thinks again");
-        Assert.That(after.Clock, Is.GreaterThan(during.Clock), "the match clock runs");
-        Assert.That(after.Resources != during.Resources || after.Queued != during.Queued, Is.True, "the economy and production run");
+        // Each starts again in its own time (a tick, an AI think, a second of income): wait for each, not for a fixed sleep.
+        Snapshot after = during;
+        bool Runs() { after = Snapshot.Take(ai, hq); return after.Tick > during.Tick && after.Thinks > during.Thinks && after.Clock > during.Clock && (after.Resources != during.Resources || after.Queued != during.Queued); }
+        yield return PlayModeMatch.WaitUntil(Runs, 20f, () =>
+            $"after the pause: tick {during.Tick} -> {after.Tick}, AI thinks {during.Thinks} -> {after.Thinks}, clock {during.Clock:0.00} -> {after.Clock:0.00}, resources {during.Resources} -> {after.Resources}, queued {during.Queued} -> {after.Queued}");
     }
 
     [UnityTest, Timeout(120000)]
@@ -237,8 +236,7 @@ public class MatchPausePlayModeTests
         Assert.That(core.IsMenuPaused, Is.False, "the menu's Paused state is only for the menu pause");
         d.Handle("{\"id\":2,\"token\":\"t\",\"cmd\":\"resume\",\"args\":{}}", r => reply = r);
         Assert.That(core.MatchPause.Paused, Is.False);
-        yield return new WaitForSecondsRealtime(0.5f);
-        Assert.That(WAR2D.Sim.SimContext.Current.Clock.Tick, Is.GreaterThan(tick));
+        yield return PlayModeMatch.WaitUntil(() => WAR2D.Sim.SimContext.Current.Clock.Tick > tick, 5f, () => "the tick never ran again after resume");
     }
 
     [UnityTest, Timeout(150000)]

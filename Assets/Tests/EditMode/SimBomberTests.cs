@@ -22,8 +22,9 @@ public class SimBomberTests
         for (int i = 0; i < 40 && Alive(sim, bomber[0]); i++) sim.Tick();
         sim.Tick();
         Assert.IsFalse(Alive(sim, bomber[0]));
-        float blast = sim.Config.GetUnit(UnitType.Bomber).BlastDamage;
-        Assert.That(Alive(sim, friend[0]) ? Health(sim, friend[0]) : 0f, Is.EqualTo(100f - blast * sim.Config.Bomber.FriendlyDamage).Within(1e-3f), "its own side's Tank takes its share");
+        float blast = sim.Config.GetUnit(UnitType.Bomber).BlastDamage * sim.Config.Damage.Multiplier(UnitType.Bomber, TargetClass.LightUnit);
+        float tank = sim.Config.GetUnit(UnitType.Tank).Health;
+        Assert.That(Alive(sim, friend[0]) ? Health(sim, friend[0]) : 0f, Is.EqualTo(math.max(0f, tank - blast * sim.Config.Bomber.FriendlyDamage)).Within(1e-3f), "its own side's Tank takes its share");
         Assert.IsFalse(Alive(sim, nearby[0]), "the enemy beside it is caught");
     }
 

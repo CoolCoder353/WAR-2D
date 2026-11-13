@@ -132,8 +132,9 @@ public class SimConstructionTests
         sim.Tick();
         sim.Order(SimHarness.OwnerA, OrderKind.Repair, new int2(20, 20), builder[0]);
         sim.TickSeconds(5f);
-        Assert.AreEqual(50f, Health(sim, b), 0.01f);
-        Assert.AreEqual(40f * sim.Config.Siege.RepairCostPerHealth, spent, 0.01f);
+        float full = sim.Config.GetBuilding(BuildingType.Miner).Health; // DamagedMiner leaves it at 10
+        Assert.AreEqual(full, Health(sim, b), 0.01f);
+        Assert.AreEqual((full - 10f) * sim.Config.Siege.RepairCostPerHealth, spent, 0.01f);
         Assert.AreEqual(WorkKinds.None, sim.UnitById(builder[0]).WorkKind);
     }
 

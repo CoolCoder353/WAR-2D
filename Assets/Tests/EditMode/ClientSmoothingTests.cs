@@ -21,6 +21,10 @@ public class ClientSmoothingTests
     [SetUp]
     public void SetUp()
     {
+        // The scenarios below are worked out for a unit moving 5 tiles a second: pin it, whatever the Tank's speed is today.
+        Config.ConfigLoader.ResetForTests();
+        Config.ConfigLoader.OverrideForTests(c => c.GetUnit(UnitType.Tank).MoveSpeed = Speed);
+        UnitSpeeds.Reset();
         store = new ClientUnitStore(32, Dt);
         Send(1, (ref NativeSink sink) =>
         {
@@ -31,13 +35,18 @@ public class ClientSmoothingTests
             }, Allocator.Temp);
             Messages.EncodeEnter(ref sink, tiles, units);
         });
-        Assert.AreEqual(Speed, store.StateOf(Index).FullSpeed, "the Tank's speed in GameConfig.xml");
+        Assert.AreEqual(Speed, store.StateOf(Index).FullSpeed, "the pinned speed reached the store");
         store.Now = Dt;
         store.PredictAll(Dt);
     }
 
     [TearDown]
-    public void TearDown() => store.Dispose();
+    public void TearDown()
+    {
+        store.Dispose();
+        Config.ConfigLoader.ResetForTests();
+        UnitSpeeds.Reset();
+    }
 
     private delegate void Encode(ref NativeSink sink);
 

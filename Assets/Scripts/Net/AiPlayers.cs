@@ -89,6 +89,13 @@ public sealed class AiSeat
     /// <summary>Its palette colour (0–7).</summary>
     public int Colour;
 
+    /// <summary>
+    /// True for a dev seat added mid-match (<see cref="GameCore.DevAddScriptedAi"/>) until its first HQ exists: whoever
+    /// added it places the HQ next, and the HQ is only created at the next tick boundary, so the win check must not
+    /// count the seat as having lost its HQ in between (it eliminated the seat when a check fell in that gap).
+    /// </summary>
+    public bool AwaitsFirstHq;
+
     /// <summary>Its lobby team choice (<see cref="TeamRules.NoTeam"/> for its own).</summary>
     public int LobbyTeam = TeamRules.NoTeam;
 
@@ -277,6 +284,7 @@ public partial class GameCore
         {
             Difficulty = AiDifficulty.Scripted, Style = AiStyle.Random, ResolvedStyle = AiStyle.Random,
             Callsign = DrawCallsign() ?? $"Bot {ownerId - AiOwnerIds.First}",
+            AwaitsFirstHq = true,
         };
         int colour = LobbyRules.FirstFreeColour(TakenColours(null));
         seat.Colour = colour < 0 ? PlayerOrder.Count % LobbyRules.Colours : colour;

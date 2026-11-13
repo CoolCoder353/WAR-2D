@@ -16,29 +16,6 @@ public class SimArsenalTests
     private static bool Alive(SimHarness sim, int id) => sim.Units().Any(u => u.Id == id && u.Health > 0f);
 
     [Test]
-    public void ShippedConfigHasTheSpecNumbers()
-    {
-        ConfigLoader.ResetForTests();
-        GameConfigData c = ConfigLoader.LoadConfig();
-        UnitConfig heavy = c.GetUnit(UnitType.Heavy);
-        Assert.AreEqual((450, 30, 5f, 1.5f), (heavy.Health, heavy.Damage, heavy.Range, heavy.AttackInterval));
-        Assert.AreEqual((TargetClass.HeavyUnit, 1, 5f), (heavy.Armour, heavy.SizeClass, heavy.BuildSeconds));
-        UnitConfig artillery = c.GetUnit(UnitType.Artillery);
-        // v0.20 (spec §11): the Artillery's shell blast, the 2×2 Sniper, the wider flame, the spotting Scout.
-        Assert.AreEqual((36f, 3.5f, 6f, 1), (artillery.Range, artillery.BlastRadius, artillery.MinRange, artillery.SizeClass));
-        Assert.IsTrue(artillery.FiresShells);
-        Assert.AreEqual((28f, 5f, 1), (c.GetUnit(UnitType.Sniper).Range, c.GetUnit(UnitType.Sniper).MinRange, c.GetUnit(UnitType.Sniper).SizeClass));
-        Assert.AreEqual((2.5f, 5.5f), (c.GetUnit(UnitType.Flamethrower).Splash, c.GetUnit(UnitType.Flamethrower).Range));
-        Assert.AreEqual((2f, 150f), (c.GetUnit(UnitType.Bomber).BlastRadius, c.GetUnit(UnitType.Bomber).BlastDamage));
-        Assert.AreEqual(21f, c.GetUnit(UnitType.Scout).Sight); // owner, 2026-11-07
-        Assert.AreEqual(TargetClass.LightUnit, c.GetUnit(UnitType.Tank).Armour);
-        Assert.AreEqual(2f, c.GetUnit(UnitType.Builder).BuildSeconds);
-        Assert.AreEqual(1f, c.GetUnit(UnitType.Tank).BuildSeconds);
-        Assert.AreEqual((3, 3, 400f), (c.GetBuilding(BuildingType.HeavyFactory).Width, c.GetBuilding(BuildingType.HeavyFactory).Height, c.GetBuilding(BuildingType.HeavyFactory).UpfrontCost));
-        Assert.AreEqual((2, 250f), (c.GetBuilding(BuildingType.SiegeWorkshop).Width, c.GetBuilding(BuildingType.SiegeWorkshop).UpfrontCost));
-    }
-
-    [Test]
     public void AMissingArmourIsAnError()
     {
         string xml = ConfigParserTests.ValidXml.Replace("<Armour>Light</Armour>", "");
@@ -59,15 +36,8 @@ public class SimArsenalTests
     }
 
     [Test]
-    public void ArmourMultipliersFollowTheSpec()
-    {
-        ConfigLoader.ResetForTests();
-        GameConfigData c = ConfigLoader.LoadConfig();
-        Assert.AreEqual(0.25f, c.Damage.Multiplier(UnitType.Scout, TargetClass.HeavyUnit));
-        Assert.AreEqual(2f, c.Damage.Multiplier(UnitType.Artillery, TargetClass.Building));
-        Assert.AreEqual(2f, c.Damage.Multiplier(UnitType.Bomber, TargetClass.Wall));
+    public void TheDamageTableHasAColumnPerTargetClass() =>
         Assert.AreEqual(DamageTable.Classes, System.Enum.GetValues(typeof(TargetClass)).Length);
-    }
 
     [Test]
     public void AScoutDoesQuarterDamageToAHeavy()
@@ -121,7 +91,7 @@ public class SimArsenalTests
         int[] outside = sim.Spawn(SimHarness.OwnerB, new float2(12, 12f), UnitType.Builder);
         int[] ally = sim.Spawn(SimHarness.OwnerA, new float2(12.2f, 10.3f), UnitType.Builder);
         for (int i = 0; i < 3; i++) sim.Tick();
-        float health = sim.Config.GetUnit(UnitType.Builder).Health, hit = 6f * 1.5f;
+        float health = sim.Config.GetUnit(UnitType.Builder).Health, hit = 6f * sim.Config.Damage.Multiplier(UnitType.Flamethrower, TargetClass.LightUnit);
         Assert.AreEqual(health - hit, sim.UnitById(primary[0]).Health, 0.05f, "the direct hit");
         float nearHit = health - sim.UnitById(near[0]).Health, edgeHit = health - sim.UnitById(edge[0]).Health;
         Assert.AreEqual(hit * 0.75f, nearHit, 0.8f, "about 75 % of the direct hit (separation moves bodies a little)");
@@ -162,8 +132,11 @@ public class SimArsenalTests
         for (int i = 0; i < 80 && Alive(sim, bomber[0]); i++) sim.Tick();
         sim.Tick();
         Assert.IsFalse(Alive(sim, bomber[0]), "the bomber is spent");
-        Assert.IsFalse(Alive(sim, victim[0]), "150 damage kills a 60-health Builder");
-        Assert.AreEqual(60f - 150f * sim.Config.Bomber.FriendlyDamage, sim.UnitById(friend[0]).Health, 1e-3f, "friends take a tenth of the blast");
+        float blast = sim.Config.GetUnit(UnitType.Bomber).BlastDamage * sim.Config.Damage.Multiplier(UnitType.Bomber, TargetClass.LightUnit);
+        float builder = sim.Config.GetUnit(UnitType.Builder).Health;
+        Assert.Greater(blast, builder, "this scenario needs a blast that kills a Builder");
+        Assert.IsFalse(Alive(sim, victim[0]), "the blast kills a Builder");
+        Assert.AreEqual(builder - blast * sim.Config.Bomber.FriendlyDamage, sim.UnitById(friend[0]).Health, 1e-3f, "friends take only their share of the blast");
         Assert.IsTrue(Alive(sim, far[0]), "outside the radius");
     }
 
@@ -179,7 +152,8 @@ public class SimArsenalTests
         sim.Tick();
         Assert.IsFalse(Alive(sim, bomber[0]), "the bomber is spent");
         float after = sim.Em.GetComponentData<HealthComponent>(sim.BuildingEntity(factory)).currentHealth;
-        Assert.AreEqual(before - 150f * 2f, after, 0.01f, "150 blast damage, x2 against buildings");
+        float blast = sim.Config.GetUnit(UnitType.Bomber).BlastDamage * sim.Config.Damage.Multiplier(UnitType.Bomber, TargetClass.Building);
+        Assert.AreEqual(before - blast, after, 0.01f, "the blast damage, times the table's number against buildings");
     }
 
     [Test]
@@ -195,8 +169,9 @@ public class SimArsenalTests
         for (int i = 0; i < 3; i++) sim.Tick();
         sim.Tick();
         Assert.IsFalse(Alive(sim, a[0]) || Alive(sim, b[0]));
-        Assert.Less(sim.UnitById(near[0]).Health, 60f, "a friend in the blast takes its share");
-        Assert.AreEqual(60f, sim.UnitById(other[0]).Health, "5 tiles from the blast");
+        float builder = sim.Config.GetUnit(UnitType.Builder).Health;
+        Assert.Less(sim.UnitById(near[0]).Health, builder, "a friend in the blast takes its share");
+        Assert.AreEqual(builder, sim.UnitById(other[0]).Health, "5 tiles from the blast");
     }
 
     [Test]

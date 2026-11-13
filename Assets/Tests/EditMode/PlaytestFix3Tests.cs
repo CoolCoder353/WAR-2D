@@ -155,7 +155,8 @@ public class PlaytestFix3Tests
         sim.Tick();
         sim.Order(SimHarness.OwnerA, OrderKind.Detonate, new int2(20, 20), bomber);
         sim.TickSeconds(0.25f);
-        float blast = sim.Config.GetUnit(UnitType.Bomber).BlastDamage * (1f - sim.Config.GetUnit(UnitType.Heavy).BlastResist); // v0.20
+        float blast = sim.Config.GetUnit(UnitType.Bomber).BlastDamage * sim.Config.Damage.Multiplier(UnitType.Bomber, TargetClass.HeavyUnit)
+            * (1f - sim.Config.GetUnit(UnitType.Heavy).BlastResist); // v0.20
         Assert.AreEqual(sim.Config.GetUnit(UnitType.Heavy).Health - blast * 0.1f, sim.UnitById(friend[0]).Health, 1e-2f);
         Assert.AreEqual(sim.Config.GetUnit(UnitType.Heavy).Health - blast, sim.UnitById(enemy[0]).Health, 1e-2f);
     }
@@ -216,7 +217,8 @@ public class PlaytestFix3Tests
         };
         for (int t = 0; t < 100 && !ordered; t++) sim.Tick();
         Assert.IsTrue(ordered, "the Heavy answered the alarm");
-        Assert.AreEqual(28.5f, goal.x, 1f, "the whole step from the victim, past the shooter at 25.5");
+        Assert.Greater(sim.Config.Defend.StepTiles, 5f, "this scenario needs a step longer than the 5 tiles to the shooter");
+        Assert.AreEqual(20.5f + sim.Config.Defend.StepTiles, goal.x, 1f, "the whole step from the victim, past the shooter at 25.5");
     }
 
     [Test]

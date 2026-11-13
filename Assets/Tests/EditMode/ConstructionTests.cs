@@ -62,10 +62,10 @@ public class ConstructionTests
         using var sim = new SimHarness(SimHarness.OpenMap(32));
         int completed = 0;
         sim.Context.BuildingCompleted += (_, _) => completed++;
-        int id = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Miner, new int2(10, 10)); // 50 health
+        int id = sim.PlaceBuilding(SimHarness.OwnerA, BuildingType.Miner, new int2(10, 10));
         sim.Tick();
         sim.Tick();
-        sim.AddWork(id, 60f);
+        sim.AddWork(id, sim.Config.GetBuilding(BuildingType.Miner).Health + 10f); // more than it needs
         sim.Tick();
         Entity e = sim.BuildingEntity(id);
         Assert.IsFalse(sim.Em.HasComponent<Construction>(e));
