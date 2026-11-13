@@ -24,6 +24,17 @@ namespace WAR2D.Client
         /// <summary>Tiles closer that count as progress.</summary>
         public const float ProgressTiles = 1f;
 
+        /// <summary>
+        /// Seconds a unit that was on its way may stand still before it is given another goal. The server ends a Move well
+        /// short of <see cref="ArriveTiles"/>: a group stops 0.5 + 0.4 × √followers tiles from the goal (3.3 tiles for 48
+        /// units, over 7 for 300 sharing a goal), and a unit walled off from the goal or moved off rock stops where it can.
+        /// Those units used to count as still travelling and stood for the whole <see cref="StuckSeconds"/> at every goal.
+        /// </summary>
+        public const float IdleSeconds = 1.5f;
+
+        /// <summary>Tiles a unit moves between two checks, at most, to count as standing still (the slowest unit covers a tile).</summary>
+        public const float IdleTiles = 0.25f;
+
         /// <summary>Nearest and farthest a new goal is from the unit, in tiles.</summary>
         public const float MinReach = 12f, MaxReach = 48f;
 
@@ -57,6 +68,13 @@ namespace WAR2D.Client
             /// <summary>This check: the unit is still on its way to <see cref="Goal"/>, so the server holds that order for it.</summary>
             public bool Holding;
             public float Best, BestAt;
+            /// <summary>Where it was at the last check, and whether it was seen then.</summary>
+            public float2 LastAt;
+            public bool Seen;
+            /// <summary>It has moved since it got <see cref="Goal"/> (a unit still waiting for its route has not, and is left to <see cref="StuckSeconds"/>).</summary>
+            public bool Moved;
+            /// <summary>When it last moved.</summary>
+            public float MovedAt;
         }
 
         private readonly Dictionary<int, Roamer> roamers = new Dictionary<int, Roamer>();
@@ -64,6 +82,14 @@ namespace WAR2D.Client
         /// <summary>This check: each goal still being followed, and by how many units (see <see cref="MaxGoals"/>).</summary>
         private readonly Dictionary<int2, int> held = new Dictionary<int2, int>();
         private readonly List<Roamer> letGo = new List<Roamer>();
+
+        /// <summary>
+        /// Goals still followed that are finished with: a roamer got there (or was stopped on its way by the server), or a
+        /// group gave it up as stuck. No group joins one, so the army never goes back and forth between the goals it holds
+        /// (player report 2026-11-13: 500 roamers circled between two points, each goal's arrivals joining the other).
+        /// </summary>
+        private readonly HashSet<int2> reached = new HashSet<int2>();
+        private readonly List<int2> closed = new List<int2>();
         private readonly List<int> gone = new List<int>();
         private int cursor;
         private Random random = new Random(0x5C07u);
@@ -92,7 +118,11 @@ namespace WAR2D.Client
         }
 
         /// <summary>Ends all roaming (a new match).</summary>
-        public void Clear() => roamers.Clear();
+        public void Clear()
+        {
+            roamers.Clear();
+            reached.Clear();
+        }
 
         /// <summary>
         /// Gives each roaming unit that arrived or stalled a new goal; forgets units the client no longer knows.
@@ -134,7 +164,17 @@ namespace WAR2D.Client
                 if (r.HasGoal != (pass == 1)) continue;
                 if (!positionOf(id, out float2 position)) { gone.Add(id); continue; } // each unit is seen in one pass only
                 float distance = r.HasGoal ? math.distance(position, (float2)r.Goal + 0.5f) : 0f;
-                r.Holding = r.HasGoal && distance > ArriveTiles; // a stuck unit still follows its order until it gets another
+                if (!r.Seen || math.distance(position, r.LastAt) > IdleTiles)
+                {
+                    if (r.Seen) r.Moved = true;
+                    r.MovedAt = now;
+                }
+                r.LastAt = position;
+                r.Seen = true;
+                // It set off and now stands: the server ended its order short of the goal (a group's stop radius, a wall, a moved goal).
+                bool stopped = r.HasGoal && r.Moved && now - r.MovedAt >= IdleSeconds;
+                r.Holding = r.HasGoal && distance > ArriveTiles && !stopped; // a stuck unit still follows its order until it gets another
+                if (r.HasGoal && !r.Holding) reached.Add(r.Goal);
                 if (r.Holding)
                 {
                     held[r.Goal] = held.TryGetValue(r.Goal, out int followers) ? followers + 1 : 1;
@@ -154,6 +194,10 @@ namespace WAR2D.Client
                 g.Sum += position;
             }
             foreach (int id in gone) roamers.Remove(id);
+            // A reached goal nobody follows any more is gone from the server too: forget it.
+            closed.Clear();
+            foreach (int2 goal in reached) if (!held.ContainsKey(goal)) closed.Add(goal);
+            foreach (int2 goal in closed) reached.Remove(goal);
             if (groupKeys.Count == 0) return;
             groupKeys.Sort(); // a steady order, so the round robin reaches every cell
             int sent = 0, start = cursor % groupKeys.Count;
@@ -169,21 +213,35 @@ namespace WAR2D.Client
                     if (!r.Holding) continue;
                     Let(r.Goal, -1);
                     r.Holding = false;
+                    reached.Add(r.Goal); // given up as stuck: nobody else is sent there either
                     letGo.Add(r);
                 }
-                if (!ChooseGoal(centre, mapMin, mapMax, out int2 goal))
+                if (!ChooseGoal(centre, mapMin, mapMax, out int2 goal, out bool replaces, out int2 replaced))
                 {
                     foreach (Roamer r in letGo) { Let(r.Goal, 1); r.Holding = true; }
                     continue;
                 }
+                if (replaces)
+                {
+                    // The new goal takes the place of a reached one: its last followers come along in the same order, so
+                    // the goals followed stay within MaxGoals.
+                    foreach (KeyValuePair<int, Roamer> pair in roamers)
+                        if (pair.Value.Holding && pair.Value.Goal.Equals(replaced)) g.Ids.Add(pair.Key);
+                    held.Remove(replaced);
+                    reached.Remove(replaced);
+                }
+                reached.Remove(goal);
+                float2 goalCentre = (float2)goal + 0.5f;
                 foreach (int id in g.Ids)
                 {
                     Roamer r = roamers[id];
                     r.Goal = goal;
                     r.HasGoal = true;
                     r.Holding = true;
-                    r.Best = math.distance(centre, (float2)goal + 0.5f) + GroupCell; // each starts within a cell of the centre
+                    r.Best = math.distance(r.LastAt, goalCentre) + ProgressTiles; // progress is counted from where it stands
                     r.BestAt = now;
+                    r.Moved = false; // standing still counts only once it has set off for this goal
+                    r.MovedAt = now;
                 }
                 Let(goal, g.Ids.Count);
                 g.Ids.Sort(); // the id codec wants ascending ids
@@ -217,20 +275,45 @@ namespace WAR2D.Client
         }
 
         /// <summary>
-        /// A new goal while fewer than <see cref="MaxGoals"/> are held, else (or when none can be picked) one already held, so
-        /// the roamers never take more of the server's order slots than that.
+        /// A new goal while fewer than <see cref="MaxGoals"/> are held. With the budget spent, the group joins the nearest goal
+        /// nobody has reached yet; when every goal held has been reached, a new one replaces the one with the fewest followers
+        /// left (<paramref name="replaces"/>, <paramref name="replaced"/>), who are sent on with the group. So the roamers
+        /// never take more of the server's order slots than <see cref="MaxGoals"/>, and never go back to a goal they left.
+        /// A reached goal is joined only when no new one can be picked at all.
         /// </summary>
-        private bool ChooseGoal(float2 from, int2 mapMin, int2 mapMax, out int2 goal)
+        private bool ChooseGoal(float2 from, int2 mapMin, int2 mapMax, out int2 goal, out bool replaces, out int2 replaced)
         {
+            replaces = false;
+            replaced = default;
             if (held.Count < MaxGoals && PickGoal(from, mapMin, mapMax, out goal)) return true;
-            return JoinNearestGoal(from, out goal);
+            if (JoinNearestGoal(from, true, out goal)) return true;
+            if (held.Count >= MaxGoals && FewestFollowers(out replaced) && PickGoal(from, mapMin, mapMax, out goal))
+            {
+                replaces = true;
+                return true;
+            }
+            return JoinNearestGoal(from, false, out goal);
+        }
+
+        /// <summary>The reached goal with the fewest followers left (not one the group being served has just given up).</summary>
+        private bool FewestFollowers(out int2 goal)
+        {
+            goal = default;
+            int fewest = int.MaxValue;
+            foreach (KeyValuePair<int2, int> pair in held)
+            {
+                if (!reached.Contains(pair.Key) || WasLetGo(pair.Key) || pair.Value >= fewest) continue;
+                fewest = pair.Value;
+                goal = pair.Key;
+            }
+            return fewest != int.MaxValue;
         }
 
         /// <summary>
         /// The nearest held goal at least <see cref="MinReach"/> tiles away (a unit sent to one beside it would be there at once),
-        /// else the farthest. False when no goal is held.
+        /// else the farthest; with <paramref name="openOnly"/>, only goals nobody has reached. False when there is none.
         /// </summary>
-        private bool JoinNearestGoal(float2 from, out int2 goal)
+        private bool JoinNearestGoal(float2 from, bool openOnly, out int2 goal)
         {
             goal = default;
             bool far = false, near = false;
@@ -239,6 +322,7 @@ namespace WAR2D.Client
             foreach (int2 g in held.Keys)
             {
                 if (WasLetGo(g)) continue; // the goal the group is stuck on is no way out of it
+                if (openOnly && reached.Contains(g)) continue;
                 float d = math.distance(from, (float2)g + 0.5f);
                 if (d >= MinReach) { if (d < nearest) { nearest = d; goal = g; far = true; } }
                 else if (d > farthest) { farthest = d; close = g; near = true; }

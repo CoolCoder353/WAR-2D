@@ -119,6 +119,63 @@ public class ArsenalMatchTests
         return entity;
     }
 
+    /// <summary>
+    /// Player report (2026-11-13): 500 units told to roam circled between two points. In a hosted match they must keep
+    /// uncovering new ground instead: the explored area goes on growing through the second and third half minute.
+    /// </summary>
+    [UnityTest, Timeout(600000)]
+    public IEnumerator FiveHundredRoamersKeepFindingNewGround()
+    {
+        config.Match.Map.Size = 256;
+        config.Match.Map.Seed = 5;
+        config.Resources.StartingResources = 1e7f; // the army's upkeep is paid throughout: unpaid units decay and die
+        int2 hq = default;
+        yield return HostWithHQ(a => hq = a);
+        WorldStateManager wsm = WorldStateManager.Instance;
+        int me = PlayModeMatch.LocalOwner;
+        const int units = 500;
+        var ids = new List<int>();
+        DevApi.AllowForTests = true;
+        int placed = 0;
+        for (int ring = 4; placed < units && ring < 60; ring++)
+        for (int i = 0; i < 8 * ring && placed < units; i++)
+        {
+            int2 tile = Ring(hq, ring, i);
+            if (!wsm.Map.Grid.IsWalkable(tile)) continue;
+            if (wsm.DevSpawnUnit(me, (float2)tile + 0.5f, id => { if (id > 0) ids.Add(id); })) placed++;
+        }
+        DevApi.AllowForTests = false;
+        Assert.That(placed, Is.EqualTo(units), "room for the army");
+        yield return PlayModeMatch.WaitUntil(() => ids.Count == units && WAR2D.Client.ClientWorld.Instance != null && WAR2D.Client.ClientWorld.Instance.KnownCount >= units, 30f,
+            () => $"{ids.Count} spawned");
+
+        UnitCommander.Instance.Roaming.Start(ids);
+        PlayModeMatch.FastForward(2);
+        var explored = new List<int>();
+        for (int sample = 0; sample < 4; sample++)
+        {
+            yield return new UnityEngine.WaitForSeconds(30f);
+            explored.Add(ExploredCells());
+        }
+        string seen = string.Join(", ", explored);
+        Assert.That(UnitCommander.Instance.Roaming.Count, Is.EqualTo(units), "they are all still roaming");
+        // Measured 2026-11-13 (explored fog cells at 30, 60, 90, 120 s). With the fix, three runs: 1518, 2344, 2890, 3563;
+        // 1555, 1932, 2433, 2629; 926, 1541, 2479, 2764. Before it, two runs: 1352, 1419, 1558, 2135 and 786, 790, 920, 1052:
+        // the army went back and forth through the second half minute and found next to nothing (5 % and 0.5 % more, against
+        // 24 % at the least with the fix). Runs differ a good deal, so only that half minute is held to a number.
+        Assert.That(explored[1], Is.GreaterThan(explored[0] * 1.12f), $"new ground in the second half minute ({seen})");
+        Assert.That(explored[3], Is.GreaterThan(explored[1]), $"and more in the second minute ({seen})");
+    }
+
+    /// <summary>Fog cells the local player's side has explored, as its client knows them.</summary>
+    private static int ExploredCells()
+    {
+        byte[] state = WAR2D.Net.Replication.ClientFog.Current.State;
+        int n = 0;
+        if (state != null) foreach (byte cell in state) if (cell != (byte)WAR2D.Net.Replication.FogState.Unexplored) n++;
+        return n;
+    }
+
     /// <summary>The local player's Barracks ids: the blueprints, or the finished ones.</summary>
     private static List<int> BarracksIds(bool blueprints)
     {
