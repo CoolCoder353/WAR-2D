@@ -877,7 +877,17 @@ public class UnitCommander : NetworkBehaviour
             {
                 // Double-click: every own unit of the clicked unit's type on screen (Ctrl: anywhere on the map).
                 (float2 viewMin, float2 viewMax) = CameraView();
-                Selection.SelectTypeAt(b, viewMin, viewMax, me, GameInput.AssignModifier.IsPressed());
+                bool everywhere = GameInput.AssignModifier.IsPressed();
+                Selection.SelectTypeAt(b, viewMin, viewMax, me, everywhere);
+                // No own unit there: a double-click on an own building takes every own building of its type on screen
+                // (Ctrl: anywhere on the map), blueprints included.
+                if (Selection.Selected.Count == 0 && TryOwnBuildingAt(b, me, out BuildingData clicked))
+                {
+                    Selection.ClearWalls();
+                    var sameType = new List<int>();
+                    picker.OfType(clicked.buildingType, me, (int2)math.floor(viewMin), (int2)math.floor(viewMax), everywhere, sameType);
+                    Selection.SelectBuildings(sameType, false);
+                }
                 lastClickTime = -1f;
             }
             else if (!click && GameInput.AssignModifier.IsPressed())

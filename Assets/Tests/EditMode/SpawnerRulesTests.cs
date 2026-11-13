@@ -39,6 +39,24 @@ public class SpawnerRulesTests
     }
 
     [Test]
+    public void ABigSelectionGoesAsSeveralCommands()
+    {
+        int[] ids = new int[SpawnerRules.MaxSpawnersPerCommand * 2 + 3];
+        for (int i = 0; i < ids.Length; i++) ids[i] = i + 1;
+        var sent = new System.Collections.Generic.List<int>();
+        int batches = 0;
+        foreach (int[] batch in SpawnerRules.Batches(ids))
+        {
+            Assert.LessOrEqual(batch.Length, SpawnerRules.MaxSpawnersPerCommand);
+            sent.AddRange(batch);
+            batches++;
+        }
+        Assert.AreEqual(3, batches);
+        CollectionAssert.AreEqual(ids, sent, "every id once, in order");
+        Assert.IsEmpty(SpawnerRules.Batches(new int[0]), "nothing selected: nothing sent");
+    }
+
+    [Test]
     public void EachProducerMakesItsRolesUnits()
     {
         CollectionAssert.AreEqual(new[] { UnitType.Builder }, SpawnerRules.Produces(BuildingType.Base));

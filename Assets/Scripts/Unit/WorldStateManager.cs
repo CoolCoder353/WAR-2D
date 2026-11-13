@@ -1225,7 +1225,7 @@ public partial class WorldStateManager : NetworkBehaviour
     }
 
     /// <summary>
-    /// Sets the unit type each named, finished producer the sender owns makes, and clears its queue and the
+    /// Sets the unit type each named producer the sender owns makes (a blueprint included), and clears its queue and the
     /// progress towards its next unit (<see cref="PlayerActions.SetProduction"/>).
     /// </summary>
     [Command(requiresAuthority = false)]

@@ -396,6 +396,10 @@ namespace WAR2D.UI
           ""Double-click""
         ],
         [
+          ""Every building of a type on screen"",
+          ""Double-click a building""
+        ],
+        [
           ""Select idle Builders"",
           ""{Key/SelectIdleBuilders}""
         ],

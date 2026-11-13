@@ -13,6 +13,20 @@ public static class SpawnerRules
     /// <summary>Most spawners one queue or rally command may name (a selection bound, checked on the server).</summary>
     public const int MaxSpawnersPerCommand = 64;
 
+    /// <summary>
+    /// The ids split into lists of at most <see cref="MaxSpawnersPerCommand"/>, in order: a selection larger than one
+    /// command may name goes as several (the server refuses a longer list whole).
+    /// </summary>
+    public static System.Collections.Generic.IEnumerable<int[]> Batches(System.Collections.Generic.IReadOnlyList<int> ids)
+    {
+        for (int i = 0; i < ids.Count; i += MaxSpawnersPerCommand)
+        {
+            int[] batch = new int[System.Math.Min(MaxSpawnersPerCommand, ids.Count - i)];
+            for (int k = 0; k < batch.Length; k++) batch[k] = ids[i + k];
+            yield return batch;
+        }
+    }
+
     /// <summary>True for a step the queue buttons can send.</summary>
     public static bool IsQueueStep(int delta) => System.Array.IndexOf(QueueSteps, delta) >= 0;
 

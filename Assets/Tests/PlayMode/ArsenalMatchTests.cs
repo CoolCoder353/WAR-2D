@@ -72,6 +72,67 @@ public class ArsenalMatchTests
         }
     }
 
+    /// <summary>
+    /// A built Barracks and a Barracks blueprint under one selection: both take the type and the queue, the built one
+    /// produces at once, and the blueprint keeps its queue and starts on it once Builders finish it.
+    /// </summary>
+    [UnityTest, Timeout(180000)]
+    public IEnumerator ABlueprintKeepsItsProductionAndStartsWhenBuilt()
+    {
+        yield return HostWithHQ();
+        WorldStateManager wsm = WorldStateManager.Instance;
+        ClientPlayer local = NetworkClient.localPlayer.GetComponent<ClientPlayer>();
+        int me = PlayModeMatch.LocalOwner;
+        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Barracks, 0f, local, out int2 builtAt), Is.True, "room for the built Barracks");
+        Assert.That(PlayModeMatch.PlaceBuilt(BuildingType.Barracks, builtAt), Is.True);
+        yield return PlayModeMatch.WaitUntil(() => BarracksIds(false).Count == 1, 10f);
+        Assert.That(wsm.TryFindBuildableAnchor(BuildingType.Barracks, 0f, local, out int2 blueprintAt), Is.True, "room for the blueprint");
+        wsm.TryAddBuilding(blueprintAt, BuildingType.Barracks, 0f); // a normal placement: a blueprint
+        yield return PlayModeMatch.WaitUntil(() => BarracksIds(true).Count == 1, 10f, () => "the blueprint was never placed");
+        int built = BarracksIds(false)[0], blueprint = BarracksIds(true)[0];
+
+        // One selection of both: the type, then one unit each.
+        int[] both = { built, blueprint };
+        wsm.CmdSetProduction(both, (byte)UnitType.Tank);
+        wsm.CmdChangeQueues(both, 1);
+        yield return PlayModeMatch.WaitUntil(() => CountUnits(me, UnitType.Tank) == 1, 30f, () => "the built Barracks made no Tank");
+        Assert.That(BarracksIds(true), Does.Contain(blueprint), "still a blueprint");
+        SpawnerData waiting = PlayModeMatch.Em.GetComponentData<SpawnerData>(BlueprintEntity(wsm, blueprint));
+        Assert.That((UnitType)waiting.unitType, Is.EqualTo(UnitType.Tank), "the blueprint took the type");
+        Assert.That(waiting.count, Is.EqualTo(1), "the blueprint keeps its queue until it is built");
+        Assert.That(local.SpawnerType(blueprint), Is.EqualTo(UnitType.Tank), "its owner was told the type");
+        Assert.That(local.SpawnerQueue(blueprint), Is.EqualTo(1), "its owner was told the queue");
+
+        // Builders finish it (idle ones take the blueprint on their own): its queued Tank then comes out.
+        DevApi.AllowForTests = true;
+        for (int i = 0; i < 4; i++) Assert.That(SpawnNear(me, blueprintAt, 3, UnitType.Builder), Is.True, "room for a Builder");
+        DevApi.AllowForTests = false;
+        yield return PlayModeMatch.WaitUntil(() => BarracksIds(true).Count == 0, 60f, () => "the blueprint was never finished");
+        Assert.That(CountUnits(me, UnitType.Tank), Is.EqualTo(1), "nothing was made while it was a blueprint");
+        yield return PlayModeMatch.WaitUntil(() => CountUnits(me, UnitType.Tank) == 2, 30f, () => "the finished Barracks never made its queued Tank");
+        Assert.That(PlayModeMatch.Em.GetComponentData<SpawnerData>(BlueprintEntity(wsm, blueprint)).count, Is.EqualTo(0));
+    }
+
+    private static Entity BlueprintEntity(WorldStateManager wsm, int id)
+    {
+        Assert.That(wsm.TryGetBuilding(id, out Entity entity), Is.True, "the building is gone");
+        return entity;
+    }
+
+    /// <summary>The local player's Barracks ids: the blueprints, or the finished ones.</summary>
+    private static List<int> BarracksIds(bool blueprints)
+    {
+        var ids = new List<int>();
+        using var q = PlayModeMatch.Em.CreateEntityQuery(typeof(BuildingData));
+        using var entities = q.ToEntityArray(Allocator.Temp);
+        foreach (Entity e in entities)
+        {
+            BuildingData data = PlayModeMatch.Em.GetComponentData<BuildingData>(e);
+            if (data.buildingType == BuildingType.Barracks && data.ownerId == PlayModeMatch.LocalOwner && PlayModeMatch.Em.HasComponent<Construction>(e) == blueprints) ids.Add(data.id);
+        }
+        return ids;
+    }
+
     [UnityTest, Timeout(120000)]
     public IEnumerator ABomberRunDamagesAnEnemyBuilding()
     {
@@ -106,10 +167,10 @@ public class ArsenalMatchTests
         Assert.That(spawned, Is.True, "room for the bomber");
         yield return PlayModeMatch.WaitUntil(() => CountUnits(PlayModeMatch.LocalOwner, UnitType.Bomber) == 1, 5f);
 
-        // It sees the factory, runs at it and blows up on contact: 150 blast damage, x2 against buildings.
+        // It sees the factory, runs at it and blows up on contact: its blast damage, times the table's number against buildings.
         yield return PlayModeMatch.WaitUntil(() => CountUnits(PlayModeMatch.LocalOwner, UnitType.Bomber) == 0, 20f);
         yield return PlayModeMatch.WaitUntil(() => PlayModeMatch.Em.GetComponentData<HealthComponent>(target).currentHealth < before, 5f);
-        Assert.That(PlayModeMatch.Em.GetComponentData<HealthComponent>(target).currentHealth, Is.EqualTo(before - 300f).Within(0.01f));
+        Assert.That(PlayModeMatch.Em.GetComponentData<HealthComponent>(target).currentHealth, Is.EqualTo(before - config.GetUnit(UnitType.Bomber).BlastDamage * config.Damage.Multiplier(UnitType.Bomber, TargetClass.Building)).Within(0.01f));
     }
 
     // ---------- v0.20 Onslaught in a hosted match (spec §13) ----------

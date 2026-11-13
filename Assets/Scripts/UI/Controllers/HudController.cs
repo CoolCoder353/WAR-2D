@@ -918,7 +918,7 @@ namespace WAR2D.UI
         {
             WorldStateManager wsm = WorldStateManager.Instance;
             if (wsm == null || buildingIds.Count == 0) return;
-            wsm.CmdChangeQueues(System.Linq.Enumerable.ToArray(buildingIds), delta);
+            foreach (int[] batch in SpawnerRules.Batches(buildingIds)) wsm.CmdChangeQueues(batch, delta);
         }
 
         /// <summary>A producer's type picked in the selector: the server switches it and clears its queue.</summary>
@@ -926,7 +926,7 @@ namespace WAR2D.UI
         {
             WorldStateManager wsm = WorldStateManager.Instance;
             if (wsm == null || buildingIds.Count == 0) return;
-            wsm.CmdSetProduction(System.Linq.Enumerable.ToArray(buildingIds), (byte)unit);
+            foreach (int[] batch in SpawnerRules.Batches(buildingIds)) wsm.CmdSetProduction(batch, (byte)unit);
         }
 
         private void OnWall() => UnitCommander.Instance?.BeginWallDrag();

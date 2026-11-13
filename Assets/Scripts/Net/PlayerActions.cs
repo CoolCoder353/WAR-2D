@@ -129,7 +129,7 @@ public static class PlayerActions
     // ---------- Production ----------
 
     /// <summary>
-    /// Sets the unit type each named, finished producer the owner has makes, and clears its queue and the progress
+    /// Sets the unit type each named producer the owner has makes (a blueprint keeps it for when it is built), and clears its queue and the progress
     /// towards its next unit. Producers that can't make the type, or already make it, are skipped. Lists longer than
     /// <see cref="SpawnerRules.MaxSpawnersPerCommand"/> and unknown types are refused. True when any producer changed.
     /// </summary>
@@ -143,7 +143,7 @@ public static class PlayerActions
         bool any = false;
         foreach (int id in buildingIds)
         {
-            if (!world.TryOwnSpawner(id, owner, out Entity building) || em.HasComponent<Construction>(building)) continue;
+            if (!world.TryOwnSpawner(id, owner, out Entity building)) continue; // a blueprint takes it too, and starts once built
             BuildingType buildingType = em.GetComponentData<BuildingData>(building).buildingType;
             if (!SpawnerRules.MayProduce(buildingType, (UnitType)unitType)) continue;
             SpawnerData spawner = em.GetComponentData<SpawnerData>(building);
@@ -162,7 +162,7 @@ public static class PlayerActions
     public static bool SetProduction(int owner, IReadOnlyList<int> buildingIds, UnitType type) => SetProduction(owner, buildingIds, (byte)type);
 
     /// <summary>
-    /// Adds or removes <paramref name="delta"/> units of the selected type on each named, finished producer the owner has
+    /// Adds or removes <paramref name="delta"/> units of the selected type on each named producer the owner has (a blueprint keeps its queue and starts on it once built)
     /// (only the queue buttons' steps, <see cref="SpawnerRules.QueueSteps"/>). True when any queue changed.
     /// </summary>
     public static bool ChangeQueues(int owner, IReadOnlyList<int> buildingIds, int delta)
@@ -174,7 +174,7 @@ public static class PlayerActions
         bool any = false;
         foreach (int id in buildingIds)
         {
-            if (!world.TryOwnSpawner(id, owner, out Entity building) || em.HasComponent<Construction>(building)) continue;
+            if (!world.TryOwnSpawner(id, owner, out Entity building)) continue; // a blueprint takes it too, and starts once built
             SpawnerData spawner = em.GetComponentData<SpawnerData>(building);
             if (SpawnerRules.Apply(ref spawner.count, delta) == 0) continue;
             em.SetComponentData(building, spawner);

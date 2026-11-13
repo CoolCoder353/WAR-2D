@@ -301,7 +301,7 @@ namespace WAR2D.UI
                 if (top >= TopBuilds.Length || bottom >= BottomBuilds.Length) return null;
                 return Build(top >= 0 ? TopBuilds[top] : BottomBuilds[bottom]);
             }
-            bool producing = building && !WallsOnly && SpawnerRules.IsProducer(selection.BuildingType) && selection.BlueprintCount == 0 && !selection.MixedKinds;
+            bool producing = building && !WallsOnly && SpawnerRules.IsProducer(selection.BuildingType) && !selection.MixedKinds;
             if (!producing || top < 0 || rowsFor != selection.BuildingType || top >= shownTypes.Length) return null;
             UnitType type = shownTypes[top];
             if (type != Chosen()) { Pick(type); return null; }
@@ -417,8 +417,8 @@ namespace WAR2D.UI
             Display(buildLabel, builders);
             Display(buildArea, builders);
             Display(removal, building && Removable);
-            // A blueprint makes nothing yet: production shows once the selected buildings are all finished.
-            bool producing = building && SpawnerRules.IsProducer(selection.BuildingType) && selection.BlueprintCount == 0;
+            // A blueprint takes its type and queue too (it starts on them once built), so built and unbuilt producers act together.
+            bool producing = building && SpawnerRules.IsProducer(selection.BuildingType);
             Display(production, producing);
             hover?.Refresh();
             if (building)
@@ -472,7 +472,7 @@ namespace WAR2D.UI
                 : selection.AllBlueprints ? $"{name} (blueprint) · {selection.BuildingProgress}%"
                 : name;
 
-            if (produced.Length > 0 && selection.BlueprintCount == 0) ShowProduction(produced, count);
+            if (produced.Length > 0) ShowProduction(produced, count);
             if (!Removable) return;
             float back = selection.RefundFor(type => buildCosts.TryGetValue(type, out float c) ? c : 0f, demolishShare);
             bool blueprints = selection.AllBlueprints;
@@ -522,6 +522,9 @@ namespace WAR2D.UI
             help.text = count > 1
                 ? $"{selection.SpawnerQueue} queued across {count} {Plural(building)} · max {SpawnerRules.MaxQueue} each · cost charged at spawn"
                 : $"max {SpawnerRules.MaxQueue} · cost charged at spawn";
+            // Blueprints take the type and the queue too, and start on them once built.
+            int unbuilt = selection.BlueprintCount;
+            if (unbuilt > 0) help.text += count == 1 ? " · starts when built" : unbuilt == count ? " · they start when built" : $" · {unbuilt} still {(unbuilt == 1 ? "a blueprint: it starts" : "blueprints: they start")} when built";
             int queued = selection.QueueOf(chosen);
             queueCount.text = queued.ToString();
             queueMinus.SetEnabled(queued > 0);

@@ -52,4 +52,39 @@ public class BuildingPickerTests
         picker.InBox(new int2(0, 0), new int2(4, 4), found);
         CollectionAssert.AreEquivalent(new[] { 1 }, found);
     }
+
+    /// <summary>A double-click on a building: every own building of its type on screen, or anywhere, blueprints included.</summary>
+    [Test]
+    public void OfTypeFindsOwnSeenBuildingsOfTheTypeInTheBoxOrEverywhere()
+    {
+        var buildings = new ClientBuildings();
+        var picker = new BuildingPicker(Size);
+        picker.Attach(buildings);
+        Enter(buildings, 1, BuildingType.Barracks, new int2(0, 0));
+        Enter(buildings, 2, BuildingType.Barracks, new int2(6, 6));   // only its corner is in the box
+        Enter(buildings, 3, BuildingType.Barracks, new int2(40, 40)); // off screen
+        Enter(buildings, 4, BuildingType.Miner, new int2(3, 3));      // another type
+        Enter(buildings, 5, BuildingType.Barracks, new int2(2, 4));   // a blueprint
+        Enter(buildings, 6, BuildingType.Barracks, new int2(4, 0));   // a ghost
+        buildings.Enter(new BuildingData { id = 7, buildingType = BuildingType.Barracks, position = new int2(0, 4), ownerId = 2 },
+            new HealthComponent { entityId = 7, currentHealth = 10, maxHealth = 10 }); // another player's
+        ClientBuildings.Entry blueprint = buildings.Entries[5];
+        blueprint.Progress = 10;
+        buildings.Entries[5] = blueprint;
+        ClientBuildings.Entry ghost = buildings.Entries[6];
+        ghost.Ghost = true;
+        buildings.Entries[6] = ghost;
+
+        var found = new List<int>();
+        picker.OfType(BuildingType.Barracks, 1, new int2(0, 0), new int2(6, 6), false, found);
+        CollectionAssert.AreEquivalent(new[] { 1, 2, 5 }, found, "on screen");
+
+        found.Clear();
+        picker.OfType(BuildingType.Barracks, 1, new int2(0, 0), new int2(6, 6), true, found);
+        CollectionAssert.AreEquivalent(new[] { 1, 2, 3, 5 }, found, "anywhere on the map");
+
+        found.Clear();
+        picker.OfType(BuildingType.Radar, 1, new int2(0, 0), new int2(6, 6), true, found);
+        Assert.IsEmpty(found, "none of that type");
+    }
 }

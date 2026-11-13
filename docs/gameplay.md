@@ -35,6 +35,7 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | Middle mouse + drag | Drag the map |
 | Mouse wheel | Zoom towards the cursor (orthographic size 3–30; pan speed scales with zoom). The match starts at 1:1 art pixels (size 8.4 at 1080p). Zooming in snaps to whole-number scales (2:1, 3:1, …, pixel perfect); zooming out past 1:1 moves in smooth steps (×1.25 per notch). |
 | Double-click a unit | Select every own unit of that type on screen |
+| Double-click one of your buildings (where none of your units are) | Select every one of your buildings of that type on screen, blueprints included (never ghosts or other players' buildings) |
 | `1`–`0` twice quickly | Select that squad and centre the camera on it |
 | `Esc` | In-match menu (closes the settings, gift or diplomacy panel first) |
 | Hold `Shift` | Pan 2.5× faster |
@@ -69,6 +70,7 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | `Space` | Centre the camera on the newest alert you have not visited yet |
 | `J` | Roam (also the Roam command button): the selected units (Builders aside) scout on their own, each driving to random ground not seen lately (roamers that need a goal are grouped by 16-tile area and each group of up to 48 shares one goal and one order, four orders per half second, so even 3,000 roamers all have goals within a few seconds; playtest 2026-11-05; at most `Roam.MaxGoals` (6) different goals at once, a group past that joins the nearest one held, because the server holds a player to 32 live orders and a roaming army would otherwise use them all, leaving most of it and the Builders without orders; 2026-11-11), until you give them another order. Roaming units wear a dashed gold ring; the selection title counts them ("· 4 roaming") |
 | `Ctrl` + double-click a unit | Select every own unit of that type **anywhere on the map** |
+| `Ctrl` + double-click one of your buildings | Select every one of your buildings of that type **anywhere on the map** |
 | `Ctrl` + `1`–`0` (buildings selected) | Save a **building group** in that slot (kept on this client only; assigning units to the slot replaces it). `1`–`0` selects it, twice centres the camera |
 | `Ctrl` + right-click (producers selected) | **Rally all** your producers to the cursor. A rally onto an own blueprint makes new Builders build it |
 | `Delete` (own buildings selected) | Cancel a blueprint (full refund) or demolish a finished building (half back, after a confirm). The HQ can't be removed. |
@@ -76,8 +78,8 @@ Before *Playing*, the economy, spawning, combat and win/loss checks are paused, 
 | Minimap: right-click | Send the selection there (Move, or the armed Attack-move; `Shift` queues) |
 | `R` (while placing a Miner) | Turn the Miner 90° (it draws its auger facing that way); other buildings have one facing |
 | Left-click (while placing) | Place the building. The preview is grey if valid and red if not. During HQ placement the HQ preview appears on its own. |
-| Left-click on one of your producers (HQ, Barracks, Heavy Factory, Siege Workshop; where none of your units are) | Select it: the command card shows a type selector (one button per unit it makes, the chosen one highlighted) above one queue row, where `+`, `+10` and `+50` queue units of the chosen type and `−` removes one (Shift-click: ten, Ctrl-click: the whole queue; max 100 queued per producer; nothing is refunded, as the cost is charged at spawn). Picking another type **clears the queue** and the progress on the next unit |
-| `Shift` + left-click on your spawners, or drag a box over them (where none of your units are) | Select several spawners: the queue buttons add to (or take from) each of them |
+| Left-click on one of your producers (HQ, Barracks, Heavy Factory, Siege Workshop; where none of your units are) | Select it: the command card shows a type selector (one button per unit it makes, the chosen one highlighted) above one queue row, where `+`, `+10` and `+50` queue units of the chosen type and `−` removes one (Shift-click: ten, Ctrl-click: the whole queue; max 100 queued per producer; nothing is refunded, as the cost is charged at spawn). Picking another type **clears the queue** and the progress on the next unit. A producer that is still a **blueprint** takes its type and queue too (the card says "starts when built"): it makes nothing until Builders finish it, then starts on its queue at once |
+| `Shift` + left-click on your spawners, or drag a box over them (where none of your units are) | Select several spawners: the queue buttons add to (or take from) each of them, built or still blueprints alike (the built ones produce now, the blueprints once built; the card counts those still blueprints) |
 | Right-click with only spawners selected | Set their **rally point**, a blue flag: each new unit moves there and ignores enemies on the way. The flag shows while the spawner is selected; only you see it |
 | Attack-move key (`A`), then a click, with only spawners selected | Set an **attack rally**, a red flag: each new unit attack-moves there, so it stops to fight enemies in range on the way. Hold `Ctrl` on the click, or press the key before **Rally all**, to set every producer's. A right-click later changes it back to a blue flag |
 | `` ` `` (backquote) | Toggle the developer console |

@@ -52,6 +52,22 @@ namespace WAR2D.Client
                     if (t.x >= min.x && t.y >= min.y && t.x <= max.x && t.y <= max.y) { into.Add(pair.Key); break; }
         }
 
+        /// <summary>
+        /// Adds each building of one type and owner that is seen now (never a ghost): those with a footprint tile inside the
+        /// inclusive box, or all of them with <paramref name="everywhere"/> (a double-click on a building).
+        /// </summary>
+        public void OfType(BuildingType type, int ownerId, int2 min, int2 max, bool everywhere, List<int> into)
+        {
+            if (source == null) return;
+            foreach (KeyValuePair<int, List<int2>> pair in tilesOf)
+            {
+                if (!source.Entries.TryGetValue(pair.Key, out ClientBuildings.Entry e) || e.Ghost || e.Data.ownerId != ownerId || e.Data.buildingType != type) continue;
+                if (everywhere) { into.Add(pair.Key); continue; }
+                foreach (int2 t in pair.Value)
+                    if (t.x >= min.x && t.y >= min.y && t.x <= max.x && t.y <= max.y) { into.Add(pair.Key); break; }
+            }
+        }
+
         private void Add(BuildingData data, HealthComponent _)
         {
             Remove(data.id);
