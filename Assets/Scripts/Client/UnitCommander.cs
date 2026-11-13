@@ -52,6 +52,9 @@ public class UnitCommander : NetworkBehaviour
     /// <summary>The units scouting on their own (Roam, J); any other order to one of them ends it.</summary>
     public WAR2D.Client.Roam Roaming { get; } = new WAR2D.Client.Roam();
 
+    /// <summary>Roam's clock: seconds of unpaused play, so a pause doesn't run its timers.</summary>
+    private float roamClock;
+
     /// <summary>
     /// Roam (playtest 2026-10-30): the selected own units, Builders aside, scout random ground not seen lately until ordered
     /// otherwise.
@@ -768,9 +771,16 @@ public class UnitCommander : NetworkBehaviour
             CentreCamera(CentreOf(rejoinHq.Data));
         }
 
-        // Roaming runs on through a dialog: without a pause (two humans) the match goes on behind it.
-        Roaming.Update(Time.unscaledTime, WorldStateManager.Instance.MapBounds.Item1, WorldStateManager.Instance.MapBounds.Item2,
-            (ids, goal) => Selection.OrderIds(OrderKind.Move, ids, goal));
+        // Roaming runs on through a dialog: without a pause (two humans) the match goes on behind it. It waits while the
+        // match is paused or not being played: nothing moves then, so every roamer would look stuck and be sent a new goal
+        // every few seconds, orders the server queues up for the resume. Its clock stops with it, so nobody is "stuck" after.
+        GameCore core = GameCore.Instance;
+        if (core != null && core.CurrentState == GameState.Playing && !core.IsPaused)
+        {
+            roamClock += Time.deltaTime; // game time: in step with the sim when frames stall or a test fast-forwards
+            Roaming.Update(roamClock, WorldStateManager.Instance.MapBounds.Item1, WorldStateManager.Instance.MapBounds.Item2,
+                (ids, goal) => Selection.OrderIds(OrderKind.Move, ids, goal));
+        }
         // v0.18: the keyboard is the manual's (its search box), and clicks stop at it; so for the menu, Settings and the gift dialog.
         if (WAR2D.UI.HudController.DialogOpen || WAR2D.UI.ManualController.AnyOpen)
         {

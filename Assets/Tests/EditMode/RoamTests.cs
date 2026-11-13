@@ -138,4 +138,116 @@ public class RoamTests
             (int id, out float2 position) => { position = new float2(128, 128); return id == 1; });
         Assert.AreEqual(1, roam.Count);
     }
+
+    /// <summary>
+    /// Player reports of roamers standing about: the server ends a group's Move 0.5 + 0.4 × √followers tiles from the goal,
+    /// further out than Roam's 2 tiles, so most of a group counted as still travelling and stood for the whole stuck
+    /// timeout at every goal. Here the server is modelled with that rule.
+    /// </summary>
+    [Test]
+    public void AGroupTheServerStopsShortOfItsGoalMovesOnWithoutTheStuckWait()
+    {
+        var roam = new Roam();
+        var at = new Dictionary<int, float2>();
+        var target = new Dictionary<int, float2>(); // the server's live order per unit
+        var orders = new Dictionary<int, int>();
+        var stoodSince = new Dictionary<int, float>();
+        var ids = new List<int>();
+        for (int unit = 1; unit <= 40; unit++) { at[unit] = new float2(200 + unit % 8, 200 + unit / 8); ids.Add(unit); orders[unit] = 0; }
+        roam.Start(ids);
+        float now = 0f, longestStand = 0f;
+        for (int check = 0; check < 160; check++) // 80 seconds
+        {
+            roam.Update(now, new int2(0, 0), new int2(512, 512), (list, to) =>
+            {
+                foreach (int unit in list) { target[unit] = (float2)to + 0.5f; orders[unit]++; stoodSince.Remove(unit); }
+            }, (int unit, out float2 p) => { p = at[unit]; return true; });
+
+            // The server: 2 tiles a check towards the goal, and a unit stops inside its order's stop radius.
+            var followers = new Dictionary<float2, int>();
+            foreach (float2 goal in target.Values) followers[goal] = followers.TryGetValue(goal, out int n) ? n + 1 : 1;
+            foreach (int unit in ids)
+            {
+                if (!target.TryGetValue(unit, out float2 goal))
+                {
+                    if (orders[unit] == 0) continue; // not started yet
+                    if (!stoodSince.ContainsKey(unit)) stoodSince[unit] = now;
+                    longestStand = math.max(longestStand, now - stoodSince[unit]);
+                    continue;
+                }
+                float far = math.distance(at[unit], goal);
+                if (far <= 0.5f + 0.4f * math.sqrt(followers[goal])) { target.Remove(unit); continue; }
+                at[unit] += (goal - at[unit]) / far * math.min(2f, far);
+            }
+            now += Roam.CheckSeconds;
+        }
+        Assert.Less(longestStand, Roam.StuckSeconds / 2f, "no roamer stands for anything like the stuck timeout after the server stops it");
+        foreach (int unit in ids) Assert.GreaterOrEqual(orders[unit], 4, $"unit {unit} kept roaming from goal to goal");
+    }
+
+    [Test]
+    public void AUnitThatHasNotSetOffYetKeepsItsGoalUntilTheStuckTimeout()
+    {
+        // A route can take a moment to build, and the unit waits for it: standing before it has moved is not "stopped".
+        var roam = new Roam();
+        roam.Start(new[] { 1 });
+        int sent = 0;
+        float now = 0f;
+        for (int check = 0; check < 10; check++) // 5 seconds, under StuckSeconds
+        {
+            roam.Update(now, new int2(0, 0), new int2(512, 512), (list, to) => sent++,
+                (int unit, out float2 p) => { p = new float2(100, 100); return true; });
+            now += Roam.CheckSeconds;
+        }
+        Assert.AreEqual(1, sent, "one order, and no second one while it waits to set off");
+    }
+
+    /// <summary>
+    /// Player report (2026-11-13), reproducible with 500 units told to roam: they circle between two points. With every goal
+    /// slot taken, a group that arrived joined the nearest goal still followed, whose arrivals joined the first one back,
+    /// and with that many units both always had followers, so no new goal was ever drawn.
+    /// </summary>
+    [Test]
+    public void FiveHundredRoamersAreNeverSentBackToAGoalTheyHaveBeenTo()
+    {
+        var roam = new Roam();
+        var at = new Dictionary<int, float2>();
+        var target = new Dictionary<int, float2>();
+        var been = new Dictionary<int, HashSet<int2>>();
+        var ids = new List<int>();
+        for (int unit = 1; unit <= 500; unit++) { at[unit] = new float2(240 + unit % 25, 240 + unit / 25); ids.Add(unit); been[unit] = new HashSet<int2>(); }
+        roam.Start(ids);
+        int returns = 0, orders = 0, mostGoals = 0;
+        var allGoals = new HashSet<int2>();
+        float now = 0f;
+        for (int check = 0; check < 360; check++) // three minutes
+        {
+            roam.Update(now, new int2(0, 0), new int2(512, 512), (list, to) =>
+            {
+                orders++;
+                allGoals.Add(to);
+                foreach (int unit in list)
+                {
+                    if (!been[unit].Add(to)) returns++;
+                    target[unit] = (float2)to + 0.5f;
+                }
+            }, (int unit, out float2 p) => { p = at[unit]; return true; });
+
+            // The server: 2 tiles a check towards the goal; a unit stops inside its order's stop radius (0.5 + 0.4 × √followers).
+            var followers = new Dictionary<float2, int>();
+            foreach (float2 goal in target.Values) followers[goal] = followers.TryGetValue(goal, out int n) ? n + 1 : 1;
+            mostGoals = math.max(mostGoals, followers.Count);
+            foreach (int unit in ids)
+            {
+                if (!target.TryGetValue(unit, out float2 goal)) continue;
+                float far = math.distance(at[unit], goal);
+                if (far <= 0.5f + 0.4f * math.sqrt(followers[goal])) { target.Remove(unit); continue; }
+                at[unit] += (goal - at[unit]) / far * math.min(2f, far);
+            }
+            now += Roam.CheckSeconds;
+        }
+        Assert.AreEqual(0, returns, $"units sent back to a goal they had already been to ({orders} orders, {allGoals.Count} goals)");
+        Assert.Greater(allGoals.Count, 20, "and the army keeps finding new ground");
+        Assert.LessOrEqual(mostGoals, Roam.MaxGoals + 1, "within the server's order budget (one over while a goal is replaced)");
+    }
 }
