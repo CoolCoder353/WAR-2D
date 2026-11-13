@@ -121,7 +121,7 @@ namespace WAR2D.UI
 
         /// <summary>The Roam button's card (playtest 2026-10-30, Figma "Playtest fixes" item 3).</summary>
         public static HoverCardContent Roam(string key) =>
-            new HoverCardContent("Roam", key, "Scout on their own: each unit drives to ground you haven’t seen lately.").Line("Any other order ends it. Builders don’t roam.");
+            new HoverCardContent("Roam", key, "Scout on their own: each unit drives to ground you haven’t seen lately.").Line("Armed units stop to fight what they meet.").Line("Any other order ends it. Builders don’t roam.");
 
         /// <summary>Why an order button is greyed out, or null.</summary>
         public static string OrderReason(OrderKind kind, bool units)

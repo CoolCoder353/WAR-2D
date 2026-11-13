@@ -167,6 +167,42 @@ public class ArsenalMatchTests
         Assert.That(explored[3], Is.GreaterThan(explored[1]), $"and more in the second minute ({seen})");
     }
 
+    /// <summary>2026-11-14: in a hosted match a roaming Tank follows an Attack-move order and a roaming Bomber a plain Move.</summary>
+    [UnityTest, Timeout(120000)]
+    public IEnumerator ArmedRoamersAttackMoveOnTheServerAndBombersMove()
+    {
+        int2 hq = default;
+        yield return HostWithHQ(a => hq = a);
+        int me = PlayModeMatch.LocalOwner;
+        var ids = new List<int>();
+        WorldStateManager wsm = WorldStateManager.Instance;
+        DevApi.AllowForTests = true;
+        int placed = 0;
+        for (int i = 0; i < 64 && placed < 12; i++)
+        {
+            int2 tile = Ring(hq, 5, i);
+            if (!wsm.Map.Grid.IsWalkable(tile)) continue;
+            if (wsm.DevSpawnUnit(me, (float2)tile + 0.5f, id => { if (id > 0) ids.Add(id); }, placed % 2 == 0 ? UnitType.Tank : UnitType.Bomber)) placed++;
+        }
+        DevApi.AllowForTests = false;
+        Assert.That(placed, Is.EqualTo(12), "room for six Tanks and six Bombers");
+        yield return PlayModeMatch.WaitUntil(() => ids.Count == 12 && WAR2D.Client.ClientWorld.Instance != null && WAR2D.Client.ClientWorld.Instance.KnownCount >= 12, 10f);
+
+        UnitCommander.Instance.Roaming.Start(ids);
+        yield return PlayModeMatch.WaitUntil(() => StanceCount(me, UnitType.Tank, WAR2D.Sim.Stances.AttackMove) == 6 && StanceCount(me, UnitType.Bomber, WAR2D.Sim.Stances.Move) == 6, 15f,
+            () => $"Tanks on Attack-move: {StanceCount(me, UnitType.Tank, WAR2D.Sim.Stances.AttackMove)} of 6, Bombers on Move: {StanceCount(me, UnitType.Bomber, WAR2D.Sim.Stances.Move)} of 6");
+        Assert.That(StanceCount(me, UnitType.Bomber, WAR2D.Sim.Stances.AttackMove), Is.Zero, "no Bomber attack-moves");
+    }
+
+    private static int StanceCount(int owner, UnitType type, byte stance)
+    {
+        using var q = PlayModeMatch.Em.CreateEntityQuery(typeof(WAR2D.Sim.Unit));
+        using var units = q.ToComponentDataArray<WAR2D.Sim.Unit>(Allocator.Temp);
+        int n = 0;
+        foreach (WAR2D.Sim.Unit u in units) if (u.OwnerId == owner && u.Type == (byte)type && u.Health > 0f && u.Stance == stance) n++;
+        return n;
+    }
+
     /// <summary>Fog cells the local player's side has explored, as its client knows them.</summary>
     private static int ExploredCells()
     {

@@ -411,6 +411,14 @@ namespace WAR2D.Client
             return true;
         }
 
+        /// <summary>Seconds since the unit last fired, as far as this client was told; infinity when it never did or isn't known.</summary>
+        public float SecondsSinceAttack(int id)
+        {
+            int index = NetIdAllocator.IndexOf(id);
+            if (id <= 0 || store.IdOf(index) != id || (uint)index >= (uint)lastAction.Length) return float.PositiveInfinity;
+            return serverTime - lastAction[index];
+        }
+
         /// <summary>True while the client knows the unit and it is still short of its route's end (it is moving).</summary>
         public bool IsMoving(int id) => id > 0 && store.IdOf(NetIdAllocator.IndexOf(id)) == id && store.IsMoving(NetIdAllocator.IndexOf(id), serverTime);
 

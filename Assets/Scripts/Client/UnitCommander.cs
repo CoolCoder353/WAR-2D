@@ -55,6 +55,38 @@ public class UnitCommander : NetworkBehaviour
     /// <summary>Roam's clock: seconds of unpaused play, so a pause doesn't run its timers.</summary>
     private float roamClock;
 
+    private readonly List<int> roamArmed = new List<int>(), roamUnarmed = new List<int>();
+
+    /// <summary>
+    /// Sends a group of roamers to its goal: those that can attack by Attack-move, the rest by Move (<see cref="WAR2D.Client.Roam.OrderOf"/>).
+    /// Both orders share the goal, so on the server they are one route per size class, as one order would be.
+    /// </summary>
+    private void SendRoam(List<int> ids, int2 goal)
+    {
+        Config.GameConfigData config = Config.ConfigLoader.LoadConfig();
+        roamArmed.Clear();
+        roamUnarmed.Clear();
+        foreach (int id in ids) // ascending, as the id codec wants, and so each part stays
+        {
+            UnitType type = TypeOf(id);
+            bool armed = config.Units.TryGetValue(type, out Config.UnitConfig unit) && WAR2D.Client.Roam.OrderOf(unit) == OrderKind.AttackMove;
+            (armed ? roamArmed : roamUnarmed).Add(id);
+        }
+        Selection.OrderIds(OrderKind.AttackMove, roamArmed, goal);
+        Selection.OrderIds(OrderKind.Move, roamUnarmed, goal);
+    }
+
+    /// <summary>True while a roamer is in a fight: it fired within its time between shots (Roam leaves it to it).</summary>
+    private bool RoamerFighting(int id)
+    {
+        ClientWorld world = ClientWorld.Instance;
+        if (world == null || !world.TryGet(id, out ClientUnitView view)) return false;
+        Config.GameConfigData config = Config.ConfigLoader.LoadConfig();
+        if (!config.Units.TryGetValue(view.Type, out Config.UnitConfig unit) || unit.Damage <= 0) return false;
+        float aim = view.Type == UnitType.Sniper ? config.Sniper.AimSeconds : 0f;
+        return world.SecondsSinceAttack(id) <= WAR2D.Client.Roam.FightSeconds(unit, aim);
+    }
+
     /// <summary>
     /// Roam (playtest 2026-10-30): the selected own units, Builders aside, scout random ground not seen lately until ordered
     /// otherwise.
@@ -778,8 +810,7 @@ public class UnitCommander : NetworkBehaviour
         if (core != null && core.CurrentState == GameState.Playing && !core.IsPaused)
         {
             roamClock += Time.deltaTime; // game time: in step with the sim when frames stall or a test fast-forwards
-            Roaming.Update(roamClock, WorldStateManager.Instance.MapBounds.Item1, WorldStateManager.Instance.MapBounds.Item2,
-                (ids, goal) => Selection.OrderIds(OrderKind.Move, ids, goal));
+            Roaming.Update(roamClock, WorldStateManager.Instance.MapBounds.Item1, WorldStateManager.Instance.MapBounds.Item2, SendRoam, RoamerFighting);
         }
         // v0.18: the keyboard is the manual's (its search box), and clicks stop at it; so for the menu, Settings and the gift dialog.
         if (WAR2D.UI.HudController.DialogOpen || WAR2D.UI.ManualController.AnyOpen)
