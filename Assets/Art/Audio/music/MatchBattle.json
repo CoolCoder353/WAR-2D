@@ -3,7 +3,7 @@
   "root": 52,
   "minor": true,
   "bpm": 148,
-  "mood": 1,
+  "mood": "Battle",
   "sections": "AABB",
   "barsPerSection": 8,
   "loop": true

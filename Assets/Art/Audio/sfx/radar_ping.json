@@ -1,5 +1,5 @@
 {
-  "wave": "Sine",
+  "wave": "Square",
   "sustain": 0.04,
   "decay": 0.45,
   "frequency": 1320,

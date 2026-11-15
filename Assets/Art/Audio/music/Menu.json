@@ -3,7 +3,7 @@
   "root": 57,
   "minor": true,
   "bpm": 96,
-  "mood": 0,
+  "mood": "Calm",
   "sections": "AABA",
   "barsPerSection": 4,
   "loop": true

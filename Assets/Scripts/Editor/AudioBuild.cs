@@ -1,6 +1,7 @@
 using System.IO;
 using UnityEditor;
 using UnityEngine;
+using WAR2D.Art;
 using WAR2D.Audio;
 using WAR2D.Audio.Chiptune;
 
@@ -31,7 +32,7 @@ namespace WAR2D.EditorTools
             int count = 0;
             foreach (string path in Directory.GetFiles(MusicSource, "*.json"))
             {
-                var spec = JsonUtility.FromJson<SongSpec>(File.ReadAllText(path));
+                SongSpec spec = ReadSong(path);
                 float[] samples = ChiptuneRenderer.Render(SongWriter.Compose(spec), MusicSampleRate, out _);
                 File.WriteAllBytes($"{MusicOutput}/{Path.GetFileNameWithoutExtension(path)}.wav", Wav.Encode(samples, MusicSampleRate));
                 count++;
@@ -40,6 +41,15 @@ namespace WAR2D.EditorTools
             Debug.Log($"Built {count} tracks into {MusicOutput}");
         }
 
+        /// <summary>The sound spec at <paramref name="path"/>, read strictly (<see cref="SpecJson"/>).</summary>
+        public static SfxrParams ReadSfx(string path) => SpecJson.ReadFile<SfxrParams>(path);
+
+        /// <summary>The song spec at <paramref name="path"/>, read strictly (<see cref="SpecJson"/>).</summary>
+        public static SongSpec ReadSong(string path) => SpecJson.ReadFile<SongSpec>(path);
+
+        /// <summary>The WAV file <c>Build SFX</c> writes for <paramref name="p"/>.</summary>
+        public static byte[] RenderSfx(SfxrParams p) => Wav.Encode(Sfxr.Render(p, p.seed, SampleRate), SampleRate);
+
         [MenuItem("WAR-2D/Audio/Build SFX")]
         public static void BuildSfx()
         {
@@ -47,9 +57,7 @@ namespace WAR2D.EditorTools
             int count = 0;
             foreach (string path in Directory.GetFiles(SfxSource, "*.json"))
             {
-                var p = JsonUtility.FromJson<SfxrParams>(File.ReadAllText(path));
-                float[] samples = Sfxr.Render(p, p.seed, SampleRate);
-                File.WriteAllBytes($"{SfxOutput}/{Path.GetFileNameWithoutExtension(path)}.wav", Wav.Encode(samples, SampleRate));
+                File.WriteAllBytes($"{SfxOutput}/{Path.GetFileNameWithoutExtension(path)}.wav", RenderSfx(ReadSfx(path)));
                 count++;
             }
             AssetDatabase.Refresh();

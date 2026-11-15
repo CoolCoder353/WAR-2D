@@ -496,8 +496,7 @@ namespace WAR2D.EditorTools
             if (!Directory.Exists(src)) return;
             void Render(string path, string name)
             {
-                var p = JsonUtility.FromJson<WAR2D.Audio.SfxrParams>(File.ReadAllText(path));
-                File.WriteAllBytes(Path.Combine(outDir, name + ".wav"), WAR2D.Audio.Wav.Encode(WAR2D.Audio.Sfxr.Render(p, p.seed, AudioBuild.SampleRate), AudioBuild.SampleRate));
+                File.WriteAllBytes(Path.Combine(outDir, name + ".wav"), AudioBuild.RenderSfx(AudioBuild.ReadSfx(path)));
             }
             foreach (string path in Directory.GetFiles(src, "*.json")) Render(path, Path.GetFileNameWithoutExtension(path));
             foreach (string old in new[] { "bomber_blast", "shot_sniper", "shot_artillery", "shell_impact", "shot_turret", "shot_flamethrower", "explosion_small", "explosion_large", "building_destroyed" })

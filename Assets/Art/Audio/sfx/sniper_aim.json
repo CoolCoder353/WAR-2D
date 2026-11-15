@@ -1,5 +1,5 @@
 {
-  "wave": "Sine",
+  "wave": "Square",
   "attack": 0.1,
   "sustain": 1.8,
   "decay": 0.1,
