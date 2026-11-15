@@ -24,7 +24,7 @@ namespace WAR2D.EditorTools
         public const string PalettePath = "Assets/Art/palette.png";
 
         /// <summary>The map seed the terrain variants are drawn with.</summary>
-        public const int Seed = 1;
+        public const int Seed = ArtManifest.Seed;
 
         /// <summary>Transparent pixels between frames (mipmaps bleed less with two).</summary>
         public const int Padding = 2;
@@ -125,7 +125,7 @@ namespace WAR2D.EditorTools
                 {
                     if (e.Id == ArtManifest.FloorFeature || e.Id == ArtManifest.RockFeature)
                     {
-                        Frame stamp = Feature(e.Id == ArtManifest.RockFeature, i, cache);
+                        Frame stamp = Feature(e, i, cache);
                         frames.Add(stamp);
                         rects.Add((e.Id, i, stamp.W, stamp.H));
                         continue;
@@ -137,8 +137,14 @@ namespace WAR2D.EditorTools
                         rects.Add((e.Id, i, fx.W, fx.H));
                         continue;
                     }
-                    var (key, make, lift) = Generator(e, i);
-                    if (!cache.TryGetValue(key, out Frame f)) cache[key] = f = Finish(make(), lift, kind != ArtKind.Tile);
+                    ArtCell cell = e.Cell(i);
+                    // A sprite with no generator yet draws as a placeholder of its size.
+                    string key = e.MakeLit != null ? e.KeyFor(cell) : $"Placeholder {Math.Max(e.WidthTiles, e.HeightTiles)}";
+                    if (!cache.TryGetValue(key, out Frame f))
+                    {
+                        LitCanvas canvas = e.MakeLit != null ? e.MakeLit(cell) : RenderGen.Placeholder(Math.Max(e.WidthTiles, e.HeightTiles));
+                        cache[key] = f = Finish(canvas, e.Lift, kind != ArtKind.Tile);
+                    }
                     frames.Add(f);
                     rects.Add((e.Id, i, f.W, f.H));
                 }
@@ -195,104 +201,17 @@ namespace WAR2D.EditorTools
             }
         }
 
-        /// <summary>The generator for cell <paramref name="cell"/> of <paramref name="e"/>: a cache key, the canvas and its 3/4 lift.</summary>
-        private static (string key, Func<LitCanvas> make, float lift) Generator(ArtEntry e, int cell)
-        {
-            int frame = cell % e.Frames, direction = cell / e.Frames;
-            if (e.Kind == ArtKind.Unit && Layer(e.Id, ArtManifest.HullSuffix, out UnitType hull))
-                return ($"{e.Id} {direction} {frame}", () => RenderGen.HullLayer(hull, direction * 2f * Mathf.PI / e.Directions, frame), 0f);
-            if (e.Kind == ArtKind.Unit && Layer(e.Id, ArtManifest.TurretSuffix, out UnitType turret))
-                return ($"{e.Id} {direction} {frame}", () => RenderGen.TurretLayer(turret, direction * 2f * Mathf.PI / e.Directions, frame), 0f);
-            switch (e.Id)
-            {
-                case nameof(UnitType.Tank):
-                    return ($"Tank {direction} {frame}", () => RenderGen.Tank(direction * Mathf.PI / 4f, frame), 0f);
-                case "Builder":
-                    return ($"Builder {direction} {frame}", () => RenderGen.Builder(direction * Mathf.PI / 4f, frame), 0f);
-                case "Digger":
-                    return ($"Digger {direction} {frame}", () => RenderGen.Digger(direction * Mathf.PI / 4f, frame), 0f);
-                case nameof(UnitType.Scout):
-                    return ($"Scout {direction} {frame}", () => RenderGen.Scout(direction * Mathf.PI / 4f, frame), 0f);
-                case nameof(UnitType.Flamethrower):
-                    return ($"Flamethrower {direction} {frame}", () => RenderGen.Flamethrower(direction * Mathf.PI / 4f, frame), 0f);
-                case nameof(UnitType.Sniper):
-                    return ($"Sniper {direction} {frame}", () => RenderGen.Sniper2x2(direction * Mathf.PI / 4f, frame), 0f);
-                case nameof(UnitType.Bomber):
-                    return ($"Bomber {direction} {frame}", () => RenderGen.Bomber(direction * Mathf.PI / 4f, frame), 0f);
-                case nameof(UnitType.Heavy):
-                    return ($"Heavy {direction} {frame}", () => RenderGen.Heavy(direction * Mathf.PI / 4f, frame), 0f);
-                case nameof(UnitType.Artillery):
-                    return ($"Artillery {direction} {frame}", () => RenderGen.Artillery(direction * Mathf.PI / 4f, frame), 0f);
-                case nameof(BuildingType.HeavyFactory):
-                    return ($"HeavyFactory {frame}", () => RenderGen.HeavyFactory(frame), RenderGen.Lift);
-                case nameof(BuildingType.SiegeWorkshop):
-                    return ($"SiegeWorkshop {frame}", () => RenderGen.SiegeWorkshop(frame), RenderGen.Lift);
-                case "Mine":
-                    return ($"Bomb {frame}", () => RenderGen.Mine(frame), 0f);
-                case "Radar":
-                    return ($"Radar {frame}", () => RenderGen.Radar(frame), RenderGen.Lift);
-                case nameof(BuildingType.GunTurret):
-                    return ($"GunTurret {frame}", () => RenderGen.GunTurret2x2Base(frame), RenderGen.Lift);
-                case ArtManifest.TurretHead:
-                    return ($"GunTurretHead {direction} {frame}", () => RenderGen.GunTurret2x2Head(direction * Mathf.PI / 4f, frame), RenderGen.Lift);
-                case nameof(BuildingType.Jammer):
-                    return ($"Jammer {frame}", () => RenderGen.Jammer(frame), RenderGen.Lift);
-                case "PlayerWall":
-                    return ($"PlayerWall {frame}", () => RenderGen.PlayerWall(Seed, frame % ArtManifest.AutotileVariants, frame / ArtManifest.AutotileVariants), 0f);
-                case "WallBlueprint":
-                    return ($"WallBlueprint {frame}", () => RenderGen.WallBlueprint(frame), 0f);
-                case nameof(BuildingType.Base):
-                    return ("Base", RenderGen.Base, RenderGen.Lift);
-                case nameof(BuildingType.Barracks):
-                    return ($"Spawner {frame}", () => RenderGen.Spawner(frame), RenderGen.Lift);
-                case nameof(BuildingType.Miner):
-                    return ($"Miner {direction} {frame}", () => RenderGen.Miner(frame, direction), RenderGen.Lift);
-                case nameof(TileType.Ground):
-                    return ($"Floor {frame}", () => RenderGen.Floor(Seed, frame), 0f);
-                case nameof(TileType.Wall):
-                {
-                    var (mask, corners) = RenderGen.RockShapes[frame];
-                    return ($"Rock {frame}", () => RenderGen.Rock(Seed, mask, corners), 0f);
-                }
-                case nameof(TileType.Gem):
-                {
-                    // Variant-major: 4 variants × the rock shapes.
-                    int shapes = RenderGen.RockShapes.Length;
-                    var (mask, corners) = RenderGen.RockShapes[frame % shapes];
-                    return ($"Gem {frame}", () => RenderGen.Gem(Seed, frame / shapes, mask, corners), 0f);
-                }
-                case nameof(TileType.RichGem):
-                {
-                    // v0.17: as Gem, variant-major.
-                    int shapes = RenderGen.RockShapes.Length;
-                    var (mask, corners) = RenderGen.RockShapes[frame % shapes];
-                    return ($"Rich gem {frame}", () => RenderGen.RichGem(Seed, frame / shapes, mask, corners), 0f);
-                }
-                case nameof(TileType.Border):
-                    return ("Rock 15", () => RenderGen.Rock(Seed, 15), 0f);
-                default:
-                    return ($"Placeholder {Math.Max(e.WidthTiles, e.HeightTiles)}", () => RenderGen.Placeholder(Math.Max(e.WidthTiles, e.HeightTiles)), 0f);
-            }
-        }
-
-        /// <summary>True for a unit's layer id: the unit type's name followed by <paramref name="suffix"/>.</summary>
-        private static bool Layer(string id, string suffix, out UnitType type)
-        {
-            type = default;
-            return id.EndsWith(suffix) && Enum.TryParse(id.Substring(0, id.Length - suffix.Length), out type);
-        }
-
         /// <summary>
         /// A terrain feature stamp: the feature finished on its plain base, transparent wherever it came out the same as
         /// the base without it, so the shader blends in only what the feature changed.
         /// </summary>
-        private static Frame Feature(bool rock, int cell, Dictionary<string, Frame> cache)
+        private static Frame Feature(ArtEntry e, int cell, Dictionary<string, Frame> cache)
         {
+            bool rock = e.Id == ArtManifest.RockFeature;
             string baseKey = rock ? "RockFeatureBase" : "FloorFeatureBase";
             if (!cache.TryGetValue(baseKey, out Frame plain))
                 cache[baseKey] = plain = Finish(rock ? RenderGen.RockFeatureBase(Seed) : RenderGen.FloorFeatureBase(Seed), 0f, false);
-            int kind = cell / RenderGen.FeatureFrames, frame = cell % RenderGen.FeatureFrames;
-            Frame f = Finish(rock ? RenderGen.RockFeature(Seed, kind, frame) : RenderGen.FloorFeature(Seed, kind, frame), 0f, false);
+            Frame f = Finish(e.MakeLit(e.Cell(cell)), 0f, false);
             for (int i = 0; i < f.Colour.Length; i++)
             {
                 Color32 a = f.Colour[i], b = plain.Colour[i];
@@ -304,9 +223,8 @@ namespace WAR2D.EditorTools
         /// <summary>An effect frame from <see cref="EffectGen"/> (already palette pixel art), split into colour and mask.</summary>
         private static Frame Effect(ArtEntry e, int cell)
         {
-            EffectFrame? made = EffectGen.For(e.Id, cell, e.Frames);
-            if (made == null) throw new InvalidOperationException($"{e.Id} has no effect generator (EffectGen.For)");
-            EffectFrame f = made.Value;
+            if (e.MakeEffect == null) throw new InvalidOperationException($"{e.Id} has no effect generator (give its ArtEntry one with Fx)");
+            EffectFrame f = e.MakeEffect(e.Cell(cell));
             Color32[] colour = ArtStyle.SplitTeamKey(f.Pixels, out Color32[] mask);
             return new Frame { Colour = colour, Mask = mask, W = f.Width, H = f.Height, PivotY = f.Height / 2f };
         }
