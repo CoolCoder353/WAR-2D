@@ -35,6 +35,32 @@ public class AssetHashTests
         Assert.IsEmpty(problems, string.Join("\n", problems));
     }
 
+    /// <summary>A partial build (tools/art-build.sh --only) that renders nothing re-packs the built atlas to the same bytes.</summary>
+    [Test]
+    public void AnAtlasRebuiltFromItsOwnFramesIsUnchanged()
+    {
+        foreach (var (atlas, kind) in ArtBuild.Atlases)
+        {
+            ArtBuild.BuiltAtlas old = ArtBuild.LoadBuilt(atlas);
+            Assert.IsNotNull(old, atlas);
+            ArtBuild.BuiltAtlas again = ArtBuild.Render(atlas, kind, e => false, old);
+            Assert.AreEqual(0, again.Rendered, atlas);
+            Assert.AreEqual(AssetHashes.Sha(old.Png), AssetHashes.Sha(again.Png), atlas + ".png");
+            Assert.AreEqual(AssetHashes.Sha(old.Mask), AssetHashes.Sha(again.Mask), atlas + "_mask.png");
+            Assert.AreEqual(AssetHashes.Sha(old.Json), AssetHashes.Sha(again.Json), atlas + ".json");
+        }
+    }
+
+    [Test]
+    public void AGlobMatchesWholeIds()
+    {
+        Assert.IsTrue(AssetCli.Glob("Tank*")("TankHull"));
+        Assert.IsFalse(AssetCli.Glob("Tank*")("HeavyTank"));
+        Assert.IsTrue(AssetCli.Glob("shot_?")("shot_a"));
+        Assert.IsFalse(AssetCli.Glob("shot.")("shotx"));
+        Assert.IsTrue(AssetCli.Glob("*")("anything"));
+    }
+
     [Test]
     public void TheBuiltFilesAreTheRecordedOnes()
     {

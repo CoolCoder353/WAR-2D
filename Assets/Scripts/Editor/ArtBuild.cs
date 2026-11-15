@@ -95,11 +95,45 @@ namespace WAR2D.EditorTools
         {
             public string Name;
             public byte[] Png, Mask, Json;
+            /// <summary>The atlas's layout and its colour and mask pixels (bottom-up rows).</summary>
+            public AtlasData Data;
+            public Color32[] Pixels, MaskPixels;
+            /// <summary>How many sprites were rendered (the rest were taken from the atlas already built).</summary>
+            public int Rendered;
             /// <summary>Sprite id to the SHA-256 of its finished frames (size, pivot, colour and mask), before packing.</summary>
             public readonly SortedDictionary<string, string> Sprites = new SortedDictionary<string, string>(StringComparer.Ordinal);
 
             /// <summary>The files in <see cref="OutputFolder"/>, by name.</summary>
             public (string file, byte[] bytes)[] Files => new[] { (Name + ".png", Png), (Name + "_mask.png", Mask), (Name + ".json", Json) };
+
+            /// <summary>
+            /// Sprite <paramref name="id"/>'s cells as one picture at <paramref name="scale"/>: a row per facing, a column per
+            /// frame, on transparent. Null when the atlas has no such sprite.
+            /// </summary>
+            public Color32[] Sheet(string id, int scale, out int width, out int height)
+            {
+                width = height = 0;
+                AtlasSprite sprite = Data.sprites.Find(s => s.id == id);
+                if (sprite == null) return null;
+                int cw = 0, ch = 0;
+                for (int k = 0; k < sprite.frames * sprite.directions; k++)
+                {
+                    cw = Math.Max(cw, Data.frames[sprite.first + k].w);
+                    ch = Math.Max(ch, Data.frames[sprite.first + k].h);
+                }
+                width = sprite.frames * (cw + 1) * scale;
+                height = sprite.directions * (ch + 1) * scale;
+                var sheet = new Color32[width * height];
+                for (int k = 0; k < sprite.frames * sprite.directions; k++)
+                {
+                    AtlasFrame f = Data.frames[sprite.first + k];
+                    int ox = (k % sprite.frames) * (cw + 1) * scale, oy = (sprite.directions - 1 - k / sprite.frames) * (ch + 1) * scale;
+                    for (int y = 0; y < f.h * scale; y++)
+                        for (int x = 0; x < f.w * scale; x++)
+                            sheet[(oy + y) * width + ox + x] = Pixels[(f.y + y / scale) * Data.width + f.x + x / scale];
+                }
+                return sheet;
+            }
 
             /// <summary>Records this atlas's sprites and files in <paramref name="hashes"/>.</summary>
             public void AddTo(AssetHashes hashes)
@@ -109,9 +143,68 @@ namespace WAR2D.EditorTools
             }
         }
 
-        /// <summary>Renders and packs the atlas of <paramref name="kind"/> in memory; nothing is written.</summary>
-        public static BuiltAtlas Render(string name, ArtKind kind)
+        /// <summary>The atlas <paramref name="name"/> as it is built on disk, or null when it isn't there.</summary>
+        public static BuiltAtlas LoadBuilt(string name)
         {
+            string path = Path.Combine(OutputFolder, name);
+            if (!File.Exists(path + ".png") || !File.Exists(path + "_mask.png") || !File.Exists(path + ".json")) return null;
+            var built = new BuiltAtlas
+            {
+                Name = name,
+                Png = File.ReadAllBytes(path + ".png"),
+                Mask = File.ReadAllBytes(path + "_mask.png"),
+                Json = File.ReadAllBytes(path + ".json"),
+                Data = new AtlasData(),
+            };
+            JsonUtility.FromJsonOverwrite(File.ReadAllText(path + ".json"), built.Data);
+            built.Pixels = Decode(built.Png, built.Data);
+            built.MaskPixels = Decode(built.Mask, built.Data);
+            return built;
+        }
+
+        private static Color32[] Decode(byte[] png, AtlasData data)
+        {
+            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            try
+            {
+                if (!texture.LoadImage(png) || texture.width != data.width || texture.height != data.height)
+                    throw new InvalidOperationException("a built atlas is not the size its JSON says");
+                return texture.GetPixels32();
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(texture);
+            }
+        }
+
+        /// <summary>The frames of <paramref name="e"/> as <paramref name="old"/> holds them, or null when it has none or their count or size differs.</summary>
+        private static List<Frame> Kept(ArtEntry e, BuiltAtlas old)
+        {
+            AtlasSprite sprite = old?.Data.sprites.Find(s => s.id == e.Id);
+            if (sprite == null || sprite.frames != e.Frames || sprite.directions != e.Directions) return null;
+            var kept = new List<Frame>();
+            for (int k = 0; k < e.Frames * e.Directions; k++)
+            {
+                AtlasFrame at = old.Data.frames[sprite.first + k];
+                var f = new Frame { W = at.w, H = at.h, PivotY = at.pivotY, Colour = new Color32[at.w * at.h], Mask = new Color32[at.w * at.h] };
+                for (int y = 0; y < at.h; y++)
+                {
+                    Array.Copy(old.Pixels, (at.y + y) * old.Data.width + at.x, f.Colour, y * at.w, at.w);
+                    Array.Copy(old.MaskPixels, (at.y + y) * old.Data.width + at.x, f.Mask, y * at.w, at.w);
+                }
+                kept.Add(f);
+            }
+            return kept;
+        }
+
+        /// <summary>
+        /// Renders and packs the atlas of <paramref name="kind"/> in memory; nothing is written. With <paramref name="render"/>
+        /// and <paramref name="old"/>, only the sprites it accepts are rendered and the others' frames are taken from
+        /// <paramref name="old"/> as they are (a sprite <paramref name="old"/> doesn't hold is rendered anyway).
+        /// </summary>
+        public static BuiltAtlas Render(string name, ArtKind kind, Func<ArtEntry, bool> render = null, BuiltAtlas old = null)
+        {
+            int renderedSprites = 0;
             var data = new AtlasData { pixelsPerUnit = ArtStyle.PixelsPerUnit };
             var frames = new List<Frame>();
             var rects = new List<(string id, int frame, int w, int h)>();
@@ -121,6 +214,16 @@ namespace WAR2D.EditorTools
                 if (e.Kind != kind) continue;
                 int cells = e.Frames * e.Directions;
                 data.sprites.Add(new AtlasSprite { id = e.Id, first = frames.Count, frames = e.Frames, directions = e.Directions });
+                if (render != null && !render(e) && Kept(e, old) is List<Frame> kept)
+                {
+                    for (int i = 0; i < kept.Count; i++)
+                    {
+                        frames.Add(kept[i]);
+                        rects.Add((e.Id, i, kept[i].W, kept[i].H));
+                    }
+                    continue;
+                }
+                renderedSprites++;
                 for (int i = 0; i < cells; i++)
                 {
                     if (e.Id == ArtManifest.FloorFeature || e.Id == ArtManifest.RockFeature)
@@ -171,6 +274,10 @@ namespace WAR2D.EditorTools
             var built = new BuiltAtlas
             {
                 Name = name,
+                Data = data,
+                Pixels = colour,
+                MaskPixels = mask,
+                Rendered = renderedSprites,
                 Png = Png.Encode(pack.Width, pack.Height, colour),
                 Mask = Png.Encode(pack.Width, pack.Height, mask),
                 Json = new System.Text.UTF8Encoding(false).GetBytes(JsonUtility.ToJson(data, true) + "\n"),

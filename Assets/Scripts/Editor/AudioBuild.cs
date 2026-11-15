@@ -33,8 +33,7 @@ namespace WAR2D.EditorTools
             foreach (string path in Directory.GetFiles(MusicSource, "*.json"))
             {
                 SongSpec spec = ReadSong(path);
-                float[] samples = ChiptuneRenderer.Render(SongWriter.Compose(spec), MusicSampleRate, out _);
-                File.WriteAllBytes($"{MusicOutput}/{Path.GetFileNameWithoutExtension(path)}.wav", Wav.Encode(samples, MusicSampleRate));
+                File.WriteAllBytes($"{MusicOutput}/{Path.GetFileNameWithoutExtension(path)}.wav", RenderSong(spec));
                 count++;
             }
             AssetHashes hashes = AssetHashes.Load();
@@ -43,6 +42,10 @@ namespace WAR2D.EditorTools
             AssetDatabase.Refresh();
             Debug.Log($"Built {count} tracks into {MusicOutput}");
         }
+
+        /// <summary>The WAV a song spec builds to.</summary>
+        public static byte[] RenderSong(SongSpec spec) =>
+            Wav.Encode(ChiptuneRenderer.Render(SongWriter.Compose(spec), MusicSampleRate, out _), MusicSampleRate);
 
         /// <summary>The sound spec at <paramref name="path"/>, read strictly (<see cref="SpecJson"/>).</summary>
         public static SfxrParams ReadSfx(string path) => SpecJson.ReadFile<SfxrParams>(path);

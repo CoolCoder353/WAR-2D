@@ -58,7 +58,7 @@ namespace WAR2D.Audio
             if (voice < 0) return;
             // A claimed voice is idle, so its pan only moves this sound.
             s.voices[voice].panStereo = SfxVoicePool.Pan(position, view);
-            s.voices[voice].PlayOneShot(clip, SfxVoicePool.Volume(position, view) * gain);
+            s.voices[voice].PlayOneShot(clip, SfxVoicePool.Volume(position, view) * gain * SoundEvents.Of(id).Gain);
         }
 
         /// <summary>
@@ -101,7 +101,7 @@ namespace WAR2D.Audio
         {
             AudioService s = Instance;
             AudioClip clip = Clip(id);
-            if (s != null && clip != null) s.ui.PlayOneShot(clip);
+            if (s != null && clip != null) s.ui.PlayOneShot(clip, SoundEvents.Of(id).Gain);
         }
 
         /// <summary>Seconds between hover sounds, so sweeping the pointer across a row of buttons ticks instead of buzzing.</summary>
@@ -152,7 +152,7 @@ namespace WAR2D.Audio
         {
             AudioMixer mixer = Resources.Load<AudioMixer>("Main");
             AudioMixerGroup sfx = Group(mixer, "SFX"), musicGroup = Group(mixer, "Music");
-            pool = new SfxVoicePool(Voices, PerSoundCooldown, id => Clip(id) is AudioClip c ? c.length : 0.5f);
+            pool = new SfxVoicePool(Voices, PerSoundCooldown, id => Clip(id) is AudioClip c ? c.length : 0.5f, id => SoundEvents.Of(id).cooldown);
             voices = new AudioSource[Voices];
             for (int i = 0; i < Voices; i++) voices[i] = Source(sfx);
             ui = Source(sfx);
