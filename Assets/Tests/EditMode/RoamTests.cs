@@ -250,4 +250,56 @@ public class RoamTests
         Assert.Greater(allGoals.Count, 20, "and the army keeps finding new ground");
         Assert.LessOrEqual(mostGoals, Roam.MaxGoals + 1, "within the server's order budget (one over while a goal is replaced)");
     }
+
+    /// <summary>2026-11-14: a roaming unit that can attack goes by Attack-move, so it fights back; the rest keep the Move.</summary>
+    [Test]
+    public void ArmedRoamersAttackMoveAndTheRestMove()
+    {
+        Config.ConfigLoader.ResetForTests();
+        Config.GameConfigData config = Config.ConfigLoader.LoadConfig();
+        foreach (KeyValuePair<UnitType, Config.UnitConfig> unit in config.Units)
+            Assert.AreEqual(unit.Value.Damage > 0 ? OrderKind.AttackMove : OrderKind.Move, Roam.OrderOf(unit.Value), unit.Key.ToString());
+        Assert.AreEqual(OrderKind.AttackMove, Roam.OrderOf(config.GetUnit(UnitType.Tank)), "a Tank can attack");
+        Assert.AreEqual(OrderKind.Move, Roam.OrderOf(config.GetUnit(UnitType.Bomber)), "a Bomber fires nothing: it would spend itself on the first enemy");
+        Assert.AreEqual(OrderKind.Move, Roam.OrderOf(null));
+        Assert.AreEqual(config.GetUnit(UnitType.Tank).AttackInterval + 1f, Roam.FightSeconds(config.GetUnit(UnitType.Tank), 0f), 1e-4f);
+    }
+
+    [Test]
+    public void ARoamerInAFightKeepsItsGoalAndMovesOnWhenTheFightIsOver()
+    {
+        var roam = new Roam();
+        roam.Start(new[] { 1 });
+        float2 at = new float2(100, 100);
+        float2? goal = null;
+        int sent = 0;
+        bool fighting = false, walking = true;
+        float now = 0f;
+        void Check()
+        {
+            roam.Update(now, new int2(0, 0), new int2(512, 512), (list, to) => { sent++; goal = (float2)to + 0.5f; },
+                (int unit, out float2 p) => { p = at; return true; }, unit => fighting);
+            if (walking && goal.HasValue) at += math.normalizesafe(goal.Value - at) * 0.5f; // far from the goal throughout
+            now += Roam.CheckSeconds;
+        }
+        for (int check = 0; check < 4; check++) Check(); // it sets off
+        Assert.AreEqual(1, sent);
+
+        // An enemy comes in range: it stands and shoots, for much longer than the idle and stuck timeouts.
+        walking = false;
+        fighting = true;
+        for (int check = 0; check < 40; check++) Check(); // 20 seconds
+        Assert.AreEqual(1, sent, "left alone while it fights");
+
+        // The fight ends and it walks on to the same goal: still no new order.
+        fighting = false;
+        walking = true;
+        for (int check = 0; check < 6; check++) Check();
+        Assert.AreEqual(1, sent, "it goes on to the goal it had");
+
+        // Without a fight, a unit that stood that long would have been sent on (the server stopped it).
+        walking = false;
+        for (int check = 0; check < 6; check++) Check(); // 3 seconds, past IdleSeconds
+        Assert.AreEqual(2, sent, "standing with no fight still counts as stopped");
+    }
 }
