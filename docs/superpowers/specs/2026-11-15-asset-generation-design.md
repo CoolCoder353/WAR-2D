@@ -2,6 +2,7 @@
 
 **Status:** written 2026-11-15. The owner approved all 50 ideas on 2026-11-15 (25 on versatility, ease of use and control, then 25 on quality) and asked for one spec covering them. The owner has not seen the details below: every choice the ideas left open is in §13 with the default this spec assumes. No plan is written yet.
 **Progress (2026-11-15, branch `asset-gen/phase-0-1`):** phase 0 is built and waits for the owner's sound review (§2.1). Of phase 1: the strict reader (§3.4) for sound and song specs, the sound half of the golden check (§3.6, as `SpecJsonTests.EveryBuiltSoundIsItsSpecRendered`), the audio lint (§3.7) and the sound side of the review page (§3.3, `tools/sound-review.py`).
+**Progress (2026-11-16):** the layered synth of §5.1 is built (`SfxLayers`: layers, PolyBLEP edges, exponential decays, white, pink and brown noise, tremolo, crush, soft clipper, reverb tail, DC blocker, edge fades; not yet the 4× oversampling or the multi-point pitch envelope), and the owner picked from two candidates for each of the 21 sounds (`docs/art/review/2026-11-15-redesign/`): 20 now use synth 2, `bomber_blast` keeps today's sound. Sounds without `"synth": 2` keep the old path byte for byte.
 **Parents:** the [art style guide](../../art/style-guide.md) (v0.8; this changes its Finish and Palette rows), the [v0.20 asset review](../../art/v0.20-asset-review.md) (its process is reused, §10), [polish.md](../../polish.md).
 
 Ideas are numbered as the owner saw them: **A1 to A25** are the first list, **B1 to B25** the second. §12 maps each one to its section.

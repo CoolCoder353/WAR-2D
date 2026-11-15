@@ -1,0 +1,107 @@
+{
+  "explosion_small": {
+    "what": "A small unit blows up, and small blasts.",
+    "a": "Round pop: a short thump with a soft noise tail",
+    "b": "Sharp crack: more snap, less bass"
+  },
+  "explosion_large": {
+    "what": "A large blast.",
+    "a": "Deep boom: a low thump, a long rumble and a little air",
+    "b": "Crunchy blast: a hard crack over a shorter, grittier rumble"
+  },
+  "bomber_blast": {
+    "what": "A Bomber lands and explodes: the biggest unit blast.",
+    "a": "Heavy slam: a very low thump, a long rumble and a shockwave swell",
+    "b": "Double hit: the landing thud, then the blast a moment later"
+  },
+  "mine_blast": {
+    "what": "One of the Mines goes off.",
+    "a": "Buried thump: a muffled, earthy boom with falling dirt",
+    "b": "Trigger and blast: a metal click, then a sharp blast"
+  },
+  "death_small": {
+    "what": "A small unit is destroyed.",
+    "a": "Pop and scatter: a quick thump, then bits of metal",
+    "b": "Dry burst: short and hard, almost no tail"
+  },
+  "death_large": {
+    "what": "A large unit is destroyed: two blasts, the second 0.28 s after the first.",
+    "a": "Two booms: a blast, then a deeper one, and a long rumble",
+    "b": "Blast and wreck: one big blast, then metal groaning and falling"
+  },
+  "shell_impact": {
+    "what": "An Artillery shell lands (the standard blast).",
+    "a": "Thud and dirt: a low hit with earth thrown up",
+    "b": "Hard hit: a crack with a short, tight boom"
+  },
+  "shell_impact_large": {
+    "what": "The big Artillery shell lands: the largest blast in the game.",
+    "a": "Earth-shaker: a very deep boom with a long rolling tail",
+    "b": "Crack and roar: a hard crack, then a gritty roar that fades"
+  },
+  "building_collapse": {
+    "what": "A building falls down over about 1.5 s.",
+    "a": "Rolling crumble: a long rumble with a few heavy thuds",
+    "b": "Cracks then crash: sharp breaks, then one big crash and dust"
+  },
+  "bomber_leap": {
+    "what": "A Bomber jumps into the air toward its target.",
+    "a": "Whoosh: air rushing as it takes off",
+    "b": "Spring: a quick rising pitch, like a launch"
+  },
+  "burn_death": {
+    "what": "A burning unit dies.",
+    "a": "Flare-up: a rush of flame that dies down, with crackle",
+    "b": "Burst and hiss: a small blast, then a long hiss"
+  },
+  "flame_ignite": {
+    "what": "Something catches fire.",
+    "a": "Whoomp: a soft low burst that opens up",
+    "b": "Fwip: a quick bright flare"
+  },
+  "shot_flamethrower": {
+    "what": "A Flamethrower fires; repeats while it keeps firing.",
+    "a": "Roar: a wide, fluttering jet of flame",
+    "b": "Gas jet: a brighter hiss over a low growl"
+  },
+  "sniper_shot": {
+    "what": "The Sniper fires after aiming: one heavy shot.",
+    "a": "Rifle crack: a sharp crack that echoes away",
+    "b": "Crack and zip: the crack with the round whipping off"
+  },
+  "shot_sniper": {
+    "what": "The older Sniper shot sound. I could not find it played anywhere since v0.20 gave the Sniper sniper_shot.",
+    "a": "Lighter rifle crack (the same idea as sniper_shot A, shorter)",
+    "b": "Lighter crack and zip (the same idea as sniper_shot B, shorter)"
+  },
+  "shot_turret": {
+    "what": "One shot of the Gun turret, which fires ten a second.",
+    "a": "Tight tap: short and dry so ten a second stay separate",
+    "b": "Thump: lower and rounder, more like a heavy gun"
+  },
+  "sniper_aim": {
+    "what": "The Sniper aims for 2 s before firing; the sound runs the whole aim.",
+    "a": "Rising tone: a quiet hum that climbs and tightens",
+    "b": "Lock-on beeps: ticks that speed up until the shot"
+  },
+  "dig": {
+    "what": "A Digger (or Builder) breaks rock.",
+    "a": "Crunch: a gritty bite into rock with a small thud",
+    "b": "Scrape: a softer grinding"
+  },
+  "wall_hit": {
+    "what": "A shot hits a wall or rock.",
+    "a": "Stone thunk: a dull knock with a puff of grit",
+    "b": "Ricochet: a hard ping off the surface"
+  },
+  "repair": {
+    "what": "A Builder repairs: a very short tick, repeated.",
+    "a": "Metal tick: a small bright tap",
+    "b": "Ratchet: two quick clicks"
+  },
+  "alert_mine": {
+    "what": "The alert you hear when one of your own Mines goes off, wherever you are looking.",
+    "a": "Two falling beeps: a clear warning, lower than the under-attack alarm",
+    "b": "Low thump and ping: a muffled bang, then a marker tone"
+  }
+}

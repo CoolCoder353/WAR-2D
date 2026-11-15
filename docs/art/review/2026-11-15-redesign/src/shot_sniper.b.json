@@ -1,0 +1,35 @@
+{
+  "synth": 2,
+  "volume": 0.55,
+  "seed": 152,
+  "drive": 0.5,
+  "tail": 0.2,
+  "tailSeconds": 0.163,
+  "layers": [
+    {
+      "wave": "White",
+      "attack": 0,
+      "decay": 0.012,
+      "highPass": 3000,
+      "gain": 0.9,
+      "curve": 6
+    },
+    {
+      "wave": "Saw",
+      "attack": 0,
+      "decay": 0.07,
+      "frequency": 3500,
+      "slide": -10,
+      "minFrequency": 400,
+      "gain": 0.6,
+      "lowPass": 6000
+    },
+    {
+      "wave": "Pink",
+      "attack": 0,
+      "decay": 0.1,
+      "highPass": 900,
+      "gain": 0.6
+    }
+  ]
+}

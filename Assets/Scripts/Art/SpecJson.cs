@@ -52,6 +52,16 @@ namespace WAR2D.Art
         {
             foreach (FieldInfo field in spec.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance))
             {
+                if (field.FieldType.IsArray && field.FieldType.GetElementType().IsClass && field.GetValue(spec) is Array items)
+                {
+                    // Nested specs (a sound's layers) are checked the same way, named by their place in the list.
+                    for (int i = 0; i < items.Length; i++)
+                    {
+                        if (items.GetValue(i) == null) throw new SpecException($"{file}: '{field.Name}[{i}]' is empty");
+                        CheckRanges(items.GetValue(i), $"{file}: {field.Name}[{i}]");
+                    }
+                    continue;
+                }
                 if (field.FieldType != typeof(float) && field.FieldType != typeof(int)) continue;
                 float value = Convert.ToSingle(field.GetValue(spec));
                 if (float.IsNaN(value) || float.IsInfinity(value)) throw new SpecException($"{file}: '{field.Name}' is not a number");

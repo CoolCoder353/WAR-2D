@@ -1,15 +1,62 @@
 {
-  "wave": "Square",
-  "attack": 0.05,
-  "sustain": 0.7,
-  "punch": 0.6,
-  "decay": 1.0,
-  "frequency": 90,
-  "slide": -0.3,
-  "vibratoDepth": 0.2,
-  "vibratoSpeed": 6,
-  "lowPass": 0.45,
-  "lowPassSweep": -0.15,
+  "synth": 2,
   "volume": 0.85,
-  "seed": 85
+  "seed": 91,
+  "drive": 0.5,
+  "tail": 0.3,
+  "tailSeconds": 0.26,
+  "layers": [
+    {
+      "wave": "Brown",
+      "attack": 0.08,
+      "sustain": 0.6,
+      "decay": 0.9,
+      "lowPass": 500,
+      "lowPassEnd": 120,
+      "gain": 1.2,
+      "tremoloDepth": 0.5,
+      "tremoloSpeed": 9
+    },
+    {
+      "wave": "Pink",
+      "attack": 0.05,
+      "sustain": 0.5,
+      "decay": 0.8,
+      "lowPass": 3000,
+      "lowPassEnd": 500,
+      "gain": 0.45,
+      "tremoloDepth": 0.8,
+      "tremoloSpeed": 17
+    },
+    {
+      "wave": "Sine",
+      "offset": 0.1,
+      "frequency": 90,
+      "slide": -3,
+      "minFrequency": 30,
+      "decay": 0.25,
+      "gain": 0.8,
+      "curve": 3
+    },
+    {
+      "wave": "Sine",
+      "offset": 0.55,
+      "frequency": 75,
+      "slide": -3,
+      "minFrequency": 28,
+      "decay": 0.3,
+      "gain": 0.88,
+      "curve": 3
+    },
+    {
+      "wave": "Sine",
+      "offset": 0.95,
+      "frequency": 65,
+      "slide": -2.5,
+      "minFrequency": 26,
+      "decay": 0.4,
+      "gain": 0.96,
+      "curve": 3
+    }
+  ]
 }

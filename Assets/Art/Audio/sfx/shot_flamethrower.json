@@ -1,14 +1,31 @@
 {
-  "wave": "Square",
-  "attack": 0.04,
-  "sustain": 0.3,
-  "punch": 0.2,
-  "decay": 0.25,
-  "frequency": 900,
-  "slide": -0.3,
-  "highPass": 0.05,
-  "vibratoDepth": 0.4,
-  "vibratoSpeed": 22,
+  "synth": 2,
   "volume": 0.5,
-  "seed": 35
+  "seed": 132,
+  "layers": [
+    {
+      "wave": "White",
+      "attack": 0.03,
+      "sustain": 0.3,
+      "decay": 0.25,
+      "highPass": 1800,
+      "lowPass": 9000,
+      "gain": 0.8,
+      "tremoloDepth": 0.3,
+      "tremoloSpeed": 31,
+      "curve": 2
+    },
+    {
+      "wave": "Saw",
+      "attack": 0.04,
+      "sustain": 0.3,
+      "decay": 0.2,
+      "frequency": 85,
+      "lowPass": 450,
+      "gain": 0.6,
+      "vibratoDepth": 0.06,
+      "vibratoSpeed": 13,
+      "curve": 2
+    }
+  ]
 }

@@ -1,0 +1,199 @@
+<title>Sound Redesign Candidates</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jersey+10&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+/* Layout: one column of sounds, each a before and an after side by side (stacked on a phone), with the
+   choices summed in a bar at the end. One dark look on purpose, as on the v0.12 to v0.20 review pages. */
+:root {
+  --bg: #15191e;
+  --panel: #20262d;
+  --edge: #323b45;
+  --text: #e8edf2;
+  --muted: #aab6c2;
+  --gold: #f2c14e;
+  --accent: #3fd0ff;
+  --warn: #ff9a3d;
+  --ok: #8fd18f;
+  --display: "Jersey 10", "Courier New", monospace;
+  --body: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  color-scheme: dark;
+}
+body { background: var(--bg); color: var(--text); font: 15px/1.55 var(--body); }
+main { max-width: 1080px; margin: 0 auto; padding-block: 28px 72px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 22px; }
+h1, h2 { font-family: var(--display); font-weight: 400; letter-spacing: 0.02em; text-wrap: balance; margin: 0; }
+h1 { font-size: 46px; line-height: 1; }
+h2 { font-size: 26px; line-height: 1.1; color: var(--gold); }
+p { margin: 0; max-width: 72ch; color: var(--muted); }
+p strong { color: var(--text); font-weight: 600; }
+code { font: 13px var(--mono); color: var(--text); }
+button { font: 14px var(--body); color: var(--bg); background: var(--accent); border: 0; padding: 7px 14px; cursor: pointer; }
+button.quiet { background: transparent; color: var(--accent); border: 1px solid var(--edge); }
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lede { display: grid; gap: 10px; }
+.bar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.tally { font: 13px var(--mono); color: var(--muted); }
+#list { display: grid; gap: 14px; }
+.sound { background: var(--panel); border: 1px solid var(--edge); padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
+.sound > header { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; justify-content: space-between; }
+.meta { font: 12px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px 18px; }
+.sound > p { color: var(--text); }
+.side { display: grid; gap: 6px; min-width: 0; }
+.side > span { font: 12px/1.4 var(--mono); letter-spacing: 0.04em; color: var(--gold); min-height: 2.8em; }
+.side canvas { width: 100%; height: 56px; background: var(--bg); border: 1px solid var(--edge); display: block; image-rendering: pixelated; }
+.side canvas.spec { height: 84px; }
+.side audio { width: 100%; height: 34px; }
+.choice { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; }
+.choice label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.choice input[type="text"] { flex: 1 1 220px; min-width: 0; font: 14px var(--body); color: var(--text); background: var(--bg); border: 1px solid var(--edge); padding: 4px 8px; }
+textarea { width: 100%; box-sizing: border-box; min-height: 150px; font: 13px/1.5 var(--mono); color: var(--text); background: var(--panel); border: 1px solid var(--edge); padding: 10px; }
+</style>
+<main>
+  <div class="lede">
+    <h1>Sound Redesign Candidates</h1>
+    <p>Two new takes on each of the 21 sounds you asked to change, made with the new layered synth, beside the sound that ships today. <strong>A</strong> is usually the deeper, rounder take and <strong>B</strong> the sharper one. Nothing here is in the game: a sound only changes once you pick it. The deep blasts (A) carry most of their weight below 150 Hz, so judge them on speakers or headphones with bass.</p>
+    <p>Each sound shows its waveform and its spectrogram (0 to 11 kHz, bottom to top, brighter is louder). Pick one answer per sound; your answers are kept in this browser. When done, copy the summary at the end and paste it back to Claude.</p>
+  </div>
+  <div class="bar">
+    <button id="clear" class="quiet" type="button">Clear answers</button>
+    <span class="tally" id="tally"></span>
+  </div>
+  <div id="list"></div>
+  <h2>Summary</h2>
+  <textarea id="summary" readonly aria-label="Summary of your answers"></textarea>
+  <div class="bar"><button id="copy" type="button">Copy summary</button><span class="tally" id="copied"></span></div>
+</main>
+<script>
+const SOUNDS = [{"id": "alert_mine", "meta": "", "what": "The alert you hear when one of your own Mines goes off, wherever you are looking.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/alert_mine.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Two falling beeps: a clear warning, lower than the under-attack alarm", "src": "candidates/alert_mine.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Low thump and ping: a muffled bang, then a marker tone", "src": "candidates/alert_mine.b.wav", "answer": "Use B"}]}, {"id": "bomber_blast", "meta": "", "what": "A Bomber lands and explodes: the biggest unit blast.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/bomber_blast.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Heavy slam: a very low thump, a long rumble and a shockwave swell", "src": "candidates/bomber_blast.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Double hit: the landing thud, then the blast a moment later", "src": "candidates/bomber_blast.b.wav", "answer": "Use B"}]}, {"id": "bomber_leap", "meta": "", "what": "A Bomber jumps into the air toward its target.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/bomber_leap.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Whoosh: air rushing as it takes off", "src": "candidates/bomber_leap.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Spring: a quick rising pitch, like a launch", "src": "candidates/bomber_leap.b.wav", "answer": "Use B"}]}, {"id": "building_collapse", "meta": "", "what": "A building falls down over about 1.5 s.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/building_collapse.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Rolling crumble: a long rumble with a few heavy thuds", "src": "candidates/building_collapse.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Cracks then crash: sharp breaks, then one big crash and dust", "src": "candidates/building_collapse.b.wav", "answer": "Use B"}]}, {"id": "burn_death", "meta": "", "what": "A burning unit dies.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/burn_death.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Flare-up: a rush of flame that dies down, with crackle", "src": "candidates/burn_death.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Burst and hiss: a small blast, then a long hiss", "src": "candidates/burn_death.b.wav", "answer": "Use B"}]}, {"id": "death_large", "meta": "", "what": "A large unit is destroyed: two blasts, the second 0.28 s after the first.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/death_large.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Two booms: a blast, then a deeper one, and a long rumble", "src": "candidates/death_large.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Blast and wreck: one big blast, then metal groaning and falling", "src": "candidates/death_large.b.wav", "answer": "Use B"}]}, {"id": "death_small", "meta": "", "what": "A small unit is destroyed.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/death_small.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Pop and scatter: a quick thump, then bits of metal", "src": "candidates/death_small.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Dry burst: short and hard, almost no tail", "src": "candidates/death_small.b.wav", "answer": "Use B"}]}, {"id": "dig", "meta": "", "what": "A Digger (or Builder) breaks rock.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/dig.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Crunch: a gritty bite into rock with a small thud", "src": "candidates/dig.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Scrape: a softer grinding", "src": "candidates/dig.b.wav", "answer": "Use B"}]}, {"id": "explosion_large", "meta": "", "what": "A large blast.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/explosion_large.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Deep boom: a low thump, a long rumble and a little air", "src": "candidates/explosion_large.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Crunchy blast: a hard crack over a shorter, grittier rumble", "src": "candidates/explosion_large.b.wav", "answer": "Use B"}]}, {"id": "explosion_small", "meta": "", "what": "A small unit blows up, and small blasts.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/explosion_small.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Round pop: a short thump with a soft noise tail", "src": "candidates/explosion_small.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Sharp crack: more snap, less bass", "src": "candidates/explosion_small.b.wav", "answer": "Use B"}]}, {"id": "flame_ignite", "meta": "", "what": "Something catches fire.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/flame_ignite.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Whoomp: a soft low burst that opens up", "src": "candidates/flame_ignite.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Fwip: a quick bright flare", "src": "candidates/flame_ignite.b.wav", "answer": "Use B"}]}, {"id": "mine_blast", "meta": "", "what": "One of the Mines goes off.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/mine_blast.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Buried thump: a muffled, earthy boom with falling dirt", "src": "candidates/mine_blast.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Trigger and blast: a metal click, then a sharp blast", "src": "candidates/mine_blast.b.wav", "answer": "Use B"}]}, {"id": "repair", "meta": "", "what": "A Builder repairs: a very short tick, repeated.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/repair.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Metal tick: a small bright tap", "src": "candidates/repair.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Ratchet: two quick clicks", "src": "candidates/repair.b.wav", "answer": "Use B"}]}, {"id": "shell_impact", "meta": "", "what": "An Artillery shell lands (the standard blast).", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/shell_impact.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Thud and dirt: a low hit with earth thrown up", "src": "candidates/shell_impact.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Hard hit: a crack with a short, tight boom", "src": "candidates/shell_impact.b.wav", "answer": "Use B"}]}, {"id": "shell_impact_large", "meta": "", "what": "The big Artillery shell lands: the largest blast in the game.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/shell_impact_large.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Earth-shaker: a very deep boom with a long rolling tail", "src": "candidates/shell_impact_large.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Crack and roar: a hard crack, then a gritty roar that fades", "src": "candidates/shell_impact_large.b.wav", "answer": "Use B"}]}, {"id": "shot_flamethrower", "meta": "", "what": "A Flamethrower fires; repeats while it keeps firing.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/shot_flamethrower.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Roar: a wide, fluttering jet of flame", "src": "candidates/shot_flamethrower.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Gas jet: a brighter hiss over a low growl", "src": "candidates/shot_flamethrower.b.wav", "answer": "Use B"}]}, {"id": "shot_sniper", "meta": "", "what": "The older Sniper shot sound. I could not find it played anywhere since v0.20 gave the Sniper sniper_shot.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/shot_sniper.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Lighter rifle crack (the same idea as sniper_shot A, shorter)", "src": "candidates/shot_sniper.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Lighter crack and zip (the same idea as sniper_shot B, shorter)", "src": "candidates/shot_sniper.b.wav", "answer": "Use B"}]}, {"id": "shot_turret", "meta": "", "what": "One shot of the Gun turret, which fires ten a second.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/shot_turret.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Tight tap: short and dry so ten a second stay separate", "src": "candidates/shot_turret.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Thump: lower and rounder, more like a heavy gun", "src": "candidates/shot_turret.b.wav", "answer": "Use B"}]}, {"id": "sniper_aim", "meta": "", "what": "The Sniper aims for 2 s before firing; the sound runs the whole aim.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/sniper_aim.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Rising tone: a quiet hum that climbs and tightens", "src": "candidates/sniper_aim.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Lock-on beeps: ticks that speed up until the shot", "src": "candidates/sniper_aim.b.wav", "answer": "Use B"}]}, {"id": "sniper_shot", "meta": "", "what": "The Sniper fires after aiming: one heavy shot.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/sniper_shot.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Rifle crack: a sharp crack that echoes away", "src": "candidates/sniper_shot.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Crack and zip: the crack with the round whipping off", "src": "candidates/sniper_shot.b.wav", "answer": "Use B"}]}, {"id": "wall_hit", "meta": "", "what": "A shot hits a wall or rock.", "sides": [{"key": "now", "label": "Now (ships today)", "src": "now/wall_hit.wav", "answer": "Keep today's"}, {"key": "a", "label": "A: Stone thunk: a dull knock with a puff of grit", "src": "candidates/wall_hit.a.wav", "answer": "Use A"}, {"key": "b", "label": "B: Ricochet: a hard ping off the surface", "src": "candidates/wall_hit.b.wav", "answer": "Use B"}]}], KEY = "sound-review-redesign";
+let state = {};
+try { state = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { state = {}; }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
+const list = document.getElementById("list");
+
+for (const s of SOUNDS) {
+  const el = document.createElement("section");
+  el.className = "sound";
+  const answers = s.sides.map(x => [x.key, x.answer]).concat([["change", "None of these: change it"]]);
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  el.innerHTML = `<header><h2>${s.id}</h2><span class="meta">${esc(s.meta)}</span></header>
+    ${s.what ? `<p>${esc(s.what)}</p>` : ""}
+    <div class="sides">${s.sides.map(x => `<div class="side"><span>${esc(x.label)}</span><canvas data-src="${x.src}"></canvas><canvas class="spec"></canvas><audio controls preload="none" src="${x.src}"></audio></div>`).join("")}</div>
+    <div class="choice" role="radiogroup" aria-label="Answer for ${s.id}">
+      ${answers.map(([v, t]) => `<label><input type="radio" name="a-${s.id}" id="a-${s.id}-${v}" value="${v}">${esc(t)}</label>`).join("")}
+      <input type="text" id="n-${s.id}" placeholder="Note (what to change)" aria-label="Note for ${s.id}">
+    </div>`;
+  list.appendChild(el);
+  for (const r of el.querySelectorAll("input[type=radio]")) {
+    r.checked = (state[s.id] || {}).answer === r.value;
+    r.addEventListener("change", () => { state[s.id] = { ...(state[s.id] || {}), answer: r.value }; save(); summarise(); });
+  }
+  const note = el.querySelector("input[type=text]");
+  note.value = (state[s.id] || {}).note || "";
+  note.addEventListener("input", () => { state[s.id] = { ...(state[s.id] || {}), note: note.value }; save(); summarise(); });
+}
+
+function summarise() {
+  const groups = new Map(), order = [];
+  const put = (k, v) => { if (!groups.has(k)) { groups.set(k, []); order.push(k); } groups.get(k).push(v); };
+  let unanswered = 0;
+  for (const s of SOUNDS) {
+    const a = state[s.id] || {}, side = s.sides.find(x => x.key === a.answer);
+    const title = side ? side.answer : a.answer === "change" ? "Change" : "Not answered";
+    if (title === "Not answered") unanswered++;
+    put(title, s.id + (a.note ? ` (${a.note})` : ""));
+  }
+  const lines = [`Sound review ${KEY}`];
+  for (const k of order.sort()) lines.push(`${k} (${groups.get(k).length}): ${groups.get(k).join(", ")}`);
+  document.getElementById("summary").value = lines.join("\n");
+  document.getElementById("tally").textContent = `${SOUNDS.length - unanswered} of ${SOUNDS.length} answered`;
+}
+summarise();
+
+document.getElementById("clear").addEventListener("click", () => {
+  state = {}; save();
+  for (const i of list.querySelectorAll("input[type=radio]")) i.checked = false;
+  for (const i of list.querySelectorAll("input[type=text]")) i.value = "";
+  summarise();
+});
+document.getElementById("copy").addEventListener("click", async () => {
+  const box = document.getElementById("summary"), done = document.getElementById("copied");
+  try { await navigator.clipboard.writeText(box.value); done.textContent = "Copied"; }
+  catch (e) { box.focus(); box.select(); done.textContent = "Select all is on: copy with Ctrl+C"; }
+});
+
+// 16-bit PCM WAV to mono floats.
+function samplesOf(buffer) {
+  const v = new DataView(buffer);
+  let at = 12, channels = 1, rate = 44100, data = null;
+  while (at + 8 <= v.byteLength) {
+    const id = String.fromCharCode(v.getUint8(at), v.getUint8(at + 1), v.getUint8(at + 2), v.getUint8(at + 3)), size = v.getUint32(at + 4, true);
+    if (id === "fmt ") { channels = v.getUint16(at + 10, true); rate = v.getUint32(at + 12, true); }
+    if (id === "data") { data = { at: at + 8, size: Math.min(size, v.byteLength - at - 8) }; break; }
+    at += 8 + size + (size & 1);
+  }
+  if (!data) return { rate, x: new Float32Array(0) };
+  const n = Math.floor(data.size / 2 / channels), x = new Float32Array(n);
+  for (let i = 0; i < n; i++) x[i] = v.getInt16(data.at + i * 2 * channels, true) / 32768;
+  return { rate, x };
+}
+
+function drawWave(canvas, x) {
+  const w = canvas.width = 560, h = canvas.height = 56, g = canvas.getContext("2d");
+  g.fillStyle = "#3fd0ff";
+  for (let px = 0; px < w; px++) {
+    let lo = 0, hi = 0;
+    const a = Math.floor(px * x.length / w), b = Math.max(a + 1, Math.floor((px + 1) * x.length / w));
+    for (let i = a; i < b && i < x.length; i++) { if (x[i] < lo) lo = x[i]; if (x[i] > hi) hi = x[i]; }
+    g.fillRect(px, h / 2 - hi * h / 2, 1, Math.max(1, (hi - lo) * h / 2));
+  }
+}
+
+// In-place radix-2 FFT.
+function fft(re, im) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = -2 * Math.PI / len;
+    for (let i = 0; i < n; i += len)
+      for (let k = 0; k < len / 2; k++) {
+        const c = Math.cos(ang * k), s = Math.sin(ang * k), a = i + k, b = a + len / 2;
+        const tr = re[b] * c - im[b] * s, ti = re[b] * s + im[b] * c;
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+      }
+  }
+}
+
+function drawSpec(canvas, x, rate) {
+  const N = 512, cols = 280, bins = Math.floor(N / 2 * Math.min(1, 11025 / (rate / 2)));
+  const w = canvas.width = cols, h = canvas.height = 84, g = canvas.getContext("2d"), img = g.createImageData(w, h);
+  const re = new Float32Array(N), im = new Float32Array(N);
+  for (let c = 0; c < cols; c++) {
+    const start = Math.floor(c * Math.max(1, x.length - N) / cols);
+    for (let i = 0; i < N; i++) { re[i] = (x[start + i] || 0) * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / N)); im[i] = 0; }
+    fft(re, im);
+    for (let y = 0; y < h; y++) {
+      const bin = Math.floor((h - 1 - y) * bins / h), db = 10 * Math.log10(re[bin] * re[bin] + im[bin] * im[bin] + 1e-9);
+      const t = Math.max(0, Math.min(1, (db + 30) / 60)), p = (y * w + c) * 4;
+      img.data[p] = 21 + t * t * 221; img.data[p + 1] = 25 + t * 168; img.data[p + 2] = 30 + Math.sqrt(t) * 48; img.data[p + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+}
+
+(async () => {
+  for (const canvas of document.querySelectorAll("canvas[data-src]")) {
+    try {
+      const { rate, x } = samplesOf(await (await fetch(canvas.dataset.src)).arrayBuffer());
+      drawWave(canvas, x);
+      drawSpec(canvas.nextElementSibling, x, rate);
+    } catch (e) { /* the players still work without the drawings */ }
+  }
+})();
+</script>

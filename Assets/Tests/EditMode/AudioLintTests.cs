@@ -28,10 +28,9 @@ public class AudioLintTests
         ["alert_gift"] = "dc", ["alert_upkeep"] = "dc", ["jammer_online"] = "dc", ["shell_incoming"] = "dc",
         ["building_destroyed"] = "dc",
         // No attack: the first sample is already loud.
-        ["alert"] = "start", ["death_small"] = "start", ["explosion_small"] = "start", ["gem_mined"] = "start", ["radar_ping"] = "start", ["repair"] = "start",
-        ["shell_impact"] = "start",
-        ["shot_builder"] = "start", ["shot_heavy"] = "start", ["shot_scout"] = "start", ["shot_sniper"] = "start", ["shot_turret"] = "start",
-        ["sniper_shot"] = "start", ["turret_fire_loop"] = "start", ["ui_click"] = "start", ["ui_error"] = "start", ["ui_hover"] = "start",
+        ["alert"] = "start", ["gem_mined"] = "start", ["radar_ping"] = "start",
+        ["shot_builder"] = "start", ["shot_heavy"] = "start", ["shot_scout"] = "start",
+        ["turret_fire_loop"] = "start", ["ui_click"] = "start", ["ui_error"] = "start", ["ui_hover"] = "start",
         ["victory"] = "start",
         ["alert_resources_low"] = "dc start", ["armour_ping"] = "dc start", ["building_placed"] = "dc start",
         ["construction_finished"] = "dc start", ["shot_tank"] = "dc start", ["unit_produced"] = "dc start",

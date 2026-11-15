@@ -1,0 +1,27 @@
+{
+  "synth": 2,
+  "volume": 0.5,
+  "seed": 101,
+  "layers": [
+    {
+      "wave": "Pink",
+      "attack": 0.1,
+      "sustain": 0.05,
+      "decay": 0.33,
+      "lowPass": 500,
+      "lowPassEnd": 5000,
+      "highPass": 200,
+      "highPassEnd": 1200,
+      "gain": 1.0,
+      "curve": 2
+    },
+    {
+      "wave": "Sine",
+      "attack": 0.03,
+      "decay": 0.4,
+      "frequency": 170,
+      "slide": 3,
+      "gain": 0.35
+    }
+  ]
+}

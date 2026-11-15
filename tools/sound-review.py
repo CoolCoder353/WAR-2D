@@ -2,10 +2,13 @@
 """Builds a before/after review page for the built sounds that differ from a git ref.
 
 Usage: tools/sound-review.py <name> [--base REF] [--title TEXT] [--intro TEXT]
+       tools/sound-review.py <name> --candidates docs/art/review/<folder> [--title TEXT] [--intro TEXT]
 
 Writes docs/art/review/<today>-<name>/: before/ (the sounds at REF, default HEAD), after/ (the working
 tree's) and index.html, a page with a player, waveform and spectrogram for each side and a choice per
-sound. Publish index.html with before/ and after/ as its files (asset generation spec, sections 3.3 and 10).
+sound. With --candidates it shows the candidates rendered into that folder (never into Assets/Resources)
+beside the sound that ships. Publish index.html with its WAV folders as its files (asset generation spec,
+sections 3.3 and 10).
 """
 import argparse
 import datetime
@@ -29,40 +32,80 @@ def main():
     parser.add_argument("--base", default="HEAD")
     parser.add_argument("--title", default="Sound review")
     parser.add_argument("--intro", default="")
+    parser.add_argument("--candidates", metavar="DIR", help="review folder holding candidates/ (and notes.json): show them beside today's sounds")
     args = parser.parse_args()
     os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-    changed = [line[3:] for line in git("status", "--porcelain", "--", SFX_OUT).decode().splitlines() if line.endswith(".wav")]
-    changed += [p for p in git("diff", "--name-only", args.base, "--", SFX_OUT).decode().splitlines() if p.endswith(".wav")]
-    changed = sorted(set(changed))
-    if not changed:
-        print("No built sound differs from", args.base)
+    if args.candidates:
+        out = args.candidates.rstrip("/")
+        sounds = candidate_sounds(out)
+    else:
+        out = f"docs/art/review/{datetime.date.today().isoformat()}-{args.name}"
+        sounds = changed_sounds(out, args.base)
+    if not sounds:
+        print("Nothing to review")
         return 1
-
-    out = f"docs/art/review/{datetime.date.today().isoformat()}-{args.name}"
-    os.makedirs(out + "/before", exist_ok=True)
-    os.makedirs(out + "/after", exist_ok=True)
-    sounds = []
-    for path in changed:
-        sound = os.path.splitext(os.path.basename(path))[0]
-        spec_path = f"{SFX_SRC}/{sound}.json"
-        spec = json.load(open(spec_path)) if os.path.exists(spec_path) else {}
-        try:
-            before = git("show", f"{args.base}:{path}")
-        except subprocess.CalledProcessError:
-            before = None  # new at this ref
-        if before is not None:
-            open(f"{out}/before/{sound}.wav", "wb").write(before)
-        if os.path.exists(path):
-            open(f"{out}/after/{sound}.wav", "wb").write(open(path, "rb").read())
-        sounds.append({"id": sound, "wave": spec.get("wave", "Square"), "frequency": spec.get("frequency"),
-                       "before": before is not None, "after": os.path.exists(path)})
 
     page = PAGE.replace("__TITLE__", html.escape(args.title)).replace("__INTRO__", args.intro) \
         .replace("__KEY__", json.dumps("sound-review-" + args.name)).replace("__SOUNDS__", json.dumps(sounds))
     open(out + "/index.html", "w").write(page)
     print(f"{len(sounds)} sounds in {out}/index.html")
     return 0
+
+
+def spec_of(sound):
+    path = f"{SFX_SRC}/{sound}.json"
+    return json.load(open(path)) if os.path.exists(path) else {}
+
+
+def changed_sounds(out, base):
+    """The built sounds that differ from a git ref: before (at the ref) and after (the working tree)."""
+    changed = [line[3:] for line in git("status", "--porcelain", "--", SFX_OUT).decode().splitlines() if line.endswith(".wav")]
+    changed += [p for p in git("diff", "--name-only", base, "--", SFX_OUT).decode().splitlines() if p.endswith(".wav")]
+    os.makedirs(out + "/before", exist_ok=True)
+    os.makedirs(out + "/after", exist_ok=True)
+    sounds = []
+    for path in sorted(set(changed)):
+        sound = os.path.splitext(os.path.basename(path))[0]
+        spec = spec_of(sound)
+        sides = []
+        try:
+            open(f"{out}/before/{sound}.wav", "wb").write(git("show", f"{base}:{path}"))
+            sides.append({"key": "before", "label": "Before (ships today)", "src": f"before/{sound}.wav", "answer": "Keep the before sound"})
+        except subprocess.CalledProcessError:
+            pass  # new at this ref
+        if os.path.exists(path):
+            open(f"{out}/after/{sound}.wav", "wb").write(open(path, "rb").read())
+            sides.append({"key": "after", "label": "After", "src": f"after/{sound}.wav", "answer": "Use the after sound"})
+        meta = f"asks for {spec.get('wave', 'Square')}" + (f" at {spec['frequency']} Hz" if "frequency" in spec else "")
+        sounds.append({"id": sound, "meta": meta, "what": "", "sides": sides})
+    return sounds
+
+
+def candidate_sounds(out):
+    """Candidates rendered into <out>/candidates/<id>.<label>.wav (WAR-2D/Audio/Render review candidates), beside
+    the sound that ships today. <out>/notes.json says what each sound is for and what each candidate tries.
+    Nothing here touches Assets/Resources."""
+    notes = json.load(open(out + "/notes.json")) if os.path.exists(out + "/notes.json") else {}
+    os.makedirs(out + "/now", exist_ok=True)
+    by_id = {}
+    for name in sorted(os.listdir(out + "/candidates")):
+        if name.endswith(".wav"):
+            sound, label = name[:-4].rsplit(".", 1)
+            by_id.setdefault(sound, []).append(label)
+    sounds = []
+    for sound, labels in sorted(by_id.items()):
+        note = notes.get(sound, {})
+        sides = []
+        shipped = f"{SFX_OUT}/{sound}.wav"
+        if os.path.exists(shipped):
+            open(f"{out}/now/{sound}.wav", "wb").write(open(shipped, "rb").read())
+            sides.append({"key": "now", "label": "Now (ships today)", "src": f"now/{sound}.wav", "answer": "Keep today's"})
+        for label in labels:
+            sides.append({"key": label, "label": f"{label.upper()}: {note.get(label, '')}".rstrip(": "), "src": f"candidates/{sound}.{label}.wav",
+                          "answer": f"Use {label.upper()}"})
+        sounds.append({"id": sound, "meta": "", "what": note.get("what", ""), "sides": sides})
+    return sounds
 
 
 PAGE = r"""<title>__TITLE__</title>
@@ -105,9 +148,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .sound { background: var(--panel); border: 1px solid var(--edge); padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
 .sound > header { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; justify-content: space-between; }
 .meta { font: 12px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
-.sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px 18px; }
+.sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px 18px; }
+.sound > p { color: var(--text); }
 .side { display: grid; gap: 6px; min-width: 0; }
-.side > span { font: 12px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold); }
+.side > span { font: 12px/1.4 var(--mono); letter-spacing: 0.04em; color: var(--gold); min-height: 2.8em; }
 .side canvas { width: 100%; height: 56px; background: var(--bg); border: 1px solid var(--edge); display: block; image-rendering: pixelated; }
 .side canvas.spec { height: 84px; }
 .side audio { width: 100%; height: 34px; }
@@ -123,7 +167,6 @@ textarea { width: 100%; box-sizing: border-box; min-height: 150px; font: 13px/1.
     <p>Each sound shows its waveform and its spectrogram (0 to 11 kHz, bottom to top, brighter is louder). Pick one answer per sound; your answers are kept in this browser. When done, copy the summary at the end and paste it back to Claude.</p>
   </div>
   <div class="bar">
-    <button id="all-after" type="button">Choose "after" for all</button>
     <button id="clear" class="quiet" type="button">Clear answers</button>
     <span class="tally" id="tally"></span>
   </div>
@@ -134,7 +177,6 @@ textarea { width: 100%; box-sizing: border-box; min-height: 150px; font: 13px/1.
 </main>
 <script>
 const SOUNDS = __SOUNDS__, KEY = __KEY__;
-const ANSWERS = [["after", "Use the after sound"], ["before", "Keep the before sound"], ["change", "Neither: change it"]];
 let state = {};
 try { state = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { state = {}; }
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
@@ -143,13 +185,13 @@ const list = document.getElementById("list");
 for (const s of SOUNDS) {
   const el = document.createElement("section");
   el.className = "sound";
-  const side = (which, label) => s[which]
-    ? `<div class="side"><span>${label}</span><canvas data-src="${which}/${s.id}.wav"></canvas><canvas class="spec" data-spec="${which}/${s.id}.wav"></canvas><audio controls preload="none" src="${which}/${s.id}.wav"></audio></div>`
-    : `<div class="side"><span>${label}</span><p>No sound on this side.</p></div>`;
-  el.innerHTML = `<header><h2>${s.id}</h2><span class="meta">asks for ${s.wave}${s.frequency ? " at " + s.frequency + " Hz" : ""}</span></header>
-    <div class="sides">${side("before", "Before (ships today)")}${side("after", "After")}</div>
+  const answers = s.sides.map(x => [x.key, x.answer]).concat([["change", "None of these: change it"]]);
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  el.innerHTML = `<header><h2>${s.id}</h2><span class="meta">${esc(s.meta)}</span></header>
+    ${s.what ? `<p>${esc(s.what)}</p>` : ""}
+    <div class="sides">${s.sides.map(x => `<div class="side"><span>${esc(x.label)}</span><canvas data-src="${x.src}"></canvas><canvas class="spec"></canvas><audio controls preload="none" src="${x.src}"></audio></div>`).join("")}</div>
     <div class="choice" role="radiogroup" aria-label="Answer for ${s.id}">
-      ${ANSWERS.map(([v, t]) => `<label><input type="radio" name="a-${s.id}" id="a-${s.id}-${v}" value="${v}">${t}</label>`).join("")}
+      ${answers.map(([v, t]) => `<label><input type="radio" name="a-${s.id}" id="a-${s.id}-${v}" value="${v}">${esc(t)}</label>`).join("")}
       <input type="text" id="n-${s.id}" placeholder="Note (what to change)" aria-label="Note for ${s.id}">
     </div>`;
   list.appendChild(el);
@@ -163,29 +205,22 @@ for (const s of SOUNDS) {
 }
 
 function summarise() {
-  const lines = [], groups = { after: [], before: [], change: [], none: [] };
+  const groups = new Map(), order = [];
+  const put = (k, v) => { if (!groups.has(k)) { groups.set(k, []); order.push(k); } groups.get(k).push(v); };
+  let unanswered = 0;
   for (const s of SOUNDS) {
-    const a = state[s.id] || {};
-    (groups[a.answer] || groups.none).push(s.id + (a.note ? ` (${a.note})` : ""));
+    const a = state[s.id] || {}, side = s.sides.find(x => x.key === a.answer);
+    const title = side ? side.answer : a.answer === "change" ? "Change" : "Not answered";
+    if (title === "Not answered") unanswered++;
+    put(title, s.id + (a.note ? ` (${a.note})` : ""));
   }
-  lines.push(`Sound review ${KEY}`);
-  lines.push(`Use after (${groups.after.length}): ${groups.after.join(", ") || "none"}`);
-  lines.push(`Keep before (${groups.before.length}): ${groups.before.join(", ") || "none"}`);
-  lines.push(`Change (${groups.change.length}): ${groups.change.join(", ") || "none"}`);
-  lines.push(`Not answered (${groups.none.length}): ${groups.none.join(", ") || "none"}`);
+  const lines = [`Sound review ${KEY}`];
+  for (const k of order.sort()) lines.push(`${k} (${groups.get(k).length}): ${groups.get(k).join(", ")}`);
   document.getElementById("summary").value = lines.join("\n");
-  document.getElementById("tally").textContent = `${SOUNDS.length - groups.none.length} of ${SOUNDS.length} answered`;
+  document.getElementById("tally").textContent = `${SOUNDS.length - unanswered} of ${SOUNDS.length} answered`;
 }
 summarise();
 
-document.getElementById("all-after").addEventListener("click", () => {
-  for (const s of SOUNDS) {
-    state[s.id] = { ...(state[s.id] || {}), answer: "after" };
-    const r = document.getElementById(`a-${s.id}-after`);
-    if (r) r.checked = true;
-  }
-  save(); summarise();
-});
 document.getElementById("clear").addEventListener("click", () => {
   state = {}; save();
   for (const i of list.querySelectorAll("input[type=radio]")) i.checked = false;

@@ -57,6 +57,16 @@ namespace WAR2D.Audio
         [Min(0f)] public float repeatEvery = 0f;
         /// <summary>The seed <c>WAR-2D/Audio/Build SFX</c> renders this sound with.</summary>
         public int seed = 1;
+        [Header("Layered synth")]
+        /// <summary>1 is the single-oscillator synth above; 2 is the layered one (<see cref="SfxLayers"/>), which reads only
+        /// <see cref="layers"/>, <see cref="drive"/>, <see cref="tail"/>, <see cref="tailSeconds"/>, <see cref="volume"/> and <see cref="seed"/>.</summary>
+        [Range(1, 2)] public int synth = 1;
+        public SfxLayer[] layers;
+        /// <summary>Soft clipping of the mix (0 = off, 1 = heavy): weight for blasts without harsh peaks.</summary>
+        [Range(0f, 1f)] public float drive = 0f;
+        /// <summary>A reverb tail under the sound (0 = off) and how long it rings.</summary>
+        [Range(0f, 1f)] public float tail = 0f;
+        [Range(0f, 3f)] public float tailSeconds = 0.4f;
     }
 
     /// <summary>
@@ -70,6 +80,7 @@ namespace WAR2D.Audio
         /// <summary>The sound's samples, mono in [-1, 1]; length is attack + sustain + decay (and the repeats, when it repeats).</summary>
         public static float[] Render(SfxrParams p, int seed, int sampleRate = 44100)
         {
+            if (p.synth == 2) return SfxLayers.Render(p, seed, sampleRate);
             float attack = Mathf.Max(0f, p.attack), sustain = Mathf.Max(0f, p.sustain), decay = Mathf.Max(0f, p.decay);
             int length = Mathf.RoundToInt((attack + sustain + decay) * sampleRate);
             var output = new float[length];
