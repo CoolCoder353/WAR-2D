@@ -37,6 +37,9 @@ namespace WAR2D.EditorTools
                 File.WriteAllBytes($"{MusicOutput}/{Path.GetFileNameWithoutExtension(path)}.wav", Wav.Encode(samples, MusicSampleRate));
                 count++;
             }
+            AssetHashes hashes = AssetHashes.Load();
+            AssetHashes.HashWavs(hashes.tracks, MusicOutput);
+            hashes.Save();
             AssetDatabase.Refresh();
             Debug.Log($"Built {count} tracks into {MusicOutput}");
         }
@@ -86,6 +89,9 @@ namespace WAR2D.EditorTools
                 File.WriteAllBytes($"{SfxOutput}/{Path.GetFileNameWithoutExtension(path)}.wav", RenderSfx(ReadSfx(path)));
                 count++;
             }
+            AssetHashes hashes = AssetHashes.Load();
+            AssetHashes.HashWavs(hashes.sounds, SfxOutput);
+            hashes.Save();
             AssetDatabase.Refresh();
             Debug.Log($"Built {count} sounds into {SfxOutput}");
         }

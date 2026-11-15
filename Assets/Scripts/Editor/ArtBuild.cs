@@ -44,9 +44,34 @@ namespace WAR2D.EditorTools
         {
             Directory.CreateDirectory(OutputFolder);
             WritePalette();
-            foreach (var (atlas, kind) in Atlases) Build(atlas, kind);
+            AssetHashes hashes = AssetHashes.Load();
+            hashes.sprites.Clear();
+            hashes.atlases.Clear();
+            foreach (var (atlas, kind) in Atlases)
+            {
+                BuiltAtlas built = Render(atlas, kind);
+                foreach (var (file, bytes) in built.Files) File.WriteAllBytes(Path.Combine(OutputFolder, file), bytes);
+                built.AddTo(hashes);
+            }
+            hashes.Save();
             AssetDatabase.Refresh();
             Debug.Log($"[Art] built {Atlases.Length} atlases in {OutputFolder}");
+        }
+
+        /// <summary>
+        /// Writes <c>Assets/Art/hashes.json</c> from what the generators make now and the built sounds and tracks on disk,
+        /// without building anything: for adopting the file, or after an approved change was built another way.
+        /// </summary>
+        [MenuItem("WAR-2D/Art/Write hashes")]
+        public static void WriteHashes()
+        {
+            var hashes = new AssetHashes();
+            foreach (var (atlas, kind) in Atlases) Render(atlas, kind).AddTo(hashes);
+            AssetHashes.HashWavs(hashes.sounds, AudioBuild.SfxOutput);
+            AssetHashes.HashWavs(hashes.tracks, AudioBuild.MusicOutput);
+            hashes.Save();
+            AssetDatabase.ImportAsset(AssetHashes.FilePath);
+            Debug.Log($"[Art] wrote {AssetHashes.FilePath}");
         }
 
         /// <summary>Writes <c>Assets/Art/palette.png</c>: <see cref="ArtStyle.Palette"/> at 1 px per colour.</summary>
@@ -65,7 +90,27 @@ namespace WAR2D.EditorTools
             public float PivotY;
         }
 
-        private static void Build(string name, ArtKind kind)
+        /// <summary>One atlas as the build writes it: the three files' bytes and a hash per sprite.</summary>
+        public sealed class BuiltAtlas
+        {
+            public string Name;
+            public byte[] Png, Mask, Json;
+            /// <summary>Sprite id to the SHA-256 of its finished frames (size, pivot, colour and mask), before packing.</summary>
+            public readonly SortedDictionary<string, string> Sprites = new SortedDictionary<string, string>(StringComparer.Ordinal);
+
+            /// <summary>The files in <see cref="OutputFolder"/>, by name.</summary>
+            public (string file, byte[] bytes)[] Files => new[] { (Name + ".png", Png), (Name + "_mask.png", Mask), (Name + ".json", Json) };
+
+            /// <summary>Records this atlas's sprites and files in <paramref name="hashes"/>.</summary>
+            public void AddTo(AssetHashes hashes)
+            {
+                foreach (var pair in Sprites) hashes.sprites[pair.Key] = pair.Value;
+                foreach (var (file, bytes) in Files) hashes.atlases[file] = AssetHashes.Sha(bytes);
+            }
+        }
+
+        /// <summary>Renders and packs the atlas of <paramref name="kind"/> in memory; nothing is written.</summary>
+        public static BuiltAtlas Render(string name, ArtKind kind)
         {
             var data = new AtlasData { pixelsPerUnit = ArtStyle.PixelsPerUnit };
             var frames = new List<Frame>();
@@ -117,11 +162,37 @@ namespace WAR2D.EditorTools
                 data.frames.Add(new AtlasFrame { x = at.x, y = at.y, w = f.W, h = f.H, pivotX = f.W / 2f, pivotY = f.PivotY });
             }
 
-            string path = Path.Combine(OutputFolder, name);
-            File.WriteAllBytes(path + ".png", Png.Encode(pack.Width, pack.Height, colour));
-            File.WriteAllBytes(path + "_mask.png", Png.Encode(pack.Width, pack.Height, mask));
-            File.WriteAllText(path + ".json", JsonUtility.ToJson(data, true) + "\n");
+            var built = new BuiltAtlas
+            {
+                Name = name,
+                Png = Png.Encode(pack.Width, pack.Height, colour),
+                Mask = Png.Encode(pack.Width, pack.Height, mask),
+                Json = new System.Text.UTF8Encoding(false).GetBytes(JsonUtility.ToJson(data, true) + "\n"),
+            };
+            foreach (AtlasSprite sprite in data.sprites)
+                built.Sprites[sprite.id] = SpriteHash(frames, sprite.first, sprite.frames * sprite.directions);
             Debug.Log($"[Art] {name}: {frames.Count} frames in {pack.Width}×{pack.Height}");
+            return built;
+        }
+
+        /// <summary>The SHA-256 of <paramref name="count"/> finished frames from <paramref name="first"/>: each one's size, pivot, colour and mask.</summary>
+        private static string SpriteHash(List<Frame> frames, int first, int count)
+        {
+            using (var stream = new MemoryStream())
+            using (var writer = new BinaryWriter(stream))
+            {
+                for (int k = first; k < first + count; k++)
+                {
+                    Frame f = frames[k];
+                    writer.Write(f.W);
+                    writer.Write(f.H);
+                    writer.Write(f.PivotY);
+                    foreach (Color32 c in f.Colour) { writer.Write(c.r); writer.Write(c.g); writer.Write(c.b); writer.Write(c.a); }
+                    foreach (Color32 c in f.Mask) { writer.Write(c.r); writer.Write(c.g); writer.Write(c.b); writer.Write(c.a); }
+                }
+                writer.Flush();
+                return AssetHashes.Sha(stream.ToArray());
+            }
         }
 
         /// <summary>The generator for cell <paramref name="cell"/> of <paramref name="e"/>: a cache key, the canvas and its 3/4 lift.</summary>
