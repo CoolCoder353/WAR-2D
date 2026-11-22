@@ -1,0 +1,28 @@
+{
+  "synth": 2,
+  "volume": 0.18,
+  "seed": 202,
+  "layers": [
+    {
+      "wave": "Square",
+      "attack": 0,
+      "decay": 0.025,
+      "frequency": 1800,
+      "duty": 0.3,
+      "gain": 1.0,
+      "lowPass": 5000,
+      "curve": 5
+    },
+    {
+      "wave": "Square",
+      "offset": 0.035,
+      "attack": 0,
+      "decay": 0.03,
+      "frequency": 2100,
+      "duty": 0.3,
+      "gain": 0.9,
+      "lowPass": 5000,
+      "curve": 5
+    }
+  ]
+}

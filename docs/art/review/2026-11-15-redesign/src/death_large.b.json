@@ -1,0 +1,60 @@
+{
+  "synth": 2,
+  "volume": 0.9,
+  "seed": 62,
+  "drive": 0.6,
+  "tail": 0.25,
+  "tailSeconds": 0.26,
+  "layers": [
+    {
+      "wave": "White",
+      "attack": 0,
+      "decay": 0.02,
+      "highPass": 1800,
+      "gain": 0.8,
+      "curve": 6
+    },
+    {
+      "wave": "Sine",
+      "offset": 0,
+      "frequency": 100,
+      "slide": -3,
+      "minFrequency": 32,
+      "decay": 0.45,
+      "gain": 1.04,
+      "curve": 3
+    },
+    {
+      "wave": "Brown",
+      "offset": 0.005,
+      "decay": 0.6,
+      "lowPass": 2100,
+      "lowPassEnd": 156,
+      "gain": 1.0,
+      "curve": 3
+    },
+    {
+      "wave": "Saw",
+      "offset": 0.28,
+      "attack": 0.03,
+      "decay": 0.6,
+      "frequency": 140,
+      "slide": -1.2,
+      "lowPass": 900,
+      "lowPassEnd": 250,
+      "gain": 0.35,
+      "vibratoDepth": 0.08,
+      "vibratoSpeed": 9
+    },
+    {
+      "wave": "White",
+      "offset": 0.3,
+      "decay": 0.7,
+      "highPass": 2000,
+      "gain": 0.25,
+      "tremoloDepth": 0.9,
+      "tremoloSpeed": 24,
+      "crush": 2
+    }
+  ]
+}

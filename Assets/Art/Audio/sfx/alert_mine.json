@@ -1,14 +1,26 @@
 {
-  "wave": "Noise",
-  "attack": 0,
-  "sustain": 0.03,
-  "punch": 0.6,
-  "decay": 0.28,
-  "frequency": 880,
-  "slide": -4,
-  "minFrequency": 70,
-  "lowPass": 0.6,
-  "lowPassSweep": -0.8,
+  "synth": 2,
   "volume": 0.55,
-  "seed": 32
+  "seed": 212,
+  "layers": [
+    {
+      "wave": "Sine",
+      "offset": 0,
+      "frequency": 120,
+      "slide": -4,
+      "minFrequency": 45,
+      "decay": 0.12,
+      "gain": 0.8,
+      "curve": 3
+    },
+    {
+      "wave": "Triangle",
+      "offset": 0.08,
+      "attack": 0.005,
+      "decay": 0.22,
+      "frequency": 520,
+      "gain": 0.8,
+      "lowPass": 3000
+    }
+  ]
 }

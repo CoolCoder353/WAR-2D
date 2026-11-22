@@ -56,6 +56,9 @@ namespace WAR2D.Art.Render
         /// <summary>Light direction (toward the light): from the top left and above.</summary>
         public static readonly Vector3 LightDir = new Vector3(-0.55f, 0.6f, 0.9f).normalized;
 
+        /// <summary>The rim light's direction on the ground (finish 2): from the lower right, opposite the main light.</summary>
+        public static readonly Vector2 RimDir = new Vector2(0.7071f, -0.7071f);
+
         public LitCanvas(int width, int height) : this(width, height, height / 2f) { }
 
         public LitCanvas(int width, int height, float pivotY)
@@ -204,7 +207,11 @@ namespace WAR2D.Art.Render
         /// <paramref name="shadow"/> adds a soft drop shadow away from the light (for sprites drawn over the
         /// ground; terrain tiles pass false). Returns output-resolution colours, y up.
         /// </summary>
-        public Color32[] Render(Color teamColour, bool shadow = true, float ambient = 0.42f, float heightScale = 1f, float lift = 0f)
+        /// <param name="rim">Finish 2: the strength of a second, weak light from the lower right that only brightens slopes
+        /// facing away from the main light (0 leaves the render as it was).</param>
+        /// <param name="exposure">Finish 2: a gain on every part that isn't a team part (1 leaves the render as it was).</param>
+        public Color32[] Render(Color teamColour, bool shadow = true, float ambient = 0.42f, float heightScale = 1f, float lift = 0f,
+            float rim = 0f, float exposure = 1f)
         {
             var lit = new Color[rw * rh];
             var wall = lift > 0 ? new Color[rw * rh] : null;
@@ -225,6 +232,8 @@ namespace WAR2D.Art.Render
                 Color baseColour = team[i] > 0 ? teamColour * (0.55f + 0.45f * albedo[i].grayscale) : albedo[i];
                 Color c = baseColour * (ambient * ao + diffuse * (1 - ambient) * Mathf.Lerp(0.85f, 1f, ao)) + Color.white * specular * ao * 0.6f;
                 c += baseColour * glow[i];
+                if (rim > 0f) c += baseColour * (rim * Mathf.Max(0f, n.x * RimDir.x + n.y * RimDir.y));
+                if (exposure != 1f && team[i] <= 0) c *= exposure;
                 c.a = alpha[i];
                 lit[i] = c;
                 if (wall != null)

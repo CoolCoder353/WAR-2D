@@ -15,6 +15,8 @@ namespace WAR2D.Audio
 
         private readonly int voices;
         private readonly float cooldown;
+        /// <summary>A sound's own cooldown (the sound event table's), or null for <see cref="cooldown"/> on every sound.</summary>
+        private readonly Func<string, float> cooldownOf;
         private readonly Func<string, float> lengthOf;
         private readonly float[] busyUntil;
         private readonly Dictionary<string, float> lastPlayed = new Dictionary<string, float>();
@@ -23,8 +25,9 @@ namespace WAR2D.Audio
         /// <paramref name="lengthOf"/> gives a sound's length in seconds (how long it holds its voice);
         /// null treats every sound as 0.5 s.
         /// </summary>
-        public SfxVoicePool(int voices, float perSoundCooldown, Func<string, float> lengthOf = null)
+        public SfxVoicePool(int voices, float perSoundCooldown, Func<string, float> lengthOf = null, Func<string, float> cooldownOf = null)
         {
+            this.cooldownOf = cooldownOf;
             this.voices = Math.Max(1, voices);
             cooldown = perSoundCooldown;
             this.lengthOf = lengthOf ?? (_ => 0.5f);
@@ -35,7 +38,7 @@ namespace WAR2D.Audio
         public int Claim(string id, Vector2 pos, Rect cameraView, float now)
         {
             if (!Audible(pos, cameraView)) return -1;
-            if (lastPlayed.TryGetValue(id, out float last) && now - last < cooldown) return -1;
+            if (Cooling(id, now)) return -1;
             for (int v = 0; v < voices; v++)
             {
                 if (busyUntil[v] > now) continue;
@@ -47,7 +50,8 @@ namespace WAR2D.Audio
         }
 
         /// <summary>True when <paramref name="id"/> played less than the cooldown ago (a cheap check before placing it).</summary>
-        public bool Cooling(string id, float now) => lastPlayed.TryGetValue(id, out float last) && now - last < cooldown;
+        public bool Cooling(string id, float now) =>
+            lastPlayed.TryGetValue(id, out float last) && now - last < (cooldownOf != null ? cooldownOf(id) : cooldown);
 
         /// <summary>True when the sound may play now (see <see cref="Claim"/>).</summary>
         public bool TryPlay(string id, Vector2 pos, Rect cameraView, float now) => Claim(id, pos, cameraView, now) >= 0;

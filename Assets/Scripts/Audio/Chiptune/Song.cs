@@ -19,22 +19,24 @@ namespace WAR2D.Audio.Chiptune
     /// What <see cref="SongWriter"/> composes from (the JSON files under <c>Assets/Art/Audio/music/</c>).
     /// <see cref="sections"/> is a form such as "AABA": each letter is <see cref="barsPerSection"/> bars on
     /// its own chord progression and melody; a repeated letter repeats that material.
+    /// Read with <see cref="WAR2D.Art.SpecJson"/>: <see cref="mood"/> by name, no unknown fields.
     /// </summary>
     [Serializable]
     public sealed class SongSpec
     {
         public int seed = 1;
         /// <summary>The tonic as a MIDI note (57 = A3).</summary>
-        public int root = 57;
+        [UnityEngine.Range(0, 127)] public int root = 57;
         public bool minor = true;
-        public float bpm = 110f;
+        [UnityEngine.Range(20f, 400f)] public float bpm = 110f;
         public Mood mood = Mood.Calm;
         public string sections = "AABA";
-        public int barsPerSection = 4;
+        [UnityEngine.Min(1)] public int barsPerSection = 4;
         /// <summary>Loops seamlessly (match music); stingers play once.</summary>
         public bool loop = true;
 
         /// <summary>The key's scale as semitones above the root.</summary>
+        [Newtonsoft.Json.JsonIgnore]
         public int[] Scale => minor ? new[] { 0, 2, 3, 5, 7, 8, 10 } : new[] { 0, 2, 4, 5, 7, 9, 11 };
     }
 

@@ -1,0 +1,31 @@
+{
+  "synth": 2,
+  "volume": 0.18,
+  "seed": 201,
+  "layers": [
+    {
+      "wave": "White",
+      "attack": 0,
+      "decay": 0.005,
+      "highPass": 3000,
+      "gain": 0.5,
+      "curve": 6
+    },
+    {
+      "wave": "Sine",
+      "attack": 0,
+      "decay": 0.06,
+      "frequency": 2400,
+      "gain": 0.8,
+      "curve": 6
+    },
+    {
+      "wave": "Sine",
+      "attack": 0,
+      "decay": 0.05,
+      "frequency": 3620,
+      "gain": 0.4,
+      "curve": 6
+    }
+  ]
+}

@@ -26,9 +26,8 @@ public class PolishEffectArtTests
             Assert.IsTrue(ArtManifest.TryGet(id, out ArtEntry e), id);
             for (int cell = 0; cell < e.Frames * e.Directions; cell++)
             {
-                EffectFrame? made = EffectGen.For(id, cell, e.Frames);
-                Assert.IsTrue(made.HasValue, $"{id} has a generator");
-                EffectFrame f = made.Value;
+                Assert.IsNotNull(e.MakeEffect, $"{id} has a generator");
+                EffectFrame f = e.MakeEffect(e.Cell(cell));
                 Assert.AreEqual(e.WidthTiles * ArtStyle.TileSize, f.Width, $"{id} cell {cell}");
                 Assert.AreEqual(e.HeightTiles * ArtStyle.TileSize, f.Height, $"{id} cell {cell}");
                 Assert.Greater(Opaque(f), 0, $"{id} cell {cell} draws something");
@@ -47,7 +46,7 @@ public class PolishEffectArtTests
             int last = int.MaxValue;
             for (int frame = 0; frame < e.Frames; frame++)
             {
-                int n = Opaque(EffectGen.For(id, frame, e.Frames).Value);
+                int n = Opaque(e.MakeEffect(e.Cell(frame)));
                 Assert.Less(n, last, $"{id} frame {frame} has fewer pixels than the one before");
                 last = n;
             }

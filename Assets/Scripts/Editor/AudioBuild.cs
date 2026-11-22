@@ -1,6 +1,7 @@
 using System.IO;
 using UnityEditor;
 using UnityEngine;
+using WAR2D.Art;
 using WAR2D.Audio;
 using WAR2D.Audio.Chiptune;
 
@@ -31,13 +32,54 @@ namespace WAR2D.EditorTools
             int count = 0;
             foreach (string path in Directory.GetFiles(MusicSource, "*.json"))
             {
-                var spec = JsonUtility.FromJson<SongSpec>(File.ReadAllText(path));
-                float[] samples = ChiptuneRenderer.Render(SongWriter.Compose(spec), MusicSampleRate, out _);
-                File.WriteAllBytes($"{MusicOutput}/{Path.GetFileNameWithoutExtension(path)}.wav", Wav.Encode(samples, MusicSampleRate));
+                SongSpec spec = ReadSong(path);
+                File.WriteAllBytes($"{MusicOutput}/{Path.GetFileNameWithoutExtension(path)}.wav", RenderSong(spec));
                 count++;
             }
+            AssetHashes hashes = AssetHashes.Load();
+            AssetHashes.HashWavs(hashes.tracks, MusicOutput);
+            hashes.Save();
             AssetDatabase.Refresh();
             Debug.Log($"Built {count} tracks into {MusicOutput}");
+        }
+
+        /// <summary>The WAV a song spec builds to.</summary>
+        public static byte[] RenderSong(SongSpec spec) =>
+            Wav.Encode(ChiptuneRenderer.Render(SongWriter.Compose(spec), MusicSampleRate, out _), MusicSampleRate);
+
+        /// <summary>The sound spec at <paramref name="path"/>, read strictly (<see cref="SpecJson"/>).</summary>
+        public static SfxrParams ReadSfx(string path) => SpecJson.ReadFile<SfxrParams>(path);
+
+        /// <summary>The song spec at <paramref name="path"/>, read strictly (<see cref="SpecJson"/>).</summary>
+        public static SongSpec ReadSong(string path) => SpecJson.ReadFile<SongSpec>(path);
+
+        /// <summary>The WAV file <c>Build SFX</c> writes for <paramref name="p"/>.</summary>
+        public static byte[] RenderSfx(SfxrParams p) => Wav.Encode(Sfxr.Render(p, p.seed, SampleRate), SampleRate);
+
+        /// <summary>Where review candidates live: <c>docs/art/review/&lt;name&gt;/src/*.json</c>, rendered beside them into <c>candidates/</c>.</summary>
+        public const string ReviewFolder = "docs/art/review";
+
+        /// <summary>
+        /// <c>WAR-2D/Audio/Render review candidates</c>: renders every sound spec under a review folder's <c>src/</c> to a WAV
+        /// in its <c>candidates/</c>. Candidates never go into <c>Assets/Resources</c>: a sound changes in the game only
+        /// when the owner has approved it and its spec is moved into <see cref="SfxSource"/> (CLAUDE.md, Asset approval).
+        /// </summary>
+        [MenuItem("WAR-2D/Audio/Render review candidates")]
+        public static void RenderCandidates()
+        {
+            int count = 0;
+            if (!Directory.Exists(ReviewFolder)) return;
+            foreach (string src in Directory.GetDirectories(ReviewFolder, "src", SearchOption.AllDirectories))
+            {
+                string outDir = Path.Combine(Path.GetDirectoryName(src), "candidates");
+                Directory.CreateDirectory(outDir);
+                foreach (string path in Directory.GetFiles(src, "*.json"))
+                {
+                    File.WriteAllBytes(Path.Combine(outDir, Path.GetFileNameWithoutExtension(path) + ".wav"), RenderSfx(ReadSfx(path)));
+                    count++;
+                }
+            }
+            Debug.Log($"Rendered {count} candidate sounds under {ReviewFolder}");
         }
 
         [MenuItem("WAR-2D/Audio/Build SFX")]
@@ -47,11 +89,12 @@ namespace WAR2D.EditorTools
             int count = 0;
             foreach (string path in Directory.GetFiles(SfxSource, "*.json"))
             {
-                var p = JsonUtility.FromJson<SfxrParams>(File.ReadAllText(path));
-                float[] samples = Sfxr.Render(p, p.seed, SampleRate);
-                File.WriteAllBytes($"{SfxOutput}/{Path.GetFileNameWithoutExtension(path)}.wav", Wav.Encode(samples, SampleRate));
+                File.WriteAllBytes($"{SfxOutput}/{Path.GetFileNameWithoutExtension(path)}.wav", RenderSfx(ReadSfx(path)));
                 count++;
             }
+            AssetHashes hashes = AssetHashes.Load();
+            AssetHashes.HashWavs(hashes.sounds, SfxOutput);
+            hashes.Save();
             AssetDatabase.Refresh();
             Debug.Log($"Built {count} sounds into {SfxOutput}");
         }

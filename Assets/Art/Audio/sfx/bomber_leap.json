@@ -1,12 +1,33 @@
 {
-  "wave": "Saw",
-  "attack": 0.02,
-  "sustain": 0.12,
-  "decay": 0.35,
-  "frequency": 180,
-  "slide": 2.2,
-  "deltaSlide": -4,
-  "lowPass": 0.5,
+  "synth": 2,
   "volume": 0.5,
-  "seed": 71
+  "seed": 102,
+  "layers": [
+    {
+      "wave": "White",
+      "attack": 0,
+      "decay": 0.01,
+      "highPass": 1500,
+      "gain": 0.4,
+      "curve": 6
+    },
+    {
+      "wave": "Triangle",
+      "attack": 0.01,
+      "sustain": 0.05,
+      "decay": 0.35,
+      "frequency": 150,
+      "slide": 5,
+      "deltaSlide": -6,
+      "gain": 1.0,
+      "lowPass": 2500
+    },
+    {
+      "wave": "Pink",
+      "attack": 0.08,
+      "decay": 0.35,
+      "highPass": 1500,
+      "gain": 0.3
+    }
+  ]
 }

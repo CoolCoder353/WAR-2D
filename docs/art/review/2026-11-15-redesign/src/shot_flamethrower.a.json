@@ -1,0 +1,29 @@
+{
+  "synth": 2,
+  "volume": 0.5,
+  "seed": 131,
+  "layers": [
+    {
+      "wave": "Pink",
+      "attack": 0.05,
+      "sustain": 0.28,
+      "decay": 0.25,
+      "lowPass": 5000,
+      "lowPassEnd": 2500,
+      "highPass": 300,
+      "gain": 1.0,
+      "tremoloDepth": 0.35,
+      "tremoloSpeed": 22,
+      "curve": 2
+    },
+    {
+      "wave": "Brown",
+      "attack": 0.05,
+      "sustain": 0.28,
+      "decay": 0.25,
+      "lowPass": 500,
+      "gain": 0.7,
+      "curve": 2
+    }
+  ]
+}

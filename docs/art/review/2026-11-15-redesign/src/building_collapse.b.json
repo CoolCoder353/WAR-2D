@@ -1,0 +1,72 @@
+{
+  "synth": 2,
+  "volume": 0.85,
+  "seed": 92,
+  "drive": 0.65,
+  "tail": 0.3,
+  "tailSeconds": 0.325,
+  "layers": [
+    {
+      "wave": "White",
+      "attack": 0,
+      "decay": 0.03,
+      "highPass": 1500,
+      "gain": 0.7,
+      "curve": 6
+    },
+    {
+      "wave": "White",
+      "attack": 0,
+      "decay": 0.03,
+      "highPass": 1800,
+      "gain": 0.6,
+      "curve": 6,
+      "offset": 0.22
+    },
+    {
+      "wave": "White",
+      "attack": 0,
+      "decay": 0.03,
+      "highPass": 1300,
+      "gain": 0.7,
+      "curve": 6,
+      "offset": 0.4
+    },
+    {
+      "wave": "Brown",
+      "attack": 0.3,
+      "sustain": 0.2,
+      "decay": 0.3,
+      "lowPass": 400,
+      "gain": 0.7
+    },
+    {
+      "wave": "Sine",
+      "offset": 0.6,
+      "frequency": 80,
+      "slide": -2.5,
+      "minFrequency": 28,
+      "decay": 0.6,
+      "gain": 1.12,
+      "curve": 3
+    },
+    {
+      "wave": "Pink",
+      "offset": 0.6,
+      "decay": 1.0,
+      "lowPass": 2700,
+      "lowPassEnd": 130,
+      "gain": 1.1,
+      "curve": 3
+    },
+    {
+      "wave": "Pink",
+      "offset": 0.65,
+      "decay": 0.9,
+      "lowPass": 5000,
+      "lowPassEnd": 400,
+      "gain": 0.85,
+      "highPass": 300
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+using UnityEngine;
 using System;
 using System.Linq;
 using NUnit.Framework;
@@ -54,6 +55,29 @@ public class ArtManifestTests
             Assert.That(e.WidthTiles, Is.GreaterThanOrEqualTo(1), e.Id);
             Assert.That(e.HeightTiles, Is.GreaterThanOrEqualTo(1), e.Id);
         }
+    }
+
+    /// <summary>Every sprite the atlases hold names its generator on its entry: lit for units, buildings and tiles, an effect frame for effects.</summary>
+    [Test]
+    public void EveryAtlasSpriteHasAGenerator()
+    {
+        foreach (ArtEntry e in ArtManifest.All)
+        {
+            if (e.Kind == ArtKind.Icon || e.Kind == ArtKind.Ui) continue; // drawn from PixelIcons, not an atlas
+            if (e.Kind == ArtKind.Effect) Assert.IsNotNull(e.MakeEffect, $"{e.Id} has no generator: give its entry one with Fx");
+            else Assert.IsNotNull(e.MakeLit, $"{e.Id} has no generator: give its entry one with Lit");
+        }
+    }
+
+    [Test]
+    public void ACellKnowsItsFrameFacingAndPlace()
+    {
+        var cell = new ArtCell(11, 4, 8, 1);
+        Assert.AreEqual(3, cell.Frame);
+        Assert.AreEqual(2, cell.Direction);
+        Assert.AreEqual(Mathf.PI / 2f, cell.Angle, 1e-6f);
+        Assert.AreEqual(0f, new ArtCell(0, 1, 1, 1).T);
+        Assert.AreEqual(1f, new ArtCell(5, 6, 1, 1).T);
     }
 
     [Test]

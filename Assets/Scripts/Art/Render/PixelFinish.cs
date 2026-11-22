@@ -56,17 +56,59 @@ namespace WAR2D.Art.Render
         }
 
         /// <summary>
+        /// Cleanup after quantising (asset-generation spec §4.4): an opaque pixel whose colour none of its 8 neighbours share
+        /// takes the commonest colour among its opaque neighbours (the first found on a tie, scanning from the lower left).
+        /// One pass, read from the input, so the result doesn't depend on scan order.
+        /// </summary>
+        public static Color32[] Cleanup(Color32[] src, int w, int h)
+        {
+            var dst = (Color32[])src.Clone();
+            var seen = new Color32[8];
+            var count = new int[8];
+            for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                Color32 c = src[y * w + x];
+                if (c.a != 255) continue;
+                int kinds = 0;
+                bool shared = false;
+                for (int dy = -1; dy <= 1 && !shared; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    if (dx == 0 && dy == 0) continue;
+                    int nx = x + dx, ny = y + dy;
+                    if ((uint)nx >= (uint)w || (uint)ny >= (uint)h) continue;
+                    Color32 n = src[ny * w + nx];
+                    if (n.a != 255) continue;
+                    if (n.r == c.r && n.g == c.g && n.b == c.b) { shared = true; break; }
+                    int k = 0;
+                    while (k < kinds && (seen[k].r != n.r || seen[k].g != n.g || seen[k].b != n.b)) k++;
+                    if (k == kinds) { seen[kinds] = n; count[kinds++] = 0; }
+                    count[k]++;
+                }
+                if (shared || kinds == 0) continue;
+                int best = 0;
+                for (int k = 1; k < kinds; k++) if (count[k] > count[best]) best = k;
+                dst[y * w + x] = seen[best];
+            }
+            return dst;
+        }
+
+        /// <summary>
         /// The atlas finish (style guide): <paramref name="team"/> pixels snap to <paramref name="teamRamp"/> and
         /// the rest to <paramref name="palette"/>, then the outline and a baked hard shadow
         /// (<see cref="ArtStyle.ShadowAlpha"/> black, <see cref="ArtStyle.ShadowOffset"/> px right and down).
         /// Without <paramref name="outline"/> (terrain) there is no outline and no shadow.
         /// </summary>
-        public static Color32[] FinishTeam(Color32[] lit, bool[] team, int w, int h, Color32[] palette, Color32[] teamRamp, Color32? outline)
+        /// <param name="cleanup">Finish 2: run <see cref="Cleanup"/> after quantising, before the outline and shadow.</param>
+        public static Color32[] FinishTeam(Color32[] lit, bool[] team, int w, int h, Color32[] palette, Color32[] teamRamp, Color32? outline,
+            bool cleanup = false)
         {
             Color32[] rest = PaletteQuantizer.Quantize(lit, w, h, w, h, palette, alphaCutoff: 140);
             Color32[] keyed = PaletteQuantizer.Quantize(lit, w, h, w, h, teamRamp, alphaCutoff: 140);
             var dst = new Color32[w * h];
             for (int i = 0; i < dst.Length; i++) dst[i] = team[i] ? keyed[i] : rest[i];
+            if (cleanup) dst = Cleanup(dst, w, h);
             if (outline == null) return dst;
 
             bool Opaque(Color32[] px, int x, int y) => (uint)x < (uint)w && (uint)y < (uint)h && px[y * w + x].a == 255;

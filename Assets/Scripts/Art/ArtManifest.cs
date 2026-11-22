@@ -1,10 +1,40 @@
 using System;
 using System.Collections.Generic;
+using WAR2D.Art.Render;
 
 namespace WAR2D.Art
 {
     /// <summary>What an art entry is for (and which atlas it is packed into).</summary>
     public enum ArtKind { Unit, Building, Tile, Effect, Icon, Ui }
+
+    /// <summary>One cell of a sprite, as its generator is asked for it.</summary>
+    public readonly struct ArtCell
+    {
+        /// <summary>The frame within the facing, and the facing (or variant, for a variant-major sprite).</summary>
+        public readonly int Frame, Direction;
+        /// <summary>The cell's place in the sprite: <c>Direction × Frames + Frame</c>.</summary>
+        public readonly int Index;
+        /// <summary>The sprite's frames per facing, and its facings.</summary>
+        public readonly int Frames, Directions;
+        /// <summary>The build's seed (<see cref="ArtManifest.Seed"/>).</summary>
+        public readonly int Seed;
+
+        public ArtCell(int index, int frames, int directions, int seed)
+        {
+            Index = index;
+            Frames = frames;
+            Directions = directions;
+            Frame = index % frames;
+            Direction = index / frames;
+            Seed = seed;
+        }
+
+        /// <summary>The facing as an angle: <see cref="Direction"/> of <see cref="Directions"/> round the circle.</summary>
+        public float Angle => Direction * 2f * UnityEngine.Mathf.PI / Directions;
+
+        /// <summary>How far through the sprite's frames this cell is, 0 to 1 (0 for a single frame), counted on <see cref="Index"/>.</summary>
+        public float T => Frames > 1 ? (float)Index / (Frames - 1) : 0f;
+    }
 
     /// <summary>
     /// One sprite in the art set: its id (exactly the <see cref="UnitType"/>, <see cref="BuildingType"/> or
@@ -22,6 +52,14 @@ namespace WAR2D.Art
         public readonly int Directions;
         /// <summary>True when the sprite has team-colour pixels (tinted with the owner's palette colour).</summary>
         public readonly bool TeamMask;
+        /// <summary>The generator of a lit sprite (finished as pixel art by the build), or null.</summary>
+        public readonly Func<ArtCell, LitCanvas> MakeLit;
+        /// <summary>The generator of an effect (already palette pixel art), or null.</summary>
+        public readonly Func<ArtCell, EffectFrame> MakeEffect;
+        /// <summary>The 3/4 lift a lit sprite is rendered with.</summary>
+        public readonly float Lift;
+        /// <summary>A cache key for a cell, for sprites that share a rendered frame; null gives each cell its own.</summary>
+        public readonly Func<ArtCell, string> Key;
 
         public ArtEntry(string id, ArtKind kind, int widthTiles, int heightTiles, int frames, int directions, bool teamMask)
         {
@@ -32,7 +70,35 @@ namespace WAR2D.Art
             Frames = frames;
             Directions = directions;
             TeamMask = teamMask;
+            MakeLit = null;
+            MakeEffect = null;
+            Lift = 0f;
+            Key = null;
         }
+
+        private ArtEntry(ArtEntry e, Func<ArtCell, LitCanvas> lit, Func<ArtCell, EffectFrame> effect, float lift, Func<ArtCell, string> key)
+            : this(e.Id, e.Kind, e.WidthTiles, e.HeightTiles, e.Frames, e.Directions, e.TeamMask)
+        {
+            MakeLit = lit;
+            MakeEffect = effect;
+            Lift = lift;
+            Key = key;
+        }
+
+        /// <summary>This entry drawn by <paramref name="make"/>, a lit canvas per cell.</summary>
+        public ArtEntry Lit(Func<ArtCell, LitCanvas> make, float lift = 0f, Func<ArtCell, string> key = null) => new ArtEntry(this, make, null, lift, key);
+
+        /// <summary>This entry drawn by <paramref name="make"/>, a finished effect frame per cell.</summary>
+        public ArtEntry Fx(Func<ArtCell, EffectFrame> make) => new ArtEntry(this, null, make, 0f, null);
+
+        /// <summary>True when the entry names its generator (the build draws a placeholder for a sprite without one).</summary>
+        public bool HasGenerator => MakeLit != null || MakeEffect != null;
+
+        /// <summary>Cell <paramref name="index"/> of this sprite.</summary>
+        public ArtCell Cell(int index) => new ArtCell(index, Frames, Directions, ArtManifest.Seed);
+
+        /// <summary>The key the build caches <paramref name="cell"/>'s rendered frame under.</summary>
+        public string KeyFor(ArtCell cell) => Key != null ? Key(cell) : $"{Id} {cell.Index}";
 
         public override string ToString() => $"{Id} ({Kind}, {WidthTiles}×{HeightTiles}, {Frames}×{Directions})";
     }
@@ -41,8 +107,11 @@ namespace WAR2D.Art
     /// Every sprite the game draws (<c>docs/art/inventory.md</c> is the readable version). Tests fail when a
     /// unit, building or tile type has no entry, so a new type can't ship without art.
     /// </summary>
-    public static class ArtManifest
+    public static partial class ArtManifest
     {
+        /// <summary>The map seed the terrain variants are drawn with.</summary>
+        public const int Seed = 1;
+
         /// <summary>Facings drawn for each unit (45° apart).</summary>
         public const int UnitDirections = 8;
 
@@ -71,135 +140,8 @@ namespace WAR2D.Art
         /// <summary>The floor and rock feature stamps (<see cref="Render.RenderGen.FloorFeature"/>, <see cref="Render.RenderGen.RockFeature"/>).</summary>
         public const string FloorFeature = "FloorFeature", RockFeature = "RockFeature";
 
-        private static readonly ArtEntry[] Entries =
+        private static ArtEntry[] Icons() => new[]
         {
-            // Units: 1×1 tile, 8 facings; frames are move (2) then the unit's action (2).
-            new ArtEntry(nameof(UnitType.Tank), ArtKind.Unit, 1, 1, 4, UnitDirections, true),
-            new ArtEntry("Builder", ArtKind.Unit, 1, 1, 4, UnitDirections, true),
-            new ArtEntry("Digger", ArtKind.Unit, 1, 1, 4, UnitDirections, true),
-            new ArtEntry(nameof(UnitType.Scout), ArtKind.Unit, 1, 1, 4, UnitDirections, true),
-            new ArtEntry(nameof(UnitType.Flamethrower), ArtKind.Unit, 1, 1, 4, UnitDirections, true),
-            new ArtEntry(nameof(UnitType.Bomber), ArtKind.Unit, 1, 1, 4, UnitDirections, true),
-            // Large units draw on 2×2-tile canvases (v0.20: the Sniper is one).
-            new ArtEntry(nameof(UnitType.Sniper), ArtKind.Unit, 2, 2, 4, UnitDirections, true),
-            new ArtEntry(nameof(UnitType.Heavy), ArtKind.Unit, 2, 2, 4, UnitDirections, true),
-            new ArtEntry(nameof(UnitType.Artillery), ArtKind.Unit, 2, 2, 4, UnitDirections, true),
-            // Their layers: a turret's canvas is big enough for its barrel in every facing, centred on its pivot.
-            new ArtEntry(nameof(UnitType.Tank) + HullSuffix, ArtKind.Unit, 1, 1, 2, UnitDirections, true),
-            new ArtEntry(nameof(UnitType.Tank) + TurretSuffix, ArtKind.Unit, 1, 1, 2, TurretDirections, true),
-            new ArtEntry(nameof(UnitType.Scout) + HullSuffix, ArtKind.Unit, 1, 1, 2, UnitDirections, true),
-            new ArtEntry(nameof(UnitType.Scout) + TurretSuffix, ArtKind.Unit, 1, 1, 2, TurretDirections, true),
-            new ArtEntry(nameof(UnitType.Sniper) + HullSuffix, ArtKind.Unit, 2, 2, 2, UnitDirections, true),
-            new ArtEntry(nameof(UnitType.Sniper) + TurretSuffix, ArtKind.Unit, 3, 3, 2, TurretDirections, true),
-            new ArtEntry(nameof(UnitType.Heavy) + HullSuffix, ArtKind.Unit, 2, 2, 2, UnitDirections, true),
-            new ArtEntry(nameof(UnitType.Heavy) + TurretSuffix, ArtKind.Unit, 2, 2, 2, TurretDirections, true),
-            new ArtEntry(nameof(UnitType.Artillery) + HullSuffix, ArtKind.Unit, 2, 2, 2, UnitDirections, true),
-            new ArtEntry(nameof(UnitType.Artillery) + TurretSuffix, ArtKind.Unit, 3, 3, 3, TurretDirections, true),
-
-            // Buildings: footprint from GameConfig.xml; drawn upright. Only the Miner's rotation shows (4 rendered facings).
-            new ArtEntry(nameof(BuildingType.Base), ArtKind.Building, 5, 5, 1, 1, true),
-            new ArtEntry(nameof(BuildingType.Barracks), ArtKind.Building, 2, 2, 2, 1, true),
-            new ArtEntry(nameof(BuildingType.Miner), ArtKind.Building, 1, 1, 4, BuildingDirections, true),
-            new ArtEntry("Mine", ArtKind.Building, 1, 1, 2, 1, true),
-            new ArtEntry("Radar", ArtKind.Building, 2, 2, 2, 1, true),
-            new ArtEntry(nameof(BuildingType.HeavyFactory), ArtKind.Building, 3, 3, 2, 1, true),
-            new ArtEntry(nameof(BuildingType.SiegeWorkshop), ArtKind.Building, 2, 2, 2, 1, true),
-            // v0.13: the Gun turret's base (frame 1 is the damaged plinth, chosen by health, not looped) and its head (drawn over the
-            // base in 8 facings). v0.20: both 2×2; the head's frame 1 fires its left barrel, frame 2 its right. And the Jammer.
-            new ArtEntry(nameof(BuildingType.GunTurret), ArtKind.Building, 2, 2, 2, 1, true),
-            new ArtEntry(TurretHead, ArtKind.Building, 2, 2, 3, UnitDirections, true),
-            new ArtEntry(nameof(BuildingType.Jammer), ArtKind.Building, 2, 2, 2, 1, true),
-
-            // Tiles: frames are variants (random for floor and gems, autotile masks for walls).
-            new ArtEntry(nameof(TileType.Ground), ArtKind.Tile, 1, 1, Render.RenderGen.FloorVariants, 1, false),
-            new ArtEntry(nameof(TileType.Wall), ArtKind.Tile, 1, 1, Render.RenderGen.RockShapes.Length, 1, false), // one per rock shape
-            new ArtEntry(nameof(TileType.Gem), ArtKind.Tile, 1, 1, 4 * Render.RenderGen.RockShapes.Length, 1, false), // 4 variants × rock shapes, variant-major
-            new ArtEntry(nameof(TileType.RichGem), ArtKind.Tile, 1, 1, 4 * Render.RenderGen.RockShapes.Length, 1, false), // v0.17: as Gem, variant-major
-            new ArtEntry(nameof(TileType.Border), ArtKind.Tile, 1, 1, 1, 1, false),
-            new ArtEntry("PlayerWall", ArtKind.Tile, 1, 1, AutotileVariants * WallDamageStates, 1, true),
-            new ArtEntry("WallBlueprint", ArtKind.Tile, 1, 1, AutotileVariants, 1, true),
-            // Terrain features (2026-10-31): stamps the Terrain shader scatters over open floor and deep rock, kind-major,
-            // each kind in FeatureFrames rotations. Transparent where the feature leaves the ground as it is.
-            new ArtEntry(FloorFeature, ArtKind.Tile, Render.RenderGen.FeatureTiles, Render.RenderGen.FeatureTiles,
-                Render.RenderGen.FloorFeatureKinds * Render.RenderGen.FeatureFrames, 1, false),
-            new ArtEntry(RockFeature, ArtKind.Tile, Render.RenderGen.FeatureTiles, Render.RenderGen.FeatureTiles,
-                Render.RenderGen.RockFeatureKinds * Render.RenderGen.FeatureFrames, 1, false),
-
-            // Effects and overlays.
-            new ArtEntry("Explosion", ArtKind.Effect, 2, 2, 6, 1, false),
-            new ArtEntry("BombBlast", ArtKind.Effect, 3, 3, 8, 1, false),
-            new ArtEntry("MuzzleFlash", ArtKind.Effect, 1, 1, 2, 1, false),
-            // Combat animations (2026-11-06): a flash per gun size along the barrel, a thin shot per gun, the shell with its ground
-            // shadow and trail, a crater, the flame and the raised barrel's shadow (the last three soft: EffectGen.IsSoft).
-            new ArtEntry("BurstScout", ArtKind.Effect, 1, 1, 2, 1, false),
-            new ArtEntry("BurstSniper", ArtKind.Effect, 1, 1, 2, 1, false),
-            new ArtEntry("BurstTank", ArtKind.Effect, 1, 1, 2, 1, false),
-            new ArtEntry("BurstHeavy", ArtKind.Effect, 1, 1, 2, 1, false),
-            new ArtEntry("Tracer", ArtKind.Effect, 1, 1, 1, 1, false),
-            new ArtEntry("ScoutTracer", ArtKind.Effect, 1, 1, 1, 1, false),
-            new ArtEntry("SniperTracer", ArtKind.Effect, 4, 1, 4, 1, false), // v0.20: the Sniper's hard trail, fading over its frames
-            new ArtEntry("ArtilleryShell", ArtKind.Effect, 1, 1, 2, TurretDirections, false),
-            new ArtEntry("ShellShadow", ArtKind.Effect, 1, 1, 1, 1, false),
-            new ArtEntry("ShellPuff", ArtKind.Effect, 1, 1, 6, 1, false),
-            new ArtEntry("Crater", ArtKind.Effect, 2, 2, Render.EffectGen.DecalFrames, Render.EffectGen.CraterVariants, false),
-            new ArtEntry("FlameStream", ArtKind.Effect, 2, 1, 6, 1, false),
-            new ArtEntry("FlameSplash", ArtKind.Effect, 6, 6, 2, 1, false), // v0.20: the fire over the 2.5-tile spread
-            new ArtEntry("BarrelShadow", ArtKind.Effect, 3, 3, 1, TurretDirections, false),
-            new ArtEntry("ShellImpact", ArtKind.Effect, 4, 4, 6, 1, false),
-            new ArtEntry("BomberBlast", ArtKind.Effect, 4, 4, 8, 1, false),
-            new ArtEntry("DigDebris", ArtKind.Effect, 1, 1, 4, 1, false),
-            new ArtEntry("RepairSparks", ArtKind.Effect, 1, 1, 4, 1, false),
-            new ArtEntry("ConstructionOverlay", ArtKind.Effect, 1, 1, 4, 1, false),
-            new ArtEntry("SelectionRingSmall", ArtKind.Effect, 1, 1, 1, 1, false),
-            new ArtEntry("SelectionRingLarge", ArtKind.Effect, 2, 2, 1, 1, false),
-            new ArtEntry("RoamRing", ArtKind.Effect, 1, 1, 1, 1, false), // playtest 2026-10-30: under a roaming unit
-            new ArtEntry("WaypointFlag", ArtKind.Effect, 1, 1, 2, 1, false),
-            new ArtEntry("RallyFlag", ArtKind.Effect, 1, 1, 2, 1, true),
-            new ArtEntry("HealthBar", ArtKind.Effect, 1, 1, 2, 1, false),
-            new ArtEntry("TurretMuzzle", ArtKind.Effect, 1, 1, 3, 1, false),
-            new ArtEntry("JamPulse", ArtKind.Effect, 3, 3, 6, 1, false),
-            // Polish (2026-10-30): ground marks that fade through their frames (scorch where a unit died, rubble sized to a
-            // destroyed building's footprint, tread marks in 4 directions), smoke and fire on damaged buildings, a Miner's gem glint.
-            new ArtEntry("Scorch", ArtKind.Effect, 1, 1, Render.EffectGen.DecalFrames, 1, false),
-            new ArtEntry("ScorchLarge", ArtKind.Effect, 2, 2, Render.EffectGen.DecalFrames, 1, false),
-            new ArtEntry("Rubble1", ArtKind.Effect, 1, 1, Render.EffectGen.DecalFrames, 1, false),
-            new ArtEntry("Rubble2", ArtKind.Effect, 2, 2, Render.EffectGen.DecalFrames, 1, false),
-            new ArtEntry("Rubble3", ArtKind.Effect, 3, 3, Render.EffectGen.DecalFrames, 1, false),
-            new ArtEntry("Rubble5", ArtKind.Effect, 5, 5, Render.EffectGen.DecalFrames, 1, false),
-            new ArtEntry("Tracks", ArtKind.Effect, 1, 1, Render.EffectGen.DecalFrames, Render.EffectGen.TrackDirections, false),
-            new ArtEntry("Smoke", ArtKind.Effect, 1, 1, 6, 1, false),
-            new ArtEntry("Fire", ArtKind.Effect, 1, 1, 4, 1, false),
-            new ArtEntry("GemSparkle", ArtKind.Effect, 1, 1, 4, 1, false),
-            // Polish A, E and J (2026-11-01): a spark where a bullet lands, dust where a unit is made and around a finished building.
-            new ArtEntry("HitSpark", ArtKind.Effect, 1, 1, 3, 1, false),
-            new ArtEntry("DustPuff", ArtKind.Effect, 1, 1, 5, 1, false),
-            // v0.20 Onslaught (approved 2026-11-06, docs/art/v0.20-asset-review.md): the leap, the Bomber's landing, fire on units and
-            // buildings (sized 1, 2 and 3 tiles), soot, the flame's ground scorch, the aim laser and glint, the shot's hit, armour
-            // sparks, the shell falling onto a player who can't see the gun, the launch puff, the big blast, the larger crater, the
-            // 2×2 turret's twin flash and tracer stream, and the deaths (small, large, flung debris, dust).
-            new ArtEntry("LeapSparks", ArtKind.Effect, 1, 1, 5, 1, false),
-            new ArtEntry("LeapShadow", ArtKind.Effect, 1, 1, 4, 1, false),
-            new ArtEntry("BomberLanding", ArtKind.Effect, 5, 5, 8, 1, false),
-            new ArtEntry("BurnFlames1", ArtKind.Effect, 1, 2, 4, 1, false),
-            new ArtEntry("BurnFlames2", ArtKind.Effect, 2, 3, 4, 1, false),
-            new ArtEntry("BurnFlames3", ArtKind.Effect, 3, 4, 4, 1, false),
-            new ArtEntry("SootSmoke", ArtKind.Effect, 1, 1, 5, 1, false),
-            new ArtEntry("FlameScorch", ArtKind.Effect, 3, 1, 4, 1, false),
-            new ArtEntry("AimLaser", ArtKind.Effect, 4, 1, 5, 1, false),
-            new ArtEntry("MuzzleGlint", ArtKind.Effect, 1, 1, 3, 1, false),
-            new ArtEntry("SniperHit", ArtKind.Effect, 1, 1, 4, 1, false),
-            new ArtEntry("ArmourSparks", ArtKind.Effect, 1, 1, 4, 1, false),
-            new ArtEntry("IncomingShell", ArtKind.Effect, 1, 2, 2, 1, false),
-            new ArtEntry("LaunchPuff", ArtKind.Effect, 2, 2, 6, 1, false),
-            new ArtEntry("ArtilleryBlast", ArtKind.Effect, 8, 8, 8, 1, false),
-            new ArtEntry("CraterLarge", ArtKind.Effect, 3, 3, Render.EffectGen.DecalFrames, Render.EffectGen.CraterVariants, false),
-            new ArtEntry("TwinMuzzle", ArtKind.Effect, 1, 1, 2, 1, false),
-            new ArtEntry("TracerStream", ArtKind.Effect, 2, 1, 3, 1, false),
-            new ArtEntry("DeathSmall", ArtKind.Effect, 2, 2, 7, 1, false),
-            new ArtEntry("DeathLarge", ArtKind.Effect, 4, 4, 8, 1, false),
-            new ArtEntry("Debris", ArtKind.Effect, 3, 3, 6, 1, false),
-            new ArtEntry("DustCloud", ArtKind.Effect, 3, 3, 6, 1, false),
-
             // Icons: command card (16×16) and cursors.
             new ArtEntry("IconMove", ArtKind.Icon, 1, 1, 1, 1, false),
             new ArtEntry("IconAttackMove", ArtKind.Icon, 1, 1, 1, 1, false),
@@ -239,6 +181,15 @@ namespace WAR2D.Art
             new ArtEntry("PanelFrame", ArtKind.Ui, 1, 1, 1, 1, false),
             new ArtEntry("ButtonFrame", ArtKind.Ui, 1, 1, 3, 1, false), // default, hover, disabled
         };
+
+        private static readonly ArtEntry[] Entries = Join(Units(), Buildings(), Tiles(), Render.EffectGen.Manifest(), Icons());
+
+        private static ArtEntry[] Join(params ArtEntry[][] parts)
+        {
+            var all = new List<ArtEntry>();
+            foreach (ArtEntry[] part in parts) all.AddRange(part);
+            return all.ToArray();
+        }
 
         private static Dictionary<string, ArtEntry> byId;
 

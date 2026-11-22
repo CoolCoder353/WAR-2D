@@ -1,0 +1,88 @@
+{
+  "synth": 2,
+  "volume": 0.25,
+  "seed": 172,
+  "layers": [
+    {
+      "wave": "Sine",
+      "offset": 0.0,
+      "attack": 0.003,
+      "decay": 0.06,
+      "frequency": 1100,
+      "gain": 0.6,
+      "curve": 3
+    },
+    {
+      "wave": "Sine",
+      "offset": 0.5,
+      "attack": 0.003,
+      "decay": 0.06,
+      "frequency": 1100,
+      "gain": 0.65,
+      "curve": 3
+    },
+    {
+      "wave": "Sine",
+      "offset": 0.9,
+      "attack": 0.003,
+      "decay": 0.06,
+      "frequency": 1150,
+      "gain": 0.7,
+      "curve": 3
+    },
+    {
+      "wave": "Sine",
+      "offset": 1.2,
+      "attack": 0.003,
+      "decay": 0.06,
+      "frequency": 1200,
+      "gain": 0.75,
+      "curve": 3
+    },
+    {
+      "wave": "Sine",
+      "offset": 1.45,
+      "attack": 0.003,
+      "decay": 0.06,
+      "frequency": 1250,
+      "gain": 0.8,
+      "curve": 3
+    },
+    {
+      "wave": "Sine",
+      "offset": 1.63,
+      "attack": 0.003,
+      "decay": 0.06,
+      "frequency": 1300,
+      "gain": 0.85,
+      "curve": 3
+    },
+    {
+      "wave": "Sine",
+      "offset": 1.77,
+      "attack": 0.003,
+      "decay": 0.06,
+      "frequency": 1350,
+      "gain": 0.9,
+      "curve": 3
+    },
+    {
+      "wave": "Sine",
+      "offset": 1.87,
+      "attack": 0.003,
+      "decay": 0.06,
+      "frequency": 1400,
+      "gain": 0.95,
+      "curve": 3
+    },
+    {
+      "wave": "Sine",
+      "offset": 1.94,
+      "attack": 0.003,
+      "decay": 0.06,
+      "frequency": 1450,
+      "gain": 1.0,
+      "curve": 3
+    }
+  ]
+}

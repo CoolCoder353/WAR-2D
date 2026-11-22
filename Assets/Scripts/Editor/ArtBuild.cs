@@ -24,10 +24,46 @@ namespace WAR2D.EditorTools
         public const string PalettePath = "Assets/Art/palette.png";
 
         /// <summary>The map seed the terrain variants are drawn with.</summary>
-        public const int Seed = 1;
+        public const int Seed = ArtManifest.Seed;
 
         /// <summary>Transparent pixels between frames (mipmaps bleed less with two).</summary>
         public const int Padding = 2;
+
+        /// <summary>
+        /// <c>Assets/Art/finish.json</c>: the sprites the owner has approved for finish 2 (asset-generation spec §4: a rim
+        /// light, an exposure that lifts the sprite off the floor, and cleanup after quantising). Every other sprite keeps
+        /// finish 1, byte for byte.
+        /// </summary>
+        public const string FinishPath = "Assets/Art/finish.json";
+
+        /// <summary>The file at <see cref="FinishPath"/>.</summary>
+        [Serializable]
+        public sealed class FinishFile
+        {
+            public string[] finish2 = new string[0];
+        }
+
+        /// <summary>The rim light's strength in finish 2.</summary>
+        public const float Rim = 0.35f;
+
+        /// <summary>The exposures finish 2 tries, lowest first: the first that lifts the sprite clear of the floor is used.</summary>
+        public static readonly float[] Exposures = { 1f, 1.12f, 1.25f, 1.4f, 1.56f, 1.75f };
+
+        /// <summary>For a candidate build: sprites this accepts are drawn with finish 2 whether the file lists them or not.</summary>
+        public static Func<string, bool> Finish2Candidate;
+
+        private static HashSet<string> finish2;
+
+        /// <summary>True when sprite <paramref name="id"/> is drawn with finish 2.</summary>
+        public static bool UsesFinish2(string id)
+        {
+            if (finish2 == null)
+                finish2 = new HashSet<string>(File.Exists(FinishPath) ? SpecJson.ReadFile<FinishFile>(FinishPath).finish2 : new string[0]);
+            return finish2.Contains(id) || (Finish2Candidate != null && Finish2Candidate(id));
+        }
+
+        /// <summary>Forgets the finish file, so the next build reads it again.</summary>
+        public static void ReloadFinish() => finish2 = null;
 
         // Team parts render in two key colours; pixels whose colour changes between them are team pixels.
         private static readonly Color KeyA = new Color(0.64f, 0f, 0.64f), KeyB = new Color(0f, 0.64f, 0f);
@@ -44,9 +80,34 @@ namespace WAR2D.EditorTools
         {
             Directory.CreateDirectory(OutputFolder);
             WritePalette();
-            foreach (var (atlas, kind) in Atlases) Build(atlas, kind);
+            AssetHashes hashes = AssetHashes.Load();
+            hashes.sprites.Clear();
+            hashes.atlases.Clear();
+            foreach (var (atlas, kind) in Atlases)
+            {
+                BuiltAtlas built = Render(atlas, kind);
+                foreach (var (file, bytes) in built.Files) File.WriteAllBytes(Path.Combine(OutputFolder, file), bytes);
+                built.AddTo(hashes);
+            }
+            hashes.Save();
             AssetDatabase.Refresh();
             Debug.Log($"[Art] built {Atlases.Length} atlases in {OutputFolder}");
+        }
+
+        /// <summary>
+        /// Writes <c>Assets/Art/hashes.json</c> from what the generators make now and the built sounds and tracks on disk,
+        /// without building anything: for adopting the file, or after an approved change was built another way.
+        /// </summary>
+        [MenuItem("WAR-2D/Art/Write hashes")]
+        public static void WriteHashes()
+        {
+            var hashes = new AssetHashes();
+            foreach (var (atlas, kind) in Atlases) Render(atlas, kind).AddTo(hashes);
+            AssetHashes.HashWavs(hashes.sounds, AudioBuild.SfxOutput);
+            AssetHashes.HashWavs(hashes.tracks, AudioBuild.MusicOutput);
+            hashes.Save();
+            AssetDatabase.ImportAsset(AssetHashes.FilePath);
+            Debug.Log($"[Art] wrote {AssetHashes.FilePath}");
         }
 
         /// <summary>Writes <c>Assets/Art/palette.png</c>: <see cref="ArtStyle.Palette"/> at 1 px per colour.</summary>
@@ -65,8 +126,122 @@ namespace WAR2D.EditorTools
             public float PivotY;
         }
 
-        private static void Build(string name, ArtKind kind)
+        /// <summary>One atlas as the build writes it: the three files' bytes and a hash per sprite.</summary>
+        public sealed class BuiltAtlas
         {
+            public string Name;
+            public byte[] Png, Mask, Json;
+            /// <summary>The atlas's layout and its colour and mask pixels (bottom-up rows).</summary>
+            public AtlasData Data;
+            public Color32[] Pixels, MaskPixels;
+            /// <summary>How many sprites were rendered (the rest were taken from the atlas already built).</summary>
+            public int Rendered;
+            /// <summary>Sprite id to the SHA-256 of its finished frames (size, pivot, colour and mask), before packing.</summary>
+            public readonly SortedDictionary<string, string> Sprites = new SortedDictionary<string, string>(StringComparer.Ordinal);
+
+            /// <summary>The files in <see cref="OutputFolder"/>, by name.</summary>
+            public (string file, byte[] bytes)[] Files => new[] { (Name + ".png", Png), (Name + "_mask.png", Mask), (Name + ".json", Json) };
+
+            /// <summary>
+            /// Sprite <paramref name="id"/>'s cells as one picture at <paramref name="scale"/>: a row per facing, a column per
+            /// frame, on transparent. Null when the atlas has no such sprite.
+            /// </summary>
+            public Color32[] Sheet(string id, int scale, out int width, out int height)
+            {
+                width = height = 0;
+                AtlasSprite sprite = Data.sprites.Find(s => s.id == id);
+                if (sprite == null) return null;
+                int cw = 0, ch = 0;
+                for (int k = 0; k < sprite.frames * sprite.directions; k++)
+                {
+                    cw = Math.Max(cw, Data.frames[sprite.first + k].w);
+                    ch = Math.Max(ch, Data.frames[sprite.first + k].h);
+                }
+                width = sprite.frames * (cw + 1) * scale;
+                height = sprite.directions * (ch + 1) * scale;
+                var sheet = new Color32[width * height];
+                for (int k = 0; k < sprite.frames * sprite.directions; k++)
+                {
+                    AtlasFrame f = Data.frames[sprite.first + k];
+                    int ox = (k % sprite.frames) * (cw + 1) * scale, oy = (sprite.directions - 1 - k / sprite.frames) * (ch + 1) * scale;
+                    for (int y = 0; y < f.h * scale; y++)
+                        for (int x = 0; x < f.w * scale; x++)
+                            sheet[(oy + y) * width + ox + x] = Pixels[(f.y + y / scale) * Data.width + f.x + x / scale];
+                }
+                return sheet;
+            }
+
+            /// <summary>Records this atlas's sprites and files in <paramref name="hashes"/>.</summary>
+            public void AddTo(AssetHashes hashes)
+            {
+                foreach (var pair in Sprites) hashes.sprites[pair.Key] = pair.Value;
+                foreach (var (file, bytes) in Files) hashes.atlases[file] = AssetHashes.Sha(bytes);
+            }
+        }
+
+        /// <summary>The atlas <paramref name="name"/> as it is built on disk, or null when it isn't there.</summary>
+        public static BuiltAtlas LoadBuilt(string name)
+        {
+            string path = Path.Combine(OutputFolder, name);
+            if (!File.Exists(path + ".png") || !File.Exists(path + "_mask.png") || !File.Exists(path + ".json")) return null;
+            var built = new BuiltAtlas
+            {
+                Name = name,
+                Png = File.ReadAllBytes(path + ".png"),
+                Mask = File.ReadAllBytes(path + "_mask.png"),
+                Json = File.ReadAllBytes(path + ".json"),
+                Data = new AtlasData(),
+            };
+            JsonUtility.FromJsonOverwrite(File.ReadAllText(path + ".json"), built.Data);
+            built.Pixels = Decode(built.Png, built.Data);
+            built.MaskPixels = Decode(built.Mask, built.Data);
+            return built;
+        }
+
+        private static Color32[] Decode(byte[] png, AtlasData data)
+        {
+            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            try
+            {
+                if (!texture.LoadImage(png) || texture.width != data.width || texture.height != data.height)
+                    throw new InvalidOperationException("a built atlas is not the size its JSON says");
+                return texture.GetPixels32();
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(texture);
+            }
+        }
+
+        /// <summary>The frames of <paramref name="e"/> as <paramref name="old"/> holds them, or null when it has none or their count or size differs.</summary>
+        private static List<Frame> Kept(ArtEntry e, BuiltAtlas old)
+        {
+            AtlasSprite sprite = old?.Data.sprites.Find(s => s.id == e.Id);
+            if (sprite == null || sprite.frames != e.Frames || sprite.directions != e.Directions) return null;
+            var kept = new List<Frame>();
+            for (int k = 0; k < e.Frames * e.Directions; k++)
+            {
+                AtlasFrame at = old.Data.frames[sprite.first + k];
+                var f = new Frame { W = at.w, H = at.h, PivotY = at.pivotY, Colour = new Color32[at.w * at.h], Mask = new Color32[at.w * at.h] };
+                for (int y = 0; y < at.h; y++)
+                {
+                    Array.Copy(old.Pixels, (at.y + y) * old.Data.width + at.x, f.Colour, y * at.w, at.w);
+                    Array.Copy(old.MaskPixels, (at.y + y) * old.Data.width + at.x, f.Mask, y * at.w, at.w);
+                }
+                kept.Add(f);
+            }
+            return kept;
+        }
+
+        /// <summary>
+        /// Renders and packs the atlas of <paramref name="kind"/> in memory; nothing is written. With <paramref name="render"/>
+        /// and <paramref name="old"/>, only the sprites it accepts are rendered and the others' frames are taken from
+        /// <paramref name="old"/> as they are (a sprite <paramref name="old"/> doesn't hold is rendered anyway).
+        /// </summary>
+        public static BuiltAtlas Render(string name, ArtKind kind, Func<ArtEntry, bool> render = null, BuiltAtlas old = null)
+        {
+            ReloadFinish();
+            int renderedSprites = 0;
             var data = new AtlasData { pixelsPerUnit = ArtStyle.PixelsPerUnit };
             var frames = new List<Frame>();
             var rects = new List<(string id, int frame, int w, int h)>();
@@ -76,11 +251,23 @@ namespace WAR2D.EditorTools
                 if (e.Kind != kind) continue;
                 int cells = e.Frames * e.Directions;
                 data.sprites.Add(new AtlasSprite { id = e.Id, first = frames.Count, frames = e.Frames, directions = e.Directions });
+                if (render != null && !render(e) && Kept(e, old) is List<Frame> kept)
+                {
+                    for (int i = 0; i < kept.Count; i++)
+                    {
+                        frames.Add(kept[i]);
+                        rects.Add((e.Id, i, kept[i].W, kept[i].H));
+                    }
+                    continue;
+                }
+                renderedSprites++;
+                // Finish 2 (sprites only): one exposure for the whole sprite, so its frames and facings match.
+                float exposure = kind != ArtKind.Tile && kind != ArtKind.Effect && e.MakeLit != null && UsesFinish2(e.Id) ? Exposure(e) : 0f;
                 for (int i = 0; i < cells; i++)
                 {
                     if (e.Id == ArtManifest.FloorFeature || e.Id == ArtManifest.RockFeature)
                     {
-                        Frame stamp = Feature(e.Id == ArtManifest.RockFeature, i, cache);
+                        Frame stamp = Feature(e, i, cache);
                         frames.Add(stamp);
                         rects.Add((e.Id, i, stamp.W, stamp.H));
                         continue;
@@ -92,8 +279,14 @@ namespace WAR2D.EditorTools
                         rects.Add((e.Id, i, fx.W, fx.H));
                         continue;
                     }
-                    var (key, make, lift) = Generator(e, i);
-                    if (!cache.TryGetValue(key, out Frame f)) cache[key] = f = Finish(make(), lift, kind != ArtKind.Tile);
+                    ArtCell cell = e.Cell(i);
+                    // A sprite with no generator yet draws as a placeholder of its size.
+                    string key = e.MakeLit != null ? e.KeyFor(cell) : $"Placeholder {Math.Max(e.WidthTiles, e.HeightTiles)}";
+                    if (!cache.TryGetValue(key, out Frame f))
+                    {
+                        LitCanvas canvas = e.MakeLit != null ? e.MakeLit(cell) : RenderGen.Placeholder(Math.Max(e.WidthTiles, e.HeightTiles));
+                        cache[key] = f = Finish(canvas, e.Lift, kind != ArtKind.Tile, exposure);
+                    }
                     frames.Add(f);
                     rects.Add((e.Id, i, f.W, f.H));
                 }
@@ -117,111 +310,54 @@ namespace WAR2D.EditorTools
                 data.frames.Add(new AtlasFrame { x = at.x, y = at.y, w = f.W, h = f.H, pivotX = f.W / 2f, pivotY = f.PivotY });
             }
 
-            string path = Path.Combine(OutputFolder, name);
-            File.WriteAllBytes(path + ".png", Png.Encode(pack.Width, pack.Height, colour));
-            File.WriteAllBytes(path + "_mask.png", Png.Encode(pack.Width, pack.Height, mask));
-            File.WriteAllText(path + ".json", JsonUtility.ToJson(data, true) + "\n");
-            Debug.Log($"[Art] {name}: {frames.Count} frames in {pack.Width}×{pack.Height}");
-        }
-
-        /// <summary>The generator for cell <paramref name="cell"/> of <paramref name="e"/>: a cache key, the canvas and its 3/4 lift.</summary>
-        private static (string key, Func<LitCanvas> make, float lift) Generator(ArtEntry e, int cell)
-        {
-            int frame = cell % e.Frames, direction = cell / e.Frames;
-            if (e.Kind == ArtKind.Unit && Layer(e.Id, ArtManifest.HullSuffix, out UnitType hull))
-                return ($"{e.Id} {direction} {frame}", () => RenderGen.HullLayer(hull, direction * 2f * Mathf.PI / e.Directions, frame), 0f);
-            if (e.Kind == ArtKind.Unit && Layer(e.Id, ArtManifest.TurretSuffix, out UnitType turret))
-                return ($"{e.Id} {direction} {frame}", () => RenderGen.TurretLayer(turret, direction * 2f * Mathf.PI / e.Directions, frame), 0f);
-            switch (e.Id)
+            var built = new BuiltAtlas
             {
-                case nameof(UnitType.Tank):
-                    return ($"Tank {direction} {frame}", () => RenderGen.Tank(direction * Mathf.PI / 4f, frame), 0f);
-                case "Builder":
-                    return ($"Builder {direction} {frame}", () => RenderGen.Builder(direction * Mathf.PI / 4f, frame), 0f);
-                case "Digger":
-                    return ($"Digger {direction} {frame}", () => RenderGen.Digger(direction * Mathf.PI / 4f, frame), 0f);
-                case nameof(UnitType.Scout):
-                    return ($"Scout {direction} {frame}", () => RenderGen.Scout(direction * Mathf.PI / 4f, frame), 0f);
-                case nameof(UnitType.Flamethrower):
-                    return ($"Flamethrower {direction} {frame}", () => RenderGen.Flamethrower(direction * Mathf.PI / 4f, frame), 0f);
-                case nameof(UnitType.Sniper):
-                    return ($"Sniper {direction} {frame}", () => RenderGen.Sniper2x2(direction * Mathf.PI / 4f, frame), 0f);
-                case nameof(UnitType.Bomber):
-                    return ($"Bomber {direction} {frame}", () => RenderGen.Bomber(direction * Mathf.PI / 4f, frame), 0f);
-                case nameof(UnitType.Heavy):
-                    return ($"Heavy {direction} {frame}", () => RenderGen.Heavy(direction * Mathf.PI / 4f, frame), 0f);
-                case nameof(UnitType.Artillery):
-                    return ($"Artillery {direction} {frame}", () => RenderGen.Artillery(direction * Mathf.PI / 4f, frame), 0f);
-                case nameof(BuildingType.HeavyFactory):
-                    return ($"HeavyFactory {frame}", () => RenderGen.HeavyFactory(frame), RenderGen.Lift);
-                case nameof(BuildingType.SiegeWorkshop):
-                    return ($"SiegeWorkshop {frame}", () => RenderGen.SiegeWorkshop(frame), RenderGen.Lift);
-                case "Mine":
-                    return ($"Bomb {frame}", () => RenderGen.Mine(frame), 0f);
-                case "Radar":
-                    return ($"Radar {frame}", () => RenderGen.Radar(frame), RenderGen.Lift);
-                case nameof(BuildingType.GunTurret):
-                    return ($"GunTurret {frame}", () => RenderGen.GunTurret2x2Base(frame), RenderGen.Lift);
-                case ArtManifest.TurretHead:
-                    return ($"GunTurretHead {direction} {frame}", () => RenderGen.GunTurret2x2Head(direction * Mathf.PI / 4f, frame), RenderGen.Lift);
-                case nameof(BuildingType.Jammer):
-                    return ($"Jammer {frame}", () => RenderGen.Jammer(frame), RenderGen.Lift);
-                case "PlayerWall":
-                    return ($"PlayerWall {frame}", () => RenderGen.PlayerWall(Seed, frame % ArtManifest.AutotileVariants, frame / ArtManifest.AutotileVariants), 0f);
-                case "WallBlueprint":
-                    return ($"WallBlueprint {frame}", () => RenderGen.WallBlueprint(frame), 0f);
-                case nameof(BuildingType.Base):
-                    return ("Base", RenderGen.Base, RenderGen.Lift);
-                case nameof(BuildingType.Barracks):
-                    return ($"Spawner {frame}", () => RenderGen.Spawner(frame), RenderGen.Lift);
-                case nameof(BuildingType.Miner):
-                    return ($"Miner {direction} {frame}", () => RenderGen.Miner(frame, direction), RenderGen.Lift);
-                case nameof(TileType.Ground):
-                    return ($"Floor {frame}", () => RenderGen.Floor(Seed, frame), 0f);
-                case nameof(TileType.Wall):
-                {
-                    var (mask, corners) = RenderGen.RockShapes[frame];
-                    return ($"Rock {frame}", () => RenderGen.Rock(Seed, mask, corners), 0f);
-                }
-                case nameof(TileType.Gem):
-                {
-                    // Variant-major: 4 variants × the rock shapes.
-                    int shapes = RenderGen.RockShapes.Length;
-                    var (mask, corners) = RenderGen.RockShapes[frame % shapes];
-                    return ($"Gem {frame}", () => RenderGen.Gem(Seed, frame / shapes, mask, corners), 0f);
-                }
-                case nameof(TileType.RichGem):
-                {
-                    // v0.17: as Gem, variant-major.
-                    int shapes = RenderGen.RockShapes.Length;
-                    var (mask, corners) = RenderGen.RockShapes[frame % shapes];
-                    return ($"Rich gem {frame}", () => RenderGen.RichGem(Seed, frame / shapes, mask, corners), 0f);
-                }
-                case nameof(TileType.Border):
-                    return ("Rock 15", () => RenderGen.Rock(Seed, 15), 0f);
-                default:
-                    return ($"Placeholder {Math.Max(e.WidthTiles, e.HeightTiles)}", () => RenderGen.Placeholder(Math.Max(e.WidthTiles, e.HeightTiles)), 0f);
-            }
+                Name = name,
+                Data = data,
+                Pixels = colour,
+                MaskPixels = mask,
+                Rendered = renderedSprites,
+                Png = Png.Encode(pack.Width, pack.Height, colour),
+                Mask = Png.Encode(pack.Width, pack.Height, mask),
+                Json = new System.Text.UTF8Encoding(false).GetBytes(JsonUtility.ToJson(data, true) + "\n"),
+            };
+            foreach (AtlasSprite sprite in data.sprites)
+                built.Sprites[sprite.id] = SpriteHash(frames, sprite.first, sprite.frames * sprite.directions);
+            Debug.Log($"[Art] {name}: {frames.Count} frames in {pack.Width}×{pack.Height}");
+            return built;
         }
 
-        /// <summary>True for a unit's layer id: the unit type's name followed by <paramref name="suffix"/>.</summary>
-        private static bool Layer(string id, string suffix, out UnitType type)
+        /// <summary>The SHA-256 of <paramref name="count"/> finished frames from <paramref name="first"/>: each one's size, pivot, colour and mask.</summary>
+        private static string SpriteHash(List<Frame> frames, int first, int count)
         {
-            type = default;
-            return id.EndsWith(suffix) && Enum.TryParse(id.Substring(0, id.Length - suffix.Length), out type);
+            using (var stream = new MemoryStream())
+            using (var writer = new BinaryWriter(stream))
+            {
+                for (int k = first; k < first + count; k++)
+                {
+                    Frame f = frames[k];
+                    writer.Write(f.W);
+                    writer.Write(f.H);
+                    writer.Write(f.PivotY);
+                    foreach (Color32 c in f.Colour) { writer.Write(c.r); writer.Write(c.g); writer.Write(c.b); writer.Write(c.a); }
+                    foreach (Color32 c in f.Mask) { writer.Write(c.r); writer.Write(c.g); writer.Write(c.b); writer.Write(c.a); }
+                }
+                writer.Flush();
+                return AssetHashes.Sha(stream.ToArray());
+            }
         }
 
         /// <summary>
         /// A terrain feature stamp: the feature finished on its plain base, transparent wherever it came out the same as
         /// the base without it, so the shader blends in only what the feature changed.
         /// </summary>
-        private static Frame Feature(bool rock, int cell, Dictionary<string, Frame> cache)
+        private static Frame Feature(ArtEntry e, int cell, Dictionary<string, Frame> cache)
         {
+            bool rock = e.Id == ArtManifest.RockFeature;
             string baseKey = rock ? "RockFeatureBase" : "FloorFeatureBase";
             if (!cache.TryGetValue(baseKey, out Frame plain))
                 cache[baseKey] = plain = Finish(rock ? RenderGen.RockFeatureBase(Seed) : RenderGen.FloorFeatureBase(Seed), 0f, false);
-            int kind = cell / RenderGen.FeatureFrames, frame = cell % RenderGen.FeatureFrames;
-            Frame f = Finish(rock ? RenderGen.RockFeature(Seed, kind, frame) : RenderGen.FloorFeature(Seed, kind, frame), 0f, false);
+            Frame f = Finish(e.MakeLit(e.Cell(cell)), 0f, false);
             for (int i = 0; i < f.Colour.Length; i++)
             {
                 Color32 a = f.Colour[i], b = plain.Colour[i];
@@ -233,24 +369,58 @@ namespace WAR2D.EditorTools
         /// <summary>An effect frame from <see cref="EffectGen"/> (already palette pixel art), split into colour and mask.</summary>
         private static Frame Effect(ArtEntry e, int cell)
         {
-            EffectFrame? made = EffectGen.For(e.Id, cell, e.Frames);
-            if (made == null) throw new InvalidOperationException($"{e.Id} has no effect generator (EffectGen.For)");
-            EffectFrame f = made.Value;
+            if (e.MakeEffect == null) throw new InvalidOperationException($"{e.Id} has no effect generator (give its ArtEntry one with Fx)");
+            EffectFrame f = e.MakeEffect(e.Cell(cell));
             Color32[] colour = ArtStyle.SplitTeamKey(f.Pixels, out Color32[] mask);
             return new Frame { Colour = colour, Mask = mask, W = f.Width, H = f.Height, PivotY = f.Height / 2f };
         }
 
-        /// <summary>Renders <paramref name="c"/>, finds its team pixels and finishes it; sprites get the outline and shadow.</summary>
-        private static Frame Finish(LitCanvas c, float lift, bool sprite)
+        private static float floorLightness = -1f;
+
+        /// <summary>
+        /// The exposure finish 2 draws <paramref name="e"/> with: the lowest of <see cref="Exposures"/> at which its first
+        /// cell and a diagonal facing sit <see cref="ArtLint.MinLift"/> (and a small margin) above the floor.
+        /// </summary>
+        private static float Exposure(ArtEntry e)
+        {
+            if (floorLightness < 0f) floorLightness = LoadBuilt(ArtAtlas.Tiles) is BuiltAtlas tiles ? ArtLint.FloorLightness(tiles) : 0.29f;
+            int[] cells = e.Directions >= 8 ? new[] { 0, (e.Directions / 8) * e.Frames } : new[] { 0 };
+            foreach (float exposure in Exposures)
+            {
+                double sum = 0;
+                int n = 0;
+                Color32 outline = StylePalettes.Charcoal.Colours[StylePalette.Outline];
+                foreach (int cell in cells)
+                {
+                    Frame f = Finish(e.MakeLit(e.Cell(cell)), e.Lift, true, exposure);
+                    for (int i = 0; i < f.Colour.Length; i++)
+                    {
+                        Color32 c = f.Colour[i];
+                        if (c.a != 255 || f.Mask[i].r > 127 || (c.r == outline.r && c.g == outline.g && c.b == outline.b)) continue;
+                        sum += PaletteQuantizer.OkLab(c).x;
+                        n++;
+                    }
+                }
+                if (n == 0 || sum / n >= floorLightness + ArtLint.MinLift + 0.015f) return exposure;
+            }
+            return Exposures[Exposures.Length - 1];
+        }
+
+        /// <summary>
+        /// Renders <paramref name="c"/>, finds its team pixels and finishes it; sprites get the outline and shadow.
+        /// <paramref name="exposure"/> above 0 is finish 2 at that exposure; 0 is finish 1.
+        /// </summary>
+        private static Frame Finish(LitCanvas c, float lift, bool sprite, float exposure = 0f)
         {
             int w = c.Width, h = c.Height;
-            Color32[] a = c.Render(KeyA, shadow: false, lift: lift);
-            Color32[] b = c.Render(KeyB, shadow: false, lift: lift);
+            bool two = exposure > 0f;
+            Color32[] a = c.Render(KeyA, shadow: false, lift: lift, rim: two ? Rim : 0f, exposure: two ? exposure : 1f);
+            Color32[] b = c.Render(KeyB, shadow: false, lift: lift, rim: two ? Rim : 0f, exposure: two ? exposure : 1f);
             var team = new bool[a.Length];
             for (int i = 0; i < a.Length; i++)
                 team[i] = Math.Abs(a[i].r - b[i].r) + Math.Abs(a[i].g - b[i].g) + Math.Abs(a[i].b - b[i].b) > 24;
             Color32? outline = sprite ? StylePalettes.Charcoal.Colours[StylePalette.Outline] : (Color32?)null;
-            Color32[] finished = PixelFinish.FinishTeam(a, team, w, h, ArtStyle.Palette, ArtStyle.TeamKeyRamp, outline);
+            Color32[] finished = PixelFinish.FinishTeam(a, team, w, h, ArtStyle.Palette, ArtStyle.TeamKeyRamp, outline, two);
             Color32[] colour = ArtStyle.SplitTeamKey(finished, out Color32[] mask);
             return new Frame { Colour = colour, Mask = mask, W = w, H = h, PivotY = c.PivotY };
         }

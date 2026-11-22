@@ -1,0 +1,171 @@
+{
+  "sprites": {},
+  "sounds": {
+    "alert_mine": {
+      "hash": "4c0855d1c5f3f7647f07953b37641fd5a29dd30523bb611621fb3939eebf752f",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "alert_under_attack": {
+      "hash": "31272ba7468d08cd393d9df25d07c796a1e84e9a778e2609b2ba4b6a71f88c24",
+      "date": "2026-11-15",
+      "page": "docs/art/review/2026-11-15-wave-fix"
+    },
+    "artillery_launch": {
+      "hash": "4efca3b67b308a417bdaddc79bbc6ff6f7f6e247f79206218f046e334fc93aba",
+      "date": "2026-11-15",
+      "page": "docs/art/review/2026-11-15-wave-fix"
+    },
+    "bomber_leap": {
+      "hash": "9aab8e1fe62f34042280ee9675ae9e2454eb11afdc102781ac8618666d8b30f1",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "building_collapse": {
+      "hash": "b1f1ed093b9e0311cb9b2451a8d947c5024280952ff3ff22e615187182a00dec",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "building_destroyed": {
+      "hash": "96df9b6788ec9c03bed91560719052a133506b8478daa08c3a1f20dec40f1488",
+      "date": "2026-11-15",
+      "page": "docs/art/review/2026-11-15-wave-fix"
+    },
+    "burn_death": {
+      "hash": "6d28ec2436cc499cb59fd9dc75ed7bf0b460a79c1942847a6462e60e156df94e",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "burn_loop": {
+      "hash": "ad81808b0b8b984635e49894ab7c35ae75d399e8b4eaeacde16be4cfff36ac0e",
+      "date": "2026-11-15",
+      "page": "docs/art/review/2026-11-15-wave-fix"
+    },
+    "construct_loop": {
+      "hash": "82941635ae1defd6a8152f457e91191b9f2214ebc3901a10ee8d7e40ec42a03f",
+      "date": "2026-11-15",
+      "page": "docs/art/review/2026-11-15-wave-fix"
+    },
+    "death_large": {
+      "hash": "f1e9275d2d84b68d756823c8b66d66558d239eff3d7d3f4c38cd483c729417f4",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "death_small": {
+      "hash": "3a3a264ccff1ac01e7bae2b844b18bf16535d1e25a7a9554db75246fa0819da9",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "defeat": {
+      "hash": "0daff3d1f45e149dc0acc922390cb26dc6ae828282f39dde7b3e5c0fa48c84d7",
+      "date": "2026-11-15",
+      "page": "docs/art/review/2026-11-15-wave-fix"
+    },
+    "dig": {
+      "hash": "ac2f3d6ecb6f60cd6562757dae22f944fc07f0b2872922483c8c073c90e30c20",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "explosion_large": {
+      "hash": "e7af559b1904d1b0bffee67972ac54334050cb8aebf84073ac55b22570e4695f",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "explosion_small": {
+      "hash": "94568b41d22374ebeab2eaf36ef8ae8b9cb44cbd1e7e72f28e6742ae603e7470",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "flame_ignite": {
+      "hash": "c2b9ee3521916ed77c1dd5e5c78aa56deff44825023d074679968d01f68e76fe",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "gem_mined": {
+      "hash": "c0246508ace07cb7fec0a5a11d4e44fc7424bfd6f94afe8c32aff424ebd01e7e",
+      "date": "2026-11-15",
+      "page": "docs/art/review/2026-11-15-wave-fix"
+    },
+    "mine_blast": {
+      "hash": "9f884377d6e8a8d4b6e74a914a206c38b3aec5f40b908fd501eef75c2c7939d3",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "repair": {
+      "hash": "973421899bfbfab3f757720028674d4660f203213afb99112c9f7bdf8e22f5eb",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "shell_impact": {
+      "hash": "b0bde5068c59c930cb6cbe81f62cf194363dfcd82a961488d264c9a3e1a559ac",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "shell_impact_large": {
+      "hash": "31da900cc3546a47985f3877061269f293582610bb97462c63d989d8c2062393",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "shot_artillery": {
+      "hash": "5df2b1408c359e8522a04175f065c33a0e228ee4f9b2a5733947fb249b5fb078",
+      "date": "2026-11-15",
+      "page": "docs/art/review/2026-11-15-wave-fix"
+    },
+    "shot_digger": {
+      "hash": "fbaff94841ab5c214e55660c17b4c264ef11c65dd8bfdf2392a287bf68e9fdbb",
+      "date": "2026-11-15",
+      "page": "docs/art/review/2026-11-15-wave-fix"
+    },
+    "shot_flamethrower": {
+      "hash": "297e7b746a89d209cf4291adb6e02cab84c5b94dc328e14d399fd0ee5026e8d9",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "shot_heavy": {
+      "hash": "52aef6c88ce11adb07f51f96e5952260afec81569163f86d10ed0b246d396ef9",
+      "date": "2026-11-15",
+      "page": "docs/art/review/2026-11-15-wave-fix"
+    },
+    "shot_scout": {
+      "hash": "23afb808f3b3fae03acb368ffa79b14f3cee9d285f61cf312f62fb28b9700cad",
+      "date": "2026-11-15",
+      "page": "docs/art/review/2026-11-15-wave-fix"
+    },
+    "shot_sniper": {
+      "hash": "0afe0e5961879a37cd3eeab07ea8fcef9bf0859b6da26ecb352f834a20909394",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "shot_turret": {
+      "hash": "3523d5c3aca164549e7eb5f2d1e4c95e3a69ee76ed77b16db32616f587a6c0af",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "sniper_aim": {
+      "hash": "35fc5107136143a2fda5bc139adcd7a0a357966b9ea4fc165ceba8377a59627d",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "sniper_shot": {
+      "hash": "118f5169ccf04d13c78f7f41959c548bd8ebadb6d5fc54d67d2f7b42bea485c9",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    },
+    "turret_fire_loop": {
+      "hash": "38c37ac8be8640fd611d0590c93bc4531c788ef499ff95988625902676cbc97c",
+      "date": "2026-11-15",
+      "page": "docs/art/review/2026-11-15-wave-fix"
+    },
+    "ui_hover": {
+      "hash": "96c7b68b940f23092ffadf51627f6765c273a3c4ad6d775ec466202060737b3f",
+      "date": "2026-11-15",
+      "page": "docs/art/review/2026-11-15-wave-fix"
+    },
+    "wall_hit": {
+      "hash": "6fd52449965c272c0ad4ef6bb29121156d43b3c257ea30bdc5dbdfbdf55a14f7",
+      "date": "2026-11-16",
+      "page": "docs/art/review/2026-11-15-redesign"
+    }
+  },
+  "tracks": {}
+}

@@ -9,52 +9,64 @@ namespace WAR2D.Audio
     /// <summary>
     /// One sound's parameters for <see cref="Sfxr"/> (the JSON files under <c>Assets/Art/Audio/sfx/</c>).
     /// Times are seconds, frequencies Hz, slides octaves per second; filters are 0..1 like sfxr's.
+    /// The files are read with <see cref="WAR2D.Art.SpecJson"/>: <see cref="wave"/> by name, no unknown fields,
+    /// and each number inside the range on its field.
     /// </summary>
     [Serializable]
     public sealed class SfxrParams
     {
         public SfxrWave wave = SfxrWave.Square;
         [Header("Envelope")]
-        public float attack = 0f;
-        public float sustain = 0.1f;
+        [Min(0f)] public float attack = 0f;
+        [Min(0f)] public float sustain = 0.1f;
         /// <summary>Extra loudness at the start of the sustain, fading out over it (0..1).</summary>
-        public float punch = 0f;
-        public float decay = 0.2f;
+        [Range(0f, 1f)] public float punch = 0f;
+        [Min(0f)] public float decay = 0.2f;
         [Header("Pitch")]
-        public float frequency = 440f;
+        [Range(1f, 20000f)] public float frequency = 440f;
         /// <summary>The slide never goes below this (Hz); 0 means no floor.</summary>
-        public float minFrequency = 0f;
+        [Min(0f)] public float minFrequency = 0f;
         public float slide = 0f;
         /// <summary>Change of <see cref="slide"/> per second.</summary>
         public float deltaSlide = 0f;
         /// <summary>Vibrato depth as a fraction of the pitch.</summary>
-        public float vibratoDepth = 0f;
-        public float vibratoSpeed = 0f;
+        [Range(0f, 1f)] public float vibratoDepth = 0f;
+        [Min(0f)] public float vibratoSpeed = 0f;
         /// <summary>Arpeggio: after <see cref="changeTime"/> seconds the pitch is multiplied by this (1 = off).</summary>
-        public float changeAmount = 1f;
-        public float changeTime = 0f;
+        [Min(0.01f)] public float changeAmount = 1f;
+        [Min(0f)] public float changeTime = 0f;
         [Header("Tone")]
         /// <summary>Square duty cycle (0..1) and its change per second.</summary>
-        public float duty = 0.5f;
+        [Range(0f, 1f)] public float duty = 0.5f;
         public float dutySweep = 0f;
         /// <summary>Low-pass cutoff (1 = off), its sweep per second and resonance.</summary>
-        public float lowPass = 1f;
+        [Range(0f, 1f)] public float lowPass = 1f;
         public float lowPassSweep = 0f;
-        public float resonance = 0f;
+        [Range(0f, 1f)] public float resonance = 0f;
         /// <summary>High-pass cutoff (0 = off) and its sweep per second.</summary>
-        public float highPass = 0f;
+        [Range(0f, 1f)] public float highPass = 0f;
         public float highPassSweep = 0f;
         /// <summary>Phaser delay (seconds) and its change per second.</summary>
         public float phaserOffset = 0f;
         public float phaserSweep = 0f;
         /// <summary>The rendered sound's peak level (0..1): filters and the phaser can't make it clip or vanish.</summary>
-        public float volume = 0.5f;
+        [Range(0f, 1f)] public float volume = 0.5f;
         /// <summary>Times the sound is laid down (1 = once): a burst of shots as one clip (v0.20's Gun turret).</summary>
-        public int repeat = 1;
+        [Min(1)] public int repeat = 1;
         /// <summary>Seconds between repeats when <see cref="repeat"/> is more than 1.</summary>
-        public float repeatEvery = 0f;
+        [Min(0f)] public float repeatEvery = 0f;
         /// <summary>The seed <c>WAR-2D/Audio/Build SFX</c> renders this sound with.</summary>
         public int seed = 1;
+        [Header("Layered synth")]
+        /// <summary>1 is the single-oscillator synth above; 2 is the layered one (<see cref="SfxLayers"/>), which reads only
+        /// <see cref="layers"/>, <see cref="drive"/>, <see cref="tail"/>, <see cref="tailSeconds"/>, <see cref="volume"/> and <see cref="seed"/>.</summary>
+        [Range(1, 2)] public int synth = 1;
+        public SfxLayer[] layers;
+        /// <summary>Soft clipping of the mix (0 = off, 1 = heavy): weight for blasts without harsh peaks.</summary>
+        [Range(0f, 1f)] public float drive = 0f;
+        /// <summary>A reverb tail under the sound (0 = off) and how long it rings.</summary>
+        [Range(0f, 1f)] public float tail = 0f;
+        [Range(0f, 3f)] public float tailSeconds = 0.4f;
     }
 
     /// <summary>
@@ -68,6 +80,7 @@ namespace WAR2D.Audio
         /// <summary>The sound's samples, mono in [-1, 1]; length is attack + sustain + decay (and the repeats, when it repeats).</summary>
         public static float[] Render(SfxrParams p, int seed, int sampleRate = 44100)
         {
+            if (p.synth == 2) return SfxLayers.Render(p, seed, sampleRate);
             float attack = Mathf.Max(0f, p.attack), sustain = Mathf.Max(0f, p.sustain), decay = Mathf.Max(0f, p.decay);
             int length = Mathf.RoundToInt((attack + sustain + decay) * sampleRate);
             var output = new float[length];

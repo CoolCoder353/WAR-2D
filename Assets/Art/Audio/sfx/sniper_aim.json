@@ -1,12 +1,29 @@
 {
-  "wave": "Sine",
-  "attack": 0.1,
-  "sustain": 1.8,
-  "decay": 0.1,
-  "frequency": 500,
-  "slide": 0.55,
-  "vibratoDepth": 0.02,
-  "vibratoSpeed": 12,
+  "synth": 2,
   "volume": 0.25,
-  "seed": 76
+  "seed": 171,
+  "layers": [
+    {
+      "wave": "Sine",
+      "attack": 0.15,
+      "sustain": 1.75,
+      "decay": 0.1,
+      "frequency": 380,
+      "slide": 0.5,
+      "gain": 1.0,
+      "tremoloDepth": 0.3,
+      "tremoloSpeed": 9,
+      "curve": 0
+    },
+    {
+      "wave": "Triangle",
+      "attack": 0.6,
+      "sustain": 1.3,
+      "decay": 0.1,
+      "frequency": 760,
+      "slide": 0.5,
+      "gain": 0.25,
+      "curve": 0
+    }
+  ]
 }
