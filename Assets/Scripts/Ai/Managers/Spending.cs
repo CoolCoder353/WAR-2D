@@ -52,6 +52,8 @@ namespace WAR2D.Ai
             {
                 if (state.ForwardRegions.Contains(r)) continue;
                 AiRegion region = view.Regions[r];
+                // Held means a building of its own stands there (a Miner only placed, not yet shown, doesn't count).
+                if (!OwnsAnythingIn(ai, view, region)) continue;
                 if (ai.Reach != null && ai.Reach.Query((int2)math.floor(state.Home), region.Centre, view.Tiles, ai.WallCostFn, null, out _, snap: 8) != Reach.Open) continue;
                 float d = math.distance((float2)region.Centre, enemy);
                 float score = safest ? d : -d;
