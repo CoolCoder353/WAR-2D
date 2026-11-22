@@ -43,6 +43,8 @@ public sealed class AiBench : MonoBehaviour
         /// <summary>v0.21 phase 0: seconds its army idled big enough to attack, targets given up on, income earned, and its balance at the end.</summary>
         public float idleArmySeconds, earned, finalResources;
         public int giveUps;
+        /// <summary>v0.21: posts taken, forward bases started, breaches started.</summary>
+        public int postsTaken, forwardBases, breaches;
         [JsonIgnore] public int nextMinute;
     }
 
@@ -215,6 +217,9 @@ public sealed class AiBench : MonoBehaviour
         if (status.TryGetValue("idleArmy", out object ia)) r.idleArmySeconds = Convert.ToSingle(ia);
         if (status.TryGetValue("giveUps", out object gu)) r.giveUps = Convert.ToInt32(gu);
         if (status.TryGetValue("earned", out object ea)) r.earned = Convert.ToSingle(ea);
+        if (status.TryGetValue("postsTaken", out object pt)) r.postsTaken = Convert.ToInt32(pt);
+        if (status.TryGetValue("forwardStarted", out object fs)) r.forwardBases = Convert.ToInt32(fs);
+        if (status.TryGetValue("breaches", out object br)) r.breaches = Convert.ToInt32(br);
         if (seat.Player.state == PlayerState.Playing) r.finalResources = seat.Player.Resources;
         if (played >= r.nextMinute * 60f && seat.Player.state == PlayerState.Playing)
         {

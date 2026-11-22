@@ -30,6 +30,7 @@ The bench and the tuner need a Linux build (`Builds/Linux/WAR-2D.x86_64`, any bu
 | `<Ai><Difficulty>` | Each level's handicaps only: thinking rate, actions per minute, reactions, `Insight`, `Attention`, `Ambition`, `Mistakes` (0..1; Hard 1, 1, 1, 0), and its diplomacy temperament. Moving one moves one rung of the ladder |
 | `<Ai><Style>` | What a style builds and when it attacks: build orders (one picked per match), army mix, producers, Miners, expansions, first attack, attack size and interval, defences, raids. Each AI varies these by up to `Policy.Variation` per match |
 | `<Ai><Play>` | Sizes and pacing shared by every AI (placement, queues, upkeep model, gathering, staging, retreats, scouting) |
+| `<Ai><Reach>`, `<Ai><Warpath>` | v0.21: the reach map's relabel pace and breaches (`BreachCostScale`, `BreachSeconds`, `BreachStage`); threat axes' memory (`AxisHalfLifeSeconds`), posts (`MaxPosts`, `PostSize`, `PostRadius`, `PostSeconds`), raids at once (`MaxRaids`), more expansions and forward bases while banked (`BankedExpansions`, `MaxForwardBases`), expansion safety (`SafetyWeight`), walls (`WallAhead`, `WallCheckSeconds`) and fortifying (`FortifyMines`). The Max counts are Hard's: Normal and Easy scale them by Insight × Attention (posts, raids) or Ambition (forward bases). Per style: `IdlePatienceSeconds` and `IdleFloor` (the attack bar falling while the army idles), `PostShare`, `ForwardProducers`, `WallLanes`, `MaxWallLayers` |
 | `<Ai><Counters>`, `<Concede>`, `<Diplomacy>`, `<Brain>` | What the AI builds against what it has seen; when it surrenders; peace and gifts; its memory |
 
 The comments in the file say what each value means, and [architecture.md](architecture.md) (AI managers) says how the AI uses them. Two things are code, not config: which building makes which unit (`SpawnerRules.Produces`) and the rules themselves (splash falling from 100% to 50% at the edge, for example).
@@ -192,6 +193,10 @@ Claude can't run the game in a cloud session, so give it summaries, not raw outp
 | `RichMinStartDistance` | `<Match><Map>` | 0.15 | No rich field within this lane distance (share of map size) of a start site. |
 | `ExpansionDistanceScale` | `<Ai><Play>` | 120 | Tiles from home that halve an expansion candidate's score (its gem worth); lower makes the AI stay nearer home, higher sends it to the rich middle sooner. |
 
+
+## v0.21 Warpath numbers
+
+Starting values from the spec's §11, not tuned yet. What to watch in the brief's v0.21 lines: idle army minutes and give-ups per seat (both should fall against the baseline in [perf/v0.21](perf/v0.21/README.md)), and posts, forward bases and breaches per seat (they should be above 0 for Normal and Hard). The idle bar is the strongest lever on how often an AI attacks: a lower `IdleFloor` or a shorter `IdlePatienceSeconds` attacks sooner into worse odds. `BreachCostScale` sets how much an AI prefers an open target to a walled one (lower: it avoids walls more).
 
 ## v0.20 Onslaught numbers
 

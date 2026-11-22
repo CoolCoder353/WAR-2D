@@ -25,6 +25,9 @@ namespace WAR2D.Ai
         /// <summary>The army mix it last produced towards (shares by <see cref="UnitType"/> value; tests read it).</summary>
         public float[] Mix => mix;
 
+        /// <summary>The queue steps a producer takes (<see cref="SpawnerRules.QueueSteps"/>' additions), smallest first.</summary>
+        private static readonly int[] BatchSteps = { 1, 10, 50 };
+
         public void Think(AiContext ai)
         {
             TeamView view = ai.View;
@@ -54,10 +57,24 @@ namespace WAR2D.Ai
                 int step = 1;
                 float cost = state.CostOf(want), upkeep = state.UpkeepOf(want);
                 if (p.Queued == 0 && forArmy && batch > 1 && state.Free >= cost * batch && state.TrySpend(ai.Difficulty.KeepsUpkeepPaid ? cost * batch : cost, upkeep * batch)) step = batch;
-                else if (!state.TrySpend(cost, upkeep)) continue;
+                else
+                {
+                    // v0.21: as many as it can pay for up to its queue's depth in one action (one at a time, a rich AI spent its
+                    // whole action budget on queue clicks and none on placing buildings).
+                    // Queue steps are the UI's (1, 10, 50): the largest that fits its queue and money.
+                    step = 0;
+                    int room = math.max(1, ahead - p.Queued);
+                    for (int k = BatchSteps.Length - 1; k >= 0 && step == 0; k--)
+                    {
+                        int n = BatchSteps[k];
+                        if (n <= room && state.Free >= cost * n && state.TrySpend(cost * n, upkeep * n)) step = n;
+                    }
+                    if (step == 0) continue;
+                }
                 ids.Clear();
                 ids.Add(p.Id);
-                float priority = want == UnitType.Builder ? AiPriority.High : AiPriority.Normal;
+                // v0.21: topping up a queue that still runs can wait behind placements (Low); an empty one can't.
+                float priority = want == UnitType.Builder ? AiPriority.High : p.Queued > 0 ? AiPriority.Low : AiPriority.Normal;
                 if (p.Producing != want) ai.Propose(priority, AiAction.SetProduction(ids, want), AiKeys.Of(AiKeys.Produce, p.Id));
                 ai.Propose(priority, AiAction.ChangeQueues(ids, step), AiKeys.Of(AiKeys.Queue, p.Id));
                 state.QueuedCount[(int)want] += step;

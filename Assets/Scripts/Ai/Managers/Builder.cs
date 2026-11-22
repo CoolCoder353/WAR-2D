@@ -25,6 +25,19 @@ namespace WAR2D.Ai
         private readonly List<int> ids = new List<int>(8);
         private readonly List<int2> wallTiles = new List<int2>(64);
         private readonly HashSet<long> walledSpots = new HashSet<long>();
+        /// <summary>v0.21 §4.2: every wall tile it planned, to put back when destroyed.</summary>
+        private readonly HashSet<int2> plannedWalls = new HashSet<int2>();
+        /// <summary>v0.21 §4.2: the planned wall tiles it has seen stand (a wall); one that is ground again was destroyed.</summary>
+        private readonly HashSet<int2> stoodWalls = new HashSet<int2>();
+        private readonly List<int2> wallScratch = new List<int2>(64);
+        private double nextWallCheck;
+        /// <summary>Wall tiles it has put back (dev reads).</summary>
+        public int RebuiltWalls { get; private set; }
+        /// <summary>Planned wall tiles, and those it has seen stand (dev reads).</summary>
+        public int PlannedWalls => plannedWalls.Count;
+        public int StoodWalls => stoodWalls.Count;
+        /// <summary>When it last proposed each wall line (a proposal the budget dropped is tried again).</summary>
+        private readonly Dictionary<long, double> wallTriedAt = new Dictionary<long, double>();
         private static readonly System.Comparison<BuildRequest> HighestFirst = (a, b) => b.Priority.CompareTo(a.Priority);
         private double nextSpots;
         private readonly Dictionary<int, (byte progress, double since)> blueprintProgress = new Dictionary<int, (byte, double)>();
@@ -35,10 +48,18 @@ namespace WAR2D.Ai
             TeamView view = ai.View;
             AiState state = ai.State;
             if (view.State != GameState.Playing || !state.HasHq) return;
+            state.BaseRegions.Clear();
+            int homeRegion = state.RegionAt(state.Home);
+            if (homeRegion >= 0) state.BaseRegions.Add(homeRegion);
+            foreach (int r in state.ForwardRegions) if (r != homeRegion && !state.BaseRegions.Contains(r)) state.BaseRegions.Add(r);
+            ai.Board.Axes.Observe(ai, state.BaseRegions);
             if (ai.Now >= nextSpots) { FindDefenceSpots(ai, view, state); nextSpots = ai.Now + ai.Config.Play.ReplanSeconds; }
             EarlyTurrets(ai, state);
             HomeTurrets(ai, state);
             if (state.OpeningDone) WantBuildings(ai, view, state);
+            // v0.21 §4.2: destroyed wall tiles first (a few resources each), before requests claim the money.
+            foreach (int2 t in plannedWalls) if (view.TileAt(t) == TileType.PlayerWall) stoodWalls.Add(t);
+            if (ai.Now >= nextWallCheck) { RebuildWalls(ai, view, state); nextWallCheck = ai.Now + ai.Config.Warpath.WallCheckSeconds; }
             ServeRequests(ai, state);
             CancelStuck(ai, view, state);
             AssignBuilders(ai, view, state);
@@ -102,7 +123,7 @@ namespace WAR2D.Ai
             int wanted = ai.Style.HomeTurrets;
             if (wanted <= 0 || state.PlayingSeconds < play.EarlyTurretSeconds || !HasProducer(state)) return;
             if (DefenceBlueprints(ai.View, state) >= MaxDefenceBlueprints(ai)) return;
-            float2 towards = math.normalizesafe(EnemyDirectionPoint(ai, ai.View, state) - state.Home, new float2(1f, 0f));
+            float2 towards = math.normalizesafe(ThreatPoint(ai, ai.View, state) - state.Home, new float2(1f, 0f));
             float start = math.atan2(towards.y, towards.x);
             float reach = state.SizeOf(BuildingType.Base).x + play.DefenceSpread * 0.5f;
             for (int k = 0; k < wanted; k++)
@@ -167,35 +188,60 @@ namespace WAR2D.Ai
 
             if ((ai.Style.Radar || ai.Difficulty.Scouting == AiScouting.RegularWithRadar) && state.BuildingCount[(int)BuildingType.Radar] == 0)
                 state.RequestBuilding(BuildingType.Radar, Front(state, 0, play.DefenceSpread), play.BaseRadius / 2f, AiPriority.Low, AiKeys.Of(AiKeys.Place, (int)BuildingType.Radar), play.BuildingGap);
+            // v0.21 §5: a Radar style watches its second most threatened lane too (early warning).
+            else if (ai.Style.Radar && ai.Difficulty.Scouting == AiScouting.RegularWithRadar && state.DefenceSpots.Count > 1 && state.BuildingCount[(int)BuildingType.Radar] < 2
+                && state.CountNear(BuildingType.Radar, state.DefenceSpots[1], play.BaseRadius) == 0)
+                state.RequestBuilding(BuildingType.Radar, Front(state, 1, play.DefenceSpread), play.BaseRadius / 2f, AiPriority.Low, AiKeys.Of(AiKeys.Place, (int)BuildingType.Radar, 1), play.BuildingGap);
 
             // Defences: per spot, one missing piece at a time (cheap first), once its army has had its start (sooner for a
             // style with a DefenceStart under 1), and only a few blueprints at once (its Builders are for Miners first).
-            if (state.PlayingSeconds < play.DefenceAfterSeconds * ai.Style.DefenceStart || DefenceBlueprints(view, state) >= MaxDefenceBlueprints(ai)) return;
+            if (state.PlayingSeconds < play.DefenceAfterSeconds * ai.Style.DefenceStart) return;
+            // v0.21: the blueprint limit holds back turrets and Jammers only; walls and Mines never wait on it.
+            bool room = DefenceBlueprints(view, state) < MaxDefenceBlueprints(ai);
             int turrets = ai.Style.Turrets + (LightEnemies(ai) ? 1 : 0);
             int jammers = (int)math.round(ai.Style.Jammers * ai.Difficulty.SpecialUse);
-            int bombs = (int)math.round(ai.Style.Mines * ai.Difficulty.SpecialUse);
+            int bombs = (int)math.round(ai.Style.Mines * ai.Difficulty.SpecialUse) + (state.Fortify ? ai.Config.Warpath.FortifyMines : 0);
+            // v0.21 §4.2: every style walls its top WallLanes lanes (Easy only a style that walls).
+            bool walls = ai.Style.Walls || ai.Difficulty.Breaches;
             for (int s = 0; s < state.DefenceSpots.Count; s++)
             {
                 float2 spot = state.DefenceSpots[s], dir = state.DefenceDirs[s];
+                // v0.21 §5: a lane less threatened than the top one gets its share of the defences (at least one turret).
+                float weight = s < state.DefenceWeights.Count ? state.DefenceWeights[s] : 1f;
+                int spotTurrets = turrets > 0 ? math.max(1, (int)math.round(turrets * weight)) : 0;
+                int spotBombs = (int)math.round(bombs * math.max(0.5f, weight));
                 float spread = play.DefenceSpread;
-                float2 front = spot + dir * spread * 0.5f, back = spot - dir * spread * 0.5f;
-                if (state.CountNear(BuildingType.GunTurret, spot, spread + 2f) < turrets)
-                    state.RequestBuilding(BuildingType.GunTurret, (int2)math.floor(spot), spread, AiPriority.Low + 2f, AiKeys.Of(AiKeys.Place, (int)BuildingType.GunTurret, s));
-                else if (state.CountNear(BuildingType.Mine, front, spread) < bombs)
+                // The wall line crosses the lane WallAhead tiles out; its Mines go beyond it, the turret behind covers the gap.
+                float ahead = ai.Config.Warpath.WallAhead;
+                float2 front = spot + dir * (ahead + 2f + spread * 0.5f), back = spot - dir * spread * 0.5f;
+                if (state.CountNear(BuildingType.GunTurret, spot, spread + 2f) < spotTurrets)
+                {
+                    if (room) state.RequestBuilding(BuildingType.GunTurret, (int2)math.floor(spot), spread, AiPriority.Low + 2f, AiKeys.Of(AiKeys.Place, (int)BuildingType.GunTurret, s));
+                    continue;
+                }
+                // v0.21 §4.2: once its turret stands, the wall across the lane (a Mine or Jammer it can't place never holds it up).
+                if (walls && s < ai.Style.WallLanes)
+                {
+                    Wall(ai, state, spot + dir * ahead, dir, s, 0);
+                    // Fortifying (§7.1): more lines behind the first, while money piles up.
+                    if (state.Fortify)
+                        for (int layer = 1; layer < ai.Style.MaxWallLayers; layer++) Wall(ai, state, spot + dir * (ahead - 2f * layer), dir, s, layer);
+                }
+                if (state.CountNear(BuildingType.Mine, front, spread) < spotBombs)
                     state.RequestBuilding(BuildingType.Mine, (int2)math.floor(front), spread, AiPriority.Low + 1f, AiKeys.Of(AiKeys.Place, (int)BuildingType.Mine, s));
-                else if (state.CountNear(BuildingType.Jammer, back, spread + 2f) < jammers)
+                else if (room && state.CountNear(BuildingType.Jammer, back, spread + 2f) < jammers)
                     state.RequestBuilding(BuildingType.Jammer, (int2)math.floor(back), spread, AiPriority.Low, AiKeys.Of(AiKeys.Place, (int)BuildingType.Jammer, s), play.BuildingGap);
-                else if (ai.Style.Walls && ai.Difficulty.DefendsChokepoints) Wall(ai, state, spot, dir, s);
             }
         }
 
         private static bool IsDefence(BuildingType t) => t == BuildingType.GunTurret || t == BuildingType.Mine || t == BuildingType.Jammer;
 
+        /// <summary>Its turret and Jammer blueprints and placements under way (v0.21: Mines, cheap and quick, don't count).</summary>
         private static int DefenceBlueprints(TeamView view, AiState state)
         {
             int n = 0;
-            foreach (int i in state.Blueprints) if (IsDefence(view.Buildings[i].Type)) n++;
-            foreach (PendingBuilding p in state.Pending) if (IsDefence(p.Type)) n++;
+            foreach (int i in state.Blueprints) if (IsDefence(view.Buildings[i].Type) && view.Buildings[i].Type != BuildingType.Mine) n++;
+            foreach (PendingBuilding p in state.Pending) if (IsDefence(p.Type) && p.Type != BuildingType.Mine) n++;
             return n;
         }
 
@@ -227,10 +273,14 @@ namespace WAR2D.Ai
             return all > 0 && light >= all * ai.Config.Play.LightTurretShare;
         }
 
-        /// <summary>A wall line across the lane at a chokepoint spot, leaving <c>WallGap</c> tiles open in the middle, once per spot.</summary>
-        private void Wall(AiContext ai, AiState state, float2 spot, float2 dir, int index)
+        /// <summary>
+        /// A wall line across the lane at a spot, leaving <c>WallGap</c> tiles open in the middle, once per spot and
+        /// <paramref name="layer"/> (v0.21: extra lines behind the first while it fortifies). Its tiles are remembered, to
+        /// be put back when destroyed.
+        /// </summary>
+        private void Wall(AiContext ai, AiState state, float2 spot, float2 dir, int index, int layer)
         {
-            long key = ((long)index << 32) | (uint)state.Hq.Id;
+            long key = ((long)(index * 8 + layer) << 32) | (uint)state.Hq.Id;
             if (walledSpots.Contains(key)) return;
             // Walls are straight lines (horizontal, vertical or diagonal): snap the line across the lane to 45 degrees.
             float angle = math.atan2(dir.y, dir.x) + math.PI / 2f;
@@ -245,12 +295,54 @@ namespace WAR2D.Ai
             int2 a0 = centre + across * half, a1 = centre + across * ((gap + 1) / 2);
             int2 b0 = centre - across * (gap / 2 + 1), b1 = centre - across * half;
             float cost = ai.Game.Siege.WallCost * (2 * half - gap);
+            wallScratch.Clear();
+            WallRules.Line(a0, a1, wallScratch);
+            WallRules.Line(b0, b1, wallScratch);
+            // Done once its wall (or a blueprint of it) stands on the line; until then a dropped proposal is tried again.
+            foreach (int2 t in wallScratch)
+            {
+                TileType kind = ai.View.TileAt(t);
+                if (kind == TileType.WallBlueprint || kind == TileType.PlayerWall) { walledSpots.Add(key); return; }
+            }
+            if (wallTriedAt.TryGetValue(key, out double tried) && ai.Now - tried < ai.Config.Brain.ProposalWaitSeconds + ai.Config.Play.AssignSeconds) return;
             if (!state.TrySpend(cost, 0f)) return;
-            ai.Propose(AiPriority.Low, AiAction.PlaceWall(a0, a1), AiKeys.Of(AiKeys.Wall, index, 0));
-            ai.Propose(AiPriority.Low, AiAction.PlaceWall(b0, b1), AiKeys.Of(AiKeys.Wall, index, 1));
-            walledSpots.Add(key);
-            WallRules.Line(a0, a1, wallTiles);
-            WallRules.Line(b0, b1, wallTiles);
+            ai.Propose(AiPriority.Low + 10f, AiAction.PlaceWall(a0, a1), AiKeys.Of(AiKeys.Wall, index * 8 + layer, 0));
+            ai.Propose(AiPriority.Low + 10f, AiAction.PlaceWall(b0, b1), AiKeys.Of(AiKeys.Wall, index * 8 + layer, 1));
+            wallTriedAt[key] = ai.Now;
+            foreach (int2 t in wallScratch)
+            {
+                if (!wallTiles.Contains(t)) wallTiles.Add(t);
+                // Only floor it planned on: a tile of rock in the line was never going to be wall.
+                if (TileRules.IsFloor(ai.View.TileAt(t))) plannedWalls.Add(t);
+            }
+        }
+
+        /// <summary>
+        /// v0.21 §4.2: wall tiles it planned that are ground again (destroyed) are put back, a few at a time, once no enemy it
+        /// sees is near them and it can pay.
+        /// </summary>
+        private void RebuildWalls(AiContext ai, TeamView view, AiState state)
+        {
+            if (stoodWalls.Count == 0) return;
+            float r2 = ai.Config.Play.ArmyRadius * ai.Config.Play.ArmyRadius;
+            int put = 0;
+            wallScratch.Clear();
+            foreach (int2 t in stoodWalls)
+            {
+                if (put >= 8) break;
+                if (view.TileAt(t) != TileType.Ground || state.Placement.IsUsed(t)) continue;
+                bool danger = false;
+                foreach (AiUnit u in view.OtherUnits)
+                    if (view.IsEnemy(u.OwnerId) && math.distancesq(u.Position, (float2)t + 0.5f) <= r2) { danger = true; break; }
+                if (danger || !state.TrySpend(ai.Game.Siege.WallCost, 0f)) continue;
+                RebuiltWalls++;
+                ai.Propose(AiPriority.Normal, AiAction.PlaceWall(t, t), AiKeys.Of(AiKeys.Wall, t.x, t.y + 65536));
+                if (!wallTiles.Contains(t)) wallTiles.Add(t);
+                wallScratch.Add(t);
+                put++;
+            }
+            // Put back: it counts as standing again once it sees the wall.
+            foreach (int2 t in wallScratch) stoodWalls.Remove(t);
         }
 
         /// <summary>
@@ -262,7 +354,37 @@ namespace WAR2D.Ai
         {
             state.DefenceSpots.Clear();
             state.DefenceDirs.Clear();
+            state.DefenceWeights.Clear();
             AiPlayConfig play = ai.Config.Play;
+            // v0.21 §5: the lanes it expects (and has seen) attacks come through, most threatened first.
+            ThreatAxes axes = ai.Board.Axes;
+            axes.Update(ai, state.BaseRegions);
+            if (axes.Axes.Count > 0)
+            {
+                float top = math.max(1e-4f, axes.Axes[0].Score);
+                if (ai.Difficulty.DefendsChokepoints)
+                {
+                    int most = play.MaxDefendedSpots + math.max(0, state.BaseRegions.Count - 1);
+                    foreach (ThreatAxes.Axis a in axes.Axes)
+                    {
+                        if (state.DefenceSpots.Count >= most) break;
+                        if (a.Score <= 0f && state.DefenceSpots.Count > 0) break;
+                        if (Contains(state.DefenceSpots, a.Spot)) continue;
+                        state.DefenceSpots.Add(a.Spot);
+                        state.DefenceDirs.Add(a.Dir);
+                        state.DefenceWeights.Add(math.saturate(a.Score / top));
+                    }
+                    if (state.DefenceSpots.Count > 0) return;
+                }
+                if (axes.TryTop(out ThreatAxes.Axis first))
+                {
+                    float2 to = math.normalizesafe(first.Spot - state.Home, new float2(1f, 0f));
+                    state.DefenceSpots.Add(state.Home + to * (state.SizeOf(BuildingType.Base).x + play.DefenceSpread));
+                    state.DefenceDirs.Add(to);
+                    state.DefenceWeights.Add(1f);
+                    return;
+                }
+            }
             float2 enemy = EnemyDirectionPoint(ai, view, state);
             int start = state.RegionAt(state.Home);
             if (ai.Difficulty.DefendsChokepoints && start >= 0 && view.Lanes.Length > 0)
@@ -287,10 +409,23 @@ namespace WAR2D.Ai
                     state.DefenceDirs.Add(bestDir);
                 }
             }
-            if (state.DefenceSpots.Count > 0) return;
+            if (state.DefenceSpots.Count > 0) { while (state.DefenceWeights.Count < state.DefenceSpots.Count) state.DefenceWeights.Add(1f); return; }
             float2 d = math.normalizesafe(enemy - state.Home, new float2(1f, 0f));
             state.DefenceSpots.Add(state.Home + d * (state.SizeOf(BuildingType.Base).x + play.DefenceSpread));
             state.DefenceDirs.Add(d);
+            state.DefenceWeights.Add(1f);
+        }
+
+        /// <summary>
+        /// v0.21 §5: where it expects attacks on its HQ to come from: the most threatened lane into its HQ's region, else the
+        /// nearest known enemy base (or the map's centre).
+        /// </summary>
+        internal static float2 ThreatPoint(AiContext ai, TeamView view, AiState state)
+        {
+            int home = state.RegionAt(state.Home);
+            foreach (ThreatAxes.Axis a in ai.Board.Axes.Axes)
+                if (a.Region == home) return a.Spot;
+            return EnemyDirectionPoint(ai, view, state);
         }
 
         private static bool Contains(List<float2> spots, float2 spot)
@@ -455,6 +590,25 @@ namespace WAR2D.Ai
                 ai.Propose(AiPriority.Normal - 5f, AiAction.OrderUnits(ids, OrderKind.Repair, b.Anchor), key);
                 assignedAt[key] = ai.Now;
             }
+            // v0.21 §4.2: its damaged walls, out of danger.
+            if (state.IdleBuilders.Count > 0)
+                foreach (KeyValuePair<int, AiWall> w in view.Walls)
+                {
+                    if (state.IdleBuilders.Count == 0) break;
+                    if (w.Value.OwnerId != ai.Owner || w.Value.Health >= play.RepairBelow * 100f) continue;
+                    int2 t = new int2(w.Key % view.Width, w.Key / view.Width);
+                    int key = AiKeys.Of(AiKeys.Repair, t.x, t.y + 65536);
+                    if (assignedAt.TryGetValue(key, out double at) && ai.Now - at < play.AssignSeconds * 4f) continue;
+                    bool danger = false;
+                    float r2 = play.ArmyRadius * play.ArmyRadius;
+                    foreach (AiUnit u in view.OtherUnits)
+                        if (view.IsEnemy(u.OwnerId) && math.distancesq(u.Position, (float2)t + 0.5f) <= r2) { danger = true; break; }
+                    if (danger) continue;
+                    Pick(view, state, (float2)t + 0.5f, 1);
+                    if (ids.Count == 0) break;
+                    ai.Propose(AiPriority.Normal - 6f, AiAction.OrderUnits(ids, OrderKind.Repair, t), key);
+                    assignedAt[key] = ai.Now;
+                }
             if (assignedAt.Count > 512) assignedAt.Clear();
         }
 

@@ -64,8 +64,8 @@ namespace WAR2D.Ai
         /// <summary>The managers every brain runs, in the order they propose (spec §5.3).</summary>
         public static IAiManager[] StandardManagers() => new IAiManager[]
         {
-            new OpeningManager(), new StrategyManager(), new EconomyManager(), new BuilderManager(), new ProductionManager(),
-            new ScoutingManager(), new RaidManager(), new ArmyManager(), new DiplomacyManager(), new ConcedeManager(),
+            new OpeningManager(), new StrategyManager(), new EconomyManager(), new SpendingManager(), new BuilderManager(), new ProductionManager(),
+            new ScoutingManager(), new RaidManager(), new PostManager(), new ArmyManager(), new DiplomacyManager(), new ConcedeManager(),
         };
 
         public int Owner { get; }
@@ -139,6 +139,16 @@ namespace WAR2D.Ai
                 ["earned"] = Earned,
                 ["reach"] = Context.Reach != null ? $"v{Context.Reach.Version} {Context.Reach.Components} parts{(Context.Reach.Pending ? " relabelling" : "")}" : "",
                 ["breach"] = army?.BreachStatus ?? "",
+                ["idle"] = army?.Idle ?? 0.0,
+                ["posts"] = Manager<PostManager>()?.Sites ?? "",
+                ["raidsOut"] = Manager<RaidManager>()?.Out ?? 0,
+                ["axes"] = Axes(),
+                ["fortify"] = s.Fortify,
+                ["forward"] = string.Join(",", s.ForwardRegions),
+                ["forwardStarted"] = Manager<SpendingManager>()?.ForwardBasesStarted ?? 0,
+                ["postsTaken"] = Manager<PostManager>()?.Taken ?? 0,
+                ["breaches"] = army?.BreachesStarted ?? 0,
+                ["need"] = army != null ? army.Need(Context) : 0f,
             };
         }
 
@@ -160,6 +170,19 @@ namespace WAR2D.Ai
             if (view.TerrainChanged.Count > 0) reach.MarkDirty();
             reach.ForgetAnswers();
             reach.Step(view.Tiles);
+        }
+
+        private string Axes()
+        {
+            var sb = new System.Text.StringBuilder();
+            int n = 0;
+            foreach (ThreatAxes.Axis a in Board.Axes.Axes)
+            {
+                if (n++ >= 4) break;
+                if (sb.Length > 0) sb.Append(' ');
+                sb.Append(a.Region).Append('/').Append(a.Lane).Append(':').Append(a.Score.ToString("F2"));
+            }
+            return sb.ToString();
         }
 
         private string Guesses()
@@ -192,7 +215,7 @@ namespace WAR2D.Ai
             Board.UpdateModels(view, Context.State.PlayingSeconds, Context.Policy, Context.Game);
             foreach (IAiManager manager in managers)
             {
-                Context.ArmyPool = manager is ArmyManager || manager is ScoutingManager || manager is RaidManager;
+                Context.ArmyPool = manager is ArmyManager || manager is ScoutingManager || manager is RaidManager || manager is PostManager;
                 manager.Think(Context);
             }
             Context.ArmyPool = false;

@@ -91,6 +91,15 @@ namespace WAR2D.Ai
         public float WallCost(int index) =>
             View != null && View.Walls.TryGetValue(index, out AiWall w) ? Game.Siege.WallHealth * w.Health / 100f : Game.Siege.WallHealth;
 
+        /// <summary>v0.21 §6.2: posts it may hold (Hard's <c>MaxPosts</c> × Insight × Attention, rounded).</summary>
+        public int MaxPosts => (int)System.Math.Round(Config.Warpath.MaxPosts * Difficulty.Insight * Difficulty.Attention);
+
+        /// <summary>v0.21 §6.3: raids it may have out at once (at least one).</summary>
+        public int MaxRaids => System.Math.Max(1, (int)System.Math.Round(Config.Warpath.MaxRaids * Difficulty.Insight * Difficulty.Attention));
+
+        /// <summary>v0.21 §7.2: forward bases it may grow (Hard's <c>MaxForwardBases</c> × Ambition; none below half Ambition).</summary>
+        public int MaxForwardBases => Difficulty.Ambition < 0.5f ? 0 : (int)System.Math.Round(Config.Warpath.MaxForwardBases * Difficulty.Ambition);
+
         /// <summary>This think's view: everything it may know.</summary>
         public TeamView View { get; internal set; }
 

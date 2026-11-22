@@ -564,6 +564,12 @@ namespace Config
                     Radar = Flag(node, "Radar", c, errors),
                     HoldsChokes = Flag(node, "HoldsChokes", c, errors),
                     Raids = Flag(node, "Raids", c, errors),
+                    IdlePatienceSeconds = Float(node, "IdlePatienceSeconds", c, errors, min: 1, max: 7200),
+                    IdleFloor = Float(node, "IdleFloor", c, errors, min: 0, max: 1),
+                    PostShare = Float(node, "PostShare", c, errors, min: 0, max: 1),
+                    ForwardProducers = Int(node, "ForwardProducers", c, errors, min: 0, max: 8),
+                    WallLanes = Int(node, "WallLanes", c, errors, min: 0, max: 16),
+                    MaxWallLayers = Int(node, "MaxWallLayers", c, errors, min: 1, max: 4),
                 };
             }
             foreach (AiStyle s in new[] { AiStyle.Rusher, AiStyle.Turtle, AiStyle.Expander, AiStyle.Balanced })
@@ -613,6 +619,25 @@ namespace Config
                 config.Reach.BreachCostScale = Float(reach, "BreachCostScale", c, errors, min: 1, max: 1e6f);
                 config.Reach.BreachSeconds = Float(reach, "BreachSeconds", c, errors, min: 5, max: 3600);
                 config.Reach.BreachStage = Float(reach, "BreachStage", c, errors, min: 0, max: 64);
+            }
+
+            XmlNode warpath = Require(ai, "Warpath", errors);
+            if (warpath != null)
+            {
+                const string c = "Ai warpath";
+                AiWarpathConfig w = config.Warpath;
+                w.AxisHalfLifeSeconds = Float(warpath, "AxisHalfLifeSeconds", c, errors, min: 1, max: 3600);
+                w.MaxPosts = Int(warpath, "MaxPosts", c, errors, min: 0, max: 16);
+                w.PostSize = Int(warpath, "PostSize", c, errors, min: 1, max: 1000);
+                w.PostRadius = Float(warpath, "PostRadius", c, errors, min: 1, max: 256);
+                w.PostSeconds = Float(warpath, "PostSeconds", c, errors, min: 1, max: 3600);
+                w.MaxRaids = Int(warpath, "MaxRaids", c, errors, min: 1, max: 16);
+                w.BankedExpansions = Int(warpath, "BankedExpansions", c, errors, min: 0, max: 16);
+                w.MaxForwardBases = Int(warpath, "MaxForwardBases", c, errors, min: 0, max: 16);
+                w.SafetyWeight = Float(warpath, "SafetyWeight", c, errors, min: 0, max: 100);
+                w.WallAhead = Float(warpath, "WallAhead", c, errors, min: 0, max: 32);
+                w.WallCheckSeconds = Float(warpath, "WallCheckSeconds", c, errors, min: 1, max: 3600);
+                w.FortifyMines = Int(warpath, "FortifyMines", c, errors, min: 0, max: 64);
             }
 
             XmlNode play = Require(ai, "Play", errors);

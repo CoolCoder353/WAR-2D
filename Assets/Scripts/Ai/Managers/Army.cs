@@ -122,7 +122,7 @@ namespace WAR2D.Ai
         private bool recordTurrets;
         private int2 recordTarget;
 
-        private static bool Busy(AiState state, int id) => state.Scouts.Contains(id) || state.Raiders.Contains(id);
+        private static bool Busy(AiState state, int id) => state.Scouts.Contains(id) || state.Raiders.Contains(id) || state.Posted.Contains(id);
 
         public void Think(AiContext ai)
         {
@@ -153,11 +153,24 @@ namespace WAR2D.Ai
             }
             state.Attacking = Mode == ArmyMode.Attack;
             state.BreachWanted = Mode == ArmyMode.Attack && breach.Count > 0;
+            state.Defending = Mode == ArmyMode.Defend;
+            state.InAttack.Clear();
+            if (Mode == ArmyMode.Attack) foreach (int id in group) state.InAttack.Add(id);
+            state.AttackTarget = Target;
             state.AttackedOnce = attackedOnce;
             state.BadTradeStreak = BadTradeStreak;
             if (orderedAt.Count > 64) orderedAt.Clear();
-            if (Mode == ArmyMode.Gather && !double.IsNaN(lastThink) && state.PlayingSeconds >= FirstAttackAt(ai, state) && CountArmy(view, state) >= ai.Style.AttackArmySize)
-                IdleArmySeconds += ai.Now - lastThink;
+            if (Mode == ArmyMode.Gather && !double.IsNaN(lastThink) && state.PlayingSeconds >= FirstAttackAt(ai, state))
+            {
+                int size = CountArmy(view, state);
+                if (size >= ai.Style.AttackArmySize)
+                {
+                    double dt = ai.Now - lastThink;
+                    IdleArmySeconds += dt;
+                    bool waveDue = !attackedOnce || ai.Now - lastAttackEnd >= ai.Style.AttackIntervalSeconds;
+                    if (waveDue) Idle += state.Banked && size >= 2 * ai.Style.AttackArmySize ? 2.0 * dt : dt;
+                }
+            }
             lastThink = ai.Now;
         }
 
@@ -166,7 +179,8 @@ namespace WAR2D.Ai
         private void PlaceGatherPoint(AiContext ai, TeamView view, AiState state)
         {
             AiPlayConfig play = ai.Config.Play;
-            float2 enemy = BuilderManager.EnemyDirectionPoint(ai, view, state);
+            // v0.21 §5: it gathers towards the lane it expects attacks through.
+            float2 enemy = BuilderManager.ThreatPoint(ai, view, state);
             float2 dir = math.normalizesafe(enemy - state.Home, new float2(1f, 0f));
             // Its variation turns the gathering point off the straight line to the enemy (AI overhaul §6.1).
             float angle = ai.Variation.GatherAngle;
@@ -269,8 +283,22 @@ namespace WAR2D.Ai
         /// <summary>Play seconds of its first attack: the style's, sooner against a greedy enemy (AI overhaul §4.3).</summary>
         private static float FirstAttackAt(AiContext ai, AiState state) => ai.Style.FirstAttackSeconds * state.FirstAttackFactor;
 
-        /// <summary>The advantage it wants before attacking: the policy's, scaled by the style and its caution.</summary>
-        private float Need(AiContext ai) => ai.Difficulty.AttackAdvantage * ai.Style.AttackRatioScale * Caution;
+        /// <summary>
+        /// The advantage it wants before attacking: the policy's, scaled by the style and its caution, and (v0.21 §6.1) lowered
+        /// the longer its army idles: times max(<c>IdleFloor</c>, 1 - idle / <c>IdlePatienceSeconds</c>).
+        /// </summary>
+        internal float Need(AiContext ai) => ai.Difficulty.AttackAdvantage * ai.Style.AttackRatioScale * Caution * IdleFactor(ai);
+
+        /// <summary>v0.21 §6.1: what idling has taken off the advantage it wants (1 when not idle).</summary>
+        internal float IdleFactor(AiContext ai) =>
+            math.max(ai.Style.IdleFloor, 1f - (float)(Idle / math.max(1f, ai.Style.IdlePatienceSeconds)));
+
+        /// <summary>
+        /// v0.21 §6.1, the idle clock: seconds its army has gathered while big enough to attack and allowed to (past its first
+        /// attack time and its wave interval), since its last attack started; twice as fast while money piles up and the army
+        /// is over twice its attack size (dev reads).
+        /// </summary>
+        public double Idle { get; private set; }
 
         /// <summary>Maxed out (no upkeep room for another unit, money piling up): a player attacks with what they have.</summary>
         private static bool Maxed(AiContext ai, AiState state) =>
@@ -312,13 +340,14 @@ namespace WAR2D.Ai
             KeepHomeGuard(ai, total);
             if (group.Count == 0) return false;
             Note(ai, $"from {GroupCentre(view, false).x:F0},{GroupCentre(view, false).y:F0} home {state.Home.x:F0},{state.Home.y:F0}");
-            Note(ai, $"attack {(counter ? "(counter) " : maxed ? "(maxed) " : slip ? "(slip) " : "")}group {group.Count} advantage {Shown(advantage)} need {need:F2} target {target.x},{target.y} building {id != 0}");
+            Note(ai, $"attack {(counter ? "(counter) " : maxed ? "(maxed) " : slip ? "(slip) " : "")}group {group.Count} advantage {Shown(advantage)} need {need:F2} (idle {Idle:F0} s) target {target.x},{target.y} building {id != 0}");
             Mode = ArmyMode.Attack;
             TargetId = id;
             TargetOwner = owner;
             Target = target;
             targetSince = ai.Now;
             attackedOnce = true;
+            Idle = 0;
             Attacks++;
             StartRecord(ai, target, ours.Value);
             BeginStage(ai, view, state);
@@ -659,7 +688,8 @@ namespace WAR2D.Ai
                     retreatStarted = ai.Now;
                     lastAttackEnd = ai.Now;
                     GroupIds(view, state, false);
-                    ai.Propose(AiPriority.High, AiAction.OrderUnits(ids, OrderKind.Move, state.GatherPoint), AiKeys.Of(AiKeys.Army));
+                    // v0.21: a retreat outranks routine orders (an Easy AI's few actions went to Build orders first).
+                    ai.Propose(AiPriority.High + 5f, AiAction.OrderUnits(ids, OrderKind.Move, state.GatherPoint), AiKeys.Of(AiKeys.Army));
                     return;
                 }
             }

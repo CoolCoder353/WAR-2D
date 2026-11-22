@@ -6,24 +6,37 @@ using WAR2D.AiView;
 namespace WAR2D.Ai
 {
     /// <summary>
-    /// Raids (AI overhaul §3.5): a style that raids sends up to <c>RaidSize</c> of its fastest units (move speed at least
-    /// <c>RaidMinSpeed</c>) gathered at home at the known enemy Miner or expansion building with the best worth over
-    /// distance whose known defence they beat by <c>RaidAdvantage</c>. The raid comes home when it is losing, its target
-    /// is gone or <c>RaidSeconds</c> pass. One raid at a time, formed only on attentive thinks while the army isn't
-    /// attacking; raiders are left out of the army (<see cref="AiState.Raiders"/>).
+    /// Raids (AI overhaul §3.5, v0.21 §6.3): a style that raids sends up to <c>RaidSize</c> of its fastest units (move speed
+    /// at least <c>RaidMinSpeed</c>) gathered at home at the known enemy Miner or expansion building with the best worth over
+    /// distance whose known defence they beat by <c>RaidAdvantage</c>, away from its other raids' targets and the army's.
+    /// A raid comes home when it is losing, its target is gone or <c>RaidSeconds</c> pass. Up to
+    /// <see cref="AiContext.MaxRaids"/> raids at once, one started per <c>RaidSeconds</c> / that many, formed only on
+    /// attentive thinks; while the army attacks only at full Insight (Hard times its raids with its attacks, so defenders
+    /// are split). Raiders are left out of the army (<see cref="AiState.Raiders"/>).
     /// </summary>
     public sealed class RaidManager : IAiManager
     {
-        private readonly HashSet<int> raiders = new HashSet<int>();
+        private sealed class Raid
+        {
+            public readonly HashSet<int> Units = new HashSet<int>();
+            public int TargetId;
+            public int2 Target;
+            public double Started, OrderedAt = double.NegativeInfinity;
+        }
+
+        private readonly List<Raid> raids = new List<Raid>(4);
         private readonly List<int> ids = new List<int>(8);
         private readonly List<(int Id, float Distance)> candidates = new List<(int, float)>(16);
-        private double started, nextRaid, orderedAt = double.NegativeInfinity;
+        private double nextRaid;
 
-        /// <summary>True while a raid is out, its target, and raids sent so far.</summary>
-        public bool Active { get; private set; }
-        public int TargetId { get; private set; }
-        public int2 Target { get; private set; }
+        /// <summary>True while a raid is out; the first raid's target; raids sent so far.</summary>
+        public bool Active => raids.Count > 0;
+        public int TargetId => raids.Count > 0 ? raids[0].TargetId : 0;
+        public int2 Target => raids.Count > 0 ? raids[0].Target : default;
         public int Raids { get; private set; }
+
+        /// <summary>Raids out now (dev reads).</summary>
+        public int Out => raids.Count;
 
         public void Think(AiContext ai)
         {
@@ -32,37 +45,48 @@ namespace WAR2D.Ai
             TeamView view = ai.View;
             if (view.State != GameState.Playing || !state.HasHq) return;
             AiPolicyConfig policy = ai.Policy;
-            if (!ai.Style.Raids || policy.RaidSize <= 0) { if (Active) ComeHome(ai, state); return; }
+            if (!ai.Style.Raids || policy.RaidSize <= 0) { for (int k = raids.Count - 1; k >= 0; k--) ComeHome(ai, state, k); return; }
 
-            if (Active)
+            for (int k = raids.Count - 1; k >= 0; k--)
             {
-                raiders.RemoveWhere(id => IndexOf(view, id) < 0);
-                if (raiders.Count == 0) { Active = false; return; }
-                foreach (int id in raiders) state.Raiders.Add(id);
-                Run(ai, view, state);
-                return;
+                Raid r = raids[k];
+                r.Units.RemoveWhere(id => IndexOf(view, id) < 0);
+                if (r.Units.Count == 0) { raids.RemoveAt(k); continue; }
+                foreach (int id in r.Units) state.Raiders.Add(id);
             }
-            if (!ai.Attentive || state.Attacking || !state.OpeningDone || ai.Now < nextRaid) return;
+            for (int k = raids.Count - 1; k >= 0; k--) Run(ai, view, state, k);
+
+            bool duringAttack = state.Attacking && ai.Difficulty.Insight >= 1f;
+            if (raids.Count >= ai.MaxRaids || !ai.Attentive || (state.Attacking && !duringAttack) || !state.OpeningDone || ai.Now < nextRaid) return;
             TryStart(ai, view, state);
         }
 
-        private void Run(AiContext ai, TeamView view, AiState state)
+        private void Run(AiContext ai, TeamView view, AiState state, int k)
         {
+            Raid r = raids[k];
             AiPolicyConfig policy = ai.Policy;
             float2 centre = 0;
-            foreach (int id in raiders) centre += view.OwnUnits[IndexOf(view, id)].Position;
-            centre /= raiders.Count;
-            Force ours = AiForces.Own(ai, raiders);
+            foreach (int id in r.Units) centre += view.OwnUnits[IndexOf(view, id)].Position;
+            centre /= r.Units.Count;
+            Force ours = AiForces.Own(ai, r.Units);
             Force theirs = AiForces.EnemyNear(ai, centre, ai.Config.Play.ArmyRadius);
             bool losing = !theirs.Empty && AiForces.Advantage(ai, ours, theirs) < 1f;
-            bool gone = !ai.Board.EnemyBuildings.ContainsKey(TargetId);
-            if (losing || gone || ai.Now - started > policy.RaidSeconds) { ComeHome(ai, state); return; }
-            if (!ai.Attentive || ai.Now - orderedAt < ai.Config.Play.OrderSeconds) return;
+            bool gone = !ai.Board.EnemyBuildings.ContainsKey(r.TargetId);
+            if (losing || gone || ai.Now - r.Started > policy.RaidSeconds) { ComeHome(ai, state, k); return; }
+            if (!ai.Attentive || ai.Now - r.OrderedAt < ai.Config.Play.OrderSeconds) return;
             ids.Clear();
-            foreach (int id in raiders) if (!view.OwnUnits[IndexOf(view, id)].HasOrder) ids.Add(id);
+            foreach (int id in r.Units) if (!view.OwnUnits[IndexOf(view, id)].HasOrder) ids.Add(id);
             if (ids.Count == 0) return;
-            ai.Propose(AiPriority.Normal, AiAction.OrderUnits(ids, OrderKind.AttackMove, Target), AiKeys.Of(AiKeys.Raid));
-            orderedAt = ai.Now;
+            ai.Propose(AiPriority.Normal, AiAction.OrderUnits(ids, OrderKind.AttackMove, r.Target), AiKeys.Of(AiKeys.Raid, r.TargetId));
+            r.OrderedAt = ai.Now;
+        }
+
+        /// <summary>True when <paramref name="at"/> is near another raid's target or the army's.</summary>
+        private bool Taken(AiContext ai, AiState state, int2 at)
+        {
+            float r = ai.Config.Play.ArmyRadius * 2f;
+            foreach (Raid raid in raids) if (math.distancesq((float2)raid.Target, (float2)at) < r * r) return true;
+            return state.Attacking && math.distancesq((float2)state.AttackTarget, (float2)at) < r * r;
         }
 
         private void TryStart(AiContext ai, TeamView view, AiState state)
@@ -76,7 +100,7 @@ namespace WAR2D.Ai
             foreach (int i in state.Combat)
             {
                 AiUnit u = view.OwnUnits[i];
-                if (state.Scouts.Contains(u.Id) || u.HasOrder) continue;
+                if (state.Scouts.Contains(u.Id) || state.Raiders.Contains(u.Id) || state.Posted.Contains(u.Id) || state.InAttack.Contains(u.Id) || u.HasOrder) continue;
                 UnitConfig c = state.UnitOf(u.Type);
                 if (c == null || c.MoveSpeed < policy.RaidMinSpeed) continue;
                 float d = math.distancesq(u.Position, home);
@@ -84,9 +108,9 @@ namespace WAR2D.Ai
             }
             if (candidates.Count < 2) return;
             candidates.Sort((a, b) => a.Distance.CompareTo(b.Distance));
-            raiders.Clear();
-            for (int k = 0; k < candidates.Count && raiders.Count < policy.RaidSize; k++) raiders.Add(candidates[k].Id);
-            Force ours = AiForces.Own(ai, raiders);
+            var raid = new Raid();
+            for (int k = 0; k < candidates.Count && raid.Units.Count < policy.RaidSize; k++) raid.Units.Add(candidates[k].Id);
+            Force ours = AiForces.Own(ai, raid.Units);
 
             float best = 0f;
             int bestId = 0;
@@ -95,7 +119,8 @@ namespace WAR2D.Ai
             foreach (AiBuilding b in ai.Board.EnemyBuildings.Values)
             {
                 if (b.Type != BuildingType.Miner && !AtExpansion(view, b.Anchor)) continue;
-                if (b.Type == BuildingType.Mine || ai.Board.IsAvoided(b.Anchor, play.ArmyRadius)) continue;
+                if (b.Type == BuildingType.Mine || ai.Board.IsAvoided(b.Anchor, play.ArmyRadius) || Taken(ai, state, b.Anchor)) continue;
+                if (ai.Reach != null && ai.Reach.Query((int2)math.floor(home), b.Anchor, view.Tiles, ai.WallCostFn, null, out _, snap: 8) != Reach.Open) continue;
                 float2 at = (float2)b.Anchor + 0.5f;
                 Force defence = AiForces.KnownTurrets(ai, at, play.ArmyRadius);
                 if (ai.Board.Armies.TryGetValue(b.OwnerId, out ArmySighting seen) && math.distancesq(seen.Centre, at) <= 4f * r2)
@@ -104,32 +129,31 @@ namespace WAR2D.Ai
                 float score = ArmyManager.WorthOf(ai, view, b) / (1f + math.distance(home, at) / policy.TargetDistanceScale);
                 if (score > best) { best = score; bestId = b.Id; bestAt = b.Anchor; }
             }
-            if (bestId == 0) { raiders.Clear(); return; }
-            Active = true;
-            TargetId = bestId;
-            Target = bestAt;
-            started = ai.Now;
+            if (bestId == 0) return;
+            raid.TargetId = bestId;
+            raid.Target = bestAt;
+            raid.Started = ai.Now;
+            raids.Add(raid);
             Raids++;
-            float cooldown = policy.RaidSeconds;
+            float cooldown = policy.RaidSeconds / math.max(1, ai.MaxRaids);
             if (ai.Board.EnemyBuildings.TryGetValue(bestId, out AiBuilding target) && ai.Board.Models.TryGetValue(target.OwnerId, out EnemyModel model) && model.Guess == EnemyStyleGuess.Turtle)
                 cooldown *= state.RaidCooldownFactor;
             nextRaid = ai.Now + cooldown;
-            foreach (int id in raiders) state.Raiders.Add(id);
+            foreach (int id in raid.Units) state.Raiders.Add(id);
             ids.Clear();
-            foreach (int id in raiders) ids.Add(id);
-            ai.Propose(AiPriority.Normal, AiAction.OrderUnits(ids, OrderKind.AttackMove, Target), AiKeys.Of(AiKeys.Raid));
-            orderedAt = ai.Now;
+            foreach (int id in raid.Units) ids.Add(id);
+            ai.Propose(AiPriority.Normal, AiAction.OrderUnits(ids, OrderKind.AttackMove, raid.Target), AiKeys.Of(AiKeys.Raid, raid.TargetId));
+            raid.OrderedAt = ai.Now;
         }
 
-        /// <summary>The raid ends: its units go back to the gathering point (and to the army).</summary>
-        private void ComeHome(AiContext ai, AiState state)
+        /// <summary>A raid ends: its units go back to the gathering point (and to the army).</summary>
+        private void ComeHome(AiContext ai, AiState state, int k)
         {
+            Raid r = raids[k];
+            raids.RemoveAt(k);
             ids.Clear();
-            foreach (int id in raiders) if (IndexOf(ai.View, id) >= 0) ids.Add(id);
-            if (ids.Count > 0 && state.HasGatherPoint) ai.Propose(AiPriority.Normal, AiAction.OrderUnits(ids, OrderKind.Move, state.GatherPoint), AiKeys.Of(AiKeys.Raid));
-            raiders.Clear();
-            Active = false;
-            TargetId = 0;
+            foreach (int id in r.Units) { state.Raiders.Remove(id); if (IndexOf(ai.View, id) >= 0) ids.Add(id); }
+            if (ids.Count > 0 && state.HasGatherPoint) ai.Propose(AiPriority.Normal, AiAction.OrderUnits(ids, OrderKind.Move, state.GatherPoint), AiKeys.Of(AiKeys.Raid, r.TargetId));
         }
 
         private static bool AtExpansion(TeamView view, int2 at)
