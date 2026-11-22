@@ -79,6 +79,10 @@ namespace WAR2D.Ai
         /// <summary>Takes an action (by default through <see cref="PlayerActions"/>; tests count them instead).</summary>
         public Func<AiAction, bool> Execute;
 
+        /// <summary>Resources its income earned while the match was playing (v0.21 phase 0: how much of it it spent; dev reads).</summary>
+        public double Earned { get; private set; }
+        private double lastViewTime = double.NaN;
+
         /// <summary>Thinks so far.</summary>
         public int Thinks { get; private set; }
 
@@ -129,6 +133,10 @@ namespace WAR2D.Ai
                 ["killed"] = Board.EnemyLost,
                 ["lost"] = Board.OwnLost,
                 ["enemyGuess"] = Guesses(),
+                // v0.21 phase 0: the idle army clock, give-ups and what its income earned.
+                ["idleArmy"] = army?.IdleArmySeconds ?? 0.0,
+                ["giveUps"] = army?.GiveUps ?? 0,
+                ["earned"] = Earned,
             };
         }
 
@@ -155,6 +163,8 @@ namespace WAR2D.Ai
             Budget.Refill(view.Time);
             Context.Attentive = Dice.Next() < Difficulty.Attention;
             Board.Observe(view);
+            if (view.State == GameState.Playing && !double.IsNaN(lastViewTime)) Earned += view.Income * (view.Time - lastViewTime);
+            lastViewTime = view.Time;
             Context.State.Update(view);
             Board.UpdateModels(view, Context.State.PlayingSeconds, Context.Policy, Context.Game);
             foreach (IAiManager manager in managers)

@@ -40,6 +40,9 @@ public sealed class AiBench : MonoBehaviour
         public string[] switches, trades;
         public float caution = 1f, killed, lost;
         public int raids, slips;
+        /// <summary>v0.21 phase 0: seconds its army idled big enough to attack, targets given up on, income earned, and its balance at the end.</summary>
+        public float idleArmySeconds, earned, finalResources;
+        public int giveUps;
         [JsonIgnore] public int nextMinute;
     }
 
@@ -209,6 +212,10 @@ public sealed class AiBench : MonoBehaviour
         if (status.TryGetValue("slips", out object sl)) r.slips = Convert.ToInt32(sl);
         if (status.TryGetValue("killed", out object k)) r.killed = Convert.ToSingle(k);
         if (status.TryGetValue("lost", out object lo)) r.lost = Convert.ToSingle(lo);
+        if (status.TryGetValue("idleArmy", out object ia)) r.idleArmySeconds = Convert.ToSingle(ia);
+        if (status.TryGetValue("giveUps", out object gu)) r.giveUps = Convert.ToInt32(gu);
+        if (status.TryGetValue("earned", out object ea)) r.earned = Convert.ToSingle(ea);
+        if (seat.Player.state == PlayerState.Playing) r.finalResources = seat.Player.Resources;
         if (played >= r.nextMinute * 60f && seat.Player.state == PlayerState.Playing)
         {
             int Count(string key) => status.TryGetValue("buildings", out object bs) && bs is Dictionary<string, int> d && d.TryGetValue(key, out int n) ? n : 0;

@@ -75,6 +75,17 @@ namespace WAR2D.Ai
         public int Attacks { get; private set; }
         public int Retreats { get; private set; }
 
+        /// <summary>
+        /// Seconds its army spent gathering while big enough to attack and past its first attack time (v0.21 §6.1's idle
+        /// clock, summed over the match; dev reads).
+        /// </summary>
+        public double IdleArmySeconds { get; private set; }
+
+        /// <summary>Targets it gave up on, not reached in <c>MarchSeconds</c> (dev reads).</summary>
+        public int GiveUps { get; private set; }
+
+        private double lastThink = double.NaN;
+
         // ---- AI overhaul §4.1: learning from its attacks ----
         /// <summary>Factor on the advantage it wants before attacking: up after bad trades, down after good ones.</summary>
         public float Caution { get; private set; } = 1f;
@@ -126,6 +137,9 @@ namespace WAR2D.Ai
             state.AttackedOnce = attackedOnce;
             state.BadTradeStreak = BadTradeStreak;
             if (orderedAt.Count > 64) orderedAt.Clear();
+            if (Mode == ArmyMode.Gather && !double.IsNaN(lastThink) && state.PlayingSeconds >= FirstAttackAt(ai, state) && CountArmy(view, state) >= ai.Style.AttackArmySize)
+                IdleArmySeconds += ai.Now - lastThink;
+            lastThink = ai.Now;
         }
 
         // ---- gathering ----
@@ -468,6 +482,7 @@ namespace WAR2D.Ai
             if (unreached)
             {
                 Note(ai, $"gave up on {Target.x},{Target.y}: not reached in {play.MarchSeconds:F0} s");
+                GiveUps++;
                 ai.Board.Avoid(Target, ai.Now + ai.Policy.AvoidSeconds);
                 ai.Board.GiveUpOn(Target, ai.Policy.AvoidSeconds);
                 int2 given = Target;

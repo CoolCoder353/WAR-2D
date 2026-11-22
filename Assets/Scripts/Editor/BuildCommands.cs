@@ -10,6 +10,12 @@ namespace WAR2D.EditorTools
         [MenuItem("WAR-2D/Build/Linux (Steam)")] public static void Linux() => Build(BuildTarget.StandaloneLinux64, "Builds/Steam/linux/WAR-2D.x86_64");
         [MenuItem("WAR-2D/Build/Windows (Steam)")] public static void Windows() => Build(BuildTarget.StandaloneWindows64, "Builds/Steam/windows/WAR-2D.exe");
 
+        /// <summary>
+        /// A Linux release player at <c>Builds/Linux</c>, where <c>tools/ai-bench.sh</c>, <c>perf-run.sh</c> and the other
+        /// harnesses look for it (batch: <c>-executeMethod WAR2D.EditorTools.BuildCommands.LinuxBench</c>).
+        /// </summary>
+        [MenuItem("WAR-2D/Build/Linux (Bench and perf)")] public static void LinuxBench() => Build(BuildTarget.StandaloneLinux64, "Builds/Linux/WAR-2D.x86_64");
+
         [MenuItem("WAR-2D/Build/Linux (Dev)")] public static void LinuxDev() => Build(BuildTarget.StandaloneLinux64, "Builds/Dev/WAR-2D.x86_64", BuildOptions.Development);
         /// <summary>A Development player for the Unity Profiler (<c>tools/perf-10k.sh</c> with <c>-perfProfile</c>); its timings are not the gate's.</summary>
         [MenuItem("WAR-2D/Build/Windows (Dev)")] public static void WindowsDev() => Build(BuildTarget.StandaloneWindows64, "Builds/Dev/windows/WAR-2D.exe", BuildOptions.Development);
