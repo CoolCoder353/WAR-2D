@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Builds a review page for sprites and effects (asset-generation spec §3.3).
 
-  tools/asset-review.py <name> [--only <glob>] [--show <glob>] [--title T] [--intro TEXT] [--from <assets folder>]
+  tools/asset-review.py <name> [--only <glob>] [--show <glob>] [--finish2 <glob>] [--title T] [--intro TEXT] [--from <assets folder>]
 
 Runs tools/art-build.sh --check (nothing under Assets is written), then writes docs/art/review/<date>-<name>/ with,
 for every sprite whose pixels would change: its cells before and after at 4x, and a contact sheet (the sprite on real
@@ -19,12 +19,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def run_build(only, show):
+def run_build(only, show, finish2):
     cmd = [str(ROOT / "tools/art-build.sh"), "--check"]
     if only:
         cmd += ["--only", only]
     if show:
         cmd += ["--show", show]
+    if finish2:
+        cmd += ["--finish2", finish2]
     out = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True).stdout
     sys.stdout.write(out)
     folders = sorted(ROOT.glob("TestResults/*/assets/report.txt"))
@@ -38,6 +40,7 @@ def main():
     ap.add_argument("name")
     ap.add_argument("--only")
     ap.add_argument("--show")
+    ap.add_argument("--finish2", help="draw the matching sprites with finish 2 (candidates)")
     ap.add_argument("--title", default="Sprite review")
     ap.add_argument("--intro", default="")
     ap.add_argument("--from", dest="source")
@@ -45,7 +48,7 @@ def main():
     if not re.fullmatch(r"[a-z0-9-]+", args.name):
         sys.exit("name: lower-case letters, digits and hyphens")
 
-    source = Path(args.source) if args.source else run_build(args.only, args.show)
+    source = Path(args.source) if args.source else run_build(args.only, args.show, args.finish2)
     report = (source / "report.txt").read_text()
     if report.startswith("FAILED") or "\nFAILED" in report:
         sys.exit(report)

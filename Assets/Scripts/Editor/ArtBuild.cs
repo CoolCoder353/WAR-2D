@@ -29,6 +29,42 @@ namespace WAR2D.EditorTools
         /// <summary>Transparent pixels between frames (mipmaps bleed less with two).</summary>
         public const int Padding = 2;
 
+        /// <summary>
+        /// <c>Assets/Art/finish.json</c>: the sprites the owner has approved for finish 2 (asset-generation spec §4: a rim
+        /// light, an exposure that lifts the sprite off the floor, and cleanup after quantising). Every other sprite keeps
+        /// finish 1, byte for byte.
+        /// </summary>
+        public const string FinishPath = "Assets/Art/finish.json";
+
+        /// <summary>The file at <see cref="FinishPath"/>.</summary>
+        [Serializable]
+        public sealed class FinishFile
+        {
+            public string[] finish2 = new string[0];
+        }
+
+        /// <summary>The rim light's strength in finish 2.</summary>
+        public const float Rim = 0.35f;
+
+        /// <summary>The exposures finish 2 tries, lowest first: the first that lifts the sprite clear of the floor is used.</summary>
+        public static readonly float[] Exposures = { 1f, 1.12f, 1.25f, 1.4f, 1.56f, 1.75f };
+
+        /// <summary>For a candidate build: sprites this accepts are drawn with finish 2 whether the file lists them or not.</summary>
+        public static Func<string, bool> Finish2Candidate;
+
+        private static HashSet<string> finish2;
+
+        /// <summary>True when sprite <paramref name="id"/> is drawn with finish 2.</summary>
+        public static bool UsesFinish2(string id)
+        {
+            if (finish2 == null)
+                finish2 = new HashSet<string>(File.Exists(FinishPath) ? SpecJson.ReadFile<FinishFile>(FinishPath).finish2 : new string[0]);
+            return finish2.Contains(id) || (Finish2Candidate != null && Finish2Candidate(id));
+        }
+
+        /// <summary>Forgets the finish file, so the next build reads it again.</summary>
+        public static void ReloadFinish() => finish2 = null;
+
         // Team parts render in two key colours; pixels whose colour changes between them are team pixels.
         private static readonly Color KeyA = new Color(0.64f, 0f, 0.64f), KeyB = new Color(0f, 0.64f, 0f);
 
@@ -204,6 +240,7 @@ namespace WAR2D.EditorTools
         /// </summary>
         public static BuiltAtlas Render(string name, ArtKind kind, Func<ArtEntry, bool> render = null, BuiltAtlas old = null)
         {
+            ReloadFinish();
             int renderedSprites = 0;
             var data = new AtlasData { pixelsPerUnit = ArtStyle.PixelsPerUnit };
             var frames = new List<Frame>();
@@ -224,6 +261,8 @@ namespace WAR2D.EditorTools
                     continue;
                 }
                 renderedSprites++;
+                // Finish 2 (sprites only): one exposure for the whole sprite, so its frames and facings match.
+                float exposure = kind != ArtKind.Tile && kind != ArtKind.Effect && e.MakeLit != null && UsesFinish2(e.Id) ? Exposure(e) : 0f;
                 for (int i = 0; i < cells; i++)
                 {
                     if (e.Id == ArtManifest.FloorFeature || e.Id == ArtManifest.RockFeature)
@@ -246,7 +285,7 @@ namespace WAR2D.EditorTools
                     if (!cache.TryGetValue(key, out Frame f))
                     {
                         LitCanvas canvas = e.MakeLit != null ? e.MakeLit(cell) : RenderGen.Placeholder(Math.Max(e.WidthTiles, e.HeightTiles));
-                        cache[key] = f = Finish(canvas, e.Lift, kind != ArtKind.Tile);
+                        cache[key] = f = Finish(canvas, e.Lift, kind != ArtKind.Tile, exposure);
                     }
                     frames.Add(f);
                     rects.Add((e.Id, i, f.W, f.H));
@@ -336,17 +375,52 @@ namespace WAR2D.EditorTools
             return new Frame { Colour = colour, Mask = mask, W = f.Width, H = f.Height, PivotY = f.Height / 2f };
         }
 
-        /// <summary>Renders <paramref name="c"/>, finds its team pixels and finishes it; sprites get the outline and shadow.</summary>
-        private static Frame Finish(LitCanvas c, float lift, bool sprite)
+        private static float floorLightness = -1f;
+
+        /// <summary>
+        /// The exposure finish 2 draws <paramref name="e"/> with: the lowest of <see cref="Exposures"/> at which its first
+        /// cell and a diagonal facing sit <see cref="ArtLint.MinLift"/> (and a small margin) above the floor.
+        /// </summary>
+        private static float Exposure(ArtEntry e)
+        {
+            if (floorLightness < 0f) floorLightness = LoadBuilt(ArtAtlas.Tiles) is BuiltAtlas tiles ? ArtLint.FloorLightness(tiles) : 0.29f;
+            int[] cells = e.Directions >= 8 ? new[] { 0, (e.Directions / 8) * e.Frames } : new[] { 0 };
+            foreach (float exposure in Exposures)
+            {
+                double sum = 0;
+                int n = 0;
+                Color32 outline = StylePalettes.Charcoal.Colours[StylePalette.Outline];
+                foreach (int cell in cells)
+                {
+                    Frame f = Finish(e.MakeLit(e.Cell(cell)), e.Lift, true, exposure);
+                    for (int i = 0; i < f.Colour.Length; i++)
+                    {
+                        Color32 c = f.Colour[i];
+                        if (c.a != 255 || f.Mask[i].r > 127 || (c.r == outline.r && c.g == outline.g && c.b == outline.b)) continue;
+                        sum += PaletteQuantizer.OkLab(c).x;
+                        n++;
+                    }
+                }
+                if (n == 0 || sum / n >= floorLightness + ArtLint.MinLift + 0.015f) return exposure;
+            }
+            return Exposures[Exposures.Length - 1];
+        }
+
+        /// <summary>
+        /// Renders <paramref name="c"/>, finds its team pixels and finishes it; sprites get the outline and shadow.
+        /// <paramref name="exposure"/> above 0 is finish 2 at that exposure; 0 is finish 1.
+        /// </summary>
+        private static Frame Finish(LitCanvas c, float lift, bool sprite, float exposure = 0f)
         {
             int w = c.Width, h = c.Height;
-            Color32[] a = c.Render(KeyA, shadow: false, lift: lift);
-            Color32[] b = c.Render(KeyB, shadow: false, lift: lift);
+            bool two = exposure > 0f;
+            Color32[] a = c.Render(KeyA, shadow: false, lift: lift, rim: two ? Rim : 0f, exposure: two ? exposure : 1f);
+            Color32[] b = c.Render(KeyB, shadow: false, lift: lift, rim: two ? Rim : 0f, exposure: two ? exposure : 1f);
             var team = new bool[a.Length];
             for (int i = 0; i < a.Length; i++)
                 team[i] = Math.Abs(a[i].r - b[i].r) + Math.Abs(a[i].g - b[i].g) + Math.Abs(a[i].b - b[i].b) > 24;
             Color32? outline = sprite ? StylePalettes.Charcoal.Colours[StylePalette.Outline] : (Color32?)null;
-            Color32[] finished = PixelFinish.FinishTeam(a, team, w, h, ArtStyle.Palette, ArtStyle.TeamKeyRamp, outline);
+            Color32[] finished = PixelFinish.FinishTeam(a, team, w, h, ArtStyle.Palette, ArtStyle.TeamKeyRamp, outline, two);
             Color32[] colour = ArtStyle.SplitTeamKey(finished, out Color32[] mask);
             return new Frame { Colour = colour, Mask = mask, W = w, H = h, PivotY = c.PivotY };
         }

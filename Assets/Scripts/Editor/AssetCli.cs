@@ -32,20 +32,24 @@ namespace WAR2D.EditorTools
                 int i = Array.IndexOf(args, name);
                 return i >= 0 && i + 1 < args.Length ? args[i + 1] : fallback;
             }
-            Run(Arg("-assetKind", "art"), Arg("-assetOnly", "*"), Arg("-assetWrite", "false") == "true", Arg("-assetOut", "TestResults/assets"), Arg("-assetShow", ""));
+            Run(Arg("-assetKind", "art"), Arg("-assetOnly", "*"), Arg("-assetWrite", "false") == "true", Arg("-assetOut", "TestResults/assets"), Arg("-assetShow", ""), Arg("-assetFinish2", ""));
         }
 
         /// <summary>
         /// Builds <paramref name="kind"/> (art, sfx or music) and writes <c>report.txt</c> in <paramref name="outFolder"/>.
         /// Sprites whose id matches <paramref name="show"/> get their pictures written whether they changed or not.
         /// </summary>
-        public static void Run(string kind, string only, bool write, string outFolder, string show = "")
+        /// <param name="finish2">Candidates: sprites whose id matches are drawn with finish 2 (only without <paramref name="write"/>:
+        /// a sprite ships with finish 2 by being listed in <c>Assets/Art/finish.json</c> once the owner has approved it).</param>
+        public static void Run(string kind, string only, bool write, string outFolder, string show = "", string finish2 = "")
         {
             Directory.CreateDirectory(outFolder);
             var report = new StringBuilder();
             try
             {
                 Func<string, bool> match = Glob(only);
+                if (!string.IsNullOrEmpty(finish2) && write) throw new ArgumentException("--finish2 is for candidates: use it with --check");
+                ArtBuild.Finish2Candidate = string.IsNullOrEmpty(finish2) ? null : Glob(finish2);
                 switch (kind)
                 {
                     case "art": Art(match, write, outFolder, report, string.IsNullOrEmpty(show) ? (_ => false) : Glob(show)); break;
@@ -60,6 +64,7 @@ namespace WAR2D.EditorTools
                 report.AppendLine($"FAILED: {e.Message}");
                 Debug.LogException(e);
             }
+            ArtBuild.Finish2Candidate = null;
             File.WriteAllText(Path.Combine(outFolder, "report.txt"), report.ToString());
         }
 
