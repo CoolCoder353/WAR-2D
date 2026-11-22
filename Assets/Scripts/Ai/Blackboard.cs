@@ -177,6 +177,9 @@ namespace WAR2D.Ai
         /// <summary>Threats near its own buildings, by building id.</summary>
         public readonly Dictionary<int, Threat> Threats = new Dictionary<int, Threat>();
 
+        /// <summary>v0.21 §5: the lanes into its bases and how much it expects (and has seen) attacks come through each.</summary>
+        public readonly ThreatAxes Axes = new ThreatAxes();
+
         /// <summary>Its active plans.</summary>
         public readonly List<AiPlan> Plans = new List<AiPlan>();
 

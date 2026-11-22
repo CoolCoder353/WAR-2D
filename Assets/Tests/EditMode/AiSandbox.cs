@@ -347,6 +347,37 @@ public sealed class AiSandbox
         }
     }
 
+    // ---- terrain (v0.21) ----
+
+    private readonly List<int> terrainChanged = new List<int>();
+
+    /// <summary>
+    /// Sets a tile on the true map and in the AI's known map (its side "saw" it), as a terrain change for its next view; a
+    /// <see cref="TileType.PlayerWall"/> gets <paramref name="wallOwner"/> and <paramref name="health"/> (percent) in its view's walls.
+    /// </summary>
+    public void SetTile(int2 t, TileType kind, int wallOwner = 0, byte health = 100)
+    {
+        if (t.x < 0 || t.y < 0 || t.x >= Width || t.y >= Height) return;
+        int i = t.y * Width + t.x;
+        if (Tiles[i] == (byte)kind) return;
+        Tiles[i] = (byte)kind;
+        if (View.Tiles.Length == Tiles.Length) View.Tiles[i] = (byte)kind;
+        if (kind == TileType.PlayerWall) View.Walls[i] = new AiWall { OwnerId = wallOwner, Health = health };
+        else View.Walls.Remove(i);
+        terrainChanged.Add(i);
+    }
+
+    /// <summary>A closed square ring of <paramref name="kind"/> at Chebyshev radius <paramref name="r"/> round <paramref name="c"/> (floor tiles only for walls: rock already closes the rest).</summary>
+    public void Ring(int2 c, int r, TileType kind, int wallOwner = 0)
+    {
+        for (int k = 0; k < 8 * r; k++)
+        {
+            int2 t = c + Placement.RingOffset(r, k);
+            if (kind == TileType.PlayerWall && !TileRules.IsFloor(TileAt(t))) continue;
+            SetTile(t, kind, wallOwner);
+        }
+    }
+
     // ---- time ----
 
     /// <summary>Runs the world for <paramref name="seconds"/>, the AI thinking every <c>ThinkSeconds</c> on a fresh view.</summary>
@@ -573,5 +604,8 @@ public sealed class AiSandbox
         foreach (AiAttack attack in PendingAttacks) v.Attacks.Add(attack);
         PendingAlerts.Clear();
         PendingAttacks.Clear();
+        v.TerrainChanged.Clear();
+        foreach (int i in terrainChanged) v.TerrainChanged.Add(i);
+        terrainChanged.Clear();
     }
 }

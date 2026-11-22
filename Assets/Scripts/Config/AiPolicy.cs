@@ -11,6 +11,8 @@ namespace Config
     {
         /// <summary>Insight below which an AI scouts once; from <see cref="RadarInsight"/> it also keeps a Radar.</summary>
         public const float RegularScoutingInsight = 0.3f, RadarInsight = 0.9f;
+        /// <summary>v0.21: Insight from which an AI that digs past walls also breaches walled targets (Normal and Hard; Easy skips them).</summary>
+        public const float BreachInsight = 0.5f;
 
         /// <summary>The settings the managers play by for one difficulty.</summary>
         public static AiDifficultyConfig Resolve(AiPolicyConfig p, AiHandicapConfig h)
@@ -49,6 +51,7 @@ namespace Config
                 KeepsBacklineBack = p.KeepsBacklineBack,
                 Spotters = insight >= SpotterInsight ? p.Spotters : 0,
                 DigsPastWalls = p.DigsPastWalls,
+                Breaches = p.DigsPastWalls && insight >= BreachInsight,
                 AttackAdvantage = p.AttackAdvantage,
                 RetreatAdvantage = p.RetreatAdvantage,
                 DefendsChokepoints = p.DefendsChokepoints,

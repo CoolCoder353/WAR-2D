@@ -52,7 +52,7 @@ namespace WAR2D.Ai
 
         public const int Hq = 1, Place = 2, Build = 3, Repair = 4, Produce = 5, Queue = 6, Rally = 7, Army = 8, Scout = 9,
             Expand = 10, Cancel = 11, Wall = 12, Dig = 13, Detonate = 14, Backline = 15, Hold = 16, Defend = 17,
-            Attack = 18, Share = 19, Gift = 20, Surrender = 21, Focus = 22, Raid = 23, Siege = 24;
+            Attack = 18, Share = 19, Gift = 20, Surrender = 21, Focus = 22, Raid = 23, Siege = 24, Post = 25, Forward = 26;
     }
 
     /// <summary>
@@ -153,6 +153,8 @@ namespace WAR2D.Ai
         public float TurretCounterBoost = 1f;
         /// <summary>True while its army is attacking, once it has attacked at all, and its bad trades in a row (set by the Army manager).</summary>
         public bool Attacking, AttackedOnce;
+        /// <summary>v0.21 §4.1: its attack has walls to break (set by the Army manager; the Strategy manager leans its mix to Diggers and Artillery).</summary>
+        public bool BreachWanted;
         public int BadTradeStreak;
         /// <summary>Factor on the wait between two raids (below 1 against a Turtle: it raids more).</summary>
         public float RaidCooldownFactor = 1f;
@@ -170,6 +172,29 @@ namespace WAR2D.Ai
         public bool HasGatherPoint;
         /// <summary>Chokepoint (or front) spots it defends, and the direction out of its base at each (set by the Builder manager).</summary>
         public readonly List<float2> DefenceSpots = new List<float2>(4), DefenceDirs = new List<float2>(4);
+        /// <summary>v0.21 §5: each defended spot's threat score over the top one's (1 for the top; its defences scale by it).</summary>
+        public readonly List<float> DefenceWeights = new List<float>(4);
+        /// <summary>v0.21 §5, §7.2: the regions of its bases (its HQ's first, then its forward bases).</summary>
+        public readonly List<int> BaseRegions = new List<int>(4);
+        /// <summary>v0.21 §7.2: the expansions (regions) it holds, a Miner of its own there (set by the Economy manager).</summary>
+        public readonly List<int> HeldExpansions = new List<int>(4);
+        /// <summary>v0.21 §7.2: the regions it grows into forward bases (set by the Spending manager).</summary>
+        public readonly List<int> ForwardRegions = new List<int>(4);
+        /// <summary>v0.21 §7.1: money piles up past every other way to spend it: it fortifies (more Mines, wall layers).</summary>
+        public bool Fortify;
+        /// <summary>
+        /// v0.21 §7.1: banked well past its needs (set by the Spending manager): its opening done, and <c>OverflowSeconds</c> of
+        /// income and four times <c>BankHigh</c> in hand. The late rungs of the ladder (more expansions, forward bases,
+        /// fortifying) wait for it: an early bank of a few thousand mustn't send its Builders across the map.
+        /// </summary>
+        public bool Overflowing;
+        /// <summary>v0.21 §6.2: unit ids holding posts (the army leaves them alone).</summary>
+        public readonly HashSet<int> Posted = new HashSet<int>();
+        /// <summary>v0.21 §6.2: its army defends its base now (posts come home).</summary>
+        public bool Defending;
+        /// <summary>v0.21 §6: its attack group's unit ids and target, as of the army's last think (posts and raids leave them alone).</summary>
+        public readonly HashSet<int> InAttack = new HashSet<int>();
+        public int2 AttackTarget;
         /// <summary>Unit ids the Scouting manager uses (the army leaves them alone).</summary>
         public readonly HashSet<int> Scouts = new HashSet<int>();
 

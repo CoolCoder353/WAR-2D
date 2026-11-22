@@ -74,6 +74,10 @@ namespace Config
         public AiDiplomacyConfig Diplomacy = new AiDiplomacyConfig();
         public AiConcedeConfig Concede = new AiConcedeConfig();
         public AiBrainConfig Brain = new AiBrainConfig();
+        /// <summary>The reach map and breaches (v0.21 Warpath §3, §4.1).</summary>
+        public AiReachConfig Reach = new AiReachConfig();
+        /// <summary>The rest of v0.21 Warpath's numbers: threat axes, posts, raids, spending, forward bases, walls.</summary>
+        public AiWarpathConfig Warpath = new AiWarpathConfig();
         /// <summary>How every AI plays, whatever its difficulty and style (plan Task 7's managers).</summary>
         public AiPlayConfig Play = new AiPlayConfig();
         /// <summary>
@@ -144,6 +148,8 @@ namespace Config
         public int Spotters;
         /// <summary>True when its Diggers tunnel through enemy walls near its attacking army.</summary>
         public bool DigsPastWalls;
+        /// <summary>v0.21: true when it attacks targets behind walls by breaching them (from <c>AiPolicy.BreachInsight</c>; Easy skips walled targets).</summary>
+        public bool Breaches;
         /// <summary>How it scouts.</summary>
         public AiScouting Scouting;
         /// <summary>Seconds between re-scouting runs (Regular scouting).</summary>
@@ -389,6 +395,21 @@ namespace Config
         public bool HoldsChokes;
         /// <summary>True when it sends raiders at enemy Miners and expansions (AI overhaul §3.5).</summary>
         public bool Raids;
+        /// <summary>
+        /// v0.21 §6.1: seconds of idling (its army gathered, big enough and allowed to attack, but not attacking) over which
+        /// the advantage it wants falls to <see cref="IdleFloor"/> of itself.
+        /// </summary>
+        public float IdlePatienceSeconds;
+        /// <summary>v0.21 §6.1: the share of the advantage it wants that idling never takes it below.</summary>
+        public float IdleFloor;
+        /// <summary>v0.21 §6.2: the most of its fighting units it keeps at posts (holding ground away from its base).</summary>
+        public float PostShare;
+        /// <summary>v0.21 §7.2: producers a forward base gets (one more while money piles up).</summary>
+        public int ForwardProducers;
+        /// <summary>v0.21 §4.2: how many of its defended lanes (top threat axes first) it walls across.</summary>
+        public int WallLanes;
+        /// <summary>v0.21 §4.2: wall lines per walled lane while money piles up (1: no extra layers).</summary>
+        public int MaxWallLayers;
 
         /// <summary>A deep copy (a brain varies its own).</summary>
         public AiStyleConfig Clone()
@@ -564,6 +585,56 @@ namespace Config
         public float ArmyMemorySeconds;
         /// <summary>Seconds an event (an alert, a threat) stays on the blackboard.</summary>
         public float EventMemorySeconds;
+    }
+
+    /// <summary>The reach map and breaches (v0.21 Warpath §3, §4.1), the same at every difficulty.</summary>
+    public class AiReachConfig
+    {
+        /// <summary>Tiles a relabel of the reach map labels per think (it is spread over thinks).</summary>
+        public int TilesPerThink;
+        /// <summary>A walled target's worth is divided by (1 + its breach's wall health / this).</summary>
+        public float BreachCostScale;
+        /// <summary>Seconds a breach may take once its group is at the wall before it gives the target up.</summary>
+        public float BreachSeconds;
+        /// <summary>Tiles short of the first breach wall its group stages.</summary>
+        public float BreachStage;
+    }
+
+    /// <summary>
+    /// v0.21 Warpath (§5 to §7), the same at every style. The Max counts are Hard's; Normal and Easy scale them (see
+    /// <c>AiContext.MaxPosts</c> and the others).
+    /// </summary>
+    public class AiWarpathConfig
+    {
+        /// <summary>Seconds over which what it saw come through a lane counts half as much (§5).</summary>
+        public float AxisHalfLifeSeconds;
+        /// <summary>Most posts (Hard; scaled by Insight × Attention below).</summary>
+        public int MaxPosts;
+        /// <summary>Units a post holds.</summary>
+        public int PostSize;
+        /// <summary>Tiles round a post site its group guards.</summary>
+        public float PostRadius;
+        /// <summary>Seconds between post site choices.</summary>
+        public float PostSeconds;
+        /// <summary>Most raids out at once (Hard; at least one for a style that raids).</summary>
+        public int MaxRaids;
+        /// <summary>Expansions beyond its difficulty's most while money piles up (§7.1).</summary>
+        public int BankedExpansions;
+        /// <summary>Most forward bases (Hard; scaled by Ambition, none below <c>AiPolicy.ForwardAmbition</c>).</summary>
+        public int MaxForwardBases;
+        /// <summary>An expansion's score is divided by 1 + this × the enemy pressure near it (§7.3).</summary>
+        public float SafetyWeight;
+        /// <summary>Tiles ahead of a defended spot (out of its base) where its wall line crosses the lane (§4.2).</summary>
+        public float WallAhead;
+        /// <summary>Seconds between its checks for destroyed wall tiles to put back (§4.2).</summary>
+        public float WallCheckSeconds;
+        /// <summary>Mines added per defended spot while it fortifies (§7.1 rung 5).</summary>
+        public int FortifyMines;
+        /// <summary>
+        /// §7.1: the late rungs (more expansions, forward bases, fortifying) wait until it is overflowing: banked, its opening
+        /// done, and at least this many seconds of income in hand (and four times <c>BankHigh</c>).
+        /// </summary>
+        public float OverflowSeconds;
     }
 
     /// <summary>When the AI surrenders (spec §8).</summary>

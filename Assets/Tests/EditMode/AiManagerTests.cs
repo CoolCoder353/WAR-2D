@@ -272,7 +272,9 @@ public class AiManagerTests
                 Assert.That(world.ActionTimes[i], Is.GreaterThanOrEqualTo(seen), "never sent at the HQ before its side saw it");
         Assert.That(world.Actions.Any(a => a.Kind == AiActionKind.Order && a.Order == OrderKind.AttackMove && a.Tile.Equals(enemyHq)), Is.True, "attack-moving at its anchor");
         foreach (AiAction a in world.Actions.Where(a => a.Kind == AiActionKind.Order && a.Order == OrderKind.AttackMove))
-            Assert.That(world.View.Buildings.Any(b => b.OwnerId == world.Enemy && b.Anchor.Equals(a.Tile)) || math.distance(a.Tile, world.Brain.Context.State.GatherPoint) < 20f || math.distance(a.Tile, enemyHq) < world.Game.Ai.Play.StageDistance + world.Game.Ai.Play.DefenceSpread + 2f,
+            // (v0.21: or a post it holds, at a region of the map's plan, public data, within its radius.)
+            Assert.That(world.View.Buildings.Any(b => b.OwnerId == world.Enemy && b.Anchor.Equals(a.Tile)) || math.distance(a.Tile, world.Brain.Context.State.GatherPoint) < 20f || math.distance(a.Tile, enemyHq) < world.Game.Ai.Play.StageDistance + world.Game.Ai.Play.DefenceSpread + 2f
+                || world.Brain.Manager<PostManager>().History.Any(site => math.distance(a.Tile, site) <= world.Game.Ai.Warpath.PostRadius),
                 Is.True, $"every attack-move goes at what it knows ({a.Tile})");
     }
 
@@ -305,6 +307,6 @@ public class AiManagerTests
         Assert.That(army.Mode, Is.Not.EqualTo(ArmyMode.Attack), "and stops attacking");
         int2 gather = world.Brain.Context.State.GatherPoint; // where the retreat was sent (it can move later)
         world.Run(1.0); // the retreat Move is proposed; the action budget spends it on a following think
-        Assert.That(world.Actions.Skip(before).Any(a => a.Kind == AiActionKind.Order && a.Order == OrderKind.Move && a.Tile.Equals(gather)), Is.True, "a Move back to its gathering point");
+        Assert.That(world.Actions.Skip(before).Any(a => a.Kind == AiActionKind.Order && a.Order == OrderKind.Move && a.Tile.Equals(gather)), Is.True, $"a Move back to its gathering point {gather}; actions since: {string.Join(" ", world.Actions.Skip(before).Select(a => $"{a.Kind}/{a.Order}@{a.Tile}"))}; log {string.Join(" | ", army.Log.Skip(System.Math.Max(0, army.Log.Count - 4)))}");
     }
 }

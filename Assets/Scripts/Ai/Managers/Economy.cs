@@ -46,6 +46,9 @@ namespace WAR2D.Ai
             bool baseFull = state.IsSaturated(baseKey);
             int held = UpdateExpansions(ai, view, state, capped, baseFull);
             Held = held;
+            state.HeldExpansions.Clear();
+            foreach (int index in claimed)
+                if (state.CountNear(BuildingType.Miner, view.Regions[index].Centre, view.Regions[index].Radius + 4f) > 0) state.HeldExpansions.Add(index);
 
             int builders = ai.Difficulty.Builders + ai.Difficulty.BuildersPerExpansion * held;
             if (state.UnitCount[(int)UnitType.Builder] + state.QueuedCount[(int)UnitType.Builder] < builders)
@@ -88,6 +91,8 @@ namespace WAR2D.Ai
             bool squeezed = capped && (state.Free >= ai.Config.Play.CappedExpandResources || state.Banked);
             // Upkeep-capped with money to spare, it takes more than its style's (up to its difficulty's most): money banked is wasted.
             if (squeezed && onTime) wanted = ai.Difficulty.MaxExpansions;
+            // v0.21 §7.1: money piling up, it takes more still (rung 3 of the spending ladder).
+            if (state.Overflowing && onTime) wanted = ai.Difficulty.MaxExpansions + ai.Config.Warpath.BankedExpansions;
             // Saturating: its base and every expansion it holds full of Miners, it takes the next one (up to its difficulty's most).
             bool full = ai.Difficulty.SaturatesMiners && baseFull && AllHeldFull(state);
             if (full) wanted = ai.Difficulty.MaxExpansions;
@@ -105,6 +110,8 @@ namespace WAR2D.Ai
                 if (!regions[i].Expandable || claimed.Contains(i)) continue;
                 if (EnemyBuildingNear(ai, regions[i].Centre, regions[i].Radius)) continue;
                 float score = ExpansionScore(regions[i], math.distance(regions[i].Centre, state.Home), ai.Game.Resources.RichGemMultiplier, ai.Config.Play.ExpansionDistanceScale);
+                // v0.21 §7.3: less where enemies are (a Turtle cares twice as much).
+                score /= 1f + ai.Config.Warpath.SafetyWeight * (ai.Style.HoldsChokes ? 2f : 1f) * Pressure(ai, regions[i]);
                 if (score > bestScore) { bestScore = score; best = i; }
             }
             if (best >= 0) claimed.Add(best);
@@ -117,6 +124,21 @@ namespace WAR2D.Ai
         /// </summary>
         internal static float ExpansionScore(AiRegion region, float distance, float richMultiplier, float distanceScale) =>
             region.Worth(richMultiplier) / (1f + distance / math.max(1f, distanceScale));
+
+        /// <summary>
+        /// v0.21 §7.3: how much enemy is near a region, as it knows it: each known enemy base counts e^(-distance /
+        /// <c>ExpansionDistanceScale</c>), and each enemy army it remembers there twice as much.
+        /// </summary>
+        internal static float Pressure(AiContext ai, in AiRegion region)
+        {
+            float scale = math.max(1f, ai.Config.Play.ExpansionDistanceScale);
+            float p = 0f;
+            foreach (EnemyBase b in ai.Board.EnemyBases.Values)
+                if (ai.View.IsEnemy(b.OwnerId)) p += math.exp(-math.distance((float2)b.Anchor, (float2)region.Centre) / scale);
+            foreach (ArmySighting a in ai.Board.Armies.Values)
+                if (ai.View.IsEnemy(a.OwnerId)) p += 2f * math.exp(-math.distance(a.Centre, (float2)region.Centre) / scale);
+            return p;
+        }
 
         private bool AllHeldFull(AiState state)
         {

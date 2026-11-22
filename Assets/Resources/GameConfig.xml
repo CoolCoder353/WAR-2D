@@ -305,6 +305,12 @@
       <Radar>0</Radar>
       <HoldsChokes>0</HoldsChokes>
       <Raids>1</Raids>
+      <IdlePatienceSeconds>60</IdlePatienceSeconds>  <!-- v0.21: idling this long lowers the advantage it wants to IdleFloor of itself -->
+      <IdleFloor>0.6</IdleFloor>
+      <PostShare>0.1</PostShare>            <!-- v0.21: the most of its army it keeps at posts -->
+      <ForwardProducers>2</ForwardProducers>  <!-- v0.21: producers per forward base (one more when banked) -->
+      <WallLanes>0</WallLanes>              <!-- v0.21: defended lanes it walls, top threat first -->
+      <MaxWallLayers>1</MaxWallLayers>      <!-- v0.21: wall lines per walled lane while money piles up -->
     </Style>
     <Style name="Turtle">  <!-- walls, turrets, Jammers and bombs at its chokepoints; a big Heavy and Artillery army later -->
       <BuildOrder>Miner Miner Builder Miner Barracks GunTurret Miner Builder HeavyFactory Radar Jammer</BuildOrder>  <!-- a turret first (v0.20: one, at 400) -->
@@ -328,6 +334,12 @@
       <Radar>1</Radar>
       <HoldsChokes>1</HoldsChokes>
       <Raids>0</Raids>
+      <IdlePatienceSeconds>300</IdlePatienceSeconds>  <!-- v0.21: idling this long lowers the advantage it wants to IdleFloor of itself -->
+      <IdleFloor>0.9</IdleFloor>
+      <PostShare>0.1</PostShare>            <!-- v0.21: the most of its army it keeps at posts -->
+      <ForwardProducers>0</ForwardProducers>  <!-- v0.21: producers per forward base (one more when banked) -->
+      <WallLanes>4</WallLanes>              <!-- v0.21: defended lanes it walls, top threat first -->
+      <MaxWallLayers>3</MaxWallLayers>      <!-- v0.21: wall lines per walled lane while money piles up -->
     </Style>
     <Style name="Expander">  <!-- takes expansions early, more Miners, a mid-game army -->
       <BuildOrder>Miner Miner Builder Miner Miner Builder Barracks Miner Tank Tank Scout</BuildOrder>  <!-- Miners, then a Barracks -->
@@ -351,6 +363,12 @@
       <Radar>1</Radar>
       <HoldsChokes>0</HoldsChokes>
       <Raids>0</Raids>
+      <IdlePatienceSeconds>180</IdlePatienceSeconds>  <!-- v0.21: idling this long lowers the advantage it wants to IdleFloor of itself -->
+      <IdleFloor>0.8</IdleFloor>
+      <PostShare>0.3</PostShare>            <!-- v0.21: the most of its army it keeps at posts -->
+      <ForwardProducers>1</ForwardProducers>  <!-- v0.21: producers per forward base (one more when banked) -->
+      <WallLanes>1</WallLanes>              <!-- v0.21: defended lanes it walls, top threat first -->
+      <MaxWallLayers>2</MaxWallLayers>      <!-- v0.21: wall lines per walled lane while money piles up -->
     </Style>
     <Style name="Balanced">  <!-- a bit of each; what Random picks by default -->
       <BuildOrder>Miner Miner Builder Barracks Miner Scout Tank Tank Miner HeavyFactory Tank Heavy</BuildOrder>  <!-- fast Heavy Factory -->
@@ -375,6 +393,12 @@
       <Radar>1</Radar>
       <HoldsChokes>0</HoldsChokes>
       <Raids>1</Raids>
+      <IdlePatienceSeconds>120</IdlePatienceSeconds>  <!-- v0.21: idling this long lowers the advantage it wants to IdleFloor of itself -->
+      <IdleFloor>0.75</IdleFloor>
+      <PostShare>0.2</PostShare>            <!-- v0.21: the most of its army it keeps at posts -->
+      <ForwardProducers>1</ForwardProducers>  <!-- v0.21: producers per forward base (one more when banked) -->
+      <WallLanes>1</WallLanes>              <!-- v0.21: defended lanes it walls, top threat first -->
+      <MaxWallLayers>2</MaxWallLayers>      <!-- v0.21: wall lines per walled lane while money piles up -->
     </Style>
     <Diplomacy>  <!-- only when the match has Diplomacy on -->
       <PeaceSeconds>60</PeaceSeconds>              <!-- a non-teammate sharing vision who hasn't hit it this long is offered peace -->
@@ -400,6 +424,27 @@
       <ArmyMemorySeconds>180</ArmyMemorySeconds>    <!-- a last-seen enemy army is remembered this long -->
       <EventMemorySeconds>30</EventMemorySeconds>   <!-- alerts and threats stay on the blackboard this long -->
     </Brain>
+    <Reach>  <!-- v0.21 Warpath: the reach map (floor components over the known tiles, joined by player walls) and breaches -->
+      <TilesPerThink>262144</TilesPerThink>   <!-- a relabel after the terrain changes labels this many tiles a think (a 1024 map in four) -->
+      <BreachCostScale>600</BreachCostScale>  <!-- a walled target's worth is divided by 1 + its breach's wall health over this -->
+      <BreachSeconds>90</BreachSeconds>       <!-- a breach not open this long after its group reached the wall: the target is given up -->
+      <BreachStage>6</BreachStage>            <!-- the group stages this many tiles short of the first wall to break -->
+    </Reach>
+    <Warpath>  <!-- v0.21 Warpath: threat axes, posts, raids, spending, forward bases, walls (Max counts are Hard's) -->
+      <AxisHalfLifeSeconds>180</AxisHalfLifeSeconds> <!-- what it saw come through a lane counts half after this -->
+      <MaxPosts>3</MaxPosts>                   <!-- posts holding ground (x Insight x Attention: Normal 1, Easy 0) -->
+      <PostSize>6</PostSize>                   <!-- units per post -->
+      <PostRadius>12</PostRadius>              <!-- tiles round a post site it guards -->
+      <PostSeconds>30</PostSeconds>            <!-- seconds between post site choices -->
+      <MaxRaids>3</MaxRaids>                   <!-- raids out at once (x Insight x Attention, at least 1) -->
+      <BankedExpansions>3</BankedExpansions>   <!-- more expansions than its most while money piles up -->
+      <MaxForwardBases>2</MaxForwardBases>     <!-- expansions grown into bases with producers (x Ambition; Easy none) -->
+      <SafetyWeight>1</SafetyWeight>           <!-- an expansion's score / (1 + this x enemy pressure near it) -->
+      <WallAhead>3</WallAhead>                 <!-- its wall line crosses a lane this many tiles ahead of the turret -->
+      <WallCheckSeconds>15</WallCheckSeconds>  <!-- seconds between checks for wall tiles to put back -->
+      <FortifyMines>2</FortifyMines>           <!-- Mines added per defended spot while it fortifies -->
+      <OverflowSeconds>60</OverflowSeconds>    <!-- more expansions, forward bases and fortifying wait for this much income in hand (and 4 x BankHigh), past the opening -->
+    </Warpath>
     <Play>  <!-- plan Task 7: how every AI plays, the same at every difficulty and style (sizes and pacing; behaviour is above) -->
       <OptionRadius>18</OptionRadius>                  <!-- tiles around a start option counted for gems and open ground -->
       <OptionGemWeight>1.0</OptionGemWeight>           <!-- score per gem tile there -->

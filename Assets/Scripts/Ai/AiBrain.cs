@@ -64,8 +64,8 @@ namespace WAR2D.Ai
         /// <summary>The managers every brain runs, in the order they propose (spec §5.3).</summary>
         public static IAiManager[] StandardManagers() => new IAiManager[]
         {
-            new OpeningManager(), new StrategyManager(), new EconomyManager(), new BuilderManager(), new ProductionManager(),
-            new ScoutingManager(), new RaidManager(), new ArmyManager(), new DiplomacyManager(), new ConcedeManager(),
+            new OpeningManager(), new StrategyManager(), new EconomyManager(), new SpendingManager(), new BuilderManager(), new ProductionManager(),
+            new ScoutingManager(), new RaidManager(), new PostManager(), new ArmyManager(), new DiplomacyManager(), new ConcedeManager(),
         };
 
         public int Owner { get; }
@@ -78,6 +78,10 @@ namespace WAR2D.Ai
 
         /// <summary>Takes an action (by default through <see cref="PlayerActions"/>; tests count them instead).</summary>
         public Func<AiAction, bool> Execute;
+
+        /// <summary>Resources its income earned while the match was playing (v0.21 phase 0: how much of it it spent; dev reads).</summary>
+        public double Earned { get; private set; }
+        private double lastViewTime = double.NaN;
 
         /// <summary>Thinks so far.</summary>
         public int Thinks { get; private set; }
@@ -129,7 +133,56 @@ namespace WAR2D.Ai
                 ["killed"] = Board.EnemyLost,
                 ["lost"] = Board.OwnLost,
                 ["enemyGuess"] = Guesses(),
+                // v0.21 phase 0: the idle army clock, give-ups and what its income earned.
+                ["idleArmy"] = army?.IdleArmySeconds ?? 0.0,
+                ["giveUps"] = army?.GiveUps ?? 0,
+                ["earned"] = Earned,
+                ["reach"] = Context.Reach != null ? $"v{Context.Reach.Version} {Context.Reach.Components} parts{(Context.Reach.Pending ? " relabelling" : "")}" : "",
+                ["breach"] = army?.BreachStatus ?? "",
+                ["idle"] = army?.Idle ?? 0.0,
+                ["posts"] = Manager<PostManager>()?.Sites ?? "",
+                ["raidsOut"] = Manager<RaidManager>()?.Out ?? 0,
+                ["axes"] = Axes(),
+                ["fortify"] = s.Fortify,
+                ["forward"] = string.Join(",", s.ForwardRegions),
+                ["forwardStarted"] = Manager<SpendingManager>()?.ForwardBasesStarted ?? 0,
+                ["postsTaken"] = Manager<PostManager>()?.Taken ?? 0,
+                ["breaches"] = army?.BreachesStarted ?? 0,
+                ["need"] = army != null ? army.Need(Context) : 0f,
             };
+        }
+
+        /// <summary>
+        /// Keeps its reach map (v0.21 §3) on the ground it knows: built at once from its first view of the map, then
+        /// relabelled over thinks after a tile it knows changes (dug, walled, a wall destroyed). Cached answers last one think
+        /// (a wall's health moves).
+        /// </summary>
+        private void UpdateReach(TeamView view)
+        {
+            if (view.Width <= 0 || view.Height <= 0 || view.Tiles.Length != view.Width * view.Height) return;
+            ReachMap reach = Context.Reach;
+            if (reach == null || reach.Width != view.Width || reach.Height != view.Height)
+            {
+                Context.Reach = reach = new ReachMap(view.Width, view.Height, Context.Config.Reach.TilesPerThink);
+                reach.Rebuild(view.Tiles);
+                return;
+            }
+            if (view.TerrainChanged.Count > 0) reach.MarkDirty();
+            reach.ForgetAnswers();
+            reach.Step(view.Tiles);
+        }
+
+        private string Axes()
+        {
+            var sb = new System.Text.StringBuilder();
+            int n = 0;
+            foreach (ThreatAxes.Axis a in Board.Axes.Axes)
+            {
+                if (n++ >= 4) break;
+                if (sb.Length > 0) sb.Append(' ');
+                sb.Append(a.Region).Append('/').Append(a.Lane).Append(':').Append(a.Score.ToString("F2"));
+            }
+            return sb.ToString();
         }
 
         private string Guesses()
@@ -155,11 +208,14 @@ namespace WAR2D.Ai
             Budget.Refill(view.Time);
             Context.Attentive = Dice.Next() < Difficulty.Attention;
             Board.Observe(view);
+            if (view.State == GameState.Playing && !double.IsNaN(lastViewTime)) Earned += view.Income * (view.Time - lastViewTime);
+            lastViewTime = view.Time;
+            UpdateReach(view);
             Context.State.Update(view);
             Board.UpdateModels(view, Context.State.PlayingSeconds, Context.Policy, Context.Game);
             foreach (IAiManager manager in managers)
             {
-                Context.ArmyPool = manager is ArmyManager || manager is ScoutingManager || manager is RaidManager;
+                Context.ArmyPool = manager is ArmyManager || manager is ScoutingManager || manager is RaidManager || manager is PostManager;
                 manager.Think(Context);
             }
             Context.ArmyPool = false;

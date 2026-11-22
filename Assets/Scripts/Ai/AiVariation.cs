@@ -54,6 +54,7 @@ namespace WAR2D.Ai
             s.FirstAttackSeconds *= FirstAttack;
             s.AttackArmySize = math.max(1, (int)math.round(s.AttackArmySize * ArmySize));
             s.AttackIntervalSeconds *= Interval;
+            s.IdlePatienceSeconds *= Interval;
             s.ExpandTiming *= Expand;
             var mix = new Dictionary<UnitType, float>(s.ArmyMix.Count);
             foreach (KeyValuePair<UnitType, float> w in s.ArmyMix) mix[w.Key] = w.Value * Mix[(int)w.Key];

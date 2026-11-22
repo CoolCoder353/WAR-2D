@@ -75,6 +75,35 @@ namespace WAR2D.Ai
         public int Attacks { get; private set; }
         public int Retreats { get; private set; }
 
+        /// <summary>
+        /// Seconds its army spent gathering while big enough to attack and past its first attack time (v0.21 §6.1's idle
+        /// clock, summed over the match; dev reads).
+        /// </summary>
+        public double IdleArmySeconds { get; private set; }
+
+        /// <summary>Targets it gave up on, not reached in <c>MarchSeconds</c> (dev reads).</summary>
+        public int GiveUps { get; private set; }
+
+        private double lastThink = double.NaN;
+
+        // ---- breaches (v0.21 §4.1) ----
+        /// <summary>The wall tiles between its group and a walled target, from its side; empty when the way is open.</summary>
+        private readonly List<int2> breach = new List<int2>(8);
+        /// <summary>The floor tile on its side of the first breach wall: where the group goes to break it.</summary>
+        private int2 breachApproach;
+        /// <summary>When the group's front reached the breach (NaN until then).</summary>
+        private double breachReached = double.NaN;
+        private readonly List<int2> breachScratch = new List<int2>(8);
+
+        /// <summary>Breaches it has started (dev reads).</summary>
+        public int BreachesStarted { get; private set; }
+
+        /// <summary>The breach it is making, for <c>aistate</c> (dev reads), or empty.</summary>
+        public string BreachStatus => breach.Count > 0 ? $"{breach[0].x},{breach[0].y} ({breach.Count} tiles){(double.IsNaN(breachReached) ? "" : " at the wall")}" : "";
+
+        /// <summary>Where the group's orders go: the breach while there is one, else the target.</summary>
+        private int2 Goal => breach.Count > 0 ? breachApproach : Target;
+
         // ---- AI overhaul §4.1: learning from its attacks ----
         /// <summary>Factor on the advantage it wants before attacking: up after bad trades, down after good ones.</summary>
         public float Caution { get; private set; } = 1f;
@@ -93,7 +122,7 @@ namespace WAR2D.Ai
         private bool recordTurrets;
         private int2 recordTarget;
 
-        private static bool Busy(AiState state, int id) => state.Scouts.Contains(id) || state.Raiders.Contains(id);
+        private static bool Busy(AiState state, int id) => state.Scouts.Contains(id) || state.Raiders.Contains(id) || state.Posted.Contains(id);
 
         public void Think(AiContext ai)
         {
@@ -123,9 +152,26 @@ namespace WAR2D.Ai
                 case ArmyMode.Gather: Gather(ai, view, state); break;
             }
             state.Attacking = Mode == ArmyMode.Attack;
+            state.BreachWanted = Mode == ArmyMode.Attack && breach.Count > 0;
+            state.Defending = Mode == ArmyMode.Defend;
+            state.InAttack.Clear();
+            if (Mode == ArmyMode.Attack) foreach (int id in group) state.InAttack.Add(id);
+            state.AttackTarget = Target;
             state.AttackedOnce = attackedOnce;
             state.BadTradeStreak = BadTradeStreak;
             if (orderedAt.Count > 64) orderedAt.Clear();
+            if (Mode == ArmyMode.Gather && !double.IsNaN(lastThink) && state.PlayingSeconds >= FirstAttackAt(ai, state))
+            {
+                int size = CountArmy(view, state);
+                if (size >= ai.Style.AttackArmySize)
+                {
+                    double dt = ai.Now - lastThink;
+                    IdleArmySeconds += dt;
+                    bool waveDue = !attackedOnce || ai.Now - lastAttackEnd >= ai.Style.AttackIntervalSeconds;
+                    if (waveDue) Idle += state.Banked && size >= 2 * ai.Style.AttackArmySize ? 2.0 * dt : dt;
+                }
+            }
+            lastThink = ai.Now;
         }
 
         // ---- gathering ----
@@ -133,7 +179,8 @@ namespace WAR2D.Ai
         private void PlaceGatherPoint(AiContext ai, TeamView view, AiState state)
         {
             AiPlayConfig play = ai.Config.Play;
-            float2 enemy = BuilderManager.EnemyDirectionPoint(ai, view, state);
+            // v0.21 §5: it gathers towards the lane it expects attacks through.
+            float2 enemy = BuilderManager.ThreatPoint(ai, view, state);
             float2 dir = math.normalizesafe(enemy - state.Home, new float2(1f, 0f));
             // Its variation turns the gathering point off the straight line to the enemy (AI overhaul §6.1).
             float angle = ai.Variation.GatherAngle;
@@ -236,8 +283,22 @@ namespace WAR2D.Ai
         /// <summary>Play seconds of its first attack: the style's, sooner against a greedy enemy (AI overhaul §4.3).</summary>
         private static float FirstAttackAt(AiContext ai, AiState state) => ai.Style.FirstAttackSeconds * state.FirstAttackFactor;
 
-        /// <summary>The advantage it wants before attacking: the policy's, scaled by the style and its caution.</summary>
-        private float Need(AiContext ai) => ai.Difficulty.AttackAdvantage * ai.Style.AttackRatioScale * Caution;
+        /// <summary>
+        /// The advantage it wants before attacking: the policy's, scaled by the style and its caution, and (v0.21 §6.1) lowered
+        /// the longer its army idles: times max(<c>IdleFloor</c>, 1 - idle / <c>IdlePatienceSeconds</c>).
+        /// </summary>
+        internal float Need(AiContext ai) => ai.Difficulty.AttackAdvantage * ai.Style.AttackRatioScale * Caution * IdleFactor(ai);
+
+        /// <summary>v0.21 §6.1: what idling has taken off the advantage it wants (1 when not idle).</summary>
+        internal float IdleFactor(AiContext ai) =>
+            math.max(ai.Style.IdleFloor, 1f - (float)(Idle / math.max(1f, ai.Style.IdlePatienceSeconds)));
+
+        /// <summary>
+        /// v0.21 §6.1, the idle clock: seconds its army has gathered while big enough to attack and allowed to (past its first
+        /// attack time and its wave interval), since its last attack started; twice as fast while money piles up and the army
+        /// is over twice its attack size (dev reads).
+        /// </summary>
+        public double Idle { get; private set; }
 
         /// <summary>Maxed out (no upkeep room for another unit, money piling up): a player attacks with what they have.</summary>
         private static bool Maxed(AiContext ai, AiState state) =>
@@ -279,13 +340,14 @@ namespace WAR2D.Ai
             KeepHomeGuard(ai, total);
             if (group.Count == 0) return false;
             Note(ai, $"from {GroupCentre(view, false).x:F0},{GroupCentre(view, false).y:F0} home {state.Home.x:F0},{state.Home.y:F0}");
-            Note(ai, $"attack {(counter ? "(counter) " : maxed ? "(maxed) " : slip ? "(slip) " : "")}group {group.Count} advantage {Shown(advantage)} need {need:F2} target {target.x},{target.y} building {id != 0}");
+            Note(ai, $"attack {(counter ? "(counter) " : maxed ? "(maxed) " : slip ? "(slip) " : "")}group {group.Count} advantage {Shown(advantage)} need {need:F2} (idle {Idle:F0} s) target {target.x},{target.y} building {id != 0}");
             Mode = ArmyMode.Attack;
             TargetId = id;
             TargetOwner = owner;
             Target = target;
             targetSince = ai.Now;
             attackedOnce = true;
+            Idle = 0;
             Attacks++;
             StartRecord(ai, target, ours.Value);
             BeginStage(ai, view, state);
@@ -315,6 +377,70 @@ namespace WAR2D.Ai
         private static string Shown(float advantage) => float.IsPositiveInfinity(advantage) ? "inf" : advantage.ToString("F2");
 
         /// <summary>
+        /// v0.21 §4.1: fills <see cref="breach"/> with the walls between <paramref name="from"/> and the target (empty when
+        /// the way is open) and the floor tile on its side of the first one; true when a breach is needed. Cut (rock all
+        /// the way, or from a point off the floor): the plan it has stands, and the march's give-up handles a real dead end.
+        /// </summary>
+        private bool PlanBreach(AiContext ai, float2 from)
+        {
+            bool had = breach.Count > 0;
+            if (ai.Reach == null) return false;
+            int2 fromTile = (int2)math.floor(from);
+            Reach reach = ai.Reach.Query(fromTile, Target, ai.View.Tiles, ai.WallCostFn, breachScratch, out _, snap: 8);
+            // Cut from here (a strung-out group's centre on rock, a relabel under way): the plan it has stands.
+            if (reach == Reach.Cut) return had;
+            breach.Clear();
+            if (reach == Reach.Open || breachScratch.Count == 0) { breachReached = double.NaN; return false; }
+            breach.AddRange(breachScratch);
+            int home = ai.Reach.ComponentAt(ai.Reach.NearestFloor(fromTile, 8));
+            breachApproach = breach[0];
+            for (int k = 0; k < 4; k++)
+            {
+                int2 n = breach[0] + (k == 0 ? new int2(1, 0) : k == 1 ? new int2(-1, 0) : k == 2 ? new int2(0, 1) : new int2(0, -1));
+                if (ai.Reach.ComponentAt(n) == home) { breachApproach = n; break; }
+            }
+            if (!had) { BreachesStarted++; breachReached = double.NaN; Note(ai, $"breach: {breach.Count} wall tiles at {breach[0].x},{breach[0].y} before {Target.x},{Target.y}"); }
+            return true;
+        }
+
+        /// <summary>
+        /// v0.21 §4.1, each think of an engaged attack with a breach: open now (the walls fell) → on to the target; still
+        /// walled → the breach follows the cheapest walls (they may change); not open <c>BreachSeconds</c> after its front
+        /// reached the wall → it gives the target up as an unreached one. False when the attack ended or moved on.
+        /// </summary>
+        private bool UpdateBreach(AiContext ai, TeamView view, AiState state, float2 front)
+        {
+            float r = ai.Config.Play.ArmyRadius;
+            if (double.IsNaN(breachReached) && math.distancesq(front, (float2)breachApproach + 0.5f) <= r * r) breachReached = ai.Now;
+            if (!PlanBreach(ai, front))
+            {
+                Note(ai, $"breach open: on to {Target.x},{Target.y}");
+                breachReached = double.NaN;
+                OrderGroup(ai, view, state, true);
+                return true;
+            }
+            if (double.IsNaN(breachReached) || ai.Now - breachReached <= ai.Config.Reach.BreachSeconds) return true;
+            Note(ai, $"breach failed at {breach[0].x},{breach[0].y}: not open in {ai.Config.Reach.BreachSeconds:F0} s");
+            GiveUps++;
+            ai.Board.Avoid(Target, ai.Now + ai.Policy.AvoidSeconds);
+            ai.Board.GiveUpOn(Target, ai.Policy.AvoidSeconds);
+            breach.Clear();
+            breachReached = double.NaN;
+            if (!ChooseTarget(ai, front, TargetOwner, Maxed(ai, state) ? 0f : 1f, out int id, out int owner, out int2 target) || target.Equals(Target))
+            {
+                EndRecord(ai, state);
+                EndAttack(ai, state, true);
+                return false;
+            }
+            TargetId = id;
+            TargetOwner = owner;
+            Target = target;
+            targetSince = ai.Now;
+            BeginStage(ai, view, state);
+            return false;
+        }
+
+        /// <summary>
         /// Sends the group to a staging point <c>StageDistance</c> short of the target, on the side it comes from, so it
         /// arrives together instead of strung out along the route; a target that close engages at once.
         /// </summary>
@@ -323,15 +449,17 @@ namespace WAR2D.Ai
             AiPlayConfig play = ai.Config.Play;
             Sieging = false;
             float2 from = GroupCentre(view, false);
-            float2 to = (float2)Target + 0.5f;
+            bool walled = PlanBreach(ai, from);
+            float2 to = (float2)Goal + 0.5f;
             float d = math.distance(from, to);
-            if (play.StageDistance <= 0f || d <= play.StageDistance * 1.5f)
+            float stageDistance = walled ? ai.Config.Reach.BreachStage : play.StageDistance;
+            if (stageDistance <= 0f || d <= stageDistance * 1.5f)
             {
                 engaged = true;
                 OrderGroup(ai, view, state, true);
                 return;
             }
-            stage = state.GroundNear(to + (from - to) / d * play.StageDistance, (int)play.StageDistance);
+            stage = state.GroundNear(to + (from - to) / d * stageDistance, (int)math.max(stageDistance, 2f));
             if (view.TileAt(stage) != TileType.Ground)
             {
                 // No open ground there (rock all round): no staging, it goes straight in.
@@ -374,8 +502,20 @@ namespace WAR2D.Ai
             float best = 0f, second = 0f;
             int bestId = 0, bestOwner = 0, secondId = 0, secondOwner = 0;
             int2 bestAt = default, secondAt = default;
+            int2 fromTile = (int2)math.floor(from);
             void Consider(int candidateId, int candidateOwner, int2 at, float worth)
             {
+                // v0.21 §4.1: never a target it can't reach; a walled one is worth less by what its breach costs.
+                if (ai.Reach != null)
+                {
+                    Reach reach = ai.Reach.Query(fromTile, at, ai.View.Tiles, ai.WallCostFn, null, out float breachCost);
+                    if (reach == Reach.Cut) return;
+                    if (reach == Reach.Walled)
+                    {
+                        if (!ai.Difficulty.Breaches) return;
+                        worth /= 1f + breachCost / ai.Config.Reach.BreachCostScale;
+                    }
+                }
                 float score = ScoreTarget(ai, ours, from, candidateOwner, at, worth, need, noise);
                 if (candidateOwner == preferOwner) score *= 2f;
                 if (score <= 0f) return;
@@ -463,11 +603,13 @@ namespace WAR2D.Ai
             if (TargetId < 0 && ai.Board.EnemyBuildings.Count > 0) known = false;
             // A building target it hasn't reached in MarchSeconds (walled off, across rock, a ghost it never sees again):
             // it gives up on it for AvoidSeconds and picks again (else the whole army, reinforcements and all, waits for ever).
-            bool unreached = TargetId != 0 && ai.Now - targetSince > play.MarchSeconds
-                && math.distancesq(FrontCentre(view, state, play.ArmyRadius), (float2)Target + 0.5f) > play.ArmyRadius * play.ArmyRadius;
+            // With a breach, reaching the wall counts (the breach's own clock runs from there).
+            bool unreached = TargetId != 0 && ai.Now - targetSince > play.MarchSeconds && double.IsNaN(breachReached)
+                && math.distancesq(FrontCentre(view, state, play.ArmyRadius), (float2)Goal + 0.5f) > play.ArmyRadius * play.ArmyRadius;
             if (unreached)
             {
                 Note(ai, $"gave up on {Target.x},{Target.y}: not reached in {play.MarchSeconds:F0} s");
+                GiveUps++;
                 ai.Board.Avoid(Target, ai.Now + ai.Policy.AvoidSeconds);
                 ai.Board.GiveUpOn(Target, ai.Policy.AvoidSeconds);
                 int2 given = Target;
@@ -546,13 +688,21 @@ namespace WAR2D.Ai
                     retreatStarted = ai.Now;
                     lastAttackEnd = ai.Now;
                     GroupIds(view, state, false);
-                    ai.Propose(AiPriority.High, AiAction.OrderUnits(ids, OrderKind.Move, state.GatherPoint), AiKeys.Of(AiKeys.Army));
+                    // v0.21: a retreat outranks routine orders (an Easy AI's few actions went to Build orders first).
+                    ai.Propose(AiPriority.High + 5f, AiAction.OrderUnits(ids, OrderKind.Move, state.GatherPoint), AiKeys.Of(AiKeys.Army));
                     return;
                 }
             }
 
             if (!engaged)
             {
+                // v0.21 §4.1: the walls in the way fell (or another way opened) while it marched: it stages for the target instead.
+                if (breach.Count > 0 && !PlanBreach(ai, GroupCentre(view, false)))
+                {
+                    Note(ai, $"breach open before it got there: on to {Target.x},{Target.y}");
+                    BeginStage(ai, view, state);
+                    return;
+                }
                 // Staging: engage once most of the group is there (or it has waited long enough); stragglers come on.
                 float2 s = (float2)stage + 0.5f;
                 float sr2 = play.ArmyRadius * play.ArmyRadius;
@@ -612,6 +762,7 @@ namespace WAR2D.Ai
             }
 
             Reinforce(ai, view, state);
+            if (breach.Count > 0 && !UpdateBreach(ai, view, state, front)) return;
             UpdateSiege(ai, view, state);
             if (!Sieging)
             {
@@ -624,13 +775,13 @@ namespace WAR2D.Ai
                     AiUnit u = view.OwnUnits[i];
                     if (group.Contains(u.Id) && !u.HasOrder && !(ai.Difficulty.KeepsBacklineBack && IsBackline(u.Type)) && !spotters.Contains(u.Id)) ids.Add(u.Id);
                 }
-                if (ids.Count > 0 && Due(ai, AiKeys.Army)) ai.Propose(AiPriority.Normal, AiAction.OrderUnits(ids, OrderKind.AttackMove, Target), AiKeys.Of(AiKeys.Army));
+                if (ids.Count > 0 && Due(ai, AiKeys.Army)) ai.Propose(AiPriority.Normal, AiAction.OrderUnits(ids, OrderKind.AttackMove, Goal), AiKeys.Of(AiKeys.Army));
             }
             // Micro (AI overhaul §2.3): on its attentive thinks only.
             if (!ai.Attentive) return;
             if (ai.Difficulty.FocusFire) FocusFire(ai, view, state, front);
             if (ai.Difficulty.KeepsBacklineBack && !Sieging) Backline(ai, view, state, centre);
-            if (ai.Difficulty.DigsPastWalls) DigWalls(ai, view, state, centre);
+            if (ai.Difficulty.DigsPastWalls) DigWalls(ai, view, state, breach.Count > 0 ? (float2)breach[0] + 0.5f : centre);
             Detonate(ai, view, state);
         }
 
@@ -767,6 +918,8 @@ namespace WAR2D.Ai
         {
             Mode = ArmyMode.Gather;
             Sieging = false;
+            breach.Clear();
+            breachReached = double.NaN;
             lastAttackEnd = ai.Now;
             if (sendHome && group.Count > 0)
             {
@@ -781,8 +934,9 @@ namespace WAR2D.Ai
         /// <summary>Orders the whole group at the target (with <c>KeepsBacklineBack</c>: its Artillery and Snipers to a point behind the front).</summary>
         private void OrderGroup(AiContext ai, TeamView view, AiState state, bool force)
         {
+            PlanBreach(ai, GroupCentre(view, false));
             GroupIds(view, state, ai.Difficulty.KeepsBacklineBack);
-            if (ids.Count > 0) ai.Propose(AiPriority.High, AiAction.OrderUnits(ids, OrderKind.AttackMove, Target), AiKeys.Of(AiKeys.Army));
+            if (ids.Count > 0) ai.Propose(AiPriority.High, AiAction.OrderUnits(ids, OrderKind.AttackMove, Goal), AiKeys.Of(AiKeys.Army));
             orderedAt[AiKeys.Army] = ai.Now;
             if (ai.Difficulty.KeepsBacklineBack) Backline(ai, view, state, GroupCentre(view, true), force);
         }
