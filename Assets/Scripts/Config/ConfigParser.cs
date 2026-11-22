@@ -605,6 +605,16 @@ namespace Config
                 config.Brain.EventMemorySeconds = Float(brain, "EventMemorySeconds", c, errors, min: 1, max: 3600);
             }
 
+            XmlNode reach = Require(ai, "Reach", errors);
+            if (reach != null)
+            {
+                const string c = "Ai reach";
+                config.Reach.TilesPerThink = Int(reach, "TilesPerThink", c, errors, min: 1024, max: 16777216);
+                config.Reach.BreachCostScale = Float(reach, "BreachCostScale", c, errors, min: 1, max: 1e6f);
+                config.Reach.BreachSeconds = Float(reach, "BreachSeconds", c, errors, min: 5, max: 3600);
+                config.Reach.BreachStage = Float(reach, "BreachStage", c, errors, min: 0, max: 64);
+            }
+
             XmlNode play = Require(ai, "Play", errors);
             if (play != null)
             {

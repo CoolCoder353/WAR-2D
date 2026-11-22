@@ -53,6 +53,8 @@ namespace WAR2D.Ai
             for (int t = 0; t < state.MixBias.Length; t++) state.MixBias[t] = 1f;
             if (state.RushExpected) { Bias(state, UnitType.Flamethrower, policy.ReactionBias); Bias(state, UnitType.Tank, policy.ReactionBias); }
             if (turtle) { Bias(state, UnitType.Artillery, policy.ReactionBias); Bias(state, UnitType.Digger, policy.ReactionBias * policy.ReactionBias); }
+            // v0.21 §4.1: walls in the way of its attack: wall-breakers.
+            if (state.BreachWanted) { Bias(state, UnitType.Digger, policy.ReactionBias); Bias(state, UnitType.Artillery, policy.ReactionBias); }
             Reacting = (state.RushExpected ? "rush " : "") + (greedy ? "greedy " : "") + (turtle ? "turtle" : "");
 
             SwitchStyle(ai, state, army);

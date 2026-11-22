@@ -153,6 +153,8 @@ namespace WAR2D.Ai
         public float TurretCounterBoost = 1f;
         /// <summary>True while its army is attacking, once it has attacked at all, and its bad trades in a row (set by the Army manager).</summary>
         public bool Attacking, AttackedOnce;
+        /// <summary>v0.21 §4.1: its attack has walls to break (set by the Army manager; the Strategy manager leans its mix to Diggers and Artillery).</summary>
+        public bool BreachWanted;
         public int BadTradeStreak;
         /// <summary>Factor on the wait between two raids (below 1 against a Turtle: it raids more).</summary>
         public float RaidCooldownFactor = 1f;

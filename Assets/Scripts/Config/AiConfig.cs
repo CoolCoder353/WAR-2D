@@ -74,6 +74,8 @@ namespace Config
         public AiDiplomacyConfig Diplomacy = new AiDiplomacyConfig();
         public AiConcedeConfig Concede = new AiConcedeConfig();
         public AiBrainConfig Brain = new AiBrainConfig();
+        /// <summary>The reach map and breaches (v0.21 Warpath §3, §4.1).</summary>
+        public AiReachConfig Reach = new AiReachConfig();
         /// <summary>How every AI plays, whatever its difficulty and style (plan Task 7's managers).</summary>
         public AiPlayConfig Play = new AiPlayConfig();
         /// <summary>
@@ -144,6 +146,8 @@ namespace Config
         public int Spotters;
         /// <summary>True when its Diggers tunnel through enemy walls near its attacking army.</summary>
         public bool DigsPastWalls;
+        /// <summary>v0.21: true when it attacks targets behind walls by breaching them (from <c>AiPolicy.BreachInsight</c>; Easy skips walled targets).</summary>
+        public bool Breaches;
         /// <summary>How it scouts.</summary>
         public AiScouting Scouting;
         /// <summary>Seconds between re-scouting runs (Regular scouting).</summary>
@@ -564,6 +568,19 @@ namespace Config
         public float ArmyMemorySeconds;
         /// <summary>Seconds an event (an alert, a threat) stays on the blackboard.</summary>
         public float EventMemorySeconds;
+    }
+
+    /// <summary>The reach map and breaches (v0.21 Warpath §3, §4.1), the same at every difficulty.</summary>
+    public class AiReachConfig
+    {
+        /// <summary>Tiles a relabel of the reach map labels per think (it is spread over thinks).</summary>
+        public int TilesPerThink;
+        /// <summary>A walled target's worth is divided by (1 + its breach's wall health / this).</summary>
+        public float BreachCostScale;
+        /// <summary>Seconds a breach may take once its group is at the wall before it gives the target up.</summary>
+        public float BreachSeconds;
+        /// <summary>Tiles short of the first breach wall its group stages.</summary>
+        public float BreachStage;
     }
 
     /// <summary>When the AI surrenders (spec §8).</summary>

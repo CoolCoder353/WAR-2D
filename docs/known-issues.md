@@ -33,7 +33,7 @@ Bugs, mismatches and hygiene problems. The first three roadmaps (v0.2 to v0.9, v
 | Item | State |
 | --- | --- |
 | An empty bank killed units though income covered upkeep (14 of 30 Tanks in 2 s) | **Fixed.** Decay is one unit's worth a second per owner however many are unpaid, and an unpaid unit is paid on the first tick the bank covers it (`SimEconomySystem`). |
-| AI armies re-targeted buildings they had given up on | **Fixed.** A target not reached in `MarchSeconds` is excluded for `AvoidSeconds`, ×4 per further give-up (`Blackboard.GiveUpOn`). |
+| AI armies re-targeted buildings they had given up on | **Fixed.** A target not reached in `MarchSeconds` is excluded for `AvoidSeconds`, ×4 per further give-up (`Blackboard.GiveUpOn`). v0.21: the AI's reach map (`Ai/ReachMap.cs`) keeps it from picking a target behind rock at all, and a walled one is attacked through a breach (given up when not open in `BreachSeconds`). The reach map ignores building footprints: a target ringed by buildings alone still falls back to the march's give-up. |
 | A start site with no gem vein (1024, seed 7) | **Fixed.** A start site with no gem within `StartRadius` + 10 gets an 8-tile outcrop on open floor, away from its lanes. |
 | An AI whose base can't fit a Miner never expanded | **Fixed.** With its base full and no expansion held, it expands at once. |
 | Rich gems: 375/s a Miner | **Changed.** `RichGemMultiplier` 15 → 4 (100/s). AI difficulty and style balance were left alone (owner, 2026-11-10). |

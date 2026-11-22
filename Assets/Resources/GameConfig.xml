@@ -400,6 +400,12 @@
       <ArmyMemorySeconds>180</ArmyMemorySeconds>    <!-- a last-seen enemy army is remembered this long -->
       <EventMemorySeconds>30</EventMemorySeconds>   <!-- alerts and threats stay on the blackboard this long -->
     </Brain>
+    <Reach>  <!-- v0.21 Warpath: the reach map (floor components over the known tiles, joined by player walls) and breaches -->
+      <TilesPerThink>262144</TilesPerThink>   <!-- a relabel after the terrain changes labels this many tiles a think (a 1024 map in four) -->
+      <BreachCostScale>600</BreachCostScale>  <!-- a walled target's worth is divided by 1 + its breach's wall health over this -->
+      <BreachSeconds>90</BreachSeconds>       <!-- a breach not open this long after its group reached the wall: the target is given up -->
+      <BreachStage>6</BreachStage>            <!-- the group stages this many tiles short of the first wall to break -->
+    </Reach>
     <Play>  <!-- plan Task 7: how every AI plays, the same at every difficulty and style (sizes and pacing; behaviour is above) -->
       <OptionRadius>18</OptionRadius>                  <!-- tiles around a start option counted for gems and open ground -->
       <OptionGemWeight>1.0</OptionGemWeight>           <!-- score per gem tile there -->

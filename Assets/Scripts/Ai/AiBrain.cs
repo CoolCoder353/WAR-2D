@@ -137,7 +137,29 @@ namespace WAR2D.Ai
                 ["idleArmy"] = army?.IdleArmySeconds ?? 0.0,
                 ["giveUps"] = army?.GiveUps ?? 0,
                 ["earned"] = Earned,
+                ["reach"] = Context.Reach != null ? $"v{Context.Reach.Version} {Context.Reach.Components} parts{(Context.Reach.Pending ? " relabelling" : "")}" : "",
+                ["breach"] = army?.BreachStatus ?? "",
             };
+        }
+
+        /// <summary>
+        /// Keeps its reach map (v0.21 §3) on the ground it knows: built at once from its first view of the map, then
+        /// relabelled over thinks after a tile it knows changes (dug, walled, a wall destroyed). Cached answers last one think
+        /// (a wall's health moves).
+        /// </summary>
+        private void UpdateReach(TeamView view)
+        {
+            if (view.Width <= 0 || view.Height <= 0 || view.Tiles.Length != view.Width * view.Height) return;
+            ReachMap reach = Context.Reach;
+            if (reach == null || reach.Width != view.Width || reach.Height != view.Height)
+            {
+                Context.Reach = reach = new ReachMap(view.Width, view.Height, Context.Config.Reach.TilesPerThink);
+                reach.Rebuild(view.Tiles);
+                return;
+            }
+            if (view.TerrainChanged.Count > 0) reach.MarkDirty();
+            reach.ForgetAnswers();
+            reach.Step(view.Tiles);
         }
 
         private string Guesses()
@@ -165,6 +187,7 @@ namespace WAR2D.Ai
             Board.Observe(view);
             if (view.State == GameState.Playing && !double.IsNaN(lastViewTime)) Earned += view.Income * (view.Time - lastViewTime);
             lastViewTime = view.Time;
+            UpdateReach(view);
             Context.State.Update(view);
             Board.UpdateModels(view, Context.State.PlayingSeconds, Context.Policy, Context.Game);
             foreach (IAiManager manager in managers)
