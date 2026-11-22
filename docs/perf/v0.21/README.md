@@ -25,7 +25,7 @@ reaching the cap, mostly 1024 maps and mirrors, with armies marching on targets 
 "gave up on …: not reached in 240 s"). Money piles up into the millions by minute 10 (the rich-gem economy, out of
 scope here).
 
-## After (2026-11-22, `86984444`: every phase, the forward-base fix)
+## First after run (2026-11-22, `86984444`: every phase, the forward-base fix)
 
 ```
 AI bench: 90 matches, map 256/512/1024; exit criteria NOT met
@@ -62,3 +62,36 @@ forward-base producers spend money that went into units. No breach started in 90
 so a target behind them is still open; breaches matter against a player who walls in fully. Idle armies were already
 rare (under two minutes a match), so the idle bar changes little in the bench. Not met: the spec's §9 exit criteria
 (the ladder, at most 5 caps, idle and banked halved).
+
+## After the Hard fix (2026-11-22, `30e4ddaf`)
+
+The cause: "banked" (1,500 held for 30 s) comes in a Hard AI's first minute, and the banked rung claimed its most
+expansions at once, so its Builders scattered and its home gems went half mined (32 Miners and 975/s at minute 5,
+against 46 and 2,014/s in the baseline). The late rungs now wait for `Overflowing` (`<Ai><Warpath><OverflowSeconds>`).
+
+```
+AI bench: 90 matches, map 256/512/1024; exit criteria NOT met
+  Hard-Normal    83% (15/18, 95% 61%–94%) [256: 5/6, 512: 6/6, 1024: 4/6]  caps 2, draws 0, errors 0, median 3.2 min
+  Normal-Easy    94% (17/18, 95% 74%–99%) [256: 6/6, 512: 6/6, 1024: 5/6]  caps 1, draws 0, errors 0, median 7.2 min
+  Hard-Hard      18 games            caps 9, draws 0, errors 0, median 9.2 min
+  Normal-Normal  18 games            caps 5, draws 0, errors 0, median 12.4 min
+  Easy-Easy      18 games            caps 3, draws 0, errors 0, median 9.1 min
+  At 10 min (mean): Hard bank 557754, income 2385/s, upkeep 753/s, army 471 · Normal bank 300085, income 1600/s, upkeep 442/s, army 240 · Easy bank 62333, income 499/s, upkeep 258/s, army 116
+  Mean highest balance: Hard 2968128 · Normal 1513429 · Easy 158969
+  Killed/lost: Hard 0.84 · Normal 0.72 · Easy 0.43; raids/seat: Hard 8.8 · Normal 1.3 · Easy 0.5
+  Idle army min/seat: Hard 0.4 · Normal 0.6 · Easy 1.5; give-ups/seat: Hard 1.1 · Normal 0.6 · Easy 0.3
+  Per seat: posts Hard 11.2 · Normal 6.0 · Easy 0.0; forward bases Hard 1.8 · Normal 1.7 · Easy 0.0; breaches Hard 0.0 · Normal 0.0 · Easy 0.0
+  Unfinished: 20 caps
+```
+
+| Against the baseline | Baseline | Now |
+| --- | --- | --- |
+| Hard beats Normal | 83% | 83% |
+| Normal beats Easy | 72% | 94% |
+| Capped matches | 28 | 20 |
+| Highest balance (Hard, Normal) | 3.29 M, 2.22 M | 2.97 M, 1.51 M |
+| Give-ups per seat (Hard, Normal, Easy) | 1.1, 0.8, 0.4 | 1.1, 0.6, 0.3 |
+
+Still not met from §9: at most 5 caps (the 1024 mirrors still run to 40 minutes), idle and banked halved (idle armies
+were never the problem; the bank is the rich-gem economy's). Each pairing has 18 matches, so a rate moves by about 20
+points within its interval.
