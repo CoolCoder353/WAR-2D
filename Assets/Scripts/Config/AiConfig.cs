@@ -630,6 +630,11 @@ namespace Config
         public float WallCheckSeconds;
         /// <summary>Mines added per defended spot while it fortifies (§7.1 rung 5).</summary>
         public int FortifyMines;
+        /// <summary>
+        /// §7.1: the late rungs (more expansions, forward bases, fortifying) wait until it is overflowing: banked, its opening
+        /// done, and at least this many seconds of income in hand (and four times <c>BankHigh</c>).
+        /// </summary>
+        public float OverflowSeconds;
     }
 
     /// <summary>When the AI surrenders (spec §8).</summary>

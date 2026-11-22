@@ -92,7 +92,7 @@ namespace WAR2D.Ai
             // Upkeep-capped with money to spare, it takes more than its style's (up to its difficulty's most): money banked is wasted.
             if (squeezed && onTime) wanted = ai.Difficulty.MaxExpansions;
             // v0.21 §7.1: money piling up, it takes more still (rung 3 of the spending ladder).
-            if (state.Banked && onTime) wanted = ai.Difficulty.MaxExpansions + ai.Config.Warpath.BankedExpansions;
+            if (state.Overflowing && onTime) wanted = ai.Difficulty.MaxExpansions + ai.Config.Warpath.BankedExpansions;
             // Saturating: its base and every expansion it holds full of Miners, it takes the next one (up to its difficulty's most).
             bool full = ai.Difficulty.SaturatesMiners && baseFull && AllHeldFull(state);
             if (full) wanted = ai.Difficulty.MaxExpansions;

@@ -26,7 +26,10 @@ namespace WAR2D.Ai
             TeamView view = ai.View;
             AiState state = ai.State;
             state.Fortify = false;
+            state.Overflowing = false;
             if (view.State != GameState.Playing || !state.HasHq) return;
+            state.Overflowing = state.Banked && state.OpeningDone
+                && state.Free >= math.max(4f * ai.Policy.BankHigh, ai.Config.Warpath.OverflowSeconds * math.max(0f, state.Income));
 
             // A forward base it no longer holds (no building of its own there): dropped.
             for (int k = state.ForwardRegions.Count - 1; k >= 0; k--)
@@ -36,9 +39,9 @@ namespace WAR2D.Ai
             }
 
             bool maxed = !state.MayAddUpkeep(state.UpkeepOf(UnitType.Tank));
-            state.Fortify = state.Banked && (maxed || state.Free >= 4f * ai.Policy.BankHigh);
+            state.Fortify = state.Overflowing && (maxed || state.Free >= 2f * ai.Config.Warpath.OverflowSeconds * math.max(0f, state.Income));
 
-            if (state.Banked && state.ForwardRegions.Count < ai.MaxForwardBases) ChooseForwardBase(ai, view, state);
+            if (state.Overflowing && state.ForwardRegions.Count < ai.MaxForwardBases) ChooseForwardBase(ai, view, state);
             for (int k = 0; k < state.ForwardRegions.Count; k++) GrowForwardBase(ai, view, state, state.ForwardRegions[k]);
         }
 

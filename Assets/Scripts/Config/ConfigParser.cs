@@ -638,6 +638,7 @@ namespace Config
                 w.WallAhead = Float(warpath, "WallAhead", c, errors, min: 0, max: 32);
                 w.WallCheckSeconds = Float(warpath, "WallCheckSeconds", c, errors, min: 1, max: 3600);
                 w.FortifyMines = Int(warpath, "FortifyMines", c, errors, min: 0, max: 64);
+                w.OverflowSeconds = Float(warpath, "OverflowSeconds", c, errors, min: 0, max: 3600);
             }
 
             XmlNode play = Require(ai, "Play", errors);

@@ -443,6 +443,7 @@
       <WallAhead>3</WallAhead>                 <!-- its wall line crosses a lane this many tiles ahead of the turret -->
       <WallCheckSeconds>15</WallCheckSeconds>  <!-- seconds between checks for wall tiles to put back -->
       <FortifyMines>2</FortifyMines>           <!-- Mines added per defended spot while it fortifies -->
+      <OverflowSeconds>60</OverflowSeconds>    <!-- more expansions, forward bases and fortifying wait for this much income in hand (and 4 x BankHigh), past the opening -->
     </Warpath>
     <Play>  <!-- plan Task 7: how every AI plays, the same at every difficulty and style (sizes and pacing; behaviour is above) -->
       <OptionRadius>18</OptionRadius>                  <!-- tiles around a start option counted for gems and open ground -->

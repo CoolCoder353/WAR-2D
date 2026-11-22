@@ -182,6 +182,12 @@ namespace WAR2D.Ai
         public readonly List<int> ForwardRegions = new List<int>(4);
         /// <summary>v0.21 §7.1: money piles up past every other way to spend it: it fortifies (more Mines, wall layers).</summary>
         public bool Fortify;
+        /// <summary>
+        /// v0.21 §7.1: banked well past its needs (set by the Spending manager): its opening done, and <c>OverflowSeconds</c> of
+        /// income and four times <c>BankHigh</c> in hand. The late rungs of the ladder (more expansions, forward bases,
+        /// fortifying) wait for it: an early bank of a few thousand mustn't send its Builders across the map.
+        /// </summary>
+        public bool Overflowing;
         /// <summary>v0.21 §6.2: unit ids holding posts (the army leaves them alone).</summary>
         public readonly HashSet<int> Posted = new HashSet<int>();
         /// <summary>v0.21 §6.2: its army defends its base now (posts come home).</summary>
